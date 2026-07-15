@@ -1,0 +1,81 @@
+using System;
+using StockAnalyzer.Core.Models.Portfolio;
+using StockAnalyzer.Core.Services;
+using Xunit;
+
+namespace StockAnalyzer.Core.Tests.Services;
+
+public class FundamentalsCalculatorTests
+{
+    [Fact]
+    public void CalculateDerived_ShouldComputeCorrectMetrics()
+    {
+        // Arrange
+        var meta = new TickerMetadata("AAPL", "Apple Inc", "US", "Tech", "Consumer Electronics", "USD")
+        {
+            CurrentPrice = 150m,
+            BookValue = 30m,
+            DividendRate = 3m,
+            TrailingEps = 6m,
+            FreeCashflow = 3000m,
+            SharesOutstanding = 100m, // MarketCap = 150 * 100 = 15000
+            TotalRevenue = 12000m,
+            TotalDebt = 2000m,
+            TotalCash = 5000m, // NetDebt = 2000 - 5000 = -3000 (Net cash)
+            Ebitda = 1000m,
+            FiftyTwoWeekHigh = 200m,
+            FloatShares = 80m, // Float Ratio = 80%
+            FullTimeEmployees = 100,
+            TrailingPE = 25m,
+            EarningsGrowth = 0.10m, // 10%
+            OperatingCashflow = 3000m
+        };
+
+        // Act
+        var result = FundamentalsCalculator.CalculateDerived(meta);
+
+        // Assert
+        Assert.Equal(15000m, result.MarketCap);
+        Assert.Equal(5m, result.PbrCalculated); // 150 / 30
+        Assert.Equal(2m, result.DividendYieldCalculated); // (3 / 150) * 100
+        Assert.Equal(4m, result.EarningsYield); // (6 / 150) * 100
+        Assert.Equal(20m, result.FcfYield); // (3000 / 15000) * 100
+        Assert.Equal(25m, result.FcfMargin); // (3000 / 12000) * 100
+        Assert.Equal(-3000m, result.NetDebt); // 2000 - 5000
+        Assert.Equal(-3m, result.NetDebtToEbitda); // -3000 / 1000
+        Assert.Equal(2m, result.DividendCoverage); // 6 / 3
+        Assert.Equal(-25m, result.PctFromFiftyTwoWeekHigh); // ((150 / 200) - 1) * 100
+        Assert.Equal(80m, result.FloatRatio); // (80 / 100) * 100
+        Assert.Equal(150m, result.MarketCapPerEmployee); // 15000 / 100
+        Assert.Equal(2.5m, result.PegRatio); // 25 / (0.10 * 100) = 2.5
+        Assert.Equal(20m, result.OperatingCashFlowYield); // (3000 / 15000) * 100
+        Assert.Equal(0.2m, result.NetCashRatio); // (5000 - 2000) / 15000 = 3000 / 15000 = 0.2
+    }
+
+    [Fact]
+    public void CalculateDerived_WithNulls_ShouldHandleGracefully()
+    {
+        // Arrange
+        var meta = TickerMetadata.Unknown;
+
+        // Act
+        var result = FundamentalsCalculator.CalculateDerived(meta);
+
+        // Assert
+        Assert.Null(result.MarketCap);
+        Assert.Null(result.PbrCalculated);
+        Assert.Null(result.DividendYieldCalculated);
+        Assert.Null(result.EarningsYield);
+        Assert.Null(result.FcfYield);
+        Assert.Null(result.FcfMargin);
+        Assert.Null(result.NetDebt);
+        Assert.Null(result.NetDebtToEbitda);
+        Assert.Null(result.DividendCoverage);
+        Assert.Null(result.PctFromFiftyTwoWeekHigh);
+        Assert.Null(result.FloatRatio);
+        Assert.Null(result.MarketCapPerEmployee);
+        Assert.Null(result.PegRatio);
+        Assert.Null(result.OperatingCashFlowYield);
+        Assert.Null(result.NetCashRatio);
+    }
+}

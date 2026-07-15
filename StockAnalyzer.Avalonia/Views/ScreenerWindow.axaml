@@ -1,0 +1,69 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:l="clr-namespace:StockAnalyzer.Avalonia.Markup;assembly=StockAnalyzer.Avalonia"
+        xmlns:vm="using:StockAnalyzer.Avalonia.ViewModels"
+        mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+        x:Class="StockAnalyzer.Avalonia.Views.ScreenerWindow"
+        x:DataType="vm:ScreenerViewModel"
+        Title="{l:Localize Window_Screener_Title}"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource Brush.Background.Primary}">
+
+    <Grid ColumnDefinitions="200,*" Margin="10">
+
+        <!-- Sidebar: Configuration -->
+        <Border Grid.Column="0" Background="{DynamicResource Brush.Background.Secondary}" CornerRadius="4" Margin="0,0,5,0" Padding="10">
+            <StackPanel Spacing="5">
+                <TextBlock Text="{l:Localize Window_Screener_Title}" FontSize="18" FontWeight="Bold" Foreground="{DynamicResource Brush.Text.Primary}"/>
+
+                <TextBlock Text="{l:Localize Label_Criteria}" Foreground="{DynamicResource Brush.Text.Secondary}" Margin="0,10,0,0"/>
+                <ComboBox HorizontalAlignment="Stretch" 
+                          ItemsSource="{Binding AvailableConditions}"
+                          SelectedItem="{Binding SelectedCondition}"/>
+
+                <TextBlock Text="{l:Localize Label_TargetSymbols}" Foreground="{DynamicResource Brush.Text.Secondary}" Margin="0,10,0,0"/>
+                <ListBox Height="150" Background="{DynamicResource Brush.Background.Primary}" 
+                         ItemsSource="{Binding TargetSymbols}"/>
+
+                <Button Content="{l:Localize Btn_Scan}"
+                        Theme="{StaticResource PrimaryButtonStyle}"
+                        HorizontalAlignment="Stretch"
+                        Margin="0,20,0,0"
+                        Command="{Binding ScanCommand}"
+                        IsEnabled="{Binding IsNotScanning}"/>
+
+                <TextBlock Text="{Binding StatusMessage}" Foreground="{DynamicResource Brush.Text.Primary}" TextWrapping="Wrap" Margin="0,10,0,0"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Main Area: Results -->
+        <Border Grid.Column="1" Background="{DynamicResource Brush.Background.Secondary}" CornerRadius="4" Margin="5,0,0,0" Padding="10">
+            <Grid RowDefinitions="Auto,*">
+
+                <TextBlock Grid.Row="0" Text="{l:Localize Label_Results}" FontSize="16" Foreground="{DynamicResource Brush.Text.Primary}" Margin="0,0,0,10"/>
+
+                <ListBox Grid.Row="1" Background="Transparent" BorderThickness="0" 
+                         Foreground="{DynamicResource Brush.Text.Primary}" FontSize="14"
+                         ItemsSource="{Binding Results}">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Orientation="Horizontal" Spacing="10" Margin="5">
+                                <TextBlock Text="✅ MATCH:" Foreground="LightGreen" FontWeight="Bold"/>
+                                <TextBlock Text="{Binding}"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+
+                <ProgressBar Grid.Row="1"
+                             IsIndeterminate="True"
+                             Height="4"
+                             VerticalAlignment="Top"
+                             IsVisible="{Binding IsScanning}"
+                             />
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

@@ -1,0 +1,237 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:StockAnalyzer.Avalonia.ViewModels.Dialogs"
+             xmlns:conv="using:StockAnalyzer.Avalonia.Converters"
+             xmlns:l="using:StockAnalyzer.Avalonia.Markup"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="1000"
+             x:Class="StockAnalyzer.Avalonia.Views.Dialogs.ThemeSettingsView"
+             x:DataType="vm:ThemeSettingsViewModel">
+
+    <UserControl.Resources>
+        <conv:IndicatorColorToAvaloniaColorConverter x:Key="ColorConverter"/>
+        <conv:EnumToLocalizedNameConverter x:Key="EnumConverter"/>
+    </UserControl.Resources>
+
+    <Design.DataContext>
+        <vm:ThemeSettingsViewModel/>
+    </Design.DataContext>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Spacing="20" Margin="16">
+            
+            <!-- Section: Preset Selection -->
+            <Border Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16">
+                <StackPanel Spacing="12">
+                    <TextBlock Text="{l:Localize Settings_Theme_PresetSelection}" FontSize="15" FontWeight="Bold" Foreground="{DynamicResource Brush.Accent.Primary}"/>
+                    <Grid ColumnDefinitions="Auto, *">
+                        <TextBlock Text="{l:Localize Settings_Theme_Mode}" VerticalAlignment="Center" Margin="0,0,16,0" FontSize="13"/>
+                        <ComboBox Grid.Column="1" 
+                                  ItemsSource="{Binding AvailablePresets}" 
+                                  SelectedItem="{Binding SelectedPreset}" 
+                                  HorizontalAlignment="Stretch"
+                                  Height="36">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Converter={StaticResource EnumConverter}}"/>
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- Section: Interface Colors (Shell) -->
+            <Border Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="{l:Localize Settings_Theme_InterfaceColors}" FontSize="15" FontWeight="Bold" Foreground="{DynamicResource Brush.Accent.Primary}"/>
+                    
+                    <UniformGrid Columns="2">
+                        <StackPanel Margin="0,0,24,16">
+                            <Grid ColumnDefinitions="*, Auto">
+                                <TextBlock Text="{l:Localize Settings_Theme_Item_ShellBackground}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                <ColorPicker Grid.Column="1" Color="{Binding ShellBackgroundColor, Mode=TwoWay, Converter={StaticResource ColorConverter}}" Width="50" Height="28"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize Settings_Theme_Desc_ShellBackground}" FontSize="11" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <StackPanel Margin="0,0,0,16">
+                            <Grid ColumnDefinitions="*, Auto">
+                                <TextBlock Text="{l:Localize Settings_Theme_Item_ShellText}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                <ColorPicker Grid.Column="1" Color="{Binding ShellTextColor, Mode=TwoWay, Converter={StaticResource ColorConverter}}" Width="50" Height="28"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize Settings_Theme_Desc_ShellText}" FontSize="11" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <StackPanel Margin="0,0,24,16">
+                            <Grid ColumnDefinitions="*, Auto">
+                                <TextBlock Text="{l:Localize Settings_Theme_Item_ShellAccent}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                <ColorPicker Grid.Column="1" Color="{Binding ShellAccentColor, Mode=TwoWay, Converter={StaticResource ColorConverter}}" Width="50" Height="28"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize Settings_Theme_Desc_ShellAccent}" FontSize="11" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <StackPanel Margin="0,0,0,16">
+                            <Grid ColumnDefinitions="*, Auto">
+                                <TextBlock Text="{l:Localize Settings_Theme_Item_ShellBorder}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                <ColorPicker Grid.Column="1" Color="{Binding ShellBorderColor, Mode=TwoWay, Converter={StaticResource ColorConverter}}" Width="50" Height="28"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize Settings_Theme_Desc_ShellBorder}" FontSize="11" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </UniformGrid>
+                </StackPanel>
+            </Border>
+
+            <!-- Section: Chart Colors (Workspace) -->
+            <Border Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="{l:Localize Settings_Theme_ChartColors}" FontSize="15" FontWeight="Bold" Foreground="{DynamicResource Brush.Accent.Primary}"/>
+                    
+                    <UniformGrid Columns="2">
+                        <StackPanel Margin="0,0,24,16">
+                            <Grid ColumnDefinitions="*, Auto">
+                                <TextBlock Text="{l:Localize Settings_Theme_Item_Background}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                <ColorPicker Grid.Column="1" Color="{Binding BackgroundColor, Mode=TwoWay, Converter={StaticResource ColorConverter}}" Width="50" Height="28"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize Settings_Theme_Desc_Background}" FontSize="11" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <StackPanel Margin="0,0,0,16">
+                            <Grid ColumnDefinitions="*, Auto">
+                                <TextBlock Text="{l:Localize Settings_Theme_Item_Grid}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                <ColorPicker Grid.Column="1" Color="{Binding GridColor, Mode=TwoWay, Converter={StaticResource ColorConverter}}" Width="50" Height="28"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize Settings_Theme_Desc_Grid}" FontSize="11" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <StackPanel Margin="0,0,24,16">
+                            <Grid ColumnDefinitions="*, Auto">
+                                <TextBlock Text="{l:Localize Settings_Theme_Item_Axis}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                <ColorPicker Grid.Column="1" Color="{Binding AxisColor, Mode=TwoWay, Converter={StaticResource ColorConverter}}" Width="50" Height="28"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize Settings_Theme_Desc_Axis}" FontSize="11" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <StackPanel Margin="0,0,0,16">
+                            <Grid ColumnDefinitions="*, Auto">
+                                <TextBlock Text="{l:Localize Settings_Theme_Item_Crosshair}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                <ColorPicker Grid.Column="1" Color="{Binding CrosshairColor, Mode=TwoWay, Converter={StaticResource ColorConverter}}" Width="50" Height="28"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize Settings_Theme_Desc_Crosshair}" FontSize="11" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </UniformGrid>
+                </StackPanel>
+            </Border>
+
+            <!-- Section: Chart Elements -->
+            <Border Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="{l:Localize Settings_Theme_ChartElements}" FontSize="15" FontWeight="Bold" Foreground="{DynamicResource Brush.Accent.Primary}"/>
+                    
+                    <UniformGrid Columns="2">
+                        <StackPanel Margin="0,0,24,16">
+                            <Grid ColumnDefinitions="*, Auto">
+                                <TextBlock Text="{l:Localize Settings_Theme_Item_VolumeUp}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                <ColorPicker Grid.Column="1" Color="{Binding VolumeUpColor, Mode=TwoWay, Converter={StaticResource ColorConverter}}" Width="50" Height="28"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize Settings_Theme_Desc_VolumeUp}" FontSize="11" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <StackPanel Margin="0,0,0,16">
+                            <Grid ColumnDefinitions="*, Auto">
+                                <TextBlock Text="{l:Localize Settings_Theme_Item_VolumeDown}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                <ColorPicker Grid.Column="1" Color="{Binding VolumeDownColor, Mode=TwoWay, Converter={StaticResource ColorConverter}}" Width="50" Height="28"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize Settings_Theme_Desc_VolumeDown}" FontSize="11" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <StackPanel Margin="0,0,24,16">
+                            <Grid ColumnDefinitions="*, Auto">
+                                <TextBlock Text="{l:Localize Settings_Theme_Item_RulerFill}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                <ColorPicker Grid.Column="1" Color="{Binding RulerFillColor, Mode=TwoWay, Converter={StaticResource ColorConverter}}" Width="50" Height="28"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize Settings_Theme_Desc_RulerFill}" FontSize="11" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <StackPanel Margin="0,0,0,16">
+                            <Grid ColumnDefinitions="*, Auto">
+                                <TextBlock Text="{l:Localize Settings_Theme_Item_RulerStroke}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                <ColorPicker Grid.Column="1" Color="{Binding RulerStrokeColor, Mode=TwoWay, Converter={StaticResource ColorConverter}}" Width="50" Height="28"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize Settings_Theme_Desc_RulerStroke}" FontSize="11" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </UniformGrid>
+                </StackPanel>
+            </Border>
+
+            <!-- Section: Semantic Colors -->
+            <Border Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="{l:Localize Settings_Theme_SemanticColors}" FontSize="15" FontWeight="Bold" Foreground="{DynamicResource Brush.Accent.Primary}"/>
+                    
+                    <UniformGrid Columns="2">
+                        <StackPanel Margin="0,0,24,16">
+                            <Grid ColumnDefinitions="*, Auto">
+                                <TextBlock Text="{l:Localize Settings_Theme_Item_SemanticPlus}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                <ColorPicker Grid.Column="1" Color="{Binding SemanticPlusColor, Mode=TwoWay, Converter={StaticResource ColorConverter}}" Width="50" Height="28"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize Settings_Theme_Desc_SemanticPlus}" FontSize="11" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <StackPanel Margin="0,0,0,16">
+                            <Grid ColumnDefinitions="*, Auto">
+                                <TextBlock Text="{l:Localize Settings_Theme_Item_SemanticMinus}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                <ColorPicker Grid.Column="1" Color="{Binding SemanticMinusColor, Mode=TwoWay, Converter={StaticResource ColorConverter}}" Width="50" Height="28"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize Settings_Theme_Desc_SemanticMinus}" FontSize="11" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <StackPanel Margin="0,0,24,16">
+                            <Grid ColumnDefinitions="*, Auto">
+                                <TextBlock Text="{l:Localize Settings_Theme_Item_SemanticNeutral}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                <ColorPicker Grid.Column="1" Color="{Binding SemanticNeutralColor, Mode=TwoWay, Converter={StaticResource ColorConverter}}" Width="50" Height="28"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize Settings_Theme_Desc_SemanticNeutral}" FontSize="11" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </UniformGrid>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

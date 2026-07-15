@@ -1,0 +1,188 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:StockAnalyzer.Avalonia.ViewModels.Dialogs"
+             xmlns:conv="using:StockAnalyzer.Avalonia.Converters"
+             xmlns:l="using:StockAnalyzer.Avalonia.Markup"
+             mc:Ignorable="d" d:DesignWidth="450" d:DesignHeight="650"
+             x:Class="StockAnalyzer.Avalonia.Views.Dialogs.Chart.KagiSettingsView"
+             x:DataType="vm:KagiSettingsViewModel">
+
+    <UserControl.Resources>
+        <conv:HsvDataToAvaloniaHsvColorConverter x:Key="HsvConverter"/>
+        <conv:EnumToBoolConverter x:Key="EnumToBoolConverter"/>
+        <conv:EnumToLocalizedNameConverter x:Key="EnumToLocalizedNameConverter"/>
+    </UserControl.Resources>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Spacing="20" Margin="16">
+            <!-- Visuals Group -->
+            <Border Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="{l:Localize Settings_Chart_Appearance}" FontWeight="SemiBold" FontSize="14"/>
+                    
+                    <StackPanel Spacing="12">
+                        <Grid ColumnDefinitions="*, Auto">
+                            <TextBlock Text="{l:Localize Settings_Chart_Item_UpLine}" VerticalAlignment="Center" FontSize="13"/>
+                            <ColorPicker Grid.Column="1" HsvColor="{Binding BullishColor, Mode=TwoWay, Converter={StaticResource HsvConverter}}" Width="50" Height="28"/>
+                        </Grid>
+
+                        <Separator Background="{DynamicResource Brush.Border.Primary}" Height="1"/>
+
+                        <Grid ColumnDefinitions="*, Auto">
+                            <TextBlock Text="{l:Localize Settings_Chart_Item_DownLine}" VerticalAlignment="Center" FontSize="13"/>
+                            <ColorPicker Grid.Column="1" HsvColor="{Binding BearishColor, Mode=TwoWay, Converter={StaticResource HsvConverter}}" Width="50" Height="28"/>
+                        </Grid>
+
+                        <Separator Background="{DynamicResource Brush.Border.Primary}" Height="1"/>
+
+                        <Grid ColumnDefinitions="*, Auto">
+                            <TextBlock Text="{l:Localize Settings_Chart_LineThickness}" VerticalAlignment="Center" FontSize="13"/>
+                            <NumericUpDown Grid.Column="1" Width="150" Height="28"
+                                           Value="{Binding LineThickness}" Minimum="0.5" Maximum="10" Increment="0.5" FormatString="F1"/>
+                        </Grid>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Mode Settings Group -->
+            <Border Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="{l:Localize Settings_Chart_Sizing}" FontWeight="SemiBold" FontSize="14"/>
+                    
+                    <StackPanel Spacing="12">
+                        <Grid ColumnDefinitions="*, Auto">
+                            <TextBlock Text="{l:Localize Settings_Chart_SizingMode}" VerticalAlignment="Center" FontSize="13"/>
+                            <ComboBox Grid.Column="1" Width="150"
+                                      ItemsSource="{Binding SizingModeOptions}"
+                                      SelectedItem="{Binding ReversalMode}">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Converter={StaticResource EnumToLocalizedNameConverter}}"/>
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                        </Grid>
+
+                        <!-- Reversal Amount (Fixed Mode) -->
+                        <Separator Background="{DynamicResource Brush.Border.Primary}" Height="1" IsVisible="{Binding ReversalMode, Converter={StaticResource EnumToBoolConverter}, ConverterParameter=Fixed}"/>
+                        <Grid ColumnDefinitions="*, Auto" IsVisible="{Binding ReversalMode, Converter={StaticResource EnumToBoolConverter}, ConverterParameter=Fixed}">
+                            <TextBlock Text="{l:Localize Settings_Chart_KagiReversalAmount}" VerticalAlignment="Center" FontSize="13"/>
+                            <NumericUpDown Grid.Column="1" Width="150" Height="28"
+                                           Value="{Binding ReversalAmount}" Minimum="0.0001" Increment="0.1" FormatString="F4"/>
+                        </Grid>
+
+                        <!-- Reversal Percent (Percentage Mode) -->
+                        <Separator Background="{DynamicResource Brush.Border.Primary}" Height="1" IsVisible="{Binding ReversalMode, Converter={StaticResource EnumToBoolConverter}, ConverterParameter=Percentage}"/>
+                        <Grid ColumnDefinitions="*, Auto" IsVisible="{Binding ReversalMode, Converter={StaticResource EnumToBoolConverter}, ConverterParameter=Percentage}">
+                            <TextBlock Text="{l:Localize Settings_Chart_KagiReversalPercent}" VerticalAlignment="Center" FontSize="13"/>
+                            <NumericUpDown Grid.Column="1" Width="150" Height="28"
+                                           Value="{Binding ReversalPercent}" Minimum="0.01" Maximum="100" Increment="0.1" FormatString="F2"/>
+                        </Grid>
+
+                        <!-- ATR Settings (AutoAtr Mode) -->
+                        <Separator Background="{DynamicResource Brush.Border.Primary}" Height="1" IsVisible="{Binding ReversalMode, Converter={StaticResource EnumToBoolConverter}, ConverterParameter=AutoAtr}"/>
+                        <Grid ColumnDefinitions="*, Auto" IsVisible="{Binding ReversalMode, Converter={StaticResource EnumToBoolConverter}, ConverterParameter=AutoAtr}">
+                            <TextBlock Text="{l:Localize Settings_Chart_AtrPeriod}" VerticalAlignment="Center" FontSize="13"/>
+                            <NumericUpDown Grid.Column="1" Width="150" Height="28"
+                                           Value="{Binding AtrPeriod}" Minimum="1" Maximum="500" Increment="1"/>
+                        </Grid>
+
+                        <Separator Background="{DynamicResource Brush.Border.Primary}" Height="1" IsVisible="{Binding ReversalMode, Converter={StaticResource EnumToBoolConverter}, ConverterParameter=AutoAtr}"/>
+                        <Grid ColumnDefinitions="*, Auto" IsVisible="{Binding ReversalMode, Converter={StaticResource EnumToBoolConverter}, ConverterParameter=AutoAtr}">
+                            <TextBlock Text="{l:Localize Settings_Chart_AtrMultiplier}" VerticalAlignment="Center" FontSize="13"/>
+                            <NumericUpDown Grid.Column="1" Width="150" Height="28"
+                                           Value="{Binding AtrMultiplier}" Minimum="0.1" Maximum="10" Increment="0.1" FormatString="F1"/>
+                        </Grid>
+
+                        <!-- Fallback (Only in AutoAtr) -->
+                        <Separator Background="{DynamicResource Brush.Border.Primary}" Height="1" IsVisible="{Binding ReversalMode, Converter={StaticResource EnumToBoolConverter}, ConverterParameter=AutoAtr}"/>
+                        <Grid ColumnDefinitions="*, Auto" IsVisible="{Binding ReversalMode, Converter={StaticResource EnumToBoolConverter}, ConverterParameter=AutoAtr}">
+                            <TextBlock Text="{l:Localize Settings_Chart_Fallback}" VerticalAlignment="Center" FontSize="13"/>
+                            <ComboBox Grid.Column="1" Width="150"
+                                      ItemsSource="{Binding FallbackModeOptions}"
+                                      SelectedItem="{Binding FallbackMode}">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Converter={StaticResource EnumToLocalizedNameConverter}}"/>
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                        </Grid>
+
+                        <!-- Rounding -->
+                        <Separator Background="{DynamicResource Brush.Border.Primary}" Height="1"/>
+                        <Grid ColumnDefinitions="*, Auto">
+                            <TextBlock Text="{l:Localize Settings_Chart_RoundingMode}" VerticalAlignment="Center" FontSize="13"/>
+                            <ComboBox Grid.Column="1" Width="150"
+                                      ItemsSource="{Binding RoundingModeOptions}"
+                                      SelectedItem="{Binding RoundingMode}">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Converter={StaticResource EnumToLocalizedNameConverter}}"/>
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                        </Grid>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Breakout Patterns Group -->
+            <Border Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="{l:Localize Settings_Chart_BreakoutPatterns}" FontWeight="SemiBold" FontSize="14"/>
+                    
+                    <StackPanel Spacing="12">
+                        <Grid ColumnDefinitions="*, Auto">
+                            <TextBlock Text="{l:Localize Settings_Chart_Item_MultiWave}" VerticalAlignment="Center" FontSize="13"/>
+                            <ToggleSwitch Grid.Column="1" IsChecked="{Binding ShowMultiWavePatterns}" OnContent="" OffContent=""/>
+                        </Grid>
+
+                        <Separator Background="{DynamicResource Brush.Border.Primary}" Height="1"/>
+
+                        <Grid ColumnDefinitions="*, Auto">
+                            <TextBlock Text="{l:Localize Settings_Chart_Item_GhostProjections}" VerticalAlignment="Center" FontSize="13"/>
+                            <ToggleSwitch Grid.Column="1" IsChecked="{Binding ShowGhostProjections}" OnContent="" OffContent=""/>
+                        </Grid>
+
+                        <Separator Background="{DynamicResource Brush.Border.Primary}" Height="1" IsVisible="{Binding ShowGhostProjections}"/>
+
+                        <Grid ColumnDefinitions="*, Auto" IsVisible="{Binding ShowGhostProjections}">
+                            <TextBlock Text="{l:Localize Settings_Chart_Item_GhostFontSize}" VerticalAlignment="Center" FontSize="13"/>
+                            <NumericUpDown Grid.Column="1" Width="150" Height="28"
+                                           Value="{Binding GhostProjectionFontSize}" Minimum="6" Maximum="48" Increment="1"/>
+                        </Grid>
+
+                        <Separator Background="{DynamicResource Brush.Border.Primary}" Height="1" IsVisible="{Binding ShowGhostProjections}"/>
+
+                        <Grid ColumnDefinitions="*, Auto" IsVisible="{Binding ShowGhostProjections}">
+                            <TextBlock Text="{l:Localize Settings_Chart_Item_ShowLabelsOnHoverOnly}" VerticalAlignment="Center" FontSize="13"/>
+                            <ToggleSwitch Grid.Column="1" IsChecked="{Binding ShowGhostLabelsOnHoverOnly}" OnContent="" OffContent=""/>
+                        </Grid>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Description -->
+            <TextBlock Text="{l:Localize Settings_Chart_Kagi_Desc}" 
+                       FontSize="11" 
+                       Foreground="{DynamicResource Brush.Text.Secondary}" 
+                       TextWrapping="Wrap"
+                       Margin="4,0"/>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

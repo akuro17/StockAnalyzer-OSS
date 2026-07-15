@@ -1,0 +1,47 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:StockAnalyzer.Avalonia.ViewModels"
+             xmlns:controls="using:StockAnalyzer.Avalonia.Views.Controls"
+             xmlns:l="using:StockAnalyzer.Avalonia.Markup"
+             xmlns:models="using:StockAnalyzer.Core.Models.Portfolio"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+             x:Class="StockAnalyzer.Avalonia.Views.HeatmapPanelView"
+             x:DataType="vm:HeatmapPanelViewModel"
+             Background="{DynamicResource Brush.Background.Secondary}">
+
+    <Grid RowDefinitions="Auto,*">
+        <!-- ToolBar -->
+        <Border Grid.Row="0" Padding="8" Background="{DynamicResource Brush.Background.Primary}"
+                BorderThickness="0,0,0,1" BorderBrush="{DynamicResource Brush.Border.Primary}">
+            <StackPanel Orientation="Horizontal" Spacing="12">
+                <TextBlock Text="Period:" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                <ComboBox SelectedItem="{Binding CurrentPeriod}"
+                          ItemsSource="{Binding AvailablePeriods}">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding}" />
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
+
+                <Button Command="{Binding SwitchPeriodCommand}"
+                        CommandParameter="{Binding CurrentPeriod}"
+                        Content="Refresh" />
+            </StackPanel>
+        </Border>
+
+        <!-- Heatmap Display -->
+        <controls:HeatmapTileControl Grid.Row="1" Entries="{Binding Entries}" />
+
+        <!-- Overlays -->
+        <Grid Grid.RowSpan="2" IsVisible="{Binding IsLoading}" Background="{DynamicResource Brush.Background.Secondary}" Opacity="0.5">
+             <ProgressBar IsIndeterminate="True" Width="100" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+        </Grid>
+
+        <Grid Grid.RowSpan="2" IsVisible="{Binding IsEmpty}" Background="{DynamicResource Brush.Background.Secondary}">
+            <TextBlock Text="No performance data available." HorizontalAlignment="Center" VerticalAlignment="Center"/>
+        </Grid>
+    </Grid>
+</UserControl>

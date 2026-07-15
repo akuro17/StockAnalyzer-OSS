@@ -1,0 +1,157 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="using:StockAnalyzer.Avalonia.ViewModels"
+        xmlns:l="using:StockAnalyzer.Avalonia.Markup"
+        mc:Ignorable="d" Width="800" Height="520"
+        x:Class="StockAnalyzer.Avalonia.Views.MultiSyncProgressWindow"
+        x:DataType="vm:MultiSyncProgressViewModel"
+        Icon="avares://StockAnalyzer.Avalonia/Assets/avalonia-logo.ico"
+        Title="{l:Localize SyncWindow_Title}"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource Brush.Background.Secondary}">
+
+    <Window.Resources>
+        <StreamGeometry x:Key="icon_retry">M17.65,6.35C16.2,4.9 14.21,4 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20C15.73,20 18.84,17.45 19.73,14H17.65C16.83,16.33 14.61,18 12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6C13.66,6 15.14,6.69 16.22,7.78L13,11H20V4L17.65,6.35Z</StreamGeometry>
+    </Window.Resources>
+
+    <Window.Styles>
+        <Style Selector="Border.card">
+            <Setter Property="Background" Value="{DynamicResource Brush.Background.Primary}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border.Primary}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="12"/>
+        </Style>
+        <Style Selector="TextBlock.count">
+            <Setter Property="FontSize" Value="24"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+    </Window.Styles>
+
+    <Grid RowDefinitions="Auto,Auto,*,Auto" Margin="16">
+        <!-- Header Summary Dashboard -->
+        <Grid Grid.Row="0" ColumnDefinitions="*,*,*" Margin="0,0,0,12">
+            <Border Grid.Column="0" Classes="card" Margin="0,0,8,0">
+                <StackPanel>
+                    <TextBlock Text="{l:Localize SyncWindow_Completed}" Foreground="{DynamicResource Brush.Semantic.Success}" FontSize="12"/>
+                    <TextBlock Text="{Binding CompletedCount}" Classes="count"/>
+                </StackPanel>
+            </Border>
+            <Border Grid.Column="1" Classes="card" Margin="4,0,4,0">
+                <StackPanel>
+                    <TextBlock Text="{l:Localize SyncWindow_Syncing}" Foreground="{DynamicResource Stock.Brush.Accent}" FontSize="12"/>
+                    <TextBlock Text="{Binding SyncingCount}" Classes="count"/>
+                </StackPanel>
+            </Border>
+            <Border Grid.Column="2" Classes="card" Margin="8,0,0,0">
+                <StackPanel>
+                    <TextBlock Text="{l:Localize SyncWindow_Error}" Foreground="{DynamicResource Brush.Semantic.Error}" FontSize="12"/>
+                    <TextBlock Text="{Binding ErrorCount}" Classes="count"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- Advanced Settings Expander -->
+        <Expander Grid.Row="1" Header="{l:Localize SyncWindow_AdvancedSettings}" ExpandDirection="Down" Margin="0,0,0,12" HorizontalAlignment="Stretch" IsExpanded="True" Background="{DynamicResource Brush.Background.Primary}">
+            <Grid ColumnDefinitions="*,*" Margin="4">
+                <!-- CheckBoxes Column (Left) -->
+                <StackPanel Grid.Column="0" Spacing="8" VerticalAlignment="Center">
+                    <CheckBox Content="{l:Localize SyncWindow_TimeSeriesCheckbox}" 
+                              IsChecked="{Binding IsTimeSeriesSyncEnabled}"
+                              ToolTip.Tip="{l:Localize SyncWindow_TimeSeriesDesc}"/>
+                    <CheckBox Content="{l:Localize SyncWindow_MetadataCheckbox}" 
+                              IsChecked="{Binding IsMetadataSyncEnabled}"
+                              ToolTip.Tip="{l:Localize SyncWindow_MetadataDesc}"/>
+                    <CheckBox Content="{l:Localize SyncWindow_AutoSyncCheckbox}" 
+                              IsChecked="{Binding IsAutoSyncEnabled}"
+                              ToolTip.Tip="{l:Localize SyncWindow_AutoSyncDesc}"/>
+                    <CheckBox Content="{l:Localize SyncWindow_FullHistoryCheckbox}" 
+                              IsChecked="{Binding IsFullHistoryEnabled}"
+                              ToolTip.Tip="{l:Localize SyncWindow_FullHistoryDesc}"/>
+                </StackPanel>
+                
+                <!-- Parameter Tuning Column (Right) -->
+                <StackPanel Grid.Column="1" Spacing="16" Margin="16,0,0,0" VerticalAlignment="Center">
+                    <!-- Delay Seconds Option -->
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="{l:Localize SyncWindow_DelayLabel}" FontWeight="Medium" ToolTip.Tip="{l:Localize SyncWindow_DelayDesc}"/>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <NumericUpDown Value="{Binding DelayMinSeconds}" Minimum="3.0" Maximum="60.0" Increment="0.1" FormatString="F1" Width="130" VerticalAlignment="Center" ToolTip.Tip="{l:Localize SyncWindow_DelayDesc}"/>
+                            <TextBlock Text="~" VerticalAlignment="Center" Foreground="{DynamicResource Brush.Text.Secondary}"/>
+                            <NumericUpDown Value="{Binding DelayMaxSeconds}" Minimum="3.0" Maximum="60.0" Increment="0.1" FormatString="F1" Width="130" VerticalAlignment="Center" ToolTip.Tip="{l:Localize SyncWindow_DelayDesc}"/>
+                            <TextBlock Text="sec" VerticalAlignment="Center" Foreground="{DynamicResource Brush.Text.Secondary}"/>
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!-- Years Option -->
+                    <StackPanel Spacing="6" IsEnabled="{Binding !IsFullHistoryEnabled}">
+                        <TextBlock Text="{l:Localize SyncWindow_YearsLabel}" FontWeight="Medium" ToolTip.Tip="{l:Localize SyncWindow_YearsDesc}"/>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <NumericUpDown Value="{Binding StartSyncPeriodYears}" Minimum="1" Maximum="50" Increment="1" FormatString="F0" Width="130" VerticalAlignment="Center" ToolTip.Tip="{l:Localize SyncWindow_YearsDesc}"/>
+                            <TextBlock Text="years" VerticalAlignment="Center" Foreground="{DynamicResource Brush.Text.Secondary}"/>
+                        </StackPanel>
+                    </StackPanel>
+                </StackPanel>
+            </Grid>
+        </Expander>
+
+        <!-- Main Progress Grid -->
+        <Border Grid.Row="2" Classes="card" Padding="0">
+            <DataGrid ItemsSource="{Binding Items}"
+                      AutoGenerateColumns="False"
+                      IsReadOnly="True"
+                      GridLinesVisibility="Horizontal"
+                      Background="Transparent">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="{l:Localize SyncWindow_Symbol}" Binding="{Binding Symbol}" Width="*"/>
+                    <DataGridTextColumn Header="{l:Localize SyncWindow_Period}" Binding="{Binding Period}" Width="80"/>
+                    <DataGridTemplateColumn Header="{l:Localize SyncWindow_Progress}" Width="220">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate x:DataType="vm:SyncItemViewModel">
+                                <StackPanel VerticalAlignment="Center" Margin="8,0">
+                                    <ProgressBar Value="{Binding Progress}" Maximum="100" Height="4" MinWidth="150"
+                                                 Foreground="{DynamicResource Stock.Brush.Accent}"/>
+                                    <TextBlock Text="{Binding ProgressText}" FontSize="10" HorizontalAlignment="Right" Margin="0,4,0,0" 
+                                               Foreground="{DynamicResource Brush.Text.Secondary}"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTextColumn Header="{l:Localize SyncWindow_Status}" Binding="{Binding Status}" Width="100"/>
+                    <DataGridTextColumn Header="{l:Localize SyncWindow_LastUpdated}" Binding="{Binding LastUpdatedText}" Width="100"/>
+                    <DataGridTemplateColumn Header="{l:Localize SyncWindow_Action}" Width="80">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate x:DataType="vm:SyncItemViewModel">
+                                <Button Command="{Binding RetryCommand}" 
+                                        IsVisible="{Binding !!RetryCommand.CanExecute}"
+                                        Padding="4" HorizontalAlignment="Center" ToolTip.Tip="Retry">
+                                    <PathIcon Data="{StaticResource icon_retry}" Width="14" Height="14"/>
+                                </Button>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                </DataGrid.Columns>
+            </DataGrid>
+        </Border>
+
+        <!-- Footer Batch Controls -->
+        <Grid Grid.Row="3" ColumnDefinitions="Auto,*,Auto" Margin="0,16,0,0">
+            <StackPanel Grid.Column="0" VerticalAlignment="Center" MinWidth="120">
+                <!-- Placeholder to preserve layout alignment -->
+            </StackPanel>
+            
+            <TextBlock Grid.Column="1" Text="{Binding StatusMessage}" 
+                        VerticalAlignment="Center" HorizontalAlignment="Center"
+                        FontWeight="Medium"
+                        Foreground="{DynamicResource Brush.Text.Secondary}"/>
+
+            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
+                <Button Content="{l:Localize SyncWindow_StartSync}" Command="{Binding StartAllCommand}" Theme="{StaticResource PrimaryButtonStyle}" IsEnabled="{Binding !SyncingCount}"/>
+                <Button Content="{l:Localize SyncWindow_StopAll}" Command="{Binding StopAllCommand}" Theme="{StaticResource PrimaryButtonStyle}"/>
+                <Button Content="{l:Localize SyncWindow_Close}" Command="{Binding CloseCommand}" Theme="{StaticResource PrimaryButtonStyle}" MinWidth="100"/>
+            </StackPanel>
+        </Grid>
+    </Grid>
+</Window>

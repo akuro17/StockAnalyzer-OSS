@@ -1,0 +1,30 @@
+namespace StockAnalyzer.Core.Models.Settings;
+
+/// <summary>
+/// Centralized constants for default chart settings and visual parameters.
+/// Rule #37: No magic strings for global defaults.
+/// Renamed to ChartSettingsConstants to avoid collision with Avalonia.Models.SettingsConstants.
+/// </summary>
+public static class ChartSettingsConstants
+{
+    // --- Standard Colors ---
+    public const string DefaultBullishColor = "#00B050";
+    public const string DefaultBearishColor = "#FF0000";
+    public const string DefaultNeutralColor = "#808080";
+    public const string DefaultLineColor = "#2196F3";
+    public const string DefaultAreaColor = "#2196F3";
+    
+    // --- Heikin Ashi Specialized ---
+    public const string DefaultHeikinBullishColor = "#26A69A";
+    public const string DefaultHeikinBearishColor = "#EF5350";
+
+    // --- Reverse Watch Semantic Phases ---
+    public const string DefaultReverseWatchPhase1 = "#00AA00"; // Green
+    public const string DefaultReverseWatchPhase2 = "#005500"; // Dark Green
+    public const string DefaultReverseWatchPhase3 = "#E6B800"; // Yellow
+    public const string DefaultReverseWatchPhase4 = "#E65C5C"; // Salmon
+    public const string DefaultReverseWatchPhase5 = "#EE0000"; // Red
+    public const string DefaultReverseWatchPhase6 = "#8B0000"; // Dark Red
+    public const string DefaultReverseWatchPhase7 = "#607D8B"; // Blue Gray
+    public const string DefaultReverseWatchPhase8 = "#88CC00"; // Lime Green
+}

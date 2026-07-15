@@ -1,0 +1,152 @@
+using System;
+using System.Diagnostics;
+using System.IO;
+using FlaUI.Core;
+using FlaUI.Core.AutomationElements;
+using FlaUI.UIA3;
+using Xunit;
+
+namespace StockAnalyzer.Tests.E2E
+{
+    /// <summary>
+    /// Base class for E2E integration tests using FlaUI.
+    /// Handles application launch, cleanup, and common UI automation helpers.
+    /// </summary>
+    public abstract class E2ETestBase : IDisposable
+    {
+        protected Application? App { get; private set; }
+        protected UIA3Automation? Automation { get; private set; }
+        protected Window? MainWindow { get; private set; }
+        
+        private const int APP_LAUNCH_TIMEOUT_MS = 10000;
+        private const int ELEMENT_WAIT_TIMEOUT_MS = 5000;
+
+        protected E2ETestBase()
+        {
+            // FlaUI setup
+            Automation = new UIA3Automation();
+        }
+
+        /// <summary>
+        /// Launches the StockAnalyzer application and waits for main window.
+        /// </summary>
+        protected void LaunchApplication()
+        {
+            // Find the application executable
+            string appPath = FindApplicationPath();
+            
+            if (!File.Exists(appPath))
+            {
+                throw new FileNotFoundException($"Application not found at: {appPath}");
+            }
+
+            // Launch the application
+            App = Application.Launch(appPath);
+            
+            // Wait for main window to appear
+            var result = App.WaitWhileMainHandleIsMissing(TimeSpan.FromMilliseconds(APP_LAUNCH_TIMEOUT_MS));
+            
+            if (!result)
+            {
+                throw new TimeoutException("Application failed to launch within timeout period");
+            }
+
+            // Get main window
+            MainWindow = App.GetMainWindow(Automation);
+            
+            if (MainWindow == null)
+            {
+                throw new InvalidOperationException("Failed to get main window");
+            }
+
+            // Additional wait for window to be ready
+            System.Threading.Thread.Sleep(1000);
+        }
+
+        /// <summary>
+        /// Finds the StockAnalyzer application executable path.
+        /// </summary>
+        private string FindApplicationPath()
+        {
+            // Try different possible locations
+            var basePath = Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", ".."));
+            
+            var possiblePaths = new[]
+            {
+                Path.Combine(basePath, "StockAnalyzer.Avalonia", "bin", "Debug", "net8.0", "StockAnalyzer.Avalonia.exe"),
+                Path.Combine(basePath, "StockAnalyzer.Avalonia", "bin", "Release", "net8.0", "StockAnalyzer.Avalonia.exe"),
+                "Y:\\StockAnalyzer.Avalonia\\bin\\Debug\\net8.0\\StockAnalyzer.Avalonia.exe"
+            };
+
+            foreach (var path in possiblePaths)
+            {
+                if (File.Exists(path))
+                {
+                    return path;
+                }
+            }
+
+            throw new FileNotFoundException("Could not find StockAnalyzer.exe in any expected location");
+        }
+
+        /// <summary>
+        /// Waits for an element to appear with specified automation ID.
+        /// </summary>
+        protected AutomationElement? WaitForElement(string automationId, int timeoutMs = ELEMENT_WAIT_TIMEOUT_MS)
+        {
+            if (MainWindow == null) return null;
+
+            var endTime = DateTime.Now.AddMilliseconds(timeoutMs);
+            
+            while (DateTime.Now < endTime)
+            {
+                try
+                {
+                    var element = MainWindow.FindFirstDescendant(cf => cf.ByAutomationId(automationId));
+                    if (element != null)
+                    {
+                        return element;
+                    }
+                }
+                catch
+                {
+                    // Element not found yet, continue waiting
+                }
+
+                System.Threading.Thread.Sleep(100);
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Closes the application and cleans up resources.
+        /// </summary>
+        public void Dispose()
+        {
+            try
+            {
+                App?.Close();
+                App?.Dispose();
+            }
+            catch
+            {
+                // Force kill if graceful close fails
+                try
+                {
+                    if (App?.ProcessId != null)
+                    {
+                        var process = Process.GetProcessById(App.ProcessId);
+                        process.Kill();
+                    }
+                }
+                catch
+                {
+                    // Ignore errors during cleanup
+                }
+            }
+            
+            Automation?.Dispose();
+        }
+    }
+}

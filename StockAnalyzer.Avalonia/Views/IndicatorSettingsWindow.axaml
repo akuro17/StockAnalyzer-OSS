@@ -1,0 +1,486 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:models="clr-namespace:StockAnalyzer.Core.Models;assembly=StockAnalyzer.Core"
+        xmlns:params="clr-namespace:StockAnalyzer.Core.Models.Parameters;assembly=StockAnalyzer.Core"
+        xmlns:converters="clr-namespace:StockAnalyzer.Avalonia.Converters;assembly=StockAnalyzer.Avalonia"
+        xmlns:vm="clr-namespace:StockAnalyzer.Avalonia.ViewModels.Dialogs;assembly=StockAnalyzer.Avalonia"
+        xmlns:l="clr-namespace:StockAnalyzer.Avalonia.Markup;assembly=StockAnalyzer.Avalonia"
+        xmlns:controls="clr-namespace:StockAnalyzer.Avalonia.Views.Controls;assembly=StockAnalyzer.Avalonia"
+        mc:Ignorable="d" d:DesignWidth="850" d:DesignHeight="700"
+        x:Class="StockAnalyzer.Avalonia.Views.IndicatorSettingsWindow"
+        x:DataType="vm:IndicatorSettingsDialogViewModel"
+        Title="{l:Localize Window_IndicatorSettings_Title}"
+        Icon="/Assets/avalonia-logo.ico"
+        Width="950" Height="650"
+        MinHeight="550" MinWidth="850"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource Brush.Background.Primary}">
+
+    <Window.Resources>
+        <converters:IndicatorColorToAvaloniaColorConverter x:Key="ColorConverter"/>
+    </Window.Resources>
+
+    <Window.DataTemplates>
+        <!-- Generic Template for all Indicator Parameters using Dynamic UI Generation -->
+        <DataTemplate DataType="{x:Type models:CoreIndicatorParameterBase}">
+            <controls:DynamicIndicatorSettingsView ParameterObject="{Binding}" />
+        </DataTemplate>
+    </Window.DataTemplates>
+
+    <Grid Margin="10" RowDefinitions="*,Auto">
+
+        <!-- Main Content -->
+        <Border Grid.Row="0" Background="{DynamicResource Brush.Background.Secondary}" BorderBrush="{DynamicResource Brush.Border.Primary}" BorderThickness="1" CornerRadius="8" ClipToBounds="True">
+            <Grid ColumnDefinitions="260,*">
+
+                <!-- ==================== LEFT PANEL ==================== -->
+                <Border Grid.Column="0" BorderBrush="{DynamicResource Brush.Border.Primary}" BorderThickness="0,0,1,0" Background="{DynamicResource Brush.Background.Secondary}">
+                    <DockPanel>
+
+                        <!-- Tab Header (Active / Library) -->
+                        <Border DockPanel.Dock="Top" Margin="8,8,8,4">
+                            <Grid ColumnDefinitions="*,1,*">
+                                <!-- Active Tab Button -->
+                                <Button Grid.Column="0"
+                                        Content="{l:Localize Tab_Active}"
+                                        Command="{Binding SwitchToActiveCommand}"
+                                        HorizontalAlignment="Stretch"
+                                        HorizontalContentAlignment="Center"
+                                        Padding="8,6"
+                                        Margin="0"
+                                        CornerRadius="4,0,0,0"
+                                        FontWeight="SemiBold"
+                                        AutomationProperties.AutomationId="Tab_Active">
+                                    <Button.Styles>
+                                        <Style Selector="Button">
+                                            <Setter Property="Background" Value="{DynamicResource Brush.Background.Tertiary}"/>
+                                            <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Secondary}"/>
+                                        </Style>
+                                    </Button.Styles>
+                                </Button>
+                                <!-- Tab Divider Line -->
+                                <Border Grid.Column="1" Background="{DynamicResource Brush.Border.Primary}" Width="1" VerticalAlignment="Stretch"/>
+                                <!-- Library Tab Button -->
+                                <Button Grid.Column="2"
+                                        Content="{l:Localize Tab_Library}"
+                                        Command="{Binding SwitchToLibraryCommand}"
+                                        HorizontalAlignment="Stretch"
+                                        HorizontalContentAlignment="Center"
+                                        Padding="8,6"
+                                        Margin="0"
+                                        CornerRadius="0,4,0,0"
+                                        FontWeight="SemiBold"
+                                        AutomationProperties.AutomationId="Tab_Library">
+                                    <Button.Styles>
+                                        <Style Selector="Button">
+                                            <Setter Property="Background" Value="{DynamicResource Brush.Background.Tertiary}"/>
+                                            <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Secondary}"/>
+                                        </Style>
+                                    </Button.Styles>
+                                </Button>
+                            </Grid>
+                        </Border>
+
+                        <!-- Divider line under tabs -->
+                        <Border DockPanel.Dock="Top" Height="1" Background="{DynamicResource Brush.Border.Primary}" Margin="0,4,0,4"/>
+
+                        <!-- ===== ACTIVE MODE: Left Panel Content ===== -->
+                        <DockPanel IsVisible="{Binding IsActiveMode}">
+
+                            <!-- Active Indicator List -->
+                            <ListBox Background="Transparent"
+                                     BorderThickness="0"
+                                     Margin="5"
+                                     ItemsSource="{Binding Indicators}"
+                                     SelectedItem="{Binding SelectedIndicator}">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate x:DataType="models:CoreIndicatorSettings">
+                                        <Grid ColumnDefinitions="Auto,*,Auto,Auto" Margin="2" Background="Transparent">
+                                            <Grid.ContextMenu>
+                                                <ContextMenu>
+                                                    <MenuItem Header="{l:Localize Menu_TurnOffIndicator}" 
+                                                              Command="{Binding $parent[ListBox].((vm:IndicatorSettingsDialogViewModel)DataContext).TurnOffIndicatorCommand}"
+                                                              CommandParameter="{Binding}"/>
+                                                    <MenuItem Header="{l:Localize Menu_TurnOffAll}" 
+                                                              Command="{Binding $parent[ListBox].((vm:IndicatorSettingsDialogViewModel)DataContext).TurnOffAllIndicatorsCommand}"/>
+                                                    <Separator/>
+                                                    <MenuItem Header="{l:Localize Menu_RemoveIndicator}" 
+                                                              Command="{Binding $parent[ListBox].((vm:IndicatorSettingsDialogViewModel)DataContext).RemoveIndicatorCommand}"
+                                                              CommandParameter="{Binding}"/>
+                                                    <MenuItem Header="{l:Localize Menu_RemoveAll}" 
+                                                              Command="{Binding $parent[ListBox].((vm:IndicatorSettingsDialogViewModel)DataContext).RemoveAllIndicatorsCommand}"/>
+                                                </ContextMenu>
+                                            </Grid.ContextMenu>
+                                            <CheckBox Grid.Column="0"
+                                                      IsChecked="{Binding IsEnabled}"
+                                                      VerticalAlignment="Center"
+                                                      Margin="0,0,5,0"/>
+                                            <TextBlock Grid.Column="1"
+                                                       Text="{Binding DisplayName}"
+                                                       Foreground="{DynamicResource Brush.Text.Primary}"
+                                                       VerticalAlignment="Center"
+                                                       TextTrimming="CharacterEllipsis"/>
+                                            <!-- Error Indicator -->
+                                            <TextBlock Grid.Column="2"
+                                                       Text="⚠️"
+                                                       Foreground="Red"
+                                                       VerticalAlignment="Center"
+                                                       Margin="5,0"
+                                                       IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                                       ToolTip.Tip="{Binding ErrorMessage}"/>
+                                            <!-- Delete Button -->
+                                            <Button Grid.Column="3"
+                                                    Content="✕"
+                                                    Foreground="{DynamicResource Brush.Text.Secondary}"
+                                                    Background="Transparent"
+                                                    BorderThickness="0"
+                                                    Padding="4,2"
+                                                    FontSize="11"
+                                                    ToolTip.Tip="{l:Localize Btn_Delete}"
+                                                    Command="{Binding $parent[ListBox].((vm:IndicatorSettingsDialogViewModel)DataContext).RemoveIndicatorCommand}"
+                                                    CommandParameter="{Binding}"
+                                                    VerticalAlignment="Center"
+                                                    HorizontalAlignment="Right">
+                                                <Button.Styles>
+                                                    <Style Selector="Button:pointerover">
+                                                        <Setter Property="Foreground" Value="Red"/>
+                                                        <Setter Property="Background" Value="Transparent"/>
+                                                    </Style>
+                                                </Button.Styles>
+                                            </Button>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </DockPanel>
+
+                        <!-- ===== LIBRARY MODE: Left Panel Content (Category Accordion) ===== -->
+                        <DockPanel IsVisible="{Binding IsLibraryMode}">
+                            <!-- "All Categories" button -->
+                            <Button DockPanel.Dock="Top"
+                                    Content="{l:Localize Library_AllCategories}"
+                                    Command="{Binding ClearCategoryFilterCommand}"
+                                    HorizontalAlignment="Stretch"
+                                    HorizontalContentAlignment="Left"
+                                    Foreground="{DynamicResource Brush.Text.Primary}"
+                                    Background="Transparent"
+                                    Padding="10,6"
+                                    Margin="5,4,5,2"
+                                    FontWeight="SemiBold"
+                                    FontSize="13"/>
+
+                            <!-- Category List -->
+                            <ListBox Background="Transparent"
+                                     BorderThickness="0"
+                                     Margin="5,0"
+                                     ItemsSource="{Binding Categories}"
+                                     SelectedItem="{Binding SelectedCategory}">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding}"
+                                                   Foreground="{DynamicResource Brush.Text.Primary}"
+                                                   FontSize="13"
+                                                   Padding="8,6"
+                                                   Margin="2"/>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </DockPanel>
+                    </DockPanel>
+                </Border>
+
+
+                <!-- ==================== RIGHT PANEL ==================== -->
+
+                <!-- ===== ACTIVE MODE: Right Panel (Parameter Settings with Card UI) ===== -->
+                <Border Grid.Column="1"
+                        Background="Transparent"
+                        IsVisible="{Binding IsActiveMode}">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <StackPanel Margin="15">
+
+                            <!-- When No Indicator Selected -->
+                            <TextBlock Text="{l:Localize Msg_SelectIndicator}"
+                                       Foreground="{DynamicResource Brush.Text.Secondary}"
+                                       FontSize="12"
+                                       VerticalAlignment="Center"
+                                       HorizontalAlignment="Center"
+                                       Margin="0,50,0,0"
+                                       IsVisible="{Binding SelectedIndicator, Converter={x:Static ObjectConverters.IsNull}}"/>
+
+                            <!-- When Indicator Selected -->
+                            <StackPanel IsVisible="{Binding SelectedIndicator, Converter={x:Static ObjectConverters.IsNotNull}}">
+
+                                <!-- Indicator Name Header -->
+                                <TextBlock Text="{Binding SelectedIndicator.DisplayName}"
+                                           Foreground="{DynamicResource Brush.Text.Primary}"
+                                           FontSize="16" FontWeight="Bold"
+                                           Margin="0,5,0,12"
+                                           TextTrimming="CharacterEllipsis"/>
+
+                                <!-- Card 1: Configuration & Parameters -->
+                                <Border Background="{DynamicResource Brush.Background.Primary}"
+                                        BorderBrush="{DynamicResource Brush.Border.Primary}"
+                                        BorderThickness="1"
+                                        CornerRadius="8"
+                                        Padding="16"
+                                        Margin="0,0,0,16">
+                                    <StackPanel Spacing="12">
+                                        <TextBlock Text="{l:Localize Label_DisplayName}" Foreground="{DynamicResource Brush.Text.Primary}" FontSize="14" FontWeight="Bold"/>
+                                        <TextBox Text="{Binding SelectedIndicator.DisplayName}" Margin="0,0,0,4"/>
+
+                                        <TextBlock Text="{l:Localize Label_Parameters}" Foreground="{DynamicResource Brush.Text.Primary}" FontSize="14" FontWeight="Bold"/>
+                                        <ContentControl Content="{Binding SelectedIndicator.ParameterObject}" Margin="0,0,0,4" />
+
+                                        <!-- Offset -->
+                                        <StackPanel IsVisible="{Binding ShowThicknessAndOffset}">
+                                            <TextBlock Text="{l:Localize Label_Offset}" Foreground="{DynamicResource Brush.Text.Primary}" FontSize="14" FontWeight="Bold" Margin="0,0,0,4"/>
+                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                                <Slider Value="{Binding SelectedIndicator.Offset}"
+                                                        Minimum="-50"
+                                                        Maximum="50"
+                                                        Width="200"
+                                                        TickFrequency="1"
+                                                        IsSnapToTickEnabled="True"
+                                                        VerticalAlignment="Center"/>
+                                                <TextBox Text="{Binding SelectedIndicator.Offset}"
+                                                         Width="40"
+                                                         Margin="10,0,0,0"
+                                                         VerticalAlignment="Center"
+                                                         TextAlignment="Center"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- Card 2: Style & Appearance -->
+                                <Border Background="{DynamicResource Brush.Background.Primary}"
+                                        BorderBrush="{DynamicResource Brush.Border.Primary}"
+                                        BorderThickness="1"
+                                        CornerRadius="8"
+                                        Padding="16"
+                                        Margin="0,0,0,16">
+                                    <StackPanel Spacing="12">
+                                        <TextBlock Text="{l:Localize Label_ColorSettings}" Foreground="{DynamicResource Brush.Text.Primary}" FontSize="14" FontWeight="Bold"/>
+
+                                        <!-- Main Color (Hidden if SeriesColors is present) -->
+                                        <StackPanel Margin="0,0,0,4" IsVisible="{Binding SelectedIndicator.SeriesColors.Count, Converter={x:Static converters:NumericalConverters.IsEqualToZero}}">
+                                            <TextBlock Text="{l:Localize Label_MainColor}" Foreground="{DynamicResource Brush.Text.Primary}" FontSize="12" Margin="0,0,0,4"/>
+                                            <ColorPicker Color="{Binding SelectedIndicator.Color, Converter={StaticResource ColorConverter}}" 
+                                                         ColorSpectrumShape="Box"
+                                                         Height="30" Width="200" HorizontalAlignment="Left" />
+                                        </StackPanel>
+
+                                        <!-- Multi-Series Colors -->
+                                        <StackPanel Margin="0,0,0,4" IsVisible="{Binding SelectedIndicator.SeriesColors.Count, Converter={x:Static converters:NumericalConverters.IsGreaterThanZero}}">
+                                            <ItemsControl ItemsSource="{Binding SelectedIndicator.SeriesColors}">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <StackPanel Margin="0,0,0,8">
+                                                            <TextBlock Text="{Binding DisplayName}" Foreground="{DynamicResource Brush.Text.Primary}" FontSize="12" Margin="0,0,0,4"/>
+                                                            <ColorPicker Color="{Binding Color, Converter={StaticResource ColorConverter}}" 
+                                                                         ColorSpectrumShape="Box"
+                                                                         Height="30" Width="200" HorizontalAlignment="Left" />
+                                                        </StackPanel>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </StackPanel>
+
+                                        <!-- Use Up/Down Colors -->
+                                        <StackPanel Margin="0,4,0,4" IsVisible="{Binding ShowUpDownColors}">
+                                            <CheckBox Name="UseUpDownColorsCheck"
+                                                      IsChecked="{Binding SelectedIndicator.UseUpDownColors}"
+                                                      Content="{l:Localize Check_UseUpDownColors}"
+                                                      Foreground="{DynamicResource Brush.Text.Primary}"
+                                                      Margin="0,0,0,6"/>
+
+                                            <StackPanel IsVisible="{Binding #UseUpDownColorsCheck.IsChecked}">
+                                                <TextBlock Text="{l:Localize Label_UpColor}" Foreground="{DynamicResource Brush.Text.Primary}" FontSize="12" Margin="0,4,0,4"/>
+                                                <ColorPicker Color="{Binding SelectedIndicator.UpColor, Converter={StaticResource ColorConverter}}" 
+                                                             ColorSpectrumShape="Box"
+                                                             Height="30" Width="200" HorizontalAlignment="Left" Margin="0,0,0,8"/>
+
+                                                <TextBlock Text="{l:Localize Label_DownColor}" Foreground="{DynamicResource Brush.Text.Primary}" FontSize="12" Margin="0,4,0,4"/>
+                                                <ColorPicker Color="{Binding SelectedIndicator.DownColor, Converter={StaticResource ColorConverter}}" 
+                                                             ColorSpectrumShape="Box"
+                                                             Height="30" Width="200" HorizontalAlignment="Left" />
+                                            </StackPanel>
+                                        </StackPanel>
+
+                                        <!-- Line Thickness -->
+                                        <StackPanel IsVisible="{Binding ShowThicknessAndOffset}">
+                                            <TextBlock Text="{l:Localize Label_Thickness}" Foreground="{DynamicResource Brush.Text.Primary}" FontSize="14" FontWeight="Bold" Margin="0,4,0,4"/>
+                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                                <Slider Name="ThicknessSlider"
+                                                        Value="{Binding SelectedIndicator.Thickness, Mode=TwoWay}"
+                                                        Minimum="0.5"
+                                                        Maximum="5"
+                                                        Width="200"
+                                                        TickFrequency="0.5"
+                                                        IsSnapToTickEnabled="True"
+                                                        VerticalAlignment="Center"/>
+                                                <TextBox Text="{Binding #ThicknessSlider.Value, Mode=TwoWay, StringFormat={}{0:F1}}"
+                                                         Width="40"
+                                                         Margin="10,0,0,0"
+                                                         VerticalAlignment="Center"
+                                                         TextAlignment="Center"/>
+                                            </StackPanel>
+                                        </StackPanel>
+
+                                        <!-- Divider line under visual properties -->
+                                        <Separator Background="{DynamicResource Brush.Border.Primary}" Height="1" Margin="0,8"/>
+
+                                        <!-- Display & Layout Options -->
+                                        <!-- Overlay Panel Selection -->
+                                        <StackPanel IsVisible="{Binding ShowPanelSelector}">
+                                            <TextBlock Text="{l:Localize Label_OverlayPanel}" Foreground="{DynamicResource Brush.Text.Primary}" FontSize="14" FontWeight="Bold" Margin="0,0,0,4"/>
+                                            <ComboBox ItemsSource="{Binding PanelOptions}"
+                                                      SelectedItem="{Binding SelectedOverlayPanelOption}"
+                                                      MinWidth="200"
+                                                      HorizontalAlignment="Left"
+                                                      Margin="0,0,0,8"/>
+
+                                            <!-- Show Cross Markers -->
+                                            <CheckBox IsChecked="{Binding SelectedIndicator.ShowCrossMarkers}"
+                                                      Content="{l:Localize Check_ShowCrossMarkers}"
+                                                      Foreground="{DynamicResource Brush.Text.Primary}"
+                                                      Margin="0,0,0,8"/>
+                                        </StackPanel>
+
+                                        <!-- Show Value on Y-Axis -->
+                                        <CheckBox IsChecked="{Binding SelectedIndicator.ShowAxisLabel}"
+                                                  Content="{l:Localize Check_ShowAxisLabel}"
+                                                  Foreground="{DynamicResource Brush.Text.Primary}"
+                                                  Margin="0,0,0,8"/>
+
+                                        <!-- Show Signals -->
+                                        <CheckBox IsChecked="{Binding SelectedIndicator.ShowSignals}"
+                                                  Content="{l:Localize Check_ShowSignals}"
+                                                  Foreground="{DynamicResource Brush.Text.Primary}"
+                                                  IsVisible="{Binding ShowSignals}"
+                                                  Margin="0,0,0,8"/>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Border>
+
+                <!-- ===== LIBRARY MODE: Right Panel (Search + Catalog Grid) ===== -->
+                <Border Grid.Column="1"
+                        Background="Transparent"
+                        IsVisible="{Binding IsLibraryMode}">
+                    <DockPanel Margin="15">
+                        <!-- Search Bar -->
+                        <TextBox DockPanel.Dock="Top"
+                                 Text="{Binding SearchText, Mode=TwoWay}"
+                                 Watermark="{l:Localize Library_SearchPlaceholder}"
+                                 FontSize="14"
+                                 Margin="0,0,0,12"
+                                 Padding="10,8"
+                                 CornerRadius="6"
+                                 AutomationProperties.AutomationId="Library_SearchBox"/>
+
+                        <!-- Catalog Grid (WrapPanel in ScrollViewer) -->
+                        <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                      HorizontalScrollBarVisibility="Disabled">
+                            <ItemsControl ItemsSource="{Binding FilteredCatalogItems}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <WrapPanel Orientation="Horizontal"/>
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:IndicatorCatalogItem">
+                                        <Button Command="{Binding $parent[ItemsControl].((vm:IndicatorSettingsDialogViewModel)DataContext).AddFromLibraryCommand}"
+                                                CommandParameter="{Binding}"
+                                                Width="130" Height="80"
+                                                Margin="4"
+                                                Padding="8"
+                                                CornerRadius="6"
+                                                HorizontalContentAlignment="Center"
+                                                VerticalContentAlignment="Center"
+                                                Background="{DynamicResource Brush.Background.Tertiary}"
+                                                ToolTip.Tip="{Binding DisplayName}"
+                                                AutomationProperties.AutomationId="{Binding ShortName}">
+                                            <Button.Styles>
+                                                <Style Selector="Button:pointerover">
+                                                    <Setter Property="Background" Value="{DynamicResource Brush.Background.Hover}"/>
+                                                </Style>
+                                            </Button.Styles>
+                                            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding ShortName}"
+                                                           Foreground="{DynamicResource Brush.Text.Primary}"
+                                                           FontSize="14" FontWeight="Bold"
+                                                           HorizontalAlignment="Center"
+                                                           TextTrimming="CharacterEllipsis"/>
+                                                <TextBlock Text="{Binding DisplayName}"
+                                                           Foreground="{DynamicResource Brush.Text.Secondary}"
+                                                           FontSize="10"
+                                                           HorizontalAlignment="Center"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           Margin="0,4,0,0"/>
+                                            </StackPanel>
+                                        </Button>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </DockPanel>
+                </Border>
+
+            </Grid>
+        </Border>
+
+        <!-- Buttons -->
+        <Grid Grid.Row="1" Margin="0,10,0,0">
+            <!-- Reset Button on the Far Left -->
+            <Button Content="{l:Localize Btn_Reset}"
+                    Theme="{StaticResource SecondaryButtonStyle}"
+                    MinWidth="80" Padding="15,5" Height="30"
+                    HorizontalAlignment="Left"
+                    Command="{Binding ResetCommand}"/>
+            <!-- Action Buttons on the Far Right -->
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Content="{l:Localize Btn_OK}"
+                        AutomationProperties.AutomationId="Settings_OkButton"
+                        Theme="{StaticResource PrimaryButtonStyle}"
+                        MinWidth="80" Padding="15,5" Height="30" Margin="5,0"
+                        Command="{Binding SaveCommand}"/>
+                <Button Content="{l:Localize Btn_Cancel}"
+                        Theme="{StaticResource SecondaryButtonStyle}"
+                        MinWidth="80" Padding="15,5" Height="30" Margin="5,0"
+                        Command="{Binding CancelCommand}"/>
+                <Button Content="{l:Localize Btn_Apply}"
+                        Theme="{StaticResource PrimaryButtonStyle}"
+                        MinWidth="80" Padding="15,5" Height="30" Margin="5,0,0,0"
+                        Command="{Binding ApplyCommand}"/>
+            </StackPanel>
+        </Grid>
+
+        <!-- Toast Notification Overlay -->
+        <Border Grid.Row="0" Grid.RowSpan="2"
+                IsVisible="{Binding ToastService.IsNotificationVisible}"
+                VerticalAlignment="Bottom" HorizontalAlignment="Center"
+                Margin="0,0,0,60" Padding="16,10"
+                Background="{DynamicResource Brush.Background.Tertiary}"
+                CornerRadius="8" BoxShadow="0 4 10 0 #40000000"
+                ZIndex="1000">
+            <Border.Transitions>
+                <Transitions>
+                    <DoubleTransition Property="Opacity" Duration="0:0:0.2"/>
+                </Transitions>
+            </Border.Transitions>
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock Text="✅" Margin="0,0,8,0" VerticalAlignment="Center" FontSize="16"/>
+                <TextBlock Text="{Binding ToastService.NotificationMessage}"
+                           Foreground="{DynamicResource Brush.Text.Primary}"
+                           FontSize="14" FontWeight="SemiBold"
+                           VerticalAlignment="Center"/>
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>

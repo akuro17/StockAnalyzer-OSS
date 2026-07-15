@@ -1,0 +1,197 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:dialogs="using:StockAnalyzer.Avalonia.ViewModels.Dialogs"
+        xmlns:l="clr-namespace:StockAnalyzer.Avalonia.Markup;assembly=StockAnalyzer.Avalonia"
+        mc:Ignorable="d" d:DesignWidth="450" d:DesignHeight="400"
+        x:Class="StockAnalyzer.Avalonia.Views.Dialogs.AddTickerWindow"
+        x:DataType="dialogs:AddTickerViewModel"
+        Title="{l:Localize TickerList_AddTicker_Title}"
+        Width="480" Height="420"
+        WindowStartupLocation="CenterOwner"
+        CanResize="False"
+        Background="{DynamicResource Brush.Background.Secondary}"
+        Foreground="{DynamicResource Brush.Text.Primary}"
+        ExtendClientAreaToDecorationsHint="True"
+        ExtendClientAreaTitleBarHeightHint="-1">
+
+    <Design.DataContext>
+        <dialogs:AddTickerViewModel/>
+    </Design.DataContext>
+
+    <Border BorderBrush="{DynamicResource Brush.Border}" BorderThickness="1">
+        <Grid RowDefinitions="Auto,*" Margin="0">
+            <!-- Header -->
+            <Border Grid.Row="0" Padding="24,20,16,10">
+                <Grid ColumnDefinitions="*">
+                    <TextBlock Text="{l:Localize TickerList_AddTicker_Title}" 
+                               FontSize="{DynamicResource TitleFontSize}" 
+                               FontWeight="SemiBold" 
+                               Foreground="{DynamicResource Brush.Text.Primary}"
+                               VerticalAlignment="Center"/>
+                </Grid>
+            </Border>
+
+            <!-- Content -->
+            <StackPanel Grid.Row="1" Margin="24,0,24,24" Spacing="20">
+                
+                <!-- Section 1: Search -->
+                <StackPanel Spacing="10">
+                    <TextBlock Text="{l:Localize AddTicker_SearchHeader}" 
+                               FontSize="{DynamicResource HelperFontSize}" 
+                               FontWeight="Bold" 
+                               Foreground="{DynamicResource Brush.Text.Secondary}"/>
+                    
+                    <Grid>
+                        <TextBox x:Name="SearchTextBox"
+                                 Text="{Binding SearchText}"
+                                 Watermark="{l:Localize AddTicker_Placeholder}"
+                                 FontSize="14"
+                                 Height="44"
+                                 Background="{DynamicResource Brush.Background.Tertiary}"
+                                 BorderBrush="{DynamicResource Brush.Border}"
+                                 Padding="12,0,40,0"
+                                 VerticalContentAlignment="Center"
+                                 KeyDown="SearchTextBox_KeyDown"/>
+                        
+                        <Path HorizontalAlignment="Right"
+                              Margin="0,0,12,0"
+                              Data="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"
+                              Fill="{DynamicResource Brush.Text.Tertiary}"
+                              Width="18" Height="18"
+                              Stretch="Uniform"
+                              IsHitTestVisible="False"/>
+                    </Grid>
+
+                    <!-- Suggestions / Results -->
+                    <ListBox x:Name="SuggestionsListBox"
+                             ItemsSource="{Binding Suggestions}"
+                             SelectedItem="{Binding SelectedSuggestion}"
+                             MaxHeight="120"
+                             Background="Transparent"
+                             BorderThickness="0"
+                             Padding="0"
+                              IsVisible="{Binding Suggestions.Count}"
+                              KeyDown="SuggestionsListBox_KeyDown"
+                              Tapped="SuggestionsListBox_Tapped">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Border Classes="SuggestionItemBorder" BorderBrush="{DynamicResource Brush.Border}" BorderThickness="1" Padding="12,8" Background="{DynamicResource Brush.Background.Tertiary}" Margin="0,0,0,4">
+                                    <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto">
+                                        <TextBlock Text="{Binding}" 
+                                                   FontWeight="Bold" 
+                                                   Foreground="{DynamicResource Brush.Semantic.Success}"
+                                                   VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="1" Text=" — " Foreground="{DynamicResource Brush.Text.Tertiary}" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="2" Text="{l:Localize AddTicker_SymbolDescription}" Foreground="{DynamicResource Brush.Text.Secondary}" VerticalAlignment="Center" FontSize="12"/>
+                                        
+                                        <Border Grid.Column="3" Background="{DynamicResource Brush.Background.Primary}" Padding="6,2" CornerRadius="2" Margin="10,0">
+                                            <TextBlock Text="{l:Localize AddTicker_MarketLabel}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Tertiary}" FontWeight="Bold"/>
+                                        </Border>
+
+                                        <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="4">
+                                            <Path Data="M21,7L9,19L3.5,13.5L4.91,12.09L9,16.17L19.59,5.59L21,7Z" 
+                                                  Fill="{DynamicResource Brush.Semantic.Success}" Width="12" Height="12" Stretch="Uniform" VerticalAlignment="Center"/>
+                                            <TextBlock Text="{l:Localize AddTicker_ValidLabel}" Foreground="{DynamicResource Brush.Semantic.Success}" FontSize="{DynamicResource HelperFontSize}" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                        <ListBox.Styles>
+                            <Style Selector="ListBoxItem">
+                                <Setter Property="Padding" Value="0"/>
+                                <Setter Property="Background" Value="Transparent"/>
+                            </Style>
+                            <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter">
+                                <Setter Property="Background" Value="Transparent"/>
+                            </Style>
+                            <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
+                                <Setter Property="Background" Value="Transparent"/>
+                            </Style>
+                            <Style Selector="ListBoxItem:selected Border.SuggestionItemBorder">
+                                <Setter Property="BorderBrush" Value="{DynamicResource Brush.Semantic.Success}"/>
+                                <Setter Property="Background" Value="{DynamicResource Brush.Background.Secondary}"/>
+                            </Style>
+                            <Style Selector="ListBoxItem:pointerover Border.SuggestionItemBorder">
+                                <Setter Property="BorderBrush" Value="{DynamicResource Brush.Semantic.Success}"/>
+                            </Style>
+                        </ListBox.Styles>
+                    </ListBox>
+
+                    <!-- New Ticker Status (when no suggestions but valid format) -->
+                    <Border BorderBrush="{DynamicResource Brush.Border}" BorderThickness="1" Padding="12,8" Background="{DynamicResource Brush.Background.Tertiary}" 
+                            IsVisible="{Binding IsNew}">
+                        <Grid ColumnDefinitions="*,Auto,Auto">
+                            <TextBlock Text="{Binding SearchText, StringFormat=' — {0}'}" 
+                                       FontWeight="Bold" 
+                                       Foreground="{DynamicResource Brush.Semantic.Info}"
+                                       VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="1" Text="{l:Localize AddTicker_NewTicker}" Foreground="{DynamicResource Brush.Text.Secondary}" VerticalAlignment="Center" FontSize="12" Margin="12,0,8,0"/>
+                            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4">
+                                <Path Data="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z" 
+                                      Fill="{DynamicResource Brush.Semantic.Info}" Width="12" Height="12" Stretch="Uniform" VerticalAlignment="Center"/>
+                                <TextBlock Text="{l:Localize AddTicker_AddNew}" Foreground="{DynamicResource Brush.Semantic.Info}" FontSize="{DynamicResource HelperFontSize}" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                </StackPanel>
+
+                <!-- Separator -->
+                <Grid ColumnDefinitions="*,Auto,*">
+                    <Rectangle Height="1" Fill="{DynamicResource Brush.Border}"/>
+                    <TextBlock Text="{l:Localize AddTicker_Or}" Grid.Column="1" Margin="16,0" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Tertiary}" FontWeight="Bold"/>
+                    <Rectangle Height="1" Grid.Column="2" Fill="{DynamicResource Brush.Border}"/>
+                </Grid>
+
+                <!-- Section 2: Batch -->
+                <StackPanel Spacing="10">
+                    
+                    <Grid ColumnDefinitions="Auto,*">
+                        <Button Height="44" 
+                                BorderBrush="{DynamicResource Brush.Border}" 
+                                BorderThickness="1" 
+                                Background="{DynamicResource Brush.Background.Tertiary}"
+                                Padding="16,0"
+                                Command="{Binding ImportBulkCommand}"
+                                Click="OnBulkImportClick">
+                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                <Path Data="M14,2H6C4.89,2 4,2.9 4,4V20C4,21.1 4.89,22 6,22H18C19.11,22 20,21.1 20,20V8L14,2M13,9V3.5L18.5,9H13Z" 
+                                      Fill="{DynamicResource Brush.Text.Secondary}" Width="16" Height="16" Stretch="Uniform"/>
+                                <TextBlock Text="{l:Localize AddTicker_ImportButton}" VerticalAlignment="Center" FontWeight="SemiBold"/>
+                            </StackPanel>
+                        </Button>
+
+                        <StackPanel Grid.Column="1" Margin="16,0,0,0" VerticalAlignment="Center">
+                            <TextBlock Text="{l:Localize AddTicker_FormatHelp}" 
+                                       FontSize="{DynamicResource HelperFontSize}" 
+                                       Foreground="{DynamicResource Brush.Text.Tertiary}"
+                                       TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </Grid>
+                </StackPanel>
+
+                <!-- Footer -->
+                <Grid ColumnDefinitions="*,Auto,Auto" Margin="0,20,0,0">
+                    <Button Grid.Column="1" 
+                            Content="{l:Localize Btn_Cancel}" 
+                            Background="Transparent" 
+                            Foreground="{DynamicResource Brush.Text.Secondary}" 
+                            Padding="20,10"
+                            Margin="0,0,12,0"
+                            Click="OnCancelClick"/>
+                    
+                    <Button Grid.Column="2" 
+                            Content="{l:Localize TickerList_AddTicker}" 
+                            Background="{DynamicResource Brush.Semantic.Info}" 
+                            Foreground="White" 
+                            Padding="32,10"
+                            FontWeight="Bold"
+                            Command="{Binding AddCommand}"
+                            Click="OnAddClick"/>
+                </Grid>
+            </StackPanel>
+        </Grid>
+    </Border>
+</Window>

@@ -1,0 +1,149 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <ResourceDictionary.ThemeDictionaries>
+        <!-- ========================================== -->
+        <!-- AntiGravity Dark Theme (夜風) - Default     -->
+        <!-- ========================================== -->
+        <ResourceDictionary x:Key="Dark">
+            <Color x:Key="Color.Background.Primary">#FF181A20</Color>
+            <Color x:Key="Color.Background.Secondary">#FF2A2E39</Color>
+            <Color x:Key="Color.Background.Tertiary">#FF1E222D</Color>
+            <Color x:Key="Color.Background.Hover">#FF363A45</Color>
+
+            <Color x:Key="Color.Text.Primary">#FFE0E0E0</Color>
+            <Color x:Key="Color.Text.Secondary">#FFC0C0C0</Color>
+            <Color x:Key="Color.Text.Tertiary">#FFA0A0A0</Color>
+            <Color x:Key="Color.Text.Disabled">#FF555555</Color>
+
+            <Color x:Key="Color.Accent.Primary">#FF8B5CF6</Color>
+            <Color x:Key="Color.Accent.Secondary">#FF7C3AED</Color>
+            <Color x:Key="Color.Accent.Tertiary">#FF6D28D9</Color>
+            <Color x:Key="Color.Accent.Glow">#FFA78BFA</Color>
+
+            <Color x:Key="Color.Border.Primary">#FF363A45</Color>
+            <Color x:Key="Color.Border.Focus">#FF8B5CF6</Color>
+
+            <Color x:Key="Color.Semantic.Success">#FF4CAF50</Color>
+            <Color x:Key="Color.Semantic.Warning">#FFFFC107</Color>
+            <Color x:Key="Color.Semantic.Error">#FFF44336</Color>
+            <Color x:Key="Color.Semantic.Info">#FF2196F3</Color>
+
+            <!-- Dialog Spec (Cream for charts is usually Light-only, but for Dark we use Dark Grey) -->
+            <Color x:Key="Color.Dialog.Background">#FF1E1E1E</Color>
+            <Color x:Key="Color.Dialog.Border">#FF333333</Color>
+            <Color x:Key="Color.Dialog.LabelText">#FFE0E0E0</Color>
+            <Color x:Key="Color.Selection.Background">#2A8B5CF6</Color>
+        </ResourceDictionary>
+
+        <!-- ========================================== -->
+        <!-- AntiGravity Light Theme (昼風)            -->
+        <!-- ========================================== -->
+        <ResourceDictionary x:Key="Light">
+            <Color x:Key="Color.Background.Primary">#FFFFFFFF</Color>
+            <Color x:Key="Color.Background.Secondary">#FFF8F9FA</Color>
+            <Color x:Key="Color.Background.Tertiary">#FFF0F3FA</Color>
+            <Color x:Key="Color.Background.Hover">#FFE0E3EB</Color>
+
+            <Color x:Key="Color.Text.Primary">#FF1F2328</Color>
+            <Color x:Key="Color.Text.Secondary">#FF57606A</Color>
+            <Color x:Key="Color.Text.Tertiary">#FF6E7781</Color>
+            <Color x:Key="Color.Text.Disabled">#FF8C959F</Color>
+
+            <Color x:Key="Color.Accent.Primary">#FF7C3AED</Color>
+            <Color x:Key="Color.Accent.Secondary">#FF6D28D9</Color>
+            <Color x:Key="Color.Accent.Tertiary">#FF5B21B6</Color>
+            <Color x:Key="Color.Accent.Glow">#FF8B5CF6</Color>
+
+            <Color x:Key="Color.Border.Primary">#FFD0D7DE</Color>
+            <Color x:Key="Color.Border.Focus">#FF7C3AED</Color>
+
+            <Color x:Key="Color.Semantic.Success">#FF1A7F37</Color>
+            <Color x:Key="Color.Semantic.Warning">#FF9A6700</Color>
+            <Color x:Key="Color.Semantic.Error">#FFCF222E</Color>
+            <Color x:Key="Color.Semantic.Info">#FF0969DA</Color>
+
+            <Color x:Key="Color.Dialog.Background">#FFFAEBBB</Color>
+            <Color x:Key="Color.Dialog.Border">#FF888888</Color>
+            <Color x:Key="Color.Dialog.LabelText">#FF333333</Color>
+            <Color x:Key="Color.Text.Inverse">#FFFFFFFF</Color>
+            <Color x:Key="Color.Selection.Background">#207C3AED</Color>
+        </ResourceDictionary>
+
+        <!-- Fallback for Default or unknown variants -->
+        <ResourceDictionary x:Key="Default">
+            <Color x:Key="Color.Background.Primary">#FF181A20</Color>
+            <Color x:Key="Color.Background.Secondary">#FF2A2E39</Color>
+            <Color x:Key="Color.Background.Tertiary">#FF1E222D</Color>
+            <Color x:Key="Color.Background.Hover">#FF363A45</Color>
+
+            <Color x:Key="Color.Text.Primary">#FFE0E0E0</Color>
+            <Color x:Key="Color.Text.Secondary">#FFC0C0C0</Color>
+            <Color x:Key="Color.Text.Tertiary">#FFA0A0A0</Color>
+            <Color x:Key="Color.Text.Disabled">#FF555555</Color>
+
+            <Color x:Key="Color.Accent.Primary">#FF8B5CF6</Color>
+            <Color x:Key="Color.Accent.Secondary">#FF7C3AED</Color>
+            <Color x:Key="Color.Accent.Tertiary">#FF6D28D9</Color>
+            <Color x:Key="Color.Accent.Glow">#FFA78BFA</Color>
+
+            <Color x:Key="Color.Border.Primary">#FF363A45</Color>
+            <Color x:Key="Color.Border.Focus">#FF8B5CF6</Color>
+
+            <Color x:Key="Color.Semantic.Success">#FF4CAF50</Color>
+            <Color x:Key="Color.Semantic.Warning">#FFFFC107</Color>
+            <Color x:Key="Color.Semantic.Error">#FFF44336</Color>
+            <Color x:Key="Color.Semantic.Info">#FF2196F3</Color>
+
+            <Color x:Key="Color.Dialog.Background">#FF1E1E1E</Color>
+            <Color x:Key="Color.Dialog.Border">#FF333333</Color>
+            <Color x:Key="Color.Dialog.LabelText">#FFE0E0E0</Color>
+            <Color x:Key="Color.Text.Inverse">#FFFFFFFF</Color>
+            <Color x:Key="Color.Selection.Background">#2A8B5CF6</Color>
+        </ResourceDictionary>
+    </ResourceDictionary.ThemeDictionaries>
+
+    <!-- ========================================== -->
+    <!-- Brushes - Theme-Aware (DynamicResource)     -->
+    <!-- Resources are inherently optimized in Avalonia -->
+    <!-- ========================================== -->
+
+    <!-- Base Brushes -->
+    <SolidColorBrush x:Key="Brush.Background.Primary" Color="{DynamicResource Color.Background.Primary}"        />
+    <SolidColorBrush x:Key="Brush.Background.Secondary" Color="{DynamicResource Color.Background.Secondary}"    />
+    <SolidColorBrush x:Key="Brush.Background.Tertiary" Color="{DynamicResource Color.Background.Tertiary}"      />
+    <SolidColorBrush x:Key="Brush.Background.Hover" Color="{DynamicResource Color.Background.Hover}"            />
+
+    <SolidColorBrush x:Key="Brush.Text.Primary" Color="{DynamicResource Color.Text.Primary}"                    />
+    <SolidColorBrush x:Key="Brush.Text.Secondary" Color="{DynamicResource Color.Text.Secondary}" />
+    <SolidColorBrush x:Key="Brush.Text.Tertiary" Color="{DynamicResource Color.Text.Tertiary}" />
+    <SolidColorBrush x:Key="Brush.Text.Disabled" Color="{DynamicResource Color.Text.Disabled}" />
+    <SolidColorBrush x:Key="Brush.Text.Inverse" Color="{DynamicResource Color.Text.Inverse}" />
+
+    <SolidColorBrush x:Key="Brush.Accent.Primary" Color="{DynamicResource Color.Accent.Primary}" />
+    <SolidColorBrush x:Key="Brush.Accent.Secondary" Color="{DynamicResource Color.Accent.Secondary}" />
+    <SolidColorBrush x:Key="Brush.Accent.Tertiary" Color="{DynamicResource Color.Accent.Tertiary}" />
+    <SolidColorBrush x:Key="Brush.Accent.Glow" Color="{DynamicResource Color.Accent.Glow}" />
+
+    <SolidColorBrush x:Key="Brush.Border.Primary" Color="{DynamicResource Color.Border.Primary}" />
+    <SolidColorBrush x:Key="Brush.Border.Focus" Color="{DynamicResource Color.Border.Focus}" />
+
+    <SolidColorBrush x:Key="Brush.Semantic.Success" Color="{DynamicResource Color.Semantic.Success}" />
+    <SolidColorBrush x:Key="Brush.Semantic.Warning" Color="{DynamicResource Color.Semantic.Warning}" />
+    <SolidColorBrush x:Key="Brush.Semantic.Error" Color="{DynamicResource Color.Semantic.Error}" />
+    <SolidColorBrush x:Key="Brush.Semantic.Info" Color="{DynamicResource Color.Semantic.Info}" />
+
+    <!-- Dialog / UI Components -->
+    <SolidColorBrush x:Key="Brush.Dialog.Background" Color="{DynamicResource Color.Dialog.Background}" />
+    <SolidColorBrush x:Key="Brush.Dialog.Border" Color="{DynamicResource Color.Dialog.Border}" />
+    <SolidColorBrush x:Key="Brush.Dialog.LabelText" Color="{DynamicResource Color.Dialog.LabelText}" />
+
+    <!-- Aliases for MainWindow Header/Toolbar -->
+    <SolidColorBrush x:Key="Brush.Background.Header" Color="{DynamicResource Color.Background.Tertiary}" />
+    <SolidColorBrush x:Key="Brush.Border" Color="{DynamicResource Color.Border.Primary}" />
+    <SolidColorBrush x:Key="Brush.Foreground.Primary" Color="{DynamicResource Color.Text.Primary}" />
+    <SolidColorBrush x:Key="Brush.Foreground.Secondary" Color="{DynamicResource Color.Text.Secondary}" />
+
+    <SolidColorBrush x:Key="Brush.Selection.Background" Color="{DynamicResource Color.Selection.Background}" />
+
+</ResourceDictionary>

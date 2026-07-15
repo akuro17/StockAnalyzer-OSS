@@ -1,0 +1,104 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:StockAnalyzer.Avalonia.ViewModels"
+        xmlns:m="using:StockAnalyzer.Avalonia.Models"
+        xmlns:c="using:StockAnalyzer.Avalonia.Converters"
+        xmlns:l="using:StockAnalyzer.Avalonia.Markup"
+        x:Class="StockAnalyzer.Avalonia.Views.LogViewerView"
+        Title="{l:Localize LogViewer_Title}" Width="1000" Height="700"
+        x:DataType="vm:LogViewerViewModel"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource Brush.Background.Secondary}">
+
+    <Window.Resources>
+        <c:LogLevelToBrushConverter x:Key="LevelToColorConverter"/>
+        <c:BytesToReadableSizeConverter x:Key="BytesConverter"/>
+    </Window.Resources>
+
+    <Grid RowDefinitions="Auto, *">
+        <!-- Header / Toolbar -->
+        <Border Grid.Row="0" Background="{DynamicResource Brush.Background.Secondary}" Padding="10" BorderBrush="{DynamicResource Brush.Border}" BorderThickness="0,0,0,1">
+            <StackPanel Orientation="Horizontal" Spacing="15">
+                <TextBlock Text="{l:Localize LogViewer_Search}" VerticalAlignment="Center"/>
+                <TextBox Width="200" Text="{Binding SearchText, Mode=TwoWay}" Watermark="{l:Localize LogViewer_SearchPlaceholder}"/>
+                
+                <CheckBox IsChecked="{Binding IsErrorOnly}" Content="{l:Localize LogViewer_ErrorsOnly}"/>
+
+                <Button Content="{l:Localize LogViewer_Refresh}" Command="{Binding ApplyFilterCommand}"/>
+                
+                <Separator/>
+                
+                <Button Content="{l:Localize LogViewer_CopyDetails}" Command="{Binding CopyToClipboardCommand}"/>
+                <Button Content="{l:Localize LogViewer_Export}" Command="{Binding ExportLogCommand}"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Main Content -->
+        <Grid Grid.Row="1" ColumnDefinitions="450, 4, *">
+            <!-- Log Files Explorer-like List -->
+            <Grid Grid.Column="0" RowDefinitions="Auto, *">
+                <!-- Column Headers -->
+                <Grid Grid.Row="0" ColumnDefinitions="*, 1, 130, 1, 80" Background="{DynamicResource SystemChromeLowColor}" Margin="5,2">
+                    <TextBlock Grid.Column="0" Text="{l:Localize LogViewer_Col_Name}" FontWeight="SemiBold" FontSize="11" VerticalAlignment="Center"/>
+                    <Border Grid.Column="1" Width="1" Background="{DynamicResource Brush.Border}" Margin="2,0"/>
+                    <TextBlock Grid.Column="2" Text="{l:Localize LogViewer_Col_Date}" FontWeight="SemiBold" FontSize="11" Margin="5,0" VerticalAlignment="Center"/>
+                    <Border Grid.Column="3" Width="1" Background="{DynamicResource SystemBaseLowColor}" Margin="2,0"/>
+                    <TextBlock Grid.Column="4" Text="{l:Localize LogViewer_Col_Size}" FontWeight="SemiBold" FontSize="11" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                </Grid>
+
+                <ListBox Grid.Row="1" ItemsSource="{Binding LogFiles}" SelectedItem="{Binding SelectedLogFile}" BorderThickness="0,0,1,0" BorderBrush="{DynamicResource SystemBaseLowColor}">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate x:DataType="m:LogFileInfo">
+                            <Grid ColumnDefinitions="*, 1, 130, 1, 80" Background="Transparent" Margin="0,2">
+                                <Grid.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Header="{l:Localize LogViewer_Menu_CopyContent}" Command="{Binding $parent[ListBox].((vm:LogViewerViewModel)DataContext).CopyContentToClipboardCommand}" CommandParameter="{Binding}"/>
+                                        <MenuItem Header="{l:Localize LogViewer_Menu_ExportLog}" Command="{Binding $parent[ListBox].((vm:LogViewerViewModel)DataContext).ExportLogCommand}" CommandParameter="{Binding}"/>
+                                        <MenuItem Header="{l:Localize LogViewer_Menu_CopyPath}" Command="{Binding $parent[ListBox].((vm:LogViewerViewModel)DataContext).CopyPathToClipboardCommand}" CommandParameter="{Binding}"/>
+                                        <Separator/>
+                                        <MenuItem Header="{l:Localize LogViewer_Menu_Rename}" Command="{Binding $parent[ListBox].((vm:LogViewerViewModel)DataContext).RenameLogCommand}" CommandParameter="{Binding}"/>
+                                        <MenuItem Header="{l:Localize LogViewer_Menu_Delete}" Command="{Binding $parent[ListBox].((vm:LogViewerViewModel)DataContext).DeleteLogCommand}" CommandParameter="{Binding}"/>
+                                    </ContextMenu>
+                                </Grid.ContextMenu>
+                                
+                                <DockPanel Grid.Column="0">
+                                    <TextBlock Text="📄" DockPanel.Dock="Left" VerticalAlignment="Center" FontSize="16" Margin="0,0,5,0"/>
+                                    <TextBlock Text="{Binding Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                </DockPanel>
+                                
+                                <Border Grid.Column="1" Width="1" Background="{DynamicResource SystemBaseLowColor}" Opacity="0.3" Margin="2,0"/>
+                                
+                                <TextBlock Grid.Column="2" Text="{Binding LastModified, StringFormat=\{0:yyyy/MM/dd HH:mm\}}" VerticalAlignment="Center" FontSize="11" Opacity="0.7" Margin="5,0"/>
+                                
+                                <Border Grid.Column="3" Width="1" Background="{DynamicResource Brush.Border}" Opacity="0.3" Margin="2,0"/>
+                                
+                                <TextBlock Grid.Column="4" Text="{Binding SizeBytes, Converter={StaticResource BytesConverter}}" VerticalAlignment="Center" FontSize="11" Opacity="0.7" HorizontalAlignment="Right"/>
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </Grid>
+
+            <GridSplitter Grid.Column="1" Background="{DynamicResource Brush.Border.Primary}"/>
+
+            <!-- Logs List -->
+            <ListBox Grid.Column="2" ItemsSource="{Binding Logs}" SelectionMode="Single">
+                <ListBox.ItemTemplate>
+                    <DataTemplate x:DataType="m:LogEntry">
+                        <Grid ColumnDefinitions="150, 80, *" Margin="2">
+                            <TextBlock Grid.Column="0" Text="{Binding Timestamp, StringFormat=\{0:yyyy-MM-dd HH:mm:ss.fff\}}" Opacity="0.7" FontSize="12"/>
+                            <Border Grid.Column="1" Padding="4,1" CornerRadius="3" HorizontalAlignment="Left" 
+                                    Background="{Binding Level, Converter={StaticResource LevelToColorConverter}}">
+                                <TextBlock Text="{Binding Level}" FontSize="10" FontWeight="Bold" Foreground="White"/>
+                            </Border>
+                            <StackPanel Grid.Column="2" Spacing="2">
+                                <TextBlock Text="{Binding Message}" TextWrapping="Wrap"/>
+                                <TextBlock Text="{Binding Exception}" Foreground="#FF6666" FontSize="11" TextWrapping="Wrap" IsVisible="{Binding Exception, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                            </StackPanel>
+                        </Grid>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+        </Grid>
+    </Grid>
+</Window>
