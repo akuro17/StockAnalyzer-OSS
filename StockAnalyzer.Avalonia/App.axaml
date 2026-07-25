@@ -1,0 +1,81 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="StockAnalyzer.Avalonia.App"
+             xmlns:local="using:StockAnalyzer.Avalonia"
+             xmlns:sys="using:System"
+             RequestedThemeVariant="Default">
+             <!-- "Default" ThemeVariant follows system theme variant. "Dark" or "Light" are other available options. -->
+
+    <Application.DataTemplates>
+        <local:ViewLocator/>
+    </Application.DataTemplates>
+
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceInclude Source="/Assets/Colors.axaml"/>
+                <ResourceInclude Source="/Assets/Styles.axaml"/>
+                <ResourceInclude Source="/Assets/StockStyles.axaml"/>
+            </ResourceDictionary.MergedDictionaries>
+            <sys:Double x:Key="BaseFontSize">16</sys:Double>
+            <sys:Double x:Key="TitleFontSize">20</sys:Double>
+            <sys:Double x:Key="DetailFontSize">12</sys:Double>
+            <sys:Double x:Key="HelperFontSize">12</sys:Double>
+            <sys:Double x:Key="SmallFontSize">10</sys:Double>
+        </ResourceDictionary>
+    </Application.Resources>
+  
+    <Application.Styles>
+        <FluentTheme />
+        <!-- Explicitly include ColorPicker styles if not covered by FluentTheme in strict mode -->
+        <StyleInclude Source="avares://Avalonia.Controls.DataGrid/Themes/Fluent.xaml" />
+        <StyleInclude Source="avares://Avalonia.Controls.TreeDataGrid/Themes/Fluent.axaml" />
+        <StyleInclude Source="avares://Avalonia.Controls.ColorPicker/Themes/Fluent/Fluent.xaml" />
+        <StyleInclude Source="/Assets/ModernTheme.axaml"/>
+        <Style Selector="Window">
+            <Setter Property="FontSize" Value="{DynamicResource BaseFontSize}"/>
+        </Style>
+        <Style Selector="FlyoutPresenter">
+            <Setter Property="Background" Value="{DynamicResource Brush.Background.Primary}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border.Primary}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="8"/>
+        </Style>
+        <Style Selector="ToolTip">
+            <Setter Property="Background" Value="{DynamicResource Brush.Background.Primary}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border.Primary}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="8"/>
+        </Style>
+
+        <!-- Tag Chip Styles -->
+        <Style Selector="Border.TagChip">
+            <Setter Property="CornerRadius" Value="10"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Margin" Value="1"/>
+            <Setter Property="Padding" Value="4,0,4,0"/>
+            <Setter Property="Background" Value="{DynamicResource Brush.Background.Primary}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border.Primary}"/>
+        </Style>
+        <Style Selector="TextBlock.TagText">
+            <Setter Property="FontSize" Value="{DynamicResource DetailFontSize}"/>
+            <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Primary}"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+        
+        <!-- Overflow Badge Styles -->
+        <Style Selector="Border.TagBadge">
+            <Setter Property="CornerRadius" Value="10"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Margin" Value="1"/>
+            <Setter Property="Padding" Value="4,0,4,0"/>
+            <Setter Property="Background" Value="{DynamicResource Brush.Background.Primary}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Accent.Primary}"/>
+        </Style>
+        <Style Selector="TextBlock.TagBadgeText">
+            <Setter Property="FontSize" Value="{DynamicResource DetailFontSize}"/>
+            <Setter Property="Foreground" Value="{DynamicResource Brush.Accent.Primary}"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+    </Application.Styles>
+</Application>

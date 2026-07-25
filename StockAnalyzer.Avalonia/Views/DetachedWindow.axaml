@@ -1,0 +1,144 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="using:StockAnalyzer.Avalonia.ViewModels"
+        xmlns:ui="using:StockAnalyzer.Core.Models.UI"
+        xmlns:behaviors="using:StockAnalyzer.Avalonia.Behaviors"
+        xmlns:conv="clr-namespace:StockAnalyzer.Avalonia.Converters;assembly=StockAnalyzer.Avalonia"
+        xmlns:l="clr-namespace:StockAnalyzer.Avalonia.Markup;assembly=StockAnalyzer.Avalonia"
+        xmlns:controls="clr-namespace:StockAnalyzer.Avalonia.Views.Controls;assembly=StockAnalyzer.Avalonia"
+        mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+        x:Class="StockAnalyzer.Avalonia.Views.DetachedWindow"
+        x:DataType="vm:DetachedWindowViewModel"
+        Icon="/Assets/avalonia-logo.ico"
+        Title="{Binding Title}"
+        Width="1000" Height="700"
+        WindowStartupLocation="CenterScreen"
+        behaviors:WindowPersistenceBehavior.PersistenceEnabled="True"
+        Background="{DynamicResource Brush.Background.Primary}"
+        ExtendClientAreaToDecorationsHint="True"
+        ExtendClientAreaTitleBarHeightHint="-1">
+
+    <Window.Styles>
+        <Style Selector="TabControl">
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="ItemsPanel">
+                <ItemsPanelTemplate>
+                    <controls:ChromeTabPanel/>
+                </ItemsPanelTemplate>
+            </Setter>
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <Border Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}">
+                        <DockPanel>
+                            <!-- Tab header row -->
+                            <Border DockPanel.Dock="Top"
+                                    Height="40"
+                                    Background="{DynamicResource Brush.Background.Tertiary}"
+                                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                                    BorderThickness="0,0,0,1"
+                                    PointerPressed="OnHeaderPointerPressed">
+                                <!-- Column 1 (140px) is reserved as a safe zone for the OS title bar caption buttons (Minimize/Maximize/Close) -->
+                                <Grid ColumnDefinitions="*, 140" Margin="10,0,0,0">
+                                    <controls:ChromeTabHeadersPanel Grid.Column="0">
+                                        <ItemsPresenter Name="PART_ItemsPresenter"
+                                                        ItemsPanel="{TemplateBinding ItemsPanel}"/>
+                                        
+                                        <!-- Chrome-style Add Tab Button -->
+                                        <Button Theme="{StaticResource SecondaryButtonStyle}"
+                                                Width="28" Height="28" Padding="0"
+                                                VerticalAlignment="Center"
+                                                HorizontalContentAlignment="Center"
+                                                VerticalContentAlignment="Center"
+                                                ToolTip.Tip="{l:Localize ContextMenu_AddTab}"
+                                                x:CompileBindings="False"
+                                                Command="{Binding $parent[Window].DataContext.AddTabCommand}">
+                                            <Button.Flyout>
+                                                <MenuFlyout>
+                                                    <MenuItem Header="{l:Localize Tab_Chart}" 
+                                                              Command="{Binding $parent[Window].DataContext.AddTabCommand}" 
+                                                              CommandParameter="Chart"/>
+                                                    <MenuItem Header="{l:Localize Tab_TickerList}" 
+                                                              Command="{Binding $parent[Window].DataContext.AddTabCommand}" 
+                                                              CommandParameter="TickerList"/>
+                                                    <MenuItem Header="{l:Localize Tab_DataWindow}" 
+                                                              Command="{Binding $parent[Window].DataContext.AddTabCommand}" 
+                                                              CommandParameter="DataWindow"/>
+                                                    <Separator/>
+                                                    <MenuItem Header="{l:Localize Tab_Portfolio}" 
+                                                              Command="{Binding $parent[Window].DataContext.AddTabCommand}" 
+                                                              CommandParameter="PortfolioSummary"/>
+                                                    <MenuItem Header="{l:Localize Tab_Allocation}" 
+                                                              Command="{Binding $parent[Window].DataContext.AddTabCommand}" 
+                                                              CommandParameter="Allocation"/>
+                                                </MenuFlyout>
+                                            </Button.Flyout>
+                                            <PathIcon Data="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z" 
+                                                      Width="12" Height="12" Foreground="{DynamicResource Brush.Text.Inverse}"/>
+                                        </Button>
+                                    </controls:ChromeTabHeadersPanel>
+                                </Grid>
+                            </Border>
+                            
+                            <!-- Content Area -->
+                            <ContentPresenter Name="PART_SelectedContentHost"
+                                              Content="{TemplateBinding SelectedContent}"
+                                              ContentTemplate="{TemplateBinding SelectedContentTemplate}"
+                                              Margin="{TemplateBinding Padding}"/>
+                        </DockPanel>
+                    </Border>
+                </ControlTemplate>
+            </Setter>
+        </Style>
+    </Window.Styles>
+
+    <Panel>
+        <!-- Empty Panel Placeholder -->
+        <TextBlock Text="{l:Localize Msg_EmptyPanel_Placeholder}"
+                   VerticalAlignment="Center"
+                   HorizontalAlignment="Center"
+                   Foreground="{DynamicResource Brush.Foreground.Secondary}"
+                   FontSize="{DynamicResource HelperFontSize}"
+                   TextWrapping="Wrap"
+                   TextAlignment="Center"
+                   Margin="20"
+                   x:CompileBindings="False"
+                   IsVisible="{Binding Items.Count, Converter={x:Static conv:NumericalConverters.IsEqualToZero}}"/>
+
+        <TabControl ItemsSource="{Binding Items}" 
+                    SelectedItem="{Binding SelectedItem}"
+                    Padding="0">
+            <TabControl.ItemTemplate>
+                <DataTemplate x:DataType="ui:WorkspaceViewItem">
+                    <DockPanel LastChildFill="True" Background="Transparent" MinWidth="30">
+                        <Button DockPanel.Dock="Right"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Cursor="Hand"
+                                Command="{Binding $parent[TabControl].((vm:DetachedWindowViewModel)DataContext).CloseTabCommand}"
+                                CommandParameter="{Binding}"
+                                Width="20" Height="20" Padding="0" Margin="4,0,0,0"
+                                VerticalAlignment="Center">
+                            <PathIcon Data="M13.46,12L19,17.54V19H17.54L12,13.46L6.46,19H5V17.54L10.54,12L5,6.46V5H6.46L12,10.54L17.54,5H19V6.46L13.46,12Z" 
+                                      Width="10" Height="10"
+                                      Foreground="{DynamicResource Brush.Foreground.Secondary}"/>
+                        </Button>
+                        <TextBlock Text="{Binding Title}" 
+                                   VerticalAlignment="Center" 
+                                   TextTrimming="CharacterEllipsis"
+                                   FontSize="{DynamicResource DetailFontSize}"/>
+                    </DockPanel>
+                </DataTemplate>
+            </TabControl.ItemTemplate>
+            <TabControl.ContentTemplate>
+                <DataTemplate x:DataType="ui:WorkspaceViewItem">
+                    <ContentControl Content="{Binding ViewModel}" />
+                </DataTemplate>
+            </TabControl.ContentTemplate>
+        </TabControl>
+    </Panel>
+</Window>

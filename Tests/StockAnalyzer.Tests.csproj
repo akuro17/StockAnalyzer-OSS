@@ -1,0 +1,60 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <UseWPF>true</UseWPF>
+    <NoWarn>NU1701;1701;1702;CS8600;CS8601;CS8602;CS8603;CS8604;CS8618;CS8625;CS1998</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="6.0.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
+    <PackageReference Include="xunit" Version="2.5.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.5.3" />
+    <PackageReference Include="FlaUI.Core" Version="4.0.0" />
+    <PackageReference Include="FlaUI.UIA3" Version="4.0.0" />
+    <PackageReference Include="ApprovalTests" Version="6.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="StockAnalyzer.UITests\**" />
+    <EmbeddedResource Remove="StockAnalyzer.UITests\**" />
+    <None Remove="StockAnalyzer.UITests\**" />
+    <Compile Remove="StockAnalyzer.Core.Tests\**" />
+    <EmbeddedResource Remove="StockAnalyzer.Core.Tests\**" />
+    <None Remove="StockAnalyzer.Core.Tests\**" />
+    <Compile Remove="StockAnalyzer.Avalonia.Tests\**" />
+    <EmbeddedResource Remove="StockAnalyzer.Avalonia.Tests\**" />
+    <None Remove="StockAnalyzer.Avalonia.Tests\**" />
+    <Compile Remove="Analysis\ReverseWatchAnalysisTests.cs" />
+    <Compile Remove="Batch17Tests.cs" />
+    <Compile Remove="Indicators\Batch15IndicatorTests.cs" />
+    <Compile Remove="NonTimeSeries\RenkoImplementationTests.cs" />
+    <Compile Remove="Performance\IndicatorPerformanceBenchmark.cs" />
+    <Compile Remove="Serialization\IndicatorSettingsSerializationTests.cs" />
+    <Compile Remove="Services\ConfigurationMigratorTests.cs" />
+    <Compile Remove="Services\IndicatorInfrastructureTests.cs" />
+    <Compile Remove="Services\NonTimeSeriesRegistryTest.cs" />
+    <Compile Remove="Strategies\StrategyTests.cs" />
+    <Compile Remove="VerificationTests.cs" />
+    <Compile Remove="ViewModels\ChartStateViewModelTests.cs" />
+    <Compile Remove="ViewModels\ChartViewModelTests.cs" />
+    <Compile Remove="ViewModels\IndicatorSettingsHistoryTests.cs" />
+    <Compile Remove="Models\TimeIntervalTests.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\StockAnalyzer.Core\StockAnalyzer.Core.csproj" />
+    <ProjectReference Include="..\StockAnalyzer.Avalonia\StockAnalyzer.Avalonia.csproj" />
+  </ItemGroup>
+
+</Project>

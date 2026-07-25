@@ -1,0 +1,347 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="using:StockAnalyzer.Avalonia.ViewModels.Dialogs"
+        xmlns:conv="using:StockAnalyzer.Avalonia.Converters"
+        xmlns:l="clr-namespace:StockAnalyzer.Avalonia.Markup;assembly=StockAnalyzer.Avalonia"
+        mc:Ignorable="d" d:DesignWidth="840" d:DesignHeight="600"
+        x:Class="StockAnalyzer.Avalonia.Views.Dialogs.ColumnChooserWindow"
+        x:DataType="vm:ColumnChooserViewModel"
+        Title="{l:Localize Window_ColumnChooser_Title}"
+        Width="840" Height="600"
+        WindowStartupLocation="CenterOwner"
+        CanResize="False"
+        Background="{DynamicResource Brush.Background.Primary}"
+        TransparencyLevelHint="AcrylicBlur"
+        ExtendClientAreaToDecorationsHint="True">
+
+    <Window.Resources>
+        <conv:EnumToBoolConverter x:Key="EnumToBoolConverter"/>
+    </Window.Resources>
+
+    <Grid RowDefinitions="56, Auto, *, 64">
+        <!-- Header -->
+        <Border Grid.Row="0"
+                Background="{DynamicResource Brush.Background.Tertiary}"
+                BorderBrush="{DynamicResource Brush.Border.Primary}"
+                BorderThickness="0,0,0,1"
+                PointerPressed="OnHeaderPointerPressed">
+            <Grid ColumnDefinitions="*, Auto" Margin="20,0">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="12">
+                    <PathIcon Data="{StaticResource ColumnsIconData}" Width="18" Height="18" Foreground="{DynamicResource Brush.Accent.Primary}"/>
+                    <TextBlock Text="{l:Localize Window_ColumnChooser_Title}" 
+                               FontSize="{DynamicResource TitleFontSize}" 
+                               FontWeight="SemiBold" 
+                               VerticalAlignment="Center"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Search Area -->
+        <Border Grid.Row="1" Padding="20,12,20,4" Background="Transparent">
+            <TextBox Text="{Binding SearchQuery, Mode=TwoWay}"
+                     Watermark="{l:Localize ColumnChooser_SearchPlaceholder}"
+                     Classes="clearButton"
+                     HorizontalAlignment="Stretch">
+                <TextBox.InnerLeftContent>
+                    <PathIcon Data="{StaticResource SearchIconData}" Width="14" Height="14" Margin="10,0,0,0" Foreground="{DynamicResource Brush.Text.Tertiary}"/>
+                </TextBox.InnerLeftContent>
+            </TextBox>
+        </Border>
+
+        <!-- Master-Detail Content Area -->
+        <Grid Grid.Row="2" ColumnDefinitions="180, 280, *" Margin="20,4,20,0">
+            <!-- Left Column: Categories List -->
+            <Border Grid.Column="0"
+                    Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="1"
+                    CornerRadius="4"
+                    Margin="0,10,10,10"
+                    Padding="4">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <ListBox SelectionChanged="OnCategorySelectionChanged" 
+                             SelectedIndex="0"
+                             Background="Transparent"
+                             BorderThickness="0">
+                        <ListBox.Styles>
+                            <Style Selector="ListBoxItem">
+                                <Setter Property="Padding" Value="12,10"/>
+                                <Setter Property="Margin" Value="0,2"/>
+                                <Setter Property="CornerRadius" Value="4"/>
+                                <Setter Property="FontSize" Value="13"/>
+                            </Style>
+                            <Style Selector="ListBoxItem:selected">
+                                <Setter Property="FontWeight" Value="SemiBold"/>
+                            </Style>
+                        </ListBox.Styles>
+                        <ListBoxItem Content="{l:Localize ColumnChooser_Category_Active}"/>
+                        <ListBoxItem Content="{l:Localize ColumnChooser_Category_All}"/>
+                        <ListBoxItem Content="{l:Localize ColumnChooser_Category_Basic}"/>
+                        <ListBoxItem Content="{l:Localize ColumnChooser_Category_PriceVolume}"/>
+                        <ListBoxItem Content="{l:Localize ColumnChooser_Category_Valuation}"/>
+                        <ListBoxItem Content="{l:Localize ColumnChooser_Category_Profitability}"/>
+                        <ListBoxItem Content="{l:Localize ColumnChooser_Category_FinancialHealth}"/>
+                        <ListBoxItem Content="{l:Localize ColumnChooser_Category_Templates}"/>
+                    </ListBox>
+                </ScrollViewer>
+            </Border>
+
+            <!-- Center Column: Columns List / Templates List -->
+            <Border Grid.Column="1"
+                    Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="1"
+                    CornerRadius="4"
+                    Margin="0,10,10,10"
+                    Padding="10">
+                <Grid RowDefinitions="*">
+                    <!-- Normal Column List -->
+                    <ScrollViewer IsVisible="{Binding IsNotTemplatesCategory}" VerticalScrollBarVisibility="Auto">
+                        <ListBox Name="ColumnsListBox"
+                                 ItemsSource="{Binding FilteredItems}" 
+                                 SelectedItem="{Binding SelectedColumn}"
+                                 Background="Transparent" 
+                                 BorderThickness="0"
+                                 DragDrop.AllowDrop="True"
+                                 DragDrop.Drop="OnListBoxDrop"
+                                 DragDrop.DragOver="OnListBoxDragOver"
+                                 DragDrop.DragLeave="OnListBoxDragLeave">
+                            <ListBox.Styles>
+                                <Style Selector="ListBoxItem">
+                                    <Setter Property="Padding" Value="4"/>
+                                    <Setter Property="Margin" Value="0,1"/>
+                                    <Setter Property="DragDrop.AllowDrop" Value="True"/>
+                                </Style>
+                                <Style Selector="ListBoxItem:selected TextBlock">
+                                    <Setter Property="FontWeight" Value="SemiBold"/>
+                                </Style>
+                                <Style Selector="ListBoxItem.drag-hover /template/ ContentPresenter">
+                                    <Setter Property="Background" Value="{DynamicResource Brush.Background.Hover}"/>
+                                </Style>
+                            </ListBox.Styles>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate x:DataType="vm:ColumnItemViewModel">
+                                    <Grid ColumnDefinitions="Auto, Auto, *" Margin="4,2" Background="Transparent">
+                                        <!-- Grip Handle: Visible ONLY when SelectedCategory is Active -->
+                                        <PathIcon Grid.Column="0" 
+                                                  Data="{StaticResource GripIconData}" 
+                                                  Width="12" Height="12" 
+                                                  Classes="grip"
+                                                  Foreground="{DynamicResource Brush.Text.Tertiary}"
+                                                  Margin="0,0,8,0"
+                                                  VerticalAlignment="Center"
+                                                  Cursor="SizeAll"
+                                                  IsVisible="{Binding $parent[ListBox].DataContext.SelectedCategory, Converter={StaticResource EnumToBoolConverter}, ConverterParameter=Active}"/>
+                                                  
+                                        <!-- Toggle checkbox -->
+                                        <CheckBox Grid.Column="1" 
+                                                  IsChecked="{Binding IsActive, Mode=TwoWay}" 
+                                                  IsEnabled="{Binding !IsSymbol}"
+                                                  VerticalAlignment="Center"
+                                                  Margin="0,0,8,0"/>
+                                                  
+                                        <!-- Column Name with matching font size -->
+                                        <TextBlock Grid.Column="2" 
+                                                   Text="{Binding EnglishName}" 
+                                                   FontSize="14" 
+                                                   VerticalAlignment="Center"
+                                                   Foreground="{DynamicResource Brush.Text.Primary}"/>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </ScrollViewer>
+
+                    <!-- Templates View -->
+                    <Grid IsVisible="{Binding IsTemplatesCategory}" RowDefinitions="Auto, *">
+                        <!-- Top Editor -->
+                        <Grid Grid.Row="0" ColumnDefinitions="Auto, *" Margin="0,0,0,10" VerticalAlignment="Center">
+                            <Button Grid.Column="0"
+                                    Command="{Binding SaveTemplateCommand}"
+                                    Theme="{DynamicResource PrimaryButtonStyle}"
+                                    Foreground="{DynamicResource Brush.Text.Inverse}"
+                                    Width="32" Height="32"
+                                    Padding="0"
+                                    Margin="0,0,8,0"
+                                    ToolTip.Tip="{l:Localize ColumnChooser_Btn_SaveTemplate}">
+                                <PathIcon Data="{StaticResource SaveIconData}" Width="16" Height="16" Foreground="{DynamicResource Brush.Text.Inverse}"/>
+                            </Button>
+                            <TextBox Grid.Column="1"
+                                     Text="{Binding NewTemplateName, Mode=TwoWay}"
+                                     Watermark="{l:Localize ColumnChooser_TemplateNamePlaceholder}"
+                                     Height="32"
+                                     VerticalContentAlignment="Center"/>
+                        </Grid>
+                        
+                        <!-- List of templates -->
+                        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                            <ListBox ItemsSource="{Binding Templates}"
+                                     SelectedItem="{Binding SelectedTemplate}"
+                                     Background="Transparent"
+                                     BorderThickness="0">
+                                <ListBox.Styles>
+                                    <Style Selector="ListBoxItem">
+                                        <Setter Property="Padding" Value="4"/>
+                                        <Setter Property="Margin" Value="0,1"/>
+                                    </Style>
+                                    <Style Selector="ListBoxItem:selected TextBlock">
+                                        <Setter Property="FontWeight" Value="SemiBold"/>
+                                    </Style>
+                                </ListBox.Styles>
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid ColumnDefinitions="Auto, Auto, *" Margin="4,2" Background="Transparent">
+                                            <!-- Load Button -->
+                                            <Button Grid.Column="0"
+                                                    Command="{Binding $parent[ListBox].DataContext.LoadTemplateCommand}"
+                                                    CommandParameter="{Binding}"
+                                                    Theme="{DynamicResource PrimaryButtonStyle}"
+                                                    Foreground="{DynamicResource Brush.Text.Inverse}"
+                                                    Width="28" Height="28"
+                                                    Padding="0"
+                                                    Margin="0,0,4,0"
+                                                    ToolTip.Tip="Load">
+                                                <PathIcon Data="{StaticResource LoadIconData}" Width="14" Height="14" Foreground="{DynamicResource Brush.Text.Inverse}"/>
+                                            </Button>
+                                            
+                                            <!-- Delete Button -->
+                                            <Button Grid.Column="1"
+                                                    Command="{Binding $parent[ListBox].DataContext.DeleteTemplateCommand}"
+                                                    CommandParameter="{Binding}"
+                                                    Theme="{DynamicResource PrimaryButtonStyle}"
+                                                    Foreground="{DynamicResource Brush.Text.Inverse}"
+                                                    Width="28" Height="28"
+                                                    Padding="0"
+                                                    Margin="0,0,8,0"
+                                                    ToolTip.Tip="Delete">
+                                                <PathIcon Data="{StaticResource DeleteIconData}" Width="14" Height="14" Foreground="{DynamicResource Brush.Text.Inverse}"/>
+                                            </Button>
+                                            
+                                            <!-- Template Name -->
+                                            <TextBlock Grid.Column="2"
+                                                       Text="{Binding Name}"
+                                                       FontSize="14"
+                                                       VerticalAlignment="Center"
+                                                       Foreground="{DynamicResource Brush.Text.Primary}"/>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </ScrollViewer>
+                    </Grid>
+                </Grid>
+            </Border>
+
+            <!-- Right Column: Detail View / Template Detail View -->
+            <Border Grid.Column="2"
+                    Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="1"
+                    CornerRadius="4"
+                    Margin="0,10,0,10"
+                    Padding="16">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Spacing="16">
+                        <!-- Detail View (Not Templates) -->
+                        <StackPanel Spacing="16" IsVisible="{Binding IsNotTemplatesCategory}">
+                            <TextBlock Text="{l:Localize ColumnChooser_DetailsHeader}" FontSize="{DynamicResource HelperFontSize}" FontWeight="Bold" Foreground="{DynamicResource Brush.Text.Secondary}"/>
+                            
+                            <StackPanel Spacing="4" IsVisible="{Binding SelectedColumn, Converter={x:Static ObjectConverters.IsNotNull}}">
+                                <TextBlock Text="{l:Localize ColumnChooser_Label_Name}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}"/>
+                                <TextBlock Text="{Binding SelectedColumn.EnglishName}" FontSize="{DynamicResource TitleFontSize}" FontWeight="Bold" TextWrapping="Wrap" Foreground="{DynamicResource Brush.Text.Primary}"/>
+                            </StackPanel>
+      
+                            <StackPanel Spacing="4" IsVisible="{Binding SelectedColumn, Converter={x:Static ObjectConverters.IsNotNull}}">
+                                <TextBlock Text="{l:Localize ColumnChooser_Label_Category}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}"/>
+                                <Border Background="{DynamicResource Brush.Background.Tertiary}" CornerRadius="4" Padding="6,4" HorizontalAlignment="Left">
+                                    <TextBlock Text="{Binding SelectedColumn.Category}" FontSize="{DynamicResource DetailFontSize}" Foreground="{DynamicResource Brush.Text.Primary}"/>
+                                </Border>
+                            </StackPanel>
+                            
+                            <StackPanel Spacing="4" IsVisible="{Binding SelectedColumn, Converter={x:Static ObjectConverters.IsNotNull}}">
+                                <TextBlock Text="{l:Localize ColumnChooser_Label_Description}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}"/>
+                                <TextBlock Text="{Binding SelectedColumn.Description}" FontSize="{DynamicResource BaseFontSize}" LineHeight="20" TextWrapping="Wrap" Foreground="{DynamicResource Brush.Text.Primary}"/>
+                            </StackPanel>
+                            
+                            <StackPanel Spacing="4" IsVisible="{Binding SelectedColumn, Converter={x:Static ObjectConverters.IsNotNull}}">
+                                <TextBlock Text="{l:Localize ColumnChooser_Label_Formula}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}"/>
+                                <Border Background="{DynamicResource Brush.Background.Tertiary}" CornerRadius="4" Padding="8">
+                                    <TextBlock Text="{Binding SelectedColumn.Formula}" FontSize="{DynamicResource DetailFontSize}" FontFamily="Consolas" TextWrapping="Wrap" Foreground="{DynamicResource Brush.Text.Primary}"/>
+                                </Border>
+                            </StackPanel>
+                        </StackPanel>
+
+                        <!-- Template Details (Templates) -->
+                        <StackPanel Spacing="16" IsVisible="{Binding IsTemplatesCategory}">
+                            <TextBlock Text="{l:Localize ColumnChooser_TemplateDetailHeader}" FontSize="{DynamicResource HelperFontSize}" FontWeight="Bold" Foreground="{DynamicResource Brush.Text.Secondary}"/>
+                            <ItemsControl ItemsSource="{Binding SelectedTemplateColumnNames}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding}" FontSize="14" Margin="0,4" Foreground="{DynamicResource Brush.Text.Primary}"/>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+        </Grid>
+
+        <!-- Footer -->
+        <Border Grid.Row="3"
+                Background="{DynamicResource Brush.Background.Tertiary}"
+                BorderBrush="{DynamicResource Brush.Border.Primary}"
+                BorderThickness="0,1,0,0">
+            <Grid ColumnDefinitions="Auto, *, Auto" Margin="20,0">
+                <!-- Batch Actions (Left-aligned) -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <Button Content="{l:Localize Btn_SelectAll}"
+                            Command="{Binding SelectAllCommand}"
+                            Classes="accent"
+                            HorizontalContentAlignment="Center"
+                            VerticalContentAlignment="Center"
+                            Width="100"/>
+                    <Button Content="{l:Localize Btn_ClearAll}"
+                            Command="{Binding ClearAllCommand}"
+                            Classes="accent"
+                            HorizontalContentAlignment="Center"
+                            VerticalContentAlignment="Center"
+                            Width="100"/>
+                </StackPanel>
+ 
+                <!-- Navigation/Confirmation Actions (Right-aligned) -->
+                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                    <Button Content="{l:Localize Btn_OK}" 
+                            Click="OnOkClick"
+                            Classes="accent"
+                            HorizontalContentAlignment="Center"
+                            VerticalContentAlignment="Center"
+                            Width="100"/>
+                    <Button Content="{l:Localize Btn_Cancel}" 
+                            Click="OnCancelClick"
+                            Classes="accent"
+                            HorizontalContentAlignment="Center"
+                            VerticalContentAlignment="Center"
+                            Width="100"/>
+                    <Button Content="{l:Localize Btn_Apply}" 
+                            Click="OnApplyClick"
+                            Classes="accent"
+                            HorizontalContentAlignment="Center"
+                            VerticalContentAlignment="Center"
+                            Width="100"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+
+    <Window.Resources>
+        <StreamGeometry x:Key="ColumnsIconData">M12,8H4A2,2 0 0,0 2,10V14A2,2 0 0,0 4,16H12V20A2,2 0 0,0 14,22H20A2,2 0 0,0 22,20V4A2,2 0 0,0 20,2H14A2,2 0 0,0 12,4V8M14,4H20V20H14V4M4,10H12V14H4V10Z</StreamGeometry>
+        <StreamGeometry x:Key="SearchIconData">M9.5,3A6.5,6.5 0 0,1 16,9.5C16,11.11 15.41,12.59 14.44,13.73L14.71,14H15.5L20.5,19L19,20.5L14,15.5V14.71L13.73,14.44C12.59,15.41 11.11,16 9.5,16A6.5,6.5 0 0,1 3,9.5A6.5,6.5 0 0,1 9.5,3M9.5,5C7,5 5,7 5,9.5C5,12 7,14 9.5,14C12,14 14,12 14,9.5C14,7 12,5 9.5,5Z</StreamGeometry>
+        <StreamGeometry x:Key="GripIconData">M11,18c-1.1,0-2,0.9-2,2s0.9,2,2,2s2-0.9,2-2S12.1,18,11,18z M11,10c-1.1,0-2,0.9-2,2s0.9,2,2,2s2-0.9,2-2S12.1,10,11,10z M11,2c-1.1,0-2,0.9-2,2s0.9,2,2,2s2-0.9,2-2S12.1,2,11,2z M15,18c-1.1,0-2,0.9-2,2s0.9,2,2,2s2-0.9,2-2S16.1,18,15,18z M15,10c-1.1,0-2,0.9-2,2s0.9,2,2,2s2-0.9,2-2S16.1,10,15,10z M15,2c-1.1,0-2,0.9-2,2s0.9,2,2,2s2-0.9,2-2S16.1,2,15,2z</StreamGeometry>
+        <StreamGeometry x:Key="SaveIconData">M15,9H5V5H15M12,19A3,3 0 0,1 9,16A3,3 0 0,1 12,13A3,3 0 0,1 15,16A3,3 0 0,1 12,19M17,3H5C3.89,3 3,3.9 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V7L17,3Z</StreamGeometry>
+        <StreamGeometry x:Key="LoadIconData">M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M12,18V15H8V13H12V10L17,14L12,18M13,9V3.5L18.5,9H13Z</StreamGeometry>
+        <StreamGeometry x:Key="DeleteIconData">M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z</StreamGeometry>
+    </Window.Resources>
+</Window>

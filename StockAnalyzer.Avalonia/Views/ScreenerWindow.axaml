@@ -1,0 +1,163 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:l="clr-namespace:StockAnalyzer.Avalonia.Markup;assembly=StockAnalyzer.Avalonia"
+        xmlns:vm="using:StockAnalyzer.Avalonia.ViewModels"
+        xmlns:behaviors="using:StockAnalyzer.Avalonia.Behaviors"
+        mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="600"
+        x:Class="StockAnalyzer.Avalonia.Views.ScreenerWindow"
+        x:DataType="vm:ScreenerViewModel"
+        Icon="avares://StockAnalyzer.Avalonia/Assets/avalonia-logo.ico"
+        Title="{l:Localize Window_Screener_Title}"
+        Width="900" Height="600"
+        WindowStartupLocation="CenterScreen"
+        behaviors:WindowPersistenceBehavior.PersistenceEnabled="True"
+        Background="{DynamicResource Brush.Background.Primary}"
+        ExtendClientAreaToDecorationsHint="True"
+        ExtendClientAreaTitleBarHeightHint="-1">
+
+    <Window.KeyBindings>
+        <KeyBinding Gesture="Escape" Command="{Binding $parent[Window].Close}"/>
+        <KeyBinding Gesture="Enter" Command="{Binding ScanCommand}"/>
+    </Window.KeyBindings>
+
+    <Window.Resources>
+        <StreamGeometry x:Key="ScreenerHeaderIconData">M15.5,14H14.71L14.43,13.73C15.41,12.59 16,11.11 16,9.5A6.5,6.5 0 0,0 9.5,3A6.5,6.5 0 0,0 3,9.5A6.5,6.5 0 0,0 9.5,16C11.11,16 12.59,15.41 13.73,14.43L14,14.71V15.5L19,20.49L20.49,19L15.5,14M9.5,14C7,14 5,12 5,9.5C5,7 7,5 9.5,5C12,5 14,7 14,9.5C14,12 12,14 9.5,14Z</StreamGeometry>
+    </Window.Resources>
+
+    <Border BorderBrush="{DynamicResource Brush.Border.Primary}" BorderThickness="1">
+        <Grid RowDefinitions="56,*,64">
+
+            <!-- Header (56px) -->
+            <Border Grid.Row="0"
+                    Background="{DynamicResource Brush.Background.Tertiary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="0,0,0,1"
+                    Padding="24,0"
+                    PointerPressed="OnHeaderPointerPressed">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="12">
+                    <PathIcon Data="{StaticResource ScreenerHeaderIconData}" Width="20" Height="20" Foreground="{DynamicResource Brush.Accent.Primary}"/>
+                    <TextBlock Text="{l:Localize Window_Screener_Title}" 
+                               FontSize="{DynamicResource TitleFontSize}" 
+                               FontWeight="SemiBold" 
+                               Foreground="{DynamicResource Brush.Text.Primary}"
+                               VerticalAlignment="Center"/>
+                </StackPanel>
+            </Border>
+
+            <!-- Main Workspace Body -->
+            <Grid Grid.Row="1" ColumnDefinitions="260,*" Margin="16,16,16,12">
+
+                <!-- Left Panel: Configurations -->
+                <Border Grid.Column="0" 
+                        Background="{DynamicResource Brush.Background.Secondary}" 
+                        BorderBrush="{DynamicResource Brush.Border.Primary}"
+                        BorderThickness="1"
+                        CornerRadius="4" 
+                        Margin="0,0,8,0" 
+                        Padding="12">
+                    <Grid RowDefinitions="Auto,Auto,Auto,Auto,*">
+
+                        <TextBlock Grid.Row="0" Text="{l:Localize Label_Criteria}" 
+                                   FontSize="{DynamicResource BaseFontSize}" 
+                                   Foreground="{DynamicResource Brush.Text.Secondary}" 
+                                   Margin="0,0,0,6"/>
+                        <ComboBox Grid.Row="1" HorizontalAlignment="Stretch" Height="36"
+                                  FontSize="{DynamicResource BaseFontSize}"
+                                  ItemsSource="{Binding AvailableConditions}"
+                                  SelectedItem="{Binding SelectedCondition}"/>
+
+                        <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,12,0,6">
+                            <TextBlock Text="{l:Localize Label_TargetSource}" 
+                                       FontSize="{DynamicResource BaseFontSize}" 
+                                       Foreground="{DynamicResource Brush.Text.Secondary}"/>
+                            <TextBlock Text="{Binding TargetSymbols.Count, StringFormat=' ({0})'}" 
+                                       FontSize="{DynamicResource BaseFontSize}" 
+                                       Foreground="{DynamicResource Brush.Text.Secondary}"/>
+                        </StackPanel>
+                        <ComboBox Grid.Row="3" HorizontalAlignment="Stretch" Height="36"
+                                  FontSize="{DynamicResource BaseFontSize}"
+                                  ItemsSource="{Binding TargetSources}"
+                                  SelectedItem="{Binding SelectedTargetSource}">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding DisplayName}" IsEnabled="{Binding !IsHeader}" FontSize="{DynamicResource BaseFontSize}"/>
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
+                    </Grid>
+                </Border>
+
+                <!-- Right Panel: Results -->
+                <Border Grid.Column="1" 
+                        Background="{DynamicResource Brush.Background.Secondary}" 
+                        BorderBrush="{DynamicResource Brush.Border.Primary}"
+                        BorderThickness="1"
+                        CornerRadius="4" 
+                        Margin="8,0,0,0" 
+                        Padding="12">
+                    <Grid RowDefinitions="Auto,*">
+
+                        <TextBlock Grid.Row="0" Text="{l:Localize Label_Results}" 
+                                   FontSize="{DynamicResource TitleFontSize}" 
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Brush.Text.Primary}" 
+                                   Margin="0,0,0,12"/>
+
+                        <ListBox Grid.Row="1" Background="Transparent" BorderThickness="0" 
+                                 Foreground="{DynamicResource Brush.Text.Primary}" 
+                                 FontSize="{DynamicResource BaseFontSize}"
+                                 ItemsSource="{Binding Results}">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Orientation="Horizontal" Spacing="10" Margin="4,2">
+                                        <TextBlock Text="✔ MATCH:" Foreground="{DynamicResource Brush.Accent.Primary}" FontWeight="Bold"/>
+                                        <TextBlock Text="{Binding}" Foreground="{DynamicResource Brush.Text.Primary}"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+
+                        <ProgressBar Grid.Row="1"
+                                     IsIndeterminate="True"
+                                     Height="4"
+                                     VerticalAlignment="Top"
+                                     IsVisible="{Binding IsScanning}"/>
+                    </Grid>
+                </Border>
+            </Grid>
+
+            <!-- Footer (64px) -->
+            <Border Grid.Row="2"
+                    Background="{DynamicResource Brush.Background.Tertiary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="0,1,0,0"
+                    Padding="24,0">
+                <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock Grid.Column="0" 
+                               Text="{Binding StatusMessage}" 
+                               Foreground="{DynamicResource Brush.Text.Secondary}" 
+                               FontSize="{DynamicResource DetailFontSize}"
+                               VerticalAlignment="Center" 
+                               TextWrapping="NoWrap" 
+                               TextTrimming="CharacterEllipsis"/>
+
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                        <Button Content="{l:Localize Btn_Scan}"
+                                Theme="{StaticResource PrimaryButtonStyle}"
+                                Width="100" Height="36"
+                                FontSize="{DynamicResource BaseFontSize}"
+                                Command="{Binding ScanCommand}"
+                                IsEnabled="{Binding IsNotScanning}"/>
+                        <Button Content="{l:Localize Btn_Cancel}"
+                                Theme="{StaticResource SecondaryButtonStyle}"
+                                Width="90" Height="36"
+                                FontSize="{DynamicResource BaseFontSize}"
+                                Command="{Binding $parent[Window].Close}"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </Grid>
+    </Border>
+</Window>

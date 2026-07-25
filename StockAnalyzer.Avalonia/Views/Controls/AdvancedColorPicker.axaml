@@ -1,0 +1,54 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="300" d:DesignHeight="120"
+             x:Class="StockAnalyzer.Avalonia.Views.Controls.AdvancedColorPicker">
+    
+    <UserControl.Resources>
+        <!-- Checkerboard pattern for transparency preview -->
+        <DrawingBrush x:Key="CheckerboardBrush" TileMode="Tile" DestinationRect="0,0,16,16">
+            <DrawingBrush.Drawing>
+                <DrawingGroup>
+                    <GeometryDrawing Brush="White">
+                        <GeometryDrawing.Geometry>
+                            <RectangleGeometry Rect="0,0,16,16" />
+                        </GeometryDrawing.Geometry>
+                    </GeometryDrawing>
+                    <GeometryDrawing Brush="#E0E0E0">
+                        <GeometryDrawing.Geometry>
+                            <GeometryGroup>
+                                <RectangleGeometry Rect="0,0,8,8" />
+                                <RectangleGeometry Rect="8,8,8,8" />
+                            </GeometryGroup>
+                        </GeometryDrawing.Geometry>
+                    </GeometryDrawing>
+                </DrawingGroup>
+            </DrawingBrush.Drawing>
+        </DrawingBrush>
+    </UserControl.Resources>
+
+    <Grid ColumnDefinitions="Auto, *" RowDefinitions="Auto, Auto" Margin="4">
+        <!-- Preview & HEX -->
+        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8">
+            <Border Width="40" Height="40" CornerRadius="4" BorderThickness="1" BorderBrush="#333333">
+                <Panel>
+                    <!-- Checkerboard background -->
+                    <Rectangle Fill="{StaticResource CheckerboardBrush}" />
+                    <!-- Actual color overlay -->
+                    <Rectangle Name="PreviewRectangle" />
+                </Panel>
+            </Border>
+            
+            <TextBox Name="HexInput" Width="100" VerticalAlignment="Center" 
+                     MaxLength="9" FontSize="12" />
+        </StackPanel>
+
+        <!-- Alpha Slider -->
+        <Grid Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" ColumnDefinitions="Auto, *, Auto" Margin="0,8,0,0">
+            <TextBlock Text="Alpha" VerticalAlignment="Center" FontSize="{DynamicResource HelperFontSize}" Foreground="#AAAAAA" Margin="0,0,8,0" />
+            <Slider Name="AlphaSlider" Grid.Column="1" Minimum="0" Maximum="255" SmallChange="1" LargeChange="10" />
+            <TextBlock Name="AlphaText" Grid.Column="2" VerticalAlignment="Center" Width="30" TextAlignment="Right" FontSize="{DynamicResource HelperFontSize}" Margin="8,0,0,0" />
+        </Grid>
+    </Grid>
+</UserControl>
