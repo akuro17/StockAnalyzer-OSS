@@ -55,7 +55,7 @@ jobs:
     # C# Build Pipeline
     - name: Setup .NET SDK
       if: matrix.language == 'csharp'
-      uses: actions/setup-dotnet@v4
+      uses: actions/setup-dotnet@v6
       with:
         dotnet-version: '8.0.x'
 
