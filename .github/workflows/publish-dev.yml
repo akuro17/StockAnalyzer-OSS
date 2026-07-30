@@ -51,7 +51,7 @@ jobs:
         Compress-Archive -Path ./publish/* -DestinationPath ./StockAnalyzer-${{ matrix.rid }}-${{ matrix.mode }}.zip
 
     - name: Upload temporary artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: asset-${{ matrix.rid }}-${{ matrix.mode }}
         path: ./StockAnalyzer-${{ matrix.rid }}-${{ matrix.mode }}.zip
