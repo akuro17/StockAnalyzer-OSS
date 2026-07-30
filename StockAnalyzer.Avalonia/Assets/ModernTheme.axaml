@@ -1,0 +1,69 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Premium Card styling for Borders -->
+    <Style Selector="Border.PremiumCard">
+        <Setter Property="Background" Value="{DynamicResource Brush.Background.Primary}"/>
+        <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="CornerRadius" Value="8"/>
+        <Setter Property="Padding" Value="16"/>
+        <Setter Property="BoxShadow" Value="0 4 8 0 #1A000000"/>
+    </Style>
+
+    <Styles.Resources>
+        <!-- Segmented Capsule ControlTheme for RadioButtons -->
+        <ControlTheme x:Key="SegmentedCapsuleRadioButton" TargetType="RadioButton">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{DynamicResource Brush.Foreground.Primary}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="12,6"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <Border Name="PART_Border"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="{TemplateBinding CornerRadius}">
+                        <ContentPresenter Name="PART_ContentPresenter"
+                                           Content="{TemplateBinding Content}"
+                                           Margin="{TemplateBinding Padding}"
+                                           HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                           VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+                    </Border>
+                </ControlTemplate>
+            </Setter>
+            
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.15" Easing="CircularEaseOut"/>
+                    <BrushTransition Property="Foreground" Duration="0:0:0.15" Easing="CircularEaseOut"/>
+                    <BrushTransition Property="BorderBrush" Duration="0:0:0.15" Easing="CircularEaseOut"/>
+                </Transitions>
+            </Setter>
+
+            <!-- State Selectors -->
+            <Style Selector="^:pointerover /template/ Border#PART_Border">
+                <Setter Property="Background" Value="{DynamicResource Brush.Background.Hover}"/>
+            </Style>
+            
+            <Style Selector="^:checked">
+                <Setter Property="Background" Value="{DynamicResource Brush.Accent.Primary}"/>
+                <Setter Property="Foreground" Value="#FFFFFF"/>
+                <Setter Property="BorderBrush" Value="{DynamicResource Brush.Accent.Primary}"/>
+            </Style>
+            
+            <Style Selector="^:checked:pointerover /template/ Border#PART_Border">
+                <Setter Property="Background" Value="{DynamicResource Brush.Accent.Primary}"/>
+                <Setter Property="BorderBrush" Value="{DynamicResource Brush.Accent.Primary}"/>
+            </Style>
+        </ControlTheme>
+    </Styles.Resources>
+
+</Styles>

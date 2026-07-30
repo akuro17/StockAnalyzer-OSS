@@ -1,0 +1,139 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Xunit;
+using StockAnalyzer.Core.Models.Indicators.Trend; // For Ichimoku
+using System.Windows.Media;
+
+namespace StockAnalyzer.Tests
+{
+    public class Batch6Tests
+    {
+        [Fact]
+        public void CMF_HandlesEdgeCases_WithoutException()
+        {
+            var indicator = new ChaikinMoneyFlowIndicator(20, Colors.Green);
+
+            // 1. Null input
+            indicator.Calculate(null!); // Intentional null
+            Assert.Empty(indicator.Values);
+
+            // 2. Empty list
+            indicator.Calculate(new List<CandleData>());
+            Assert.Empty(indicator.Values);
+
+            // 3. Single candle (Insufficient data)
+            var candles = new List<CandleData> { new CandleData { Close = 100, High=100, Low=100, Volume=1000 } };
+            indicator.Calculate(candles);
+            Assert.Single(indicator.Values);
+            Assert.Null(indicator.Values[0]);
+        }
+
+        [Fact]
+        public void Ichimoku_CalculatesCorrectly()
+        {
+            // Setup parameters
+            int tenkanP = 9;
+            int kijunP = 26;
+            int senkouBP = 52;
+            int displacement = 26;
+            
+            var indicator = new IchimokuIndicator(tenkanP, kijunP, senkouBP, displacement, Colors.Red);
+
+            // Create data
+            // We need enough data to generate Senkou Span B (52 periods) + Displacement.
+            // Let's create 100 candles.
+            // To make verification easy:
+            // High = 200, Low = 100 for the first 60 candles.
+            // This ensures (H+L)/2 = 150 for all components initially.
+            
+            var candles = new List<CandleData>();
+            var startDate = DateTime.Today.AddDays(-100);
+
+            for (int i = 0; i < 100; i++)
+            {
+                candles.Add(new CandleData 
+                { 
+                    Timestamp = startDate.AddDays(i),
+                    High = 200, 
+                    Low = 100, 
+                    Close = 150, 
+                    Open = 150 
+                });
+            }
+
+            // Execute
+            indicator.Calculate(candles);
+
+            // Access Snapshot via public properties
+            var tenkan = indicator.TenkanSen;
+            var kijun = indicator.KijunSen;
+            var senkouA = indicator.SenkouSpanA;
+            var senkouB = indicator.SenkouSpanB;
+            var chikou = indicator.ChikouSpan;
+
+            // --- Verification ---
+
+            // 1. Tenkan & Kijun (Current Time)
+            // Index 55 (enough data for both).
+            // Max(9) = 200, Min(9) = 100 -> Avg = 150.
+            Assert.Equal(150m, tenkan[55]);
+            Assert.Equal(150m, kijun[55]);
+
+            // 2. Chikou Span (Lagging)
+            // Plotted at Time - Displacement.
+            // The value at `index - 26` should be Close[index].
+            // Or: Value at `index` should equal Close[index + 26].
+            // Wait, implementation details:
+            // Snapshots are aligned to the array size `count + displacement`.
+            // Chikou logic: cBuf[i - displacement] = Close[i].
+            // So Chikou at index 0 corresponds to Close[26].
+            // Close at index 50 (Day 50) is written to Chikou index 24 (50-26).
+            // Let's check Chikou at index 24. It should be Close[50] -> 150.
+            Assert.Equal(150m, chikou[24]);
+
+            // 3. Senkou Span A (Leading)
+            // (Tenkan + Kijun) / 2 shifted FORWARD by Displacement.
+            // Value at `index + 26` = (Tenkan[index] + Kijun[index]) / 2.
+            // At index 55: Tenkan=150, Kijun=150 -> Avg=150.
+            // This should be at index 55 + 26 = 81.
+            Assert.Equal(150m, senkouA[81]);
+
+            // 4. Senkou Span B (Leading)
+            // (Max(52) + Min(52)) / 2 shifted FORWARD.
+            // At index 55: Max=200, Min=100 (since all data is 200/100) -> Avg=150.
+            // This should be at index 55 + 26 = 81.
+            Assert.Equal(150m, senkouB[81]);
+            
+            // 5. Change Data to Verify Dynamic Logic
+            // Let's modify the last few candles to change High/Low
+            // Index 90: High = 300.
+            // Tenkan (Period 9) at index 95 includes index 90.
+            // (300 + 100) / 2 = 200.
+            // Create a new set of data for this specific check to avoid side effects
+            var dynamicCandles = new List<CandleData>();
+            for (int i = 0; i < 100; i++)
+            {
+                decimal h = 200;
+                if (i == 90) h = 300; // Spike
+                
+                dynamicCandles.Add(new CandleData 
+                { 
+                    Timestamp = startDate.AddDays(i),
+                    High = h, 
+                    Low = 100, 
+                    Close = 150 
+                });
+            }
+            indicator.Calculate(dynamicCandles);
+            
+            // Check Tenkan at index 91. Window [83..91]. Contains 90.
+            // Max=300, Min=100 -> Avg=200.
+            Assert.Equal(200m, indicator.TenkanSen[91]);
+            
+            // Check previous Tenkan (at 89). Window [81..89]. Does NOT contain 90.
+            // Max=200, Min=100 -> Avg=150.
+            Assert.Equal(150m, indicator.TenkanSen[89]);
+        }
+    }
+}
