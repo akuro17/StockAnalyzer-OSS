@@ -1,0 +1,403 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:l="clr-namespace:StockAnalyzer.Avalonia.Markup;assembly=StockAnalyzer.Avalonia"
+        xmlns:vm="using:StockAnalyzer.Avalonia.ViewModels"
+        xmlns:views="using:StockAnalyzer.Avalonia.Views"
+        xmlns:converters="using:StockAnalyzer.Avalonia.Converters"
+        xmlns:behaviors="using:StockAnalyzer.Avalonia.Behaviors"
+        xmlns:c="clr-namespace:StockAnalyzer.Avalonia.Common;assembly=StockAnalyzer.Avalonia"
+        xmlns:models="using:StockAnalyzer.Core.Models.Screener"
+        mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="700"
+        x:Class="StockAnalyzer.Avalonia.Views.ScreenerWindow"
+        x:DataType="vm:ScreenerViewModel"
+        Icon="avares://StockAnalyzer.Avalonia/Assets/avalonia-logo.ico"
+        Title="{l:Localize Window_Screener_Title}"
+        Width="1200" Height="700"
+        WindowStartupLocation="CenterScreen"
+        behaviors:WindowPersistenceBehavior.PersistenceEnabled="True"
+        Background="{DynamicResource Brush.Background.Primary}"
+        ExtendClientAreaToDecorationsHint="True"
+        ExtendClientAreaTitleBarHeightHint="-1">
+
+    <Window.KeyBindings>
+        <KeyBinding Gesture="Escape" Command="{Binding $parent[Window].Close}"/>
+        <KeyBinding Gesture="Enter" Command="{Binding ScanCommand}"/>
+    </Window.KeyBindings>
+
+    <Window.Styles>
+        <!-- Row Style: Matching Tickers Tab -->
+        <Style Selector="TreeDataGridRow">
+            <Setter Property="MinHeight" Value="28"/>
+            <Setter Property="Height" Value="28"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border.Primary}"/>
+            <Setter Property="BorderThickness" Value="0,0,0,1"/>
+        </Style>
+        <Style Selector="TreeDataGridRow:pointerover">
+            <Setter Property="Background" Value="{DynamicResource Brush.Background.Hover}"/>
+        </Style>
+        <Style Selector="TreeDataGridRow:selected">
+            <Setter Property="Background" Value="{DynamicResource Brush.Selection.Background}"/>
+        </Style>
+        <Style Selector="TreeDataGridRow:selected:not(:focus)">
+            <Setter Property="Background" Value="{DynamicResource Brush.Selection.Background}"/>
+        </Style>
+
+        <!-- Vertical Grid Lines -->
+        <Style Selector="TreeDataGridCell">
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border.Primary}"/>
+            <Setter Property="BorderThickness" Value="0,0,1,0"/>
+        </Style>
+        <Style Selector="TreeDataGridTextCell">
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border.Primary}"/>
+            <Setter Property="BorderThickness" Value="0,0,1,0"/>
+        </Style>
+        <Style Selector="TreeDataGridTextCell /template/ Border#CellBorder">
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border.Primary}"/>
+            <Setter Property="BorderThickness" Value="0,0,1,0"/>
+        </Style>
+        <Style Selector="TreeDataGridTemplateCell">
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border.Primary}"/>
+            <Setter Property="BorderThickness" Value="0,0,1,0"/>
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <Border BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            Background="{TemplateBinding Background}"
+                            Padding="{TemplateBinding Padding}">
+                        <ContentPresenter Name="PART_ContentPresenter"
+                                          Content="{TemplateBinding Content}"
+                                          ContentTemplate="{TemplateBinding ContentTemplate}"/>
+                    </Border>
+                </ControlTemplate>
+            </Setter>
+        </Style>
+
+        <!-- Header Styling -->
+        <Style Selector="TreeDataGridColumnHeader">
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border.Primary}"/>
+            <Setter Property="BorderThickness" Value="0,0,1,1"/>
+            <Setter Property="Background" Value="{DynamicResource Brush.Background.Secondary}"/>
+            <Setter Property="FontSize" Value="{DynamicResource BaseFontSize}"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="TreeDataGridColumnHeader /template/ Border">
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border.Primary}"/>
+            <Setter Property="BorderThickness" Value="0,0,1,1"/>
+        </Style>
+    </Window.Styles>
+
+    <Window.Resources>
+        <StreamGeometry x:Key="ScreenerHeaderIconData">M15.5,14H14.71L14.43,13.73C15.41,12.59 16,11.11 16,9.5A6.5,6.5 0 0,0 9.5,3A6.5,6.5 0 0,0 3,9.5A6.5,6.5 0 0,0 9.5,16C11.11,16 12.59,15.41 13.73,14.43L14,14.71V15.5L19,20.49L20.49,19L15.5,14M9.5,14C7,14 5,12 5,9.5C5,7 7,5 9.5,5C12,5 14,7 14,9.5C14,7 12,5 9.5,5Z</StreamGeometry>
+        <StreamGeometry x:Key="IndicatorsHeaderIconData">M19,3H5C3.9,3 3,3.9 3,5V19C3,20.1 3.9,21 5,21H19C20.1,21 21,20.1 21,19V5C21,3.9 20.1,3 19,3M9,17H7V10H9V17M13,17H11V7H13V17M17,17H15V13H17V17Z</StreamGeometry>
+        <StreamGeometry x:Key="DeleteIconData">M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z</StreamGeometry>
+    </Window.Resources>
+
+    <Border BorderBrush="{DynamicResource Brush.Border.Primary}" BorderThickness="1">
+        <Grid RowDefinitions="56,*,64">
+
+            <!-- Header (56px) with Window Drag support -->
+            <Border Grid.Row="0"
+                    Background="{DynamicResource Brush.Background.Tertiary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="0,0,0,1"
+                    Padding="16,0"
+                    PointerPressed="OnHeaderPointerPressed">
+                <Grid ColumnDefinitions="Auto, *">
+                    <!-- Tab Headers strip -->
+                    <TabControl Grid.Column="0"
+                                SelectedIndex="{Binding SelectedTabIndex, Mode=TwoWay}"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                VerticalAlignment="Center">
+                        <TabControl.Styles>
+                            <Style Selector="TabControl">
+                                <Setter Property="Padding" Value="0"/>
+                                <Setter Property="Margin" Value="0"/>
+                            </Style>
+                            <Style Selector="TabItem">
+                                <Setter Property="Padding" Value="14,8"/>
+                                <Setter Property="Margin" Value="0,0,4,0"/>
+                                <Setter Property="CornerRadius" Value="4"/>
+                                <Setter Property="FontSize" Value="14"/>
+                            </Style>
+                        </TabControl.Styles>
+                        <TabItem>
+                            <TabItem.Header>
+                                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                    <PathIcon Data="{StaticResource ScreenerHeaderIconData}" Width="18" Height="18" Foreground="{DynamicResource Brush.Accent.Primary}"/>
+                                    <TextBlock Text="{l:Localize Window_Screener_Title}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </TabItem.Header>
+                        </TabItem>
+                        <TabItem>
+                            <TabItem.Header>
+                                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                    <PathIcon Data="{StaticResource IndicatorsHeaderIconData}" Width="18" Height="18" Foreground="{DynamicResource Brush.Accent.Primary}"/>
+                                    <TextBlock Text="{l:Localize Tab_Indicators}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </TabItem.Header>
+                        </TabItem>
+                    </TabControl>
+                </Grid>
+            </Border>
+
+            <!-- Content Panel switching based on SelectedTabIndex -->
+            <Grid Grid.Row="1">
+                <!-- Tab 0: Main Screener Workspace Body -->
+                <Grid ColumnDefinitions="260*, Auto, 600*" Margin="16,16,16,12" IsVisible="{Binding SelectedTabIndex, Converter={x:Static converters:NumericalConverters.IsEqualToZero}}">
+
+                    <!-- Left Panel: Configurations & Criteria -->
+                    <Border Grid.Column="0" 
+                            MinWidth="180"
+                            Background="{DynamicResource Brush.Background.Secondary}" 
+                            BorderBrush="{DynamicResource Brush.Border.Primary}"
+                            BorderThickness="1"
+                            CornerRadius="4" 
+                            Margin="0,0,4,0" 
+                            Padding="12">
+                        <Grid RowDefinitions="Auto,*,Auto,Auto">
+
+                            <!-- Criteria Header -->
+                            <Grid Grid.Row="0" ColumnDefinitions="*, Auto" Margin="0,0,0,8">
+                                <TextBlock Grid.Column="0" Text="{l:Localize Label_Criteria}" 
+                                           FontSize="{DynamicResource BaseFontSize}" 
+                                           FontWeight="SemiBold"
+                                           Foreground="{DynamicResource Brush.Text.Secondary}" 
+                                           VerticalAlignment="Center"/>
+                            </Grid>
+
+                            <!-- Criteria Registered List (Replacing old single ComboBox dropdown) -->
+                            <Border Grid.Row="1"
+                                    Background="{DynamicResource Brush.Background.Tertiary}"
+                                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                                    BorderThickness="1"
+                                    CornerRadius="4"
+                                    Margin="0,0,0,12"
+                                    Padding="4">
+                                <Grid RowDefinitions="*">
+                                    <ListBox ItemsSource="{Binding IndicatorRegistrationViewModel.RegisteredEntries}"
+                                             Background="Transparent"
+                                             BorderThickness="0">
+                                        <ListBox.ItemTemplate>
+                                             <DataTemplate x:DataType="models:ScreenerIndicatorEntry">
+                                                 <Grid ColumnDefinitions="Auto, Auto, *, Auto" Margin="2">
+                                                     <!-- Fix 1: Label badge [A], [B] moved to left of CheckBox -->
+                                                     <Border Grid.Column="0"
+                                                             Background="{DynamicResource Brush.Accent.Primary.Transparent}"
+                                                             BorderBrush="{DynamicResource Brush.Accent.Primary}"
+                                                             BorderThickness="1" CornerRadius="3" Padding="4,1"
+                                                             VerticalAlignment="Center" Margin="0,0,4,0">
+                                                         <TextBlock Text="{Binding Label}"
+                                                                    FontSize="11" FontWeight="Bold"
+                                                                    Foreground="{DynamicResource Brush.Accent.Primary}"/>
+                                                     </Border>
+                                                     <CheckBox Grid.Column="1" IsChecked="{Binding IsEnabled}" VerticalAlignment="Center"/>
+                                                     <StackPanel Grid.Column="2" Margin="4,0,0,0" VerticalAlignment="Center">
+                                                          <TextBlock Text="{Binding DisplayName}"
+                                                                     FontSize="{DynamicResource DetailFontSize}"
+                                                                     FontWeight="SemiBold"
+                                                                     Foreground="{DynamicResource Brush.Text.Primary}"
+                                                                     VerticalAlignment="Center"/>
+                                                          <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                                              <TextBlock Text="{Binding PeriodDisplayName}"
+                                                                         IsVisible="{Binding HasPeriod}"
+                                                                         FontSize="{DynamicResource HelperFontSize}"
+                                                                         Foreground="{DynamicResource Brush.Text.Secondary}"/>
+                                                              <TextBlock Text="{Binding TimeFrameDisplayName}"
+                                                                         FontSize="{DynamicResource HelperFontSize}"
+                                                                         Foreground="{DynamicResource Brush.Text.Secondary}"/>
+                                                              <TextBlock Text="{Binding Offset, StringFormat='Offset: {0}'}"
+                                                                         FontSize="{DynamicResource HelperFontSize}"
+                                                                         Foreground="{DynamicResource Brush.Text.Secondary}"/>
+                                                              <Button Command="{Binding $parent[Window].((vm:ScreenerViewModel)DataContext).ToggleEntryLogicalOperatorCommand}"
+                                                                      CommandParameter="{Binding}"
+                                                                      Background="Transparent" BorderThickness="0" Padding="2,0" Margin="4,0,0,0"
+                                                                      ToolTip.Tip="Toggle Logical Operator (AND ∩ / OR ∪)"
+                                                                      VerticalAlignment="Center">
+                                                                  <TextBlock Text="{Binding LogicalOperatorSymbol}" 
+                                                                             FontSize="{DynamicResource HelperFontSize}" FontWeight="Bold"
+                                                                             Foreground="{DynamicResource Brush.Accent.Primary}"/>
+                                                              </Button>
+                                                          </StackPanel>
+                                                      </StackPanel>
+                                                      <Button Grid.Column="3"
+                                                             Command="{Binding $parent[Window].((vm:ScreenerViewModel)DataContext).IndicatorRegistrationViewModel.RemoveEntryCommand}"
+                                                             CommandParameter="{Binding}"
+                                                             Classes="accent"
+                                                             Width="24" Height="24"
+                                                             Padding="0"
+                                                             HorizontalContentAlignment="Center"
+                                                             VerticalContentAlignment="Center"
+                                                             VerticalAlignment="Center"
+                                                             Margin="4,0,0,0"
+                                                             ToolTip.Tip="{l:Localize ToolTip_DeleteCondition}">
+                                                         <PathIcon Data="{StaticResource DeleteIconData}"
+                                                                   Width="12" Height="12"
+                                                                   Foreground="{DynamicResource Brush.Button.Text}"/>
+                                                     </Button>
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ListBox.ItemTemplate>
+                                    </ListBox>
+
+                                    <!-- Placeholder text when no registered entries -->
+                                    <TextBlock Text="{l:Localize Msg_NoCriteriaConfigured}"
+                                               FontSize="{DynamicResource DetailFontSize}"
+                                               Foreground="{DynamicResource Brush.Text.Tertiary}"
+                                               HorizontalAlignment="Center"
+                                               VerticalAlignment="Center"
+                                               TextWrapping="Wrap"
+                                               TextAlignment="Center"
+                                               Margin="8"
+                                               IsVisible="{Binding IndicatorRegistrationViewModel.RegisteredEntries.Count, Converter={x:Static converters:NumericalConverters.IsEqualToZero}}"/>
+                                </Grid>
+                            </Border>
+
+                            <!-- Target Source Selection -->
+                            <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,0,0,6">
+                                <TextBlock Text="{l:Localize Label_TargetSource}" 
+                                           FontSize="{DynamicResource BaseFontSize}" 
+                                           Foreground="{DynamicResource Brush.Text.Secondary}"/>
+                                <TextBlock Text="{Binding TargetSymbols.Count, StringFormat=' ({0})'}" 
+                                           FontSize="{DynamicResource BaseFontSize}" 
+                                           Foreground="{DynamicResource Brush.Text.Secondary}"/>
+                            </StackPanel>
+                            <ComboBox Grid.Row="3" HorizontalAlignment="Stretch" Height="36"
+                                      FontSize="{DynamicResource BaseFontSize}"
+                                      ItemsSource="{Binding TargetSources}"
+                                      SelectedItem="{Binding SelectedTargetSource}">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding DisplayName}" IsEnabled="{Binding !IsHeader}" FontSize="{DynamicResource BaseFontSize}"/>
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                        </Grid>
+                    </Border>
+
+                    <!-- User Resizable Splitter between Criteria and Results -->
+                    <GridSplitter Grid.Column="1"
+                                  Width="8"
+                                  ResizeDirection="Columns"
+                                  ResizeBehavior="PreviousAndNext"
+                                  HorizontalAlignment="Stretch"
+                                  VerticalAlignment="Stretch"
+                                  Cursor="SizeWestEast"
+                                  Background="{DynamicResource Brush.Background.Primary}"
+                                  Margin="2,0"/>
+
+                    <!-- Right Panel: Results -->
+                    <Border Grid.Column="2" 
+                            MinWidth="250"
+                            Background="{DynamicResource Brush.Background.Secondary}" 
+                            BorderBrush="{DynamicResource Brush.Border.Primary}"
+                            BorderThickness="1"
+                            CornerRadius="4" 
+                            Margin="4,0,0,0" 
+                            Padding="12">
+                        <Grid RowDefinitions="Auto,*">
+
+                            <TextBlock Grid.Row="0" Text="{l:Localize Label_Results}" 
+                                       FontSize="{DynamicResource TitleFontSize}" 
+                                       FontWeight="SemiBold"
+                                       Foreground="{DynamicResource Brush.Text.Primary}" 
+                                       Margin="0,0,0,12"/>
+
+                            <TreeDataGrid Grid.Row="1"
+                                          x:Name="ResultsGrid"
+                                          FontSize="{DynamicResource DetailFontSize}"
+                                          c:TreeDataGridExtensions.Items="{Binding ResultItems}"
+                                          c:TreeDataGridExtensions.SelectedItem="{Binding SelectedItem}"
+                                          c:TreeDataGridExtensions.DynamicColumns="{Binding ActiveColumns}"
+                                          Background="Transparent"
+                                          CanUserResizeColumns="True"
+                                          CanUserSortColumns="True"
+                                          BorderThickness="0">
+                                <TreeDataGrid.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Header="{l:Localize TickerList_Columns}" 
+                                                  Command="{Binding ShowColumnChooserCommand}"/>
+                                    </ContextMenu>
+                                </TreeDataGrid.ContextMenu>
+                            </TreeDataGrid>
+
+                            <ProgressBar Grid.Row="1"
+                                         IsIndeterminate="True"
+                                         Height="4"
+                                         VerticalAlignment="Top"
+                                         IsVisible="{Binding IsScanning}"/>
+                        </Grid>
+                    </Border>
+                </Grid>
+
+                <!-- Tab 1: Indicator Registration View Wrapper -->
+                <Border IsVisible="{Binding SelectedTabIndex, Converter={x:Static converters:NumericalConverters.IsGreaterThanZero}}"
+                        Margin="16,16,16,12">
+                    <views:IndicatorRegistrationView DataContext="{Binding IndicatorRegistrationViewModel}"/>
+                </Border>
+            </Grid>
+
+            <!-- Footer (64px) -->
+            <Border Grid.Row="2"
+                    Background="{DynamicResource Brush.Background.Tertiary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="0,1,0,0"
+                    Padding="24,0">
+                <Grid ColumnDefinitions="*,Auto">
+                    <!-- Left Side: Status Message & Criteria Execution Flow Expression Badges -->
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding StatusMessage}" 
+                                   Foreground="{DynamicResource Brush.Text.Secondary}" 
+                                   FontSize="{DynamicResource DetailFontSize}"
+                                   VerticalAlignment="Center" 
+                                   TextWrapping="NoWrap" 
+                                   TextTrimming="CharacterEllipsis"/>
+
+                        <ItemsControl ItemsSource="{Binding CriteriaFlowItems}" VerticalAlignment="Center">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Orientation="Horizontal" Spacing="6"/>
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                        <Border Background="{DynamicResource Brush.Accent.Primary.Transparent}"
+                                                BorderBrush="{DynamicResource Brush.Accent.Primary}"
+                                                BorderThickness="1" CornerRadius="4" Padding="6,2">
+                                            <TextBlock Text="{Binding DisplayText}" 
+                                                       FontSize="{DynamicResource DetailFontSize}"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource Brush.Text.Primary}"/>
+                                        </Border>
+                                        <TextBlock Text="{Binding OperatorSymbol}" 
+                                                   Foreground="{DynamicResource Brush.Text.Muted}" 
+                                                   FontSize="{DynamicResource DetailFontSize}"
+                                                   VerticalAlignment="Center"
+                                                   IsVisible="{Binding HasNext}"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                        <Button Content="{l:Localize Btn_Scan}"
+                                Theme="{StaticResource PrimaryButtonStyle}"
+                                Width="100" Height="36"
+                                FontSize="{DynamicResource BaseFontSize}"
+                                Command="{Binding ScanCommand}"
+                                IsEnabled="{Binding IsNotScanning}"/>
+                        <Button Content="{l:Localize Btn_Cancel}"
+                                Theme="{StaticResource SecondaryButtonStyle}"
+                                Width="90" Height="36"
+                                FontSize="{DynamicResource BaseFontSize}"
+                                Command="{Binding $parent[Window].Close}"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </Grid>
+    </Border>
+</Window>

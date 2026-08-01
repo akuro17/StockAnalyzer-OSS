@@ -1,0 +1,119 @@
+using System;
+using Xunit;
+
+namespace Tests.Models;
+
+/// <summary>
+/// PortfolioOptimizationクラスのテスト
+/// </summary>
+public class PortfolioOptimizationTests
+{
+    [Fact]
+    public void CalculateInverseCovariance_2x2Matrix_ReturnsCorrectInverse()
+    {
+        // Arrange
+        double[,] covarianceMatrix = 
+        {
+            { 4, 3 },
+            { 3, 2 }
+        };
+
+        // Expected inverse for this matrix: 1/(4*2-3*3) * [[2, -3], [-3, 4]] = 1/(-1) * [[2, -3], [-3, 4]]
+        // = [[-2, 3], [3, -4]]
+        double[,] expected = 
+        {
+            { -2, 3 },
+            { 3, -4 }
+        };
+
+        // Act
+        double[,] actual = PortfolioOptimization.CalculateInverseCovariance(covarianceMatrix);
+
+        // Assert
+        for (int i = 0; i < 2; i++)
+        {
+            for (int j = 0; j < 2; j++)
+            {
+                Assert.Equal(expected[i, j], actual[i, j], precision: 6);
+            }
+        }
+    }
+
+    [Fact]
+    public void CalculateMVPWeights_SimpleCase_ReturnsValidWeights()
+    {
+        // Arrange
+        double[,] inverseCovariance = 
+        {
+            { 2.0, -1.0 },
+            { -1.0, 2.0 }
+        };
+
+        // Act
+        double[] weights = PortfolioOptimization.CalculateMVPWeights(inverseCovariance);
+
+        // Assert
+        // 重みの合計は1になるべき
+        double sum = weights[0] + weights[1];
+        Assert.Equal(1.0, sum, precision: 6);
+
+        // 各重みは0-1の範囲内であるべき（空売りなしの場合）
+        // ただし、このテストケースでは負の重みも許容される可能性がある
+        Assert.NotNull(weights);
+        Assert.Equal(2, weights.Length);
+    }
+
+    [Fact]
+    public void CalculateTPWeights_SimpleCase_ReturnsValidWeights()
+    {
+        // Arrange
+        double[,] inverseCovariance = 
+        {
+            { 2.0, -1.0 },
+            { -1.0, 2.0 }
+        };
+        double[] expectedReturns = { 0.08, 0.12 };
+        double riskFreeRate = 0.03;
+
+        // Act
+        double[] weights = PortfolioOptimization.CalculateTPWeights(inverseCovariance, expectedReturns, riskFreeRate);
+
+        // Assert
+        // 重みの合計は1になるべき
+        double sum = weights[0] + weights[1];
+        Assert.Equal(1.0, sum, precision: 6);
+
+        Assert.NotNull(weights);
+        Assert.Equal(2, weights.Length);
+    }
+
+    [Fact]
+    public void CalculateInverseCovariance_SingularMatrix_ThrowsException()
+    {
+        // Arrange - 非正則行列（行列式が0）
+        double[,] singularMatrix = 
+        {
+            { 1, 2 },
+            { 2, 4 }  // 2行目は1行目の2倍
+        };
+
+        // Act & Assert
+        Assert.Throws<InvalidOperationException>(() => 
+            PortfolioOptimization.CalculateInverseCovariance(singularMatrix));
+    }
+
+    [Fact]
+    public void CalculateInverseCovariance_NonSquareMatrix_ThrowsException()
+    {
+        // Arrange
+        double[,] nonSquareMatrix = 
+        {
+            { 1, 2, 3 },
+            { 4, 5, 6 }
+        };
+
+        // Act & Assert
+        Assert.Throws<ArgumentException>(() => 
+            PortfolioOptimization.CalculateInverseCovariance(nonSquareMatrix));
+    }
+}

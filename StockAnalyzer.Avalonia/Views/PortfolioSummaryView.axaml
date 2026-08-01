@@ -1,0 +1,434 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:StockAnalyzer.Avalonia.ViewModels"
+             xmlns:l="using:StockAnalyzer.Avalonia.Markup"
+             xmlns:views="using:StockAnalyzer.Avalonia.Views"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+             x:Class="StockAnalyzer.Avalonia.Views.PortfolioSummaryView"
+             x:DataType="vm:PortfolioSummaryViewModel"
+             Background="{DynamicResource Brush.Background.Secondary}">
+
+    <UserControl.Styles>
+        <Style Selector="TextBlock.value">
+            <!-- FontFamily is inherited from system default to match Tickers tab -->
+        </Style>
+        <Style Selector="TextBlock.profit">
+            <Setter Property="Foreground" Value="{DynamicResource Brush.Semantic.Success}"/>
+        </Style>
+        <Style Selector="TextBlock.loss">
+            <Setter Property="Foreground" Value="{DynamicResource Brush.Semantic.Error}"/>
+        </Style>
+        <Style Selector="TextBlock.neutral">
+            <Setter Property="Foreground" Value="{DynamicResource Brush.Semantic.Neutral}"/>
+        </Style>
+        
+        <Style Selector="Border.card">
+            <Setter Property="Background" Value="{DynamicResource Brush.Background.Primary}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border.Primary}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="Padding" Value="12"/>
+            <Setter Property="Margin" Value="4"/>
+        </Style>
+        
+        <Style Selector="DataGrid DataGridCell">
+            <Setter Property="FontSize" Value="{DynamicResource DetailFontSize}"/>
+        </Style>
+        
+        <Style Selector="DataGrid DataGridRow">
+            <Setter Property="FontSize" Value="{DynamicResource DetailFontSize}"/>
+        </Style>
+        
+        <Style Selector="DataGrid DataGridColumnHeader">
+            <Setter Property="FontSize" Value="{DynamicResource BaseFontSize}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+
+        <!-- Selection Styling: Matching Tickers Tab -->
+        <Style Selector="DataGridRow:selected">
+            <Setter Property="Background" Value="{DynamicResource Stock.Brush.Accent}"/>
+            <Setter Property="Foreground" Value="{DynamicResource Stock.Brush.Foreground.Inverse}"/>
+        </Style>
+        <Style Selector="DataGridRow:selected /template/ Rectangle#BackgroundRectangle">
+            <Setter Property="Fill" Value="{DynamicResource Stock.Brush.Accent}"/>
+        </Style>
+        <!-- For when the window is inactive -->
+        <Style Selector="DataGridRow:selected:not(:focus) /template/ Rectangle#BackgroundRectangle">
+            <Setter Property="Fill" Value="{DynamicResource Stock.Brush.Accent}"/>
+        </Style>
+
+        <Style Selector="DataGridRow:pointerover /template/ Rectangle#BackgroundRectangle">
+            <Setter Property="Fill" Value="{DynamicResource Brush.Background.Hover}"/>
+        </Style>
+        <Style Selector="DataGrid#PositionsDataGrid DataGridCell" x:CompileBindings="False">
+            <Setter Property="ClipToBounds" Value="False"/>
+            <Setter Property="BorderThickness">
+                <MultiBinding Converter="{x:Static views:SymbolCellBorderConverter.Instance}">
+                    <Binding Path="." />
+                    <Binding Path="Column.DisplayIndex" RelativeSource="{RelativeSource Self}" />
+                </MultiBinding>
+            </Setter>
+        </Style>
+        <Style Selector="DataGrid#PositionsDataGrid DataGridRow" x:DataType="vm:PortfolioPositionViewModel">
+            <Setter Property="ClipToBounds" Value="False"/>
+            <Setter Property="ZIndex" Value="{Binding ZIndex}"/>
+        </Style>
+        <Style Selector="DataGrid#PositionsDataGrid Border.SymbolBadge">
+            <Setter Property="Background" Value="{DynamicResource Brush.Background.Primary}"/>
+        </Style>
+        <Style Selector="DataGrid#PositionsDataGrid DataGridRow:pointerover Border.SymbolBadge">
+            <Setter Property="Background" Value="{DynamicResource Brush.Background.Hover}"/>
+        </Style>
+        <Style Selector="DataGrid#PositionsDataGrid DataGridRow:selected Border.SymbolBadge">
+            <Setter Property="Background" Value="{DynamicResource Stock.Brush.Accent}"/>
+        </Style>
+        <Style Selector="TreeViewItem /template/ ContentPresenter#PART_HeaderPresenter">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+        </Style>
+        <Style Selector="TabItem">
+            <Setter Property="ContextMenu" Value="{x:Null}"/>
+        </Style>
+        <Style Selector="DataGridColumnHeader">
+            <Setter Property="ContextMenu" Value="{x:Null}"/>
+        </Style>
+    </UserControl.Styles>
+
+    <Grid ColumnDefinitions="240,1,*">
+        <!-- Left Pane: Hierarchical TreeView -->
+        <Border Grid.Column="0" BorderThickness="0">
+            <TreeView x:Name="GroupsTreeView" ItemsSource="{Binding Groups}" SelectedItem="{Binding SelectedNode}">
+                <TreeView.Styles>
+                    <Style Selector="TreeViewItem" x:DataType="vm:TreeNode">
+                        <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
+                    </Style>
+                </TreeView.Styles>
+                <TreeView.ItemTemplate>
+                    <TreeDataTemplate DataType="vm:TreeNode" ItemsSource="{Binding Children}">
+                        <StackPanel Orientation="Horizontal" Spacing="8" Margin="4">
+                            <!-- Simple visual indicator for profile nodes vs root portfolios node -->
+                            <PathIcon Data="{StaticResource Icon.Settings}" Width="14" Height="14" 
+                                      Foreground="{DynamicResource Brush.Foreground.Secondary}"
+                                      IsVisible="{Binding !IsAggregate}"/>
+                            <PathIcon Data="{StaticResource Icon.Grid}" Width="14" Height="14" 
+                                      Foreground="{DynamicResource Stock.Brush.Accent}"
+                                      IsVisible="{Binding IsAggregate}"/>
+                            <TextBlock Text="{Binding Name}" VerticalAlignment="Center" FontSize="{DynamicResource BaseFontSize}"/>
+                        </StackPanel>
+                    </TreeDataTemplate>
+                </TreeView.ItemTemplate>
+            </TreeView>
+        </Border>
+
+        <!-- Vertical Separator (Visible Line) -->
+        <Border Grid.Column="1" 
+                Width="1" 
+                Background="{DynamicResource Brush.Border.Primary}" 
+                HorizontalAlignment="Stretch" />
+
+        <!-- Vertical Splitter (Transparent Hit Area) -->
+        <GridSplitter Grid.Column="1" 
+                      Width="5" 
+                      HorizontalAlignment="Stretch" 
+                      Background="Transparent" />
+
+        <!-- Right Pane: Dashboard & Positions Grid -->
+        <TabControl Grid.Column="2" Margin="12" ContextMenu="{x:Null}" ContextRequested="OnTabControlContextRequested">
+            <!-- Tab 0: Summary -->
+            <TabItem Header="Summary">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
+                    <Border Margin="12" Padding="16" 
+                            Background="{DynamicResource Brush.Background.Primary}"
+                            CornerRadius="8"
+                            BorderThickness="1"
+                            BorderBrush="{DynamicResource Brush.Border.Primary}"
+                            HorizontalAlignment="Left"
+                            VerticalAlignment="Top">
+                        <StackPanel Orientation="Horizontal" Spacing="30">
+                            <StackPanel>
+                                <TextBlock Text="{l:Localize Portfolio_NetAssets}" Foreground="{DynamicResource Brush.Text.Secondary}" FontSize="{DynamicResource HelperFontSize}"/>
+                                <TextBlock Text="{Binding NetAssets, StringFormat={}{0:N0}}" FontSize="{DynamicResource TitleFontSize}" FontWeight="SemiBold" Classes="value"/>
+                            </StackPanel>
+                            
+                            <StackPanel>
+                                <TextBlock Text="{l:Localize Portfolio_UnrealizedPnL}" Foreground="{DynamicResource Brush.Text.Secondary}" FontSize="{DynamicResource HelperFontSize}"/>
+                                <TextBlock Text="{Binding TotalPnL, StringFormat={}{0:N0}}" FontSize="{DynamicResource TitleFontSize}" FontWeight="SemiBold" 
+                                           Classes="value"
+                                           Classes.profit="{Binding IsTotalProfit}"
+                                           Classes.loss="{Binding IsTotalLoss}"
+                                           Classes.neutral="{Binding IsTotalNeutral}"/>
+                            </StackPanel>
+
+                            <StackPanel>
+                                <TextBlock Text="{l:Localize Portfolio_RealizedPnL}" Foreground="{DynamicResource Brush.Text.Secondary}" FontSize="{DynamicResource HelperFontSize}"/>
+                                <TextBlock Text="{Binding TotalRealizedPnL, StringFormat={}{0:N0}}" FontSize="{DynamicResource TitleFontSize}" FontWeight="SemiBold" 
+                                           Classes="value"
+                                           Classes.profit="{Binding IsTotalRealizedProfit}"
+                                           Classes.loss="{Binding IsTotalRealizedLoss}"
+                                           Classes.neutral="{Binding IsTotalRealizedNeutral}"/>
+                            </StackPanel>
+
+                            <StackPanel>
+                                <TextBlock Text="{l:Localize Portfolio_CashRatio}" Foreground="{DynamicResource Brush.Text.Secondary}" FontSize="{DynamicResource HelperFontSize}"/>
+                                <TextBlock Text="{Binding Metrics.CashRatio, StringFormat={}{0:F2}%}" FontSize="{DynamicResource TitleFontSize}" FontWeight="SemiBold" Classes="value"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                </ScrollViewer>
+            </TabItem>
+                <!-- Tab 1: Positions -->
+                <TabItem Header="Positions">
+                    <Grid>
+                        <DataGrid x:Name="PositionsDataGrid"
+                                  ItemsSource="{Binding Positions}"
+                                  AutoGenerateColumns="False" IsReadOnly="True"
+                                  CanUserResizeColumns="True"
+                                  CanUserSortColumns="True"
+                                  GridLinesVisibility="All"
+                                  BorderThickness="1"
+                                  BorderBrush="{DynamicResource Brush.Border.Primary}"
+                                  SelectedItem="{Binding SelectedPosition}">
+                            <DataGrid.ContextMenu>
+                                <ContextMenu ZIndex="99">
+                                    <MenuItem x:Name="MenuItemAddPosition" Header="Add Transactions" Click="OnAddTransactionMenuClick"/>
+                                    <MenuItem x:Name="MenuItemExitPosition" Header="{l:Localize Portfolio_Menu_ExitPosition}" Click="OnExitPositionMenuClick"/>
+                                </ContextMenu>
+                            </DataGrid.ContextMenu>
+                            <DataGrid.Columns>
+                                <DataGridTemplateColumn Header="{l:Localize Col_Symbol}" Width="100">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate x:DataType="vm:PortfolioPositionViewModel">
+                                            <Panel VerticalAlignment="Stretch" HorizontalAlignment="Stretch" ClipToBounds="False">
+                                                <Border Classes="SymbolBadge"
+                                                        IsVisible="{Binding ShowSymbol}"
+                                                        VerticalAlignment="{Binding SymbolVerticalAlignment}"
+                                                        Margin="{Binding SymbolMargin}"
+                                                        HorizontalAlignment="Center"
+                                                        Padding="6,2"
+                                                        CornerRadius="3">
+                                                    <TextBlock Text="{Binding Symbol}"/>
+                                                </Border>
+                                            </Panel>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                                <DataGridTextColumn Header="Type" Binding="{Binding Type}" Width="80"/>
+                                
+                                <DataGridTemplateColumn Header="{l:Localize Portfolio_Col_Qty}" Width="100">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate x:DataType="vm:PortfolioPositionViewModel">
+                                            <TextBlock Text="{Binding Quantity, StringFormat={}{0:N0}}"
+                                                       HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                       Margin="0,0,12,0"/>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+
+                                <DataGridTemplateColumn Header="{l:Localize Portfolio_Col_AvgPrice}" Width="100">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate x:DataType="vm:PortfolioPositionViewModel">
+                                            <TextBlock Text="{Binding AveragePrice, StringFormat={}{0:F2}}"
+                                                       HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                       Margin="0,0,12,0" Classes="value"/>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+
+                                <DataGridTemplateColumn Header="{l:Localize Col_Price}" Width="100">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate x:DataType="vm:PortfolioPositionViewModel">
+                                            <TextBlock Text="{Binding CurrentPrice, StringFormat={}{0:F2}}"
+                                                       HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                       Margin="0,0,12,0" Classes="value"/>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+
+                                <DataGridTemplateColumn Header="{l:Localize Portfolio_Col_MarketValue}" Width="120">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate x:DataType="vm:PortfolioPositionViewModel">
+                                            <TextBlock Text="{Binding MarketValue, StringFormat={}{0:N0}}"
+                                                       HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                       Margin="0,0,12,0" Classes="value"/>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                                
+                                <DataGridTemplateColumn Header="{l:Localize Portfolio_Col_PnL}" Width="120">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate x:DataType="vm:PortfolioPositionViewModel">
+                                            <TextBlock Text="{Binding UnrealizedPnL, StringFormat={}{0:N0}}"
+                                                       VerticalAlignment="Center" HorizontalAlignment="Right"
+                                                       Margin="0,0,12,0"
+                                                       Classes="value"
+                                                       Classes.profit="{Binding IsProfit}"
+                                                       Classes.loss="{Binding IsLoss}"
+                                                       Classes.neutral="{Binding IsNeutral}"/>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                                
+                                <DataGridTemplateColumn Header="{l:Localize Col_Ratio}" Width="120">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate x:DataType="vm:PortfolioPositionViewModel">
+                                            <TextBlock Text="{Binding PnLRate, StringFormat={}{0:F2}%}}"
+                                                       VerticalAlignment="Center" HorizontalAlignment="Right"
+                                                       Margin="0,0,12,0"
+                                                       Classes="value"
+                                                       Classes.profit="{Binding IsProfit}"
+                                                       Classes.loss="{Binding IsLoss}"
+                                                       Classes.neutral="{Binding IsNeutral}"/>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                            </DataGrid.Columns>
+                        </DataGrid>
+
+                        <!-- Overlays -->
+                        <Grid IsVisible="{Binding IsLoading}" IsHitTestVisible="False" Background="{DynamicResource Brush.Background.Secondary}">
+                            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                                <ProgressBar IsIndeterminate="True" Width="200" Margin="0,0,0,10"/>
+                                <TextBlock Text="{l:Localize Portfolio_Loading}" HorizontalAlignment="Center"/>
+                            </StackPanel>
+                        </Grid>
+
+                        <Grid IsVisible="{Binding IsEmpty}" IsHitTestVisible="False" Background="{DynamicResource Brush.Background.Secondary}">
+                            <TextBlock Text="{l:Localize Portfolio_EmptyPositions}" VerticalAlignment="Center" HorizontalAlignment="Center" Foreground="{DynamicResource Brush.Foreground.Secondary}"/>
+                        </Grid>
+
+                        <Grid IsVisible="{Binding HasError}" IsHitTestVisible="False" Background="{DynamicResource Brush.Background.Secondary}">
+                            <TextBlock Text="{l:Localize Portfolio_LoadError}" VerticalAlignment="Center" HorizontalAlignment="Center" Foreground="#EF4444"/>
+                        </Grid>
+                    </Grid>
+                </TabItem>
+
+                <!-- Tab 2: Transaction History -->
+                <TabItem Header="Transactions">
+                    <Grid>
+                        <!-- Transaction history list -->
+                        <DataGrid x:Name="TransactionsDataGrid"
+                                  ItemsSource="{Binding Transactions}"
+                                  AutoGenerateColumns="False" IsReadOnly="True"
+                                  CanUserResizeColumns="True"
+                                  CanUserSortColumns="True"
+                                  GridLinesVisibility="All"
+                                  BorderThickness="1"
+                                  BorderBrush="{DynamicResource Brush.Border.Primary}">
+                            <DataGrid.ContextMenu>
+                                <ContextMenu ZIndex="99">
+                                    <MenuItem x:Name="MenuItemAdd" Header="Add Transactions" Click="OnAddTransactionMenuClick"/>
+                                    <MenuItem x:Name="MenuItemEdit" Header="Edit Transaction" Click="OnEditTransactionMenuClick"/>
+                                    <MenuItem x:Name="MenuItemDelete" Header="Delete Transaction" Click="OnDeleteTransactionMenuClick"/>
+                                </ContextMenu>
+                            </DataGrid.ContextMenu>
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Date" Binding="{Binding ExecutedAt, StringFormat={}{0:yyyy-MM-dd}}" Width="140"/>
+                                <DataGridTextColumn Header="Type" Binding="{Binding Type}" Width="100"/>
+                                <DataGridTextColumn Header="Ticker" Binding="{Binding Ticker}" Width="100"/>
+                                <DataGridTextColumn Header="Quantity" Binding="{Binding Quantity, StringFormat={}{0:N6}}" Width="120"/>
+                                <DataGridTextColumn Header="Price" Binding="{Binding PricePerUnit, StringFormat={}{0:F2}}" Width="100"/>
+                                <DataGridTextColumn Header="Amount" Binding="{Binding CashAmount, StringFormat={}{0:F2}}" Width="100"/>
+                                <DataGridTextColumn Header="Fee" Binding="{Binding Fee, StringFormat={}{0:F2}}" Width="100"/>
+                                <DataGridTextColumn Header="Target" Binding="{Binding TargetPrice, StringFormat={}{0:F2}}" Width="100"/>
+                                <DataGridTextColumn Header="Stop Loss" Binding="{Binding StopLoss, StringFormat={}{0:F2}}" Width="100"/>
+                                <DataGridTextColumn Header="Notes" Binding="{Binding Notes}" Width="*"/>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </Grid>
+                </TabItem>
+                
+                <!-- Tab 3: Closed Positions -->
+                <TabItem Header="{l:Localize Portfolio_TabClosedPositions}">
+                    <Grid>
+                        <DataGrid x:Name="ClosedPositionsDataGrid"
+                                  ItemsSource="{Binding ClosedPositions}"
+                                  AutoGenerateColumns="False" IsReadOnly="True"
+                                  CanUserResizeColumns="True"
+                                  CanUserSortColumns="True"
+                                  GridLinesVisibility="All"
+                                  BorderThickness="1"
+                                  BorderBrush="{DynamicResource Brush.Border.Primary}">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="{l:Localize Portfolio_Col_ExitTime}" Binding="{Binding ExitTime, StringFormat={}{0:yyyy-MM-dd}}" Width="120"/>
+                                <DataGridTextColumn Header="{l:Localize Col_Symbol}" Binding="{Binding Ticker}" Width="100"/>
+                                <DataGridTextColumn Header="Type" Binding="{Binding Type}" Width="80"/>
+                                
+                                <DataGridTemplateColumn Header="{l:Localize Portfolio_Col_Qty}" Width="80">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate x:DataType="vm:ClosedPositionViewModel">
+                                            <TextBlock Text="{Binding Quantity, StringFormat={}{0:N0}}"
+                                                       HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                       Margin="0,0,12,0"/>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+
+                                <DataGridTemplateColumn Header="{l:Localize Portfolio_Col_EntryPrice}" Width="100">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate x:DataType="vm:ClosedPositionViewModel">
+                                            <TextBlock Text="{Binding EntryPrice, StringFormat={}{0:F2}}"
+                                                       HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                       Margin="0,0,12,0" Classes="value"/>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+
+                                <DataGridTemplateColumn Header="{l:Localize Portfolio_Col_ExitPrice}" Width="100">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate x:DataType="vm:ClosedPositionViewModel">
+                                            <TextBlock Text="{Binding ExitPrice, StringFormat={}{0:F2}}"
+                                                       HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                       Margin="0,0,12,0" Classes="value"/>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+
+                                <DataGridTemplateColumn Header="{l:Localize Portfolio_Col_Fees}" Width="100">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate x:DataType="vm:ClosedPositionViewModel">
+                                            <TextBlock Text="{Binding TotalFees, StringFormat={}{0:F2}}"
+                                                       HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                       Margin="0,0,12,0"/>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+
+                                <DataGridTemplateColumn Header="{l:Localize Portfolio_Col_PnL}" Width="120">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate x:DataType="vm:ClosedPositionViewModel">
+                                            <TextBlock Text="{Binding RealizedPnL, StringFormat={}{0:N0}}"
+                                                       FontSize="{DynamicResource DetailFontSize}"
+                                                       VerticalAlignment="Center" HorizontalAlignment="Right"
+                                                       Margin="0,0,12,0"
+                                                       Classes="value"
+                                                       Classes.profit="{Binding IsProfit}"
+                                                       Classes.loss="{Binding IsLoss}"
+                                                        Classes.neutral="{Binding IsNeutral}"/>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+
+                                <DataGridTemplateColumn Header="{l:Localize Col_Ratio}" Width="100">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate x:DataType="vm:ClosedPositionViewModel">
+                                            <TextBlock Text="{Binding PnLRate, StringFormat={}{0:F2}%}}"
+                                                       VerticalAlignment="Center" HorizontalAlignment="Right"
+                                                       Margin="0,0,12,0"
+                                                       Classes="value"
+                                                       Classes.profit="{Binding IsProfit}"
+                                                       Classes.loss="{Binding IsLoss}"
+                                                        Classes.neutral="{Binding IsNeutral}"/>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+
+                                <DataGridTextColumn Header="{l:Localize Portfolio_Col_EntryTime}" Binding="{Binding EntryTime, StringFormat={}{0:yyyy-MM-dd}}" Width="120"/>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </Grid>
+                </TabItem>
+            </TabControl>
+    </Grid>
+</UserControl>
