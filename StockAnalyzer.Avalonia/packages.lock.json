@@ -77,11 +77,11 @@
       },
       "Avalonia.ReactiveUI": {
         "type": "Direct",
-        "requested": "[11.2.3, )",
-        "resolved": "11.2.3",
-        "contentHash": "MHasX3CRPkkbFN7UZC/+mRZiPvWmiIRl5SJjQYiOA+Zgw9xj6qK9mD3zNbr0Ej3yN+IRh/qDjBlTpL4TzDF88A==",
+        "requested": "[11.3.8, )",
+        "resolved": "11.3.8",
+        "contentHash": "nD7U8UhJcng9OEunDt5bFRDvo+UHxtVi/a+BNLH2dxQuNJnqtXpLp/2rEzrzJDtV8X2FU7fHTwTrDhNOyYjWxw==",
         "dependencies": {
-          "Avalonia": "11.2.3",
+          "Avalonia": "11.3.8",
           "ReactiveUI": "20.1.1",
           "System.Reactive": "6.0.1"
         }
