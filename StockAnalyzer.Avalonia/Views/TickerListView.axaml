@@ -1,0 +1,362 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:StockAnalyzer.Avalonia.ViewModels"
+             xmlns:l="clr-namespace:StockAnalyzer.Avalonia.Markup;assembly=StockAnalyzer.Avalonia"
+             xmlns:conv="clr-namespace:StockAnalyzer.Avalonia.Converters"
+             xmlns:c="clr-namespace:StockAnalyzer.Avalonia.Common"
+             xmlns:models="clr-namespace:StockAnalyzer.Core.Models.Watchlist;assembly=StockAnalyzer.Core"
+             xmlns:views="clr-namespace:StockAnalyzer.Avalonia.Views"
+             xmlns:node="clr-namespace:StockAnalyzer.Avalonia.ViewModels.TickerList"
+             mc:Ignorable="d" d:DesignWidth="200" d:DesignHeight="600"
+             x:Class="StockAnalyzer.Avalonia.Views.TickerListView"
+             x:DataType="vm:TickerListViewModel">
+    <UserControl.Resources>
+        <conv:DoubleToGridLengthConverter x:Key="DoubleToGridLengthConverter" />
+    </UserControl.Resources>
+
+    <UserControl.DataTemplates>
+        <!-- TreeView Templates: Resolved by DataType automatically -->
+        <TreeDataTemplate DataType="node:CategoryNode" ItemsSource="{Binding Children}">
+            <Border Background="Transparent" HorizontalAlignment="Stretch" Margin="-100,0,0,0" Padding="100,0,0,0">
+                <Border.ContextMenu>
+                    <ContextMenu>
+                        <MenuItem Header="{l:Localize TickerList_AddTicker}" 
+                                  Command="{Binding $parent[UserControl].DataContext.AddTickerToMasterCommand}"/>
+                        <MenuItem Header="{l:Localize TickerList_CreateWatchlist}" 
+                                  Command="{Binding $parent[UserControl].DataContext.AddNewListCommand}"
+                                  CommandParameter="{Binding !IsWatchlistCategory}"
+                                  IsVisible="{Binding IsWatchlistCategory}"/>
+                        
+                        <MenuItem Header="{l:Localize TickerList_CreatePortfolio}" 
+                                  Command="{Binding $parent[UserControl].DataContext.AddNewListCommand}"
+                                  CommandParameter="{Binding !IsWatchlistCategory}"
+                                  IsVisible="{Binding !IsWatchlistCategory}"/>
+                        <Separator />
+                        <MenuItem Header="{l:Localize TickerList_SyncAll}" 
+                                  Command="{Binding $parent[UserControl].DataContext.SyncGroupCommand}"
+                                  CommandParameter="{Binding}"/>
+                    </ContextMenu>
+                </Border.ContextMenu>
+                <TextBlock Text="{Binding DisplayName}" VerticalAlignment="Center" />
+            </Border>
+        </TreeDataTemplate>
+ 
+        <TreeDataTemplate DataType="node:AllTickersNode" ItemsSource="{Binding Children}">
+            <Border Background="Transparent" HorizontalAlignment="Stretch" Margin="-100,0,0,0" Padding="100,0,0,0">
+                <Border.ContextMenu>
+                    <ContextMenu>
+                        <MenuItem Header="{l:Localize TickerList_AddTicker}" 
+                                  Command="{Binding $parent[UserControl].DataContext.AddTickerToMasterCommand}"/>
+                        <MenuItem Header="{l:Localize TickerList_AddFilter}" 
+                                  Command="{Binding $parent[UserControl].DataContext.AddFilterCommand}"
+                                  CommandParameter="{Binding}"/>
+                        <Separator />
+                        <MenuItem Header="{l:Localize TickerList_SyncAll}" 
+                                  Command="{Binding $parent[UserControl].DataContext.SyncGroupCommand}"
+                                  CommandParameter="{Binding}"/>
+                    </ContextMenu>
+                </Border.ContextMenu>
+                <TextBlock Text="{Binding DisplayName}" VerticalAlignment="Center" />
+            </Border>
+        </TreeDataTemplate>
+ 
+        <TreeDataTemplate DataType="node:WatchlistNode" ItemsSource="{Binding Children}">
+            <Border Background="Transparent" HorizontalAlignment="Stretch" Margin="-100,0,0,0" Padding="100,0,0,0">
+                <Border.ContextMenu>
+                    <ContextMenu>
+                        <MenuItem Header="{l:Localize TickerList_AddTicker}" 
+                                  Command="{Binding $parent[UserControl].DataContext.AddTickerToMasterCommand}"/>
+                        <MenuItem Header="{l:Localize TickerList_AddFilter}" 
+                                  Command="{Binding $parent[UserControl].DataContext.AddFilterCommand}"
+                                  CommandParameter="{Binding}"/>
+                        <Separator />
+                        <MenuItem Header="{l:Localize TickerList_Rename}" 
+                                  Command="{Binding $parent[UserControl].DataContext.RenameNodeCommand}" 
+                                  CommandParameter="{Binding}"/>
+                        <Separator />
+                        <MenuItem Header="{l:Localize TickerList_SyncAll}" 
+                                  Command="{Binding $parent[UserControl].DataContext.SyncGroupCommand}"
+                                  CommandParameter="{Binding}"/>
+                        <Separator />
+                        <MenuItem Header="{l:Localize TickerList_Delete}" 
+                                  Command="{Binding $parent[UserControl].DataContext.DeleteNodeCommand}" 
+                                  CommandParameter="{Binding}"/>
+                    </ContextMenu>
+                </Border.ContextMenu>
+                <TextBlock Text="{Binding DisplayName}" VerticalAlignment="Center" />
+            </Border>
+        </TreeDataTemplate>
+ 
+        <TreeDataTemplate DataType="node:PortfolioNode" ItemsSource="{Binding Children}">
+            <Border Background="Transparent" HorizontalAlignment="Stretch" Margin="-100,0,0,0" Padding="100,0,0,0">
+                <Border.ContextMenu>
+                    <ContextMenu>
+                        <MenuItem Header="{l:Localize TickerList_AddTicker}" 
+                                  Command="{Binding $parent[UserControl].DataContext.AddTickerToMasterCommand}"/>
+                        <MenuItem Header="{l:Localize TickerList_AddFilter}" 
+                                  Command="{Binding $parent[UserControl].DataContext.AddFilterCommand}"
+                                  CommandParameter="{Binding}"/>
+                        <Separator />
+                        <MenuItem Header="{l:Localize TickerList_Rename}" 
+                                  Command="{Binding $parent[UserControl].DataContext.RenameNodeCommand}" 
+                                  CommandParameter="{Binding}"/>
+                        <Separator />
+                        <MenuItem Header="{l:Localize TickerList_SyncAll}" 
+                                  Command="{Binding $parent[UserControl].DataContext.SyncGroupCommand}"
+                                  CommandParameter="{Binding}"/>
+                        <Separator />
+                        <MenuItem Header="{l:Localize TickerList_Delete}" 
+                                  Command="{Binding $parent[UserControl].DataContext.DeleteNodeCommand}" 
+                                  CommandParameter="{Binding}"/>
+                    </ContextMenu>
+                </Border.ContextMenu>
+                <TextBlock Text="{Binding DisplayName}" VerticalAlignment="Center" />
+            </Border>
+        </TreeDataTemplate>
+
+        <TreeDataTemplate DataType="node:FilterNode" ItemsSource="{Binding Children}">
+            <Border Background="Transparent" HorizontalAlignment="Stretch" Margin="-100,0,0,0" Padding="100,0,0,0">
+                <Border.ContextMenu>
+                    <ContextMenu>
+                        <MenuItem Header="{l:Localize TickerList_AddFilter}" 
+                                  Command="{Binding $parent[UserControl].DataContext.AddFilterCommand}"
+                                  CommandParameter="{Binding}"/>
+                        <MenuItem Header="{l:Localize TickerList_EditFilter}" 
+                                  Command="{Binding $parent[UserControl].DataContext.EditFilterCommand}"
+                                  CommandParameter="{Binding}"/>
+                        <Separator />
+                        <MenuItem Header="{l:Localize TickerList_DeleteFilter}" 
+                                  Command="{Binding $parent[UserControl].DataContext.DeleteFilterCommand}" 
+                                  CommandParameter="{Binding}"/>
+                    </ContextMenu>
+                </Border.ContextMenu>
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <PathIcon Data="M10,18h4v-2h-4V18z M3,6v2h18V6H3z M6,13h12v-2H6V13z" Width="12" Height="12" Foreground="{DynamicResource Brush.Accent.Primary}"/>
+                    <TextBlock Text="{Binding DisplayName}" VerticalAlignment="Center" />
+                </StackPanel>
+            </Border>
+        </TreeDataTemplate>
+ 
+        <DataTemplate DataType="node:ActionNode">
+            <Border Background="Transparent" HorizontalAlignment="Stretch" Margin="-100,0,0,0" Padding="100,0,0,0">
+                <TextBlock Text="{Binding DisplayName}" 
+                           FontSize="11"
+                           FontStyle="Italic"
+                           Foreground="{DynamicResource Stock.Brush.Accent}" 
+                           VerticalAlignment="Center" />
+            </Border>
+        </DataTemplate>
+    </UserControl.DataTemplates>
+
+    <UserControl.Styles>
+        <!-- Row Style: Matching Portfolio Tab -->
+        <Style Selector="TreeDataGridRow">
+            <Setter Property="MinHeight" Value="28"/>
+            <Setter Property="Height" Value="28"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border.Primary}"/>
+            <Setter Property="BorderThickness" Value="0,0,0,1"/>
+        </Style>
+        <Style Selector="TreeDataGridRow:pointerover">
+            <Setter Property="Background" Value="{DynamicResource Brush.Background.Hover}"/>
+        </Style>
+        <Style Selector="TreeDataGridRow:selected">
+            <Setter Property="Background" Value="{DynamicResource Brush.Selection.Background}"/>
+        </Style>
+        <!-- For when the window is inactive -->
+        <Style Selector="TreeDataGridRow:selected:not(:focus)">
+            <Setter Property="Background" Value="{DynamicResource Brush.Selection.Background}"/>
+        </Style>
+
+        <!-- Vertical Grid Lines: Refining selectors -->
+        <Style Selector="TreeDataGridCell">
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border.Primary}"/>
+            <Setter Property="BorderThickness" Value="0,0,1,0"/>
+        </Style>
+        <Style Selector="TreeDataGridTextCell">
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border.Primary}"/>
+            <Setter Property="BorderThickness" Value="0,0,1,0"/>
+        </Style>
+        <Style Selector="TreeDataGridTextCell /template/ Border#CellBorder">
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border.Primary}"/>
+            <Setter Property="BorderThickness" Value="0,0,1,0"/>
+        </Style>
+        <Style Selector="TreeDataGridTemplateCell">
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border.Primary}"/>
+            <Setter Property="BorderThickness" Value="0,0,1,0"/>
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <Border BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            Background="{TemplateBinding Background}"
+                            Padding="{TemplateBinding Padding}">
+                        <ContentPresenter Name="PART_ContentPresenter"
+                                          Content="{TemplateBinding Content}"
+                                          ContentTemplate="{TemplateBinding ContentTemplate}"/>
+                    </Border>
+                </ControlTemplate>
+            </Setter>
+        </Style>
+
+        <!-- Header Styling -->
+        <Style Selector="TreeDataGridColumnHeader">
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border.Primary}"/>
+            <Setter Property="BorderThickness" Value="0,0,1,1"/>
+            <Setter Property="Background" Value="{DynamicResource Brush.Background.Secondary}"/>
+            <Setter Property="FontSize" Value="{DynamicResource BaseFontSize}"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="TreeDataGridColumnHeader /template/ Border">
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border.Primary}"/>
+            <Setter Property="BorderThickness" Value="0,0,1,1"/>
+        </Style>
+
+        <!-- TreeDataGrid CheckBox Precision Centering -->
+        <Style Selector="TreeDataGrid CheckBox">
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Margin" Value="0"/>
+            <Setter Property="MinWidth" Value="0"/>
+            <Setter Property="MinHeight" Value="0"/>
+            <Setter Property="HorizontalAlignment" Value="Center"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="TreeDataGrid CheckBox /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="IsVisible" Value="False"/>
+        </Style>
+
+        <!-- TreeView Item Style -->
+        <Style Selector="TreeViewItem">
+            <Setter Property="MinHeight" Value="28"/>
+            <Setter Property="Padding" Value="0"/>
+        </Style>
+        <Style Selector="TreeViewItem /template/ ContentPresenter#PART_HeaderPresenter">
+            <Setter Property="MinHeight" Value="28"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <!-- Block context menu from bubbling to parent PanelTabs -->
+            <Setter Property="ContextMenu" Value="{x:Null}"/>
+        </Style>
+    </UserControl.Styles>
+
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="{Binding SidebarGridWidth, Mode=TwoWay, Converter={StaticResource DoubleToGridLengthConverter}}" MinWidth="50" />
+            <ColumnDefinition Width="1" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+        
+        <!-- Sidebar: TreeView -->
+        <Grid Grid.Column="0" RowDefinitions="Auto, *">
+            
+            <Border Grid.Row="0" Margin="10,12,10,10">
+                <TextBlock Text="{l:Localize TickerList_Watchlists}" 
+                           FontSize="14" 
+                           FontWeight="SemiBold" 
+                           Foreground="{DynamicResource ForegroundBrush}"
+                           Opacity="0.7"/>
+            </Border>
+
+            <!-- Ticker Hierarchy Tree -->
+            <TreeView Grid.Row="1"
+                      x:Name="TickersTreeView"
+                      ItemsSource="{Binding Groups}"
+                      SelectedItem="{Binding SelectedNode}"
+                      Background="Transparent"
+                      BorderThickness="0">
+                <TreeView.Styles>
+                    <Style Selector="TreeViewItem">
+                        <Setter Property="IsExpanded" Value="True" />
+                    </Style>
+                </TreeView.Styles>
+            </TreeView>
+        </Grid>
+
+        <!-- Vertical Separator (Visible Line) -->
+        <Border Grid.Column="1" 
+                Width="1" 
+                Background="{DynamicResource Brush.Border.Primary}" 
+                HorizontalAlignment="Stretch" />
+
+        <!-- Vertical Splitter (Transparent Hit Area) -->
+        <GridSplitter Grid.Column="1" 
+                      Width="5" 
+                      HorizontalAlignment="Stretch" 
+                      Background="Transparent" />
+
+        <!-- Main Content: Tickers -->
+        <Grid Grid.Column="2" RowDefinitions="*" ClipToBounds="True">
+            <TreeDataGrid x:Name="MainGrid"
+                          Grid.Row="0"
+                          FontSize="{DynamicResource DetailFontSize}"
+                          c:TreeDataGridExtensions.Items="{Binding DisplayItems}"
+                          c:TreeDataGridExtensions.SelectedItem="{Binding SelectedItem}"
+                          c:TreeDataGridExtensions.SortMember="{Binding SortMember, Mode=TwoWay}"
+                          c:TreeDataGridExtensions.SortDirection="{Binding SortDirection, Mode=TwoWay}"
+                          c:TreeDataGridExtensions.DynamicColumns="{Binding ActiveColumns}"
+                          Background="Transparent"
+                          CanUserResizeColumns="True"
+                          CanUserSortColumns="True"
+                          BorderThickness="0">
+                <TreeDataGrid.ContextMenu>
+                    <ContextMenu>
+                        <!-- Category 1: Add/Create -->
+                        <MenuItem Header="{l:Localize TickerList_AddToOtherWatchlist}" 
+                                  ItemsSource="{Binding OtherWatchlists}"
+                                  x:CompileBindings="False">
+                            <MenuItem.Styles>
+                                <Style Selector="MenuItem > MenuItem">
+                                    <Setter Property="Header" Value="{Binding Name}"/>
+                                    <Setter Property="Command" Value="{Binding $parent[UserControl].DataContext.AddToWatchlistCommand}"/>
+                                    <Setter Property="CommandParameter" Value="{Binding}"/>
+                                </Style>
+                            </MenuItem.Styles>
+                        </MenuItem>
+                        <MenuItem Header="{l:Localize TickerList_AddToPortfolio}" 
+                                  ItemsSource="{Binding AllPortfolios}"
+                                  x:CompileBindings="False">
+                            <MenuItem.Styles>
+                                <Style Selector="MenuItem > MenuItem">
+                                    <Setter Property="Header" Value="{Binding Name}"/>
+                                    <Setter Property="Command" Value="{Binding $parent[UserControl].DataContext.AddToPortfolioCommand}"/>
+                                    <Setter Property="CommandParameter" Value="{Binding}"/>
+                                </Style>
+                            </MenuItem.Styles>
+                        </MenuItem>
+                        
+                        <Separator />
+ 
+                        <!-- Category 2: Edit/Modify -->
+                        <MenuItem Header="{l:Localize Menu_AddDeleteTags}" 
+                                  Command="{Binding ShowAddRemoveTagsDialogCommand}"/>
+                        <MenuItem Header="{l:Localize TickerList_SetAsRelativePerformance}" 
+                                  Command="{Binding SetAsRelativePerformanceTargetsCommand}"/>
+                        <MenuItem Header="{l:Localize Menu_EditTickerNotes}" 
+                                  Command="{Binding ShowEditTickerNotesDialogCommand}"/>
+                        
+                        <Separator />
+ 
+                        <!-- Category 3: Settings/Sync -->
+                        <MenuItem Header="{l:Localize TickerList_Columns}" 
+                                  Command="{Binding ShowColumnChooserCommand}"/>
+                        <MenuItem Header="{l:Localize TickerList_SyncSelected}" 
+                                  Command="{Binding SyncSelectedTickersCommand}"/>
+                        
+                        <Separator />
+ 
+                        <!-- Category 4: Delete/Remove -->
+                        <MenuItem Header="{l:Localize TickerList_RemoveSelected}" 
+                                  Command="{Binding BulkRemoveCommand}"
+                                  IsVisible="{Binding !IsAllTickersSelected}"/>
+                        <Separator IsVisible="{Binding !IsAllTickersSelected}"/>
+                        <MenuItem Header="{l:Localize TickerList_DeleteFromMaster}" 
+                                  Command="{Binding DeleteFromMasterListCommand}"/>
+                    </ContextMenu>
+                </TreeDataGrid.ContextMenu>
+            </TreeDataGrid>
+        </Grid>
+    </Grid>
+</UserControl>

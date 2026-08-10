@@ -1,0 +1,153 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:StockAnalyzer.Avalonia.ViewModels"
+             xmlns:conv="using:StockAnalyzer.Avalonia.Converters"
+             xmlns:l="clr-namespace:StockAnalyzer.Avalonia.Markup;assembly=StockAnalyzer.Avalonia"
+             x:Class="StockAnalyzer.Avalonia.Views.Controls.DrawingToolSidebar"
+             x:DataType="vm:DrawingToolSidebarViewModel"
+             ClipToBounds="False">
+
+    <UserControl.Resources>
+        <conv:BoolToStarConverter x:Key="BoolToStarConverter"/>
+    </UserControl.Resources>
+
+    <UserControl.Styles>
+        <!-- Category icon button style -->
+        <Style Selector="Button.CategoryButton">
+            <Setter Property="Width" Value="44"/>
+            <Setter Property="Height" Value="44"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="FontSize" Value="{DynamicResource TitleFontSize}"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        <Style Selector="Button.CategoryButton:pointerover">
+            <Setter Property="Background" Value="{DynamicResource Brush.Toolbar.Hover}"/>
+        </Style>
+
+        <!-- Tool item button in flyout -->
+        <Style Selector="Button.ToolItemButton">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="8,6"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        <Style Selector="Button.ToolItemButton:pointerover">
+            <Setter Property="Background" Value="{DynamicResource Brush.Toolbar.Hover}"/>
+        </Style>
+
+        <!-- Selected tool highlight -->
+        <Style Selector="Button.ToolItemSelected">
+            <Setter Property="Background" Value="{DynamicResource Brush.Toolbar.Hover}"/>
+        </Style>
+
+        <!-- Favorite toggle button -->
+        <Style Selector="Button.FavoriteButton">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="4"/>
+            <Setter Property="FontSize" Value="{DynamicResource BaseFontSize}"/>
+            <Setter Property="Width" Value="28"/>
+            <Setter Property="Height" Value="28"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        <Style Selector="Button.FavoriteButton:pointerover">
+            <Setter Property="Background" Value="{DynamicResource Brush.Toolbar.Hover}"/>
+        </Style>
+    </UserControl.Styles>
+
+    <Grid ColumnDefinitions="Auto,Auto" PointerExited="Sidebar_PointerExited" ClipToBounds="False">
+        <!-- Left: Vertical Sidebar with Category Icons -->
+        <Border Grid.Column="0"
+                Background="{DynamicResource Brush.Background.Secondary}"
+                Width="44"
+                BorderBrush="{DynamicResource Brush.Border}"
+                BorderThickness="0,0,1,0">
+            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <ItemsControl ItemsSource="{Binding Categories}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Button Classes="CategoryButton"
+                                    PointerEntered="CategoryButton_PointerEntered">
+                                <TextBlock Text="{Binding Icon}"
+                                           FontSize="{DynamicResource TitleFontSize}"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"/>
+                            </Button>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+        </Border>
+
+        <!-- Right: Flyout Panel (visible when a category is expanded) -->
+        <Border Grid.Column="1"
+                IsVisible="{Binding IsFlyoutOpen}"
+                Background="{DynamicResource Brush.Background.Primary}"
+                BorderBrush="{DynamicResource Brush.Border}"
+                BorderThickness="0,0,1,0"
+                MinWidth="200"
+                MaxWidth="260"
+                Padding="4">
+            <Grid RowDefinitions="Auto,*">
+                <TextBlock Grid.Row="0"
+                           Text="{Binding ExpandedCategory.DisplayName}"
+                           FontWeight="SemiBold"
+                           Foreground="{DynamicResource Brush.Foreground.Secondary}"
+                           Margin="8,4,8,8"
+                           VerticalAlignment="Center"/>
+                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <ItemsControl ItemsSource="{Binding ExpandedCategory.Tools}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Button Classes.ToolItemButton="True"
+                                    Classes.ToolItemSelected="{Binding IsSelected}"
+                                    Command="{Binding SelectCommand}">
+                                <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+                                    <!-- Tool Icon -->
+                                    <TextBlock Grid.Column="0"
+                                               Text="{Binding Icon}"
+                                               FontSize="{DynamicResource BaseFontSize}"
+                                               VerticalAlignment="Center"
+                                               Margin="0,0,8,0"/>
+
+                                    <!-- Tool Name -->
+                                    <TextBlock Grid.Column="1"
+                                               Text="{Binding DisplayName}"
+                                               VerticalAlignment="Center"
+                                               FontSize="{DynamicResource BaseFontSize}"/>
+
+                                    <!-- Favorite Toggle (★/☆) -->
+                                    <Button Grid.Column="2"
+                                            Classes="FavoriteButton"
+                                            Command="{Binding ToggleFavoriteCommand}"
+                                            VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding IsFavorite, Converter={StaticResource BoolToStarConverter}}"
+                                                   FontSize="{DynamicResource BaseFontSize}"
+                                                   HorizontalAlignment="Center"
+                                                   VerticalAlignment="Center"/>
+                                    </Button>
+
+                                    <!-- Selection Indicator (✓) -->
+                                    <TextBlock Grid.Column="3"
+                                               Text="✓"
+                                               FontSize="{DynamicResource BaseFontSize}"
+                                               VerticalAlignment="Center"
+                                               Margin="4,0,0,0"
+                                               IsVisible="{Binding IsSelected}"/>
+                                </Grid>
+                            </Button>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

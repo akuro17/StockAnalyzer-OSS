@@ -1,0 +1,382 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:dialogs="using:StockAnalyzer.Avalonia.ViewModels.Dialogs"
+        xmlns:l="clr-namespace:StockAnalyzer.Avalonia.Markup;assembly=StockAnalyzer.Avalonia"
+        xmlns:constants="using:StockAnalyzer.Core.Constants"
+        mc:Ignorable="d" d:DesignWidth="980" d:DesignHeight="600"
+        x:Class="StockAnalyzer.Avalonia.Views.Dialogs.FilterSettingsWindow"
+        x:DataType="dialogs:FilterSettingsViewModel"
+        Title="{l:Localize FilterSettings_Title}"
+        Width="980" Height="600"
+        WindowStartupLocation="CenterOwner"
+        CanResize="False"
+        Background="{DynamicResource Brush.Background.Secondary}"
+        Foreground="{DynamicResource Brush.Text.Primary}"
+        ExtendClientAreaToDecorationsHint="True"
+        ExtendClientAreaTitleBarHeightHint="-1">
+
+    <Window.Resources>
+        <StreamGeometry x:Key="FilterIcon">M10,18h4v-2h-4V18z M3,6v2h18V6H3z M6,13h12v-2H6V13z</StreamGeometry>
+        <StreamGeometry x:Key="AddIcon">M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z</StreamGeometry>
+        <StreamGeometry x:Key="DeleteIcon">M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19V4Z M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z</StreamGeometry>
+        <StreamGeometry x:Key="SearchIconData">M9.5,3A6.5,6.5 0 0,1 16,9.5C16,11.11 15.41,12.59 14.44,13.73L14.71,14H15.5L20.5,19L19,20.5L14,15.5V14.71L13.73,14.44C12.59,15.41 11.11,16 9.5,16A6.5,6.5 0 0,1 3,9.5A6.5,6.5 0 0,1 9.5,3M9.5,5C7,5 5,7 5,9.5C5,12 7,14 9.5,14C12,14 14,12 14,9.5C14,7 12,5 9.5,5Z</StreamGeometry>
+    </Window.Resources>
+
+    <Border BorderBrush="{DynamicResource Brush.Border.Primary}" BorderThickness="1">
+        <Grid RowDefinitions="Auto,*,Auto" Margin="0">
+            <!-- Header -->
+            <Border Grid.Row="0" Padding="24,20,16,10" BorderBrush="{DynamicResource Brush.Border.Primary}" BorderThickness="0,0,0,1">
+                <StackPanel Orientation="Horizontal" Spacing="12">
+                    <PathIcon Data="{StaticResource FilterIcon}" Width="20" Height="20" Foreground="{DynamicResource Brush.Accent.Primary}"/>
+                    <TextBlock Text="{l:Localize FilterSettings_Title}" 
+                               FontSize="{DynamicResource TitleFontSize}" 
+                               FontWeight="SemiBold" 
+                               Foreground="{DynamicResource Brush.Text.Primary}"
+                               VerticalAlignment="Center"/>
+                </StackPanel>
+            </Border>
+
+            <!-- Content Area -->
+            <Grid Grid.Row="1" RowDefinitions="Auto, Auto, *" Margin="24,16,24,10">
+                <!-- Filter Name Section -->
+                <StackPanel Grid.Row="0" Margin="0,0,0,12" Spacing="8">
+                    <TextBlock Text="{l:Localize FilterSettings_Name}" 
+                               FontSize="{DynamicResource HelperFontSize}" 
+                               FontWeight="Bold" 
+                               Foreground="{DynamicResource Brush.Text.Secondary}"/>
+                    <TextBox Text="{Binding Name, Mode=TwoWay}"
+                             Height="36"
+                             Background="{DynamicResource Brush.Background.Tertiary}"
+                             BorderBrush="{DynamicResource Brush.Border.Primary}"
+                             VerticalContentAlignment="Center"
+                             Padding="10,0"/>
+                </StackPanel>
+
+                <!-- Search Area -->
+                <Border Grid.Row="1" Margin="0,0,0,12">
+                    <TextBox Text="{Binding SearchQuery, Mode=TwoWay}"
+                             Watermark="{l:Localize ColumnChooser_SearchPlaceholder}"
+                             Classes="clearButton"
+                             HorizontalAlignment="Stretch">
+                        <TextBox.InnerLeftContent>
+                            <PathIcon Data="{StaticResource SearchIconData}" Width="14" Height="14" Margin="10,0,0,0" Foreground="{DynamicResource Brush.Text.Tertiary}"/>
+                        </TextBox.InnerLeftContent>
+                    </TextBox>
+                </Border>
+
+                <!-- 3-Column Content Grid -->
+                <Grid Grid.Row="2" ColumnDefinitions="180, 240, *">
+                    <!-- Left Column: Categories List -->
+                    <Border Grid.Column="0"
+                            Background="{DynamicResource Brush.Background.Secondary}"
+                            BorderBrush="{DynamicResource Brush.Border.Primary}"
+                            BorderThickness="1"
+                            CornerRadius="4"
+                            Margin="0,0,10,0"
+                            Padding="4">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <ListBox SelectionChanged="OnCategorySelectionChanged" 
+                                     SelectedIndex="0"
+                                     Background="Transparent"
+                                     BorderThickness="0">
+                                <ListBox.Styles>
+                                    <Style Selector="ListBoxItem">
+                                        <Setter Property="Padding" Value="12,10"/>
+                                        <Setter Property="Margin" Value="0,2"/>
+                                        <Setter Property="CornerRadius" Value="4"/>
+                                        <Setter Property="FontSize" Value="13"/>
+                                    </Style>
+                                    <Style Selector="ListBoxItem:selected">
+                                        <Setter Property="FontWeight" Value="SemiBold"/>
+                                    </Style>
+                                </ListBox.Styles>
+                                <ListBoxItem Content="{l:Localize ColumnChooser_Category_All}"/>
+                                <ListBoxItem Content="{l:Localize ColumnChooser_Category_Basic}"/>
+                                <ListBoxItem Content="{l:Localize ColumnChooser_Category_PriceVolume}"/>
+                                <ListBoxItem Content="{l:Localize ColumnChooser_Category_Valuation}"/>
+                                <ListBoxItem Content="{l:Localize ColumnChooser_Category_Profitability}"/>
+                                <ListBoxItem Content="{l:Localize ColumnChooser_Category_FinancialHealth}"/>
+                            </ListBox>
+                        </ScrollViewer>
+                    </Border>
+
+                    <!-- Center Column: Columns List -->
+                    <Border Grid.Column="1"
+                            Background="{DynamicResource Brush.Background.Secondary}"
+                            BorderBrush="{DynamicResource Brush.Border.Primary}"
+                            BorderThickness="1"
+                            CornerRadius="4"
+                            Margin="0,0,10,0"
+                            Padding="10">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <ListBox Name="FieldsListBox"
+                                     ItemsSource="{Binding FilteredFields}" 
+                                     SelectionChanged="OnFieldsSelectionChanged"
+                                     Background="Transparent" 
+                                     BorderThickness="0">
+                                <ListBox.Styles>
+                                    <Style Selector="ListBoxItem">
+                                        <Setter Property="Padding" Value="4"/>
+                                        <Setter Property="Margin" Value="0,1"/>
+                                    </Style>
+                                    <Style Selector="ListBoxItem:selected TextBlock">
+                                        <Setter Property="FontWeight" Value="SemiBold"/>
+                                    </Style>
+                                </ListBox.Styles>
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate x:DataType="dialogs:ColumnItemViewModel">
+                                        <!-- Column Name directly clickable -->
+                                        <TextBlock Text="{Binding LocalizedHeader}" 
+                                                   FontSize="14" 
+                                                   VerticalAlignment="Center"
+                                                   Foreground="{DynamicResource Brush.Text.Primary}"
+                                                   Margin="4,2"/>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </ScrollViewer>
+                    </Border>
+
+                    <!-- Right Column: Filter Rules List -->
+                    <Border Grid.Column="2"
+                            Background="{DynamicResource Brush.Background.Secondary}"
+                            BorderBrush="{DynamicResource Brush.Border.Primary}"
+                            BorderThickness="1"
+                            CornerRadius="4"
+                            Padding="10">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <ItemsControl ItemsSource="{Binding Rules}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="dialogs:FilterRuleViewModel">
+                                        <Border Margin="0,0,0,8" Padding="8" Background="{DynamicResource Brush.Background.Tertiary}" BorderBrush="{DynamicResource Brush.Border.Primary}" BorderThickness="1" CornerRadius="4">
+                                            <Grid ColumnDefinitions="140,75,Auto,*,Auto" RowDefinitions="Auto" Margin="0">
+                                                <!-- 1. 対象指標 (リスト) -->
+                                                <Button Grid.Column="0"
+                                                        Width="140"
+                                                        HorizontalAlignment="Stretch"
+                                                        Height="32"
+                                                        Background="{DynamicResource TextControlBackground}"
+                                                        BorderBrush="{DynamicResource TextControlBorderBrush}"
+                                                        BorderThickness="1"
+                                                        Padding="8,0,6,0"
+                                                        Margin="4,0"
+                                                        VerticalContentAlignment="Center"
+                                                        VerticalAlignment="Center">
+                                                    <Grid ColumnDefinitions="*,Auto">
+                                                        <TextBlock Grid.Column="0" Text="{Binding SelectedField.LocalizedHeader, FallbackValue='Select Field'}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                                        <Path Grid.Column="1" Data="M 0 0 L 3.5 3.5 L 7 0" Stroke="{DynamicResource Brush.Text.Secondary}" StrokeThickness="1" VerticalAlignment="Center" Margin="4,0,0,0"/>
+                                                    </Grid>
+                                                    <Button.Styles>
+                                                        <Style Selector="MenuFlyoutPresenter">
+                                                            <Setter Property="Width" Value="200"/>
+                                                        </Style>
+                                                        <Style Selector="MenuItem" x:DataType="dialogs:FilterColumnGroup">
+                                                            <Setter Property="Header" Value="{Binding GroupName}"/>
+                                                            <Setter Property="ItemsSource" Value="{Binding Items}"/>
+                                                        </Style>
+                                                        <Style Selector="MenuItem MenuItem" x:DataType="dialogs:ColumnItemViewModel">
+                                                            <Setter Property="Header" Value="{Binding LocalizedHeader}"/>
+                                                            <Setter Property="Command" Value="{Binding $parent[MenuFlyoutPresenter].((dialogs:FilterRuleViewModel)DataContext).SelectFieldCommand}"/>
+                                                            <Setter Property="CommandParameter" Value="{Binding}"/>
+                                                        </Style>
+                                                    </Button.Styles>
+                                                    <Button.Flyout>
+                                                        <MenuFlyout ItemsSource="{Binding $parent[Window].((dialogs:FilterSettingsViewModel)DataContext).AvailableGroups}"/>
+                                                    </Button.Flyout>
+                                                </Button>
+
+                                                <!-- 2. 比較条件 (リスト) -->
+                                                <ComboBox Grid.Column="1"
+                                                          ItemsSource="{Binding OperatorsForField}"
+                                                          SelectedItem="{Binding Operator, Mode=TwoWay}"
+                                                          HorizontalAlignment="Stretch"
+                                                          HorizontalContentAlignment="Center"
+                                                          Height="32"
+                                                          Margin="4,0"
+                                                          VerticalAlignment="Center"/>
+
+                                                <!-- 3. 数値/テキスト/指標 (123 / Txt / Ind Toggle) -->
+                                                <Border Grid.Column="2"
+                                                        BorderBrush="{DynamicResource Brush.Border.Primary}"
+                                                        BorderThickness="1"
+                                                        CornerRadius="4"
+                                                        Height="32"
+                                                        Margin="4,0"
+                                                        VerticalAlignment="Center"
+                                                        ClipToBounds="True">
+                                                    <Border.Styles>
+                                                        <Style Selector="Button.toggle-btn">
+                                                            <Setter Property="Background" Value="Transparent"/>
+                                                            <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Primary}"/>
+                                                            <Setter Property="Padding" Value="6,0"/>
+                                                            <Setter Property="Height" Value="30"/>
+                                                            <Setter Property="CornerRadius" Value="0"/>
+                                                            <Setter Property="BorderThickness" Value="0"/>
+                                                            <Setter Property="VerticalContentAlignment" Value="Center"/>
+                                                            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+                                                        </Style>
+                                                        <Style Selector="Button.toggle-btn.active">
+                                                            <Setter Property="Background" Value="{DynamicResource Brush.Accent.Primary}"/>
+                                                            <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Inverse}"/>
+                                                            <Setter Property="FontWeight" Value="Bold"/>
+                                                        </Style>
+                                                    </Border.Styles>
+                                                    <Grid ColumnDefinitions="Auto,1,Auto,1,Auto">
+                                                        <Button Grid.Column="0"
+                                                                Classes="toggle-btn"
+                                                                Classes.active="{Binding IsNumericMode}"
+                                                                Command="{Binding SetModeNumericCommand}"
+                                                                ToolTip.Tip="{l:Localize FilterSettings_ToolTip_NumericInputMode}">
+                                                            <TextBlock Text="123" FontSize="11"/>
+                                                        </Button>
+                                                        <Rectangle Grid.Column="1" Fill="{DynamicResource Brush.Border.Primary}"/>
+                                                        <Button Grid.Column="2"
+                                                                Classes="toggle-btn"
+                                                                Classes.active="{Binding IsStringMode}"
+                                                                Command="{Binding SetModeStringCommand}"
+                                                                ToolTip.Tip="{l:Localize FilterSettings_ToolTip_TextInputMode}">
+                                                            <TextBlock Text="Txt" FontSize="11"/>
+                                                        </Button>
+                                                        <Rectangle Grid.Column="3" Fill="{DynamicResource Brush.Border.Primary}"/>
+                                                        <Button Grid.Column="4"
+                                                                Classes="toggle-btn"
+                                                                Classes.active="{Binding IsIndicatorMode}"
+                                                                Command="{Binding SetModeIndicatorCommand}"
+                                                                ToolTip.Tip="{l:Localize FilterSettings_ToolTip_IndicatorCompareMode}">
+                                                            <TextBlock Text="Ind" FontSize="11"/>
+                                                        </Button>
+                                                    </Grid>
+                                                </Border>
+
+                                                <!-- 4. 比較値 (入力 または リスト) -->
+                                                <!-- 4a. 数値入力 (IsNumericMode) -->
+                                                <TextBox Grid.Column="3"
+                                                         IsVisible="{Binding IsNumericMode}"
+                                                         Text="{Binding Value, Mode=TwoWay}"
+                                                         Height="32"
+                                                         VerticalContentAlignment="Center"
+                                                         Padding="8,0"
+                                                         Margin="4,0"
+                                                         VerticalAlignment="Center"/>
+
+                                                <!-- 4b. テキスト入力 (IsStringMode) -->
+                                                <TextBox Grid.Column="3"
+                                                         IsVisible="{Binding IsStringMode}"
+                                                         Text="{Binding Value, Mode=TwoWay}"
+                                                         Height="32"
+                                                         VerticalContentAlignment="Center"
+                                                         Padding="8,0"
+                                                         Margin="4,0"
+                                                         VerticalAlignment="Center"/>
+
+                                                <!-- 4c. 比較対象指標選択 (IsIndicatorMode) -->
+                                                <Button Grid.Column="3"
+                                                        IsVisible="{Binding IsIndicatorMode}"
+                                                        HorizontalAlignment="Stretch"
+                                                        Height="32"
+                                                        Background="{DynamicResource TextControlBackground}"
+                                                        BorderBrush="{DynamicResource TextControlBorderBrush}"
+                                                        BorderThickness="1"
+                                                        Padding="8,0,6,0"
+                                                        Margin="4,0"
+                                                        VerticalContentAlignment="Center"
+                                                        VerticalAlignment="Center">
+                                                    <Grid ColumnDefinitions="*,Auto">
+                                                        <TextBlock Grid.Column="0" Text="{Binding SelectedTargetField.LocalizedHeader, FallbackValue='Select Field'}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                                        <Path Grid.Column="1" Data="M 0 0 L 3.5 3.5 L 7 0" Stroke="{DynamicResource Brush.Text.Secondary}" StrokeThickness="1" VerticalAlignment="Center" Margin="4,0,0,0"/>
+                                                    </Grid>
+                                                    <Button.Styles>
+                                                        <Style Selector="MenuFlyoutPresenter">
+                                                            <Setter Property="Width" Value="200"/>
+                                                        </Style>
+                                                        <Style Selector="MenuItem" x:DataType="dialogs:FilterColumnGroup">
+                                                            <Setter Property="Header" Value="{Binding GroupName}"/>
+                                                            <Setter Property="ItemsSource" Value="{Binding Items}"/>
+                                                        </Style>
+                                                        <Style Selector="MenuItem MenuItem" x:DataType="dialogs:ColumnItemViewModel">
+                                                            <Setter Property="Header" Value="{Binding LocalizedHeader}"/>
+                                                            <Setter Property="Command" Value="{Binding $parent[MenuFlyoutPresenter].((dialogs:FilterRuleViewModel)DataContext).SelectTargetFieldCommand}"/>
+                                                            <Setter Property="CommandParameter" Value="{Binding}"/>
+                                                        </Style>
+                                                    </Button.Styles>
+                                                    <Button.Flyout>
+                                                        <MenuFlyout ItemsSource="{Binding $parent[Window].((dialogs:FilterSettingsViewModel)DataContext).AvailableGroups}"/>
+                                                    </Button.Flyout>
+                                                </Button>
+
+                                                <!-- 5. 削除 -->
+                                                <Button Grid.Column="4" 
+                                                        Command="{Binding $parent[Window].((dialogs:FilterSettingsViewModel)DataContext).DeleteRuleCommand}"
+                                                        CommandParameter="{Binding}"
+                                                        Classes="delete-rule-btn"
+                                                        Width="32" Height="32"
+                                                        Margin="4,0,0,0"
+                                                        HorizontalAlignment="Center"
+                                                        VerticalAlignment="Center"
+                                                        ToolTip.Tip="{l:Localize FilterSettings_ToolTip_DeleteRule}">
+                                                    <Button.Styles>
+                                                        <Style Selector="Button.delete-rule-btn">
+                                                            <Setter Property="Background" Value="{DynamicResource Brush.Button.Background}"/>
+                                                            <Setter Property="Foreground" Value="{DynamicResource Brush.Button.Text}"/>
+                                                            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border.Primary}"/>
+                                                            <Setter Property="BorderThickness" Value="1"/>
+                                                            <Setter Property="CornerRadius" Value="4"/>
+                                                            <Setter Property="Padding" Value="0"/>
+                                                            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+                                                            <Setter Property="VerticalContentAlignment" Value="Center"/>
+                                                        </Style>
+                                                        <Style Selector="Button.delete-rule-btn /template/ ContentPresenter#PART_ContentPresenter">
+                                                            <Setter Property="CornerRadius" Value="4"/>
+                                                        </Style>
+                                                        <Style Selector="Button.delete-rule-btn:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+                                                            <Setter Property="Background" Value="{DynamicResource Brush.Button.Hover}"/>
+                                                            <Setter Property="TextBlock.Foreground" Value="{DynamicResource Brush.Button.Text}"/>
+                                                        </Style>
+                                                        <Style Selector="Button.delete-rule-btn:pressed /template/ ContentPresenter#PART_ContentPresenter">
+                                                            <Setter Property="Background" Value="{DynamicResource Brush.Button.Pressed}"/>
+                                                            <Setter Property="TextBlock.Foreground" Value="{DynamicResource Brush.Button.Text}"/>
+                                                        </Style>
+                                                    </Button.Styles>
+                                                    <Path Data="{StaticResource DeleteIcon}"
+                                                          Fill="{DynamicResource Brush.Button.Text}"
+                                                          Width="14" Height="14"
+                                                          Stretch="Uniform"
+                                                          HorizontalAlignment="Center"
+                                                          VerticalAlignment="Center"/>
+                                                </Button>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </Border>
+                </Grid>
+            </Grid>
+
+            <!-- Footer Buttons -->
+            <Border Grid.Row="2" Background="{DynamicResource Brush.Background.Tertiary}" Padding="24,16" BorderBrush="{DynamicResource Brush.Border.Primary}" BorderThickness="0,1,0,0">
+                <!-- Actions (Right-aligned) -->
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="12">
+                    <Button Content="{l:Localize Btn_OK}" 
+                            Command="{Binding SaveCommand}"
+                            Classes="accent"
+                            Width="90" Height="34"
+                            HorizontalContentAlignment="Center" VerticalContentAlignment="Center"/>
+                    <Button Content="{l:Localize Btn_Cancel}" 
+                            Command="{Binding CancelCommand}"
+                            Classes="accent"
+                            Width="90" Height="34"
+                            HorizontalContentAlignment="Center" VerticalContentAlignment="Center"/>
+                    <Button Content="{l:Localize Btn_Apply}" 
+                            Command="{Binding ApplyCommand}"
+                            Classes="accent"
+                            Width="90" Height="34"
+                            HorizontalContentAlignment="Center" VerticalContentAlignment="Center"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+    </Border>
+</Window>

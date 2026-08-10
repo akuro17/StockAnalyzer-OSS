@@ -1,0 +1,185 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:StockAnalyzer.Avalonia.ViewModels"
+        xmlns:m="using:StockAnalyzer.Avalonia.Models"
+        xmlns:c="using:StockAnalyzer.Avalonia.Converters"
+        xmlns:l="using:StockAnalyzer.Avalonia.Markup"
+        x:Class="StockAnalyzer.Avalonia.Views.LogViewerView"
+        Title="{l:Localize LogViewer_Title}" Width="1000" Height="700"
+        x:DataType="vm:LogViewerViewModel"
+        WindowStartupLocation="CenterOwner"
+        CanResize="True"
+        ExtendClientAreaToDecorationsHint="True"
+        Background="{DynamicResource Brush.Background.Primary}"
+        Foreground="{DynamicResource Brush.Text.Primary}">
+
+    <Window.KeyBindings>
+        <KeyBinding Gesture="Escape" Command="{Binding $parent[Window].Close}"/>
+    </Window.KeyBindings>
+
+    <Window.Resources>
+        <c:LogLevelToBrushConverter x:Key="LevelToColorConverter"/>
+        <c:BytesToReadableSizeConverter x:Key="BytesConverter"/>
+        <StreamGeometry x:Key="LogViewerIconData">M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20M16,11V13H8V11H16M16,15V17H8V15H16Z</StreamGeometry>
+    </Window.Resources>
+
+    <Border BorderBrush="{DynamicResource Brush.Border.Primary}" BorderThickness="1">
+        <Grid RowDefinitions="56, *, 64">
+            <!-- Header (56px) -->
+            <Border Grid.Row="0" 
+                    BorderBrush="{DynamicResource Brush.Border.Primary}" 
+                    BorderThickness="0,0,0,1" 
+                    Padding="24,0" 
+                    Background="{DynamicResource Brush.Background.Tertiary}"
+                    PointerPressed="OnHeaderPointerPressed">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="12">
+                    <PathIcon Data="{StaticResource LogViewerIconData}" Width="20" Height="20" Foreground="{DynamicResource Brush.Accent.Primary}"/>
+                    <TextBlock Text="{l:Localize LogViewer_Title}" 
+                               FontSize="{DynamicResource TitleFontSize}" 
+                               FontWeight="SemiBold" 
+                               Foreground="{DynamicResource Brush.Text.Primary}"
+                               VerticalAlignment="Center"/>
+                </StackPanel>
+            </Border>
+
+            <!-- Main Workspace Body (Row 1) -->
+            <Grid Grid.Row="1" RowDefinitions="Auto, *" Margin="16,12">
+                <!-- Toolbar inside Workspace -->
+                <Border Grid.Row="0" Background="{DynamicResource Brush.Background.Secondary}" 
+                        Padding="12,8" Margin="0,0,0,12" CornerRadius="4"
+                        BorderBrush="{DynamicResource Brush.Border.Primary}" BorderThickness="1">
+                    <StackPanel Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
+                        <CheckBox IsChecked="{Binding IsLoggingEnabled, Mode=TwoWay}" Content="{l:Localize LogViewer_EnableLogging}"
+                                  FontSize="{DynamicResource BaseFontSize}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                        <Border Width="1" Height="18" Background="{DynamicResource Brush.Border.Primary}" Margin="4,0"/>
+                        <TextBlock Text="{l:Localize LogViewer_Search}" VerticalAlignment="Center" 
+                                   FontSize="{DynamicResource BaseFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}"/>
+                        <TextBox Width="220" Height="32" Text="{Binding SearchText, Mode=TwoWay}" 
+                                 Watermark="{l:Localize LogViewer_SearchPlaceholder}"
+                                 FontSize="{DynamicResource DetailFontSize}"
+                                 VerticalContentAlignment="Center"/>
+                        <CheckBox IsChecked="{Binding IsErrorOnly}" Content="{l:Localize LogViewer_ErrorsOnly}"
+                                  FontSize="{DynamicResource BaseFontSize}" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Explorer & Log Details Split View -->
+                <Grid Grid.Row="1" ColumnDefinitions="450, 4, *">
+                    <!-- Log Files List -->
+                    <Grid Grid.Column="0" RowDefinitions="Auto, *">
+                        <!-- Column Headers -->
+                        <Border Grid.Row="0" Background="{DynamicResource Brush.Background.Tertiary}" 
+                                BorderBrush="{DynamicResource Brush.Border.Primary}" BorderThickness="1,1,1,0"
+                                CornerRadius="4,4,0,0" Padding="8,6">
+                            <Grid ColumnDefinitions="*, 1, 130, 1, 80">
+                                <TextBlock Grid.Column="0" Text="{l:Localize LogViewer_Col_Name}" FontWeight="SemiBold" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" VerticalAlignment="Center"/>
+                                <Border Grid.Column="1" Width="1" Background="{DynamicResource Brush.Border.Primary}" Margin="4,0"/>
+                                <TextBlock Grid.Column="2" Text="{l:Localize LogViewer_Col_Date}" FontWeight="SemiBold" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" Margin="5,0" VerticalAlignment="Center"/>
+                                <Border Grid.Column="3" Width="1" Background="{DynamicResource Brush.Border.Primary}" Margin="4,0"/>
+                                <TextBlock Grid.Column="4" Text="{l:Localize LogViewer_Col_Size}" FontWeight="SemiBold" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                            </Grid>
+                        </Border>
+
+                        <ListBox Grid.Row="1" ItemsSource="{Binding LogFiles}" SelectedItem="{Binding SelectedLogFile}" 
+                                 Background="{DynamicResource Brush.Background.Secondary}"
+                                 BorderThickness="1" BorderBrush="{DynamicResource Brush.Border.Primary}"
+                                 CornerRadius="0,0,4,4">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate x:DataType="m:LogFileInfo">
+                                    <Grid ColumnDefinitions="*, 1, 130, 1, 80" Background="Transparent" Margin="0,2" ToolTip.Tip="{Binding FullPath}">
+                                        <Grid.ContextMenu>
+                                            <ContextMenu>
+                                                <MenuItem Header="{l:Localize LogViewer_Menu_CopyContent}" Command="{Binding $parent[ListBox].((vm:LogViewerViewModel)DataContext).CopyContentToClipboardCommand}" CommandParameter="{Binding}"/>
+                                                <MenuItem Header="{l:Localize LogViewer_Menu_ExportLog}" Command="{Binding $parent[ListBox].((vm:LogViewerViewModel)DataContext).ExportLogCommand}" CommandParameter="{Binding}"/>
+                                                <MenuItem Header="{l:Localize LogViewer_Menu_CopyPath}" Command="{Binding $parent[ListBox].((vm:LogViewerViewModel)DataContext).CopyPathToClipboardCommand}" CommandParameter="{Binding}"/>
+                                                <Separator/>
+                                                <MenuItem Header="{l:Localize LogViewer_Menu_Rename}" Command="{Binding $parent[ListBox].((vm:LogViewerViewModel)DataContext).RenameLogCommand}" CommandParameter="{Binding}"/>
+                                                <MenuItem Header="{l:Localize LogViewer_Menu_Delete}" Command="{Binding $parent[ListBox].((vm:LogViewerViewModel)DataContext).DeleteLogCommand}" CommandParameter="{Binding}"/>
+                                            </ContextMenu>
+                                        </Grid.ContextMenu>
+                                        
+                                        <DockPanel Grid.Column="0">
+                                            <TextBlock Text="📄" DockPanel.Dock="Left" VerticalAlignment="Center" FontSize="{DynamicResource BaseFontSize}" Margin="0,0,5,0"/>
+                                            <TextBlock Text="{Binding Name}" VerticalAlignment="Center" FontSize="{DynamicResource DetailFontSize}" Foreground="{DynamicResource Brush.Text.Primary}" TextTrimming="CharacterEllipsis"/>
+                                        </DockPanel>
+                                        
+                                        <Border Grid.Column="1" Width="1" Background="{DynamicResource Brush.Border.Primary}" Opacity="0.5" Margin="2,0"/>
+                                        
+                                        <TextBlock Grid.Column="2" Text="{Binding LastModified, StringFormat=\{0:yyyy/MM/dd HH:mm\}}" VerticalAlignment="Center" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" Margin="5,0"/>
+                                        
+                                        <Border Grid.Column="3" Width="1" Background="{DynamicResource Brush.Border.Primary}" Opacity="0.5" Margin="2,0"/>
+                                        
+                                        <TextBlock Grid.Column="4" Text="{Binding SizeBytes, Converter={StaticResource BytesConverter}}" VerticalAlignment="Center" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" HorizontalAlignment="Right"/>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </Grid>
+
+                    <GridSplitter Grid.Column="1"
+                                  Width="6"
+                                  ResizeDirection="Columns"
+                                  ResizeBehavior="PreviousAndNext"
+                                  HorizontalAlignment="Stretch"
+                                  VerticalAlignment="Stretch"
+                                  Cursor="SizeWestEast"
+                                  Background="{DynamicResource Brush.Background.Primary}"
+                                  Margin="2,0"/>
+
+                    <!-- Log Entries List -->
+                    <Border Grid.Column="2" Background="{DynamicResource Brush.Background.Secondary}" 
+                            BorderBrush="{DynamicResource Brush.Border.Primary}" BorderThickness="1" CornerRadius="4">
+                        <ListBox ItemsSource="{Binding Logs}" SelectionMode="Single" Background="Transparent" BorderThickness="0">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate x:DataType="m:LogEntry">
+                                    <Grid ColumnDefinitions="200, 95, *" Margin="4,2">
+                                        <TextBlock Grid.Column="0" Text="{Binding Timestamp, StringFormat=\{0:yyyy-MM-dd HH:mm:ss.fff\}}" 
+                                                   FontFamily="Consolas, Monospace, Courier New" Foreground="{DynamicResource Brush.Text.Secondary}" 
+                                                   FontSize="{DynamicResource DetailFontSize}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                        <Border Grid.Column="1" Padding="6,2" CornerRadius="4" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="0,0,8,0"
+                                                Background="{Binding Level, Converter={StaticResource LevelToColorConverter}}">
+                                            <TextBlock Text="{Binding Level}" FontSize="{DynamicResource HelperFontSize}" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center"/>
+                                        </Border>
+                                        <StackPanel Grid.Column="2" Spacing="2" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding Message}" TextWrapping="Wrap" FontSize="{DynamicResource BaseFontSize}" Foreground="{DynamicResource Brush.Text.Primary}"/>
+                                            <TextBlock Text="{Binding Exception}" Foreground="{DynamicResource Brush.Text.Secondary}" FontSize="{DynamicResource DetailFontSize}" TextWrapping="Wrap" IsVisible="{Binding Exception, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                        </StackPanel>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </Border>
+                </Grid>
+            </Grid>
+
+            <!-- Footer (64px) -->
+            <Border Grid.Row="2" 
+                    Background="{DynamicResource Brush.Background.Tertiary}" 
+                    BorderBrush="{DynamicResource Brush.Border.Primary}" 
+                    BorderThickness="0,1,0,0" 
+                    Padding="24,0">
+                <Grid ColumnDefinitions="Auto, *, Auto">
+                    <!-- Left Actions: Refresh -->
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                        <Button Content="{l:Localize LogViewer_Refresh}" Command="{Binding ApplyFilterCommand}" 
+                                Theme="{DynamicResource SecondaryButtonStyle}"
+                                Height="34" Width="100" HorizontalContentAlignment="Center" VerticalContentAlignment="Center"/>
+                    </StackPanel>
+
+                    <!-- Right Actions: Copy Details, Export, Close -->
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                        <Button Content="{l:Localize LogViewer_CopyDetails}" Command="{Binding CopyToClipboardCommand}" 
+                                Theme="{DynamicResource SecondaryButtonStyle}"
+                                Height="34" Width="120" HorizontalContentAlignment="Center" VerticalContentAlignment="Center"/>
+                        <Button Content="{l:Localize LogViewer_Export}" Command="{Binding ExportLogCommand}" 
+                                Theme="{DynamicResource SecondaryButtonStyle}"
+                                Height="34" Width="110" HorizontalContentAlignment="Center" VerticalContentAlignment="Center"/>
+                        <Button Content="{l:Localize Btn_Close}" Click="OnCloseClick" 
+                                Theme="{DynamicResource PrimaryButtonStyle}"
+                                Height="34" Width="90" HorizontalContentAlignment="Center" VerticalContentAlignment="Center"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </Grid>
+    </Border>
+</Window>

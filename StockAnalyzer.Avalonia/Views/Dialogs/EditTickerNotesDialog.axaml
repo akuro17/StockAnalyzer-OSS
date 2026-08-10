@@ -1,0 +1,503 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="using:StockAnalyzer.Avalonia.ViewModels.Dialogs"
+        xmlns:views="using:StockAnalyzer.Avalonia.Views"
+        xmlns:l="clr-namespace:StockAnalyzer.Avalonia.Markup;assembly=StockAnalyzer.Avalonia"
+        xmlns:conv="using:StockAnalyzer.Avalonia.Converters"
+        xmlns:models="using:StockAnalyzer.Core.Models.Screener"
+        mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="700"
+        x:Class="StockAnalyzer.Avalonia.Views.Dialogs.EditTickerNotesDialog"
+        x:DataType="vm:EditTickerNotesDialogViewModel"
+        Title="{Binding DashboardTitle}"
+        Width="1200" Height="700"
+        MinWidth="900" MinHeight="600"
+        WindowStartupLocation="CenterOwner"
+        CanResize="True"
+        Background="{DynamicResource Brush.Background.Primary}"
+        ExtendClientAreaToDecorationsHint="True">
+
+    <Window.Resources>
+        <StreamGeometry x:Key="DashboardIconData">M19,3H5C3.9,3 3,3.9 3,5V19C3,20.1 3.9,21 5,21H19C20.1,21 21,20.1 21,19V5C21,3.9 20.1,3 19,3M9,17H7V10H9V17M13,17H11V7H13V17M17,17H15V13H17V17Z</StreamGeometry>
+        <StreamGeometry x:Key="DeleteIconData">M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z</StreamGeometry>
+        <StreamGeometry x:Key="EditIconData">M20.71,7.04C21.1,6.65 21.1,6 20.71,5.63L18.37,3.29C18,2.9 17.35,2.9 16.96,3.29L15.12,5.12L18.87,8.87M3,17.25V21H6.75L17.81,9.93L14.06,6.18L3,17.25Z</StreamGeometry>
+    </Window.Resources>
+
+    <Window.Styles>
+        <Style Selector="DataGrid DataGridCell">
+            <Setter Property="FontSize" Value="{DynamicResource DetailFontSize}"/>
+        </Style>
+        <Style Selector="DataGrid DataGridRow">
+            <Setter Property="FontSize" Value="{DynamicResource DetailFontSize}"/>
+        </Style>
+        <Style Selector="DataGrid DataGridColumnHeader">
+            <Setter Property="FontSize" Value="{DynamicResource BaseFontSize}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+    </Window.Styles>
+
+    <Grid RowDefinitions="56, *, 64">
+        <!-- Header (56px) -->
+        <Border Grid.Row="0"
+                Background="{DynamicResource Brush.Background.Tertiary}"
+                BorderBrush="{DynamicResource Brush.Border.Primary}"
+                BorderThickness="0,0,0,1"
+                PointerPressed="OnHeaderPointerPressed">
+            <Grid ColumnDefinitions="*, Auto" Margin="20,0">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="12">
+                    <PathIcon Data="{StaticResource DashboardIconData}" Width="20" Height="20" Foreground="{DynamicResource Brush.Accent.Primary}"/>
+                    <TextBlock FontSize="{DynamicResource TitleFontSize}" FontWeight="SemiBold" VerticalAlignment="Center" Foreground="{DynamicResource Brush.Text.Primary}">
+                        <Run Text="{Binding Symbol}"/>
+                        <Run Text=" Dashboard"/>
+                    </TextBlock>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Main Body: TabControl Layout -->
+        <Border Grid.Row="1" Padding="20,16">
+            <Grid>
+                <TabControl FontSize="{DynamicResource BaseFontSize}">
+                    <!-- Tab 1: Plan -->
+                <TabItem Header="{l:Localize Dialog_Tab_StrategyNotes}" FontSize="{DynamicResource BaseFontSize}">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Margin="0,12,0,0">
+                        <StackPanel Spacing="16">
+                            <!-- 6 Price Inputs arranged in 2 columns (Long vs Short) enclosed in a styled Border container -->
+                            <Border Padding="16,14"
+                                    Background="{DynamicResource Brush.Background.Secondary}"
+                                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                                    BorderThickness="1"
+                                    CornerRadius="6">
+                                <Grid ColumnDefinitions="*, 24, *">
+                                    <!-- Left Column: Long Strategy -->
+                                    <StackPanel Grid.Column="0" Spacing="12">
+                                        <!-- Long -->
+                                        <Grid ColumnDefinitions="135, *">
+                                            <TextBlock Text="{l:Localize Col_Long}" 
+                                                       VerticalAlignment="Center" 
+                                                       FontSize="{DynamicResource BaseFontSize}"
+                                                       Foreground="{DynamicResource Brush.Text.Primary}"/>
+                                            <TextBox Grid.Column="1" 
+                                                     Text="{Binding LongText, Mode=TwoWay}"
+                                                     FontSize="{DynamicResource BaseFontSize}"
+                                                     Watermark="{l:Localize Watermark_TargetEntryPrice}"
+                                                     Height="34"/>
+                                        </Grid>
+
+                                        <!-- Take Profit Long -->
+                                        <Grid ColumnDefinitions="135, *">
+                                            <TextBlock Text="{l:Localize Col_ExitLong}" 
+                                                       VerticalAlignment="Center" 
+                                                       FontSize="{DynamicResource BaseFontSize}"
+                                                       Foreground="{DynamicResource Brush.Text.Primary}"/>
+                                            <TextBox Grid.Column="1" 
+                                                     Text="{Binding ExitLongText, Mode=TwoWay}"
+                                                     FontSize="{DynamicResource BaseFontSize}"
+                                                     Watermark="{l:Localize Watermark_TargetPrice}"
+                                                     Height="34"/>
+                                        </Grid>
+
+                                        <!-- Stop Loss Long -->
+                                        <Grid ColumnDefinitions="135, *">
+                                            <TextBlock Text="{l:Localize Col_StopLossLong}" 
+                                                       VerticalAlignment="Center" 
+                                                       FontSize="{DynamicResource BaseFontSize}"
+                                                       Foreground="{DynamicResource Brush.Text.Primary}"/>
+                                            <TextBox Grid.Column="1" 
+                                                     Text="{Binding StopLossLongText, Mode=TwoWay}"
+                                                     FontSize="{DynamicResource BaseFontSize}"
+                                                     Watermark="{l:Localize Watermark_StopPrice}"
+                                                     Height="34"/>
+                                        </Grid>
+                                    </StackPanel>
+
+                                    <!-- Right Column: Short Strategy -->
+                                    <StackPanel Grid.Column="2" Spacing="12">
+                                        <!-- Short -->
+                                        <Grid ColumnDefinitions="135, *">
+                                            <TextBlock Text="{l:Localize Col_Short}" 
+                                                       VerticalAlignment="Center" 
+                                                       FontSize="{DynamicResource BaseFontSize}"
+                                                       Foreground="{DynamicResource Brush.Text.Primary}"/>
+                                            <TextBox Grid.Column="1" 
+                                                     Text="{Binding ShortText, Mode=TwoWay}"
+                                                     FontSize="{DynamicResource BaseFontSize}"
+                                                     Watermark="{l:Localize Watermark_TargetEntryPrice}"
+                                                     Height="34"/>
+                                        </Grid>
+
+                                        <!-- Take Profit Short -->
+                                        <Grid ColumnDefinitions="135, *">
+                                            <TextBlock Text="{l:Localize Col_ExitShort}" 
+                                                       VerticalAlignment="Center" 
+                                                       FontSize="{DynamicResource BaseFontSize}"
+                                                       Foreground="{DynamicResource Brush.Text.Primary}"/>
+                                            <TextBox Grid.Column="1" 
+                                                     Text="{Binding ExitShortText, Mode=TwoWay}"
+                                                     FontSize="{DynamicResource BaseFontSize}"
+                                                     Watermark="{l:Localize Watermark_TargetPrice}"
+                                                     Height="34"/>
+                                        </Grid>
+
+                                        <!-- Stop Loss Short -->
+                                        <Grid ColumnDefinitions="135, *">
+                                            <TextBlock Text="{l:Localize Col_StopLossShort}" 
+                                                       VerticalAlignment="Center" 
+                                                       FontSize="{DynamicResource BaseFontSize}"
+                                                       Foreground="{DynamicResource Brush.Text.Primary}"/>
+                                            <TextBox Grid.Column="1" 
+                                                     Text="{Binding StopLossShortText, Mode=TwoWay}"
+                                                     FontSize="{DynamicResource BaseFontSize}"
+                                                     Watermark="{l:Localize Watermark_StopPrice}"
+                                                     Height="34"/>
+                                        </Grid>
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+
+                            <!-- Strategy Note -->
+                            <StackPanel Spacing="8">
+                                <TextBlock Text="{l:Localize Col_Notes}" 
+                                           FontSize="{DynamicResource BaseFontSize}"
+                                           Foreground="{DynamicResource Brush.Text.Primary}"/>
+                                <TextBox Text="{Binding Notes, Mode=TwoWay}"
+                                         AcceptsReturn="True"
+                                         TextWrapping="Wrap"
+                                         FontSize="{DynamicResource BaseFontSize}"
+                                         Height="120"
+                                         BorderBrush="{DynamicResource Brush.Border.Primary}"
+                                         Watermark="Enter strategy notes or trade ideas..."/>
+                            </StackPanel>
+                        </StackPanel>
+                    </ScrollViewer>
+                </TabItem>
+
+                <!-- Tab 2: Signals (Constrained 3-Column Height with Internal Scrollbar) -->
+                <TabItem Header="{l:Localize Dialog_Tab_BuySellFlags}" FontSize="{DynamicResource BaseFontSize}">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <StackPanel Spacing="16" Margin="0,8,0,0">
+
+                            <!-- Embedded Indicator Registration View Component (Constrained Height 460px to force catalog internal scrollbar) -->
+                            <Border Height="460" ClipToBounds="True">
+                                <views:IndicatorRegistrationView DataContext="{Binding IndicatorRegistrationViewModel}"/>
+                            </Border>
+
+                            <!-- 2-Column Draft Conditions & Signal Bundle Builder -->
+                            <Border Padding="14" Background="{DynamicResource Brush.Background.Primary}" BorderBrush="{DynamicResource Brush.Border.Primary}" BorderThickness="1" CornerRadius="4">
+                                <Grid ColumnDefinitions="*, 24, *">
+                                    <!-- Left Column: Draft Conditions List (Header Title Removed) -->
+                                    <Border Grid.Column="0" Height="110" BorderBrush="{DynamicResource Brush.Border.Primary}" BorderThickness="1" CornerRadius="3" Background="{DynamicResource Brush.Background.Secondary}">
+                                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                            <ItemsControl ItemsSource="{Binding DraftConditions}">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Border Padding="8,6" BorderBrush="{DynamicResource Brush.Border.Primary}" BorderThickness="0,0,0,1">
+                                                            <Grid ColumnDefinitions="*, Auto">
+                                                                <TextBlock Grid.Column="0" Text="{Binding DisplayName}" VerticalAlignment="Center" FontSize="{DynamicResource DetailFontSize}" Foreground="{DynamicResource Brush.Text.Primary}"/>
+                                                                
+                                                                <!-- Theme-Bound Delete Button with Trash Icon for Draft Condition -->
+                                                                <Button Grid.Column="1" 
+                                                                        Command="{Binding $parent[Window].((vm:EditTickerNotesDialogViewModel)DataContext).RemoveDraftConditionCommand}"
+                                                                        CommandParameter="{Binding}"
+                                                                        Width="24" Height="24" Padding="0"
+                                                                        Background="{DynamicResource Brush.Button.Background}"
+                                                                        Foreground="{DynamicResource Brush.Button.Text}"
+                                                                        BorderThickness="0" CornerRadius="3"
+                                                                        ToolTip.Tip="Remove Condition">
+                                                                    <Button.Styles>
+                                                                        <Style Selector="Button:pointerover /template/ ContentPresenter">
+                                                                            <Setter Property="Background" Value="{DynamicResource Brush.Button.Hover}"/>
+                                                                        </Style>
+                                                                        <Style Selector="Button:pressed /template/ ContentPresenter">
+                                                                            <Setter Property="Background" Value="{DynamicResource Brush.Button.Pressed}"/>
+                                                                        </Style>
+                                                                    </Button.Styles>
+                                                                    <PathIcon Data="{StaticResource DeleteIconData}" Width="12" Height="12" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{DynamicResource Brush.Button.Text}"/>
+                                                                </Button>
+                                                            </Grid>
+                                                        </Border>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </ScrollViewer>
+                                    </Border>
+
+                                    <!-- Right Column: 2 Rows (Upper: Side-by-Side Name Input & Target Selection; Lower: Bundle Button) -->
+                                    <StackPanel Grid.Column="2" Spacing="10" VerticalAlignment="Center">
+                                        <!-- Upper Row: Side-by-Side Name Input (Left) & Target Selection (Right) -->
+                                        <Grid ColumnDefinitions="*, 140">
+                                            <TextBox Grid.Column="0" Text="{Binding NewBundleName, Mode=TwoWay}" Watermark="{l:Localize Signal_ConditionSetNamePlaceholder}" Height="34" FontSize="{DynamicResource DetailFontSize}"/>
+                                            <ComboBox Grid.Column="1" ItemsSource="{Binding BundleTargetOptions}" SelectedItem="{Binding SelectedTargetForBundleOption, Mode=TwoWay}" HorizontalAlignment="Stretch" Height="34" FontSize="{DynamicResource DetailFontSize}" Margin="8,0,0,0"/>
+                                        </Grid>
+
+                                        <!-- Lower Row: Save Signal Button -->
+                                        <Button Content="{l:Localize Btn_SaveSignal}" Command="{Binding BundleConditionsCommand}" Theme="{DynamicResource PrimaryButtonStyle}" HorizontalAlignment="Stretch" Height="34" FontSize="{DynamicResource DetailFontSize}" HorizontalContentAlignment="Center"/>
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+
+                            <!-- Registered Bundled Signals Matrix (Single Border) -->
+                            <Border BorderBrush="{DynamicResource Brush.Border.Primary}" BorderThickness="1" CornerRadius="4" Background="{DynamicResource Brush.Background.Primary}">
+                                <ItemsControl ItemsSource="{Binding MatrixColumns}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <UniformGrid Columns="6"/>
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:SignalMatrixColumnViewModel">
+                                            <Border BorderBrush="{DynamicResource Brush.Border.Primary}" BorderThickness="0,0,1,0" Padding="8">
+                                                <StackPanel Spacing="8">
+                                                    <!-- Column Header (Horizontal Target Name) -->
+                                                    <Border Background="{DynamicResource Brush.Background.Tertiary}" Padding="8,6" CornerRadius="4" BorderBrush="{DynamicResource Brush.Border.Primary}" BorderThickness="1">
+                                                        <TextBlock Text="{Binding TargetName}" FontWeight="Bold" FontSize="{DynamicResource BaseFontSize}" Foreground="{DynamicResource Brush.Text.Primary}" HorizontalAlignment="Center" TextAlignment="Center"/>
+                                                    </Border>
+
+                                                    <!-- Registered Condition Sets Underneath -->
+                                                    <ScrollViewer VerticalScrollBarVisibility="Auto" Height="140">
+                                                        <ItemsControl ItemsSource="{Binding Bundles}">
+                                                            <ItemsControl.ItemTemplate>
+                                                                <DataTemplate x:DataType="models:BundledSignalCondition">
+                                                                    <Border Margin="0,0,0,6" Padding="6,8" Background="{DynamicResource Brush.Background.Secondary}" BorderBrush="{DynamicResource Brush.Border.Primary}" BorderThickness="1" CornerRadius="4">
+                                                                        <StackPanel Spacing="6" HorizontalAlignment="Stretch">
+                                                                            <!-- Top Row: Condition Set Name (Left) & True/False Status Color (Right) -->
+                                                                            <Grid ColumnDefinitions="*, Auto">
+                                                                                <TextBlock Grid.Column="0" Text="{Binding Name}" FontWeight="SemiBold" FontSize="{DynamicResource DetailFontSize}" TextTrimming="CharacterEllipsis" Foreground="{DynamicResource Brush.Text.Primary}" VerticalAlignment="Center"/>
+
+                                                                                <!-- True/False Status Text (Pure font color matching positive/negative +/- numerical indicators) -->
+                                                                                <TextBlock Grid.Column="1" Text="{Binding StatusText}" FontWeight="Bold" FontSize="11" Foreground="{Binding StatusText, Converter={x:Static conv:SignalStatusColorConverter.Instance}}" VerticalAlignment="Center" Margin="4,0,0,0"/>
+                                                                            </Grid>
+
+                                                                            <!-- Bottom: Action Buttons (Edit on Left, Delete on Right) Underneath Status Text -->
+                                                                            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center" Margin="0,2,0,0">
+                                                                                <!-- Theme-Bound Edit Button (Un-bundle to Draft) -->
+                                                                                <Button Command="{Binding $parent[Window].((vm:EditTickerNotesDialogViewModel)DataContext).EditBundleCommand}"
+                                                                                        CommandParameter="{Binding}"
+                                                                                        Width="22" Height="22" Padding="0"
+                                                                                        Background="{DynamicResource Brush.Button.Background}"
+                                                                                        Foreground="{DynamicResource Brush.Button.Text}"
+                                                                                        BorderThickness="0" CornerRadius="3"
+                                                                                        ToolTip.Tip="Edit &amp; Return to Draft">
+                                                                                    <Button.Styles>
+                                                                                        <Style Selector="Button:pointerover /template/ ContentPresenter">
+                                                                                            <Setter Property="Background" Value="{DynamicResource Brush.Button.Hover}"/>
+                                                                                        </Style>
+                                                                                        <Style Selector="Button:pressed /template/ ContentPresenter">
+                                                                                            <Setter Property="Background" Value="{DynamicResource Brush.Button.Pressed}"/>
+                                                                                        </Style>
+                                                                                    </Button.Styles>
+                                                                                    <PathIcon Data="{StaticResource EditIconData}" Width="12" Height="12" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{DynamicResource Brush.Button.Text}"/>
+                                                                                </Button>
+
+                                                                                <!-- Theme-Bound Delete Button -->
+                                                                                <Button Command="{Binding $parent[Window].((vm:EditTickerNotesDialogViewModel)DataContext).RemoveBundleCommand}"
+                                                                                        CommandParameter="{Binding}"
+                                                                                        Width="22" Height="22" Padding="0"
+                                                                                        Background="{DynamicResource Brush.Button.Background}"
+                                                                                        Foreground="{DynamicResource Brush.Button.Text}"
+                                                                                        BorderThickness="0" CornerRadius="3"
+                                                                                        ToolTip.Tip="Delete Condition Set">
+                                                                                    <Button.Styles>
+                                                                                        <Style Selector="Button:pointerover /template/ ContentPresenter">
+                                                                                            <Setter Property="Background" Value="{DynamicResource Brush.Button.Hover}"/>
+                                                                                        </Style>
+                                                                                        <Style Selector="Button:pressed /template/ ContentPresenter">
+                                                                                            <Setter Property="Background" Value="{DynamicResource Brush.Button.Pressed}"/>
+                                                                                        </Style>
+                                                                                    </Button.Styles>
+                                                                                    <PathIcon Data="{StaticResource DeleteIconData}" Width="12" Height="12" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{DynamicResource Brush.Button.Text}"/>
+                                                                                </Button>
+                                                                            </StackPanel>
+                                                                        </StackPanel>
+                                                                    </Border>
+                                                                </DataTemplate>
+                                                            </ItemsControl.ItemTemplate>
+                                                        </ItemsControl>
+                                                    </ScrollViewer>
+                                                </StackPanel>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </Border>
+                        </StackPanel>
+                    </ScrollViewer>
+                </TabItem>
+
+                <!-- Tab 3: History (OHLCV time series, newest first, with continuity-preserving delete) -->
+                <TabItem Header="{l:Localize Dialog_Tab_History}" FontSize="{DynamicResource BaseFontSize}">
+                    <Grid RowDefinitions="*, Auto" Margin="0,12,0,0">
+                        <Border Grid.Row="0"
+                                BorderBrush="{DynamicResource Brush.Border.Primary}"
+                                BorderThickness="1" CornerRadius="4" ClipToBounds="True">
+                            <Grid>
+                                <DataGrid ItemsSource="{Binding HistoryRows}"
+                                          SelectedItem="{Binding SelectedHistoryRow, Mode=TwoWay}"
+                                          SelectionMode="Single"
+                                          IsReadOnly="True"
+                                          AutoGenerateColumns="False"
+                                          GridLinesVisibility="Horizontal"
+                                          HeadersVisibility="Column"
+                                          BorderThickness="0"
+                                          Background="{DynamicResource Brush.Background.Primary}">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="{l:Localize Col_Date}" Binding="{Binding Timestamp, StringFormat={}{0:yyyy-MM-dd}}" Width="130"/>
+                                        <DataGridTextColumn Header="{l:Localize Col_Open}" Binding="{Binding Open, StringFormat={}{0:N2}}" Width="*"/>
+                                        <DataGridTextColumn Header="{l:Localize Col_High}" Binding="{Binding High, StringFormat={}{0:N2}}" Width="*"/>
+                                        <DataGridTextColumn Header="{l:Localize Col_Low}" Binding="{Binding Low, StringFormat={}{0:N2}}" Width="*"/>
+                                        <DataGridTextColumn Header="{l:Localize Col_Close}" Binding="{Binding Close, StringFormat={}{0:N2}}" Width="*"/>
+                                        <DataGridTextColumn Header="{l:Localize Col_Volume}" Binding="{Binding Volume, StringFormat={}{0:N0}}" Width="*"/>
+                                    </DataGrid.Columns>
+                                </DataGrid>
+
+                                <!-- Zero-State overlay: shown only when the ticker has no time series data -->
+                                <TextBlock Text="{l:Localize History_NoDataMessage}"
+                                           IsVisible="{Binding !HasHistoryData}"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                                           Foreground="{DynamicResource Brush.Text.Secondary}"
+                                           FontSize="{DynamicResource HelperFontSize}"/>
+                            </Grid>
+                        </Border>
+
+                        <!-- Sync (refresh from source) and Delete-from-selection actions -->
+                        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0" Spacing="12">
+                            <Button Command="{Binding SyncHistoryCommand}"
+                                    Width="100" Height="36"
+                                    HorizontalContentAlignment="Center"
+                                    Background="{DynamicResource Brush.Button.Background}"
+                                    Foreground="{DynamicResource Brush.Button.Text}"
+                                    BorderThickness="0" CornerRadius="4"
+                                    ToolTip.Tip="{l:Localize Btn_Sync}">
+                                <Button.Styles>
+                                    <Style Selector="Button:pointerover /template/ ContentPresenter">
+                                        <Setter Property="Background" Value="{DynamicResource Brush.Button.Hover}"/>
+                                    </Style>
+                                    <Style Selector="Button:pressed /template/ ContentPresenter">
+                                        <Setter Property="Background" Value="{DynamicResource Brush.Button.Pressed}"/>
+                                    </Style>
+                                </Button.Styles>
+                                <TextBlock Text="{l:Localize Btn_Sync}" Foreground="{DynamicResource Brush.Button.Text}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            </Button>
+                            <Button Command="{Binding DeleteHistoryFromSelectedCommand}"
+                                    Width="100" Height="36"
+                                    HorizontalContentAlignment="Center"
+                                    Background="{DynamicResource Brush.Button.Background}"
+                                    Foreground="{DynamicResource Brush.Button.Text}"
+                                    BorderThickness="0" CornerRadius="4"
+                                    ToolTip.Tip="{l:Localize Btn_Delete}">
+                                <Button.Styles>
+                                    <Style Selector="Button:pointerover /template/ ContentPresenter">
+                                        <Setter Property="Background" Value="{DynamicResource Brush.Button.Hover}"/>
+                                    </Style>
+                                    <Style Selector="Button:pressed /template/ ContentPresenter">
+                                        <Setter Property="Background" Value="{DynamicResource Brush.Button.Pressed}"/>
+                                    </Style>
+                                </Button.Styles>
+                                <TextBlock Text="{l:Localize Btn_Delete}" Foreground="{DynamicResource Brush.Button.Text}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            </Button>
+                        </StackPanel>
+                    </Grid>
+                </TabItem>
+            </TabControl>
+
+                <!-- Symbol input + Sync toggle overlay at the right end of the tab strip -->
+                <StackPanel HorizontalAlignment="Right" VerticalAlignment="Top"
+                            Orientation="Horizontal" Spacing="8" Margin="0,5,0,0"
+                            ZIndex="10">
+                    <!-- Symbol AutoCompleteBox (same spec as main chart's ticker input) -->
+                    <AutoCompleteBox x:Name="DashboardSymbolBox"
+                                     Width="150" Height="28"
+                                     VerticalAlignment="Center"
+                                     Watermark="Symbol"
+                                     Text="{Binding Symbol, Mode=OneWay}"
+                                     ItemsSource="{Binding AvailableTickers}"
+                                     FilterMode="StartsWith"
+                                     KeyDown="DashboardSymbolBox_KeyDown"
+                                     SelectionChanged="DashboardSymbolBox_SelectionChanged"
+                                     BorderBrush="{DynamicResource Brush.Border}"
+                                     BorderThickness="1"
+                                     CornerRadius="6">
+                        <AutoCompleteBox.ItemTemplate>
+                            <DataTemplate>
+                                <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto" Margin="0,2">
+                                    <TextBlock Text="{Binding}"
+                                               FontWeight="Bold"
+                                               Foreground="{DynamicResource Brush.Semantic.Success}"
+                                               VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Column="1" Text=" — "
+                                               Foreground="{DynamicResource Brush.Text.Tertiary}"
+                                               VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Column="2"
+                                               Text="{l:Localize AddTicker_SymbolDescription}"
+                                               Foreground="{DynamicResource Brush.Text.Secondary}"
+                                               VerticalAlignment="Center"
+                                               FontSize="{DynamicResource HelperFontSize}"/>
+                                    <Border Grid.Column="3"
+                                            Background="{DynamicResource Brush.Background.Primary}"
+                                            Padding="4,1" CornerRadius="2" Margin="6,0">
+                                        <TextBlock Text="{l:Localize AddTicker_MarketLabel}"
+                                                   FontSize="{DynamicResource HelperFontSize}"
+                                                   Foreground="{DynamicResource Brush.Text.Tertiary}"
+                                                   FontWeight="Bold"/>
+                                    </Border>
+                                    <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="2">
+                                        <Path Data="M21,7L9,19L3.5,13.5L4.91,12.09L9,16.17L19.59,5.59L21,7Z"
+                                              Fill="{DynamicResource Brush.Semantic.Success}"
+                                              Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center"/>
+                                        <TextBlock Text="{l:Localize AddTicker_ValidLabel}"
+                                                   Foreground="{DynamicResource Brush.Semantic.Success}"
+                                                   FontSize="{DynamicResource HelperFontSize}"
+                                                   VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Grid>
+                            </DataTemplate>
+                        </AutoCompleteBox.ItemTemplate>
+                    </AutoCompleteBox>
+                    <!-- Sync toggle (same spec as ChartView Sync toggle) -->
+                    <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                        <TextBlock Text="Sync" VerticalAlignment="Center"
+                                   FontSize="{DynamicResource BaseFontSize}"
+                                   Foreground="{DynamicResource Brush.Foreground.Secondary}"/>
+                        <ToggleSwitch IsChecked="{Binding IsSyncEnabled}"
+                                      OnContent="" OffContent=""
+                                      MinWidth="0" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Footer (64px) -->
+        <Border Grid.Row="2"
+                Background="{DynamicResource Brush.Background.Tertiary}"
+                BorderBrush="{DynamicResource Brush.Border.Primary}"
+                BorderThickness="0,1,0,0">
+            <StackPanel Orientation="Horizontal" 
+                        HorizontalAlignment="Right" 
+                        VerticalAlignment="Center" 
+                        Spacing="12" 
+                        Margin="20,0">
+                <Button Content="{l:Localize Btn_OK}"
+                        Command="{Binding SaveCommand}"
+                        Theme="{DynamicResource PrimaryButtonStyle}"
+                        Foreground="{DynamicResource Brush.Text.Inverse}"
+                        FontSize="{DynamicResource BaseFontSize}"
+                        Width="100" Height="36"
+                        HorizontalContentAlignment="Center"/>
+                <Button Content="{l:Localize Btn_Cancel}"
+                        Command="{Binding CancelCommand}"
+                        Theme="{DynamicResource SecondaryButtonStyle}"
+                        FontSize="{DynamicResource BaseFontSize}"
+                        Width="100" Height="36"
+                        HorizontalContentAlignment="Center"/>
+                <Button Content="{l:Localize Btn_Apply}"
+                        Command="{Binding ApplyCommand}"
+                        Theme="{DynamicResource PrimaryButtonStyle}"
+                        Foreground="{DynamicResource Brush.Text.Inverse}"
+                        FontSize="{DynamicResource BaseFontSize}"
+                        Width="100" Height="36"
+                        HorizontalContentAlignment="Center"/>
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>

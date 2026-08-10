@@ -1,0 +1,54 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="StockAnalyzer.Avalonia.Views.Spikes.SpikeStyleSelectorView">
+  
+  <UserControl.Styles>
+    
+    <!-- 1. WPF: <Trigger Property="IsMouseOver" Value="True"> -->
+    <!-- Avalonia: :pointerover -->
+    <Style Selector="Border.HoverTest">
+      <Setter Property="Background" Value="Gray"/>
+    </Style>
+    <Style Selector="Border.HoverTest:pointerover">
+      <Setter Property="Background" Value="Red"/>
+    </Style>
+
+    <!-- 2. WPF: <Trigger Property="IsEnabled" Value="False"> -->
+    <!-- Avalonia: [IsEnabled=False] (Property Selector) or :disabled (Pseudo-class) -->
+    <Style Selector="TextBlock.DisableTest[IsEnabled=False]">
+      <Setter Property="Opacity" Value="0.5"/>
+      <Setter Property="Foreground" Value="Red"/>
+    </Style>
+    
+    <!-- 3. WPF: <DataTemplate.Triggers><DataTrigger Binding="{Binding IsSelected}" Value="True"> -->
+    <!-- Avalonia: [IsSelected=True] (if using ListBoxItem) or custom pseudo-classes -->
+    <!-- Simulating a selection state on a generic Grid -->
+    <Style Selector="Grid.SelectionTest[Tag=Selected]">
+       <Setter Property="Background" Value="Blue"/>
+    </Style>
+
+    <!-- 4. WPF: Nested Trigger (CheckBox checked -> Border inside template) -->
+    <!-- Avalonia: Descendant Selector -->
+    <Style Selector="CheckBox.NestedTest:checked ContentPresenter">
+      <Setter Property="Background" Value="LightGreen"/>
+    </Style>
+
+  </UserControl.Styles>
+
+  <StackPanel Spacing="10">
+    
+    <Border Classes="HoverTest" Height="50" Width="200">
+      <TextBlock Text="Hover Me (Should turn Red)" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+    </Border>
+
+    <TextBlock Classes="DisableTest" IsEnabled="False" Text="Disabled Text (Should be Red &amp; Faded)"/>
+    
+    <Grid Classes="SelectionTest" Tag="Selected" Height="50" Width="200">
+      <TextBlock Text="Selected State (Should be Blue)" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+    </Grid>
+
+    <CheckBox Classes="NestedTest" Content="Check Me (Content background should turn Green)"/>
+
+  </StackPanel>
+  
+</UserControl>
