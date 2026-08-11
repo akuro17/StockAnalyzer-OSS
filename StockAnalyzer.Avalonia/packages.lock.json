@@ -97,9 +97,9 @@
       },
       "CommunityToolkit.Mvvm": {
         "type": "Direct",
-        "requested": "[8.2.2, )",
-        "resolved": "8.2.2",
-        "contentHash": "r0g0k9tGYdrnz8R7T3x5UiokDffeevzK/2P/9SBL6fqLgN8B157MIi/bVUWI1KAz6ZorZrK9AdABCWUeXZZsvA=="
+        "requested": "[8.4.2, )",
+        "resolved": "8.4.2",
+        "contentHash": "WadCzGEc2U+3e20avRLng4qNtt4zoOGWrdUISqJWrHe3/FSnrYjuM5Sb4yQb09LhkBXrrI4Zt3dLKgRMbItsrg=="
       },
       "Microsoft.CodeAnalysis.NetAnalyzers": {
         "type": "Direct",
@@ -780,7 +780,7 @@
         "type": "Project",
         "dependencies": {
           "Apache.Arrow": "[22.1.0, )",
-          "CommunityToolkit.Mvvm": "[8.2.2, )",
+          "CommunityToolkit.Mvvm": "[8.4.2, )",
           "DuckDB.NET.Data.Full": "[1.1.2.1, )",
           "Microsoft.Extensions.Logging.Abstractions": "[8.0.0, )",
           "Microsoft.Extensions.Resilience": "[8.0.0, )",
