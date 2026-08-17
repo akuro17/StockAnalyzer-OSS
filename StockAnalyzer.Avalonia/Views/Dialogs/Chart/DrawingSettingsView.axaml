@@ -1,0 +1,181 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:StockAnalyzer.Avalonia.ViewModels.Dialogs"
+             xmlns:vconv="using:StockAnalyzer.Avalonia.Converters"
+             xmlns:l="using:StockAnalyzer.Avalonia.Markup"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="600"
+             x:Class="StockAnalyzer.Avalonia.Views.Dialogs.Chart.DrawingSettingsView"
+             x:DataType="vm:DrawingSettingsViewModel">
+
+    <UserControl.Resources>
+        <vconv:HsvDataToAvaloniaHsvColorConverter x:Key="HsvConverter"/>
+        <vconv:EnumToLocalizedNameConverter x:Key="LocalizedEnumConverter"/>
+    </UserControl.Resources>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Spacing="20" Margin="16">
+
+            <!-- Section: Modifier Key Hints -->
+            <Border Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="{l:Localize Settings_Chart_Drawing_ModifierKeysTitle}" FontSize="15" FontWeight="Bold" Foreground="{DynamicResource Brush.Accent.Primary}"/>
+                    <TextBlock Text="{l:Localize Settings_Chart_Drawing_ShiftClickHint}" FontSize="12" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                    <TextBlock Text="{l:Localize Settings_Chart_Drawing_CtrlClickHint}" FontSize="12" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                    <TextBlock Text="{l:Localize Settings_Chart_Drawing_AltKeyHint}" FontSize="12" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                </StackPanel>
+            </Border>
+
+            <!-- Group: Appearance -->
+            <Border Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="{l:Localize Settings_Chart_Appearance}" FontSize="15" FontWeight="Bold" Foreground="{DynamicResource Brush.Accent.Primary}"/>
+
+                    <StackPanel Spacing="12">
+                        <!-- Line Thickness -->
+                        <Grid ColumnDefinitions="*, Auto">
+                            <StackPanel Spacing="2">
+                                <TextBlock Text="{l:Localize Settings_Chart_StrokeThickness}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                <TextBlock Text="{l:Localize Settings_Chart_StrokeThickness_Desc}" FontSize="11" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                            </StackPanel>
+                            <NumericUpDown Grid.Column="1"
+                                           Value="{Binding DefaultStrokeThickness}"
+                                           Minimum="0.1"
+                                           Maximum="10.0"
+                                           Increment="0.1"
+                                           FormatString="0.0"
+                                           Width="120"
+                                           Height="32"/>
+                        </Grid>
+
+                        <Separator Background="{DynamicResource Brush.Border.Primary}" Height="1"/>
+
+                        <!-- Default Drawing Color -->
+                        <Grid ColumnDefinitions="*, Auto">
+                            <StackPanel Spacing="2">
+                                <TextBlock Text="{l:Localize Settings_Chart_DrawingDefaultColor}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                <TextBlock Text="{l:Localize Settings_Chart_DrawingDefaultColor_Desc}" FontSize="11" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                            </StackPanel>
+                            <ColorPicker Grid.Column="1" HsvColor="{Binding DrawingDefaultColor, Mode=TwoWay, Converter={StaticResource HsvConverter}}" Width="50" Height="28"/>
+                        </Grid>
+
+                        <Separator Background="{DynamicResource Brush.Border.Primary}" Height="1"/>
+
+                        <!-- Control Point Color (Red Circle) -->
+                        <Grid ColumnDefinitions="*, Auto">
+                            <StackPanel Spacing="2">
+                                <TextBlock Text="{l:Localize Settings_Chart_DrawingHandleColor}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                <TextBlock Text="{l:Localize Settings_Chart_DrawingHandleColor_Desc}" FontSize="11" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                            </StackPanel>
+                            <ColorPicker Grid.Column="1" HsvColor="{Binding DrawingHandleColor, Mode=TwoWay, Converter={StaticResource HsvConverter}}" Width="50" Height="28"/>
+                        </Grid>
+
+                        <Separator Background="{DynamicResource Brush.Border.Primary}" Height="1"/>
+
+                        <!-- Drawing Text Font Size -->
+                        <Grid ColumnDefinitions="*, Auto">
+                            <StackPanel Spacing="2">
+                                <TextBlock Text="{l:Localize Settings_Chart_DrawingFontSize}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                <TextBlock Text="{l:Localize Settings_Chart_DrawingFontSize_Desc}" FontSize="11" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                            </StackPanel>
+                            <NumericUpDown Grid.Column="1"
+                                           Value="{Binding DrawingFontSize}"
+                                           Minimum="8.0"
+                                           Maximum="32.0"
+                                           Increment="1.0"
+                                           FormatString="0.0"
+                                           Width="120"
+                                           Height="32"/>
+                        </Grid>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Group: Interaction Settings -->
+            <Border Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="{l:Localize Settings_Chart_InteractionSettings}" FontSize="15" FontWeight="Bold" Foreground="{DynamicResource Brush.Accent.Primary}"/>
+
+                    <StackPanel Spacing="12">
+                        <!-- Enable Smart Guides -->
+                        <Grid ColumnDefinitions="*, Auto">
+                            <StackPanel Spacing="2">
+                                <TextBlock Text="{l:Localize Settings_Chart_SmartGuidesEnabled}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                <TextBlock Text="{l:Localize Settings_Chart_SmartGuidesEnabled_Desc}" FontSize="11" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                            </StackPanel>
+                            <ToggleSwitch Grid.Column="1" IsChecked="{Binding SmartGuidesEnabled}" OnContent="" OffContent=""/>
+                        </Grid>
+
+                        <Separator Background="{DynamicResource Brush.Border.Primary}" Height="1"/>
+
+                        <!-- Smart Guide Snap Distance -->
+                        <Grid ColumnDefinitions="*, Auto">
+                            <StackPanel Spacing="2">
+                                <TextBlock Text="{l:Localize Settings_Chart_SmartGuideSnapThreshold}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                <TextBlock Text="{l:Localize Settings_Chart_SmartGuideSnapThreshold_Desc}" FontSize="11" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                            </StackPanel>
+                            <NumericUpDown Grid.Column="1"
+                                           Value="{Binding SmartGuideSnapDistance}"
+                                           IsEnabled="{Binding SmartGuidesEnabled}"
+                                           Minimum="1.0"
+                                           Maximum="50.0"
+                                           Increment="0.5"
+                                           FormatString="0.0"
+                                           Width="120"
+                                           Height="32"/>
+                        </Grid>
+
+                        <Separator Background="{DynamicResource Brush.Border.Primary}" Height="1"/>
+
+                        <!-- Control Point Hide Timeout -->
+                        <Grid ColumnDefinitions="*, Auto">
+                            <StackPanel Spacing="2">
+                                <TextBlock Text="{l:Localize Settings_Chart_ControlPointHideTimeout}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                <TextBlock Text="{l:Localize Settings_Chart_ControlPointHideTimeout_Desc}" FontSize="11" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                            </StackPanel>
+                            <NumericUpDown Grid.Column="1"
+                                           Value="{Binding ControlPointHideTimeoutSeconds}"
+                                           Minimum="1"
+                                           Maximum="60"
+                                           Increment="1"
+                                           FormatString="0"
+                                           Width="120"
+                                           Height="32"/>
+                        </Grid>
+
+                        <Separator Background="{DynamicResource Brush.Border.Primary}" Height="1"/>
+
+                        <!-- Drawing Tool Continuation Mode -->
+                        <Grid ColumnDefinitions="*, Auto">
+                            <StackPanel Spacing="2">
+                                <TextBlock Text="{l:Localize Settings_Chart_DrawingToolContinuationMode}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                <TextBlock Text="{l:Localize Settings_Chart_DrawingToolContinuationMode_Desc}" FontSize="11" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                            </StackPanel>
+                            <ComboBox Grid.Column="1" ItemsSource="{Binding ContinuationModeOptions}" SelectedItem="{Binding DrawingToolContinuationMode}" Width="180">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding, Converter={StaticResource LocalizedEnumConverter}}"/>
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                        </Grid>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

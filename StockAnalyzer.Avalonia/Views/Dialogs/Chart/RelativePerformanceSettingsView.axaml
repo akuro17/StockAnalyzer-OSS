@@ -1,0 +1,291 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:StockAnalyzer.Avalonia.ViewModels.Dialogs"
+             xmlns:models="using:StockAnalyzer.Core.Models"
+             xmlns:vconv="using:StockAnalyzer.Avalonia.Converters"
+             xmlns:l="using:StockAnalyzer.Avalonia.Markup"
+             mc:Ignorable="d" d:DesignWidth="400" d:DesignHeight="500"
+             x:Class="StockAnalyzer.Avalonia.Views.Dialogs.Chart.RelativePerformanceSettingsView"
+             x:DataType="vm:RelativePerformanceSettingsViewModel">
+
+    <UserControl.Resources>
+        <vconv:EnumToLocalizedNameConverter x:Key="LocalizedEnumConverter"/>
+        <StreamGeometry x:Key="AddIcon">M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z</StreamGeometry>
+        <StreamGeometry x:Key="DeleteIcon">M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19V4Z M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z</StreamGeometry>
+        <StreamGeometry x:Key="SaveIcon">M15,9H5V5H15M12,19A3,3 0 0,1 9,16A3,3 0 0,1 12,13A3,3 0 0,1 15,16A3,3 0 0,1 12,19M17,3H5C3.89,3 3,3.89 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V7L17,3Z</StreamGeometry>
+        <StreamGeometry x:Key="LoadIcon">M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M12,18V15H8V13H12V10L17,14L12,18M13,9V3.5L18.5,9H13Z</StreamGeometry>
+    </UserControl.Resources>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Spacing="20" Margin="16">
+            
+            <!-- Comparison Targets Section (2 Columns) -->
+            <Border Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16">
+                <Grid ColumnDefinitions="*, *">
+                    
+                    <!-- Left Column: Active Comparison Targets -->
+                    <StackPanel Grid.Column="0" Spacing="16" Margin="0,0,12,0">
+                        <TextBlock Text="{l:Localize Label_ComparisonSymbols}" FontWeight="SemiBold" FontSize="14"/>
+                        
+                        <!-- Add Symbol Area -->
+                        <StackPanel Spacing="4" Margin="0,0,0,8">
+                            <Grid ColumnDefinitions="*, Auto">
+                                <TextBox x:Name="NewSymbolTextBox" 
+                                         Text="{Binding NewSymbol}" 
+                                         Watermark="{l:Localize AddTicker_Placeholder}"
+                                         Margin="0,0,8,0"
+                                         KeyDown="NewSymbolTextBox_KeyDown">
+                                    <TextBox.KeyBindings>
+                                        <KeyBinding Gesture="Enter" Command="{Binding AddSymbolCommand}"/>
+                                    </TextBox.KeyBindings>
+                                </TextBox>
+                                <Button Grid.Column="1" Command="{Binding AddSymbolCommand}" 
+                                        Background="{DynamicResource Brush.Button.Background}"
+                                        Foreground="{DynamicResource Brush.Button.Text}"
+                                        ToolTip.Tip="{l:Localize Tooltip_AddSymbol}">
+                                    <Button.Styles>
+                                        <Style Selector="Button:pointerover /template/ ContentPresenter">
+                                            <Setter Property="Background" Value="{DynamicResource Brush.Button.Hover}"/>
+                                        </Style>
+                                        <Style Selector="Button:pressed /template/ ContentPresenter">
+                                            <Setter Property="Background" Value="{DynamicResource Brush.Button.Pressed}"/>
+                                        </Style>
+                                    </Button.Styles>
+                                    <PathIcon Data="{StaticResource AddIcon}" Width="16" Height="16" Foreground="{DynamicResource Brush.Button.Text}"/>
+                                </Button>
+                            </Grid>
+
+                            <!-- Suggestions / Results -->
+                            <ListBox x:Name="SuggestionsListBox"
+                                     ItemsSource="{Binding Suggestions}"
+                                     SelectedItem="{Binding SelectedSuggestion}"
+                                     MaxHeight="120"
+                                     Background="Transparent"
+                                     BorderThickness="0"
+                                     Padding="0"
+                                     IsVisible="{Binding Suggestions.Count}"
+                                     KeyDown="SuggestionsListBox_KeyDown"
+                                     Tapped="SuggestionsListBox_Tapped">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Classes="SuggestionItemBorder" BorderBrush="{DynamicResource Brush.Border}" BorderThickness="1" Padding="12,8" Background="{DynamicResource Brush.Background.Tertiary}" Margin="0,0,0,4">
+                                            <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto">
+                                                <TextBlock Text="{Binding}" 
+                                                           FontWeight="Bold" 
+                                                           Foreground="{DynamicResource Brush.Semantic.Success}"
+                                                           VerticalAlignment="Center"/>
+                                                <TextBlock Grid.Column="1" Text="{l:Localize AddTicker_SymbolSeparator}" Foreground="{DynamicResource Brush.Text.Tertiary}" VerticalAlignment="Center"/>
+                                                <TextBlock Grid.Column="2" Text="{l:Localize AddTicker_SymbolDescription}" Foreground="{DynamicResource Brush.Text.Secondary}" VerticalAlignment="Center" FontSize="12"/>
+                                                
+                                                <Border Grid.Column="3" Background="{DynamicResource Brush.Background.Primary}" Padding="6,2" CornerRadius="2" Margin="10,0">
+                                                    <TextBlock Text="{l:Localize AddTicker_MarketLabel}" FontSize="10" Foreground="{DynamicResource Brush.Text.Tertiary}" FontWeight="Bold"/>
+                                                </Border>
+
+                                                <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="4">
+                                                    <Path Data="M21,7L9,19L3.5,13.5L4.91,12.09L9,16.17L19.59,5.59L21,7Z" 
+                                                          Fill="{DynamicResource Brush.Semantic.Success}" Width="12" Height="12" Stretch="Uniform" VerticalAlignment="Center"/>
+                                                    <TextBlock Text="{l:Localize AddTicker_ValidLabel}" Foreground="{DynamicResource Brush.Semantic.Success}" FontSize="11" VerticalAlignment="Center"/>
+                                                </StackPanel>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                                <ListBox.Styles>
+                                    <Style Selector="ListBoxItem">
+                                        <Setter Property="Padding" Value="0"/>
+                                        <Setter Property="Background" Value="Transparent"/>
+                                    </Style>
+                                    <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter">
+                                        <Setter Property="Background" Value="Transparent"/>
+                                    </Style>
+                                    <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
+                                        <Setter Property="Background" Value="Transparent"/>
+                                    </Style>
+                                    <Style Selector="ListBoxItem:selected Border.SuggestionItemBorder">
+                                        <Setter Property="BorderBrush" Value="{DynamicResource Brush.Semantic.Success}"/>
+                                        <Setter Property="Background" Value="{DynamicResource Brush.Background.Secondary}"/>
+                                    </Style>
+                                    <Style Selector="ListBoxItem:pointerover Border.SuggestionItemBorder">
+                                        <Setter Property="BorderBrush" Value="{DynamicResource Brush.Semantic.Success}"/>
+                                    </Style>
+                                </ListBox.Styles>
+                            </ListBox>
+                        </StackPanel>
+
+                        <!-- Symbol List -->
+                        <ListBox ItemsSource="{Binding SymbolList}" Height="200"
+                                 Background="Transparent"
+                                 BorderBrush="{DynamicResource Brush.Border.Primary}"
+                                 BorderThickness="1">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid ColumnDefinitions="*, Auto">
+                                        <TextBlock Text="{Binding}" VerticalAlignment="Center" FontWeight="Medium"/>
+                                        <Button Grid.Column="1" 
+                                                Command="{Binding $parent[ListBox].((vm:RelativePerformanceSettingsViewModel)DataContext).RemoveSymbolCommand}"
+                                                CommandParameter="{Binding}"
+                                                Padding="4"
+                                                Background="{DynamicResource Brush.Button.Background}"
+                                                Foreground="{DynamicResource Brush.Button.Text}"
+                                                ToolTip.Tip="{l:Localize Tooltip_RemoveSymbol}">
+                                            <Button.Styles>
+                                                <Style Selector="Button:pointerover /template/ ContentPresenter">
+                                                    <Setter Property="Background" Value="{DynamicResource Brush.Button.Hover}"/>
+                                                </Style>
+                                                <Style Selector="Button:pressed /template/ ContentPresenter">
+                                                    <Setter Property="Background" Value="{DynamicResource Brush.Button.Pressed}"/>
+                                                </Style>
+                                            </Button.Styles>
+                                            <PathIcon Data="{StaticResource DeleteIcon}" Width="14" Height="14" Foreground="{DynamicResource Brush.Button.Text}"/>
+                                        </Button>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </StackPanel>
+
+                    <!-- Right Column: Saved Symbol Lists (Presets UI matching Column Customization Templates) -->
+                    <StackPanel Grid.Column="1" Spacing="16" Margin="12,0,0,0">
+                        <TextBlock Text="{l:Localize Settings_Chart_RelativePerformance_PresetsHeader}" FontWeight="SemiBold" FontSize="14"/>
+
+                        <!-- Top Editor: Name Input & Save Button -->
+                        <StackPanel Spacing="4" Margin="0,0,0,8">
+                            <Grid ColumnDefinitions="*, Auto">
+                                <TextBox Text="{Binding NewPresetName, Mode=TwoWay}"
+                                         Watermark="{l:Localize Settings_Chart_RelativePerformance_PresetNamePlaceholder}"
+                                         Margin="0,0,8,0">
+                                    <TextBox.KeyBindings>
+                                        <KeyBinding Gesture="Enter" Command="{Binding SavePresetCommand}"/>
+                                    </TextBox.KeyBindings>
+                                </TextBox>
+                                <Button Grid.Column="1" Command="{Binding SavePresetCommand}"
+                                        Background="{DynamicResource Brush.Button.Background}"
+                                        Foreground="{DynamicResource Brush.Button.Text}"
+                                        ToolTip.Tip="{l:Localize Tooltip_SavePreset}">
+                                    <Button.Styles>
+                                        <Style Selector="Button:pointerover /template/ ContentPresenter">
+                                            <Setter Property="Background" Value="{DynamicResource Brush.Button.Hover}"/>
+                                        </Style>
+                                        <Style Selector="Button:pressed /template/ ContentPresenter">
+                                            <Setter Property="Background" Value="{DynamicResource Brush.Button.Pressed}"/>
+                                        </Style>
+                                    </Button.Styles>
+                                    <PathIcon Data="{StaticResource SaveIcon}" Width="16" Height="16" Foreground="{DynamicResource Brush.Button.Text}"/>
+                                </Button>
+                            </Grid>
+                        </StackPanel>
+
+                        <!-- List of Saved Presets -->
+                        <ListBox ItemsSource="{Binding SavedPresets}"
+                                 SelectedItem="{Binding SelectedPreset}"
+                                 Height="200"
+                                 Background="Transparent"
+                                 BorderBrush="{DynamicResource Brush.Border.Primary}"
+                                 BorderThickness="1">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid ColumnDefinitions="*, Auto, Auto">
+                                        <TextBlock Text="{Binding Name}" VerticalAlignment="Center" FontWeight="Medium"/>
+                                        
+                                        <!-- Load Button -->
+                                        <Button Grid.Column="1"
+                                                Command="{Binding $parent[ListBox].((vm:RelativePerformanceSettingsViewModel)DataContext).LoadPresetCommand}"
+                                                CommandParameter="{Binding}"
+                                                Padding="4"
+                                                Margin="0,0,4,0"
+                                                Background="{DynamicResource Brush.Button.Background}"
+                                                Foreground="{DynamicResource Brush.Button.Text}"
+                                                ToolTip.Tip="{l:Localize Tooltip_LoadPreset}">
+                                            <Button.Styles>
+                                                <Style Selector="Button:pointerover /template/ ContentPresenter">
+                                                    <Setter Property="Background" Value="{DynamicResource Brush.Button.Hover}"/>
+                                                </Style>
+                                                <Style Selector="Button:pressed /template/ ContentPresenter">
+                                                    <Setter Property="Background" Value="{DynamicResource Brush.Button.Pressed}"/>
+                                                </Style>
+                                            </Button.Styles>
+                                            <PathIcon Data="{StaticResource LoadIcon}" Width="14" Height="14" Foreground="{DynamicResource Brush.Button.Text}"/>
+                                        </Button>
+
+                                        <!-- Delete Button -->
+                                        <Button Grid.Column="2"
+                                                Command="{Binding $parent[ListBox].((vm:RelativePerformanceSettingsViewModel)DataContext).DeletePresetCommand}"
+                                                CommandParameter="{Binding}"
+                                                Padding="4"
+                                                Background="{DynamicResource Brush.Button.Background}"
+                                                Foreground="{DynamicResource Brush.Button.Text}"
+                                                ToolTip.Tip="{l:Localize Tooltip_DeletePreset}">
+                                            <Button.Styles>
+                                                <Style Selector="Button:pointerover /template/ ContentPresenter">
+                                                    <Setter Property="Background" Value="{DynamicResource Brush.Button.Hover}"/>
+                                                </Style>
+                                                <Style Selector="Button:pressed /template/ ContentPresenter">
+                                                    <Setter Property="Background" Value="{DynamicResource Brush.Button.Pressed}"/>
+                                                </Style>
+                                            </Button.Styles>
+                                            <PathIcon Data="{StaticResource DeleteIcon}" Width="14" Height="14" Foreground="{DynamicResource Brush.Button.Text}"/>
+                                        </Button>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </StackPanel>
+
+                </Grid>
+            </Border>
+
+            <!-- Visualization Settings -->
+            <Border Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="{l:Localize Settings_Chart_Appearance}" FontWeight="SemiBold" FontSize="14"/>
+                    
+                    <StackPanel Spacing="12">
+                        <Grid ColumnDefinitions="*, Auto">
+                            <TextBlock Text="{l:Localize Settings_Chart_Item_ComparisonMode}" VerticalAlignment="Center" FontSize="13"/>
+                            <ComboBox Grid.Column="1" ItemsSource="{Binding ModeOptions}" SelectedItem="{Binding ComparisonMode}" Width="180">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding, Converter={StaticResource LocalizedEnumConverter}}"/>
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                        </Grid>
+
+                        <Grid ColumnDefinitions="*, Auto" IsVisible="{Binding ComparisonMode, Converter={x:Static ObjectConverters.Equal}, ConverterParameter={x:Static models:ComparisonMode.ZScore}}">
+                            <TextBlock Text="{l:Localize Settings_Chart_Item_ZScorePeriod}" VerticalAlignment="Center" FontSize="13"/>
+                            <NumericUpDown Grid.Column="1" Value="{Binding ComparisonZScorePeriod}" Minimum="1" Maximum="500" Width="150"/>
+                        </Grid>
+
+                        <Grid ColumnDefinitions="*, Auto">
+                            <TextBlock Text="{l:Localize Settings_Chart_Item_ShowLabelsOnHoverOnly}" VerticalAlignment="Center" FontSize="13"/>
+                            <ToggleSwitch Grid.Column="1" IsChecked="{Binding ShowFloatingTooltip}" OnContent="" OffContent=""/>
+                        </Grid>
+
+                        <Grid ColumnDefinitions="*, Auto">
+                            <TextBlock Text="{l:Localize Settings_Chart_Item_ShowTickerInsteadOfValue}" VerticalAlignment="Center" FontSize="13"/>
+                            <ToggleSwitch Grid.Column="1" IsChecked="{Binding ShowTickerInsteadOfValue}" OnContent="" OffContent=""/>
+                        </Grid>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Description -->
+            <TextBlock Text="{l:Localize Settings_Chart_RelativePerformance_Desc}" 
+                       FontSize="11" 
+                       Foreground="{DynamicResource Brush.Text.Secondary}" 
+                       TextWrapping="Wrap"
+                       Margin="4,0"/>
+
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

@@ -1,0 +1,653 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:StockAnalyzer.Avalonia.ViewModels"
+        xmlns:views="using:StockAnalyzer.Avalonia.Views"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:conv="clr-namespace:StockAnalyzer.Avalonia.Converters;assembly=StockAnalyzer.Avalonia"
+        xmlns:chart="using:StockAnalyzer.Avalonia.Views.Chart"
+        xmlns:models="clr-namespace:StockAnalyzer.Core.Models;assembly=StockAnalyzer.Core"
+        xmlns:l="clr-namespace:StockAnalyzer.Avalonia.Markup;assembly=StockAnalyzer.Avalonia"
+        xmlns:controls="using:StockAnalyzer.Avalonia.Views.Controls"
+        xmlns:ui="using:StockAnalyzer.Core.Models.UI"
+        xmlns:primitives="clr-namespace:Avalonia.Controls.Primitives;assembly=Avalonia.Controls"
+        xmlns:behaviors="using:StockAnalyzer.Avalonia.Behaviors"
+        mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="600"
+        x:Class="StockAnalyzer.Avalonia.Views.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Icon="/Assets/avalonia-logo.ico"
+        Title="Stock Analyzer (Avalonia)"
+        Background="{DynamicResource Brush.Background.Secondary}">
+
+    <Design.DataContext>
+        <vm:MainWindowViewModel/>
+    </Design.DataContext>
+
+    <Window.Resources>
+        <conv:EnumToBoolConverter x:Key="EnumToBoolConverter"/>
+        <conv:DoubleToGridLengthConverter x:Key="DoubleToGridLengthConverter"/>
+        <conv:HsvDataToBrushConverter x:Key="HsvToBrushConverter"/>
+        <conv:RawColorToBrushConverter x:Key="RawColorToBrushConverter"/>
+    </Window.Resources>
+
+    <Window.Styles>
+        <!-- Price Scale Button Style (Ghost Button design for UX) -->
+        <Style Selector="Button.price-scale-btn">
+            <Setter Property="Width" Value="32"/>
+            <Setter Property="Height" Value="32"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="CornerRadius" Value="4"/>
+        </Style>
+
+        <!-- Tab UI Styles -->
+        <Style Selector="TabItem">
+            <Setter Property="Height" Value="28"/>
+            <Setter Property="FontSize" Value="{DynamicResource DetailFontSize}"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Padding" Value="12,0"/>
+            <Setter Property="MinHeight" Value="28"/>
+            <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Secondary}"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="ContextMenu">
+                <ContextMenu>
+                    <MenuItem Header="{l:Localize ContextMenu_DetachWindow}" 
+                               Command="{Binding $parent[Window].DataContext.DetachTabCommand}" 
+                               CommandParameter="{Binding}"/>
+                    <Separator/>
+                    <MenuItem Header="{l:Localize ContextMenu_RemoveTab}" 
+                               Command="{Binding $parent[Window].DataContext.RemoveTabCommand}" 
+                               CommandParameter="{Binding}"/>
+                </ContextMenu>
+            </Setter>
+        </Style>
+
+        <Style Selector="TabItem:selected">
+            <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Primary}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+
+        <Style Selector="TabItem:pointerover">
+            <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Primary}"/>
+        </Style>
+
+        <Style Selector="TabControl.PanelTabs">
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="behaviors:TabReorderBehavior.IsEnabled" Value="True"/>
+            <Setter Property="behaviors:TabReorderBehavior.ReorderCommand" Value="{ReflectionBinding $parent[Window].DataContext.ReorderTabCommand}"/>
+            <Setter Property="ItemTemplate">
+                <DataTemplate x:DataType="ui:WorkspaceViewItem">
+                    <StackPanel Orientation="Horizontal" Spacing="6" ClipToBounds="True">
+                        <PathIcon Name="TabIcon" Width="14" Height="14" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                        <TextBlock Name="TabText" Text="{Binding Title}" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </DataTemplate>
+            </Setter>
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <DockPanel Background="Transparent">
+                        <DockPanel.ContextMenu>
+                            <ContextMenu>
+                                    <MenuItem Header="{l:Localize ContextMenu_AddTab}">
+                                        <MenuItem Header="{l:Localize Tab_Chart}" 
+                                                  Command="{Binding $parent[Window].DataContext.AddTabCommand}" 
+                                                  CommandParameter="{Binding Tag, RelativeSource={RelativeSource TemplatedParent}, Converter={x:Static conv:StringConverters.Append}, ConverterParameter=':Chart'}"/>
+                                        <MenuItem Header="{l:Localize Tab_TickerList}" 
+                                                  Command="{Binding $parent[Window].DataContext.AddTabCommand}" 
+                                                  CommandParameter="{Binding Tag, RelativeSource={RelativeSource TemplatedParent}, Converter={x:Static conv:StringConverters.Append}, ConverterParameter=':TickerList'}"/>
+                                        <MenuItem Header="{l:Localize Tab_DataWindow}" 
+                                                  Command="{Binding $parent[Window].DataContext.AddTabCommand}" 
+                                                  CommandParameter="{Binding Tag, RelativeSource={RelativeSource TemplatedParent}, Converter={x:Static conv:StringConverters.Append}, ConverterParameter=':DataWindow'}"/>
+                                        <Separator/>
+                                    <MenuItem Header="{l:Localize Tab_Portfolio}" 
+                                              Command="{Binding $parent[Window].DataContext.AddTabCommand}" 
+                                              CommandParameter="{Binding Tag, RelativeSource={RelativeSource TemplatedParent}, Converter={x:Static conv:StringConverters.Append}, ConverterParameter=':PortfolioSummary'}"/>
+                                    <MenuItem Header="{l:Localize Tab_Allocation}"
+                                              Command="{Binding $parent[Window].DataContext.AddTabCommand}"
+                                              CommandParameter="{Binding Tag, RelativeSource={RelativeSource TemplatedParent}, Converter={x:Static conv:StringConverters.Append}, ConverterParameter=':Allocation'}"/>
+                                    <MenuItem Header="{l:Localize Tab_Notes}"
+                                              Command="{Binding $parent[Window].DataContext.AddTabCommand}"
+                                              CommandParameter="{Binding Tag, RelativeSource={RelativeSource TemplatedParent}, Converter={x:Static conv:StringConverters.Append}, ConverterParameter=':NoteTimeline'}"/>
+                                </MenuItem>
+                            </ContextMenu>
+                        </DockPanel.ContextMenu>
+                        <!-- Empty Panel Placeholder -->
+                        <TextBlock Text="{l:Localize Msg_EmptyPanel_Placeholder}"
+                                   VerticalAlignment="Center"
+                                   HorizontalAlignment="Center"
+                                   Foreground="{DynamicResource Brush.Text.Secondary}"
+                                   FontSize="{DynamicResource HelperFontSize}"
+                                   TextWrapping="Wrap"
+                                   TextAlignment="Center"
+                                   Margin="20"
+                                   x:CompileBindings="False"
+                                   IsVisible="{Binding ItemsSource.Count, RelativeSource={RelativeSource TemplatedParent}, Converter={x:Static conv:NumericalConverters.IsEqualToZero}}"/>
+
+                         <Grid DockPanel.Dock="{TemplateBinding TabStripPlacement}"
+                               x:CompileBindings="False"
+                               IsVisible="{Binding ItemsSource.Count, RelativeSource={RelativeSource TemplatedParent}, Converter={x:Static conv:NumericalConverters.IsGreaterThanZero}}">
+                             <ItemsPresenter Name="PART_ItemsPresenter" 
+                                              ItemsPanel="{TemplateBinding ItemsPanel}" />
+                         </Grid>
+                        <!-- High-performance cached view switcher -->
+                        <controls:ViewSwitcher ViewModel="{Binding SelectedItem.ViewModel, RelativeSource={RelativeSource TemplatedParent}}"
+                                            x:CompileBindings="False"
+                                            ContextMenu="{x:Null}"
+                                            IsVisible="{Binding !!ItemsSource.Count, RelativeSource={RelativeSource TemplatedParent}}"/>
+                    </DockPanel>
+                </ControlTemplate>
+            </Setter>
+        </Style>
+
+        <!-- Icon selectors based on TabItem Tag -->
+        <Style Selector="TabControl.PanelTabs TabItem" x:DataType="ui:WorkspaceViewItem">
+            <Setter Property="Tag" Value="{Binding Id}"/>
+        </Style>
+        <Style Selector="TabControl.PanelTabs TabItem PathIcon">
+            <Setter Property="Data" Value="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/>
+            <Setter Property="Foreground" Value="{Binding $parent[TabItem].Foreground}"/>
+        </Style>
+        <Style Selector="TabControl.PanelTabs TabItem[Tag=Chart] PathIcon">
+            <Setter Property="Data" Value="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/>
+        </Style>
+        <Style Selector="TabControl.PanelTabs TabItem[Tag=TickerList] PathIcon">
+            <Setter Property="Data" Value="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H8V4h12v12z"/>
+        </Style>
+        <Style Selector="TabControl.PanelTabs TabItem[Tag=DataWindow] PathIcon">
+            <Setter Property="Data" Value="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11zM9 10H7v2h2v-2zm0 4H7v2h2v-2zm4-4h-2v2h2v-2zm0 4h-2v2h2v-2zm4-4h-2v2h2v-2zm0 4h-2v2h2v-2z"/>
+        </Style>
+        <Style Selector="TabControl.PanelTabs TabItem[Tag=PortfolioSummary] PathIcon">
+            <Setter Property="Data" Value="M20 6h-4V4c0-1.11-.89-2-2-2h-4c-1.11 0-2 .89-2 2v2H4c-1.11 0-1.99.89-1.99 2L2 19c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V8c0-1.11-.89-2-2-2zm-6 0h-4V4h4v2z"/>
+        </Style>
+        <Style Selector="TabControl.PanelTabs TabItem[Tag=Allocation] PathIcon">
+            <Setter Property="Data" Value="M11 2v20c-5.07-.5-9-4.75-9-9.9S5.93 2.5 11 2zm2 0c5.07.5 9 4.75 9 9.9 0 1.95-.62 3.84-1.78 5.43L13 12.3V2zm5.72 17.58c-1.42 1.63-3.46 2.72-5.72 2.9v-5.6l5.72 2.7z"/>
+        </Style>
+        <!-- Notes tab (fix request #3): previously had no selector, so it fell back to the generic
+             placeholder circle above. Uses a dog-eared note/document glyph, distinct from the other
+             tab icons. -->
+        <Style Selector="TabControl.PanelTabs TabItem[Tag=NoteTimeline] PathIcon">
+            <Setter Property="Data" Value="M14,4H5C3.89,4 3,4.89 3,6V18A2,2 0 0,0 5,20H19A2,2 0 0,0 21,18V11H14V4M16,4V9H21L16,4Z"/>
+        </Style>
+        <Style Selector="TabControl.PanelTabs TabItem[Tag=DrawingObjects] PathIcon">
+            <Setter Property="Data" Value="M12,16L19.36,10.27L21,9L12,2L3,9L4.63,10.27M12,22L19.36,16.27L21,15L12,8L3,15L4.63,16.27"/>
+        </Style>
+
+    </Window.Styles>
+
+    <!-- ToolBarButton styles removed: replaced by DrawingToolSidebar -->
+
+
+    <Grid RowDefinitions="Auto,*,Auto">
+        <!-- HEADER -->
+        <Border Grid.Row="0" Background="{DynamicResource Brush.Background.Header}" BorderBrush="{DynamicResource Brush.Border}" BorderThickness="0,0,0,1" Padding="0,2">
+            <!-- Menu Area with Inline Load Button and Chart Type -->
+            <Grid Background="{DynamicResource Brush.Background.Tertiary}" ColumnDefinitions="Auto,Auto,Auto,*">
+                <Menu Grid.Column="0" Background="Transparent" VerticalAlignment="Center">
+                    <MenuItem Header="{l:Localize Menu_File}" AutomationProperties.AutomationId="Menu_File">
+                        <MenuItem Header="{l:Localize Menu_LoadWorkspace}" Command="{Binding LoadWorkspaceCommand}"/>
+                        <MenuItem Header="{l:Localize Menu_SaveWorkspace}" Command="{Binding SaveWorkspaceCommand}"/>
+                        <Separator/>
+                        <MenuItem Header="{l:Localize Menu_Exit}" AutomationProperties.AutomationId="Menu_Exit" Command="{Binding ExitCommand}"/>
+                    </MenuItem>
+                    <MenuItem Header="{l:Localize Menu_View}" AutomationProperties.AutomationId="Menu_View">
+
+
+                             <MenuItem Header="{l:Localize Menu_ToggleLeftPanel}" Command="{Binding TogglePanelCommand}" CommandParameter="{x:Static ui:PanelRegion.Left}">
+                                 <MenuItem.Icon>
+                                     <CheckBox IsChecked="{Binding Layout.LeftPanel.IsVisible}" IsHitTestVisible="False"/>
+                                 </MenuItem.Icon>
+                             </MenuItem>
+                             <MenuItem Header="{l:Localize Menu_ToggleRightPanel}" Command="{Binding TogglePanelCommand}" CommandParameter="{x:Static ui:PanelRegion.Right}">
+                                 <MenuItem.Icon>
+                                     <CheckBox IsChecked="{Binding Layout.RightPanel.IsVisible}" IsHitTestVisible="False"/>
+                                 </MenuItem.Icon>
+                             </MenuItem>
+                             <Separator/>
+                             <MenuItem Header="{l:Localize Menu_ToggleTopPanel}" Command="{Binding TogglePanelCommand}" CommandParameter="{x:Static ui:PanelRegion.Top}">
+                                 <MenuItem.Icon>
+                                     <CheckBox IsChecked="{Binding Layout.TopPanel.IsVisible}" IsHitTestVisible="False"/>
+                                 </MenuItem.Icon>
+                             </MenuItem>
+                             <MenuItem Header="{l:Localize Menu_ToggleBottomPanel}" Command="{Binding TogglePanelCommand}" CommandParameter="{x:Static ui:PanelRegion.Bottom}">
+                                 <MenuItem.Icon>
+                                     <CheckBox IsChecked="{Binding Layout.BottomPanel.IsVisible}" IsHitTestVisible="False"/>
+                                 </MenuItem.Icon>
+                             </MenuItem>
+                    </MenuItem>
+                    <MenuItem Header="{l:Localize Menu_Tools}" AutomationProperties.AutomationId="Menu_Tools">
+                        <MenuItem Header="{l:Localize Menu_Screener}" AutomationProperties.AutomationId="Menu_Screener" Command="{Binding OpenScreenerCommand}"/>
+                        <MenuItem Header="{l:Localize Menu_AddChartPanel}" Command="{Binding AddPanelChartCommand}"/>
+                        <Separator/>
+                        <MenuItem Header="{l:Localize Menu_ThemeSettings}" AutomationProperties.AutomationId="Menu_ThemeSettings" Command="{Binding OpenThemeSettingsCommand}"/>
+                        <MenuItem Header="{l:Localize Menu_IndicatorSettings}" AutomationProperties.AutomationId="Menu_IndicatorSettings" Command="{Binding OpenSettingsCommand}"/>
+                        <MenuItem Header="{l:Localize LogViewer_Title}" Command="{Binding OpenLogViewerCommand}"/>
+                    </MenuItem>
+                </Menu>
+
+                <!-- Inline Load Button -->
+                <Button Grid.Column="1" 
+                        Content="{l:Localize Btn_Load}" 
+                        Command="{Binding ChartViewModel.LoadDataCommand}"
+                        ToolTip.Tip="Load Data"
+                        Height="28" Padding="12,4"
+                        Background="Transparent"
+                        BorderBrush="{DynamicResource Brush.Border}"
+                        BorderThickness="1"
+                        CornerRadius="6"
+                        Foreground="{DynamicResource Brush.Foreground.Primary}"
+                        VerticalAlignment="Center"
+                        Margin="10,0">
+                    <Button.Styles>
+                        <Style Selector="Button:pointerover">
+                            <Setter Property="Background" Value="{DynamicResource Brush.Background.Hover}"/>
+                            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border}"/>
+                        </Style>
+                    </Button.Styles>
+                </Button>
+
+                <!-- Symbol Selector AutoCompleteBox -->
+                 <AutoCompleteBox Grid.Column="2"
+                                 Width="180" Height="28"
+                                 VerticalAlignment="Center"
+                                 Margin="0,0,10,0"
+                                 Watermark="{l:Localize AddTicker_Placeholder}"
+                                 Text="{Binding ChartViewModel.Symbol, Mode=OneWay}"
+                                 ItemsSource="{Binding ChartViewModel.AvailableTickers}"
+                                 FilterMode="StartsWith"
+                                 KeyDown="SymbolSearchBox_KeyDown"
+                                 SelectionChanged="SymbolSearchBox_SelectionChanged"
+                                 BorderBrush="{DynamicResource Brush.Border}"
+                                 BorderThickness="1"
+                                 CornerRadius="6">
+                    <AutoCompleteBox.ItemTemplate>
+                        <DataTemplate>
+                            <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto" Margin="0,2">
+                                <TextBlock Text="{Binding}" 
+                                           FontWeight="Bold" 
+                                           Foreground="{DynamicResource Brush.Semantic.Success}"
+                                           VerticalAlignment="Center"/>
+                                <TextBlock Grid.Column="1" Text="{l:Localize AddTicker_SymbolSeparator}" Foreground="{DynamicResource Brush.Text.Tertiary}" VerticalAlignment="Center"/>
+                                <TextBlock Grid.Column="2" Text="{l:Localize AddTicker_SymbolDescription}" Foreground="{DynamicResource Brush.Text.Secondary}" VerticalAlignment="Center" FontSize="{DynamicResource HelperFontSize}"/>
+                                
+                                <Border Grid.Column="3" Background="{DynamicResource Brush.Background.Primary}" Padding="4,1" CornerRadius="2" Margin="6,0">
+                                    <TextBlock Text="{l:Localize AddTicker_MarketLabel}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Tertiary}" FontWeight="Bold"/>
+                                </Border>
+
+                                <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="2">
+                                    <Path Data="M21,7L9,19L3.5,13.5L4.91,12.09L9,16.17L19.59,5.59L21,7Z" 
+                                          Fill="{DynamicResource Brush.Semantic.Success}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center"/>
+                                    <TextBlock Text="{l:Localize AddTicker_ValidLabel}" Foreground="{DynamicResource Brush.Semantic.Success}" FontSize="{DynamicResource HelperFontSize}" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Grid>
+                        </DataTemplate>
+                    </AutoCompleteBox.ItemTemplate>
+                </AutoCompleteBox>
+
+                <!-- Inline Max Candle Count & Presets -->
+                <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center" Spacing="10" Margin="15,0">
+                    <ComboBox SelectedValue="{Binding ChartViewModel.ChartType, Mode=TwoWay}"
+                              SelectedValueBinding="{Binding Tag, x:DataType=ComboBoxItem}"
+                              AutomationProperties.AutomationId="ChartTypeComboBox"
+                              Width="150" Height="28"
+                              VerticalAlignment="Center"
+                              BorderBrush="{DynamicResource Brush.Border}"
+                              BorderThickness="1"
+                              CornerRadius="6">
+                        <ComboBoxItem Content="{l:Localize ChartType_Candlestick}" Tag="{x:Static models:ChartType.Candlestick}"/>
+                        <ComboBoxItem Content="{l:Localize ChartType_OHLCBar}" Tag="{x:Static models:ChartType.OHLCBar}"/>
+                        <ComboBoxItem Content="{l:Localize ChartType_Line}" Tag="{x:Static models:ChartType.Line}"/>
+                        <ComboBoxItem Content="{l:Localize ChartType_Area}" Tag="{x:Static models:ChartType.Area}"/>
+                        <ComboBoxItem Content="{l:Localize ChartType_HeikinAshi}" Tag="{x:Static models:ChartType.HeikinAshi}"/>
+                        <ComboBoxItem Content="{l:Localize ChartType_Renko}" Tag="{x:Static models:ChartType.Renko}"/>
+                        <ComboBoxItem Content="{l:Localize ChartType_PointAndFigure}" Tag="{x:Static models:ChartType.PointAndFigure}"/>
+                        <ComboBoxItem Content="{l:Localize ChartType_Kagi}" Tag="{x:Static models:ChartType.Kagi}"/>
+                        <ComboBoxItem Content="{l:Localize ChartType_ThreeLineBreak}" Tag="{x:Static models:ChartType.ThreeLineBreak}"/>
+                        <ComboBoxItem Content="{l:Localize ChartType_RelativePerformance}" Tag="{x:Static models:ChartType.RelativePerformance}"/>
+                        <ComboBoxItem Content="{l:Localize ChartType_ReverseWatch}" Tag="{x:Static models:ChartType.ReverseWatch}"/>
+                    </ComboBox>
+
+                    <!-- Modern Segmented Pill Control for Timeframe Presets -->
+                    <Border Background="{DynamicResource Brush.Background.Secondary}" CornerRadius="8" Padding="2" VerticalAlignment="Center" Margin="10,0,0,0">
+                        <StackPanel Orientation="Horizontal" Spacing="4">
+                            <RadioButton Content="D" GroupName="TimeframePresets" Theme="{StaticResource SegmentedCapsuleRadioButton}" Command="{Binding SetTimeframeCommand}" CommandParameter="Daily" IsChecked="{Binding SelectedTimeframe, Converter={StaticResource EnumToBoolConverter}, ConverterParameter=Daily, Mode=OneWay}" ToolTip.Tip="Daily" AutomationProperties.AutomationId="Timeframe_Daily" Height="28" Padding="12,4"/>
+                            <RadioButton Content="W" GroupName="TimeframePresets" Theme="{StaticResource SegmentedCapsuleRadioButton}" Command="{Binding SetTimeframeCommand}" CommandParameter="Weekly" IsChecked="{Binding SelectedTimeframe, Converter={StaticResource EnumToBoolConverter}, ConverterParameter=Weekly, Mode=OneWay}" ToolTip.Tip="Weekly" AutomationProperties.AutomationId="Timeframe_Weekly" Height="28" Padding="12,4"/>
+                            <RadioButton Content="M" GroupName="TimeframePresets" Theme="{StaticResource SegmentedCapsuleRadioButton}" Command="{Binding SetTimeframeCommand}" CommandParameter="Monthly" IsChecked="{Binding SelectedTimeframe, Converter={StaticResource EnumToBoolConverter}, ConverterParameter=Monthly, Mode=OneWay}" ToolTip.Tip="Monthly" AutomationProperties.AutomationId="Timeframe_Monthly" Height="28" Padding="12,4"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Modern Segmented Pill Control for Period Presets -->
+                    <Border Background="{DynamicResource Brush.Background.Secondary}" CornerRadius="8" Padding="2" VerticalAlignment="Center" Margin="10,0,0,0">
+                        <StackPanel Orientation="Horizontal" Spacing="4">
+                            <RadioButton Content="3M" GroupName="PeriodPresets" Theme="{StaticResource SegmentedCapsuleRadioButton}" Command="{Binding ChartViewModel.SetCandleCountCommand}" CommandParameter="60" IsChecked="{Binding ChartViewModel.MaxCandleCount, Converter={x:Static conv:NumericalConverters.IsEqualTo}, ConverterParameter=60, Mode=OneWay}" ToolTip.Tip="3 Months (Approx 60 days)" Height="28" Padding="12,4"/>
+                            <RadioButton Content="6M" GroupName="PeriodPresets" Theme="{StaticResource SegmentedCapsuleRadioButton}" Command="{Binding ChartViewModel.SetCandleCountCommand}" CommandParameter="120" IsChecked="{Binding ChartViewModel.MaxCandleCount, Converter={x:Static conv:NumericalConverters.IsEqualTo}, ConverterParameter=120, Mode=OneWay}" ToolTip.Tip="6 Months (Approx 120 days)" Height="28" Padding="12,4"/>
+                            <RadioButton Content="1Y" GroupName="PeriodPresets" Theme="{StaticResource SegmentedCapsuleRadioButton}" Command="{Binding ChartViewModel.SetCandleCountCommand}" CommandParameter="240" IsChecked="{Binding ChartViewModel.MaxCandleCount, Converter={x:Static conv:NumericalConverters.IsEqualTo}, ConverterParameter=240, Mode=OneWay}" ToolTip.Tip="1 Year (Approx 240 days)" Height="28" Padding="12,4"/>
+                            <RadioButton Content="3Y" GroupName="PeriodPresets" Theme="{StaticResource SegmentedCapsuleRadioButton}" Command="{Binding ChartViewModel.SetCandleCountCommand}" CommandParameter="720" IsChecked="{Binding ChartViewModel.MaxCandleCount, Converter={x:Static conv:NumericalConverters.IsEqualTo}, ConverterParameter=720, Mode=OneWay}" ToolTip.Tip="3 Years (Approx 720 days)" Height="28" Padding="12,4"/>
+                            <RadioButton Content="5Y" GroupName="PeriodPresets" Theme="{StaticResource SegmentedCapsuleRadioButton}" Command="{Binding ChartViewModel.SetCandleCountCommand}" CommandParameter="1200" IsChecked="{Binding ChartViewModel.MaxCandleCount, Converter={x:Static conv:NumericalConverters.IsEqualTo}, ConverterParameter=1200, Mode=OneWay}" ToolTip.Tip="5 Years (Approx 1200 days)" Height="28" Padding="12,4"/>
+                            <RadioButton Content="10Y" GroupName="PeriodPresets" Theme="{StaticResource SegmentedCapsuleRadioButton}" Command="{Binding ChartViewModel.SetCandleCountCommand}" CommandParameter="2400" IsChecked="{Binding ChartViewModel.MaxCandleCount, Converter={x:Static conv:NumericalConverters.IsEqualTo}, ConverterParameter=2400, Mode=OneWay}" ToolTip.Tip="10 Years (Approx 2400 days)" Height="28" Padding="12,4"/>
+                            <RadioButton Content="ALL" GroupName="PeriodPresets" Theme="{StaticResource SegmentedCapsuleRadioButton}" Command="{Binding ChartViewModel.SetCandleCountCommand}" CommandParameter="200000" IsChecked="{Binding ChartViewModel.MaxCandleCount, Converter={x:Static conv:NumericalConverters.IsEqualTo}, ConverterParameter=200000, Mode=OneWay}" ToolTip.Tip="All Data" Height="28" Padding="12,4"/>
+                        </StackPanel>
+                    </Border>
+
+                    <TextBlock Text="{l:Localize Msg_RangeLabel}" VerticalAlignment="Center" Foreground="{DynamicResource Brush.Text.Secondary}" FontSize="{DynamicResource DetailFontSize}" Margin="10,0,0,0"/>
+                    <NumericUpDown Value="{Binding ChartViewModel.MaxCandleCount}" 
+                                   Minimum="10" Maximum="200000" Increment="{Binding ChartViewModel.MaxCandleCountStep}"
+                                   Width="160" Height="28"
+                                   Background="Transparent"
+                                   BorderBrush="{DynamicResource Brush.Border}"
+                                   BorderThickness="1"
+                                   CornerRadius="6"
+                                   Foreground="{DynamicResource Brush.Foreground.Primary}"
+                                   VerticalAlignment="Center"
+                                   Margin="5,0"
+                                   FormatString="N0"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- MAIN CONTENT: Sidebar + LeftPanel + TopPanel + Chart + RightPanel + BottomPanel -->
+        <Grid Grid.Row="1">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="{Binding Layout.TopPanel.WidthOrHeight, Mode=TwoWay, Converter={StaticResource DoubleToGridLengthConverter}}" />
+                <RowDefinition Height="Auto" /> <!-- Top Splitter -->
+                <RowDefinition Height="*" />    <!-- Middle Area -->
+                <RowDefinition Height="Auto" /> <!-- Bottom Splitter -->
+                <RowDefinition Height="{Binding Layout.BottomPanel.WidthOrHeight, Mode=TwoWay, Converter={StaticResource DoubleToGridLengthConverter}}" />
+            </Grid.RowDefinitions>
+
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="44" /> <!-- Sidebar (fixed 44px) -->
+                <ColumnDefinition Width="{Binding Layout.LeftPanel.WidthOrHeight, Mode=TwoWay, Converter={StaticResource DoubleToGridLengthConverter}}" /> <!-- Left Panel -->
+                <ColumnDefinition Width="Auto" /> <!-- Splitter -->
+                <ColumnDefinition Width="*" />    <!-- Chart Area -->
+                <ColumnDefinition Width="Auto" /> <!-- Splitter -->
+                <ColumnDefinition Width="{Binding Layout.RightPanel.WidthOrHeight, Mode=TwoWay, Converter={StaticResource DoubleToGridLengthConverter}}" /> <!-- Right Panel -->
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="6" 
+                    Background="{DynamicResource Brush.Background.Secondary}"
+                    IsVisible="{Binding Layout.TopPanel.IsVisible}"
+                    BorderBrush="{DynamicResource Brush.Border}"
+                    BorderThickness="0"
+                    ClipToBounds="True"
+                    Classes.pinned="{Binding Layout.TopPanel.IsPinned}">
+                <TabControl Classes="PanelTabs top" Tag="{x:Static ui:PanelRegion.Top}"
+                            Classes.pinned="{Binding Layout.TopPanel.IsPinned}"
+                            ItemsSource="{Binding TopPanelTabs}" 
+                            SelectedIndex="{Binding TopSelectedTabIndex, Mode=TwoWay}"/>
+            </Border>
+
+            <Border Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="6" Height="1" 
+                    Background="{DynamicResource Brush.Border.Primary}" 
+                    VerticalAlignment="Center"
+                    IsVisible="{Binding Layout.TopPanel.IsVisible}"/>
+
+            <GridSplitter Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="6" Height="6" MinHeight="6"
+                          Background="Transparent" 
+                          primitives:Thumb.DragCompleted="OnSplitterDragCompleted"
+                          ResizeDirection="Rows"
+                          IsVisible="{Binding Layout.TopPanel.IsVisible}"/>
+
+            <!-- ROW 2: MIDDLE AREA -->
+            <!-- COL 0: Drawing Tool Sidebar -->
+            <controls:DrawingToolSidebar Grid.Row="2" Grid.Column="0" ZIndex="100"
+                                         DataContext="{Binding SidebarViewModel}"/>
+
+            <!-- COL 1: Left Panel (Ticker List) -->
+            <Border Grid.Row="2" Grid.Column="1" Background="{DynamicResource Brush.Background.Secondary}"
+                    IsVisible="{Binding Layout.LeftPanel.IsVisible}"
+                    BorderBrush="{DynamicResource Brush.Border}"
+                    BorderThickness="0"
+                    ClipToBounds="True"
+                    Classes.pinned="{Binding Layout.LeftPanel.IsPinned}">
+                <TabControl Classes="PanelTabs left" Tag="{x:Static ui:PanelRegion.Left}"
+                            Classes.pinned="{Binding Layout.LeftPanel.IsPinned}"
+                            ItemsSource="{Binding LeftPanelTabs}" 
+                            SelectedIndex="{Binding LeftSelectedTabIndex, Mode=TwoWay}">
+                </TabControl>
+            </Border>
+
+            <Border Grid.Row="2" Grid.Column="2" Width="1" 
+                    Background="{DynamicResource Brush.Border.Primary}" 
+                    HorizontalAlignment="Center"
+                    IsVisible="{Binding Layout.LeftPanel.IsVisible}"/>
+
+            <GridSplitter Grid.Row="2" Grid.Column="2" Width="6" MinWidth="6"
+                          Background="Transparent" 
+                          primitives:Thumb.DragCompleted="OnSplitterDragCompleted"
+                          ResizeDirection="Columns"
+                          IsVisible="{Binding Layout.LeftPanel.IsVisible}"/>
+
+            <!-- COL 3: CENTER: Chart Area -->
+            <Border Grid.Row="2" Grid.Column="3" Name="ChartCanvasBorder"
+                    AutomationProperties.AutomationId="ChartCanvas"
+                    AutomationProperties.Name="Chart Area"
+                    Focusable="True">
+                <Border.ContextMenu>
+                    <ContextMenu>
+                        <MenuItem Header="{l:Localize Chart_SyncSymbol}" Command="{Binding ChartViewModel.SyncCurrentSymbolCommand}"/>
+                        <Separator/>
+                        <MenuItem Header="{l:Localize Menu_ChartType}">
+                            <MenuItem Header="{l:Localize ChartType_Candlestick}" Command="{Binding $parent[Window].DataContext.ChartViewModel.SetChartTypeCommand}" CommandParameter="Candlestick"/>
+                            <MenuItem Header="{l:Localize ChartType_OHLCBar}" Command="{Binding $parent[Window].DataContext.ChartViewModel.SetChartTypeCommand}" CommandParameter="OHLCBar"/>
+                            <MenuItem Header="{l:Localize ChartType_Line}" Command="{Binding $parent[Window].DataContext.ChartViewModel.SetChartTypeCommand}" CommandParameter="Line"/>
+                            <MenuItem Header="{l:Localize ChartType_Area}" Command="{Binding $parent[Window].DataContext.ChartViewModel.SetChartTypeCommand}" CommandParameter="Area"/>
+                            <Separator/>
+                            <MenuItem Header="{l:Localize ChartType_HeikinAshi}" Command="{Binding $parent[Window].DataContext.ChartViewModel.SetChartTypeCommand}" CommandParameter="HeikinAshi"/>
+                            <Separator/>
+                            <MenuItem Header="{l:Localize ChartType_Renko}" Command="{Binding $parent[Window].DataContext.ChartViewModel.SetChartTypeCommand}" CommandParameter="Renko"/>
+                            <MenuItem Header="{l:Localize ChartType_PointAndFigure}" Command="{Binding $parent[Window].DataContext.ChartViewModel.SetChartTypeCommand}" CommandParameter="PointAndFigure"/>
+                            <MenuItem Header="{l:Localize ChartType_Kagi}" Command="{Binding $parent[Window].DataContext.ChartViewModel.SetChartTypeCommand}" CommandParameter="Kagi"/>
+                            <MenuItem Header="{l:Localize ChartType_ThreeLineBreak}" Command="{Binding $parent[Window].DataContext.ChartViewModel.SetChartTypeCommand}" CommandParameter="ThreeLineBreak"/>
+                            <Separator/>
+                            <MenuItem Header="{l:Localize ChartType_RelativePerformance}" Command="{Binding $parent[Window].DataContext.ChartViewModel.SetChartTypeCommand}" CommandParameter="RelativePerformance"/>
+                            <MenuItem Header="{l:Localize ChartType_ReverseWatch}" Command="{Binding $parent[Window].DataContext.ChartViewModel.SetChartTypeCommand}" CommandParameter="ReverseWatch"/>
+                        </MenuItem>
+                    </ContextMenu>
+                </Border.ContextMenu>
+                <Grid>
+                    <chart:ChartBaseControl Name="ChartControl"
+                                            ViewModel="{Binding ChartViewModel}"
+                                            IsSubWindowVisible="{Binding ChartViewModel.EffectiveIsSubWindowVisible}"
+                                            HoveredCandle="{Binding ChartViewModel.CurrentHoveredCandle, Mode=TwoWay}"/>
+                    
+                    <!-- FR-39-15: Comparison Floating Tooltip Overlay -->
+                    <Canvas IsHitTestVisible="False">
+                        <Border IsVisible="{Binding DataWindowViewModel.IsComparisonTooltipVisible}"
+                                Canvas.Left="{Binding DataWindowViewModel.TooltipLeft}"
+                                Canvas.Top="{Binding DataWindowViewModel.TooltipTop}"
+                                Background="{DynamicResource Brush.Background.Secondary}"
+                                BorderBrush="{DynamicResource Brush.Border}"
+                                BorderThickness="1"
+                                CornerRadius="4"
+                                Padding="8"
+                                BoxShadow="0 4 8 0 #40000000">
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="{Binding DataWindowViewModel.TooltipDateText}" 
+                                           FontWeight="Bold" FontSize="{DynamicResource HelperFontSize}" 
+                                           Foreground="{DynamicResource Brush.Foreground.Secondary}"/>
+                                <ItemsControl ItemsSource="{Binding DataWindowViewModel.ComparisonTooltipItems}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid ColumnDefinitions="Auto,*,Auto,Auto" Margin="0,1">
+                                                <Ellipse Grid.Column="0" Width="8" Height="8" Fill="{Binding IconColor, Converter={StaticResource RawColorToBrushConverter}}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                                <TextBlock Grid.Column="1" Text="{Binding StockName}" FontSize="{DynamicResource DetailFontSize}" Foreground="{DynamicResource Brush.Foreground.Primary}" VerticalAlignment="Center"/>
+                                                <TextBlock Grid.Column="2" Text="{Binding ActualValueText}" FontSize="{DynamicResource DetailFontSize}" Foreground="{DynamicResource Brush.Foreground.Secondary}" VerticalAlignment="Center" Margin="12,0,8,0" HorizontalAlignment="Right"/>
+                                                <TextBlock Grid.Column="3" Text="{Binding IndexPercentText}" FontSize="{DynamicResource DetailFontSize}" FontWeight="Bold" Foreground="{Binding IconColor, Converter={StaticResource RawColorToBrushConverter}}" VerticalAlignment="Center" Width="64" HorizontalAlignment="Right"/>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Border>
+                    </Canvas>
+
+                    <!-- KagiRenderer is registered in ChartRendererRegistry -->
+                    <!-- Favorites Floating Palette (overlaid on chart) -->
+                    <controls:FavoritesFloatingPalette DataContext="{Binding SidebarViewModel}"
+                                                       HorizontalAlignment="Left"
+                                                       VerticalAlignment="Bottom"
+                                                       Margin="10,0,0,40"/>
+
+                    <!-- Price Scale Overlay -->
+                    <Button Classes="price-scale-btn"
+                            HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                            Margin="0,0,13,2"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Bottom"
+                            ToolTip.Tip="{l:Localize PriceScale_Options}">
+                        <Button.Resources>
+                            <SolidColorBrush x:Key="ButtonBackground" Color="Transparent"/>
+                            <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="{DynamicResource Color.Background.Hover}"/>
+                            <StaticResource x:Key="ButtonBackgroundPressed" ResourceKey="SystemControlHighlightListAccentLowBrush"/>
+                            <SolidColorBrush x:Key="ButtonBorderBrush" Color="Transparent"/>
+                            <SolidColorBrush x:Key="ButtonBorderBrushPointerOver" Color="Transparent"/>
+                            <SolidColorBrush x:Key="ButtonBorderBrushPressed" Color="Transparent"/>
+                        </Button.Resources>
+                        <PathIcon Data="M19.14,12.94c0.04-0.3,0.06-0.61,0.06-0.94c0-0.32-0.02-0.64-0.07-0.94l2.03-1.58c0.18-0.14,0.23-0.41,0.12-0.61 l-1.92-3.32c-0.12-0.22-0.37-0.29-0.59-0.22l-2.39,0.96c-0.5-0.38-1.03-0.7-1.62-0.94L14.4,2.81c-0.04-0.24-0.24-0.41-0.48-0.41 h-3.84c-0.24,0-0.43,0.17-0.47,0.41l-0.36,2.54c-0.59,0.24-1.13,0.57-1.62,0.94L5.24,5.33c-0.22-0.08-0.47,0-0.59,0.22L2.74,8.87 C2.62,9.08,2.66,9.34,2.86,9.48l2.03,1.58C4.84,11.36,4.81,11.69,4.81,12c0,0.31,0.02,0.64,0.07,0.94l-2.03,1.58 c-0.18,0.14-0.23,0.41-0.12,0.61l1.92,3.32c0.12,0.22,0.37,0.29,0.59,0.22l2.39-0.96c0.5,0.38,1.03,0.7,1.62,0.94l0.36,2.54 c0.05,0.24,0.24,0.41,0.48,0.41h3.84c0.24,0,0.44-0.17,0.47-0.41l0.36-2.54c0.59-0.24,1.13-0.56,1.62-0.94l2.39,0.96 c0.22,0.08,0.47,0,0.59-0.22l1.92-3.32c0.12-0.22,0.07-0.47-0.12-0.61L19.14,12.94z M12,15.6c-1.98,0-3.6-1.62-3.6-3.6 s1.62-3.6,3.6-3.6s3.6,1.62,3.6,3.6S13.98,15.6,12,15.6z"
+                                  Width="14" Height="14"
+                                  Foreground="{DynamicResource Brush.Foreground.Secondary}"/>
+                        <Button.Flyout>
+                            <MenuFlyout Placement="Top">
+                                <MenuItem Header="{l:Localize PriceScale_Linear}" 
+                                          Command="{Binding ChartViewModel.SetPriceScaleCommand}" 
+                                          CommandParameter="{x:Static models:PriceScaleType.Linear}">
+                                    <MenuItem.Icon>
+                                        <TextBlock Text="✓" 
+                                                   VerticalAlignment="Center" HorizontalAlignment="Center"
+                                                   IsVisible="{Binding ChartViewModel.PriceScale, Converter={x:Static conv:NumericalConverters.IsEqualTo}, ConverterParameter={x:Static models:PriceScaleType.Linear}}"/>
+                                    </MenuItem.Icon>
+                                </MenuItem>
+                                <MenuItem Header="{l:Localize PriceScale_Log}" 
+                                          Command="{Binding ChartViewModel.SetPriceScaleCommand}" 
+                                          CommandParameter="{x:Static models:PriceScaleType.Log}">
+                                    <MenuItem.Icon>
+                                        <TextBlock Text="✓" 
+                                                   VerticalAlignment="Center" HorizontalAlignment="Center"
+                                                   IsVisible="{Binding ChartViewModel.PriceScale, Converter={x:Static conv:NumericalConverters.IsEqualTo}, ConverterParameter={x:Static models:PriceScaleType.Log}}"/>
+                                    </MenuItem.Icon>
+                                </MenuItem>
+                                <MenuItem Header="{l:Localize PriceScale_Percent}" 
+                                          Command="{Binding ChartViewModel.SetPriceScaleCommand}" 
+                                          CommandParameter="{x:Static models:PriceScaleType.Percent}">
+                                    <MenuItem.Icon>
+                                        <TextBlock Text="✓" 
+                                                   VerticalAlignment="Center" HorizontalAlignment="Center"
+                                                   IsVisible="{Binding ChartViewModel.PriceScale, Converter={x:Static conv:NumericalConverters.IsEqualTo}, ConverterParameter={x:Static models:PriceScaleType.Percent}}"/>
+                                    </MenuItem.Icon>
+                                </MenuItem>
+                                <MenuItem Header="{l:Localize PriceScale_Inverted}" 
+                                          Command="{Binding ChartViewModel.SetPriceScaleCommand}" 
+                                          CommandParameter="{x:Static models:PriceScaleType.Inverted}">
+                                    <MenuItem.Icon>
+                                        <TextBlock Text="✓" 
+                                                   VerticalAlignment="Center" HorizontalAlignment="Center"
+                                                   IsVisible="{Binding ChartViewModel.PriceScale, Converter={x:Static conv:NumericalConverters.IsEqualTo}, ConverterParameter={x:Static models:PriceScaleType.Inverted}}"/>
+                                    </MenuItem.Icon>
+                                </MenuItem>
+                                <Separator />
+                                <MenuItem Header="{l:Localize PriceScale_InvertOscillator}" 
+                                          Command="{Binding ChartViewModel.ToggleInvertOscillatorCommand}"
+                                          IsEnabled="{Binding ChartViewModel.PriceScale, Converter={x:Static conv:NumericalConverters.IsEqualTo}, ConverterParameter={x:Static models:PriceScaleType.Inverted}}">
+                                    <MenuItem.Icon>
+                                        <TextBlock Text="✓" 
+                                                   VerticalAlignment="Center" HorizontalAlignment="Center"
+                                                   IsVisible="{Binding ChartViewModel.InvertOscillator}"/>
+                                    </MenuItem.Icon>
+                                </MenuItem>
+                            </MenuFlyout>
+                        </Button.Flyout>
+                    </Button>
+
+
+                    <!-- Zero-State (Empty Screen) Overlay -->
+                    <StackPanel VerticalAlignment="Center" 
+                                HorizontalAlignment="Center"
+                                Spacing="20"
+                                IsVisible="{Binding !ChartViewModel.HasData}">
+                        <TextBlock Text="{l:Localize Msg_NoDataLoaded}" 
+                                   FontSize="{DynamicResource TitleFontSize}" 
+                                   FontWeight="Bold"
+                                   HorizontalAlignment="Center"
+                                   Foreground="{DynamicResource Brush.Text.Primary}"/>
+                        <TextBlock Text="{l:Localize Msg_NoDataLoaded_Instruction}" 
+                                   FontSize="{DynamicResource BaseFontSize}"
+                                   HorizontalAlignment="Center"
+                                   Foreground="{DynamicResource Brush.Text.Secondary}"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <Border Grid.Row="2" Grid.Column="4" Width="1" 
+                    Background="{DynamicResource Brush.Border.Primary}" 
+                    HorizontalAlignment="Center"
+                    IsVisible="{Binding Layout.RightPanel.IsVisible}"/>
+
+            <GridSplitter Grid.Row="2" Grid.Column="4" Width="6" MinWidth="6"
+                          Background="Transparent" 
+                          primitives:Thumb.DragCompleted="OnSplitterDragCompleted"
+                          ResizeDirection="Columns"
+                          IsVisible="{Binding Layout.RightPanel.IsVisible}"/>
+
+            <!-- COL 5: RIGHT: Data Window -->
+            <Border Grid.Row="2" Grid.Column="5" IsVisible="{Binding Layout.RightPanel.IsVisible}"
+                    BorderBrush="{DynamicResource Brush.Border}"
+                    BorderThickness="0"
+                    ClipToBounds="True"
+                    Classes.pinned="{Binding Layout.RightPanel.IsPinned}">
+                <TabControl Classes="PanelTabs right" Tag="{x:Static ui:PanelRegion.Right}"
+                            Classes.pinned="{Binding Layout.RightPanel.IsPinned}"
+                            ItemsSource="{Binding RightPanelTabs}" 
+                            SelectedIndex="{Binding RightSelectedTabIndex, Mode=TwoWay}">
+                </TabControl>
+            </Border>
+
+            <Border Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="6" Height="1" 
+                    Background="{DynamicResource Brush.Border.Primary}" 
+                    VerticalAlignment="Center"
+                    IsVisible="{Binding Layout.BottomPanel.IsVisible}"/>
+
+            <GridSplitter Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="6" Height="6" MinHeight="6"
+                          Background="Transparent" 
+                          primitives:Thumb.DragCompleted="OnSplitterDragCompleted"
+                          ResizeDirection="Rows"
+                          IsVisible="{Binding Layout.BottomPanel.IsVisible}"/>
+
+            <Border Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="6" 
+                    Background="{DynamicResource Brush.Background.Secondary}"
+                    IsVisible="{Binding Layout.BottomPanel.IsVisible}"
+                    BorderBrush="{DynamicResource Brush.Border}"
+                    BorderThickness="0"
+                    ClipToBounds="True"
+                    Classes.pinned="{Binding Layout.BottomPanel.IsPinned}">
+                <TabControl Classes="PanelTabs bottom" Tag="{x:Static ui:PanelRegion.Bottom}"
+                            Classes.pinned="{Binding Layout.BottomPanel.IsPinned}"
+                            ItemsSource="{Binding BottomPanelTabs}" 
+                            SelectedIndex="{Binding BottomSelectedTabIndex, Mode=TwoWay}">
+                </TabControl>
+            </Border>
+        </Grid>
+
+        <!-- STATUS BAR -->
+        <Border Grid.Row="2" Background="{DynamicResource Brush.Background.Tertiary}" Padding="5">
+            <Grid ColumnDefinitions="*,Auto">
+                <StackPanel Orientation="Horizontal" Spacing="20">
+                    <TextBlock Text="{l:Localize Status_Ready}" Foreground="{DynamicResource Brush.Text.Primary}" FontSize="{DynamicResource HelperFontSize}"/>
+                    <StackPanel Orientation="Horizontal" Spacing="5" IsVisible="{Binding ChartViewModel.CurrentPrediction, Converter={x:Static ObjectConverters.IsNotNull}}">
+                        <TextBlock Text="{l:Localize Msg_AITrend}" Foreground="{DynamicResource Brush.Text.Primary}" FontSize="{DynamicResource HelperFontSize}" FontWeight="Bold"/>
+                        <TextBlock Text="{Binding ChartViewModel.CurrentPrediction.Label}" Foreground="{DynamicResource Brush.Text.Primary}" FontSize="{DynamicResource HelperFontSize}"/>
+                        <TextBlock Text="{l:Localize Msg_Confidence}" Foreground="{DynamicResource Brush.Text.Primary}" FontSize="{DynamicResource HelperFontSize}" Margin="10,0,0,0"/>
+                        <TextBlock Text="{Binding ChartViewModel.CurrentPrediction.Probability, StringFormat={}{0:P1}}" Foreground="{DynamicResource Brush.Text.Primary}" FontSize="{DynamicResource HelperFontSize}"/>
+                    </StackPanel>
+                </StackPanel>
+
+                <Button Grid.Column="1"
+                        Content="{Binding OrphanedAttachmentNoticeText}"
+                        Command="{Binding OpenOrphanedAttachmentNoticeCommand}"
+                        IsVisible="{Binding OrphanedAttachmentNoticeText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                        FontSize="{DynamicResource HelperFontSize}"
+                        Foreground="{DynamicResource Brush.Text.Primary}"/>
+            </Grid>
+        </Border>
+    </Grid>
+
+</Window>

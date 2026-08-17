@@ -1,0 +1,65 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:StockAnalyzer.Avalonia.ViewModels.Notes"
+             xmlns:views="using:StockAnalyzer.Avalonia.Views.Notes"
+             xmlns:l="clr-namespace:StockAnalyzer.Avalonia.Markup;assembly=StockAnalyzer.Avalonia"
+             mc:Ignorable="d" d:DesignWidth="480" d:DesignHeight="400"
+             x:Class="StockAnalyzer.Avalonia.Views.Notes.NoteDetailView"
+             x:DataType="vm:NoteTimelineViewModel">
+
+    <UserControl.Resources>
+        <!-- sa_constraint_check Phase 3: the ancestor-chain and replies ItemsControls below both need
+             the exact same "one NoteCardView per NoteTimelineItemViewModel" template - defined once
+             here and referenced twice via StaticResource instead of two identical inline copies. -->
+        <DataTemplate x:Key="NoteCardItemTemplate" x:DataType="vm:NoteTimelineItemViewModel">
+            <views:NoteCardView/>
+        </DataTemplate>
+    </UserControl.Resources>
+
+    <!-- Individual Note detail page (Feature A, sa_analysis_report.md / sa_implementation_plan.md
+         Task A2): shown by NoteTimelineView in place of the timeline list while SelectedDetailItem
+         is non-null. DataContext is deliberately left as the owning NoteTimelineViewModel (not
+         re-scoped to the item) so BackToListCommand binds directly here; the card itself gets its
+         own DataContext explicitly via SelectedDetailItem, the same "explicit inner DataContext"
+         approach the inline compose panel below uses for EditingNote. -->
+    <ScrollViewer>
+        <!-- Spacing is deliberately 0 here (fix request): the three card-bearing elements below
+             (ancestor chain / selected Note / replies) must sit flush against each other with no
+             visible seam, exactly like the main timeline's single ItemsControl (NoteTimelineView.axaml)
+             - a StackPanel-level Spacing would otherwise insert a gap at the ancestors→selected and
+             selected→replies boundaries even though each ItemsControl's own cards are already flush
+             internally (default ItemsPanel has no spacing). Only the Back button keeps its own
+             breathing room via an explicit bottom Margin instead. -->
+        <StackPanel Spacing="0">
+            <Button Theme="{DynamicResource PrimaryButtonStyle}"
+                    Content="{l:Localize Note_BackToListButton}"
+                    Command="{Binding BackToListCommand}"
+                    HorizontalAlignment="Left"
+                    Margin="0,0,0,8"/>
+
+            <!-- Thread ancestors (spec section 6: Reply Chain, Task B7), root-first so the chain
+                 reads top-to-bottom in the order it was actually posted. Each card is a full
+                 NoteTimelineItemViewModel wired the same way as the main list (NoteTimelineViewModel.
+                 CreateItemViewModel), so clicking an ancestor's own timestamp navigates the detail
+                 page to it in turn ("スレッド内遷移"). Empty when SelectedDetailItem has no
+                 ParentNoteId - an ItemsControl with zero items simply takes no space. -->
+            <ItemsControl ItemsSource="{Binding DetailAncestorChain}">
+                <ItemsControl.ItemTemplate>
+                    <StaticResource ResourceKey="NoteCardItemTemplate"/>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <views:NoteCardView DataContext="{Binding SelectedDetailItem}"/>
+
+            <!-- Direct replies (spec section 6), oldest-first (NoteRepository.GetRepliesAsync's own
+                 ordering) so the thread reads as a conversation below the selected Note. -->
+            <ItemsControl ItemsSource="{Binding DetailReplies}">
+                <ItemsControl.ItemTemplate>
+                    <StaticResource ResourceKey="NoteCardItemTemplate"/>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

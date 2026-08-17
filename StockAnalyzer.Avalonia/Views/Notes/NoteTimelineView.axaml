@@ -1,0 +1,230 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:StockAnalyzer.Avalonia.ViewModels.Notes"
+             xmlns:views="using:StockAnalyzer.Avalonia.Views.Notes"
+             xmlns:l="clr-namespace:StockAnalyzer.Avalonia.Markup;assembly=StockAnalyzer.Avalonia"
+             xmlns:conv="clr-namespace:StockAnalyzer.Avalonia.Converters;assembly=StockAnalyzer.Avalonia"
+             xmlns:c="clr-namespace:StockAnalyzer.Avalonia.Common;assembly=StockAnalyzer.Avalonia"
+             mc:Ignorable="d" d:DesignWidth="480" d:DesignHeight="600"
+             x:Class="StockAnalyzer.Avalonia.Views.Notes.NoteTimelineView"
+             x:DataType="vm:NoteTimelineViewModel"
+             Background="Transparent">
+
+    <UserControl.Resources>
+        <!-- Identical suggestion-row layout to MainWindow's Symbol AutoCompleteBox
+             (fix request #1, 2nd round: "same suggestion display spec"), used by the compose panel's
+             Related-ticker box below (Ticker-only, unaffected by the unified search box below). -->
+        <DataTemplate x:Key="TickerSuggestionItemTemplate">
+            <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto" Margin="0,2">
+                <TextBlock Text="{Binding}"
+                           FontWeight="Bold"
+                           Foreground="{DynamicResource Brush.Semantic.Success}"
+                           VerticalAlignment="Center"/>
+                <TextBlock Grid.Column="1" Text="{l:Localize AddTicker_SymbolSeparator}" Foreground="{DynamicResource Brush.Text.Tertiary}" VerticalAlignment="Center"/>
+                <TextBlock Grid.Column="2" Text="{l:Localize AddTicker_SymbolDescription}" Foreground="{DynamicResource Brush.Text.Secondary}" VerticalAlignment="Center" FontSize="{DynamicResource HelperFontSize}"/>
+
+                <Border Grid.Column="3" Background="{DynamicResource Brush.Background.Primary}" Padding="4,1" CornerRadius="2" Margin="6,0">
+                    <TextBlock Text="{l:Localize AddTicker_MarketLabel}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Tertiary}" FontWeight="Bold"/>
+                </Border>
+
+                <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="2">
+                    <Path Data="M21,7L9,19L3.5,13.5L4.91,12.09L9,16.17L19.59,5.59L21,7Z"
+                          Fill="{DynamicResource Brush.Semantic.Success}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center"/>
+                    <TextBlock Text="{l:Localize AddTicker_ValidLabel}" Foreground="{DynamicResource Brush.Semantic.Success}" FontSize="{DynamicResource HelperFontSize}" VerticalAlignment="Center"/>
+                </StackPanel>
+            </Grid>
+        </DataTemplate>
+
+        <!-- Unified search suggestion row (sa_implement Task 3, sa_analysis_report.md §10):
+             replaces the old separate scope-menu Flyout and "Tag ▼" ListBox. One icon shape per
+             NoteScopeSuggestionKind - Watchlist/Portfolio/Filter reuse the exact same path data as
+             TickerListView.axaml's own TreeDataTemplates (computed in NoteScopeSuggestion.IconGeometry
+             itself, not duplicated here), so the same shape means the same thing in both tabs. -->
+        <DataTemplate x:Key="SearchSuggestionItemTemplate" x:DataType="vm:NoteScopeSuggestion">
+            <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,2">
+                <PathIcon Data="{Binding IconGeometry}" Width="12" Height="12" Foreground="{DynamicResource Brush.Accent.Primary}"/>
+                <TextBlock Text="{Binding DisplayName}" VerticalAlignment="Center"/>
+                <TextBlock Text="{Binding KindLabel}" Foreground="{DynamicResource Brush.Text.Tertiary}" FontSize="{DynamicResource HelperFontSize}" VerticalAlignment="Center"/>
+            </StackPanel>
+        </DataTemplate>
+    </UserControl.Resources>
+
+    <Grid RowDefinitions="Auto,Auto,*">
+
+        <!-- Filter bar (spec 5.1): (Scope) AND (RegisteredTag) AND (search). The period filter
+             (DatePicker x2) was removed here (fix request #3, 5th round).
+             sa_implement Task 3 (sa_analysis_report.md §10) replaced the separate scope-menu Flyout
+             and "Tag ▼" ListBox entirely with one unified search box: Ticker/Watchlist/Portfolio/
+             Filter/Tag suggestions all live in NoteTimelineViewModel.AvailableSearchSuggestions, and
+             picking any one of them (SelectSuggestion) routes to the matching underlying dimension
+             and clears the other two, so only one is ever active at a time. This also removes the
+             registered-tag multi-select (OR) behavior in favor of "pick one", matching how Ticker/
+             Scope selection already behaved. -->
+        <Border Grid.Row="0" Classes="PremiumCard" Margin="0,0,0,8" Padding="8">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <!-- Unified Ticker/Watchlist/Portfolio/Filter/Tag search box. FilterMode="Custom"
+                     since ItemsSource mixes NoteScopeSuggestion (not the plain-string case
+                     FilterMode="StartsWith" was built for); ItemFilter/ItemSelector are delegate-typed
+                     CLR properties with no XAML markup, so they're wired in code-behind
+                     (NoteTimelineView.axaml.cs constructor). -->
+                <AutoCompleteBox x:Name="SearchSuggestionBox" Width="220" Height="28"
+                                 VerticalAlignment="Center"
+                                 Watermark="{l:Localize Note_SearchSuggestion_Watermark}"
+                                 Text="{Binding SearchBoxDisplayText, Mode=OneWay}"
+                                 ItemsSource="{Binding AvailableSearchSuggestions}"
+                                 FilterMode="Custom"
+                                 KeyDown="SearchSuggestionBox_KeyDown"
+                                 SelectionChanged="SearchSuggestionBox_SelectionChanged"
+                                 BorderBrush="{DynamicResource Brush.Border}"
+                                 BorderThickness="1"
+                                 CornerRadius="6">
+                    <AutoCompleteBox.ItemTemplate>
+                        <StaticResource ResourceKey="SearchSuggestionItemTemplate"/>
+                    </AutoCompleteBox.ItemTemplate>
+                </AutoCompleteBox>
+                <!-- Search text, sized to match SearchSuggestionBox (fix request #4) with a fixed
+                     magnifying-glass icon at the left edge (fix request #5). The period filter
+                     (DatePicker x2) that previously sat here was removed (fix request #3). -->
+                <TextBox Text="{Binding SearchText}" Watermark="{l:Localize Note_SearchText_Watermark}" Width="220" Height="28" VerticalAlignment="Center">
+                    <TextBox.InnerLeftContent>
+                        <PathIcon Data="{x:Static c:SharedIconGeometries.Search}"
+                                  Width="14" Height="14" Margin="8,0,0,0" Foreground="{DynamicResource Brush.Text.Tertiary}"/>
+                    </TextBox.InnerLeftContent>
+                </TextBox>
+                <Button Theme="{DynamicResource PrimaryButtonStyle}" Content="{l:Localize Note_NewNoteButton}" Command="{Binding BeginCreateCommand}" HorizontalAlignment="Right"/>
+                <!-- Split from the old single "🗑 Trash" text button (fix request) into two
+                     icon+count buttons, one per trash-dialog tab, each opening straight to its own
+                     tab (OpenTrashCommand/OpenOrphanedFilesCommand -> ShowNoteTrashDialogAsync). The
+                     count TextBlock binds FontSize to DetailFontSize (SA_UI_SUBWINDOW_STANDARD.md
+                     §3.1: "secondary labels" - the same semantic size the card's own CreatedAt
+                     timestamp uses in NoteCardView.axaml) rather than inheriting the ambient default,
+                     which read oversized next to the 14px icon (fix request). -->
+                <Button Theme="{DynamicResource PrimaryButtonStyle}" Command="{Binding OpenTrashCommand}"
+                        HorizontalAlignment="Right" ToolTip.Tip="{l:Localize Note_TrashButton_Tooltip}">
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                        <PathIcon Data="{x:Static c:SharedIconGeometries.Delete}" Width="14" Height="14"/>
+                        <TextBlock Text="{Binding DeletedNotesCount}" FontSize="{DynamicResource DetailFontSize}" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
+                <Button Theme="{DynamicResource PrimaryButtonStyle}" Command="{Binding OpenOrphanedFilesCommand}"
+                        HorizontalAlignment="Right" ToolTip.Tip="{l:Localize Note_OrphanedButton_Tooltip}">
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                        <Grid Width="16" Height="14" VerticalAlignment="Center">
+                            <!-- Base file icon (description.svg) -->
+                            <PathIcon Data="M320-240h320v-80H320v80Zm0-160h320v-80H320v80ZM240-80q-33 0-56.5-23.5T160-160v-640q0-33 23.5-56.5T240-880h320l240 240v480q0 33-23.5 56.5T720-80H240Zm280-520h200L520-800v200Z"
+                                      Width="12" Height="14"
+                                      HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                            <!-- Badged broken link overlay (link_off.svg) -->
+                            <PathIcon Data="m770-302-60-62q40-11 65-42.5t25-73.5q0-50-35-85t-85-35H520v-80h160q83 0 141.5 58.5T880-480q0 57-29.5 105T770-302ZM634-440l-80-80h86v80h-6ZM792-56 56-792l56-56 736 736-56 56ZM440-280H280q-83 0-141.5-58.5T80-480q0-69 42-123t108-71l74 74h-24q-50 0-85 35t-35 85q0 50 35 85t85 35h160v80ZM320-440v-80h65l79 80H320Z"
+                                      Width="9" Height="9"
+                                      HorizontalAlignment="Right" VerticalAlignment="Bottom"/>
+                        </Grid>
+                        <TextBlock Text="{Binding OrphanedFilesCount}" FontSize="{DynamicResource DetailFontSize}" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
+            </StackPanel>
+        </Border>
+
+        <!-- Inline compose/edit panel, shown while EditingNote is non-null -->
+        <Border Grid.Row="1" Classes="PremiumCard" Margin="0,0,0,8" Padding="12"
+                IsVisible="{Binding EditingNote, Converter={x:Static ObjectConverters.IsNotNull}}">
+            <StackPanel Spacing="8" DataContext="{Binding EditingNote}" x:DataType="vm:NoteEditorViewModel">
+                <!-- URLs are auto-extracted from Body at Save time (UrlExtractor, spec section 8) -
+                     no separate "Add URL" input; typing a http(s):// link directly in the text
+                     above is enough, mirroring how #hashtags work.
+                     fix request: MaxHeight caps how tall this box (and thus the whole panel) can grow
+                     as the user types a long post - beyond that, the TextBox's own internal
+                     ScrollViewer (built into Avalonia's default multiline TextBox template) takes
+                     over instead of pushing the Ticker input/buttons further down, which previously
+                     could shove Save off the bottom of a small window entirely. -->
+                <TextBox Text="{Binding Body}" Watermark="{l:Localize Note_ComposeBody_Watermark}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="80" MaxHeight="160"/>
+
+                <!-- Ticker input + Attach image/Cancel/Save all on one row below the body (fix
+                     request): previously Attach Image had its own row, and Cancel/Save sat in a
+                     separate row below the pending-attachments/error lists, which - combined with the
+                     body TextBox's previously-unbounded growth above - could push these controls off
+                     screen. Keeping them on a single row directly under the body means they stay
+                     reachable regardless of how many pending attachments are listed below. -->
+                <Grid ColumnDefinitions="Auto,*">
+                    <!-- Related ticker: same AutoCompleteBox+suggestion spec as MainWindow's Symbol
+                         selector (fix request #3 / #1 2nd round), via the shared
+                         SymbolAutoCompleteInputHelper and the identical suggestion-row ItemTemplate. -->
+                    <AutoCompleteBox Grid.Column="0" Width="160" Height="28"
+                                     HorizontalAlignment="Left"
+                                     Watermark="{l:Localize Note_RelatedTicker_Watermark}"
+                                     Text="{Binding RelatedTicker, Mode=OneWay}"
+                                     ItemsSource="{Binding AvailableTickers}"
+                                     FilterMode="StartsWith"
+                                     KeyDown="RelatedTickerBox_KeyDown"
+                                     SelectionChanged="RelatedTickerBox_SelectionChanged"
+                                     BorderBrush="{DynamicResource Brush.Border}"
+                                     BorderThickness="1"
+                                     CornerRadius="6">
+                        <AutoCompleteBox.ItemTemplate>
+                            <StaticResource ResourceKey="TickerSuggestionItemTemplate"/>
+                        </AutoCompleteBox.ItemTemplate>
+                    </AutoCompleteBox>
+
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+                        <!-- Image attachments (fix request #3, 2nd round): NoteEditorViewModel already
+                             stages/saves these (PendingAttachments/AddPendingAttachment/SaveAsync) - this
+                             button and list are the previously-missing UI entry point. -->
+                        <Button Theme="{DynamicResource PrimaryButtonStyle}" Content="{l:Localize Note_AttachImageButton}" Click="AttachImageButton_Click"/>
+                        <Button Theme="{DynamicResource PrimaryButtonStyle}" Content="{l:Localize Btn_Cancel}" Command="{Binding $parent[UserControl].((vm:NoteTimelineViewModel)DataContext).CancelEditCommand}"/>
+                        <Button Theme="{DynamicResource PrimaryButtonStyle}" Content="{l:Localize Btn_Save}" Command="{Binding $parent[UserControl].((vm:NoteTimelineViewModel)DataContext).SaveEditCommand}"/>
+                    </StackPanel>
+                </Grid>
+
+                <ItemsControl ItemsSource="{Binding PendingAttachments}"
+                              IsVisible="{Binding PendingAttachments.Count, Converter={x:Static conv:NumericalConverters.IsGreaterThanZero}}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel Orientation="Horizontal"/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:PendingImageAttachment">
+                            <Border Background="{DynamicResource Brush.Background.Secondary}" CornerRadius="4" Padding="6,4" Margin="0,0,6,6">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <TextBlock Text="{Binding OriginalFileName}" FontSize="{DynamicResource HelperFontSize}" VerticalAlignment="Center"/>
+                                    <Button Content="{l:Localize Note_RemoveAttachmentButton_Symbol}" Padding="4,0"
+                                            Command="{Binding $parent[ItemsControl].((vm:NoteEditorViewModel)DataContext).RemovePendingAttachmentCommand}"
+                                            CommandParameter="{Binding}"/>
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <ItemsControl ItemsSource="{Binding AttachmentErrors}"
+                              IsVisible="{Binding AttachmentErrors.Count, Converter={x:Static conv:NumericalConverters.IsGreaterThanZero}}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="x:String">
+                            <TextBlock Text="{Binding}" Foreground="{DynamicResource Brush.Semantic.Error}" FontSize="{DynamicResource HelperFontSize}"/>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </Border>
+
+        <!-- Timeline: pinned-first, CreatedAt descending (spec 5.4). Hidden while an individual
+             Note's detail page (Feature A) is open, i.e. SelectedDetailItem is non-null. -->
+        <ScrollViewer x:Name="TimelineScrollViewer" Grid.Row="2" HorizontalScrollBarVisibility="Disabled"
+                      IsVisible="{Binding SelectedDetailItem, Converter={x:Static ObjectConverters.IsNull}}">
+            <ItemsControl ItemsSource="{Binding DisplayedNotes}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:NoteTimelineItemViewModel">
+                        <views:NoteCardView/>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+
+        <!-- Individual Note detail page (Feature A): replaces the list above while
+             SelectedDetailItem is non-null (opened via a card's posted-time timestamp,
+             NoteCardView.axaml's OpenDetailCommand). -->
+        <views:NoteDetailView Grid.Row="2"
+                               IsVisible="{Binding SelectedDetailItem, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+    </Grid>
+</UserControl>
