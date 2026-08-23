@@ -1,0 +1,650 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:l="clr-namespace:StockAnalyzer.Avalonia.Markup;assembly=StockAnalyzer.Avalonia"
+        mc:Ignorable="d" d:DesignWidth="360" d:DesignHeight="550"
+        x:Class="StockAnalyzer.Avalonia.Views.Dialogs.DrawingSettingsDialog"
+        Title="Drawing Settings"
+        MinWidth="360" MinHeight="500" Width="360" Height="550"
+        WindowStartupLocation="CenterOwner"
+        CanResize="False"
+        Background="{DynamicResource Brush.Background.Primary}"
+        TransparencyLevelHint="AcrylicBlur"
+        ExtendClientAreaToDecorationsHint="True">
+    
+    <Window.Resources>
+        <StreamGeometry x:Key="SettingsIconData">M19.14,12.94c0.04-0.3,0.06-0.61,0.06-0.94c0-0.32-0.02-0.64-0.07-0.94l2.03-1.58c0.18-0.14,0.23-0.41,0.12-0.61 l-1.92-3.32c-0.12-0.22-0.37-0.29-0.59-0.22l-2.39,0.96c-0.5-0.38-1.03-0.7-1.62-0.94L14.4,2.81c-0.04-0.24-0.24-0.41-0.48-0.41 h-3.84c-0.24,0-0.43,0.17-0.47,0.41l-0.36,2.54c-0.59,0.24-1.13,0.57-1.62,0.94L5.24,5.33c-0.22-0.08-0.47,0-0.59,0.22L2.74,8.87 C2.62,9.08,2.66,9.34,2.86,9.48l2.03,1.58C4.84,11.36,4.81,11.69,4.81,12c0,0.31,0.02,0.64,0.07,0.94l-2.03,1.58 c-0.18,0.14-0.23,0.41-0.12,0.61l1.92,3.32c0.12,0.22,0.37,0.29,0.59,0.22l2.39-0.96c0.5,0.38,1.03,0.7,1.62,0.94l0.36,2.54 c0.05,0.24,0.24,0.41,0.48,0.41h3.84c0.24,0,0.44-0.17,0.47-0.41l0.36-2.54c0.59-0.24,1.13-0.56,1.62-0.94l2.39,0.96 c0.22,0.08,0.47,0,0.59-0.22l1.92-3.32c0.12-0.22,0.07-0.47-0.12-0.61L19.14,12.94z M12,15.6c-1.98,0-3.6-1.62-3.6-3.6 s1.62-3.6,3.6-3.6s3.6,1.62,3.6,3.6S13.98,15.6,12,15.6z</StreamGeometry>
+    </Window.Resources>
+
+    <Window.Styles>
+        <Style Selector="ComboBox">
+            <Setter Property="Background" Value="{DynamicResource Brush.Background.Primary}"/>
+            <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Primary}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Dialog.Border}"/>
+        </Style>
+        <Style Selector="NumericUpDown">
+            <Setter Property="Background" Value="{DynamicResource Brush.Background.Primary}"/>
+            <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Primary}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Dialog.Border}"/>
+        </Style>
+        <Style Selector="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Primary}"/>
+        </Style>
+    </Window.Styles>
+
+    <Grid RowDefinitions="56, *, 64">
+        <!-- Header -->
+        <Border Grid.Row="0"
+                Background="{DynamicResource Brush.Background.Tertiary}"
+                BorderBrush="{DynamicResource Brush.Border.Primary}"
+                BorderThickness="0,0,0,1"
+                PointerPressed="OnHeaderPointerPressed">
+            <Grid ColumnDefinitions="*, Auto" Margin="24,0">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="12">
+                    <PathIcon Data="{StaticResource SettingsIconData}" Width="20" Height="20" Foreground="{DynamicResource Brush.Accent.Primary}"/>
+                    <TextBlock Text="Drawing Settings" 
+                               FontSize="14" 
+                               FontWeight="Heavy" 
+                               LetterSpacing="1.5"
+                               VerticalAlignment="Center"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Content -->
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+            <StackPanel x:Name="SettingsContentPanel" Spacing="12" Margin="24,15">
+                
+                <!-- Color -->
+                <StackPanel x:Name="GenericColorPanel" Spacing="4">
+                    <TextBlock Text="Color" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                    <ColorPicker x:Name="ColorPickerControl" HorizontalAlignment="Stretch"/>
+                </StackPanel>
+
+                <!-- DTW Projection Settings (Unmatched Line Color) -->
+                <StackPanel x:Name="DtwProjectionPanel" Spacing="4" IsVisible="False">
+                    <TextBlock Text="{l:Localize Setting_Dtw_UnmatchedColor}" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                    <ColorPicker x:Name="DtwUnmatchedColorPicker" HorizontalAlignment="Stretch"/>
+                </StackPanel>
+
+                <!-- Kalman Filter Projection Settings (Q, R) -->
+                <StackPanel x:Name="KalmanFilterProjectionPanel" Spacing="8" IsVisible="False">
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="{l:Localize Setting_Kalman_Q}" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                        <NumericUpDown x:Name="KalmanQSpin" Minimum="0.0001" Maximum="1.0" Increment="0.001" Value="0.01" FormatString="0.0000"/>
+                    </StackPanel>
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="{l:Localize Setting_Kalman_R}" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                        <NumericUpDown x:Name="KalmanRSpin" Minimum="0.0001" Maximum="1.0" Increment="0.01" Value="0.1" FormatString="0.0000"/>
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- Thickness -->
+                <StackPanel x:Name="ThicknessPanel" Spacing="4">
+                    <TextBlock Text="{l:Localize Label_Thickness}" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                    <NumericUpDown x:Name="ThicknessSpin" Minimum="1" Maximum="10" Value="1" FormatString="0"/>
+                </StackPanel>
+
+                <!-- DTW Projection extra settings: Fill Color, Fill Opacity, Projection Length (declared
+                     here, after ThicknessPanel, so it renders below "Line Thickness"; DtwProjectionPanel
+                     itself is positioned before ThicknessPanel in this document for its Unmatched Color control) -->
+                <StackPanel x:Name="DtwExtraSettingsPanel" Spacing="8" IsVisible="False">
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="{l:Localize Label_FillColor}" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                        <ColorPicker x:Name="DtwFillColorPicker" HorizontalAlignment="Stretch"/>
+                    </StackPanel>
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="{l:Localize Label_FillOpacity}" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                        <NumericUpDown x:Name="DtwFillOpacitySpin" Minimum="0" Maximum="100" Value="10" FormatString="0"/>
+                    </StackPanel>
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="{l:Localize Label_ProjectionSteps}" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                        <NumericUpDown x:Name="DtwFutureStepsSpin" Minimum="1" Maximum="100" Value="20" FormatString="0"/>
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- Kalman Filter Projection Fill Color/Opacity/Steps & Confidence Band -->
+                <StackPanel x:Name="KalmanFillOpacityPanel" Spacing="8" IsVisible="False">
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="{l:Localize Label_FillColor}" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                        <ColorPicker x:Name="KalmanFillColorPicker" HorizontalAlignment="Stretch"/>
+                    </StackPanel>
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="{l:Localize Label_FillOpacity}" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                        <NumericUpDown x:Name="KalmanFillOpacitySpin" Minimum="0" Maximum="100" Value="10" FormatString="0"/>
+                    </StackPanel>
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="{l:Localize Label_ProjectionSteps}" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                        <NumericUpDown x:Name="KalmanFutureStepsSpin" Minimum="1" Maximum="100" Value="20" FormatString="0"/>
+                    </StackPanel>
+                    <CheckBox x:Name="KalmanShowConfidenceBandCheck" Content="{l:Localize Setting_Kalman_ShowConfidenceBand}" Foreground="{DynamicResource Brush.Text.Primary}"/>
+                    <StackPanel Spacing="4" IsEnabled="{Binding #KalmanShowConfidenceBandCheck.IsChecked}">
+                        <TextBlock Text="{l:Localize Setting_Kalman_ConfidenceMultiplier}" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                        <NumericUpDown x:Name="KalmanConfidenceMultiplierSpin" Minimum="0.1" Maximum="10.0" Increment="0.1" Value="2.0" FormatString="0.0"/>
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- TrendLine Settings -->
+                <StackPanel x:Name="TrendLinePanel" Spacing="8" IsVisible="False">
+                    <CheckBox x:Name="ShowProjectionCheck" Content="{l:Localize Setting_Trend_ShowProjection}" Foreground="{DynamicResource Brush.Text.Primary}"/>
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="{l:Localize Setting_Trend_ProjectionColumns}" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                        <NumericUpDown x:Name="ProjectionColumnsSpin" Minimum="1" Maximum="100" Value="10" FormatString="0"/>
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- Catenary Curve Settings -->
+                <StackPanel x:Name="CatenaryCurvePanel" Spacing="8" IsVisible="False">
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="{l:Localize Setting_Catenary_P0Price}" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                        <NumericUpDown x:Name="CatenaryP0PriceSpin" Increment="0.01" FormatString="0.00"/>
+                    </StackPanel>
+
+                    <StackPanel Spacing="4" Margin="0,4,0,0">
+                        <TextBlock Text="{l:Localize Setting_Catenary_P1Price}" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                        <NumericUpDown x:Name="CatenaryP1PriceSpin" Increment="0.01" FormatString="0.00"/>
+                    </StackPanel>
+
+                    <StackPanel Spacing="4" Margin="0,4,0,0">
+                        <TextBlock Text="{l:Localize Setting_Catenary_P2Price}" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                        <NumericUpDown x:Name="CatenaryP2PriceSpin" Increment="0.01" FormatString="0.00"/>
+                    </StackPanel>
+
+                    <CheckBox x:Name="CatenaryShowProjectionCheck" Content="{l:Localize Setting_Catenary_ShowProjection}" Foreground="{DynamicResource Brush.Text.Primary}" Margin="0,4,0,0"/>
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="{l:Localize Setting_Catenary_ProjectionBars}" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                        <NumericUpDown x:Name="CatenaryProjectionBarsSpin" Minimum="1" Maximum="100" Value="10" FormatString="0"/>
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- NURBS Trend Curve Settings -->
+                <StackPanel x:Name="NurbsTrendCurvePanel" Spacing="8" IsVisible="False">
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="{l:Localize Setting_Nurbs_Degree}" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                        <NumericUpDown x:Name="NurbsDegreeSpin" Minimum="1" Maximum="5" Value="3" FormatString="0"/>
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- Ellipse Settings (Circle toggle + Arc-enable toggle + independent Radius Lines/Chord line toggles) -->
+                <StackPanel x:Name="EllipsePanel" Spacing="8" IsVisible="False">
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="{l:Localize Setting_Ellipse_ControlPointColor}" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                        <ColorPicker x:Name="EllipseControlPointColorPicker" HorizontalAlignment="Stretch"/>
+                    </StackPanel>
+                    <CheckBox x:Name="EllipseCircularCheck" Content="{l:Localize Setting_Ellipse_IsEllipseMode}" Foreground="{DynamicResource Brush.Text.Primary}"/>
+                    <CheckBox x:Name="EllipseDynamicAspectRatioCheck" Content="{l:Localize Setting_Ellipse_DynamicAspectRatioByDistance}" Foreground="{DynamicResource Brush.Text.Primary}" IsVisible="{Binding #EllipseCircularCheck.IsChecked}"/>
+                    <CheckBox x:Name="EllipseArcEnabledCheck" Content="{l:Localize Setting_Ellipse_ArcEnabled}" Foreground="{DynamicResource Brush.Text.Primary}"/>
+                    <CheckBox x:Name="EllipseShowRadiusLinesCheck" Content="{l:Localize Setting_Ellipse_ShowRadiusLines}" Foreground="{DynamicResource Brush.Text.Primary}"/>
+                    <CheckBox x:Name="EllipseShowChordLineCheck" Content="{l:Localize Setting_Ellipse_ShowChordLine}" Foreground="{DynamicResource Brush.Text.Primary}"/>
+                    <CheckBox x:Name="EllipseShowTangentLinesCheck" Content="{l:Localize Setting_Ellipse_ShowTangentLines}" Foreground="{DynamicResource Brush.Text.Primary}"/>
+                    <CheckBox x:Name="EllipseExtendTangentLinesToChartCheck" Content="{l:Localize Setting_Ellipse_ExtendTangentLinesToChart}" Foreground="{DynamicResource Brush.Text.Primary}"/>
+                    <StackPanel Spacing="4" IsVisible="{Binding !#EllipseDynamicAspectRatioCheck.IsChecked}">
+                        <TextBlock Text="{l:Localize Setting_Ellipse_AspectRatio}" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                        <NumericUpDown x:Name="EllipseAspectRatioSpin" Minimum="0.1" Maximum="1.0" Increment="0.1" Value="0.5" FormatString="0.0"/>
+                    </StackPanel>
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="{l:Localize Setting_Ellipse_InnerRadiusRatio}" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                        <NumericUpDown x:Name="EllipseInnerRadiusSpin" Minimum="0" Maximum="0.98" Increment="0.02" Value="0" FormatString="0.00"/>
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- Ellipse Annulus Settings (Circle toggle + inner-radius fine-tuning) -->
+                <StackPanel x:Name="EllipseAnnulusPanel" Spacing="8" IsVisible="False">
+                    <CheckBox x:Name="EllipseAnnulusCircularCheck" Content="{l:Localize Setting_Ellipse_IsCircular}" Foreground="{DynamicResource Brush.Text.Primary}"/>
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="{l:Localize Setting_EllipseAnnulus_InnerRadiusRatio}" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                        <NumericUpDown x:Name="EllipseAnnulusInnerRadiusSpin" Minimum="0.02" Maximum="0.98" Increment="0.02" Value="0.5" FormatString="0.00"/>
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- NURBS Conic / Ellipse Settings -->
+                <StackPanel x:Name="NurbsConicPanel" Spacing="8" IsVisible="False">
+                    <CheckBox x:Name="NurbsConicFilledCheck" Content="{l:Localize Setting_Nurbs_IsFilled}" Foreground="{DynamicResource Brush.Text.Primary}"/>
+                    <StackPanel Spacing="4" IsVisible="{Binding #NurbsConicFilledCheck.IsChecked}">
+                        <TextBlock Text="{l:Localize Setting_Nurbs_FillColor}" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                        <ColorPicker x:Name="NurbsConicFillColorPicker" HorizontalAlignment="Stretch"/>
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- NURBS Weighted Curve Settings (shared by Hyperbola/ConicArc; label/range/increment
+                     are set dynamically in NurbsWeightedCurveSettingsPanelDefinition.Populate) -->
+                <StackPanel x:Name="NurbsWeightedCurvePanel" Spacing="8" IsVisible="False">
+                    <StackPanel Spacing="4">
+                        <TextBlock x:Name="NurbsWeightedCurveWeightLabel" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                        <NumericUpDown x:Name="NurbsWeightedCurveWeightSpin" Minimum="0" Maximum="1" Increment="0.1" Value="0" FormatString="0.0"/>
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- Elliott Wave / Polyline Specific Settings -->
+                <StackPanel x:Name="ElliottPanel" Spacing="8" IsVisible="False">
+                    <CheckBox x:Name="PolylineSmoothCheck" Content="{l:Localize Setting_Polyline_IsSmooth}" IsChecked="False" Foreground="{DynamicResource Brush.Text.Primary}"/>
+                    <StackPanel Spacing="4" IsVisible="{Binding #PolylineSmoothCheck.IsChecked}">
+                        <TextBlock Text="{l:Localize Setting_Polyline_Tension}" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                        <NumericUpDown x:Name="PolylineTensionSpin" Minimum="0.0" Maximum="1.0" Increment="0.1" Value="0.5" FormatString="0.0"/>
+                    </StackPanel>
+
+                    <TextBlock Text="Label Type" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                    <ComboBox x:Name="LabelTypeCombo" SelectedIndex="0" HorizontalAlignment="Stretch">
+                        <ComboBoxItem Content="None"/>
+                        <ComboBoxItem Content="Numeric (1, 2, 3...)"/>
+                        <ComboBoxItem Content="Alphabet (A, B, C...)"/>
+                    </ComboBox>
+                    
+                    <TextBlock Text="Font Size" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                    <NumericUpDown x:Name="FontSizeSpin" Minimum="8" Maximum="72" Value="12" FormatString="0"/>
+                    
+                    <CheckBox x:Name="ShowLabelsCheck" Content="Show Labels" IsChecked="True" Foreground="{DynamicResource Brush.Text.Primary}"/>
+                </StackPanel>
+
+                <!-- Range Spline Settings -->
+                <StackPanel x:Name="RangeSplinePanel" Spacing="8" IsVisible="False">
+                    <CheckBox x:Name="RangeSplineShowResistanceCheck" Content="{l:Localize Setting_RangeSpline_ShowResistance}" IsChecked="False" Foreground="{DynamicResource Brush.Text.Primary}"/>
+                    <CheckBox x:Name="RangeSplineShowSupportCheck" Content="{l:Localize Setting_RangeSpline_ShowSupport}" IsChecked="False" Foreground="{DynamicResource Brush.Text.Primary}"/>
+
+                    <TextBlock Text="{l:Localize Setting_RangeSpline_PriceField}" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                    <ComboBox x:Name="RangeSplinePriceFieldCombo" SelectedIndex="0" HorizontalAlignment="Stretch">
+                        <ComboBoxItem Content="Close"/>
+                        <ComboBoxItem Content="Open"/>
+                        <ComboBoxItem Content="High"/>
+                        <ComboBoxItem Content="Low"/>
+                        <ComboBoxItem Content="Median (H+L)/2"/>
+                        <ComboBoxItem Content="Typical (H+L+C)/3"/>
+                        <ComboBoxItem Content="Weighted (H+L+2C)/4"/>
+                    </ComboBox>
+
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="{l:Localize Setting_RangeSpline_Tension}" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                        <NumericUpDown x:Name="RangeSplineTensionSpin" Minimum="0.0" Maximum="1.0" Increment="0.1" Value="0.5" FormatString="0.0"/>
+                    </StackPanel>
+
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="{l:Localize Setting_RangeSpline_MinSwing}" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                        <NumericUpDown x:Name="RangeSplineMinSwingSpin" Minimum="0.1" Maximum="50.0" Increment="0.5" Value="2.0" FormatString="0.0"/>
+                    </StackPanel>
+
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="{l:Localize Setting_RangeSpline_MaxLevels}" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                        <NumericUpDown x:Name="RangeSplineMaxLevelsSpin" Minimum="1" Maximum="20" Increment="1" Value="5" FormatString="0"/>
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- Auto Elliott Wave Settings -->
+                <StackPanel x:Name="AutoElliottPanel" Spacing="8" IsVisible="False">
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="{l:Localize Label_FillColor}" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                        <ColorPicker x:Name="AutoElliottFillColorPicker" HorizontalAlignment="Stretch"/>
+                    </StackPanel>
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="{l:Localize Label_FillOpacity}" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                        <NumericUpDown x:Name="AutoElliottFillOpacitySpin" Minimum="0" Maximum="100" Value="10" FormatString="0"/>
+                    </StackPanel>
+                    <TextBlock Text="{l:Localize Setting_Geom_Threshold}" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <CheckBox x:Name="AutoElliottAutoZigZagCheck" Content="{l:Localize Setting_Geom_Auto}" IsChecked="True" Foreground="{DynamicResource Brush.Text.Primary}"/>
+                        <NumericUpDown x:Name="AutoElliottZigZagThresholdSpin" Minimum="0.5" Maximum="20.0" Increment="0.5" Value="2.0" FormatString="0.0" IsEnabled="{Binding !#AutoElliottAutoZigZagCheck.IsChecked}"/>
+                    </StackPanel>
+                </StackPanel>
+
+
+                <!-- Horizontal Line Settings -->
+                <StackPanel x:Name="HorizontalLinePanel" Spacing="8" IsVisible="False">
+                    <TextBlock Text="Price" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                    <NumericUpDown x:Name="PriceSpin" Increment="0.01" FormatString="0.00" /> 
+                </StackPanel>
+                
+                <!-- Price Label Settings -->
+                <StackPanel x:Name="PriceLabelPanel" Spacing="8" IsVisible="False">
+                     <TextBlock Text="Font Size" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                     <NumericUpDown x:Name="PriceFontSizeSpin" Minimum="8" Maximum="72" Value="12" FormatString="0"/>
+                </StackPanel>
+                
+                <!-- Text Settings -->
+                <StackPanel x:Name="TextPanel" Spacing="8" IsVisible="False">
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Content" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                        <TextBox x:Name="TextContentBox" Height="60" AcceptsReturn="True" TextWrapping="Wrap" />
+                    </StackPanel>
+
+                    <StackPanel Spacing="4" Margin="0,4,0,0">
+                        <TextBlock Text="Font Size" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                        <NumericUpDown x:Name="TextFontSizeSpin" Minimum="8" Maximum="72" Value="12" FormatString="0"/>
+                    </StackPanel>
+
+                    <StackPanel Spacing="4" Margin="0,4,0,0">
+                        <TextBlock Text="Alignment" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                        <ComboBox x:Name="TextAlignmentCombo" SelectedIndex="0" HorizontalAlignment="Stretch">
+                            <ComboBoxItem Content="Left"/>
+                            <ComboBoxItem Content="Center"/>
+                            <ComboBoxItem Content="Right"/>
+                        </ComboBox>
+                    </StackPanel>
+
+                    <CheckBox x:Name="TextShowBackgroundCheck" Content="Show Background Box" IsChecked="True" Foreground="{DynamicResource Brush.Text.Primary}" Margin="0,4,0,0"/>
+                    <StackPanel x:Name="TextBackgroundDetailsPanel" Spacing="8" IsVisible="{Binding #TextShowBackgroundCheck.IsChecked}">
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Background Color" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                            <ColorPicker x:Name="TextBackgroundColorPicker" HorizontalAlignment="Stretch"/>
+                        </StackPanel>
+
+                        <StackPanel Spacing="4" Margin="0,4,0,0">
+                            <TextBlock Text="Padding" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                            <NumericUpDown x:Name="TextPaddingSpin" Minimum="0" Maximum="32" Value="8" FormatString="0"/>
+                        </StackPanel>
+
+                        <StackPanel Spacing="4" Margin="0,4,0,0">
+                            <TextBlock Text="Corner Radius" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                            <NumericUpDown x:Name="TextCornerRadiusSpin" Minimum="0" Maximum="32" Value="4" FormatString="0"/>
+                        </StackPanel>
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- Line Text Settings (Top/Bottom fully independent). Shared by LineTextObject (straight)
+                     and CurveLineTextObject (curved) — both implement ILineTextAnnotatedObject. -->
+                <StackPanel x:Name="LineTextPanel" Spacing="8" IsVisible="False">
+                    <!-- Three independent side-by-side columns (Common / Top / Bottom), each item
+                         carrying its own inline label, instead of a shared-label row table. This
+                         layout was confirmed with the user via screenshot + AskUserQuestion after the
+                         earlier shared-label-row design (Priority 4) was reported as not matching what
+                         "3-column" meant to them. x:Name values are unchanged from the row-table design
+                         so DrawingSettingsDialog.axaml.cs Load/Apply logic needs no changes. -->
+                    <Grid ColumnDefinitions="170,8,*,8,*" RowDefinitions="Auto,Auto">
+                        <Border Grid.Column="1" Grid.RowSpan="2" Width="1" Background="{DynamicResource Brush.Dialog.Border}" HorizontalAlignment="Center" VerticalAlignment="Stretch"/>
+                        <Border Grid.Column="3" Grid.RowSpan="2" Width="1" Background="{DynamicResource Brush.Dialog.Border}" HorizontalAlignment="Center" VerticalAlignment="Stretch"/>
+
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Common" FontWeight="Bold" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                        <TextBlock Grid.Row="0" Grid.Column="2" Text="Top" FontWeight="Bold" HorizontalAlignment="Center" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                        <TextBlock Grid.Row="0" Grid.Column="4" Text="Bottom" FontWeight="Bold" HorizontalAlignment="Center" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+
+                        <!-- GenericColorPanel (Color) and ThicknessPanel (Line Thickness) are reparented
+                             into this StackPanel from the top of the dialog at runtime, LineText/CurveLineText
+                             only (see DrawingSettingsDialog.axaml.cs constructor). -->
+                        <StackPanel Grid.Row="1" Grid.Column="0" x:Name="LineTextCommonColumnPanel" Spacing="10" Margin="0,8,0,0">
+                            <CheckBox x:Name="LineTextMatchBackgroundCheck" IsChecked="False" Foreground="{DynamicResource Brush.Text.Primary}" VerticalAlignment="Top">
+                                <TextBlock Text="Match Background" TextWrapping="Wrap"/>
+                            </CheckBox>
+                        </StackPanel>
+
+                        <StackPanel Grid.Row="1" Grid.Column="2" x:Name="LineTextTopColumnPanel" Spacing="10" Margin="0,8,0,0">
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="Text" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                                <!-- AcceptsReturn is intentionally True: users may still press Enter while
+                                     editing. LineTextAnnotationSet.TopText/BottomText (the single SSoT
+                                     setters) normalize any embedded line break to a space before it ever
+                                     reaches PathTextRenderer, so this cannot reintroduce the tofu/mojibake bug. -->
+                                <TextBox x:Name="LineTextTopTextBox" Height="60" AcceptsReturn="True" TextWrapping="Wrap"/>
+                            </StackPanel>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Font Size" VerticalAlignment="Center" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                                <NumericUpDown Grid.Column="2" x:Name="LineTextTopFontSizeSpin" Width="140" HorizontalAlignment="Right" Minimum="8" Maximum="72" Value="12" FormatString="0"/>
+                            </Grid>
+                            <!-- SelectedIndex="0" (Left) is a design-time placeholder only; the real
+                                 default lives in LineTextAnnotationSet.TopAlignment and is re-bound
+                                 here on dialog open. Keep in sync. -->
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Alignment" VerticalAlignment="Center" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                                <ComboBox Grid.Column="2" x:Name="LineTextTopAlignmentCombo" Width="140" HorizontalAlignment="Right" SelectedIndex="0">
+                                    <ComboBoxItem Content="Left"/>
+                                    <ComboBoxItem Content="Center"/>
+                                    <ComboBoxItem Content="Right"/>
+                                </ComboBox>
+                            </Grid>
+                            <!-- Value="10" is a design-time placeholder only; the real default lives in
+                                 ChartConstants.DefaultLineTextOffsetPx, applied via LineTextAnnotationSet
+                                 at object creation, then re-bound here on dialog open. Keep in sync. -->
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Offset" VerticalAlignment="Center" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                                <NumericUpDown Grid.Column="2" x:Name="LineTextTopOffsetSpin" Width="140" HorizontalAlignment="Right" Minimum="0" Maximum="100" Value="10" FormatString="0"/>
+                            </Grid>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Font Color" VerticalAlignment="Center" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                                <ColorPicker Grid.Column="2" x:Name="LineTextTopColorPicker" Width="140" HorizontalAlignment="Right"/>
+                            </Grid>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Rotation" VerticalAlignment="Center" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                                <ComboBox Grid.Column="2" x:Name="LineTextTopRotationCombo" Width="140" HorizontalAlignment="Right" SelectedIndex="1">
+                                    <ComboBoxItem Content="Follow Line"/>
+                                    <ComboBoxItem Content="Upright"/>
+                                    <ComboBoxItem Content="Auto-Flip"/>
+                                </ComboBox>
+                            </Grid>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Orientation" VerticalAlignment="Center" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                                <ComboBox Grid.Column="2" x:Name="LineTextTopOrientationCombo" Width="140" HorizontalAlignment="Right" SelectedIndex="0">
+                                    <ComboBoxItem Content="Normal"/>
+                                    <ComboBoxItem Content="Mirror"/>
+                                    <ComboBoxItem Content="180° Rotate"/>
+                                </ComboBox>
+                            </Grid>
+                            <CheckBox x:Name="LineTextTopReverseOrderCheck" Content="Reverse Order" IsChecked="False" Foreground="{DynamicResource Brush.Text.Primary}"/>
+                            <!-- Keep Same Side (PositionFixed) and Lock Position (PositionLocked) are
+                                 independent settings: the former only prevents the up/down side from
+                                 flipping when the path's direction reverses; the latter freezes the
+                                 text's actual chart-coordinate position and stops it from following any
+                                 further line edits. -->
+                            <CheckBox x:Name="LineTextTopPositionFixedCheck" Content="Keep Same Side" IsChecked="False" Foreground="{DynamicResource Brush.Text.Primary}"/>
+                            <CheckBox x:Name="LineTextTopPositionLockedCheck" Content="Lock Position" IsChecked="False" Foreground="{DynamicResource Brush.Text.Primary}"/>
+                            <CheckBox x:Name="LineTextTopExtendBeyondLineCheck" Content="Show Text Beyond Line" IsChecked="False" Foreground="{DynamicResource Brush.Text.Primary}"/>
+                        </StackPanel>
+
+                        <StackPanel Grid.Row="1" Grid.Column="4" x:Name="LineTextBottomColumnPanel" Spacing="10" Margin="0,8,0,0">
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="Text" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                                <TextBox x:Name="LineTextBottomTextBox" Height="60" AcceptsReturn="True" TextWrapping="Wrap"/>
+                            </StackPanel>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Font Size" VerticalAlignment="Center" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                                <NumericUpDown Grid.Column="2" x:Name="LineTextBottomFontSizeSpin" Width="140" HorizontalAlignment="Right" Minimum="8" Maximum="72" Value="12" FormatString="0"/>
+                            </Grid>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Alignment" VerticalAlignment="Center" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                                <ComboBox Grid.Column="2" x:Name="LineTextBottomAlignmentCombo" Width="140" HorizontalAlignment="Right" SelectedIndex="0">
+                                    <ComboBoxItem Content="Left"/>
+                                    <ComboBoxItem Content="Center"/>
+                                    <ComboBoxItem Content="Right"/>
+                                </ComboBox>
+                            </Grid>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Offset" VerticalAlignment="Center" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                                <NumericUpDown Grid.Column="2" x:Name="LineTextBottomOffsetSpin" Width="140" HorizontalAlignment="Right" Minimum="0" Maximum="100" Value="10" FormatString="0"/>
+                            </Grid>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Font Color" VerticalAlignment="Center" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                                <ColorPicker Grid.Column="2" x:Name="LineTextBottomColorPicker" Width="140" HorizontalAlignment="Right"/>
+                            </Grid>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Rotation" VerticalAlignment="Center" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                                <ComboBox Grid.Column="2" x:Name="LineTextBottomRotationCombo" Width="140" HorizontalAlignment="Right" SelectedIndex="1">
+                                    <ComboBoxItem Content="Follow Line"/>
+                                    <ComboBoxItem Content="Upright"/>
+                                    <ComboBoxItem Content="Auto-Flip"/>
+                                </ComboBox>
+                            </Grid>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Orientation" VerticalAlignment="Center" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                                <ComboBox Grid.Column="2" x:Name="LineTextBottomOrientationCombo" Width="140" HorizontalAlignment="Right" SelectedIndex="0">
+                                    <ComboBoxItem Content="Normal"/>
+                                    <ComboBoxItem Content="Mirror"/>
+                                    <ComboBoxItem Content="180° Rotate"/>
+                                </ComboBox>
+                            </Grid>
+                            <CheckBox x:Name="LineTextBottomReverseOrderCheck" Content="Reverse Order" IsChecked="False" Foreground="{DynamicResource Brush.Text.Primary}"/>
+                            <CheckBox x:Name="LineTextBottomPositionFixedCheck" Content="Keep Same Side" IsChecked="False" Foreground="{DynamicResource Brush.Text.Primary}"/>
+                            <CheckBox x:Name="LineTextBottomPositionLockedCheck" Content="Lock Position" IsChecked="False" Foreground="{DynamicResource Brush.Text.Primary}"/>
+                            <CheckBox x:Name="LineTextBottomExtendBeyondLineCheck" Content="Show Text Beyond Line" IsChecked="False" Foreground="{DynamicResource Brush.Text.Primary}"/>
+                        </StackPanel>
+                    </Grid>
+                </StackPanel>
+
+                <!-- Volume Profile Settings -->
+                <StackPanel x:Name="VolumeProfilePanel" Spacing="8" IsVisible="False">
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Value Area Color" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                        <ColorPicker x:Name="ValueAreaColorPicker" HorizontalAlignment="Stretch"/>
+                    </StackPanel>
+
+                    <TextBlock Text="Opacity (0-100)" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                    <NumericUpDown x:Name="OpacitySpin" Minimum="0" Maximum="100" Value="50" FormatString="0"/>
+                </StackPanel>
+                
+                <!-- Bar Pattern Settings -->
+                <StackPanel x:Name="BarPatternPanel" Spacing="8" IsVisible="False">
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Up Color" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                        <ColorPicker x:Name="BarUpColorPicker" HorizontalAlignment="Stretch"/>
+                    </StackPanel>
+
+                    <StackPanel Spacing="4" Margin="0,4,0,0">
+                        <TextBlock Text="Down Color" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                        <ColorPicker x:Name="BarDownColorPicker" HorizontalAlignment="Stretch"/>
+                    </StackPanel>
+
+                    <StackPanel Spacing="4" Margin="0,4,0,0">
+                        <TextBlock Text="Opacity (%)" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                        <NumericUpDown x:Name="BarOpacitySpin" Minimum="0" Maximum="100" Increment="1" FormatString="0"/>
+                    </StackPanel>
+                </StackPanel>
+                
+                <!-- Long/Short Position Settings -->
+                <StackPanel x:Name="LongShortPanel" Spacing="8" IsVisible="False">
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Entry Price" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                        <NumericUpDown x:Name="LsEntryPriceSpin" Increment="0.01" FormatString="0.00"/>
+                    </StackPanel>
+
+                    <StackPanel Spacing="4" Margin="0,4,0,0">
+                        <TextBlock Text="Target Price" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                        <NumericUpDown x:Name="LsTargetPriceSpin" Increment="0.01" FormatString="0.00"/>
+                    </StackPanel>
+
+                    <StackPanel Spacing="4" Margin="0,4,0,0">
+                        <TextBlock Text="Stop Price" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                        <NumericUpDown x:Name="LsStopPriceSpin" Increment="0.01" FormatString="0.00"/>
+                    </StackPanel>
+
+                    <StackPanel Spacing="4" Margin="0,4,0,0">
+                        <TextBlock Text="Target Color" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                        <ColorPicker x:Name="LsTargetColorPicker" HorizontalAlignment="Stretch"/>
+                    </StackPanel>
+
+                    <StackPanel Spacing="4" Margin="0,4,0,0">
+                        <TextBlock Text="Stop Color" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                        <ColorPicker x:Name="LsStopColorPicker" HorizontalAlignment="Stretch"/>
+                    </StackPanel>
+
+                    <StackPanel Spacing="4" Margin="0,4,0,0">
+                        <TextBlock Text="Opacity (%)" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                        <NumericUpDown x:Name="LsOpacitySpin" Minimum="0" Maximum="100" Increment="1" FormatString="0"/>
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- Geometric Pattern Settings -->
+                <StackPanel x:Name="GeometricPatternPanel" Spacing="8" IsVisible="False">
+                    <TextBlock Text="{l:Localize Setting_Geom_Threshold}" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <CheckBox x:Name="AutoZigZagCheck" Content="{l:Localize Setting_Geom_Auto}" IsChecked="True" Foreground="{DynamicResource Brush.Text.Primary}"/>
+                        <NumericUpDown x:Name="ZigZagThresholdSpin" Minimum="0.5" Maximum="20.0" Increment="0.5" Value="2.0" FormatString="0.0" IsEnabled="{Binding !#AutoZigZagCheck.IsChecked}"/>
+                    </StackPanel>
+
+                    <TextBlock Text="{l:Localize Setting_Geom_DisplayedPatterns}" Foreground="{DynamicResource Brush.Dialog.LabelText}" Margin="0,5,0,0"/>
+                    <CheckBox x:Name="ShowChannelsCheck" Content="{l:Localize Setting_Geom_Channels}" Foreground="{DynamicResource Brush.Text.Primary}" />
+                    <CheckBox x:Name="ShowWedgesCheck" Content="{l:Localize Setting_Geom_Wedges}" Foreground="{DynamicResource Brush.Text.Primary}" />
+                    <CheckBox x:Name="ShowTrianglesCheck" Content="{l:Localize Setting_Geom_Triangles}" Foreground="{DynamicResource Brush.Text.Primary}" />
+                    <CheckBox x:Name="ShowPennantsCheck" Content="{l:Localize Setting_Geom_Pennants}" Foreground="{DynamicResource Brush.Text.Primary}" />
+                    <CheckBox x:Name="ShowMegaphoneCheck" Content="{l:Localize Setting_Geom_Megaphone}" Foreground="{DynamicResource Brush.Text.Primary}" />
+                </StackPanel>
+
+                <!-- Harmonic Pattern Settings -->
+                <StackPanel x:Name="HarmonicPatternPanel" Spacing="8" IsVisible="False">
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="{l:Localize Label_FillColor}" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                        <ColorPicker x:Name="HarmonicFillColorPicker" HorizontalAlignment="Stretch"/>
+                    </StackPanel>
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="{l:Localize Label_FillOpacity}" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                        <NumericUpDown x:Name="HarmonicFillOpacitySpin" Minimum="0" Maximum="100" Value="10" FormatString="0"/>
+                    </StackPanel>
+                    <TextBlock Text="{l:Localize Setting_Geom_Threshold}" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <CheckBox x:Name="HarmonicAutoZigZagCheck" Content="{l:Localize Setting_Geom_Auto}" IsChecked="True" Foreground="{DynamicResource Brush.Text.Primary}"/>
+                        <NumericUpDown x:Name="HarmonicZigZagThresholdSpin" Minimum="0.5" Maximum="20.0" Increment="0.5" Value="2.0" FormatString="0.0" IsEnabled="{Binding !#HarmonicAutoZigZagCheck.IsChecked}"/>
+                    </StackPanel>
+                    <CheckBox x:Name="HarmonicShowPrzCheck" Content="Potential Reversal Zone" IsChecked="False" Foreground="{DynamicResource Brush.Text.Primary}"/>
+                </StackPanel>
+
+            </StackPanel>
+        </ScrollViewer>
+        
+        <!-- Footer -->
+        <Border Grid.Row="2"
+                Background="{DynamicResource Brush.Background.Tertiary}"
+                BorderBrush="{DynamicResource Brush.Border.Primary}"
+                BorderThickness="0,1,0,0">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Spacing="12" Margin="24,0">
+                <Button Content="OK" Click="OnOkClick" Width="80" Classes="accent"/>
+                <Button Content="Cancel" Click="OnCancelClick" Width="80" Classes="accent"/>
+                <Button Content="Delete" Click="OnDeleteClick" Width="80" Classes="accent"/>
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>
