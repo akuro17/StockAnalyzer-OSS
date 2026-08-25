@@ -12,6 +12,7 @@
   <ItemGroup>
     <PackageReference Include="Apache.Arrow" Version="22.1.0" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.2.2" />
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.11" />
     <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.24.3" />
     <PackageReference Include="Python.Included" Version="3.13.0" />
     <PackageReference Include="Microsoft.Extensions.Resilience" Version="8.0.0" />
