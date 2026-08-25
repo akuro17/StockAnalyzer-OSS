@@ -65,11 +65,11 @@
       },
       "Microsoft.ML.OnnxRuntime": {
         "type": "Direct",
-        "requested": "[1.24.3, )",
-        "resolved": "1.24.3",
-        "contentHash": "ws4qKjGTa7ihH5u3083kehnIBCkQ9hcbHQrp0l+pwlTvRhQZltSs3PFxxS8nKRakIQKVcYyzAupVHUjYH0yvIg==",
+        "requested": "[1.29.0, )",
+        "resolved": "1.29.0",
+        "contentHash": "bUO3Ryc42UVkDGByBIYU9/ogRURGHeMOEq96LMWnDBVMQGZpIahBhPRCeu+Qq6+EJh/dfxzFJBKZa0/+yMmpWQ==",
         "dependencies": {
-          "Microsoft.ML.OnnxRuntime.Managed": "1.24.3"
+          "Microsoft.ML.OnnxRuntime.Managed": "1.29.0"
         }
       },
       "Python.Included": {
@@ -240,8 +240,8 @@
       },
       "Microsoft.ML.OnnxRuntime.Managed": {
         "type": "Transitive",
-        "resolved": "1.24.3",
-        "contentHash": "XWyszzywN+uuMEEPzrTYLSKM2TJKOGHsjcq0ZY+AeaqJpPB7xi0OikxXhXTc7fcOJ8K0oqvD0dk86fROm3TaRA==",
+        "resolved": "1.29.0",
+        "contentHash": "jLy5PtzvRQCBFOczzfRY7zpuMVUyLwjO0Jsdd8MBZdmnPIqx5vW9cYDNyCqkrYpwkof8GlqBVaEUMWrMWRtvuw==",
         "dependencies": {
           "System.Memory": "4.5.5",
           "System.Numerics.Tensors": "9.0.0"
