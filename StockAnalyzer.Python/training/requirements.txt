@@ -1,0 +1,26 @@
+# ONNX training tooling dependencies.
+#
+# Base (dataset.py):
+numpy>=1.26
+polars>=0.20.22
+pyarrow>=23.0.1
+#
+# PyTorch training + ONNX export (train_pytorch.py):
+#   torch is CPU-only here; install via:
+#   pip install --index-url https://download.pytorch.org/whl/cpu torch
+torch>=2.2
+onnx>=1.16
+onnxruntime>=1.18
+onnxscript>=0.7        # required by torch.onnx.export in torch >= 2.9
+#
+# Keras training + ONNX export (train_tensorflow.py):
+#   tensorflow is CPU-only on native Windows (no GPU for TF >= 2.11).
+tensorflow>=2.16
+tf2onnx>=1.16
+#
+# LightGBM training + 3D-input ONNX export (train_lightgbm.py):
+#   onnxmltools' LightGBM converter caps at ai.onnx opset 15.
+lightgbm>=4.0
+scikit-learn>=1.1
+skl2onnx>=1.16
+onnxmltools>=1.12

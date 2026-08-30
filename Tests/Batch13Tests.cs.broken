@@ -1,0 +1,239 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using StockAnalyzer.Core.Models.Indicators.Trend;
+using StockAnalyzer.Core.Models.Indicators.Oscillators;
+using StockAnalyzer.Core.Models.Parameters;
+using Xunit;
+
+namespace StockAnalyzer.Tests
+{
+    public class Batch13Tests
+    {
+        private List<CandleData> CreateTestData(int count)
+        {
+            var list = new List<CandleData>();
+            var date = new DateTime(2023, 1, 1);
+            
+            // Generate simple predictable data
+            for (int i = 0; i < count; i++)
+            {
+                // Price increases by 10 each step
+                decimal close = 100m + i * 10m;
+                decimal high = close + 5m;
+                decimal low = close - 5m;
+                decimal open = close - 2m;
+                long volume = 1000 + i * 100;
+
+                list.Add(new CandleData
+                {
+                    Timestamp = date.AddDays(i),
+                    Open = open,
+                    High = high,
+                    Low = low,
+                    Close = close,
+                    Volume = volume
+                });
+            }
+            return list;
+        }
+
+        [Fact]
+        public void Cmf_CalculatesCorrectly()
+        {
+            // Arrange
+            var indicator = new ChaikinMoneyFlowIndicator(3, System.Windows.Media.Colors.Red);
+            var candles = CreateTestData(10);
+
+            // Act
+            indicator.Calculate(candles);
+
+            // Assert
+            Assert.Equal(10, indicator.Values.Count);
+            // First 2 values should be null (Period-1)
+            Assert.Null(indicator.Values[0]);
+            Assert.Null(indicator.Values[1]);
+            Assert.NotNull(indicator.Values[2]);
+
+            // Verify value range [-1, 1]
+            foreach (var val in indicator.Values)
+            {
+                if (val.HasValue)
+                {
+                    Assert.True(val.Value >= -1m && val.Value <= 1m);
+                }
+            }
+        }
+
+        [Fact]
+        public void ForceIndex_CalculatesCorrectly()
+        {
+            // Arrange
+            var indicator = new ForceIndexIndicator(2, System.Windows.Media.Colors.Blue);
+            var candles = CreateTestData(10);
+            
+            // Act
+            indicator.Calculate(candles);
+            
+            // Assert
+            Assert.Equal(10, indicator.Values.Count);
+            // First 2 values should be null (Period)
+            Assert.Null(indicator.Values[0]);
+            Assert.Null(indicator.Values[1]);
+            Assert.NotNull(indicator.Values[2]);
+            
+            // Since price is constantly increasing, Force Index should be positive
+            Assert.True(indicator.Values[5]!.Value > 0);
+        }
+
+        [Fact]
+        public void Eom_CalculatesCorrectly()
+        {
+            // Arrange
+            var indicator = new EaseOfMovementIndicator(3, System.Windows.Media.Colors.Green);
+            var candles = CreateTestData(10);
+            
+            // Act
+            indicator.Calculate(candles);
+            
+            // Assert
+            Assert.Equal(10, indicator.Values.Count);
+            // First 3 values should be null (Period)
+            Assert.Null(indicator.Values[0]);
+            Assert.Null(indicator.Values[1]);
+            Assert.Null(indicator.Values[2]);
+            Assert.NotNull(indicator.Values[3]);
+        }
+
+        [Fact]
+        public void Vpt_CalculatesCorrectly()
+        {
+            // Arrange
+            var indicator = new PriceVolumeTrendIndicator(System.Windows.Media.Colors.Yellow);
+            var candles = CreateTestData(10);
+            
+            // Act
+            indicator.Calculate(candles);
+            
+            // Assert
+            Assert.Equal(10, indicator.Values.Count);
+            Assert.NotNull(indicator.Values[0]); // First value is 0
+            Assert.Equal(0m, indicator.Values[0]);
+            
+            // Since price is increasing, VPT should be increasing
+            for (int i = 1; i < 10; i++)
+            {
+                Assert.True(indicator.Values[i]!.Value > indicator.Values[i-1]!.Value);
+            }
+        }
+
+        [Fact]
+        public void Nvi_CalculatesCorrectly()
+        {
+            // Arrange
+            var indicator = new NegativeVolumeIndexIndicator(System.Windows.Media.Colors.Purple);
+            var candles = CreateTestData(10);
+            
+            // Modify volumes to trigger Nvi updates (volume must decrease)
+            // candles[2].Volume = 500; // Decrease from prev (1100)
+            candles[2] = new CandleData 
+            { 
+                Timestamp = candles[2].Timestamp, 
+                Open = candles[2].Open, 
+                High = candles[2].High, 
+                Low = candles[2].Low, 
+                Close = candles[2].Close, 
+                Volume = 500 
+            };
+
+            // candles[4].Volume = 500; // Decrease from prev (1300)
+            candles[4] = new CandleData 
+            { 
+                Timestamp = candles[4].Timestamp, 
+                Open = candles[4].Open, 
+                High = candles[4].High, 
+                Low = candles[4].Low, 
+                Close = candles[4].Close, 
+                Volume = 500 
+            };
+            
+            // Act
+            indicator.Calculate(candles);
+            
+            // Assert
+            Assert.Equal(10, indicator.Values.Count);
+            Assert.Equal(1000m, indicator.Values[0]); // Initial value
+            
+            // Check specific logic
+            // Index 1: Volume increased (1000->1100), NVI should stay same
+            Assert.NotEqual(indicator.Values[1], indicator.Values[2]);
+        }
+
+        [Fact]
+        public void DarvasBox_CalculatesCorrectly()
+        {
+            // Arrange
+            var indicator = new DarvasBoxIndicator(5, System.Windows.Media.Colors.Blue);
+            var candles = CreateTestData(20);
+            
+            // Act
+            indicator.Calculate(candles);
+            
+            // Assert
+            Assert.Equal(20, indicator.Values.Count);
+            Assert.Equal(20, indicator.BoxTop.Count);
+            Assert.Equal(20, indicator.BoxBottom.Count);
+            
+            // Initial values should be null
+            Assert.Null(indicator.BoxTop[0]);
+            
+            // Check if box is formed eventually
+            bool boxFormed = indicator.BoxTop.Any(v => v.HasValue);
+            // In a strong trend, boxes might not form easily or might break immediately, 
+            // but let's check if we get at least some values or nulls correctly structure.
+            Assert.NotNull(indicator.Values.Last());
+        }
+
+        [Fact]
+        public void ThreeLineBreak_CalculatesCorrectly()
+        {
+            // Arrange
+            var param = new ThreeLineBreakParameter { LinesToKeep = 3, BreakPercentage = 1.0m };
+            var indicator = new ThreeLineBreakIndicator(param, System.Windows.Media.Colors.Red);
+            var candles = CreateTestData(20);
+            
+            // Act
+            indicator.Calculate(candles);
+            
+            // Assert
+            Assert.Equal(20, indicator.Values.Count);
+            Assert.Equal(20, indicator.LineHigh.Count);
+            
+            // Since price is strictly increasing, we should see lines forming
+            Assert.NotNull(indicator.Values.Last());
+            Assert.NotNull(indicator.LineHigh.Last());
+        }
+
+        [Fact]
+        public void VortexSignal_CalculatesCorrectly()
+        {
+            // Arrange
+            var indicator = new VortexSignalIndicator(14, System.Windows.Media.Colors.Orange);
+            var candles = CreateTestData(30);
+            
+            // Act
+            indicator.Calculate(candles);
+            
+            // Assert
+            Assert.Equal(30, indicator.Values.Count);
+            // First 14 should be null
+            Assert.Null(indicator.Values[0]);
+            Assert.Null(indicator.Values[13]);
+            Assert.NotNull(indicator.Values[14]);
+            
+            // Signal should be -1, 0, or 1
+            var lastVal = indicator.Values.Last();
+            Assert.True(lastVal == 0 || lastVal == 1 || lastVal == -1);
+        }
+    }
+}

@@ -1,0 +1,385 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:dialogs="using:StockAnalyzer.Avalonia.ViewModels.Dialogs"
+        xmlns:l="clr-namespace:StockAnalyzer.Avalonia.Markup;assembly=StockAnalyzer.Avalonia"
+        xmlns:conv="clr-namespace:StockAnalyzer.Avalonia.Converters"
+        xmlns:c="using:StockAnalyzer.Avalonia.Common"
+        mc:Ignorable="d" d:DesignWidth="640" d:DesignHeight="800"
+        x:Class="StockAnalyzer.Avalonia.Views.Dialogs.TrainingWizardWindow"
+        x:DataType="dialogs:TrainingWizardViewModel"
+        Icon="avares://StockAnalyzer.Avalonia/Assets/avalonia-logo.ico"
+        Title="{l:Localize TrainingWizard_Title}"
+        Width="640" Height="800"
+        MinWidth="560" MinHeight="600"
+        WindowStartupLocation="CenterScreen"
+        Background="{DynamicResource Brush.Background.Primary}"
+        Foreground="{DynamicResource Brush.Text.Primary}"
+        ExtendClientAreaToDecorationsHint="True"
+        ExtendClientAreaTitleBarHeightHint="-1">
+
+    <Window.Resources>
+        <StreamGeometry x:Key="TrainingWizardIconData">M13,3V9H21V3M13,21H21V11H13M3,21H11V15H3M3,13H11V3H3V13Z</StreamGeometry>
+        <!-- Path data copied verbatim from Assets/Icons/date_range.svg (Material Symbols
+             "date_range", 0 -960 960 960 viewBox) - the source SVG is reference-only and never
+             loaded at runtime; see the same convention documented in NoteCardView.axaml. -->
+        <StreamGeometry x:Key="DateRangeIconData">M291.5-411.5Q280-423 280-440t11.5-28.5Q303-480 320-480t28.5 11.5Q360-457 360-440t-11.5 28.5Q337-400 320-400t-28.5-11.5Zm160 0Q440-423 440-440t11.5-28.5Q463-480 480-480t28.5 11.5Q520-457 520-440t-11.5 28.5Q497-400 480-400t-28.5-11.5Zm160 0Q600-423 600-440t11.5-28.5Q623-480 640-480t28.5 11.5Q680-457 680-440t-11.5 28.5Q657-400 640-400t-28.5-11.5ZM200-80q-33 0-56.5-23.5T120-160v-560q0-33 23.5-56.5T200-800h40v-80h80v80h320v-80h80v80h40q33 0 56.5 23.5T840-720v560q0 33-23.5 56.5T760-80H200Zm0-80h560v-400H200v400Z</StreamGeometry>
+        <conv:EnumToBoolConverter x:Key="EnumToBoolConverter"/>
+        <conv:EnumToLocalizedDisplayNameConverter x:Key="EnumToLocalizedDisplayNameConverter"/>
+    </Window.Resources>
+
+    <Window.Styles>
+        <Style Selector="Border.card">
+            <Setter Property="Background" Value="{DynamicResource Brush.Background.Tertiary}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border.Primary}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="Padding" Value="12"/>
+        </Style>
+        <Style Selector="TextBlock.sectionHeader">
+            <Setter Property="FontSize" Value="{DynamicResource HelperFontSize}"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Secondary}"/>
+        </Style>
+        <Style Selector="TextBlock.fieldLabel">
+            <Setter Property="FontSize" Value="{DynamicResource DetailFontSize}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Secondary}"/>
+        </Style>
+        <Style Selector="Grid.foldRow > TextBlock">
+            <Setter Property="FontSize" Value="{DynamicResource DetailFontSize}"/>
+            <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Primary}"/>
+        </Style>
+
+        <!-- Replace CalendarDatePicker's default button visual (a day-number-in-a-circle glyph;
+             confirmed via a headless visual-tree dump - there is no separate icon element to
+             restyle) with the requested date_range.svg icon. Overriding the Button's own
+             Template (not CalendarDatePicker's) keeps its Name="PART_Button" identity and Click
+             wiring intact - only its rendered content changes. -->
+        <Style Selector="CalendarDatePicker /template/ Button#PART_Button">
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <Border Background="Transparent">
+                        <PathIcon Data="{StaticResource DateRangeIconData}"
+                                  Width="14" Height="14"
+                                  Foreground="{DynamicResource Brush.Text.Secondary}"/>
+                    </Border>
+                </ControlTemplate>
+            </Setter>
+        </Style>
+    </Window.Styles>
+
+    <Window.KeyBindings>
+        <KeyBinding Gesture="Escape" Command="{Binding $parent[Window].Close}"/>
+    </Window.KeyBindings>
+
+    <Design.DataContext>
+        <dialogs:TrainingWizardViewModel/>
+    </Design.DataContext>
+
+    <Border BorderBrush="{DynamicResource Brush.Border.Primary}" BorderThickness="1">
+        <Grid RowDefinitions="56,*,64">
+            <!-- Header (56px) -->
+            <Border Grid.Row="0"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="0,0,0,1"
+                    Padding="24,0"
+                    Background="{DynamicResource Brush.Background.Tertiary}"
+                    PointerPressed="OnHeaderPointerPressed">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="12">
+                    <PathIcon Data="{StaticResource TrainingWizardIconData}" Width="20" Height="20" Foreground="{DynamicResource Brush.Accent.Primary}"/>
+                    <TextBlock Text="{l:Localize TrainingWizard_Title}"
+                               FontSize="{DynamicResource TitleFontSize}"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource Brush.Text.Primary}"
+                               VerticalAlignment="Center"/>
+                </StackPanel>
+            </Border>
+
+            <!-- Body -->
+            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="24,16">
+                <StackPanel Spacing="20">
+
+                    <!-- Section: Scope -->
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="{l:Localize TrainingWizard_Section_Scope}" Classes="sectionHeader"/>
+                        <StackPanel Orientation="Horizontal" Spacing="16">
+                            <RadioButton Content="{l:Localize TrainingWizard_Scope_AllTickers}"
+                                         GroupName="TrainingScope"
+                                         IsChecked="{Binding SelectedScope, Converter={StaticResource EnumToBoolConverter}, ConverterParameter=AllTickers, Mode=OneWay}"
+                                         Command="{Binding SetScopeCommand}" CommandParameter="AllTickers"/>
+                            <RadioButton Content="{l:Localize TrainingWizard_Scope_Watchlist}"
+                                         GroupName="TrainingScope"
+                                         IsChecked="{Binding SelectedScope, Converter={StaticResource EnumToBoolConverter}, ConverterParameter=Watchlist, Mode=OneWay}"
+                                         Command="{Binding SetScopeCommand}" CommandParameter="Watchlist"/>
+                            <RadioButton Content="{l:Localize TrainingWizard_Scope_Portfolio}"
+                                         GroupName="TrainingScope"
+                                         IsChecked="{Binding SelectedScope, Converter={StaticResource EnumToBoolConverter}, ConverterParameter=Portfolio, Mode=OneWay}"
+                                         Command="{Binding SetScopeCommand}" CommandParameter="Portfolio"/>
+                        </StackPanel>
+
+                        <Border Classes="card" IsVisible="{Binding IsWatchlistScope}">
+                            <ScrollViewer MaxHeight="140" VerticalScrollBarVisibility="Auto">
+                                <ItemsControl ItemsSource="{Binding WatchlistProfiles}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="dialogs:WatchlistProfileSelectItemViewModel">
+                                            <CheckBox Content="{Binding Name}" IsChecked="{Binding IsSelected, Mode=TwoWay}" Margin="0,2"/>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                        </Border>
+
+                        <Border Classes="card" IsVisible="{Binding IsPortfolioScope}">
+                            <ScrollViewer MaxHeight="140" VerticalScrollBarVisibility="Auto">
+                                <ItemsControl ItemsSource="{Binding PortfolioProfiles}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="dialogs:WatchlistProfileSelectItemViewModel">
+                                            <CheckBox Content="{Binding Name}" IsChecked="{Binding IsSelected, Mode=TwoWay}" Margin="0,2"/>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                        </Border>
+                    </StackPanel>
+
+                    <!-- Section: Period & Timeframe -->
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="{l:Localize TrainingWizard_Section_Period}" Classes="sectionHeader"/>
+                        <Grid ColumnDefinitions="*,*">
+                            <StackPanel Spacing="6" Margin="0,0,8,0">
+                                <TextBlock Text="{l:Localize TrainingWizard_StartDate}" Classes="fieldLabel"/>
+                                <CalendarDatePicker SelectedDate="{Binding StartDate, Mode=TwoWay}"
+                                                     Height="34" HorizontalAlignment="Stretch"
+                                                     SelectedDateFormat="Custom" CustomDateFormatString="yyyy-MM-dd"
+                                                     Background="{DynamicResource Brush.Background.Tertiary}"
+                                                     BorderBrush="{DynamicResource Brush.Border.Primary}"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Spacing="6" Margin="8,0,0,0">
+                                <TextBlock Text="{l:Localize TrainingWizard_EndDate}" Classes="fieldLabel"/>
+                                <CalendarDatePicker SelectedDate="{Binding EndDate, Mode=TwoWay}"
+                                                     Height="34" HorizontalAlignment="Stretch"
+                                                     SelectedDateFormat="Custom" CustomDateFormatString="yyyy-MM-dd"
+                                                     Background="{DynamicResource Brush.Background.Tertiary}"
+                                                     BorderBrush="{DynamicResource Brush.Border.Primary}"/>
+                            </StackPanel>
+                        </Grid>
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="{l:Localize TrainingWizard_Timeframe}" Classes="fieldLabel"/>
+                            <ComboBox ItemsSource="{Binding AvailableTimeframes}"
+                                      SelectedItem="{Binding SelectedTimeframe, Mode=TwoWay}"
+                                      HorizontalAlignment="Stretch" Height="34"
+                                      Background="{DynamicResource Brush.Background.Tertiary}"
+                                      BorderBrush="{DynamicResource Brush.Border.Primary}">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Converter={StaticResource EnumToLocalizedDisplayNameConverter}}"/>
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!-- Section: Model -->
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="{l:Localize TrainingWizard_Section_Model}" Classes="sectionHeader"/>
+                        <Grid ColumnDefinitions="*,*">
+                            <StackPanel Spacing="6" Margin="0,0,8,0">
+                                <TextBlock Text="{l:Localize TrainingWizard_Framework}" Classes="fieldLabel"/>
+                                <ComboBox ItemsSource="{Binding AvailableFrameworks}"
+                                          SelectedItem="{Binding SelectedFramework, Mode=TwoWay}"
+                                          HorizontalAlignment="Stretch" Height="34"
+                                          Background="{DynamicResource Brush.Background.Tertiary}"
+                                          BorderBrush="{DynamicResource Brush.Border.Primary}">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding Converter={StaticResource EnumToLocalizedDisplayNameConverter}}"/>
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Spacing="6" Margin="8,0,0,0">
+                                <TextBlock Text="{l:Localize TrainingWizard_Architecture}" Classes="fieldLabel"/>
+                                <ComboBox ItemsSource="{Binding AvailableArchitectures}"
+                                          SelectedItem="{Binding SelectedArchitecture, Mode=TwoWay}"
+                                          HorizontalAlignment="Stretch" Height="34"
+                                          Background="{DynamicResource Brush.Background.Tertiary}"
+                                          BorderBrush="{DynamicResource Brush.Border.Primary}"/>
+                            </StackPanel>
+                        </Grid>
+                        <Grid ColumnDefinitions="*,*">
+                            <StackPanel Spacing="6" Margin="0,0,8,0">
+                                <TextBlock Text="{l:Localize TrainingWizard_WindowSize}" Classes="fieldLabel"/>
+                                <NumericUpDown Value="{Binding WindowSize}" Minimum="1" Increment="1" FormatString="F0"
+                                               ClipValueToMinMax="True"
+                                               Height="34"
+                                               Background="{DynamicResource Brush.Background.Tertiary}"
+                                               BorderBrush="{DynamicResource Brush.Border.Primary}"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Spacing="6" Margin="8,0,0,0">
+                                <TextBlock Text="{l:Localize TrainingWizard_Horizon}" Classes="fieldLabel"/>
+                                <NumericUpDown Value="{Binding Horizon}" Minimum="0" Increment="1" FormatString="F0"
+                                               ClipValueToMinMax="True"
+                                               Height="34"
+                                               Background="{DynamicResource Brush.Background.Tertiary}"
+                                               BorderBrush="{DynamicResource Brush.Border.Primary}"/>
+                            </StackPanel>
+                        </Grid>
+                        <TextBlock Text="{Binding WindowUnitNote}" TextWrapping="Wrap" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Tertiary}"/>
+                    </StackPanel>
+
+                    <!-- Section: Validation -->
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="{l:Localize TrainingWizard_Section_Validation}" Classes="sectionHeader"/>
+                        <Grid ColumnDefinitions="*,*,*">
+                            <StackPanel Spacing="6" Margin="0,0,8,0">
+                                <TextBlock Text="{l:Localize TrainingWizard_NSplits}" Classes="fieldLabel"/>
+                                <NumericUpDown Value="{Binding NSplits}" Minimum="2" Increment="1" FormatString="F0"
+                                               ClipValueToMinMax="True"
+                                               Height="34"
+                                               Background="{DynamicResource Brush.Background.Tertiary}"
+                                               BorderBrush="{DynamicResource Brush.Border.Primary}"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Spacing="6" Margin="8,0,8,0">
+                                <TextBlock Text="{l:Localize TrainingWizard_Gap}" Classes="fieldLabel"/>
+                                <NumericUpDown Value="{Binding Gap}" Minimum="0" Increment="1" FormatString="F0"
+                                               ClipValueToMinMax="True"
+                                               Watermark="{l:Localize TrainingWizard_Optional_Watermark}"
+                                               Height="34"
+                                               Background="{DynamicResource Brush.Background.Tertiary}"
+                                               BorderBrush="{DynamicResource Brush.Border.Primary}"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="2" Spacing="6" Margin="8,0,0,0">
+                                <TextBlock Text="{l:Localize TrainingWizard_OosTailDays}" Classes="fieldLabel"/>
+                                <NumericUpDown Value="{Binding OosTailDays}" Minimum="0" Increment="1" FormatString="F0"
+                                               ClipValueToMinMax="True"
+                                               Watermark="{l:Localize TrainingWizard_Optional_Watermark}"
+                                               Height="34"
+                                               Background="{DynamicResource Brush.Background.Tertiary}"
+                                               BorderBrush="{DynamicResource Brush.Border.Primary}"/>
+                            </StackPanel>
+                        </Grid>
+                        <TextBlock Text="{l:Localize TrainingWizard_Validation_Note}" TextWrapping="Wrap"
+                                   FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Tertiary}"/>
+                    </StackPanel>
+
+                    <!-- Section: Hyperparameters -->
+                    <StackPanel Spacing="8">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Text="{l:Localize TrainingWizard_Section_Hyperparameters}" Classes="sectionHeader" VerticalAlignment="Center"/>
+                            <Button Grid.Column="1" Content="{l:Localize TrainingWizard_Hyperparameters_AddButton}"
+                                    Theme="{DynamicResource SecondaryButtonStyle}"
+                                    Padding="10,4"
+                                    Command="{Binding AddHyperparameterCommand}"/>
+                        </Grid>
+                        <ItemsControl ItemsSource="{Binding Hyperparameters}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="dialogs:TrainingHyperparameterEntry">
+                                    <Grid ColumnDefinitions="*,*,Auto" Margin="0,2">
+                                        <TextBox Text="{Binding Key}" Watermark="{l:Localize TrainingWizard_Hyperparameters_KeyWatermark}"
+                                                  Height="30" Margin="0,0,4,0"
+                                                  Background="{DynamicResource Brush.Background.Tertiary}"
+                                                  BorderBrush="{DynamicResource Brush.Border.Primary}"/>
+                                        <TextBox Grid.Column="1" Text="{Binding Value}" Watermark="{l:Localize TrainingWizard_Hyperparameters_ValueWatermark}"
+                                                  Height="30" Margin="4,0,4,0"
+                                                  Background="{DynamicResource Brush.Background.Tertiary}"
+                                                  BorderBrush="{DynamicResource Brush.Border.Primary}"/>
+                                        <Button Grid.Column="2" Width="30" Height="30" Padding="0"
+                                                Theme="{DynamicResource SecondaryButtonStyle}"
+                                                ToolTip.Tip="{l:Localize TrainingWizard_Hyperparameters_RemoveButton}"
+                                                Command="{Binding $parent[ItemsControl].((dialogs:TrainingWizardViewModel)DataContext).RemoveHyperparameterCommand}"
+                                                CommandParameter="{Binding}">
+                                            <PathIcon Data="{x:Static c:SharedIconGeometries.Delete}" Width="14" Height="14"/>
+                                        </Button>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+
+                    <!-- Section: Progress -->
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="{l:Localize TrainingWizard_Section_Progress}" Classes="sectionHeader"/>
+                        <Grid ColumnDefinitions="*,Auto">
+                            <ProgressBar Value="{Binding ProgressPercent}" Maximum="100" Height="6" VerticalAlignment="Center"
+                                         Foreground="{DynamicResource Brush.Accent.Primary}"/>
+                            <TextBlock Grid.Column="1" Text="{Binding ProgressPercent, StringFormat='{}{0}%'}" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                        </Grid>
+                        <TextBlock Text="{Binding CurrentStage}" FontWeight="SemiBold" IsVisible="{Binding CurrentStage, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+                        <TextBlock Text="{Binding StatusMessage}" TextWrapping="Wrap" Foreground="{DynamicResource Brush.Text.Secondary}" IsVisible="{Binding StatusMessage, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+                        <Border Classes="card" Padding="0">
+                            <ListBox ItemsSource="{Binding LogLines}" MaxHeight="140" Background="Transparent" BorderThickness="0"/>
+                        </Border>
+
+                        <!-- Per-fold results table (populated from fold-scoped METRIC: lines) -->
+                        <StackPanel Spacing="4" IsVisible="{Binding HasFoldResults}">
+                            <TextBlock Text="{l:Localize TrainingWizard_FoldResults_Header}" Classes="fieldLabel"/>
+                            <Border Classes="card" Padding="8">
+                                <StackPanel Spacing="2">
+                                    <Grid ColumnDefinitions="64,64,*,*,*,*">
+                                        <TextBlock Grid.Column="0" Text="{l:Localize TrainingWizard_FoldResults_Fold}" Classes="fieldLabel"/>
+                                        <TextBlock Grid.Column="1" Text="{l:Localize TrainingWizard_FoldResults_Samples}" Classes="fieldLabel"/>
+                                        <TextBlock Grid.Column="2" Text="{l:Localize TrainingWizard_FoldResults_Accuracy}" Classes="fieldLabel"/>
+                                        <TextBlock Grid.Column="3" Text="{l:Localize TrainingWizard_FoldResults_Baseline}" Classes="fieldLabel"/>
+                                        <TextBlock Grid.Column="4" Text="{l:Localize TrainingWizard_FoldResults_MacroF1}" Classes="fieldLabel"/>
+                                        <TextBlock Grid.Column="5" Text="{l:Localize TrainingWizard_FoldResults_Logloss}" Classes="fieldLabel"/>
+                                    </Grid>
+                                    <ItemsControl ItemsSource="{Binding FoldResults}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="dialogs:FoldMetricRow">
+                                                <Grid Classes="foldRow" ColumnDefinitions="64,64,*,*,*,*" Margin="0,1">
+                                                    <TextBlock Grid.Column="0" Text="{Binding FoldLabel}"/>
+                                                    <TextBlock Grid.Column="1" Text="{Binding SampleCount}"/>
+                                                    <TextBlock Grid.Column="2" Text="{Binding Accuracy, StringFormat='{}{0:P1}'}"/>
+                                                    <TextBlock Grid.Column="3" Text="{Binding BaselineAccuracy, StringFormat='{}{0:P1}'}"/>
+                                                    <TextBlock Grid.Column="4" Text="{Binding MacroF1, StringFormat='{}{0:F3}'}"/>
+                                                    <TextBlock Grid.Column="5" Text="{Binding MultiLogloss, StringFormat='{}{0:F4}'}"/>
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </StackPanel>
+
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- Footer (64px) -->
+            <Border Grid.Row="2"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="0,1,0,0"
+                    Padding="24,0"
+                    Background="{DynamicResource Brush.Background.Tertiary}">
+                <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock Grid.Column="0" Text="{Binding LastResult.RunId}" VerticalAlignment="Center"
+                               Foreground="{DynamicResource Brush.Text.Tertiary}" FontSize="{DynamicResource HelperFontSize}"
+                               IsVisible="{Binding LastResult, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Spacing="12">
+                        <Button Content="{l:Localize TrainingWizard_DeployButton}"
+                                Theme="{DynamicResource SecondaryButtonStyle}"
+                                Padding="16,0" Height="36"
+                                Command="{Binding DeployToModelsCommand}"/>
+                        <Button Content="{l:Localize TrainingWizard_CancelButton}"
+                                Theme="{DynamicResource SecondaryButtonStyle}"
+                                Padding="16,0" Height="36"
+                                IsVisible="{Binding IsTraining}"
+                                Command="{Binding CancelTrainingCommand}"/>
+                        <Button Content="{l:Localize TrainingWizard_StartButton}"
+                                Theme="{DynamicResource PrimaryButtonStyle}"
+                                Padding="16,0" Height="36"
+                                FontWeight="Bold"
+                                IsVisible="{Binding !IsTraining}"
+                                Command="{Binding StartTrainingCommand}"/>
+                        <Button Content="{l:Localize TrainingWizard_CloseButton}"
+                                Theme="{DynamicResource SecondaryButtonStyle}"
+                                Padding="16,0" Height="36"
+                                Command="{Binding $parent[Window].Close}"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </Grid>
+    </Border>
+</Window>
