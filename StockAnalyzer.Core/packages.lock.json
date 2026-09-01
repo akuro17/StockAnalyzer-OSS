@@ -74,11 +74,11 @@
       },
       "Python.Included": {
         "type": "Direct",
-        "requested": "[3.13.0, )",
-        "resolved": "3.13.0",
-        "contentHash": "B2MGu6EY4vD3a+bH6k06AUhnLrpc6/DYzJIiJenUBw9AkSgVyY+UyD+3KNgCqj76/bKQoTIhI/49wMJygI3IgA==",
+        "requested": "[3.13.6, )",
+        "resolved": "3.13.6",
+        "contentHash": "OczC08x1sWy4O/9D7BgJAIpZMVTfMdxRF4wImhUqdLoIfOUDNUlyN1FI8WfpW/NuXSfCztU6mDw1FbBof7EUdg==",
         "dependencies": {
-          "Python.Deployment": "2.0.5",
+          "Python.Deployment": "2.0.7",
           "pythonnet": "3.0.5"
         }
       },
@@ -284,8 +284,8 @@
       },
       "Python.Deployment": {
         "type": "Transitive",
-        "resolved": "2.0.5",
-        "contentHash": "U+hZ6L5tgPjX9bA/+K2rVQ94MNWGld+HIH78ULZ5ogfwVNvesaIEXhvKPLA6O6YuQF406Uw3WBLTCRlCpMC2QQ=="
+        "resolved": "2.0.7",
+        "contentHash": "314lF3wnpS42n7yHlVf69OYEjB3h1YNNAYkSokFWsPLqNr2WjKsHlwk8FTSMD95imyEsdOEI++nAAk8wo3PloQ=="
       },
       "pythonnet": {
         "type": "Transitive",
