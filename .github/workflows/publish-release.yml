@@ -1,0 +1,90 @@
+name: Publish Production Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    permissions:
+      contents: read
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+        mode: [self-contained, framework-dependent]
+        include:
+          - os: windows-latest
+            rid: win-x64
+          - os: ubuntu-latest
+            rid: linux-x64
+          - os: macos-latest
+            rid: osx-x64
+
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: pwsh
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
+      with:
+        dotnet-version: '8.0.x'
+
+    - name: Configure appsettings.json
+      run: |
+        Copy-Item StockAnalyzer.Avalonia/appsettings.example.json StockAnalyzer.Avalonia/appsettings.json
+
+    - name: Build and Publish (Self-contained)
+      if: matrix.mode == 'self-contained'
+      run: |
+        dotnet publish StockAnalyzer.Avalonia/StockAnalyzer.Avalonia.csproj -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishSingleFile=true -o ./publish
+
+    - name: Build and Publish (Framework-dependent)
+      if: matrix.mode == 'framework-dependent'
+      run: |
+        dotnet publish StockAnalyzer.Avalonia/StockAnalyzer.Avalonia.csproj -c Release -r ${{ matrix.rid }} --self-contained false -o ./publish
+
+    - name: Create ZIP archive
+      run: |
+        Compress-Archive -Path ./publish/* -DestinationPath ./StockAnalyzer-${{ matrix.rid }}-${{ matrix.mode }}.zip
+
+    - name: Upload temporary artifact
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      with:
+        name: asset-${{ matrix.rid }}-${{ matrix.mode }}
+        path: ./StockAnalyzer-${{ matrix.rid }}-${{ matrix.mode }}.zip
+        retention-days: 1
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+    - name: Download all artifacts
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      with:
+        pattern: asset-*
+        merge-multiple: true
+
+    - name: Create Release
+      uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
+      with:
+        tag_name: ${{ github.ref_name }}
+        name: "StockAnalyzer OSS ${{ github.ref_name }}"
+        body: |
+          Official release for StockAnalyzer OSS version ${{ github.ref_name }}.
+          
+          Please refer to the CHANGELOG.md for detailed release notes.
+        draft: false
+        prerelease: false
+        files: |
+          StockAnalyzer-*.zip
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

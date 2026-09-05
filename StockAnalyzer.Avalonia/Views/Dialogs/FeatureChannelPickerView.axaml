@@ -1,0 +1,461 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:dialogs="using:StockAnalyzer.Avalonia.ViewModels.Dialogs"
+             xmlns:l="clr-namespace:StockAnalyzer.Avalonia.Markup;assembly=StockAnalyzer.Avalonia"
+             xmlns:controls="clr-namespace:StockAnalyzer.Avalonia.Views.Controls;assembly=StockAnalyzer.Avalonia"
+             xmlns:c="using:StockAnalyzer.Avalonia.Common"
+             xmlns:templates="using:StockAnalyzer.Core.Models.Templates"
+             xmlns:behaviors="using:StockAnalyzer.Avalonia.Behaviors"
+             mc:Ignorable="d" d:DesignWidth="1140" d:DesignHeight="640"
+             x:Class="StockAnalyzer.Avalonia.Views.Dialogs.FeatureChannelPickerView"
+             x:DataType="dialogs:FeatureChannelPickerViewModel">
+
+    <Design.DataContext>
+        <dialogs:FeatureChannelPickerViewModel/>
+    </Design.DataContext>
+
+    <UserControl.Styles>
+        <Style Selector="TextBlock.fieldLabel">
+            <Setter Property="FontSize" Value="{DynamicResource DetailFontSize}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Secondary}"/>
+        </Style>
+        <Style Selector="ListBox.navList ListBoxItem">
+            <Setter Property="Padding" Value="8,5"/>
+            <Setter Property="Margin" Value="0,1"/>
+            <Setter Property="CornerRadius" Value="4"/>
+        </Style>
+        <!-- Scrollbar gutter shared with Indicator Manager/Library's catalog ListBox via the
+             ListScrollGutter Thickness resource (Assets/Styles.axaml; value rationale lives there).
+             Reserving the gutter keeps each ListBoxItem's content width constant whether or not the
+             vertical scrollbar is shown, so DisplayName's CharacterEllipsis trims at a fixed point. -->
+        <Style Selector="ListBox.catalogList">
+            <Setter Property="Padding" Value="{DynamicResource ListScrollGutter}"/>
+        </Style>
+        <Style Selector="ListBox.catalogList ListBoxItem">
+            <Setter Property="Padding" Value="8,6"/>
+            <Setter Property="Margin" Value="0,1"/>
+            <Setter Property="CornerRadius" Value="4"/>
+        </Style>
+        <Style Selector="Button.navCategory">
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Primary}"/>
+            <Setter Property="Padding" Value="8,5"/>
+            <Setter Property="Margin" Value="0,1"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="FontSize" Value="{DynamicResource DetailFontSize}"/>
+        </Style>
+        <Style Selector="Button.navCategory:pointerover">
+            <Setter Property="Background" Value="{DynamicResource Brush.Background.Hover}"/>
+        </Style>
+    </UserControl.Styles>
+
+    <!-- Unified single nav+catalog+detail 3-column layout (mirrors IndicatorSettingsDialogViewModel's
+         Library-mode surface, including its GridSplitters), replacing the earlier two-column
+         Price/Selected + Indicator split. Nav order top-to-bottom:
+         Selected, divider, All Categories, Price, category list (Trend..Other), divider, Templates -
+         each nav entry drives the catalog/detail columns via FeaturePickerMode, so no separate
+         "Price channels/Selected channels/Indicator library" headings are shown anywhere (the nav
+         label alone identifies the active surface).
+         Middle catalog column is a FIXED width, not a star: unlike IndicatorSettingsWindow (fixed-size
+         window + ClipToBounds ancestor) this view is hosted deep inside TrainingWizardWindow's
+         TabControl > StackPanel > body ScrollViewer, and on that measure path a star column was
+         observed (real fonts only, not headless) to widen to fit the longest indicator name. A fixed
+         px width cannot vary with content regardless of finalSize. 320 ~= the previous 280* share at
+         the 1140 design width. See SA_UI_INTERACTION.md section 26 ("Dense catalog rows"). -->
+    <Panel>
+    <Grid ColumnDefinitions="220*,Auto,320,Auto,450*" Height="560">
+
+        <!-- Nav column -->
+        <Border Grid.Column="0"
+                MinWidth="180"
+                Background="{DynamicResource Brush.Background.Secondary}"
+                BorderBrush="{DynamicResource Brush.Border.Primary}"
+                BorderThickness="1" CornerRadius="4" Padding="6">
+            <ScrollViewer VerticalScrollBarVisibility="Auto" AllowAutoHide="False" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel Spacing="0">
+                    <Button Content="{l:Localize TrainingWizard_Features_Nav_Selected}"
+                            Command="{Binding SelectSelectedChannelsCommand}"
+                            Classes="navCategory" FontWeight="SemiBold"/>
+
+                    <Border Height="1" Background="{DynamicResource Brush.Border.Primary}" Margin="4,6"/>
+
+                    <Button Content="{l:Localize TrainingWizard_Features_AllCategories}"
+                            Command="{Binding ClearCategoryCommand}"
+                            Classes="navCategory"/>
+
+                    <Button Content="{l:Localize TrainingWizard_Features_Nav_Price}"
+                            Command="{Binding SelectPriceCommand}"
+                            Classes="navCategory"/>
+
+                    <ListBox Classes="navList"
+                             ItemsSource="{Binding Categories}"
+                             SelectedItem="{Binding SelectedCategory, Mode=TwoWay}"
+                             Background="Transparent" BorderThickness="0"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"/>
+
+                    <Border Height="1" Background="{DynamicResource Brush.Border.Primary}" Margin="4,6"/>
+
+                    <Button Content="{l:Localize TrainingWizard_Features_Tab_Templates}"
+                            Command="{Binding SelectTemplatesCommand}"
+                            Classes="navCategory" FontWeight="SemiBold"/>
+                </StackPanel>
+            </ScrollViewer>
+        </Border>
+
+        <!-- Splitter between nav and catalog columns -->
+        <GridSplitter Grid.Column="1"
+                      Width="8"
+                      ResizeDirection="Columns"
+                      ResizeBehavior="PreviousAndNext"
+                      HorizontalAlignment="Stretch"
+                      VerticalAlignment="Stretch"
+                      Cursor="SizeWestEast"
+                      Background="{DynamicResource Brush.Background.Primary}"
+                      Margin="2,0"/>
+
+        <!-- Catalog (middle) column: switches by FeaturePickerMode. Fixed-width column (see root Grid
+             comment); ClipToBounds guards against any child measuring wider than the fixed track. -->
+        <Border Grid.Column="2"
+                MinWidth="240"
+                ClipToBounds="True"
+                Background="{DynamicResource Brush.Background.Secondary}"
+                BorderBrush="{DynamicResource Brush.Border.Primary}"
+                BorderThickness="1" CornerRadius="4" Padding="6">
+            <Grid>
+
+                <!-- Mode: Category / All Categories -> indicator catalog -->
+                <Grid RowDefinitions="Auto,*" IsVisible="{Binding IsIndicatorCategory}">
+                    <TextBox Grid.Row="0"
+                             Text="{Binding SearchText, Mode=TwoWay}"
+                             Watermark="{l:Localize TrainingWizard_Features_SearchWatermark}"
+                             Height="30" Margin="0,0,0,6"
+                             Background="{DynamicResource Brush.Background.Tertiary}"
+                             BorderBrush="{DynamicResource Brush.Border.Primary}"/>
+                    <ListBox Grid.Row="1" Classes="catalogList"
+                             ItemsSource="{Binding FilteredCatalogItems}"
+                             SelectedItem="{Binding SelectedCatalogItem, Mode=TwoWay}"
+                             DoubleTapped="OnIndicatorCatalogDoubleTapped"
+                             Background="Transparent" BorderThickness="0"
+                             ScrollViewer.AllowAutoHide="False"
+                             ScrollViewer.VerticalScrollBarVisibility="Auto"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate x:DataType="dialogs:IndicatorCatalogItem">
+                                <!-- Both lines trim with CharacterEllipsis. A TextBlock without trimming
+                                     reports its full single-line text width as its measured width, so a
+                                     long unbroken ShortName (PascalCase enum names such as
+                                     "AccelerationOscillator") forced the virtualized row - and therefore
+                                     the 280* catalog column - to grow past its share to fit the text,
+                                     which in turn gave the DisplayName enough room to render in full
+                                     instead of ellipsising. Trimming both lines lets the column stay at
+                                     its proportional width and both names ellipsise, matching Indicator
+                                     Manager/Library's catalog column. -->
+                                <StackPanel Spacing="2">
+                                    <TextBlock Text="{Binding ShortName}"
+                                               FontWeight="SemiBold"
+                                               FontSize="{DynamicResource DetailFontSize}"
+                                               Foreground="{DynamicResource Brush.Text.Primary}"
+                                               TextTrimming="CharacterEllipsis"/>
+                                    <TextBlock Text="{Binding DisplayName}"
+                                               FontSize="{DynamicResource HelperFontSize}"
+                                               Foreground="{DynamicResource Brush.Text.Secondary}"
+                                               TextTrimming="CharacterEllipsis"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Grid>
+
+                <!-- Mode: Price -> addable O/H/L/C fields -->
+                <ListBox IsVisible="{Binding IsPriceCategory}"
+                         Classes="catalogList"
+                         ItemsSource="{Binding PriceCatalogItems}"
+                         SelectedItem="{Binding SelectedPriceField, Mode=TwoWay}"
+                         DoubleTapped="OnPriceCatalogDoubleTapped"
+                         Background="Transparent" BorderThickness="0"
+                         ScrollViewer.AllowAutoHide="False"
+                         ScrollViewer.VerticalScrollBarVisibility="Auto"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate x:DataType="dialogs:PriceFieldCatalogItem">
+                            <TextBlock Text="{Binding Label}"
+                                       FontWeight="SemiBold"
+                                       FontSize="{DynamicResource DetailFontSize}"
+                                       Foreground="{DynamicResource Brush.Text.Primary}"/>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+
+                <!-- Mode: Selected -> composed channel list (reorder/remove), same display as before -->
+                <ScrollViewer IsVisible="{Binding IsSelectedCategory}"
+                              VerticalScrollBarVisibility="Auto" AllowAutoHide="False" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Spacing="6">
+                        <ItemsControl ItemsSource="{Binding Channels}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="dialogs:FeatureChannelRowViewModel">
+                                    <Grid ColumnDefinitions="*,Auto,Auto,Auto" Margin="0,2">
+                                        <Button Grid.Column="0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                                Background="Transparent" Padding="6,4" Margin="0,1" CornerRadius="4"
+                                                Command="{Binding $parent[ItemsControl].((dialogs:FeatureChannelPickerViewModel)DataContext).SelectChannelCommand}"
+                                                CommandParameter="{Binding}">
+                                            <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis"/>
+                                        </Button>
+                                        <Button Grid.Column="1" Width="26" Height="26" Padding="0" Content="▲" Margin="4,0,0,0"
+                                                Theme="{DynamicResource SecondaryButtonStyle}"
+                                                Command="{Binding $parent[ItemsControl].((dialogs:FeatureChannelPickerViewModel)DataContext).MoveChannelUpCommand}"
+                                                CommandParameter="{Binding}"/>
+                                        <Button Grid.Column="2" Width="26" Height="26" Padding="0" Content="▼" Margin="2,0"
+                                                Theme="{DynamicResource SecondaryButtonStyle}"
+                                                Command="{Binding $parent[ItemsControl].((dialogs:FeatureChannelPickerViewModel)DataContext).MoveChannelDownCommand}"
+                                                CommandParameter="{Binding}"/>
+                                        <Button Grid.Column="3" Width="26" Height="26" Padding="0"
+                                                Theme="{DynamicResource SecondaryButtonStyle}"
+                                                Command="{Binding $parent[ItemsControl].((dialogs:FeatureChannelPickerViewModel)DataContext).RemoveChannelCommand}"
+                                                CommandParameter="{Binding}">
+                                            <PathIcon Data="{x:Static c:SharedIconGeometries.Delete}" Width="12" Height="12"/>
+                                        </Button>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <TextBlock Text="{l:Localize TrainingWizard_Features_EmptyNote}"
+                                   IsVisible="{Binding !HasChannels}"
+                                   FontSize="{DynamicResource HelperFontSize}"
+                                   Foreground="{DynamicResource Brush.Text.Tertiary}"
+                                   TextWrapping="Wrap"/>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!-- Mode: Templates -> saved templates list -->
+                <Grid RowDefinitions="Auto,*" IsVisible="{Binding IsTemplatesCategory}">
+                    <Grid Grid.Row="0" ColumnDefinitions="Auto,*" Margin="0,0,0,8" VerticalAlignment="Center">
+                        <Button Grid.Column="0"
+                                Command="{Binding SaveTemplateCommand}"
+                                Theme="{DynamicResource PrimaryButtonStyle}"
+                                Width="32" Height="32" Padding="0" Margin="0,0,8,0"
+                                ToolTip.Tip="{l:Localize TrainingWizard_Features_Template_SaveButton}">
+                            <PathIcon Data="{x:Static c:SharedIconGeometries.Save}" Width="16" Height="16" Foreground="{DynamicResource Brush.Text.Inverse}"/>
+                        </Button>
+                        <TextBox Grid.Column="1"
+                                 Text="{Binding NewTemplateName, Mode=TwoWay}"
+                                 Watermark="{l:Localize TrainingWizard_Features_TemplateNamePlaceholder}"
+                                 Height="32"
+                                 Background="{DynamicResource Brush.Background.Tertiary}"
+                                 BorderBrush="{DynamicResource Brush.Border.Primary}"/>
+                    </Grid>
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" AllowAutoHide="False" HorizontalScrollBarVisibility="Disabled">
+                        <ListBox ItemsSource="{Binding Templates}"
+                                 SelectedItem="{Binding SelectedTemplate, Mode=TwoWay}"
+                                 Background="Transparent" BorderThickness="0"
+                                 ScrollViewer.AllowAutoHide="False">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate x:DataType="templates:FeatureSpecTemplate">
+                                    <Grid ColumnDefinitions="*,Auto,Auto,Auto" Margin="0,2">
+                                        <TextBlock Grid.Column="0" Text="{Binding Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                        <Button Grid.Column="1" Width="28" Height="28" Padding="0" Margin="0,0,4,0"
+                                                Theme="{DynamicResource SecondaryButtonStyle}"
+                                                ToolTip.Tip="{l:Localize TrainingWizard_Features_Template_LoadButton}"
+                                                Command="{Binding $parent[ListBox].((dialogs:FeatureChannelPickerViewModel)DataContext).LoadTemplateCommand}"
+                                                CommandParameter="{Binding}">
+                                            <PathIcon Data="{x:Static c:SharedIconGeometries.Load}" Width="14" Height="14"/>
+                                        </Button>
+                                        <!-- Non-destructive counterpart to Load, matching the Indicator Manager/Library's
+                                             Load/Append/Delete convention: adds this template's channels without
+                                             clearing the current selection. -->
+                                        <Button Grid.Column="2" Width="28" Height="28" Padding="0" Margin="0,0,4,0"
+                                                Theme="{DynamicResource SecondaryButtonStyle}"
+                                                ToolTip.Tip="{l:Localize TrainingWizard_Features_Template_AppendButton}"
+                                                Command="{Binding $parent[ListBox].((dialogs:FeatureChannelPickerViewModel)DataContext).AppendTemplateCommand}"
+                                                CommandParameter="{Binding}">
+                                            <PathIcon Data="{x:Static c:SharedIconGeometries.Add}" Width="14" Height="14"/>
+                                        </Button>
+                                        <Button Grid.Column="3" Width="28" Height="28" Padding="0"
+                                                Theme="{DynamicResource SecondaryButtonStyle}"
+                                                ToolTip.Tip="{l:Localize TrainingWizard_Features_Template_DeleteButton}"
+                                                Command="{Binding $parent[ListBox].((dialogs:FeatureChannelPickerViewModel)DataContext).DeleteTemplateCommand}"
+                                                CommandParameter="{Binding}">
+                                            <PathIcon Data="{x:Static c:SharedIconGeometries.Delete}" Width="14" Height="14"/>
+                                        </Button>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </ScrollViewer>
+                </Grid>
+            </Grid>
+        </Border>
+
+        <!-- Splitter between catalog and detail columns -->
+        <GridSplitter Grid.Column="3"
+                      Width="8"
+                      ResizeDirection="Columns"
+                      ResizeBehavior="PreviousAndNext"
+                      HorizontalAlignment="Stretch"
+                      VerticalAlignment="Stretch"
+                      Cursor="SizeWestEast"
+                      Background="{DynamicResource Brush.Background.Primary}"
+                      Margin="2,0"/>
+
+        <!-- Detail (right) column: switches by FeaturePickerMode -->
+        <Border Grid.Column="4"
+                MinWidth="380"
+                Background="{DynamicResource Brush.Background.Secondary}"
+                BorderBrush="{DynamicResource Brush.Border.Primary}"
+                BorderThickness="1" CornerRadius="4" Padding="8">
+            <Grid>
+
+                <!-- Mode: Category -> indicator detail / add -->
+                <ScrollViewer IsVisible="{Binding IsIndicatorCategory}"
+                              Theme="{StaticResource SidebarScrollViewerTheme}"
+                              AllowAutoHide="False"
+                              VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled"
+                              behaviors:WheelScrollRedirectBehavior.IsEnabled="True">
+                    <StackPanel Spacing="10"
+                                IsVisible="{Binding SelectedCatalogItem, Converter={x:Static ObjectConverters.IsNotNull}}">
+                        <TextBlock Text="{Binding SelectedCatalogItem.DisplayName}"
+                                   FontSize="{DynamicResource TitleFontSize}"
+                                   FontWeight="Bold"
+                                   Foreground="{DynamicResource Brush.Text.Primary}"
+                                   TextWrapping="Wrap"/>
+
+                        <StackPanel Spacing="6"
+                                    IsVisible="{Binding SelectedIndicatorSettings.ParameterObject, Converter={x:Static ObjectConverters.IsNotNull}}">
+                            <TextBlock Text="{l:Localize TrainingWizard_Features_Parameters}" Classes="fieldLabel"/>
+                            <controls:DynamicIndicatorSettingsView
+                                ParameterObject="{Binding SelectedIndicatorSettings.ParameterObject}"/>
+                        </StackPanel>
+
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="{l:Localize TrainingWizard_Features_Normalization}" Classes="fieldLabel"/>
+                            <ComboBox ItemsSource="{Binding NormalizationOptions}"
+                                      SelectedItem="{Binding SelectedNormalization, Mode=TwoWay}"
+                                      HorizontalAlignment="Stretch" Height="32"
+                                      Background="{DynamicResource Brush.Background.Tertiary}"
+                                      BorderBrush="{DynamicResource Brush.Border.Primary}"/>
+                        </StackPanel>
+
+                        <Button Content="{l:Localize TrainingWizard_Features_AddIndicator}"
+                                Theme="{DynamicResource PrimaryButtonStyle}"
+                                HorizontalAlignment="Stretch"
+                                HorizontalContentAlignment="Center"
+                                Height="34"
+                                Command="{Binding AddIndicatorChannelCommand}"/>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!-- Mode: Price -> selected field + normalization + add -->
+                <StackPanel IsVisible="{Binding IsPriceCategory}"
+                            Spacing="10"
+                            IsEnabled="{Binding SelectedPriceField, Converter={x:Static ObjectConverters.IsNotNull}}">
+                    <TextBlock Text="{Binding SelectedPriceField.Label}"
+                               FontSize="{DynamicResource TitleFontSize}"
+                               FontWeight="Bold"
+                               Foreground="{DynamicResource Brush.Text.Primary}"
+                               TextWrapping="Wrap"/>
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="{l:Localize TrainingWizard_Features_Normalization}" Classes="fieldLabel"/>
+                        <ComboBox ItemsSource="{Binding NormalizationOptions}"
+                                  SelectedItem="{Binding SelectedNormalization, Mode=TwoWay}"
+                                  HorizontalAlignment="Stretch" Height="32"
+                                  Background="{DynamicResource Brush.Background.Tertiary}"
+                                  BorderBrush="{DynamicResource Brush.Border.Primary}"/>
+                    </StackPanel>
+                    <Button Content="{l:Localize TrainingWizard_Features_AddIndicator}"
+                            Theme="{DynamicResource PrimaryButtonStyle}"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Center"
+                            Height="34"
+                            Command="{Binding AddPriceChannelCommand}"/>
+                </StackPanel>
+
+                <!-- Mode: Selected -> editor for the row picked in the middle column -->
+                <ScrollViewer IsVisible="{Binding IsSelectedCategory}"
+                              Theme="{StaticResource SidebarScrollViewerTheme}"
+                              AllowAutoHide="False"
+                              VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled"
+                              behaviors:WheelScrollRedirectBehavior.IsEnabled="True">
+                    <StackPanel Spacing="10"
+                                IsVisible="{Binding SelectedChannel, Converter={x:Static ObjectConverters.IsNotNull}}">
+                        <TextBlock Text="{Binding SelectedChannel.Label}"
+                                   FontSize="{DynamicResource TitleFontSize}"
+                                   FontWeight="Bold"
+                                   Foreground="{DynamicResource Brush.Text.Primary}"
+                                   TextWrapping="Wrap"/>
+
+                        <!-- Per-parameter editor (period etc.) for an indicator row, same control as the
+                             "Indicator" nav entry's detail column - lets an already-added channel's
+                             settings be changed in place instead of only its Normalization. -->
+                        <StackPanel Spacing="6"
+                                    IsVisible="{Binding SelectedChannelSettings.ParameterObject, Converter={x:Static ObjectConverters.IsNotNull}}">
+                            <TextBlock Text="{l:Localize TrainingWizard_Features_Parameters}" Classes="fieldLabel"/>
+                            <controls:DynamicIndicatorSettingsView
+                                ParameterObject="{Binding SelectedChannelSettings.ParameterObject}"/>
+                        </StackPanel>
+
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="{l:Localize TrainingWizard_Features_Normalization}" Classes="fieldLabel"/>
+                            <ComboBox ItemsSource="{Binding NormalizationOptions}"
+                                      SelectedItem="{Binding SelectedChannel.Normalization, Mode=TwoWay}"
+                                      HorizontalAlignment="Stretch" Height="32"
+                                      Background="{DynamicResource Brush.Background.Tertiary}"
+                                      BorderBrush="{DynamicResource Brush.Border.Primary}"/>
+                        </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!-- Mode: Templates -> selected-template preview -->
+                <ScrollViewer IsVisible="{Binding IsTemplatesCategory}"
+                              Theme="{StaticResource SidebarScrollViewerTheme}"
+                              AllowAutoHide="False"
+                              VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled"
+                              behaviors:WheelScrollRedirectBehavior.IsEnabled="True">
+                    <StackPanel Spacing="10"
+                                IsVisible="{Binding SelectedTemplate, Converter={x:Static ObjectConverters.IsNotNull}}">
+                        <TextBlock Text="{Binding SelectedTemplate.Name}"
+                                   FontSize="{DynamicResource TitleFontSize}"
+                                   FontWeight="Bold"
+                                   Foreground="{DynamicResource Brush.Text.Primary}"
+                                   TextWrapping="Wrap"/>
+                        <ItemsControl ItemsSource="{Binding SelectedTemplateChannelLabels}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding}" FontSize="{DynamicResource DetailFontSize}" Margin="0,2" Foreground="{DynamicResource Brush.Text.Secondary}"/>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </ScrollViewer>
+            </Grid>
+        </Border>
+    </Grid>
+
+    <!-- Toast Notification Overlay - same display convention as IndicatorSettingsWindow's Toast Overlay. -->
+    <Border IsVisible="{Binding ToastService.IsNotificationVisible}"
+            VerticalAlignment="Bottom" HorizontalAlignment="Center"
+            Margin="0,0,0,16" Padding="16,10"
+            Background="{DynamicResource Brush.Background.Tertiary}"
+            CornerRadius="8" BoxShadow="0 4 10 0 #40000000"
+            ZIndex="1000">
+        <Border.Transitions>
+            <Transitions>
+                <DoubleTransition Property="Opacity" Duration="0:0:0.2"/>
+            </Transitions>
+        </Border.Transitions>
+        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+            <TextBlock Text="✅" Margin="0,0,8,0" VerticalAlignment="Center" FontSize="{DynamicResource TitleFontSize}"/>
+            <TextBlock Text="{Binding ToastService.NotificationMessage}"
+                       Foreground="{DynamicResource Brush.Text.Primary}"
+                       FontSize="{DynamicResource BaseFontSize}" FontWeight="SemiBold"
+                       VerticalAlignment="Center"/>
+        </StackPanel>
+    </Border>
+    </Panel>
+</UserControl>

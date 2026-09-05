@@ -1,0 +1,110 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:StockAnalyzer.Avalonia.ViewModels.Dialogs"
+             xmlns:l="using:StockAnalyzer.Avalonia.Markup"
+             xmlns:sys="using:System"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="800"
+             x:Class="StockAnalyzer.Avalonia.Views.Dialogs.FontsSettingsView"
+             x:DataType="vm:FontsSettingsViewModel">
+
+    <Design.DataContext>
+        <vm:FontsSettingsViewModel/>
+    </Design.DataContext>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Spacing="20" Margin="16">
+            
+            <!-- Section: Font Size Mappings -->
+            <Border Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="{l:Localize Settings_Fonts_BaseFontSizeTitle}" FontSize="{DynamicResource BaseFontSize}" FontWeight="Bold" Foreground="{DynamicResource Brush.Accent.Primary}"/>
+                    
+                    <UniformGrid Columns="2">
+                        <!-- 1. Base Font Size -->
+                        <StackPanel Margin="0,0,24,16">
+                            <Grid ColumnDefinitions="*, Auto">
+                                <TextBlock Text="{l:Localize Settings_Fonts_Item_BaseFontSize}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                <ComboBox Grid.Column="1" 
+                                          ItemsSource="{Binding AvailableFontSizes}" 
+                                          SelectedItem="{Binding SelectedBaseFontSize}" 
+                                          Width="90" Height="28">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate x:DataType="sys:Double">
+                                            <TextBlock Text="{Binding StringFormat={}{0} px}"/>
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize Settings_Fonts_Desc_BaseFontSize}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <!-- 2. Title Font Size -->
+                        <StackPanel Margin="0,0,0,16">
+                            <Grid ColumnDefinitions="*, Auto">
+                                <TextBlock Text="{l:Localize Settings_Fonts_Item_TitleFontSize}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                <ComboBox Grid.Column="1" 
+                                          ItemsSource="{Binding AvailableFontSizes}" 
+                                          SelectedItem="{Binding SelectedTitleFontSize}" 
+                                          Width="90" Height="28">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate x:DataType="sys:Double">
+                                            <TextBlock Text="{Binding StringFormat={}{0} px}"/>
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize Settings_Fonts_Desc_TitleFontSize}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <!-- 3. Detail Font Size -->
+                        <StackPanel Margin="0,0,24,16">
+                            <Grid ColumnDefinitions="*, Auto">
+                                <TextBlock Text="{l:Localize Settings_Fonts_Item_DetailFontSize}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                <ComboBox Grid.Column="1" 
+                                          ItemsSource="{Binding AvailableFontSizes}" 
+                                          SelectedItem="{Binding SelectedDetailFontSize}" 
+                                          Width="90" Height="28">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate x:DataType="sys:Double">
+                                            <TextBlock Text="{Binding StringFormat={}{0} px}"/>
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize Settings_Fonts_Desc_DetailFontSize}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <!-- 4. Helper Font Size -->
+                        <StackPanel Margin="0,0,0,16">
+                            <Grid ColumnDefinitions="*, Auto">
+                                <TextBlock Text="{l:Localize Settings_Fonts_Item_HelperFontSize}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                <ComboBox Grid.Column="1" 
+                                          ItemsSource="{Binding AvailableFontSizes}" 
+                                          SelectedItem="{Binding SelectedHelperFontSize}" 
+                                          Width="90" Height="28">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate x:DataType="sys:Double">
+                                            <TextBlock Text="{Binding StringFormat={}{0} px}"/>
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize Settings_Fonts_Desc_HelperFontSize}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </UniformGrid>
+                </StackPanel>
+            </Border>
+            
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

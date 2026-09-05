@@ -1,0 +1,309 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:StockAnalyzer.Avalonia.ViewModels"
+             xmlns:controls="using:StockAnalyzer.Avalonia.Views.Controls"
+             xmlns:c="using:StockAnalyzer.Avalonia.Common"
+             xmlns:drawing="using:StockAnalyzer.Avalonia.Drawing"
+             xmlns:l="clr-namespace:StockAnalyzer.Avalonia.Markup;assembly=StockAnalyzer.Avalonia"
+             mc:Ignorable="d" d:DesignWidth="300" d:DesignHeight="600"
+             x:Class="StockAnalyzer.Avalonia.Views.DrawingObjectsView"
+             x:DataType="vm:DrawingObjectsViewModel"
+             Background="{DynamicResource Brush.Background.Secondary}">
+
+    <UserControl.Resources>
+        <StreamGeometry x:Key="EyeIcon">M12,4.5C7,4.5 2.73,7.61 1,12c1.73,4.39 6,7.5 11,7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5z M12,17c-2.76,0-5-2.24-5-5s2.24-5 5-5 5,2.24 5,5-2.24 5-5 5z M12,9c-1.66,0-3,1.34-3,3s1.34,3 3,3 3-1.34 3-3-1.34-3-3-3z</StreamGeometry>
+        <StreamGeometry x:Key="EyeOffIcon">M11.83,9L15,12.17V12a3,3 0 0,0-3-3h-0.17m-4.3,1.68l1.46,1.46C8.84,12.38 8.84,12.7 8.84,13a3.16,3.16 0 0,0 3.16,3.16c0.3,0 0.62,0 0.86-0.15l1.46,1.46C13.56,17.82 12.8,18 12,18c-5,0-9.27-3.11-11-7.5 0.88-2.24 2.45-4.11 4.47-5.32L2,1.73 3.27,0.46 22.54,19.73 21.27,21 15.6,15.33C14.54,15.77 13.31,16 12,16A4,4 0 0,1 8,12c0-1.31 0.23-2.54 0.67-3.6z</StreamGeometry>
+        <StreamGeometry x:Key="LockIcon">M18,8H17V6A5,5 0 0,0 7,6V8H6A2,2 0 0,0 4,10V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V10A2,2 0 0,0 18,8Z M9,6A3,3 0 0,1 15,6V8H9V6Z</StreamGeometry>
+        <StreamGeometry x:Key="UnlockIcon">M18,8H17V6A5,5 0 0,0 7,6H9A3,3 0 0,1 15,6V8H6A2,2 0 0,0 4,10V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V10A2,2 0 0,0 18,8Z</StreamGeometry>
+        <StreamGeometry x:Key="ArrowUpIcon">M7.41,15.41L12,10.83L16.59,15.41L18,14L12,8L6,14L7.41,15.41Z</StreamGeometry>
+        <StreamGeometry x:Key="ArrowDownIcon">M7.41,8.59L12,13.17L16.59,8.59L18,10L12,16L6,10L7.41,8.59Z</StreamGeometry>
+    </UserControl.Resources>
+
+    <UserControl.Styles>
+        <!-- Header Toolbar Batch Buttons -->
+        <Style Selector="Button.HeaderIconBtn">
+            <Setter Property="Width" Value="26"/>
+            <Setter Property="Height" Value="26"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        <Style Selector="Button.HeaderIconBtn:pointerover">
+            <Setter Property="Background" Value="{DynamicResource Brush.Toolbar.Hover}"/>
+        </Style>
+
+        <!-- Lower-Tier Item Action Button -->
+        <Style Selector="Button.ItemActionBtn">
+            <Setter Property="Width" Value="22"/>
+            <Setter Property="Height" Value="22"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="CornerRadius" Value="3"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        <Style Selector="Button.ItemActionBtn:pointerover">
+            <Setter Property="Background" Value="{DynamicResource Brush.Toolbar.Hover}"/>
+        </Style>
+        <Style Selector="Button.ItemActionBtn:disabled">
+            <Setter Property="Opacity" Value="0.3"/>
+        </Style>
+
+        <!-- Segmented Mode Button Style for XY / X / Y -->
+        <Style Selector="Button.SegmentModeBtn">
+            <Setter Property="Height" Value="20"/>
+            <Setter Property="Padding" Value="4,0"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border.Primary}"/>
+            <Setter Property="CornerRadius" Value="3"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FontSize" Value="10"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Secondary}"/>
+        </Style>
+        <Style Selector="Button.SegmentModeBtn:pointerover">
+            <Setter Property="Background" Value="{DynamicResource Brush.Toolbar.Hover}"/>
+            <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Primary}"/>
+        </Style>
+        <Style Selector="Button.SegmentModeBtn.selected">
+            <Setter Property="Background" Value="{DynamicResource Brush.Selection}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Accent.Primary}"/>
+            <Setter Property="Foreground" Value="{DynamicResource Brush.Accent.Primary}"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+        </Style>
+
+        <!-- 2-Tier Object Row Item Card -->
+        <Style Selector="Border.ObjectRow">
+            <Setter Property="Background" Value="{DynamicResource Brush.Background.Tertiary}"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border.Primary}"/>
+        </Style>
+        <Style Selector="Border.ObjectRow:pointerover">
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Accent.Secondary}"/>
+        </Style>
+        <Style Selector="Border.ObjectRow.selected">
+            <Setter Property="Background" Value="{DynamicResource Brush.Selection}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Accent.Primary}"/>
+        </Style>
+
+        <!-- Upper Tier Name Selection Button -->
+        <Style Selector="Button.RowSelectBtn">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="4,2"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+    </UserControl.Styles>
+
+    <Grid RowDefinitions="Auto,*">
+        <!-- TOP TOOLBAR: Panel Title & Global Batch Operations Only -->
+        <Border Grid.Row="0" Background="{DynamicResource Brush.Background.Tertiary}"
+                BorderBrush="{DynamicResource Brush.Border.Primary}"
+                BorderThickness="0,0,0,1"
+                Padding="6,6,6,6">
+            <Grid RowDefinitions="Auto,Auto" RowSpacing="5">
+                <!-- Title Row: Title & Close Button -->
+                <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto">
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                        <PathIcon Data="{x:Static c:SharedIconGeometries.Layer}" Width="14" Height="14" Foreground="{DynamicResource Brush.Text.Primary}"/>
+                        <TextBlock Text="{l:Localize Objects_TabTitle}" FontWeight="SemiBold" FontSize="{DynamicResource DetailFontSize}" Foreground="{DynamicResource Brush.Text.Primary}" VerticalAlignment="Center"/>
+                    </StackPanel>
+
+                    <Button Grid.Column="2" Classes="HeaderIconBtn"
+                            Command="{Binding $parent[controls:DrawingToolSidebar].((vm:DrawingToolSidebarViewModel)DataContext).CloseObjectsPanelCommand}"
+                            ToolTip.Tip="{l:Localize Btn_Close}">
+                        <PathIcon Data="{x:Static c:SharedIconGeometries.Close}" Width="12" Height="12" Foreground="{DynamicResource Brush.Text.Primary}"/>
+                    </Button>
+                </Grid>
+
+                <!-- Global Batch Action Button Group (全体一括操作メニュー) -->
+                <Border Grid.Row="1" Background="{DynamicResource Brush.Background.Secondary}" CornerRadius="4" Padding="3,2">
+                    <Grid ColumnDefinitions="Auto,*,*,*,*,*">
+                        <CheckBox Grid.Column="0" VerticalAlignment="Center" Margin="2,0,6,0"
+                                  IsThreeState="False"
+                                  IsChecked="{Binding AreAllTargeted, Mode=TwoWay}"
+                                  ToolTip.Tip="{l:Localize Objects_TargetAll}"/>
+                        <Button Grid.Column="1" Classes="HeaderIconBtn" HorizontalAlignment="Stretch" Command="{Binding ShowAllCommand}" ToolTip.Tip="{l:Localize Objects_ShowAll}">
+                            <PathIcon Data="{StaticResource EyeIcon}" Width="13" Height="13" Foreground="{DynamicResource Brush.Text.Primary}"/>
+                        </Button>
+                        <Button Grid.Column="2" Classes="HeaderIconBtn" HorizontalAlignment="Stretch" Command="{Binding HideAllCommand}" ToolTip.Tip="{l:Localize Objects_HideAll}">
+                            <PathIcon Data="{StaticResource EyeOffIcon}" Width="13" Height="13" Foreground="{DynamicResource Brush.Text.Primary}"/>
+                        </Button>
+                        <Button Grid.Column="3" Classes="HeaderIconBtn" HorizontalAlignment="Stretch" Command="{Binding LockAllCommand}" ToolTip.Tip="{l:Localize Objects_LockAll}">
+                            <PathIcon Data="{StaticResource LockIcon}" Width="13" Height="13" Foreground="{DynamicResource Brush.Text.Primary}"/>
+                        </Button>
+                        <Button Grid.Column="4" Classes="HeaderIconBtn" HorizontalAlignment="Stretch" Command="{Binding UnlockAllCommand}" ToolTip.Tip="{l:Localize Objects_UnlockAll}">
+                            <PathIcon Data="{StaticResource UnlockIcon}" Width="13" Height="13" Foreground="{DynamicResource Brush.Text.Primary}"/>
+                        </Button>
+                        <Button Grid.Column="5" Classes="HeaderIconBtn" HorizontalAlignment="Stretch" Command="{Binding DeleteAllCommand}" ToolTip.Tip="{l:Localize Objects_DeleteAll}">
+                            <PathIcon Data="{x:Static c:SharedIconGeometries.Delete}" Width="13" Height="13" Foreground="{DynamicResource Brush.Text.Primary}"/>
+                        </Button>
+                    </Grid>
+                </Border>
+            </Grid>
+        </Border>
+
+        <!-- OBJECTS LIST AREA: 2-Tier Item Rows (上段: 描画ツール名, 下段: 操作アイコン群)
+             sa_improve (共通UI仕様「UIレイアウト幅の最適化およびスクロールバーの表示制御仕様」準拠):
+             元は既定のプレーンScrollViewerで、Avalonia FluentThemeのOverlay/Auto-hideスクロールバー
+             （ホバー時以外は細く縮小しコンテンツと重なる）のままだった。DrawingToolSidebar.axamlと同じ
+             SidebarScrollViewerTheme（Assets/Styles.axaml）を適用し、コンテンツ列とスクロールバー列を
+             Gridで物理分離、AllowAutoHide="False"で常時標準幅表示にする。 -->
+        <ScrollViewer Grid.Row="1" Theme="{StaticResource SidebarScrollViewerTheme}" AllowAutoHide="False"
+                      HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto" IsVisible="{Binding HasItems}">
+            <ItemsControl ItemsSource="{Binding Items}" Margin="4,4">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate DataType="vm:DrawingObjectItemViewModel">
+                        <!-- Right-click anywhere on this card (the same area Border.ObjectRow:pointerover
+                             highlights on hover, both the top name row and the bottom action row, not
+                             just the name button) opens the "Rename" context menu. This Border already has
+                             an explicit Background (see Style Selector="Border.ObjectRow" above), so its
+                             whole bounds are hit-testable, unlike a bare TextBlock which only hit-tests glyphs. -->
+                        <Border Classes="ObjectRow" Classes.selected="{Binding IsSelected}" Margin="0,2" Padding="4,4">
+                            <Border.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="{l:Localize Objects_Rename}" Command="{Binding StartRenameCommand}"/>
+                                </ContextMenu>
+                            </Border.ContextMenu>
+                            <Grid RowDefinitions="Auto,Auto" RowSpacing="3">
+                                <!-- 上段: 描画ツールの名前・カラー・選択、および位置移動・削除ボタン（右端） -->
+                                <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
+                                    <!-- The rename TextBox is a sibling of the button (not nested inside it) so its
+                                         width is governed directly by this Grid.Column="0", matching the name button's
+                                         full width exactly. Nesting it inside RowSelectBtn instead made it shrink to the
+                                         name text's own content width, because Button's HorizontalContentAlignment="Left"
+                                         (see Style Selector="Button.RowSelectBtn" above) arranges its content at that
+                                         content's desired size rather than stretching it to the button's full width. -->
+                                    <Panel Grid.Column="0">
+                                        <Button Classes="RowSelectBtn" Command="{Binding SelectCommand}" IsVisible="{Binding !IsEditingName}">
+                                            <Grid ColumnDefinitions="Auto,*,Auto">
+                                                <!-- Color Tag Indicator -->
+                                                <Border Grid.Column="0" Width="4" Height="14" Margin="0,0,6,0" CornerRadius="2" Background="{Binding ColorBrush}" VerticalAlignment="Center"/>
+
+                                                <!-- Drawing Tool Display Name -->
+                                                <TextBlock Grid.Column="1" Text="{Binding DisplayName}" FontWeight="SemiBold" FontSize="{DynamicResource DetailFontSize}" TextTrimming="CharacterEllipsis" Foreground="{DynamicResource Brush.Text.Primary}" HorizontalAlignment="Stretch" VerticalAlignment="Center"/>
+
+                                                <!-- Lock badge if locked -->
+                                                <PathIcon Grid.Column="2" Data="{StaticResource LockIcon}" IsVisible="{Binding IsLocked}" Width="11" Height="11" Foreground="{DynamicResource Brush.Text.Tertiary}" VerticalAlignment="Center" Margin="4,0,0,0"/>
+                                            </Grid>
+                                        </Button>
+                                        <TextBox Text="{Binding EditableName, Mode=TwoWay}" IsVisible="{Binding IsEditingName}" FontSize="{DynamicResource DetailFontSize}" Padding="4,1" HorizontalAlignment="Stretch" VerticalAlignment="Center" KeyDown="OnRenameTextBoxKeyDown" LostFocus="OnRenameTextBoxLostFocus" Loaded="OnRenameTextBoxLoaded"/>
+                                    </Panel>
+
+                                    <!-- 位置移動 (前面へ・背面へ) と削除ボタン -->
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="1" VerticalAlignment="Center">
+                                        <!-- 前面へ (Bring Forward) -->
+                                        <Button Classes="ItemActionBtn" Command="{Binding BringForwardCommand}" IsEnabled="{Binding CanBringForward}" ToolTip.Tip="{l:Localize Objects_BringForward}">
+                                            <PathIcon Data="{StaticResource ArrowUpIcon}" Width="10" Height="10" Foreground="{DynamicResource Brush.Text.Primary}"/>
+                                        </Button>
+
+                                        <!-- 背面へ (Send Backward) -->
+                                        <Button Classes="ItemActionBtn" Command="{Binding SendBackwardCommand}" IsEnabled="{Binding CanSendBackward}" ToolTip.Tip="{l:Localize Objects_SendBackward}">
+                                            <PathIcon Data="{StaticResource ArrowDownIcon}" Width="10" Height="10" Foreground="{DynamicResource Brush.Text.Primary}"/>
+                                        </Button>
+
+                                        <!-- 削除 (Delete) -->
+                                        <Button Classes="ItemActionBtn" Command="{Binding DeleteCommand}" IsEnabled="{Binding CanDelete}" ToolTip.Tip="{l:Localize Objects_Delete}">
+                                            <PathIcon Data="{x:Static c:SharedIconGeometries.Delete}" Width="12" Height="12" Foreground="{DynamicResource Brush.Text.Primary}"/>
+                                        </Button>
+                                    </StackPanel>
+                                </Grid>
+
+                                <!-- 下段: 描画ツール操作アイコン群（表示・ロック・複製・設定・移動軸モード） -->
+                                <!-- この下段のアイコンを操作すると、上段に表示されている描画ツールに対して機能が適用されます -->
+                                <Border Grid.Row="1" Background="{DynamicResource Brush.Background.Secondary}" CornerRadius="4" Padding="3,2">
+                                    <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,*" VerticalAlignment="Center">
+                                        <!-- 0. Bulk Target Checkbox -->
+                                        <CheckBox Grid.Column="0" VerticalAlignment="Center" Margin="0,0,2,0"
+                                                  IsChecked="{Binding IsTargeted, Mode=TwoWay}"
+                                                  ToolTip.Tip="{l:Localize Objects_Target}"/>
+
+                                        <!-- 1. 表示切替 (Eye / EyeOff) -->
+                                        <Button Grid.Column="1" Classes="ItemActionBtn" Command="{Binding ToggleVisibilityCommand}" ToolTip.Tip="{l:Localize Objects_Show}" Margin="0,0,2,0">
+                                            <Panel Width="14" Height="14">
+                                                <PathIcon Data="{StaticResource EyeIcon}" IsVisible="{Binding IsVisible}" Width="13" Height="13" Foreground="{DynamicResource Brush.Text.Primary}"/>
+                                                <PathIcon Data="{StaticResource EyeOffIcon}" IsVisible="{Binding !IsVisible}" Width="13" Height="13" Foreground="{DynamicResource Brush.Text.Primary}" Opacity="0.35"/>
+                                            </Panel>
+                                        </Button>
+
+                                        <!-- 2. ロック切替 (Lock / Unlock) -->
+                                        <Button Grid.Column="2" Classes="ItemActionBtn" Command="{Binding ToggleLockCommand}" ToolTip.Tip="{l:Localize Objects_Lock}" Margin="0,0,2,0">
+                                            <Panel Width="14" Height="14">
+                                                <PathIcon Data="{StaticResource LockIcon}" IsVisible="{Binding IsLocked}" Width="12" Height="12" Foreground="{DynamicResource Brush.Text.Primary}"/>
+                                                <PathIcon Data="{StaticResource UnlockIcon}" IsVisible="{Binding !IsLocked}" Width="12" Height="12" Foreground="{DynamicResource Brush.Text.Primary}" Opacity="0.35"/>
+                                            </Panel>
+                                        </Button>
+
+                                        <!-- 3. 選択オブジェクト複製 (Copy) -->
+                                        <Button Grid.Column="3" Classes="ItemActionBtn" Command="{Binding CopyCommand}" ToolTip.Tip="{l:Localize Objects_Copy}" Margin="0,0,2,0">
+                                            <PathIcon Data="{x:Static c:SharedIconGeometries.Copy}" Width="12" Height="12" Foreground="{DynamicResource Brush.Text.Primary}"/>
+                                        </Button>
+
+                                        <!-- 4. 個別設定 (Settings) -->
+                                        <Button Grid.Column="4" Classes="ItemActionBtn" Command="{Binding OpenSettingsCommand}" ToolTip.Tip="{l:Localize Objects_Settings}" Margin="0,0,2,0">
+                                            <PathIcon Data="{x:Static c:SharedIconGeometries.Settings}" Width="12" Height="12" Foreground="{DynamicResource Brush.Text.Primary}"/>
+                                        </Button>
+
+                                        <!-- Vertical Separator -->
+                                        <Rectangle Grid.Column="5" Width="1" Height="14" Fill="{DynamicResource Brush.Border.Primary}" VerticalAlignment="Center" Margin="1,0,3,0"/>
+
+                                        <!-- 5. 基準点を時計回りに1つ移動 (AP) -->
+                                        <Button Grid.Column="6" Classes="ItemActionBtn" Command="{Binding AdvanceAnchorPointCommand}" ToolTip.Tip="{l:Localize Objects_AnchorPointMode}" Margin="0,0,3,0">
+                                            <TextBlock Text="AP" FontSize="9" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{DynamicResource Brush.Text.Primary}"/>
+                                        </Button>
+
+                                        <!-- 6. 移動軸モード (XY / X / Y) - 個別ツールごとに設定 -->
+                                        <StackPanel Grid.Column="7" Orientation="Horizontal" Spacing="2" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <Button Classes="SegmentModeBtn"
+                                                    Classes.selected="{Binding IsMoveModeXY}"
+                                                    Command="{Binding SetMoveAxisModeCommand}"
+                                                    CommandParameter="{x:Static drawing:DrawingMoveAxisMode.XY}"
+                                                    ToolTip.Tip="{l:Localize Objects_MoveModeXY}">
+                                                <TextBlock Text="XY" VerticalAlignment="Center"/>
+                                            </Button>
+                                            <Button Classes="SegmentModeBtn"
+                                                    Classes.selected="{Binding IsMoveModeX}"
+                                                    Command="{Binding SetMoveAxisModeCommand}"
+                                                    CommandParameter="{x:Static drawing:DrawingMoveAxisMode.X}"
+                                                    ToolTip.Tip="{l:Localize Objects_MoveModeX}">
+                                                <TextBlock Text="X" VerticalAlignment="Center"/>
+                                            </Button>
+                                            <Button Classes="SegmentModeBtn"
+                                                    Classes.selected="{Binding IsMoveModeY}"
+                                                    Command="{Binding SetMoveAxisModeCommand}"
+                                                    CommandParameter="{x:Static drawing:DrawingMoveAxisMode.Y}"
+                                                    ToolTip.Tip="{l:Localize Objects_MoveModeY}">
+                                                <TextBlock Text="Y" VerticalAlignment="Center"/>
+                                            </Button>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+
+        <!-- ZERO-STATE PLACEHOLDER -->
+        <StackPanel Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="10" IsVisible="{Binding !HasItems}" Opacity="0.6">
+            <PathIcon Data="{x:Static c:SharedIconGeometries.Layer}" Width="36" Height="36" Foreground="{DynamicResource Brush.Text.Tertiary}"/>
+            <TextBlock Text="{l:Localize Objects_NoObjects}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Tertiary}" HorizontalAlignment="Center"/>
+        </StackPanel>
+    </Grid>
+</UserControl>

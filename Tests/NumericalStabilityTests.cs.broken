@@ -1,0 +1,126 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Xunit;
+using StockAnalyzer.Utils;
+using System.Windows.Media;
+
+namespace StockAnalyzer.Tests
+{
+    public class NumericalStabilityTests
+    {
+        private List<CandleData> CreateDummyCandles(int count, decimal startPrice, decimal volatility)
+        {
+            var candles = new List<CandleData>();
+            var random = new Random(42);
+            decimal price = startPrice;
+
+            for (int i = 0; i < count; i++)
+            {
+                decimal change = price * (decimal)(random.NextDouble() - 0.5) * volatility;
+                price += change;
+                if (price < 0.0001m) price = 0.0001m; // Ensure positive price
+
+                candles.Add(new CandleData
+                {
+                    Timestamp = DateTime.Now.AddDays(i),
+                    Open = price,
+                    High = price * 1.01m,
+                    Low = price * 0.99m,
+                    Close = price,
+                    Volume = 1000
+                });
+            }
+            return candles;
+        }
+
+        [Fact]
+        public void Rsi_WithExtremePeriod_ShouldNotThrow()
+        {
+            // Arrange
+            var candles = CreateDummyCandles(1000, 100m, 0.02m);
+            var rsiShort = new RsiIndicator(1, Colors.Red, 1.5);
+            var rsiLong = new RsiIndicator(999, Colors.Red, 1.5);
+
+            // Act & Assert
+            var exceptionShort = Record.Exception(() => rsiShort.Calculate(candles));
+            var exceptionLong = Record.Exception(() => rsiLong.Calculate(candles));
+
+            Assert.Null(exceptionShort);
+            Assert.Null(exceptionLong);
+            
+            // Verify values are within range
+            foreach (var val in rsiShort.Values)
+            {
+                if (val.HasValue) Assert.True(val.Value >= 0 && val.Value <= 100);
+            }
+        }
+
+        [Fact]
+        public void Rsi_WithZeroVolatility_ShouldHandleGracefully()
+        {
+            // Arrange
+            var candles = Enumerable.Range(0, 100).Select(i => new CandleData 
+            { 
+                Timestamp = DateTime.Now.AddDays(i), 
+                Close = 100m, Open = 100m, High = 100m, Low = 100m 
+            }).ToList();
+            
+            var rsi = new RsiIndicator(14, Colors.Red, 1.5);
+
+            // Act
+            rsi.Calculate(candles);
+
+            // Assert
+            // 変動がない場合、RSIは50（中立）になるべき（実装依存だが、例外が出ないことが重要）
+            Assert.Null(Record.Exception(() => rsi.Calculate(candles)));
+            Assert.NotEmpty(rsi.Values);
+        }
+
+        [Fact]
+        public void BollingerBands_WithExtremeSigma_ShouldNotThrow()
+        {
+            // Arrange
+            var candles = CreateDummyCandles(100, 100m, 0.05m);
+            var bbSmall = new BollingerBandsIndicator(20, 0.001m, Colors.Blue, 1.0);
+            var bbLarge = new BollingerBandsIndicator(20, 100.0m, Colors.Blue, 1.0);
+
+            // Act & Assert
+            Assert.Null(Record.Exception(() => bbSmall.Calculate(candles)));
+            Assert.Null(Record.Exception(() => bbLarge.Calculate(candles)));
+        }
+
+        [Fact]
+        public void Ema_WithExtremePeriod_ShouldNotOverflow()
+        {
+            // Arrange
+            var candles = CreateDummyCandles(500, 100m, 0.1m);
+            var ema = new EmaIndicator(499, Colors.Green, 1.5); // Period close to data length
+
+            // Act & Assert
+            Assert.Null(Record.Exception(() => ema.Calculate(candles)));
+        }
+
+        [Fact]
+        public void Macd_WithExtremeParameters_ShouldNotThrow()
+        {
+            // Arrange
+            var candles = CreateDummyCandles(200, 100m, 0.05m);
+            // Short: 1, Long: 199, Signal: 100
+            var macd = new MacdIndicator(1, 199, 100, Colors.Black);
+
+            // Act & Assert
+            Assert.Null(Record.Exception(() => macd.Calculate(candles)));
+        }
+
+        [Fact]
+        public void NumericalHelper_ClampDecimal_ShouldLimitValues()
+        {
+            decimal max = decimal.MaxValue;
+            decimal min = decimal.MinValue;
+
+            Assert.True(NumericalHelper.ClampDecimal(max) < decimal.MaxValue);
+            Assert.True(NumericalHelper.ClampDecimal(min) > decimal.MinValue);
+        }
+    }
+}
