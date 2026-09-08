@@ -16,7 +16,7 @@
     <PackageReference Include="Python.Included" Version="3.13.0" />
     <PackageReference Include="Microsoft.Extensions.Resilience" Version="8.0.0" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.0" />
-    <PackageReference Include="SkiaSharp" Version="2.88.9" />
+    <PackageReference Include="SkiaSharp" Version="4.151.2" />
     <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="2.88.9" />
     <PackageReference Include="DuckDB.NET.Data.Full" Version="1.1.2.1" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.10" />
