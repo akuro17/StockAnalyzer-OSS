@@ -1,0 +1,168 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="using:StockAnalyzer.Avalonia.ViewModels.Dialogs"
+        xmlns:l="clr-namespace:StockAnalyzer.Avalonia.Markup;assembly=StockAnalyzer.Avalonia"
+        xmlns:c="using:StockAnalyzer.Avalonia.Common"
+        xmlns:tl="using:StockAnalyzer.Avalonia.ViewModels.TickerList"
+        xmlns:conv="using:StockAnalyzer.Avalonia.Converters"
+        mc:Ignorable="d" d:DesignWidth="420" d:DesignHeight="480"
+        x:Class="StockAnalyzer.Avalonia.Views.Dialogs.FilterTemplatePickerDialog"
+        x:DataType="vm:FilterTemplatePickerDialogViewModel"
+        Title="{l:Localize Window_FilterTemplatePicker_Title}"
+        Width="420" Height="480"
+        WindowStartupLocation="CenterOwner"
+        CanResize="False"
+        Background="{DynamicResource Brush.Background.Primary}"
+        TransparencyLevelHint="AcrylicBlur"
+        ExtendClientAreaToDecorationsHint="True">
+
+    <Window.Resources>
+        <conv:FilterTemplatePreviewConverter x:Key="FilterTemplatePreviewConverter"/>
+    </Window.Resources>
+
+    <Grid RowDefinitions="56, Auto, *, 64">
+        <!-- Header -->
+        <Border Grid.Row="0"
+                Background="{DynamicResource Brush.Background.Tertiary}"
+                BorderBrush="{DynamicResource Brush.Border.Primary}"
+                BorderThickness="0,0,0,1"
+                PointerPressed="OnHeaderPointerPressed">
+            <Grid ColumnDefinitions="*, Auto" Margin="20,0">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="12">
+                    <PathIcon Data="{x:Static tl:TickerGroupIconGeometries.Filter}" Width="18" Height="18" Foreground="{DynamicResource Brush.Accent.Primary}"/>
+                    <TextBlock Text="{Binding TargetNodeName}"
+                               FontSize="{DynamicResource TitleFontSize}"
+                               FontWeight="SemiBold"
+                               VerticalAlignment="Center"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Save-as editor: only meaningful when editing an existing FilterNode's subtree -->
+        <Grid Grid.Row="1" ColumnDefinitions="*, Auto" Margin="20,12,20,4" IsVisible="{Binding IsExistingNodeMode}">
+            <TextBox Grid.Column="0"
+                     Text="{Binding NewTemplateName, Mode=TwoWay}"
+                     Watermark="{l:Localize FilterTemplatePicker_TemplateNamePlaceholder}"
+                     Height="32"
+                     Margin="0,0,8,0"
+                     VerticalContentAlignment="Center"/>
+            <Button Grid.Column="1"
+                    Command="{Binding SaveTemplateCommand}"
+                    Theme="{DynamicResource PrimaryButtonStyle}"
+                    Foreground="{DynamicResource Brush.Text.Inverse}"
+                    Width="32" Height="32"
+                    Padding="0"
+                    Margin="0"
+                    ToolTip.Tip="{l:Localize FilterTemplatePicker_Btn_SaveTemplate}">
+                <PathIcon Data="{x:Static c:SharedIconGeometries.Save}" Width="16" Height="16" Foreground="{DynamicResource Brush.Text.Inverse}"/>
+            </Button>
+        </Grid>
+
+        <!-- List of templates -->
+        <ScrollViewer Grid.Row="2" Margin="20,4,20,0" VerticalScrollBarVisibility="Auto">
+            <ListBox ItemsSource="{Binding Templates}"
+                     SelectedItem="{Binding SelectedTemplate}"
+                     Background="Transparent"
+                     BorderThickness="0">
+                <ListBox.Styles>
+                    <Style Selector="ListBoxItem">
+                        <Setter Property="Padding" Value="4"/>
+                        <Setter Property="Margin" Value="0,1"/>
+                    </Style>
+                    <Style Selector="ListBoxItem:selected TextBlock">
+                        <Setter Property="FontWeight" Value="SemiBold"/>
+                    </Style>
+                </ListBox.Styles>
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <Grid ColumnDefinitions="Auto, *, Auto, Auto, Auto"
+                              Margin="4,2"
+                              Background="Transparent"
+                              ToolTip.Tip="{Binding Converter={StaticResource FilterTemplatePreviewConverter}}">
+                            <Button Grid.Column="0"
+                                    Theme="{DynamicResource PrimaryButtonStyle}"
+                                    Foreground="{DynamicResource Brush.Button.Text}"
+                                    Width="28" Height="28"
+                                    Padding="0"
+                                    Margin="0,0,4,0">
+                                <PathIcon Data="{x:Static c:SharedIconGeometries.Info}" Width="14" Height="14" Foreground="{DynamicResource Brush.Button.Text}"/>
+                                <Button.Flyout>
+                                    <Flyout Placement="Right">
+                                        <Border MaxWidth="280" Padding="10">
+                                            <TextBlock Text="{Binding Converter={StaticResource FilterTemplatePreviewConverter}}"
+                                                       TextWrapping="Wrap"
+                                                       Foreground="{DynamicResource Brush.Text.Primary}"/>
+                                        </Border>
+                                    </Flyout>
+                                </Button.Flyout>
+                            </Button>
+
+                            <TextBlock Grid.Column="1"
+                                       Text="{Binding Name}"
+                                       FontSize="{DynamicResource BaseFontSize}"
+                                       VerticalAlignment="Center"
+                                       TextTrimming="CharacterEllipsis"
+                                       Foreground="{DynamicResource Brush.Text.Primary}"/>
+
+                            <Button Grid.Column="2"
+                                    Command="{Binding $parent[ListBox].DataContext.LoadTemplateCommand}"
+                                    CommandParameter="{Binding}"
+                                    Theme="{DynamicResource PrimaryButtonStyle}"
+                                    Foreground="{DynamicResource Brush.Button.Text}"
+                                    Width="28" Height="28"
+                                    Padding="0"
+                                    Margin="0,0,4,0"
+                                    ToolTip.Tip="{l:Localize FilterTemplatePicker_Btn_LoadTemplate}">
+                                <PathIcon Data="{x:Static c:SharedIconGeometries.Load}" Width="14" Height="14" Foreground="{DynamicResource Brush.Button.Text}"/>
+                            </Button>
+
+                            <Button Grid.Column="3"
+                                    Command="{Binding $parent[ListBox].DataContext.AppendTemplateCommand}"
+                                    CommandParameter="{Binding}"
+                                    IsVisible="{Binding $parent[ListBox].DataContext.IsExistingNodeMode}"
+                                    Theme="{DynamicResource PrimaryButtonStyle}"
+                                    Foreground="{DynamicResource Brush.Button.Text}"
+                                    Width="28" Height="28"
+                                    Padding="0"
+                                    Margin="0,0,4,0"
+                                    ToolTip.Tip="{l:Localize FilterTemplatePicker_Btn_AppendTemplate}">
+                                <PathIcon Data="{x:Static c:SharedIconGeometries.Add}" Width="14" Height="14" Foreground="{DynamicResource Brush.Button.Text}"/>
+                            </Button>
+
+                            <Button Grid.Column="4"
+                                    Command="{Binding $parent[ListBox].DataContext.DeleteTemplateCommand}"
+                                    CommandParameter="{Binding}"
+                                    Theme="{DynamicResource PrimaryButtonStyle}"
+                                    Foreground="{DynamicResource Brush.Button.Text}"
+                                    Width="28" Height="28"
+                                    Padding="0"
+                                    Margin="0"
+                                    ToolTip.Tip="{l:Localize FilterTemplatePicker_Btn_DeleteTemplate}">
+                                <PathIcon Data="{x:Static c:SharedIconGeometries.Delete}" Width="14" Height="14" Foreground="{DynamicResource Brush.Button.Text}"/>
+                            </Button>
+                        </Grid>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+        </ScrollViewer>
+
+        <!-- Footer -->
+        <Border Grid.Row="3"
+                Background="{DynamicResource Brush.Background.Tertiary}"
+                BorderBrush="{DynamicResource Brush.Border.Primary}"
+                BorderThickness="0,1,0,0">
+            <Grid ColumnDefinitions="*, Auto" Margin="20,0">
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                    <Button Content="{l:Localize Btn_Close}"
+                            Click="OnCloseClick"
+                            Classes="accent"
+                            HorizontalContentAlignment="Center"
+                            VerticalContentAlignment="Center"
+                            Width="100"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

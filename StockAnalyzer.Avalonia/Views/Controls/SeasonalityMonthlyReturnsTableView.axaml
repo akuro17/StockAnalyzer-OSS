@@ -1,0 +1,103 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:sys="using:System"
+             xmlns:controls="using:StockAnalyzer.Avalonia.Views.Controls"
+             xmlns:l="clr-namespace:StockAnalyzer.Avalonia.Markup"
+             x:Class="StockAnalyzer.Avalonia.Views.Controls.SeasonalityMonthlyReturnsTableView"
+             x:DataType="controls:SeasonalityMonthlyReturnsPresentation">
+
+  <UserControl.Styles>
+    <Style Selector="Border.mrCell">
+      <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border}" />
+      <Setter Property="BorderThickness" Value="0,0,1,1" />
+      <Setter Property="Background" Value="{DynamicResource Brush.Background.Secondary}" />
+    </Style>
+    <Style Selector="Border.mrCell > TextBlock">
+      <Setter Property="HorizontalAlignment" Value="Center" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
+    <Style Selector="Border.mrHeader">
+      <Setter Property="Background" Value="{DynamicResource Brush.Background.Primary}" />
+    </Style>
+    <Style Selector="Border.mrHeader > TextBlock">
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Secondary}" />
+    </Style>
+  </UserControl.Styles>
+
+  <Border Width="{Binding Frame.FrameWidth}"
+          Height="{Binding Frame.FrameHeight}"
+          HorizontalAlignment="Left" VerticalAlignment="Top" ClipToBounds="True"
+          BorderBrush="{DynamicResource Brush.Border.Primary}" BorderThickness="1"
+          Background="{DynamicResource Brush.Background.Primary}">
+    <Panel>
+      <TextBlock Text="{l:Localize Seasonality_MonthlyReturnsEmptyHint}"
+                 IsVisible="{Binding !HasData}" Margin="8" TextWrapping="Wrap"
+                 Foreground="{DynamicResource Brush.Text.Secondary}" />
+
+      <StackPanel Orientation="Vertical" IsVisible="{Binding HasData}">
+
+        <!-- Column-header row: empty corner + one label per year + the average column -->
+        <StackPanel Orientation="Horizontal">
+          <Border Classes="mrCell mrHeader"
+                  Width="{Binding $parent[UserControl].((controls:SeasonalityMonthlyReturnsPresentation)DataContext).Frame.RowHeaderWidth}"
+                  Height="{Binding $parent[UserControl].((controls:SeasonalityMonthlyReturnsPresentation)DataContext).Frame.CellHeight}">
+            <TextBlock Text="" />
+          </Border>
+          <ItemsControl ItemsSource="{Binding ColumnHeaders}">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <StackPanel Orientation="Horizontal" />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="sys:String">
+                <Border Classes="mrCell mrHeader"
+                        Width="{Binding $parent[UserControl].((controls:SeasonalityMonthlyReturnsPresentation)DataContext).Frame.CellWidth}"
+                        Height="{Binding $parent[UserControl].((controls:SeasonalityMonthlyReturnsPresentation)DataContext).Frame.CellHeight}">
+                  <TextBlock Text="{Binding}"
+                             FontSize="{Binding $parent[UserControl].((controls:SeasonalityMonthlyReturnsPresentation)DataContext).FontSize}" />
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </StackPanel>
+
+        <!-- Body: Jan..Dec then Annual -->
+        <ItemsControl ItemsSource="{Binding Rows}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="controls:SeasonalityMonthlyReturnsRowPresentation">
+              <StackPanel Orientation="Horizontal">
+                <Border Classes="mrCell mrHeader"
+                        Width="{Binding $parent[UserControl].((controls:SeasonalityMonthlyReturnsPresentation)DataContext).Frame.RowHeaderWidth}"
+                        Height="{Binding $parent[UserControl].((controls:SeasonalityMonthlyReturnsPresentation)DataContext).Frame.CellHeight}">
+                  <TextBlock Text="{Binding Header}"
+                             FontSize="{Binding $parent[UserControl].((controls:SeasonalityMonthlyReturnsPresentation)DataContext).FontSize}" />
+                </Border>
+                <ItemsControl ItemsSource="{Binding Cells}">
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                      <StackPanel Orientation="Horizontal" />
+                    </ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="controls:SeasonalityMonthlyReturnCellPresentation">
+                      <Border Classes="mrCell" Background="{Binding CellBackground}"
+                              Width="{Binding $parent[UserControl].((controls:SeasonalityMonthlyReturnsPresentation)DataContext).Frame.CellWidth}"
+                              Height="{Binding $parent[UserControl].((controls:SeasonalityMonthlyReturnsPresentation)DataContext).Frame.CellHeight}">
+                        <TextBlock Text="{Binding Text}" Foreground="{Binding CellForeground}"
+                                   FontSize="{Binding $parent[UserControl].((controls:SeasonalityMonthlyReturnsPresentation)DataContext).FontSize}" />
+                      </Border>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+      </StackPanel>
+    </Panel>
+  </Border>
+</UserControl>

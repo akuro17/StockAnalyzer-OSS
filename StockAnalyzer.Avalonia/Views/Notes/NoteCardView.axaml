@@ -1,0 +1,357 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:StockAnalyzer.Avalonia.ViewModels.Notes"
+             xmlns:conv="using:StockAnalyzer.Avalonia.Converters"
+             xmlns:l="clr-namespace:StockAnalyzer.Avalonia.Markup;assembly=StockAnalyzer.Avalonia"
+             mc:Ignorable="d" d:DesignWidth="420" d:DesignHeight="240"
+             x:Class="StockAnalyzer.Avalonia.Views.Notes.NoteCardView"
+             x:DataType="vm:NoteTimelineItemViewModel">
+
+    <UserControl.Resources>
+        <conv:DashLengthToStrokeDashArrayConverter x:Key="DashLengthToStrokeDashArrayConverter"/>
+        <conv:ConnectorLineLengthToEndPointConverter x:Key="ConnectorLineLengthToEndPointConverter"/>
+    </UserControl.Resources>
+
+    <UserControl.Styles>
+        <!-- Flattened to look like inline text rather than a button (fix request: a hashtag/URL
+             inside the body must read as part of the text, not as a UI chrome element or a
+             differently-colored accent). Foreground matches the surrounding body text exactly (fix
+             request) - only the underline signals it's clickable. Applied to both the hashtag and
+             URL inline buttons built in code-behind (NoteCardView.axaml.cs). Underline is applied
+             directly to the inline Button's TextBlock content in code-behind rather than here, since
+             templated ContentPresenter styling is more fragile across Fluent theme versions.
+             Foreground/FontSize come from Settings > Notes (BodyTextColor/BodyFontSize) rather than
+             the Theme/Fonts DynamicResources, so a hashtag/URL button's "inherit body color" default
+             (see NoteCardView.axaml.cs's CreateHashtagButton/CreateUrlButton) matches whatever the
+             surrounding body text actually renders in. -->
+        <Style Selector="Button.BodyInlineLink">
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Margin" Value="0"/>
+            <Setter Property="MinWidth" Value="0"/>
+            <Setter Property="MinHeight" Value="0"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Foreground" Value="{Binding BodyTextColor, Converter={x:Static conv:RawColorToBrushConverter.Instance}}"/>
+            <Setter Property="FontSize" Value="{Binding BodyFontSize}"/>
+        </Style>
+    </UserControl.Styles>
+
+    <!-- Root is a StackPanel (not just the PremiumCard Border below) so the reply connector line
+         (fix request #2, 3rd round) can sit OUTSIDE the Border's own Padding - see the comment next
+         to ReplyThreadConnectorLine near the bottom of this file for why that placement matters. -->
+    <StackPanel Spacing="0">
+        <!-- Overrides Border.PremiumCard's (ModernTheme.axaml) 1px border/shadow/8px gap locally rather
+             than editing the shared style (used by 4 other views) - fix request: cards should sit flush
+             against each other with only a hairline border between them, not float as separated boxes
+             with a gap and drop shadow. CornerRadius/BoxShadow are zeroed too: rounded corners and a
+             drop shadow both only make visual sense with a gap between cards, which no longer exists.
+             BorderThickness stays the style's own integer "1" (fix request: a sub-pixel 0.5 value was
+             tried first but rounds away to nothing at standard 1x display scaling and rendered no
+             visible border at all) - 1px is already the thinnest border that reliably renders. -->
+        <Border x:Name="PremiumCardBorder" Classes="PremiumCard" Margin="0" Padding="12" BorderThickness="1" CornerRadius="0" BoxShadow="none"
+                Background="{Binding BodyBackgroundColor, Converter={x:Static conv:RawColorToBrushConverter.Instance}}"
+                IsVisible="{Binding !IsTombstone}">
+            <StackPanel Spacing="8">
+
+                <!-- Header: ticker (blank when RelatedTicker is null, spec 5.2) + created date -->
+                <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock Grid.Column="0"
+                               Text="{Binding Note.RelatedTicker}"
+                               FontWeight="Bold"
+                               IsVisible="{Binding Note.RelatedTicker, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                               Foreground="{Binding BodyTextColor, Converter={x:Static conv:RawColorToBrushConverter.Instance}}"
+                               FontSize="{Binding BodyFontSize}"/>
+                    <!-- Clickable (opens this Note's individual detail page, Feature A): reuses the
+                         BodyInlineLink style (defined above for body hashtag/URL links) so it reads as
+                         plain secondary-colored text rather than a button, with an explicit underline
+                         here (unlike the body's inline links, this one is static XAML, not built in
+                         code-behind, so there is no per-Run underline step to piggyback on). -->
+                    <Button Grid.Column="1" Classes="BodyInlineLink"
+                            Command="{Binding OpenDetailCommand}"
+                            ToolTip.Tip="{l:Localize Note_OpenDetailButton_Tooltip}">
+                        <TextBlock Text="{Binding Note.CreatedAt, StringFormat='yyyy/MM/dd HH:mm'}"
+                                   TextDecorations="Underline"
+                                   Foreground="{Binding BodyTextColor, Converter={x:Static conv:RawColorToBrushConverter.Instance}}"
+                                   FontSize="{Binding BodyFontSize}"/>
+                    </Button>
+                </Grid>
+
+                <!-- Body: capped preview when collapsed, full text when expanded (spec 5.3). Inlines are
+                     built in code-behind from BodySegments (fix request: a "#tag" occurrence that is
+                     actually in Note.Hashtags becomes a clickable inline Button opening a Filter/Search
+                     Flyout, and a URL occurrence that is actually in Note.LinkUrls becomes a clickable
+                     inline Button that opens it directly - replacing the old separate LinkUrls button
+                     row below, which duplicated it; everything else stays a plain Run) rather than bound
+                     via Text, since Avalonia's TextBlock.Inlines has no direct binding-friendly
+                     per-segment click support. -->
+                <TextBlock x:Name="BodyTextBlock"
+                           TextWrapping="Wrap"
+                           Foreground="{Binding BodyTextColor, Converter={x:Static conv:RawColorToBrushConverter.Instance}}"
+                           FontSize="{Binding BodyFontSize}"/>
+
+                <Button Theme="{DynamicResource PrimaryButtonStyle}"
+                        Content="{Binding ToggleLabel}"
+                        Command="{Binding ToggleExpandedCommand}"
+                        IsVisible="{Binding RequiresCollapseToggle}"
+                        HorizontalAlignment="Left"/>
+
+                <!-- Quote mini-preview (spec section 6): shown below the posted Note's own body/Read-more
+                     toggle (fix request: the quoted-source article must sit under the posted article, not
+                     above it) only when this Note quotes another. Always a fixed-size excerpt
+                     (QuotedNotePreviewExcerpt caps at 120 chars) with no Read-more/expand affordance of
+                     its own - the quoted article is a reference, not something to read in full here. The
+                     resolved excerpt+timestamp branch and the "deleted" placeholder branch are mutually
+                     exclusive (HasQuotedNotePreview / QuotedNoteWasDeleted), so a quoted Note that was
+                     later permanently deleted degrades to a placeholder instead of a blank or broken box. -->
+                <Border x:Name="QuotedNotePreviewBorder"
+                        IsVisible="{Binding IsQuote}"
+                        BorderBrush="{DynamicResource Brush.Border.Primary}"
+                        BorderThickness="1" CornerRadius="4" Padding="8">
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="{Binding QuotedNotePreview.CreatedAt, StringFormat='yyyy/MM/dd HH:mm'}"
+                                   IsVisible="{Binding HasQuotedNotePreview}"
+                                   Foreground="{Binding BodyTextColor, Converter={x:Static conv:RawColorToBrushConverter.Instance}}"
+                                   FontSize="{Binding BodyFontSize}"/>
+                        <TextBlock x:Name="QuotedNotePreviewExcerptTextBlock"
+                                   Text="{Binding QuotedNotePreviewExcerpt}"
+                                   TextWrapping="Wrap"
+                                   IsVisible="{Binding HasQuotedNotePreview}"
+                                   Foreground="{Binding BodyTextColor, Converter={x:Static conv:RawColorToBrushConverter.Instance}}"
+                                   FontSize="{Binding BodyFontSize}"/>
+                        <TextBlock x:Name="QuotedNoteDeletedPlaceholderTextBlock"
+                                   Text="{l:Localize Note_QuotedNoteDeleted_Placeholder}"
+                                   IsVisible="{Binding QuotedNoteWasDeleted}"
+                                   FontStyle="Italic"
+                                   Foreground="{Binding BodyTextColor, Converter={x:Static conv:RawColorToBrushConverter.Instance}}"
+                                   FontSize="{Binding BodyFontSize}"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Attachment thumbnails (spec 5.2): up to 3 rendered images + "+N" for the rest;
+                     falls back to the 📎 N count-only indicator when nothing could be decoded.
+                     Clicking a thumbnail opens the original file via the OS-associated app (fix
+                     request: confirm original upload size - no in-app viewer is built).
+                     sa_minimal_fix (Note Tab Polish round, "clicking a thumbnail does nothing"):
+                     the click is wired via a code-behind Click handler (NoteCardView.axaml.cs), not
+                     a Command="{Binding $parent[ItemsControl]...}" binding - matching the same
+                     reliable pattern already used for the body's inline hashtag/URL buttons
+                     (CreateHashtagButton/CreateUrlButton below). Extensive investigation (ViewModel-
+                     level test, a real-View-mount test resolving Command/CommandParameter, and the
+                     user confirming Process.Start/OS file association both work fine independently)
+                     could not pin an exact cause for the relative-binding Command never actually
+                     firing on a real click; this switches to the one interaction-wiring mechanism
+                     already proven reliable everywhere else in this file. -->
+
+                <!-- sa_improve (Note Tab Polish, Task 2): wrapped in a bordered frame with generous
+                     padding so the Bottom thumbnail row reads as one visually grouped block (fix
+                     request) instead of floating directly on the card background. IsVisible gated on
+                     Note.AttachmentIds.Length (not Thumbnails.Count) so the frame itself disappears -
+                     not just its contents - for a Note with no attachments at all, matching the
+                     existing AttachmentCountText/Thumbnails.Count fallback contract one level up.
+                     sa_minimal_fix (New Note Polish, item c): as a child of the outer vertical
+                     StackPanel, this Border defaulted to HorizontalAlignment.Stretch and always filled
+                     the card's full content width regardless of how many thumbnails it actually held
+                     (fix request: the frame "stretches to the card's right edge" instead of hugging its
+                     content). HorizontalAlignment="Left" makes it size to its content instead. -->
+                <Border BorderBrush="{DynamicResource Brush.Border.Primary}" BorderThickness="1" CornerRadius="6" Padding="12"
+                        HorizontalAlignment="Left"
+                        IsVisible="{Binding Note.AttachmentIds.Length, Converter={x:Static conv:NumericalConverters.IsGreaterThanZero}}">
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <ItemsControl ItemsSource="{Binding Thumbnails}"
+                                      IsVisible="{Binding Thumbnails.Count, Converter={x:Static conv:NumericalConverters.IsGreaterThanZero}}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Orientation="Horizontal" Spacing="4"/>
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:NoteThumbnailItem">
+                                    <Button Classes="BodyInlineLink" Padding="0" Cursor="Hand"
+                                            Click="ThumbnailButton_Click"
+                                            ToolTip.Tip="{l:Localize Note_OpenAttachmentOriginal_Tooltip}">
+                                        <Border Width="{Binding $parent[ItemsControl].((vm:NoteTimelineItemViewModel)DataContext).ThumbnailSizePixels}"
+                                                Height="{Binding $parent[ItemsControl].((vm:NoteTimelineItemViewModel)DataContext).ThumbnailSizePixels}"
+                                                CornerRadius="4" ClipToBounds="True">
+                                            <Image Source="{Binding Bitmap}" Stretch="UniformToFill"
+                                                   Width="{Binding $parent[ItemsControl].((vm:NoteTimelineItemViewModel)DataContext).ThumbnailSizePixels}"
+                                                   Height="{Binding $parent[ItemsControl].((vm:NoteTimelineItemViewModel)DataContext).ThumbnailSizePixels}"/>
+                                        </Border>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <!-- sa_implement (Note Thumbnail Limit, Task 2): the "+N" overflow indicator is
+                             now clickable (fix request) - ExpandRemainingThumbnailsCommand decodes and
+                             appends the rest of Note.AttachmentIds into Thumbnails, after which
+                             ExtraAttachmentCountText itself goes empty (hiding this Button) rather than
+                             needing a separate "already expanded" visibility condition here. Not inside
+                             an ItemsControl.ItemTemplate (unlike the thumbnail Buttons above), so a
+                             direct Command binding is reliable here - same as ToggleExpandedCommand's
+                             Button elsewhere in this file. -->
+                        <Button Classes="BodyInlineLink" Padding="0" Cursor="Hand"
+                                Content="{Binding ExtraAttachmentCountText}"
+                                Command="{Binding ExpandRemainingThumbnailsCommand}"
+                                IsVisible="{Binding ExtraAttachmentCountText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                VerticalAlignment="Center"
+                                ToolTip.Tip="{l:Localize Note_ExpandRemainingThumbnails_Tooltip}"/>
+                        <TextBlock Text="{Binding AttachmentCountText}"
+                                   IsVisible="{Binding Thumbnails.Count, Converter={x:Static conv:NumericalConverters.IsEqualToZero}}"
+                                   Foreground="{Binding BodyTextColor, Converter={x:Static conv:RawColorToBrushConverter.Instance}}"
+                                   FontSize="{Binding BodyFontSize}"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Action row (spec 5.2): View Chart stays always-visible as an icon-only button (fix
+                     request); Edit/Pin(Unpin)/Delete move into the "…" overflow MenuFlyout instead of
+                     being permanently visible. All three reuse the existing Commands/PinButtonLabel
+                     unchanged - only their presentation moved. No separator line above this row (fix
+                     request): each card is already its own visually separated PremiumCard box, so an
+                     internal divider here was redundant. -->
+                <StackPanel Orientation="Horizontal" Spacing="16" Margin="0,4,0,0">
+                    <!-- Icon paths below are the "d" attribute values extracted verbatim from Google
+                         Material Symbols (Filled, 24dp) SVGs the user downloaded from
+                         fonts.google.com/icons and provided under Assets\Icons\ (source SVGs kept there
+                         for reference/future re-export - NOT loaded at runtime, since Avalonia's
+                         PathIcon.Data takes the path string directly). Their "0 -960 960 960" viewBox
+                         coordinate system differs from SharedIconGeometries.cs's classic Material Icons
+                         0-24 grid, but this doesn't matter: PathIcon stretches its Data to fit the given
+                         Width/Height regardless of the source coordinate range.
+                         sa_minimal_fix (icon mismatch round): because the SVGs under Assets\Icons\ are
+                         reference-only, overwriting one of those files has NO effect on the running app
+                         by itself - the matching PathIcon.Data string below must be manually re-extracted
+                         from the new file's own "d" attribute and pasted in here every time. -->
+                    <Button Theme="{DynamicResource PrimaryButtonStyle}"
+                            Command="{Binding ViewChartCommand}"
+                            ToolTip.Tip="{l:Localize Note_ViewChartButton}">
+                        <!-- chart -->
+                        <PathIcon Data="m296-320 122-122 80 80 142-141v63h80v-200H520v80h63l-85 85-80-80-178 179 56 56Zm-96 200q-33 0-56.5-23.5T120-200v-560q0-33 23.5-56.5T200-840h560q33 0 56.5 23.5T840-760v560q0 33-23.5 56.5T760-120H200Z" Width="14" Height="14"/>
+                    </Button>
+                    <!-- Quote/Reply (spec section 6): always-visible like View Chart, since they are the
+                         feature's primary engagement actions, not secondary corrections like Edit/Pin/
+                         Delete. -->
+                    <Button Theme="{DynamicResource PrimaryButtonStyle}"
+                            Command="{Binding QuoteCommand}"
+                            ToolTip.Tip="{l:Localize Note_QuoteButton_Tooltip}">
+                        <!-- format_quote -->
+                        <PathIcon Data="M240-400h480v-80H240v80Zm0-120h480v-80H240v80Zm0-120h480v-80H240v80Zm-80 400q-33 0-56.5-23.5T80-320v-480q0-33 23.5-56.5T160-880h640q33 0 56.5 23.5T880-800v720L720-240H160Z" Width="14" Height="14"/>
+                    </Button>
+                    <Button Theme="{DynamicResource PrimaryButtonStyle}"
+                            Command="{Binding ReplyCommand}"
+                            ToolTip.Tip="{l:Localize Note_ReplyButton_Tooltip}">
+                        <!-- reply -->
+                        <PathIcon Data="M339.5-108.5q-65.5-28.5-114-77t-77-114Q120-365 120-440h80q0 117 81.5 198.5T480-160q117 0 198.5-81.5T760-440q0-117-81.5-198.5T480-720h-6l62 62-56 58-160-160 160-160 56 58-62 62h6q75 0 140.5 28.5t114 77q48.5 48.5 77 114T840-440q0 75-28.5 140.5t-77 114q-48.5 48.5-114 77T480-80q-75 0-140.5-28.5Z" Width="14" Height="14"/>
+                    </Button>
+                    <Button Theme="{DynamicResource PrimaryButtonStyle}"
+                            ToolTip.Tip="{l:Localize Note_MoreActionsButton_Tooltip}">
+                        <!-- menu -->
+                        <PathIcon Data="M120-240v-80h720v80H120Zm0-200v-80h720v80H120Zm0-200v-80h720v80H120Z" Width="14" Height="14"/>
+                        <Button.Flyout>
+                            <MenuFlyout>
+                                <MenuItem Header="{l:Localize Note_EditButton}" Command="{Binding EditCommand}"/>
+                                <MenuItem Header="{Binding PinButtonLabel}" Command="{Binding TogglePinnedCommand}"/>
+                                <MenuItem Header="{l:Localize Note_DeleteButton}" Command="{Binding DeleteCommand}"/>
+                            </MenuFlyout>
+                        </Button.Flyout>
+                    </Button>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <!-- Deletion tombstone (sa_implement, Reply-Leaf Restriction & Deletion Tombstone): a soft-deleted
+             Note kept only to preserve a connected thread's continuity (NoteTimelineItemViewModel.IsTombstone,
+             set by NoteTimelineViewModel.CollectPrunedSubtree) renders this compact placeholder instead of
+             the real PremiumCard above (mutually exclusive via !IsTombstone/IsTombstone) - no body,
+             attachments, or action row, since there is no real content left to interact with. Reply/Quote
+             are already unconditionally disabled for a tombstone at the ViewModel layer
+             (NoteTimelineItemViewModel.CanExecuteReply/CanExecuteQuote), so no IsEnabled/IsVisible gating is
+             needed here for the (still bound, but now hidden) action buttons above. Matches the real card's
+             Background/BorderBrush explicitly (the same values Border.PremiumCard's style setters would
+             supply) rather than sharing the "PremiumCard" class itself - existing tests locate the real
+             card via GetVisualDescendants().OfType<Border>().Single(b => b.Classes.Contains("PremiumCard"))
+             (e.g. NoteTimelineView_ReplyConnectorLineTests), and Avalonia's visual tree still contains an
+             IsVisible=False Border, so a second Border sharing that class would make that Single() throw.
+             Mirrors the existing QuotedNoteDeletedPlaceholderTextBlock pattern above but for a whole card
+             instead of the quote sub-box. -->
+        <Border x:Name="TombstoneBorder" Margin="0" Padding="12" BorderThickness="1" CornerRadius="0" BoxShadow="none"
+                Background="{Binding BodyBackgroundColor, Converter={x:Static conv:RawColorToBrushConverter.Instance}}" BorderBrush="{DynamicResource Brush.Border}"
+                IsVisible="{Binding IsTombstone}">
+            <TextBlock x:Name="TombstonePlaceholderTextBlock"
+                       Text="{l:Localize Note_DeletionTombstone_Placeholder}"
+                       FontStyle="Italic"
+                       Foreground="{Binding BodyTextColor, Converter={x:Static conv:RawColorToBrushConverter.Instance}}"
+                       FontSize="{Binding BodyFontSize}"/>
+        </Border>
+
+        <!-- Reply thread connector (spec section 6, fix request #2, 3rd round): a short vertical line
+             between this card's Border and the next one, shown whenever the card immediately below this
+             one in the same displayed list is a direct reply to this Note
+             (NoteTimelineItemViewModel.ConnectsDownToReplyCard, computed by
+             NoteTimelineViewModel.BuildThreadedDisplayOrder - the main timeline now groups every reply
+             directly under the Note it replies to, so a reply is never separated from its parent by
+             other posts; a whole reply chain (reply-to-a-reply) reads as an unbroken line of connectors
+             top to bottom). Never shown in the detail thread's ancestor/reply lists (Task B7) - the
+             property defaults to false there by design.
+             Deliberately placed as a SIBLING of the PremiumCard Border above, outside its Padding="12" -
+             a first attempt put this Border as the last child of the inner StackPanel (inside the card's
+             own padding), so even once it rendered with a nonzero DesiredSize, it stopped a full 12px of
+             padding short of the card's own bottom border - it never actually reached the seam between
+             this card and the next one, so it read as a small floating tick mark rather than a line
+             connecting the two cards. Moving it here means it sits directly in the gap the ItemsControl
+             already renders between this NoteCardView and the next, genuinely bridging both card
+             borders. Margin stays modest and all-positive (regression per the 2nd-round Lesson Learned:
+             a Height/Margin combination that nets to <= 0 collapses DesiredSize.Height to 0).
+             sa_minimal_fix (ConnectorLineLength not reflected for non-collapsed threads): Height was
+             hardcoded to 8px, so the Settings > Notes ConnectorLineLength value only ever affected the
+             CollapsedThreadIndicatorLine below (the dotted line at a collapse boundary), never the
+             ordinary solid connector used for the rest of an expanded reply chain. Bound to
+             ConnectorLineLength so the setting controls every inter-card connector, not just the
+             collapsed one. -->
+        <Border x:Name="ReplyThreadConnectorLine"
+                IsVisible="{Binding ConnectsDownToReplyCard}"
+                Width="2" Height="{Binding ConnectorLineLength}" Margin="0,2,0,2"
+                HorizontalAlignment="Center"
+                Background="{DynamicResource Brush.Border.Primary}"/>
+
+        <!-- Collapsed-thread indicator (Settings > Notes, sa_implement Task 5): mutually exclusive
+             with ReplyThreadConnectorLine above (BuildThreadedDisplayOrder never leaves a card both
+             directly connected to its real next reply AND missing replies below it) - a dotted line,
+             in place of the solid connector, for the card immediately before a collapsed segment.
+             EndPoint/StrokeDashArray come from Settings > Notes (ConnectorLineLength/DashLength); by
+             design there is no click-to-expand affordance here (confirmed design decision: the
+             omitted Notes remain reachable via their own individual detail page instead).
+             sa_minimal_fix (LineLength/DashLength appear reversed): EndPoint is bound directly to
+             ConnectorLineLength in real pixel coordinates (via ConnectorLineLengthToEndPointConverter)
+             rather than the original StartPoint="0,0" EndPoint="0,1" Stretch="Fill" + Height binding -
+             Avalonia's Stretch="Fill" scales the Line's entire rendered geometry (including the Pen's
+             StrokeDashArray, which is measured in the pre-stretch unit-length coordinate space) by the
+             same factor used to stretch the 1-unit geometry up to Height px, so a configured 4px dash
+             was actually rendering ~ConnectorLineLength/1 times too long - exactly the "dash longer
+             than the line" symptom reported. Binding EndPoint directly in real pixel coordinates avoids
+             any Stretch transform, so StrokeDashArray renders at its configured pixel length.
+             sa_minimal_fix (ConnectorLineLength not reflected in the gap between cards): the same fix
+             dropped the explicit Width/Height that used to sit alongside Stretch="Fill", on the
+             assumption a Stretch=None Line's DesiredSize would naturally follow its StartPoint/EndPoint
+             geometry - it does not reliably do so for a degenerate (zero-width) vertical line, so the
+             StackPanel only ever reserved this Margin's 4px, and the actually-drawn stroke (which
+             Avalonia renders past a Shape's DesiredSize/clip bounds regardless) just visually overlapped
+             the next card instead of pushing it down - the same "Height/Margin nets to a too-small
+             DesiredSize.Height" pitfall already documented above for ReplyThreadConnectorLine. Restored
+             explicit Width="2" Height="{Binding ConnectorLineLength}" so the StackPanel actually
+             reserves ConnectorLineLength px of layout space; EndPoint keeps the geometry (and thus the
+             Stroke/StrokeDashArray) in real, unstretched pixel coordinates as fixed above. -->
+        <Line x:Name="CollapsedThreadIndicatorLine"
+              IsVisible="{Binding HasCollapsedRepliesBelow}"
+              StartPoint="0,0"
+              EndPoint="{Binding ConnectorLineLength, Converter={StaticResource ConnectorLineLengthToEndPointConverter}}"
+              Width="2" Height="{Binding ConnectorLineLength}"
+              Margin="0,2,0,2"
+              HorizontalAlignment="Center"
+              Stroke="{DynamicResource Brush.Border.Primary}"
+              StrokeThickness="2"
+              StrokeDashArray="{Binding DashLength, Converter={StaticResource DashLengthToStrokeDashArrayConverter}}"
+              ToolTip.Tip="{Binding CollapsedReplyCountTooltip}"/>
+    </StackPanel>
+</UserControl>

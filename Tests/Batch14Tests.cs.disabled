@@ -1,0 +1,185 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using StockAnalyzer.Models;
+using Xunit;
+
+namespace StockAnalyzer.Tests
+{
+    public class Batch14Tests
+    {
+        private List<CandleData> CreateTestData(int count)
+        {
+            var list = new List<CandleData>();
+            var date = new DateTime(2023, 1, 1);
+            
+            // Generate simple predictable data
+            for (int i = 0; i < count; i++)
+            {
+                // Price increases by 10 each step
+                decimal close = 100m + i * 10m;
+                decimal high = close + 5m;
+                decimal low = close - 5m;
+                decimal open = close - 2m;
+                long volume = 1000 + i * 100;
+
+                list.Add(new CandleData
+                {
+                    Timestamp = date.AddDays(i),
+                    Open = open,
+                    High = high,
+                    Low = low,
+                    Close = close,
+                    Volume = volume
+                });
+            }
+            return list;
+        }
+
+        [Fact]
+        public void ElderForceIndex_CalculatesCorrectly()
+        {
+            // Arrange
+            var indicator = new ElderForceIndexIndicator(13, System.Windows.Media.Colors.Blue);
+            var candles = CreateTestData(20);
+            
+            // Act
+            indicator.Calculate(candles);
+            
+            // Assert
+            Assert.Equal(19, indicator.Values.Count);
+            Assert.Null(indicator.Values[0]); // First value is null due to Period
+            Assert.NotNull(indicator.Values.Last());
+        }
+
+        [Fact]
+        public void ElderRay_CalculatesCorrectly()
+        {
+            // Arrange
+            var indicator = new ElderRayIndicator(13, System.Windows.Media.Colors.Red);
+            var candles = CreateTestData(20);
+            
+            // Act
+            indicator.Calculate(candles);
+            
+            // Assert
+            Assert.Equal(20, indicator.Values.Count);
+            Assert.Equal(20, indicator.BullPower.Count);
+            Assert.Equal(20, indicator.BearPower.Count);
+            
+            Assert.Null(indicator.BullPower[0]);
+            Assert.NotNull(indicator.BullPower.Last());
+            Assert.NotNull(indicator.BearPower.Last());
+        }
+
+        [Fact]
+        public void CMO_CalculatesCorrectly()
+        {
+            // Arrange
+            var indicator = new ChandeMomentumOscillatorIndicator(14, System.Windows.Media.Colors.Green);
+            var candles = CreateTestData(20);
+            
+            // Act
+            indicator.Calculate(candles);
+            
+            // Assert
+            Assert.Equal(20, indicator.Values.Count);
+            Assert.Null(indicator.Values[0]);
+            Assert.NotNull(indicator.Values.Last());
+            
+            // Since price is strictly increasing, CMO should be 100
+            Assert.Equal(100m, indicator.Values.Last());
+        }
+
+        [Fact]
+        public void ElderImpulse_CalculatesCorrectly()
+        {
+            // Arrange
+            var indicator = new ElderImpulseSystemIndicator(13, System.Windows.Media.Colors.Purple);
+            var candles = CreateTestData(50); // Need enough data for SlowPeriod + SignalPeriod
+            
+            // Act
+            indicator.Calculate(candles);
+            
+            // Assert
+            Assert.Equal(50, indicator.Values.Count);
+            Assert.Null(indicator.Values[0]);
+            Assert.NotNull(indicator.Values.Last());
+            
+            // Impulse should be -1, 0, or 1
+            var lastVal = indicator.Values.Last();
+            Assert.True(lastVal == 0 || lastVal == 1 || lastVal == -1);
+        }
+
+        [Fact]
+        public void CoppockCurve_CalculatesCorrectly()
+        {
+            // Arrange
+            var indicator = new CoppockCurveIndicator(14, System.Windows.Media.Colors.Yellow);
+            var candles = CreateTestData(50);
+            
+            // Act
+            indicator.Calculate(candles);
+            
+            // Assert
+            Assert.Equal(50, indicator.Values.Count);
+            Assert.Null(indicator.Values[0]);
+            Assert.NotNull(indicator.Values.Last());
+        }
+
+        [Fact]
+        public void MassIndex_CalculatesCorrectly()
+        {
+            // Arrange
+            var indicator = new MassIndexIndicator(9, System.Windows.Media.Colors.Cyan);
+            var candles = CreateTestData(50);
+            
+            // Act
+            indicator.Calculate(candles);
+            
+            // Assert
+            Assert.Equal(26, indicator.Values.Count);
+            Assert.Null(indicator.Values[0]);
+            Assert.NotNull(indicator.Values.Last());
+        }
+
+        [Fact]
+        public void Vortex_CalculatesCorrectly()
+        {
+            // Arrange
+            var indicator = new VortexIndicator(14, System.Windows.Media.Colors.Magenta);
+            var candles = CreateTestData(30);
+            
+            // Act
+            indicator.Calculate(candles);
+            
+            // Assert
+            Assert.Equal(30, indicator.Values.Count);
+            Assert.Equal(30, indicator.VIMinus.Count);
+            
+            Assert.Null(indicator.Values[0]);
+            Assert.NotNull(indicator.Values.Last());
+            Assert.NotNull(indicator.VIMinus.Last());
+        }
+
+        [Fact]
+        public void SchaffTrendCycle_CalculatesCorrectly()
+        {
+            // Arrange
+            var indicator = new SchaffTrendCycleIndicator(23, System.Windows.Media.Colors.Gray, 50, 10);
+            var candles = CreateTestData(100); // Needs lots of data
+            
+            // Act
+            indicator.Calculate(candles);
+            
+            // Assert
+            Assert.Equal(100, indicator.Values.Count);
+            Assert.Null(indicator.Values[0]);
+            Assert.NotNull(indicator.Values.Last());
+            
+            // STC is bound between 0 and 100
+            var lastVal = indicator.Values.Last();
+            Assert.True(lastVal >= 0 && lastVal <= 100);
+        }
+    }
+}

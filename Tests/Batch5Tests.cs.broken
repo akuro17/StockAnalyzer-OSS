@@ -1,0 +1,73 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Xunit;
+using StockAnalyzer.Core.Models.Parameters;
+using System.Windows.Media;
+
+namespace StockAnalyzer.Tests
+{
+    public class Batch5Tests
+    {
+        [Fact]
+        public void Amihud_CalculatesCorrectly()
+        {
+            // Verify Amihud calculation matches manual calc with corrected window
+            int period = 3;
+            var candles = new List<CandleData>();
+            // Create data
+            // i=0: Init (0.0)
+            candles.Add(new CandleData { Timestamp = DateTime.Today, Close = 100, Open = 100, High = 100, Low = 100, Volume = 1000 });
+            
+            // i=1: Return = |(105-100)/100| = 0.05. DollarVol = 105*1000 = 105000. Illiq = 0.05 / 105000 = 4.7619e-7
+            candles.Add(new CandleData { Timestamp = DateTime.Today.AddDays(1), Close = 105, Open = 100, High = 105, Low = 100, Volume = 1000 });
+            
+            // i=2: Return = |(100-105)/105| = 0.0476. DollarVol = 100*1000 = 100000. Illiq = 0.0476 / 100000 = 4.7619e-7
+            candles.Add(new CandleData { Timestamp = DateTime.Today.AddDays(2), Close = 100, Open = 105, High = 105, Low = 100, Volume = 1000 });
+
+            // i=3: Return = |(110-100)/100| = 0.1. DollarVol = 110*1000 = 110000. Illiq = 0.1 / 110000 = 9.0909e-7
+            candles.Add(new CandleData { Timestamp = DateTime.Today.AddDays(3), Close = 110, Open = 100, High = 110, Low = 100, Volume = 1000 });
+
+            // Illiq values: [0, 4.76e-7, 4.76e-7, 9.09e-7]
+            // Period = 3.
+            // i=3 Calculation:
+            // Window should be i=1, 2, 3 (indices 1, 2, 3) because it's rolling sum of 'daily illiq' over N days?
+            // Code logic:
+            // Init: Sum i=0 to period-1 (0, 1, 2).
+            // Sum = Illiq[0] + Illiq[1] + Illiq[2] = 0 + 4.76e-7 + 4.76e-7 = 9.52e-7.
+            // Loop starts at i=period (3).
+            // if (i >= period) -> Subtract [i-period] (Index 0), Add [i] (Index 3).
+            // Sum = 9.52e-7 - 0 + 9.09e-7 = 1.861e-6.
+            // Avg = Sum / 3 = 6.20e-7.
+            // Scaling 1,000,000 -> 0.62.
+            
+            var indicator = new AmihudIlliquidityIndicator(period, Colors.Red, 1000000m);
+            indicator.Calculate(candles);
+            
+            // Value at index 3 should be valid
+            Assert.NotNull(indicator.Values[3]);
+            decimal val = indicator.Values[3]!.Value;
+            
+            // Expected: 0.6203...
+            Assert.True(Math.Abs(val - 0.6203m) < 0.001m, $"Expected ~0.6203 but got {val}");
+        }
+
+        [Fact]
+        public void NVI_HandlesZeroClose_Correctly()
+        {
+            var candles = new List<CandleData>();
+            candles.Add(new CandleData { Timestamp = DateTime.Today, Close = 100, Volume = 1000 });
+            // Zero close candle
+            candles.Add(new CandleData { Timestamp = DateTime.Today.AddDays(1), Close = 0, Volume = 500 }); // Vol < Prev (1000), triggers calc
+            // Next candle
+            candles.Add(new CandleData { Timestamp = DateTime.Today.AddDays(2), Close = 10, Volume = 600 });
+            
+            var indicator = new NegativeVolumeIndexIndicator(Colors.Red);
+            // Should not throw exception
+            var exception = Record.Exception(() => indicator.Calculate(candles));
+            Assert.Null(exception);
+            
+            Assert.Equal(3, indicator.Values.Count);
+        }
+    }
+}

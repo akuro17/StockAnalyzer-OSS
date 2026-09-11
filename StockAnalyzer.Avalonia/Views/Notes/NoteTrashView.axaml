@@ -1,0 +1,93 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:StockAnalyzer.Avalonia.ViewModels.Notes"
+             xmlns:conv="using:StockAnalyzer.Avalonia.Converters"
+             xmlns:l="clr-namespace:StockAnalyzer.Avalonia.Markup;assembly=StockAnalyzer.Avalonia"
+             mc:Ignorable="d" d:DesignWidth="480" d:DesignHeight="500"
+             x:Class="StockAnalyzer.Avalonia.Views.Notes.NoteTrashView"
+             x:DataType="vm:NoteTrashViewModel"
+             Background="Transparent">
+
+    <!-- SelectedIndex bound to SelectedTabIndex (fix request): DialogService sets this before
+         showing the window so the "Trash"/"Orphaned Files" toolbar icons each open straight to
+         their own tab instead of always defaulting to "Deleted". -->
+    <TabControl SelectedIndex="{Binding SelectedTabIndex}">
+        <TabItem Header="{l:Localize NoteTrash_Tab_Deleted}" FontSize="{DynamicResource BaseFontSize}">
+            <Grid RowDefinitions="Auto,*">
+                <Border Grid.Row="0" Classes="PremiumCard" Margin="0,0,0,8" Padding="8"
+                        Background="{Binding BodyBackgroundColor, Converter={x:Static conv:RawColorToBrushConverter.Instance}}">
+                    <Button Theme="{DynamicResource PrimaryButtonStyle}"
+                            Content="{l:Localize NoteTrash_EmptyTrashButton}"
+                            Command="{Binding EmptyTrashCommand}"
+                            IsEnabled="{Binding DeletedNotes.Count, Converter={x:Static conv:NumericalConverters.IsGreaterThanZero}}"/>
+                </Border>
+
+                <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
+                    <ItemsControl ItemsSource="{Binding DeletedNotes}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:NoteTrashItemViewModel">
+                                <Border Classes="PremiumCard" Margin="0,0,0,8" Padding="12"
+                                        Background="{Binding BodyBackgroundColor, Converter={x:Static conv:RawColorToBrushConverter.Instance}}">
+                                    <StackPanel Spacing="8">
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <TextBlock Grid.Column="0"
+                                                       Text="{Binding Note.RelatedTicker}"
+                                                       FontWeight="Bold"
+                                                       IsVisible="{Binding Note.RelatedTicker, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                                       Foreground="{Binding BodyTextColor, Converter={x:Static conv:RawColorToBrushConverter.Instance}}"
+                                                       FontSize="{Binding BodyFontSize}"/>
+                                            <TextBlock Grid.Column="1"
+                                                       Text="{Binding Note.CreatedAt, StringFormat='yyyy/MM/dd HH:mm'}"
+                                                       Foreground="{Binding BodyTextColor, Converter={x:Static conv:RawColorToBrushConverter.Instance}}"
+                                                       FontSize="{Binding BodyFontSize}"/>
+                                        </Grid>
+                                        <TextBlock Text="{Binding Note.Body}"
+                                                   TextWrapping="Wrap"
+                                                   MaxLines="3"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   Foreground="{Binding BodyTextColor, Converter={x:Static conv:RawColorToBrushConverter.Instance}}"
+                                                   FontSize="{Binding BodyFontSize}"/>
+                                        <StackPanel Orientation="Horizontal" Spacing="16">
+                                            <Button Theme="{DynamicResource PrimaryButtonStyle}" Content="{l:Localize NoteTrash_RestoreButton}" Command="{Binding RestoreCommand}"/>
+                                            <Button Theme="{DynamicResource PrimaryButtonStyle}" Content="{l:Localize Note_DeleteButton}" Command="{Binding PermanentlyDeleteCommand}"/>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </Grid>
+        </TabItem>
+
+        <TabItem Header="{l:Localize NoteTrash_Tab_Orphaned}" FontSize="{DynamicResource BaseFontSize}">
+            <Grid RowDefinitions="Auto,*">
+                <TextBlock Grid.Row="0" Margin="0,0,0,8"
+                           Text="{l:Localize NoteTrash_OrphanedFilesEmpty}"
+                           Foreground="{Binding BodyTextColor, Converter={x:Static conv:RawColorToBrushConverter.Instance}}"
+                           FontSize="{Binding BodyFontSize}"
+                           IsVisible="{Binding OrphanedAttachmentFileNames.Count, Converter={x:Static conv:NumericalConverters.IsEqualToZero}}"/>
+
+                <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
+                    <ItemsControl ItemsSource="{Binding OrphanedAttachmentFileNames}">
+                        <ItemsControl.ItemTemplate>
+                            <!-- Items are plain strings with no ViewModel of their own, so BodyTextColor/
+                                 BodyFontSize (Settings > Notes) come from an ancestor binding back to the
+                                 owning NoteTrashViewModel instead of this item's own (string) DataContext. -->
+                            <DataTemplate x:DataType="x:String">
+                                <Border Classes="PremiumCard" Margin="0,0,0,4" Padding="8"
+                                        Background="{Binding $parent[UserControl].((vm:NoteTrashViewModel)DataContext).BodyBackgroundColor, Converter={x:Static conv:RawColorToBrushConverter.Instance}}">
+                                    <TextBlock Text="{Binding}"
+                                               Foreground="{Binding $parent[UserControl].((vm:NoteTrashViewModel)DataContext).BodyTextColor, Converter={x:Static conv:RawColorToBrushConverter.Instance}}"
+                                               FontSize="{Binding $parent[UserControl].((vm:NoteTrashViewModel)DataContext).BodyFontSize}"/>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </Grid>
+        </TabItem>
+    </TabControl>
+</UserControl>
