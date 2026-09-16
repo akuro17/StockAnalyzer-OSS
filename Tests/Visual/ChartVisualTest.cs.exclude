@@ -1,0 +1,60 @@
+using System;
+using System.IO;
+using ApprovalTests;
+using ApprovalTests.Namers;
+using ApprovalTests.Reporters;
+using Xunit;
+using StockAnalyzer.Models;
+using StockAnalyzer.ViewModels;
+using StockAnalyzer.Views;
+
+namespace StockAnalyzer.Tests.Visual
+{
+    [UseReporter(typeof(DiffReporter))]
+    [Collection("SequentialVisualTests")] 
+    public class ChartVisualTest
+    {
+        [Fact]
+        public void VerifyCandlestickChart()
+        {
+            StaTestRunner.Run(() =>
+            {
+                using (new RenderModeScope(System.Windows.Interop.RenderMode.SoftwareOnly))
+                {
+                    VisualTestHelper.InitializeTestEnvironment();
+
+                    var candles = TestDataFactory.CreateDeterministicCandles(count: 20);
+
+                    var viewModel = new MainViewModel();
+                    foreach (var candle in candles)
+                    {
+                        viewModel.Candles.Add(candle);
+                    }
+
+                    VisualTestHelper.EnsureFontAvailability("Segoe UI", strictMode: true);
+
+                    var chartControl = new ChartCanvas
+                    {
+                        DataContext = viewModel,
+                        Width = 800,
+                        Height = 600,
+                        FontFamily = new System.Windows.Media.FontFamily("Segoe UI"),
+                        SnapsToDevicePixels = true,
+                        UseLayoutRounding = true
+                    };
+
+                    VisualTestHelper.ApplyDeterministicRenderingOptions(chartControl);
+
+                    VisualTestHelper.ForceWpfLayout(chartControl);
+
+                    byte[] imageBytes = VisualTestHelper.CaptureAndValidate(chartControl);
+
+                    using (ApprovalResults.ForScenario("CandlestickChart_Default"))
+                    {
+                        Approvals.VerifyBinaryFile(imageBytes, "png");
+                    }
+                }
+            });
+        }
+    }
+}

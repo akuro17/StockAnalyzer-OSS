@@ -1,0 +1,236 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- 1. Semantic Color Palette -->
+    <Color x:Key="Color_ActionPrimary">#007ACC</Color>
+    <Color x:Key="Color_ActionPrimaryHover">#1C97EA</Color>
+    <Color x:Key="Color_ActionSecondary">#444444</Color>
+    <Color x:Key="Color_ActionSecondaryHover">#666666</Color>
+    <Color x:Key="Color_TextPrimary">#FFFFFF</Color>
+    <Color x:Key="Color_FocusVisual">#FF0067C0</Color>
+
+    <SolidColorBrush x:Key="Brush_ActionPrimary" Color="{DynamicResource Color_ActionPrimary}"/>
+    <SolidColorBrush x:Key="Brush_ActionPrimaryHover" Color="{DynamicResource Color_ActionPrimaryHover}"/>
+    <SolidColorBrush x:Key="Brush_ActionSecondary" Color="{DynamicResource Color_ActionSecondary}"/>
+    <SolidColorBrush x:Key="Brush_ActionSecondaryHover" Color="{DynamicResource Color_ActionSecondaryHover}"/>
+    <SolidColorBrush x:Key="Brush_TextPrimary" Color="{StaticResource Color_TextPrimary}"/>
+    <SolidColorBrush x:Key="Brush_FocusVisual" Color="{StaticResource Color_FocusVisual}"/>
+
+    <FontFamily x:Key="Font_Mono">Consolas, Roboto Mono, JetBrains Mono, Courier New, Monospace</FontFamily>
+
+    <!-- 1b. Shared Layout Metrics -->
+    <!-- Right-edge gutter reserved on a vertically-scrolling list (ListBox / ScrollViewer) whose
+         permanent standard-width scrollbar (AllowAutoHide="False") would otherwise overlap row
+         content. Applied as Padding. Single source for the value shared by the indicator catalog /
+         active-indicator / template lists in IndicatorSettingsWindow and FeatureChannelPickerView.
+         See SA_UI_INTERACTION.md section 24 ("Scroll Margin Separation"). -->
+    <Thickness x:Key="ListScrollGutter">0,0,6,0</Thickness>
+
+    <!-- 2. Base Button Theme -->
+    <ControlTheme x:Key="BaseButtonStyle" TargetType="Button">
+        <Setter Property="Foreground" Value="{StaticResource Brush_TextPrimary}"/>
+        <Setter Property="FontSize" Value="16"/>
+        <Setter Property="Padding" Value="15,8"/>
+        <Setter Property="Margin" Value="5"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="BorderBrush" Value="Transparent"/>
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="RenderTransformOrigin" Value="0.5,0.5"/>
+        <Setter Property="Template">
+            <ControlTemplate>
+                <Border x:Name="border"
+                        Background="{TemplateBinding Background}"
+                        BorderThickness="{TemplateBinding BorderThickness}"
+                        BorderBrush="{TemplateBinding BorderBrush}"
+                        CornerRadius="4"
+                        Padding="{TemplateBinding Padding}">
+                        <!-- Scale transform for animations -->
+                        <Border.RenderTransform>
+                            <ScaleTransform />
+                        </Border.RenderTransform>
+                        <!-- Transitions for smooth state changes -->
+                        <Border.Transitions>
+                            <Transitions>
+                                <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.1"/>
+                                <DoubleTransition Property="Opacity" Duration="0:0:0.1"/>
+                            </Transitions>
+                        </Border.Transitions>
+                    <ContentPresenter Name="PART_ContentPresenter"
+                                      Content="{TemplateBinding Content}"
+                                      ContentTemplate="{TemplateBinding ContentTemplate}"
+                                      HorizontalAlignment="Center"
+                                      VerticalAlignment="Center"/>
+                </Border>
+            </ControlTemplate>
+        </Setter>
+
+        <!-- State Selectors (replacing VisualStateManager) -->
+        <Style Selector="^:pointerover /template/ Border#border">
+            <Setter Property="RenderTransform" Value="scale(1.02)"/>
+        </Style>
+
+        <Style Selector="^:pressed /template/ Border#border">
+            <Setter Property="RenderTransform" Value="scale(0.98)"/>
+        </Style>
+
+        <Style Selector="^:disabled /template/ Border#border">
+            <Setter Property="Opacity" Value="0.5"/>
+        </Style>
+        
+        <Style Selector="^:focus /template/ Border#border">
+             <Setter Property="BorderBrush" Value="{StaticResource Brush_FocusVisual}"/>
+        </Style>
+    </ControlTheme>
+
+    <!-- Primary Button Style -->
+    <ControlTheme x:Key="PrimaryButtonStyle" TargetType="Button" BasedOn="{StaticResource BaseButtonStyle}">
+        <Setter Property="Background" Value="{DynamicResource Brush.Button.Background}"/>
+        <Setter Property="Foreground" Value="{DynamicResource Brush.Button.Text}"/>
+        <Style Selector="^:pointerover /template/ Border#border">
+            <Setter Property="Background" Value="{DynamicResource Brush.Button.Hover}"/>
+        </Style>
+        <Style Selector="^:pressed /template/ Border#border">
+            <Setter Property="Background" Value="{DynamicResource Brush.Button.Pressed}"/>
+        </Style>
+    </ControlTheme>
+
+    <!-- Secondary Button Style -->
+    <ControlTheme x:Key="SecondaryButtonStyle" TargetType="Button" BasedOn="{StaticResource BaseButtonStyle}">
+        <Setter Property="Background" Value="{DynamicResource Brush.Button.Background}"/>
+        <Setter Property="Foreground" Value="{DynamicResource Brush.Button.Text}"/>
+        <Style Selector="^:pointerover /template/ Border#border">
+            <Setter Property="Background" Value="{DynamicResource Brush.Button.Hover}"/>
+        </Style>
+        <Style Selector="^:pressed /template/ Border#border">
+            <Setter Property="Background" Value="{DynamicResource Brush.Button.Pressed}"/>
+        </Style>
+    </ControlTheme>
+
+    <!-- Chart Toolbar Toggle Button Style (Checked = theme Button color, Unchecked = weight-matched dark gray) -->
+    <ControlTheme x:Key="ChartToggleButtonStyle" TargetType="ToggleButton" BasedOn="{StaticResource BaseButtonStyle}">
+        <Setter Property="Background" Value="{DynamicResource Brush.Button.InactiveBackground}"/>
+        <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border.Primary}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="Foreground" Value="{DynamicResource Brush.Button.Text}"/>
+        <Style Selector="^:pointerover:not(:checked) /template/ Border#border">
+            <Setter Property="Background" Value="{DynamicResource Brush.Button.InactiveHover}"/>
+        </Style>
+        <Style Selector="^:checked /template/ Border#border">
+            <Setter Property="Background" Value="{DynamicResource Brush.Button.Background}"/>
+        </Style>
+        <Style Selector="^:checked">
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Button.Background}"/>
+        </Style>
+        <Style Selector="^:checked:pointerover /template/ Border#border">
+            <Setter Property="Background" Value="{DynamicResource Brush.Button.Hover}"/>
+        </Style>
+        <Style Selector="^:checked:pressed /template/ Border#border">
+            <Setter Property="Background" Value="{DynamicResource Brush.Button.Pressed}"/>
+        </Style>
+    </ControlTheme>
+
+    <!-- Inactive Mode Button Style (Transparent background with visible border frame) -->
+    <ControlTheme x:Key="InactiveModeButtonStyle" TargetType="Button" BasedOn="{StaticResource BaseButtonStyle}">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border.Primary}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Primary}"/>
+        <Style Selector="^:pointerover /template/ Border#border">
+            <Setter Property="Background" Value="{DynamicResource Brush.Background.Hover}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Accent.Primary}"/>
+        </Style>
+        <Style Selector="^:pressed /template/ Border#border">
+            <Setter Property="Background" Value="{DynamicResource Brush.Background.Tertiary}"/>
+        </Style>
+    </ControlTheme>
+
+    <!-- Active Mode Button Style (Highlighted selection for 123 vs Ind & AND vs OR toggle) -->
+    <ControlTheme x:Key="ActiveModeButtonStyle" TargetType="Button" BasedOn="{StaticResource BaseButtonStyle}">
+        <Setter Property="Background" Value="{DynamicResource Brush.Accent.Primary}"/>
+        <Setter Property="BorderBrush" Value="{DynamicResource Brush.Accent.Primary}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="Foreground" Value="White"/>
+        <Style Selector="^:pointerover /template/ Border#border">
+            <Setter Property="Background" Value="{DynamicResource Brush.Accent.Primary}"/>
+            <Setter Property="Opacity" Value="0.9"/>
+        </Style>
+        <Style Selector="^:pressed /template/ Border#border">
+            <Setter Property="Background" Value="{DynamicResource Brush.Accent.Primary}"/>
+            <Setter Property="Opacity" Value="0.8"/>
+        </Style>
+    </ControlTheme>
+
+    <!-- sa_minimal_fix (Notes tab, "no scrollbar when content overflows" / common UI spec:
+         non-overlay, always-visible, dedicated-width scrollbar): relocated here from
+         DrawingToolSidebar.axaml (its sole original consumer, see DRAWING_TOOLS_SPEC.md's "Non-
+         Overlay ScrollBar Separation") so a second consumer (NoteTimelineView.axaml) can reuse the
+         identical ControlTheme instead of duplicating it - CLAUDE.md's Duplicate Shared Definitions
+         prohibition. Separates Content (Col 0) and VerticalScrollBar (Col 1) into distinct Grid
+         columns so the default FluentTheme's overlay/auto-hide scrollbar (which floats on top of
+         content and collapses to near-invisible when not hovered) never overlaps or hides content -
+         consumers additionally set AllowAutoHide="False" for the scrollbar to stay permanently
+         visible rather than only appearing on hover/drag.
+         PART_ContentPresenter's CanHorizontallyScroll="False": a ScrollContentPresenter with
+         horizontal scrolling still implicitly enabled measures its child with PositiveInfinity width
+         regardless of the Grid's own column width, to compute the true scrollable extent - confirmed
+         via a failing test to break a WrapPanel-based consumer (Notes tab's pending-attachment
+         preview): with infinite width, WrapPanel never wraps and instead lays every item out on one
+         arbitrarily wide row. Disabling horizontal scroll capability (this template only ever exposes
+         a vertical ScrollBar part in the first place) makes the presenter measure its child with the
+         real bounded width, restoring correct wrapping.
+         sa_improve (SAで制約確認 remediation, Finding 3): the Content column was originally
+         ColumnDefinitions="Auto,Auto" here, with a byte-for-byte duplicate ControlTheme
+         ("NonOverlayScrollViewerTheme") carrying the only actual difference - ColumnDefinitions=
+         "*,Auto" - so Notes tab's WrapPanel-based consumers wouldn't inherit the sidebar's Auto
+         content column (which measures a WrapPanel with unconstrained width, breaking wrapping; see
+         above). A headless-UI probe (mounting a ScrollViewer under each theme, nested inside the same
+         "Grid.ColumnDefinitions=Auto,*" the real MainWindow.axaml sidebar column now uses, with the
+         sidebar's actual fixed-width-button-in-a-vertical-StackPanel content shape) proved the two
+         Grid column modes produce byte-identical measured widths for that content: a Star column does
+         not force a non-stretched, fixed-size child to grow, unlike the WrapPanel case above (which
+         fails because it actively measures against "available width", not because Star vs. Auto
+         itself grows fixed content). Consolidated to a single ControlTheme with "*,Auto" - safe for
+         both the sidebar's fixed-width icon buttons AND Notes tab's WrapPanel - eliminating the
+         duplicate definition. -->
+    <ControlTheme x:Key="SidebarScrollViewerTheme" TargetType="ScrollViewer">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="Template">
+            <ControlTemplate>
+                <!-- Background="{TemplateBinding Background}": the default Avalonia ScrollViewer
+                     template paints its own background so the control is hit-testable across its
+                     whole bounds; this scoped template previously omitted it, so the Transparent
+                     Background setter above was dead and a pointer wheel over the blank regions
+                     between content controls never routed through the ScrollViewer subtree (neither
+                     the native OnPointerWheelChanged nor WheelScrollRedirectBehavior fired there).
+                     Binding it restores standard ScrollViewer hit-testing; the value stays
+                     Transparent so nothing is visually painted. -->
+                <Grid ColumnDefinitions="*,Auto"
+                      Background="{TemplateBinding Background}">
+                    <ScrollContentPresenter Name="PART_ContentPresenter"
+                                            Grid.Column="0"
+                                            Content="{TemplateBinding Content}"
+                                            ContentTemplate="{TemplateBinding ContentTemplate}"
+                                            Padding="{TemplateBinding Padding}"
+                                            CanHorizontallyScroll="False">
+                        <ScrollContentPresenter.GestureRecognizers>
+                            <ScrollGestureRecognizer
+                                CanVerticallyScroll="True"
+                                CanHorizontallyScroll="False"
+                                IsScrollInertiaEnabled="{TemplateBinding IsScrollInertiaEnabled}" />
+                        </ScrollContentPresenter.GestureRecognizers>
+                    </ScrollContentPresenter>
+                    <ScrollBar Name="PART_VerticalScrollBar"
+                               Grid.Column="1"
+                               Orientation="Vertical"
+                               AllowAutoHide="{TemplateBinding AllowAutoHide}"
+                               Visibility="{TemplateBinding VerticalScrollBarVisibility}"
+                               Width="10"
+                               MinWidth="10"
+                               Margin="1,0"/>
+                </Grid>
+            </ControlTemplate>
+        </Setter>
+    </ControlTheme>
+
+</ResourceDictionary>

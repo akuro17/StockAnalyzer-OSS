@@ -1,0 +1,234 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:StockAnalyzer.Avalonia.ViewModels"
+             xmlns:controls="using:StockAnalyzer.Avalonia.Views.Controls"
+             xmlns:conv="using:StockAnalyzer.Avalonia.Converters"
+             xmlns:l="clr-namespace:StockAnalyzer.Avalonia.Markup"
+             x:Class="StockAnalyzer.Avalonia.Views.SeasonalityChartView"
+             x:DataType="vm:SeasonalityChartViewModel">
+  <UserControl.Resources>
+    <conv:EnumToLocalizedDisplayNameConverter x:Key="EnumToLocalizedDisplayNameConverter" />
+  </UserControl.Resources>
+
+  <UserControl.Styles>
+    <Style Selector="Button.SettingsGroupIcon">
+      <Setter Property="Width" Value="40" />
+      <Setter Property="Height" Value="40" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="CornerRadius" Value="6" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="FontSize" Value="{DynamicResource TitleFontSize}" />
+    </Style>
+    <Style Selector="Button.SettingsGroupIcon:pointerover">
+      <Setter Property="Background" Value="{DynamicResource Brush.Toolbar.Hover}" />
+    </Style>
+    <Style Selector="Button.SettingsGroupIcon.selected">
+      <Setter Property="Background" Value="{DynamicResource Brush.Selection}" />
+    </Style>
+    <Style Selector="StackPanel.SettingsGroup > TextBlock.groupHeader">
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Secondary}" />
+      <Setter Property="Margin" Value="0,0,0,2" />
+    </Style>
+  </UserControl.Styles>
+
+  <Grid ColumnDefinitions="Auto,Auto,*">
+
+    <!-- Col 0: icon rail -->
+    <Border Grid.Column="0" Background="{DynamicResource Brush.Background.Secondary}"
+            BorderBrush="{DynamicResource Brush.Border}" BorderThickness="0,0,1,0">
+      <StackPanel Orientation="Vertical" Spacing="2" Margin="2,6">
+        <Button Classes="SettingsGroupIcon" Classes.selected="{Binding IsBasicGroupOpen}"
+                Command="{Binding ToggleSettingsGroupCommand}"
+                CommandParameter="{x:Static vm:SeasonalityChartViewModel.SettingsGroupBasic}"
+                ToolTip.Tip="{l:Localize Seasonality_Group_Basic}">
+          <TextBlock Text="&#x2699;" HorizontalAlignment="Center" VerticalAlignment="Center" />
+        </Button>
+        <Button Classes="SettingsGroupIcon" Classes.selected="{Binding IsDisplayGroupOpen}"
+                Command="{Binding ToggleSettingsGroupCommand}"
+                CommandParameter="{x:Static vm:SeasonalityChartViewModel.SettingsGroupDisplay}"
+                ToolTip.Tip="{l:Localize Seasonality_Group_Display}">
+          <TextBlock Text="&#x25A6;" HorizontalAlignment="Center" VerticalAlignment="Center" />
+        </Button>
+        <Button Classes="SettingsGroupIcon" Classes.selected="{Binding IsSeriesGroupOpen}"
+                Command="{Binding ToggleSettingsGroupCommand}"
+                CommandParameter="{x:Static vm:SeasonalityChartViewModel.SettingsGroupSeries}"
+                ToolTip.Tip="{l:Localize Seasonality_Group_Series}">
+          <TextBlock Text="&#x2263;" HorizontalAlignment="Center" VerticalAlignment="Center" />
+        </Button>
+        <Button Classes="SettingsGroupIcon" Classes.selected="{Binding IsYearsGroupOpen}"
+                Command="{Binding ToggleSettingsGroupCommand}"
+                CommandParameter="{x:Static vm:SeasonalityChartViewModel.SettingsGroupYears}"
+                ToolTip.Tip="{l:Localize Seasonality_Group_Years}">
+          <TextBlock Text="&#x1F4C5;" HorizontalAlignment="Center" VerticalAlignment="Center" />
+        </Button>
+      </StackPanel>
+    </Border>
+
+    <!-- Col 1: settings flyout -->
+    <Border Grid.Column="1" Width="300" IsVisible="{Binding IsSettingsFlyoutOpen}"
+            Background="{DynamicResource Brush.Background.Primary}"
+            BorderBrush="{DynamicResource Brush.Border}" BorderThickness="0,0,1,0" Padding="10">
+      <ScrollViewer AllowAutoHide="False" VerticalScrollBarVisibility="Auto"
+                    HorizontalScrollBarVisibility="Disabled" Padding="0,0,12,0">
+        <!-- Improvement C-3: the settings flyout text tracks Settings -> Seasonality Chart -> Base
+             Font Size (VM LegendFontSize). TextElement.FontSize is inherited, so it cascades to the
+             child TextBlocks / input controls. -->
+        <StackPanel Spacing="10" TextElement.FontSize="{Binding LegendFontSize}">
+
+          <!-- Basic: overlay + scale -->
+          <StackPanel Classes="SettingsGroup" Spacing="8" IsVisible="{Binding IsBasicGroupOpen}">
+            <TextBlock Classes="groupHeader" Text="{l:Localize Seasonality_Group_Basic}" />
+            <StackPanel Spacing="3">
+              <TextBlock Text="{l:Localize Seasonality_Years}" />
+              <NumericUpDown Minimum="{Binding MinYears}" Maximum="{Binding MaxYears}" Increment="1"
+                             FormatString="0" Value="{Binding YearsToOverlay}" />
+            </StackPanel>
+            <StackPanel Spacing="3">
+              <TextBlock Text="{l:Localize Seasonality_BaseRadius}" />
+              <NumericUpDown Minimum="0" Value="{Binding ManualBaseRadius}" />
+            </StackPanel>
+            <StackPanel Spacing="3">
+              <TextBlock Text="{l:Localize Seasonality_ScaleFactor}" />
+              <NumericUpDown Minimum="0" Value="{Binding ManualScaleFactor}" />
+            </StackPanel>
+            <TextBlock Text="{l:Localize Seasonality_AutoScaleHint}" TextWrapping="Wrap"
+                       Foreground="{DynamicResource Brush.Text.Secondary}" />
+          </StackPanel>
+
+          <!-- Display: display mode + grid + mean path -->
+          <StackPanel Classes="SettingsGroup" Spacing="8" IsVisible="{Binding IsDisplayGroupOpen}">
+            <TextBlock Classes="groupHeader" Text="{l:Localize Seasonality_Group_Display}" />
+            <StackPanel Spacing="3">
+              <TextBlock Text="{l:Localize Seasonality_DisplayModeHeader}" />
+              <ComboBox HorizontalAlignment="Stretch"
+                        ItemsSource="{Binding DisplayModes}"
+                        SelectedItem="{Binding DisplayMode, Mode=TwoWay}">
+                <ComboBox.ItemTemplate>
+                  <DataTemplate>
+                    <TextBlock Text="{Binding Converter={StaticResource EnumToLocalizedDisplayNameConverter}}" />
+                  </DataTemplate>
+                </ComboBox.ItemTemplate>
+              </ComboBox>
+            </StackPanel>
+            <StackPanel Spacing="3">
+              <TextBlock Text="{l:Localize Seasonality_GridOpacity}" />
+              <NumericUpDown Minimum="10" Maximum="100" Increment="5" FormatString="0" Value="{Binding GridOpacityPercent}" />
+            </StackPanel>
+            <CheckBox Content="{l:Localize Seasonality_GridDashed}" IsChecked="{Binding GridDashed}" />
+            <CheckBox Content="{l:Localize Seasonality_UseVisibleRangeOrigin}" IsChecked="{Binding UseVisibleRangeOrigin}" />
+            <CheckBox Content="{l:Localize Seasonality_ShowMeanPath}" IsChecked="{Binding ShowMeanPath}"
+                      IsEnabled="{Binding IsMeanPathSettingEnabled}" />
+            <TextBlock Text="{l:Localize Seasonality_MeanPathWarning}" IsVisible="{Binding ShowMeanPath}"
+                       Foreground="{DynamicResource Brush.Semantic.Warning}" TextWrapping="Wrap" />
+          </StackPanel>
+
+          <!-- Series: per-series radius mode -->
+          <StackPanel Classes="SettingsGroup" Spacing="8" IsVisible="{Binding IsSeriesGroupOpen}">
+            <TextBlock Classes="groupHeader" Text="{l:Localize Seasonality_Group_Series}" />
+
+            <!-- Per-series radius mode -->
+            <TextBlock Text="{l:Localize Seasonality_SeriesModeHeader}"
+                       Foreground="{DynamicResource Brush.Text.Secondary}" />
+            <ItemsControl ItemsSource="{Binding SeriesRows}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:SeasonalitySeriesRow">
+                  <StackPanel Spacing="2" Margin="0,2">
+                    <ComboBox HorizontalAlignment="Stretch"
+                              ItemsSource="{Binding RadiusModes}"
+                              SelectedItem="{Binding RadiusMode, Mode=TwoWay}">
+                      <ComboBox.ItemTemplate>
+                        <DataTemplate>
+                          <TextBlock Text="{Binding Converter={StaticResource EnumToLocalizedDisplayNameConverter}}" />
+                        </DataTemplate>
+                      </ComboBox.ItemTemplate>
+                    </ComboBox>
+                  </StackPanel>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <TextBlock Text="{l:Localize Seasonality_SeriesEmptyHint}" IsVisible="{Binding !HasSeriesRows}"
+                       Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap" />
+          </StackPanel>
+
+          <!-- Years: per-year visibility / colour / line-thickness override (requirement C4) -->
+          <StackPanel Classes="SettingsGroup" Spacing="8" IsVisible="{Binding IsYearsGroupOpen}">
+            <TextBlock Classes="groupHeader" Text="{l:Localize Seasonality_Group_Years}" />
+            <ItemsControl ItemsSource="{Binding YearRows}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:SeasonalityYearRow">
+                  <!-- Year label sizes to its 4-digit text (Auto); the thickness field takes the
+                       remaining width (*) so its decimals never clip, including when the flyout font
+                       (LegendFontSize, improvement C-3) is enlarged. -->
+                  <Grid ColumnDefinitions="Auto,Auto,Auto,*" ColumnSpacing="6" Margin="0,2">
+                    <CheckBox Grid.Column="0" MinWidth="0" IsChecked="{Binding IsVisible}"
+                              VerticalAlignment="Center" />
+                    <Border Grid.Column="1" Width="12" Height="12" CornerRadius="2"
+                            VerticalAlignment="Center" Background="{Binding SwatchBrush}" />
+                    <TextBlock Grid.Column="2" VerticalAlignment="Center" Text="{Binding CalendarYear}" />
+                    <NumericUpDown Grid.Column="3" Value="{Binding LineThicknessOverride}"
+                                   Minimum="{Binding MinLineThickness}" Maximum="{Binding MaxLineThickness}"
+                                   Increment="{Binding LineThicknessStep}" FormatString="0.0"
+                                   Watermark="{Binding CommonLineThicknessText}" />
+                  </Grid>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <TextBlock Text="{l:Localize Seasonality_YearsEmptyHint}" IsVisible="{Binding !HasYearRows}"
+                       Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap" />
+          </StackPanel>
+
+        </StackPanel>
+      </ScrollViewer>
+    </Border>
+
+    <!-- Col 2: status line (empty / loading / error only) + single display area -->
+    <Grid Grid.Column="2" RowDefinitions="Auto,*" Margin="10">
+      <TextBlock Text="{Binding StatusText}" IsVisible="{Binding HasStatusText}"
+                 Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap" />
+
+      <!-- Requirement C1: the chart area draws no outer frame. Background stays Transparent and the
+           PointerPressed handler stays so a click on the plot still collapses the settings flyout. -->
+      <Border Grid.Row="1" Margin="0,8,0,0" BorderThickness="0"
+              ClipToBounds="True" Background="Transparent" PointerPressed="OnPlotPointerPressed">
+        <Panel>
+          <controls:SeasonalityPolarPlotControl Result="{Binding Result}"
+                                                GridOpacityPercent="{Binding GridOpacityPercent}"
+                                                GridDashed="{Binding GridDashed}"
+                                                UseVisibleRangeOrigin="{Binding UseVisibleRangeOrigin}"
+                                                YearPalette="{Binding YearPalette}"
+                                                YearDrawStates="{Binding YearDrawStates}"
+                                                LegendFontSize="{Binding LegendFontSize}"
+                                                AxisFontSize="{Binding AxisFontSize}"
+                                                ReturnPositiveColor="{Binding ReturnPositiveColor}"
+                                                ReturnNegativeColor="{Binding ReturnNegativeColor}"
+                                                ReturnNeutralColor="{Binding ReturnNeutralColor}"
+                                                EndpointMarkerRadius="{Binding EndpointMarkerRadius}"
+                                                IsVisible="{Binding IsPolarClock}" />
+          <controls:SeasonalityLinearPlotControl Result="{Binding Result}"
+                                                 GridOpacityPercent="{Binding GridOpacityPercent}"
+                                                 GridDashed="{Binding GridDashed}"
+                                                 YearPalette="{Binding YearPalette}"
+                                                 YearDrawStates="{Binding YearDrawStates}"
+                                                 LegendFontSize="{Binding LegendFontSize}"
+                                                 AxisFontSize="{Binding AxisFontSize}"
+                                                 ReturnPositiveColor="{Binding ReturnPositiveColor}"
+                                                 ReturnNegativeColor="{Binding ReturnNegativeColor}"
+                                                 ReturnNeutralColor="{Binding ReturnNeutralColor}"
+                                                 IsVisible="{Binding IsLinearOverlay}" />
+          <!-- Fills the display area so it is a real scroll viewport (bars get their own gutter);
+               the inner table stays pinned top-left, so a wide table scrolls instead of the
+               vertical scrollbar overlapping the average column (S4c). -->
+          <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
+                        IsVisible="{Binding IsMonthlyReturnsTable}">
+            <controls:SeasonalityMonthlyReturnsTableView DataContext="{Binding MonthlyReturns}" />
+          </ScrollViewer>
+        </Panel>
+      </Border>
+    </Grid>
+  </Grid>
+</UserControl>

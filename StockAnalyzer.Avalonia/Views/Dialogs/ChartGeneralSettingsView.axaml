@@ -1,0 +1,126 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:StockAnalyzer.Avalonia.ViewModels.Dialogs"
+             xmlns:l="using:StockAnalyzer.Avalonia.Markup"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="600"
+             x:Class="StockAnalyzer.Avalonia.Views.Dialogs.ChartGeneralSettingsView"
+             x:DataType="vm:ChartGeneralSettingsViewModel">
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Spacing="20" Margin="16">
+
+            <!-- Section: Crosshair Settings -->
+            <Border Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="{l:Localize Settings_Chart_CrosshairSettings}" FontSize="{DynamicResource BaseFontSize}" FontWeight="Bold" Foreground="{DynamicResource Brush.Accent.Primary}"/>
+                    
+                    <StackPanel Spacing="12">
+                        <Grid ColumnDefinitions="*, Auto">
+                            <TextBlock Text="{l:Localize Settings_Chart_CrosshairLabel}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            <ToggleSwitch Grid.Column="1" IsChecked="{Binding CrosshairLabelVisible}" OnContent="" OffContent=""/>
+                        </Grid>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Section: Ghost Projection Settings -->
+            <Border Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="{l:Localize Settings_Chart_GhostSettings}" FontSize="{DynamicResource BaseFontSize}" FontWeight="Bold" Foreground="{DynamicResource Brush.Accent.Primary}"/>
+                    
+                    <StackPanel Spacing="12">
+                        <Grid ColumnDefinitions="*, Auto">
+                            <TextBlock Text="{l:Localize Settings_Chart_Item_GhostFontSize}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            <NumericUpDown Grid.Column="1" 
+                                           Value="{Binding GhostProjectionFontSize}" 
+                                           Minimum="8.0" 
+                                           Maximum="32.0" 
+                                           Increment="1.0" 
+                                           FormatString="0.0"
+                                           Width="120" 
+                                           Height="32"/>
+                        </Grid>
+
+                        <Grid ColumnDefinitions="*, Auto">
+                            <TextBlock Text="{l:Localize Settings_Chart_Item_ShowLabelsOnHoverOnly}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            <ToggleSwitch Grid.Column="1" IsChecked="{Binding ShowGhostLabelsOnHoverOnly}" OnContent="" OffContent=""/>
+                        </Grid>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Section: Interaction Settings -->
+            <Border Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="{l:Localize Settings_Chart_InteractionSettings}" FontSize="{DynamicResource BaseFontSize}" FontWeight="Bold" Foreground="{DynamicResource Brush.Accent.Primary}"/>
+                    
+                    <StackPanel Spacing="12">
+                        <Grid ColumnDefinitions="*, Auto">
+                            <TextBlock Text="{l:Localize Settings_Chart_Item_ShowFloatingTooltip}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            <ToggleSwitch Grid.Column="1" IsChecked="{Binding ShowFloatingTooltip}" OnContent="" OffContent=""/>
+                        </Grid>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Section: Layout & Visuals -->
+            <Border Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="{l:Localize Settings_Chart_Layout}" FontSize="{DynamicResource BaseFontSize}" FontWeight="Bold" Foreground="{DynamicResource Brush.Accent.Primary}"/>
+                    
+                    <StackPanel Spacing="12">
+                        <Grid RowDefinitions="Auto, Auto, Auto" ColumnDefinitions="*, 120">
+                            <!-- Top Margin -->
+                            <TextBlock Grid.Row="0" Grid.Column="0" Text="{l:Localize Settings_Chart_TopMargin}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            <NumericUpDown Grid.Row="0" Grid.Column="1" Value="{Binding TopMargin}" Minimum="0" Maximum="200" Increment="1" FormatString="0"/>
+                            
+                            <!-- Bottom Margin -->
+                            <TextBlock Grid.Row="1" Grid.Column="0" Text="{l:Localize Settings_Chart_BottomMargin}" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,8,0,0"/>
+                            <NumericUpDown Grid.Row="1" Grid.Column="1" Value="{Binding BottomMargin}" Minimum="0" Maximum="200" Increment="1" FormatString="0" Margin="0,8,0,0"/>
+                            
+                            <!-- Right Margin -->
+                            <TextBlock Grid.Row="2" Grid.Column="0" Text="{l:Localize Settings_Chart_RightMargin}" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,8,0,0"/>
+                            <NumericUpDown Grid.Row="2" Grid.Column="1" Value="{Binding RightMargin}" Minimum="0" Maximum="200" Increment="1" FormatString="0" Margin="0,8,0,0"/>
+                        </Grid>
+
+                        <Separator Background="{DynamicResource Brush.Border.Primary}" Height="1" Margin="0,8"/>
+
+                        <Grid ColumnDefinitions="*, Auto">
+                            <TextBlock Text="{l:Localize Settings_Chart_ShowSubWindow}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            <ToggleSwitch Grid.Column="1" IsChecked="{Binding IsSubWindowVisible}" OnContent="" OffContent=""/>
+                        </Grid>
+
+                        <Separator Background="{DynamicResource Brush.Border.Primary}" Height="1" Margin="0,8"/>
+
+                        <Grid ColumnDefinitions="*, Auto">
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="{l:Localize Settings_Chart_Item_EnableExtendedLookback}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                <TextBlock Text="{l:Localize Settings_Chart_Item_EnableExtendedLookback_Desc}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                            </StackPanel>
+                            <ToggleSwitch Grid.Column="1" IsChecked="{Binding EnableExtendedLookbackForIndicators}" OnContent="" OffContent="" VerticalAlignment="Top"/>
+                        </Grid>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

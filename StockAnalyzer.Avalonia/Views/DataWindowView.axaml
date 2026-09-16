@@ -1,0 +1,506 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:StockAnalyzer.Avalonia.ViewModels"
+             xmlns:conv="using:StockAnalyzer.Avalonia.Converters"
+             xmlns:l="clr-namespace:StockAnalyzer.Avalonia.Markup;assembly=StockAnalyzer.Avalonia"
+             mc:Ignorable="d" d:DesignWidth="250" d:DesignHeight="400"
+             x:Class="StockAnalyzer.Avalonia.Views.DataWindowView"
+             x:DataType="vm:DataWindowViewModel"
+             Background="Transparent"
+             BorderThickness="0"
+             Padding="4">
+    
+    <Design.DataContext>
+        <vm:DataWindowViewModel/>
+    </Design.DataContext>
+    
+    <UserControl.Resources>
+        <conv:RawColorToBrushConverter x:Key="RawColorToBrushConverter"/>
+        <conv:ConditionalColorToBrushConverter x:Key="ConditionalColorToBrushConverter"/>
+        <!-- Vector path data from StockAnalyzer.Avalonia/Assets/Icons/rotate_left.svg -->
+        <StreamGeometry x:Key="RotateLeftIconData">M440-80q-50-5-96-24.5T256-156l56-58q29 21 61.5 34t66.5 18v82Zm80 0v-82q104-15 172-93.5T760-438q0-117-81.5-198.5T480-718h-8l64 64-56 56-160-160 160-160 56 58-62 62h6q75 0 140.5 28.5t114 77q48.5 48.5 77 114T840-438q0 137-91 238.5T520-80ZM198-214q-32-42-51.5-88T122-398h82q5 34 18 66.5t34 61.5l-58 56Zm-76-264q6-51 25-98t51-86l58 56q-21 29-34 61.5T204-478h-82Z</StreamGeometry>
+        <!-- Vector path data from StockAnalyzer.Avalonia/Assets/Icons/rotate_right.svg -->
+        <StreamGeometry x:Key="RotateRightIconData">M522-80v-82q34-5 66.5-18t61.5-34l56 58q-42 32-88 51.5T522-80Zm-80 0Q304-98 213-199.5T122-438q0-75 28.5-140.5t77-114q48.5-48.5 114-77T482-798h6l-62-62 56-58 160 160-160 160-56-56 64-64h-8q-117 0-198.5 81.5T202-438q0 104 68 182.5T442-162v82Zm322-134-58-56q21-29 34-61.5t18-66.5h82q-5 50-24.5 96T764-214Zm76-264h-82q-5-34-18-66.5T706-606l58-56q32 39 51 86t25 98Z</StreamGeometry>
+    </UserControl.Resources>
+
+    <UserControl.Styles>
+        <Style Selector="Border.PremiumCard">
+            <Setter Property="Padding" Value="12,6"/>
+        </Style>
+        <Style Selector="Button.NavButton">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="4"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Width" Value="28"/>
+            <Setter Property="Height" Value="28"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="Button.NavButton:disabled /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+        </Style>
+        <Style Selector="Button.NavButton:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource Brush.Background.Tertiary}"/>
+        </Style>
+        <Style Selector="Button.NavButton:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource Brush.Background.Secondary}"/>
+        </Style>
+        <Style Selector="Button.NameButton">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+        </Style>
+        <Style Selector="Button.NameButton:disabled /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+        </Style>
+        <Style Selector="Button.NameButton:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent"/>
+        </Style>
+        <Style Selector="Button.NameButton:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent"/>
+        </Style>
+    </UserControl.Styles>
+
+    <Grid RowDefinitions="Auto,Auto,*">
+        
+        <!-- Top Navigation Bar: Previous, Category Dropdown, Next inside a Premium Card -->
+        <Border Grid.Row="0" Classes="PremiumCard" Margin="0,0,0,8" Padding="6,4">
+            <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
+                <!-- Previous Button (Rotate Left) -->
+                <Button Grid.Column="0" Classes="NavButton"
+                        Command="{Binding NavigatePreviousCategoryCommand}"
+                        ToolTip.Tip="{l:Localize DataWindow_Nav_Previous}">
+                    <PathIcon Data="{StaticResource RotateLeftIconData}"
+                              Width="14" Height="14"
+                              Foreground="{DynamicResource Brush.Foreground.Primary}"/>
+                </Button>
+
+                <!-- Category Dropdown -->
+                <ComboBox Grid.Column="1"
+                          ItemsSource="{Binding AvailableCategories}"
+                          SelectedItem="{Binding SelectedCategory}"
+                          HorizontalAlignment="Stretch"
+                          Margin="4,0"
+                          VerticalAlignment="Center">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate x:DataType="vm:DataWindowCategoryItem">
+                            <TextBlock Text="{Binding DisplayName}" VerticalAlignment="Center"/>
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
+
+                <!-- Next Button (Rotate Right) -->
+                <Button Grid.Column="2" Classes="NavButton"
+                        Command="{Binding NavigateNextCategoryCommand}"
+                        ToolTip.Tip="{l:Localize DataWindow_Nav_Next}">
+                    <PathIcon Data="{StaticResource RotateRightIconData}"
+                              Width="14" Height="14"
+                              Foreground="{DynamicResource Brush.Foreground.Primary}"/>
+                </Button>
+            </Grid>
+        </Border>
+
+        <!-- Header: Ticker Symbol and Date inside a Premium Card -->
+        <Border Grid.Row="1" Classes="PremiumCard" Margin="0,0,0,8">
+            <Grid ColumnDefinitions="*,Auto">
+                <!-- Symbol -->
+                <TextBlock Grid.Column="0" 
+                           Text="{Binding Symbol}" 
+                           FontFamily="Consolas, Roboto Mono, monospace"
+                           FontSize="{DynamicResource TitleFontSize}" 
+                           FontWeight="Bold"
+                           Foreground="{DynamicResource Brush.Foreground.Primary}"
+                           VerticalAlignment="Center"/>
+                <!-- Date -->
+                <TextBlock Grid.Column="1" 
+                           Text="{Binding DateText}" 
+                           FontSize="{DynamicResource DetailFontSize}" 
+                           Foreground="{DynamicResource Brush.Foreground.Secondary}"
+                           VerticalAlignment="Center"
+                           HorizontalAlignment="Right"/>
+            </Grid>
+        </Border>
+ 
+        <!-- Row 2: Category Content Area -->
+        <Grid Grid.Row="2">
+            <!-- 1. Market Data Panel -->
+            <Border Classes="PremiumCard" Margin="0,0,0,0" IsVisible="{Binding IsMarketDataSelected}">
+                <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+                    <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto">
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="{l:Localize Col_Open}" Foreground="{DynamicResource Brush.Foreground.Secondary}" Margin="0,0,8,4" IsVisible="{Binding IsOpenVisible}"/>
+                        <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding OpenText}" Foreground="{DynamicResource Brush.Foreground.Primary}" HorizontalAlignment="Right" Margin="0,0,8,4" IsVisible="{Binding IsOpenVisible}"/>
+                        
+                        <TextBlock Grid.Row="1" Grid.Column="0" Text="{l:Localize Col_High}" Foreground="{DynamicResource Brush.Foreground.Secondary}" Margin="0,0,8,4" IsVisible="{Binding IsHighVisible}"/>
+                        <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding HighText}" Foreground="{DynamicResource Brush.Foreground.Primary}" HorizontalAlignment="Right" Margin="0,0,8,4" IsVisible="{Binding IsHighVisible}"/>
+                        
+                        <TextBlock Grid.Row="2" Grid.Column="0" Text="{l:Localize Col_Low}" Foreground="{DynamicResource Brush.Foreground.Secondary}" Margin="0,0,8,4" IsVisible="{Binding IsLowVisible}"/>
+                        <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding LowText}" Foreground="{DynamicResource Brush.Foreground.Primary}" HorizontalAlignment="Right" Margin="0,0,8,4" IsVisible="{Binding IsLowVisible}"/>
+                        
+                        <TextBlock Grid.Row="3" Grid.Column="0" Text="{l:Localize Col_Price}" Foreground="{DynamicResource Brush.Foreground.Secondary}" Margin="0,0,8,4" IsVisible="{Binding IsCloseVisible}"/>
+                        <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding CloseText}" Foreground="{DynamicResource Brush.Foreground.Primary}" HorizontalAlignment="Right" Margin="0,0,8,4" IsVisible="{Binding IsCloseVisible}"/>
+
+                        <TextBlock Grid.Row="4" Grid.Column="0" Text="{l:Localize Col_Change}" Foreground="{DynamicResource Brush.Foreground.Secondary}" Margin="0,0,8,4" IsVisible="{Binding YesterdayChangeText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                        <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding YesterdayChangeText}" Foreground="{Binding YesterdayChangeColor, Converter={StaticResource RawColorToBrushConverter}}" HorizontalAlignment="Right" Margin="0,0,8,4" IsVisible="{Binding YesterdayChangeText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+
+                        <TextBlock Grid.Row="5" Grid.Column="0" Text="{l:Localize Col_Ratio}" Foreground="{DynamicResource Brush.Foreground.Secondary}" Margin="0,0,8,4" IsVisible="{Binding YesterdayChangeRatioText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                        <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding YesterdayChangeRatioText}" Foreground="{Binding YesterdayChangeColor, Converter={StaticResource RawColorToBrushConverter}}" HorizontalAlignment="Right" Margin="0,0,8,4" IsVisible="{Binding YesterdayChangeRatioText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                        
+                        <TextBlock Grid.Row="6" Grid.Column="0" Text="{l:Localize Col_Volume}" Foreground="{DynamicResource Brush.Foreground.Secondary}" Margin="0,0,8,4" IsVisible="{Binding IsVolumeVisible}"/>
+                        <TextBlock Grid.Row="6" Grid.Column="1" Text="{Binding VolumeText}" Foreground="{DynamicResource Brush.Foreground.Primary}" HorizontalAlignment="Right" Margin="0,0,8,4" IsVisible="{Binding IsVolumeVisible}"/>
+                        
+                        <TextBlock Grid.Row="7" Grid.Column="0" Text="Count:" Foreground="{DynamicResource Brush.Foreground.Secondary}" Margin="0,0,8,4"
+                                    IsVisible="{Binding ThreeLineBreakCountText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                        <TextBlock Grid.Row="7" Grid.Column="1" Text="{Binding ThreeLineBreakCountText}" Foreground="{DynamicResource Brush.Foreground.Primary}" HorizontalAlignment="Right" Margin="0,0,8,4"
+                                    IsVisible="{Binding ThreeLineBreakCountText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                        
+                        <TextBlock Grid.Row="8" Grid.Column="0" Text="Move:" Foreground="{DynamicResource Brush.Foreground.Secondary}" Margin="0,0,8,4"
+                                    IsVisible="{Binding KagiReversalText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                        <TextBlock Grid.Row="8" Grid.Column="1" Text="{Binding KagiReversalText}" Foreground="{DynamicResource Brush.Foreground.Primary}" HorizontalAlignment="Right" Margin="0,0,8,4"
+                                    IsVisible="{Binding KagiReversalText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+
+                        <TextBlock Grid.Row="9" Grid.Column="0" Text="Reversal:" Foreground="{DynamicResource Brush.Foreground.Secondary}" Margin="0,0,8,4"
+                                    IsVisible="{Binding ThreeLineBreakReversalText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                        <TextBlock Grid.Row="9" Grid.Column="1" Text="{Binding ThreeLineBreakReversalText}" Foreground="{DynamicResource Brush.Foreground.Primary}" HorizontalAlignment="Right" Margin="0,0,8,4"
+                                    IsVisible="{Binding ThreeLineBreakReversalText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+
+                        <TextBlock Grid.Row="10" Grid.Column="0" Text="Count:" Foreground="{DynamicResource Brush.Foreground.Secondary}" Margin="0,0,8,4"
+                                    IsVisible="{Binding RenkoCountText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                        <TextBlock Grid.Row="10" Grid.Column="1" Text="{Binding RenkoCountText}" Foreground="{DynamicResource Brush.Foreground.Primary}" HorizontalAlignment="Right" Margin="0,0,8,4"
+                                    IsVisible="{Binding RenkoCountText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+
+                        <TextBlock Grid.Row="11" Grid.Column="0" Text="Reversal:" Foreground="{DynamicResource Brush.Foreground.Secondary}" Margin="0,0,8,4"
+                                    IsVisible="{Binding RenkoReversalText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                        <TextBlock Grid.Row="11" Grid.Column="1" Text="{Binding RenkoReversalText}" Foreground="{DynamicResource Brush.Foreground.Primary}" HorizontalAlignment="Right" Margin="0,0,8,4"
+                                    IsVisible="{Binding RenkoReversalText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+
+                        <TextBlock Grid.Row="12" Grid.Column="0" Text="Update:" Foreground="{DynamicResource Brush.Foreground.Secondary}" Margin="0,0,8,4"
+                                    IsVisible="{Binding RenkoUpdateText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                        <TextBlock Grid.Row="12" Grid.Column="1" Text="{Binding RenkoUpdateText}" Foreground="{DynamicResource Brush.Foreground.Primary}" HorizontalAlignment="Right" Margin="0,0,8,4"
+                                    IsVisible="{Binding RenkoUpdateText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+
+                        <TextBlock Grid.Row="13" Grid.Column="0" Text="Count:" Foreground="{DynamicResource Brush.Foreground.Secondary}" Margin="0,0,8,4"
+                                    IsVisible="{Binding PointAndFigureCountText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                        <TextBlock Grid.Row="13" Grid.Column="1" Text="{Binding PointAndFigureCountText}" Foreground="{DynamicResource Brush.Foreground.Primary}" HorizontalAlignment="Right" Margin="0,0,8,4"
+                                    IsVisible="{Binding PointAndFigureCountText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+
+                        <TextBlock Grid.Row="14" Grid.Column="0" Text="Value:" Foreground="{DynamicResource Brush.Foreground.Secondary}" Margin="0,0,8,4"
+                                    IsVisible="{Binding ReverseWatchValueText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                        <TextBlock Grid.Row="14" Grid.Column="1" Text="{Binding ReverseWatchValueText}" Foreground="{DynamicResource Brush.Foreground.Primary}" HorizontalAlignment="Right" Margin="0,0,8,4"
+                                    IsVisible="{Binding ReverseWatchValueText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+
+                        <TextBlock Grid.Row="15" Grid.Column="0" Text="VolAvg:" Foreground="{DynamicResource Brush.Foreground.Secondary}" Margin="0,0,8,4"
+                                    IsVisible="{Binding ReverseWatchVolumeText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                        <TextBlock Grid.Row="15" Grid.Column="1" Text="{Binding ReverseWatchVolumeText}" Foreground="{DynamicResource Brush.Foreground.Primary}" HorizontalAlignment="Right" Margin="0,0,8,4"
+                                    IsVisible="{Binding ReverseWatchVolumeText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                    </Grid>
+                </ScrollViewer>
+            </Border>
+
+            <!-- 2. Technical Indicators Panel -->
+            <Border Classes="PremiumCard" Margin="0,0,0,0" IsVisible="{Binding IsIndicatorsSelected}">
+                <ScrollViewer HorizontalScrollBarVisibility="Disabled" Padding="0,0,18,0">
+                    <ItemsControl ItemsSource="{Binding IndicatorItems}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:DataWindowItemViewModel">
+                                <StackPanel Margin="0,0,0,8">
+                                    <Grid ColumnDefinitions="24,12,*" Background="Transparent">
+                                        <Grid.ContextMenu>
+                                            <ContextMenu x:DataType="vm:DataWindowItemViewModel">
+                                                <MenuItem Header="Show All in Group" 
+                                                          Command="{Binding ToggleGroupAllOnCommand}" 
+                                                          CommandParameter="{Binding}"/>
+                                                <MenuItem Header="Hide All in Group" 
+                                                          Command="{Binding ToggleGroupAllOffCommand}" 
+                                                          CommandParameter="{Binding}"/>
+                                            </ContextMenu>
+                                        </Grid.ContextMenu>
+
+                                        <CheckBox Grid.Column="0" 
+                                                   IsChecked="{Binding IsEnabled, Mode=TwoWay}"
+                                                   MinWidth="0" Padding="0" Margin="0"
+                                                   VerticalAlignment="Center"
+                                                   IsVisible="{Binding ShowCheckbox}"/>
+
+                                        <ToggleButton Grid.Column="1" 
+                                                       IsChecked="{Binding IsExpanded}" 
+                                                       IsVisible="{Binding HasChildren}"
+                                                       Padding="0" Margin="0"
+                                                       Width="10" Height="10"
+                                                       Background="Transparent" BorderThickness="0"
+                                                       VerticalAlignment="Center">
+                                            <Path HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                  Fill="{DynamicResource Brush.Foreground.Secondary}">
+                                                <Path.Data>
+                                                    <Binding Path="IsExpanded">
+                                                        <Binding.Converter>
+                                                            <conv:BoolToPathDataConverter ExpandedPath="M 1 2 L 7 2 L 4 6 Z" CollapsedPath="M 2 1 L 6 4 L 2 7 Z"/>
+                                                        </Binding.Converter>
+                                                    </Binding>
+                                                </Path.Data>
+                                            </Path>
+                                        </ToggleButton>
+
+                                        <DockPanel Grid.Column="2" LastChildFill="True">
+                                            <!-- Value on the right -->
+                                            <TextBlock DockPanel.Dock="Right" 
+                                                       Text="{Binding Value}" 
+                                                       FontWeight="Bold"
+                                                       Margin="8,0,8,0"
+                                                       VerticalAlignment="Center"
+                                                       IsVisible="{Binding !HasChildren}">
+                                                <TextBlock.Foreground>
+                                                    <MultiBinding Converter="{StaticResource ConditionalColorToBrushConverter}">
+                                                        <Binding Path="Color"/>
+                                                        <Binding Path="UseCustomColor"/>
+                                                        <DynamicResource ResourceKey="Brush.Foreground.Primary"/>
+                                                    </MultiBinding>
+                                                </TextBlock.Foreground>
+                                            </TextBlock>
+
+                                            <Button Classes="NameButton"
+                                                    Command="{Binding OpenSettingsCommand}"
+                                                    CommandParameter="{Binding}"
+                                                    IsEnabled="{Binding OpenSettingsCommand, Converter={x:Static ObjectConverters.IsNotNull}}">
+                                                <TextBlock Text="{Binding Name}" 
+                                                           FontWeight="SemiBold"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           Margin="0,0,8,0"
+                                                           VerticalAlignment="Center">
+                                                    <TextBlock.Foreground>
+                                                        <MultiBinding Converter="{StaticResource ConditionalColorToBrushConverter}">
+                                                            <Binding Path="Color"/>
+                                                            <Binding Path="UseCustomColor"/>
+                                                            <DynamicResource ResourceKey="Brush.Foreground.Secondary"/>
+                                                        </MultiBinding>
+                                                    </TextBlock.Foreground>
+                                                </TextBlock>
+                                                <ToolTip.Tip>
+                                                    <StackPanel>
+                                                        <DockPanel IsVisible="{Binding !HasChildren}">
+                                                            <TextBlock Text="{Binding Value}" DockPanel.Dock="Right" FontSize="{DynamicResource DetailFontSize}" Margin="8,0,0,0">
+                                                                <TextBlock.Foreground>
+                                                                    <MultiBinding Converter="{StaticResource ConditionalColorToBrushConverter}">
+                                                                        <Binding Path="Color"/>
+                                                                        <Binding Path="UseCustomColor"/>
+                                                                        <DynamicResource ResourceKey="Brush.Foreground.Primary"/>
+                                                                    </MultiBinding>
+                                                                </TextBlock.Foreground>
+                                                            </TextBlock>
+                                                            <TextBlock Text="{Binding Name}" FontSize="{DynamicResource DetailFontSize}">
+                                                                <TextBlock.Foreground>
+                                                                    <MultiBinding Converter="{StaticResource ConditionalColorToBrushConverter}">
+                                                                        <Binding Path="Color"/>
+                                                                        <Binding Path="UseCustomColor"/>
+                                                                        <DynamicResource ResourceKey="Brush.Foreground.Secondary"/>
+                                                                    </MultiBinding>
+                                                                </TextBlock.Foreground>
+                                                            </TextBlock>
+                                                        </DockPanel>
+                                                        <ItemsControl ItemsSource="{Binding Children}" IsVisible="{Binding HasChildren}">
+                                                            <ItemsControl.ItemTemplate>
+                                                                <DataTemplate x:DataType="vm:DataWindowItemViewModel">
+                                                                    <DockPanel Margin="0,2">
+                                                                        <TextBlock Text="{Binding Value}" DockPanel.Dock="Right" FontSize="{DynamicResource DetailFontSize}" Margin="12,0,0,0">
+                                                                            <TextBlock.Foreground>
+                                                                                <MultiBinding Converter="{StaticResource ConditionalColorToBrushConverter}">
+                                                                                    <Binding Path="Color"/>
+                                                                                    <Binding Path="UseCustomColor"/>
+                                                                                    <DynamicResource ResourceKey="Brush.Foreground.Primary"/>
+                                                                                </MultiBinding>
+                                                                            </TextBlock.Foreground>
+                                                                        </TextBlock>
+                                                                        <TextBlock Text="{Binding Name}" FontSize="{DynamicResource DetailFontSize}">
+                                                                            <TextBlock.Foreground>
+                                                                                <MultiBinding Converter="{StaticResource ConditionalColorToBrushConverter}">
+                                                                                    <Binding Path="Color"/>
+                                                                                    <Binding Path="UseCustomColor"/>
+                                                                                    <DynamicResource ResourceKey="Brush.Foreground.Secondary"/>
+                                                                                </MultiBinding>
+                                                                            </TextBlock.Foreground>
+                                                                        </TextBlock>
+                                                                    </DockPanel>
+                                                                </DataTemplate>
+                                                            </ItemsControl.ItemTemplate>
+                                                        </ItemsControl>
+                                                    </StackPanel>
+                                                </ToolTip.Tip>
+                                            </Button>
+                                        </DockPanel>
+                                    </Grid>
+
+                                    <!-- Nested Items for multi-value indicators -->
+                                    <ItemsControl ItemsSource="{Binding Children}" 
+                                                   IsVisible="{Binding IsExpanded}"
+                                                   Margin="18,4,0,0">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="vm:DataWindowItemViewModel">
+                                                <Grid ColumnDefinitions="24,4,*" Margin="0,0,0,4" Background="Transparent">
+                                                    <CheckBox Grid.Column="0" 
+                                                              IsChecked="{Binding IsEnabled, Mode=TwoWay}"
+                                                              MinWidth="0" Padding="0" Margin="0"
+                                                              VerticalAlignment="Center"
+                                                              IsVisible="{Binding ShowCheckbox}"/>
+
+                                                    <!-- Spacer for the expansion button column to maintain alignment -->
+                                                    <Rectangle Grid.Column="1" Width="2" Margin="0"/>
+
+                                                    <DockPanel Grid.Column="2" LastChildFill="True">
+                                                        <!-- Value on the right -->
+                                                        <TextBlock DockPanel.Dock="Right" 
+                                                                   Text="{Binding Value}" 
+                                                                   FontWeight="SemiBold"
+                                                                   FontSize="{DynamicResource DetailFontSize}"
+                                                                   Margin="8,0,8,0"
+                                                                   VerticalAlignment="Center">
+                                                            <TextBlock.Foreground>
+                                                                <MultiBinding Converter="{StaticResource ConditionalColorToBrushConverter}">
+                                                                    <Binding Path="Color"/>
+                                                                    <Binding Path="UseCustomColor"/>
+                                                                    <DynamicResource ResourceKey="Brush.Foreground.Primary"/>
+                                                                </MultiBinding>
+                                                            </TextBlock.Foreground>
+                                                        </TextBlock>
+
+                                                        <!-- Name Button -->
+                                                        <Button Classes="NameButton"
+                                                                Command="{Binding OpenSettingsCommand}"
+                                                                CommandParameter="{Binding}"
+                                                                IsEnabled="{Binding OpenSettingsCommand, Converter={x:Static ObjectConverters.IsNotNull}}">
+                                                            <TextBlock Text="{Binding Name}" 
+                                                                       FontSize="{DynamicResource DetailFontSize}"
+                                                                       TextTrimming="CharacterEllipsis"
+                                                                       VerticalAlignment="Center">
+                                                                <TextBlock.Foreground>
+                                                                    <MultiBinding Converter="{StaticResource ConditionalColorToBrushConverter}">
+                                                                        <Binding Path="Color"/>
+                                                                        <Binding Path="UseCustomColor"/>
+                                                                        <DynamicResource ResourceKey="Brush.Foreground.Secondary"/>
+                                                                    </MultiBinding>
+                                                                </TextBlock.Foreground>
+                                                            </TextBlock>
+                                                        </Button>
+                                                    </DockPanel>
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </Border>
+
+            <!-- 3. Drawing Tools Panel -->
+            <Border Classes="PremiumCard" Margin="0,0,0,0" IsVisible="{Binding IsDrawingToolsSelected}">
+                <ScrollViewer HorizontalScrollBarVisibility="Disabled" Padding="0,0,18,0">
+                    <ItemsControl ItemsSource="{Binding DrawingItems}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:DataWindowItemViewModel">
+                                <StackPanel Margin="0,0,0,6">
+                                    <Grid ColumnDefinitions="12,*" Background="Transparent">
+                                        <ToggleButton Grid.Column="0" 
+                                                       IsChecked="{Binding IsExpanded}" 
+                                                       IsVisible="{Binding HasChildren}"
+                                                       Padding="0" Margin="0"
+                                                       Width="10" Height="10"
+                                                       Background="Transparent" BorderThickness="0"
+                                                       VerticalAlignment="Center">
+                                            <Path HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                  Fill="{DynamicResource Brush.Foreground.Secondary}">
+                                                <Path.Data>
+                                                    <Binding Path="IsExpanded">
+                                                        <Binding.Converter>
+                                                            <conv:BoolToPathDataConverter ExpandedPath="M 1 2 L 7 2 L 4 6 Z" CollapsedPath="M 2 1 L 6 4 L 2 7 Z"/>
+                                                        </Binding.Converter>
+                                                    </Binding>
+                                                </Path.Data>
+                                            </Path>
+                                        </ToggleButton>
+
+                                        <DockPanel Grid.Column="1" LastChildFill="True">
+                                            <TextBlock DockPanel.Dock="Right" 
+                                                       Text="{Binding Value}" 
+                                                       FontWeight="Bold"
+                                                       Margin="8,0,8,0"
+                                                       VerticalAlignment="Center"
+                                                       IsVisible="{Binding !HasChildren}">
+                                                <TextBlock.Foreground>
+                                                    <MultiBinding Converter="{StaticResource ConditionalColorToBrushConverter}">
+                                                        <Binding Path="Color"/>
+                                                        <Binding Path="UseCustomColor"/>
+                                                        <DynamicResource ResourceKey="Brush.Foreground.Primary"/>
+                                                    </MultiBinding>
+                                                </TextBlock.Foreground>
+                                            </TextBlock>
+
+                                            <TextBlock Text="{Binding Name}" 
+                                                       FontWeight="SemiBold"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       Margin="4,0,8,0"
+                                                       VerticalAlignment="Center">
+                                                <TextBlock.Foreground>
+                                                    <MultiBinding Converter="{StaticResource ConditionalColorToBrushConverter}">
+                                                        <Binding Path="Color"/>
+                                                        <Binding Path="UseCustomColor"/>
+                                                        <DynamicResource ResourceKey="Brush.Foreground.Secondary"/>
+                                                    </MultiBinding>
+                                                </TextBlock.Foreground>
+                                            </TextBlock>
+                                        </DockPanel>
+                                    </Grid>
+
+                                    <!-- Nested Items for multi-value drawing objects -->
+                                    <ItemsControl ItemsSource="{Binding Children}" 
+                                                   IsVisible="{Binding IsExpanded}"
+                                                   Margin="16,2,0,0">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="vm:DataWindowItemViewModel">
+                                                <DockPanel Margin="0,2">
+                                                    <TextBlock DockPanel.Dock="Right" 
+                                                               Text="{Binding Value}" 
+                                                               FontWeight="SemiBold" 
+                                                               FontSize="{DynamicResource DetailFontSize}"
+                                                               Margin="8,0,8,0"
+                                                               VerticalAlignment="Center">
+                                                        <TextBlock.Foreground>
+                                                            <MultiBinding Converter="{StaticResource ConditionalColorToBrushConverter}">
+                                                                <Binding Path="Color"/>
+                                                                <Binding Path="UseCustomColor"/>
+                                                                <DynamicResource ResourceKey="Brush.Foreground.Primary"/>
+                                                            </MultiBinding>
+                                                        </TextBlock.Foreground>
+                                                    </TextBlock>
+
+                                                    <TextBlock Text="{Binding Name}" 
+                                                               FontSize="{DynamicResource DetailFontSize}"
+                                                               TextTrimming="CharacterEllipsis"
+                                                               VerticalAlignment="Center">
+                                                        <TextBlock.Foreground>
+                                                            <MultiBinding Converter="{StaticResource ConditionalColorToBrushConverter}">
+                                                                <Binding Path="Color"/>
+                                                                <Binding Path="UseCustomColor"/>
+                                                                <DynamicResource ResourceKey="Brush.Foreground.Secondary"/>
+                                                            </MultiBinding>
+                                                        </TextBlock.Foreground>
+                                                    </TextBlock>
+                                                </DockPanel>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </Border>
+        </Grid>
+    </Grid>
+</UserControl>

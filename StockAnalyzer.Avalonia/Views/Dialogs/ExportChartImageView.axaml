@@ -1,0 +1,325 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="using:StockAnalyzer.Avalonia.ViewModels.Dialogs"
+        xmlns:l="clr-namespace:StockAnalyzer.Avalonia.Markup;assembly=StockAnalyzer.Avalonia"
+        xmlns:c="using:StockAnalyzer.Avalonia.Common"
+        xmlns:conv="using:StockAnalyzer.Avalonia.Converters"
+        mc:Ignorable="d" d:DesignWidth="940" d:DesignHeight="700"
+        x:Class="StockAnalyzer.Avalonia.Views.Dialogs.ExportChartImageView"
+        x:DataType="vm:ExportChartImageDialogViewModel"
+        Title="{l:Localize Dialog_ExportChartImage_Title}"
+        Width="940" Height="700"
+        MinWidth="820" MinHeight="580"
+        WindowStartupLocation="CenterOwner"
+        CanResize="True"
+        Background="{DynamicResource Brush.Background.Primary}"
+        TransparencyLevelHint="AcrylicBlur"
+        ExtendClientAreaToDecorationsHint="True">
+
+    <Window.Resources>
+        <conv:EnumToLocalizedDisplayNameConverter x:Key="EnumToLocalizedDisplayNameConverter"/>
+    </Window.Resources>
+
+    <Grid RowDefinitions="56, *, 64">
+        <!-- Header (56px Sub-Window Standard) -->
+        <Border Grid.Row="0"
+                Background="{DynamicResource Brush.Background.Tertiary}"
+                BorderBrush="{DynamicResource Brush.Border.Primary}"
+                BorderThickness="0,0,0,1"
+                PointerPressed="OnHeaderPointerPressed">
+            <Grid ColumnDefinitions="*, Auto" Margin="24,0">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="12">
+                    <PathIcon Data="{x:Static c:SharedIconGeometries.Save}" Width="18" Height="18" Foreground="{DynamicResource Brush.Accent.Primary}"/>
+                    <TextBlock Text="{l:Localize Dialog_ExportChartImage_Title}" 
+                               FontSize="{DynamicResource TitleFontSize}" 
+                               FontWeight="SemiBold" 
+                               VerticalAlignment="Center"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Main Body: 2 Columns (Options & Live Preview) -->
+        <Grid Grid.Row="1" ColumnDefinitions="410, *" Margin="20,16,20,16">
+            <!-- Left Column: Settings Panel -->
+            <ScrollViewer Grid.Column="0" Margin="0,0,16,0">
+                <StackPanel Spacing="14">
+                    <!-- Save Directory -->
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="{l:Localize Dialog_ExportChartImage_SaveDirectory}"
+                                   FontSize="{DynamicResource BaseFontSize}"
+                                   FontWeight="Medium"/>
+                        <Grid ColumnDefinitions="*, Auto" Margin="0,2,0,0">
+                            <TextBox Text="{Binding SaveDirectory, Mode=TwoWay}"
+                                     FontSize="{DynamicResource DetailFontSize}"
+                                     VerticalAlignment="Center"/>
+                            <Button Grid.Column="1"
+                                    Content="{l:Localize Dialog_ExportChartImage_Browse}"
+                                    Command="{Binding BrowseFolderCommand}"
+                                    Margin="8,0,0,0"
+                                    Padding="12,6"
+                                    HorizontalContentAlignment="Center"
+                                    Background="{DynamicResource Brush.Button.Background}"
+                                    Foreground="{DynamicResource Brush.Button.Text}">
+                                <Button.Styles>
+                                    <Style Selector="Button:pointerover /template/ ContentPresenter">
+                                        <Setter Property="Background" Value="{DynamicResource Brush.Button.Hover}"/>
+                                    </Style>
+                                    <Style Selector="Button:pressed /template/ ContentPresenter">
+                                        <Setter Property="Background" Value="{DynamicResource Brush.Button.Pressed}"/>
+                                    </Style>
+                                </Button.Styles>
+                            </Button>
+                        </Grid>
+                    </StackPanel>
+
+                    <!-- File Name -->
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="{l:Localize Dialog_ExportChartImage_FileName}"
+                                   FontSize="{DynamicResource BaseFontSize}"
+                                   FontWeight="Medium"/>
+                        <TextBox Text="{Binding FileName, Mode=TwoWay}"
+                                 FontSize="{DynamicResource DetailFontSize}"
+                                 VerticalAlignment="Center"/>
+                    </StackPanel>
+
+                    <!-- Format & Size Mode -->
+                    <Grid ColumnDefinitions="*, *" Margin="0,2,0,0">
+                        <StackPanel Grid.Column="0" Spacing="6" Margin="0,0,8,0">
+                            <TextBlock Text="{l:Localize Dialog_ExportChartImage_Format}"
+                                       FontSize="{DynamicResource BaseFontSize}"
+                                       FontWeight="Medium"/>
+                            <ComboBox ItemsSource="{Binding AvailableFormats}"
+                                      SelectedItem="{Binding SelectedFormat, Mode=TwoWay}"
+                                      HorizontalAlignment="Stretch"/>
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="1" Spacing="6" Margin="8,0,0,0">
+                            <TextBlock Text="{l:Localize Dialog_ExportChartImage_SizeMode}"
+                                       FontSize="{DynamicResource BaseFontSize}"
+                                       FontWeight="Medium"/>
+                            <ComboBox ItemsSource="{Binding AvailableSizeModes}"
+                                      SelectedItem="{Binding SelectedSizeMode, Mode=TwoWay}"
+                                      HorizontalAlignment="Stretch">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Converter={StaticResource EnumToLocalizedDisplayNameConverter}}"/>
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                        </StackPanel>
+                    </Grid>
+
+                    <!-- Custom Size Parameters (when Custom Size selected) -->
+                    <Border IsVisible="{Binding IsCustomSize}"
+                            Background="{DynamicResource Brush.Background.Secondary}"
+                            BorderBrush="{DynamicResource Brush.Border.Primary}"
+                            BorderThickness="1"
+                            CornerRadius="6"
+                            Padding="12,10">
+                        <StackPanel Spacing="8">
+                            <Grid ColumnDefinitions="*, *">
+                                <StackPanel Grid.Column="0" Spacing="4" Margin="0,0,8,0">
+                                    <TextBlock Text="{l:Localize Dialog_ExportChartImage_Width}"
+                                               FontSize="{DynamicResource DetailFontSize}"
+                                               Foreground="{DynamicResource Brush.Text.Secondary}"/>
+                                    <NumericUpDown Value="{Binding CustomWidth, Mode=TwoWay}"
+                                                   Minimum="100" Maximum="8192" Increment="10"
+                                                   FormatString="0"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Spacing="4" Margin="8,0,0,0">
+                                    <TextBlock Text="{l:Localize Dialog_ExportChartImage_Height}"
+                                               FontSize="{DynamicResource DetailFontSize}"
+                                               Foreground="{DynamicResource Brush.Text.Secondary}"/>
+                                    <NumericUpDown Value="{Binding CustomHeight, Mode=TwoWay}"
+                                                   Minimum="100" Maximum="8192" Increment="10"
+                                                   FormatString="0"/>
+                                </StackPanel>
+                            </Grid>
+                            <CheckBox IsChecked="{Binding LockAspectRatio, Mode=TwoWay}"
+                                      Content="{l:Localize Dialog_ExportChartImage_LockAspectRatio}"
+                                      FontSize="{DynamicResource DetailFontSize}"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Quality Slider (visible if JPEG/WebP) -->
+                    <StackPanel Spacing="6" IsVisible="{Binding IsQualityVisible}">
+                        <Grid ColumnDefinitions="*, Auto">
+                            <TextBlock Text="{l:Localize Dialog_ExportChartImage_Quality}"
+                                       FontSize="{DynamicResource BaseFontSize}"
+                                       FontWeight="Medium"/>
+                            <TextBlock Grid.Column="1"
+                                       Text="{Binding Quality, StringFormat='{}{0}%'}"
+                                       FontSize="{DynamicResource DetailFontSize}"
+                                       Foreground="{DynamicResource Brush.Text.Secondary}"/>
+                        </Grid>
+                        <Slider Minimum="10" Maximum="100" Value="{Binding Quality, Mode=TwoWay}"/>
+                    </StackPanel>
+
+                    <!-- Theme Selection (Dark, Light, Custom Themes) -->
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="{l:Localize Dialog_ExportChartImage_Theme}"
+                                   FontSize="{DynamicResource BaseFontSize}"
+                                   FontWeight="Medium"/>
+                        <ComboBox ItemsSource="{Binding AvailableThemes}"
+                                  SelectedItem="{Binding SelectedTheme, Mode=TwoWay}"
+                                  HorizontalAlignment="Stretch">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Name}"/>
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
+                    </StackPanel>
+
+                    <!-- Dimensions Info Badge -->
+                    <Border Background="{DynamicResource Brush.Background.Secondary}"
+                            BorderBrush="{DynamicResource Brush.Border.Primary}"
+                            BorderThickness="1"
+                            CornerRadius="6"
+                            Padding="12,8">
+                        <Grid ColumnDefinitions="*, Auto">
+                            <TextBlock Text="{l:Localize Dialog_ExportChartImage_Dimensions}"
+                                       FontSize="{DynamicResource DetailFontSize}"
+                                       Foreground="{DynamicResource Brush.Text.Secondary}"
+                                       VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="1"
+                                       Text="{Binding OutputDimensionsText}"
+                                       FontSize="{DynamicResource DetailFontSize}"
+                                       FontWeight="SemiBold"
+                                       VerticalAlignment="Center"/>
+                        </Grid>
+                    </Border>
+
+                    <!-- Toggles -->
+                    <StackPanel Spacing="10" Margin="0,2,0,0">
+                        <CheckBox IsChecked="{Binding IncludeVisualHeader, Mode=TwoWay}"
+                                  Content="{l:Localize Dialog_ExportChartImage_IncludeHeader}"/>
+
+                        <!-- Sub-options for Header Banner Items -->
+                        <Border IsVisible="{Binding IncludeVisualHeader}"
+                                Margin="20,0,0,4"
+                                Padding="10,8"
+                                Background="{DynamicResource Brush.Background.Secondary}"
+                                BorderBrush="{DynamicResource Brush.Border.Primary}"
+                                BorderThickness="1"
+                                CornerRadius="6">
+                            <StackPanel Spacing="6">
+                                <TextBlock Text="{l:Localize Dialog_ExportChartImage_HeaderItems_Title}"
+                                           FontSize="{DynamicResource DetailFontSize}"
+                                           FontWeight="SemiBold"
+                                           Foreground="{DynamicResource Brush.Text.Secondary}"
+                                           Margin="0,0,0,4"/>
+                                <Grid ColumnDefinitions="*, *">
+                                    <StackPanel Grid.Column="0" Spacing="6">
+                                        <CheckBox IsChecked="{Binding IncludeSymbol, Mode=TwoWay}"
+                                                  Content="{l:Localize Dialog_ExportChartImage_Header_Symbol}"/>
+                                        <CheckBox IsChecked="{Binding IncludeCompanyName, Mode=TwoWay}"
+                                                  Content="{l:Localize Dialog_ExportChartImage_Header_CompanyName}"/>
+                                        <CheckBox IsChecked="{Binding IncludeTimeframe, Mode=TwoWay}"
+                                                  Content="{l:Localize Dialog_ExportChartImage_Header_Timeframe}"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Spacing="6">
+                                        <CheckBox IsChecked="{Binding IncludeDateRange, Mode=TwoWay}"
+                                                  Content="{l:Localize Dialog_ExportChartImage_Header_DateRange}"/>
+                                        <CheckBox IsChecked="{Binding IncludeIndicators, Mode=TwoWay}"
+                                                  Content="{l:Localize Dialog_ExportChartImage_Header_Indicators}"/>
+                                        <CheckBox IsChecked="{Binding IncludeBrand, Mode=TwoWay}"
+                                                  Content="{l:Localize Dialog_ExportChartImage_Header_Brand}"/>
+                                    </StackPanel>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <CheckBox IsChecked="{Binding EmbedFileMetadata, Mode=TwoWay}"
+                                  Content="{l:Localize Dialog_ExportChartImage_EmbedMetadata}"/>
+                        <CheckBox IsChecked="{Binding IncludeCrosshair, Mode=TwoWay}"
+                                  Content="{l:Localize Dialog_ExportChartImage_IncludeCrosshair}"/>
+                    </StackPanel>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- Right Column: Live Preview Area -->
+            <Border Grid.Column="1"
+                    Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="8">
+                <Grid>
+                    <Image Source="{Binding PreviewImage}"
+                           Stretch="Uniform"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center"/>
+
+                    <!-- Loading Indicator -->
+                    <Border IsVisible="{Binding IsLoadingPreview}"
+                            Background="#80000000"
+                            CornerRadius="6">
+                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
+                            <ProgressBar IsIndeterminate="True" Width="120" Height="4"/>
+                            <TextBlock Text="{l:Localize Dialog_ExportChartImage_RenderingPreview}"
+                                       Foreground="White"
+                                       FontSize="{DynamicResource DetailFontSize}"/>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- Footer (64px Sub-Window Standard: Save / Cancel 2-Button Order & Brush.Button.* Mapping) -->
+        <Border Grid.Row="2"
+                Background="{DynamicResource Brush.Background.Tertiary}"
+                BorderBrush="{DynamicResource Brush.Border.Primary}"
+                BorderThickness="0,1,0,0">
+            <Grid ColumnDefinitions="*, Auto" Margin="24,0">
+                <TextBlock Text="{Binding StatusMessage}"
+                           FontSize="{DynamicResource DetailFontSize}"
+                           Foreground="{DynamicResource Brush.Text.Secondary}"
+                           VerticalAlignment="Center"/>
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                    <!-- Save Button (Primary Action, IsDefault) -->
+                    <Button Content="{l:Localize Dialog_ExportChartImage_Save}"
+                            Command="{Binding SaveCommand}"
+                            IsDefault="True"
+                            IsEnabled="{Binding !IsExporting}"
+                            MinWidth="90"
+                            Padding="16,8"
+                            HorizontalContentAlignment="Center"
+                            Background="{DynamicResource Brush.Button.Background}"
+                            Foreground="{DynamicResource Brush.Button.Text}">
+                        <Button.Styles>
+                            <Style Selector="Button:pointerover /template/ ContentPresenter">
+                                <Setter Property="Background" Value="{DynamicResource Brush.Button.Hover}"/>
+                            </Style>
+                            <Style Selector="Button:pressed /template/ ContentPresenter">
+                                <Setter Property="Background" Value="{DynamicResource Brush.Button.Pressed}"/>
+                            </Style>
+                        </Button.Styles>
+                    </Button>
+
+                    <!-- Cancel Button (Secondary Action, IsCancel) -->
+                    <Button Content="{l:Localize Dialog_ExportChartImage_Cancel}"
+                            Command="{Binding CancelCommand}"
+                            IsCancel="True"
+                            MinWidth="90"
+                            Padding="16,8"
+                            HorizontalContentAlignment="Center"
+                            Background="{DynamicResource Brush.Button.Background}"
+                            Foreground="{DynamicResource Brush.Button.Text}">
+                        <Button.Styles>
+                            <Style Selector="Button:pointerover /template/ ContentPresenter">
+                                <Setter Property="Background" Value="{DynamicResource Brush.Button.Hover}"/>
+                            </Style>
+                            <Style Selector="Button:pressed /template/ ContentPresenter">
+                                <Setter Property="Background" Value="{DynamicResource Brush.Button.Pressed}"/>
+                            </Style>
+                        </Button.Styles>
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

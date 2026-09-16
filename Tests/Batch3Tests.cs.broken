@@ -1,0 +1,124 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Xunit;
+using System.Windows.Media;
+
+namespace StockAnalyzer.Tests
+{
+    public class Batch3Tests
+    {
+        private List<CandleData> CreateTestData(int count, decimal startPrice = 100m, decimal trend = 0m)
+        {
+            var candles = new List<CandleData>();
+            var date = new DateTime(2023, 1, 1);
+
+            for (int i = 0; i < count; i++)
+            {
+                decimal price = startPrice + (i * trend);
+                candles.Add(new CandleData
+                {
+                    Timestamp = date.AddDays(i),
+                    Open = price,
+                    High = price + 5m,
+                    Low = price - 5m,
+                    Close = price,
+                    Volume = 1000
+                });
+            }
+            return candles;
+        }
+
+        // TRIX
+        [Fact]
+        public void TRIX_Calculate_ReturnsCorrectValues()
+        {
+            var candles = CreateTestData(50, 100m, 10m);
+            var trix = new TrixIndicator(14, Colors.Blue);
+            trix.Calculate(candles);
+            Assert.Equal(50, trix.Values.Count);
+            Assert.NotNull(trix.Values.Last());
+        }
+
+        [Fact]
+        public void TRIX_WithInsufficientData_ReturnsNulls()
+        {
+            var candles = CreateTestData(5, 100m, 0m);
+            var trix = new TrixIndicator(14, Colors.Blue);
+            trix.Calculate(candles);
+            Assert.All(trix.Values, v => Assert.Null(v));
+        }
+
+        // Momentum
+        [Fact]
+        public void Momentum_Calculate_ReturnsCorrectValues()
+        {
+            var candles = CreateTestData(20, 100m, 10m);
+            var momentum = new MomentumIndicator(10, Colors.Blue);
+            momentum.Calculate(candles);
+            Assert.Equal(20, momentum.Values.Count);
+            Assert.NotNull(momentum.Values.Last());
+        }
+
+        [Fact]
+        public void Momentum_WithFlatData_ReturnsZero()
+        {
+            var candles = CreateTestData(20, 100m, 0m);
+            var momentum = new MomentumIndicator(10, Colors.Blue);
+            momentum.Calculate(candles);
+            Assert.NotNull(momentum.Values.Last());
+            Assert.Equal(0m, momentum.Values.Last()!.Value);
+        }
+
+        // SMI (Stochastic Momentum Index)
+        [Fact]
+        public void SMI_Calculate_ReturnsCorrectValues()
+        {
+            var candles = CreateTestData(30, 100m, 10m);
+            var smi = new SmiIndicator(13, 25, 2, Colors.Blue);
+            smi.Calculate(candles);
+            Assert.Equal(30, smi.Values.Count);
+        }
+
+        [Fact]
+        public void SMI_WithInsufficientData_ReturnsNulls()
+        {
+            var candles = CreateTestData(10, 100m, 0m);
+            var smi = new SmiIndicator(13, 25, 2, Colors.Blue);
+            smi.Calculate(candles);
+            // With insufficient data, all values should be null
+            Assert.All(smi.Values, v => Assert.Null(v));
+        }
+
+        // BandWidth
+        [Fact]
+        public void BandWidth_Calculate_ReturnsCorrectValues()
+        {
+            var candles = CreateTestData(30, 100m, 10m);
+            var bandWidth = new BandWidthIndicator(20, 2.0, Colors.Blue);
+            bandWidth.Calculate(candles);
+            Assert.Equal(30, bandWidth.Values.Count);
+            Assert.NotNull(bandWidth.Values.Last());
+        }
+
+        [Fact]
+        public void BandWidth_WithFlatData_ReturnsZero()
+        {
+            var candles = CreateTestData(30, 100m, 0m);
+            var bandWidth = new BandWidthIndicator(20, 2.0, Colors.Blue);
+            bandWidth.Calculate(candles);
+            Assert.NotNull(bandWidth.Values.Last());
+            Assert.Equal(0m, bandWidth.Values.Last()!.Value, 2);
+        }
+
+        [Fact]
+        public void BandWidth_WithInsufficientData_ReturnsNulls()
+        {
+            var candles = CreateTestData(10, 100m, 0m); // Only 10 candles, period is 20
+            var bandWidth = new BandWidthIndicator(20, 2.0, Colors.Blue);
+            bandWidth.Calculate(candles);
+            Assert.Equal(10, bandWidth.Values.Count); // Should match input count
+            Assert.All(bandWidth.Values, v => Assert.Null(v)); // All should be null
+        }
+    }
+}

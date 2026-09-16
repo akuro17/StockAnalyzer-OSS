@@ -1,0 +1,57 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="using:StockAnalyzer.Avalonia.ViewModels.Notes"
+        xmlns:views="using:StockAnalyzer.Avalonia.Views.Notes"
+        xmlns:l="clr-namespace:StockAnalyzer.Avalonia.Markup;assembly=StockAnalyzer.Avalonia"
+        xmlns:c="clr-namespace:StockAnalyzer.Avalonia.Common;assembly=StockAnalyzer.Avalonia"
+        mc:Ignorable="d" d:DesignWidth="600" d:DesignHeight="700"
+        x:Class="StockAnalyzer.Avalonia.Views.Notes.NoteTrashWindow"
+        x:DataType="vm:NoteTrashViewModel"
+        Title="{l:Localize NoteTrash_Title}"
+        Width="600" Height="700"
+        WindowStartupLocation="CenterOwner"
+        CanResize="False"
+        Background="{DynamicResource Brush.Background.Primary}"
+        TransparencyLevelHint="AcrylicBlur"
+        ExtendClientAreaToDecorationsHint="True">
+
+    <!-- Standard sub-window layout (SA_UI_SUBWINDOW_STANDARD.md §1.1): 56px custom header,
+         scrollable body, 64px footer with the Close action - same structural pattern as
+         ColumnChooserWindow/SettingsWindow. -->
+    <Grid RowDefinitions="56, *, 64">
+        <Border Grid.Row="0"
+                Background="{DynamicResource Brush.Background.Tertiary}"
+                BorderBrush="{DynamicResource Brush.Border.Primary}"
+                BorderThickness="0,0,0,1"
+                PointerPressed="OnHeaderPointerPressed">
+            <Grid ColumnDefinitions="*, Auto" Margin="20,0">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="12">
+                    <PathIcon Data="{x:Static c:SharedIconGeometries.Delete}" Width="18" Height="18" Foreground="{DynamicResource Brush.Accent.Primary}"/>
+                    <TextBlock Text="{l:Localize NoteTrash_Title}"
+                               FontSize="{DynamicResource TitleFontSize}"
+                               FontWeight="SemiBold"
+                               VerticalAlignment="Center"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <views:NoteTrashView Grid.Row="1" Margin="12"/>
+
+        <Border Grid.Row="2"
+                Background="{DynamicResource Brush.Background.Tertiary}"
+                BorderBrush="{DynamicResource Brush.Border.Primary}"
+                BorderThickness="0,1,0,0">
+            <Grid ColumnDefinitions="*, Auto" Margin="20,0">
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                    <Button Theme="{DynamicResource PrimaryButtonStyle}"
+                            Content="{l:Localize Btn_Close}"
+                            Click="OnCloseClick"
+                            HorizontalContentAlignment="Center"
+                            Width="100"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

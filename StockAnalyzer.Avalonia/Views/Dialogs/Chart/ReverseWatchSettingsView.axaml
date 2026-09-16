@@ -1,0 +1,141 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:StockAnalyzer.Avalonia.ViewModels.Dialogs"
+             xmlns:conv="using:StockAnalyzer.Avalonia.Converters"
+             xmlns:l="using:StockAnalyzer.Avalonia.Markup"
+             mc:Ignorable="d" d:DesignWidth="400" d:DesignHeight="650"
+             x:Class="StockAnalyzer.Avalonia.Views.Dialogs.Chart.ReverseWatchSettingsView"
+             x:DataType="vm:ReverseWatchSettingsViewModel">
+
+    <UserControl.Resources>
+        <conv:HsvDataToAvaloniaHsvColorConverter x:Key="HsvConverter"/>
+    </UserControl.Resources>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Spacing="20" Margin="16">
+            <!-- Appearance Settings -->
+            <Border Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="{l:Localize Settings_Chart_Appearance}" FontWeight="SemiBold" FontSize="{DynamicResource DetailFontSize}"/>
+                    
+                    <StackPanel Spacing="12">
+                        <Grid ColumnDefinitions="*, *" RowDefinitions="Auto, Auto, Auto, Auto" Margin="0,4">
+                            <!-- Left Column -->
+                            <Grid Grid.Column="0" Grid.Row="0" ColumnDefinitions="*, Auto" Margin="0,0,8,12">
+                                <TextBlock Text="{l:Localize Label_Phase1}" VerticalAlignment="Center" FontSize="{DynamicResource DetailFontSize}"/>
+                                <ColorPicker Grid.Column="1" HsvColor="{Binding PhaseColors[0], Mode=TwoWay, Converter={StaticResource HsvConverter}}" Width="40" Height="24"/>
+                            </Grid>
+                            <Grid Grid.Column="0" Grid.Row="1" ColumnDefinitions="*, Auto" Margin="0,0,8,12">
+                                <TextBlock Text="{l:Localize Label_Phase2}" VerticalAlignment="Center" FontSize="{DynamicResource DetailFontSize}"/>
+                                <ColorPicker Grid.Column="1" HsvColor="{Binding PhaseColors[1], Mode=TwoWay, Converter={StaticResource HsvConverter}}" Width="40" Height="24"/>
+                            </Grid>
+                            <Grid Grid.Column="0" Grid.Row="2" ColumnDefinitions="*, Auto" Margin="0,0,8,12">
+                                <TextBlock Text="{l:Localize Label_Phase3}" VerticalAlignment="Center" FontSize="{DynamicResource DetailFontSize}"/>
+                                <ColorPicker Grid.Column="1" HsvColor="{Binding PhaseColors[2], Mode=TwoWay, Converter={StaticResource HsvConverter}}" Width="40" Height="24"/>
+                            </Grid>
+                            <Grid Grid.Column="0" Grid.Row="3" ColumnDefinitions="*, Auto" Margin="0,0,8,0">
+                                <TextBlock Text="{l:Localize Label_Phase4}" VerticalAlignment="Center" FontSize="{DynamicResource DetailFontSize}"/>
+                                <ColorPicker Grid.Column="1" HsvColor="{Binding PhaseColors[3], Mode=TwoWay, Converter={StaticResource HsvConverter}}" Width="40" Height="24"/>
+                            </Grid>
+
+                            <!-- Right Column -->
+                            <Grid Grid.Column="1" Grid.Row="0" ColumnDefinitions="*, Auto" Margin="8,0,0,12">
+                                <TextBlock Text="{l:Localize Label_Phase5}" VerticalAlignment="Center" FontSize="{DynamicResource DetailFontSize}"/>
+                                <ColorPicker Grid.Column="1" HsvColor="{Binding PhaseColors[4], Mode=TwoWay, Converter={StaticResource HsvConverter}}" Width="40" Height="24"/>
+                            </Grid>
+                            <Grid Grid.Column="1" Grid.Row="1" ColumnDefinitions="*, Auto" Margin="8,0,0,12">
+                                <TextBlock Text="{l:Localize Label_Phase6}" VerticalAlignment="Center" FontSize="{DynamicResource DetailFontSize}"/>
+                                <ColorPicker Grid.Column="1" HsvColor="{Binding PhaseColors[5], Mode=TwoWay, Converter={StaticResource HsvConverter}}" Width="40" Height="24"/>
+                            </Grid>
+                            <Grid Grid.Column="1" Grid.Row="2" ColumnDefinitions="*, Auto" Margin="8,0,0,12">
+                                <TextBlock Text="{l:Localize Label_Phase7}" VerticalAlignment="Center" FontSize="{DynamicResource DetailFontSize}"/>
+                                <ColorPicker Grid.Column="1" HsvColor="{Binding PhaseColors[6], Mode=TwoWay, Converter={StaticResource HsvConverter}}" Width="40" Height="24"/>
+                            </Grid>
+                            <Grid Grid.Column="1" Grid.Row="3" ColumnDefinitions="*, Auto" Margin="8,0,0,0">
+                                <TextBlock Text="{l:Localize Label_Phase8}" VerticalAlignment="Center" FontSize="{DynamicResource DetailFontSize}"/>
+                                <ColorPicker Grid.Column="1" HsvColor="{Binding PhaseColors[7], Mode=TwoWay, Converter={StaticResource HsvConverter}}" Width="40" Height="24"/>
+                            </Grid>
+                        </Grid>
+
+                        <Separator Background="{DynamicResource Brush.Border.Primary}" Height="1"/>
+
+                        <Grid ColumnDefinitions="*, Auto">
+                            <TextBlock Text="{l:Localize Settings_Chart_ShowGrid}" VerticalAlignment="Center" FontSize="{DynamicResource DetailFontSize}"/>
+                            <ToggleSwitch Grid.Column="1" IsChecked="{Binding ShowGrid}" OnContent="" OffContent=""/>
+                        </Grid>
+                        
+                        <Separator Background="{DynamicResource Brush.Border.Primary}" Height="1"/>
+                        
+                        <Grid ColumnDefinitions="*, Auto">
+                            <TextBlock Text="{l:Localize Settings_Chart_LineThickness}" VerticalAlignment="Center" FontSize="{DynamicResource DetailFontSize}"/>
+                            <NumericUpDown Grid.Column="1" Value="{Binding LineThickness}" Minimum="0.5" Maximum="5.0" Increment="0.5" Width="150"/>
+                        </Grid>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Calculation Settings -->
+            <Border Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="{l:Localize Settings_Chart_Sizing}" FontWeight="SemiBold" FontSize="{DynamicResource DetailFontSize}"/>
+                    
+                    <StackPanel Spacing="12">
+                        <Grid ColumnDefinitions="*, Auto">
+                            <TextBlock Text="{l:Localize Param_Period}" VerticalAlignment="Center" FontSize="{DynamicResource DetailFontSize}"/>
+                            <NumericUpDown Grid.Column="1" Value="{Binding Period}" Minimum="1" Maximum="200" Width="150"/>
+                        </Grid>
+                        
+                        <Separator Background="{DynamicResource Brush.Border.Primary}" Height="1"/>
+                        
+                        <Grid ColumnDefinitions="*, Auto">
+                            <TextBlock Text="{l:Localize Settings_Chart_DisplayDataCount}" VerticalAlignment="Center" FontSize="{DynamicResource DetailFontSize}"/>
+                            <NumericUpDown Grid.Column="1" Value="{Binding DataCount}" Minimum="10" Maximum="1000" Width="150"/>
+                        </Grid>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Mode Settings -->
+            <Border Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="{l:Localize Settings_Chart_CalculationMode}" FontWeight="SemiBold" FontSize="{DynamicResource DetailFontSize}"/>
+                    
+                    <StackPanel Spacing="12">
+                        <Grid ColumnDefinitions="*, Auto">
+                            <TextBlock Text="{l:Localize Settings_Chart_MaBased}" VerticalAlignment="Center" FontSize="{DynamicResource DetailFontSize}"/>
+                            <ToggleSwitch Grid.Column="1" IsChecked="{Binding IsMaBased}" OnContent="" OffContent=""/>
+                        </Grid>
+                        
+                        <Separator Background="{DynamicResource Brush.Border.Primary}" Height="1"/>
+                        
+                        <Grid ColumnDefinitions="*, Auto">
+                            <TextBlock Text="{l:Localize Settings_Chart_LogScaleVolume}" VerticalAlignment="Center" FontSize="{DynamicResource DetailFontSize}"/>
+                            <ToggleSwitch Grid.Column="1" IsChecked="{Binding IsLogScaleVolume}" OnContent="" OffContent=""/>
+                        </Grid>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Description -->
+            <TextBlock Text="{l:Localize Settings_Chart_ReverseWatch_Desc}" 
+                       FontSize="{DynamicResource HelperFontSize}"
+                       Foreground="{DynamicResource Brush.Text.Secondary}"
+                       TextWrapping="Wrap"
+                       Margin="4,0"/>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

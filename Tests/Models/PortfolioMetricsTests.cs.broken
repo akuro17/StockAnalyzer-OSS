@@ -1,0 +1,112 @@
+using System;
+using Xunit;
+
+namespace Tests.Models;
+
+/// <summary>
+/// PortfolioMetricsクラスのテスト
+/// </summary>
+public class PortfolioMetricsTests
+{
+    [Fact]
+    public void CalculateVariance_SimpleCase_ReturnsCorrectValue()
+    {
+        // Arrange
+        double[] weights = { 0.5, 0.5 };
+        double[,] covarianceMatrix = 
+        {
+            { 0.01, 0.005 },
+            { 0.005, 0.04 }
+        };
+
+        // Expected: 0.5^2 * 0.01 + 0.5^2 * 0.04 + 2 * 0.5 * 0.5 * 0.005 = 0.0025 + 0.01 + 0.0025 = 0.015
+        double expected = 0.015;
+
+        // Act
+        double actual = PortfolioMetrics.CalculateVariance(weights, covarianceMatrix);
+
+        // Assert
+        Assert.Equal(expected, actual, precision: 6);
+    }
+
+    [Fact]
+    public void CalculateExpectedReturn_SimpleCase_ReturnsCorrectValue()
+    {
+        // Arrange
+        double[] weights = { 0.6, 0.4 };
+        double[] expectedReturns = { 0.005, 0.01 };
+
+        // Expected: 0.6 * 0.005 + 0.4 * 0.01 = 0.003 + 0.004 = 0.007
+        double expected = 0.007;
+
+        // Act
+        double actual = PortfolioMetrics.CalculateExpectedReturn(weights, expectedReturns);
+
+        // Assert
+        Assert.Equal(expected, actual, precision: 6);
+    }
+
+    [Fact]
+    public void CalculateStandardDeviation_SimpleCase_ReturnsCorrectValue()
+    {
+        // Arrange
+        double[] weights = { 0.5, 0.5 };
+        double[,] covarianceMatrix = 
+        {
+            { 0.01, 0.005 },
+            { 0.005, 0.04 }
+        };
+
+        // Variance = 0.015, StdDev = sqrt(0.015) ≈ 0.122474
+        double expected = Math.Sqrt(0.015);
+
+        // Act
+        double actual = PortfolioMetrics.CalculateStandardDeviation(weights, covarianceMatrix);
+
+        // Assert
+        Assert.Equal(expected, actual, precision: 6);
+    }
+
+    [Fact]
+    public void CalculateSharpeRatio_SimpleCase_ReturnsCorrectValue()
+    {
+        // Arrange
+        double[] weights = { 0.5, 0.5 };
+        double[] expectedReturns = { 0.08, 0.10 };
+        double[,] covarianceMatrix = 
+        {
+            { 0.01, 0.005 },
+            { 0.005, 0.04 }
+        };
+        double riskFreeRate = 0.02;
+
+        // R_p = 0.5 * 0.08 + 0.5 * 0.10 = 0.09
+        // σ_p = sqrt(0.015) ≈ 0.122474
+        // Sharpe = (0.09 - 0.02) / 0.122474 ≈ 0.5715
+        double expectedReturn = 0.09;
+        double expectedStdDev = Math.Sqrt(0.015);
+        double expected = (expectedReturn - riskFreeRate) / expectedStdDev;
+
+        // Act
+        double actual = PortfolioMetrics.CalculateSharpeRatio(weights, expectedReturns, covarianceMatrix, riskFreeRate);
+
+        // Assert
+        Assert.Equal(expected, actual, precision: 4);
+    }
+
+    [Fact]
+    public void CalculateVariance_MismatchedDimensions_ThrowsException()
+    {
+        // Arrange
+        double[] weights = { 0.5, 0.5, 0.3 }; // 3 elements
+        double[,] covarianceMatrix = 
+        {
+            { 0.01, 0.005 },
+            { 0.005, 0.04 }
+        }; // 2x2 matrix
+
+        // Act & Assert
+        Assert.Throws<ArgumentException>(() => 
+            PortfolioMetrics.CalculateVariance(weights, covarianceMatrix));
+    }
+}

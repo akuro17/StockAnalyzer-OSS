@@ -1,0 +1,139 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Windows.Media;
+using Xunit;
+
+namespace StockAnalyzer.Tests
+{
+    /// <summary>
+    /// Common edge case tests for all indicators
+    /// </summary>
+    public class IndicatorEdgeCaseTests
+    {
+        private List<CandleData> GenerateTestCandles(int count, decimal basePrice = 100m)
+        {
+            var candles = new List<CandleData>();
+            var now = DateTime.Now;
+            for (int i = 0; i < count; i++)
+            {
+                candles.Add(new CandleData
+                {
+                    Timestamp = now.AddMinutes(-count + i),
+                    Open = basePrice + i * 0.01m,
+                    High = basePrice + i * 0.02m,
+                    Low = basePrice + i * 0.005m,
+                    Close = basePrice + i * 0.01m,
+                    Volume = 1000000
+                });
+            }
+            return candles;
+        }
+
+        [Fact]
+        public void AllIndicators_EmptyCandles_ReturnsEmpty()
+        {
+            var candles = new List<CandleData>();
+            
+            var indicators = new IndicatorBase[]
+            {
+                new SmaIndicator(20, Colors.Blue),
+                new EmaIndicator(12, Colors.Red),
+                new BollingerBandsIndicator(20, 2, Colors.Green),
+                new RsiIndicator(14, Colors.Magenta),
+                new MacdIndicator(12, 26, 9, Colors.Cyan),
+                new WmaIndicator(14, Colors.Orange),
+                new VwmaIndicator(14, Colors.Purple),
+                new HmaIndicator(14, Colors.Yellow),
+                new KamaIndicator(10, Colors.Brown),
+                new JmaIndicator(14, Colors.Gray)
+            };
+
+            foreach (var indicator in indicators)
+            {
+                indicator.Calculate(candles);
+                Assert.True(indicator.Values.Count == 0, 
+                    $"{indicator.Name} failed to handle empty candles (Count: {indicator.Values.Count})");
+            }
+        }
+
+        [Fact]
+        public void AllIndicators_SingleCandle_HandledGracefully()
+        {
+            var candles = GenerateTestCandles(1);
+            
+            var indicators = new IndicatorBase[]
+            {
+                new SmaIndicator(20, Colors.Blue),
+                new EmaIndicator(12, Colors.Red),
+                new BollingerBandsIndicator(20, 2, Colors.Green),
+                new RsiIndicator(14, Colors.Magenta),
+                new MacdIndicator(12, 26, 9, Colors.Cyan),
+                new WmaIndicator(14, Colors.Orange),
+                new VwmaIndicator(14, Colors.Purple),
+                new HmaIndicator(14, Colors.Yellow),
+                new KamaIndicator(10, Colors.Brown),
+                new JmaIndicator(14, Colors.Gray)
+            };
+
+            foreach (var indicator in indicators)
+            {
+                // Should not throw exception
+                indicator.Calculate(candles);
+                
+                // Some indicators might return 0 count if data is insufficient, others might return nulls.
+                // The key requirement is no crash.
+                // However, most base implementations clear _values and add something if count > 0?
+                // Let's check SmaIndicator: if (candleList.Count < Period) returns nulls.
+                // So count should be 1.
+                
+                Assert.True(indicator.Values.Count == 1, 
+                    $"{indicator.Name} failed to handle single candle (Count: {indicator.Values.Count})");
+            }
+        }
+
+        [Fact]
+        public void AllIndicators_LargeDataset_PerformsWithinReasonableTime()
+        {
+            // 5000 candles is a reasonable stress test for unit tests
+            var candles = GenerateTestCandles(5000);
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+
+            var indicators = new IndicatorBase[]
+            {
+                new SmaIndicator(20, Colors.Blue),
+                new EmaIndicator(12, Colors.Red),
+                new BollingerBandsIndicator(20, 2, Colors.Green),
+                new RsiIndicator(14, Colors.Magenta),
+                new MacdIndicator(12, 26, 9, Colors.Cyan),
+                new WmaIndicator(14, Colors.Orange),
+                new VwmaIndicator(14, Colors.Purple),
+                new HmaIndicator(14, Colors.Yellow),
+                new KamaIndicator(10, Colors.Brown),
+                new JmaIndicator(14, Colors.Gray)
+            };
+
+            foreach (var indicator in indicators)
+            {
+                indicator.Calculate(candles);
+            }
+
+            sw.Stop();
+            // 500ms is generous for 5000 candles * 10 indicators with O(N)
+            Assert.True(sw.ElapsedMilliseconds < 1000, 
+                $"Calculation took too long: {sw.ElapsedMilliseconds}ms");
+        }
+        
+        [Fact]
+        public void JmaIndicator_CalculatesWithoutError()
+        {
+            var candles = GenerateTestCandles(100);
+            var jma = new JmaIndicator(14, Colors.Gray);
+            
+            jma.Calculate(candles);
+            
+            Assert.Equal(100, jma.Values.Count);
+            Assert.NotNull(jma.Values.Last());
+        }
+    }
+}

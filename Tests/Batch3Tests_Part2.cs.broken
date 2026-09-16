@@ -1,0 +1,102 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Xunit;
+using StockAnalyzer.Core.Models.Parameters;
+using System.Windows.Media;
+
+namespace StockAnalyzer.Tests
+{
+    public class Batch3Tests_Part2
+    {
+        [Fact]
+        public void Adx_WildersSmoothing_Verification()
+        {
+            // Verify that ADX uses Wilder's Smoothing (1/N) not EMA (2/(N+1))
+            // Setup simple data
+            int period = 2; // Use small period for easy manual calculation
+            var validCandles = new List<CandleData>();
+            // Create candles with specific High/Low/Close to control TR, +DM, -DM
+            // Wilder's Smoothing: (Prev * (N-1) + Current) / N
+            // For N=2, Multiplier = 1/2 = 0.5. (Prev + Current) / 2?
+            // Formula: Prev + (1/N) * (Current - Prev) = Prev + (Current - Prev)/N = (Prev*N + Current - Prev)/N = (Prev*(N-1) + Current)/N. Correct.
+            
+            // Candle 0: H=10, L=10, C=10. 
+            validCandles.Add(new CandleData { Timestamp = DateTime.Today.AddDays(0), High = 10, Low = 10, Close = 10, Open = 10, Volume = 100 });
+            // Candle 1: H=12, L=10, C=11. UpMove=2, DownMove=0. +DM=2, -DM=0, TR=2 (H-L).
+            validCandles.Add(new CandleData { Timestamp = DateTime.Today.AddDays(1), High = 12, Low = 10, Close = 11, Open = 10, Volume = 100 });
+            // Candle 2: H=12, L=8, C=10. UpMove=0, DownMove=2. +DM=0, -DM=2, TR=4 (H-L=4, H-Cp=1, L-Cp=3 -> Max 4).
+            validCandles.Add(new CandleData { Timestamp = DateTime.Today.AddDays(2), High = 12, Low = 8, Close = 10, Open = 11, Volume = 100 });
+            // Candle 3: H=15, L=8, C=12. UpMove=3, DownMove=0. +DM=3, -DM=0, TR=7 (H-L=7, H-Cp=5, L-Cp=2 -> Max 7).
+            validCandles.Add(new CandleData { Timestamp = DateTime.Today.AddDays(3), High = 15, Low = 8, Close = 12, Open = 10, Volume = 100 });
+
+            var indicator = new AdxIndicator(period, Colors.Red);
+            indicator.Calculate(validCandles);
+
+            // Manual Calc for Period=2
+            // i=0: Skip
+            // i=1 (Index 1): Initial Calculation (0 to 1) 
+            // TR0=0? No, TR starts from i=0 but actually requires prev close. 
+            // Our code implementation:
+            // i=0: TR=H-L=0. +DM=0, -DM=0.
+            // i=1: TR=Max(H-L, |H-Cp|, |L-Cp|) = Max(2, 1, 1)=2. +DM=2, -DM=0.
+            
+            // Sums for i=0 to 1:
+            // SumTR = 0 + 2 = 2.
+            // Sum+DM = 0 + 2 = 2.
+            // Sum-DM = 0 + 0 = 0.
+            
+            // Initial Smoothed (Mean):
+            // SmoothTR = 2 / 2 = 1.
+            // Smooth+DM = 2 / 2 = 1.
+            // Smooth-DM = 0.
+            
+            // Period-1 is Index 1. 
+            // Since i (loop) starts from period-1 (1). 
+            // i=1: 
+            //   if (i > period - 1) -> No.
+            //   DX calc: 
+            //     +DI = 100 * 1 / 1 = 100.
+            //     -DI = 0.
+            //     DX = 100 * |100-0| / (100+0) = 100.
+            //   ADX = DX = 100.
+            // Check Result[1]: Expect 100.
+            
+            Assert.Equal(100m, indicator.Values[1]!.Value, 4);
+
+            // i=2:
+            //   Smoothing: (Prev * (N-1) + Current) / N = (Prev * 1 + Current) / 2
+            //   Current TR (i=2): H=12,L=8,C=10. Cp=11. TR=Max(4, 1, 3)=4.
+            //   Current +DM: 0.
+            //   Current -DM: 2.
+            
+            //   SmoothTR = (1 * 1 + 4) / 2 = 2.5.
+            //   Smooth+DM = (1 * 1 + 0) / 2 = 0.5.
+            //   Smooth-DM = (0 * 1 + 2) / 2 = 1.0.
+            
+            //   +DI = 100 * 0.5 / 2.5 = 100 * 0.2 = 20.
+            //   -DI = 100 * 1.0 / 2.5 = 100 * 0.4 = 40.
+            //   DX = 100 * |20-40| / (20+40) = 100 * 20 / 60 = 33.3333...
+            
+            //   ADX Smoothing: (PrevADX * (N-1) + DX) / N = (100 * 1 + 33.3333) / 2 = 133.3333 / 2 = 66.6667.
+            
+            Assert.Equal(66.6667m, indicator.Values[2]!.Value, 4);
+
+            // If it were EMA (2/(N+1) = 2/3 = 0.666):
+            //   SmoothTR = Prev + 0.666 * (Cur - Prev) = 1 + 0.666 * (4 - 1) = 1 + 2 = 3.
+            //   (Values would be significantly different).
+        }
+
+        [Fact]
+        public void CorrelationProxy_Instantiation_Verification()
+        {
+            var indicator = new CorrelationProxyIndicator(20, Colors.Blue);
+            Assert.Equal("Correlation Proxy (20)", indicator.Name);
+            Assert.Equal(WindowType.Sub, indicator.Window);
+            
+            // Verify factories via Registry
+            // This requires IndicatorRegistry to be initialized, which might perform static initialization of all factories
+            // Ideally we check if creating via generic factory works
+        }
+    }
+}

@@ -1,0 +1,111 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:StockAnalyzer.Avalonia.ViewModels"
+             xmlns:controls="using:StockAnalyzer.Avalonia.Views.Controls"
+             xmlns:conv="clr-namespace:StockAnalyzer.Avalonia.Converters;assembly=StockAnalyzer.Avalonia"
+             xmlns:l="using:StockAnalyzer.Avalonia.Markup"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+             x:Class="StockAnalyzer.Avalonia.Views.AllocationPanelView"
+             x:DataType="vm:AllocationPanelViewModel"
+             Background="{DynamicResource Brush.Background.Secondary}">
+
+    <UserControl.Resources>
+        <conv:RawColorToBrushConverter x:Key="RawColorToBrushConverter"/>
+    </UserControl.Resources>
+
+    <Grid RowDefinitions="Auto,*">
+        <!-- Dashboard Header -->
+        <Border Grid.Row="0" Padding="12" Background="{DynamicResource Brush.Background.Primary}" 
+                BorderThickness="0,0,0,1" BorderBrush="{DynamicResource Brush.Border.Primary}">
+            <StackPanel Orientation="Horizontal" Spacing="20">
+                <TextBlock Text="{l:Localize Allocation_Label_TotalAssets}" Foreground="{DynamicResource Brush.Text.Secondary}" VerticalAlignment="Center"/>
+                <TextBlock Text="{Binding TotalValue, StringFormat={}{0:N0}}" FontSize="{DynamicResource TitleFontSize}" FontWeight="SemiBold" 
+                           VerticalAlignment="Center" FontFamily="MS Gothic, Courier New, monospace"/>
+            </StackPanel>
+        </Border>
+
+        <TabControl Grid.Row="1">
+            <!-- Sector Allocation Tab -->
+            <TabItem Header="{l:Localize Allocation_TabTitle_Sector}">
+                <Grid ColumnDefinitions="*,300" Margin="20">
+                    <controls:AllocationDoughnutChartControl Items="{Binding SectorAllocations}" />
+                    
+                    <Border Grid.Column="1" Margin="20,0,0,0" Padding="16" 
+                            Background="{DynamicResource Brush.Background.Primary}" CornerRadius="8"
+                            BorderThickness="1" BorderBrush="{DynamicResource Brush.Border.Primary}">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <StackPanel Spacing="10">
+                                <TextBlock Text="{l:Localize Allocation_Label_Sectors}" FontWeight="Bold" Margin="0,0,0,10"/>
+                                <ItemsControl ItemsSource="{Binding SectorAllocations}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:AllocationEntryViewModel">
+                                            <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,4">
+                                                <Border Grid.Column="0" Width="12" Height="12" CornerRadius="2" 
+                                                        Background="{Binding Color, Converter={StaticResource RawColorToBrushConverter}}" 
+                                                        Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                                <TextBlock Grid.Column="1" Text="{Binding Category}" VerticalAlignment="Center" 
+                                                           TextTrimming="CharacterEllipsis" FontSize="{DynamicResource DetailFontSize}"/>
+                                                <TextBlock Grid.Column="2" Text="{Binding DisplayPercentage}" FontWeight="SemiBold" 
+                                                           VerticalAlignment="Center" Margin="10,0,0,0" FontSize="{DynamicResource DetailFontSize}"
+                                                           FontFamily="MS Gothic, Courier New, monospace"/>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Border>
+                </Grid>
+            </TabItem>
+            
+            <!-- Asset Allocation Tab -->
+            <TabItem Header="{l:Localize Allocation_TabTitle_Asset}">
+                <Grid ColumnDefinitions="*,300" Margin="20">
+                    <controls:AllocationDoughnutChartControl Items="{Binding AssetAllocations}" />
+                    
+                    <Border Grid.Column="1" Margin="20,0,0,0" Padding="16" 
+                            Background="{DynamicResource Brush.Background.Primary}" CornerRadius="8"
+                            BorderThickness="1" BorderBrush="{DynamicResource Brush.Border.Primary}"
+                            VerticalAlignment="Stretch">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <StackPanel Spacing="10">
+                                <TextBlock Text="{l:Localize Allocation_Label_AssetClasses}" FontWeight="Bold" Margin="0,0,0,10"/>
+                                <ItemsControl ItemsSource="{Binding AssetAllocations}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:AllocationEntryViewModel">
+                                            <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,4">
+                                                <Border Grid.Column="0" Width="12" Height="12" CornerRadius="2" 
+                                                        Background="{Binding Color, Converter={StaticResource RawColorToBrushConverter}}" 
+                                                        Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                                <TextBlock Grid.Column="1" Text="{Binding Category}" VerticalAlignment="Center" FontSize="{DynamicResource DetailFontSize}"/>
+                                                <TextBlock Grid.Column="2" Text="{Binding DisplayPercentage}" FontWeight="SemiBold" 
+                                                           VerticalAlignment="Center" Margin="10,0,0,0" FontSize="{DynamicResource DetailFontSize}"
+                                                           FontFamily="MS Gothic, Courier New, monospace"/>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Border>
+                </Grid>
+            </TabItem>
+        </TabControl>
+
+        <!-- Loading Overlay -->
+        <Grid Grid.RowSpan="2" IsVisible="{Binding IsLoading}" Background="{DynamicResource Brush.Background.Secondary}" Opacity="0.5">
+            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                <ProgressBar IsIndeterminate="True" Width="200" Margin="0,0,0,10"/>
+                <TextBlock Text="{l:Localize Allocation_Status_Loading}" HorizontalAlignment="Center"/>
+            </StackPanel>
+        </Grid>
+
+        <!-- Empty State -->
+        <Grid Grid.RowSpan="2" IsVisible="{Binding IsEmpty}" Background="{DynamicResource Brush.Background.Secondary}">
+            <TextBlock Text="No allocation data available. Please check your portfolio positions." 
+                       HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{DynamicResource Brush.Text.Secondary}"/>
+        </Grid>
+    </Grid>
+</UserControl>

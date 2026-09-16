@@ -1,0 +1,41 @@
+using Xunit;
+using StockAnalyzer.Core.Models;
+using StockAnalyzer.Core.Models.Indicators.Trend;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using StockAnalyzer.Core.Models.Indicators;
+
+namespace StockAnalyzer.Core.Tests
+{
+    public class CoreEnvelopeIndicatorTests
+    {
+        private static List<CoreCandleData> CreateTestCandles(IEnumerable<decimal> closePrices)
+        {
+            var startDate = DateTime.Today;
+            return closePrices.Select((price, i) => new CoreCandleData(
+                startDate.AddDays(i), price, price + 5, price - 5, price, 1000
+            )).ToList();
+        }
+
+        [Fact]
+        public void Calculate_WithEmptyData_ReturnsEmpty()
+        {
+            var indicator = new CoreEnvelopeIndicator();
+            var result = (IndicatorResult)indicator.Calculate(new List<CoreCandleData>());
+            Assert.True(result.IsSuccessful);
+            Assert.Empty(result.GetSeries("Main"));
+        }
+
+        [Fact]
+        public void Calculate_WithSampleData_ReturnsValues()
+        {
+            var indicator = new CoreEnvelopeIndicator();
+            var candles = CreateTestCandles(new decimal[] { 10, 11, 12, 13, 14, 15, 16 });
+            var result = (IndicatorResult)indicator.Calculate(candles);
+            Assert.True(result.IsSuccessful);
+            Assert.Contains("Main", result.SeriesNames);
+            Assert.Equal(candles.Count, result.GetSeries("Main").Count);
+        }
+    }
+}
