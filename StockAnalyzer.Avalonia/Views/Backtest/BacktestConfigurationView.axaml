@@ -1,0 +1,223 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:l="clr-namespace:StockAnalyzer.Avalonia.Markup;assembly=StockAnalyzer.Avalonia"
+             xmlns:vm="using:StockAnalyzer.Avalonia.ViewModels.Backtest"
+             xmlns:conv="using:StockAnalyzer.Avalonia.Converters"
+             mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="700"
+             x:Class="StockAnalyzer.Avalonia.Views.Backtest.BacktestConfigurationView"
+             x:DataType="vm:BacktestWindowViewModel">
+    <UserControl.Resources>
+        <conv:EnumToLocalizedDisplayNameConverter x:Key="EnumToLocalizedDisplayNameConverter"/>
+        <!-- Path data copied verbatim from Assets/Icons/date_range.svg (Material Symbols "date_range"),
+             matching TrainingWizardWindow's already-solved CalendarDatePicker icon fix (reused here
+             verbatim per that established, confirmed pattern). -->
+        <StreamGeometry x:Key="DateRangeIconData">M291.5-411.5Q280-423 280-440t11.5-28.5Q303-480 320-480t28.5 11.5Q360-457 360-440t-11.5 28.5Q337-400 320-400t-28.5-11.5Zm160 0Q440-423 440-440t11.5-28.5Q463-480 480-480t28.5 11.5Q520-457 520-440t-11.5 28.5Q497-400 480-400t-28.5-11.5Zm160 0Q600-423 600-440t11.5-28.5Q623-480 640-480t28.5 11.5Q680-457 680-440t-11.5 28.5Q657-400 640-400t-28.5-11.5ZM200-80q-33 0-56.5-23.5T120-160v-560q0-33 23.5-56.5T200-800h40v-80h80v80h320v-80h80v80h40q33 0 56.5 23.5T840-720v560q0 33-23.5 56.5T760-80H200Zm0-80h560v-400H200v400Z</StreamGeometry>
+    </UserControl.Resources>
+    <UserControl.Styles>
+        <!-- Replace CalendarDatePicker's default button visual (a day-number-in-a-circle glyph) with
+             the date_range icon - same fix already applied and confirmed in TrainingWizardWindow. -->
+        <Style Selector="CalendarDatePicker /template/ Button#PART_Button">
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <Border Background="Transparent">
+                        <PathIcon Data="{StaticResource DateRangeIconData}"
+                                  Width="14" Height="14"
+                                  Foreground="{DynamicResource Brush.Text.Secondary}"/>
+                    </Border>
+                </ControlTemplate>
+            </Setter>
+        </Style>
+        <Style Selector="TextBlock.GroupTitle">
+            <Setter Property="FontSize" Value="{DynamicResource BaseFontSize}"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Foreground" Value="{DynamicResource Brush.Accent.Primary}"/>
+            <Setter Property="Margin" Value="0,0,0,8"/>
+        </Style>
+        <Style Selector="TextBlock.FieldLabel">
+            <Setter Property="FontSize" Value="{DynamicResource BaseFontSize}"/>
+            <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Primary}"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="TextBlock.HelperText">
+            <Setter Property="FontSize" Value="{DynamicResource HelperFontSize}"/>
+            <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Secondary}"/>
+        </Style>
+        <!-- SAで改善(Round 2): the section card is now the Expander itself (previously an outer Border
+             wrapped an inner-bordered Expander, producing a visible "frame within a frame" - the outer
+             Border is removed entirely rather than trying to suppress the Expander's own chrome). -->
+        <Style Selector="Expander.GroupCard">
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border.Primary}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="Padding" Value="16"/>
+            <Setter Property="Margin" Value="0,0,0,16"/>
+            <Setter Property="Background" Value="{DynamicResource Brush.Background.Secondary}"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+        </Style>
+        <Style Selector="Grid.FieldGrid > TextBlock, Grid.FieldGrid > TextBox, Grid.FieldGrid > NumericUpDown, Grid.FieldGrid > ComboBox, Grid.FieldGrid > CalendarDatePicker">
+            <Setter Property="Margin" Value="0,0,0,8"/>
+        </Style>
+    </UserControl.Styles>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                  HorizontalScrollBarVisibility="Disabled"
+                  AllowAutoHide="False"
+                  Padding="0,0,12,0">
+        <StackPanel Margin="16">
+
+            <!-- Open/close behavior (SAで改善, Y:\Temp\sa_improvement_plan_BacktestResultsUiPolish.md
+                 Task 3): identical Expander control to MultiSyncProgressWindow's "Advanced Sync Settings"
+                 (default-expanded, toggle on the same row as the title). The Expander IS the section card
+                 (Classes="GroupCard" above) - no separate wrapping Border. -->
+            <Expander Classes="GroupCard" IsExpanded="True" ExpandDirection="Down">
+                <Expander.Header>
+                    <TextBlock Classes="GroupTitle" Margin="0" Text="{l:Localize Backtest_GroupA_Title}"/>
+                </Expander.Header>
+                <StackPanel Margin="0,8,0,0">
+                    <Grid Classes="FieldGrid" ColumnDefinitions="200,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto">
+                        <TextBlock Classes="FieldLabel" Grid.Row="0" Grid.Column="0" Text="{l:Localize Backtest_Field_Symbol}"/>
+                        <AutoCompleteBox Grid.Row="0" Grid.Column="1"
+                                          AutomationProperties.AutomationId="Backtest_Symbol"
+                                          Text="{Binding Symbol, Mode=TwoWay}"
+                                          ItemsSource="{Binding AvailableSymbols}"
+                                          FilterMode="StartsWith"
+                                          HorizontalAlignment="Stretch">
+                            <!-- Same item display format as MainWindow's Symbol Selector AutoCompleteBox
+                                 (spec-external UX request: use the same display format). -->
+                            <AutoCompleteBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto" Margin="0,2">
+                                        <TextBlock Text="{Binding}"
+                                                   FontWeight="Bold"
+                                                   Foreground="{DynamicResource Brush.Semantic.Success}"
+                                                   VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="1" Text="{l:Localize AddTicker_SymbolSeparator}" Foreground="{DynamicResource Brush.Text.Tertiary}" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="2" Text="{l:Localize AddTicker_SymbolDescription}" Foreground="{DynamicResource Brush.Text.Secondary}" VerticalAlignment="Center" FontSize="{DynamicResource HelperFontSize}"/>
+
+                                        <Border Grid.Column="3" Background="{DynamicResource Brush.Background.Primary}" Padding="4,1" CornerRadius="2" Margin="6,0">
+                                            <TextBlock Text="{l:Localize AddTicker_MarketLabel}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Tertiary}" FontWeight="Bold"/>
+                                        </Border>
+
+                                        <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="2">
+                                            <Path Data="M21,7L9,19L3.5,13.5L4.91,12.09L9,16.17L19.59,5.59L21,7Z"
+                                                  Fill="{DynamicResource Brush.Semantic.Success}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center"/>
+                                            <TextBlock Text="{l:Localize AddTicker_ValidLabel}" Foreground="{DynamicResource Brush.Semantic.Success}" FontSize="{DynamicResource HelperFontSize}" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </Grid>
+                                </DataTemplate>
+                            </AutoCompleteBox.ItemTemplate>
+                        </AutoCompleteBox>
+                        <TextBlock Classes="FieldLabel" Grid.Row="1" Grid.Column="0" Text="{l:Localize Backtest_Field_Frame}"/>
+                        <ComboBox Grid.Row="1" Grid.Column="1" ItemsSource="{Binding AvailableFrames}" SelectedItem="{Binding Frame}" HorizontalAlignment="Stretch">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Converter={StaticResource EnumToLocalizedDisplayNameConverter}}"/>
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
+                        <TextBlock Classes="FieldLabel" Grid.Row="2" Grid.Column="0" Text="{l:Localize Backtest_Field_ExecutionModel}"/>
+                        <ComboBox Grid.Row="2" Grid.Column="1" ItemsSource="{Binding AvailableExecutionModels}" SelectedItem="{Binding ExecutionModel}" HorizontalAlignment="Stretch">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Converter={StaticResource EnumToLocalizedDisplayNameConverter}}"/>
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
+                        <StackPanel Grid.Row="3" Grid.Column="1" Spacing="4">
+                            <TextBlock Classes="HelperText" Text="{l:Localize Backtest_YFinanceApproximate_ModeHelper}" TextWrapping="Wrap"/>
+                        </StackPanel>
+                        <TextBlock Classes="FieldLabel" Grid.Row="4" Grid.Column="0" Text="{l:Localize Backtest_Field_EvaluationStartUtc}"/>
+                        <CalendarDatePicker Grid.Row="4" Grid.Column="1" SelectedDate="{Binding EvaluationStartUtc}"
+                                             SelectedDateFormat="Custom" CustomDateFormatString="yyyy-MM-dd"
+                                             ToolTip.Tip="{Binding EvaluationStartUtcTooltip}"
+                                             HorizontalAlignment="Stretch"/>
+                        <TextBlock Classes="FieldLabel" Grid.Row="5" Grid.Column="0" Text="{l:Localize Backtest_Field_EvaluationEndUtc}"/>
+                        <CalendarDatePicker Grid.Row="5" Grid.Column="1" SelectedDate="{Binding EvaluationEndUtc}"
+                                             SelectedDateFormat="Custom" CustomDateFormatString="yyyy-MM-dd"
+                                             ToolTip.Tip="{Binding EvaluationEndUtcTooltip}"
+                                             HorizontalAlignment="Stretch"/>
+                    </Grid>
+                </StackPanel>
+            </Expander>
+
+            <Expander Classes="GroupCard" IsExpanded="True" ExpandDirection="Down">
+                <Expander.Header>
+                    <TextBlock Classes="GroupTitle" Margin="0" Text="{l:Localize Backtest_GroupB_Title}"/>
+                </Expander.Header>
+                <StackPanel Margin="0,8,0,0">
+                    <Grid Classes="FieldGrid" ColumnDefinitions="200,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto">
+                        <TextBlock Classes="FieldLabel" Grid.Row="0" Grid.Column="0" Text="{l:Localize Backtest_Field_InitialCapital}"/>
+                        <NumericUpDown Grid.Row="0" Grid.Column="1" Value="{Binding InitialCapital}" Minimum="0" Increment="1000" FormatString="0.####"/>
+                        <TextBlock Classes="FieldLabel" Grid.Row="1" Grid.Column="0" Text="{l:Localize Backtest_Field_CommissionFlat}"/>
+                        <NumericUpDown Grid.Row="1" Grid.Column="1" Value="{Binding CommissionFlat}" Minimum="0" Increment="1" FormatString="0.####"/>
+                        <TextBlock Classes="FieldLabel" Grid.Row="2" Grid.Column="0" Text="{l:Localize Backtest_Field_CommissionPerUnit}"/>
+                        <NumericUpDown Grid.Row="2" Grid.Column="1" Value="{Binding CommissionPerUnit}" Minimum="0" Increment="0.01" FormatString="0.####"/>
+                        <TextBlock Classes="FieldLabel" Grid.Row="3" Grid.Column="0" Text="{l:Localize Backtest_Field_SlippageRatio}"/>
+                        <NumericUpDown Grid.Row="3" Grid.Column="1" Value="{Binding SlippageRatio}" Minimum="{Binding SlippageRatioMinimum}" Maximum="{Binding SlippageRatioMaximum}" Increment="0.001" FormatString="0.####"/>
+                        <TextBlock Classes="FieldLabel" Grid.Row="4" Grid.Column="0" Text="{l:Localize Backtest_Field_SizingModel}"/>
+                        <ComboBox Grid.Row="4" Grid.Column="1" ItemsSource="{Binding AvailableSizingModels}" SelectedItem="{Binding SizingModel}" HorizontalAlignment="Stretch">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Converter={StaticResource EnumToLocalizedDisplayNameConverter}}"/>
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
+                        <TextBlock Classes="FieldLabel" Grid.Row="5" Grid.Column="0" Text="{l:Localize Backtest_Field_SizingParameter}"/>
+                        <NumericUpDown Grid.Row="5" Grid.Column="1" Value="{Binding SizingParameter}" Minimum="0" Increment="1" FormatString="0.####"/>
+                    </Grid>
+                </StackPanel>
+            </Expander>
+
+            <Expander Classes="GroupCard" IsExpanded="True" ExpandDirection="Down">
+                <Expander.Header>
+                    <TextBlock Classes="GroupTitle" Margin="0" Text="{l:Localize Backtest_GroupC_Title}"/>
+                </Expander.Header>
+                <StackPanel Margin="0,8,0,0">
+                    <Grid Classes="FieldGrid" ColumnDefinitions="200,*" RowDefinitions="Auto,Auto,Auto">
+                        <TextBlock Classes="FieldLabel" Grid.Row="0" Grid.Column="0" Text="{l:Localize Backtest_Field_InitialMarginRatio}"/>
+                        <NumericUpDown Grid.Row="0" Grid.Column="1" Value="{Binding InitialMarginRatio}" Minimum="{Binding InitialMarginRatioMinimum}" Maximum="{Binding InitialMarginRatioMaximum}" Increment="0.01" FormatString="0.####"/>
+                        <TextBlock Classes="FieldLabel" Grid.Row="1" Grid.Column="0" Text="{l:Localize Backtest_Field_MaintenanceMarginRatio}"/>
+                        <NumericUpDown Grid.Row="1" Grid.Column="1" Value="{Binding MaintenanceMarginRatio}" Minimum="{Binding MaintenanceMarginRatioMinimum}" Maximum="{Binding MaintenanceMarginRatioMaximum}" Increment="0.01" FormatString="0.####"/>
+                        <TextBlock Classes="FieldLabel" Grid.Row="2" Grid.Column="0" Text="{l:Localize Backtest_Field_LiquidationPenaltyRatio}"/>
+                        <NumericUpDown Grid.Row="2" Grid.Column="1" Value="{Binding LiquidationPenaltyRatio}" Minimum="{Binding LiquidationPenaltyRatioMinimum}" Maximum="{Binding LiquidationPenaltyRatioMaximum}" Increment="0.001" FormatString="0.####"/>
+                    </Grid>
+                </StackPanel>
+            </Expander>
+
+            <Expander Classes="GroupCard" IsExpanded="True" ExpandDirection="Down">
+                <Expander.Header>
+                    <TextBlock Classes="GroupTitle" Margin="0" Text="{l:Localize Backtest_GroupD_Title}"/>
+                </Expander.Header>
+                <StackPanel Margin="0,8,0,0">
+                    <Grid Classes="FieldGrid" ColumnDefinitions="200,*" RowDefinitions="Auto,Auto,Auto,Auto">
+                        <TextBlock Classes="FieldLabel" Grid.Row="0" Grid.Column="0" Text="{l:Localize Backtest_Field_AnnualRiskFreeRate}"/>
+                        <NumericUpDown Grid.Row="0" Grid.Column="1" Value="{Binding AnnualRiskFreeRate}" Minimum="-0.999" Increment="0.001" FormatString="0.####"/>
+                        <TextBlock Classes="FieldLabel" Grid.Row="1" Grid.Column="0" Text="{l:Localize Backtest_Field_AnnualMAR}"/>
+                        <NumericUpDown Grid.Row="1" Grid.Column="1" Value="{Binding AnnualMar}" Minimum="-0.999" Increment="0.001" FormatString="0.####"/>
+                        <TextBlock Classes="FieldLabel" Grid.Row="2" Grid.Column="0" Text="{l:Localize Backtest_Field_BootstrapSeed}"/>
+                        <NumericUpDown Grid.Row="2" Grid.Column="1" Value="{Binding BootstrapSeed}" Increment="1" FormatString="0"/>
+                        <TextBlock Classes="FieldLabel" Grid.Row="3" Grid.Column="0" Text="{l:Localize Backtest_Field_BootstrapIterations}"/>
+                        <NumericUpDown Grid.Row="3" Grid.Column="1" Value="{Binding BootstrapIterations}" Minimum="1000" Increment="500" FormatString="0"
+                                       AutomationProperties.AutomationId="Backtest_BootstrapIterations"/>
+                    </Grid>
+
+                    <TextBlock Classes="FieldLabel" FontWeight="Bold" Margin="0,8,0,4" Text="{l:Localize Backtest_Field_AnnualPeriodsByFrame}"/>
+                    <ItemsControl ItemsSource="{Binding AnnualPeriodsByFrame}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:AnnualPeriodEntry">
+                                <Grid ColumnDefinitions="200,*" Margin="0,0,0,4">
+                                    <TextBlock Classes="FieldLabel" Grid.Column="0" Text="{Binding Frame, Converter={StaticResource EnumToLocalizedDisplayNameConverter}}"/>
+                                    <NumericUpDown Grid.Column="1" Value="{Binding Periods}" Minimum="1" Maximum="366" Increment="1" FormatString="0"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Expander>
+
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

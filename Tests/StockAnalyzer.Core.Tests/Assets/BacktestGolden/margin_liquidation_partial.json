@@ -1,0 +1,115 @@
+{
+  "Status": "Completed",
+  "StrategyName": "VerificationScripted",
+  "IsInsufficientData": false,
+  "ReproducibilityHashHex": "ED88C56D3A84C6BBB03721BA10F571B1044859019BF05F9135BF51BD42C1DF92",
+  "Configuration": {
+    "InitialCapital": 1000,
+    "CommissionFlat": 0,
+    "CommissionPerUnit": 0,
+    "SlippageRatio": 0,
+    "TradingDaysPerYear": 252,
+    "SizingModel": "FixedQuantity",
+    "SizingParameter": 20,
+    "InitialMarginRatio": 0.3,
+    "MaintenanceMarginRatio": 0.2,
+    "LiquidationPenaltyRatio": 0
+  },
+  "Orders": [
+    {
+      "OrderId": 1,
+      "Side": "Buy",
+      "Type": "Market",
+      "Quantity": 20,
+      "LimitPrice": null,
+      "StopPrice": null,
+      "Status": "Filled",
+      "TimeInForce": {
+        "IsGoodTilCancelled": true,
+        "ExpiryBar": -1
+      },
+      "SubmittedBar": 0,
+      "EarliestFillBar": 1,
+      "StopActivated": false,
+      "ExpiredReason": null,
+      "RejectedReason": null
+    }
+  ],
+  "Fills": [
+    {
+      "FillId": 1,
+      "OrderId": 1,
+      "BarIndex": 1,
+      "FillTime": "2026-01-06T00:00:00Z",
+      "Side": "Buy",
+      "Price": 100,
+      "Quantity": 20,
+      "Commission": 0,
+      "SlippageAmount": 0
+    },
+    {
+      "FillId": 2,
+      "OrderId": 0,
+      "BarIndex": 2,
+      "FillTime": "2026-01-07T00:00:00Z",
+      "Side": "Sell",
+      "Price": 62.5,
+      "Quantity": 20,
+      "Commission": 0,
+      "SlippageAmount": 0
+    }
+  ],
+  "Trades": [
+    {
+      "TradeId": 1,
+      "Side": "Long",
+      "EntryBar": 1,
+      "EntryTime": "2026-01-06T00:00:00Z",
+      "EntryPrice": 100,
+      "ExitBar": 2,
+      "ExitTime": "2026-01-07T00:00:00Z",
+      "ExitPrice": 62.5,
+      "Quantity": 20,
+      "ClosedGross": -750,
+      "ClosedNet": -750,
+      "EntryFee": 0,
+      "ExitFee": 0,
+      "HoldingBars": 1,
+      "IsForcedLiquidation": true
+    }
+  ],
+  "EquityPoints": [
+    {
+      "BarIndex": 0,
+      "Timestamp": "2026-01-05T00:00:00Z",
+      "Equity": 1000,
+      "Cash": 1000,
+      "MarketValue": 0,
+      "HeldMargin": 0
+    },
+    {
+      "BarIndex": 1,
+      "Timestamp": "2026-01-06T00:00:00Z",
+      "Equity": 1000,
+      "Cash": 400,
+      "MarketValue": 2000,
+      "HeldMargin": 600
+    },
+    {
+      "BarIndex": 2,
+      "Timestamp": "2026-01-07T00:00:00Z",
+      "Equity": 250,
+      "Cash": 250,
+      "MarketValue": 0,
+      "HeldMargin": 0
+    }
+  ],
+  "Signals": [
+    {
+      "Type": "LongEntry",
+      "BarIndex": 0,
+      "SignalTime": "2026-01-05T00:00:00Z",
+      "Reason": "r"
+    }
+  ]
+}

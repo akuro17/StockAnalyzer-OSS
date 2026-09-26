@@ -1,0 +1,139 @@
+{
+  "Status": "Completed",
+  "StrategyName": "VerificationScripted",
+  "IsInsufficientData": false,
+  "ReproducibilityHashHex": "F8BAC8C247D00F0FB08FCCB460AECF3DBE22654479EBAEFAFBD311B378EF4B82",
+  "Configuration": {
+    "InitialCapital": 1000000,
+    "CommissionFlat": 50,
+    "CommissionPerUnit": 0.5,
+    "SlippageRatio": 0,
+    "TradingDaysPerYear": 252,
+    "SizingModel": "FixedQuantity",
+    "SizingParameter": 100,
+    "InitialMarginRatio": 1,
+    "MaintenanceMarginRatio": 0.5,
+    "LiquidationPenaltyRatio": 0
+  },
+  "Orders": [
+    {
+      "OrderId": 1,
+      "Side": "Sell",
+      "Type": "Market",
+      "Quantity": 100,
+      "LimitPrice": null,
+      "StopPrice": null,
+      "Status": "Filled",
+      "TimeInForce": {
+        "IsGoodTilCancelled": true,
+        "ExpiryBar": -1
+      },
+      "SubmittedBar": 0,
+      "EarliestFillBar": 1,
+      "StopActivated": false,
+      "ExpiredReason": null,
+      "RejectedReason": null
+    },
+    {
+      "OrderId": 2,
+      "Side": "Buy",
+      "Type": "Market",
+      "Quantity": 100,
+      "LimitPrice": null,
+      "StopPrice": null,
+      "Status": "Filled",
+      "TimeInForce": {
+        "IsGoodTilCancelled": true,
+        "ExpiryBar": -1
+      },
+      "SubmittedBar": 1,
+      "EarliestFillBar": 2,
+      "StopActivated": false,
+      "ExpiredReason": null,
+      "RejectedReason": null
+    }
+  ],
+  "Fills": [
+    {
+      "FillId": 1,
+      "OrderId": 1,
+      "BarIndex": 1,
+      "FillTime": "2026-01-06T00:00:00Z",
+      "Side": "Sell",
+      "Price": 100,
+      "Quantity": 100,
+      "Commission": 100,
+      "SlippageAmount": 0
+    },
+    {
+      "FillId": 2,
+      "OrderId": 2,
+      "BarIndex": 2,
+      "FillTime": "2026-01-07T00:00:00Z",
+      "Side": "Buy",
+      "Price": 90,
+      "Quantity": 100,
+      "Commission": 100,
+      "SlippageAmount": 0
+    }
+  ],
+  "Trades": [
+    {
+      "TradeId": 1,
+      "Side": "Short",
+      "EntryBar": 1,
+      "EntryTime": "2026-01-06T00:00:00Z",
+      "EntryPrice": 100,
+      "ExitBar": 2,
+      "ExitTime": "2026-01-07T00:00:00Z",
+      "ExitPrice": 90,
+      "Quantity": 100,
+      "ClosedGross": 1000,
+      "ClosedNet": 800,
+      "EntryFee": 100,
+      "ExitFee": 100,
+      "HoldingBars": 1,
+      "IsForcedLiquidation": false
+    }
+  ],
+  "EquityPoints": [
+    {
+      "BarIndex": 0,
+      "Timestamp": "2026-01-05T00:00:00Z",
+      "Equity": 1000000,
+      "Cash": 1000000,
+      "MarketValue": 0,
+      "HeldMargin": 0
+    },
+    {
+      "BarIndex": 1,
+      "Timestamp": "2026-01-06T00:00:00Z",
+      "Equity": 1000900,
+      "Cash": 989900,
+      "MarketValue": -9000,
+      "HeldMargin": 10000
+    },
+    {
+      "BarIndex": 2,
+      "Timestamp": "2026-01-07T00:00:00Z",
+      "Equity": 1000800,
+      "Cash": 1000800,
+      "MarketValue": 0,
+      "HeldMargin": 0
+    }
+  ],
+  "Signals": [
+    {
+      "Type": "ShortEntry",
+      "BarIndex": 0,
+      "SignalTime": "2026-01-05T00:00:00Z",
+      "Reason": "r"
+    },
+    {
+      "Type": "ShortExit",
+      "BarIndex": 1,
+      "SignalTime": "2026-01-06T00:00:00Z",
+      "Reason": "r"
+    }
+  ]
+}

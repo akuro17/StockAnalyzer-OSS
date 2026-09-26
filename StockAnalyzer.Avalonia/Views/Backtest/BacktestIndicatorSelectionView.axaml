@@ -1,0 +1,409 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:l="clr-namespace:StockAnalyzer.Avalonia.Markup;assembly=StockAnalyzer.Avalonia"
+             xmlns:vm="using:StockAnalyzer.Avalonia.ViewModels.Backtest"
+             xmlns:models="using:StockAnalyzer.Core.Models.Screener"
+             xmlns:controls="using:StockAnalyzer.Avalonia.Views.Controls"
+             xmlns:converters="using:StockAnalyzer.Avalonia.Converters"
+             mc:Ignorable="d" d:DesignWidth="960" d:DesignHeight="700"
+             x:Class="StockAnalyzer.Avalonia.Views.Backtest.BacktestIndicatorSelectionView"
+             x:DataType="vm:BacktestIndicatorSelectionViewModel">
+    <UserControl.Styles>
+        <Style Selector="TextBlock.GroupTitle">
+            <Setter Property="FontSize" Value="{DynamicResource BaseFontSize}"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Foreground" Value="{DynamicResource Brush.Accent.Primary}"/>
+        </Style>
+        <!-- Byte-identical to IndicatorRegistrationView's NavGroups/catalog ListBoxItem styling
+             (spec-external UX request: "center column font size" - the previous version was missing
+             this row Padding/Margin/CornerRadius block, only matching FontSize, which made rows look
+             visually inconsistent with the reference Screener/Indicator UI). -->
+        <Style Selector="ListBox.NavGroups ListBoxItem" x:DataType="vm:BacktestIndicatorGroupDisplayItem">
+            <Setter Property="Padding" Value="10,6"/>
+            <Setter Property="Margin" Value="0,1"/>
+            <Setter Property="CornerRadius" Value="3"/>
+            <Setter Property="FontSize" Value="{DynamicResource DetailFontSize}"/>
+            <Setter Property="IsEnabled" Value="{Binding !IsHeader}"/>
+        </Style>
+        <Style Selector="ListBox.NavGroups ListBoxItem[IsEnabled=False]">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Focusable" Value="False"/>
+        </Style>
+        <Style Selector="ListBox.NavGroups ListBoxItem:selected">
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+        <Style Selector="ListBox.Catalog ListBoxItem">
+            <Setter Property="Padding" Value="8,6"/>
+            <Setter Property="Margin" Value="0,1"/>
+            <Setter Property="CornerRadius" Value="4"/>
+        </Style>
+        <!-- Task 6 condition-builder Left/Right card focus highlight (structural precedent:
+             IndicatorRegistrationView.axaml's own Border.active style, reused verbatim as a pattern
+             rather than a shared resource since that file itself must not be modified, per the parent
+             plan's section 2 reuse audit). -->
+        <Style Selector="Border.ConditionCard">
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border.Primary}"/>
+            <Setter Property="Background" Value="{DynamicResource Brush.Background.Primary}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="10"/>
+        </Style>
+        <Style Selector="Border.ConditionCard.active">
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Accent.Primary}"/>
+            <Setter Property="BorderThickness" Value="2"/>
+            <Setter Property="Background" Value="{DynamicResource Brush.Background.Tertiary}"/>
+        </Style>
+        <!-- Byte-identical to IndicatorRegistrationView.axaml's own "ModeSwitch button style linked to
+             Theme with sufficient padding preventing bottom edge clipping" (SAで改善 2026-09-18 request:
+             the "123"/"Ind" buttons here had no FontSize/Padding of their own and clipped their label text
+             top/bottom - this view never applied this style class even though it already declared the
+             buttons' Theme binding). -->
+        <Style Selector="Button.ModeSwitch">
+            <Setter Property="MinHeight" Value="34"/>
+            <Setter Property="Padding" Value="12,6"/>
+            <Setter Property="FontSize" Value="{DynamicResource BaseFontSize}"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+    </UserControl.Styles>
+
+    <!-- Resizable 3-Column layout matching the reference Screener/Indicator catalog UI
+         (IndicatorRegistrationView.axaml): bordered cards + GridSplitters instead of fixed widths.
+         Column proportions (220*, Auto, 260*, Auto, 450*) are byte-identical to
+         IndicatorRegistrationView.axaml's own main Grid (SAで改善 2026-09-18 request: match
+         Screener/Indicators' column widths exactly). -->
+    <Grid ColumnDefinitions="220*, Auto, 260*, Auto, 450*" Margin="16">
+
+        <!-- Left column: category list -->
+        <Border Grid.Column="0"
+                MinWidth="150"
+                Background="{DynamicResource Brush.Background.Secondary}"
+                BorderBrush="{DynamicResource Brush.Border.Primary}"
+                BorderThickness="1"
+                CornerRadius="4"
+                Padding="6">
+            <ListBox Classes="NavGroups" ItemsSource="{Binding NavGroups}" SelectedItem="{Binding SelectedGroupItem}"
+                     Background="Transparent"
+                     BorderThickness="0"
+                     Padding="{DynamicResource ListScrollGutter}"
+                     ScrollViewer.AllowAutoHide="False"
+                     ScrollViewer.VerticalScrollBarVisibility="Auto"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                <ListBox.ItemTemplate>
+                    <DataTemplate x:DataType="vm:BacktestIndicatorGroupDisplayItem">
+                        <Panel>
+                            <!-- Category Parent Header Row ("Indicators") -->
+                            <Border IsVisible="{Binding IsHeader}"
+                                    Background="{DynamicResource Brush.Background.Tertiary}"
+                                    CornerRadius="4"
+                                    Padding="6,4"
+                                    Margin="-6,4,-6,2">
+                                <TextBlock Text="{Binding DisplayName}"
+                                           FontWeight="Bold"
+                                           FontSize="{DynamicResource DetailFontSize}"
+                                           Foreground="{DynamicResource Brush.Accent.Primary}"/>
+                            </Border>
+
+                            <!-- "All Filters" Row -->
+                            <StackPanel IsVisible="{Binding IsAllFilters}"
+                                        Orientation="Horizontal"
+                                        Spacing="6"
+                                        VerticalAlignment="Center">
+                                <PathIcon Data="M10,18h4v-2h-4V18z M3,6v2h18V6H3z M6,13h12v-2H6V13z"
+                                          Width="14" Height="14"
+                                          Foreground="{DynamicResource Brush.Accent.Primary}"/>
+                                <TextBlock Text="{Binding DisplayName}"
+                                           FontWeight="Bold"
+                                           FontSize="{DynamicResource DetailFontSize}"
+                                           Foreground="{DynamicResource Brush.Accent.Primary}"
+                                           VerticalAlignment="Center"/>
+                            </StackPanel>
+
+                            <!-- Standard Sub-Group Item Row -->
+                            <TextBlock IsVisible="{Binding IsStandardItem}"
+                                       Text="{Binding DisplayName}"
+                                       VerticalAlignment="Center"
+                                       Margin="8,0,0,0"/>
+                        </Panel>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+        </Border>
+
+        <GridSplitter Grid.Column="1"
+                      Width="8"
+                      ResizeDirection="Columns"
+                      ResizeBehavior="PreviousAndNext"
+                      HorizontalAlignment="Stretch"
+                      VerticalAlignment="Stretch"
+                      Cursor="SizeWestEast"
+                      Margin="2,0"/>
+
+        <!-- Center column: search + catalog (shared by both right-column tabs: whichever tab is active
+             decides what SelectedCatalogItem feeds - the legacy single-track flow, or whichever
+             condition-builder side is focused). -->
+        <Border Grid.Column="2"
+                MinWidth="180"
+                Background="{DynamicResource Brush.Background.Secondary}"
+                BorderBrush="{DynamicResource Brush.Border.Primary}"
+                BorderThickness="1"
+                CornerRadius="4"
+                Padding="8">
+            <DockPanel>
+                <TextBox DockPanel.Dock="Top" Watermark="{l:Localize Indicator_SearchPlaceholder}" Text="{Binding SearchText}" Height="34" Margin="0,0,0,8"
+                         AutomationProperties.AutomationId="Backtest_Condition_Search"/>
+                <ListBox Classes="Catalog" ItemsSource="{Binding FilteredItems}" SelectedItem="{Binding SelectedCatalogItem}"
+                         AutomationProperties.AutomationId="Backtest_Condition_Catalog"
+                         Background="Transparent"
+                         BorderThickness="0"
+                         Padding="{DynamicResource ListScrollGutter}"
+                         ScrollViewer.AllowAutoHide="False"
+                         ScrollViewer.VerticalScrollBarVisibility="Auto"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                    <ListBox.ItemTemplate>
+                        <!-- Font size/color set inline, byte-identical to IndicatorRegistrationView.axaml's
+                             own catalog DataTemplate (SAで改善 2026-09-18 request: the previous
+                             `Classes="CatalogRow"`/`ListBoxItem.CatalogRow TextBlock.ShortName` style
+                             selector never matched anything, because Classes="CatalogRow" was set on the
+                             inner StackPanel, not the auto-generated ListBoxItem container - these
+                             TextBlocks were silently falling back to default TextBlock styling instead of
+                             the intended DetailFontSize/HelperFontSize + theme colors). -->
+                        <DataTemplate x:DataType="models:ScreenerCatalogItem">
+                            <StackPanel Spacing="2">
+                                <TextBlock Text="{Binding ShortName}"
+                                           FontWeight="SemiBold"
+                                           FontSize="{DynamicResource DetailFontSize}"
+                                           Foreground="{DynamicResource Brush.Text.Primary}"
+                                           TextTrimming="CharacterEllipsis"/>
+                                <TextBlock Text="{Binding DisplayName}"
+                                           FontSize="{DynamicResource HelperFontSize}"
+                                           Foreground="{DynamicResource Brush.Text.Secondary}"
+                                           TextTrimming="CharacterEllipsis"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </DockPanel>
+        </Border>
+
+        <GridSplitter Grid.Column="3"
+                      Width="8"
+                      ResizeDirection="Columns"
+                      ResizeBehavior="PreviousAndNext"
+                      HorizontalAlignment="Stretch"
+                      VerticalAlignment="Stretch"
+                      Cursor="SizeWestEast"
+                      Margin="2,0"/>
+
+        <!-- Right column (SAで改善 2026-09-18): the "Track Indicator" single-target Add flow was
+             removed per explicit user request (its VM-level members - SelectedIndicatorSettings,
+             AddSelectedIndicatorCommand, AddedIndicators, ReplaceAddedIndicators - are kept, unexposed
+             here, since they still back the NoOp-strategy zero-condition fallback and legacy
+             backtest_configuration.json round-trip in BacktestWindowViewModel; only their UI surface in
+             this tab is gone). With only one flow left, the Comparison Condition builder (plan section
+             4.4) is shown directly in this column instead of behind a TabControl. -->
+        <Border Grid.Column="4"
+                MinWidth="260"
+                Background="{DynamicResource Brush.Background.Secondary}"
+                BorderBrush="{DynamicResource Brush.Border.Primary}"
+                BorderThickness="1"
+                CornerRadius="4"
+                Padding="10">
+            <!-- SA_UI_SUBWINDOW_STANDARD.md section 2.3 (Scrollable Container & ScrollBar Standards):
+                 AllowAutoHide must be explicitly False so the scrollbar stays permanently visible/
+                 actionable, and the shared ListScrollGutter padding reserves its track's width instead of
+                 letting content overlap it (this ScrollViewer previously had neither, matching every other
+                 plain ScrollViewer in this codebase, e.g. IndicatorSettingsWindow.axaml). -->
+            <ScrollViewer VerticalScrollBarVisibility="Auto" AllowAutoHide="False" HorizontalScrollBarVisibility="Disabled" Padding="{DynamicResource ListScrollGutter}">
+                <StackPanel Spacing="10">
+
+                    <TextBlock Text="{Binding UnsupportedWarningMessage}"
+                               Foreground="{DynamicResource Brush.Semantic.Error}"
+                               FontSize="{DynamicResource HelperFontSize}" TextWrapping="Wrap"
+                               IsVisible="{Binding UnsupportedWarningMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+
+                    <!-- Left Target card: clicking anywhere in the card focuses it (SAで改善 2026-09-18
+                         request: drop the separate "Select" button and match IndicatorRegistrationView's
+                         own click-to-focus + "ACTIVE FOCUS" badge convention exactly). -->
+                    <Border Classes="ConditionCard" Classes.active="{Binding IsLeftConditionActive}" PointerPressed="OnLeftConditionContainerPointerPressed">
+                        <StackPanel Spacing="6">
+                            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                <TextBlock Text="{l:Localize Backtest_Condition_LeftTarget}" FontWeight="Bold" Foreground="{DynamicResource Brush.Accent.Primary}" VerticalAlignment="Center"/>
+                                <Border IsVisible="{Binding IsLeftConditionActive}" Background="{DynamicResource Brush.Accent.Primary}" CornerRadius="3" Padding="6,2">
+                                    <TextBlock Text="ACTIVE FOCUS" FontSize="10" FontWeight="Bold" Foreground="White"/>
+                                </Border>
+                            </StackPanel>
+                            <TextBlock Text="{Binding LeftConditionCatalogItem.DisplayName, FallbackValue='Select an indicator from catalog'}"
+                                       FontWeight="SemiBold" TextWrapping="Wrap"/>
+
+                            <!-- Output/Timeframe/Offset input widths (140) and label column width (260,
+                                 the shared ScreenerLabelColumnWidth convention) are byte-identical to
+                                 IndicatorRegistrationView.axaml's own Left/Right Target rows (SAで改善
+                                 2026-09-18 request: match Screener/Indicators exactly, including the
+                                 Offset field's width matching a parameter row's own input width, e.g.
+                                 "Period"). -->
+                            <Border IsVisible="{Binding HasMultipleLeftConditionOutputs}">
+                                <Grid ColumnDefinitions="260,*" MinHeight="32">
+                                    <TextBlock Grid.Column="0" Text="{l:Localize Label_DisplayItemSelection}" VerticalAlignment="Center"/>
+                                    <ComboBox Grid.Column="1" ItemsSource="{Binding LeftConditionAvailableOutputs}" SelectedItem="{Binding LeftConditionSelectedOutput}"
+                                              Width="140" Height="30" Margin="12,0,0,0" HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                                </Grid>
+                            </Border>
+
+                            <controls:DynamicIndicatorSettingsView ParameterObject="{Binding LeftConditionSettings.ParameterObject}" Margin="0"/>
+
+                            <Grid ColumnDefinitions="260,*" MinHeight="32">
+                                <TextBlock Grid.Column="0" Text="{l:Localize Label_TimeFrame}" VerticalAlignment="Center"/>
+                                <ComboBox Grid.Column="1" ItemsSource="{Binding AvailableConditionFrames}" SelectedItem="{Binding LeftConditionFrame}"
+                                          Width="140" Height="30" Margin="12,0,0,0" HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                            </Grid>
+
+                            <Grid ColumnDefinitions="260,*" MinHeight="32">
+                                <TextBlock Grid.Column="0" Text="{l:Localize Label_Offset}" VerticalAlignment="Center"/>
+                                <NumericUpDown Grid.Column="1" Value="{Binding LeftConditionOffset}" Minimum="{Binding MinConditionOffset}" Maximum="{Binding MaxConditionOffset}" Increment="1" ToolTip.Tip="{l:Localize ToolTip_Backtest_ConditionOffset}"
+                                               Width="140" Height="30" Padding="6,2" Margin="12,0,0,0" HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Operator / Mode-switch / Entry-Exit-Both commit buttons. AND/OR logical-join and
+                         the separate Add button + Role picker were removed (SAで改善 2026-09-18 request):
+                         every new entry now uses BacktestConditionEntry.LogicalOperator's own default
+                         (And), and the three Entry/Exit/Both buttons each directly commit the
+                         currently-configured Left/Right state as one new entry with that fixed Role,
+                         replacing the former "pick a Role, then press Add" two-step flow. -->
+                    <Border Background="{DynamicResource Brush.Background.Tertiary}"
+                            BorderBrush="{DynamicResource Brush.Border.Primary}"
+                            BorderThickness="1"
+                            CornerRadius="6"
+                            Padding="10">
+                        <StackPanel Spacing="8">
+                            <!-- Operator label removed (SAで改善 2026-09-18 request) - the ComboBox itself
+                                 (GreaterThan/LessThan/etc. glyphs via ComparisonOperatorConverter) is
+                                 self-explanatory without a "Operator" caption. Operator + Mode-switch now
+                                 share one row (SAで改善 2026-09-18 follow-up request), matching
+                                 IndicatorRegistrationView's own "Operator, Target Mode Switch" row layout;
+                                 the mode-switch buttons use the ModeSwitch style (above) instead of
+                                 unstyled Width/Height, fixing their clipped label text. -->
+                            <Grid ColumnDefinitions="Auto,14,Auto" HorizontalAlignment="Center">
+                                <ComboBox Grid.Column="0" ItemsSource="{Binding AvailableConditionOperators}" SelectedItem="{Binding ConditionOperator}"
+                                          Width="140" Height="30" VerticalAlignment="Center">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate x:DataType="models:ComparisonOperator">
+                                            <TextBlock Text="{Binding Converter={x:Static converters:ComparisonOperatorConverter.Instance}}"/>
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+
+                                <Grid Grid.Column="2" ColumnDefinitions="36,36" VerticalAlignment="Center">
+                                    <Button Grid.Column="0" Content="123" Command="{Binding SetConditionRightModeNumericCommand}"
+                                            Classes="ModeSwitch" Width="36" Height="32" Padding="0" Margin="0" CornerRadius="4,0,0,4"
+                                            Theme="{Binding IsConditionRightNumericMode, Converter={x:Static converters:BoolToButtonThemeConverter.Instance}}"/>
+                                    <Button Grid.Column="1" Content="Ind" Command="{Binding SetConditionRightModeIndicatorCommand}"
+                                            Classes="ModeSwitch" Width="36" Height="32" Padding="0" Margin="-1,0,0,0" CornerRadius="0,4,4,0"
+                                            Theme="{Binding IsConditionRightIndicatorMode, Converter={x:Static converters:BoolToButtonThemeConverter.Instance}}"/>
+                                </Grid>
+                            </Grid>
+
+                            <!-- Standalone (non-joined) buttons with the same Spacing/Height/FontSize as
+                                 BacktestWindow's own Run/Cancel row (SAで改善 2026-09-18 request: the
+                                 previous joined-corner "-1,0,0,0" layout clipped label text top/bottom and
+                                 rendered the Exit/Both boundary as touching while Entry/Exit looked
+                                 separated). The Long/Short Position toggle (SAで実装 2026-09-19,
+                                 Y:\Temp\sa_implementation_plan_BacktestPositionDirectionReversal.md section
+                                 2.1/4) sits at this row's left edge, same ModeSwitch/joined-Grid convention
+                                 as the "123/Ind" toggle above; it selects the direction AddEntryCondition/
+                                 AddBothCondition open (AddExitCondition ignores it - ExitOnly stays
+                                 side-agnostic per the plan's section 2.2.1). -->
+                            <StackPanel Orientation="Horizontal" Spacing="12" HorizontalAlignment="Center">
+                                <Grid ColumnDefinitions="56,56">
+                                    <Button Grid.Column="0" Content="{l:Localize Btn_PositionLong}" Command="{Binding SetTargetPositionLongCommand}"
+                                            Classes="ModeSwitch" Height="36" Padding="0" Margin="0" CornerRadius="4,0,0,4"
+                                            Theme="{Binding IsTargetPositionLong, Converter={x:Static converters:BoolToButtonThemeConverter.Instance}}"/>
+                                    <Button Grid.Column="1" Content="{l:Localize Btn_PositionShort}" Command="{Binding SetTargetPositionShortCommand}"
+                                            Classes="ModeSwitch" Height="36" Padding="0" Margin="-1,0,0,0" CornerRadius="0,4,4,0"
+                                            Theme="{Binding IsTargetPositionShort, Converter={x:Static converters:BoolToButtonThemeConverter.Instance}}"/>
+                                </Grid>
+                                <Button Content="{l:Localize Btn_ConditionRoleEntry}" Command="{Binding AddEntryConditionCommand}" Width="80" Height="36" FontSize="{DynamicResource BaseFontSize}" Theme="{DynamicResource PrimaryButtonStyle}"
+                                        AutomationProperties.AutomationId="Backtest_Condition_AddEntry"/>
+                                <Button Content="{l:Localize Btn_ConditionRoleExit}" Command="{Binding AddExitConditionCommand}" Width="80" Height="36" FontSize="{DynamicResource BaseFontSize}" Theme="{DynamicResource PrimaryButtonStyle}"
+                                        AutomationProperties.AutomationId="Backtest_Condition_AddExit"/>
+                                <Button Content="{l:Localize Btn_ConditionRoleBoth}" Command="{Binding AddBothConditionCommand}" Width="80" Height="36" FontSize="{DynamicResource BaseFontSize}" Theme="{DynamicResource PrimaryButtonStyle}"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Risk Management (SAで実装 2026-09-19, Task 8b of
+                         Y:\Temp\sa_implementation_plan_BacktestComparisonSignals.md section 4.5): optional
+                         entry-price-relative Stop-Loss/Take-Profit, applied while holding a position from
+                         ANY entry this strategy opens (independent of which Role/condition opened it).
+                         Blank (null) means disabled - same NumericUpDown-to-decimal?-ratio convention
+                         already used by the Configuration tab's SlippageRatio/InitialMarginRatio fields. -->
+                    <Border Classes="ConditionCard">
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="{l:Localize Backtest_Condition_RiskManagementHeader}" FontWeight="Bold" Foreground="{DynamicResource Brush.Accent.Primary}"/>
+                            <Grid ColumnDefinitions="260,*" MinHeight="32">
+                                <TextBlock Grid.Column="0" Text="{l:Localize Backtest_Field_StopLossPercent}" VerticalAlignment="Center"/>
+                                <NumericUpDown Grid.Column="1" Value="{Binding RiskStopLossPercent}" Minimum="0" Maximum="0.999" Increment="0.001" FormatString="0.####"
+                                               Width="140" Height="30" Padding="6,2" Margin="12,0,0,0" HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                            </Grid>
+                            <Grid ColumnDefinitions="260,*" MinHeight="32">
+                                <TextBlock Grid.Column="0" Text="{l:Localize Backtest_Field_TakeProfitPercent}" VerticalAlignment="Center"/>
+                                <NumericUpDown Grid.Column="1" Value="{Binding RiskTakeProfitPercent}" Minimum="0" Maximum="0.999" Increment="0.001" FormatString="0.####"
+                                               Width="140" Height="30" Padding="6,2" Margin="12,0,0,0" HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Right Target: Numeric mode -->
+                    <Border Classes="ConditionCard" IsVisible="{Binding IsConditionRightNumericMode}">
+                        <Grid ColumnDefinitions="260,*" MinHeight="32">
+                            <TextBlock Grid.Column="0" Text="{l:Localize Label_NumericValue}" VerticalAlignment="Center"/>
+                            <NumericUpDown Grid.Column="1" Value="{Binding ConditionRightNumericValue}" Increment="1" FormatString="0.####"
+                                           Width="140" Height="30" Padding="6,2" Margin="12,0,0,0" HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                        </Grid>
+                    </Border>
+
+                    <!-- Right Target: Indicator mode. Same click-to-focus convention as the Left card. -->
+                    <Border Classes="ConditionCard" Classes.active="{Binding IsRightConditionActive}" IsVisible="{Binding IsConditionRightIndicatorMode}" PointerPressed="OnRightConditionContainerPointerPressed">
+                        <StackPanel Spacing="6">
+                            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                <TextBlock Text="{l:Localize Backtest_Condition_RightTarget}" FontWeight="Bold" Foreground="{DynamicResource Brush.Accent.Primary}" VerticalAlignment="Center"/>
+                                <Border IsVisible="{Binding IsRightConditionActive}" Background="{DynamicResource Brush.Accent.Primary}" CornerRadius="3" Padding="6,2">
+                                    <TextBlock Text="ACTIVE FOCUS" FontSize="10" FontWeight="Bold" Foreground="White"/>
+                                </Border>
+                            </StackPanel>
+                            <TextBlock Text="{Binding RightConditionCatalogItem.DisplayName, FallbackValue='Select an indicator from catalog'}"
+                                       FontWeight="SemiBold" TextWrapping="Wrap"/>
+
+                            <Border IsVisible="{Binding HasMultipleRightConditionOutputs}">
+                                <Grid ColumnDefinitions="260,*" MinHeight="32">
+                                    <TextBlock Grid.Column="0" Text="{l:Localize Label_DisplayItemSelection}" VerticalAlignment="Center"/>
+                                    <ComboBox Grid.Column="1" ItemsSource="{Binding RightConditionAvailableOutputs}" SelectedItem="{Binding RightConditionSelectedOutput}"
+                                              Width="140" Height="30" Margin="12,0,0,0" HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                                </Grid>
+                            </Border>
+
+                            <controls:DynamicIndicatorSettingsView ParameterObject="{Binding RightConditionSettings.ParameterObject}" Margin="0"/>
+
+                            <Grid ColumnDefinitions="260,*" MinHeight="32">
+                                <TextBlock Grid.Column="0" Text="{l:Localize Label_TimeFrame}" VerticalAlignment="Center"/>
+                                <ComboBox Grid.Column="1" ItemsSource="{Binding AvailableConditionFrames}" SelectedItem="{Binding RightConditionFrame}"
+                                          Width="140" Height="30" Margin="12,0,0,0" HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                            </Grid>
+
+                            <Grid ColumnDefinitions="260,*" MinHeight="32">
+                                <TextBlock Grid.Column="0" Text="{l:Localize Label_Offset}" VerticalAlignment="Center"/>
+                                <NumericUpDown Grid.Column="1" Value="{Binding RightConditionOffset}" Minimum="{Binding MinConditionOffset}" Maximum="{Binding MaxConditionOffset}" Increment="1" ToolTip.Tip="{l:Localize ToolTip_Backtest_ConditionOffset}"
+                                               Width="140" Height="30" Padding="6,2" Margin="12,0,0,0" HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+        </Border>
+    </Grid>
+</UserControl>

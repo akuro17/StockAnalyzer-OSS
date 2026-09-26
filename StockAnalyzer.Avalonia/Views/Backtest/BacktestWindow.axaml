@@ -1,0 +1,158 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:l="clr-namespace:StockAnalyzer.Avalonia.Markup;assembly=StockAnalyzer.Avalonia"
+        xmlns:vm="using:StockAnalyzer.Avalonia.ViewModels.Backtest"
+        xmlns:views="using:StockAnalyzer.Avalonia.Views.Backtest"
+        mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="700"
+        x:Class="StockAnalyzer.Avalonia.Views.Backtest.BacktestWindow"
+        x:DataType="vm:BacktestWindowViewModel"
+        AutomationProperties.AutomationId="Backtest_Window"
+        Icon="avares://StockAnalyzer.Avalonia/Assets/avalonia-logo.ico"
+        Title="{l:Localize Window_Backtest_Title}"
+        Width="1200" Height="700"
+        WindowStartupLocation="CenterScreen"
+        Topmost="False"
+        ExtendClientAreaToDecorationsHint="True"
+        ExtendClientAreaTitleBarHeightHint="-1"
+        Background="{DynamicResource Brush.Background.Primary}">
+    <!--
+        No behaviors:WindowPersistenceBehavior.PersistenceEnabled here by design (spec section 5.6
+        "対応確認" requirement): that attached property only restores/captures geometry when the
+        window's DataContext is WorkspaceViewItem or DetachedWindowViewModel (see
+        WindowPersistenceBehavior.OnWindowClosing). BacktestWindowViewModel is neither, so setting
+        the property would be inert and would misleadingly imply geometry persistence is wired up.
+        Spec section 5.1 only requires independent per-window run state, not position/size
+        persistence, so this is intentionally left unset (see
+        Y:\Temp\sa_ai_context_BacktestUiWindow_P3.md section 4).
+    -->
+
+    <Window.Resources>
+        <!-- Simple bar-chart glyph for the header (spec section 1.1's "feature icon"); matches the
+             plain-geometry convention used by other sub-window headers (e.g. TrainingWizardWindow). -->
+        <StreamGeometry x:Key="BacktestHeaderIconData">M5,9.2H8.2V19H5V9.2M10.6,5H13.8V19H10.6V5M16.2,13H19.4V19H16.2V13Z</StreamGeometry>
+    </Window.Resources>
+
+    <Window.Styles>
+        <Style Selector="TabItem">
+            <Setter Property="FontSize" Value="{DynamicResource BaseFontSize}"/>
+            <Setter Property="Padding" Value="16,10"/>
+        </Style>
+        <Style Selector="TabControl">
+            <Setter Property="Padding" Value="0"/>
+        </Style>
+    </Window.Styles>
+
+    <Border BorderBrush="{DynamicResource Brush.Border.Primary}" BorderThickness="1">
+        <Grid RowDefinitions="56,*,64">
+
+            <!-- Header (spec section 1.1 Custom Titlebar Mode: native OS title bar hidden via
+                 ExtendClientAreaToDecorationsHint above, so this is the window's only title row -
+                 the tab strip is its own middle region below). -->
+            <Border Grid.Row="0"
+                    Background="{DynamicResource Brush.Background.Tertiary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="0,0,0,1"
+                    Padding="16,0"
+                    PointerPressed="OnHeaderPointerPressed">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="12">
+                    <PathIcon Data="{StaticResource BacktestHeaderIconData}" Width="20" Height="20" Foreground="{DynamicResource Brush.Accent.Primary}"/>
+                    <TextBlock Text="{l:Localize Window_Backtest_Title}"
+                               FontSize="{DynamicResource TitleFontSize}"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource Brush.Text.Primary}"
+                               VerticalAlignment="Center"/>
+                </StackPanel>
+            </Border>
+
+            <!-- Tab switching area (spec section 9.4/5.2): 3 tabs, each hosting one already-built tab View. -->
+            <TabControl Grid.Row="1" Background="{DynamicResource Brush.Background.Primary}">
+                <TabItem Header="{l:Localize Backtest_Tab_Configuration}" AutomationProperties.AutomationId="Backtest_Tab_Configuration">
+                    <views:BacktestConfigurationView/>
+                </TabItem>
+                <TabItem Header="{l:Localize Backtest_Tab_IndicatorSelection}" AutomationProperties.AutomationId="Backtest_Tab_IndicatorSelection">
+                    <views:BacktestIndicatorSelectionView DataContext="{Binding IndicatorSelection}"/>
+                </TabItem>
+                <TabItem Header="{l:Localize Backtest_Tab_Results}" AutomationProperties.AutomationId="Backtest_Tab_Results">
+                    <views:BacktestResultsView DataContext="{Binding Results}"/>
+                </TabItem>
+            </TabControl>
+
+            <!-- Status bar (spec section 9.8): state label (left) + Run/Cancel/Save/Restore (right). -->
+            <Border Grid.Row="2"
+                    Background="{DynamicResource Brush.Background.Tertiary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="0,1,0,0"
+                    Padding="24,0">
+                <Grid ColumnDefinitions="*,Auto">
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding StateDisplayText}"
+                                   AutomationProperties.AutomationId="Backtest_StateText"
+                                   Foreground="{DynamicResource Brush.Text.Primary}"
+                                   FontSize="{DynamicResource DetailFontSize}"
+                                   VerticalAlignment="Center"
+                                   IsVisible="{Binding StateDisplayText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                        <TextBlock Text="{Binding StatusMessage}"
+                                   Foreground="{DynamicResource Brush.Text.Secondary}"
+                                   FontSize="{DynamicResource DetailFontSize}"
+                                   VerticalAlignment="Center"
+                                   TextWrapping="NoWrap"
+                                   TextTrimming="CharacterEllipsis"
+                                   IsVisible="{Binding StatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                        <Button Content="{l:Localize Backtest_Btn_Run}"
+                                AutomationProperties.AutomationId="Backtest_RunButton"
+                                Theme="{StaticResource PrimaryButtonStyle}"
+                                Width="90" Height="36"
+                                FontSize="{DynamicResource BaseFontSize}"
+                                Command="{Binding RunBacktestCommand}"/>
+                        <Button Content="{l:Localize Btn_Cancel}"
+                                AutomationProperties.AutomationId="Backtest_CancelButton"
+                                Theme="{StaticResource SecondaryButtonStyle}"
+                                Width="90" Height="36"
+                                FontSize="{DynamicResource BaseFontSize}"
+                                Command="{Binding CancelBacktestCommand}"/>
+                        <!-- Save/Restore Configuration buttons removed (SAで改善 Round 2, explicit user
+                             request) - SaveConfigurationCommand/RestoreConfigurationCommand themselves are
+                             left untouched (BacktestConfigurationRoundTripTests exercises them directly),
+                             only their footer buttons are gone. -->
+                        <Button Content="{l:Localize Btn_Reset}"
+                                Theme="{StaticResource SecondaryButtonStyle}"
+                                Width="90" Height="36"
+                                FontSize="{DynamicResource BaseFontSize}"
+                                Command="{Binding ResetToDefaultsCommand}"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- Toast Notification Overlay (SAで改善 Round 2): identical markup to
+                 IndicatorSettingsWindow.axaml's own toast overlay (independently verified against that
+                 file), reused verbatim per the explicit "no inventing a different notification style"
+                 instruction - confirms a condition was added the same way "Library -> Active" confirms an
+                 indicator was added. -->
+            <Border Grid.Row="0" Grid.RowSpan="3"
+                    IsVisible="{Binding IndicatorSelection.ToastService.IsNotificationVisible}"
+                    VerticalAlignment="Bottom" HorizontalAlignment="Center"
+                    Margin="0,0,0,60" Padding="16,10"
+                    Background="{DynamicResource Brush.Background.Tertiary}"
+                    CornerRadius="8" BoxShadow="0 4 10 0 #40000000"
+                    ZIndex="1000">
+                <Border.Transitions>
+                    <Transitions>
+                        <DoubleTransition Property="Opacity" Duration="0:0:0.2"/>
+                    </Transitions>
+                </Border.Transitions>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="✅" Margin="0,0,8,0" VerticalAlignment="Center" FontSize="{DynamicResource TitleFontSize}"/>
+                    <TextBlock Text="{Binding IndicatorSelection.ToastService.NotificationMessage}"
+                               Foreground="{DynamicResource Brush.Text.Primary}"
+                               FontSize="{DynamicResource BaseFontSize}" FontWeight="SemiBold"
+                               VerticalAlignment="Center"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+    </Border>
+</Window>

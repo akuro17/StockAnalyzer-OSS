@@ -1,0 +1,87 @@
+using Xunit;
+using StockAnalyzer.Core.Models.Parameters;
+using System.Windows.Media;
+
+namespace StockAnalyzer.Tests.Models;
+
+public class IndicatorSettingsTests
+{
+    [Fact]
+    public void Sma_UpdateDisplayName_ShouldUsePeriodParameter()
+    {
+        // Arrange
+        var settings = new IndicatorSettings
+        {
+            Type = "SMA",
+            ParameterObject = new PeriodParameter { Period = 25 }
+        };
+
+        // Act
+        settings.UpdateDisplayName();
+
+        // Assert - Display name contains period value (format may vary)
+        Assert.Contains("25", settings.DisplayName);
+    }
+
+    [Fact]
+    public void Macd_UpdateDisplayName_ShouldUseMacdParameter()
+    {
+        // Arrange
+        var settings = new IndicatorSettings
+        {
+            Type = "MACD",
+            ParameterObject = new MacdParameter 
+            { 
+                ShortPeriod = 12, 
+                LongPeriod = 26, 
+                SignalPeriod = 9 
+            }
+        };
+
+        // Act
+        settings.UpdateDisplayName();
+
+        // Assert - Display name contains all three period values
+        Assert.Contains("12", settings.DisplayName);
+        Assert.Contains("26", settings.DisplayName);
+        Assert.Contains("9", settings.DisplayName);
+    }
+
+    [Fact]
+    public void SetParameter_ShouldUpdateParameterObject_AndDisplayName()
+    {
+        // Arrange
+        var settings = new IndicatorSettings
+        {
+            Type = "SMA",
+            ParameterObject = new PeriodParameter { Period = 20 }
+        };
+
+        // Act
+        settings.SetParameter("Period", 50);
+
+        // Assert
+        var param = settings.ParameterObject as PeriodParameter;
+        Assert.NotNull(param);
+        Assert.Equal(50, param.Period);
+        Assert.Contains("50", settings.DisplayName);
+    }
+
+    [Fact]
+    public void ParametersProperty_ShouldReflectParameterObject()
+    {
+        // Arrange
+        var settings = new IndicatorSettings
+        {
+            Type = "SMA",
+            ParameterObject = new PeriodParameter { Period = 20 }
+        };
+
+        // Act
+        var dict = settings.Parameters;
+
+        // Assert
+        Assert.True(dict.ContainsKey("Period"));
+        Assert.Equal(20, dict["Period"]);
+    }
+}

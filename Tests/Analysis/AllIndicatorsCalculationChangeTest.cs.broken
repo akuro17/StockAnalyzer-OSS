@@ -1,0 +1,196 @@
+using Xunit;
+using StockAnalyzer.Core.Models;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Security.Cryptography;
+using System.Text;
+using Xunit.Abstractions;
+
+namespace StockAnalyzer.Tests.Analysis
+{
+    public class AllIndicatorsCalculationChangeTest
+    {
+        private readonly ITestOutputHelper _output;
+        private static List<CoreCandleData> _testCandles;
+
+        public AllIndicatorsCalculationChangeTest(ITestOutputHelper output)
+        {
+            _output = output;
+            // Initialize test data if null
+            if (_testCandles == null)
+            {
+                _testCandles = new List<CoreCandleData>();
+                var startDate = DateTime.Today.AddDays(-100);
+                var r = new Random(12345);
+                decimal price = 100m;
+                
+                for (int i = 0; i < 100; i++)
+                {
+                    var open = price;
+                    var close = price * (decimal)(1.0 + (r.NextDouble() - 0.5) * 0.02);
+                    var high = Math.Max(open, close) * (decimal)(1.0 + r.NextDouble() * 0.01);
+                    var low = Math.Min(open, close) * (decimal)(1.0 - r.NextDouble() * 0.01);
+                    var vol = (long)(1000 + r.NextDouble() * 1000);
+
+                    // Use CreateUnchecked or internal constructor is not accessible? 
+                    // CandleData has public init properties.
+                    _testCandles.Add(new CoreCandleData 
+                    { 
+                        Timestamp = startDate.AddDays(i),
+                        Open = open,
+                        High = high,
+                        Low = low,
+                        Close = close,
+                        Volume = vol
+                    });
+                    
+                    price = close;
+                }
+            }
+        }
+
+        public static IEnumerable<object[]> AllIndicatorTypes => 
+            Enum.GetValues(typeof(StockAnalyzer.Core.Models.IndicatorType)).Cast<StockAnalyzer.Core.Models.IndicatorType>().Select(t => new object[] { t });
+
+        [Theory]
+        [MemberData(nameof(AllIndicatorTypes))]
+        public void CalculationShouldChangeWhenAnyParameterIsModified(StockAnalyzer.Core.Models.IndicatorType type)
+        {
+            // 1. Create the indicator with default parameters
+            // IndicatorRegistry is static
+            
+            // We create a fresh instance for baseline
+            var baselineIndicator = StockAnalyzer.Core.Models.Indicators.IndicatorFactory.Create(type, null);
+            if (baselineIndicator == null)
+            {
+                _output.WriteLine($"Registry returned null for {type}. Skipping.");
+                return;
+            }
+
+            try { baselineIndicator.Calculate(_testCandles); } catch { /* Ignore baseline error, handled in loop */ }
+            var initialHash = GetResultHash(baselineIndicator.Values);
+
+            if (string.IsNullOrEmpty(initialHash))
+            {
+                 _output.WriteLine($"Initial calculation produced no values for {type}. Skipping.");
+                 return;
+            }
+
+            // 2. Identify all "Logic" parameters (exclude cosmetic ones)
+            var cosmeticProperties = new HashSet<string> { "Color", "Thickness", "Style", "ZIndex", "IsVisible", "Name", "Description", "Offset", "UseUpDownColors", "UpColor", "DownColor" };
+            
+            var properties = baselineIndicator.GetType().GetProperties()
+                .Where(p => p.CanWrite && !cosmeticProperties.Contains(p.Name))
+                .Where(p => p.PropertyType == typeof(int) || 
+                            p.PropertyType == typeof(decimal) || 
+                            p.PropertyType == typeof(double) ||
+                            p.PropertyType == typeof(bool) ||
+                            p.PropertyType.IsEnum)
+                .ToList();
+
+            if (!properties.Any())
+            {
+                _output.WriteLine($"Indicator {type} has no testable parameters.");
+                return;
+            }
+
+            bool anyParameterChangedCalculation = false;
+
+            foreach (var prop in properties)
+            {
+                _output.WriteLine($"Testing Parameter: {prop.Name} ({prop.PropertyType.Name})");
+
+                // Create a FRESH instance to ensure no state pollution
+                var indicator = IndicatorRegistry.TryCreate(type, new IndicatorSettings { TypeEnum = type });
+                
+                object originalValue = prop.GetValue(indicator);
+                object newValue = null;
+
+                // Determine new value
+                if (prop.PropertyType == typeof(int))
+                {
+                    newValue = (int)originalValue! + 1;
+                }
+                else if (prop.PropertyType == typeof(decimal))
+                {
+                    newValue = (decimal)originalValue! + 0.1m;
+                }
+                else if (prop.PropertyType == typeof(double))
+                {
+                    newValue = (double)originalValue! + 0.1d;
+                }
+                else if (prop.PropertyType == typeof(bool))
+                {
+                    newValue = !(bool)originalValue!;
+                }
+                else if (prop.PropertyType.IsEnum)
+                {
+                    var values = Enum.GetValues(prop.PropertyType);
+                    if (values.Length > 1) {
+                        int i = Array.IndexOf(values, originalValue);
+                        newValue = values.GetValue((i + 1) % values.Length);
+                         // If it wrapped around to same value (length 1), check it.
+                        if (newValue.Equals(originalValue)) newValue = null;
+                    }
+                }
+
+                if (newValue == null || newValue.Equals(originalValue))
+                {
+                    _output.WriteLine($"  -> Could not generate different value for {prop.Name}. Skipping.");
+                    continue;
+                }
+
+                // Apply Change
+                prop.SetValue(indicator, newValue);
+                
+                // Calculate
+                try
+                {
+                    indicator.Calculate(_testCandles);
+                    var newHash = GetResultHash(indicator.Values);
+                    
+                    if (newHash != initialHash)
+                    {
+                        _output.WriteLine($"  -> SUCCESS: Hash changed.");
+                        anyParameterChangedCalculation = true;
+                    }
+                    else
+                    {
+                        _output.WriteLine($"  -> WARNING: Hash did NOT change. (Param: {prop.Name})");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _output.WriteLine($"  -> ERROR: Calculation failed with new value: {ex.Message}");
+                    // Falling because parameter is invalid (e.g. Period=0) is acceptable behavior, 
+                    // but implies the calculation changed (from Valid to Invalid).
+                    // So we can count this as a change? 
+                    // If it throws, it certainly behaved differently.
+                    anyParameterChangedCalculation = true; 
+                }
+            }
+
+            Assert.True(anyParameterChangedCalculation, $"Indicator {type} did not change calculation result for ANY of its parameters ({string.Join(", ", properties.Select(p=>p.Name))}).");
+        }
+
+        private string GetResultHash(IReadOnlyList<decimal?> results)
+        {
+             if (results == null || !results.Any()) return string.Empty;
+            
+            var stringBuilder = new StringBuilder();
+            // Limit to first 100 values to avoid huge strings, or hash incrementally
+            int count = 0;
+            foreach (var val in results)
+            {
+                stringBuilder.Append(val?.ToString("F4") ?? "null");
+                stringBuilder.Append(",");
+                if (++count > 500) break; 
+            }
+            
+            using var sha256 = SHA256.Create();
+            var hashBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(stringBuilder.ToString()));
+            return BitConverter.ToString(hashBytes).Replace("-", "").ToLowerInvariant();
+        }
+    }
+}

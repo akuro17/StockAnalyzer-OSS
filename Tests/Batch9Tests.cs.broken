@@ -1,0 +1,91 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Xunit;
+using StockAnalyzer.Core.Models.Indicators.Statistics;
+using System.Windows.Media;
+
+namespace StockAnalyzer.Tests
+{
+    public class Batch9Tests
+    {
+        private List<CandleData> CreateTestData(int count, decimal startPrice = 100m, decimal trend = 0m)
+        {
+            var candles = new List<CandleData>();
+            var date = new DateTime(2023, 1, 1);
+
+            for (int i = 0; i < count; i++)
+            {
+                decimal price = startPrice + (i * trend);
+                candles.Add(new CandleData
+                {
+                    Timestamp = date.AddDays(i),
+                    Open = price,
+                    High = price + 5m,
+                    Low = price - 5m,
+                    Close = price,
+                    Volume = 1000
+                });
+            }
+            return candles;
+        }
+
+        // Correlation
+        [Fact]
+        public void Correlation_Calculate_ReturnsCorrectValues()
+        {
+            var candles = CreateTestData(30, 100m, 10m);
+            var correlation = new CorrelationIndicator(20, Colors.Blue);
+            correlation.Calculate(candles);
+            Assert.Equal(30, correlation.Values.Count);
+        }
+
+        [Fact]
+        public void Correlation_WithInsufficientData_ReturnsNulls()
+        {
+            var candles = CreateTestData(10, 100m, 0m);
+            var correlation = new CorrelationIndicator(20, Colors.Blue);
+            correlation.Calculate(candles);
+            Assert.All(correlation.Values, v => Assert.Null(v));
+        }
+
+        // Linear Regression
+        [Fact]
+        public void LinearRegression_Calculate_ReturnsCorrectValues()
+        {
+            var candles = CreateTestData(30, 100m, 10m);
+            var lr = new LinearRegressionIndicator(20, Colors.Blue);
+            lr.Calculate(candles);
+            Assert.Equal(30, lr.Values.Count);
+        }
+
+        [Fact]
+        public void LinearRegression_WithInsufficientData_ReturnsNulls()
+        {
+            var candles = CreateTestData(10, 100m, 0m);
+            var lr = new LinearRegressionIndicator(20, Colors.Blue);
+            lr.Calculate(candles);
+            Assert.All(lr.Values, v => Assert.Null(v));
+        }
+
+        // Regression Slope
+        [Fact]
+        public void RegressionSlope_Calculate_ReturnsCorrectValues()
+        {
+            var candles = CreateTestData(30, 100m, 10m);
+            var slope = new RegressionSlopeIndicator(20, Colors.Blue);
+            slope.Calculate(candles);
+            Assert.Equal(30, slope.Values.Count);
+        }
+
+        [Fact]
+        public void RegressionSlope_WithTrendingData_ReturnsPositiveSlope()
+        {
+            var candles = CreateTestData(30, 100m, 10m);
+            var slope = new RegressionSlopeIndicator(20, Colors.Blue);
+            slope.Calculate(candles);
+            Assert.NotNull(slope.Values.Last());
+            Assert.True(slope.Values.Last()!.Value > 0);
+        }
+    }
+}
