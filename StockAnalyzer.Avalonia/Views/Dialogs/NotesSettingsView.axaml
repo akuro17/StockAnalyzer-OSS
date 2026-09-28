@@ -1,0 +1,280 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:StockAnalyzer.Avalonia.ViewModels.Dialogs"
+             xmlns:l="using:StockAnalyzer.Avalonia.Markup"
+             xmlns:conv="using:StockAnalyzer.Avalonia.Converters"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="800"
+             x:Class="StockAnalyzer.Avalonia.Views.Dialogs.NotesSettingsView"
+             x:DataType="vm:NotesSettingsViewModel">
+
+    <UserControl.Resources>
+        <conv:IndicatorColorToAvaloniaColorConverter x:Key="ColorConverter"/>
+        <conv:EnumToLocalizedNameConverter x:Key="EnumToLocalizedNameConverter"/>
+    </UserControl.Resources>
+
+    <Design.DataContext>
+        <vm:NotesSettingsViewModel/>
+    </Design.DataContext>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Spacing="20" Margin="16">
+
+            <!-- Section: Appearance (font size / text color, independent of Settings > Theme and Settings > Fonts) -->
+            <Border Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="{l:Localize Settings_Notes_AppearanceTitle}" FontSize="{DynamicResource BaseFontSize}" FontWeight="Bold" Foreground="{DynamicResource Brush.Accent.Primary}"/>
+                    <TextBlock Text="{l:Localize Settings_Notes_AppearanceDesc}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+
+                    <UniformGrid Columns="2">
+                        <!-- 1. Body Font Size -->
+                        <StackPanel Margin="0,0,24,16">
+                            <Grid ColumnDefinitions="*, Auto">
+                                <TextBlock Text="{l:Localize Settings_Notes_Item_BodyFontSize}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                <NumericUpDown Grid.Column="1"
+                                               Value="{Binding SelectedBodyFontSize}"
+                                               Minimum="12" Maximum="24" Increment="1" FormatString="0"
+                                               Width="110" Height="28"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize Settings_Notes_Desc_BodyFontSize}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <!-- 2. Body Text Color -->
+                        <StackPanel Margin="0,0,0,16">
+                            <Grid ColumnDefinitions="*, Auto">
+                                <TextBlock Text="{l:Localize Settings_Notes_Item_BodyTextColor}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                <ColorPicker Grid.Column="1" Color="{Binding SelectedBodyTextColor, Mode=TwoWay, Converter={StaticResource ColorConverter}}" Width="50" Height="28"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize Settings_Notes_Desc_BodyTextColor}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <!-- 3. Background Color -->
+                        <StackPanel Margin="0,0,24,16">
+                            <Grid ColumnDefinitions="*, Auto">
+                                <TextBlock Text="{l:Localize Settings_Notes_Item_BodyBackgroundColor}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                <ColorPicker Grid.Column="1" Color="{Binding SelectedBodyBackgroundColor, Mode=TwoWay, Converter={StaticResource ColorConverter}}" Width="50" Height="28"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize Settings_Notes_Desc_BodyBackgroundColor}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <!-- 4. URL Color (no on/off toggle - always active, defaults to Body Text Color above) -->
+                        <StackPanel Margin="0,0,0,16">
+                            <Grid ColumnDefinitions="*, Auto">
+                                <TextBlock Text="{l:Localize Settings_Notes_Item_UrlColor}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                <ColorPicker Grid.Column="1" Color="{Binding SelectedUrlColor, Mode=TwoWay, Converter={StaticResource ColorConverter}}" Width="50" Height="28"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize Settings_Notes_Desc_UrlColor}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <!-- 5. Hashtag Color (no on/off toggle - always active, defaults to Body Text Color above) -->
+                        <StackPanel Margin="0,0,24,0">
+                            <Grid ColumnDefinitions="*, Auto">
+                                <TextBlock Text="{l:Localize Settings_Notes_Item_HashtagColor}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                <ColorPicker Grid.Column="1" Color="{Binding SelectedHashtagColor, Mode=TwoWay, Converter={StaticResource ColorConverter}}" Width="50" Height="28"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize Settings_Notes_Desc_HashtagColor}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </UniformGrid>
+                </StackPanel>
+            </Border>
+
+            <!-- Section: Images (thumbnail size / display mode) -->
+            <Border Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="{l:Localize Settings_Notes_ImagesTitle}" FontSize="{DynamicResource BaseFontSize}" FontWeight="Bold" Foreground="{DynamicResource Brush.Accent.Primary}"/>
+                    <TextBlock Text="{l:Localize Settings_Notes_ImagesDesc}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+
+                    <UniformGrid Columns="2">
+                        <!-- 1. Thumbnail Size -->
+                        <StackPanel Margin="0,0,24,16">
+                            <Grid ColumnDefinitions="*, Auto">
+                                <TextBlock Text="{l:Localize Settings_Notes_Item_ThumbnailSize}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                <NumericUpDown Grid.Column="1"
+                                               Value="{Binding SelectedThumbnailSizePixels}"
+                                               Minimum="24" Maximum="200" Increment="4" FormatString="0"
+                                               Width="110" Height="28"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize Settings_Notes_Desc_ThumbnailSize}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <!-- 2. Image Display Mode -->
+                        <StackPanel Margin="0,0,0,16">
+                            <Grid ColumnDefinitions="*, Auto">
+                                <TextBlock Text="{l:Localize Settings_Notes_Item_ImageDisplayMode}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                <ComboBox Grid.Column="1" Width="150"
+                                          ItemsSource="{Binding ImageDisplayModeOptions}"
+                                          SelectedItem="{Binding SelectedImageDisplayMode}">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding Converter={StaticResource EnumToLocalizedNameConverter}}"/>
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize Settings_Notes_Desc_ImageDisplayMode}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <!-- 3. Max Rendered Thumbnails (sa_implement, Note Thumbnail Limit) -->
+                        <StackPanel Margin="0,0,24,16">
+                            <Grid ColumnDefinitions="*, Auto">
+                                <TextBlock Text="{l:Localize Settings_Notes_Item_MaxRenderedThumbnails}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                <NumericUpDown Grid.Column="1"
+                                               Value="{Binding SelectedMaxRenderedThumbnails}"
+                                               Minimum="1" Maximum="10" Increment="1" FormatString="0"
+                                               Width="110" Height="28"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize Settings_Notes_Desc_MaxRenderedThumbnails}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </UniformGrid>
+                </StackPanel>
+            </Border>
+
+            <!-- Section: Read more Threshold -->
+            <Border Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="{l:Localize Settings_Notes_ReadMoreTitle}" FontSize="{DynamicResource BaseFontSize}" FontWeight="Bold" Foreground="{DynamicResource Brush.Accent.Primary}"/>
+
+                    <UniformGrid Columns="2">
+                        <!-- 1. Max Characters -->
+                        <StackPanel Margin="0,0,24,16">
+                            <Grid ColumnDefinitions="*, Auto">
+                                <TextBlock Text="{l:Localize Settings_Notes_Item_ReadMoreMaxCharacters}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                <NumericUpDown Grid.Column="1"
+                                               Value="{Binding SelectedReadMoreMaxCharacters}"
+                                               Minimum="1" Maximum="10000" Increment="10" FormatString="0"
+                                               Width="110" Height="28"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize Settings_Notes_Desc_ReadMoreMaxCharacters}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <!-- 2. Max Lines -->
+                        <StackPanel Margin="0,0,0,16">
+                            <Grid ColumnDefinitions="*, Auto">
+                                <TextBlock Text="{l:Localize Settings_Notes_Item_ReadMoreMaxLines}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                <NumericUpDown Grid.Column="1"
+                                               Value="{Binding SelectedReadMoreMaxLines}"
+                                               Minimum="1" Maximum="1000" Increment="1" FormatString="0"
+                                               Width="110" Height="28"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize Settings_Notes_Desc_ReadMoreMaxLines}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </UniformGrid>
+                </StackPanel>
+            </Border>
+
+            <!-- Section: Thread Collapse -->
+            <Border Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="{l:Localize Settings_Notes_ThreadCollapseTitle}" FontSize="{DynamicResource BaseFontSize}" FontWeight="Bold" Foreground="{DynamicResource Brush.Accent.Primary}"/>
+                    <TextBlock Text="{l:Localize Settings_Notes_ThreadCollapseDesc}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+
+                    <UniformGrid Columns="2">
+                        <!-- 1. Collapse Threshold -->
+                        <StackPanel Margin="0,0,24,16">
+                            <Grid ColumnDefinitions="*, Auto">
+                                <TextBlock Text="{l:Localize Settings_Notes_Item_ThreadCollapseThreshold}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                <NumericUpDown Grid.Column="1"
+                                               Value="{Binding SelectedThreadCollapseThreshold}"
+                                               Minimum="1" Maximum="1000" Increment="1" FormatString="0"
+                                               Width="110" Height="28"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize Settings_Notes_Desc_ThreadCollapseThreshold}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <!-- 2. Tail Visible Count -->
+                        <StackPanel Margin="0,0,0,16">
+                            <Grid ColumnDefinitions="*, Auto">
+                                <TextBlock Text="{l:Localize Settings_Notes_Item_TailVisibleCount}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                <NumericUpDown Grid.Column="1"
+                                               Value="{Binding SelectedTailVisibleCount}"
+                                               Minimum="0" Maximum="1000" Increment="1" FormatString="0"
+                                               Width="110" Height="28"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize Settings_Notes_Desc_TailVisibleCount}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <!-- 3. Connector Line Length -->
+                        <StackPanel Margin="0,0,24,0">
+                            <Grid ColumnDefinitions="*, Auto">
+                                <TextBlock Text="{l:Localize Settings_Notes_Item_ConnectorLineLength}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                <NumericUpDown Grid.Column="1"
+                                               Value="{Binding SelectedConnectorLineLength}"
+                                               Minimum="1" Maximum="500" Increment="1" FormatString="0"
+                                               Width="110" Height="28"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize Settings_Notes_Desc_ConnectorLineLength}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <!-- 4. Dash Length -->
+                        <StackPanel Margin="0,0,0,0">
+                            <Grid ColumnDefinitions="*, Auto">
+                                <TextBlock Text="{l:Localize Settings_Notes_Item_DashLength}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                <NumericUpDown Grid.Column="1"
+                                               Value="{Binding SelectedDashLength}"
+                                               Minimum="1" Maximum="100" Increment="1" FormatString="0"
+                                               Width="110" Height="28"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize Settings_Notes_Desc_DashLength}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </UniformGrid>
+                </StackPanel>
+            </Border>
+
+            <!-- Section: Timeline Loading -->
+            <Border Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="{l:Localize Settings_Notes_TimelineLoadingTitle}" FontSize="{DynamicResource BaseFontSize}" FontWeight="Bold" Foreground="{DynamicResource Brush.Accent.Primary}"/>
+                    <TextBlock Text="{l:Localize Settings_Notes_TimelineLoadingDesc}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+
+                    <StackPanel>
+                        <Grid ColumnDefinitions="*, Auto">
+                            <TextBlock Text="{l:Localize Settings_Notes_Item_TimelinePageSize}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            <NumericUpDown Grid.Column="1"
+                                           Value="{Binding SelectedTimelinePageSize}"
+                                           Minimum="1" Maximum="1000" Increment="1" FormatString="0"
+                                           Width="110" Height="28"/>
+                        </Grid>
+                        <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                        <TextBlock Text="{l:Localize Settings_Notes_Desc_TimelinePageSize}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

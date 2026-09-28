@@ -1,0 +1,15 @@
+version: 2
+updates:
+  # NuGet パッケージのアップデート設定
+  - package-ecosystem: "nuget"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+
+  # GitHub Actions ワークフローのアップデート設定
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 5

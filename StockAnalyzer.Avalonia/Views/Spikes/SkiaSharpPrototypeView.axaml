@@ -1,0 +1,17 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="using:StockAnalyzer.Avalonia.Views.Spikes"
+             x:Class="StockAnalyzer.Avalonia.Views.Spikes.SkiaSharpPrototypeView"
+             x:DataType="local:SkiaSharpPrototypeViewModel">
+
+  <UserControl.DataContext>
+    <local:SkiaSharpPrototypeViewModel />
+  </UserControl.DataContext>
+
+  <Grid RowDefinitions="Auto,*">
+    <TextBlock Text="SkiaSharp Prototype Chart (Native Control)" FontSize="16" FontWeight="Bold" Margin="10"/>
+
+    <!-- Using the Custom Control -->
+    <local:SkiaGraphControl Grid.Row="1" ViewModel="{Binding}" />
+  </Grid>
+</UserControl>

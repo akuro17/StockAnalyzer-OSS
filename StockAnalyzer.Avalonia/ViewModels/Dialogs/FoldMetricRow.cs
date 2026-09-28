@@ -1,0 +1,119 @@
+using System.Collections.Generic;
+
+namespace StockAnalyzer.Avalonia.ViewModels.Dialogs;
+
+/// <summary>
+/// One row of the training wizard's per-fold results table. Built from a fold-scoped
+/// <c>METRIC:</c> line emitted by <c>run_training.evaluate_folds</c>. A classification job
+/// carries <c>fold</c>, <c>n_splits</c>, <c>fold_n</c>, <c>fold_accuracy</c>,
+/// <c>fold_macro_f1</c>, <c>fold_baseline_accuracy</c>, <c>fold_multi_logloss</c>,
+/// <c>fold_is_holdout</c>; a regression job (<see cref="IsRegression"/>) carries <c>fold</c>,
+/// <c>n_splits</c>, <c>fold_n</c>, <c>fold_rmse</c>, <c>fold_mae</c>,
+/// <c>fold_directional_accuracy</c>, <c>fold_rmse_baseline</c>, <c>fold_is_holdout</c> instead
+/// (no accuracy/F1/logloss). The numbers come from an inference-only pass of the exported ONNX
+/// over each walk-forward fold's validation block, so they describe the final model's behavior
+/// across time slices - not a re-trained CV. <c>fold_is_holdout</c> (see <see cref="IsHoldout"/>)
+/// marks the one fold whose validation block is the model's own held-out split; every other
+/// fold is scored with that same model over rows it was trained on, so it is a reference score,
+/// not an independent cross-validation result.
+/// </summary>
+public sealed record FoldMetricRow
+{
+    /// <summary>Zero-based fold index as reported by the trainer.</summary>
+    public required int Fold { get; init; }
+
+    /// <summary>Total walk-forward split count for the run.</summary>
+    public required int Splits { get; init; }
+
+    /// <summary>Pooled validation-sample count for this fold.</summary>
+    public required int SampleCount { get; init; }
+
+    /// <summary>Fold accuracy, 0-1.</summary>
+    public required double Accuracy { get; init; }
+
+    /// <summary>Majority-class baseline accuracy for this fold, 0-1.</summary>
+    public required double BaselineAccuracy { get; init; }
+
+    /// <summary>Macro-averaged F1 for this fold, 0-1.</summary>
+    public required double MacroF1 { get; init; }
+
+    /// <summary>Multi-class log loss, or <see cref="double.NaN"/> when the trainer could not compute it.</summary>
+    public required double MultiLogloss { get; init; }
+
+    /// <summary>
+    /// True when this row came from a regression job (<c>fold_rmse</c> present instead of
+    /// <c>fold_accuracy</c>). <see cref="Accuracy"/>, <see cref="BaselineAccuracy"/>,
+    /// <see cref="MacroF1"/> and <see cref="MultiLogloss"/> are <see cref="double.NaN"/> for such
+    /// a row (they are not estimated by a regression model and must never be displayed as 0);
+    /// use <see cref="Rmse"/>, <see cref="Mae"/>, <see cref="DirectionalAccuracy"/> and
+    /// <see cref="RmseBaseline"/> instead.
+    /// </summary>
+    public bool IsRegression { get; init; }
+
+    /// <summary>Root-mean-square error of the forward-log-return prediction. <see cref="double.NaN"/> for a classification row.</summary>
+    public double Rmse { get; init; } = double.NaN;
+
+    /// <summary>Mean absolute error of the forward-log-return prediction. <see cref="double.NaN"/> for a classification row.</summary>
+    public double Mae { get; init; } = double.NaN;
+
+    /// <summary>Fraction of predictions with the correct sign. <see cref="double.NaN"/> for a classification row.</summary>
+    public double DirectionalAccuracy { get; init; } = double.NaN;
+
+    /// <summary>RMSE of the always-predict-zero baseline, for comparison against <see cref="Rmse"/>. <see cref="double.NaN"/> for a classification row.</summary>
+    public double RmseBaseline { get; init; } = double.NaN;
+
+    /// <summary>
+    /// True only for the fold whose validation block matches the exported model's own held-out
+    /// (last walk-forward) split. False folds are scored with that same model over rows it was
+    /// fit on, so their numbers are a same-model reference score, not an independent
+    /// cross-validation result. A <c>METRIC:</c> line without the <c>fold_is_holdout</c> key
+    /// (older trainer output) yields <see langword="false"/>.
+    /// </summary>
+    public bool IsHoldout { get; init; }
+
+    /// <summary>Human-facing "1/5" fold label (one-based over the split count).</summary>
+    public string FoldLabel => Splits > 0 ? $"{Fold + 1}/{Splits}" : $"{Fold + 1}";
+
+    /// <summary>
+    /// Builds a row from a <c>METRIC:</c> payload, or returns <see langword="null"/> when the
+    /// dictionary is not a fold row (no <c>fold</c> key, and neither <c>fold_accuracy</c> nor
+    /// <c>fold_rmse</c>) - which is how the out-of-sample line and the final aggregate line are
+    /// skipped.
+    /// </summary>
+    public static FoldMetricRow? FromMetric(IReadOnlyDictionary<string, double>? metric)
+    {
+        if (metric is null || !metric.TryGetValue("fold", out var fold))
+        {
+            return null;
+        }
+
+        var isRegression = metric.ContainsKey("fold_rmse");
+        if (!isRegression && !metric.ContainsKey("fold_accuracy"))
+        {
+            return null;
+        }
+
+        return new FoldMetricRow
+        {
+            Fold = ToInt(fold),
+            Splits = metric.TryGetValue("n_splits", out var splits) ? ToInt(splits) : 0,
+            SampleCount = metric.TryGetValue("fold_n", out var n) ? ToInt(n) : 0,
+            Accuracy = Value(metric, "fold_accuracy"),
+            BaselineAccuracy = Value(metric, "fold_baseline_accuracy"),
+            MacroF1 = Value(metric, "fold_macro_f1"),
+            MultiLogloss = Value(metric, "fold_multi_logloss"),
+            IsHoldout = metric.TryGetValue("fold_is_holdout", out var holdout) && holdout >= 0.5,
+            IsRegression = isRegression,
+            Rmse = Value(metric, "fold_rmse"),
+            Mae = Value(metric, "fold_mae"),
+            DirectionalAccuracy = Value(metric, "fold_directional_accuracy"),
+            RmseBaseline = Value(metric, "fold_rmse_baseline"),
+        };
+    }
+
+    private static double Value(IReadOnlyDictionary<string, double> metric, string key)
+        => metric.TryGetValue(key, out var v) ? v : double.NaN;
+
+    private static int ToInt(double value)
+        => double.IsNaN(value) || double.IsInfinity(value) ? 0 : (int)value;
+}

@@ -1,0 +1,143 @@
+using StockAnalyzer.Utils;
+
+namespace StockAnalyzer.Tests.Utils;
+
+public class MarketCalendarTests
+{
+    [Fact]
+    public void IsBusinessDay_Weekend_ReturnsFalse()
+    {
+        // Arrange
+        var calendar = new MarketCalendar(MarketType.TSE);
+        var saturday = new DateTime(2025, 11, 29); // Saturday
+        var sunday = new DateTime(2025, 11, 30);   // Sunday
+
+        // Act & Assert
+        Assert.False(calendar.IsBusinessDay(saturday));
+        Assert.False(calendar.IsBusinessDay(sunday));
+    }
+
+    [Fact]
+    public void IsBusinessDay_Holiday_ReturnsFalse()
+    {
+        // Arrange
+        var calendar = new MarketCalendar(MarketType.TSE);
+        var newYears = new DateTime(2025, 1, 1); // New Year's Day
+
+        // Act & Assert
+        Assert.False(calendar.IsBusinessDay(newYears));
+    }
+
+    [Fact]
+    public void IsBusinessDay_RegularWeekday_ReturnsTrue()
+    {
+        // Arrange
+        var calendar = new MarketCalendar(MarketType.TSE);
+        var monday = new DateTime(2025, 12, 1); // Monday
+
+        // Act & Assert
+        Assert.True(calendar.IsBusinessDay(monday));
+    }
+
+    [Fact]
+    public void GetBusinessDays_InvalidRange_ThrowsArgumentException()
+    {
+        // Arrange
+        var calendar = new MarketCalendar(MarketType.TSE);
+        var start = new DateTime(2025, 12, 31);
+        var end = new DateTime(2025, 12, 1);
+
+        // Act & Assert
+        Assert.Throws<ArgumentException>(() => calendar.GetBusinessDays(start, end));
+    }
+
+    [Fact]
+    public void GetBusinessDays_ValidRange_ReturnsCorrectCount()
+    {
+        // Arrange
+        var calendar = new MarketCalendar(MarketType.TSE);
+        var start = new DateTime(2025, 12, 1);  // Monday
+        var end = new DateTime(2025, 12, 5);    // Friday
+
+        // Act
+        var businessDays = calendar.GetBusinessDays(start, end);
+
+        // Assert
+        Assert.Equal(5, businessDays.Count); // Mon-Fri = 5 days
+    }
+
+    [Fact]
+    public void GetNextBusinessDay_Friday_ReturnsMonday()
+    {
+        // Arrange
+        var calendar = new MarketCalendar(MarketType.TSE);
+        var friday = new DateTime(2025, 11, 28);
+
+        // Act
+        var nextDay = calendar.GetNextBusinessDay(friday);
+
+        // Assert
+        Assert.Equal(DayOfWeek.Monday, nextDay.DayOfWeek);
+        Assert.Equal(new DateTime(2025, 12, 1), nextDay);
+    }
+
+    [Fact]
+    public void GetPreviousBusinessDay_Monday_ReturnsFriday()
+    {
+        // Arrange
+        var calendar = new MarketCalendar(MarketType.TSE);
+        var monday = new DateTime(2025, 12, 1);
+
+        // Act
+        var prevDay = calendar.GetPreviousBusinessDay(monday);
+
+        // Assert
+        Assert.Equal(DayOfWeek.Friday, prevDay.DayOfWeek);
+        Assert.Equal(new DateTime(2025, 11, 28), prevDay);
+    }
+
+    [Fact]
+    public void AddHoliday_CustomDate_IsRecognized()
+    {
+        // Arrange
+        var calendar = new MarketCalendar(MarketType.TSE);
+        var customDate = new DateTime(2025, 6, 16); // Monday
+        Assert.True(calendar.IsBusinessDay(customDate)); // Initially a business day
+
+        // Act
+        calendar.AddHoliday(customDate);
+
+        // Assert
+        Assert.False(calendar.IsBusinessDay(customDate));
+    }
+
+    [Fact]
+    public void RemoveHoliday_KnownHoliday_BecomesBusinessDay()
+    {
+        // Arrange
+        var calendar = new MarketCalendar(MarketType.TSE);
+        var newYears = new DateTime(2025, 1, 1);
+        Assert.False(calendar.IsBusinessDay(newYears)); // Initially a holiday
+
+        // Act
+        calendar.RemoveHoliday(newYears);
+
+        // Assert
+        Assert.True(calendar.IsBusinessDay(newYears));
+    }
+
+    [Fact]
+    public void CountBusinessDays_FullWeek_ReturnsFive()
+    {
+        // Arrange
+        var calendar = new MarketCalendar(MarketType.TSE);
+        var start = new DateTime(2025, 12, 1);  // Monday
+        var end = new DateTime(2025, 12, 7);    // Sunday
+
+        // Act
+        var count = calendar.CountBusinessDays(start, end);
+
+        // Assert
+        Assert.Equal(5, count); // Mon-Fri only
+    }
+}

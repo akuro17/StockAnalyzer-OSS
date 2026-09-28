@@ -1,0 +1,97 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:StockAnalyzer.Avalonia.ViewModels.Dialogs"
+             xmlns:l="using:StockAnalyzer.Avalonia.Markup"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="600"
+             x:Class="StockAnalyzer.Avalonia.Views.Dialogs.AIPredictionsSettingsView"
+             x:DataType="vm:AIPredictionsSettingsViewModel">
+
+    <Design.DataContext>
+        <vm:AIPredictionsSettingsViewModel/>
+    </Design.DataContext>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Spacing="20" Margin="16">
+
+            <!-- Section 1: ONNX Environment & Dependencies -->
+            <Border Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="{l:Localize Settings_AIPredictions_OnnxTitle}" 
+                               FontSize="{DynamicResource BaseFontSize}" 
+                               FontWeight="Bold" 
+                               Foreground="{DynamicResource Brush.Accent.Primary}"/>
+
+                    <TextBlock Text="{l:Localize Settings_AIPredictions_Onnx_Desc}"
+                               FontSize="{DynamicResource HelperFontSize}"
+                               Foreground="{DynamicResource Brush.Text.Secondary}"
+                               TextWrapping="Wrap"/>
+
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <Button Content="{Binding AutoButtonText}"
+                                Command="{Binding AutoInstallOnnxCommand}"
+                                IsEnabled="{Binding !IsBusy}"
+                                Classes="accent"
+                                Height="36"
+                                Padding="16,0"
+                                VerticalContentAlignment="Center"/>
+
+                        <Button Content="{l:Localize Settings_AIPredictions_Btn_ManualInstall}"
+                                Command="{Binding ManualInstallOnnxCommand}"
+                                Classes="accent"
+                                Height="36"
+                                Padding="16,0"
+                                VerticalContentAlignment="Center"/>
+                    </StackPanel>
+
+                    <TextBlock Text="{Binding StatusMessage}"
+                               IsVisible="{Binding StatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                               FontSize="{DynamicResource DetailFontSize}"
+                               Foreground="{DynamicResource Brush.Accent.Primary}"
+                               TextWrapping="Wrap"/>
+                </StackPanel>
+            </Border>
+
+            <!-- Section 2: AI Prediction Parameters -->
+            <Border Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="{l:Localize Settings_AIPredictions_ModelTitle}" 
+                               FontSize="{DynamicResource BaseFontSize}" 
+                               FontWeight="Bold" 
+                               Foreground="{DynamicResource Brush.Accent.Primary}"/>
+
+                    <StackPanel Spacing="8">
+                        <Grid ColumnDefinitions="*, Auto">
+                            <TextBlock Text="{l:Localize Settings_AIPredictions_Item_WindowSize}" 
+                                       FontWeight="SemiBold" 
+                                       VerticalAlignment="Center"/>
+                            <NumericUpDown Grid.Column="1"
+                                           Value="{Binding SelectedWindowSize}"
+                                           Minimum="1"
+                                           Maximum="1000"
+                                           Increment="1"
+                                           FormatString="0"
+                                           Width="110"
+                                           Height="32"/>
+                        </Grid>
+                        <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                        <TextBlock Text="{l:Localize Settings_AIPredictions_Desc_WindowSize}"
+                                   FontSize="{DynamicResource HelperFontSize}"
+                                   Foreground="{DynamicResource Brush.Text.Secondary}"
+                                   TextWrapping="Wrap"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

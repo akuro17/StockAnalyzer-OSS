@@ -1,0 +1,329 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:dialogs="using:StockAnalyzer.Avalonia.ViewModels.Dialogs"
+        xmlns:l="clr-namespace:StockAnalyzer.Avalonia.Markup;assembly=StockAnalyzer.Avalonia"
+        xmlns:conv="clr-namespace:StockAnalyzer.Avalonia.Converters"
+        mc:Ignorable="d" d:DesignWidth="400" d:DesignHeight="350"
+        x:Class="StockAnalyzer.Avalonia.Views.Dialogs.EditTransactionDialog"
+        x:DataType="dialogs:EditTransactionDialogViewModel"
+        Title="{l:Localize Portfolio_Dialog_Title}"
+        Width="420" Height="560"
+        SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        CanResize="False"
+        Background="{DynamicResource Brush.Background.Secondary}"
+        Foreground="{DynamicResource Brush.Text.Primary}"
+        ExtendClientAreaToDecorationsHint="True"
+        ExtendClientAreaTitleBarHeightHint="-1">
+
+    <Window.Resources>
+        <conv:EnumToLocalizedDisplayNameConverter x:Key="EnumToLocalizedDisplayNameConverter"/>
+    </Window.Resources>
+
+    <Design.DataContext>
+        <dialogs:EditTransactionDialogViewModel/>
+    </Design.DataContext>
+
+    <Window.Styles>
+        <!-- Hide the day number text inside the calendar icon to keep it clean -->
+        <Style Selector="CalendarDatePicker /template/ Button#PART_Button TextBlock">
+            <Setter Property="IsVisible" Value="False"/>
+        </Style>
+        <Style Selector="CalendarDatePicker /template/ Button#PART_Button /template/ TextBlock">
+            <Setter Property="IsVisible" Value="False"/>
+        </Style>
+        <Style Selector="CalendarDatePicker /template/ Button#PART_Button /template/ TextBlock#PART_DayText">
+            <Setter Property="IsVisible" Value="False"/>
+        </Style>
+        <Style Selector="CalendarDatePicker /template/ Button#PART_Button">
+            <Setter Property="IsHitTestVisible" Value="False"/>
+            <Setter Property="IsVisible" Value="False"/>
+        </Style>
+
+        <!-- Calendar dropdown popups theme integration -->
+        <Style Selector="Calendar">
+            <Setter Property="Background" Value="{DynamicResource Brush.Background.Secondary}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+        </Style>
+
+        <!-- Calendar Grid Day Buttons Styling - current month -->
+        <Style Selector="CalendarDayButton">
+            <Setter Property="Background" Value="{DynamicResource Brush.Background.Tertiary}"/>
+            <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Primary}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="FontSize" Value="12"/>
+        </Style>
+        <!-- Other month days: dimmed -->
+        <Style Selector="CalendarDayButton:inactive">
+            <Setter Property="Background" Value="{DynamicResource Brush.Background.Secondary}"/>
+            <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Disabled}"/>
+            <Setter Property="Opacity" Value="0.35"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+        </Style>
+        <!-- Day hover -->
+        <Style Selector="CalendarDayButton:pointerover">
+            <Setter Property="Background" Value="{DynamicResource Brush.Background.Hover}"/>
+        </Style>
+        <!-- Selected day -->
+        <Style Selector="CalendarDayButton:selected">
+            <Setter Property="Background" Value="{DynamicResource Brush.Accent.Primary}"/>
+            <Setter Property="Foreground" Value="#FFFFFF"/>
+            <Setter Property="Opacity" Value="1"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+        </Style>
+        <!-- CalendarButton (month/year grid) -->
+        <Style Selector="CalendarButton">
+            <Setter Property="Background" Value="{DynamicResource Brush.Background.Tertiary}"/>
+            <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Primary}"/>
+        </Style>
+        <Style Selector="CalendarButton:pointerover">
+            <Setter Property="Background" Value="{DynamicResource Brush.Background.Hover}"/>
+        </Style>
+        <Style Selector="CalendarButton:selected">
+            <Setter Property="Background" Value="{DynamicResource Brush.Accent.Primary}"/>
+            <Setter Property="Foreground" Value="#FFFFFF"/>
+        </Style>
+        <Style Selector="ComboBoxItem" x:CompileBindings="False">
+            <Setter Property="IsEnabled" Value="{Binding !IsSeparator}"/>
+        </Style>
+    </Window.Styles>
+
+    <Border BorderBrush="{DynamicResource Brush.Border}" BorderThickness="1">
+        <StackPanel Margin="24" Spacing="16">
+            <!-- Ticker Selection (Moved to top, full width) -->
+            <StackPanel Spacing="6" IsVisible="{Binding IsBuyOrSell}">
+                <TextBlock Text="{l:Localize Portfolio_Dialog_Ticker}" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource Brush.Text.Secondary}"/>
+                <Grid RowDefinitions="Auto,Auto">
+                    <TextBox Grid.Row="0"
+                             x:Name="SearchTextBox"
+                             Text="{Binding Ticker}" 
+                             Watermark="{l:Localize AddTicker_Placeholder}"
+                             FontSize="14"
+                             Height="44" 
+                             Background="{DynamicResource Brush.Background.Tertiary}"
+                             BorderBrush="{DynamicResource Brush.Border}"
+                             Padding="12,0,40,0"
+                             VerticalContentAlignment="Center"
+                             KeyDown="SearchTextBox_KeyDown"/>
+                    <Path Grid.Row="0"
+                          HorizontalAlignment="Right"
+                          Margin="0,0,12,0"
+                          Data="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"
+                          Fill="{DynamicResource Brush.Text.Tertiary}"
+                          Width="18" Height="18"
+                          Stretch="Uniform"
+                          IsHitTestVisible="False"
+                          VerticalAlignment="Center"/>
+                          
+                    <!-- Suggestion ListBox -->
+                    <ListBox Grid.Row="1"
+                             x:Name="SuggestionsListBox"
+                             ItemsSource="{Binding Suggestions}"
+                             SelectedItem="{Binding SelectedSuggestion}"
+                             MaxHeight="120"
+                             Background="{DynamicResource Brush.Background.Tertiary}"
+                             BorderBrush="{DynamicResource Brush.Border}"
+                             BorderThickness="1"
+                             Padding="0"
+                             IsVisible="{Binding Suggestions.Count}"
+                             KeyDown="SuggestionsListBox_KeyDown"
+                             Tapped="SuggestionsListBox_Tapped"
+                             ZIndex="99">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Border BorderBrush="{DynamicResource Brush.Border}" BorderThickness="0,0,0,1" Padding="8,6" Background="Transparent">
+                                    <TextBlock Text="{Binding}" FontWeight="Bold" Foreground="{DynamicResource Brush.Semantic.Success}" FontSize="12"/>
+                                </Border>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                        <ListBox.Styles>
+                            <Style Selector="ListBoxItem">
+                                <Setter Property="Padding" Value="0"/>
+                                <Setter Property="Background" Value="Transparent"/>
+                            </Style>
+                            <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter">
+                                <Setter Property="Background" Value="{DynamicResource Brush.Background.Hover}"/>
+                            </Style>
+                            <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
+                                <Setter Property="Background" Value="{DynamicResource Brush.Background.Hover}"/>
+                            </Style>
+                        </ListBox.Styles>
+                    </ListBox>
+                </Grid>
+            </StackPanel>
+
+            <!-- Buy/Sell Fields -->
+            <StackPanel Spacing="12" IsVisible="{Binding IsBuyOrSell}">
+                <Grid ColumnDefinitions="*,*">
+                    <!-- Type Selection (Moved here) -->
+                    <StackPanel Spacing="6" Margin="0,0,8,0">
+                        <TextBlock Text="{l:Localize Portfolio_Dialog_Type}" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource Brush.Text.Secondary}"/>
+                        <ComboBox ItemsSource="{Binding TransactionTypeItems}" 
+                                  SelectedItem="{Binding SelectedTypeMenuItem, Mode=TwoWay}"
+                                  HorizontalAlignment="Stretch" 
+                                  Height="38" 
+                                  Background="{DynamicResource Brush.Background.Tertiary}"
+                                  BorderBrush="{DynamicResource Brush.Border}"
+                                  VerticalContentAlignment="Center">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding DisplayText}"/>
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
+                    </StackPanel>
+
+                    <!-- Quantity -->
+                    <StackPanel Grid.Column="1" Spacing="6" Margin="8,0,0,0">
+                        <TextBlock Text="{l:Localize Portfolio_Dialog_Quantity}" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource Brush.Text.Secondary}"/>
+                        <NumericUpDown Value="{Binding Quantity}" 
+                                       Minimum="0.000001"
+                                       FormatString="F6"
+                                       Height="38" 
+                                       Background="{DynamicResource Brush.Background.Tertiary}"
+                                       BorderBrush="{DynamicResource Brush.Border}"
+                                       VerticalContentAlignment="Center"/>
+                    </StackPanel>
+                </Grid>
+
+                <Grid ColumnDefinitions="*,*">
+                    <StackPanel Spacing="6" Margin="0,0,8,0">
+                        <TextBlock Text="{l:Localize Portfolio_Dialog_PricePerUnit}" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource Brush.Text.Secondary}"/>
+                        <NumericUpDown Value="{Binding PricePerUnit}" 
+                                       Minimum="0"
+                                       FormatString="F2"
+                                       Height="38" 
+                                       Background="{DynamicResource Brush.Background.Tertiary}"
+                                       BorderBrush="{DynamicResource Brush.Border}"
+                                       VerticalContentAlignment="Center"/>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="1" Spacing="6" Margin="8,0,0,0">
+                        <TextBlock Text="{l:Localize Portfolio_Dialog_Fee}" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource Brush.Text.Secondary}"/>
+                        <NumericUpDown Value="{Binding Fee}" 
+                                       Minimum="0"
+                                       FormatString="F2"
+                                       Height="38" 
+                                       Background="{DynamicResource Brush.Background.Tertiary}"
+                                       BorderBrush="{DynamicResource Brush.Border}"
+                                       VerticalContentAlignment="Center"/>
+                    </StackPanel>
+                </Grid>
+
+                <Grid ColumnDefinitions="*,*">
+                    <StackPanel Spacing="6" Margin="0,0,8,0">
+                        <TextBlock Text="{l:Localize Portfolio_Dialog_SettlementCurrency}" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource Brush.Text.Secondary}"/>
+                        <ComboBox ItemsSource="{Binding Currencies}" 
+                                  SelectedItem="{Binding SelectedCurrency, Mode=TwoWay}"
+                                  HorizontalAlignment="Stretch" 
+                                  Height="38" 
+                                  Background="{DynamicResource Brush.Background.Tertiary}"
+                                  BorderBrush="{DynamicResource Brush.Border}"
+                                  VerticalContentAlignment="Center"
+                                  IsEnabled="{Binding IsCurrencySelectionEnabled}"/>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="1" Spacing="6" Margin="8,0,0,0"
+                                IsVisible="{Binding IsExchangeRateVisible}">
+                        <TextBlock Text="{l:Localize Portfolio_Dialog_ExchangeRate}" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource Brush.Text.Secondary}"/>
+                        <NumericUpDown Value="{Binding AppliedRateValue}" 
+                                       Minimum="0.000001"
+                                       FormatString="F6"
+                                       Height="38" 
+                                       Background="{DynamicResource Brush.Background.Tertiary}"
+                                       BorderBrush="{DynamicResource Brush.Border}"
+                                       VerticalContentAlignment="Center"
+                                       IsEnabled="{Binding IsExchangeRateEnabled}"/>
+                    </StackPanel>
+                </Grid>
+
+                <!-- Strategy Metadata: Target Price & Stop Loss -->
+                <Grid ColumnDefinitions="*,*">
+                    <StackPanel Spacing="6" Margin="0,0,8,0">
+                        <TextBlock Text="{l:Localize Portfolio_Dialog_TargetPrice}" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource Brush.Text.Secondary}"/>
+                        <NumericUpDown Value="{Binding TargetPrice}" 
+                                       Minimum="0"
+                                       FormatString="F2"
+                                       Height="38" 
+                                       Background="{DynamicResource Brush.Background.Tertiary}"
+                                       BorderBrush="{DynamicResource Brush.Border}"
+                                       VerticalContentAlignment="Center"/>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="1" Spacing="6" Margin="8,0,0,0">
+                        <TextBlock Text="{l:Localize Portfolio_Dialog_StopLoss}" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource Brush.Text.Secondary}"/>
+                        <NumericUpDown Value="{Binding StopLoss}" 
+                                       Minimum="0"
+                                       FormatString="F2"
+                                       Height="38" 
+                                       Background="{DynamicResource Brush.Background.Tertiary}"
+                                       BorderBrush="{DynamicResource Brush.Border}"
+                                       VerticalContentAlignment="Center"/>
+                    </StackPanel>
+                </Grid>
+
+                <!-- Strategy Metadata: Notes -->
+                <StackPanel Spacing="6">
+                    <TextBlock Text="{l:Localize Portfolio_Dialog_Notes}" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource Brush.Text.Secondary}"/>
+                    <TextBox Text="{Binding Notes}" 
+                             Height="60" 
+                             AcceptsReturn="True"
+                             TextWrapping="Wrap"
+                             Background="{DynamicResource Brush.Background.Tertiary}"
+                             BorderBrush="{DynamicResource Brush.Border}"
+                             VerticalContentAlignment="Top"
+                             Padding="8,6"/>
+                </StackPanel>
+            </StackPanel>
+
+            <!-- Deposit/Withdrawal Fields -->
+            <StackPanel Spacing="6" IsVisible="{Binding IsDepositOrWithdrawal}">
+                <TextBlock Text="{l:Localize Portfolio_Dialog_CashAmount}" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource Brush.Text.Secondary}"/>
+                <NumericUpDown Value="{Binding CashAmount}" 
+                               Minimum="0.01"
+                               FormatString="F2"
+                               Height="38" 
+                               Background="{DynamicResource Brush.Background.Tertiary}"
+                               BorderBrush="{DynamicResource Brush.Border}"
+                               VerticalContentAlignment="Center"/>
+            </StackPanel>
+
+            <!-- Common fields: Execution Date -->
+            <StackPanel Spacing="6">
+                <TextBlock Text="{l:Localize Portfolio_Dialog_ExecutionDate}" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource Brush.Text.Secondary}"/>
+                <CalendarDatePicker x:Name="ExecutedAtDatePicker"
+                                    SelectedDate="{Binding ExecutedAt, Mode=TwoWay}"
+                                    Height="38" 
+                                    HorizontalAlignment="Stretch"
+                                    SelectedDateFormat="Custom"
+                                    CustomDateFormatString="yyyy-MM-dd"
+                                    Watermark="{l:Localize Portfolio_Dialog_SelectDateWatermark}"
+                                    Background="{DynamicResource Brush.Background.Tertiary}"
+                                    BorderBrush="{DynamicResource Brush.Border}"/>
+            </StackPanel>
+
+            <!-- Footer Buttons (Moved inside the StackPanel for uniform spacing) -->
+            <Grid ColumnDefinitions="*,Auto,Auto" Margin="0,4,0,0">
+                <Button Grid.Column="1" 
+                        Content="{l:Localize Btn_OK}" 
+                        Classes="accent"
+                        Padding="24,10"
+                        Command="{Binding SaveCommand}"
+                        Margin="0,0,12,0"
+                        Click="OnSaveClick"/>
+                
+                <Button Grid.Column="2" 
+                        Content="{l:Localize Btn_Cancel}" 
+                        Classes="accent"
+                        Padding="20,10"
+                        Click="OnCancelClick"/>
+            </Grid>
+        </StackPanel>
+    </Border>
+</Window>

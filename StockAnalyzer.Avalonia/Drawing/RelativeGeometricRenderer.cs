@@ -1,0 +1,261 @@
+using Avalonia;
+using Avalonia.Media;
+using SkiaSharp;
+using StockAnalyzer.Avalonia.Common;
+using StockAnalyzer.Core.Constants;
+using StockAnalyzer.Core.MathUtils;
+using StockAnalyzer.Core.Models;
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.ComponentModel.DataAnnotations;
+
+namespace StockAnalyzer.Avalonia.Drawing;
+
+/// <summary>
+/// Base class for all drawing elements that require pixel-independent, geometric precision.
+/// Provides logical snapping and ZeroAllocation rendering capabilities (FR-39-5-01, FR-39-5-04).
+/// </summary>
+public abstract class RelativeGeometricRenderer : IChartObject, IDisposable
+{
+    public Guid Id { get; } = Guid.NewGuid();
+    public abstract ChartObjectType Type { get; }
+    public string? CustomName { get; set; }
+
+    [Category("Coordinates")]
+    [DisplayName("Move Axis Mode")]
+    [ParameterTag(DrawingParameterTags.Geometry)]
+    public DrawingMoveAxisMode MoveAxisMode { get; set; } = DrawingMoveAxisMode.XY;
+
+    public bool IsMoveAxisModeExplicit { get; set; } = false;
+    public List<ChartPoint> Points { get; } = new List<ChartPoint>();
+
+    [Category("Style")]
+    [DisplayName("Color")]
+    [ParameterTag(DrawingParameterTags.Common)]
+    public Color Color { get; set; } = DrawingThemeContext.DefaultColor;
+
+    [Category("Style")]
+    [DisplayName("Thickness")]
+    [Range(0.1, 10.0)]
+    [ParameterTag(DrawingParameterTags.Common)]
+    public double Thickness { get; set; } = DrawingThemeContext.DefaultStrokeThickness;
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool IsSelected { get; set; }
+
+    [Category("Style")]
+    [DisplayName("Visible")]
+    [ParameterTag(DrawingParameterTags.Common)]
+    public bool IsVisible { get; set; } = true;
+
+    [Category("Style")]
+    [DisplayName("Locked")]
+    [ParameterTag(DrawingParameterTags.Common)]
+    public bool IsLocked { get; set; } = false;
+
+    [Category("Style")]
+    [DisplayName("Z-Index")]
+    [Range(0, 100)]
+    [ParameterTag(DrawingParameterTags.Common)]
+    public int ZIndex { get; set; } = 0;
+
+    public int AnchorPointIndex { get; set; } = 0;
+
+    [Category("Coordinates")]
+    [DisplayName("Panel Index")]
+    [ParameterTag(DrawingParameterTags.Geometry)]
+    public int PanelIndex { get; set; } = -1;
+
+    public SKColor SkiaColor => new SKColor(Color.R, Color.G, Color.B, Color.A);
+
+    // FR-39-5-04: ZeroAllocation cached paint and path
+    protected SKPaint _cachedPaint;
+    protected SKPath _cachedPath;
+
+    protected SKPaint EnsurePaint()
+    {
+        var paint = _cachedPaint;
+        if (paint == null || paint.Handle == IntPtr.Zero)
+        {
+            paint = new SKPaint
+            {
+                Style = SKPaintStyle.Stroke,
+                IsAntialias = true
+            };
+            _cachedPaint = paint;
+        }
+        return paint;
+    }
+
+    protected SKPath EnsurePath()
+    {
+        var path = _cachedPath;
+        if (path == null || path.Handle == IntPtr.Zero)
+        {
+            path = new SKPath();
+            _cachedPath = path;
+        }
+        return path;
+    }
+
+    protected RelativeGeometricRenderer()
+    {
+        Color = DrawingThemeContext.DefaultColor;
+        Thickness = DrawingThemeContext.DefaultStrokeThickness;
+
+        _cachedPaint = new SKPaint
+        {
+            Style = SKPaintStyle.Stroke,
+            IsAntialias = true
+        };
+
+        _cachedPath = new SKPath();
+    }
+
+    /// <summary>
+    /// Implements ZeroAllocation rendering by updating cached properties and invoking DrawGeometry.
+    /// </summary>
+    public virtual void Render(SKCanvas canvas, ICoordinateTransform transform)
+    {
+        if (!IsVisible) return;
+
+        var paint = EnsurePaint();
+        var path = EnsurePath();
+
+        // Update paint properties
+        paint.Color = SkiaColor;
+        paint.StrokeWidth = (float)Thickness;
+
+        path.Reset();
+
+        // Delegate to subclass
+        DrawGeometry(canvas, transform);
+
+        // Draw selection handles, highlighting the reference/anchor control point distinctly.
+        if (IsSelected)
+        {
+            for (int i = 0; i < Points.Count; i++)
+            {
+                var screenPt = transform.ChartToScreen(Points[i]);
+                bool isAnchor = i == AnchorPointIndex;
+                SelectionHandleRenderer.Draw(canvas, screenPt, isAnchor ? DrawingThemeContext.AnchorPointColor : (SKColor?)null);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Subclasses must implement actual drawing logic utilizing the cached _cachedPath and _cachedPaint overhead-free.
+    /// </summary>
+    protected abstract void DrawGeometry(SKCanvas canvas, ICoordinateTransform transform);
+
+    public abstract bool HitTest(global::Avalonia.Point screenPoint, ICoordinateTransform transform, double tolerance = ChartConstants.DefaultHitTestTolerance);
+
+    public virtual void Translate(TimeSpan timeDelta, decimal priceDelta)
+    {
+        for (int i = 0; i < Points.Count; i++)
+        {
+            Points[i] = new ChartPoint(Points[i].Time.Add(timeDelta), Points[i].Price + priceDelta);
+        }
+    }
+
+    /// <summary>
+    /// Calculates the correct end coordinate for a True Angle (e.g. 45 degrees) assuming a 1:1 Aspect Ratio logic.
+    /// FR-39-5-01, FR-39-5-03: 1:1アスペクト比を前提とした斜め45度線�E数学皁E��義
+    /// </summary>
+    /// <param name="start">Start coordinate</param>
+    /// <param name="angleDegrees">Angle in degrees (0 is horizontal right, positive is mathematically "up")</param>
+    /// <param name="distanceInBars">Length of the hypotenuse in logical bar units</param>
+    /// <param name="pricePerBar">The logical Y/X ratio (e.g. 1 bar equals how much price)</param>
+    /// <param name="timeframeInterval">The timespan of a single bar (e.g. 1 day)</param>
+    protected ChartPoint CalculateTrueAnglePoint(ChartPoint start, double angleDegrees, double distanceInBars, double pricePerBar, TimeSpan timeframeInterval)
+    {
+        double angleRad = angleDegrees * MathConstants.DegToRad;
+        
+        // Logical dx and dy in a perfectly square 1:1 grid
+        double logicalDx = distanceInBars * Math.Cos(angleRad);
+        double logicalDy = distanceInBars * Math.Sin(angleRad);
+        
+        // Map to chart scale
+        long deltaTicks = (long)(logicalDx * timeframeInterval.Ticks);
+        decimal deltaPrice = (decimal)(logicalDy * pricePerBar);
+        
+        return new ChartPoint(start.Time.AddTicks(deltaTicks), start.Price + deltaPrice);
+    }
+
+    /// <summary>
+    /// Snaps a screen point to the nearest logical grid or candle OHLC point recursively.
+    /// FR-39-5-02: 描画時にマスの「角」や「端�E�高値/安値�E�」を検�Eし、�E動スナップすめE
+    /// </summary>
+    protected ChartPoint SnapToLogicalPoint(
+        global::Avalonia.Point screenPoint, 
+        ICoordinateTransform transform, 
+        IReadOnlyList<CoreCandleData> candles, 
+        StockAnalyzer.Avalonia.Services.Drawing.IMagnetSnapService magnetSnapService)
+    {
+        // 1. Existing MagnetSnapService (OHLC wick/body snapping - preserves all past behavior)
+        if (magnetSnapService != null && candles != null && candles.Count > 0)
+        {
+            var snapResult = magnetSnapService.GetMagnetSnap(screenPoint, candles, transform);
+            if (snapResult.IsSnapped)
+            {
+                return snapResult.SnappedChartPoint;
+            }
+        }
+
+        var rawPoint = transform.ScreenToChart(screenPoint);
+
+        // 2. Logical Geometric Grid Snapping (マスの角への吸着)
+        // Check if we are drawing on a discrete coordinate grid (like P&F, Renko, Kagi)
+        if (transform is GenericCoordinateTransform gct && gct.Mode == ChartAxisMode.Index)
+        {
+            double index;
+            if (rawPoint.Time.Ticks > 31536000000000000L) // 1000 years threshold
+            {
+                index = gct.GetFractionalIndex(rawPoint.Time);
+            }
+            else
+            {
+                index = (double)rawPoint.Time.Ticks;
+            }
+
+            double snappedIndex = Math.Round(index);
+            DateTime snappedTime;
+            if (gct.TimeMap != null && gct.TimeMap.Count > 0)
+            {
+                snappedTime = gct.GetTimeFromFractionalIndex(snappedIndex);
+            }
+            else
+            {
+                snappedTime = GenericCoordinateTransform.SafeIndexPoint(snappedIndex).Time;
+            }
+            
+            decimal snappedPrice = rawPoint.Price;
+            
+            // Snap Y to the nearest logical box size if a 1:1 aspect ratio geometric constraint exists
+            if (gct.FixedPricePerIndex.HasValue && gct.FixedPricePerIndex.Value > 0)
+            {
+                decimal boxRatio = gct.FixedPricePerIndex.Value;
+                snappedPrice = Math.Round(rawPoint.Price / boxRatio) * boxRatio;
+            }
+            
+            return new ChartPoint(snappedTime, snappedPrice);
+        }
+
+        // Fallback: return raw mathematical logical point for unconstrained time-based spaces
+        return rawPoint;
+    }
+
+    public virtual void Dispose()
+    {
+        var paint = _cachedPaint;
+        _cachedPaint = null!;
+        paint?.Dispose();
+
+        var path = _cachedPath;
+        _cachedPath = null!;
+        path?.Dispose();
+
+        GC.SuppressFinalize(this);
+    }
+}

@@ -1,0 +1,42 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:StockAnalyzer.Avalonia.ViewModels.Dialogs"
+             xmlns:l="using:StockAnalyzer.Avalonia.Markup"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="400"
+             x:Class="StockAnalyzer.Avalonia.Views.Dialogs.PythonSettingsView"
+             x:DataType="vm:PythonSettingsViewModel">
+
+    <Design.DataContext>
+        <vm:PythonSettingsViewModel/>
+    </Design.DataContext>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Spacing="20" Margin="16">
+
+            <Border Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="{l:Localize Settings_Python_UpdateCheckTitle}" FontSize="{DynamicResource BaseFontSize}" FontWeight="Bold" Foreground="{DynamicResource Brush.Accent.Primary}"/>
+
+                    <StackPanel Spacing="12">
+                        <Grid ColumnDefinitions="*, Auto">
+                            <TextBlock Text="{l:Localize Settings_Python_ShowUpdateDialog}" VerticalAlignment="Center" FontSize="{DynamicResource DetailFontSize}"/>
+                            <ToggleSwitch Grid.Column="1" IsChecked="{Binding SelectedShowUpdateConfirmationDialog}" OnContent="" OffContent=""/>
+                        </Grid>
+
+                        <TextBlock Text="{l:Localize Settings_Python_ShowUpdateDialog_Desc}"
+                                   FontSize="{DynamicResource HelperFontSize}"
+                                   Foreground="{DynamicResource Brush.Text.Secondary}"
+                                   TextWrapping="Wrap"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

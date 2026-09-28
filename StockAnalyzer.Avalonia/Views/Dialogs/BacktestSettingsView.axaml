@@ -1,0 +1,256 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:StockAnalyzer.Avalonia.ViewModels.Dialogs"
+             xmlns:l="using:StockAnalyzer.Avalonia.Markup"
+             xmlns:conv="using:StockAnalyzer.Avalonia.Converters"
+             xmlns:models="using:StockAnalyzer.Core.Models"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="800"
+             x:Class="StockAnalyzer.Avalonia.Views.Dialogs.BacktestSettingsView"
+             x:DataType="vm:BacktestSettingsViewModel">
+
+    <UserControl.Resources>
+        <conv:EnumToLocalizedDisplayNameConverter x:Key="EnumToLocalizedDisplayNameConverter"/>
+        <x:Double x:Key="BacktestSettingsInputWidth">150</x:Double>
+        <x:Double x:Key="BacktestSettingsInputHeight">28</x:Double>
+    </UserControl.Resources>
+
+    <UserControl.Styles>
+        <!-- Shared size of every value input on this page (wide enough for a 4-digit annualization period and the longest sizing-model name). -->
+        <Style Selector="NumericUpDown.SettingInput">
+            <Setter Property="Width" Value="{StaticResource BacktestSettingsInputWidth}"/>
+            <Setter Property="Height" Value="{StaticResource BacktestSettingsInputHeight}"/>
+        </Style>
+        <Style Selector="ComboBox.SettingInput">
+            <Setter Property="MinWidth" Value="{StaticResource BacktestSettingsInputWidth}"/>
+        </Style>
+    </UserControl.Styles>
+
+    <Design.DataContext>
+        <vm:BacktestSettingsViewModel/>
+    </Design.DataContext>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Spacing="20" Margin="16">
+
+            <TextBlock Text="{l:Localize Settings_Backtest_Intro}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+
+            <TextBlock Text="{Binding ValidationMessage}"
+                       IsVisible="{Binding HasValidationMessage}"
+                       AutomationProperties.AutomationId="BacktestSettings_SaveFailureMessage"
+                       FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Semantic.Error}" TextWrapping="Wrap"/>
+
+
+            <!-- Group B: Capital and Cost Model -->
+            <Border Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="{l:Localize Backtest_GroupB_Title}" FontSize="{DynamicResource BaseFontSize}" FontWeight="Bold" Foreground="{DynamicResource Brush.Accent.Primary}"/>
+
+                    <UniformGrid Columns="2">
+                        <StackPanel Margin="0,0,24,16">
+                            <Grid RowDefinitions="Auto,Auto" RowSpacing="4">
+                                <TextBlock Text="{l:Localize Backtest_Field_InitialCapital}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                <NumericUpDown Grid.Row="1" HorizontalAlignment="Right" Value="{Binding InitialCapital}" Increment="1000" FormatString="0.####" Classes="SettingInput"
+                                               AutomationProperties.AutomationId="BacktestSettings_InitialCapital"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize Settings_Backtest_Desc_InitialCapital}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                            <TextBlock Text="{Binding InitialCapitalError}" IsVisible="{Binding InitialCapitalError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" AutomationProperties.AutomationId="BacktestSettings_Error_InitialCapital" Margin="0,4,0,0" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Semantic.Error}" TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <StackPanel Margin="0,0,0,16">
+                            <Grid RowDefinitions="Auto,Auto" RowSpacing="4">
+                                <TextBlock Text="{l:Localize Backtest_Field_CommissionFlat}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                <NumericUpDown Grid.Row="1" HorizontalAlignment="Right" Value="{Binding CommissionFlat}" Minimum="0" Increment="0.1" FormatString="0.####" Classes="SettingInput"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize Settings_Backtest_Desc_CommissionFlat}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                            <TextBlock Text="{Binding CommissionFlatError}" IsVisible="{Binding CommissionFlatError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" AutomationProperties.AutomationId="BacktestSettings_Error_CommissionFlat" Margin="0,4,0,0" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Semantic.Error}" TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <StackPanel Margin="0,0,24,16">
+                            <Grid RowDefinitions="Auto,Auto" RowSpacing="4">
+                                <TextBlock Text="{l:Localize Backtest_Field_CommissionPerUnit}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                <NumericUpDown Grid.Row="1" HorizontalAlignment="Right" Value="{Binding CommissionPerUnit}" Minimum="0" Increment="0.01" FormatString="0.####" Classes="SettingInput"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize Settings_Backtest_Desc_CommissionPerUnit}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                            <TextBlock Text="{Binding CommissionPerUnitError}" IsVisible="{Binding CommissionPerUnitError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" AutomationProperties.AutomationId="BacktestSettings_Error_CommissionPerUnit" Margin="0,4,0,0" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Semantic.Error}" TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <StackPanel Margin="0,0,0,16">
+                            <Grid RowDefinitions="Auto,Auto" RowSpacing="4">
+                                <TextBlock Text="{l:Localize Backtest_Field_SlippageRatio}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                <NumericUpDown Grid.Row="1" HorizontalAlignment="Right" Value="{Binding SlippageRatio}"
+                                               Minimum="{Binding RatioInclusiveMinimum}" Maximum="{Binding RatioBelowUnitMaximum}"
+                                               Increment="0.001" FormatString="0.####" Classes="SettingInput"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize Settings_Backtest_Desc_SlippageRatio}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                            <TextBlock Text="{Binding SlippageRatioError}" IsVisible="{Binding SlippageRatioError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" AutomationProperties.AutomationId="BacktestSettings_Error_SlippageRatio" Margin="0,4,0,0" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Semantic.Error}" TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <StackPanel Margin="0,0,24,0">
+                            <Grid RowDefinitions="Auto,Auto" RowSpacing="4">
+                                <TextBlock Text="{l:Localize Backtest_Field_SizingModel}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                <ComboBox Grid.Row="1" HorizontalAlignment="Right" Classes="SettingInput"
+                                          ItemsSource="{Binding SizingModelOptions}"
+                                          SelectedItem="{Binding SizingModel}">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding Converter={StaticResource EnumToLocalizedDisplayNameConverter}}"/>
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize Settings_Backtest_Desc_SizingModel}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <StackPanel>
+                            <Grid RowDefinitions="Auto,Auto" RowSpacing="4">
+                                <TextBlock Text="{l:Localize Backtest_Field_SizingParameter}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                <NumericUpDown Grid.Row="1" HorizontalAlignment="Right" Value="{Binding SizingParameter}" Minimum="0" Increment="1" FormatString="0.####" Classes="SettingInput"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize Settings_Backtest_Desc_SizingParameter}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                            <TextBlock Text="{Binding SizingParameterError}" IsVisible="{Binding SizingParameterError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" AutomationProperties.AutomationId="BacktestSettings_Error_SizingParameter" Margin="0,4,0,0" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Semantic.Error}" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </UniformGrid>
+                </StackPanel>
+            </Border>
+
+            <!-- Group C: Margin Model -->
+            <Border Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="{l:Localize Backtest_GroupC_Title}" FontSize="{DynamicResource BaseFontSize}" FontWeight="Bold" Foreground="{DynamicResource Brush.Accent.Primary}"/>
+
+                    <UniformGrid Columns="2">
+                        <StackPanel Margin="0,0,24,16">
+                            <Grid RowDefinitions="Auto,Auto" RowSpacing="4">
+                                <TextBlock Text="{l:Localize Backtest_Field_InitialMarginRatio}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                <NumericUpDown Grid.Row="1" HorizontalAlignment="Right" Value="{Binding InitialMarginRatio}"
+                                               Minimum="{Binding RatioPositiveMinimum}" Maximum="{Binding RatioInclusiveMaximum}"
+                                               Increment="0.01" FormatString="0.####" Classes="SettingInput"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize Settings_Backtest_Desc_InitialMarginRatio}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                            <TextBlock Text="{Binding InitialMarginRatioError}" IsVisible="{Binding InitialMarginRatioError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" AutomationProperties.AutomationId="BacktestSettings_Error_InitialMarginRatio" Margin="0,4,0,0" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Semantic.Error}" TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <StackPanel Margin="0,0,0,16">
+                            <Grid RowDefinitions="Auto,Auto" RowSpacing="4">
+                                <TextBlock Text="{l:Localize Backtest_Field_MaintenanceMarginRatio}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                <NumericUpDown Grid.Row="1" HorizontalAlignment="Right" Value="{Binding MaintenanceMarginRatio}"
+                                               Minimum="{Binding RatioPositiveMinimum}" Maximum="{Binding RatioBelowUnitMaximum}"
+                                               Increment="0.01" FormatString="0.####" Classes="SettingInput"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize Settings_Backtest_Desc_MaintenanceMarginRatio}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                            <TextBlock Text="{Binding MaintenanceMarginRatioError}" IsVisible="{Binding MaintenanceMarginRatioError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" AutomationProperties.AutomationId="BacktestSettings_Error_MaintenanceMarginRatio" Margin="0,4,0,0" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Semantic.Error}" TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <StackPanel Margin="0,0,24,0">
+                            <Grid RowDefinitions="Auto,Auto" RowSpacing="4">
+                                <TextBlock Text="{l:Localize Backtest_Field_LiquidationPenaltyRatio}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                <NumericUpDown Grid.Row="1" HorizontalAlignment="Right" Value="{Binding LiquidationPenaltyRatio}"
+                                               Minimum="{Binding RatioInclusiveMinimum}" Maximum="{Binding RatioBelowUnitMaximum}"
+                                               Increment="0.001" FormatString="0.####" Classes="SettingInput"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize Settings_Backtest_Desc_LiquidationPenaltyRatio}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                            <TextBlock Text="{Binding LiquidationPenaltyRatioError}" IsVisible="{Binding LiquidationPenaltyRatioError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" AutomationProperties.AutomationId="BacktestSettings_Error_LiquidationPenaltyRatio" Margin="0,4,0,0" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Semantic.Error}" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </UniformGrid>
+                </StackPanel>
+            </Border>
+
+            <!-- Group D: Report Aggregation Parameters -->
+            <Border Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="{l:Localize Backtest_GroupD_Title}" FontSize="{DynamicResource BaseFontSize}" FontWeight="Bold" Foreground="{DynamicResource Brush.Accent.Primary}"/>
+
+                    <UniformGrid Columns="2">
+                        <StackPanel Margin="0,0,24,16">
+                            <Grid RowDefinitions="Auto,Auto" RowSpacing="4">
+                                <TextBlock Text="{l:Localize Backtest_Field_AnnualRiskFreeRate}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                <NumericUpDown Grid.Row="1" HorizontalAlignment="Right" Value="{Binding AnnualRiskFreeRate}" Increment="0.005" FormatString="0.####" Classes="SettingInput"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize Settings_Backtest_Desc_AnnualRiskFreeRate}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                            <TextBlock Text="{Binding AnnualRiskFreeRateError}" IsVisible="{Binding AnnualRiskFreeRateError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" AutomationProperties.AutomationId="BacktestSettings_Error_AnnualRiskFreeRate" Margin="0,4,0,0" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Semantic.Error}" TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <StackPanel Margin="0,0,0,16">
+                            <Grid RowDefinitions="Auto,Auto" RowSpacing="4">
+                                <TextBlock Text="{l:Localize Backtest_Field_AnnualMAR}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                <NumericUpDown Grid.Row="1" HorizontalAlignment="Right" Value="{Binding AnnualMar}" Increment="0.005" FormatString="0.####" Classes="SettingInput"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize Settings_Backtest_Desc_AnnualMar}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                            <TextBlock Text="{Binding AnnualMarError}" IsVisible="{Binding AnnualMarError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" AutomationProperties.AutomationId="BacktestSettings_Error_AnnualMAR" Margin="0,4,0,0" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Semantic.Error}" TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <StackPanel Margin="0,0,24,16">
+                            <Grid RowDefinitions="Auto,Auto" RowSpacing="4">
+                                <TextBlock Text="{l:Localize Backtest_Field_BootstrapSeed}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                <NumericUpDown Grid.Row="1" HorizontalAlignment="Right" Value="{Binding BootstrapSeed}" Increment="1" FormatString="0" Classes="SettingInput"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize Settings_Backtest_Desc_BootstrapSeed}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <StackPanel Margin="0,0,0,16">
+                            <Grid RowDefinitions="Auto,Auto" RowSpacing="4">
+                                <TextBlock Text="{l:Localize Backtest_Field_BootstrapIterations}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                <NumericUpDown Grid.Row="1" HorizontalAlignment="Right" Value="{Binding BootstrapIterations}" Increment="500" FormatString="0" Classes="SettingInput"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize Settings_Backtest_Desc_BootstrapIterations}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                            <TextBlock Text="{Binding BootstrapIterationsError}" IsVisible="{Binding BootstrapIterationsError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" AutomationProperties.AutomationId="BacktestSettings_Error_BootstrapIterations" Margin="0,4,0,0" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Semantic.Error}" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </UniformGrid>
+
+                    <!-- Annualization periods: one item, one control per timeframe on the same row -->
+                    <StackPanel>
+                        <Grid RowDefinitions="Auto,Auto" RowSpacing="4">
+                            <TextBlock Text="{l:Localize Backtest_Field_AnnualPeriodsByFrame}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                            <!-- WrapPanel: label+input pairs wrap to the next line instead of being clipped when the page is narrow -->
+                            <WrapPanel Grid.Row="1" HorizontalAlignment="Right" Orientation="Horizontal">
+                                <StackPanel Orientation="Horizontal" Spacing="8" Margin="12,0,0,4">
+                                    <TextBlock Text="{Binding Source={x:Static models:TimeFrame.D1}, Converter={StaticResource EnumToLocalizedDisplayNameConverter}}" VerticalAlignment="Center"/>
+                                    <NumericUpDown Value="{Binding AnnualPeriodsD1}" Increment="1" FormatString="0" Classes="SettingInput"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Spacing="8" Margin="12,0,0,4">
+                                    <TextBlock Text="{Binding Source={x:Static models:TimeFrame.W1}, Converter={StaticResource EnumToLocalizedDisplayNameConverter}}" VerticalAlignment="Center"/>
+                                    <NumericUpDown Value="{Binding AnnualPeriodsW1}" Increment="1" FormatString="0" Classes="SettingInput"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Spacing="8" Margin="12,0,0,4">
+                                    <TextBlock Text="{Binding Source={x:Static models:TimeFrame.MN1}, Converter={StaticResource EnumToLocalizedDisplayNameConverter}}" VerticalAlignment="Center"/>
+                                    <NumericUpDown Value="{Binding AnnualPeriodsMN1}" Increment="1" FormatString="0" Classes="SettingInput"/>
+                                </StackPanel>
+                            </WrapPanel>
+                        </Grid>
+                        <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                        <TextBlock Text="{l:Localize Settings_Backtest_Desc_AnnualPeriods}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                        <TextBlock Text="{Binding AnnualPeriodsError}" IsVisible="{Binding AnnualPeriodsError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" AutomationProperties.AutomationId="BacktestSettings_Error_AnnualPeriodsByFrame" Margin="0,4,0,0" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Semantic.Error}" TextWrapping="Wrap"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>
