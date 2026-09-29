@@ -1,0 +1,253 @@
+using Xunit;
+using StockAnalyzer.Core.Models;
+using StockAnalyzer.Utilities;
+using System;
+using System.Collections.Generic;
+
+namespace StockAnalyzer.Tests.Utilities;
+
+/// <summary>
+/// HeikinAshiConverter のテストクラス
+/// </summary>
+public class HeikinAshiConverterTests
+{
+    [Fact]
+    public void Convert_EmptyList_ReturnsEmptyList()
+    {
+        // Arrange
+        var candles = new List<CandleData>();
+
+        // Act
+        var result = HeikinAshiConverter.Convert(candles);
+
+        // Assert
+        Assert.Empty(result);
+    }
+
+    [Fact]
+    public void Convert_NullList_ReturnsEmptyList()
+    {
+        // Act
+        var result = HeikinAshiConverter.Convert(null);
+
+        // Assert
+        Assert.Empty(result);
+    }
+
+    [Fact]
+    public void Convert_SingleCandle_ReturnsCorrectHeikinAshi()
+    {
+        // Arrange
+        var candles = new List<CandleData>
+        {
+            new CandleData
+            {
+                Timestamp = DateTime.Parse("2024-01-01"),
+                Open = 100m,
+                High = 110m,
+                Low = 95m,
+                Close = 105m,
+                Volume = 1000
+            }
+        };
+
+        // Act
+        var result = HeikinAshiConverter.Convert(candles);
+
+        // Assert
+        Assert.Single(result);
+        var haCandle = result[0];
+        
+        // HA-Open[0] = (O + C) / 2 = (100 + 105) / 2 = 102.5
+        Assert.Equal(102.5m, haCandle.Open);
+        
+        // HA-Close = (O + H + L + C) / 4 = (100 + 110 + 95 + 105) / 4 = 102.5
+        Assert.Equal(102.5m, haCandle.Close);
+        
+        // HA-High = max(110, 102.5, 102.5) = 110
+        Assert.Equal(110m, haCandle.High);
+        
+        // HA-Low = min(95, 102.5, 102.5) = 95
+        Assert.Equal(95m, haCandle.Low);
+    }
+
+    [Fact]
+    public void Convert_TwoCandles_ReturnsCorrectHeikinAshi()
+    {
+        // Arrange
+        var candles = new List<CandleData>
+        {
+            new CandleData
+            {
+                Timestamp = DateTime.Parse("2024-01-01"),
+                Open = 100m,
+                High = 110m,
+                Low = 95m,
+                Close = 105m,
+                Volume = 1000
+            },
+            new CandleData
+            {
+                Timestamp = DateTime.Parse("2024-01-02"),
+                Open = 105m,
+                High = 115m,
+                Low = 100m,
+                Close = 110m,
+                Volume = 1200
+            }
+        };
+
+        // Act
+        var result = HeikinAshiConverter.Convert(candles);
+
+        // Assert
+        Assert.Equal(2, result.Count);
+        
+        var haCandle1 = result[0];
+        var haCandle2 = result[1];
+        
+        // First candle
+        Assert.Equal(102.5m, haCandle1.Open);
+        Assert.Equal(102.5m, haCandle1.Close);
+        
+        // Second candle
+        // HA-Open[1] = (HA-Open[0] + HA-Close[0]) / 2 = (102.5 + 102.5) / 2 = 102.5
+        Assert.Equal(102.5m, haCandle2.Open);
+        
+        // HA-Close[1] = (105 + 115 + 100 + 110) / 4 = 107.5
+        Assert.Equal(107.5m, haCandle2.Close);
+        
+        // HA-High[1] = max(115, 102.5, 107.5) = 115
+        Assert.Equal(115m, haCandle2.High);
+        
+        // HA-Low[1] = min(100, 102.5, 107.5) = 100
+        Assert.Equal(100m, haCandle2.Low);
+    }
+
+    [Fact]
+    public void Convert_InvalidCandle_SkipsInvalidData()
+    {
+        // Arrange
+        var candles = new List<CandleData>
+        {
+            new CandleData
+            {
+                Timestamp = DateTime.Parse("2024-01-01"),
+                Open = 100m,
+                High = 110m,
+                Low = 95m,
+                Close = 105m,
+                Volume = 1000
+            },
+            new CandleData
+            {
+                Timestamp = DateTime.Parse("2024-01-02"),
+                Open = 105m,
+                High = 100m, // Invalid: High < Low
+                Low = 110m,
+                Close = 108m,
+                Volume = 1200
+            },
+            new CandleData
+            {
+                Timestamp = DateTime.Parse("2024-01-03"),
+                Open = 108m,
+                High = 120m,
+                Low = 105m,
+                Close = 115m,
+                Volume = 1100
+            }
+        };
+
+        // Act
+        var result = HeikinAshiConverter.Convert(candles);
+
+        // Assert
+        Assert.Equal(2, result.Count); // Invalid candle should be skipped
+        Assert.Equal(DateTime.Parse("2024-01-01"), result[0].Timestamp);
+        Assert.Equal(DateTime.Parse("2024-01-03"), result[1].Timestamp);
+    }
+
+    [Fact]
+    public void ConvertSingle_ValidCandle_ReturnsCorrectHeikinAshi()
+    {
+        // Arrange
+        var candle = new CandleData
+        {
+            Timestamp = DateTime.Parse("2024-01-02"),
+            Open = 105m,
+            High = 115m,
+            Low = 100m,
+            Close = 110m,
+            Volume = 1200
+        };
+        decimal prevHaOpen = 102.5m;
+        decimal prevHaClose = 102.5m;
+
+        // Act
+        var result = HeikinAshiConverter.ConvertSingle(candle, prevHaOpen, prevHaClose);
+
+        // Assert
+        Assert.Equal(102.5m, result.Open);
+        Assert.Equal(107.5m, result.Close);
+        Assert.Equal(115m, result.High);
+        Assert.Equal(100m, result.Low);
+        Assert.Equal(1200, result.Volume);
+    }
+
+
+
+    [Fact]
+    public void CalculateInitialValues_ValidCandle_ReturnsCorrectValues()
+    {
+        // Arrange
+        var candle = new CandleData
+        {
+            Timestamp = DateTime.Parse("2024-01-01"),
+            Open = 100m,
+            High = 110m,
+            Low = 95m,
+            Close = 105m,
+            Volume = 1000
+        };
+
+        // Act
+        var (haOpen, haClose) = HeikinAshiConverter.CalculateInitialValues(candle);
+
+        // Assert
+        // HA-Open = (O + C) / 2 = (100 + 105) / 2 = 102.5
+        Assert.Equal(102.5m, haOpen);
+        
+        // HA-Close = (O + H + L + C) / 4 = (100 + 110 + 95 + 105) / 4 = 102.5
+        Assert.Equal(102.5m, haClose);
+    }
+
+
+
+    [Fact]
+    public void Convert_PreservesTimestampAndVolume()
+    {
+        // Arrange
+        var timestamp = DateTime.Parse("2024-01-01 10:30:00");
+        var volume = 5000L;
+        var candles = new List<CandleData>
+        {
+            new CandleData
+            {
+                Timestamp = timestamp,
+                Open = 100m,
+                High = 110m,
+                Low = 95m,
+                Close = 105m,
+                Volume = volume
+            }
+        };
+
+        // Act
+        var result = HeikinAshiConverter.Convert(candles);
+
+        // Assert
+        Assert.Equal(timestamp, result[0].Timestamp);
+        Assert.Equal(volume, result[0].Volume);
+    }
+}

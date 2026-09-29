@@ -1,0 +1,490 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:l="clr-namespace:StockAnalyzer.Avalonia.Markup;assembly=StockAnalyzer.Avalonia"
+        xmlns:vm="using:StockAnalyzer.Avalonia.ViewModels"
+        xmlns:views="using:StockAnalyzer.Avalonia.Views"
+        xmlns:converters="using:StockAnalyzer.Avalonia.Converters"
+        xmlns:behaviors="using:StockAnalyzer.Avalonia.Behaviors"
+        xmlns:c="clr-namespace:StockAnalyzer.Avalonia.Common;assembly=StockAnalyzer.Avalonia"
+        xmlns:models="using:StockAnalyzer.Core.Models.Screener"
+        xmlns:svm="using:StockAnalyzer.Avalonia.ViewModels.Screener"
+        mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="700"
+        x:Class="StockAnalyzer.Avalonia.Views.ScreenerWindow"
+        x:DataType="vm:ScreenerViewModel"
+        Icon="avares://StockAnalyzer.Avalonia/Assets/avalonia-logo.ico"
+        Title="{l:Localize Window_Screener_Title}"
+        Width="1200" Height="700"
+        WindowStartupLocation="CenterScreen"
+        behaviors:WindowPersistenceBehavior.PersistenceEnabled="True"
+        Background="{DynamicResource Brush.Background.Primary}"
+        ExtendClientAreaToDecorationsHint="True"
+        ExtendClientAreaTitleBarHeightHint="-1">
+
+    <Window.KeyBindings>
+        <KeyBinding Gesture="Escape" Command="{Binding $parent[Window].Close}"/>
+        <KeyBinding Gesture="Enter" Command="{Binding ScanCommand}"/>
+    </Window.KeyBindings>
+
+    <!-- Filters condition tree (Y:\Temp\sa_implementation_plan_ScreenerFilterConditionTree.md Task 5): mirrors
+         BacktestResultsView.axaml's "Registered Conditions" tree - a group row with a right-click context menu
+         (Add/Edit Group, Delete) and an AND/OR indicator, and a leaf row showing one comparison. Single root
+         (no Entry/Exit/Reverse x Long/Short sections - Screener has no trade-side concept). Drag-and-drop reordering
+         (added by Y:\Temp\sa_implementation_plan_ScreenerFilterConditionDragMove.md) is wired in ScreenerWindow.axaml.cs;
+         the "ConditionRow" class below is also the hook the drop-indicator styles (further down this file) target. -->
+    <Window.DataTemplates>
+        <TreeDataTemplate DataType="svm:ScreenerConditionGroupViewModel" ItemsSource="{Binding Children}">
+            <Border Classes="ConditionRow" Background="Transparent" Padding="2">
+                <ToolTip.Tip>
+                    <StackPanel Spacing="2" AttachedToVisualTree="OnHoverTipAttached">
+                        <TextBlock Text="{Binding HoverUpperText}" TextWrapping="NoWrap" IsVisible="{Binding HoverUpperText, Converter={x:Static ObjectConverters.IsNotNull}}"
+                                   FontSize="{DynamicResource TooltipFontSize}" Foreground="{DynamicResource Brush.Text.Primary}"/>
+                        <TextBlock Text="{Binding HoverLowerText}" TextWrapping="NoWrap" IsVisible="{Binding HoverLowerText, Converter={x:Static ObjectConverters.IsNotNull}}"
+                                   FontSize="{DynamicResource TooltipFontSize}" Foreground="{DynamicResource Brush.Text.Primary}"/>
+                    </StackPanel>
+                </ToolTip.Tip>
+                <Border.ContextMenu>
+                    <ContextMenu>
+                        <MenuItem Header="{l:Localize Screener_ConditionTree_AddGroup}"
+                                  Command="{Binding Tree.AddGroupCommand}" CommandParameter="{Binding}"
+                                  ToolTip.Tip="{Binding AddGroupToolTip}" ToolTip.ShowOnDisabled="True"/>
+                        <MenuItem Header="{l:Localize Screener_ConditionTree_EditGroup}"
+                                  Command="{Binding Tree.EditGroupCommand}" CommandParameter="{Binding}"/>
+                        <MenuItem Header="{l:Localize Screener_ConditionTree_ClearRoot}" IsVisible="{Binding IsRoot}"
+                                  Command="{Binding Tree.DeleteNodeCommand}" CommandParameter="{Binding}"/>
+                        <MenuItem Header="{l:Localize Screener_ConditionTree_DeleteNode}" IsVisible="{Binding !IsRoot}"
+                                  Command="{Binding Tree.DeleteNodeCommand}" CommandParameter="{Binding}"/>
+                    </ContextMenu>
+                </Border.ContextMenu>
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBlock Classes="CellValue" FontWeight="SemiBold" Text="{Binding Name, StringFormat=[{0}]}" IsVisible="{Binding HasName}"
+                               TextTrimming="CharacterEllipsis"/>
+                    <TextBlock Classes="CellValue" FontWeight="Bold" Foreground="{DynamicResource Brush.Accent.Primary}"
+                               Text="{l:Localize Screener_ConditionTree_And}" IsVisible="{Binding IsAndOperator}"/>
+                    <TextBlock Classes="CellValue" FontWeight="Bold" Foreground="{DynamicResource Brush.Accent.Primary}"
+                               Text="{l:Localize Screener_ConditionTree_Or}" IsVisible="{Binding !IsAndOperator}"/>
+                    <TextBlock Classes="CellValue" Text="{l:Localize Screener_ConditionTree_EmptyRoot}"
+                               Foreground="{DynamicResource Brush.Text.Secondary}" IsVisible="{Binding IsEmptyRoot}"/>
+                </StackPanel>
+            </Border>
+        </TreeDataTemplate>
+
+        <DataTemplate DataType="svm:ScreenerConditionLeafViewModel">
+            <Border Classes="ConditionRow" Background="Transparent" Padding="2">
+                <ToolTip.Tip>
+                    <TextBlock Text="{Binding HoverLowerText}" TextWrapping="NoWrap" AttachedToVisualTree="OnHoverTipAttached"
+                               FontSize="{DynamicResource TooltipFontSize}" Foreground="{DynamicResource Brush.Text.Primary}"/>
+                </ToolTip.Tip>
+                <Border.ContextMenu>
+                    <ContextMenu>
+                        <MenuItem Header="{l:Localize Screener_ConditionTree_DeleteNode}"
+                                  Command="{Binding Tree.DeleteNodeCommand}" CommandParameter="{Binding}"/>
+                    </ContextMenu>
+                </Border.ContextMenu>
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <CheckBox IsChecked="{Binding Entry.IsEnabled}" VerticalAlignment="Center"/>
+                    <TextBlock Classes="CellValue" Text="{Binding DisplayText}" VerticalAlignment="Center"/>
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+    </Window.DataTemplates>
+
+    <Window.Styles>
+        <!-- Filters condition tree row/tree styles, mirroring BacktestResultsView.axaml -->
+        <Style Selector="TreeView.ConditionTree TreeViewItem" x:DataType="svm:ScreenerConditionNodeViewModel">
+            <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}"/>
+            <Setter Property="IsSelected" Value="{Binding IsSelected, Mode=TwoWay}"/>
+            <Setter Property="ContextMenu" Value="{x:Null}"/>
+        </Style>
+        <Style Selector="TreeView.ConditionTree TreeViewItem /template/ ContentPresenter#PART_HeaderPresenter">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+        </Style>
+        <Style Selector="TextBlock.CellValue">
+            <Setter Property="FontSize" Value="{DynamicResource DetailFontSize}"/>
+            <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Primary}"/>
+        </Style>
+
+        <!-- Row Style: Matching Tickers Tab -->
+        <Style Selector="TreeDataGridRow">
+            <Setter Property="MinHeight" Value="28"/>
+            <Setter Property="Height" Value="28"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border.Primary}"/>
+            <Setter Property="BorderThickness" Value="0,0,0,1"/>
+        </Style>
+        <Style Selector="TreeDataGridRow:pointerover">
+            <Setter Property="Background" Value="{DynamicResource Brush.Background.Hover}"/>
+        </Style>
+        <Style Selector="TreeDataGridRow:selected">
+            <Setter Property="Background" Value="{DynamicResource Brush.Selection.Background}"/>
+        </Style>
+        <Style Selector="TreeDataGridRow:selected:not(:focus)">
+            <Setter Property="Background" Value="{DynamicResource Brush.Selection.Background}"/>
+        </Style>
+
+        <!-- Vertical Grid Lines -->
+        <Style Selector="TreeDataGridCell">
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border.Primary}"/>
+            <Setter Property="BorderThickness" Value="0,0,1,0"/>
+        </Style>
+        <Style Selector="TreeDataGridTextCell">
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border.Primary}"/>
+            <Setter Property="BorderThickness" Value="0,0,1,0"/>
+        </Style>
+        <Style Selector="TreeDataGridTextCell /template/ Border#CellBorder">
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border.Primary}"/>
+            <Setter Property="BorderThickness" Value="0,0,1,0"/>
+        </Style>
+        <Style Selector="TreeDataGridTemplateCell">
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border.Primary}"/>
+            <Setter Property="BorderThickness" Value="0,0,1,0"/>
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <Border BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            Background="{TemplateBinding Background}"
+                            Padding="{TemplateBinding Padding}">
+                        <ContentPresenter Name="PART_ContentPresenter"
+                                          Content="{TemplateBinding Content}"
+                                          ContentTemplate="{TemplateBinding ContentTemplate}"/>
+                    </Border>
+                </ControlTemplate>
+            </Setter>
+        </Style>
+
+        <!-- Header Styling (BorderThickness matches TickerListView.axaml's TreeDataGridColumnHeader reference
+             implementation: the previous 0,0,1,1 here dropped the top edge that TickerListView.axaml's 0,1,1,1
+             keeps, an unintentional divergence between the two windows' locally-duplicated style copies.) -->
+        <Style Selector="TreeDataGridColumnHeader">
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border.Primary}"/>
+            <Setter Property="BorderThickness" Value="0,1,1,1"/>
+            <Setter Property="Background" Value="{DynamicResource Brush.Background.Secondary}"/>
+            <Setter Property="FontSize" Value="{DynamicResource BaseFontSize}"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="TreeDataGridColumnHeader /template/ Border">
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border.Primary}"/>
+            <Setter Property="BorderThickness" Value="0,1,1,1"/>
+        </Style>
+
+        <!-- TreeDataGrid CheckBox Precision Centering -->
+        <Style Selector="TreeDataGrid CheckBox">
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Margin" Value="0"/>
+            <Setter Property="MinWidth" Value="0"/>
+            <Setter Property="MinHeight" Value="0"/>
+            <Setter Property="HorizontalAlignment" Value="Center"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="TreeDataGrid CheckBox /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="IsVisible" Value="False"/>
+        </Style>
+
+        <!-- Drop indicator while a Filters condition is dragged (Y:\Temp\sa_implementation_plan_ScreenerFilterConditionDragMove.md
+             Task 5), mirroring BacktestResultsView.axaml's Border.ConditionRow.DropBefore/DropAfter/DropInside: a line
+             above / below the row, or an outline for "append to this group". Padding is reduced by what the line adds,
+             so the row never changes size and the hit areas stay put. Theme color only. -->
+        <Style Selector="Border.ConditionRow.DropBefore">
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Accent.Primary}"/>
+            <Setter Property="BorderThickness" Value="0,1,0,0"/>
+            <Setter Property="Padding" Value="2,1,2,2"/>
+        </Style>
+        <Style Selector="Border.ConditionRow.DropAfter">
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Accent.Primary}"/>
+            <Setter Property="BorderThickness" Value="0,0,0,1"/>
+            <Setter Property="Padding" Value="2,2,2,1"/>
+        </Style>
+        <Style Selector="Border.ConditionRow.DropInside">
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Accent.Primary}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="1"/>
+        </Style>
+    </Window.Styles>
+
+    <Window.Resources>
+        <StreamGeometry x:Key="ScreenerHeaderIconData">M15.5,14H14.71L14.43,13.73C15.41,12.59 16,11.11 16,9.5A6.5,6.5 0 0,0 9.5,3A6.5,6.5 0 0,0 3,9.5A6.5,6.5 0 0,0 9.5,16C11.11,16 12.59,15.41 13.73,14.43L14,14.71V15.5L19,20.49L20.49,19L15.5,14M9.5,14C7,14 5,12 5,9.5C5,7 7,5 9.5,5C12,5 14,7 14,9.5C14,7 12,5 9.5,5Z</StreamGeometry>
+        <StreamGeometry x:Key="IndicatorsHeaderIconData">M19,3H5C3.9,3 3,3.9 3,5V19C3,20.1 3.9,21 5,21H19C20.1,21 21,20.1 21,19V5C21,3.9 20.1,3 19,3M9,17H7V10H9V17M13,17H11V7H13V17M17,17H15V13H17V17Z</StreamGeometry>
+    </Window.Resources>
+
+    <Border BorderBrush="{DynamicResource Brush.Border.Primary}" BorderThickness="1">
+        <Grid RowDefinitions="56,*,64">
+
+            <!-- Header (56px) with Window Drag support -->
+            <Border Grid.Row="0"
+                    Background="{DynamicResource Brush.Background.Tertiary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="0,0,0,1"
+                    Padding="16,0"
+                    PointerPressed="OnHeaderPointerPressed">
+                <Grid ColumnDefinitions="Auto, *">
+                    <!-- Tab Headers strip -->
+                    <TabControl Grid.Column="0"
+                                SelectedIndex="{Binding SelectedTabIndex, Mode=TwoWay}"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                VerticalAlignment="Center">
+                        <TabControl.Styles>
+                            <Style Selector="TabControl">
+                                <Setter Property="Padding" Value="0"/>
+                                <Setter Property="Margin" Value="0"/>
+                            </Style>
+                            <Style Selector="TabItem">
+                                <Setter Property="Padding" Value="14,8"/>
+                                <Setter Property="Margin" Value="0,0,4,0"/>
+                                <Setter Property="CornerRadius" Value="4"/>
+                                <Setter Property="FontSize" Value="14"/>
+                            </Style>
+                        </TabControl.Styles>
+                        <TabItem>
+                            <TabItem.Header>
+                                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                    <PathIcon Data="{StaticResource ScreenerHeaderIconData}" Width="18" Height="18" Foreground="{DynamicResource Brush.Accent.Primary}"/>
+                                    <TextBlock Text="{l:Localize Window_Screener_Title}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </TabItem.Header>
+                        </TabItem>
+                        <TabItem>
+                            <TabItem.Header>
+                                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                    <PathIcon Data="{StaticResource IndicatorsHeaderIconData}" Width="18" Height="18" Foreground="{DynamicResource Brush.Accent.Primary}"/>
+                                    <TextBlock Text="{l:Localize Tab_Indicators}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </TabItem.Header>
+                        </TabItem>
+                    </TabControl>
+                </Grid>
+            </Border>
+
+            <!-- Content Panel switching based on SelectedTabIndex -->
+            <Grid Grid.Row="1">
+                <!-- Tab 0: Main Screener Workspace Body -->
+                <Grid ColumnDefinitions="260*, Auto, 600*" Margin="16,16,16,12" IsVisible="{Binding SelectedTabIndex, Converter={x:Static converters:NumericalConverters.IsEqualToZero}}">
+
+                    <!-- Left Column: Filters card (Row 0) stacked above the Source card (Row 1, separated from Filters per
+                         the Screening UI layout refresh - Source used to live inside the Filters container). -->
+                    <Grid Grid.Column="0" RowDefinitions="*, Auto">
+
+                    <!-- Filters Panel (formerly "Criteria") -->
+                    <Border Grid.Row="0"
+                            MinWidth="180"
+                            Background="{DynamicResource Brush.Background.Secondary}"
+                            BorderBrush="{DynamicResource Brush.Border.Primary}"
+                            BorderThickness="1"
+                            CornerRadius="4"
+                            Margin="0,0,4,0"
+                            Padding="12">
+                        <Grid RowDefinitions="Auto,Auto,*">
+
+                            <!-- Filters Header -->
+                            <Grid Grid.Row="0" ColumnDefinitions="*, Auto" Margin="0,0,0,8">
+                                <TextBlock Grid.Column="0" Text="{l:Localize Label_Filters}"
+                                           FontSize="{DynamicResource TitleFontSize}"
+                                           FontWeight="SemiBold"
+                                           Foreground="{DynamicResource Brush.Text.Primary}"
+                                           VerticalAlignment="Center"/>
+                            </Grid>
+
+                            <!-- Separator above the registered list, extended with a negative margin equal to this
+                                 Border's own Padding (12) so it meets the parent frame's left/right border lines
+                                 (SA_UI_INTERACTION section 9's negative-margin technique), replacing the previous
+                                 inner "frame within a frame" Border that wrapped the list. -->
+                            <Border Grid.Row="1" Height="1" Margin="-12,0,-12,8"
+                                    Background="{DynamicResource Brush.Border.Primary}"/>
+
+                            <!-- Filters condition tree (Replacing the old flat ListBox + per-entry AND/OR toggle button);
+                                 the inner card frame that used to wrap the list was removed - the separator above now
+                                 plays that role. -->
+                            <Grid Grid.Row="2" RowDefinitions="*">
+                                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                                        <TreeView Classes="ConditionTree"
+                                                  ItemsSource="{Binding IndicatorRegistrationViewModel.ConditionTree.Roots}"
+                                                  Background="Transparent"
+                                                  BorderThickness="0"/>
+                                    </ScrollViewer>
+                                    <!-- Placeholder text when no registered entries -->
+                                    <TextBlock Text="{l:Localize Msg_NoFiltersConfigured}"
+                                               FontSize="{DynamicResource DetailFontSize}"
+                                               Foreground="{DynamicResource Brush.Text.Tertiary}"
+                                               HorizontalAlignment="Center"
+                                               VerticalAlignment="Center"
+                                               TextWrapping="Wrap"
+                                               TextAlignment="Center"
+                                               Margin="8"
+                                               IsVisible="{Binding IndicatorRegistrationViewModel.RegisteredEntries.Count, Converter={x:Static converters:NumericalConverters.IsEqualToZero}}"/>
+                            </Grid>
+                        </Grid>
+                    </Border>
+
+                    <!-- Source Panel (separated from Filters; re-positioned below the left column's Filters card) -->
+                    <Border Grid.Row="1"
+                            MinWidth="180"
+                            Background="{DynamicResource Brush.Background.Secondary}"
+                            BorderBrush="{DynamicResource Brush.Border.Primary}"
+                            BorderThickness="1"
+                            CornerRadius="4"
+                            Margin="0,8,4,0"
+                            Padding="12">
+                        <StackPanel>
+                            <!-- Target Source Selection -->
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                                <TextBlock Text="{l:Localize Label_TargetSource}"
+                                           FontSize="{DynamicResource TitleFontSize}"
+                                           Foreground="{DynamicResource Brush.Text.Primary}"/>
+                                <TextBlock Text="{Binding TargetSymbols.Count, StringFormat=' ({0})'}"
+                                           FontSize="{DynamicResource BaseFontSize}"
+                                           Foreground="{DynamicResource Brush.Text.Secondary}"/>
+                            </StackPanel>
+                            <ComboBox HorizontalAlignment="Stretch" Height="36"
+                                      FontSize="{DynamicResource BaseFontSize}"
+                                      ItemsSource="{Binding TargetSources}"
+                                      SelectedItem="{Binding SelectedTargetSource}">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding DisplayName}" IsEnabled="{Binding !IsHeader}" FontSize="{DynamicResource BaseFontSize}"/>
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                        </StackPanel>
+                    </Border>
+                    </Grid>
+
+                    <!-- User Resizable Splitter between Filters and Results -->
+                    <GridSplitter Grid.Column="1"
+                                  Width="8"
+                                  ResizeDirection="Columns"
+                                  ResizeBehavior="PreviousAndNext"
+                                  HorizontalAlignment="Stretch"
+                                  VerticalAlignment="Stretch"
+                                  Cursor="SizeWestEast"
+                                  Background="{DynamicResource Brush.Background.Primary}"
+                                  Margin="2,0"/>
+
+                    <!-- Right Panel: Results -->
+                    <Border Grid.Column="2"
+                            MinWidth="250"
+                            Background="{DynamicResource Brush.Background.Secondary}"
+                            BorderBrush="{DynamicResource Brush.Border.Primary}"
+                            BorderThickness="1"
+                            CornerRadius="4"
+                            Margin="4,0,0,0"
+                            Padding="12"
+                            ClipToBounds="True">
+                        <!-- ClipToBounds moved from the inner Grid (below) to this Border: the inner Grid's own
+                             Bounds start at this Border's Padding edge, so clipping there cut off exactly the
+                             negative-margin bleed (-12) that ResultsGrid uses to touch this Border's inner edge
+                             (SA_UI_INTERACTION section 9), truncating the leftmost column header's text by that
+                             same 12px. Clipping on the Border itself still bounds content to this frame (respecting
+                             CornerRadius, matching the established pattern in IndicatorSettingsWindow.axaml /
+                             DynamicPeriodDriverRegistrationWindow.axaml) while leaving the reclaimed Padding area
+                             available to the negative margin. -->
+                        <Grid RowDefinitions="Auto,*">
+
+                            <TextBlock Grid.Row="0" Text="{l:Localize Label_Results}" 
+                                       FontSize="{DynamicResource TitleFontSize}" 
+                                       FontWeight="SemiBold"
+                                       Foreground="{DynamicResource Brush.Text.Primary}" 
+                                       Margin="0,0,0,12"/>
+
+                            <!-- Margin cancels this Border's own Padding (12) on the left/right so the grid's header
+                                 and row separator lines meet the outer frame's border, matching the Filters panel's
+                                 negative-margin separator treatment (SA_UI_INTERACTION section 9). -->
+                            <TreeDataGrid x:Name="ResultsGrid"
+                                          Grid.Row="1"
+                                          Margin="-12,0,-12,0"
+                                          FontSize="{DynamicResource DetailFontSize}"
+                                          c:TreeDataGridExtensions.Items="{Binding ResultItems}"
+                                          c:TreeDataGridExtensions.SelectedItem="{Binding SelectedItem}"
+                                          c:TreeDataGridExtensions.DynamicColumns="{Binding ActiveColumns}"
+                                          Background="Transparent"
+                                          CanUserResizeColumns="True"
+                                          CanUserSortColumns="True"
+                                          BorderThickness="0">
+                                <TreeDataGrid.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Header="{l:Localize TickerList_Columns}" 
+                                                  Command="{Binding ShowColumnChooserCommand}"/>
+                                    </ContextMenu>
+                                </TreeDataGrid.ContextMenu>
+                            </TreeDataGrid>
+
+                            <ProgressBar Grid.Row="1"
+                                         IsIndeterminate="True"
+                                         Height="4"
+                                         VerticalAlignment="Top"
+                                         IsVisible="{Binding IsScanning}"/>
+                        </Grid>
+                    </Border>
+                </Grid>
+
+                <!-- Tab 1: Indicator Registration View Wrapper -->
+                <Border IsVisible="{Binding SelectedTabIndex, Converter={x:Static converters:NumericalConverters.IsGreaterThanZero}}"
+                        Margin="16,16,16,12">
+                    <views:IndicatorRegistrationView DataContext="{Binding IndicatorRegistrationViewModel}"/>
+                </Border>
+            </Grid>
+
+            <!-- Footer (64px) -->
+            <Border Grid.Row="2"
+                    Background="{DynamicResource Brush.Background.Tertiary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="0,1,0,0"
+                    Padding="24,0">
+                <Grid ColumnDefinitions="*,Auto">
+                    <!-- Left Side: Status Message & Criteria Execution Flow Expression Badges -->
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding StatusMessage}" 
+                                   Foreground="{DynamicResource Brush.Text.Secondary}" 
+                                   FontSize="{DynamicResource DetailFontSize}"
+                                   VerticalAlignment="Center" 
+                                   TextWrapping="NoWrap" 
+                                   TextTrimming="CharacterEllipsis"/>
+
+                        <ItemsControl ItemsSource="{Binding CriteriaFlowItems}" VerticalAlignment="Center">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Orientation="Horizontal" Spacing="6"/>
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                        <Border Background="{DynamicResource Brush.Accent.Primary.Transparent}"
+                                                BorderBrush="{DynamicResource Brush.Accent.Primary}"
+                                                BorderThickness="1" CornerRadius="4" Padding="6,2">
+                                            <TextBlock Text="{Binding DisplayText}" 
+                                                       FontSize="{DynamicResource DetailFontSize}"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource Brush.Text.Primary}"/>
+                                        </Border>
+                                        <TextBlock Text="{Binding OperatorSymbol}" 
+                                                   Foreground="{DynamicResource Brush.Text.Muted}" 
+                                                   FontSize="{DynamicResource DetailFontSize}"
+                                                   VerticalAlignment="Center"
+                                                   IsVisible="{Binding HasNext}"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                        <Button Content="{l:Localize Btn_Scan}"
+                                Theme="{StaticResource PrimaryButtonStyle}"
+                                Width="100" Height="36"
+                                FontSize="{DynamicResource BaseFontSize}"
+                                Command="{Binding ScanCommand}"
+                                IsEnabled="{Binding IsNotScanning}"/>
+                        <Button Content="{l:Localize Btn_Cancel}"
+                                Theme="{StaticResource SecondaryButtonStyle}"
+                                Width="90" Height="36"
+                                FontSize="{DynamicResource BaseFontSize}"
+                                Command="{Binding $parent[Window].Close}"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </Grid>
+    </Border>
+</Window>

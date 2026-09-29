@@ -1,0 +1,216 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Xunit;
+using System.Windows.Media;
+
+namespace StockAnalyzer.Tests
+{
+    public class Batch2Tests
+    {
+        private List<CandleData> CreateTestData(int count, decimal startPrice = 100m, decimal trend = 0m)
+        {
+            var candles = new List<CandleData>();
+            var date = new DateTime(2023, 1, 1);
+
+            for (int i = 0; i < count; i++)
+            {
+                decimal price = startPrice + (i * trend);
+                candles.Add(new CandleData
+                {
+                    Timestamp = date.AddDays(i),
+                    Open = price,
+                    High = price + 5m,
+                    Low = price - 5m,
+                    Close = price,
+                    Volume = 1000
+                });
+            }
+            return candles;
+        }
+
+        // ======================
+        // LRMA (Linear Regression Moving Average)
+        // ======================
+        [Fact]
+        public void LRMA_Calculate_ReturnsCorrectValues()
+        {
+            // Arrange
+            var candles = CreateTestData(20, 100m, 10m);
+            var lrma = new LrmaIndicator(10, Colors.Blue);
+
+            // Act
+            lrma.Calculate(candles);
+
+            // Assert
+            Assert.Equal(20, lrma.Values.Count);
+            Assert.NotNull(lrma.Values.Last());
+        }
+
+        [Fact]
+        public void LRMA_WithInsufficientData_ReturnsNulls()
+        {
+            // Arrange
+            var candles = CreateTestData(5, 100m, 0m);
+            var lrma = new LrmaIndicator(10, Colors.Blue);
+
+            // Act
+            lrma.Calculate(candles);
+
+            // Assert
+            Assert.All(lrma.Values, v => Assert.Null(v));
+        }
+
+        [Fact]
+        public void LRMA_ConstructorValidation()
+        {
+            // Assert
+            Assert.Throws<ArgumentOutOfRangeException>(() => new LrmaIndicator(0, Colors.Blue));
+            Assert.Throws<ArgumentOutOfRangeException>(() => new LrmaIndicator(-1, Colors.Blue));
+        }
+
+        // ======================
+        // ALMA (Arnaud Legoux Moving Average)
+        // ======================
+        [Fact]
+        public void ALMA_Calculate_ReturnsCorrectValues()
+        {
+            // Arrange
+            var candles = CreateTestData(40, 100m, 10m);
+            var alma = new AlmaIndicator(30, Colors.Blue, 0.7, 6.0);
+
+            // Act
+            alma.Calculate(candles);
+
+            // Assert
+            Assert.Equal(40, alma.Values.Count);
+            Assert.NotNull(alma.Values.Last());
+        }
+
+        [Fact]
+        public void ALMA_WithFlatData_ReturnsPrice()
+        {
+            // Arrange
+            var candles = CreateTestData(40, 100m, 0m);
+            var alma = new AlmaIndicator(30, Colors.Blue, 0.7, 6.0);
+
+            // Act
+            alma.Calculate(candles);
+
+            // Assert - For flat data, ALMA should be close to the price
+            Assert.NotNull(alma.Values.Last());
+            Assert.InRange(alma.Values.Last()!.Value, 95m, 105m);
+        }
+
+        [Fact]
+        public void ALMA_ConstructorValidation()
+        {
+            // Assert
+            Assert.Throws<ArgumentOutOfRangeException>(() => new AlmaIndicator(-1, Colors.Blue, 0.7, 6.0));
+        }
+
+        // ======================
+        // ZLEMA (Zero Lag Exponential Moving Average)
+        // ======================
+        [Fact]
+        public void ZLEMA_Calculate_ReturnsCorrectValues()
+        {
+            // Arrange
+            var candles = CreateTestData(20, 100m, 10m);
+            var zlema = new ZlemaIndicator(10, Colors.Blue);
+
+            // Act
+            zlema.Calculate(candles);
+
+            // Assert
+            Assert.Equal(20, zlema.Values.Count);
+            Assert.NotNull(zlema.Values.Last());
+        }
+
+        [Fact]
+        public void ZLEMA_WithFlatData_ReturnsPrice()
+        {
+            // Arrange
+            var candles = CreateTestData(100, 100m, 0m);
+            var zlema = new ZlemaIndicator(10, Colors.Blue);
+
+            // Act
+            zlema.Calculate(candles);
+
+            // Assert
+            Assert.NotNull(zlema.Values.Last());
+            Assert.Equal(100m, zlema.Values.Last()!.Value, 1);
+        }
+
+
+
+        // ======================
+        // LSMA (Least Squares Moving Average)
+        // ======================
+        [Fact]
+        public void LSMA_Calculate_ReturnsCorrectValues()
+        {
+            // Arrange
+            var candles = CreateTestData(20, 100m, 10m);
+            var lsma = new LsmaIndicator(10, Colors.Blue);
+
+            // Act
+            lsma.Calculate(candles);
+
+            // Assert
+            Assert.Equal(20, lsma.Values.Count);
+            Assert.NotNull(lsma.Values.Last());
+        }
+
+        [Fact]
+        public void LSMA_WithInsufficientData_ReturnsNulls()
+        {
+            // Arrange
+            var candles = CreateTestData(5, 100m, 0m);
+            var lsma = new LsmaIndicator(10, Colors.Blue);
+
+            // Act
+            lsma.Calculate(candles);
+
+            // Assert
+            Assert.All(lsma.Values, v => Assert.Null(v));
+        }
+
+
+
+        // ======================
+        // GMA (Geometric Moving Average)
+        // ======================
+        [Fact]
+        public void GMA_Calculate_ReturnsCorrectValues()
+        {
+            // Arrange
+            var candles = CreateTestData(20, 100m, 10m);
+            var gma = new GmaIndicator(10, Colors.Blue);
+
+            // Act
+            gma.Calculate(candles);
+
+            // Assert
+            Assert.Equal(20, gma.Values.Count);
+            Assert.NotNull(gma.Values.Last());
+        }
+
+        [Fact]
+        public void GMA_WithFlatData_ReturnsPrice()
+        {
+            // Arrange
+            var candles = CreateTestData(20, 100m, 0m);
+            var gma = new GmaIndicator(10, Colors.Blue);
+
+            // Act
+            gma.Calculate(candles);
+
+            // Assert
+            Assert.NotNull(gma.Values.Last());
+            Assert.Equal(100m, gma.Values.Last()!.Value, 1);
+        }
+
+
+    }
+}

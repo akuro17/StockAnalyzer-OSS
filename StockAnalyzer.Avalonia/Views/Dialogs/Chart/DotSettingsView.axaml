@@ -1,0 +1,104 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:StockAnalyzer.Avalonia.ViewModels.Dialogs"
+             xmlns:conv="using:StockAnalyzer.Avalonia.Converters"
+             xmlns:l="using:StockAnalyzer.Avalonia.Markup"
+             mc:Ignorable="d" d:DesignWidth="400" d:DesignHeight="550"
+             x:Class="StockAnalyzer.Avalonia.Views.Dialogs.Chart.DotSettingsView"
+             x:DataType="vm:DotSettingsViewModel">
+
+    <UserControl.Resources>
+        <conv:HsvDataToAvaloniaHsvColorConverter x:Key="HsvConverter"/>
+        <conv:EnumToLocalizedNameConverter x:Key="EnumConverter"/>
+        <conv:PriceTypeToLabelConverter x:Key="PriceTypeConverter"/>
+    </UserControl.Resources>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Spacing="20" Margin="16">
+            
+            <Border Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="{l:Localize Settings_Chart_Appearance}" FontWeight="SemiBold" FontSize="{DynamicResource DetailFontSize}"/>
+                    
+                    <StackPanel Spacing="12">
+                        <!-- Base Radius -->
+                        <Grid ColumnDefinitions="*, Auto">
+                            <TextBlock Text="{l:Localize Settings_Chart_Item_DotBaseRadius}" VerticalAlignment="Center" FontSize="{DynamicResource DetailFontSize}"/>
+                            <NumericUpDown Grid.Column="1" Width="140" Height="28"
+                                           Value="{Binding BaseRadius}"
+                                           Minimum="0.5" Maximum="20.0" Increment="0.5"
+                                           FormatString="0.0"
+                                           HorizontalContentAlignment="Left"
+                                           VerticalContentAlignment="Center"
+                                           VerticalAlignment="Center"
+                                           Padding="6,0"/>
+                        </Grid>
+
+                        <Separator Background="{DynamicResource Brush.Border.Primary}" Height="1"/>
+
+                        <!-- Up Color -->
+                        <Grid ColumnDefinitions="*, Auto">
+                            <TextBlock Text="{l:Localize Settings_Chart_Item_DotUpColor}" VerticalAlignment="Center" FontSize="{DynamicResource DetailFontSize}"/>
+                            <ColorPicker Grid.Column="1" HsvColor="{Binding UpColor, Mode=TwoWay, Converter={StaticResource HsvConverter}}" Width="50" Height="28"/>
+                        </Grid>
+                        
+                        <Separator Background="{DynamicResource Brush.Border.Primary}" Height="1"/>
+                        
+                        <!-- Down Color -->
+                        <Grid ColumnDefinitions="*, Auto">
+                            <TextBlock Text="{l:Localize Settings_Chart_Item_DotDownColor}" VerticalAlignment="Center" FontSize="{DynamicResource DetailFontSize}"/>
+                            <ColorPicker Grid.Column="1" HsvColor="{Binding DownColor, Mode=TwoWay, Converter={StaticResource HsvConverter}}" Width="50" Height="28"/>
+                        </Grid>
+
+                        <Separator Background="{DynamicResource Brush.Border.Primary}" Height="1"/>
+
+                        <!-- Natural Color -->
+                        <Grid ColumnDefinitions="*, Auto">
+                            <TextBlock Text="{l:Localize Settings_Chart_Item_DotNaturalColor}" VerticalAlignment="Center" FontSize="{DynamicResource DetailFontSize}"/>
+                            <ColorPicker Grid.Column="1" HsvColor="{Binding NaturalColor, Mode=TwoWay, Converter={StaticResource HsvConverter}}" Width="50" Height="28"/>
+                        </Grid>
+
+                        <Separator Background="{DynamicResource Brush.Border.Primary}" Height="1"/>
+
+                        <!-- Shape Type -->
+                        <Grid ColumnDefinitions="*, Auto">
+                            <TextBlock Text="{l:Localize Settings_Chart_Item_DotShape}" VerticalAlignment="Center" FontSize="{DynamicResource DetailFontSize}"/>
+                            <ComboBox Grid.Column="1" Width="140" Height="28"
+                                      ItemsSource="{Binding AvailableShapeTypes}"
+                                      SelectedItem="{Binding ShapeType}">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Converter={StaticResource EnumConverter}}"/>
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                        </Grid>
+
+                        <Separator Background="{DynamicResource Brush.Border.Primary}" Height="1"/>
+
+                        <!-- Price Type -->
+                        <Grid ColumnDefinitions="*, Auto">
+                            <TextBlock Text="{l:Localize Settings_Chart_Item_DotPriceType}" VerticalAlignment="Center" FontSize="{DynamicResource DetailFontSize}"/>
+                            <ComboBox Grid.Column="1" Width="140" Height="28"
+                                      ItemsSource="{Binding AvailablePriceTypes}"
+                                      SelectedItem="{Binding PriceType}">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Converter={StaticResource PriceTypeConverter}}"/>
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                        </Grid>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

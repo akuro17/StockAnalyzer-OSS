@@ -1,0 +1,93 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Xunit;
+using System.Windows.Media;
+
+namespace StockAnalyzer.Tests
+{
+    public class Batch4Tests
+    {
+        private List<CandleData> CreateTestData(int count, decimal startPrice = 100m, decimal trend = 0m)
+        {
+            var candles = new List<CandleData>();
+            var date = new DateTime(2023, 1, 1);
+
+            for (int i = 0; i < count; i++)
+            {
+                decimal price = startPrice + (i * trend);
+                candles.Add(new CandleData
+                {
+                    Timestamp = date.AddDays(i),
+                    Open = price,
+                    High = price + 5m,
+                    Low = price - 5m,
+                    Close = price,
+                    Volume = 1000
+                });
+            }
+            return candles;
+        }
+
+        // ADL (Accumulation/Distribution Line)
+        [Fact]
+        public void ADL_Calculate_ReturnsCorrectValues()
+        {
+            var candles = CreateTestData(20, 100m, 10m);
+            var adl = new AdlIndicator(Colors.Blue);
+            adl.Calculate(candles);
+            Assert.Equal(20, adl.Values.Count);
+            Assert.NotNull(adl.Values.Last());
+        }
+
+        [Fact]
+        public void ADL_WithEmptyData_ReturnsEmpty()
+        {
+            var candles = new List<CandleData>();
+            var adl = new AdlIndicator(Colors.Blue);
+            adl.Calculate(candles);
+            Assert.Empty(adl.Values);
+        }
+
+        // VPT (Volume Price Trend)
+        [Fact]
+        public void VPT_Calculate_ReturnsCorrectValues()
+        {
+            var candles = CreateTestData(20, 100m, 10m);
+            var vpt = new PriceVolumeTrendIndicator(Colors.Blue);
+            vpt.Calculate(candles);
+            Assert.Equal(20, vpt.Values.Count);
+            Assert.NotNull(vpt.Values.Last());
+        }
+
+        [Fact]
+        public void VPT_WithEmptyData_ReturnsEmpty()
+        {
+            var candles = new List<CandleData>();
+            var vpt = new PriceVolumeTrendIndicator(Colors.Blue);
+            vpt.Calculate(candles);
+            Assert.Empty(vpt.Values);
+        }
+
+        // PVI (Positive Volume Index)
+        [Fact]
+        public void PVI_Calculate_ReturnsCorrectValues()
+        {
+            var candles = CreateTestData(20, 100m, 10m);
+            var pvi = new PviIndicator(Colors.Blue);
+            pvi.Calculate(candles);
+            Assert.Equal(20, pvi.Values.Count);
+            Assert.NotNull(pvi.Values.Last());
+        }
+
+        [Fact]
+        public void PVI_WithSingleCandle_ReturnsInitialValue()
+        {
+            var candles = CreateTestData(1, 100m, 0m);
+            var pvi = new PviIndicator(Colors.Blue);
+            pvi.Calculate(candles);
+            Assert.Single(pvi.Values);
+            Assert.NotNull(pvi.Values[0]);
+        }
+    }
+}

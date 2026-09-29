@@ -1,0 +1,74 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:StockAnalyzer.Avalonia.ViewModels"
+             xmlns:controls="using:StockAnalyzer.Avalonia.Views.Controls"
+             xmlns:l="clr-namespace:StockAnalyzer.Avalonia.Markup"
+             x:Class="StockAnalyzer.Avalonia.Views.SpiralAnalysisView"
+             x:DataType="vm:SpiralAnalysisViewModel">
+  <Grid ColumnDefinitions="Auto,*" Margin="12">
+    <Expander Grid.Column="0"
+              Header="{l:Localize SpiralAnalysis_Settings}"
+              IsExpanded="True"
+              VerticalAlignment="Stretch">
+      <ScrollViewer Width="260" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="8" Spacing="6">
+          <TextBlock Text="{l:Localize SpiralAnalysis_Model}" />
+          <ComboBox ItemsSource="{x:Static vm:SpiralAnalysisViewModel.ModelOptions}" SelectedItem="{Binding SelectedModel}" />
+
+          <TextBlock Text="{l:Localize Label_PriceType}" Margin="0,4,0,0" />
+          <ComboBox ItemsSource="{x:Static vm:SpiralAnalysisViewModel.PriceTypeOptions}" SelectedItem="{Binding SelectedPriceType}" />
+
+          <CheckBox Content="{l:Localize SpiralAnalysis_IsClockwise}" IsChecked="{Binding IsClockwise}" Margin="0,4,0,0" />
+
+          <TextBlock Text="{l:Localize SpiralAnalysis_BarsPerTurn}" Margin="0,4,0,0" />
+          <NumericUpDown Minimum="1" Maximum="10000" Value="{Binding BarsPerTurn}" />
+
+          <TextBlock Text="{l:Localize SpiralAnalysis_InitialRadius}" Margin="0,4,0,0" />
+          <NumericUpDown Minimum="0" Value="{Binding InitialRadius}" />
+          <CheckBox Content="{l:Localize SpiralAnalysis_AutoInitialRadius}" IsChecked="{Binding AutoInitialRadius}" />
+
+          <TextBlock Text="{l:Localize SpiralAnalysis_ArchimedeanGrowth}" IsVisible="{Binding IsArchimedeanModel}" Margin="0,4,0,0" />
+          <TextBlock Text="{l:Localize SpiralAnalysis_LogarithmicGrowth}" IsVisible="{Binding IsLogarithmicModel}" Margin="0,4,0,0" />
+          <TextBlock Text="{l:Localize SpiralAnalysis_GoldenGrowth}" IsVisible="{Binding IsGoldenModel}" Margin="0,4,0,0" />
+          <NumericUpDown IsEnabled="{Binding IsGrowthInputEnabled}" Value="{Binding GrowthPerRadian}" />
+
+          <TextBlock Text="{l:Localize SpiralAnalysis_Start}" Margin="0,4,0,0" />
+          <NumericUpDown Minimum="0" Value="{Binding StartIndex}" />
+          <TextBlock Text="{l:Localize SpiralAnalysis_End}" Margin="0,4,0,0" />
+          <NumericUpDown Minimum="1" Value="{Binding EndIndex}" />
+
+          <TextBlock Text="{l:Localize SpiralAnalysis_GridPriceStep}" Margin="0,4,0,0" />
+          <NumericUpDown Minimum="0" Value="{Binding GridPriceStep}" />
+          <TextBlock Text="{l:Localize SpiralAnalysis_GridOpacity}" Margin="0,4,0,0" />
+          <NumericUpDown Minimum="10" Maximum="100" Value="{Binding GridOpacityPercent}" />
+          <CheckBox Content="{l:Localize SpiralAnalysis_GridDashed}" IsChecked="{Binding GridDashed}" />
+          <CheckBox Content="{l:Localize SpiralAnalysis_UseVisibleRangeOrigin}" IsChecked="{Binding UseVisibleRangeOrigin}" />
+        </StackPanel>
+      </ScrollViewer>
+    </Expander>
+
+    <Grid Grid.Column="1" RowDefinitions="Auto,Auto,*" Margin="12,0,0,0">
+      <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto">
+        <TextBlock Text="{l:Localize SpiralAnalysis_Nrmse}" ToolTip.Tip="{l:Localize SpiralAnalysis_NrmseDescription}" />
+        <TextBlock Grid.Column="1" Margin="6,0,16,0" Text="{Binding Result.Summary.NormalizedRootMeanSquareError, StringFormat={}{0:P4}}" />
+        <TextBlock Grid.Column="2" Text="{l:Localize SpiralAnalysis_Residual}" ToolTip.Tip="{l:Localize SpiralAnalysis_ResidualDescription}" />
+        <TextBlock Grid.Column="3" Margin="6,0,16,0" Text="{Binding Result.Summary.LatestResidualPercent, StringFormat={}{0:P4}}" />
+        <TextBlock Grid.Column="4" Text="{l:Localize SpiralAnalysis_PriceMomentum}" ToolTip.Tip="{l:Localize SpiralAnalysis_PriceMomentumDescription}" />
+        <TextBlock Grid.Column="5" Margin="6,0,0,0" Text="{Binding Result.Summary.LatestMotionState}" />
+        <TextBlock Grid.Column="6" Margin="16,0,6,0" Text="{l:Localize SpiralAnalysis_ResidualColors}" />
+        <Border Grid.Column="7" Width="10" Height="3" Margin="4,0" Background="{DynamicResource Brush.Semantic.Success}" VerticalAlignment="Center" />
+        <TextBlock Grid.Column="8" Text="{l:Localize SpiralAnalysis_AboveModel}" />
+        <Border Grid.Column="9" Width="10" Height="3" Margin="8,0,4,0" Background="{DynamicResource Brush.Semantic.Error}" VerticalAlignment="Center" />
+        <TextBlock Grid.Column="10" Text="{l:Localize SpiralAnalysis_BelowModel}" />
+        <TextBlock Grid.Column="11" Margin="8,0,0,0" Text="{l:Localize SpiralAnalysis_EqualModel}" Foreground="{DynamicResource Brush.Text.Secondary}" />
+      </Grid>
+      <StackPanel Grid.Row="1" Margin="0,4,0,0">
+        <TextBlock Text="{l:Localize SpiralAnalysis_InvalidInput}" IsVisible="{Binding HasInvalidInput}" Foreground="{DynamicResource Brush.Semantic.Error}" />
+        <TextBlock Text="{l:Localize SpiralAnalysis_NumericLimit}" IsVisible="{Binding Result.HasNumericLimit}" Foreground="{DynamicResource Brush.Semantic.Error}" />
+      </StackPanel>
+      <Border Grid.Row="2" Margin="0,12" BorderBrush="{DynamicResource Brush.Border.Primary}" BorderThickness="1" ClipToBounds="True">
+        <controls:SpiralPhasePlotControl Result="{Binding Result}" IncludeModelRange="True" GridPriceStep="{Binding GridPriceStep}" GridOpacityPercent="{Binding GridOpacityPercent}" GridDashed="{Binding GridDashed}" PriceUnit="{l:Localize SpiralAnalysis_PriceUnit}" BarUnit="{l:Localize SpiralAnalysis_BarUnit}" UseVisibleRangeOrigin="{Binding UseVisibleRangeOrigin}" DisplayBaseLabel="{l:Localize SpiralAnalysis_DisplayBase}" />
+      </Border>
+    </Grid>
+  </Grid>
+</UserControl>

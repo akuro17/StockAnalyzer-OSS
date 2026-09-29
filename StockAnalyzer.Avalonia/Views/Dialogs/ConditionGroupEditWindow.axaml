@@ -1,0 +1,90 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="using:StockAnalyzer.Avalonia.ViewModels.Dialogs"
+        xmlns:l="clr-namespace:StockAnalyzer.Avalonia.Markup;assembly=StockAnalyzer.Avalonia"
+        xmlns:c="clr-namespace:StockAnalyzer.Avalonia.Common;assembly=StockAnalyzer.Avalonia"
+        mc:Ignorable="d" d:DesignWidth="480" d:DesignHeight="280"
+        x:Class="StockAnalyzer.Avalonia.Views.Dialogs.ConditionGroupEditWindow"
+        x:DataType="vm:ConditionGroupEditDialogViewModel"
+        x:CompileBindings="True"
+        Title="{l:Localize Window_ConditionGroup_Title}"
+        Icon="/Assets/avalonia-logo.ico"
+        Width="480" Height="280"
+        WindowStartupLocation="CenterOwner"
+        CanResize="False"
+        ExtendClientAreaToDecorationsHint="True"
+        Background="{DynamicResource Brush.Background.Primary}"
+        Foreground="{DynamicResource Brush.Text.Primary}">
+
+    <!-- SA_UI_SUBWINDOW_STANDARD: custom 56px header, body, 64px footer with [OK] [Cancel]; Enter = OK (IsDefault), Esc = Cancel (IsCancel). -->
+    <Grid RowDefinitions="56,*,64">
+        <Border Grid.Row="0"
+                BorderBrush="{DynamicResource Brush.Border.Primary}"
+                BorderThickness="0,0,0,1"
+                Padding="24,0"
+                Background="{DynamicResource Brush.Background.Tertiary}"
+                PointerPressed="OnHeaderPointerPressed">
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="12">
+                <PathIcon Data="{x:Static c:SharedIconGeometries.Edit}" Width="20" Height="20" Foreground="{DynamicResource Brush.Accent.Primary}"/>
+                <TextBlock Text="{l:Localize Window_ConditionGroup_AddTitle}" IsVisible="{Binding IsNew}"
+                           FontSize="{DynamicResource TitleFontSize}" FontWeight="SemiBold"
+                           Foreground="{DynamicResource Brush.Text.Primary}" VerticalAlignment="Center"
+                           AutomationProperties.AutomationId="ConditionGroup_Title_Add"/>
+                <TextBlock Text="{l:Localize Window_ConditionGroup_EditTitle}" IsVisible="{Binding !IsNew}"
+                           FontSize="{DynamicResource TitleFontSize}" FontWeight="SemiBold"
+                           Foreground="{DynamicResource Brush.Text.Primary}" VerticalAlignment="Center"
+                           AutomationProperties.AutomationId="ConditionGroup_Title_Edit"/>
+            </StackPanel>
+        </Border>
+
+        <Border Grid.Row="1" Padding="24,16">
+            <StackPanel Spacing="16">
+                <Grid ColumnDefinitions="120,*" IsVisible="{Binding AllowName}">
+                    <TextBlock Grid.Column="0" Text="{l:Localize Label_ConditionGroupName}"
+                               VerticalAlignment="Center" FontWeight="SemiBold" FontSize="{DynamicResource BaseFontSize}"/>
+                    <TextBox Grid.Column="1" Height="32" TabIndex="0"
+                             Text="{Binding Name, Mode=TwoWay}" MaxLength="{Binding MaxNameLength}"
+                             Watermark="{l:Localize ConditionGroup_Name_Watermark}"
+                             FontSize="{DynamicResource BaseFontSize}"
+                             AutomationProperties.AutomationId="ConditionGroup_Name"/>
+                </Grid>
+
+                <Grid ColumnDefinitions="120,*">
+                    <TextBlock Grid.Column="0" Text="{l:Localize Label_LogicalOperator}"
+                               VerticalAlignment="Center" FontWeight="SemiBold" FontSize="{DynamicResource BaseFontSize}"/>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="16">
+                        <RadioButton GroupName="ConditionGroupOperator" TabIndex="1" Content="{l:Localize Backtest_ConditionTree_And}"
+                                     IsChecked="{Binding IsAndOperator, Mode=TwoWay}"
+                                     FontSize="{DynamicResource BaseFontSize}"
+                                     AutomationProperties.AutomationId="ConditionGroup_Operator_And"/>
+                        <RadioButton GroupName="ConditionGroupOperator" TabIndex="2" Content="{l:Localize Backtest_ConditionTree_Or}"
+                                     IsChecked="{Binding IsOrOperator, Mode=TwoWay}"
+                                     FontSize="{DynamicResource BaseFontSize}"
+                                     AutomationProperties.AutomationId="ConditionGroup_Operator_Or"/>
+                    </StackPanel>
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <Border Grid.Row="2"
+                BorderBrush="{DynamicResource Brush.Border.Primary}"
+                BorderThickness="0,1,0,0"
+                Padding="24,0"
+                Background="{DynamicResource Brush.Background.Tertiary}">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Spacing="12">
+                <Button Content="{l:Localize Btn_OK}" Click="OnOkClick" IsDefault="True" TabIndex="3"
+                        Theme="{DynamicResource PrimaryButtonStyle}"
+                        Foreground="{DynamicResource Brush.Button.Text}"
+                        Width="80" HorizontalContentAlignment="Center"
+                        AutomationProperties.AutomationId="ConditionGroup_Ok"/>
+                <Button Content="{l:Localize Btn_Cancel}" Click="OnCancelClick" IsCancel="True" TabIndex="4"
+                        Theme="{DynamicResource SecondaryButtonStyle}"
+                        Foreground="{DynamicResource Brush.Text.Inverse}"
+                        Width="80" HorizontalContentAlignment="Center"
+                        AutomationProperties.AutomationId="ConditionGroup_Cancel"/>
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>

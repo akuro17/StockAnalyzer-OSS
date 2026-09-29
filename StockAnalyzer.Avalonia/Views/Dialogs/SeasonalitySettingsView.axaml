@@ -1,0 +1,226 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:StockAnalyzer.Avalonia.ViewModels.Dialogs"
+             xmlns:conv="using:StockAnalyzer.Avalonia.Converters"
+             xmlns:l="using:StockAnalyzer.Avalonia.Markup"
+             mc:Ignorable="d" d:DesignWidth="400" d:DesignHeight="720"
+             x:Class="StockAnalyzer.Avalonia.Views.Dialogs.SeasonalitySettingsView"
+             x:DataType="vm:SeasonalitySettingsViewModel">
+
+    <UserControl.Resources>
+        <conv:HsvDataToAvaloniaHsvColorConverter x:Key="HsvConverter"/>
+        <conv:EnumToLocalizedDisplayNameConverter x:Key="EnumToLocalizedDisplayNameConverter"/>
+    </UserControl.Resources>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Spacing="20" Margin="16">
+
+            <!-- Overlay depth -->
+            <Border Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="1" CornerRadius="8" Padding="16">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="{l:Localize Seasonality_Group_Basic}" FontSize="{DynamicResource BaseFontSize}" FontWeight="Bold" Foreground="{DynamicResource Brush.Accent.Primary}"/>
+
+                    <Grid ColumnDefinitions="*, Auto">
+                        <TextBlock Text="{l:Localize Seasonality_Years}" VerticalAlignment="Center" FontSize="{DynamicResource BaseFontSize}"/>
+                        <NumericUpDown Grid.Column="1" Value="{Binding YearsToOverlay}"
+                                       Minimum="{Binding MinYearsToOverlay}" Maximum="{Binding MaxYearsToOverlay}"
+                                       Increment="1" FormatString="0" Width="150"/>
+                    </Grid>
+                    <TextBlock Text="{l:Localize Seasonality_Years_Desc}" FontSize="{DynamicResource HelperFontSize}"
+                               Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+
+                    <Separator Background="{DynamicResource Brush.Border.Primary}" Height="1"/>
+
+                    <Grid ColumnDefinitions="*, Auto">
+                        <TextBlock Text="{l:Localize Settings_Seasonality_StartMonth}" VerticalAlignment="Center" FontSize="{DynamicResource BaseFontSize}"/>
+                        <NumericUpDown Grid.Column="1" Value="{Binding StartMonth}"
+                                       Minimum="{Binding MinStartMonth}" Maximum="{Binding MaxStartMonth}"
+                                       Increment="1" FormatString="0" Width="150"/>
+                    </Grid>
+                    <TextBlock Text="{l:Localize Settings_Seasonality_StartMonth_Desc}" FontSize="{DynamicResource HelperFontSize}"
+                               Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                </StackPanel>
+            </Border>
+
+            <!-- Font sizes -->
+            <Border Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="1" CornerRadius="8" Padding="16">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="{l:Localize Settings_Fonts_Item_BaseFontSize}" FontSize="{DynamicResource BaseFontSize}" FontWeight="Bold" Foreground="{DynamicResource Brush.Accent.Primary}"/>
+
+                    <StackPanel Spacing="12">
+                        <Grid ColumnDefinitions="*, Auto">
+                            <TextBlock Text="{l:Localize Settings_Seasonality_LegendFontSize}" VerticalAlignment="Center" FontSize="{DynamicResource BaseFontSize}"/>
+                            <NumericUpDown Grid.Column="1" Value="{Binding LegendFontSize}" Minimum="8" Maximum="32" Increment="1" Width="150"/>
+                        </Grid>
+                        <TextBlock Text="{l:Localize Settings_Seasonality_LegendFontSize_Desc}" FontSize="{DynamicResource HelperFontSize}"
+                                   Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+
+                        <Separator Background="{DynamicResource Brush.Border.Primary}" Height="1"/>
+
+                        <Grid ColumnDefinitions="*, Auto">
+                            <TextBlock Text="{l:Localize Settings_Seasonality_AxisFontSize}" VerticalAlignment="Center" FontSize="{DynamicResource BaseFontSize}"/>
+                            <NumericUpDown Grid.Column="1" Value="{Binding AxisFontSize}" Minimum="8" Maximum="32" Increment="1" Width="150"/>
+                        </Grid>
+                        <TextBlock Text="{l:Localize Settings_Seasonality_AxisFontSize_Desc}" FontSize="{DynamicResource HelperFontSize}"
+                                   Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+
+                        <Separator Background="{DynamicResource Brush.Border.Primary}" Height="1"/>
+
+                        <Grid ColumnDefinitions="*, Auto">
+                            <TextBlock Text="{l:Localize Settings_Seasonality_MonthlyTableFontSize}" VerticalAlignment="Center" FontSize="{DynamicResource BaseFontSize}"/>
+                            <NumericUpDown Grid.Column="1" Value="{Binding MonthlyTableFontSize}" Minimum="8" Maximum="32" Increment="1" Width="150"/>
+                        </Grid>
+                        <TextBlock Text="{l:Localize Settings_Seasonality_MonthlyTableFontSize_Desc}" FontSize="{DynamicResource HelperFontSize}"
+                                   Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Polar / Linear trace -->
+            <Border Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="1" CornerRadius="8" Padding="16">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="{l:Localize Settings_Seasonality_TraceGroup}" FontSize="{DynamicResource BaseFontSize}" FontWeight="Bold" Foreground="{DynamicResource Brush.Accent.Primary}"/>
+
+                    <Grid ColumnDefinitions="*, Auto">
+                        <TextBlock Text="{l:Localize Settings_Seasonality_LineThickness}" VerticalAlignment="Center" FontSize="{DynamicResource BaseFontSize}"/>
+                        <NumericUpDown Grid.Column="1" Value="{Binding LineThickness}"
+                                       Minimum="{Binding MinLineThickness}" Maximum="{Binding MaxLineThickness}"
+                                       Increment="{Binding LineThicknessStep}" FormatString="0.0" Width="150"/>
+                    </Grid>
+
+                    <Separator Background="{DynamicResource Brush.Border.Primary}" Height="1"/>
+
+                    <Grid ColumnDefinitions="*, Auto">
+                        <TextBlock Text="{l:Localize Settings_Seasonality_EndpointMarkerRadius}" VerticalAlignment="Center" FontSize="{DynamicResource BaseFontSize}"/>
+                        <NumericUpDown Grid.Column="1" Value="{Binding EndpointMarkerRadius}"
+                                       Minimum="{Binding MinEndpointMarkerRadius}" Maximum="{Binding MaxEndpointMarkerRadius}"
+                                       Increment="{Binding EndpointMarkerRadiusStep}" FormatString="0.0" Width="150"/>
+                    </Grid>
+                    <TextBlock Text="{l:Localize Settings_Seasonality_EndpointMarkerRadius_Desc}" FontSize="{DynamicResource HelperFontSize}"
+                               Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                </StackPanel>
+            </Border>
+
+            <!-- Monthly-returns table configuration -->
+            <Border Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="1" CornerRadius="8" Padding="16">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="{l:Localize Settings_Seasonality_MonthlyTableGroup}" FontSize="{DynamicResource BaseFontSize}" FontWeight="Bold" Foreground="{DynamicResource Brush.Accent.Primary}"/>
+
+                    <Grid ColumnDefinitions="*, Auto">
+                        <TextBlock Text="{l:Localize Settings_Seasonality_MonthlyTableOrientation}" VerticalAlignment="Center" FontSize="{DynamicResource BaseFontSize}"/>
+                        <ComboBox Grid.Column="1" Width="220"
+                                  ItemsSource="{Binding TableOrientations}"
+                                  SelectedItem="{Binding MonthlyTableOrientation, Mode=TwoWay}">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Converter={StaticResource EnumToLocalizedDisplayNameConverter}}" />
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
+                    </Grid>
+                    <TextBlock Text="{l:Localize Settings_Seasonality_MonthlyTableOrientation_Desc}" FontSize="{DynamicResource HelperFontSize}"
+                               Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                </StackPanel>
+            </Border>
+
+            <!-- Monthly-returns table up / down / neutral colors -->
+            <Border Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="1" CornerRadius="8" Padding="16">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="{l:Localize Settings_Theme_SemanticColors}" FontSize="{DynamicResource BaseFontSize}" FontWeight="Bold" Foreground="{DynamicResource Brush.Accent.Primary}"/>
+
+                    <StackPanel Spacing="12">
+                        <Grid ColumnDefinitions="*, Auto">
+                            <TextBlock Text="{l:Localize Settings_Theme_Item_SemanticPlus}" VerticalAlignment="Center" FontSize="{DynamicResource BaseFontSize}"/>
+                            <ColorPicker Grid.Column="1" HsvColor="{Binding MonthlyUpColor, Mode=TwoWay, Converter={StaticResource HsvConverter}}" Width="40" Height="24"/>
+                        </Grid>
+
+                        <Separator Background="{DynamicResource Brush.Border.Primary}" Height="1"/>
+
+                        <Grid ColumnDefinitions="*, Auto">
+                            <TextBlock Text="{l:Localize Settings_Theme_Item_SemanticMinus}" VerticalAlignment="Center" FontSize="{DynamicResource BaseFontSize}"/>
+                            <ColorPicker Grid.Column="1" HsvColor="{Binding MonthlyDownColor, Mode=TwoWay, Converter={StaticResource HsvConverter}}" Width="40" Height="24"/>
+                        </Grid>
+
+                        <Separator Background="{DynamicResource Brush.Border.Primary}" Height="1"/>
+
+                        <Grid ColumnDefinitions="*, Auto">
+                            <TextBlock Text="{l:Localize Settings_Theme_Item_SemanticNeutral}" VerticalAlignment="Center" FontSize="{DynamicResource BaseFontSize}"/>
+                            <ColorPicker Grid.Column="1" HsvColor="{Binding MonthlyNeutralColor, Mode=TwoWay, Converter={StaticResource HsvConverter}}" Width="40" Height="24"/>
+                        </Grid>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Per-year overlay palette -->
+            <Border Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="1" CornerRadius="8" Padding="16">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="{l:Localize Settings_Chart_Seasonality_YearColorsHeader}" FontSize="{DynamicResource BaseFontSize}" FontWeight="Bold" Foreground="{DynamicResource Brush.Accent.Primary}"/>
+
+                    <!-- Two columns, column-major: left column = slots 1..5, right column = slots 6..10,
+                         so the ordinal labels still read 1 -> 10 in order (requirement S-4). -->
+                    <Grid ColumnDefinitions="*,*" ColumnSpacing="16">
+                        <StackPanel Grid.Column="0" Spacing="12">
+                            <Grid ColumnDefinitions="*, Auto">
+                                <TextBlock Text="{l:Localize Settings_Seasonality_YearSlot1}" VerticalAlignment="Center" FontSize="{DynamicResource BaseFontSize}"/>
+                                <ColorPicker Grid.Column="1" HsvColor="{Binding YearColors[0], Mode=TwoWay, Converter={StaticResource HsvConverter}}" Width="40" Height="24"/>
+                            </Grid>
+                            <Grid ColumnDefinitions="*, Auto">
+                                <TextBlock Text="{l:Localize Settings_Seasonality_YearSlot2}" VerticalAlignment="Center" FontSize="{DynamicResource BaseFontSize}"/>
+                                <ColorPicker Grid.Column="1" HsvColor="{Binding YearColors[1], Mode=TwoWay, Converter={StaticResource HsvConverter}}" Width="40" Height="24"/>
+                            </Grid>
+                            <Grid ColumnDefinitions="*, Auto">
+                                <TextBlock Text="{l:Localize Settings_Seasonality_YearSlot3}" VerticalAlignment="Center" FontSize="{DynamicResource BaseFontSize}"/>
+                                <ColorPicker Grid.Column="1" HsvColor="{Binding YearColors[2], Mode=TwoWay, Converter={StaticResource HsvConverter}}" Width="40" Height="24"/>
+                            </Grid>
+                            <Grid ColumnDefinitions="*, Auto">
+                                <TextBlock Text="{l:Localize Settings_Seasonality_YearSlot4}" VerticalAlignment="Center" FontSize="{DynamicResource BaseFontSize}"/>
+                                <ColorPicker Grid.Column="1" HsvColor="{Binding YearColors[3], Mode=TwoWay, Converter={StaticResource HsvConverter}}" Width="40" Height="24"/>
+                            </Grid>
+                            <Grid ColumnDefinitions="*, Auto">
+                                <TextBlock Text="{l:Localize Settings_Seasonality_YearSlot5}" VerticalAlignment="Center" FontSize="{DynamicResource BaseFontSize}"/>
+                                <ColorPicker Grid.Column="1" HsvColor="{Binding YearColors[4], Mode=TwoWay, Converter={StaticResource HsvConverter}}" Width="40" Height="24"/>
+                            </Grid>
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Spacing="12">
+                            <Grid ColumnDefinitions="*, Auto">
+                                <TextBlock Text="{l:Localize Settings_Seasonality_YearSlot6}" VerticalAlignment="Center" FontSize="{DynamicResource BaseFontSize}"/>
+                                <ColorPicker Grid.Column="1" HsvColor="{Binding YearColors[5], Mode=TwoWay, Converter={StaticResource HsvConverter}}" Width="40" Height="24"/>
+                            </Grid>
+                            <Grid ColumnDefinitions="*, Auto">
+                                <TextBlock Text="{l:Localize Settings_Seasonality_YearSlot7}" VerticalAlignment="Center" FontSize="{DynamicResource BaseFontSize}"/>
+                                <ColorPicker Grid.Column="1" HsvColor="{Binding YearColors[6], Mode=TwoWay, Converter={StaticResource HsvConverter}}" Width="40" Height="24"/>
+                            </Grid>
+                            <Grid ColumnDefinitions="*, Auto">
+                                <TextBlock Text="{l:Localize Settings_Seasonality_YearSlot8}" VerticalAlignment="Center" FontSize="{DynamicResource BaseFontSize}"/>
+                                <ColorPicker Grid.Column="1" HsvColor="{Binding YearColors[7], Mode=TwoWay, Converter={StaticResource HsvConverter}}" Width="40" Height="24"/>
+                            </Grid>
+                            <Grid ColumnDefinitions="*, Auto">
+                                <TextBlock Text="{l:Localize Settings_Seasonality_YearSlot9}" VerticalAlignment="Center" FontSize="{DynamicResource BaseFontSize}"/>
+                                <ColorPicker Grid.Column="1" HsvColor="{Binding YearColors[8], Mode=TwoWay, Converter={StaticResource HsvConverter}}" Width="40" Height="24"/>
+                            </Grid>
+                            <Grid ColumnDefinitions="*, Auto">
+                                <TextBlock Text="{l:Localize Settings_Seasonality_YearSlot10}" VerticalAlignment="Center" FontSize="{DynamicResource BaseFontSize}"/>
+                                <ColorPicker Grid.Column="1" HsvColor="{Binding YearColors[9], Mode=TwoWay, Converter={StaticResource HsvConverter}}" Width="40" Height="24"/>
+                            </Grid>
+                        </StackPanel>
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

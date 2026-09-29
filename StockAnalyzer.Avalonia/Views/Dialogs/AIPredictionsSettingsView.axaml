@@ -1,0 +1,164 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:StockAnalyzer.Avalonia.ViewModels.Dialogs"
+             xmlns:l="using:StockAnalyzer.Avalonia.Markup"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="600"
+             x:Class="StockAnalyzer.Avalonia.Views.Dialogs.AIPredictionsSettingsView"
+             x:DataType="vm:AIPredictionsSettingsViewModel">
+
+    <Design.DataContext>
+        <vm:AIPredictionsSettingsViewModel/>
+    </Design.DataContext>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Spacing="20" Margin="16">
+
+            <!-- Section 1: ONNX Environment & Dependencies -->
+            <Border Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="{l:Localize Settings_AIPredictions_OnnxTitle}" 
+                               FontSize="{DynamicResource BaseFontSize}" 
+                               FontWeight="Bold" 
+                               Foreground="{DynamicResource Brush.Accent.Primary}"/>
+
+                    <TextBlock Text="{l:Localize Settings_AIPredictions_Onnx_Desc}"
+                               FontSize="{DynamicResource HelperFontSize}"
+                               Foreground="{DynamicResource Brush.Text.Secondary}"
+                               TextWrapping="Wrap"/>
+
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <Button Content="{Binding AutoButtonText}"
+                                Command="{Binding AutoInstallOnnxCommand}"
+                                IsEnabled="{Binding !IsBusy}"
+                                Classes="accent"
+                                Height="36"
+                                Padding="16,0"
+                                VerticalContentAlignment="Center"/>
+
+                        <Button Content="{l:Localize Settings_AIPredictions_Btn_ManualInstall}"
+                                Command="{Binding ManualInstallOnnxCommand}"
+                                Classes="accent"
+                                Height="36"
+                                Padding="16,0"
+                                VerticalContentAlignment="Center"/>
+                    </StackPanel>
+
+                    <TextBlock Text="{Binding StatusMessage}"
+                               IsVisible="{Binding StatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                               FontSize="{DynamicResource DetailFontSize}"
+                               Foreground="{DynamicResource Brush.Accent.Primary}"
+                               TextWrapping="Wrap"/>
+                </StackPanel>
+            </Border>
+
+            <!-- Section 2: AI Prediction Parameters -->
+            <Border Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="{l:Localize Settings_AIPredictions_ModelTitle}" 
+                               FontSize="{DynamicResource BaseFontSize}" 
+                               FontWeight="Bold" 
+                               Foreground="{DynamicResource Brush.Accent.Primary}"/>
+
+                    <StackPanel Spacing="8">
+                        <Grid ColumnDefinitions="*, Auto">
+                            <TextBlock Text="{l:Localize Settings_AIPredictions_Item_WindowSize}" 
+                                       FontWeight="SemiBold" 
+                                       VerticalAlignment="Center"/>
+                            <NumericUpDown Grid.Column="1"
+                                           Value="{Binding SelectedWindowSize}"
+                                           Minimum="1"
+                                           Maximum="1000"
+                                           Increment="1"
+                                           FormatString="0"
+                                           Width="110"
+                                           Height="32"/>
+                        </Grid>
+                        <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                        <TextBlock Text="{l:Localize Settings_AIPredictions_Desc_WindowSize}"
+                                   FontSize="{DynamicResource HelperFontSize}"
+                                   Foreground="{DynamicResource Brush.Text.Secondary}"
+                                   TextWrapping="Wrap"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <Border Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="1" CornerRadius="8" Padding="16">
+                <StackPanel Spacing="10">
+                    <TextBlock Text="{l:Localize Settings_ModelGenerations_Title}" FontWeight="Bold"/>
+                    <TextBlock Text="{l:Localize Settings_ModelGenerations_Description}"
+                               TextWrapping="Wrap"/>
+                    <TextBlock Text="{Binding LegacyModelStatus}" TextWrapping="Wrap"/>
+                    <ListBox ItemsSource="{Binding Generations}" SelectedItem="{Binding SelectedGeneration}"
+                             MaxHeight="190">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <TextBlock Text="{Binding ModelFile}"/>
+                                    <TextBlock Text="{Binding TargetType}"/>
+                                    <TextBlock Text="{Binding Timeframe}"/>
+                                    <TextBlock Text="{Binding Horizon}"/>
+                                    <TextBlock Text="{Binding MetricName}"/>
+                                    <TextBlock Text="{Binding Score}"/>
+                                    <TextBlock Text="{Binding ActiveMarker}"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button Content="{l:Localize Settings_ModelGenerations_Refresh}" Command="{Binding RefreshGenerationsCommand}"/>
+                        <Button Content="{l:Localize Settings_ModelGenerations_Activate}" Command="{Binding ActivateGenerationCommand}"/>
+                        <Button Content="{l:Localize Settings_ModelGenerations_Restore}" Command="{Binding RollbackGenerationCommand}"/>
+                    </StackPanel>
+                    <TextBlock Text="{Binding ActivationWarning}" TextWrapping="Wrap"/>
+                    <Button Content="{l:Localize Settings_ModelGenerations_Confirm}" Command="{Binding ConfirmActivationCommand}"
+                            IsVisible="{Binding ActivationWarning, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                </StackPanel>
+            </Border>
+
+            <Border Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="1" CornerRadius="8" Padding="16">
+                <StackPanel Spacing="10">
+                    <TextBlock Text="{l:Localize Settings_Ensemble_Title}" FontWeight="Bold"/>
+                    <TextBlock Text="{l:Localize Settings_Ensemble_Description}" TextWrapping="Wrap"/>
+                    <ListBox ItemsSource="{Binding EnsembleMembers}" SelectedItem="{Binding SelectedEnsembleMember}" MaxHeight="200">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                                    <TextBlock Text="{Binding ModelId}" VerticalAlignment="Center"/>
+                                    <NumericUpDown Grid.Column="1" Value="{Binding Percent}" Minimum="0" Maximum="100"
+                                                   Increment="1" FormatString="0.####" Width="105"/>
+                                    <TextBlock Grid.Column="2" Text="%" VerticalAlignment="Center"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button Content="{l:Localize Settings_Ensemble_Add}" Command="{Binding AddEnsembleMemberCommand}"/>
+                        <Button Content="{l:Localize Settings_Ensemble_Remove}" Command="{Binding RemoveEnsembleMemberCommand}"/>
+                        <Button Content="{l:Localize Settings_Ensemble_Equal}" Command="{Binding EqualEnsembleWeightsCommand}"/>
+                        <Button Content="{l:Localize Settings_Ensemble_Accuracy}" Command="{Binding AccuracyEnsembleWeightsCommand}"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button Content="{l:Localize Settings_Ensemble_Save}" Command="{Binding SaveEnsembleCommand}"/>
+                        <Button Content="{l:Localize Settings_Ensemble_Clear}" Command="{Binding ClearEnsembleCommand}"/>
+                    </StackPanel>
+                    <TextBlock Text="{Binding EnsembleStatus}" TextWrapping="Wrap"/>
+                </StackPanel>
+            </Border>
+
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

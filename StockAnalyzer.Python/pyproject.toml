@@ -1,0 +1,12 @@
+[project]
+name = "stockanalyzer-python"
+version = "1.0.0"
+description = "Python components for StockAnalyzer (market data fetching, technical calculation)"
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+    "yfinance==0.2.38",
+    "pandas==2.2.2",
+    "polars==0.20.22",
+    "pyarrow==23.0.1"
+]

@@ -1,0 +1,52 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:StockAnalyzer.Avalonia.ViewModels.Dialogs"
+             xmlns:conv="using:StockAnalyzer.Avalonia.Converters"
+             xmlns:vconv="using:StockAnalyzer.Avalonia.Converters"
+             xmlns:l="using:StockAnalyzer.Avalonia.Markup"
+             mc:Ignorable="d" d:DesignWidth="400" d:DesignHeight="450"
+             x:Class="StockAnalyzer.Avalonia.Views.Dialogs.Chart.OhlcBarSettingsView"
+             x:DataType="vm:OhlcBarSettingsViewModel">
+
+    <UserControl.Resources>
+        <vconv:HsvDataToAvaloniaHsvColorConverter x:Key="HsvConverter"/>
+    </UserControl.Resources>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Spacing="20" Margin="16">
+            
+            <Border Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="{l:Localize Settings_Chart_Appearance}" FontWeight="SemiBold" FontSize="{DynamicResource DetailFontSize}"/>
+                    <StackPanel Spacing="12">
+                        <Grid ColumnDefinitions="*, Auto">
+                            <TextBlock Text="{l:Localize Settings_Chart_Item_UpBar}" VerticalAlignment="Center" FontSize="{DynamicResource DetailFontSize}"/>
+                            <ColorPicker Grid.Column="1" HsvColor="{Binding BullishColor, Mode=TwoWay, Converter={StaticResource HsvConverter}}" Width="50" Height="28"/>
+                        </Grid>
+                        
+                        <Separator Background="{DynamicResource Brush.Border.Primary}" Height="1"/>
+                        
+                        <Grid ColumnDefinitions="*, Auto">
+                            <TextBlock Text="{l:Localize Settings_Chart_Item_DownBar}" VerticalAlignment="Center" FontSize="{DynamicResource DetailFontSize}"/>
+                            <ColorPicker Grid.Column="1" HsvColor="{Binding BearishColor, Mode=TwoWay, Converter={StaticResource HsvConverter}}" Width="50" Height="28"/>
+                        </Grid>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Description -->
+            <TextBlock Text="{l:Localize Settings_Chart_OHLCBar_Desc}" 
+                       FontSize="{DynamicResource HelperFontSize}"
+                       Foreground="{DynamicResource Brush.Text.Secondary}"
+                       TextWrapping="Wrap"
+                       Margin="4,0"/>
+
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

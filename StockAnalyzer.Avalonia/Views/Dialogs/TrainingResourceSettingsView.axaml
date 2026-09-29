@@ -1,0 +1,66 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:StockAnalyzer.Avalonia.ViewModels.Dialogs"
+             xmlns:l="using:StockAnalyzer.Avalonia.Markup"
+             x:Class="StockAnalyzer.Avalonia.Views.Dialogs.TrainingResourceSettingsView"
+             x:DataType="vm:TrainingResourceSettingsViewModel">
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Spacing="16" Margin="16">
+            <TextBlock Text="{l:Localize Settings_TrainingWizard_Intro}" TextWrapping="Wrap"
+                       FontSize="{DynamicResource HelperFontSize}"
+                       Foreground="{DynamicResource Brush.Text.Secondary}"/>
+            <TextBlock Text="{l:Localize Settings_TrainingWizard_ReadOnly}"
+                       IsVisible="{Binding HasOwnershipWarning}" TextWrapping="Wrap"
+                       FontSize="{DynamicResource HelperFontSize}"
+                       Foreground="{DynamicResource Brush.Semantic.Error}"/>
+            <TextBlock Text="{Binding ValidationMessage}" IsVisible="{Binding HasValidationMessage}"
+                       AutomationProperties.AutomationId="TrainingResourceSettings_Error"
+                       FontSize="{DynamicResource HelperFontSize}"
+                       TextWrapping="Wrap" Foreground="{DynamicResource Brush.Semantic.Error}"/>
+            <StackPanel Spacing="18" IsEnabled="{Binding IsEditable}">
+                <Border Background="{DynamicResource Brush.Background.Secondary}" Padding="16" CornerRadius="8">
+                    <StackPanel Spacing="8">
+                        <CheckBox Content="{l:Localize Settings_TrainingWizard_MaxChannels}"
+                                  IsChecked="{Binding ChannelsEnabled, Mode=TwoWay}"
+                                  AutomationProperties.AutomationId="TrainingResourceSettings_ChannelsEnabled"/>
+                        <NumericUpDown Value="{Binding ChannelsValue, Mode=TwoWay}" IsEnabled="{Binding ChannelsEnabled}"
+                                       Minimum="{Binding Minimum}" Maximum="{Binding MaximumChannels}"
+                                       Increment="1" FormatString="0" ClipValueToMinMax="True"
+                                       Width="150" HorizontalAlignment="Left"
+                                       AutomationProperties.AutomationId="TrainingResourceSettings_MaxChannels"/>
+                        <TextBlock Text="{l:Localize Settings_TrainingWizard_ChannelsHelp}" TextWrapping="Wrap"
+                                   FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Tertiary}"/>
+                    </StackPanel>
+                </Border>
+                <Border Background="{DynamicResource Brush.Background.Secondary}" Padding="16" CornerRadius="8">
+                    <StackPanel Spacing="8">
+                        <CheckBox Content="{l:Localize Settings_TrainingWizard_MaxTensorSize}"
+                                  IsChecked="{Binding TensorEnabled, Mode=TwoWay}"
+                                  AutomationProperties.AutomationId="TrainingResourceSettings_TensorEnabled"/>
+                        <NumericUpDown Value="{Binding TensorValue, Mode=TwoWay}" IsEnabled="{Binding TensorEnabled}"
+                                       Minimum="{Binding Minimum}" Maximum="{Binding MaximumTensorSizeMiB}"
+                                       Increment="1" FormatString="0" ClipValueToMinMax="True"
+                                       Width="150" HorizontalAlignment="Left"
+                                       AutomationProperties.AutomationId="TrainingResourceSettings_MaxTensorSize"/>
+                        <TextBlock Text="{l:Localize Settings_TrainingWizard_TensorHelp}" TextWrapping="Wrap"
+                                   FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Tertiary}"/>
+                    </StackPanel>
+                </Border>
+                <Border Background="{DynamicResource Brush.Background.Secondary}" Padding="16" CornerRadius="8">
+                    <StackPanel Spacing="8">
+                        <CheckBox Content="{l:Localize Settings_TrainingWizard_MaxSamples}"
+                                  IsChecked="{Binding SamplesEnabled, Mode=TwoWay}"
+                                  AutomationProperties.AutomationId="TrainingResourceSettings_SamplesEnabled"/>
+                        <NumericUpDown Value="{Binding SamplesValue, Mode=TwoWay}" IsEnabled="{Binding SamplesEnabled}"
+                                       Minimum="{Binding Minimum}" Maximum="{Binding MaximumSamples}"
+                                       Increment="1" FormatString="0" ClipValueToMinMax="True"
+                                       Width="150" HorizontalAlignment="Left"
+                                       AutomationProperties.AutomationId="TrainingResourceSettings_MaxSamples"/>
+                        <TextBlock Text="{l:Localize Settings_TrainingWizard_SamplesHelp}" TextWrapping="Wrap"
+                                   FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Tertiary}"/>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>
