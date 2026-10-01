@@ -16,6 +16,9 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="Assets\*.onnx" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Assets\*.onnx.scaler.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Assets\*.onnx.analysis.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Assets\analysis_fixture.onnx.metrics.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="Assets\feature_parity_vectors.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="Assets\BacktestGolden\*.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="Assets\MetricsGolden\*.json" CopyToOutputDirectory="PreserveNewest" />

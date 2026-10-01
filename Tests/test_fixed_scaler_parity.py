@@ -50,6 +50,46 @@ def test_fixture() -> None:
             raise AssertionError("tampered lag metadata was accepted")
 
 
+def test_float32_overflow_and_contract_markers() -> None:
+    scaler = {
+        "window_size": 1, "clip_sigma": None,
+        "statistics": [{"mean": 0.0, "std": 1.0}],
+    }
+    extreme = np.asarray([[[1e100]]], dtype=np.float64)
+    try:
+        fixed_scaler.transform(extreme, scaler)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("nonfinite float32 tensor was accepted")
+    assert fixed_scaler.transform(extreme, {**scaler, "clip_sigma": 3.0})[0, 0, 0] == 3.0
+    for metadata in (
+        {"feature_mode": "ohlcv_minmax", "normalization": "fixed_zscore", "lags": "[]", "clip_sigma": ""},
+        {"feature_mode": "ohlcv_minmax", "normalization": "fixed_zscore", "scaler_ref": "", "lags": "[]", "clip_sigma": ""},
+        {"feature_mode": "ohlcv_minmax", "normalization": "fixed_zscore", "scaler_ref": "m.onnx.scaler.json", "clip_sigma": ""},
+        {"feature_mode": "ohlcv_minmax", "normalization": "fixed_zscore", "scaler_ref": "m.onnx.scaler.json", "lags": "[]"},
+        {"feature_mode": "ohlcv_minmax", "normalization": "ohlcv_minmax", "scaler_ref": "m.onnx.scaler.json"},
+        {"feature_mode": "ohlcv_minmax", "normalization": "ohlcv_minmax", "lags": "[]"},
+        {"feature_mode": "ohlcv_minmax", "normalization": "unexpected"},
+        {"feature_mode": "composed_features", "normalization": "composed_features",
+         "feature_spec": '{"channels":[{"kind":"price","price":"close"}],"lags":[1]}'},
+        {"feature_mode": "composed_features", "normalization": "composed_features",
+         "feature_spec": '{"channels":[{"kind":"price","price":"close"}],"lags":null}'},
+    ):
+        try:
+            fixed_scaler.requires_fixed_scaler(metadata)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f"partial fixed contract was accepted: {metadata}")
+    assert not fixed_scaler.requires_fixed_scaler({"feature_mode": "ohlcv_minmax", "normalization": "ohlcv_minmax"})
+    assert fixed_scaler.requires_fixed_scaler({
+        "feature_mode": "ohlcv_minmax", "normalization": "fixed_zscore",
+        "scaler_ref": "m.onnx.scaler.json", "lags": "[]", "clip_sigma": "",
+    })
+
+
 if __name__ == "__main__":
     test_fixture()
+    test_float32_overflow_and_contract_markers()
     print("fixed scaler parity fixture: PASS")

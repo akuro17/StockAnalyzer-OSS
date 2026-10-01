@@ -1,10 +1,15 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.ComponentModel;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using StockAnalyzer.Avalonia.Services;
 using StockAnalyzer.Core.Services;
 
@@ -18,6 +23,7 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
         private readonly IPythonService? _pythonService;
         private readonly IModelGenerationRegistry? _modelRegistry;
         private readonly IEnsembleSettingsManager? _ensembleSettings;
+        private readonly ILogger<AIPredictionsSettingsViewModel> _logger;
 
         public ObservableCollection<EnsembleWeightRow> EnsembleMembers { get; } = new();
 
@@ -28,6 +34,8 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
         private string? _ensembleStatus;
 
         private int _snapshotWindowSize;
+        private readonly HashSet<EnsembleWeightRow> _observedEnsembleRows = new();
+        private long _ensembleEditRevision;
         private bool _isDisposed;
 
         public const string OnnxPipManualInstallCommand = "pip install torch --index-url https://download.pytorch.org/whl/cpu && pip install numpy onnx onnxruntime onnxscript tensorflow tf2onnx lightgbm scikit-learn skl2onnx onnxmltools";
@@ -53,6 +61,9 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
         private string? _statusMessage;
 
         [ObservableProperty]
+        private string? _generationStatusMessage;
+
+        [ObservableProperty]
         private bool _isBusy;
 
         public ObservableCollection<ModelGenerationSummary> Generations { get; } = new();
@@ -65,7 +76,18 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
         [ObservableProperty]
         private string? _activationWarning;
 
-        private string? _pendingActivation;
+        private sealed record PendingActivation(string ModelId, string? ExpectedActiveId, bool IsRollback);
+        private PendingActivation? _pendingActivation;
+        private long _generationSelectionRevision;
+
+        partial void OnSelectedGenerationChanged(ModelGenerationSummary? value)
+        {
+            _generationSelectionRevision++;
+            _pendingActivation = null;
+            ActivationWarning = null;
+            SelectAnalysis(value, _generationSelectionRevision);
+            MonitoringRefreshTask = RefreshMonitoringAsync();
+        }
 
         public AIPredictionsSettingsViewModel(
             IPredictionSettingsManager predictionSettingsManager,
@@ -73,7 +95,11 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
             IToastNotificationService toastNotificationService,
             IPythonService? pythonService = null,
             IModelGenerationRegistry? modelRegistry = null,
-            IEnsembleSettingsManager? ensembleSettings = null)
+            IEnsembleSettingsManager? ensembleSettings = null,
+            ILogger<AIPredictionsSettingsViewModel>? logger = null,
+            IModelAnalysisService? modelAnalysisService = null, IDispatcherService? analysisDispatcher = null,
+            IPredictionLogService? predictionLog = null, IRetrainingScheduler? retrainingScheduler = null,
+            ICurrentPredictionHealthService? currentHealth = null)
         {
             _predictionSettingsManager = predictionSettingsManager;
             _clipboardService = clipboardService;
@@ -81,12 +107,20 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
             _pythonService = pythonService;
             _modelRegistry = modelRegistry;
             _ensembleSettings = ensembleSettings;
+            _logger = logger ?? NullLogger<AIPredictionsSettingsViewModel>.Instance;
+            _modelAnalysisService = modelAnalysisService;
+            _analysisDispatcher = analysisDispatcher;
+            _predictionLog = predictionLog;
+            _retrainingScheduler = retrainingScheduler;
+            _currentHealth = currentHealth;
 
             TakeSnapshot();
             InitializeFromSnapshot();
+            ObserveEnsembleEdits();
             RefreshGenerations();
             _ = LoadEnsembleAsync();
             _ = CheckOnnxInstalledAsync();
+            InitializeMonitoring();
         }
 
         public AIPredictionsSettingsViewModel()
@@ -95,8 +129,10 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
             _predictionSettingsManager = new DesignPredictionSettingsManager();
             _clipboardService = new DesignClipboardService();
             _toastNotificationService = new DesignToastNotificationService();
+            _logger = NullLogger<AIPredictionsSettingsViewModel>.Instance;
             TakeSnapshot();
             InitializeFromSnapshot();
+            ObserveEnsembleEdits();
         }
 
         public async Task CheckOnnxInstalledAsync()
@@ -117,6 +153,7 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
         [RelayCommand]
         private void RefreshGenerations()
         {
+            _generationSelectionRevision++;
             Generations.Clear();
             if (_modelRegistry is null) return;
             foreach (var item in _modelRegistry.List()) Generations.Add(item);
@@ -129,15 +166,43 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
         private async Task LoadEnsembleAsync()
         {
             if (_ensembleSettings is null) return;
+            long revision = _ensembleEditRevision;
             try
             {
                 await _ensembleSettings.LoadAsync();
+                if (_isDisposed || revision != _ensembleEditRevision) return;
                 EnsembleMembers.Clear();
                 if (_ensembleSettings.Current is { } spec)
                     foreach (var member in spec.Members)
                         EnsembleMembers.Add(new EnsembleWeightRow(member.ModelId, (decimal)(member.Weight * 100)));
             }
-            catch (Exception ex) { EnsembleStatus = ex.Message; }
+            catch (Exception ex) { ReportEnsembleFailure(ex, "load", revision); }
+        }
+
+        private void ObserveEnsembleEdits() => EnsembleMembers.CollectionChanged += OnEnsembleMembersChanged;
+
+        private void OnEnsembleMembersChanged(object? sender, NotifyCollectionChangedEventArgs e)
+        {
+            foreach (var row in _observedEnsembleRows.ToArray())
+                if (!EnsembleMembers.Contains(row))
+                {
+                    row.PropertyChanged -= OnEnsembleRowChanged;
+                    _observedEnsembleRows.Remove(row);
+                }
+            foreach (var row in EnsembleMembers)
+                if (_observedEnsembleRows.Add(row)) row.PropertyChanged += OnEnsembleRowChanged;
+            AdvanceEnsembleRevision();
+        }
+
+        private void OnEnsembleRowChanged(object? sender, PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName == nameof(EnsembleWeightRow.Percent)) AdvanceEnsembleRevision();
+        }
+
+        private long AdvanceEnsembleRevision()
+        {
+            EnsembleStatus = null;
+            return ++_ensembleEditRevision;
         }
 
         [RelayCommand]
@@ -157,35 +222,44 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
         [RelayCommand]
         private void EqualEnsembleWeights()
         {
+            AdvanceEnsembleRevision();
             try { Apply(EnsembleSpec.Equal(EnsembleMembers.Select(row => row.ModelId))); }
-            catch (Exception ex) { EnsembleStatus = ex.Message; }
+            catch (Exception ex) { ReportEnsembleFailure(ex, "assign equal weights"); }
         }
 
         [RelayCommand]
         private async Task AccuracyEnsembleWeightsAsync()
         {
             if (_modelRegistry is null) return;
+            long revision = _ensembleEditRevision;
             try
             {
                 var ids = EnsembleMembers.Select(row => row.ModelId).ToArray();
                 var preset = await Task.Run(() =>
                 {
                     var manifests = ids.Select(id => _modelRegistry.GetManifest(id)
-                        ?? throw new InvalidOperationException("Generation is unavailable.")).ToArray();
+                        ?? throw new KeyNotFoundException("Generation is unavailable.")).ToArray();
                     var spec = EnsembleSpec.Equal(ids);
                     EnsembleSettingsManager.ValidateGenerations(spec, _modelRegistry);
                     return EnsembleSpec.AccuracyProportional(manifests,
                         manifest => EnsembleSettingsManager.ReadFinalOuterAccuracy(manifest, _modelRegistry));
                 });
+                if (_isDisposed || revision != _ensembleEditRevision) return;
                 Apply(preset);
             }
-            catch (Exception ex) { EnsembleStatus = ex.Message; }
+            catch (Exception ex) { ReportEnsembleFailure(ex, "assign accuracy weights", revision, accuracyPreset: true); }
         }
 
         private void Apply(EnsembleSpec spec)
         {
-            for (int i = 0; i < spec.Members.Count; i++)
-                EnsembleMembers[i].Percent = (decimal)(spec.Members[i].Weight * 100);
+            spec.Validate();
+            var weights = spec.Members.ToDictionary(member => member.ModelId, member => member.Weight,
+                StringComparer.Ordinal);
+            if (weights.Count != EnsembleMembers.Count
+                || EnsembleMembers.Any(row => !weights.ContainsKey(row.ModelId)))
+                throw new InvalidOperationException("Ensemble members changed before weights could be applied.");
+            foreach (var row in EnsembleMembers)
+                row.Percent = (decimal)(weights[row.ModelId] * 100);
             EnsembleStatus = null;
         }
 
@@ -193,63 +267,84 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
         private async Task SaveEnsembleAsync()
         {
             if (_ensembleSettings is null) return;
+            long revision = AdvanceEnsembleRevision();
             try
             {
-                var spec = new EnsembleSpec(EnsembleMembers.Select(row =>
-                    new EnsembleMember(row.ModelId, (double)(row.Percent / 100m))).ToArray());
+                var spec = new EnsembleSpec(Array.AsReadOnly(EnsembleMembers.Select(row =>
+                    new EnsembleMember(row.ModelId, (double)(row.Percent / 100m))).ToArray()));
                 await _ensembleSettings.SaveAsync(spec);
-                EnsembleStatus = LocalizationManager.Instance["Settings_Ensemble_Saved"];
+                if (!_isDisposed && revision == _ensembleEditRevision)
+                    EnsembleStatus = LocalizationManager.Instance["Settings_Ensemble_Saved"];
             }
-            catch (Exception ex) { EnsembleStatus = ex.Message; }
+            catch (Exception ex) { ReportEnsembleFailure(ex, "save", revision); }
         }
 
         [RelayCommand]
         private async Task ClearEnsembleAsync()
         {
             if (_ensembleSettings is null) return;
+            long revision = AdvanceEnsembleRevision();
             try
             {
                 await _ensembleSettings.SaveAsync(null);
+                if (_isDisposed || revision != _ensembleEditRevision) return;
                 EnsembleMembers.Clear();
                 EnsembleStatus = LocalizationManager.Instance["Settings_Ensemble_Cleared"];
             }
-            catch (Exception ex) { EnsembleStatus = ex.Message; }
+            catch (Exception ex) { ReportEnsembleFailure(ex, "clear", revision); }
         }
 
         [RelayCommand]
         private async Task ActivateGenerationAsync()
         {
             if (_modelRegistry is null || SelectedGeneration is null || IsBusy) return;
+            var candidateId = SelectedGeneration.ModelId;
+            var expectedActiveId = _modelRegistry.ActiveId;
+            var selectionRevision = _generationSelectionRevision;
             IsBusy = true;
+            GenerationStatusMessage = null;
+            ActivationWarning = null;
+            _pendingActivation = null;
             try
             {
-                var changed = await _modelRegistry.ActivateAsync(SelectedGeneration.ModelId, manual: true);
-                StatusMessage = changed
+                var changed = await _modelRegistry.ActivateAsync(candidateId, manual: true);
+                GenerationStatusMessage = changed
                     ? LocalizationManager.Instance["Settings_ModelGenerations_Activated"]
                     : LocalizationManager.Instance["Settings_ModelGenerations_AlreadyActive"];
                 RefreshGenerations();
             }
-            catch (ModelActivationConfirmationRequiredException)
+            catch (ModelActivationConfirmationRequiredException ex)
             {
-                _pendingActivation = SelectedGeneration.ModelId;
+                if (selectionRevision != _generationSelectionRevision) return;
+                _pendingActivation = new PendingActivation(ex.CandidateId ?? candidateId,
+                    ex.CandidateId is null ? expectedActiveId : ex.ExpectedActiveId, false);
                 ActivationWarning = LocalizationManager.Instance["Settings_ModelGenerations_DowngradeWarning"];
             }
-            catch (Exception ex) { StatusMessage = ex.Message; }
+            catch (Exception ex) { ReportGenerationFailure(ex, "activate"); }
             finally { IsBusy = false; }
         }
 
         [RelayCommand]
         private async Task ConfirmActivationAsync()
         {
-            if (_modelRegistry is null || _pendingActivation is null || IsBusy) return;
+            if (_modelRegistry is null || _pendingActivation is not { } pending || IsBusy) return;
             IsBusy = true;
+            GenerationStatusMessage = null;
             try
             {
-                await _modelRegistry.ActivateAsync(_pendingActivation, manual: true, confirmLowerScore: true);
-                StatusMessage = LocalizationManager.Instance["Settings_ModelGenerations_Activated"];
+                var changed = await _modelRegistry.ConfirmActivationAsync(pending.ModelId, pending.ExpectedActiveId);
+                GenerationStatusMessage = LocalizationManager.Instance[changed
+                    ? pending.IsRollback ? "Settings_ModelGenerations_Restored" : "Settings_ModelGenerations_Activated"
+                    : "Settings_ModelGenerations_AlreadyActive"];
                 RefreshGenerations();
             }
-            catch (Exception ex) { StatusMessage = ex.Message; }
+            catch (ModelActivationContextChangedException ex)
+            {
+                _pendingActivation = null;
+                ActivationWarning = null;
+                ReportGenerationFailure(ex, "confirm activation");
+            }
+            catch (Exception ex) { ReportGenerationFailure(ex, "confirm activation"); }
             finally { IsBusy = false; }
         }
 
@@ -257,22 +352,72 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
         private async Task RollbackGenerationAsync()
         {
             if (_modelRegistry is null || IsBusy) return;
+            var fallbackCandidateId = _modelRegistry.PreviousId;
+            var fallbackActiveId = _modelRegistry.ActiveId;
+            var selectionRevision = _generationSelectionRevision;
             IsBusy = true;
+            GenerationStatusMessage = null;
+            ActivationWarning = null;
+            _pendingActivation = null;
             try
             {
                 var changed = await _modelRegistry.RollbackAsync();
-                StatusMessage = changed
+                GenerationStatusMessage = changed
                     ? LocalizationManager.Instance["Settings_ModelGenerations_Restored"]
                     : LocalizationManager.Instance["Settings_ModelGenerations_NoHistory"];
                 RefreshGenerations();
             }
-            catch (ModelActivationConfirmationRequiredException)
+            catch (ModelActivationConfirmationRequiredException ex)
             {
-                _pendingActivation = _modelRegistry.PreviousId;
+                if (selectionRevision != _generationSelectionRevision) return;
+                var candidateId = ex.CandidateId ?? fallbackCandidateId;
+                if (candidateId is null) return;
+                _pendingActivation = new PendingActivation(candidateId,
+                    ex.CandidateId is null ? fallbackActiveId : ex.ExpectedActiveId, true);
                 ActivationWarning = LocalizationManager.Instance["Settings_ModelGenerations_RestoreWarning"];
             }
-            catch (Exception ex) { StatusMessage = ex.Message; }
+            catch (Exception ex) { ReportGenerationFailure(ex, "restore previous"); }
             finally { IsBusy = false; }
+        }
+
+        private void ReportEnsembleFailure(Exception exception, string operation, long? revision = null,
+            bool accuracyPreset = false)
+        {
+            _logger.LogError(exception, "Failed to {Operation} classification ensemble", operation);
+            if (_isDisposed || (revision.HasValue && revision.Value != _ensembleEditRevision)) return;
+
+            string key = EnsembleSettingsManager.GetValidationFailure(exception) switch
+            {
+                EnsembleValidationFailure.MissingGeneration => "Settings_Ensemble_Error_MissingGeneration",
+                EnsembleValidationFailure.IncompatibleContract => "Settings_Ensemble_Error_IncompatibleContract",
+                EnsembleValidationFailure.InvalidAccuracyEvidence => "Settings_Ensemble_Error_AccuracyEvidence",
+                _ when exception is KeyNotFoundException => "Settings_Ensemble_Error_MissingGeneration",
+                _ when accuracyPreset && (exception is FileNotFoundException or InvalidDataException
+                    or System.Text.Json.JsonException) => "Settings_Ensemble_Error_AccuracyEvidence",
+                _ when exception is UnauthorizedAccessException or System.IO.IOException =>
+                    "Settings_Ensemble_Error_Storage",
+                _ when exception is InvalidOperationException =>
+                    "Settings_Ensemble_Error_InvalidSelection",
+                _ when exception is InvalidDataException or System.Text.Json.JsonException =>
+                    "Settings_Ensemble_Error_InvalidData",
+                _ => "Settings_Ensemble_Error_General",
+            };
+            EnsembleStatus = LocalizationManager.Instance[key];
+        }
+
+        private void ReportGenerationFailure(Exception exception, string operation)
+        {
+            _logger.LogError(exception, "Failed to {Operation} model generation", operation);
+            string key = exception switch
+            {
+                ModelActivationContextChangedException => "Settings_ModelGenerations_Error_ContextChanged",
+                KeyNotFoundException => "Settings_ModelGenerations_Error_Missing",
+                InvalidDataException => "Settings_ModelGenerations_Error_Corrupt",
+                UnauthorizedAccessException or System.IO.IOException => "Settings_ModelGenerations_Error_Storage",
+                InvalidOperationException => "Settings_ModelGenerations_Error_Incompatible",
+                _ => "Settings_ModelGenerations_Error_General",
+            };
+            GenerationStatusMessage = LocalizationManager.Instance[key];
         }
 
         private class DesignPredictionSettingsManager : IPredictionSettingsManager
@@ -415,6 +560,10 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
         {
             if (_isDisposed) return;
             _isDisposed = true;
+            DisposeMonitoring();
+            EnsembleMembers.CollectionChanged -= OnEnsembleMembersChanged;
+            foreach (var row in _observedEnsembleRows) row.PropertyChanged -= OnEnsembleRowChanged;
+            _observedEnsembleRows.Clear();
             GC.SuppressFinalize(this);
         }
     }

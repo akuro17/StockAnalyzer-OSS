@@ -64,7 +64,9 @@ public class TickerColumnTooltipFontSizeTests
             var container = Assert.IsType<DockPanel>(cell.Content);
             var textBlock = Assert.Single(container.Children, c => c is TextBlock);
 
-            var tip = Assert.IsType<TextBlock>(ToolTip.GetTip(textBlock));
+            // The popup is an explicit width-unlimited ToolTip (UnwrappedToolTipFactory) whose content is the
+            // TooltipFontSize-bound TextBlock.
+            var tip = Assert.IsType<TextBlock>(Assert.IsType<ToolTip>(ToolTip.GetTip(textBlock)).Content);
 
             WhileAttached(tip, () => Assert.Equal(DistinctTooltipSize, tip.FontSize));
         });

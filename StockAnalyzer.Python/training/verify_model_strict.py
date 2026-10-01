@@ -81,11 +81,30 @@ def _metadata(session: ort.InferenceSession, window: int, channels: int,
     mode = metadata["feature_mode"]
     require(mode in ds.FEATURE_MODES + (ds.COMPOSED_FEATURES_MODE,),
             f"metadata has unknown feature_mode {mode!r}")
+    fixed_scaler.requires_fixed_scaler(metadata)
     target = metadata["target_type"]
     require(target in onnx_meta.TARGET_TYPES, f"metadata has unknown target_type {target!r}")
     require(_metadata_int(metadata, "window_size") == window, "metadata window disagrees with graph")
     require(_metadata_int(metadata, "channels") == channels, "metadata channels disagree with graph")
     horizon = _metadata_int(metadata, "prediction_horizon")
+    purge_gap_raw = metadata[onnx_meta.PURGE_GAP_KEY]
+    require(purge_gap_raw.isdecimal() and str(int(purge_gap_raw)) == purge_gap_raw,
+            "metadata purge gap must be a canonical non-negative integer")
+    require(metadata[onnx_meta.OUTPUT_HORIZON_KEY] == str(horizon),
+            "output horizon disagrees with prediction_horizon")
+    require(metadata[onnx_meta.OUTPUT_TIMEFRAME_KEY] in ds.TIMEFRAME_DIRS,
+            "output timeframe is unknown")
+    expected_output_contract = (
+        ("log_return", "dimensionless", "none", "log_future_close_over_anchor_close")
+        if target == "regression" else
+        ("class_probabilities", "probability", "class_probability", "thresholded_simple_return")
+    )
+    actual_output_contract = tuple(metadata[key] for key in (
+        onnx_meta.OUTPUT_SEMANTIC_KEY, onnx_meta.OUTPUT_UNIT_KEY,
+        onnx_meta.OUTPUT_CONFIDENCE_TYPE_KEY, onnx_meta.TARGET_FORMULA_KEY,
+    ))
+    require(actual_output_contract == expected_output_contract,
+            "output semantic/unit/confidence/formula disagrees with target_type")
     require(output_width == (len(ds.CLASS_LABELS) if target == "classification" else 1),
             f"graph output width disagrees with {target} target")
     if target == "classification":
@@ -114,7 +133,7 @@ def _spec_and_exports(args: argparse.Namespace, metadata: dict[str, str], mode: 
         require(args.feature_spec is None and args.indicator_channel_export_paths is None,
                 "feature-spec and indicator exports are only valid for composed_features")
         require("feature_spec" not in metadata, "fixed-mode metadata must not contain feature_spec")
-        lags = fixed_scaler.validate_lags(json.loads(metadata["lags"])) if "scaler_ref" in metadata else ()
+        lags = fixed_scaler.validate_lags(json.loads(metadata["lags"])) if fixed_scaler.requires_fixed_scaler(metadata) else ()
         require(ds.feature_channels(mode) * (1 + len(lags)) == channels,
                 "graph channels disagree with fixed feature_mode")
         return None, None
@@ -191,7 +210,7 @@ def run(args: argparse.Namespace) -> int:
     if exports is not None:
         require(all(symbol in exports for symbol in symbols),
                 "indicator export path missing for a loaded symbol")
-    scaler = fixed_scaler.load_sidecar(args.model, metadata) if "scaler_ref" in metadata else None
+    scaler = fixed_scaler.load_sidecar(args.model, metadata) if fixed_scaler.requires_fixed_scaler(metadata) else None
     lags = scaler["lags"] if scaler is not None else []
     x, _ = ds.build_dataset_multi(
         symbols, mode, window=window, horizon=horizon,

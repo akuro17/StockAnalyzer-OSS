@@ -31,7 +31,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import dataset as ds  # noqa: E402  (sibling module, path inserted above)
 
 # bump when the key set or the meaning of a value changes; the C# side logs it.
-MODEL_CONTRACT_VERSION: str = "1"
+MODEL_CONTRACT_VERSION: str = "2"
+PURGE_GAP_KEY: str = "com.stockanalyzer.training.purge_gap"
+OUTPUT_SEMANTIC_KEY: str = "com.stockanalyzer.output.semantic"
+OUTPUT_UNIT_KEY: str = "com.stockanalyzer.output.unit"
+OUTPUT_HORIZON_KEY: str = "com.stockanalyzer.output.horizon"
+OUTPUT_TIMEFRAME_KEY: str = "com.stockanalyzer.output.timeframe"
+OUTPUT_CONFIDENCE_TYPE_KEY: str = "com.stockanalyzer.output.confidence_type"
+TARGET_FORMULA_KEY: str = "com.stockanalyzer.output.target_formula"
+DEFAULT_TIMEFRAME: str = "daily"
 # the dataset pipeline (dataset.load_parquet_dir) assumes split- and dividend-adjusted
 # OHLCV; callers override only when they knowingly train on differently-adjusted data.
 DEFAULT_PRICE_ADJUSTMENT: str = "adjusted"
@@ -51,6 +59,13 @@ CONTRACT_KEYS: tuple = (
     "class_order",
     "target_type",
     "prediction_horizon",
+    PURGE_GAP_KEY,
+    OUTPUT_SEMANTIC_KEY,
+    OUTPUT_UNIT_KEY,
+    OUTPUT_HORIZON_KEY,
+    OUTPUT_TIMEFRAME_KEY,
+    OUTPUT_CONFIDENCE_TYPE_KEY,
+    TARGET_FORMULA_KEY,
     "neutral_threshold",
     "normalization",
     "price_adjustment",
@@ -88,6 +103,7 @@ def build_contract(
     seed: int,
     producer: str,
     gap: int | None = None,
+    timeframe: str = DEFAULT_TIMEFRAME,
     price_adjustment: str = DEFAULT_PRICE_ADJUSTMENT,
     target_type: str = TARGET_TYPE,
     date_ranges: Mapping[str, str] | None = None,
@@ -97,18 +113,16 @@ def build_contract(
     lags: Sequence[int] = (),
     clip_sigma: float | None = None,
     scaler_ref: str | None = None,
+    analysis_ref: str | None = None,
 ) -> Dict[str, str]:
     """Assemble the ``metadata_props`` mapping (every value stringified).
 
     ``date_ranges`` may supply any of :data:`_DATE_RANGE_KEYS`; missing entries
     default to an empty string so the key set is always complete. ``wf_splits``,
-    ``seed``, and ``gap`` are folded into ``producer`` for provenance without
-    adding non-contract keys (no ``CONTRACT_KEYS``/``MODEL_CONTRACT_VERSION``
-    change -- ``producer`` already carries free-form provenance text). ``gap``
-    mirrors the purge gap actually passed to ``dataset.split_symbols_chronological``
-    / ``dataset.train_val_date_ranges``: ``None`` renders as ``gap=auto`` (the
-    caller let :func:`dataset.resolve_purge_gap` pick ``window + horizon - 1``),
-    an explicit value renders as ``gap=<int>``. ``target_type`` selects the
+    ``seed``, and ``gap`` remain in ``producer`` for human provenance. Contract
+    version 2 also records the effective purge gap as a separate numeric metadata
+    field. ``None`` resolves through :func:`dataset.resolve_purge_gap`; an explicit
+    zero remains zero. ``target_type`` selects the
     learning objective (:data:`TARGET_TYPES`); a ``regression`` model keeps
     ``class_order`` present for a stable key set but the C# loader ignores it.
 
@@ -128,6 +142,15 @@ def build_contract(
         )
     if target_type not in TARGET_TYPES:
         raise ValueError(f"unknown target_type {target_type!r}; expected one of {TARGET_TYPES}")
+    if type(horizon) is not int or horizon <= 0:
+        raise ValueError("horizon must be a positive integer in bars")
+    if timeframe not in ds.TIMEFRAME_DIRS:
+        raise ValueError(f"unknown timeframe {timeframe!r}; expected one of {tuple(ds.TIMEFRAME_DIRS)}")
+    if gap is not None and (type(gap) is not int or gap < 0):
+        raise ValueError("gap must be a non-negative integer or None")
+    resolved_gap = ds.resolve_purge_gap(window_size, horizon, gap)
+    if not fixed_zscore and (lags or clip_sigma is not None or scaler_ref is not None):
+        raise ValueError("lags, clip_sigma and scaler_ref require fixed_zscore")
     if feature_mode == ds.COMPOSED_FEATURES_MODE:
         if feature_spec_json is None:
             raise ValueError("composed_features requires feature_spec_json")
@@ -150,6 +173,16 @@ def build_contract(
         "class_order": ",".join(class_labels),
         "target_type": target_type,
         "prediction_horizon": str(int(horizon)),
+        PURGE_GAP_KEY: str(resolved_gap),
+        OUTPUT_SEMANTIC_KEY: "log_return" if target_type == "regression" else "class_probabilities",
+        OUTPUT_UNIT_KEY: "dimensionless" if target_type == "regression" else "probability",
+        OUTPUT_HORIZON_KEY: str(horizon),
+        OUTPUT_TIMEFRAME_KEY: timeframe,
+        OUTPUT_CONFIDENCE_TYPE_KEY: "none" if target_type == "regression" else "class_probability",
+        TARGET_FORMULA_KEY: (
+            "log_future_close_over_anchor_close" if target_type == "regression"
+            else "thresholded_simple_return"
+        ),
         "neutral_threshold": repr(float(threshold)),
         "normalization": feature_mode,
         "price_adjustment": price_adjustment,
@@ -181,6 +214,11 @@ def build_contract(
         contract["lags"] = json.dumps(checked_lags, separators=(",", ":"))
         contract["clip_sigma"] = "" if clip_sigma is None else repr(float(clip_sigma))
         contract["scaler_ref"] = scaler_ref
+    if analysis_ref is not None:
+        import model_analysis
+        if Path(analysis_ref).name != analysis_ref or not analysis_ref.endswith(".onnx.analysis.json"):
+            raise ValueError("analysis reference must name a local ONNX analysis sidecar")
+        contract[model_analysis.REFERENCE_KEY] = analysis_ref
     return contract
 
 
@@ -213,7 +251,7 @@ def _run_selfcheck() -> None:
         feature_mode="ohlcv_minmax", window_size=75, channels=5,
         horizon=5, threshold=0.005, wf_splits=5, seed=42, producer="selfcheck",
     )
-    assert set(c5) == set(CONTRACT_KEYS), set(c5) ^ set(CONTRACT_KEYS)  # gap adds no new key
+    assert set(c5) == set(CONTRACT_KEYS), set(c5) ^ set(CONTRACT_KEYS)
     assert all(isinstance(v, str) for v in c5.values())
     assert c5["channel_order"] == "open,high,low,close,volume"
     assert c5["class_order"] == "Up,Down,Neutral"
@@ -221,12 +259,23 @@ def _run_selfcheck() -> None:
     assert c5["model_contract_version"] == MODEL_CONTRACT_VERSION
     assert c5["price_adjustment"] == "adjusted"
     assert "gap=auto" in c5["producer"]  # default gap=None -> "auto" (resolve_purge_gap picks it)
+    assert c5[PURGE_GAP_KEY] == "79"
+    assert c5[OUTPUT_SEMANTIC_KEY] == "class_probabilities"
+    assert c5[OUTPUT_UNIT_KEY] == "probability"
+    assert c5[OUTPUT_TIMEFRAME_KEY] == "daily"
+    assert c5[OUTPUT_CONFIDENCE_TYPE_KEY] == "class_probability"
     c5_gap = build_contract(
         feature_mode="ohlcv_minmax", window_size=75, channels=5,
         horizon=5, threshold=0.005, wf_splits=5, seed=42, producer="selfcheck", gap=12,
     )
     assert "gap=12" in c5_gap["producer"]
-    assert set(c5_gap) == set(CONTRACT_KEYS)  # explicit gap still adds no new key
+    assert set(c5_gap) == set(CONTRACT_KEYS)
+    assert c5_gap[PURGE_GAP_KEY] == "12"
+    c5_zero = build_contract(
+        feature_mode="ohlcv_minmax", window_size=75, channels=5,
+        horizon=5, threshold=0.005, wf_splits=5, seed=42, producer="selfcheck", gap=0,
+    )
+    assert c5_zero[PURGE_GAP_KEY] == "0"
     assert build_contract(
         feature_mode="zscore", window_size=10, channels=5, horizon=5, threshold=0.005,
         wf_splits=5, seed=1, producer="x", price_adjustment="unadjusted",
@@ -253,8 +302,13 @@ def _run_selfcheck() -> None:
         wf_splits=5, seed=42, producer="selfcheck", target_type="regression",
     )
     assert creg["target_type"] == "regression"
+    assert creg[OUTPUT_SEMANTIC_KEY] == "log_return"
+    assert creg[OUTPUT_UNIT_KEY] == "dimensionless"
+    assert creg[OUTPUT_HORIZON_KEY] == "5"
+    assert creg[OUTPUT_CONFIDENCE_TYPE_KEY] == "none"
+    assert creg[TARGET_FORMULA_KEY] == "log_future_close_over_anchor_close"
     assert set(creg) == set(CONTRACT_KEYS)  # regression keeps the same key set
-    assert creg["model_contract_version"] == MODEL_CONTRACT_VERSION  # no version bump
+    assert creg["model_contract_version"] == MODEL_CONTRACT_VERSION
 
     # composed_features carries an optional "feature_spec" key ONLY when supplied; every
     # existing fixed-width model (c5, c1, c4, creg above) carries no such key at all, so a
@@ -298,6 +352,17 @@ def _run_selfcheck() -> None:
         pass
     else:  # pragma: no cover
         raise AssertionError("expected ValueError for unknown target_type")
+
+    for bad_kwargs in ({"timeframe": "hourly"}, {"horizon": 0}, {"gap": -1}, {"gap": True}):
+        try:
+            params = dict(feature_mode="ohlcv_minmax", window_size=10, channels=5,
+                          horizon=5, threshold=0.005, wf_splits=5, seed=1, producer="x")
+            params.update(bad_kwargs)
+            build_contract(**params)
+        except ValueError:
+            pass
+        else:  # pragma: no cover
+            raise AssertionError(f"expected invalid output contract to reject {bad_kwargs}")
 
     try:
         build_contract(feature_mode="log_return_ohlc", window_size=10, channels=5,

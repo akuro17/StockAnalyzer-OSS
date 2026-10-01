@@ -1,3 +1,4 @@
+#nullable enable
 using System;
 using System.Collections.Generic;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -20,13 +21,13 @@ public class PredictionModelMetadataComposedTests
     private const string SpecB =
         """{"channels":[{"kind":"indicator","indicator":"RSI","params":{"period":"14"},"normalization":"none"}]}""";
 
-    private static Dictionary<string, string> BaseMap(string? featureSpec) => new()
+    private static Dictionary<string, string> BaseMap(string? featureSpec)
     {
-        ["feature_mode"] = "composed_features",
-        ["window_size"] = "10",
-        ["class_order"] = "Up,Down,Neutral",
-        ["feature_spec"] = featureSpec ?? "",
-    };
+        var map = PredictionModelMetadataTests.Version2Metadata();
+        map["feature_mode"] = "composed_features";
+        map["feature_spec"] = featureSpec ?? "";
+        return map;
+    }
 
     [Fact]
     public void ParseFeatureMode_ComposedFeatures_MapsToEnum()
@@ -63,12 +64,8 @@ public class PredictionModelMetadataComposedTests
     [Fact]
     public void Validate_ConfigHasSpec_ModelHasNone_Throws()
     {
-        var map = new Dictionary<string, string>
-        {
-            ["feature_mode"] = "composed_features",
-            ["window_size"] = "10",
-            ["class_order"] = "Up,Down,Neutral",
-        };
+        var map = BaseMap(null);
+        map.Remove("feature_spec");
 
         Assert.Throws<InvalidOperationException>(() => PredictionModelMetadata.Validate(
             map, PredictionFeatureMode.ComposedFeatures, 10, Classes, NullLogger.Instance, SpecA));
@@ -77,12 +74,7 @@ public class PredictionModelMetadataComposedTests
     [Fact]
     public void Validate_FixedModeModel_NoFeatureSpec_Unaffected()
     {
-        var map = new Dictionary<string, string>
-        {
-            ["feature_mode"] = "ohlcv_minmax",
-            ["window_size"] = "10",
-            ["class_order"] = "Up,Down,Neutral",
-        };
+        var map = PredictionModelMetadataTests.Version2Metadata();
 
         PredictionModelMetadata.Validate(
             map, PredictionFeatureMode.OhlcvMinMax, 10, Classes, NullLogger.Instance);

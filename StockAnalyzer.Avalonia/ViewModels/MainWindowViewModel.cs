@@ -37,6 +37,7 @@ public partial class MainWindowViewModel : ViewModelBase,
     IRecipient<ChartTimeframeChangedMessage>,
     IRecipient<TearOffRequestMessage>,
     IRecipient<RestoreRequestMessage>,
+    IRecipient<DetachedTabOrderChangedMessage>,
     IRecipient<CurrentTickerRequestMessage>,
     IRecipient<CurrentPeriodRequestMessage>,
     IRecipient<CurrentTimeframeRequestMessage>,
@@ -58,6 +59,7 @@ public partial class MainWindowViewModel : ViewModelBase,
     private readonly ITearOffService _tearOffService;
     private readonly IDetachedWindowFactory _windowFactory;
     private readonly IWindowBoundaryService _boundaryService;
+    private readonly IWindowManagementService _windowManagement;
     private readonly IDetachedTabManager _detachedTabManager;
     private bool _isTearingOff;
     private bool _isExiting;
@@ -70,6 +72,7 @@ public partial class MainWindowViewModel : ViewModelBase,
     private readonly LayoutStateStore _stateStore;
     private readonly ISourceIndicatorService? _sourceIndicatorService;
     private readonly IDynamicPeriodDriverService? _dynamicPeriodDriverService;
+    private readonly IContainerRegistry? _containerRegistry;
 
     // Child VM
     public ChartViewModel ChartViewModel { get; }
@@ -81,6 +84,29 @@ public partial class MainWindowViewModel : ViewModelBase,
     private int _autoSavePauseRefCount = 0;
     private bool _isApplyingSettings => Volatile.Read(ref _autoSavePauseRefCount) > 0;
     private bool _isLoaded;
+
+    // Redock overflow: tabs that could not dock because their panel was full, collected until the next dispatcher turn
+    // so that the tabs of one closed Tab Window are re-hosted together and the user is told once.
+    private readonly List<(WorkspaceViewItem Item, string Panel)> _overflowRehostQueue = new();
+    private bool _isOverflowFlushScheduled;
+
+    private const string LocalizedListSeparator = ", ";
+
+    internal const string RedockPanelFullTitleKey = "Dialog_Notice";
+    internal const string RedockPanelFullMessageKey = "Msg_RedockPanelFull";
+    internal const string RedockRehostFailedMessageKey = "Msg_RedockRehostFailed";
+
+    private static readonly IReadOnlyDictionary<string, string> PanelLabelKeys = new Dictionary<string, string>(StringComparer.Ordinal)
+    {
+        ["Left"] = "Menu_ToggleLeftPanel",
+        ["Right"] = "Menu_ToggleRightPanel",
+        ["Top"] = "Menu_ToggleTopPanel",
+        ["Bottom"] = "Menu_ToggleBottomPanel"
+    };
+
+    /// <summary>Every localization key the "redock into a full panel" notice resolves from code.</summary>
+    internal static IReadOnlyList<string> RedockPanelFullLocalizationKeys { get; } =
+        new[] { RedockPanelFullTitleKey, RedockPanelFullMessageKey, RedockRehostFailedMessageKey }.Concat(PanelLabelKeys.Values).ToArray();
 
     [ObservableProperty]
     private ObservableCollection<WorkspaceViewItem> _leftPanelTabs = new();
@@ -211,10 +237,12 @@ public partial class MainWindowViewModel : ViewModelBase,
         IWorkspaceSerializationService serializationService,
         Func<ChartViewModel> chartViewModelFactory,
         ISourceIndicatorService? sourceIndicatorService = null,
-        IDynamicPeriodDriverService? dynamicPeriodDriverService = null)
+        IDynamicPeriodDriverService? dynamicPeriodDriverService = null,
+        IContainerRegistry? containerRegistry = null)
     {
         _sourceIndicatorService = sourceIndicatorService;
         _dynamicPeriodDriverService = dynamicPeriodDriverService;
+        _containerRegistry = containerRegistry;
         _localizationService = localizationService ?? throw new ArgumentNullException(nameof(localizationService));
         _detachedTabManager = detachedTabManager ?? throw new ArgumentNullException(nameof(detachedTabManager));
         _stateStore = stateStore ?? throw new ArgumentNullException(nameof(stateStore));
@@ -229,6 +257,7 @@ public partial class MainWindowViewModel : ViewModelBase,
         _stateStore.PropertyChanged += OnStateStorePropertyChanged;
 
         ArgumentNullException.ThrowIfNull(windowManagement);
+        _windowManagement = windowManagement;
         _boundaryService = windowManagement.BoundaryService ?? throw new ArgumentNullException(nameof(windowManagement.BoundaryService));
         _panelTabFactory = windowManagement.TabFactory ?? throw new ArgumentNullException(nameof(windowManagement.TabFactory));
         _tearOffService = windowManagement.TearOff ?? throw new ArgumentNullException(nameof(windowManagement.TearOff));
@@ -589,6 +618,11 @@ public partial class MainWindowViewModel : ViewModelBase,
         TickerListViewModel?.ColumnTemplateSelector.ImportSelectionsByList(selectionsByList);
     }
 
+    void IWorkspaceLayoutTarget.RestoreTickerSharedColumnTemplateSelection(Guid templateId)
+    {
+        TickerListViewModel?.ColumnTemplateSelector.ImportSharedSelection(templateId);
+    }
+
     void IWorkspaceLayoutTarget.ApplySortState(string? columnName, int direction)
     {
         if (columnName != null) TickerListViewModel?.ApplySortState(columnName, direction);
@@ -660,16 +694,16 @@ public partial class MainWindowViewModel : ViewModelBase,
         switch (region)
         {
             case PanelRegion.Left:
-                if (LeftPanelTabs.Count >= LayoutConstants.MaxPanelTabs) return;
+                if (LeftPanelTabs.Count >= _stateStore.MaxPanelTabs) return;
                 LeftPanelTabs.Add(tab); LeftSelectedTabIndex = LeftPanelTabs.Count - 1; break;
             case PanelRegion.Right:
-                if (RightPanelTabs.Count >= LayoutConstants.MaxPanelTabs) return;
+                if (RightPanelTabs.Count >= _stateStore.MaxPanelTabs) return;
                 RightPanelTabs.Add(tab); RightSelectedTabIndex = RightPanelTabs.Count - 1; break;
             case PanelRegion.Top:
-                if (TopPanelTabs.Count >= LayoutConstants.MaxPanelTabs) return;
+                if (TopPanelTabs.Count >= _stateStore.MaxPanelTabs) return;
                 TopPanelTabs.Add(tab); TopSelectedTabIndex = TopPanelTabs.Count - 1; break;
             case PanelRegion.Bottom:
-                if (BottomPanelTabs.Count >= LayoutConstants.MaxPanelTabs) return;
+                if (BottomPanelTabs.Count >= _stateStore.MaxPanelTabs) return;
                 BottomPanelTabs.Add(tab); BottomSelectedTabIndex = BottomPanelTabs.Count - 1; break;
         }
         _layoutSaveScheduler.RequestSave(LayoutChangeReason.TabMoved);
@@ -790,32 +824,32 @@ public partial class MainWindowViewModel : ViewModelBase,
 
         if (tabs == null) return;
 
-        if (fromIndex < 0 || fromIndex >= tabs.Count)
+        // Bounds, distance limit and index clamping are defined once in TabMoveResolver (shared with Tab Window tabs).
+        int requestedToIndex = toIndex;
+        var outcome = TabMoveResolver.Resolve(
+            tabs.Count, fromIndex, requestedToIndex, _stateStore.MaxTabReorderDistance, out toIndex, out var clamps);
+
+        if (outcome == TabMoveOutcome.SourceOutOfRange)
         {
             _logger.LogWarning("ReorderTab fromIndex '{FromIndex}' is out of bounds. Tabs count = {Count}.", fromIndex, tabs.Count);
             return;
         }
 
-        int distance = Math.Abs(fromIndex - toIndex);
-        if (distance > LayoutConstants.MAX_TAB_REORDER_DISTANCE)
+        if ((clamps & TabMoveClamps.DistanceLimited) != 0)
         {
-            _logger.LogWarning("ReorderTab requested reorder distance '{Distance}' exceeds MAX_TAB_REORDER_DISTANCE '{Limit}'. Clamping.", distance, LayoutConstants.MAX_TAB_REORDER_DISTANCE);
-            int direction = toIndex > fromIndex ? 1 : -1;
-            toIndex = fromIndex + (LayoutConstants.MAX_TAB_REORDER_DISTANCE * direction);
+            _logger.LogWarning("ReorderTab requested reorder distance '{Distance}' exceeds MaxTabReorderDistance '{Limit}'. Clamping.", Math.Abs((long)requestedToIndex - fromIndex), _stateStore.MaxTabReorderDistance);
         }
 
-        if (toIndex < 0)
+        if ((clamps & TabMoveClamps.RaisedToFirst) != 0)
         {
-            _logger.LogWarning("ReorderTab clamped toIndex '{ToIndex}' was negative. Clamping to 0.", toIndex);
-            toIndex = 0;
+            _logger.LogWarning("ReorderTab clamped toIndex '{ToIndex}' was negative. Clamping to 0.", requestedToIndex);
         }
-        else if (toIndex >= tabs.Count)
+        else if ((clamps & TabMoveClamps.LoweredToLast) != 0)
         {
-            _logger.LogWarning("ReorderTab clamped toIndex '{ToIndex}' exceeded tabs count. Clamping to '{MaxIndex}'.", toIndex, tabs.Count - 1);
-            toIndex = tabs.Count - 1;
+            _logger.LogWarning("ReorderTab clamped toIndex '{ToIndex}' exceeded tabs count. Clamping to '{MaxIndex}'.", requestedToIndex, tabs.Count - 1);
         }
 
-        if (fromIndex == toIndex) return;
+        if (outcome == TabMoveOutcome.NoChange) return;
 
         tabs.Move(fromIndex, toIndex);
 
@@ -1246,6 +1280,7 @@ public partial class MainWindowViewModel : ViewModelBase,
         // Customization template is selected in the dropdown (the template keeps its own columns).
         settings.TickerListVisibleColumns = TickerListViewModel.ColumnTemplateSelector.GetWorkingSetColumnNames().ToList();
         settings.TickerListColumnTemplateByList = TickerListViewModel.ColumnTemplateSelector.ExportSelectionsByList();
+        settings.TickerListSharedColumnTemplateId = TickerListViewModel.ColumnTemplateSelector.ExportSharedSelection();
         settings.TickerListColumnWidths = TickerListViewModel.GetColumnWidths();
 
         // Capture selected watchlist
@@ -1572,22 +1607,16 @@ public partial class MainWindowViewModel : ViewModelBase,
     }
 
     /// <summary>
-    /// Handles a Tickers-tab Notes cell click: brings the Notes tab (NoteTimeline) to the front -
-    /// activating it wherever it's already open, or opening a new one (defaulting to the Bottom
-    /// panel, falling back to Right/Top/Left if Bottom is full) when it isn't open anywhere - and
-    /// filters it to the clicked ticker.
+    /// Handles a Tickers-tab Notes cell click originating from the main window or a detached window:
+    /// activates the existing Notes tab (preferring source container -> main panels -> other detached windows)
+    /// without creating a duplicate tab, or creates a new one only when absent across the entire workspace.
     /// </summary>
     public void Receive(NavigateToNoteTimelineRequestedMessage message)
     {
-        // Unlike the other _isApplyingSettings-gated handlers in this class, this one reacts only to
-        // the Notes "+" button's explicit click (its sole sender is NotesCellControl) - never to a
-        // settings-restore side effect - so gating it on _isApplyingSettings served no purpose and
-        // caused the button to silently no-op if clicked while the startup workspace/data load (which
-        // holds that flag true via PauseAutoSave in TryLoadDefaultWorkspaceAsync) was still in flight.
         _dispatcherService.Post(() =>
         {
-            var tab = FindOrOpenNoteTimelineTab();
-            if (tab?.ViewModel is NoteTimelineViewModel noteTimeline)
+            var noteTimeline = NavigateToExistingOrNewNoteTimelineTab(message.ContainerId);
+            if (noteTimeline != null)
             {
                 // Replaces whatever filter was previously active with exactly this ticker (fix
                 // request: multi-Ticker chip UI, Task F) - routes through SelectSuggestion so this
@@ -1599,18 +1628,86 @@ public partial class MainWindowViewModel : ViewModelBase,
         });
     }
 
-    private WorkspaceViewItem? FindOrOpenNoteTimelineTab()
+    private NoteTimelineViewModel? NavigateToExistingOrNewNoteTimelineTab(string? sourceContainerId)
     {
-        var panels = new (PanelRegion Region, ObservableCollection<WorkspaceViewItem> Tabs)[]
+        // 1. If triggered from a detached window, check if THAT container already has a Notes tab
+        if (!string.IsNullOrEmpty(sourceContainerId) && _containerRegistry != null)
         {
-            (PanelRegion.Left, LeftPanelTabs),
-            (PanelRegion.Right, RightPanelTabs),
-            (PanelRegion.Top, TopPanelTabs),
-            (PanelRegion.Bottom, BottomPanelTabs),
-        };
+            var sourceContainer = _containerRegistry.GetContainer(sourceContainerId);
+            if (sourceContainer != null)
+            {
+                var existing = sourceContainer.FindExistingNoteTimelineTab();
+                if (existing?.ViewModel is NoteTimelineViewModel vm)
+                {
+                    _windowManagement.BringWindowToFront(sourceContainer);
+                    return vm;
+                }
+            }
+        }
 
-        foreach (var (region, tabs) in panels)
+        // 2. Check if the main window's panels already have an open Notes tab
+        var mainPanelTab = FindExistingNoteTimelineTabInMainPanels();
+        if (mainPanelTab?.ViewModel is NoteTimelineViewModel mainVm)
         {
+            _windowManagement.BringMainWindowToFront();
+            return mainVm;
+        }
+
+        // 3. Check if any OTHER detached window already has an open Notes tab
+        if (_containerRegistry != null)
+        {
+            foreach (var container in _containerRegistry.GetAllContainers().ToList())
+            {
+                if (container.ContainerId == sourceContainerId) continue;
+
+                var existing = container.FindExistingNoteTimelineTab();
+                if (existing?.ViewModel is NoteTimelineViewModel otherVm)
+                {
+                    _windowManagement.BringWindowToFront(container);
+                    return otherVm;
+                }
+            }
+        }
+
+        // 4. Not open anywhere: create a new tab in the requesting container (or main panels)
+        if (!string.IsNullOrEmpty(sourceContainerId) && _containerRegistry != null)
+        {
+            var sourceContainer = _containerRegistry.GetContainer(sourceContainerId);
+            if (sourceContainer != null)
+            {
+                var newTab = sourceContainer.OpenNewNoteTimelineTab();
+                if (newTab?.ViewModel is NoteTimelineViewModel newVm)
+                {
+                    _windowManagement.BringWindowToFront(sourceContainer);
+                    return newVm;
+                }
+            }
+        }
+
+        // Fallback: create in main panels
+        var createdTab = OpenNewNoteTimelineTabInMainPanels();
+        if (createdTab?.ViewModel is NoteTimelineViewModel createdVm)
+        {
+            _windowManagement.BringMainWindowToFront();
+            return createdVm;
+        }
+
+        return null;
+    }
+
+    private WorkspaceViewItem? FindExistingNoteTimelineTabInMainPanels()
+    {
+        var preferredOrder = new[] { PanelRegion.Bottom, PanelRegion.Right, PanelRegion.Top, PanelRegion.Left };
+        foreach (var region in preferredOrder)
+        {
+            var tabs = region switch
+            {
+                PanelRegion.Left => LeftPanelTabs,
+                PanelRegion.Right => RightPanelTabs,
+                PanelRegion.Top => TopPanelTabs,
+                _ => BottomPanelTabs,
+            };
+
             for (int i = 0; i < tabs.Count; i++)
             {
                 if (tabs[i].ViewModel is NoteTimelineViewModel)
@@ -1621,6 +1718,11 @@ public partial class MainWindowViewModel : ViewModelBase,
             }
         }
 
+        return null;
+    }
+
+    private WorkspaceViewItem? OpenNewNoteTimelineTabInMainPanels()
+    {
         // Not open anywhere: try to add it, preferring Bottom (Notes' conventional home alongside
         // DataWindow), then the other panels in order if Bottom is already at MaxPanelTabs capacity.
         var preferredOrder = new[] { PanelRegion.Bottom, PanelRegion.Right, PanelRegion.Top, PanelRegion.Left };
@@ -1633,7 +1735,7 @@ public partial class MainWindowViewModel : ViewModelBase,
                 PanelRegion.Top => TopPanelTabs,
                 _ => BottomPanelTabs,
             };
-            if (tabs.Count >= LayoutConstants.MaxPanelTabs) continue;
+            if (tabs.Count >= _stateStore.MaxPanelTabs) continue;
 
             var newTab = _panelTabFactory.CreateTab("NoteTimeline");
             if (newTab == null) return null;
@@ -1644,6 +1746,11 @@ public partial class MainWindowViewModel : ViewModelBase,
         }
 
         return null;
+    }
+
+    private WorkspaceViewItem? FindOrOpenNoteTimelineTab()
+    {
+        return FindExistingNoteTimelineTabInMainPanels() ?? OpenNewNoteTimelineTabInMainPanels();
     }
 
     private void ActivateTab(PanelRegion region, int index)
@@ -1709,6 +1816,31 @@ public partial class MainWindowViewModel : ViewModelBase,
         message.Reply(removed);
     }
 
+    public void Receive(DetachedTabOrderChangedMessage message)
+    {
+        if (message == null || _isExiting) return;
+
+        if (_dispatcherService.CheckAccess())
+        {
+            ApplyDetachedTabOrder(message);
+        }
+        else
+        {
+            _dispatcherService.Post(() => ApplyDetachedTabOrder(message));
+        }
+    }
+
+    private void ApplyDetachedTabOrder(DetachedTabOrderChangedMessage message)
+    {
+        if (_isExiting) return;
+
+        bool applied = _detachedTabManager.ReorderContainerItems(message.ContainerId, message.OrderedItems);
+        if (applied && _isLoaded && !_isApplyingSettings)
+        {
+            _layoutSaveScheduler.RequestSave(LayoutChangeReason.TabMoved);
+        }
+    }
+
     public void Receive(RestoreRequestMessage message)
     {
         if (message.Value == null || _isExiting) return;
@@ -1750,6 +1882,18 @@ public partial class MainWindowViewModel : ViewModelBase,
                 _ => BottomPanelTabs
             };
 
+            if (targetCollection.Count >= _stateStore.MaxPanelTabs)
+            {
+                // The panel already holds the maximum number of tabs: docking would exceed the cap (and the selected-index
+                // update below would throw). The tab stays detached: it remains registered for persistence and is hosted
+                // in a Tab Window again (the window it left is closing or already emptied). Tabs overflowing in the same
+                // dispatcher turn are re-hosted together and announced once (see FlushOverflowRehost).
+                message.Value.IsDetached = true;
+                _logger.LogWarning("[TabTearOff] {Panel} panel is full ({Max} tabs). Tab={TabId} stays detached.", panelName, _stateStore.MaxPanelTabs, message.Value.Id);
+                EnqueueOverflowRehost(message.Value, panelName);
+                return;
+            }
+
             targetCollection.Add(message.Value);
             _detachedTabManager.RemoveActiveDetachedTab(message.Value);
             
@@ -1773,6 +1917,115 @@ public partial class MainWindowViewModel : ViewModelBase,
         });
     }
     
+    private void EnqueueOverflowRehost(WorkspaceViewItem item, string panelName)
+    {
+        _overflowRehostQueue.Add((item, panelName));
+        if (_isOverflowFlushScheduled) return;
+
+        _isOverflowFlushScheduled = true;
+        _dispatcherService.Post(FlushOverflowRehost);
+    }
+
+    /// <summary>
+    /// Re-hosts the tabs that could not dock into a full panel and tells the user once about the outcome. Tabs closed from the
+    /// same Tab Window (same <see cref="WorkspaceViewItem.ContainerId"/>) return to one window, other tabs to a window each
+    /// (tabs queued in the same dispatcher turn are grouped; a different ordering only splits groups, it never loses a tab).
+    /// The outcome comes from <see cref="ITearOffService.TryRehostDetached"/>, which does not fall back to another redock
+    /// request, so a failure cannot loop back here.
+    /// </summary>
+    private void FlushOverflowRehost()
+    {
+        _isOverflowFlushScheduled = false;
+        var batch = _overflowRehostQueue.ToList();
+        _overflowRehostQueue.Clear();
+        if (_isExiting || batch.Count == 0) return;
+
+        var groups = new List<List<WorkspaceViewItem>>();
+        var groupByContainer = new Dictionary<string, List<WorkspaceViewItem>>(StringComparer.Ordinal);
+        var queuedItems = new HashSet<WorkspaceViewItem>();
+        var panelByItem = new Dictionary<WorkspaceViewItem, string>();
+
+        foreach (var (item, panel) in batch)
+        {
+            if (!queuedItems.Add(item)) continue; // the same tab queued twice in one turn
+
+            panelByItem[item] = panel;
+            if (string.IsNullOrEmpty(item.ContainerId))
+            {
+                groups.Add(new List<WorkspaceViewItem> { item });
+            }
+            else
+            {
+                if (!groupByContainer.TryGetValue(item.ContainerId, out var group))
+                {
+                    group = new List<WorkspaceViewItem>();
+                    groupByContainer[item.ContainerId] = group;
+                    groups.Add(group);
+                }
+                group.Add(item);
+            }
+        }
+
+        var panels = new List<string>();
+        int failedTabs = 0;
+        foreach (var group in groups)
+        {
+            bool hosted;
+            try
+            {
+                hosted = _tearOffService.TryRehostDetached(group);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[TabTearOff] Re-host threw for LeadTab={TabId}.", group[0].Id);
+                hosted = false;
+            }
+
+            if (!hosted)
+            {
+                failedTabs += group.Count;
+                _logger.LogError("[TabTearOff] {Count} tab(s) starting with {TabId} could not be re-hosted after a full-panel redock; they stay registered for persistence.", group.Count, group[0].Id);
+            }
+
+            foreach (var item in group)
+            {
+                if (!panels.Contains(panelByItem[item])) panels.Add(panelByItem[item]);
+            }
+        }
+
+        NotifyRedockOutcome(panels, failedTabs);
+    }
+
+    /// <summary>One notice per overflow batch: the panel-full notice, or the failure notice when a re-host did not happen.</summary>
+    private void NotifyRedockOutcome(IReadOnlyList<string> panels, int failedTabs)
+    {
+        try
+        {
+            string title = _localizationService.GetString(RedockPanelFullTitleKey) ?? RedockPanelFullTitleKey;
+            string messageKey = failedTabs > 0 ? RedockRehostFailedMessageKey : RedockPanelFullMessageKey;
+            string template = _localizationService.GetString(messageKey) ?? messageKey;
+            var panelLabels = panels.Select(p => _localizationService.GetString(PanelLabelKeys.GetValueOrDefault(p, PanelLabelKeys["Bottom"])) ?? p).ToList();
+            _ = ShowNoticeAsync(title, template, string.Join(LocalizedListSeparator, panelLabels), _stateStore.MaxPanelTabs, failedTabs);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[TabTearOff] Could not prepare the full-panel redock notice.");
+        }
+    }
+
+    // Formatting happens inside the try: a malformed translation must not surface as an unhandled dispatcher exception.
+    private async Task ShowNoticeAsync(string title, string template, params object[] arguments)
+    {
+        try
+        {
+            await _dialogService.ShowAlertAsync(title, string.Format(template, arguments));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[TabTearOff] Could not show the full-panel redock notice.");
+        }
+    }
+
     public void Receive(ChartSymbolChangedMessage message)
     {
         if (message.Sender == null || _isExiting) return;

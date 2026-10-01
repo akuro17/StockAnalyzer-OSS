@@ -1,4 +1,5 @@
 using System;
+using StockAnalyzer.Core.Services;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
@@ -22,6 +23,8 @@ namespace StockAnalyzer.Avalonia.Views.Chart;
 /// </remarks>
 public sealed class ChartDataSnapshot
 {
+    public ModelAnalysisSnapshot? ModelAnalysis { get; }
+
     /// <summary>
     /// Read-only list of candle data.
     /// </summary>
@@ -213,13 +216,13 @@ public sealed class ChartDataSnapshot
         decimal? overrideMaxPrice = null,
         int visibleCandleCount = 100,
         IReadOnlyList<int>? kagiColumnMap = null,
-        PriceScaleType priceScale = PriceScaleType.Linear)
+        PriceScaleType priceScale = PriceScaleType.Linear, ModelAnalysisSnapshot? modelAnalysis = null)
         : this(candles.Select(c => new CoreCandleData(c.Date, c.Open, c.High, c.Low, c.Close, c.Volume)),
                symbol, timeframe, indicatorResults, indicatorSettings, drawings, startIndex, count,
                paddingTopPx, paddingBottomPx, chartHeightPx, minBrickSize, maxBrickSize, pnfAnalysis,
                multiWaveSignals, allPnfCandles, chartType, threeLineBreakCount, priceRangeCalculator,
                confluence, renderingMetadata, comparisonSeries, overrideMinPrice, overrideMaxPrice,
-               visibleCandleCount, kagiColumnMap, priceScale)
+               visibleCandleCount, kagiColumnMap, priceScale, modelAnalysis)
     {
     }
 
@@ -250,9 +253,10 @@ public sealed class ChartDataSnapshot
         decimal? overrideMaxPrice = null,
         int visibleCandleCount = 100,
         IReadOnlyList<int>? kagiColumnMap = null,
-        PriceScaleType priceScale = PriceScaleType.Linear)
+        PriceScaleType priceScale = PriceScaleType.Linear, ModelAnalysisSnapshot? modelAnalysis = null)
     {
         PriceScale = priceScale;
+        ModelAnalysis = modelAnalysis;
         VisibleCandleCount = visibleCandleCount;
         KagiColumnMap = kagiColumnMap;
         var priceCalc = priceRangeCalculator ?? StandardPriceRangeCalculator.Instance;
@@ -573,9 +577,10 @@ public sealed class ChartDataSnapshot
         IReadOnlyDictionary<string, decimal?[]>? comparisonSeries = null,
         decimal? overrideMinPrice = null,
         decimal? overrideMaxPrice = null,
-        PriceScaleType priceScale = PriceScaleType.Linear)
+        PriceScaleType priceScale = PriceScaleType.Linear, ModelAnalysisSnapshot? modelAnalysis = null)
     {
         PriceScale = priceScale;
+        ModelAnalysis = modelAnalysis;
         var priceCalc = priceRangeCalculator ?? StandardPriceRangeCalculator.Instance;
         ChartType = chartType;
         PaddingTopPx = paddingTopPx;

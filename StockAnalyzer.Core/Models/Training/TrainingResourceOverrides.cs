@@ -1,4 +1,5 @@
 using System;
+using System.Text.Json.Serialization;
 
 namespace StockAnalyzer.Core.Models.Training;
 
@@ -13,6 +14,7 @@ public sealed record TrainingResourceOverrides(int? MaxChannels = null, int? Max
     public const int MaximumEvaluationFolds = 10;
     public const int MaximumEnsembleMembers = 8;
     public const int MaximumFeatureLag = 512;
+    public const int RawOhlcvChannels = 5;
     public const int MaximumRunDurationMinutes = 120;
     public const int MiB = 1024 * 1024;
     public const int Float32Bytes = sizeof(float);
@@ -46,5 +48,29 @@ public sealed record TrainingResourceOverrides(int? MaxChannels = null, int? Max
         {
             throw new InvalidOperationException($"{name} must be between {Minimum} and {maximum}.");
         }
+    }
+}
+
+/// <summary>The Core-resolved limits for one training run, sent unchanged to Python and retained as run evidence.</summary>
+public sealed record TrainingResourceLimits(
+    int ContractVersion, int MaxChannels, [property: JsonPropertyName("max_tensor_size_mib")] int MaxTensorSizeMiB, int MaxSamples,
+    int MaxEvaluationFolds, int MaxFeatureLag, int MaxEnsembleMembers, int MaxRunDurationSeconds)
+{
+    public const int CurrentContractVersion = 1;
+
+    public long MaxTensorElements => checked((long)MaxTensorSizeMiB * TrainingResourceOverrides.MiB
+        / TrainingResourceOverrides.Float32Bytes);
+
+    public void Validate()
+    {
+        if (ContractVersion != CurrentContractVersion
+            || MaxChannels is < 1 or > TrainingResourceOverrides.MaximumChannels
+            || MaxTensorSizeMiB is < 1 or > TrainingResourceOverrides.MaximumTensorSizeMiB
+            || MaxSamples is < 1 or > TrainingResourceOverrides.MaximumSamples
+            || MaxEvaluationFolds is < 2 or > TrainingResourceOverrides.MaximumEvaluationFolds
+            || MaxFeatureLag is < 1 or > TrainingResourceOverrides.MaximumFeatureLag
+            || MaxEnsembleMembers is < 1 or > TrainingResourceOverrides.MaximumEnsembleMembers
+            || MaxRunDurationSeconds is < 1 or > TrainingResourceOverrides.MaximumRunDurationMinutes * 60)
+            throw new InvalidOperationException("Resolved training resource limits are invalid.");
     }
 }

@@ -89,11 +89,13 @@ namespace StockAnalyzer.Core.Tests.Services
         {
             await using var manager = new PythonProcessManager(new TimeoutSettings());
             using var cts = new CancellationTokenSource();
-            cts.CancelAfter(20);
 
             await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
                 await manager.WithRequestTimeoutAsync<int>(cts.Token, async token =>
                 {
+                    // The caller cancels from inside the running operation, not through a timer: a caller timer racing the 200 ms request
+                    // timer can fire after it under load (the failure was a TimeoutException after 489 ms), which is a different outcome.
+                    cts.Cancel();
                     await Task.Delay(Timeout.Infinite, token);
                     return 0;
                 }));

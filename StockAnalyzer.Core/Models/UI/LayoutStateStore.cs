@@ -5,6 +5,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using StockAnalyzer.Core.Constants;
+using StockAnalyzer.Core.Models.Settings;
 
 namespace StockAnalyzer.Core.Models.UI;
 
@@ -47,6 +48,12 @@ public partial class LayoutStateStore : ObservableObject
         set => SetProperty(ref _selectedTimeframe, string.IsNullOrWhiteSpace(value) ? DefaultTimeframe : value);
     }
 
+    /// <summary>Most tabs one panel region (or Tab Window) may hold (<see cref="LayoutSettings.MaxPanelTabs"/>).</summary>
+    public int MaxPanelTabs { get; }
+
+    /// <summary>Farthest one drag may move a tab (<see cref="LayoutSettings.MaxTabReorderDistance"/>).</summary>
+    public int MaxTabReorderDistance { get; }
+
     public PanelDimensions LeftPanel { get; }
     public PanelDimensions RightPanel { get; }
     public PanelDimensions TopPanel { get; }
@@ -63,9 +70,15 @@ public partial class LayoutStateStore : ObservableObject
     /// Initializes a new instance of the <see cref="LayoutStateStore"/> class and hydrates it with defaults from LayoutConstants.
     /// </summary>
     /// <param name="logger">Optional logger for telemetry and debugging.</param>
-    public LayoutStateStore(ILogger<LayoutStateStore>? logger = null)
+    /// <param name="layoutSettings">Configured layout limits; the <see cref="LayoutSettings"/> defaults when omitted.</param>
+    public LayoutStateStore(ILogger<LayoutStateStore>? logger = null, LayoutSettings? layoutSettings = null)
     {
         _logger = logger ?? NullLogger<LayoutStateStore>.Instance;
+
+        layoutSettings ??= new LayoutSettings();
+        layoutSettings.Validate();
+        MaxPanelTabs = layoutSettings.MaxPanelTabs;
+        MaxTabReorderDistance = layoutSettings.MaxTabReorderDistance;
 
         // Apply default sizes from LayoutConstants and specify initial visibility
         LeftPanel = new PanelDimensions(LayoutConstants.DefaultLeftWidth, DefaultLeftPanelVisible, LayoutConstants.MaxPanelWidthClamp);
@@ -95,11 +108,11 @@ public partial class LayoutStateStore : ObservableObject
     /// </summary>
     public void SetTabIndex(PanelRegion region, int newIndex)
     {
-        if (newIndex < 0 || newIndex >= LayoutConstants.MaxPanelTabs)
+        if (newIndex < 0 || newIndex >= MaxPanelTabs)
         {
             throw new ArgumentOutOfRangeException(
                 nameof(newIndex),
-                $"TabIndex must be in range [0, {LayoutConstants.MaxPanelTabs}). Given: {newIndex}");
+                $"TabIndex must be in range [0, {MaxPanelTabs}). Given: {newIndex}");
         }
 
         if (_selectedTabIndices[region] != newIndex)

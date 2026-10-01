@@ -162,6 +162,13 @@ public class WorkspaceSettings
     public Dictionary<Guid, Guid> TickerListColumnTemplateByList { get; set; } = new();
 
     /// <summary>
+    /// Column Customization template selected while the selection scope is <see cref="TickerColumnSelectionScope.Shared"/>
+    /// (one selection for all ticker lists). <see cref="Guid.Empty"/> = "Active Columns". Stored independently of
+    /// <see cref="TickerListColumnTemplateByList"/>, which is kept untouched while the scope is Shared.
+    /// </summary>
+    public Guid TickerListSharedColumnTemplateId { get; set; } = Guid.Empty;
+
+    /// <summary>
     /// The list of visible columns in the Screener Results grid (member names).
     /// </summary>
     public List<string> ScreenerResultsVisibleColumns { get; set; } = new();

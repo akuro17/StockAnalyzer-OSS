@@ -1,0 +1,30 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="using:StockAnalyzer.Avalonia.Views.Controls"
+             x:Class="StockAnalyzer.Avalonia.Views.Controls.ToastOverlay"
+             x:Name="Host"
+             x:DataType="controls:ToastOverlay">
+
+    <!-- Single definition of the toast overlay display convention (SA_UI_INTERACTION, Toast Notification Overlay).
+         Hosts place it (Grid.Row/RowSpan, alignment, Margin, ZIndex) and bind Service; nothing here depends on the host's DataContext. -->
+    <Border IsVisible="{Binding #Host.Service.IsNotificationVisible, FallbackValue=False}"
+            Padding="16,10"
+            Background="{DynamicResource Brush.Background.Tertiary}"
+            CornerRadius="8" BoxShadow="0 4 10 0 #40000000">
+        <Border.Transitions>
+            <Transitions>
+                <DoubleTransition Property="Opacity" Duration="0:0:0.2"/>
+            </Transitions>
+        </Border.Transitions>
+        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+            <TextBlock Text="{Binding #Host.Icon}"
+                       IsVisible="{Binding #Host.Icon, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                       Margin="0,0,8,0" VerticalAlignment="Center"
+                       FontSize="{DynamicResource TitleFontSize}"/>
+            <TextBlock Text="{Binding #Host.Service.NotificationMessage}"
+                       Foreground="{DynamicResource Brush.Text.Primary}"
+                       FontSize="{DynamicResource BaseFontSize}" FontWeight="SemiBold"
+                       VerticalAlignment="Center"/>
+        </StackPanel>
+    </Border>
+</UserControl>

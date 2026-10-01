@@ -71,4 +71,18 @@ public sealed class FixedScalerParityTests
         scaler.Transform(new double[] { 20, 5 }, output);
         Assert.Equal(new float[] { 0, 1 }, output);
     }
+
+    [Fact]
+    public void FiniteDoubleOverflowingFloat32IsRejectedUnlessClipped()
+    {
+        var statistics = new[] { new FixedScalerStatistic(0, 1, 0, 1) };
+        var raw = new[] { 1e100 };
+        var output = new float[1];
+        var unbounded = new FixedScaler(1, "ohlcv_minmax", 1, Array.Empty<int>(), null,
+            new[] { "lag0:open" }, statistics, "fixture");
+        Assert.Throws<InvalidDataException>(() => unbounded.Transform(raw, output));
+        var clipped = unbounded with { ClipSigma = 3.0 };
+        clipped.Transform(raw, output);
+        Assert.Equal(3.0f, output[0]);
+    }
 }

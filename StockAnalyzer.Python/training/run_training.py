@@ -8,7 +8,7 @@ streams a line protocol on stdout for the C# ``ITrainingOrchestrator``:
     STAGE:<name>            pipeline phase entered: load, dataset, train, export, done
     PROGRESS:<0-100>        coarse overall percent
     METRIC:<json>           a flat metrics dict (the final aggregated report)
-    ARTIFACT:<kind>:<path>  a produced file; kind is ``onnx`` or ``metrics``
+    ARTIFACT:<kind>:<path>  a produced file; kind is ``onnx``, ``metrics`` or ``scaler``
 
 Every other diagnostic line is prefixed ``STDERR:`` (kept on stdout so ordering is
 preserved). This module dispatches to a trainer CLI (``train_pytorch.py`` /
@@ -27,6 +27,7 @@ projection already validated against a provider finality manifest by C#.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import dataclasses
 import datetime
 import hashlib
@@ -47,6 +48,7 @@ import dataset as ds  # noqa: E402  (sibling module, path inserted above)
 import fixed_scaler  # noqa: E402
 import metrics  # noqa: E402
 import onnx_meta  # noqa: E402  (sibling module, path inserted above)
+import checkpoints  # noqa: E402
 
 # <DataRoot>/TrainingArtifacts, not a path relative to this script: this file lives under
 # StockAnalyzer.Python/training/, which in a release build is copied beside the executable
@@ -55,8 +57,51 @@ import onnx_meta  # noqa: E402  (sibling module, path inserted above)
 # parquet reads work), so reuse it here instead of introducing a second, divergent resolution
 # scheme for this one output directory.
 ARTIFACTS_DIR: Path = ds.DATA_ROOT / "TrainingArtifacts"
-MAX_EVALUATION_FOLDS = 10  # D03; mirrored by WalkForwardDataRequirement.MaxEvaluationFolds.
-MAX_RUN_DURATION_SECONDS = 120 * 60  # D03; mirrored by TrainingOrchestrator.
+MAX_EVALUATION_FOLDS = ds._env_int("SA_MAX_EVALUATION_FOLDS", 10)
+MAX_RUN_DURATION_SECONDS = ds._env_int("SA_MAX_RUN_DURATION_SECONDS", 120 * 60)
+
+_RESOURCE_ENV = {
+    "contract_version": "SA_TRAINING_RESOURCE_CONTRACT_VERSION",
+    "max_channels": "SA_MAX_COMPOSED_CHANNELS",
+    "max_tensor_size_mib": "SA_MAX_COMPOSED_TENSOR_SIZE_MB",
+    "max_samples": "SA_MAX_COMPOSED_BATCH_SAMPLES",
+    "max_evaluation_folds": "SA_MAX_EVALUATION_FOLDS",
+    "max_feature_lag": "SA_MAX_FEATURE_LAG",
+    "max_ensemble_members": "SA_MAX_ENSEMBLE_MEMBERS",
+    "max_run_duration_seconds": "SA_MAX_RUN_DURATION_SECONDS",
+}
+
+
+def _effective_resource_limits() -> dict[str, int]:
+    return {
+        "contract_version": 1,
+        "max_channels": ds.MAX_COMPOSED_CHANNELS,
+        "max_tensor_size_mib": ds.MAX_COMPOSED_TENSOR_SIZE_MB,
+        "max_samples": ds.MAX_COMPOSED_BATCH_SAMPLES,
+        "max_evaluation_folds": MAX_EVALUATION_FOLDS,
+        "max_feature_lag": fixed_scaler.MAX_LAG,
+        "max_ensemble_members": ds._env_int("SA_MAX_ENSEMBLE_MEMBERS", 8),
+        "max_run_duration_seconds": MAX_RUN_DURATION_SECONDS,
+        "max_tensor_elements": ds.MAX_COMPOSED_TENSOR_SIZE_MB * 1024 * 1024 // 4,
+    }
+
+
+def _validate_resource_limits(limits: dict | None, budget: float | None) -> None:
+    if limits is None:
+        if budget is not None or os.environ.get(_RESOURCE_ENV["contract_version"]) is not None:
+            raise ValueError("managed training resource contract is missing")
+        return
+    expected = _effective_resource_limits()
+    if (not isinstance(limits, dict) or set(limits) != set(expected)
+            or any(type(limits[key]) is not int or limits[key] != value
+                   for key, value in expected.items())):
+        raise ValueError("training resource contract disagrees with effective limits")
+    for key, env_name in _RESOURCE_ENV.items():
+        if os.environ.get(env_name) != str(limits[key]):
+            raise ValueError(f"training resource environment disagrees at {key}")
+    if (type(budget) not in (int, float) or not math.isfinite(budget)
+            or budget <= 0 or budget > limits["max_run_duration_seconds"]):
+        raise ValueError("remaining training run budget is invalid")
 
 # framework wire string -> (trainer module name, accepts --arch).
 _FRAMEWORKS: Dict[str, Tuple[str, bool]] = {
@@ -109,11 +154,18 @@ class JobConfig:
     # manual/standalone invocation outside the C# orchestrator; main() falls back to a locally
     # derived timestamp in that case.
     run_id: Optional[str] = None
+    resource_limits: Optional[dict] = None
+    remaining_run_budget_seconds: Optional[float] = None
     # validation / target-definition contract (mirror of C# TrainingJobConfig).
     target_type: str = "classification"
     n_splits: int = ds.DEFAULT_WF_SPLITS
     gap: Optional[int] = None
     oos_tail_days: Optional[int] = None
+    initialization_mode: str = "fresh"
+    checkpoint_path: Optional[str] = None
+    parent_model_id: Optional[str] = None
+    parent_model_hash: Optional[str] = None
+    freeze_paths: List[str] = dataclasses.field(default_factory=list)
 
     @staticmethod
     def from_json(text: str) -> "JobConfig":
@@ -150,10 +202,17 @@ class JobConfig:
                 end_date=_opt_str(raw.get("end_date")),
                 output_name=_opt_str(raw.get("output_name")),
                 run_id=_opt_str(raw.get("run_id")),
+                resource_limits=raw.get("resource_limits"),
+                remaining_run_budget_seconds=raw.get("remaining_run_budget_seconds"),
                 target_type=str(raw.get("target_type", "classification")).strip().lower(),
                 n_splits=int(raw.get("n_splits", ds.DEFAULT_WF_SPLITS)),
                 gap=_opt_int(raw.get("gap")),
                 oos_tail_days=_opt_int(raw.get("oos_tail_days")),
+                initialization_mode=raw.get("initialization_mode", "fresh"),
+                checkpoint_path=raw.get("checkpoint_path"),
+                parent_model_id=raw.get("parent_model_id"),
+                parent_model_hash=raw.get("parent_model_hash"),
+                freeze_paths=raw.get("freeze_paths", []),
             )
         except KeyError as exc:
             raise ValueError(f"config is missing required key: {exc}") from exc
@@ -161,6 +220,9 @@ class JobConfig:
         return cfg
 
     def validate(self) -> None:
+        checkpoints.validate_controls(self.initialization_mode, self.framework, self.checkpoint_path,
+                                      self.parent_model_id, self.parent_model_hash, self.freeze_paths)
+        _validate_resource_limits(self.resource_limits, self.remaining_run_budget_seconds)
         if type(self.fixed_zscore) is not bool:
             raise ValueError("config.fixed_zscore must be boolean")
         if self.fixed_zscore and self.feature_mode not in ("ohlcv_minmax", ds.COMPOSED_FEATURES_MODE):
@@ -253,6 +315,8 @@ class JobConfig:
             raise ValueError(
                 f"config.target_type {self.target_type!r} not in {list(onnx_meta.TARGET_TYPES)}"
             )
+        if self.target_type == "regression" and self.framework != "pytorch":
+            raise ValueError("regression training currently requires pytorch")
         if self.n_splits < 2:
             raise ValueError("config.n_splits must be at least 2")
         if self.n_splits > MAX_EVALUATION_FOLDS:
@@ -432,10 +496,13 @@ def _resolve_training_dir(cfg: JobConfig, raw_data_dir: Path, tmp_root: Path) ->
 # the user set through its own UI control, so it is rejected instead -- see _build_trainer_argv.
 # A future flag is added here in the same PR that wires it into the trainers, not before.
 _RESERVED_TRAINER_FLAGS: frozenset = frozenset({
-    "data-dir", "feature-mode", "feature-spec", "target-type", "window", "horizon", "wf-splits",
+    "data-dir", "feature-mode", "feature-spec", "target-type", "window", "horizon", "timeframe", "wf-splits",
     "gap", "out", "arch", "indicator-channel-export-paths", "outer-fold-index",
     "max-symbols", "smoke",
     "fixed-zscore", "clip-sigma", "lags",
+    "initialization-mode", "init-from", "checkpoint-dir", "run-id",
+    "parent-model-id", "parent-model-hash", "freeze-paths",
+    "preflight",
 })
 
 
@@ -454,6 +521,7 @@ def _build_trainer_argv(cfg: JobConfig, data_dir: Path, out_path: Path) -> List[
         "--feature-mode", cfg.feature_mode,
         "--window", str(cfg.window_size),
         "--horizon", str(cfg.horizon),
+        "--timeframe", cfg.timeframe,
         "--wf-splits", str(cfg.n_splits),
     ]
     if cfg.feature_mode == ds.COMPOSED_FEATURES_MODE:
@@ -533,7 +601,7 @@ def _onnx_predict_fn(onnx_path: Path):
 
     session = ort.InferenceSession(str(onnx_path), providers=["CPUExecutionProvider"])
     metadata = session.get_modelmeta().custom_metadata_map
-    scaler = fixed_scaler.load_sidecar(onnx_path, metadata) if "scaler_ref" in metadata else None
+    scaler = fixed_scaler.load_sidecar(onnx_path, metadata) if fixed_scaler.requires_fixed_scaler(metadata) else None
 
     def predict(x: np.ndarray) -> np.ndarray:
         tensor = fixed_scaler.transform(x, scaler) if scaler is not None else np.asarray(x, dtype=np.float32)
@@ -758,25 +826,125 @@ def _file_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _publish_release_bundle(release_path: Path, staged_metrics: Path,
+                            release_scaler: Path | None, out_path: Path,
+                            expected_report: dict, release_analysis: Path | None = None) -> None:
+    """Copy a scored bundle beside its destination, then commit with local recovery copies."""
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    metrics_path = out_path.with_name(out_path.name + ".metrics.json")
+    scaler_path = out_path.with_name(out_path.name + ".scaler.json")
+    analysis_path = out_path.with_name(out_path.name + ".analysis.json")
+    stage = Path(tempfile.mkdtemp(prefix=f".{out_path.stem}_publish_", dir=out_path.parent))
+    preserve_recovery = False
+    try:
+        incoming = stage / "incoming"
+        previous = stage / "previous"
+        incoming.mkdir()
+        previous.mkdir()
+        model_copy = incoming / out_path.name
+        metrics_copy = incoming / metrics_path.name
+        shutil.copy2(release_path, model_copy)
+        shutil.copy2(staged_metrics, metrics_copy)
+        scaler_copy = None
+        if release_scaler is not None:
+            scaler_copy = incoming / scaler_path.name
+            shutil.copy2(release_scaler, scaler_copy)
+        analysis_copy = None
+        if release_analysis is not None:
+            analysis_copy = incoming / analysis_path.name
+            shutil.copy2(release_analysis, analysis_copy)
+
+        model_hash = _file_sha256(model_copy)
+        if (model_copy.stat().st_size == 0 or model_hash != _file_sha256(release_path)
+                or model_hash != expected_report.get("scored_model_sha256")):
+            raise ValueError("selected release model disagrees with its independent score evidence")
+        report_copy = json.loads(metrics_copy.read_text(encoding="utf-8"))
+        if (report_copy != expected_report or report_copy.get("evaluation_status") != "independent_outer"
+                or report_copy.get("scored_model_sha256") != model_hash):
+            raise ValueError("staged metrics disagree with the selected release model")
+        if scaler_copy is not None:
+            scaler_document = json.loads(scaler_copy.read_text(encoding="utf-8"))
+            if (not isinstance(scaler_document, dict)
+                    or scaler_document.get("schema_version") != fixed_scaler.SCHEMA_VERSION
+                    or not scaler_document.get("feature_contract_hash")
+                    or _file_sha256(scaler_copy) != _file_sha256(release_scaler)):
+                raise ValueError("staged scaler is invalid or differs from the selected model sidecar")
+
+        if analysis_copy is not None:
+            analysis_document = json.loads(analysis_copy.read_text(encoding="utf-8"))
+            if (analysis_document.get("model_sha256") != model_hash
+                    or analysis_document.get("data_revision") != expected_report.get("data_revision")
+                    or _file_sha256(analysis_copy) != _file_sha256(release_analysis)):
+                raise ValueError("staged analysis disagrees with the selected model evidence")
+        finals = (out_path, metrics_path, scaler_path, analysis_path)
+        backups = {path: previous / path.name for path in finals if path.exists()}
+        for path, backup in backups.items():
+            shutil.copy2(path, backup)
+            if _file_sha256(path) != _file_sha256(backup):
+                raise OSError(f"prior artifact backup changed while copying: {path}")
+
+        attempted: list[Path] = []
+        try:
+            operations = [(metrics_copy, metrics_path)]
+            if scaler_copy is not None:
+                operations.append((scaler_copy, scaler_path))
+            if analysis_copy is not None:
+                operations.append((analysis_copy, analysis_path))
+            operations.append((model_copy, out_path))
+            for source, destination in operations:
+                attempted.append(destination)
+                os.replace(source, destination)
+            if scaler_copy is None and scaler_path.exists():
+                attempted.append(scaler_path)
+                os.replace(scaler_path, stage / "retired.scaler.json")
+            if analysis_copy is None and analysis_path.exists():
+                attempted.append(analysis_path)
+                os.replace(analysis_path, stage / "retired.analysis.json")
+        except OSError as publish_error:
+            restoration_errors = []
+            for destination in reversed(attempted):
+                try:
+                    if destination in backups:
+                        restore_copy = stage / ("restore_" + destination.name)
+                        shutil.copy2(backups[destination], restore_copy)
+                        os.replace(restore_copy, destination)
+                    else:
+                        destination.unlink(missing_ok=True)
+                except OSError as restore_error:
+                    restoration_errors.append(f"{destination}: {restore_error}")
+            if restoration_errors:
+                preserve_recovery = True
+                raise RuntimeError(
+                    f"release publication failed; recovery copies remain in {previous}: "
+                    + "; ".join(restoration_errors)) from publish_error
+            raise
+    finally:
+        if not preserve_recovery:
+            if stage.resolve().parent != out_path.parent.resolve():
+                raise RuntimeError("refusing to remove publication stage outside artifact directory")
+            try:
+                shutil.rmtree(stage)
+            except OSError as cleanup_error:
+                _note(f"publication stage cleanup failed at {stage}: {cleanup_error}")
+
+
 def _evaluation_revision(cfg: JobConfig, symbols: Dict[str, np.ndarray],
                          dates: Dict[str, np.ndarray], fold_index: int) -> str:
-    """Hash the evaluated observations and their common data/split contract."""
+    """Hash data, target and evaluated observations under the outer_v2 contract.
+
+    The version separates corrected lag purging from older outer_v1 evidence.
+    Feature/scaler choices identify artifacts elsewhere, not the evaluation set.
+    """
     digest = hashlib.sha256()
     contract = {
-        "metric_definition": "outer_v1", "timeframe": cfg.timeframe,
+        "metric_definition": "outer_v2", "timeframe": cfg.timeframe,
         "target_type": cfg.target_type, "window": cfg.window_size,
         "horizon": cfg.horizon, "threshold": ds.DEFAULT_THRESHOLD,
         "n_splits": cfg.n_splits,
         "gap": ds.resolve_purge_gap(cfg.window_size, cfg.horizon, cfg.gap),
         "oos_tail_days": cfg.oos_tail_days, "fold": fold_index,
-        "fixed_zscore": cfg.fixed_zscore,
-        "clip_sigma": cfg.clip_sigma,
-        "lags": cfg.feature_spec.get("lags", []) if cfg.feature_spec else cfg.lags,
     }
     digest.update(json.dumps(contract, sort_keys=True, separators=(",", ":")).encode("utf-8"))
-    for sym, export_path in sorted((cfg.indicator_channel_export_paths or {}).items()):
-        digest.update(sym.encode("utf-8"))
-        digest.update(_file_sha256(Path(export_path)).encode("ascii"))
     selected = ds.independent_fold_data(
         symbols, dates, feature_mode=cfg.feature_mode, window=cfg.window_size,
         horizon=cfg.horizon, threshold=ds.DEFAULT_THRESHOLD, n_splits=cfg.n_splits,
@@ -790,14 +958,14 @@ def _evaluation_revision(cfg: JobConfig, symbols: Dict[str, np.ndarray],
         digest.update(np.ascontiguousarray(symbols[sym], dtype="<f8").tobytes())
         d = np.asarray(dates[sym]).astype("datetime64[D]")
         digest.update(np.ascontiguousarray(d.astype("<i8")).tobytes())
-        _x, y, anchors, train, test = selected[sym]
-        digest.update(np.ascontiguousarray(anchors[train], dtype="<i8").tobytes())
+        _x, y, anchors, _train, test = selected[sym]
         digest.update(np.ascontiguousarray(anchors[test], dtype="<i8").tobytes())
         digest.update(np.ascontiguousarray(y[test]).tobytes())
     return digest.hexdigest()
 
 
 def main(argv: Optional[List[str]] = None) -> int:
+    started_at = time.monotonic()
     parser = argparse.ArgumentParser(description="GUI-triggered ONNX training orchestrator.")
     parser.add_argument(
         "--config", type=Path, required=True, help="Path to a TrainingJobConfig JSON file."
@@ -812,12 +980,23 @@ def main(argv: Optional[List[str]] = None) -> int:
     if not config_path.is_file():
         raise SystemExit(f"config file not found: {config_path}")
     cfg = JobConfig.from_json(config_path.read_text(encoding="utf-8"))
+    run_limits = dict(cfg.resource_limits) if cfg.resource_limits is not None else _effective_resource_limits()
+    run_budget_seconds = (cfg.remaining_run_budget_seconds if cfg.remaining_run_budget_seconds is not None
+                          else MAX_RUN_DURATION_SECONDS)
+    deadline = started_at + run_budget_seconds
     # Prefer the orchestrator-assigned RunId (threaded through via the wire config) so C# and
     # Python share one identifier end-to-end for the experiment-log folder, this log line, and
     # the artifact filename stem. Falls back to a locally-derived timestamp only for a
     # hand-written config that omits run_id (manual/standalone invocation outside the C#
     # orchestrator).
-    run_id = cfg.run_id or f"{started:%Y%m%d-%H%M%S}{started.microsecond // 1000:03d}"
+    resumed = checkpoints.read_json(Path(cfg.checkpoint_path)) if cfg.initialization_mode == "resume" else None
+    if resumed is not None and (resumed.get("kind") != "training_run"
+            or not isinstance(resumed.get("run_id"), str)
+            or not checkpoints._RUN.fullmatch(resumed["run_id"])):
+        raise ValueError("Resume requires a native training run manifest")
+    run_id = (resumed["run_id"] if resumed else cfg.run_id) or f"{started:%Y%m%d-%H%M%S}{started.microsecond // 1000:03d}"
+    if not checkpoints._RUN.fullmatch(run_id) or (resumed and cfg.run_id and cfg.run_id != run_id):
+        raise ValueError("unsafe or mismatched run identifier")
     _note(
         f"run_id={run_id} framework={cfg.framework} arch={cfg.architecture} "
         f"feature_mode={cfg.feature_mode} timeframe={cfg.timeframe} "
@@ -825,13 +1004,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         f"target_type={cfg.target_type} n_splits={cfg.n_splits} "
         f"gap={cfg.gap} oos_tail_days={cfg.oos_tail_days}"
     )
-    if cfg.feature_mode == ds.COMPOSED_FEATURES_MODE:
-        _note(
-            "resolved composed resource limits: "
-            f"channels={ds.MAX_COMPOSED_CHANNELS}, "
-            f"window_MiB={ds.MAX_COMPOSED_TENSOR_SIZE_MB}, "
-            f"samples={ds.MAX_COMPOSED_BATCH_SAMPLES}"
-        )
+    _note(f"resolved training resource limits: {run_limits}")
 
     stem = _derive_output_stem(cfg, run_id)
     out_path = ARTIFACTS_DIR / f"{stem}.onnx"
@@ -839,44 +1012,119 @@ def main(argv: Optional[List[str]] = None) -> int:
     ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
 
     tmp_root = Path(tempfile.mkdtemp(prefix="sa_train_"))
+    ownership = contextlib.ExitStack()
     try:
+        checkpoint_root = (Path(cfg.checkpoint_path).resolve().parent if resumed else
+                           ARTIFACTS_DIR / "checkpoints" / run_id)
+        if cfg.framework != "tensorflow":
+            ownership.enter_context(checkpoints.run_lock(checkpoint_root))
         _stage("dataset")
         _progress(5)
         data_dir = _resolve_dataset_dir(cfg, tmp_root)
         train_dir = _resolve_training_dir(cfg, data_dir, tmp_root)
         train_symbols, train_dates = ds.load_parquet_dir(train_dir, return_dates=True)
         full_symbols, full_dates = ds.load_parquet_dir(data_dir, return_dates=True)
+        if cfg.framework != "tensorflow":
+            job_contract = dataclasses.asdict(cfg)
+            for key in ("initialization_mode", "checkpoint_path", "parent_model_id", "parent_model_hash",
+                        "freeze_paths", "run_id", "remaining_run_budget_seconds", "resource_limits",
+                        "prepared_input_dir", "source_manifest_path", "indicator_channel_export_paths", "output_name"):
+                job_contract.pop(key, None)
+            job_contract["hyperparameters"] = {
+                _normalize_flag(key): value for key, value in cfg.hyperparameters.items()
+                if _normalize_flag(key) != "epochs"}
+            if job_contract.get("source_provenance"):
+                job_contract["source_provenance"].pop("as_of_utc", None)
+            revision = checkpoints.source_revision(full_symbols, full_dates, cfg.indicator_channel_export_paths)
+            manifest_path = checkpoint_root / "run.json"
+            if resumed:
+                if resumed.get("job_contract") != job_contract or resumed.get("data_revision") != revision:
+                    raise ValueError("Resume requires identical run configuration and data revision")
+                started_folds = resumed.get("started_folds")
+                if (not isinstance(started_folds, list) or len(set(started_folds)) != len(started_folds)
+                        or any(type(k) is not int or not 0 <= k < cfg.n_splits for k in started_folds)):
+                    raise ValueError("Resume fold execution journal is missing or invalid")
+                for fold_index in range(cfg.n_splits):
+                    if fold_index in started_folds and not (checkpoint_root / f"fold_{fold_index}" / "last.json").exists():
+                        raise ValueError("Resume state is missing for a started fold")
+                    for slot in ("last", "best"):
+                        pointer = checkpoint_root / f"fold_{fold_index}" / (slot + ".json")
+                        if pointer.exists():
+                            checkpoints.checked_blob(pointer)
+                            import train_pytorch
+                            train_pytorch.validate_checkpoint(pointer)
+            else:
+                if manifest_path.exists():
+                    raise ValueError("new training cannot overwrite an existing run; use Resume")
+                initialization = {"mode": cfg.initialization_mode, "checkpoint_path": cfg.checkpoint_path,
+                                  "parent_model_id": cfg.parent_model_id, "parent_model_hash": cfg.parent_model_hash,
+                                  "freeze_paths": cfg.freeze_paths}
+                resumed = dict(schema_version=checkpoints.SCHEMA_VERSION, kind="training_run", run_id=run_id,
+                               job_contract=job_contract, data_revision=revision, initialization=initialization,
+                               started_folds=[])
+                checkpoints.atomic_json(manifest_path, resumed)
+            _artifact("checkpoint", manifest_path)
         common = dict(
             feature_mode=cfg.feature_mode, window=cfg.window_size,
             horizon=cfg.horizon, threshold=ds.DEFAULT_THRESHOLD,
             feature_spec=cfg.feature_spec, target_type=cfg.target_type,
             fixed_zscore=cfg.fixed_zscore, lags=cfg.lags,
         )
-        started_at = time.monotonic()
         release_path = None
         release_report = None
         fold_reports = []
+        fold_commands = []
         for fold_index in range(cfg.n_splits):
-            if time.monotonic() - started_at >= MAX_RUN_DURATION_SECONDS:
+            if time.monotonic() >= deadline:
                 raise TimeoutError("independent evaluation exceeded the run duration limit")
             # Validate the original fold and the inner fit/validation boundary before
             # invoking a framework. A missing selected symbol is a failed run.
-            ds.independent_fold_data(
+            selected_inner = ds.independent_fold_data(
                 train_symbols, train_dates, n_splits=cfg.n_splits, gap=cfg.gap,
                 fold_index=fold_index,
                 indicator_export_paths=cfg.indicator_channel_export_paths,
                 inner=True, **common,
             )
+            if fold_index == cfg.n_splits - 1:
+                import model_analysis
+                model_analysis.validate_population(selected_inner, run_limits)
             staged_model = tmp_root / f"fold_{fold_index}" / out_path.name
             staged_model.parent.mkdir(parents=True, exist_ok=True)
-            _stage("train")
-            _progress(15 + (fold_index * 70 // cfg.n_splits))
             trainer_argv = _build_trainer_argv(cfg, train_dir, staged_model)
             trainer_argv += ["--outer-fold-index", str(fold_index)]
+            if cfg.framework != "tensorflow":
+                fold_root = checkpoint_root / f"fold_{fold_index}"
+                last = fold_root / "last.json"
+                initialization = resumed["initialization"]
+                mode = "resume" if cfg.initialization_mode == "resume" and last.exists() else initialization["mode"]
+                trainer_argv += ["--initialization-mode", mode, "--checkpoint-dir", str(fold_root),
+                                 "--run-id", run_id]
+                if mode == "resume":
+                    parent, _ = checkpoints.checked_blob(last)
+                    trainer_argv += ["--init-from", str(last),
+                                     "--freeze-paths", json.dumps(parent["context"]["freeze_paths"])]
+                elif mode == "fine_tune":
+                    trainer_argv += ["--init-from", initialization["checkpoint_path"],
+                                     "--parent-model-id", initialization["parent_model_id"],
+                                     "--parent-model-hash", initialization["parent_model_hash"],
+                                     "--freeze-paths", json.dumps(initialization["freeze_paths"])]
+            fold_commands.append((fold_index, staged_model, trainer_argv))
+            if cfg.framework != "tensorflow":
+                _stage("preflight")
+                if _dispatch(cfg, trainer_argv + ["--preflight"]) != 0:
+                    raise ValueError(f"checkpoint preflight failed for fold {fold_index}")
+        for fold_index, staged_model, trainer_argv in fold_commands:
+            if time.monotonic() >= deadline:
+                raise TimeoutError("checkpoint preflight exceeded the run duration limit")
+            _stage("train")
+            _progress(15 + (fold_index * 70 // cfg.n_splits))
+            if cfg.framework != "tensorflow" and fold_index not in resumed["started_folds"]:
+                resumed["started_folds"].append(fold_index)
+                checkpoints.atomic_json(manifest_path, resumed)
             rc = _dispatch(cfg, trainer_argv)
             if rc != 0 or not staged_model.is_file():
                 raise RuntimeError(f"trainer failed to produce outer fold {fold_index} (exit {rc})")
-            if time.monotonic() - started_at >= MAX_RUN_DURATION_SECONDS:
+            if time.monotonic() >= deadline:
                 raise TimeoutError("independent evaluation exceeded the run duration limit")
             _stage("evaluate")
             rows = evaluate_folds(
@@ -949,48 +1197,43 @@ def main(argv: Optional[List[str]] = None) -> int:
             if "oos_multi_logloss" not in oos and cfg.target_type == "classification":
                 release_report["oos_optional_metric_status"] = "multi_logloss_unavailable"
             _metric(oos)
+        if time.monotonic() >= deadline:
+            raise TimeoutError("independent evaluation exceeded the run duration limit")
+        release_report["resource_limits"] = run_limits
+        if cfg.framework != "tensorflow":
+            pointer = checkpoint_root / f"fold_{cfg.n_splits - 1}" / "best.json"
+            if pointer.exists():
+                state, _ = checkpoints.checked_blob(pointer)
+                release_report["training_lineage"] = dict(state["context"]["lineage"], run_id=run_id)
+            release_report["checkpoint_run_id"] = run_id
+        release_report["run_budget_seconds_at_child_start"] = run_budget_seconds
+        import model_analysis
+        _note("computing train-only regimes and selected-model channel importance")
+        analysis = model_analysis.build(
+            cfg, release_path, train_symbols, train_dates, full_symbols, full_dates,
+            predict=_onnx_predict_fn(release_path), checkpoint_root=checkpoint_root, deadline=deadline,
+            resource_limits=run_limits)
+        release_analysis = release_path.with_name(release_path.name + ".analysis.json")
+        checkpoints.atomic_json(release_analysis, analysis)
+        release_report["data_revision"] = analysis["data_revision"]
+        if time.monotonic() >= deadline:
+            raise TimeoutError("model analysis exceeded the training run budget")
         staged_metrics = Path(metrics.write_report(release_report, release_path))
-        # A failed evaluation never exposes a new artifact. The generation manager
-        # added by T05 will own multi-file atomic publication; this legacy target
-        # is backed up here so a failed move preserves any previous named output.
-        previous_model = tmp_root / "previous.onnx"
-        previous_metrics = tmp_root / "previous.metrics.json"
+        _publish_release_bundle(release_path, staged_metrics,
+                                release_scaler if cfg.fixed_zscore else None,
+                                out_path, release_report, release_analysis)
         scaler_path = out_path.with_name(out_path.name + ".scaler.json")
-        previous_scaler = tmp_root / "previous.scaler.json"
-        if out_path.exists():
-            shutil.copy2(out_path, previous_model)
-        if metrics_path.exists():
-            shutil.copy2(metrics_path, previous_metrics)
-        if scaler_path.exists():
-            shutil.copy2(scaler_path, previous_scaler)
-        try:
-            os.replace(staged_metrics, metrics_path)
-            os.replace(release_path, out_path)
-            if cfg.fixed_zscore:
-                os.replace(release_scaler, scaler_path)
-        except OSError:
-            if previous_model.exists():
-                os.replace(previous_model, out_path)
-            else:
-                out_path.unlink(missing_ok=True)
-            if previous_metrics.exists():
-                os.replace(previous_metrics, metrics_path)
-            else:
-                metrics_path.unlink(missing_ok=True)
-            if previous_scaler.exists():
-                os.replace(previous_scaler, scaler_path)
-            else:
-                scaler_path.unlink(missing_ok=True)
-            raise
         _stage("export")
         _progress(92)
         _artifact("onnx", out_path)
         _artifact("metrics", metrics_path)
+        _artifact("analysis", out_path.with_name(out_path.name + ".analysis.json"))
         if cfg.fixed_zscore:
             _artifact("scaler", scaler_path)
         _metric({key: value for key, value in release_report.items()
                  if isinstance(value, (int, float)) and math.isfinite(value)})
     finally:
+        ownership.close()
         shutil.rmtree(tmp_root, ignore_errors=True)
 
     _stage("done")
@@ -1008,9 +1251,43 @@ def _run_selfcheck() -> None:
         **base, "target_type": "regression", "n_splits": 4, "gap": 7, "oos_tail_days": 90,
     }))
     assert (cfg.target_type, cfg.n_splits, cfg.gap, cfg.oos_tail_days) == ("regression", 4, 7, 90)
+    for unsupported in ("lightgbm", "tensorflow"):
+        try:
+            JobConfig.from_json(json.dumps({**base, "framework": unsupported, "target_type": "regression"}))
+        except ValueError as exc:
+            assert "requires pytorch" in str(exc)
+        else:  # pragma: no cover
+            raise AssertionError("unsupported regression framework was accepted")
     defaults = JobConfig.from_json(json.dumps(base))
     assert defaults.target_type == "classification" and defaults.n_splits == ds.DEFAULT_WF_SPLITS
     assert defaults.gap is None and defaults.oos_tail_days is None
+    limits = _effective_resource_limits()
+    old_resource_env = {name: os.environ.get(name) for name in _RESOURCE_ENV.values()}
+    try:
+        for key, name in _RESOURCE_ENV.items():
+            os.environ[name] = str(limits[key])
+        managed = JobConfig.from_json(json.dumps({
+            **base, "resource_limits": limits, "remaining_run_budget_seconds": 60,
+        }))
+        assert managed.resource_limits == limits
+        for invalid in (
+            {**limits, "max_samples": limits["max_samples"] - 1},
+            {**limits, "max_tensor_elements": limits["max_tensor_elements"] - 1},
+        ):
+            try:
+                JobConfig.from_json(json.dumps({
+                    **base, "resource_limits": invalid, "remaining_run_budget_seconds": 60,
+                }))
+            except ValueError:
+                pass
+            else:
+                raise AssertionError("mismatched managed resource contract was accepted")
+    finally:
+        for name, old in old_resource_env.items():
+            if old is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = old
     for bad in ({"target_type": "ranking"}, {"n_splits": 1},
                 {"n_splits": MAX_EVALUATION_FOLDS + 1}, {"gap": -1},
                 {"oos_tail_days": -2}):
@@ -1404,6 +1681,8 @@ def _run_selfcheck() -> None:
     # Exercise the real orchestrator path with a deterministic trainer/predictor
     # substitute: each fold gets its own output, only the last scored output is
     # published, and a failed fold leaves no promotable artifact.
+    import contextlib
+    import io
     with tempfile.TemporaryDirectory() as _integration_tmp:
         root = Path(_integration_tmp)
         raw_dir = root / "raw"
@@ -1422,8 +1701,11 @@ def _run_selfcheck() -> None:
         }), encoding="utf-8")
         original_resolve, original_dispatch = _resolve_dataset_dir, _dispatch
         original_predict, original_artifacts = _onnx_predict_fn, ARTIFACTS_DIR
+        original_publish = _publish_release_bundle
         dispatched = []
         def fake_dispatch(_cfg, argv):
+            if "--preflight" in argv:
+                return 0
             k = int(argv[argv.index("--outer-fold-index") + 1])
             dispatched.append(k)
             Path(argv[argv.index("--out") + 1]).write_bytes(f"model-{k}".encode())
@@ -1445,8 +1727,10 @@ def _run_selfcheck() -> None:
             assert len(report["outer_folds"]) == 3
             assert [row["fold"] for row in report["outer_folds"]] == [0.0, 1.0, 2.0]
             assert report["scored_model_sha256"] == _file_sha256(published[0])
+            assert report["resource_limits"] == _effective_resource_limits()
+            assert 0 < report["run_budget_seconds_at_child_start"] <= MAX_RUN_DURATION_SECONDS
             dispatched.clear()
-            globals()["_dispatch"] = lambda _cfg, argv: (1 if
+            globals()["_dispatch"] = lambda _cfg, argv: (1 if "--preflight" not in argv and
                 int(argv[argv.index("--outer-fold-index") + 1]) == 1 else fake_dispatch(_cfg, argv))
             config_file.write_text(config_file.read_text().replace(
                 "selfcheck_independent", "selfcheck_failure"), encoding="utf-8")
@@ -1457,11 +1741,29 @@ def _run_selfcheck() -> None:
             else:
                 raise AssertionError("failed independent fold must fail the run")
             assert len(list((root / "artifacts").glob("*.onnx"))) == 1
+            globals()["_dispatch"] = fake_dispatch
+            globals()["_publish_release_bundle"] = lambda *_args: (_ for _ in ()).throw(
+                OSError("injected final publication failure"))
+            config_file.write_text(config_file.read_text().replace(
+                "selfcheck_failure", "selfcheck_publish_failure"), encoding="utf-8")
+            protocol = io.StringIO()
+            with contextlib.redirect_stdout(protocol):
+                try:
+                    main(["--config", str(config_file)])
+                except OSError as exc:
+                    assert "injected final publication failure" in str(exc)
+                else:
+                    raise AssertionError("failed publication must fail the run")
+            assert "ARTIFACT:onnx:" not in protocol.getvalue()
+            assert "ARTIFACT:metrics:" not in protocol.getvalue()
+            assert "ARTIFACT:checkpoint:" in protocol.getvalue()
+            assert published[0].read_bytes() == b"model-2"
         finally:
             globals()["_resolve_dataset_dir"] = original_resolve
             globals()["_dispatch"] = original_dispatch
             globals()["_onnx_predict_fn"] = original_predict
             globals()["ARTIFACTS_DIR"] = original_artifacts
+            globals()["_publish_release_bundle"] = original_publish
 
     print("run_training.py selfcheck: OK")
 

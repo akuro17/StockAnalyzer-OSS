@@ -23,19 +23,32 @@ public sealed record PredictionResult(
     /// <summary>
     /// True when this result came from a <c>target_type=regression</c> model. <see cref="Label"/>,
     /// <see cref="Probability"/>, <see cref="Confidence"/>, <see cref="Entropy"/> and
-    /// <see cref="Scores"/> have no regression meaning and are left at their inapplicable
-    /// defaults (never a fabricated classification-style value); use
+    /// <see cref="Scores"/> have no regression meaning. Numeric classification fields are
+    /// NaN for a regression result (never a fabricated zero confidence); use
     /// <see cref="PredictedLogReturn"/> and <see cref="SimpleReturnPercent"/> instead. Mirrors
     /// <c>FoldMetricRow.IsRegression</c>'s identical convention.
     /// </summary>
     public bool IsRegression { get; init; } = false;
 
+    /// <summary>Validated ONNX output meaning; null only for a fallback result.</summary>
+    public PredictionOutputContract? OutputContract { get; init; }
+
+    /// <summary>Meaning of <see cref="ConfidenceValue"/>, or None when absent.</summary>
+    public ConfidenceType ConfidenceType { get; init; } = ConfidenceType.None;
+
+    /// <summary>Optional confidence value. Regression without an uncertainty head leaves this null.</summary>
+    public float? ConfidenceValue { get; init; }
+
+    /// <summary>Immutable generation that produced this result, when registered.</summary>
+    public string? ModelId { get; init; }
+
     /// <summary>Forward log-return prediction (<c>y = ln(C[a+H]/C[a])</c>). <see cref="double.NaN"/> for a classification result.</summary>
     public double PredictedLogReturn { get; init; } = double.NaN;
 
     /// <summary>
-    /// <see cref="PredictedLogReturn"/> converted to simple-return percent
-    /// (<c>100*(exp(y)-1)</c>), unrounded. <see cref="double.NaN"/> for a classification result.
+    /// Legacy display field retained for source compatibility. New results leave it unset;
+    /// the display formatter converts <see cref="PredictedLogReturn"/> locally using the
+    /// validated <see cref="OutputContract"/>.
     /// </summary>
     public double SimpleReturnPercent { get; init; } = double.NaN;
 
@@ -56,6 +69,9 @@ public sealed record PredictionResult(
 /// </summary>
 public interface IPredictionService
 {
+    /// <summary>Currently active immutable generation, when model registration is enabled.</summary>
+    string? ActiveModelId => null;
+
     /// <summary>
     /// Initializes the prediction service (e.g., loading models).
     /// </summary>

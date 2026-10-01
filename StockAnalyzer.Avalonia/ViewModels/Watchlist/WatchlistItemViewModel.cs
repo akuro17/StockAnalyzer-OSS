@@ -1,6 +1,8 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using System;
 using System.Linq;
+using StockAnalyzer.Avalonia.Common;
+using StockAnalyzer.Core.Services.Notes;
 using StockAnalyzer.Core.Models.Watchlist;
 using StockAnalyzer.Core.Models.Screener;
 
@@ -202,7 +204,7 @@ namespace StockAnalyzer.Avalonia.ViewModels.Watchlist
         [NotifyPropertyChangedFor(nameof(DisplayTag))]
         private string? _tag;
 
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayNotes))] private string? _notes;
+        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayNotes)), NotifyPropertyChangedFor(nameof(NotesPopupText)), NotifyPropertyChangedFor(nameof(HasNotesPopupText))] private string? _notes;
         [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayReminder))] private string? _reminder;
         [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayLong)), NotifyPropertyChangedFor(nameof(DisplayEntryPrice))] private decimal? _long;
         [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayExitLong)), NotifyPropertyChangedFor(nameof(DisplayTargetPrice))] private decimal? _exitLong;
@@ -223,11 +225,83 @@ namespace StockAnalyzer.Avalonia.ViewModels.Watchlist
         public decimal? TargetPrice { get => ExitLong; set => ExitLong = value; }
         public decimal? StopLoss { get => StopLossLong; set => StopLossLong = value; }
 
-        /// <summary>Single-line cell text: <see cref="Notes"/> (the Notes tab's latest-article "Read
-        /// more" collapse preview, real newlines preserved) with newlines replaced by spaces so the
-        /// cell never wraps. The tooltip (bound directly to <see cref="Notes"/>) shows the original,
-        /// unconverted text.</summary>
-        public string DisplayNotes => string.IsNullOrWhiteSpace(Notes) ? "-" : Notes.Replace("\r\n", " ").Replace('\n', ' ').Replace('\r', ' ');
+        /// <summary>Single-line cell text: <see cref="Notes"/> (the latest article's full hashtag-free body)
+        /// with newlines replaced by spaces, cut to Settings &gt; Notes "Read More Threshold" Max Characters.
+        /// The tooltip shows <see cref="NotesPopupText"/> instead.</summary>
+        public string DisplayNotes
+        {
+            get
+            {
+                var notes = Notes;
+                if (string.IsNullOrWhiteSpace(notes))
+                {
+                    return "-";
+                }
+
+                var maxCharacters = TickerNotesDisplayContext.MaxCharacters;
+                var cache = _singleLineCache;
+                if (cache is not null && ReferenceEquals(cache.Notes, notes) && cache.MaxCharacters == maxCharacters)
+                {
+                    return cache.Text;
+                }
+
+                var text = NoteReadMorePreview.BuildSingleLineText(notes, maxCharacters);
+                _singleLineCache = new SingleLineNotesCache(notes, maxCharacters, text);
+                return text;
+            }
+        }
+
+        /// <summary>Hover-popup text of the Notes cell: <see cref="Notes"/> (the latest article's full
+        /// hashtag-free body) without images/URLs, cut to Settings &gt; Notes "Read More Threshold" (Max
+        /// Characters and Max Lines) with a final "Read more" line when cut; empty when there is nothing to show.</summary>
+        public string NotesPopupText
+        {
+            get
+            {
+                var notes = Notes;
+                if (string.IsNullOrWhiteSpace(notes))
+                {
+                    return string.Empty;
+                }
+
+                var maxCharacters = TickerNotesDisplayContext.MaxCharacters;
+                var maxLines = TickerNotesDisplayContext.MaxLines;
+                var label = TickerNotesDisplayContext.ReadMoreLabel;
+                var cache = _popupCache;
+                if (cache is not null && ReferenceEquals(cache.Notes, notes) && cache.MaxCharacters == maxCharacters
+                    && cache.MaxLines == maxLines && string.Equals(cache.Label, label, StringComparison.Ordinal))
+                {
+                    return cache.Text;
+                }
+
+                var text = NoteReadMorePreview.BuildPopupText(notes, maxCharacters, maxLines, label);
+                _popupCache = new PopupNotesCache(notes, maxCharacters, maxLines, label, text);
+                return text;
+            }
+        }
+
+        // The Notes cell binds DisplayNotes, NotesPopupText and HasNotesPopupText for every visible row, and Notes now
+        // holds the full body of the latest article, so each derived text is computed once per distinct input. The cache
+        // key is every input of the computation (the Notes string instance, the thresholds, the label), so a changed
+        // threshold or language yields a fresh value without any invalidation hook; a record swapped as a whole keeps a
+        // read from another thread consistent.
+        private sealed record SingleLineNotesCache(string Notes, int MaxCharacters, string Text);
+        private sealed record PopupNotesCache(string Notes, int MaxCharacters, int MaxLines, string Label, string Text);
+        private SingleLineNotesCache? _singleLineCache;
+        private PopupNotesCache? _popupCache;
+
+        /// <summary>False when <see cref="NotesPopupText"/> is empty (no note, or a note made only of images/URLs), so
+        /// the cell shows no empty popup.</summary>
+        public bool HasNotesPopupText => NotesPopupText.Length > 0;
+
+        /// <summary>Re-raises the Notes cell/popup text after Settings &gt; Notes "Read More Threshold" changed (the
+        /// popup's emptiness can change with it).</summary>
+        public void RaiseNotesDisplayChanged()
+        {
+            OnPropertyChanged(nameof(DisplayNotes));
+            OnPropertyChanged(nameof(NotesPopupText));
+            OnPropertyChanged(nameof(HasNotesPopupText));
+        }
         public string DisplayReminder => string.IsNullOrWhiteSpace(Reminder) ? "-" : Reminder;
         public string DisplayLong => Long == null || Long == 0 ? "-" : FormatDecimal(Long);
         public string DisplayExitLong => ExitLong == null || ExitLong == 0 ? "-" : FormatDecimal(ExitLong);

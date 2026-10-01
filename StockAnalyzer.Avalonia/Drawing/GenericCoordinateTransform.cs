@@ -446,37 +446,43 @@ public class GenericCoordinateTransform : ICoordinateTransform
     }
 
     /// <summary>Convert chart coordinate to screen coordinate</summary>
-    public global::Avalonia.Point ChartToScreen(ChartPoint chartPoint)
+    public double GetXFromTime(DateTime time)
     {
         double x = _currentPaddingX;
         switch (_mode)
         {
             case ChartAxisMode.Time:
-                x += (chartPoint.Time - _minTime).TotalMilliseconds * _scaleX;
+                x += (time - _minTime).TotalMilliseconds * _scaleX;
                 break;
             case ChartAxisMode.GaplessTime:
-                double fracIdx = GetFractionalIndex(chartPoint.Time);
+                double fracIdx = GetFractionalIndex(time);
                 x += (fracIdx - _minIndex) * _scaleX;
                 break;
             case ChartAxisMode.Index:
                 double idx;
                 // WebAI: Ticksが極端に大きい場合（リアルの日時のタイムスタンプが入っている場合）、TimeMapからfractional indexを取得するガード
-                if (chartPoint.Time.Ticks > 31536000000000000L) // 1000年後相当以上のTick
+                if (time.Ticks > 31536000000000000L) // 1000年後相当以上のTick
                 {
-                    idx = GetFractionalIndex(chartPoint.Time);
+                    idx = GetFractionalIndex(time);
                 }
                 else
                 {
-                    idx = (double)chartPoint.Time.Ticks;
+                    idx = (double)time.Ticks;
                 }
                 x += (idx - _minIndex) * _scaleX;
                 break;
             case ChartAxisMode.Volume:
-                decimal vol = (decimal)chartPoint.Time.Ticks;
+                decimal vol = (decimal)time.Ticks;
                 x += (double)(vol - _minVolume) * _scaleX;
                 break;
         }
 
+        return x;
+    }
+
+    public global::Avalonia.Point ChartToScreen(ChartPoint chartPoint)
+    {
+        double x = GetXFromTime(chartPoint.Time);
         double y = GetYFromPrice(chartPoint.Price);
         
         // Return local screen position (Renderers translate canvas to chart area offset)

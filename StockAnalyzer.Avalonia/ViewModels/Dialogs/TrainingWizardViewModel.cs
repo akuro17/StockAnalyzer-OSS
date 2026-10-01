@@ -1,6 +1,9 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
+using System.Globalization;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -54,7 +57,7 @@ public partial class TrainingHyperparameterEntry : ObservableObject
 /// <see cref="IDisposable"/> so <see cref="DialogService"/> can cancel an in-flight run when the
 /// window is closed mid-training instead of leaving the trainer process running unattended.
 /// </summary>
-public partial class TrainingWizardViewModel : ViewModelBase, IDisposable
+public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorInfo, IDisposable
 {
     /// <summary>
     /// Rolling cap for <see cref="LogLines"/>. A multi-fold walk-forward run can stream many
@@ -131,9 +134,18 @@ public partial class TrainingWizardViewModel : ViewModelBase, IDisposable
             var splitCount = NSplits >= 2 ? NSplits : WalkForwardDataRequirement.DefaultSplitCount;
             // A negative Gap (transient invalid input; Start stays disabled) falls back to the
             // default purge gap rather than throwing out of this getter, matching splitCount above.
-            var minBars = WalkForwardDataRequirement.MinimumRawBars(
-                WindowSize, Horizon, splitCount, Gap is >= 0 ? Gap : null);
-            return baseNote + string.Format(minBarsTemplate, minBars);
+            try
+            {
+                var minBars = WalkForwardDataRequirement.MinimumRawBars(
+                    WindowSize, Horizon, splitCount, Gap is >= 0 ? Gap : null,
+                    maxLag: UseFixedZScore && TryParseLags(out var lags) ? lags.DefaultIfEmpty().Max() : 0);
+                return baseNote + string.Format(minBarsTemplate, minBars);
+            }
+            catch (OverflowException)
+            {
+                return baseNote + (LocalizationManager.Instance["TrainingWizard_WindowUnitNote_OverLimit"]
+                    ?? " Required history exceeds the supported bar count. Reduce the window, horizon, gap or splits.");
+            }
         }
     }
 
@@ -196,6 +208,46 @@ public partial class TrainingWizardViewModel : ViewModelBase, IDisposable
     /// <summary>All trainers the wizard's Framework combo box can offer.</summary>
     public static IReadOnlyList<TrainingFramework> AvailableFrameworks { get; } = Enum.GetValues<TrainingFramework>();
 
+    public IReadOnlyList<TrainingFramework> SelectableFrameworks => SelectedTargetType == TargetType.Regression
+        ? new[] { TrainingFramework.PyTorch } : AvailableFrameworks;
+
+    public IReadOnlyList<TrainingInitializationMode> AvailableInitializationModes => SelectedFramework switch
+    {
+        TrainingFramework.PyTorch => Enum.GetValues<TrainingInitializationMode>(),
+        TrainingFramework.LightGBM => new[] { TrainingInitializationMode.Fresh, TrainingInitializationMode.FineTune },
+        _ => new[] { TrainingInitializationMode.Fresh },
+    };
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsTransferMode))]
+    [NotifyPropertyChangedFor(nameof(IsFineTuneMode))]
+    [NotifyPropertyChangedFor(nameof(CanFreezeModules))]
+    [NotifyCanExecuteChangedFor(nameof(StartTrainingCommand))]
+    private TrainingInitializationMode _selectedInitializationMode;
+    public bool IsTransferMode => SelectedInitializationMode != TrainingInitializationMode.Fresh;
+    public bool IsFineTuneMode => SelectedInitializationMode == TrainingInitializationMode.FineTune;
+    public bool CanFreezeModules => IsFineTuneMode && SelectedFramework == TrainingFramework.PyTorch;
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(StartTrainingCommand))]
+    private string _checkpointPath = string.Empty;
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(StartTrainingCommand))]
+    private string _parentModelId = string.Empty;
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(StartTrainingCommand))]
+    private string _freezePathsText = string.Empty;
+    [ObservableProperty]
+    private string? _checkpointManifestPath;
+
+    private string[] SelectedFreezePaths() => CanFreezeModules
+        ? FreezePathsText.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        : Array.Empty<string>();
+
+    private bool TransferControlsValid() => AvailableInitializationModes.Contains(SelectedInitializationMode)
+        && (!IsTransferMode || !string.IsNullOrWhiteSpace(CheckpointPath))
+        && (!IsFineTuneMode || TrainingCheckpointContract.IsHash(ParentModelId.Trim()))
+        && SelectedFreezePaths().All(TrainingCheckpointContract.IsModulePath)
+        && SelectedFreezePaths().Distinct(StringComparer.Ordinal).Count() == SelectedFreezePaths().Length;
+
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(StartTrainingCommand))]
     [NotifyPropertyChangedFor(nameof(WindowUnitNote))]
@@ -245,18 +297,74 @@ public partial class TrainingWizardViewModel : ViewModelBase, IDisposable
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(StartTrainingCommand))]
+    [NotifyPropertyChangedFor(nameof(WindowUnitNote))]
     private bool _useFixedZScore;
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(StartTrainingCommand))]
     private bool _useClipSigma;
 
+    partial void OnUseClipSigmaChanged(bool value) => RefreshClipSigmaValidation();
+
+    partial void OnUseFixedZScoreChanged(bool value) => RefreshClipSigmaValidation();
+
+    private const decimal DefaultClipSigma = 3.0m;
+
+    /// <summary>Decimal compatibility adapter; zero means the text is invalid or outside decimal precision.</summary>
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(StartTrainingCommand))]
-    private decimal _clipSigma = 3.0m;
+    private decimal _clipSigma = DefaultClipSigma;
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(StartTrainingCommand))]
+    private string _clipSigmaText = DefaultClipSigma.ToString(CultureInfo.CurrentCulture);
+
+    partial void OnClipSigmaChanged(decimal value) =>
+        ClipSigmaText = value.ToString(CultureInfo.CurrentCulture);
+
+    partial void OnClipSigmaTextChanged(string value)
+    {
+        if ((decimal.TryParse(value, NumberStyles.Float, CultureInfo.CurrentCulture, out var parsed)
+            || decimal.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out parsed))
+            && parsed > 0)
+            SetProperty(ref _clipSigma, parsed, nameof(ClipSigma));
+        else
+            SetProperty(ref _clipSigma, 0m, nameof(ClipSigma));
+        RefreshClipSigmaValidation();
+    }
+
+    public string? ClipSigmaValidationMessage => !UseClipSigma ? null
+        : !UseFixedZScore
+            ? LocalizationManager.Instance["TrainingWizard_Validation_ClipRequiresFixed"]
+            : TryGetClipSigma(out _) ? null
+                : LocalizationManager.Instance["TrainingWizard_Validation_ClipValue"];
+
+    public bool HasErrors => ClipSigmaValidationMessage is not null;
+
+    public event EventHandler<DataErrorsChangedEventArgs>? ErrorsChanged;
+
+    public IEnumerable GetErrors(string? propertyName) =>
+        (string.IsNullOrEmpty(propertyName) || propertyName == nameof(ClipSigmaText))
+            && ClipSigmaValidationMessage is { } message ? new[] { message } : Array.Empty<string>();
+
+    private void RefreshClipSigmaValidation()
+    {
+        OnPropertyChanged(nameof(ClipSigmaValidationMessage));
+        OnPropertyChanged(nameof(HasErrors));
+        ErrorsChanged?.Invoke(this, new DataErrorsChangedEventArgs(nameof(ClipSigmaText)));
+    }
+
+    private bool TryGetClipSigma(out double value)
+    {
+        if (!double.TryParse(ClipSigmaText, NumberStyles.Float, CultureInfo.CurrentCulture, out value)
+            && !double.TryParse(ClipSigmaText, NumberStyles.Float, CultureInfo.InvariantCulture, out value))
+            return false;
+        return double.IsFinite(value) && value > 0;
+    }
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(StartTrainingCommand))]
+    [NotifyPropertyChangedFor(nameof(WindowUnitNote))]
     private string _lagsText = string.Empty;
 
     private bool TryParseLags(out int[] lags)
@@ -329,9 +437,10 @@ public partial class TrainingWizardViewModel : ViewModelBase, IDisposable
         ILogger<TrainingWizardViewModel>? logger = null,
         IIndicatorFactory? indicatorFactory = null,
         ITemplateService? templateService = null,
-        Services.IToastNotificationService? toastService = null)
+        Services.IToastNotificationService? toastService = null, IRetrainingScheduler? retrainingScheduler = null)
     {
         _orchestrator = orchestrator;
+        _retrainingScheduler = retrainingScheduler;
         _modelDeploymentService = modelDeploymentService;
         _experimentLogService = experimentLogService;
         _watchlistManager = watchlistManager;
@@ -365,7 +474,11 @@ public partial class TrainingWizardViewModel : ViewModelBase, IDisposable
         _ = InitializeAsync();
     }
 
-    private void OnLocaleChanged(object? sender, EventArgs e) => OnPropertyChanged(nameof(CurrentStageDisplay));
+    private void OnLocaleChanged(object? sender, EventArgs e)
+    {
+        OnPropertyChanged(nameof(CurrentStageDisplay));
+        RefreshClipSigmaValidation();
+    }
 
     private async Task InitializeAsync()
     {
@@ -444,7 +557,18 @@ public partial class TrainingWizardViewModel : ViewModelBase, IDisposable
     partial void OnSelectedFrameworkChanged(TrainingFramework value)
     {
         OnPropertyChanged(nameof(AvailableArchitectures));
+        OnPropertyChanged(nameof(AvailableInitializationModes));
+        OnPropertyChanged(nameof(CanFreezeModules));
+        if (!AvailableInitializationModes.Contains(SelectedInitializationMode))
+            SelectedInitializationMode = TrainingInitializationMode.Fresh;
         SelectedArchitecture = ArchitecturesByFramework[value][0];
+    }
+
+    partial void OnSelectedTargetTypeChanged(TargetType value)
+    {
+        OnPropertyChanged(nameof(SelectableFrameworks));
+        if (value == TargetType.Regression && SelectedFramework != TrainingFramework.PyTorch)
+            SelectedFramework = TrainingFramework.PyTorch;
     }
 
     /// <summary>
@@ -502,13 +626,15 @@ public partial class TrainingWizardViewModel : ViewModelBase, IDisposable
 
     private bool CanStartTraining() =>
         !IsTraining && !IsDeploying
+        && TransferControlsValid()
         && _orchestrator is not null
+        && (SelectedTargetType != TargetType.Regression || SelectedFramework == TrainingFramework.PyTorch)
         && WindowSize > 0 && Horizon > 0
         && NSplits is >= 2 and <= TrainingResourceOverrides.MaximumEvaluationFolds
         && Gap is not (< 0)
         && OosTailDays is not (< 0)
         && TryParseLags(out var lags)
-        && (!UseClipSigma || (UseFixedZScore && ClipSigma > 0))
+        && (!UseClipSigma || (UseFixedZScore && TryGetClipSigma(out _)))
         && (UseFixedZScore || lags.Length == 0)
         && (!UseFixedZScore || !UseComposedFeatures ||
             FeaturePicker.BuildFeatureSpec()?.Channels.All(c => c.Normalization == ChannelNormalization.None) == true)
@@ -517,30 +643,30 @@ public partial class TrainingWizardViewModel : ViewModelBase, IDisposable
         && !IsManifestMissing
         && ResolveSymbols().Length > 0;
 
-    [RelayCommand(CanExecute = nameof(CanStartTraining))]
-    private async Task StartTrainingAsync()
+    private TrainingJobConfig? CreateCurrentTrainingConfig()
     {
-        if (_orchestrator is null)
-        {
-            return;
-        }
-
-        if (!TryParseLags(out var lags)) return;
+        if (!TryParseLags(out var lags)) return null;
+        double clipSigma = 0;
+        if (UseClipSigma && !TryGetClipSigma(out clipSigma)) return null;
         var selectedSpec = UseComposedFeatures ? FeaturePicker.BuildFeatureSpec() : null;
         var composedSpec = selectedSpec is null ? null : selectedSpec with { Lags = lags };
 
-        var config = new TrainingJobConfig
+        return new TrainingJobConfig
         {
             Symbols = ResolveSymbols(),
             StartDate = StartDate is { } sd ? DateOnly.FromDateTime(sd.Date) : null,
             EndDate = EndDate is { } ed ? DateOnly.FromDateTime(ed.Date) : null,
             Timeframe = SelectedTimeframe,
             Framework = SelectedFramework,
+            InitializationMode = SelectedInitializationMode,
+            CheckpointPath = IsTransferMode ? CheckpointPath.Trim() : null,
+            ParentModelId = IsFineTuneMode ? ParentModelId.Trim() : null,
+            FreezePaths = SelectedFreezePaths(),
             Architecture = SelectedArchitecture,
             FeatureMode = composedSpec is not null ? PredictionFeatureMode.ComposedFeatures : PredictionFeatureMode.OhlcvMinMax,
             FeatureSpec = composedSpec,
             FixedZScore = UseFixedZScore,
-            ClipSigma = UseClipSigma ? (double)ClipSigma : null,
+            ClipSigma = UseClipSigma ? clipSigma : null,
             Lags = composedSpec is null ? lags : Array.Empty<int>(),
             SourceManifestPath = SourceManifestPath,
             WindowSize = WindowSize,
@@ -557,6 +683,18 @@ public partial class TrainingWizardViewModel : ViewModelBase, IDisposable
             // the real watchlist/portfolio name as the scope token (NAME-02) would require
             // duplicating that stem-assembly logic on the C# side; deferred to a follow-up.
         };
+    }
+
+    [RelayCommand(CanExecute = nameof(CanStartTraining))]
+    private async Task StartTrainingAsync()
+    {
+        if (_orchestrator is null)
+        {
+            return;
+        }
+
+        var config = CreateCurrentTrainingConfig();
+        if (config is null) return;
 
         try
         {
@@ -564,7 +702,9 @@ public partial class TrainingWizardViewModel : ViewModelBase, IDisposable
         }
         catch (InvalidOperationException ex)
         {
-            StatusMessage = ex.Message;
+            _logger.LogWarning(ex, "TrainingWizardViewModel: training configuration was rejected.");
+            StatusMessage = LocalizationManager.Instance[TrainingValidationMessageKey(ex.Message)]
+                ?? "Check the training settings and try again.";
             return;
         }
 
@@ -575,6 +715,7 @@ public partial class TrainingWizardViewModel : ViewModelBase, IDisposable
         LogLines.Clear();
         FoldResults.Clear();
         LastResult = null;
+        CheckpointManifestPath = null;
         StatusMessage = LocalizationManager.Instance["TrainingWizard_Status_Starting"] ?? "Starting training...";
 
         _runCts = new CancellationTokenSource();
@@ -592,6 +733,7 @@ public partial class TrainingWizardViewModel : ViewModelBase, IDisposable
             _runTerminal = true;
             CancelTrainingCommand.NotifyCanExecuteChanged();
             LastResult = result;
+            CheckpointManifestPath = result.CheckpointManifestPath ?? CheckpointManifestPath;
             if (config.RequiresFinalizedSource)
                 CurrentStage = result.Success ? "Completed" : "Failed";
             StatusMessage = result.Success
@@ -648,8 +790,38 @@ public partial class TrainingWizardViewModel : ViewModelBase, IDisposable
         }
     }
 
+    private static string TrainingValidationMessageKey(string message)
+    {
+        const string prefix = "TrainingJobConfig: ";
+        if (!message.StartsWith(prefix, StringComparison.Ordinal))
+            return "TrainingWizard_Validation_General";
+        var reason = message[prefix.Length..];
+        if (reason.Contains("checkpoint", StringComparison.OrdinalIgnoreCase)
+            || reason.Contains("freeze", StringComparison.OrdinalIgnoreCase)
+            || reason.Contains("frozen", StringComparison.OrdinalIgnoreCase)
+            || reason.Contains("parent ModelId", StringComparison.Ordinal))
+            return "TrainingWizard_Validation_Checkpoint";
+        if (reason.StartsWith("StartDate ", StringComparison.Ordinal))
+            return "TrainingWizard_Validation_DateRange";
+        if (reason.StartsWith("FeatureMode ", StringComparison.Ordinal)
+            || reason.StartsWith("FeatureSpec ", StringComparison.Ordinal))
+            return "TrainingWizard_Validation_Features";
+        if (reason.Contains("lag", StringComparison.OrdinalIgnoreCase)
+            || reason.Contains("ClipSigma", StringComparison.Ordinal)
+            || reason.Contains("clipping", StringComparison.Ordinal)
+            || reason.Contains("z-score", StringComparison.Ordinal))
+            return "TrainingWizard_Validation_Preprocessing";
+        if (reason.Contains("resource bounds", StringComparison.Ordinal))
+            return "TrainingWizard_Validation_Resources";
+        if (reason.Contains("source manifest", StringComparison.Ordinal))
+            return "TrainingWizard_Validation_Source";
+        return "TrainingWizard_Validation_General";
+    }
+
     private void OnTrainingProgress(TrainingProgress update)
     {
+        if (update.CheckpointManifestPath is { } checkpoint)
+            CheckpointManifestPath = checkpoint;
         var timestamp = DateTime.Now.ToString("HH:mm:ss");
 
         if (update.Stage is { Length: > 0 } stage)

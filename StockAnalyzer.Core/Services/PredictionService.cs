@@ -1,6 +1,7 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.ML.OnnxRuntime;
@@ -20,29 +21,20 @@ namespace StockAnalyzer.Core.Services;
 /// </summary>
 public class PredictionService : IPredictionService, IDisposable
 {
+    public string? ActiveModelId => _modelRegistry?.ActiveId;
+
     private volatile bool _disposed;
     private readonly IStockAnalyzerSettings _settings;
     private readonly IMLDataProcessor _dataProcessor;
     private readonly ILogger<PredictionService> _logger;
     private readonly ResiliencePipeline<PredictionResult> _resiliencePipeline;
     private readonly System.Threading.SemaphoreSlim _initLock = new(1, 1);
-    // Serializes native inference against Dispose(): RunInference holds this while calling
-    // _session.Run, and Dispose() takes it before freeing _session / _runOptions, so a
-    // concurrent teardown can no longer free native handles mid-Run (which surfaced as an
-    // uncatchable AccessViolationException / process crash).
+    // Owns runtime replacement, in-flight references and native RunOptions lifetime.
     private readonly object _inferenceGate = new();
     // Microsoft.ML.OnnxRuntime 1.24.3's Run(runOptions, ...) overload dereferences runOptions
     // in native interop, so a null throws NullReferenceException; reuse one default instance.
     private readonly RunOptions _runOptions = new();
     private const int FeaturesPerCandle = 5;
-
-    /// <summary>
-    /// Feature channels per bar for the configured <see cref="PredictionFeatureMode"/>.
-    /// Single source of truth for the model input tensor's last dimension; mirrors the
-    /// Python <c>dataset._MODE_CHANNELS</c> map.
-    /// </summary>
-    private int ResolvedFeaturesPerBar => _fixedScaler?.Statistics.Length
-        ?? ResolveFeaturesPerBar(_settings.PredictionFeatureMode, _settings.PredictionFeatureSpec);
 
     internal static int ResolveFeaturesPerBar(PredictionFeatureMode mode, FeatureSpec? spec) => mode switch
     {
@@ -52,22 +44,115 @@ public class PredictionService : IPredictionService, IDisposable
         _ => FeaturesPerCandle,
     };
 
-    private InferenceSession? _session;
-    private FixedScaler? _fixedScaler;
     private readonly IModelGenerationRegistry? _modelRegistry;
-    private ModelGenerationLease? _sessionLease;
-    private string? _loadedModelId;
+    private volatile RuntimeBundle? _runtime;
     private string? _failedModelId;
     private string? _resolvedModelPath;
-    private string? _resolvedInputNodeName;
-    private string? _resolvedOutputNodeName;
-    // Inference-invariant after model load; cached once to keep RunInference's steady-state
-    // path allocation-free apart from the PredictionResult it returns.
-    private long[]? _cachedInputShape;
-    private string[]? _cachedInputNames;
-    private string[]? _cachedOutputNames;
     private volatile bool _permanentInitializationFailure;
     private readonly IIndicatorFactory _indicatorFactory;
+
+    private sealed class RuntimeBundle : IDisposable
+    {
+        internal RuntimeBundle(InferenceSession session, ModelGenerationLease? lease, FixedScaler? scaler, string? modelId,
+            string inputName, string outputName, int window, int featuresPerBar,
+            PredictionFeatureMode mode, FeatureSpec? featureSpec, TargetType target,
+            PredictionOutputContract? outputContract,
+            string[] classLabels, long maxTensorBytes)
+        {
+            Session = session;
+            Lease = lease;
+            Scaler = scaler;
+            ModelId = modelId;
+            InputNames = new[] { inputName };
+            OutputNames = new[] { outputName };
+            InputShape = new long[] { 1, window, featuresPerBar };
+            Window = window;
+            FeaturesPerBar = featuresPerBar;
+            Mode = mode;
+            FeatureSpec = featureSpec;
+            Target = target;
+            OutputContract = outputContract;
+            ClassLabels = classLabels;
+            MaxTensorBytes = maxTensorBytes;
+        }
+
+        internal InferenceSession Session { get; }
+        internal ModelGenerationLease? Lease { get; }
+        internal FixedScaler? Scaler { get; }
+        internal string? ModelId { get; }
+        internal string[] InputNames { get; }
+        internal string[] OutputNames { get; }
+        internal long[] InputShape { get; }
+        internal int Window { get; }
+        internal int FeaturesPerBar { get; }
+        internal PredictionFeatureMode Mode { get; }
+        internal FeatureSpec? FeatureSpec { get; }
+        internal TargetType Target { get; }
+        internal PredictionOutputContract? OutputContract { get; }
+        internal string[] ClassLabels { get; }
+        internal long MaxTensorBytes { get; }
+        // Both fields are protected by _inferenceGate.
+        internal int Users { get; set; }
+        internal bool Retired { get; set; }
+
+        public void Dispose()
+        {
+            try { Session.Dispose(); }
+            finally { Lease?.Dispose(); }
+        }
+    }
+
+    private static FeatureSpec CopyFeatureSpec(FeatureSpec spec) => spec with
+    {
+        Channels = Array.AsReadOnly(spec.Channels.Select(channel => channel with
+        {
+            Params = new System.Collections.ObjectModel.ReadOnlyDictionary<string, string>(
+                channel.Params.ToDictionary(entry => entry.Key, entry => entry.Value)),
+        }).ToArray()),
+        Lags = Array.AsReadOnly((spec.Lags ?? Array.Empty<int>()).ToArray()),
+    };
+
+    internal static CandleData[] SnapshotHistory(IEnumerable<CandleData> candles)
+    {
+        if (candles is not IReadOnlyList<CandleData> list) return candles.ToArray();
+        var snapshot = new CandleData[list.Count];
+        for (int i = 0; i < snapshot.Length; i++) snapshot[i] = list[i];
+        return snapshot;
+    }
+
+    internal static void ValidateChronologicalHistory(IReadOnlyList<CandleData> history)
+    {
+        for (int i = 1; i < history.Count; i++)
+            if (history[i].Timestamp <= history[i - 1].Timestamp)
+                throw new InvalidDataException("Candle timestamps must be strictly increasing.");
+    }
+
+    private RuntimeBundle? AcquireRuntime()
+    {
+        lock (_inferenceGate)
+        {
+            if (_disposed || _runtime is null || _runtime.ModelId != _modelRegistry?.ActiveId)
+                return null;
+            _runtime.Users++;
+            return _runtime;
+        }
+    }
+
+    private void ReleaseRuntime(RuntimeBundle runtime)
+    {
+        lock (_inferenceGate)
+        {
+            runtime.Users--;
+            if (runtime.Users == 0 && runtime.Retired) runtime.Dispose();
+        }
+    }
+
+    private static void Retire(RuntimeBundle? runtime)
+    {
+        if (runtime is null) return;
+        runtime.Retired = true;
+        if (runtime.Users == 0) runtime.Dispose();
+    }
 
     public PredictionService(
         IStockAnalyzerSettings settings,
@@ -137,23 +222,17 @@ public class PredictionService : IPredictionService, IDisposable
     public async Task InitializeAsync()
     {
         var activeId = _modelRegistry?.ActiveId;
-        if ((_session != null && _loadedModelId == activeId)
+        if ((_runtime != null && _runtime.ModelId == activeId)
             || (_permanentInitializationFailure && _failedModelId == activeId)) return;
 
-        try
-        {
-            await _initLock.WaitAsync();
-        }
-        catch (ObjectDisposedException)
-        {
-            // Disposed concurrently while waiting for the lock; nothing left to initialize.
-            return;
-        }
+        // _initLock is never disposed (see Dispose), so neither this wait nor the Release below can throw ObjectDisposedException; a call that
+        // queued before Dispose acquires the lock in turn, sees _disposed and returns.
+        await _initLock.WaitAsync();
 
         try
         {
             activeId = _modelRegistry?.ActiveId;
-            if (_disposed || (_session != null && _loadedModelId == activeId)
+            if (_disposed || (_runtime != null && _runtime.ModelId == activeId)
                 || (_permanentInitializationFailure && _failedModelId == activeId)) return;
             // Load model asynchronously to prevent UI thread blocking
             await Task.Run(() => EnsureModelLoaded());
@@ -165,14 +244,7 @@ public class PredictionService : IPredictionService, IDisposable
         }
         finally
         {
-            try
-            {
-                _initLock.Release();
-            }
-            catch (ObjectDisposedException)
-            {
-                // Disposed concurrently while this call held the lock; nothing left to release.
-            }
+            _initLock.Release();
         }
     }
 
@@ -213,6 +285,10 @@ public class PredictionService : IPredictionService, IDisposable
         {
             var inputName = ResolveNodeName(session.InputMetadata.Keys, _settings.PredictionInputNodeName);
             var outputName = ResolveNodeName(session.OutputMetadata.Keys, _settings.PredictionOutputNodeName);
+            var mode = _settings.PredictionFeatureMode;
+            var window = _settings.PredictionWindowSize;
+            var classLabels = _settings.PredictionClassLabels.ToArray();
+            var maxTensorBytes = (long)_settings.PredictionMaxComposedTensorSizeMB * 1024 * 1024;
 
             if (!session.InputMetadata.TryGetValue(inputName, out var inputMeta))
             {
@@ -229,41 +305,50 @@ public class PredictionService : IPredictionService, IDisposable
             // registry-default Params (Heikin-Ashi price types and non-default indicator Params
             // are a follow-up task, rejected explicitly here rather than silently mis-composed)
             // before anything else about this model can be validated.
+            FeatureSpec? featureSpec = null;
             string? expectedFeatureSpecJson = null;
-            if (_settings.PredictionFeatureMode == PredictionFeatureMode.ComposedFeatures)
+            if (mode == PredictionFeatureMode.ComposedFeatures)
             {
-                ValidateComposedFeatureSpec(_settings.PredictionFeatureSpec, _settings.PredictionMaxComposedChannels, _indicatorFactory);
+                featureSpec = CopyFeatureSpec(ValidateComposedFeatureSpec(
+                    _settings.PredictionFeatureSpec, _settings.PredictionMaxComposedChannels, _indicatorFactory));
                 expectedFeatureSpecJson = System.Text.Json.JsonSerializer.Serialize(
-                    _settings.PredictionFeatureSpec, TrainingConfigJson.Options);
+                    featureSpec, TrainingConfigJson.Options);
             }
 
             var metadata = session.ModelMetadata.CustomMetadataMap;
-            var fixedScaler = metadata.ContainsKey(PredictionModelMetadata.ScalerReferenceKey)
+            var outputContract = PredictionModelMetadata.ReadOutputContract(metadata);
+            var target = outputContract.Semantic switch
+            {
+                PredictionOutputSemantic.LogReturn => TargetType.Regression,
+                PredictionOutputSemantic.ClassProbabilities => TargetType.Classification,
+                _ => throw new InvalidOperationException("ONNX output semantic is unsupported."),
+            };
+            var fixedScaler = PredictionModelMetadata.RequiresFixedScaler(metadata)
                 ? FixedScaler.Load(modelPath, metadata) : null;
             int featuresPerBar = fixedScaler?.Statistics.Length
-                ?? ResolveFeaturesPerBar(_settings.PredictionFeatureMode, _settings.PredictionFeatureSpec);
+                ?? ResolveFeaturesPerBar(mode, featureSpec);
             // A regression head outputs a single continuous value [batch, 1], not a
             // per-class probability vector, so its expected output width is 1 regardless
             // of the configured PredictionClassLabels (which are meaningless for it).
-            int expectedOutputWidth = _settings.PredictionTargetType == TargetType.Regression
+            int expectedOutputWidth = target == TargetType.Regression
                 ? 1
-                : _settings.PredictionClassLabels.Count;
-            ValidateModelContract(
-                inputMeta.IsTensor, inputMeta.Dimensions,
-                outputMeta.IsTensor, outputMeta.Dimensions,
-                _settings.PredictionWindowSize, featuresPerBar, expectedOutputWidth,
-                inputName, outputName);
+                : classLabels.Length;
+            ValidateModelContract(inputMeta, outputMeta, window, featuresPerBar,
+                expectedOutputWidth, inputName, outputName);
 
             // Semantic contract: the model's embedded metadata_props (feature_mode / window_size /
             // class_order) must match the running configuration. A mismatch here is as
             // unrecoverable as a shape mismatch, so the surrounding catch treats it identically.
             PredictionModelMetadata.Validate(
                 metadata,
-                _settings.PredictionFeatureMode,
-                _settings.PredictionWindowSize,
-                _settings.PredictionClassLabels,
+                mode,
+                window,
+                classLabels,
                 _logger,
                 expectedFeatureSpecJson);
+
+            var loaded = new RuntimeBundle(session, lease, fixedScaler, candidateId, inputName, outputName,
+                window, featuresPerBar, mode, featureSpec, target, outputContract, classLabels, maxTensorBytes);
 
             lock (_inferenceGate)
             {
@@ -271,22 +356,13 @@ public class PredictionService : IPredictionService, IDisposable
                 {
                     // Disposed while this load was in flight: drop the session instead of
                     // publishing a native handle that Dispose() has already stopped tracking.
-                    session.Dispose();
-                    lease?.Dispose();
+                    loaded.Dispose();
                     return;
                 }
 
-                _session?.Dispose();
-                _sessionLease?.Dispose();
-                _resolvedInputNodeName = inputName;
-                _resolvedOutputNodeName = outputName;
-                _cachedInputNames = new[] { inputName };
-                _cachedOutputNames = new[] { outputName };
-                _cachedInputShape = new long[] { 1, _settings.PredictionWindowSize, featuresPerBar };
-                _fixedScaler = fixedScaler;
-                _session = session;
-                _sessionLease = lease;
-                _loadedModelId = candidateId;
+                var previous = _runtime;
+                _runtime = loaded;
+                Retire(previous);
                 _permanentInitializationFailure = false;
                 _failedModelId = null;
             }
@@ -306,9 +382,21 @@ public class PredictionService : IPredictionService, IDisposable
     /// <summary>
     /// Validates the loaded ONNX model against the configured inference contract:
     /// input tensor rank 3 <c>[batch, WindowSize, FeaturesPerBar]</c> and output tensor rank 2
-    /// <c>[batch, ClassCount]</c>. Dimensions reported as -1 are dynamic and accepted; fixed
-    /// dimensions must match. Every violation throws <see cref="InvalidOperationException"/>.
+    /// <c>[batch, ClassCount]</c>. Batch is 1 or dynamic (-1); remaining dynamic dimensions
+    /// retain the existing behavior. Node metadata must declare float32 input and output.
+    /// Every violation throws <see cref="InvalidOperationException"/>.
     /// </summary>
+    internal static void ValidateModelContract(NodeMetadata inputMetadata, NodeMetadata outputMetadata,
+        int expectedWindowSize, int expectedFeaturesPerBar, int expectedClassCount,
+        string inputNodeName, string outputNodeName)
+    {
+        if (inputMetadata.ElementType != typeof(float) || outputMetadata.ElementType != typeof(float))
+            throw new InvalidOperationException("ONNX model input and output must be float32 tensors.");
+        ValidateModelContract(inputMetadata.IsTensor, inputMetadata.Dimensions,
+            outputMetadata.IsTensor, outputMetadata.Dimensions,
+            expectedWindowSize, expectedFeaturesPerBar, expectedClassCount, inputNodeName, outputNodeName);
+    }
+
     internal static void ValidateModelContract(
         bool inputIsTensor, int[]? inputDimensions,
         bool outputIsTensor, int[]? outputDimensions,
@@ -336,6 +424,9 @@ public class PredictionService : IPredictionService, IDisposable
                     $"ONNX input node '{inputNodeName}' has rank {inputDimensions.Length}; expected {ExpectedInputRank} ([batch, {expectedWindowSize}, {expectedFeaturesPerBar}]).");
             }
 
+            if (inputDimensions[0] is not (1 or -1))
+                throw new InvalidOperationException($"ONNX input node '{inputNodeName}' must have batch dimension 1 or dynamic.");
+
             if (inputDimensions[1] > 0 && inputDimensions[1] != expectedWindowSize)
             {
                 throw new InvalidOperationException(
@@ -356,6 +447,9 @@ public class PredictionService : IPredictionService, IDisposable
                 throw new InvalidOperationException(
                     $"ONNX output node '{outputNodeName}' has rank {outputDimensions.Length}; expected {ExpectedOutputRank} ([batch, {expectedClassCount}]).");
             }
+
+            if (outputDimensions[0] is not (1 or -1))
+                throw new InvalidOperationException($"ONNX output node '{outputNodeName}' must have batch dimension 1 or dynamic.");
 
             if (outputDimensions[1] > 0 && outputDimensions[1] != expectedClassCount)
             {
@@ -708,8 +802,19 @@ public class PredictionService : IPredictionService, IDisposable
             return PredictionResult.Empty;
         if (candles == null) return PredictionResult.Empty;
 
-        // Avoid multiple enumerations and extra allocations
-        var candleList = candles as IReadOnlyList<CandleData> ?? candles.ToList();
+        // Own one history before any asynchronous initialization can let the caller mutate it.
+        IReadOnlyList<CandleData> candleList;
+        try { candleList = SnapshotHistory(candles); }
+        catch (ArgumentOutOfRangeException ex)
+        {
+            _logger.LogWarning(ex, "Candle history changed while being copied; returning fallback.");
+            return PredictionResult.Empty;
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogWarning(ex, "Candle history changed while being copied; returning fallback.");
+            return PredictionResult.Empty;
+        }
         int windowSize = _settings.PredictionWindowSize;
 
         if (candleList.Count < windowSize)
@@ -721,64 +826,68 @@ public class PredictionService : IPredictionService, IDisposable
         {
             await InitializeAsync();
 
-            if ((_permanentInitializationFailure && _failedModelId == _modelRegistry?.ActiveId)
-                || _session == null
-                || _resolvedInputNodeName == null || _resolvedOutputNodeName == null)
+            if (_permanentInitializationFailure && _failedModelId == _modelRegistry?.ActiveId)
             {
                 throw new InvalidOperationException("Prediction engine is not initialized.");
             }
-
-            // Zero-allocation slice logic: use the last 'windowSize' candles
-            int startIndex = candleList.Count - windowSize;
-            var scaler = _fixedScaler;
-            if (scaler is not null && startIndex < scaler.Lags.DefaultIfEmpty(0).Max())
-                throw new InvalidOperationException("Insufficient lag history for fixed preprocessing.");
-            int featuresPerBar = ResolvedFeaturesPerBar;
-            long maxTensorBytes = (long)_settings.PredictionMaxComposedTensorSizeMB * 1024 * 1024;
-            int featureCount = ComputeCheckedFeatureCount(windowSize, featuresPerBar, maxTensorBytes);
-            var buffer = ArrayPool<float>.Shared.Rent(featureCount);
+            var runtime = AcquireRuntime()
+                ?? throw new InvalidOperationException("Prediction engine is not initialized.");
             try
             {
-                if (scaler is not null)
+                // Keep this generation alive through both feature construction and native Run.
+                int runtimeWindow = runtime.Window;
+                if (candleList.Count < runtimeWindow) return PredictionResult.Empty;
+                if (runtime.Scaler is not null || runtime.Mode == PredictionFeatureMode.ComposedFeatures)
+                    ValidateChronologicalHistory(candleList);
+                int startIndex = candleList.Count - runtimeWindow;
+                var scaler = runtime.Scaler;
+                if (scaler is not null && startIndex < scaler.Lags.DefaultIfEmpty(0).Max())
+                    throw new InvalidOperationException("Insufficient lag history for fixed preprocessing.");
+                int featureCount = ComputeCheckedFeatureCount(
+                    runtimeWindow, runtime.FeaturesPerBar, runtime.MaxTensorBytes);
+                var buffer = ArrayPool<float>.Shared.Rent(featureCount);
+                try
                 {
-                    var raw = new double[featureCount];
-                    BuildFixedRawTensor(candleList, startIndex, scaler,
-                        _settings.PredictionFeatureMode == PredictionFeatureMode.ComposedFeatures
-                            ? _settings.PredictionFeatureSpec : null,
-                        _indicatorFactory, raw);
-                    scaler.Transform(raw, buffer.AsSpan(0, featureCount));
-                }
-                else switch (_settings.PredictionFeatureMode)
-                {
-                    case PredictionFeatureMode.LogReturn:
-                        _dataProcessor.ComputeLogReturns(candleList, startIndex, windowSize, buffer.AsSpan(0, featureCount));
-                        break;
-                    case PredictionFeatureMode.LogReturnOhlc:
-                        _dataProcessor.ComputeLogReturnsOhlc(candleList, startIndex, windowSize, buffer.AsSpan(0, featureCount));
-                        break;
-                    case PredictionFeatureMode.ZScoreStandardized:
-                        _dataProcessor.NormalizeZScoreOhlcv(candleList, startIndex, windowSize, buffer.AsSpan(0, featureCount));
-                        break;
-                    case PredictionFeatureMode.ZScoreOhlcvJoint:
-                        _dataProcessor.ComputeJointZScoreOhlcv(candleList, startIndex, windowSize, buffer.AsSpan(0, featureCount));
-                        break;
-                    case PredictionFeatureMode.ComposedFeatures:
-                        BuildComposedTensor(
-                            candleList, startIndex, windowSize,
-                            ValidateComposedFeatureSpec(_settings.PredictionFeatureSpec, _settings.PredictionMaxComposedChannels, _indicatorFactory),
-                            _indicatorFactory,
-                            buffer.AsSpan(0, featureCount));
-                        break;
-                    default:
-                        _dataProcessor.NormalizeCandles(candleList, startIndex, windowSize, buffer.AsSpan(0, featureCount));
-                        break;
-                }
+                    if (scaler is not null)
+                    {
+                        var raw = new double[featureCount];
+                        BuildFixedRawTensor(candleList, startIndex, scaler, runtime.FeatureSpec,
+                            _indicatorFactory, raw);
+                        scaler.Transform(raw, buffer.AsSpan(0, featureCount));
+                    }
+                    else switch (runtime.Mode)
+                    {
+                        case PredictionFeatureMode.LogReturn:
+                            _dataProcessor.ComputeLogReturns(candleList, startIndex, runtimeWindow, buffer.AsSpan(0, featureCount));
+                            break;
+                        case PredictionFeatureMode.LogReturnOhlc:
+                            _dataProcessor.ComputeLogReturnsOhlc(candleList, startIndex, runtimeWindow, buffer.AsSpan(0, featureCount));
+                            break;
+                        case PredictionFeatureMode.ZScoreStandardized:
+                            _dataProcessor.NormalizeZScoreOhlcv(candleList, startIndex, runtimeWindow, buffer.AsSpan(0, featureCount));
+                            break;
+                        case PredictionFeatureMode.ZScoreOhlcvJoint:
+                            _dataProcessor.ComputeJointZScoreOhlcv(candleList, startIndex, runtimeWindow, buffer.AsSpan(0, featureCount));
+                            break;
+                        case PredictionFeatureMode.ComposedFeatures:
+                            BuildComposedTensor(candleList, startIndex, runtimeWindow, runtime.FeatureSpec!,
+                                _indicatorFactory, buffer.AsSpan(0, featureCount));
+                            break;
+                        default:
+                            _dataProcessor.NormalizeCandles(candleList, startIndex, runtimeWindow, buffer.AsSpan(0, featureCount));
+                            break;
+                    }
 
-                return await Task.Run(() => RunInference(buffer, featureCount), ct);
+                    return await Task.Run(() => RunInference(runtime, buffer, featureCount), ct);
+                }
+                finally
+                {
+                    ArrayPool<float>.Shared.Return(buffer, clearArray: true);
+                }
             }
             finally
             {
-                ArrayPool<float>.Shared.Return(buffer, clearArray: true);
+                ReleaseRuntime(runtime);
             }
         });
     }
@@ -806,68 +915,72 @@ public class PredictionService : IPredictionService, IDisposable
         return y;
     }
 
-    /// <summary>
-    /// Converts a forward log-return prediction (<c>y = ln(C[a+H]/C[a])</c>, see
-    /// <c>StockAnalyzer.Python.training.dataset.make_regression_target</c>) to the
-    /// user-confirmed D04 display convention: simple-return percent, the exact inverse of the
-    /// log-return definition (<c>expm1(y) = exp(y) - 1</c> is the simple return; <c>*100</c> is
-    /// percent). Returned unrounded - rounding/number-formatting is a UI-layer concern, not
-    /// decided here (calculation/display separation).
-    /// </summary>
-    internal static double ComputeSimpleReturnPercent(float y) => 100.0 * (Math.Exp((double)y) - 1.0);
-
     private const int MaxStackAllocClassCount = 32;
 
-    private PredictionResult RunInference(float[] buffer, int featureCount)
+    private PredictionResult RunInference(RuntimeBundle runtime, float[] buffer, int featureCount)
     {
-        // Hold the inference gate across the whole native call so a concurrent Dispose()
-        // cannot free _session / _runOptions mid-Run. On a disposal race, degrade to the
-        // same Empty result the resilience Fallback returns instead of crashing.
+        // RunOptions belongs to the service; the gate prevents Dispose from freeing it mid-Run.
+        // The runtime reference keeps this exact session alive after an active-generation swap.
         lock (_inferenceGate)
         {
-            if (_disposed || _session is null)
+            if (_disposed)
             {
                 return PredictionResult.Empty;
             }
 
-            return RunInferenceCore(buffer, featureCount);
+            return RunInferenceCore(runtime, buffer, featureCount);
         }
     }
 
-    private PredictionResult RunInferenceCore(float[] buffer, int featureCount)
+    private PredictionResult RunInferenceCore(RuntimeBundle runtime, float[] buffer, int featureCount)
     {
         // Zero-copy tensor construction: wraps the ArrayPool-rented buffer directly, avoiding
         // the per-inference DenseTensor<float>/List<NamedOnnxValue> heap allocations of the legacy API.
-        // Shape and node-name arrays are load-time invariants reused from cached fields.
-        using var inputValue = OrtValue.CreateTensorValueFromMemory(OrtMemoryInfo.DefaultInstance, buffer.AsMemory(0, featureCount), _cachedInputShape!);
+        // Shape and node-name arrays belong to the same generation as the input tensor.
+        using var inputValue = OrtValue.CreateTensorValueFromMemory(OrtMemoryInfo.DefaultInstance, buffer.AsMemory(0, featureCount), runtime.InputShape);
 
-        using var results = _session!.Run(
+        using var results = runtime.Session.Run(
             runOptions: _runOptions,
-            inputNames: _cachedInputNames!,
+            inputNames: runtime.InputNames,
             inputValues: new[] { inputValue },
-            outputNames: _cachedOutputNames!);
+            outputNames: runtime.OutputNames);
 
-        var outputSpan = results[0].GetTensorDataAsSpan<float>();
+        // Raw stage: the tensor remains scoped to the native Run result. No UI meaning or
+        // formatting is applied before DecodeSemantic validates its ONNX metadata contract.
+        var raw = new RawPredictionOutput(results[0].GetTensorDataAsSpan<float>());
+        return DecodeSemantic(runtime, raw);
+    }
 
-        if (_settings.PredictionTargetType == TargetType.Regression)
+    private readonly ref struct RawPredictionOutput(ReadOnlySpan<float> values)
+    {
+        internal ReadOnlySpan<float> Values { get; } = values;
+    }
+
+    private PredictionResult DecodeSemantic(RuntimeBundle runtime, RawPredictionOutput raw)
+    {
+        var outputSpan = raw.Values;
+
+        if (runtime.Target == TargetType.Regression)
         {
             float y = ExtractRegressionValue(outputSpan);
-            double simpleReturnPercent = ComputeSimpleReturnPercent(y);
             return new PredictionResult(
                 Label: string.Empty,
-                Probability: 0f,
+                Probability: float.NaN,
                 Scores: Array.Empty<ClassScore>(),
-                Confidence: 0f,
-                Entropy: 0f,
+                Confidence: float.NaN,
+                Entropy: float.NaN,
                 IsFallback: false)
             {
                 IsRegression = true,
                 PredictedLogReturn = y,
-                SimpleReturnPercent = simpleReturnPercent,
+                OutputContract = runtime.OutputContract,
+                ConfidenceType = ConfidenceType.None,
+                ConfidenceValue = null,
+                ModelId = runtime.ModelId,
             };
         }
 
-        int classCount = _settings.PredictionClassLabels.Count;
+        int classCount = runtime.ClassLabels.Length;
         if (outputSpan.Length != classCount)
         {
             // Contract guard: an undersized output would throw an opaque ArgumentOutOfRangeException
@@ -883,23 +996,20 @@ public class PredictionService : IPredictionService, IDisposable
 
         float sum = 0f;
         bool hasNegative = false;
+        bool hasInvalidProbability = false;
         for (int i = 0; i < classCount; i++)
         {
             sum += rawOutput[i];
             if (rawOutput[i] < 0f) hasNegative = true;
+            if (!float.IsFinite(rawOutput[i]) || rawOutput[i] > 1f) hasInvalidProbability = true;
         }
 
-        bool needsSoftmax = hasNegative || MathF.Abs(1.0f - sum) > IMLDataProcessor.SoftmaxSumTolerance;
-
+        if (hasNegative || !float.IsFinite(sum)
+            || MathF.Abs(1.0f - sum) > IMLDataProcessor.SoftmaxSumTolerance
+            || hasInvalidProbability)
+            throw new InvalidOperationException("ONNX output declared class probabilities but contains invalid values.");
         Span<float> probabilities = classCount <= MaxStackAllocClassCount ? stackalloc float[classCount] : new float[classCount];
-        if (needsSoftmax)
-        {
-            _dataProcessor.ComputeSoftmax(rawOutput, probabilities);
-        }
-        else
-        {
-            rawOutput.CopyTo(probabilities);
-        }
+        rawOutput.CopyTo(probabilities);
 
         var (confidence, entropy) = _dataProcessor.ComputeConfidenceAndEntropy(probabilities);
 
@@ -908,7 +1018,7 @@ public class PredictionService : IPredictionService, IDisposable
         var scores = new ClassScore[classCount];
         for (int i = 0; i < classCount; i++)
         {
-            scores[i] = new ClassScore(_settings.PredictionClassLabels[i], probabilities[i]);
+            scores[i] = new ClassScore(runtime.ClassLabels[i], probabilities[i]);
             if (probabilities[i] > best)
             {
                 best = probabilities[i];
@@ -917,10 +1027,16 @@ public class PredictionService : IPredictionService, IDisposable
         }
 
         string label = confidence >= _settings.PredictionConfidenceThreshold
-            ? _settings.PredictionClassLabels[argmax]
+            ? runtime.ClassLabels[argmax]
             : "Unknown";
 
-        return new PredictionResult(label, confidence, scores, confidence, entropy, IsFallback: false);
+        return new PredictionResult(label, confidence, scores, confidence, entropy, IsFallback: false)
+        {
+            OutputContract = runtime.OutputContract,
+            ConfidenceType = ConfidenceType.ClassProbability,
+            ConfidenceValue = confidence,
+            ModelId = runtime.ModelId,
+        };
     }
 
     public void Dispose()
@@ -930,8 +1046,8 @@ public class PredictionService : IPredictionService, IDisposable
             return;
         }
 
-        // Take the inference gate so this waits for any in-flight RunInference to finish and
-        // blocks a new one from entering before the native handles are freed.
+        // Stop native calls, then retire the active generation. Existing preprocessors hold
+        // their own references and release the retired session when they finish.
         lock (_inferenceGate)
         {
             if (_disposed)
@@ -940,15 +1056,15 @@ public class PredictionService : IPredictionService, IDisposable
             }
 
             _disposed = true;
-            _session?.Dispose();
-            _session = null;
-            _fixedScaler = null;
-            _sessionLease?.Dispose();
-            _sessionLease = null;
+            var previous = _runtime;
+            _runtime = null;
+            Retire(previous);
             _runOptions.Dispose();
         }
 
-        _initLock.Dispose();
+        // _initLock is deliberately NOT disposed: SemaphoreSlim.Dispose() does not wake WaitAsync waiters that are already queued, and a
+        // disposed semaphore cannot be Released, so an InitializeAsync call waiting behind a running initializer would hang forever. The
+        // semaphore owns no unmanaged resource here (AvailableWaitHandle is never used), so leaving it to the GC loses nothing.
         GC.SuppressFinalize(this);
     }
 }

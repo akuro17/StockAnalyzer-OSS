@@ -1306,19 +1306,36 @@ public class ParquetMarketDataProvider : IMarketDataProvider
     }
 
     private async Task<TickerMetadata> LoadMetadataFromDiskAsync(string ticker)
+        => (await TryLoadMetadataFromDiskAsync(ticker)).Meta;
+
+    /// <summary>
+    /// Reads <c>{ticker}.meta.parquet</c> and, when it holds strategy data, registers that data with
+    /// <see cref="UserStrategyMetadataRepository"/> (the single place a persisted strategy enters the in-memory cache).
+    /// Result: a missing file or a file without a row is "no stored data" (<see cref="MetadataDiskLoad.ReadFailed"/> false);
+    /// an exception while reading is a FAILED read (<see cref="MetadataDiskLoad.ReadFailed"/> true, Meta = Unknown), which a
+    /// caller that is about to write must not mistake for "no stored data".
+    /// </summary>
+    /// <remarks>Public entry point for read-modify-write callers: unlike <see cref="GetMetadataAsync"/> it has no side
+    /// effects on the metadata cache, the user-tag store or the file.</remarks>
+    public async Task<MetadataDiskLoad> TryLoadStoredMetadataAsync(string ticker)
+        => string.IsNullOrWhiteSpace(ticker)
+            ? new MetadataDiskLoad(TickerMetadata.Unknown, ReadFailed: false)
+            : await TryLoadMetadataFromDiskAsync(ticker);
+
+    private async Task<MetadataDiskLoad> TryLoadMetadataFromDiskAsync(string ticker)
     {
         var filePath = Path.Combine(_metadataPath, $"{ticker}.meta.parquet").Replace("\\", "/");
         if (!File.Exists(filePath))
         {
             _logger.LogWarning("Metadata file does not exist for {Ticker} at path {Path}", ticker, filePath);
-            return TickerMetadata.Unknown;
+            return new MetadataDiskLoad(TickerMetadata.Unknown, ReadFailed: false);
         }
 
         try
         {
             using (await _dbManager.AcquireLockAsync("LoadMetadataFromDisk"))
             {
-                return await _resiliencePipeline.ExecuteAsync(async ct =>
+                var loaded = await _resiliencePipeline.ExecuteAsync(async ct =>
                 {
                     var connection = _dbManager.GetConnection();
                     if (connection is not DbConnection dbConnection)
@@ -1514,12 +1531,13 @@ public class ParquetMarketDataProvider : IMarketDataProvider
                     _logger.LogWarning("No metadata row found for {Ticker} in Parquet file", ticker);
                     return TickerMetadata.Unknown;
                 }, CancellationToken.None);
+                return new MetadataDiskLoad(loaded, ReadFailed: false);
             }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to load metadata from disk for {Ticker}", ticker);
-            return TickerMetadata.Unknown;
+            return new MetadataDiskLoad(TickerMetadata.Unknown, ReadFailed: true);
         }
     }
 

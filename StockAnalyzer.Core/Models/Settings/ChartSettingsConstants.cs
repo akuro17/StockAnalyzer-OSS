@@ -108,6 +108,15 @@ public static class ChartSettingsConstants
     public const string DefaultSeasonalityYearColor9 = "#E65C5C";  // Salmon
     public const string DefaultSeasonalityYearColor10 = "#00BFFF"; // Deep sky blue
 
+    // --- Backtest Results equity curve colors ---
+    // The line color is used by the Single mode and by the one-point dot of every mode. Up/Down mean
+    // "up segment"/"down segment" (PreviousBar) or "at a high"/"in drawdown" (Drawdown).
+    public const StockAnalyzer.Core.Models.Backtest.Configuration.BacktestEquityColorMode DefaultBacktestEquityColorMode =
+        StockAnalyzer.Core.Models.Backtest.Configuration.BacktestEquityColorMode.Drawdown;
+    public const string DefaultBacktestEquityLineColor = "#FF2962FF";
+    public const string DefaultBacktestEquityUpColor = "#FF4CAF50";
+    public const string DefaultBacktestEquityDownColor = "#FFF44336";
+
     // --- Breakout / Multi-Wave Pattern Line (P&F/Renko/Kagi/ThreeLineBreak) ---
     public const string DefaultBreakoutBullishColor = "#00ACC1"; // Cyan
     public const string DefaultBreakoutBearishColor = "#D81B60"; // Magenta

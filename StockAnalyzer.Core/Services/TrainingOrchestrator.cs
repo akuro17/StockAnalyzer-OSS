@@ -32,19 +32,37 @@ public sealed class TrainingOrchestrator : ITrainingOrchestrator
     private readonly ILogger<TrainingOrchestrator> _logger;
     private readonly ITrainingResourceSettings? _resourceSettings;
     private readonly ITrainingSourceSnapshotProvider? _sourceSnapshotProvider;
+    private readonly IModelGenerationRegistry? _modelGenerations;
+    private readonly int _maxRunDurationSeconds;
+    private readonly TrainingJobGate _jobGate;
 
     public TrainingOrchestrator(
         IPythonService pythonService,
         IndicatorChannelExporter indicatorChannelExporter,
         ILogger<TrainingOrchestrator>? logger = null,
         ITrainingResourceSettings? resourceSettings = null,
-        ITrainingSourceSnapshotProvider? sourceSnapshotProvider = null)
+        ITrainingSourceSnapshotProvider? sourceSnapshotProvider = null,
+        IModelGenerationRegistry? modelGenerations = null, TrainingJobGate? jobGate = null)
     {
         _pythonService = pythonService ?? throw new ArgumentNullException(nameof(pythonService));
         _indicatorChannelExporter = indicatorChannelExporter ?? throw new ArgumentNullException(nameof(indicatorChannelExporter));
         _logger = logger ?? NullLogger<TrainingOrchestrator>.Instance;
         _resourceSettings = resourceSettings;
         _sourceSnapshotProvider = sourceSnapshotProvider;
+        _modelGenerations = modelGenerations;
+        _jobGate = jobGate ?? new TrainingJobGate();
+        _maxRunDurationSeconds = checked(TrainingResourceOverrides.MaximumRunDurationMinutes * 60);
+    }
+
+    internal TrainingOrchestrator(IPythonService pythonService, IndicatorChannelExporter indicatorChannelExporter,
+        int maxRunDurationSeconds, ILogger<TrainingOrchestrator>? logger = null,
+        ITrainingResourceSettings? resourceSettings = null,
+        ITrainingSourceSnapshotProvider? sourceSnapshotProvider = null)
+        : this(pythonService, indicatorChannelExporter, logger, resourceSettings, sourceSnapshotProvider)
+    {
+        if (maxRunDurationSeconds is < 1 or > TrainingResourceOverrides.MaximumRunDurationMinutes * 60)
+            throw new ArgumentOutOfRangeException(nameof(maxRunDurationSeconds));
+        _maxRunDurationSeconds = maxRunDurationSeconds;
     }
 
     public async Task<TrainingRunResult> StartTrainingAsync(
@@ -59,14 +77,23 @@ public sealed class TrainingOrchestrator : ITrainingOrchestrator
         // The immutable record is captured before any await and stays fixed for this run.
         if (_resourceSettings?.LoadError is { } loadError)
             throw new InvalidOperationException(loadError);
-        var resourceLimits = _resourceSettings?.Snapshot ?? new TrainingResourceOverrides();
+        var resourceLimits = TrainingResourceGuard.Resolve(_resourceSettings?.Snapshot ?? new TrainingResourceOverrides())
+            with { MaxRunDurationSeconds = _maxRunDurationSeconds };
         TrainingResourceGuard.Validate(config, resourceLimits);
         // Lists and maps inside the record are mutable. Freeze the complete wire
         // contract before the first await so later caller edits cannot change a run.
         config = TrainingConfigJson.DeserializeConfig(TrainingConfigJson.Serialize(config));
 
+        // The lease survives every await, including process exit and cancellation cleanup.
+        using var jobLease = _jobGate.Acquire(config);
+
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeout.CancelAfter(TimeSpan.FromSeconds(resourceLimits.MaxRunDurationSeconds));
+        var runToken = timeout.Token;
+        var runClock = Stopwatch.StartNew();
         var startedUtc = DateTimeOffset.UtcNow;
-        // Generated exactly once, here, and threaded through to Python via config.RunId below
+        // Generated once for new runs; strict Resume restores the original run identity.
+        // Threaded through to Python via config.RunId below
         // instead of each side deriving its own timestamp independently (previous design: C#
         // used pre-launch UTC, Python used post-launch local time, so the two never matched and
         // Data/Experiments/<RunId>/ could not be cross-referenced against the .onnx filename by
@@ -74,14 +101,22 @@ public sealed class TrainingOrchestrator : ITrainingOrchestrator
         // depend on clock resolution -- an 8-hex-char GUID suffix (the same "timestamp_GUID"
         // idiom already used for the temp config filename below) makes same-instant collisions
         // structurally impossible rather than merely unlikely.
-        var runId = $"{startedUtc.ToString("yyyyMMdd-HHmmssfff", CultureInfo.InvariantCulture)}-{Guid.NewGuid().ToString("N")[..8]}";
+        var runId = config.InitializationMode == TrainingInitializationMode.Resume
+            ? TrainingCheckpointContract.ReadResumeRunId(config.CheckpointPath!)
+            : $"{startedUtc.ToString("yyyyMMdd-HHmmssfff", CultureInfo.InvariantCulture)}-{Guid.NewGuid().ToString("N")[..8]}";
+        using var parentLease = config.InitializationMode == TrainingInitializationMode.FineTune
+            ? _modelGenerations?.Acquire(config.ParentModelId!)
+                ?? throw new InvalidOperationException("FineTune parent model generation is unavailable.")
+            : null;
+        if (parentLease is not null)
+            config = config with { ParentModelHash = _modelGenerations!.GetManifest(parentLease.ModelId)!.ModelHash };
         config = config with { RunId = runId };
         var stageGate = new object();
         var terminalStage = false;
         void ReportPrepared(TrainingProgress update)
         {
             lock (stageGate)
-                if (!terminalStage && !ct.IsCancellationRequested)
+                if (!terminalStage && !runToken.IsCancellationRequested)
                     progress?.Report(update);
         }
         void ReportTerminal(string stage, bool requireNotCancelled = false)
@@ -89,7 +124,7 @@ public sealed class TrainingOrchestrator : ITrainingOrchestrator
             lock (stageGate)
             {
                 if (terminalStage) return;
-                if (requireNotCancelled) ct.ThrowIfCancellationRequested();
+                if (requireNotCancelled) runToken.ThrowIfCancellationRequested();
                 terminalStage = true;
                 progress?.Report(new TrainingProgress { Stage = stage });
             }
@@ -97,7 +132,7 @@ public sealed class TrainingOrchestrator : ITrainingOrchestrator
         IProgress<TrainingProgress>? runProgress = config.RequiresFinalizedSource
             ? new InlineTrainingProgress(ReportPrepared) : progress;
         using var cancellationStage = config.RequiresFinalizedSource
-            ? ct.Register(() =>
+            ? runToken.Register(() =>
             {
                 lock (stageGate)
                     if (!terminalStage)
@@ -116,7 +151,7 @@ public sealed class TrainingOrchestrator : ITrainingOrchestrator
         {
             if (_sourceSnapshotProvider is null)
                 throw new InvalidOperationException("Training source snapshot provider is not configured.");
-            ct.ThrowIfCancellationRequested();
+            runToken.ThrowIfCancellationRequested();
             if (Directory.Exists(preparedRunDirectory!))
                 throw new IOException("Run-owned training directory already exists.");
             Directory.CreateDirectory(preparedRunDirectory!);
@@ -124,11 +159,11 @@ public sealed class TrainingOrchestrator : ITrainingOrchestrator
             IProgress<string> stage = new InlineStageProgress(name =>
                 runProgress?.Report(new TrainingProgress { Stage = name }));
             var prepared = await _sourceSnapshotProvider.PrepareAsync(
-                config, preparedRunDirectory!, startedUtc, stage, ct).ConfigureAwait(false);
-            ct.ThrowIfCancellationRequested();
+                config, preparedRunDirectory!, startedUtc, stage, runToken).ConfigureAwait(false);
+            runToken.ThrowIfCancellationRequested();
             var exports = await _indicatorChannelExporter.ExportPreparedAsync(
-                config.FeatureSpec!, prepared, stage, ct).ConfigureAwait(false);
-            ct.ThrowIfCancellationRequested();
+                config.FeatureSpec!, prepared, stage, runToken).ConfigureAwait(false);
+            runToken.ThrowIfCancellationRequested();
             config = config with
             {
                 PreparedInputDir = prepared.DatasetDirectory,
@@ -151,19 +186,24 @@ public sealed class TrainingOrchestrator : ITrainingOrchestrator
             && config.FeatureSpec.Channels.Any(c => c.Kind == FeatureChannelKind.Indicator))
         {
             var indicatorChannelExportPaths = await _indicatorChannelExporter.ExportAsync(
-                config.FeatureSpec, config.Symbols, config.Timeframe, runId, ct).ConfigureAwait(false);
+                config.FeatureSpec, config.Symbols, config.Timeframe, runId, runToken).ConfigureAwait(false);
             config = config with { IndicatorChannelExportPaths = indicatorChannelExportPaths };
         }
 
-        ct.ThrowIfCancellationRequested();
-        var pythonExe = await _pythonService.ResolvePythonExecutablePathAsync(ct).ConfigureAwait(false);
+        runToken.ThrowIfCancellationRequested();
+        var pythonExe = await _pythonService.ResolvePythonExecutablePathAsync(runToken).ConfigureAwait(false);
         var scriptPath = PythonScriptLocator.Resolve(OrchestratorScriptRelativePath);
+
+        var remaining = TimeSpan.FromSeconds(resourceLimits.MaxRunDurationSeconds) - runClock.Elapsed;
+        if (remaining <= TimeSpan.Zero) timeout.Cancel();
+        runToken.ThrowIfCancellationRequested();
+        config = config with { ResourceLimits = resourceLimits, RemainingRunBudgetSeconds = remaining.TotalSeconds };
 
         configPath = Path.Combine(Path.GetTempPath(), $"sa_training_job_{runId}_{Guid.NewGuid():N}.json");
         // Utf8NoBom, not Encoding.UTF8: a BOM preamble breaks run_training.py's
         // json.loads(config_path.read_text(encoding="utf-8")) (bug: trainer exited with a
         // json.decoder.JSONDecodeError before doing anything).
-        await File.WriteAllTextAsync(configPath, TrainingConfigJson.Serialize(config), TrainingConfigJson.Utf8NoBom, ct)
+        await File.WriteAllTextAsync(configPath, TrainingConfigJson.Serialize(config), TrainingConfigJson.Utf8NoBom, runToken)
             .ConfigureAwait(false);
 
         var startInfo = new ProcessStartInfo
@@ -194,13 +234,12 @@ public sealed class TrainingOrchestrator : ITrainingOrchestrator
 
         var processStarted = false;
         CancellationTokenRegistration registration = default;
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
         try
         {
-            ct.ThrowIfCancellationRequested();
+            runToken.ThrowIfCancellationRequested();
             if (config.RequiresFinalizedSource)
                 runProgress?.Report(new TrainingProgress { Stage = "Training" });
-            ct.ThrowIfCancellationRequested();
+            runToken.ThrowIfCancellationRequested();
             _logger.LogInformation(
                 "TrainingOrchestrator: starting run {RunId} ({Framework}/{Architecture}, {SymbolCount} symbol(s)).",
                 runId, config.Framework, config.Architecture, config.Symbols.Length);
@@ -208,10 +247,9 @@ public sealed class TrainingOrchestrator : ITrainingOrchestrator
             if (!process.Start())
                 throw new InvalidOperationException("Training process did not start.");
             processStarted = true;
-            timeout.CancelAfter(TimeSpan.FromMinutes(TrainingResourceOverrides.MaximumRunDurationMinutes));
             // Register only after Start. An already-cancelled token invokes the callback now,
             // closing the narrow cancellation window between the pre-start check and Start.
-            registration = timeout.Token.Register(() => TryKillProcess(process));
+            registration = runToken.Register(() => TryKillProcess(process));
             // Best-effort OS-level safety net: if this app is killed abruptly (crash, Task
             // Manager) rather than shut down gracefully, Windows closes our Job Object handle as
             // part of process teardown, which kills this training subprocess too instead of
@@ -221,16 +259,8 @@ public sealed class TrainingOrchestrator : ITrainingOrchestrator
             using var jobHandle = WindowsJobObject.TryAssign(process);
             process.BeginOutputReadLine();
             process.BeginErrorReadLine();
-            try
-            {
-                await process.WaitForExitAsync(timeout.Token).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException) when (!ct.IsCancellationRequested && timeout.IsCancellationRequested)
-            {
-                throw new TimeoutException(
-                    $"Training exceeded {TrainingResourceOverrides.MaximumRunDurationMinutes} minutes.");
-            }
-            ct.ThrowIfCancellationRequested();
+            await process.WaitForExitAsync(runToken).ConfigureAwait(false);
+            runToken.ThrowIfCancellationRequested();
         }
         finally
         {
@@ -248,6 +278,7 @@ public sealed class TrainingOrchestrator : ITrainingOrchestrator
         var success = process.ExitCode == 0
             && state.OnnxArtifactPath is not null
             && File.Exists(state.OnnxArtifactPath);
+        runToken.ThrowIfCancellationRequested();
         lock (state.Lock) { state.Terminal = true; }
 
         _logger.LogInformation(
@@ -263,12 +294,22 @@ public sealed class TrainingOrchestrator : ITrainingOrchestrator
             ExitCode = process.ExitCode,
             OnnxArtifactPath = state.OnnxArtifactPath,
             MetricsArtifactPath = state.MetricsArtifactPath,
+            CheckpointManifestPath = state.CheckpointManifestPath,
             Metrics = state.LastMetric ?? new Dictionary<string, double>(),
             Message = success ? null : BuildFailureMessage(process.ExitCode, state),
             StartedUtc = startedUtc,
             CompletedUtc = completedUtc,
             SourceProvenance = config.SourceProvenance,
+            ResourceLimits = resourceLimits,
         };
+        }
+        catch (OperationCanceledException ex) when (!ct.IsCancellationRequested && timeout.IsCancellationRequested)
+        {
+            if (processState is not null)
+                lock (processState.Lock) { processState.Terminal = true; }
+            if (preparedRunDirectory is not null)
+                ReportTerminal("Failed");
+            throw new TimeoutException($"Training exceeded {resourceLimits.MaxRunDurationSeconds} seconds.", ex);
         }
         catch (OperationCanceledException)
         {
@@ -348,7 +389,10 @@ public sealed class TrainingOrchestrator : ITrainingOrchestrator
                 {
                     state.MetricsArtifactPath = path;
                 }
+                else if (string.Equals(kind, "checkpoint", StringComparison.OrdinalIgnoreCase))
+                    state.CheckpointManifestPath = path;
             }
+            ReportProgress(state, progress);
         }
     }
 
@@ -379,6 +423,7 @@ public sealed class TrainingOrchestrator : ITrainingOrchestrator
                 Stage = state.Stage,
                 Percent = state.Percent,
                 Metric = state.LastMetric,
+                CheckpointManifestPath = state.CheckpointManifestPath,
             };
         }
         progress.Report(snapshot);
@@ -435,6 +480,7 @@ public sealed class TrainingOrchestrator : ITrainingOrchestrator
         public readonly object Lock = new();
         public string? Stage;
         public int Percent;
+        public string? CheckpointManifestPath;
         public IReadOnlyDictionary<string, double>? LastMetric;
         public string? OnnxArtifactPath;
         public string? MetricsArtifactPath;

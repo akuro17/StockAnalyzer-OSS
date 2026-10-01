@@ -32,6 +32,8 @@ public static class ServiceCollectionExtensions
         services.Configure<PredictionSettings>(configuration.GetSection("Prediction"));
         services.Configure<MarketDataSettings>(configuration.GetSection("MarketDataSettings"));
         services.Configure<ScreenerSettings>(configuration.GetSection("Screener"));
+        services.Configure<TickersSettings>(configuration.GetSection("Tickers"));
+        services.Configure<Core.Models.Settings.LayoutSettings>(configuration.GetSection("Layout"));
         services.Configure<SmartScreenerSettings>(configuration.GetSection("SmartScreener"));
         services.Configure<InfrastructureSettings>(configuration.GetSection("Infrastructure"));
         services.Configure<MarketStructureSettings>(configuration.GetSection("MarketStructure"));
@@ -52,6 +54,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<Core.Services.ITrainingResourceSettings>(
             _ => new Core.Services.TrainingResourceSettings());
         services.AddSingleton<Core.Services.Notes.INotesSettingsManager, NotesSettingsManager>();
+        services.AddSingleton<Core.Services.Tickers.ITickersSettingsManager, TickersSettingsManager>();
         services.AddSingleton<Core.Services.IChartSettingsManager, Core.Services.ChartSettingsManager>();
         services.AddSingleton<Core.Interfaces.ITemplateService, Core.Services.TemplateService>();
         services.AddSingleton<Core.Interfaces.IIndicatorUserDefaultService, Core.Services.IndicatorUserDefaultService>();
@@ -71,7 +74,9 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<CommunityToolkit.Mvvm.Messaging.IMessenger>(CommunityToolkit.Mvvm.Messaging.WeakReferenceMessenger.Default);
 
         // Register Layout State Store and Scheduler
-        services.AddSingleton<Core.Models.UI.LayoutStateStore>();
+        services.AddSingleton(sp => new Core.Models.UI.LayoutStateStore(
+            sp.GetService<Microsoft.Extensions.Logging.ILogger<Core.Models.UI.LayoutStateStore>>(),
+            sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<Core.Models.Settings.LayoutSettings>>().Value));
         services.AddSingleton<ILayoutSaveScheduler, LayoutSaveScheduler>();
         
         // Register Workspace Coordinator and Options
@@ -174,10 +179,18 @@ public static class ServiceCollectionExtensions
           services.AddSingleton<Core.Services.IEnsembleSettingsManager, Core.Services.EnsembleSettingsManager>();
           services.AddSingleton<Core.Services.IPredictionService, Core.Services.EnsemblePredictionService>();
         services.AddSingleton<Core.Services.IModelGenerationRegistry, Core.Services.ModelGenerationRegistry>();
+        services.AddSingleton<Core.Services.IModelAnalysisService, Core.Services.ModelAnalysisService>();
         services.AddSingleton<Core.Services.IMLDataProcessor, Core.Services.MLDataProcessor>();
         services.AddSingleton<Core.Services.IndicatorChannelExporter>(); // TrainingOrchestrator dependency
         services.AddSingleton<Core.Services.ITrainingSourceSnapshotProvider, Core.Services.TrainingSourceSnapshotProvider>();
         services.AddSingleton<Core.Services.ITrainingOrchestrator, Core.Services.TrainingOrchestrator>();
+        services.AddSingleton<Core.Services.TrainingJobGate>();
+        // One instance (and one monitor gate) behind both the cached-read and the current-health contracts.
+        services.AddSingleton<Core.Services.PredictionLogService>();
+        services.AddSingleton<Core.Services.IPredictionLogService>(sp => sp.GetRequiredService<Core.Services.PredictionLogService>());
+        services.AddSingleton<Core.Services.ICurrentPredictionHealthService>(sp => sp.GetRequiredService<Core.Services.PredictionLogService>());
+        services.AddSingleton<Core.Services.IRetrainingScheduler, Core.Services.RetrainingScheduler>();
+        services.AddSingleton<PredictionOperationsLifetime>();
         services.AddSingleton<Core.Services.IModelDeploymentService, Core.Services.ModelDeploymentService>();
         services.AddSingleton<Core.Services.IExperimentLogService, Core.Services.ExperimentLogService>();
         services.AddSingleton<Core.Services.IComparisonDataAligner, Core.Services.ComparisonDataAligner>();
@@ -199,6 +212,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<Core.Services.Notes.AttachmentRepository>();
         services.AddSingleton<Core.Services.UserStrategyMetadataRepository>(_ => Core.Services.UserStrategyMetadataRepository.Instance);
         services.AddSingleton<Core.Services.Notes.TickerMetadataNotesCacheSynchronizer>();
+        services.AddSingleton<Core.Services.Notes.NotesCacheFormatMarker>();
+        services.AddSingleton<Core.Services.Notes.NotesCacheFormatMigration>();
         services.AddSingleton<Core.Services.Notes.OrphanedAttachmentCleanupService>();
         services.AddSingleton<Core.Services.Notes.OrphanedAttachmentScanResultHolder>();
 
@@ -301,6 +316,7 @@ public static class ServiceCollectionExtensions
         services.AddTransient<StockAnalyzer.Avalonia.ViewModels.Dialogs.AIPredictionsSettingsViewModel>();
         services.AddTransient<StockAnalyzer.Avalonia.ViewModels.Dialogs.AboutSettingsViewModel>();
         services.AddTransient<StockAnalyzer.Avalonia.ViewModels.Dialogs.NotesSettingsViewModel>();
+        services.AddTransient<StockAnalyzer.Avalonia.ViewModels.Dialogs.TickersSettingsViewModel>();
         services.AddTransient<StockAnalyzer.Avalonia.ViewModels.Dialogs.BacktestSettingsViewModel>();
         services.AddTransient<StockAnalyzer.Avalonia.ViewModels.Dialogs.ChartGeneralSettingsViewModel>();
         services.AddTransient<StockAnalyzer.Avalonia.ViewModels.Dialogs.SettingsViewModel>();

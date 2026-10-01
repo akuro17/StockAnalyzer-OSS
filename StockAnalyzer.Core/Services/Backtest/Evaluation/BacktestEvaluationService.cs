@@ -58,7 +58,9 @@ public sealed class BacktestEvaluationService : IBacktestEvaluationService
         IBacktestStrategy strategy = strategySpecification.CreateStrategy();
         BacktestRunFingerprintBuilder fingerprintBuilder =
             BacktestRunFingerprintBuilder.Freeze(input, configuration, strategy);
-        BacktestReportOptions ownedOptions = reportOptions.WithRunFingerprintBuilder(fingerprintBuilder);
+        // The service owns the input, so the report always describes the run's real TradingStartIndex (equal to HistoryStartIndex in every
+        // current production run, hence no change there); a caller cannot leave warm-up bars in the Exposure denominator by omitting it.
+        BacktestReportOptions ownedOptions = reportOptions.WithRunFingerprintBuilder(fingerprintBuilder, input.TradingStartIndex);
         SamplingQualification sampling = SamplingEvidenceQualifier.Qualify(
             input,
             samplingEvidence,
@@ -137,6 +139,10 @@ public sealed class BacktestEvaluationService : IBacktestEvaluationService
             options.EvaluationEndUtc != input.EvaluationEndUtc)
         {
             throw new ArgumentException("Report options must describe the same input frame, history boundary, and requested UTC period.", nameof(options));
+        }
+        if (options.TradingStartIndex is { } tradingStartIndex && tradingStartIndex != input.TradingStartIndex)
+        {
+            throw new ArgumentException("Report options TradingStartIndex, when supplied, must equal the input's TradingStartIndex.", nameof(options));
         }
 
         // The first evaluated bar must not precede the requested start: otherwise the initial-capital time would be later than

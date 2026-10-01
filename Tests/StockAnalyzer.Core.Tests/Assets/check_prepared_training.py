@@ -5,7 +5,11 @@ from __future__ import annotations
 import datetime
 import dataclasses
 import json
+import shutil
 import sys
+import tempfile
+import uuid
+from contextlib import contextmanager
 from pathlib import Path
 
 import polars as pl
@@ -18,8 +22,44 @@ import run_training as rt  # noqa: E402
 import check_composed_trainers as prior  # noqa: E402
 
 
+@contextmanager
+def short_workspace_case_dir():
+    # The trainer repeats the model basename inside a stage path; keep below MAX_PATH.
+    directory = ROOT / f"sa_pt_{uuid.uuid4().hex[:12]}"
+    directory.mkdir()
+    try:
+        yield directory
+    finally:
+        if directory.resolve().parent != ROOT.resolve() or not directory.name.startswith("sa_pt_"):
+            raise RuntimeError("refusing to remove a directory outside the test workspace")
+        shutil.rmtree(directory)
+
+
+@contextmanager
+def workspace_training_temps(root: Path):
+    """Use inheritable workspace ACLs for training's temporary directories on Windows."""
+    original = tempfile.mkdtemp
+    boundary = root.resolve()
+
+    def make_temp(suffix=None, prefix=None, dir=None):
+        if prefix != "sa_train_" and not (prefix or "").endswith("_publish_"):
+            return original(suffix=suffix, prefix=prefix, dir=dir)
+        parent = Path(dir).resolve() if dir is not None else boundary
+        if parent != boundary and boundary not in parent.parents:
+            raise RuntimeError("training temporary directory escaped the test workspace")
+        path = parent / f"{prefix}{uuid.uuid4().hex}{suffix or ''}"
+        path.mkdir()
+        return str(path)
+
+    tempfile.mkdtemp = make_temp
+    try:
+        yield
+    finally:
+        tempfile.mkdtemp = original
+
+
 def main() -> None:
-    with prior.workspace_case_dir() as root:
+    with short_workspace_case_dir() as root:
         rt.ARTIFACTS_DIR = root / "artifacts"
         cases = (("weekly", 7, "pytorch", "lstm", {"epochs": "1", "batch": "32"}),
                  ("weekly", 7, "lightgbm", "gbdt", {"n_estimators": "12", "early_stopping": "3"}),
@@ -54,8 +94,9 @@ def main() -> None:
             prior.demand(filtered != data and all(
                 len(pl.read_parquet(path)) == 71 for path in filtered.glob("*.parquet")),
                 "prepared resolver did not preserve date filtering")
-            prior.demand(rt.main(["--config", str(config_path)]) == 0,
-                         f"{timeframe}/{framework} training failed")
+            with workspace_training_temps(root):
+                prior.demand(rt.main(["--config", str(config_path)]) == 0,
+                             f"{timeframe}/{framework} training failed")
             artifact = next(rt.ARTIFACTS_DIR.glob(f"*{timeframe}_{framework}.onnx"))
             prior.run([sys.executable, str(TRAINING / "verify_model_strict.py"),
                        "--model", str(artifact), "--data-dir", str(data),

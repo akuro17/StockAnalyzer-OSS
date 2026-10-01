@@ -96,6 +96,9 @@ public record ThemeColors
 
     // Chart Backgrounds
     public IndicatorColor ChartBackground { get; init; } = IndicatorColor.FromUInt(0xFFF8F9FA);
+    public IndicatorColor TrainingPeriodTrain { get; init; } = IndicatorColor.FromUInt(0x2669B58C);
+    public IndicatorColor TrainingPeriodValidation { get; init; } = IndicatorColor.FromUInt(0x26E3AF50);
+    public IndicatorColor TrainingPeriodOos { get; init; } = IndicatorColor.FromUInt(0x267E8CE0);
 
     // Grid & Axes
     public IndicatorColor GridLine { get; init; } = IndicatorColor.FromUInt(0xFFE0E3EB);

@@ -112,3 +112,6 @@ StockAnalyzer.Python/.venv/
 # writes there) but stays ignored so any leftover local artifacts from before the move don't
 # show up as untracked/committable in a working copy that still has that directory.
 StockAnalyzer.Python/training/artifacts/
+
+# AGENTS.md is confidential project context: never tracked, committed or pushed.
+AGENTS.md

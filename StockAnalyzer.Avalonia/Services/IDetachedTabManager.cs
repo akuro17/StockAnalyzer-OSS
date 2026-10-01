@@ -38,5 +38,14 @@ namespace StockAnalyzer.Avalonia.Services
         /// Runs strictly on the UI thread.
         /// </summary>
         void Capture(List<DetachedTabInfo> destination, IReadOnlyList<StockAnalyzer.Core.Models.CoreIndicatorSettings>? fallbackIndicators = null);
+
+        /// <summary>
+        /// Applies a new tab order of one detached window container to the registry so that
+        /// <see cref="Capture"/> persists it. Only the registry slots already occupied by that
+        /// container's items are permuted; other containers keep their exact positions.
+        /// Runs strictly on the UI thread.
+        /// </summary>
+        /// <returns>true if the order was applied; false if rejected (state unchanged).</returns>
+        bool ReorderContainerItems(string containerId, IReadOnlyList<WorkspaceViewItem> orderedItems);
     }
 }

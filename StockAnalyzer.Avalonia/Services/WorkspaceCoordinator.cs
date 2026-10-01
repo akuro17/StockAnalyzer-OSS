@@ -388,6 +388,8 @@ public sealed class WorkspaceCoordinator : IWorkspaceCoordinator
 
         // Restore the per-list Column Customization dropdown selections (after the selected list and the
         // Active Columns working set, which the selector snapshots when a template becomes the selected entry)
+        // The shared selection is stored first (no apply); the call below then applies the active store.
+        _viewModel.RestoreTickerSharedColumnTemplateSelection(settings.TickerListSharedColumnTemplateId);
         _viewModel.RestoreTickerColumnTemplateSelection(settings.TickerListColumnTemplateByList);
 
         // Restore TickerList sort state

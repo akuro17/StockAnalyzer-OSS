@@ -88,7 +88,7 @@ public class NoteEditorViewModelTests
         var attachmentRepository = new AttachmentRepository(connectionManager, NullLogger<AttachmentRepository>.Instance);
         var notesSettingsManager = new FakeNotesSettingsManager();
         var cacheSynchronizer = new TickerMetadataNotesCacheSynchronizer(
-            noteRepository, UserStrategyMetadataRepository.Instance, notesSettingsManager, NullLogger<TickerMetadataNotesCacheSynchronizer>.Instance);
+            noteRepository, UserStrategyMetadataRepository.Instance, NullLogger<TickerMetadataNotesCacheSynchronizer>.Instance);
 
         var editor = new NoteEditorViewModel(noteRepository, attachmentRepository, cacheSynchronizer, marketDataProvider ?? new FakeMarketDataProvider(), new FakeDispatcherService(), notesSettingsManager, NullLogger<NoteEditorViewModel>.Instance);
         return (editor, noteRepository);
@@ -313,7 +313,7 @@ public class NoteEditorViewModelTests
             var noteRepository = new NoteRepository(connectionManager, NullLogger<NoteRepository>.Instance);
             var attachmentRepository = new AttachmentRepository(connectionManager, NullLogger<AttachmentRepository>.Instance);
             var cacheSynchronizer = new TickerMetadataNotesCacheSynchronizer(
-                noteRepository, UserStrategyMetadataRepository.Instance, notesSettingsManager, NullLogger<TickerMetadataNotesCacheSynchronizer>.Instance);
+                noteRepository, UserStrategyMetadataRepository.Instance, NullLogger<TickerMetadataNotesCacheSynchronizer>.Instance);
 
             var editor = new NoteEditorViewModel(noteRepository, attachmentRepository, cacheSynchronizer, new FakeMarketDataProvider(), new FakeDispatcherService(), notesSettingsManager, NullLogger<NoteEditorViewModel>.Instance);
 

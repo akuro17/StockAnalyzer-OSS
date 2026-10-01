@@ -65,8 +65,9 @@ public sealed class BacktestReportGenerator : IBacktestReportGenerator, ICancell
         options.ValidateForGeneration();
         cancellationToken.ThrowIfCancellationRequested();
 
-        EquitySample sample = EquitySample.Build(result, options, cancellationToken);
         ImmutableArray<BacktestTrade> trades = result.Trades;
+        ValidateTradeOrder(trades, cancellationToken);
+        EquitySample sample = EquitySample.Build(result, options, cancellationToken);
 
         bool ratioSeriesValid = TryComputeSeries(
             () => DrawdownSeriesCalculator.ComputeDrawdownRatioSeries(sample.Equity, cancellationToken),
@@ -93,17 +94,84 @@ public sealed class BacktestReportGenerator : IBacktestReportGenerator, ICancell
                 : BasicMetricsCalculator.ComputeQualifiedCagr(
                     sample.Equity, options, sampling.Status == SamplingStatus.Verified, cancellationToken));
         cancellationToken.ThrowIfCancellationRequested();
+        TradeStatistics tradeStats = TradeStatistics.Compute(trades, cancellationToken);
         MetricValue winRate = MetricCalculation.Run(
             MetricUnit.WinRateRatio,
-            () => BasicMetricsCalculator.ComputeWinRate(trades, cancellationToken));
+            () => BasicMetricsCalculator.ComputeWinRate(tradeStats));
         cancellationToken.ThrowIfCancellationRequested();
         MetricValue profitFactor = MetricCalculation.Run(
             MetricUnit.Dimensionless,
-            () => BasicMetricsCalculator.ComputeProfitFactor(trades, cancellationToken));
+            () => BasicMetricsCalculator.ComputeProfitFactor(tradeStats));
         cancellationToken.ThrowIfCancellationRequested();
         MetricValue expectedPayoff = MetricCalculation.Run(
             MetricUnit.Currency,
-            () => BasicMetricsCalculator.ComputeExpectedPayoff(trades, cancellationToken));
+            () => BasicMetricsCalculator.ComputeExpectedPayoff(tradeStats));
+
+        cancellationToken.ThrowIfCancellationRequested();
+        MetricValue grossProfit = MetricCalculation.Run(
+            MetricUnit.Currency,
+            () => BasicMetricsCalculator.ComputeGrossProfit(tradeStats));
+        cancellationToken.ThrowIfCancellationRequested();
+        MetricValue grossLoss = MetricCalculation.Run(
+            MetricUnit.Currency,
+            () => BasicMetricsCalculator.ComputeGrossLoss(tradeStats));
+        cancellationToken.ThrowIfCancellationRequested();
+        MetricValue averageWin = MetricCalculation.Run(
+            MetricUnit.Currency,
+            () => BasicMetricsCalculator.ComputeAverageWin(tradeStats));
+        cancellationToken.ThrowIfCancellationRequested();
+        MetricValue averageLoss = MetricCalculation.Run(
+            MetricUnit.Currency,
+            () => BasicMetricsCalculator.ComputeAverageLoss(tradeStats));
+        cancellationToken.ThrowIfCancellationRequested();
+        MetricValue payoffRatio = MetricCalculation.Run(
+            MetricUnit.Dimensionless,
+            () => BasicMetricsCalculator.ComputePayoffRatio(tradeStats));
+        cancellationToken.ThrowIfCancellationRequested();
+        MetricValue largestWin = MetricCalculation.Run(
+            MetricUnit.Currency,
+            () => BasicMetricsCalculator.ComputeLargestWin(tradeStats));
+        cancellationToken.ThrowIfCancellationRequested();
+        MetricValue largestLoss = MetricCalculation.Run(
+            MetricUnit.Currency,
+            () => BasicMetricsCalculator.ComputeLargestLoss(tradeStats));
+        cancellationToken.ThrowIfCancellationRequested();
+        MetricValue averageHoldingPeriod = MetricCalculation.Run(
+            MetricUnit.Bars,
+            () => BasicMetricsCalculator.ComputeAverageHoldingPeriod(tradeStats));
+        cancellationToken.ThrowIfCancellationRequested();
+        MetricValue maxConsecutiveWins = MetricCalculation.Run(
+            MetricUnit.Count,
+            () => BasicMetricsCalculator.ComputeMaxConsecutiveWins(tradeStats));
+        cancellationToken.ThrowIfCancellationRequested();
+        MetricValue maxConsecutiveLosses = MetricCalculation.Run(
+            MetricUnit.Count,
+            () => BasicMetricsCalculator.ComputeMaxConsecutiveLosses(tradeStats));
+
+        cancellationToken.ThrowIfCancellationRequested();
+        bool maxDepthCensored = false;
+        MetricValue maxDepthDrawdownDuration = ratioSeriesValid
+            ? MetricCalculation.Run(MetricUnit.Bars, () =>
+            {
+                DrawdownSeriesCalculator.DrawdownDurationResult depth =
+                    DrawdownSeriesCalculator.ComputeMaxDepthDrawdownDuration(sample.Equity, ddRatioSeries, cancellationToken);
+                maxDepthCensored = depth.RightCensored;
+                return depth.Value;
+            })
+            : MetricCalculation.Failure(MetricUnit.Bars, ratioSeriesFailure);
+        cancellationToken.ThrowIfCancellationRequested();
+        bool longestCensored = false;
+        MetricValue longestDrawdownDuration = MetricCalculation.Run(MetricUnit.Bars, () =>
+        {
+            DrawdownSeriesCalculator.DrawdownDurationResult longest =
+                DrawdownSeriesCalculator.ComputeLongestDrawdownDuration(sample.Equity, cancellationToken);
+            longestCensored = longest.RightCensored;
+            return longest.Value;
+        });
+        cancellationToken.ThrowIfCancellationRequested();
+        (MetricValue timeInMarket, MetricValue exposure) = ExposureMetricsCalculator.Compute(
+            result.EquityPoints, trades, options.HistoryStartIndex, options.EffectiveTradingStartIndex, cancellationToken);
+        MetricValue exposureAdjustedCagr = ExposureMetricsCalculator.ComputeExposureAdjustedCagr(cagr, exposure);
 
         MetricValue maxDrawdown = ratioSeriesValid
             ? MetricCalculation.Run(MetricUnit.DrawdownRatio, () => DrawdownSeriesCalculator.ComputeMaxDrawdown(ddRatioSeries, cancellationToken))
@@ -173,17 +241,6 @@ public sealed class BacktestReportGenerator : IBacktestReportGenerator, ICancell
         MetricValue sqn = RiskAdjustedMetricsCalculator.ComputeSqn(trades);
         MetricValue recoveryFactor = RiskAdjustedMetricsCalculator.ComputeRecoveryFactor(totalPnL, maxDrawdownAmount);
 
-        int winTrades = 0;
-        int lossTrades = 0;
-        int breakevenTrades = 0;
-        for (int i = 0; i < trades.Length; i++)
-        {
-            MetricCalculation.CheckCancellation(cancellationToken, i);
-            if (trades[i].ClosedNet > 0m) winTrades++;
-            else if (trades[i].ClosedNet < 0m) lossTrades++;
-            else breakevenTrades++;
-        }
-
         BacktestRunFingerprint? sealedFingerprint = options.RunFingerprintBuilder?.Seal(result);
         var report = new BacktestReport
         {
@@ -206,10 +263,27 @@ public sealed class BacktestReportGenerator : IBacktestReportGenerator, ICancell
             CalmarFullPeriod = calmarFullPeriod,
             SQN = sqn,
             RecoveryFactor = recoveryFactor,
+            GrossProfit = grossProfit,
+            GrossLoss = grossLoss,
+            AverageWin = averageWin,
+            AverageLoss = averageLoss,
+            PayoffRatio = payoffRatio,
+            LargestWin = largestWin,
+            LargestLoss = largestLoss,
+            AverageHoldingPeriod = averageHoldingPeriod,
+            MaxConsecutiveWins = maxConsecutiveWins,
+            MaxConsecutiveLosses = maxConsecutiveLosses,
+            MaxDepthDrawdownDuration = maxDepthDrawdownDuration,
+            LongestDrawdownDuration = longestDrawdownDuration,
+            MaxDepthDrawdownDurationRightCensored = maxDepthDrawdownDuration.Status == MetricStatus.Valid ? maxDepthCensored : null,
+            LongestDrawdownDurationRightCensored = longestDrawdownDuration.Status == MetricStatus.Valid ? longestCensored : null,
+            TimeInMarket = timeInMarket,
+            Exposure = exposure,
+            ExposureAdjustedCAGR = exposureAdjustedCagr,
             TotalTrades = trades.Length,
-            WinTrades = winTrades,
-            LossTrades = lossTrades,
-            BreakevenTrades = breakevenTrades,
+            WinTrades = tradeStats.Wins,
+            LossTrades = tradeStats.Losses,
+            BreakevenTrades = tradeStats.Breakevens,
             SqnWarning = RiskAdjustedMetricsCalculator.ComputeSqnWarning(trades.Length),
             FormulaVersion = BacktestReport.CurrentFormulaVersion,
             AnnualPeriods = options.AnnualPeriods,
@@ -231,6 +305,29 @@ public sealed class BacktestReportGenerator : IBacktestReportGenerator, ICancell
         BacktestReportValidator.Validate(report);
         cancellationToken.ThrowIfCancellationRequested();
         return new GenerationResult(report, sealedFingerprint, bootstrapDiagnostics);
+    }
+
+    /// <summary>
+    /// The streak metrics read <see cref="BacktestResult.Trades"/> in list order, which the engine guarantees is close order
+    /// (ExitBar non-decreasing) with EntryBar &lt;= ExitBar. Trades are never sorted here: a result that violates the order is
+    /// rejected instead, because reordering it would silently change every streak metric.
+    /// </summary>
+    private static void ValidateTradeOrder(ImmutableArray<BacktestTrade> trades, CancellationToken cancellationToken)
+    {
+        for (int i = 0; i < trades.Length; i++)
+        {
+            MetricCalculation.CheckCancellation(cancellationToken, i);
+            if (trades[i].EntryBar > trades[i].ExitBar)
+            {
+                throw new ArgumentException(
+                    $"Trades[{i}] has EntryBar {trades[i].EntryBar} after ExitBar {trades[i].ExitBar}.", "result");
+            }
+            if (i > 0 && trades[i].ExitBar < trades[i - 1].ExitBar)
+            {
+                throw new ArgumentException(
+                    $"Trades must be in close order: Trades[{i}].ExitBar {trades[i].ExitBar} precedes Trades[{i - 1}].ExitBar {trades[i - 1].ExitBar}.", "result");
+            }
+        }
     }
 
     private static MetricValue ApplySamplingGate(MetricValue prerequisite, SamplingStatus status)

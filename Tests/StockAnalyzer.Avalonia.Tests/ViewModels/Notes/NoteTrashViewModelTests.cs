@@ -35,7 +35,7 @@ public class NoteTrashViewModelTests
         var noteRepository = new NoteRepository(connectionManager, NullLogger<NoteRepository>.Instance);
         var resolvedNotesSettingsManager = notesSettingsManager ?? new FakeNotesSettingsManager();
         var cacheSynchronizer = new TickerMetadataNotesCacheSynchronizer(
-            noteRepository, UserStrategyMetadataRepository.Instance, resolvedNotesSettingsManager, NullLogger<TickerMetadataNotesCacheSynchronizer>.Instance);
+            noteRepository, UserStrategyMetadataRepository.Instance, NullLogger<TickerMetadataNotesCacheSynchronizer>.Instance);
 
         var trash = new NoteTrashViewModel(
             noteRepository,

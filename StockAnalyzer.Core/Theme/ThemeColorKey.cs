@@ -33,5 +33,8 @@ public enum ThemeColorKey
     ButtonBackground,
     ButtonText,
     ButtonHover,
-    ButtonPressed
+    ButtonPressed,
+    TrainingPeriodTrain,
+    TrainingPeriodValidation,
+    TrainingPeriodOos
 }

@@ -63,7 +63,7 @@ def main() -> None:
         isolated = root / "published/StockAnalyzer.Python/training"
         contracts = isolated / "contracts"
         contracts.mkdir(parents=True)
-        for name in ("feature_spec_strict.py", "dataset.py"):
+        for name in ("feature_spec_strict.py", "dataset.py", "fixed_scaler.py"):
             shutil.copy2(TRAINING / name, isolated / name)
         shutil.copy2(canonical, contracts / "IndicatorType.cs")
         portable_check = """

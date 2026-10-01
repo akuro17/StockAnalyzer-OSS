@@ -5,7 +5,8 @@ namespace StockAnalyzer.Core.Models.Training;
 /// <summary>
 /// Mirrors the empty-fold guard inside <c>dataset.walk_forward_split</c> (Python, unmodified by
 /// this feature) so the Avalonia wizard can tell a user, before they click Start, how many raw
-/// bars a single symbol's selected date range must contain for training to succeed at all.
+/// bars a single symbol's selected date range must contain for training to succeed at all
+/// before any indicator warmup requirement.
 /// </summary>
 /// <remarks>
 /// The trainers (<c>train_pytorch.py</c> / <c>train_lightgbm.py</c> / <c>train_tensorflow.py</c>)
@@ -46,7 +47,9 @@ public static class WalkForwardDataRequirement
     /// window plus its forward label spans); mirrors <see cref="TrainingJobConfig.Gap"/>.
     /// Must be non-negative.
     /// </param>
-    public static int MinimumRawBars(int windowSize, int horizon, int splitCount = DefaultSplitCount, int? gap = null)
+    /// <param name="maxLag">Largest explicit causal lag in bars; zero when no lag is selected.</param>
+    public static int MinimumRawBars(int windowSize, int horizon, int splitCount = DefaultSplitCount,
+        int? gap = null, int maxLag = 0)
     {
         if (windowSize <= 0)
         {
@@ -60,6 +63,10 @@ public static class WalkForwardDataRequirement
         {
             throw new ArgumentOutOfRangeException(nameof(splitCount), splitCount, "splitCount must be positive.");
         }
+        if (maxLag < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maxLag), maxLag, "maxLag cannot be negative.");
+        }
 
         // Two quantities the closed form below needs; equal only in the default case, so they
         // must not be conflated once a caller overrides the gap:
@@ -68,8 +75,8 @@ public static class WalkForwardDataRequirement
         //     (build_dataset: n_samples = raw - (window + horizon - 1)).
         //   purgeGap - the margin walk_forward_split drops between each fold's train/test blocks
         //     (dataset.py, resolved_gap = window + horizon - 1 when the caller passes none).
-        var windowOffset = windowSize + horizon - 1;
-        var purgeGap = gap ?? windowOffset;
+        long windowOffset = checked((long)windowSize + horizon - 1);
+        long purgeGap = gap ?? windowOffset;
         if (purgeGap < 0)
         {
             throw new ArgumentOutOfRangeException(nameof(gap), purgeGap, "gap cannot be negative.");
@@ -79,20 +86,18 @@ public static class WalkForwardDataRequirement
         // fold_size * splitCount + purgeGap < n_samples. Writing n_samples = (splitCount+1)*q + r
         // for r in [0, splitCount] (so fold_size = q exactly) turns that into q + r > purgeGap,
         // i.e. q >= purgeGap - r + 1, with q >= 1 also required (walk_forward_split returns no
-        // folds at all when fold_size == 0). The minimal n_samples - and so the minimal raw bar
-        // count, n_samples + windowOffset - is the smallest such (q, r) pair over all r.
-        var minRawBars = int.MaxValue;
-        for (var r = 0; r <= splitCount; r++)
-        {
-            var q = Math.Max(1, purgeGap - r + 1);
-            var minSamples = (splitCount + 1) * q + r;
-            var rawBars = minSamples + windowOffset;
-            if (rawBars < minRawBars)
-            {
-                minRawBars = rawBars;
-            }
-        }
+        // folds at all when fold_size == 0). For r <= purgeGap the sample count decreases as r
+        // grows; for r > purgeGap it increases. Its minimum is therefore at r=min(splitCount,
+        // purgeGap), with no loop over a user-supplied split count.
+        long remainder = Math.Min((long)splitCount, purgeGap);
+        long foldSize = Math.Max(1L, checked(purgeGap - remainder + 1));
+        long minSamples = checked(((long)splitCount + 1) * foldSize + remainder);
 
-        return minRawBars;
+        // build_dataset skips candidate windows whose start is before maxLag. The fold count
+        // therefore needs maxLag additional raw bars; it does not change the configured purge gap.
+        long rawBars = checked(minSamples + windowOffset + maxLag);
+        if (rawBars > int.MaxValue)
+            throw new OverflowException("Required raw-bar history exceeds the supported count.");
+        return checked((int)rawBars);
     }
 }

@@ -29,7 +29,7 @@ namespace StockAnalyzer.Avalonia.ViewModels;
 /// <summary>
 /// ViewModel for the Ticker List panel.
 /// </summary>
-public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelectedMessage>, IRecipient<TickerDataRefreshedMessage>, IRecipient<OpenReminderDialogRequestedMessage>, IDisposable, ITickerStateStore
+public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelectedMessage>, IRecipient<TickerDataRefreshedMessage>, IRecipient<OpenReminderDialogRequestedMessage>, IRecipient<NotesReadMoreThresholdChangedMessage>, IDisposable, ITickerStateStore
 {
     private readonly IWatchlistManager _watchlistManager;
     private readonly IPortfolioManager _portfolioManager;
@@ -594,6 +594,158 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
     /// the entry currently selected in the dropdown receives the user's column edit.</summary>
     public TickerColumnTemplateSelectorViewModel ColumnTemplateSelector { get; }
 
+    private readonly StockAnalyzer.Core.Services.Tickers.ITickersSettingsManager? _tickersSettingsManager;
+
+    // ---- Auto Play (Y:\Temp\sa_implementation_plan_TickerAutoPlay.md). The state machine lives in
+    // TickerAutoPlayController; this class only supplies its delegates and mirrors IsRunning to the checkbox.
+    private TickerAutoPlayController? _autoPlay;
+    private bool _isSyncingAutoPlay;
+    private Guid _autoPlayListId = Guid.Empty;
+
+    /// <summary>Toast overlay service of the Tickers tab (bound in TickerListView), supplied by DI. Used for messages that
+    /// must be visible there; <see cref="StatusMessage"/> is not displayed by this view. Null only where no toast host
+    /// exists (design time, tests), in which case the overlay stays hidden.</summary>
+    public IToastNotificationService? ToastService { get; }
+
+    /// <summary>True when Auto Play can be used (the Tickers settings are available).</summary>
+    public bool IsAutoPlayAvailable => _autoPlay != null;
+
+    /// <summary>Auto Play checkbox state. Runtime-only: never persisted, false at startup.</summary>
+    [ObservableProperty]
+    private bool _isAutoPlayEnabled;
+
+    /// <summary>Supplied by the View: the tickers in the order the grid currently shows them (after the user's
+    /// column sort). Null while no grid is attached.</summary>
+    public Func<IReadOnlyList<WatchlistItemViewModel>?>? VisibleOrderProvider { get; set; }
+
+    /// <summary>Raised after Auto Play selected a ticker, so the View can scroll that row into view.</summary>
+    public event EventHandler<string>? AutoPlaySelectionApplied;
+
+    private void CreateAutoPlay(StockAnalyzer.Core.Services.Tickers.ITickersSettingsManager manager)
+    {
+        _autoPlay = new TickerAutoPlayController(
+            GetAutoPlayOrderedSymbols,
+            () => SelectedTicker,
+            SelectSymbolForAutoPlay,
+            () => new TickerAutoPlaySettingsSnapshot(manager.AutoPlayIntervalSeconds, manager.AutoPlayStopAtListEnd, manager.AutoPlayStopOnListChange),
+            TickerAutoPlayController.ScheduleWithThreadingTimer,
+            _dispatcherService,
+            _logger);
+        _autoPlay.IsRunningChanged += (_, _) => SetAutoPlayEnabledFromController(_autoPlay.IsRunning);
+    }
+
+    /// <summary>The View's visible order is used only when it lists exactly the tickers of <see cref="DisplayItems"/>
+    /// (same count, distinct, same set); during a grid rebuild or without a grid, <see cref="DisplayItems"/> order is used.</summary>
+    private IReadOnlyList<string> GetAutoPlayOrderedSymbols()
+    {
+        var provided = VisibleOrderProvider?.Invoke();
+        if (provided != null && provided.Count == DisplayItems.Count)
+        {
+            var displayed = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var item in DisplayItems) displayed.Add(item.Symbol);
+
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            var ordered = new List<string>(provided.Count);
+            var consistent = true;
+            foreach (var item in provided)
+            {
+                if (item == null || !displayed.Contains(item.Symbol) || !seen.Add(item.Symbol))
+                {
+                    consistent = false;
+                    break;
+                }
+                ordered.Add(item.Symbol);
+            }
+            if (consistent && seen.Count == displayed.Count) return ordered;
+        }
+
+        var fallback = new List<string>(DisplayItems.Count);
+        foreach (var item in DisplayItems) fallback.Add(item.Symbol);
+        return fallback;
+    }
+
+    private bool SelectSymbolForAutoPlay(string symbol)
+    {
+        var item = DisplayItems.FirstOrDefault(i => i.Symbol == symbol);
+        if (item == null) return false;
+
+        // The normal selection path: sets SelectedTicker and sends TickerSelectedMessage.
+        SelectedItem = item;
+        AutoPlaySelectionApplied?.Invoke(this, symbol);
+        return true;
+    }
+
+    partial void OnIsAutoPlayEnabledChanged(bool value)
+    {
+        if (_isSyncingAutoPlay) return;
+
+        if (!value)
+        {
+            _autoPlay?.Stop();
+            return;
+        }
+
+        if (_autoPlay == null || !_autoPlay.Start())
+        {
+            // A refused start is never silent: uncheck and tell the user why.
+            var refusal = _autoPlay == null
+                ? LocalizationManager.Instance["TickerList_AutoPlay_Unavailable"]
+                : LocalizationManager.Instance["TickerList_AutoPlay_EmptyList"];
+            if (ToastService != null)
+            {
+                ToastService.ShowNotification(refusal);
+            }
+            else
+            {
+                StatusMessage = refusal;
+            }
+
+            // The CheckBox's TwoWay binding is still writing this value into the property; a revert raised from
+            // inside that write is dropped by the binding and the control would stay checked. Revert on the next
+            // dispatcher tick, after the binding finished.
+            _dispatcherService.Post(() =>
+            {
+                if (_isDisposed || (_autoPlay?.IsRunning ?? false)) return;
+                SetAutoPlayEnabledFromController(false);
+            });
+        }
+    }
+
+    private void SetAutoPlayEnabledFromController(bool value)
+    {
+        if (IsAutoPlayEnabled == value) return;
+
+        _isSyncingAutoPlay = true;
+        try
+        {
+            IsAutoPlayEnabled = value;
+        }
+        finally
+        {
+            _isSyncingAutoPlay = false;
+        }
+    }
+
+    private void TrackAutoPlayListTransition(TickerGroupNode? node)
+    {
+        if (node == null || node is ActionNode || node.Id == _autoPlayListId) return;
+
+        var hadList = _autoPlayListId != Guid.Empty;
+        _autoPlayListId = node.Id;
+        if (hadList && !_isInternalChange) _autoPlay?.NotifyListTransition();
+    }
+
+    private void OnTickersSettingsChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(StockAnalyzer.Core.Services.Tickers.ITickersSettingsManager.ColumnSelectionScope)) return;
+
+        _dispatcherService.Post(() =>
+        {
+            if (_isDisposed || _tickersSettingsManager == null) return;
+            ColumnTemplateSelector.SetScope(_tickersSettingsManager.ColumnSelectionScope);
+        });
+    }
+
     private IReadOnlyList<string> GetDisplayedColumnNames() => ActiveColumns.Select(c => c.MemberName).ToList();
 
     // SetActiveColumns resets widths to the registry defaults, so keep the user's widths across a
@@ -630,8 +782,11 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
         StockAnalyzer.Core.Services.IChartSettingsManager? chartSettingsManager = null,
         ILogger<TickerListViewModel>? logger = null,
         ITemplateService? templateService = null,
-        IScreenerTemplateEvaluator? screenerTemplateEvaluator = null)
+        IScreenerTemplateEvaluator? screenerTemplateEvaluator = null,
+        StockAnalyzer.Core.Services.Tickers.ITickersSettingsManager? tickersSettingsManager = null,
+        IToastNotificationService? toastService = null)
     {
+        ToastService = toastService;
         _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<TickerListViewModel>.Instance;
 
         try 
@@ -659,6 +814,15 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
                 ApplyColumnNamesKeepingWidths,
                 _dispatcherService,
                 _logger);
+            _tickersSettingsManager = tickersSettingsManager;
+            if (_tickersSettingsManager != null)
+            {
+                // Settings > Tickers: per-list or shared Column Customization selection. The scope can also change
+                // later (settings load finishing after construction, live preview in the Settings dialog).
+                ColumnTemplateSelector.SetScope(_tickersSettingsManager.ColumnSelectionScope);
+                _tickersSettingsManager.PropertyChanged += OnTickersSettingsChanged;
+                CreateAutoPlay(_tickersSettingsManager);
+            }
             TickerTagFilter = new TickerList.TickerTagFilterViewModel(
                 applyFilter: ApplyTickerTagFilter,
                 getTickerSymbols: () => AllTickerSymbols,
@@ -676,6 +840,7 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
             _messenger.Register<TickerSelectedMessage>(this);
             _messenger.Register<TickerDataRefreshedMessage>(this);
             _messenger.Register<OpenReminderDialogRequestedMessage>(this);
+            _messenger.Register<NotesReadMoreThresholdChangedMessage>(this);
             _messenger.Register<TickerListViewModel, ColumnChooserAppliedMessage>(this, (r, m) =>
             {
                 r.SetActiveColumns(m.ActiveColumns);
@@ -2713,6 +2878,9 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
     partial void OnSelectedTickerChanged(string? value)
 
     {
+        // Auto Play restarts its countdown for any selection it did not cause (also selections that arrive
+        // through Receive(TickerSelectedMessage), which return early below).
+        _autoPlay?.NotifyExternalSelection();
         if (_isSyncingSelection) return;
         if (!string.IsNullOrEmpty(value))
         {
@@ -2784,6 +2952,7 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
 
     partial void OnSelectedNodeChanged(TickerGroupNode? value)
     {
+        TrackAutoPlayListTransition(value);
         if (_isInternalChange) return;
         
 
@@ -3404,6 +3573,20 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
         await ShowEditTickerNotesDialogForItemAsync(targetItem);
     }
 
+    /// <summary>Settings &gt; Notes "Read More Threshold" changed: every cached row re-derives its Notes
+    /// cell/popup text (dispatcher hop: the message may originate from any thread).</summary>
+    public void Receive(NotesReadMoreThresholdChangedMessage message)
+    {
+        _dispatcherService.Post(static viewModel =>
+        {
+            if (viewModel._isDisposed) return;
+            foreach (var item in viewModel._viewModelCache.Values)
+            {
+                item.RaiseNotesDisplayChanged();
+            }
+        }, this);
+    }
+
     /// <summary>
     /// Handles the Reminder cell's "+" button (<see cref="OpenReminderDialogRequestedMessage"/>),
     /// opening the dialog for the specific row that was clicked rather than whatever row happens to
@@ -3922,6 +4105,11 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
         _screenerTemplateFilterCts?.Cancel();
         _screenerTemplateFilterCts?.Dispose();
         _messenger.UnregisterAll(this);
+        if (_tickersSettingsManager != null)
+        {
+            _tickersSettingsManager.PropertyChanged -= OnTickersSettingsChanged;
+        }
+        _autoPlay?.Dispose();
         ColumnTemplateSelector.Dispose();
         
         try

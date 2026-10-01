@@ -28,6 +28,7 @@ public sealed record TrainingRunResult
 
     /// <summary>Absolute path of the produced <c>.onnx.metrics.json</c> sidecar, or <see langword="null"/> when absent.</summary>
     public string? MetricsArtifactPath { get; init; }
+    public string? CheckpointManifestPath { get; init; }
 
     /// <summary>Final aggregated metrics reported by the run (accuracy, majority baseline, macro-F1, log-loss, …).</summary>
     public IReadOnlyDictionary<string, double> Metrics { get; init; }
@@ -42,4 +43,7 @@ public sealed record TrainingRunResult
     /// <summary>UTC instant the run finished.</summary>
     public DateTimeOffset CompletedUtc { get; init; }
     public TrainingSourceProvenance? SourceProvenance { get; init; }
+
+    /// <summary>Effective Core-owned limits used by this run and stored in the experiment record.</summary>
+    public TrainingResourceLimits? ResourceLimits { get; init; }
 }

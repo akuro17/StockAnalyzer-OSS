@@ -17,6 +17,8 @@ namespace StockAnalyzer.Core.Tests.Services;
 [Collection("Non-Parallel ONNX Tests")]
 public class PredictionServiceTests
 {
+    private static readonly TimeSpan BarrierTimeout = PredictionBarrierProcessor.BarrierTimeout;
+
     internal class TestSettings : IStockAnalyzerSettings
     {
         private readonly string _predictionModelPath;
@@ -549,19 +551,24 @@ public class PredictionServiceTests
 
     // Minimal real ONNX fixtures: input "input" [batch, 10, 5] -> Flatten -> MatMul -> Add -> Softmax
     // -> output "output" [batch, N]. Regenerate via Assets/generate_onnx_fixtures.py.
-    private static readonly string ConformantModelPath = System.IO.Path.Combine("Assets", "trend_predictor_ok.onnx");
+    internal static readonly string ConformantModelPath = System.IO.Path.Combine("Assets", "trend_predictor_goodmeta.onnx");
+    private static readonly string LegacyClassificationModelPath = System.IO.Path.Combine("Assets", "trend_predictor_ok.onnx");
     private static readonly string BadClassCountModelPath = System.IO.Path.Combine("Assets", "trend_predictor_badclass.onnx");
     // Conformant graph + a metadata_props contract. goodmeta matches TestSettings
     // (feature_mode=ohlcv_minmax, window_size=10); badmeta declares feature_mode=zscore.
     private static readonly string GoodMetadataModelPath = System.IO.Path.Combine("Assets", "trend_predictor_goodmeta.onnx");
+    private static readonly string VariantMetadataModelPath = System.IO.Path.Combine("Assets", "trend_predictor_goodmeta_variant.onnx");
     private static readonly string BadMetadataModelPath = System.IO.Path.Combine("Assets", "trend_predictor_badmeta.onnx");
+    private static readonly string MissingScalerModelPath = System.IO.Path.Combine("Assets", "trend_predictor_missing_scaler.onnx");
+    private static readonly string FixedScalerModelPath = System.IO.Path.Combine("Assets", "trend_predictor_fixed_scaler.onnx");
+    private static readonly string LegacyComposedModelPath = System.IO.Path.Combine("Assets", "trend_predictor_legacy_composed.onnx");
     // Conformant [batch,10,5] graph whose metadata declares feature_mode=zscore_joint.
     private static readonly string JointMetadataModelPath = System.IO.Path.Combine("Assets", "trend_predictor_jointmeta.onnx");
     // [batch,10,4] graph whose metadata declares feature_mode=log_return_ohlc.
     private static readonly string LogReturnOhlcModelPath = System.IO.Path.Combine("Assets", "trend_predictor_lrohlc.onnx");
     // [batch,10,5] -> [batch,1] regression graph (zero weight, constant bias == REGRESSION_FIXTURE_Y
     // in generate_onnx_fixtures.py) + metadata_props target_type=regression.
-    private static readonly string RegressionModelPath = System.IO.Path.Combine("Assets", "trend_predictor_regression.onnx");
+    private static readonly string RegressionModelPath = System.IO.Path.Combine("Assets", "trend_predictor_regression_v2.onnx");
     private const float RegressionFixtureY = 0.04f;
 
     [Fact]
@@ -573,12 +580,12 @@ public class PredictionServiceTests
         {
             using var registry = new ModelGenerationRegistry(Path.Combine(root, "registry"),
                 predictionSettings: new TestSettings("does_not_exist.onnx", predictionWindowSize: 10));
-            async Task<string> Register(double score)
+            async Task<string> Register(double score, bool variant = false)
             {
                 var source = Path.Combine(root, Guid.NewGuid().ToString("N"));
                 Directory.CreateDirectory(source);
                 var model = Path.Combine(source, "same.onnx");
-                File.Copy(GoodMetadataModelPath, model);
+                File.Copy(variant ? VariantMetadataModelPath : GoodMetadataModelPath, model);
                 using var native = new InferenceSession(model);
                 var metadata = native.ModelMetadata.CustomMetadataMap;
                 var report = new
@@ -614,18 +621,57 @@ public class PredictionServiceTests
                 Assert.Null(incompatible.ActiveId);
             }
             await registry.ActivateAsync(first);
+            using var processor = new PredictionBarrierProcessor();
             using var service = new PredictionService(
                 new TestSettings("does_not_exist.onnx", predictionWindowSize: 10),
-                new MLDataProcessor(), modelRegistry: registry);
+                processor, modelRegistry: registry);
             var candles = BuildCandles(20);
-            Assert.False((await service.PredictAsync(candles)).IsFallback);
-            var next = await Register(0.6);
+            var firstResult = await service.PredictAsync(candles);
+            Assert.False(firstResult.IsFallback);
+            var next = await Register(0.6, variant: true);
+            processor.Arm();
+            var heldPrediction = Task.Run(() => service.PredictAsync(candles));
+            await processor.Started.WaitAsync(BarrierTimeout);
+            PredictionResult nextResult;
+            try
+            {
+                await registry.ActivateAsync(next);
+                nextResult = await service.PredictAsync(candles);
+                Assert.False(nextResult.IsFallback);
+            }
+            finally { processor.Release(); }
+            var heldResult = await heldPrediction.WaitAsync(BarrierTimeout);
+            Assert.False(heldResult.IsFallback);
+            Assert.Equal(firstResult.Scores.Select(score => score.Score),
+                heldResult.Scores.Select(score => score.Score));
+            Assert.False(firstResult.Scores.Select(score => score.Score)
+                .SequenceEqual(nextResult.Scores.Select(score => score.Score)));
+
             var inFlight = Enumerable.Range(0, 24).Select(_ => Task.Run(() => service.PredictAsync(candles))).ToArray();
-            await registry.ActivateAsync(next);
             var results = await Task.WhenAll(inFlight);
             Assert.All(results, result => Assert.False(result.IsFallback));
             Assert.False((await service.PredictAsync(candles)).IsFallback);
             Assert.Equal(next, registry.ActiveId);
+
+            // A failed load of a newly activated generation must not serve the old session.
+            var corrupt = await Register(0.8);
+            await registry.ActivateAsync(corrupt);
+            var metricPath = Path.Combine(root, "registry", corrupt, "same.onnx.metrics.json");
+            var originalMetrics = File.ReadAllBytes(metricPath);
+            try
+            {
+                File.AppendAllText(metricPath, " ");
+                Assert.True((await service.PredictAsync(candles)).IsFallback);
+            }
+            finally { File.WriteAllBytes(metricPath, originalMetrics); }
+            Assert.False((await service.PredictAsync(candles)).IsFallback);
+
+            processor.Arm();
+            var disposingPrediction = Task.Run(() => service.PredictAsync(candles));
+            await processor.Started.WaitAsync(BarrierTimeout);
+            try { service.Dispose(); }
+            finally { processor.Release(); }
+            Assert.True((await disposingPrediction.WaitAsync(BarrierTimeout)).IsFallback);
         }
         finally { Directory.Delete(root, recursive: true); }
     }
@@ -680,6 +726,50 @@ public class PredictionServiceTests
     }
 
     [Fact]
+    public async Task PredictAsync_WithFixedNormalizationButNoScalerReference_FallsBack()
+    {
+        using var service = new PredictionService(
+            new TestSettings(MissingScalerModelPath, predictionWindowSize: 10), new MLDataProcessor());
+        Assert.True((await service.PredictAsync(BuildCandles(20))).IsFallback);
+    }
+
+    [Fact]
+    public async Task PredictAsync_WithCompleteFixedScaler_ReturnsPrediction()
+    {
+        using var service = new PredictionService(
+            new TestSettings(FixedScalerModelPath, predictionWindowSize: 10), new MLDataProcessor());
+        Assert.False((await service.PredictAsync(BuildCandles(20))).IsFallback);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PredictAsync_FixedScalerRejectsDuplicateOrReversedTimestamps(bool reversed)
+    {
+        using var service = new PredictionService(
+            new TestSettings(FixedScalerModelPath, predictionWindowSize: 10), new MLDataProcessor());
+        var candles = BuildCandles(20);
+        if (reversed) (candles[8], candles[9]) = (candles[9], candles[8]);
+        else candles[8] = candles[8] with { Timestamp = candles[7].Timestamp };
+        Assert.True((await service.PredictAsync(candles)).IsFallback);
+    }
+
+    [Fact]
+    public async Task PredictAsync_WithPreLagComposedModel_ReturnsPrediction()
+    {
+        var spec = new FeatureSpec
+        {
+            Channels = new[] { PriceType.Open, PriceType.High, PriceType.Low, PriceType.Close,
+                PriceType.Typical }.Select(price => new FeatureChannel
+                { Kind = FeatureChannelKind.Price, Price = price }).ToArray(),
+        };
+        using var service = new PredictionService(new TestSettings(LegacyComposedModelPath,
+            predictionWindowSize: 10, predictionFeatureMode: PredictionFeatureMode.ComposedFeatures,
+            predictionFeatureSpec: spec), new MLDataProcessor());
+        Assert.False((await service.PredictAsync(BuildCandles(20))).IsFallback);
+    }
+
+    [Fact]
     public async Task PredictAsync_WithMismatchedFeatureModeMetadata_FallsBackToEmpty()
     {
         // TestSettings.PredictionFeatureMode is OhlcvMinMax; this model's metadata declares zscore.
@@ -710,15 +800,13 @@ public class PredictionServiceTests
     }
 
     [Fact]
-    public async Task PredictAsync_WithNoMetadataProps_StillReturnsValidPrediction()
+    public async Task PredictAsync_WithNoMetadataProps_RejectsLegacyClassification()
     {
-        // trend_predictor_ok.onnx has no metadata_props: the contract cross-check must
-        // warn and continue, not fail (backward compatibility with pre-contract models).
-        var service = new PredictionService(new TestSettings(ConformantModelPath, predictionWindowSize: 10), new MLDataProcessor());
+        var service = new PredictionService(new TestSettings(LegacyClassificationModelPath, predictionWindowSize: 10), new MLDataProcessor());
 
         var result = await service.PredictAsync(BuildCandles(20));
 
-        Assert.False(result.IsFallback);
+        Assert.True(result.IsFallback);
     }
 
     [Fact]
@@ -772,8 +860,7 @@ public class PredictionServiceTests
     public async Task PredictAsync_WithRegressionModel_ReturnsRegressionResult()
     {
         var service = new PredictionService(
-            new TestSettings(RegressionModelPath, predictionWindowSize: 10,
-                predictionTargetType: TargetType.Regression),
+            new TestSettings(RegressionModelPath, predictionWindowSize: 10),
             new MLDataProcessor());
 
         var result = await service.PredictAsync(BuildCandles(20));
@@ -781,20 +868,23 @@ public class PredictionServiceTests
         Assert.False(result.IsFallback);
         Assert.True(result.IsRegression);
         Assert.Equal(RegressionFixtureY, result.PredictedLogReturn, 5);
-        Assert.Equal(100.0 * (Math.Exp(RegressionFixtureY) - 1.0), result.SimpleReturnPercent, 5);
+        Assert.True(double.IsNaN(result.SimpleReturnPercent)); // UI conversion belongs to the formatter.
+        Assert.Equal(PredictionOutputSemantic.LogReturn, result.OutputContract?.Semantic);
+        Assert.Equal(ConfidenceType.None, result.ConfidenceType);
+        Assert.Null(result.ConfidenceValue);
 
         // Classification-only fields carry no fabricated value for a regression result.
         Assert.Equal(string.Empty, result.Label);
-        Assert.Equal(0f, result.Confidence);
-        Assert.Equal(0f, result.Entropy);
+        Assert.True(float.IsNaN(result.Probability));
+        Assert.True(float.IsNaN(result.Confidence));
+        Assert.True(float.IsNaN(result.Entropy));
         Assert.Empty(result.Scores);
     }
 
     [Fact]
-    public async Task PredictAsync_WithClassificationModelButRegressionConfig_FallsBackToEmpty()
+    public async Task PredictAsync_WithClassificationModelButRegressionConfig_UsesOnnxSemantic()
     {
-        // trend_predictor_ok.onnx outputs width 3 (a 3-class head); configuring
-        // PredictionTargetType.Regression expects width 1, so the load-time contract must reject it.
+        // ONNX metadata is the authority for output semantics, regardless of stale configuration.
         var service = new PredictionService(
             new TestSettings(ConformantModelPath, predictionWindowSize: 10,
                 predictionTargetType: TargetType.Regression),
@@ -802,19 +892,9 @@ public class PredictionServiceTests
 
         var result = await service.PredictAsync(BuildCandles(20));
 
-        Assert.True(result.IsFallback);
-        Assert.Equal(PredictionResult.Empty, result);
-    }
-
-    [Theory]
-    [InlineData(0.0f)]
-    [InlineData(0.04f)]
-    [InlineData(-0.1f)]
-    public void ComputeSimpleReturnPercent_KnownY_MatchesFormula(float y)
-    {
-        double expected = 100.0 * (Math.Exp((double)y) - 1.0);
-
-        Assert.Equal(expected, PredictionService.ComputeSimpleReturnPercent(y), 10);
+        Assert.False(result.IsFallback);
+        Assert.False(result.IsRegression);
+        Assert.Equal(PredictionOutputSemantic.ClassProbabilities, result.OutputContract?.Semantic);
     }
 
     [Fact]

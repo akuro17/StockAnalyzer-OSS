@@ -92,7 +92,9 @@ public sealed record FixedScaler(
             double z = stat.Std <= IMLDataProcessor.Epsilon ? 0.0 : (raw[index] - stat.Mean) / stat.Std;
             if (ClipSigma is { } clip) z = Math.Min(clip, Math.Max(-clip, z));
             if (!double.IsFinite(z)) throw new InvalidDataException("Scaled feature is nonfinite.");
-            output[index] = (float)z;
+            var narrowed = (float)z;
+            if (!float.IsFinite(narrowed)) throw new InvalidDataException("Float32 scaled feature is nonfinite.");
+            output[index] = narrowed;
         }
     }
 
@@ -103,7 +105,7 @@ public sealed record FixedScaler(
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text))).ToLowerInvariant();
     }
 
-    private static string[] ChannelNames(IReadOnlyDictionary<string, string> metadata, IReadOnlyList<int> lags)
+    internal static string[] ChannelNames(IReadOnlyDictionary<string, string> metadata, IReadOnlyList<int> lags)
     {
         string[] baseNames;
         if (metadata.GetValueOrDefault(PredictionModelMetadata.FeatureModeKey) == "composed_features")
@@ -119,7 +121,9 @@ public sealed record FixedScaler(
         }
         else if (metadata.GetValueOrDefault(PredictionModelMetadata.FeatureModeKey) == "ohlcv_minmax")
             baseNames = new[] { "open", "high", "low", "close", "volume" };
-        else throw new InvalidDataException("Fixed scaler feature mode is unsupported.");
+        else if (metadata.TryGetValue("channel_order", out var order) && !string.IsNullOrWhiteSpace(order))
+            baseNames = order.Split(',');
+        else throw new InvalidDataException("Feature channel order is missing.");
         return new[] { 0 }.Concat(lags).SelectMany(lag => baseNames.Select(name => $"lag{lag}:{name}")).ToArray();
     }
 }

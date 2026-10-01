@@ -57,14 +57,18 @@ public readonly record struct MetricValue
     }
 }
 
+/// <summary>
+/// Persisted as integers in JSON and in the evaluation identity hash: never renumber or reuse a value; append only.
+/// Pinned by EnumWireContractTests.
+/// </summary>
 public enum MetricStatus
 {
-    Valid,
-    InsufficientData,
-    NotApplicable,
-    Undefined,
-    PositiveInfinity,
-    NumericFailure
+    Valid = 0,
+    InsufficientData = 1,
+    NotApplicable = 2,
+    Undefined = 3,
+    PositiveInfinity = 4,
+    NumericFailure = 5
 }
 
 /// <summary>
@@ -73,36 +77,54 @@ public enum MetricStatus
 /// (see the project's "separate UI from calculation logic" convention). PercentPoints is the one
 /// deliberate exception (UlcerIndex only, per spec §5.4): its own formula already scales by 100 before
 /// squaring, so its native unit is percentage points, not a ratio.
+/// Persisted as integers in JSON and in the evaluation identity hash: never renumber or reuse a value; append only.
+/// Pinned by EnumWireContractTests.
 /// </summary>
 public enum MetricUnit
 {
-    ReturnRatio,
-    DrawdownRatio,
-    WinRateRatio,
-    Dimensionless,
-    Currency,
-    Bars,
-    PercentPoints
+    ReturnRatio = 0,
+    DrawdownRatio = 1,
+    WinRateRatio = 2,
+    Dimensionless = 3,
+    Currency = 4,
+    Bars = 5,
+    PercentPoints = 6,
+
+    /// <summary>A dimensionless whole-number count of events (e.g. consecutive winning trades).</summary>
+    Count = 7,
+
+    /// <summary>Share of sample bars spent in the market, stored as a raw 0..1 ratio (0.25 = 25%); the x100 display conversion is a UI concern.</summary>
+    ExposureRatio = 8
 }
 
+/// <summary>
+/// Persisted as integers in JSON and in the evaluation identity hash: never renumber or reuse a value; append only.
+/// Pinned by EnumWireContractTests.
+/// </summary>
 public enum MetricReason
 {
-    None,
-    EmptyInput,
-    SingleElement,
-    NoClosedTrades,
-    ZeroDivisor,
-    NegativeEquityInPeriod,
-    ZeroPeriod,
-    NegativeFinalEquity,
-    RiskDataMissing,
-    AllBreakeven,
-    DownsideZero,
-    SampleTooSmall,
-    ArithmeticOverflow,
-    NonFiniteResult,
-    UnexpectedZeroDivisor,
-    SamplingUnverified,
-    SamplingRejected,
-    EvaluationCoverageUnverified
+    None = 0,
+    EmptyInput = 1,
+    SingleElement = 2,
+    NoClosedTrades = 3,
+    ZeroDivisor = 4,
+    NegativeEquityInPeriod = 5,
+    ZeroPeriod = 6,
+    NegativeFinalEquity = 7,
+    RiskDataMissing = 8,
+    AllBreakeven = 9,
+    DownsideZero = 10,
+    SampleTooSmall = 11,
+    ArithmeticOverflow = 12,
+    NonFiniteResult = 13,
+    UnexpectedZeroDivisor = 14,
+    SamplingUnverified = 15,
+    SamplingRejected = 16,
+    EvaluationCoverageUnverified = 17,
+
+    /// <summary>A win-side metric (average/largest win) is undefined because no closed trade has ClosedNet &gt; 0.</summary>
+    NoWinningTrades = 18,
+
+    /// <summary>A loss-side metric (average/largest loss) is undefined because no closed trade has ClosedNet &lt; 0.</summary>
+    NoLosingTrades = 19
 }

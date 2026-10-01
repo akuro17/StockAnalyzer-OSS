@@ -17,5 +17,8 @@ public sealed class MockWindowManagementService : IWindowManagementService
         WindowFactory = null!;
         BoundaryService = new WindowBoundaryService();
     }
+
+    public void BringMainWindowToFront() { }
+    public void BringWindowToFront(object dataContext) { }
 }
 #endif

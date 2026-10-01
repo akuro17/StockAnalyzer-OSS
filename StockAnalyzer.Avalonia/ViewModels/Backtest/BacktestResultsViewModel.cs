@@ -16,21 +16,16 @@ using StockAnalyzer.Core.Services.Backtest.Reporting;
 
 namespace StockAnalyzer.Avalonia.ViewModels.Backtest;
 
-public sealed record BacktestMetricRow
-{
-    public required string LabelKey { get; init; }
-    public required string ValueText { get; init; }
-    public required MetricStatus Status { get; init; }
-    public required BacktestMetricSemantic Semantic { get; init; }
-    public string? ConfidenceIntervalText { get; init; }
-}
-
 public enum BacktestMetricSemantic { Plus, Minus, Neutral }
 
 public sealed class BacktestTradeRow
 {
     public required long TradeId { get; init; }
-    public required string Side { get; init; }
+    public required TradeSide SideKind { get; init; }
+
+    /// <summary>The side as the trade list shows it (the <see cref="TradeSide"/> name); logic uses <see cref="SideKind"/>.</summary>
+    public string Side => SideKind.ToString();
+
     public required DateTime EntryTime { get; init; }
     public required decimal EntryPrice { get; init; }
     public required DateTime ExitTime { get; init; }
@@ -52,7 +47,17 @@ public sealed class BacktestResultPresentation
     public required BacktestResult Result { get; init; }
     public required BacktestReport Report { get; init; }
     public required ImmutableArray<EquityPoint> EquityPoints { get; init; }
-    public required ImmutableArray<BacktestMetricRow> Metrics { get; init; }
+
+    /// <summary>One flag per <see cref="EquityPoints"/> entry: whether that point is in drawdown (below the running high that starts at the initial capital).
+    /// Default (unavailable) when the drawdown computation overflowed; computed once per presentation, never per paint.</summary>
+    public ImmutableArray<bool> EquityUnderwaterFlags { get; init; } = ImmutableArray<bool>.Empty;
+
+    /// <summary>The metrics grouped in reading order (empty groups are never present); the table the Results tab shows.</summary>
+    public ImmutableArray<BacktestMetricGroupPresentation> MetricGroups { get; init; } = ImmutableArray<BacktestMetricGroupPresentation>.Empty;
+
+    /// <summary>The key metrics shown at the top of the Results tab: the very row objects of <see cref="MetricGroups"/>, never a second formatting.</summary>
+    public ImmutableArray<BacktestMetricDisplayRow> Summary { get; init; } = ImmutableArray<BacktestMetricDisplayRow>.Empty;
+
     public required ImmutableArray<BacktestTradeRow> Trades { get; init; }
     public required ImmutableArray<BacktestConditionPresentationRow> EntryConditions { get; init; }
     public required ImmutableArray<BacktestConditionPresentationRow> ExitConditions { get; init; }
@@ -122,7 +127,11 @@ public partial class BacktestResultsViewModel : ViewModelBase
 
     public BacktestResultPresentation? Presentation => _presentation;
     public ImmutableArray<EquityPoint> EquityPoints => _presentation?.EquityPoints ?? ImmutableArray<EquityPoint>.Empty;
-    public ImmutableArray<BacktestMetricRow> Metrics => _presentation?.Metrics ?? ImmutableArray<BacktestMetricRow>.Empty;
+    public ImmutableArray<bool> EquityUnderwaterFlags => _presentation?.EquityUnderwaterFlags ?? ImmutableArray<bool>.Empty;
+    public ImmutableArray<BacktestMetricGroupPresentation> MetricGroups => _presentation?.MetricGroups ?? ImmutableArray<BacktestMetricGroupPresentation>.Empty;
+    public bool HasMetricGroups => MetricGroups.Length > 0;
+    public ImmutableArray<BacktestMetricDisplayRow> Summary => _presentation?.Summary ?? ImmutableArray<BacktestMetricDisplayRow>.Empty;
+    public bool HasSummary => Summary.Length > 0;
     public ImmutableArray<BacktestTradeRow> Trades => _presentation?.Trades ?? ImmutableArray<BacktestTradeRow>.Empty;
     public ImmutableArray<BacktestAuditRow> AuditRows => _presentation?.AuditRows ?? ImmutableArray<BacktestAuditRow>.Empty;
     public ImmutableArray<BacktestConditionPresentationRow> EntryConditionEntries => _presentation?.EntryConditions ?? ImmutableArray<BacktestConditionPresentationRow>.Empty;
@@ -351,21 +360,20 @@ public partial class BacktestResultsViewModel : ViewModelBase
                 ? ImmutableArray<EquityPoint>.Empty
                 : result.EquityPoints[evaluationStartIndex..];
 
-        ImmutableArray<BacktestMetricRow> metrics = BuildMetricRows(report).ToImmutableArray();
         var trades = ImmutableArray.CreateBuilder<BacktestTradeRow>(result.Trades.Length);
         foreach (BacktestTrade trade in result.Trades)
         {
             trades.Add(new BacktestTradeRow
             {
                 TradeId = trade.TradeId,
-                Side = trade.Side.ToString(),
+                SideKind = trade.Side,
                 EntryTime = trade.EntryTime,
                 EntryPrice = trade.EntryPrice,
                 ExitTime = trade.ExitTime,
                 ExitPrice = trade.ExitPrice,
                 Quantity = trade.Quantity,
                 ClosedNet = trade.ClosedNet,
-                PnLSemantic = ResolveSemantic(trade.ClosedNet),
+                PnLSemantic = BacktestMetricGroupBuilder.ResolveBySign(trade.ClosedNet),
                 IsForcedLiquidation = trade.IsForcedLiquidation,
             });
         }
@@ -428,8 +436,10 @@ public partial class BacktestResultsViewModel : ViewModelBase
             }
         }
 
+        ImmutableArray<BacktestMetricGroupPresentation> metricGroups = BacktestMetricGroupBuilder.Build(report, _localizationService);
+
         BacktestMetricSemantic lineSemantic = report.TotalPnL.Status == MetricStatus.Valid && report.TotalPnL.Value is { } totalPnL
-            ? ResolveSemantic(totalPnL)
+            ? BacktestMetricGroupBuilder.ResolveBySign(totalPnL)
             : BacktestMetricSemantic.Neutral;
 
         return new BacktestResultPresentation
@@ -438,7 +448,9 @@ public partial class BacktestResultsViewModel : ViewModelBase
             Result = result,
             Report = report,
             EquityPoints = equityPoints,
-            Metrics = metrics,
+            EquityUnderwaterFlags = EquityDrawdownClassifier.ComputeUnderwaterFlags(result.Configuration.InitialCapital, equityPoints),
+            MetricGroups = metricGroups,
+            Summary = BacktestMetricGroupBuilder.BuildSummary(metricGroups),
             Trades = trades.MoveToImmutable(),
             EntryConditions = entryConditions.ToImmutable(),
             ExitConditions = exitConditions.ToImmutable(),
@@ -490,7 +502,11 @@ public partial class BacktestResultsViewModel : ViewModelBase
         ExportStatusMessage = null;
         OnPropertyChanged(nameof(Presentation));
         OnPropertyChanged(nameof(EquityPoints));
-        OnPropertyChanged(nameof(Metrics));
+        OnPropertyChanged(nameof(EquityUnderwaterFlags));
+        OnPropertyChanged(nameof(MetricGroups));
+        OnPropertyChanged(nameof(HasMetricGroups));
+        OnPropertyChanged(nameof(Summary));
+        OnPropertyChanged(nameof(HasSummary));
         OnPropertyChanged(nameof(Trades));
         OnPropertyChanged(nameof(AuditRows));
         OnPropertyChanged(nameof(EntryConditionEntries));
@@ -632,55 +648,4 @@ public partial class BacktestResultsViewModel : ViewModelBase
 
     private static string FormatUtc(DateTime utc) =>
         utc.ToString("yyyy-MM-dd HH:mm:ss'Z'", CultureInfo.InvariantCulture);
-
-    private static BacktestMetricSemantic ResolveSemantic(decimal value) =>
-        value > 0m ? BacktestMetricSemantic.Plus : value < 0m ? BacktestMetricSemantic.Minus : BacktestMetricSemantic.Neutral;
-
-    private IEnumerable<BacktestMetricRow> BuildMetricRows(BacktestReport report)
-    {
-        yield return Format("Backtest_Metric_TotalPnL", report.TotalPnL, false);
-        yield return Format("Backtest_Metric_MaxDrawdownAmount", report.MaxDrawdownAmount, false);
-        yield return Format("Backtest_Metric_ExpectedPayoff", report.ExpectedPayoff, false);
-        yield return Format("Backtest_Metric_TotalReturn", report.TotalReturn, true);
-        yield return Format("Backtest_Metric_CAGR", report.CAGR, true);
-        yield return Format("Backtest_Metric_WinRate", report.WinRate, true);
-        yield return Format("Backtest_Metric_ProfitFactor", report.ProfitFactor, false);
-        yield return Format("Backtest_Metric_MaxDrawdown", report.MaxDrawdown, true);
-        yield return Format("Backtest_Metric_UlcerIndex", report.UlcerIndex, false);
-        yield return Format("Backtest_Metric_BarSharpe", report.BarSharpe, false);
-        yield return Format("Backtest_Metric_AnnualizedSharpe", report.AnnualizedSharpe, false);
-        yield return Format("Backtest_Metric_AnnualizedSharpeAutocorrelationAdjusted", report.AnnualizedSharpeAutocorrelationAdjusted, false);
-        yield return Format("Backtest_Metric_BarSortino", report.BarSortino, false);
-        yield return Format("Backtest_Metric_AnnualizedSortino", report.AnnualizedSortino, false);
-        BacktestMetricRow adjusted = Format("Backtest_Metric_AnnualizedSortinoAutocorrelationAdjusted", report.AnnualizedSortinoAutocorrelationAdjusted, false);
-        string ciText = report.AnnualizedSortinoAutocorrelationAdjustedConfidenceInterval is { } ci
-            ? $"[{ci.Lower:F4}, {ci.Upper:F4}]"
-            : _localizationService.GetString("Backtest_Metric_NotAvailable");
-        yield return adjusted with { ConfidenceIntervalText = ciText };
-        yield return Format("Backtest_Metric_CalmarFullPeriod", report.CalmarFullPeriod, false);
-        yield return Format("Backtest_Metric_SQN", report.SQN, false);
-        yield return Format("Backtest_Metric_RecoveryFactor", report.RecoveryFactor, false);
-    }
-
-    private BacktestMetricRow Format(string labelKey, MetricValue metric, bool isPercentage)
-    {
-        if (metric.Status != MetricStatus.Valid || metric.Value is not { } value)
-        {
-            return new BacktestMetricRow
-            {
-                LabelKey = labelKey,
-                ValueText = _localizationService.GetString("Backtest_Metric_NotAvailable"),
-                Status = metric.Status,
-                Semantic = BacktestMetricSemantic.Neutral,
-            };
-        }
-
-        return new BacktestMetricRow
-        {
-            LabelKey = labelKey,
-            ValueText = isPercentage ? BacktestMetricFormatter.FormatPercentage(value) : $"{value:F4}",
-            Status = metric.Status,
-            Semantic = ResolveSemantic(value),
-        };
-    }
 }

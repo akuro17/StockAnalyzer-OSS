@@ -7,7 +7,10 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Backtest.Configuration;
 using StockAnalyzer.Core.Models.Backtest.Engine;
+using StockAnalyzer.Core.Models.Settings;
+using StockAnalyzer.Core.Services;
 using StockAnalyzer.Core.Services.Backtest.Configuration;
+using StockAnalyzer.Core.Theme;
 
 namespace StockAnalyzer.Avalonia.ViewModels.Dialogs;
 
@@ -19,11 +22,15 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs;
 /// rejected value is exposed through the per-item <c>*Error</c> properties (keyed by <see cref="BacktestDefaultSettings"/>
 /// property name) so the view shows it inside that item as soon as the value is edited.
 /// <see cref="ValidationMessage"/> only carries page-level save failures (e.g. I/O).
+/// Group E (equity curve colors) is not a Backtest default: it lives in <see cref="GlobalChartSettings"/> and is written through
+/// <see cref="IChartSettingsManager"/> (which also repaints an open Results tab), so it never touches the defaults schema.
 /// </summary>
 public partial class BacktestSettingsViewModel : ViewModelBase, ISettingsPageViewModel
 {
     private readonly IBacktestDefaultSettingsManager _manager;
+    private readonly IChartSettingsManager? _chartSettingsManager;
     private BacktestDefaultSettings _snapshot = BacktestDefaultSettings.BuiltIn;
+    private EquityStyleSnapshot _styleSnapshot = EquityStyleSnapshot.From(new GlobalChartSettings());
     private bool _isApplying;
     private bool _isRaisingDerived;
 
@@ -31,6 +38,7 @@ public partial class BacktestSettingsViewModel : ViewModelBase, ISettingsPageVie
     public string IconKey => "SettingsBacktestIcon";
 
     public IReadOnlyList<PositionSizingModel> SizingModelOptions { get; } = Enum.GetValues<PositionSizingModel>();
+    public IReadOnlyList<BacktestEquityColorMode> EquityColorModeOptions { get; } = Enum.GetValues<BacktestEquityColorMode>();
 
     public decimal RatioInclusiveMinimum => BacktestConfigurationBounds.InclusiveRatioMinimum;
     public decimal RatioPositiveMinimum => BacktestConfigurationBounds.PositiveRatioMinimum;
@@ -58,6 +66,20 @@ public partial class BacktestSettingsViewModel : ViewModelBase, ISettingsPageVie
     [ObservableProperty] private int _annualPeriodsMN1;
     [ObservableProperty] private int _bootstrapSeed;
     [ObservableProperty] private int _bootstrapIterations;
+
+    // Group E: equity curve colors (stored in GlobalChartSettings, not in the Backtest defaults).
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsEquityColorModeSingle))]
+    [NotifyPropertyChangedFor(nameof(IsEquityColorModePreviousBar))]
+    [NotifyPropertyChangedFor(nameof(IsEquityColorModeDrawdown))]
+    private BacktestEquityColorMode _equityColorMode;
+    [ObservableProperty] private HsvData _equityLineColor;
+    [ObservableProperty] private HsvData _equityUpColor;
+    [ObservableProperty] private HsvData _equityDownColor;
+
+    public bool IsEquityColorModeSingle => EquityColorMode == BacktestEquityColorMode.Single;
+    public bool IsEquityColorModePreviousBar => EquityColorMode == BacktestEquityColorMode.PreviousBar;
+    public bool IsEquityColorModeDrawdown => EquityColorMode == BacktestEquityColorMode.Drawdown;
 
     /// <summary>Why the last save failed at page level (I/O); empty otherwise. Per-item reasons are in the <c>*Error</c> properties.</summary>
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(HasValidationMessage))] private string _validationMessage = string.Empty;
@@ -89,12 +111,23 @@ public partial class BacktestSettingsViewModel : ViewModelBase, ISettingsPageVie
     /// <summary>Completes when the persisted values have been loaded into the page (the page shows factory defaults until then).</summary>
     public Task LoadTask { get; }
 
-    public bool IsModified => !BuildRaw().ValueEquals(_snapshot);
+    public bool IsModified => !BuildRaw().ValueEquals(_snapshot) || IsStyleModified;
 
-    public BacktestSettingsViewModel(IBacktestDefaultSettingsManager manager)
+    /// <summary>Whether the Group E values differ from what was last loaded/saved. Always false without a chart settings manager.</summary>
+    private bool IsStyleModified => _chartSettingsManager is not null && !EquityStyleSnapshot.From(this).Equals(_styleSnapshot);
+
+    /// <param name="manager">Source and sink of the Backtest defaults (Groups B-D).</param>
+    /// <param name="chartSettingsManager">Source and sink of the equity curve colors (Group E); when null that group is inert.</param>
+    public BacktestSettingsViewModel(IBacktestDefaultSettingsManager manager, IChartSettingsManager? chartSettingsManager = null)
     {
         _manager = manager ?? throw new ArgumentNullException(nameof(manager));
+        _chartSettingsManager = chartSettingsManager;
+        if (_chartSettingsManager is not null)
+        {
+            _styleSnapshot = EquityStyleSnapshot.From(_chartSettingsManager.Current);
+        }
         Apply(_snapshot);
+        ApplyStyle(_styleSnapshot);
         LoadTask = LoadAsync();
     }
 
@@ -103,6 +136,7 @@ public partial class BacktestSettingsViewModel : ViewModelBase, ISettingsPageVie
     {
         _manager = new DesignManager();
         Apply(_snapshot);
+        ApplyStyle(_styleSnapshot);
         LoadTask = Task.CompletedTask;
     }
 
@@ -257,11 +291,84 @@ public partial class BacktestSettingsViewModel : ViewModelBase, ISettingsPageVie
         }
 
         _snapshot = validated;
+        await SaveStyleAsync().ConfigureAwait(true);
         ValidationMessage = string.Empty;
         RaiseDerived();
     }
 
-    public void RevertChanges() => Apply(_snapshot);
+    /// <summary>
+    /// Writes Group E as a read-modify-write on the latest chart settings (so concurrent changes to other settings survive), then re-reads the
+    /// validated result. <see cref="IChartSettingsManager.UpdateAsync"/> reports no I/O failure (the settings then live in memory only, GS-15),
+    /// so none can be detected from here.
+    /// </summary>
+    private async Task SaveStyleAsync()
+    {
+        if (_chartSettingsManager is null || !IsStyleModified) return;
 
-    public void ResetToDefault() => Apply(BacktestDefaultSettings.BuiltIn);
+        GlobalChartSettings latest = _chartSettingsManager.Current;
+        await _chartSettingsManager.UpdateAsync(latest with
+        {
+            BacktestEquityColorMode = EquityColorMode,
+            BacktestEquityLineColor = EquityLineColor.ToHtml(),
+            BacktestEquityUpColor = EquityUpColor.ToHtml(),
+            BacktestEquityDownColor = EquityDownColor.ToHtml(),
+        }).ConfigureAwait(true);
+
+        _styleSnapshot = EquityStyleSnapshot.From(_chartSettingsManager.Current);
+        ApplyStyle(_styleSnapshot);
+    }
+
+    /// <summary>Copies a Group E snapshot into the editable properties, then refreshes IsModified once.</summary>
+    private void ApplyStyle(EquityStyleSnapshot source)
+    {
+        _isApplying = true;
+        try
+        {
+            EquityColorMode = source.Mode;
+            EquityLineColor = source.LineColor;
+            EquityUpColor = source.UpColor;
+            EquityDownColor = source.DownColor;
+        }
+        finally
+        {
+            _isApplying = false;
+        }
+
+        RaiseDerived();
+    }
+
+    public void RevertChanges()
+    {
+        Apply(_snapshot);
+        ApplyStyle(_styleSnapshot);
+    }
+
+    // Group E defaults come from a fresh GlobalChartSettings (the single definition), never from literals restated here.
+    public void ResetToDefault()
+    {
+        Apply(BacktestDefaultSettings.BuiltIn);
+        ApplyStyle(EquityStyleSnapshot.From(new GlobalChartSettings()));
+    }
+
+    /// <summary>The Group E values as compared by <see cref="IsModified"/>: HsvData is compared through its #AARRGGBB form so a ColorPicker round trip is not an edit.</summary>
+    private readonly record struct EquityStyleSnapshot(BacktestEquityColorMode Mode, string LineHex, string UpHex, string DownHex)
+    {
+        public HsvData LineColor => HsvData.FromHtmlSafe(LineHex);
+        public HsvData UpColor => HsvData.FromHtmlSafe(UpHex);
+        public HsvData DownColor => HsvData.FromHtmlSafe(DownHex);
+
+        // Normalized to #AARRGGBB (a persisted 6-digit value must not read as an edit once the picker reports it back in 8 digits).
+        public static EquityStyleSnapshot From(GlobalChartSettings settings) =>
+            new(
+                settings.BacktestEquityColorMode,
+                Normalize(settings.BacktestEquityLineColor, ChartSettingsConstants.DefaultBacktestEquityLineColor),
+                Normalize(settings.BacktestEquityUpColor, ChartSettingsConstants.DefaultBacktestEquityUpColor),
+                Normalize(settings.BacktestEquityDownColor, ChartSettingsConstants.DefaultBacktestEquityDownColor));
+
+        private static string Normalize(string html, string defaultHtml) =>
+            BacktestEquityLineStyle.ResolveHsv(html, defaultHtml).ToHtml();
+
+        public static EquityStyleSnapshot From(BacktestSettingsViewModel vm) =>
+            new(vm.EquityColorMode, vm.EquityLineColor.ToHtml(), vm.EquityUpColor.ToHtml(), vm.EquityDownColor.ToHtml());
+    }
 }

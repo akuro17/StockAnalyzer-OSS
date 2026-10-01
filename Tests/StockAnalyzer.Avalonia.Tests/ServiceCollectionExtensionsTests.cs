@@ -26,6 +26,20 @@ public class ServiceCollectionExtensionsTests
     }
 
     [Fact]
+    public void AddCommonServices_RegistersTheCurrentHealthService_AsTheSameSingletonAsThePredictionLog()
+    {
+        var services = new ServiceCollection();
+        services.AddCommonServices(new ConfigurationBuilder().Build());
+        using var provider = services.BuildServiceProvider();
+
+        var log = provider.GetRequiredService<StockAnalyzer.Core.Services.IPredictionLogService>();
+        var health = provider.GetRequiredService<StockAnalyzer.Core.Services.ICurrentPredictionHealthService>();
+
+        Assert.IsType<StockAnalyzer.Core.Services.PredictionLogService>(log);
+        Assert.Same(log, health); // one instance and one monitor gate behind both contracts
+    }
+
+    [Fact]
     public void AddCommonServices_ResolvesLayeredChartImageExportService()
     {
         var services = new ServiceCollection();

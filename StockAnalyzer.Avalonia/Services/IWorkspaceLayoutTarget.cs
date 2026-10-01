@@ -52,6 +52,11 @@ public interface IWorkspaceLayoutTarget
     void SetActiveColumns(IEnumerable<string> columnNames);
     void ApplyColumnWidths(Dictionary<string, string>? widths);
     void RestoreTickerColumnTemplateSelection(IReadOnlyDictionary<Guid, Guid>? selectionsByList);
+
+    /// <summary>Restores the shared Column Customization selection (store only, not applied). The coordinator calls
+    /// it before <see cref="RestoreTickerColumnTemplateSelection"/>, which applies the active store. Default no-op so
+    /// existing implementers are unaffected.</summary>
+    void RestoreTickerSharedColumnTemplateSelection(Guid templateId) { }
     void ApplySortState(string? columnName, int direction);
     void ImportFilterSettings(IEnumerable<FilterSettings> filters);
     void ImportCustomTickerCategories(IEnumerable<TickerParentCategorySettings> categories);

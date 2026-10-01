@@ -16,6 +16,7 @@ using Xunit;
 
 namespace StockAnalyzer.Core.Tests.Services;
 
+[Collection("UserStrategyMetadataRepository MarketDataProvider")]
 public class MetadataHydrationTests
 {
     // Regression test (sa_minimal_fix): ParquetMarketDataProvider used to unconditionally register

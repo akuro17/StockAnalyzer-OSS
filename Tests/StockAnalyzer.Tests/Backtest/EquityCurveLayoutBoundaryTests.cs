@@ -36,9 +36,6 @@ public class EquityCurveLayoutBoundaryTests
         // rule applies: the domain is widened symmetrically around the one equity value.
         Assert.Equal(99_999m, layout.YMin);
         Assert.Equal(100_001m, layout.YMax);
-        Assert.Equal("100001.0000", layout.YMaxLabel);
-        Assert.Equal("100000.0000", layout.YMidLabel);
-        Assert.Equal("99999.0000", layout.YMinLabel);
         Assert.Equal("2024-01-01 00:00", layout.ViewportStartLabel);
         Assert.Equal("2024-01-01 00:00", layout.ViewportEndLabel);
     }
@@ -60,8 +57,8 @@ public class EquityCurveLayoutBoundaryTests
 
             EquityCurveLayout layout = EquityCurveLayout.Build(ImmutableArray.Create(point));
 
-            Assert.Equal("100001.0000", layout.YMaxLabel);
-            Assert.Equal("99999.0000", layout.YMinLabel);
+            Assert.Equal(100_001m, layout.YMax);
+            Assert.Equal(99_999m, layout.YMin);
             Assert.Equal("2024-01-01 00:00", layout.ViewportStartLabel);
         }
         finally
@@ -138,7 +135,7 @@ public class EquityCurveLayoutBoundaryTests
     }
 
     [Fact]
-    public void NearMaximumRange_UsesOverflowSafeMidpoint()
+    public void NearMaximumRange_StillBuildsALineWithoutOverflow()
     {
         DateTime utc = new(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc);
         EquityCurveLayout layout = EquityCurveLayout.Build(ImmutableArray.Create(
@@ -146,7 +143,6 @@ public class EquityCurveLayoutBoundaryTests
             new EquityPoint(1, utc.AddDays(1), decimal.MaxValue, decimal.MaxValue, 0m, 0m)));
 
         Assert.Equal(EquityCurveDisplayState.Line, layout.State);
-        Assert.Equal((decimal.MaxValue - 1m).ToString("F4", CultureInfo.InvariantCulture), layout.YMidLabel);
         Assert.Equal(0d, layout.Points[0].YFraction);
         Assert.Equal(1d, layout.Points[1].YFraction);
     }

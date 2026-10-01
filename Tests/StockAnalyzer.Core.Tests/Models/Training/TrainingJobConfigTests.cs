@@ -35,6 +35,16 @@ public class TrainingJobConfigTests
     }
 
     [Theory]
+    [InlineData(TrainingFramework.LightGBM)]
+    [InlineData(TrainingFramework.TensorFlow)]
+    public void Validate_RegressionWithUnsupportedTrainer_FailsBeforeTraining(TrainingFramework framework)
+    {
+        var config = Valid() with { TargetType = TargetType.Regression, Framework = framework };
+
+        Assert.Throws<InvalidOperationException>(config.Validate);
+    }
+
+    [Theory]
     [InlineData(2)]
     [InlineData(5)]
     [InlineData(TrainingResourceOverrides.MaximumEvaluationFolds)]

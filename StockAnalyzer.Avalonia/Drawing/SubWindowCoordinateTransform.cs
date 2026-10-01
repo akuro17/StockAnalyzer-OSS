@@ -11,6 +11,7 @@ namespace StockAnalyzer.Avalonia.Drawing;
 /// </summary>
 public class SubWindowCoordinateTransform : ICoordinateTransform
 {
+    public double GetXFromTime(DateTime time) => _mainTransform.GetXFromTime(time);
     private ICoordinateTransform _mainTransform;
     public GenericCoordinateTransform YTransform { get; private set; }
 

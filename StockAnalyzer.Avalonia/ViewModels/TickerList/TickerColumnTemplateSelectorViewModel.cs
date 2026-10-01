@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using StockAnalyzer.Avalonia.Common;
 using StockAnalyzer.Core.Interfaces;
+using StockAnalyzer.Core.Models.Settings;
 using StockAnalyzer.Core.Models.Templates;
 using StockAnalyzer.Core.Services;
 
@@ -42,6 +43,12 @@ public sealed partial class TickerColumnTemplateSelectorViewModel : ObservableOb
 
     // Ticker list Id -> selected ColumnTemplate Id. A list without an entry uses Active Columns.
     private readonly Dictionary<Guid, Guid> _selectionByList = new();
+    // Selection scope (Settings > Tickers, Y:\Temp\sa_implementation_plan_TickerColumnSelectionScope.md): the
+    // scope only chooses which of the two independent stores is active - _selectionByList (PerList, the
+    // default and the pre-existing behavior) or _sharedSelection (Shared; Guid.Empty = Active Columns).
+    // Nothing is ever copied between the stores.
+    private TickerColumnSelectionScope _scope;
+    private Guid _sharedSelection = Guid.Empty;
     private Guid _currentListId = Guid.Empty;
     // The list the currently selected entry was chosen for (differs from _currentListId only while a
     // list switch is still re-fetching the templates).
@@ -334,6 +341,12 @@ public sealed partial class TickerColumnTemplateSelectorViewModel : ObservableOb
 
     private void RecordSelection(Guid listId, ColumnTemplate target)
     {
+        if (_scope == TickerColumnSelectionScope.Shared)
+        {
+            _sharedSelection = target.Id;
+            return;
+        }
+
         if (listId == Guid.Empty) return;
 
         if (IsActiveEntry(target))
@@ -355,11 +368,91 @@ public sealed partial class TickerColumnTemplateSelectorViewModel : ObservableOb
         if (listId == Guid.Empty || listId == _currentListId) return;
 
         _currentListId = listId;
+        // The shared selection does not depend on the list: nothing to apply on a list switch.
+        if (_scope == TickerColumnSelectionScope.Shared) return;
         ApplyCurrentListSelection();
+    }
+
+    /// <summary>Switches between one selection per ticker list (default) and one selection shared by all lists,
+    /// then applies the selection of the newly active store. An undefined value or the current scope is ignored.</summary>
+    public void SetScope(TickerColumnSelectionScope scope)
+    {
+        if (_isDisposed || !Enum.IsDefined(scope) || scope == _scope) return;
+
+        _scope = scope;
+        ApplyCurrentListSelection();
+    }
+
+    /// <summary>Restores the shared selection (workspace load) into its store only; it is applied by the
+    /// following <see cref="ImportSelectionsByList"/> (or by <see cref="SetScope"/>).</summary>
+    public void ImportSharedSelection(Guid templateId) => _sharedSelection = templateId;
+
+    /// <summary>The shared selection to persist (<see cref="Guid.Empty"/> = Active Columns). A template that no
+    /// longer exists is omitted once the template list has been loaded.</summary>
+    public Guid ExportSharedSelection()
+    {
+        if (_entriesLoaded && _sharedSelection != Guid.Empty && !Entries.Any(e => e.Id == _sharedSelection))
+        {
+            return Guid.Empty;
+        }
+        return _sharedSelection;
+    }
+
+    private void ApplySharedSelection()
+    {
+        var templateId = _sharedSelection;
+        if (templateId == Guid.Empty)
+        {
+            SelectEntry(ActiveColumnsEntry);
+            return;
+        }
+
+        _ = ApplySharedSelectionAfterReloadAsync(templateId);
+    }
+
+    // Same stale-template protection as ApplyListSelectionAfterReloadAsync, against the shared store.
+    private async Task ApplySharedSelectionAfterReloadAsync(Guid templateId)
+    {
+        try
+        {
+            await ReloadEntriesAsync().ConfigureAwait(false);
+            await _dispatcher.PostAsync(() =>
+            {
+                if (_isDisposed || _scope != TickerColumnSelectionScope.Shared || _sharedSelection != templateId) return Task.CompletedTask;
+
+                var removedStaleEntry = false;
+                var entry = Entries.FirstOrDefault(e => e.Id == templateId);
+                if (entry == null)
+                {
+                    _logger.LogWarning("Shared column template {Id} no longer exists; using Active Columns.", templateId);
+                    _sharedSelection = Guid.Empty;
+                    entry = ActiveColumnsEntry;
+                    removedStaleEntry = true;
+                }
+                var wasActive = ReferenceEquals(SelectedEntry, ActiveColumnsEntry);
+                SelectEntry(entry);
+                if (removedStaleEntry && wasActive)
+                {
+                    // No selection change was raised, but the stored selection changed: request a save.
+                    SelectionChanged?.Invoke(this, EventArgs.Empty);
+                }
+                return Task.CompletedTask;
+            }).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to apply the shared column template selection.");
+        }
     }
 
     private void ApplyCurrentListSelection()
     {
+        if (_scope == TickerColumnSelectionScope.Shared)
+        {
+            ApplySharedSelection();
+            return;
+        }
+
         var listId = _currentListId;
         if (listId == Guid.Empty) return;
 

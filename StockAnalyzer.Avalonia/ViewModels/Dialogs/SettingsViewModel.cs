@@ -83,6 +83,7 @@ public partial class SettingsViewModel : ViewModelBase, IDisposable
                 SettingsConstants.Keys.AIPredictions => _serviceProvider.GetRequiredService<AIPredictionsSettingsViewModel>(),
                 SettingsConstants.Keys.Backtest => _serviceProvider.GetRequiredService<BacktestSettingsViewModel>(),
                 SettingsConstants.Keys.TrainingWizard => _serviceProvider.GetRequiredService<TrainingResourceSettingsViewModel>(),
+                SettingsConstants.Keys.Tickers => _serviceProvider.GetRequiredService<TickersSettingsViewModel>(),
                 SettingsConstants.Keys.Notes =>_serviceProvider.GetRequiredService<NotesSettingsViewModel>(),
                 SettingsConstants.Keys.SeasonalityChart => _serviceProvider.GetRequiredService<SeasonalitySettingsViewModel>(),
                 SettingsConstants.Keys.Chart => _serviceProvider.GetRequiredService<ChartGeneralSettingsViewModel>(),

@@ -43,6 +43,33 @@ public class TrainingWizardViewModelTests : IDisposable
     }
 
     [Fact]
+    public async Task TransferControls_ReachJobContractAndCheckpointResult()
+    {
+        var orchestrator = new FakeTrainingOrchestrator
+        {
+            ResultToReturn = new TrainingRunResult { RunId = "new_run", Success = true, CheckpointManifestPath = "run.json" },
+        };
+        using var vm = new TrainingWizardViewModel(orchestrator: orchestrator,
+            marketDataProvider: new DummyMarketDataProvider("X"));
+        await WaitForInitializationAsync(vm);
+        vm.Horizon = 1;
+        vm.SelectedArchitecture = "cnn";
+        vm.SelectedInitializationMode = TrainingInitializationMode.FineTune;
+        vm.CheckpointPath = "best.json";
+        vm.ParentModelId = new string('a', 64);
+        vm.FreezePathsText = "features, features.0";
+        Assert.True(vm.StartTrainingCommand.CanExecute(null));
+        await vm.StartTrainingCommand.ExecuteAsync(null);
+        Assert.Equal(TrainingInitializationMode.FineTune, orchestrator.CapturedConfig!.InitializationMode);
+        Assert.Equal(new[] { "features", "features.0" }, orchestrator.CapturedConfig.FreezePaths);
+        Assert.Equal("best.json", orchestrator.CapturedConfig.CheckpointPath);
+        Assert.Equal("run.json", vm.CheckpointManifestPath);
+        vm.SelectedFramework = TrainingFramework.TensorFlow;
+        Assert.Equal(TrainingInitializationMode.Fresh, vm.SelectedInitializationMode);
+        Assert.Single(vm.AvailableInitializationModes);
+    }
+
+    [Fact]
     public async Task Constructor_SplitsProfilesIntoWatchlistAndPortfolioCollections()
     {
         var watchlist = MakeProfile("Tech Watch", isPortfolio: false, "AAPL", "MSFT");
@@ -153,6 +180,14 @@ public class TrainingWizardViewModelTests : IDisposable
     }
 
     [Fact]
+    public void WindowUnitNote_OverLimitHistoryShowsLocalizedUnavailableMessage()
+    {
+        var vm = new TrainingWizardViewModel { WindowSize = 25, Horizon = 5, Gap = int.MaxValue };
+        Assert.Contains(LocalizationManager.Instance["TrainingWizard_WindowUnitNote_OverLimit"], vm.WindowUnitNote);
+        Assert.DoesNotContain("-", vm.WindowUnitNote);
+    }
+
+    [Fact]
     public void Gap_Change_RaisesWindowUnitNotePropertyChanged()
     {
         var vm = new TrainingWizardViewModel { WindowSize = 25, Horizon = 5 };
@@ -161,6 +196,22 @@ public class TrainingWizardViewModelTests : IDisposable
 
         vm.Gap = 7;
 
+        Assert.Contains(nameof(TrainingWizardViewModel.WindowUnitNote), raised);
+    }
+
+    [Fact]
+    public void WindowUnitNote_UsesMaximumExplicitLagAndUpdatesWhenEdited()
+    {
+        var vm = new TrainingWizardViewModel
+        {
+            WindowSize = 25, Horizon = 5, UseFixedZScore = true, LagsText = "20,1"
+        };
+        int baseline = WalkForwardDataRequirement.MinimumRawBars(25, 5);
+        Assert.Contains((baseline + 20).ToString(), vm.WindowUnitNote);
+        var raised = new List<string?>();
+        vm.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
+        vm.LagsText = "1,5";
+        Assert.Contains((baseline + 5).ToString(), vm.WindowUnitNote);
         Assert.Contains(nameof(TrainingWizardViewModel.WindowUnitNote), raised);
     }
 
@@ -246,6 +297,23 @@ public class TrainingWizardViewModelTests : IDisposable
         Assert.Equal(8, orchestrator.CapturedConfig!.NSplits);
         Assert.Equal(12, orchestrator.CapturedConfig.Gap);
         Assert.Equal(90, orchestrator.CapturedConfig.OosTailDays);
+    }
+
+    [Fact]
+    public async Task InvalidDateRangeShowsLocalizedValidationReasonWithoutStarting()
+    {
+        var orchestrator = new FakeTrainingOrchestrator();
+        var vm = new TrainingWizardViewModel(orchestrator: orchestrator,
+            marketDataProvider: new DummyMarketDataProvider("AAPL"));
+        await WaitForInitializationAsync(vm);
+        vm.Horizon = 5;
+        vm.StartDate = new DateTime(2026, 10, 2);
+        vm.EndDate = new DateTime(2026, 10, 1);
+
+        await vm.StartTrainingCommand.ExecuteAsync(null);
+
+        Assert.Equal(LocalizationManager.Instance["TrainingWizard_Validation_DateRange"], vm.StatusMessage);
+        Assert.Null(orchestrator.CapturedConfig);
     }
 
     [Theory]
@@ -631,6 +699,76 @@ public class TrainingWizardViewModelTests : IDisposable
         Assert.True(orchestrator.CapturedConfig!.FixedZScore);
         Assert.Equal(new[] { 5, 1 }, orchestrator.CapturedConfig.Lags);
         Assert.Equal(3.0, orchestrator.CapturedConfig.ClipSigma);
+    }
+
+    [Theory]
+    [InlineData("0.001", 0.001)]
+    [InlineData("5E-324", double.Epsilon)]
+    public async Task PositiveClipThresholdBelowOldUiMinimumFlowsIntoTrainingConfig(string text, double expected)
+    {
+        var orchestrator = new FakeTrainingOrchestrator();
+        var vm = new TrainingWizardViewModel(orchestrator: orchestrator,
+            marketDataProvider: new DummyMarketDataProvider("AAPL"));
+        await WaitForInitializationAsync(vm);
+        vm.Horizon = 5;
+        vm.UseFixedZScore = true;
+        vm.UseClipSigma = true;
+        vm.ClipSigmaText = text;
+
+        Assert.True(vm.StartTrainingCommand.CanExecute(null));
+        Assert.False(vm.HasErrors);
+        Assert.Equal(expected == double.Epsilon ? 0m : 0.001m, vm.ClipSigma);
+        await vm.StartTrainingCommand.ExecuteAsync(null);
+        Assert.Equal(expected, orchestrator.CapturedConfig!.ClipSigma);
+    }
+
+    [Theory]
+    [InlineData("0")]
+    [InlineData("-0.001")]
+    [InlineData("NaN")]
+    [InlineData("Infinity")]
+    [InlineData("invalid")]
+    public async Task InvalidClipThresholdCannotStartTraining(string text)
+    {
+        var vm = new TrainingWizardViewModel(orchestrator: new FakeTrainingOrchestrator(),
+            marketDataProvider: new DummyMarketDataProvider("AAPL"));
+        await WaitForInitializationAsync(vm);
+        vm.Horizon = 5;
+        vm.UseFixedZScore = true;
+        vm.UseClipSigma = true;
+        vm.ClipSigmaText = text;
+
+        Assert.False(vm.StartTrainingCommand.CanExecute(null));
+        Assert.True(vm.HasErrors);
+        Assert.False(string.IsNullOrWhiteSpace(vm.ClipSigmaValidationMessage));
+        Assert.Single(vm.GetErrors(nameof(vm.ClipSigmaText)).Cast<string>());
+        Assert.Equal(0m, vm.ClipSigma);
+    }
+
+    [Fact]
+    public async Task ClipValidationFollowsDependencyAndRepairsWithoutStaleErrors()
+    {
+        var vm = new TrainingWizardViewModel(orchestrator: new FakeTrainingOrchestrator(),
+            marketDataProvider: new DummyMarketDataProvider("AAPL"));
+        await WaitForInitializationAsync(vm);
+        vm.Horizon = 5;
+        var changes = new List<string?>();
+        vm.ErrorsChanged += (_, e) => changes.Add(e.PropertyName);
+
+        vm.UseClipSigma = true;
+        Assert.True(vm.HasErrors);
+        Assert.False(vm.StartTrainingCommand.CanExecute(null));
+        vm.UseFixedZScore = true;
+        Assert.False(vm.HasErrors);
+        vm.ClipSigmaText = "invalid";
+        Assert.True(vm.HasErrors);
+        vm.ClipSigmaText = "5E-324";
+        Assert.False(vm.HasErrors);
+        Assert.Equal(0m, vm.ClipSigma);
+        Assert.True(vm.StartTrainingCommand.CanExecute(null));
+        vm.UseClipSigma = false;
+        Assert.Empty(vm.GetErrors(nameof(vm.ClipSigmaText)).Cast<string>());
+        Assert.Contains(nameof(vm.ClipSigmaText), changes);
     }
 
     // --- fixtures --------------------------------------------------------

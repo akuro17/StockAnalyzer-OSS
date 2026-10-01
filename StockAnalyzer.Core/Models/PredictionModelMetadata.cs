@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Text.Json;
+using StockAnalyzer.Core.Models.Training;
 using Microsoft.Extensions.Logging;
 
 namespace StockAnalyzer.Core.Models;
@@ -42,10 +44,21 @@ public static class PredictionModelMetadata
     public const string FeatureSpecKey = "feature_spec";
     /// <summary>Relative required fixed-scaler sidecar for a generation.</summary>
     public const string ScalerReferenceKey = "scaler_ref";
+    private const string NormalizationKey = "normalization";
+    private const string FixedNormalization = "fixed_zscore";
     /// <summary>Metadata key: bar count the model's window was trained with.</summary>
     public const string WindowSizeKey = "window_size";
     /// <summary>Metadata key: comma-separated class labels in output-index order.</summary>
     public const string ClassOrderKey = "class_order";
+
+    internal static bool HasValidClassOrder(string? classOrder)
+    {
+        if (classOrder is null) return false;
+        var labels = classOrder.Split(',');
+        return labels.Length > 0 && labels.All(label => !string.IsNullOrWhiteSpace(label)
+            && label == label.Trim())
+            && labels.Distinct(StringComparer.Ordinal).Count() == labels.Length;
+    }
     /// <summary>
     /// Metadata key: learning-objective wire string, <c>classification</c> or <c>regression</c>
     /// (mirrors <c>onnx_meta.TARGET_TYPES</c> / <c>TrainingConfigJson</c>'s <c>target_type</c>).
@@ -63,6 +76,14 @@ public static class PredictionModelMetadata
     /// runtime "expected horizon" setting currently exists to compare it to.
     /// </summary>
     public const string HorizonKey = "prediction_horizon";
+    /// <summary>Effective chronological purge gap in bars, recorded by contract version 2.</summary>
+    public const string PurgeGapKey = "com.stockanalyzer.training.purge_gap";
+    public const string OutputSemanticKey = "com.stockanalyzer.output.semantic";
+    public const string OutputUnitKey = "com.stockanalyzer.output.unit";
+    public const string OutputHorizonKey = "com.stockanalyzer.output.horizon";
+    public const string OutputTimeframeKey = "com.stockanalyzer.output.timeframe";
+    public const string OutputConfidenceTypeKey = "com.stockanalyzer.output.confidence_type";
+    public const string TargetFormulaKey = "com.stockanalyzer.output.target_formula";
     /// <summary>Metadata key: contract schema version (informational).</summary>
     public const string ContractVersionKey = "model_contract_version";
     /// <summary>Metadata key: producer/provenance string (informational).</summary>
@@ -85,7 +106,10 @@ public static class PredictionModelMetadata
     /// </summary>
     private static readonly string[] KnownContractKeys =
     {
-        FeatureModeKey, FeatureSpecKey, ScalerReferenceKey, WindowSizeKey, ClassOrderKey, TargetTypeKey, HorizonKey, ContractVersionKey,
+        FeatureModeKey, FeatureSpecKey, ScalerReferenceKey, NormalizationKey, "lags", "clip_sigma",
+        WindowSizeKey, ClassOrderKey, TargetTypeKey, HorizonKey, PurgeGapKey, ContractVersionKey,
+        OutputSemanticKey, OutputUnitKey, OutputHorizonKey, OutputTimeframeKey,
+        OutputConfidenceTypeKey, TargetFormulaKey,
         ProducerKey, CreatedUtcKey, TrainingStartKey, TrainingEndKey, ValidationStartKey, ValidationEndKey,
     };
 
@@ -112,6 +136,77 @@ public static class PredictionModelMetadata
     }
 
     /// <summary>
+    /// Reads the framework-neutral output contract. Every loadable model must be self-describing.
+    /// </summary>
+    public static PredictionOutputContract ReadOutputContract(IReadOnlyDictionary<string, string>? metadata)
+    {
+        if (metadata is null || metadata.Count == 0)
+            throw new InvalidOperationException("ONNX model has no output semantic contract; re-export with current tooling.");
+        if (!metadata.TryGetValue(ContractVersionKey, out var version) || version != "2")
+            throw new InvalidOperationException("ONNX output semantic contract requires model contract version 2.");
+
+        static string Required(IReadOnlyDictionary<string, string> values, string key)
+        {
+            if (!values.TryGetValue(key, out var value) || string.IsNullOrWhiteSpace(value))
+                throw new InvalidOperationException($"ONNX model contract version 2 requires '{key}'.");
+            return value;
+        }
+
+        var semantic = Required(metadata, OutputSemanticKey) switch
+        {
+            "class_probabilities" => PredictionOutputSemantic.ClassProbabilities,
+            "log_return" => PredictionOutputSemantic.LogReturn,
+            _ => throw new InvalidOperationException("Unknown ONNX output semantic."),
+        };
+        var unit = Required(metadata, OutputUnitKey) switch
+        {
+            "probability" => PredictionOutputUnit.Probability,
+            "dimensionless" => PredictionOutputUnit.Dimensionless,
+            _ => throw new InvalidOperationException("Unknown ONNX output unit."),
+        };
+        var timeframe = Required(metadata, OutputTimeframeKey) switch
+        {
+            "daily" => TimeframeType.Daily,
+            "weekly" => TimeframeType.Weekly,
+            "monthly" => TimeframeType.Monthly,
+            _ => throw new InvalidOperationException("Unknown ONNX output timeframe."),
+        };
+        var confidenceType = Required(metadata, OutputConfidenceTypeKey) switch
+        {
+            "none" => ConfidenceType.None,
+            "class_probability" => ConfidenceType.ClassProbability,
+            "calibrated_probability" => ConfidenceType.CalibratedProbability,
+            "prediction_std_dev" => ConfidenceType.PredictionStdDev,
+            _ => throw new InvalidOperationException("Unknown ONNX confidence type."),
+        };
+        var targetFormula = Required(metadata, TargetFormulaKey) switch
+        {
+            "thresholded_simple_return" => PredictionTargetFormula.ThresholdedSimpleReturn,
+            "log_future_close_over_anchor_close" => PredictionTargetFormula.LogFutureCloseOverAnchorClose,
+            _ => throw new InvalidOperationException("Unknown ONNX target formula."),
+        };
+        var horizonRaw = Required(metadata, OutputHorizonKey);
+        if (!int.TryParse(horizonRaw, NumberStyles.None, CultureInfo.InvariantCulture, out var horizon)
+            || horizon <= 0 || horizon.ToString(CultureInfo.InvariantCulture) != horizonRaw
+            || !metadata.TryGetValue(HorizonKey, out var oldHorizon) || oldHorizon != horizonRaw)
+            throw new InvalidOperationException("ONNX output horizon must be a positive bar count matching prediction_horizon.");
+
+        var targetType = Required(metadata, TargetTypeKey);
+        bool classification = semantic == PredictionOutputSemantic.ClassProbabilities;
+        if (classification != (targetType == TargetTypeClassification)
+            || (!classification && targetType != TargetTypeRegression)
+            || (classification && (unit != PredictionOutputUnit.Probability
+                || confidenceType != ConfidenceType.ClassProbability
+                || targetFormula != PredictionTargetFormula.ThresholdedSimpleReturn))
+            || (!classification && (unit != PredictionOutputUnit.Dimensionless
+                || confidenceType != ConfidenceType.None
+                || targetFormula != PredictionTargetFormula.LogFutureCloseOverAnchorClose)))
+            throw new InvalidOperationException("ONNX output semantic, unit, confidence, formula and target_type disagree.");
+
+        return new PredictionOutputContract(semantic, unit, horizon, timeframe, confidenceType, targetFormula);
+    }
+
+    /// <summary>
     /// Maps a training-side <c>feature_mode</c> wire string (the values of
     /// <c>dataset.FEATURE_MODES</c> / <c>onnx_meta.py</c>) to the C# enum. Returns
     /// <see langword="null"/> for an unrecognized value.
@@ -135,10 +230,50 @@ public static class PredictionModelMetadata
         };
     }
 
+    /// <summary>Reject partial fixed-preprocessing markers before any loader selects a preprocessing path.</summary>
+    public static bool RequiresFixedScaler(IReadOnlyDictionary<string, string> metadata)
+    {
+        metadata.TryGetValue(NormalizationKey, out var normalization);
+        bool isFixed = string.Equals(normalization, FixedNormalization, StringComparison.Ordinal);
+        bool hasReference = metadata.TryGetValue(ScalerReferenceKey, out var reference);
+        bool hasLags = metadata.ContainsKey("lags");
+        bool hasClip = metadata.ContainsKey("clip_sigma");
+        if (isFixed)
+        {
+            if (!hasReference || string.IsNullOrWhiteSpace(reference) || !hasLags || !hasClip)
+                throw new InvalidOperationException("Fixed z-score metadata requires scaler_ref, lags and clip_sigma.");
+            return true;
+        }
+        if (hasReference || hasLags || hasClip)
+            throw new InvalidOperationException("Fixed preprocessing markers require normalization=fixed_zscore.");
+        if (metadata.TryGetValue(FeatureSpecKey, out var featureSpecRaw))
+        {
+            try
+            {
+                using var document = JsonDocument.Parse(featureSpecRaw);
+                if (document.RootElement.ValueKind != JsonValueKind.Object)
+                    throw new InvalidOperationException("Composed feature_spec metadata must be an object.");
+                if (document.RootElement.TryGetProperty("lags", out var nestedLags))
+                {
+                    if (nestedLags.ValueKind != JsonValueKind.Array)
+                        throw new InvalidOperationException("Composed lags must be an array and require fixed z-score.");
+                    if (nestedLags.GetArrayLength() > 0)
+                        throw new InvalidOperationException("Composed lags require normalization=fixed_zscore and a scaler.");
+                }
+            }
+            catch (JsonException ex)
+            {
+                throw new InvalidOperationException("Composed feature_spec metadata is invalid JSON.", ex);
+            }
+        }
+        if (normalization is not null && normalization != metadata.GetValueOrDefault(FeatureModeKey))
+            throw new InvalidOperationException("ONNX normalization disagrees with feature_mode.");
+        return false;
+    }
+
     /// <summary>
     /// Validates <paramref name="metadata"/> against the configured inference contract.
-    /// A <see langword="null"/> or empty map logs a warning and returns (models exported
-    /// before the contract existed still load). A non-empty map that carries a known
+    /// A <see langword="null"/> or empty map is rejected. A non-empty map that carries a known
     /// contract key but omits <see cref="FeatureModeKey"/> is a partial/corrupt contract
     /// and is rejected. Every present validated key that disagrees with configuration
     /// throws <see cref="InvalidOperationException"/>, which the caller routes to the
@@ -161,12 +296,7 @@ public static class PredictionModelMetadata
         string? expectedFeatureSpec = null)
     {
         if (metadata is null || metadata.Count == 0)
-        {
-            logger.LogWarning(
-                "ONNX model has no metadata_props; skipping model-contract cross-check. " +
-                "Retrain with current tooling to embed feature_mode/window_size/class_order.");
-            return;
-        }
+            throw new InvalidOperationException("ONNX model has no output semantic contract; re-export with current tooling.");
 
         if (!metadata.ContainsKey(FeatureModeKey))
         {
@@ -178,6 +308,21 @@ public static class PredictionModelMetadata
                         $"ONNX model metadata carries contract key '{key}' but is missing '{FeatureModeKey}'; " +
                         "the metadata_props map is a partial or corrupt contract. Re-export the model with current tooling.");
                 }
+            }
+        }
+
+        RequiresFixedScaler(metadata);
+
+        if (metadata.TryGetValue(ContractVersionKey, out var contractVersion)
+            && contractVersion == "2")
+        {
+            if (!metadata.TryGetValue(PurgeGapKey, out var purgeGapRaw)
+                || !int.TryParse(purgeGapRaw, NumberStyles.None, CultureInfo.InvariantCulture, out var purgeGap)
+                || purgeGap < 0
+                || purgeGap.ToString(CultureInfo.InvariantCulture) != purgeGapRaw)
+            {
+                throw new InvalidOperationException(
+                    $"ONNX model contract version 2 requires '{PurgeGapKey}' as a canonical non-negative bar count.");
             }
         }
 
@@ -252,6 +397,8 @@ public static class PredictionModelMetadata
             }
         }
 
+        _ = ReadOutputContract(metadata);
+
         logger.LogInformation(
             "ONNX model contract validated (version {Version}, target {TargetType}, horizon {Horizon}, producer {Producer}, created {Created}, " +
             "training {TrainingStart}..{TrainingEnd}, validation {ValidationStart}..{ValidationEnd}).",
@@ -267,26 +414,35 @@ public static class PredictionModelMetadata
     }
 
     /// <summary>
-    /// Whitespace-insensitive JSON comparison of two <c>feature_spec</c> strings: exact after
-    /// trimming, else compared as re-serialized JSON DOMs (both sides are produced by the same C#
-    /// serializer, so member order already agrees). A malformed value on either side is treated as
-    /// non-equivalent rather than throwing.
+    /// Compare validated feature contracts, treating an omitted lag list as empty while preserving
+    /// channel and lag order. Legacy composed models were exported before the lag field existed.
     /// </summary>
     private static bool FeatureSpecEquivalent(string? modelValue, string? expectedValue)
     {
-        if (string.Equals(modelValue?.Trim(), expectedValue?.Trim(), StringComparison.Ordinal))
-        {
-            return true;
-        }
-
         try
         {
-            using var modelDoc = JsonDocument.Parse(modelValue ?? "null");
-            using var expectedDoc = JsonDocument.Parse(expectedValue ?? "null");
-            return string.Equals(
-                JsonSerializer.Serialize(modelDoc.RootElement),
-                JsonSerializer.Serialize(expectedDoc.RootElement),
-                StringComparison.Ordinal);
+            var model = JsonSerializer.Deserialize<FeatureSpec>(modelValue ?? "null", TrainingConfigJson.Options);
+            var expected = JsonSerializer.Deserialize<FeatureSpec>(expectedValue ?? "null", TrainingConfigJson.Options);
+            if (model is null || expected is null || !model.IsValid(out _) || !expected.IsValid(out _)
+                || model.SchemaVersion != expected.SchemaVersion
+                || !model.Lags!.SequenceEqual(expected.Lags!)
+                || model.Channels.Count != expected.Channels.Count)
+                return false;
+            for (int index = 0; index < model.Channels.Count; index++)
+            {
+                var actualChannel = model.Channels[index];
+                var expectedChannel = expected.Channels[index];
+                if (actualChannel.Kind != expectedChannel.Kind || actualChannel.Price != expectedChannel.Price
+                    || actualChannel.Indicator != expectedChannel.Indicator
+                    || actualChannel.Normalization != expectedChannel.Normalization)
+                    return false;
+                if (actualChannel.Kind == FeatureChannelKind.Indicator
+                    && (actualChannel.Params!.Count != expectedChannel.Params!.Count
+                        || actualChannel.Params.Any(pair => !expectedChannel.Params.TryGetValue(pair.Key, out var value)
+                            || value != pair.Value)))
+                    return false;
+            }
+            return true;
         }
         catch (JsonException)
         {

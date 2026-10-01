@@ -6,6 +6,8 @@ using System;
 
 namespace StockAnalyzer.Avalonia.Tests.ViewModels
 {
+    // Shares the collection with the tests that mutate TickerNotesDisplayContext (DisplayNotes reads its thresholds).
+    [Collection("TickerNotesDisplayContext State")]
     public class WatchlistItemViewModelTests
     {
         private WatchlistItemViewModel CreateViewModel()

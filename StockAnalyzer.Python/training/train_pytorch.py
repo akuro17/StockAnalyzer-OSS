@@ -41,6 +41,7 @@ from __future__ import annotations
 import argparse
 import copy
 import json
+import random
 import sys
 import time
 from pathlib import Path
@@ -55,6 +56,7 @@ import dataset as ds  # noqa: E402  (sibling module, path inserted above)
 import fixed_scaler  # noqa: E402
 import metrics  # noqa: E402  (sibling module)
 import onnx_meta  # noqa: E402  (sibling module)
+import checkpoints  # noqa: E402
 
 # --- Defaults (named; no magic numbers) -------------------------------------
 
@@ -162,8 +164,69 @@ def _iterate_minibatches(x: torch.Tensor, y: torch.Tensor, batch: int, shuffle: 
         yield x[idx], y[idx]
 
 
+def validate_checkpoint(path):
+    """Preflight every persisted fold before any fold is fitted in a resumed run."""
+    pointer, blob = checkpoints.checked_blob(path)
+    restored = torch.load(blob, map_location="cpu", weights_only=True)
+    required = {"context", "model", "optimizer", "completed_epoch", "best_state", "best_val",
+                "patience_counter", "torch_rng", "numpy_rng", "numpy_global_rng", "python_rng"}
+    if (not isinstance(restored, dict) or not required.issubset(restored)
+            or restored["context"] != pointer["context"]):
+        raise ValueError("incomplete native PyTorch checkpoint state")
+    if (type(restored["completed_epoch"]) is not int or restored["completed_epoch"] < 1
+            or type(restored["patience_counter"]) is not int or restored["patience_counter"] < 0
+            or not np.isfinite(restored["best_val"])
+            or any(pointer.get(k) != restored[k] for k in ("completed_epoch", "best_val", "patience_counter"))):
+        raise ValueError("invalid native epoch/early stopping state")
+    context = restored["context"]
+    if context.get("runtime") != {"torch": str(torch.__version__), "numpy": np.__version__, "device": "cpu"}:
+        raise ValueError("checkpoint runtime mismatch")
+    contract = context["contract"]
+    model = build_model(contract["arch"], len(contract["ordered_channels"]), contract["hidden"],
+                        contract["layers"], contract["dropout"],
+                        1 if contract["target_type"] == "regression" else NUM_CLASSES)
+    for key in ("best_state", "model"):
+        if any(not isinstance(v, torch.Tensor) or not torch.isfinite(v).all() for v in restored[key].values()):
+            raise ValueError("nonfinite or invalid checkpoint weights")
+        model.load_state_dict(restored[key], strict=True)
+    checkpoints.freeze_modules(model, context["freeze_paths"])
+    optimizer = torch.optim.AdamW((p for p in model.parameters() if p.requires_grad))
+    optimizer.load_state_dict(restored["optimizer"])
+    parameters = {p for group in optimizer.param_groups for p in group["params"]}
+    if set(optimizer.state) != parameters:
+        raise ValueError("incomplete optimizer parameter state")
+    for parameter, saved in optimizer.state.items():
+        if not {"step", "exp_avg", "exp_avg_sq"}.issubset(saved):
+            raise ValueError("incomplete optimizer moment state")
+        for key in ("exp_avg", "exp_avg_sq"):
+            if saved[key].shape != parameter.shape or not torch.isfinite(saved[key]).all():
+                raise ValueError("invalid optimizer moment state")
+        if saved["step"].numel() != 1 or not torch.isfinite(saved["step"]).all():
+            raise ValueError("invalid optimizer step state")
+    # Validate RNG on isolated generators; preflight must not alter the training streams.
+    torch.Generator().set_state(restored["torch_rng"])
+    np.random.default_rng().bit_generator.state = restored["numpy_rng"]
+    ng = restored["numpy_global_rng"]
+    np.random.RandomState().set_state((ng[0], np.asarray(ng[1], dtype=np.uint32), ng[2], ng[3], ng[4]))
+    random.Random().setstate(restored["python_rng"])
+    if pointer.get("slot") == "last":
+        best_pointer = pointer.get("best_checkpoint")
+        if not isinstance(best_pointer, dict) or best_pointer.get("slot") != "best":
+            raise ValueError("Resume best checkpoint reference is missing")
+        _, best_blob = checkpoints.checked_blob(path, best_pointer)
+        best = torch.load(best_blob, map_location="cpu", weights_only=True)
+        if (best_pointer.get("context") != context or best_pointer.get("best_val") != restored["best_val"]
+                or best.get("context") != context or best.get("best_val") != restored["best_val"]
+                or best["model"].keys() != restored["best_state"].keys()
+                or any(not torch.equal(v, best["model"][k]) for k, v in restored["best_state"].items())):
+            raise ValueError("Resume best weights and committed checkpoint disagree")
+    return restored
+
+
 def train_model(args: argparse.Namespace) -> Tuple[nn.Module, int, dict, dict]:
     torch.manual_seed(args.seed)
+    np.random.seed(args.seed)
+    random.seed(args.seed)
     rng = np.random.default_rng(args.seed)
 
     symbols, dates = ds.load_parquet_dir(args.data_dir, return_dates=True)
@@ -212,10 +275,13 @@ def train_model(args: argparse.Namespace) -> Tuple[nn.Module, int, dict, dict]:
     )
 
     channels = ds.feature_channels(args.feature_mode, feature_spec=feature_spec) * (1 + len(lags))
-    x_tr_np, x_va_np, scaler = fixed_scaler.prepare(
-        x_tr_np, x_va_np, enabled=args.fixed_zscore, mode=args.feature_mode,
-        feature_spec=feature_spec, lags=lags, clip_sigma=args.clip_sigma,
-    )
+    source_arrays = tuple(symbols[s] for s in sorted(symbols))
+    session = checkpoints.Session(args, "pytorch", (x_tr_np, y_tr_np, x_va_np, y_va_np, *source_arrays),
+                                  dates, feature_spec, lags,
+                                  {"torch": str(torch.__version__), "numpy": np.__version__, "device": "cpu"})
+    args._checkpoint_session = session
+    x_tr_np, x_va_np, scaler = session.preprocess(
+        x_tr_np, x_va_np, feature_spec=feature_spec, lags=lags)
     is_regression = args.target_type == "regression"
     out_dim = 1 if is_regression else NUM_CLASSES
     x_tr = torch.from_numpy(x_tr_np)
@@ -224,18 +290,67 @@ def train_model(args: argparse.Namespace) -> Tuple[nn.Module, int, dict, dict]:
     y_va = torch.from_numpy(y_va_np)
 
     model = build_model(args.arch, channels, args.hidden, args.layers, args.dropout, out_dim)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    restored = None
+    if session.source is not None:
+        restored = validate_checkpoint(args.init_from)
+        # Validate both weight sets before fitting, even when only weights are reused.
+        model.load_state_dict(restored["best_state"], strict=True)
+        model.load_state_dict(restored["model"], strict=True)
+    checkpoints.freeze_modules(model, session.context["freeze_paths"])
+    optimizer = torch.optim.AdamW((p for p in model.parameters() if p.requires_grad),
+                                  lr=args.lr, weight_decay=args.weight_decay)
     loss_fn = nn.MSELoss() if is_regression else nn.CrossEntropyLoss(weight=_class_weights(y_tr_np))
 
     best_val = float("inf")
     best_state = copy.deepcopy(model.state_dict())
     patience_ctr = 0
+    completed_epoch = 0
+    if session.mode == "resume":
+        optimizer.load_state_dict(restored["optimizer"])
+        completed_epoch = restored["completed_epoch"]
+        best_state = restored["best_state"]
+        best_val = restored["best_val"]
+        patience_ctr = restored["patience_counter"]
+        torch.set_rng_state(restored["torch_rng"])
+        rng.bit_generator.state = restored["numpy_rng"]
+        ng = restored["numpy_global_rng"]
+        np.random.set_state((ng[0], np.asarray(ng[1], dtype=np.uint32), ng[2], ng[3], ng[4]))
+        random.setstate(restored["python_rng"])
+        best_pointer = session.source.get("best_checkpoint")
+        if not isinstance(best_pointer, dict):
+            raise ValueError("Resume best checkpoint reference is missing")
+        # The last pointer commits the epoch and its best pointer together. A crash
+        # publishing the next best must not introduce future state into this Resume.
+        best_path = session.root / "best.json"
+        if not args.preflight:
+            checkpoints.atomic_json(best_path, best_pointer)
+            checkpoints.checked_blob(best_path)
+
+    if args.preflight:
+        return model, channels, {}, date_ranges, scaler
+
+    def save_epoch(epoch, improved):
+        ng = np.random.get_state()
+        state = dict(context=session.context, model=model.state_dict(), optimizer=optimizer.state_dict(),
+                     completed_epoch=epoch, best_state=best_state, best_val=best_val,
+                     patience_counter=patience_ctr, torch_rng=torch.get_rng_state(),
+                     numpy_rng=rng.bit_generator.state,
+                     numpy_global_rng=(ng[0], ng[1].tolist(), ng[2], ng[3], ng[4]),
+                     python_rng=random.getstate())
+        summary = dict(completed_epoch=epoch, best_val=best_val, patience_counter=patience_ctr)
+        if improved:
+            session.save(lambda path: torch.save(state, path), ".pt", "best", summary)
+        summary["best_checkpoint"] = checkpoints.read_json(session.root / "best.json")
+        session.save(lambda path: torch.save(state, path), ".pt", "last", summary)
 
     print(
         f"arch={args.arch} feature_mode={args.feature_mode} channels={channels} "
         f"target_type={args.target_type} train={len(x_tr_np)} val={len(x_va_np)} symbols={len(symbols)}"
     )
-    for epoch in range(1, args.epochs + 1):
+    for epoch in range(completed_epoch + 1, completed_epoch + args.epochs + 1):
+        if patience_ctr >= args.patience:
+            print("restored early stopping is exhausted; no additional optimizer steps")
+            break
         model.train()
         t0 = time.time()
         run_loss = 0.0
@@ -266,15 +381,19 @@ def train_model(args: argparse.Namespace) -> Tuple[nn.Module, int, dict, dict]:
 
         print(epoch_line)
 
-        if val_loss < best_val - EARLY_STOP_MIN_DELTA:
+        if not np.isfinite(train_loss) or not np.isfinite(val_loss):
+            raise ValueError("nonfinite loss; completed checkpoint was not advanced")
+        improved = val_loss < best_val - EARLY_STOP_MIN_DELTA
+        if improved:
             best_val = val_loss
             best_state = copy.deepcopy(model.state_dict())
             patience_ctr = 0
         else:
             patience_ctr += 1
-            if patience_ctr >= args.patience:
-                print(f"early stop at epoch {epoch} (no val improvement for {args.patience} epochs)")
-                break
+        save_epoch(epoch, improved)
+        if patience_ctr >= args.patience:
+            print(f"early stop at epoch {epoch} (no val improvement for {args.patience} epochs)")
+            break
 
     model.load_state_dict(best_state)
     model.eval()
@@ -376,6 +495,7 @@ def verify_onnx(
 
 def _parse_args(argv) -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Train an LSTM/1D-CNN trend predictor and export to ONNX.")
+    checkpoints.add_arguments(p)
     p.add_argument("--data-dir", type=Path, default=ds.DEFAULT_DATA_DIR)
     p.add_argument(
         "--feature-mode", choices=ds.FEATURE_MODES + (ds.COMPOSED_FEATURES_MODE,),
@@ -405,6 +525,7 @@ def _parse_args(argv) -> argparse.Namespace:
     p.add_argument("--arch", choices=ARCHES, default=DEFAULT_ARCH)
     p.add_argument("--window", type=int, default=ds.DEFAULT_WINDOW)
     p.add_argument("--horizon", type=int, default=ds.DEFAULT_HORIZON)
+    p.add_argument("--timeframe", choices=tuple(ds.TIMEFRAME_DIRS), default=onnx_meta.DEFAULT_TIMEFRAME)
     p.add_argument("--threshold", type=float, default=ds.DEFAULT_THRESHOLD)
     p.add_argument("--hidden", type=int, default=DEFAULT_HIDDEN)
     p.add_argument("--layers", type=int, default=DEFAULT_LAYERS)
@@ -430,6 +551,11 @@ def _parse_args(argv) -> argparse.Namespace:
     p.add_argument("--smoke", action="store_true",
                    help=f"Fast run: --max-symbols {SMOKE_MAX_SYMBOLS} --epochs {SMOKE_EPOCHS}.")
     args = p.parse_args(argv)
+    if args.epochs <= 0 or args.patience <= 0 or args.batch <= 0:
+        p.error("epochs, patience and batch must be positive")
+    checkpoints.validate_controls(args.initialization_mode, "pytorch", args.init_from,
+                                  args.parent_model_id, args.parent_model_hash,
+                                  json.loads(args.freeze_paths) if args.initialization_mode != "resume" else [])
     if args.gap is not None and args.gap < 0:
         raise SystemExit(f"--gap must be non-negative, got {args.gap}")
     if args.outer_fold_index is not None and not 0 <= args.outer_fold_index < args.wf_splits:
@@ -468,24 +594,30 @@ def _parse_args(argv) -> argparse.Namespace:
 def main(argv) -> int:
     args = _parse_args(argv)
     model, channels, report, date_ranges, scaler = train_model(args)
+    if args.preflight:
+        return 0
     spec = json.loads(args.feature_spec) if args.feature_spec else None
     lags = fixed_scaler.trainer_lags(args, spec)
     contract = onnx_meta.build_contract(
         feature_mode=args.feature_mode, window_size=args.window, channels=channels,
         horizon=args.horizon, threshold=args.threshold, wf_splits=args.wf_splits,
         seed=args.seed, producer=f"train_pytorch.py arch={args.arch}", gap=args.gap,
+        timeframe=args.timeframe,
         price_adjustment=args.price_adjustment, date_ranges=date_ranges,
         feature_spec_json=args.feature_spec if args.feature_mode == ds.COMPOSED_FEATURES_MODE else None,
         target_type=args.target_type,
         fixed_zscore=args.fixed_zscore, lags=lags, clip_sigma=args.clip_sigma,
         scaler_ref=args.out.name + ".scaler.json" if scaler is not None else None,
+        analysis_ref=args.out.name + ".analysis.json" if args.outer_fold_index is not None else None,
     )
+    contract.update(args._checkpoint_session.metadata())
     export_onnx(model, channels, args.window, args.out, args.opset, contract, target_type=args.target_type)
     if scaler is not None:
         fixed_scaler.write_sidecar(args.out, scaler, contract)
     print(f"wrote {metrics.write_report(report, args.out)}")
     if not args.no_verify:
         verify_onnx(args.out, model, channels, args.window, target_type=args.target_type)
+        args._checkpoint_session.exported(args.out)
     return 0
 
 

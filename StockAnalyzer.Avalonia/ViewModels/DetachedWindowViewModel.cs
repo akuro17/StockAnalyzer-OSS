@@ -8,8 +8,13 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using StockAnalyzer.Core.Constants;
+using StockAnalyzer.Core.Models.Settings;
 using StockAnalyzer.Core.Models.UI;
+using StockAnalyzer.Core.Services;
+using StockAnalyzer.Avalonia.Common;
+using StockAnalyzer.Avalonia.Models;
 using StockAnalyzer.Avalonia.Services;
+using StockAnalyzer.Avalonia.ViewModels.Notes;
 
 namespace StockAnalyzer.Avalonia.ViewModels;
 
@@ -23,6 +28,9 @@ public partial class DetachedWindowViewModel : ViewModelBase, IDetachedWindowCon
     private readonly IPanelTabFactory _panelTabFactory;
     private readonly ITearOffService _tearOffService;
     private readonly IContainerRegistry _containerRegistry;
+    private readonly IMessenger _messenger;
+    private readonly int _maxPanelTabs;
+    private readonly int _maxTabReorderDistance;
     private bool _isDisposed;
 
     [ObservableProperty]
@@ -42,13 +50,21 @@ public partial class DetachedWindowViewModel : ViewModelBase, IDetachedWindowCon
         IPanelTabFactory panelTabFactory, 
         ITearOffService tearOffService,
         IContainerRegistry containerRegistry,
-        ILogger<DetachedWindowViewModel>? logger = null)
+        IMessenger? messenger = null,
+        IDispatcherService? dispatcherService = null,
+        ILogger<DetachedWindowViewModel>? logger = null,
+        LayoutStateStore? stateStore = null)
     {
         _serviceProvider = serviceProvider;
         _panelTabFactory = panelTabFactory;
         _tearOffService = tearOffService;
         _containerRegistry = containerRegistry;
+        _messenger = messenger ?? WeakReferenceMessenger.Default;
         _logger = logger ?? NullLogger<DetachedWindowViewModel>.Instance;
+
+        var defaults = new LayoutSettings();
+        _maxPanelTabs = stateStore?.MaxPanelTabs ?? defaults.MaxPanelTabs;
+        _maxTabReorderDistance = stateStore?.MaxTabReorderDistance ?? defaults.MaxTabReorderDistance;
     }
 
     /// <summary>
@@ -102,7 +118,7 @@ public partial class DetachedWindowViewModel : ViewModelBase, IDetachedWindowCon
     {
         if (_isDisposed || string.IsNullOrEmpty(tabId)) return;
 
-        if (Items.Count >= LayoutConstants.MaxPanelTabs)
+        if (Items.Count >= _maxPanelTabs)
         {
             _logger.LogWarning("Maximum number of tabs reached in detached window.");
             return;
@@ -122,7 +138,7 @@ public partial class DetachedWindowViewModel : ViewModelBase, IDetachedWindowCon
         AddItem(item);
         
         // Notify main window to include this tab in workspace persistence (FR-70-12)
-        WeakReferenceMessenger.Default.Send(new Common.RegisterDetachedTabMessage(item));
+        _messenger.Send(new Common.RegisterDetachedTabMessage(item));
         
         _logger.LogInformation("Added new Tab [{Type}] to Detached Window.", tabId);
     }
@@ -141,6 +157,37 @@ public partial class DetachedWindowViewModel : ViewModelBase, IDetachedWindowCon
         _tearOffService.Redock(item);
     }
 
+    /// <summary>
+    /// Moves a tab inside this container (drag reorder), selects the moved tab and
+    /// notifies the workspace so the new order is persisted.
+    /// </summary>
+    [RelayCommand]
+    private void MoveTab(TabMoveRequest request)
+    {
+        if (_isDisposed) return;
+
+        var outcome = TabMoveResolver.Resolve(
+            Items.Count, request.SourceIndex, request.TargetIndex, _maxTabReorderDistance, out int targetIndex);
+
+        if (outcome == TabMoveOutcome.SourceOutOfRange)
+        {
+            _logger.LogWarning("MoveTab sourceIndex '{SourceIndex}' is out of bounds. Tabs count = {Count}.", request.SourceIndex, Items.Count);
+            return;
+        }
+
+        if (outcome == TabMoveOutcome.NoChange) return;
+
+        var moved = Items[request.SourceIndex];
+        Items.Move(request.SourceIndex, targetIndex);
+
+        // Items.Move can reset the bound TabControl's selection; restore it to the moved tab.
+        SelectedItem = moved;
+
+        _messenger.Send(new DetachedTabOrderChangedMessage(ContainerId, Items.ToArray()));
+
+        _logger.LogInformation("Reordered tab [{Id}] {From} -> {To} in Detached Window {ContainerId}.", moved.Id, request.SourceIndex, targetIndex, ContainerId);
+    }
+
     private void UpdateTitle()
     {
         if (Items.Count == 0)
@@ -157,6 +204,66 @@ public partial class DetachedWindowViewModel : ViewModelBase, IDetachedWindowCon
         }
     }
 
+    /// <summary>
+    /// Finds an existing NoteTimeline tab in this container and selects it.
+    /// Does not create a new tab if absent.
+    /// </summary>
+    public WorkspaceViewItem? FindExistingNoteTimelineTab()
+    {
+        if (_isDisposed) return null;
+
+        var existing = Items.FirstOrDefault(item => item.ViewModel is NoteTimelineViewModel);
+        if (existing != null)
+        {
+            SelectedItem = existing;
+            return existing;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Creates and adds a new NoteTimeline tab to this container.
+    /// </summary>
+    public WorkspaceViewItem? OpenNewNoteTimelineTab()
+    {
+        if (_isDisposed) return null;
+
+        if (Items.Count >= _maxPanelTabs)
+        {
+            _logger.LogWarning("Maximum number of tabs reached in detached window. Cannot add NoteTimeline tab.");
+            return null;
+        }
+
+        var newTab = _panelTabFactory.CreateTab("NoteTimeline");
+        if (newTab == null)
+        {
+            _logger.LogWarning("Failed to create NoteTimeline tab in detached window.");
+            return null;
+        }
+
+        newTab.IsDetached = true;
+        newTab.IsIndependent = true; // Dispose when closed/returned to main
+        newTab.CanClose = true;
+
+        AddItem(newTab);
+        
+        // Notify main window to include this tab in workspace persistence (FR-70-12)
+        _messenger.Send(new Common.RegisterDetachedTabMessage(newTab));
+        SelectedItem = newTab;
+
+        _logger.LogInformation("Added new Tab [NoteTimeline] to Detached Window {ContainerId}.", ContainerId);
+        return newTab;
+    }
+
+    /// <summary>
+    /// Finds an existing NoteTimeline tab in this container or creates and adds a new one.
+    /// </summary>
+    public WorkspaceViewItem? FindOrOpenNoteTimelineTab()
+    {
+        return FindExistingNoteTimelineTab() ?? OpenNewNoteTimelineTab();
+    }
+
     public void Dispose()
     {
         if (_isDisposed) return;
@@ -164,6 +271,8 @@ public partial class DetachedWindowViewModel : ViewModelBase, IDetachedWindowCon
 
         _logger.LogInformation("Disposing DetachedWindowViewModel {ContainerId}. Cleaning up {Count} items.", ContainerId, Items.Count);
         
+        _messenger.UnregisterAll(this);
+
         // 1. Unregister from global registry to prevent leaks
         _containerRegistry.Unregister(ContainerId);
 

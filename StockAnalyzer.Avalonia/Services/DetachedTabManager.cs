@@ -351,6 +351,52 @@ namespace StockAnalyzer.Avalonia.Services
             }
         }
 
+        public bool ReorderContainerItems(string containerId, IReadOnlyList<WorkspaceViewItem> orderedItems)
+        {
+            if (containerId == null) throw new ArgumentNullException(nameof(containerId));
+            if (orderedItems == null) throw new ArgumentNullException(nameof(orderedItems));
+            _dispatcherService.VerifyAccess();
+
+            var slots = new List<int>(orderedItems.Count);
+            for (int i = 0; i < _detachedTabs.Count; i++)
+            {
+                if (string.Equals(_detachedTabs[i].ContainerId, containerId, StringComparison.Ordinal))
+                {
+                    slots.Add(i);
+                }
+            }
+
+            if (slots.Count == 0 || slots.Count != orderedItems.Count)
+            {
+                _logger.LogWarning("[TabReorder] Rejected: container {ContainerId} has {Registered} registered tab(s) but {Requested} were supplied.", containerId, slots.Count, orderedItems.Count);
+                return false;
+            }
+
+            var registered = new HashSet<WorkspaceViewItem>(slots.Count, ReferenceEqualityComparer.Instance);
+            foreach (int slot in slots)
+            {
+                registered.Add(_detachedTabs[slot]);
+            }
+
+            var seen = new HashSet<WorkspaceViewItem>(slots.Count, ReferenceEqualityComparer.Instance);
+            foreach (var item in orderedItems)
+            {
+                if (item == null || !registered.Contains(item) || !seen.Add(item))
+                {
+                    _logger.LogWarning("[TabReorder] Rejected: supplied order for container {ContainerId} contains a null, duplicate or unregistered tab.", containerId);
+                    return false;
+                }
+            }
+
+            for (int k = 0; k < slots.Count; k++)
+            {
+                _detachedTabs[slots[k]] = orderedItems[k];
+            }
+
+            _logger.LogInformation("[TabReorder] Applied new tab order for container {ContainerId} ({Count} tabs).", containerId, slots.Count);
+            return true;
+        }
+
         public void Receive(RegisterDetachedTabMessage message)
         {
             if (message?.Value == null) return;

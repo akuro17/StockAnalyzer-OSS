@@ -40,11 +40,35 @@ internal static class ReportTestHelpers
             isInsufficientData: false);
     }
 
-    public static BacktestReportOptions Options(int historyStartIndex = 0, DateTime? startUtc = null, DateTime? endUtc = null, int annualPeriods = 252) =>
+    public static BacktestReportOptions Options(int historyStartIndex = 0, DateTime? startUtc = null, DateTime? endUtc = null, int annualPeriods = 252, int? tradingStartIndex = null) =>
         new BacktestReportOptions(TimeFrame.D1, historyStartIndex, startUtc ?? BaseUtc, endUtc ?? BaseUtc.AddDays(365))
         {
             AnnualPeriods = annualPeriods,
+            TradingStartIndex = tradingStartIndex,
         };
+
+    /// <summary>Names of the optional extended-metric report members (absent from reports persisted before they existed).</summary>
+    public static readonly string[] ExtendedMetricJsonNames =
+    {
+        "GrossProfit", "GrossLoss", "AverageWin", "AverageLoss", "PayoffRatio", "LargestWin", "LargestLoss",
+        "AverageHoldingPeriod", "MaxConsecutiveWins", "MaxConsecutiveLosses",
+        "MaxDepthDrawdownDuration", "LongestDrawdownDuration", "TimeInMarket", "Exposure", "ExposureAdjustedCAGR",
+    };
+
+    /// <summary>Names of the optional right-censoring flags that qualify the two drawdown-duration metrics.</summary>
+    public static readonly string[] ExtendedFlagJsonNames =
+    {
+        "MaxDepthDrawdownDurationRightCensored", "LongestDrawdownDurationRightCensored",
+    };
+
+    /// <summary>Round-trips a report through JSON with the extended members removed, i.e. what a pre-extension export loads as.</summary>
+    public static BacktestReport ToLegacyReport(BacktestReport report)
+    {
+        var node = System.Text.Json.Nodes.JsonNode.Parse(System.Text.Json.JsonSerializer.Serialize(report))!.AsObject();
+        foreach (string name in ExtendedMetricJsonNames) node.Remove(name);
+        foreach (string name in ExtendedFlagJsonNames) node.Remove(name);
+        return System.Text.Json.JsonSerializer.Deserialize<BacktestReport>(node.ToJsonString())!;
+    }
 
     public static BacktestTrade Trade(decimal closedNet, int entryBar = 0, int exitBar = 1) => new(
         TradeId: 1, Side: TradeSide.Long,

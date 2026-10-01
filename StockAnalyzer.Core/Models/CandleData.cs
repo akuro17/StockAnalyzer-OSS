@@ -42,16 +42,17 @@ public readonly record struct CandleData(
 
 /// <summary>
 /// Time frame enumeration for chart intervals.
+/// Values are persisted as integers (JSON and the backtest evaluation identity hash): never renumber or reuse a value; append only.
 /// </summary>
 public enum TimeFrame
 {
-    M1,   // 1 Minute
-    M5,   // 5 Minutes
-    M15,  // 15 Minutes
-    M30,  // 30 Minutes
-    H1,   // 1 Hour
-    H4,   // 4 Hours
-    D1,   // Daily
-    W1,   // Weekly
-    MN1   // Monthly
+    M1 = 0,   // 1 Minute
+    M5 = 1,   // 5 Minutes
+    M15 = 2,  // 15 Minutes
+    M30 = 3,  // 30 Minutes
+    H1 = 4,   // 1 Hour
+    H4 = 5,   // 4 Hours
+    D1 = 6,   // Daily
+    W1 = 7,   // Weekly
+    MN1 = 8   // Monthly
 }

@@ -1,9 +1,15 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
 using System.Text.Json;
+using System.Threading.Tasks;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Training;
+using StockAnalyzer.Core.Tests.Services;
+using StockAnalyzer.Core.Services;
 using Xunit;
+using Xunit.Sdk;
 
 namespace StockAnalyzer.Core.Tests.Models.Training;
 
@@ -139,6 +145,92 @@ public class TrainingConfigJsonTests
         // Null optionals are omitted from the wire document (DefaultIgnoreCondition.WhenWritingNull).
         Assert.DoesNotContain("\"output_name\"", json);
         Assert.DoesNotContain("\"start_date\"", json);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void TrainingJobConfig_FixedZScore_UsesPythonWireName(bool enabled)
+    {
+        var config = new TrainingJobConfig
+        {
+            Symbols = new[] { "7203-T" }, Architecture = "lstm", WindowSize = 60,
+            Horizon = 5, FixedZScore = enabled,
+        };
+        var json = TrainingConfigJson.Serialize(config);
+        using var document = JsonDocument.Parse(json);
+        Assert.Equal(enabled, document.RootElement.GetProperty("fixed_zscore").GetBoolean());
+        Assert.False(document.RootElement.TryGetProperty("fixed_z_score", out _));
+        Assert.Equal(enabled, TrainingConfigJson.DeserializeConfig(json).FixedZScore);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task TrainingJobConfig_SerializedWire_IsAcceptedByPythonRunner(bool enabled)
+    {
+        var root = new DirectoryInfo(AppContext.BaseDirectory);
+        while (root is not null && !File.Exists(Path.Combine(root.FullName, "StockAnalyzer.sln")))
+            root = root.Parent;
+        Assert.NotNull(root);
+        var python = Path.Combine(root.FullName, "StockAnalyzer.Python", ".venv",
+            OperatingSystem.IsWindows() ? "Scripts/python.exe" : "bin/python");
+        if (!File.Exists(python))
+            throw SkipException.ForSkip("The training Python virtual environment is not installed.");
+
+        var config = new TrainingJobConfig
+        {
+            Symbols = new[] { "7203-T" }, Architecture = "lstm", WindowSize = 60,
+            Horizon = 5, FixedZScore = enabled,
+        };
+        var file = Path.Combine(Path.GetTempPath(), $"sa_training_wire_{Guid.NewGuid():N}.json");
+        try
+        {
+            await File.WriteAllTextAsync(file, TrainingConfigJson.Serialize(config), TrainingConfigJson.Utf8NoBom);
+            var start = new ProcessStartInfo(python) { WorkingDirectory = root.FullName };
+            start.ArgumentList.Add("-c");
+            start.ArgumentList.Add("import pathlib,sys; sys.path.insert(0,sys.argv[1]); from run_training import JobConfig; c=JobConfig.from_json(pathlib.Path(sys.argv[2]).read_text(encoding='utf-8')); assert c.fixed_zscore is (sys.argv[3]=='true'); print('wire accepted')");
+            start.ArgumentList.Add(Path.Combine(root.FullName, "StockAnalyzer.Python", "training"));
+            start.ArgumentList.Add(file);
+            start.ArgumentList.Add(enabled ? "true" : "false");
+            Assert.Contains("wire accepted", await TrainingPythonTestRunner.RunAsync(start, TimeSpan.FromMinutes(1)));
+        }
+        finally { File.Delete(file); }
+    }
+
+    [Fact]
+    public async Task ResolvedResourceLimits_RoundTripAndMatchPythonEnvironment()
+    {
+        var root = new DirectoryInfo(AppContext.BaseDirectory);
+        while (root is not null && !File.Exists(Path.Combine(root.FullName, "StockAnalyzer.sln")))
+            root = root.Parent;
+        Assert.NotNull(root);
+        var python = Path.Combine(root.FullName, "StockAnalyzer.Python", ".venv",
+            OperatingSystem.IsWindows() ? "Scripts/python.exe" : "bin/python");
+        if (!File.Exists(python))
+            throw SkipException.ForSkip("The training Python virtual environment is not installed.");
+
+        var limits = TrainingResourceGuard.Resolve(new TrainingResourceOverrides(7, 2, 23));
+        var config = new TrainingJobConfig
+        {
+            Symbols = new[] { "7203-T" }, Architecture = "lstm", WindowSize = 60, Horizon = 5,
+            ResourceLimits = limits, RemainingRunBudgetSeconds = 60,
+        };
+        var file = Path.Combine(Path.GetTempPath(), $"sa_training_resources_{Guid.NewGuid():N}.json");
+        try
+        {
+            var json = TrainingConfigJson.Serialize(config);
+            Assert.Equal(limits, TrainingConfigJson.DeserializeConfig(json).ResourceLimits);
+            await File.WriteAllTextAsync(file, json, TrainingConfigJson.Utf8NoBom);
+            var start = new ProcessStartInfo(python) { WorkingDirectory = root.FullName };
+            start.ArgumentList.Add("-c");
+            start.ArgumentList.Add("import pathlib,sys; sys.path.insert(0,sys.argv[1]); from run_training import JobConfig; c=JobConfig.from_json(pathlib.Path(sys.argv[2]).read_text(encoding='utf-8')); assert c.resource_limits['max_channels']==7 and c.resource_limits['max_samples']==23; print('resource contract accepted')");
+            start.ArgumentList.Add(Path.Combine(root.FullName, "StockAnalyzer.Python", "training"));
+            start.ArgumentList.Add(file);
+            TrainingResourceGuard.ApplyToChild(start, limits);
+            Assert.Contains("resource contract accepted", await TrainingPythonTestRunner.RunAsync(start, TimeSpan.FromMinutes(1)));
+        }
+        finally { File.Delete(file); }
     }
 
     [Theory]

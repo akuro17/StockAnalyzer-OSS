@@ -43,6 +43,10 @@ def inspect(config_path: Path, report_path: Path, threshold: float) -> None:
         threshold=threshold,
         wf_splits=cfg.n_splits,
         gap=cfg.gap,
+        outer_fold_index=None,
+        fixed_zscore=cfg.fixed_zscore,
+        clip_sigma=cfg.clip_sigma,
+        lags=json.dumps(cfg.lags),
     )
     prepared = composed.prepare(args)
     symbol_reports: dict[str, dict] = {}

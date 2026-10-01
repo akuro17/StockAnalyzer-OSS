@@ -133,18 +133,50 @@ public sealed class TrainingResourceSettingsTests : IDisposable
         var original = Environment.GetEnvironmentVariable("SA_MAX_COMPOSED_CHANNELS");
         inherited.Environment["SA_MAX_COMPOSED_CHANNELS"] = "inherited-channel-value";
         inherited.Environment["SA_MAX_COMPOSED_TENSOR_SIZE_MB"] = "inherited-tensor-value";
-        TrainingResourceGuard.ApplyToChild(inherited, new TrainingResourceOverrides());
-        Assert.Equal("inherited-channel-value", ChildValue(inherited, "SA_MAX_COMPOSED_CHANNELS"));
-        Assert.Equal("inherited-tensor-value", ChildValue(inherited, "SA_MAX_COMPOSED_TENSOR_SIZE_MB"));
+        var inheritedLimits = TrainingResourceGuard.Resolve(new TrainingResourceOverrides());
+        TrainingResourceGuard.ApplyToChild(inherited, inheritedLimits);
+        Assert.Equal(inheritedLimits.MaxChannels.ToString(), ChildValue(inherited, "SA_MAX_COMPOSED_CHANNELS"));
+        Assert.Equal(inheritedLimits.MaxTensorSizeMiB.ToString(), ChildValue(inherited, "SA_MAX_COMPOSED_TENSOR_SIZE_MB"));
         var snapshot = new TrainingResourceOverrides(7, null, 23);
+        var resolved = TrainingResourceGuard.Resolve(snapshot);
         var child = new ProcessStartInfo { UseShellExecute = false };
         child.Environment["SA_MAX_COMPOSED_CHANNELS"] = "inherited-channel-value";
         child.Environment["SA_MAX_COMPOSED_TENSOR_SIZE_MB"] = "inherited-tensor-value";
-        TrainingResourceGuard.ApplyToChild(child, snapshot);
+        TrainingResourceGuard.ApplyToChild(child, resolved);
         Assert.Equal("7", child.Environment["SA_MAX_COMPOSED_CHANNELS"]);
         Assert.Equal("23", child.Environment["SA_MAX_COMPOSED_BATCH_SAMPLES"]);
-        Assert.Equal("inherited-tensor-value", ChildValue(child, "SA_MAX_COMPOSED_TENSOR_SIZE_MB"));
+        Assert.Equal(resolved.MaxTensorSizeMiB.ToString(), ChildValue(child, "SA_MAX_COMPOSED_TENSOR_SIZE_MB"));
+        Assert.Equal(resolved.MaxEvaluationFolds.ToString(), ChildValue(child, "SA_MAX_EVALUATION_FOLDS"));
+        Assert.Equal(resolved.MaxFeatureLag.ToString(), ChildValue(child, "SA_MAX_FEATURE_LAG"));
+        Assert.Equal(resolved.MaxRunDurationSeconds.ToString(), ChildValue(child, "SA_MAX_RUN_DURATION_SECONDS"));
+        Assert.Equal(resolved.ContractVersion.ToString(), ChildValue(child, "SA_TRAINING_RESOURCE_CONTRACT_VERSION"));
         Assert.Equal(original, Environment.GetEnvironmentVariable("SA_MAX_COMPOSED_CHANNELS"));
+    }
+
+    [Fact]
+    public void ExpandedLagsHonorConfiguredTensorAndChannelLimits()
+    {
+        var composed = Config(100_000, 1) with
+        {
+            FixedZScore = true,
+            FeatureSpec = new FeatureSpec
+            {
+                Channels = new[] { new FeatureChannel { Kind = FeatureChannelKind.Price, Price = PriceType.Close } },
+                Lags = new[] { 1, 2 },
+            },
+        };
+        TrainingResourceGuard.Validate(composed, new TrainingResourceOverrides(null, 2));
+        Assert.Throws<InvalidOperationException>(() => TrainingResourceGuard.Validate(
+            composed, new TrainingResourceOverrides(null, 1)));
+        Assert.Throws<InvalidOperationException>(() => TrainingResourceGuard.Validate(
+            composed, new TrainingResourceOverrides(2, 2)));
+
+        var raw = composed with { FeatureMode = PredictionFeatureMode.OhlcvMinMax, FeatureSpec = null,
+            Lags = new[] { 1, 2 }, WindowSize = 20_000 };
+        Assert.Throws<InvalidOperationException>(() => TrainingResourceGuard.Validate(
+            raw, new TrainingResourceOverrides(null, 1)));
+        TrainingResourceGuard.Validate(raw with { FixedZScore = false, Lags = Array.Empty<int>() },
+            new TrainingResourceOverrides(null, 1));
     }
 
     private static TrainingJobConfig Config(int window, int channels)

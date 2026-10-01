@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using StockAnalyzer.Core.Analysis;
+using StockAnalyzer.Core.Models.Backtest.Configuration;
 
 namespace StockAnalyzer.Core.Models.Settings;
 
@@ -245,6 +246,19 @@ public sealed record GlobalChartSettings
     public string SeasonalityYearColor9 { get; init; } = ChartSettingsConstants.DefaultSeasonalityYearColor9;
     public string SeasonalityYearColor10 { get; init; } = ChartSettingsConstants.DefaultSeasonalityYearColor10;
 
+    // --- Backtest Results equity curve ---
+    /// <summary>What switches the equity curve color (persisted as a number; see <see cref="BacktestEquityColorMode"/>).</summary>
+    public BacktestEquityColorMode BacktestEquityColorMode { get; init; } = ChartSettingsConstants.DefaultBacktestEquityColorMode;
+
+    /// <summary>Equity curve color of the Single mode and of the one-point dot in every mode.</summary>
+    public string BacktestEquityLineColor { get; init; } = ChartSettingsConstants.DefaultBacktestEquityLineColor;
+
+    /// <summary>Up segment (PreviousBar) / at-a-high segment (Drawdown) color.</summary>
+    public string BacktestEquityUpColor { get; init; } = ChartSettingsConstants.DefaultBacktestEquityUpColor;
+
+    /// <summary>Down segment (PreviousBar) / drawdown segment (Drawdown) color.</summary>
+    public string BacktestEquityDownColor { get; init; } = ChartSettingsConstants.DefaultBacktestEquityDownColor;
+
     /// <summary>
     /// GS-14-1: Schema version for future migration support.
     /// </summary>
@@ -370,6 +384,10 @@ public sealed record GlobalChartSettings
             SeasonalityYearColor8 = IsValidHexColor(SeasonalityYearColor8) ? SeasonalityYearColor8 : ChartSettingsConstants.DefaultSeasonalityYearColor8,
             SeasonalityYearColor9 = IsValidHexColor(SeasonalityYearColor9) ? SeasonalityYearColor9 : ChartSettingsConstants.DefaultSeasonalityYearColor9,
             SeasonalityYearColor10 = IsValidHexColor(SeasonalityYearColor10) ? SeasonalityYearColor10 : ChartSettingsConstants.DefaultSeasonalityYearColor10,
+            BacktestEquityColorMode = Enum.IsDefined(BacktestEquityColorMode) ? BacktestEquityColorMode : ChartSettingsConstants.DefaultBacktestEquityColorMode,
+            BacktestEquityLineColor = IsValidHexColor(BacktestEquityLineColor) ? BacktestEquityLineColor : ChartSettingsConstants.DefaultBacktestEquityLineColor,
+            BacktestEquityUpColor = IsValidHexColor(BacktestEquityUpColor) ? BacktestEquityUpColor : ChartSettingsConstants.DefaultBacktestEquityUpColor,
+            BacktestEquityDownColor = IsValidHexColor(BacktestEquityDownColor) ? BacktestEquityDownColor : ChartSettingsConstants.DefaultBacktestEquityDownColor,
             TopMargin = Math.Clamp(TopMargin, 0f, 200f),
             BottomMargin = Math.Clamp(BottomMargin, 0f, 200f),
             RightMargin = Math.Clamp(RightMargin, 0f, 200f)

@@ -14,14 +14,41 @@
     <UserControl.Resources>
         <conv:LocalizeConverter x:Key="LocalizeConverter"/>
         <conv:BacktestSemanticToBrushConverter x:Key="SemanticToBrushConverter"/>
+
+        <!-- Transparent hover target of a metric tooltip (definition, status and reason); placed over the cells it explains and visible only when there is text,
+             so a row without text has no tooltip at all. Font size = Settings > Fonts > Tooltip Font Size (TooltipFontSize) and color = Brush.Text.Primary are set
+             on the Tip content itself because the popup does not inherit them (SA_UI_INTERACTION section 12); the text wraps so nothing is cut at the popup's maximum width. -->
+        <DataTemplate x:Key="MetricTipHostTemplate" x:DataType="vm:BacktestMetricDisplayRow">
+            <Border Background="Transparent" IsVisible="{Binding TooltipText, Converter={x:Static ObjectConverters.IsNotNull}}">
+                <ToolTip.Tip>
+                    <TextBlock Text="{Binding TooltipText}" TextWrapping="Wrap"
+                               FontSize="{DynamicResource TooltipFontSize}" Foreground="{DynamicResource Brush.Text.Primary}"
+                               AutomationProperties.AutomationId="Backtest_Results_MetricTip"/>
+                </ToolTip.Tip>
+            </Border>
+        </DataTemplate>
+
+        <!-- One metric row (label, value, optional confidence interval); used by every metric group. -->
+        <DataTemplate x:Key="MetricRowTemplate" x:DataType="vm:BacktestMetricDisplayRow">
+            <Grid ColumnDefinitions="*,140,220" Margin="0,2">
+                <TextBlock Classes="CellValue" Grid.Column="0"
+                           Text="{Binding LabelKey, Converter={StaticResource LocalizeConverter}}"/>
+                <TextBlock Classes="CellValue" Grid.Column="1" Text="{Binding ValueText}"
+                           Foreground="{Binding Semantic, Converter={StaticResource SemanticToBrushConverter}}"/>
+                <TextBlock Classes="CellValue" Grid.Column="2" Text="{Binding ConfidenceIntervalText}"/>
+                <ContentControl Grid.Column="0" Grid.ColumnSpan="2" Content="{Binding}" ContentTemplate="{StaticResource MetricTipHostTemplate}"/>
+            </Grid>
+        </DataTemplate>
     </UserControl.Resources>
 
     <UserControl.DataTemplates>
         <!-- Group row: side (roots only), AND/OR, a Reverse-root hint, and the empty-root hint. The context menu commands live on the tree view-model
              (Tree); a disabled "add group" shows the limit through AddGroupToolTip (null while enabled, SA_UI_INTERACTION section 29). -->
         <TreeDataTemplate DataType="vm:BacktestConditionGroupViewModel" ItemsSource="{Binding Children}">
-            <Border Classes="ConditionRow" Background="Transparent" Padding="2">
-                <!-- A long expression stays on one line: the popup's ToolTip is unbounded in width (OnHoverTipAttached) and the text never wraps.
+            <Border Classes="ConditionRow" Background="Transparent" Padding="2" ToolTip.ServiceEnabled="{Binding HasHoverText}">
+                <!-- A list without conditions has no expression to show: HasHoverText switches the tooltip service off for the row (an invisible content would still open an empty popup).
+                     ServiceEnabled is inherited, so the controls below that carry their own tooltip (the Reverse hint, the context menu) switch it back on.
+                     A long expression stays on one line: the popup's ToolTip is unbounded in width (OnHoverTipAttached) and the text never wraps.
                      Hover shows the expressions only (no captions or explanatory text). Font size = Settings > Fonts > Tooltip Font Size (TooltipFontSize),
                      color = Settings > Theme > Main Text (Brush.Text.Primary); set on the content because the popup does not inherit them from the row. -->
                 <ToolTip.Tip>
@@ -35,7 +62,7 @@
                     </StackPanel>
                 </ToolTip.Tip>
                 <Border.ContextMenu>
-                    <ContextMenu>
+                    <ContextMenu ToolTip.ServiceEnabled="True">
                         <MenuItem Header="{l:Localize Backtest_ConditionTree_AddGroup}"
                                   Command="{Binding Tree.AddGroupCommand}" CommandParameter="{Binding}"
                                   ToolTip.Tip="{Binding AddGroupToolTip}" ToolTip.ShowOnDisabled="True"
@@ -66,9 +93,9 @@
                     <TextBlock Classes="CellValue" FontWeight="Bold" Foreground="{DynamicResource Brush.Accent.Primary}"
                                Text="{l:Localize Backtest_ConditionTree_Or}" IsVisible="{Binding !IsAndOperator}"
                                AutomationProperties.AutomationId="Backtest_ConditionTree_Operator_Or"/>
-                    <TextBlock Classes="CellValue" Text="(i)" Foreground="{DynamicResource Brush.Text.Secondary}"
+                    <TextBlock Classes="CellValue" Text="{l:Localize Backtest_ConditionTree_ReverseMarker}" Foreground="{DynamicResource Brush.Text.Secondary}"
                                IsVisible="{Binding IsReverseRoot}"
-                               ToolTip.Tip="{l:Localize Backtest_ConditionTree_ReverseHint}"/>
+                               ToolTip.Tip="{l:Localize Backtest_ConditionTree_ReverseHint}" ToolTip.ServiceEnabled="True"/>
                     <TextBlock Classes="CellValue" Text="{l:Localize Backtest_ConditionTree_EmptyRoot}"
                                Foreground="{DynamicResource Brush.Text.Secondary}" IsVisible="{Binding IsEmptyRoot}"/>
                 </StackPanel>
@@ -165,6 +192,33 @@
                   Padding="0,0,12,0">
         <StackPanel Margin="16">
 
+            <!-- Result summary: the key metrics at a glance. Every item is a row of the metrics table below (same text, color and tooltip). -->
+            <Border Classes="SectionCard" IsVisible="{Binding HasSummary}">
+                <ItemsControl ItemsSource="{Binding Summary}" AutomationProperties.AutomationId="Backtest_Results_Summary">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <UniformGrid Rows="1"/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:BacktestMetricDisplayRow">
+                            <Grid Margin="0,0,8,0">
+                                <StackPanel>
+                                    <TextBlock Classes="CellValue" TextWrapping="Wrap"
+                                               Foreground="{DynamicResource Brush.Text.Secondary}"
+                                               Text="{Binding LabelKey, Converter={StaticResource LocalizeConverter}}"/>
+                                    <!-- The value reuses the SectionTitle style (base size, bold) on purpose: P3 section 9 forbids defining a new style; the color is set per item. -->
+                                    <TextBlock Classes="SectionTitle" Margin="0" TextWrapping="Wrap"
+                                               Text="{Binding ValueText}"
+                                               Foreground="{Binding Semantic, Converter={StaticResource SemanticToBrushConverter}}"/>
+                                </StackPanel>
+                                <ContentControl Content="{Binding}" ContentTemplate="{StaticResource MetricTipHostTemplate}"/>
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </Border>
+
             <!-- Registered conditions (MP-2 Phase 3, layout confirmed by the owner: three stacked sections Entry / Exit / Reverse).
                  Each section is a TreeView whose two top-level items are the fixed Long and Short root groups; groups nest, leaves are
                  the comparisons. The editor works on BacktestConditionTreeViewModel only. A custom context menu sits on the row
@@ -244,6 +298,8 @@
                 <backtest:EquityCurveControl Height="260" HorizontalAlignment="Stretch" Margin="0,8,0,0"
                                               AutomationProperties.AutomationId="Backtest_Results_EquityCurve"
                                               EquityPoints="{Binding EquityPoints}"
+                                              UnderwaterFlags="{Binding EquityUnderwaterFlags}"
+                                              Trades="{Binding Trades}"
                                               ResultRevision="{Binding ResultRevision}"
                                               LineSemantic="{Binding EquityLineSemantic}"
                                               UnavailableText="{l:Localize Backtest_Chart_Unavailable}"/>
@@ -279,15 +335,15 @@
                         <TextBlock Classes="ColumnHeader" Grid.Column="1" Text="{l:Localize Backtest_MetricsTable_Header_Value}"/>
                         <TextBlock Classes="ColumnHeader" Grid.Column="2" Text="{l:Localize Backtest_MetricsTable_Header_ConfidenceInterval}"/>
                     </Grid>
-                    <ItemsControl ItemsSource="{Binding Metrics}" AutomationProperties.AutomationId="Backtest_Results_Metrics">
+                    <ItemsControl ItemsSource="{Binding MetricGroups}" AutomationProperties.AutomationId="Backtest_Results_Metrics">
                         <ItemsControl.ItemTemplate>
-                            <DataTemplate x:DataType="vm:BacktestMetricRow">
-                                <Grid ColumnDefinitions="*,140,220" Margin="0,2">
-                                    <TextBlock Classes="CellValue" Grid.Column="0" Text="{Binding LabelKey, Converter={StaticResource LocalizeConverter}}"/>
-                                    <TextBlock Classes="CellValue" Grid.Column="1" Text="{Binding ValueText}"
-                                               Foreground="{Binding Semantic, Converter={StaticResource SemanticToBrushConverter}}"/>
-                                    <TextBlock Classes="CellValue" Grid.Column="2" Text="{Binding ConfidenceIntervalText}"/>
-                                </Grid>
+                            <DataTemplate x:DataType="vm:BacktestMetricGroupPresentation">
+                                <!-- Every group is shown the same way: a heading and its rows. -->
+                                <StackPanel Margin="0,6,0,0">
+                                    <TextBlock Classes="ColumnHeader"
+                                               Text="{Binding GroupKey, Converter={StaticResource LocalizeConverter}}"/>
+                                    <ItemsControl ItemsSource="{Binding Rows}" ItemTemplate="{StaticResource MetricRowTemplate}"/>
+                                </StackPanel>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>

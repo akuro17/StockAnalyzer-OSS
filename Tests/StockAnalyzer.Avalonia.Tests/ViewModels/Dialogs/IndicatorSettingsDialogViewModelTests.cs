@@ -604,4 +604,107 @@ public class IndicatorSettingsDialogViewModelTests
         Assert.False(vm.IsPriceTypeEnabled);
         Assert.Null(vm.PriceTypeToolTip);
     }
+
+    private static IndicatorTemplate CreateTemplate(params CoreIndicatorSettings[] indicators)
+    {
+        var template = new IndicatorTemplate { Name = "Template Preview Test" };
+        template.SetIndicators(indicators);
+        return template;
+    }
+
+    [Fact]
+    public void SelectedTemplate_WhenIndicatorUsesShortName_ShowsPeriodExactlyOnce()
+    {
+        var vm = CreateViewModel();
+        var template = CreateTemplate(new CoreIndicatorSettings
+        {
+            TypeEnum = IndicatorType.SMA,
+            UseShortName = true,
+            ParameterObject = new CoreSmaParameter { Period = 20 }
+        });
+
+        vm.SelectedTemplate = template;
+
+        Assert.Single(vm.SelectedTemplateIndicatorNames);
+        Assert.Equal("SMA(20)", vm.SelectedTemplateIndicatorNames[0]);
+    }
+
+    [Fact]
+    public void SelectedTemplate_WhenIndicatorUsesLongName_ShowsPeriodExactlyOnce()
+    {
+        var vm = CreateViewModel();
+        var template = CreateTemplate(new CoreIndicatorSettings
+        {
+            TypeEnum = IndicatorType.SMA,
+            UseShortName = false,
+            ParameterObject = new CoreSmaParameter { Period = 20 }
+        });
+
+        vm.SelectedTemplate = template;
+
+        Assert.Single(vm.SelectedTemplateIndicatorNames);
+        Assert.Equal("Simple Moving Average (20)", vm.SelectedTemplateIndicatorNames[0]);
+    }
+
+    [Fact]
+    public void SelectedTemplate_WithMultiParameterIndicator_ShowsParameterGroupExactlyOnce()
+    {
+        var vm = CreateViewModel();
+        var template = CreateTemplate(new CoreIndicatorSettings
+        {
+            TypeEnum = IndicatorType.MACD,
+            UseShortName = true,
+            ParameterObject = new CoreMacdParameter { ShortPeriod = 12, LongPeriod = 26, SignalPeriod = 9 }
+        });
+
+        vm.SelectedTemplate = template;
+
+        var name = Assert.Single(vm.SelectedTemplateIndicatorNames);
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(name, @"\(12, 26, 9\)"));
+        Assert.DoesNotContain(") (", name);
+    }
+
+    [Fact]
+    public void SelectedTemplate_WhenIndicatorHasNoParameterObject_ShowsNameUnchanged()
+    {
+        var vm = CreateViewModel();
+        var indicator = new CoreIndicatorSettings
+        {
+            TypeEnum = IndicatorType.SMA,
+            UseShortName = true,
+            DisplayName = "SMA"
+        };
+        vm.SelectedTemplate = CreateTemplate(indicator);
+
+        var name = Assert.Single(vm.SelectedTemplateIndicatorNames);
+        Assert.False(string.IsNullOrEmpty(name));
+        Assert.Equal(indicator.GetFormattedDisplayName(), name);
+    }
+
+    [Fact]
+    public void SelectedTemplate_WhenTemplateHasZeroIndicators_ProducesEmptyList()
+    {
+        var vm = CreateViewModel();
+
+        vm.SelectedTemplate = CreateTemplate();
+
+        Assert.Empty(vm.SelectedTemplateIndicatorNames);
+    }
+
+    [Fact]
+    public void SelectedTemplate_ThenChangedToNull_ClearsNames()
+    {
+        var vm = CreateViewModel();
+        vm.SelectedTemplate = CreateTemplate(new CoreIndicatorSettings
+        {
+            TypeEnum = IndicatorType.SMA,
+            UseShortName = true,
+            ParameterObject = new CoreSmaParameter { Period = 20 }
+        });
+        Assert.Single(vm.SelectedTemplateIndicatorNames);
+
+        vm.SelectedTemplate = null;
+
+        Assert.Empty(vm.SelectedTemplateIndicatorNames);
+    }
 }

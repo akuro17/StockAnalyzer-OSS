@@ -7,6 +7,9 @@ namespace StockAnalyzer.Core.Tests.Services.Notes;
 
 public class NoteReadMorePreviewTests
 {
+    // The popup label is caller-supplied (localized) text; any distinctive value proves it is used verbatim.
+    private const string TestLabel = "MORE-LABEL";
+
     [Fact]
     public void RequiresCollapse_WhenBodyShorterThanBothThresholds_ReturnsFalse()
     {
@@ -117,5 +120,140 @@ public class NoteReadMorePreviewTests
 
         // budget: 10 (a's) + 1 (whole token) = 11 consumed, 49 remaining for the trailing b's.
         Assert.Equal(new string('a', 10) + token + new string('b', 49), result);
+    }
+
+    // --- Tickers-tab Notes column / popup helpers ---
+
+    [Fact]
+    public void BuildSingleLineText_ShortBody_ReturnsFlattenedUnchanged()
+    {
+        Assert.Equal("line one", NoteReadMorePreview.BuildSingleLineText("line one", maxCharacters: 150));
+    }
+
+    [Fact]
+    public void BuildSingleLineText_CrLfAndLfAndCr_EachBecomeOneSpace()
+    {
+        Assert.Equal("a b c d", NoteReadMorePreview.BuildSingleLineText("a\r\nb\nc\rd", maxCharacters: 150));
+    }
+
+    [Fact]
+    public void BuildSingleLineText_OverMaxCharacters_CutsAtMaxCharactersWithoutSuffix()
+    {
+        var result = NoteReadMorePreview.BuildSingleLineText(new string('a', 30), maxCharacters: 10);
+
+        Assert.Equal(new string('a', 10), result);
+    }
+
+    [Fact]
+    public void BuildSingleLineText_NewlineCountsAsOneCharacter_BeforeCap()
+    {
+        // "abc\ndef" flattens to "abc def" (7 chars); cap 5 -> "abc d".
+        Assert.Equal("abc d", NoteReadMorePreview.BuildSingleLineText("abc\ndef", maxCharacters: 5));
+    }
+
+    [Fact]
+    public void BuildSingleLineText_ImageTokenAtBoundary_IsNotSplit()
+    {
+        var token = NoteImageTokenExtractor.Build(Guid.Parse("11111111-2222-3333-4444-555555555555"));
+        var body = new string('a', 5) + token + "bbbb";
+
+        var result = NoteReadMorePreview.BuildSingleLineText(body, maxCharacters: 5);
+
+        Assert.Equal(new string('a', 5), result);
+    }
+
+    [Fact]
+    public void BuildSingleLineText_EmptyBody_ReturnsEmpty()
+    {
+        Assert.Equal(string.Empty, NoteReadMorePreview.BuildSingleLineText(string.Empty, maxCharacters: 10));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void BuildSingleLineText_MaxCharactersBelowOne_Throws(int maxCharacters)
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => NoteReadMorePreview.BuildSingleLineText("x", maxCharacters));
+    }
+
+    [Fact]
+    public void BuildPopupText_WithinThresholds_ReturnsBodyUnchangedWithoutLabel()
+    {
+        Assert.Equal("short\nbody", NoteReadMorePreview.BuildPopupText("short\nbody", maxCharacters: 150, maxLines: 5, readMoreLabel: TestLabel));
+    }
+
+    [Fact]
+    public void BuildPopupText_ExactlyAtMaxCharacters_HasNoLabel()
+    {
+        var body = new string('a', 20);
+
+        Assert.Equal(body, NoteReadMorePreview.BuildPopupText(body, maxCharacters: 20, maxLines: 5, readMoreLabel: TestLabel));
+    }
+
+    [Fact]
+    public void BuildPopupText_OverMaxCharacters_ReturnsCollapsedPlusNewlinePlusLabel()
+    {
+        var result = NoteReadMorePreview.BuildPopupText(new string('a', 30), maxCharacters: 10, maxLines: 5, readMoreLabel: TestLabel);
+
+        Assert.Equal(new string('a', 10) + "\n" + TestLabel, result);
+    }
+
+    [Fact]
+    public void BuildPopupText_OverMaxLines_ReturnsLineLimitedPlusLabel()
+    {
+        var body = string.Join("\n", new[] { "1", "2", "3", "4" }); // 3 newlines
+
+        var result = NoteReadMorePreview.BuildPopupText(body, maxCharacters: 150, maxLines: 2, readMoreLabel: TestLabel);
+
+        Assert.Equal("1\n2\n" + TestLabel, result);
+    }
+
+    [Fact]
+    public void BuildPopupText_RemovesImageTokensAndUrls_BeforeApplyingLimits()
+    {
+        var token = NoteImageTokenExtractor.Build(Guid.NewGuid());
+        var body = $"see {token}https://example.com/very/long/path/that/would/exceed/the/limit end";
+
+        var result = NoteReadMorePreview.BuildPopupText(body, maxCharacters: 8, maxLines: 5, readMoreLabel: TestLabel);
+
+        // Visible text is "see  end" (8 chars) -> within the limit, so no label; no token, no URL.
+        Assert.Equal("see  end", result);
+    }
+
+    [Fact]
+    public void BuildPopupText_WhenOnlyImagesAndUrls_ReturnsEmpty()
+    {
+        var token = NoteImageTokenExtractor.Build(Guid.NewGuid());
+
+        Assert.Equal(string.Empty, NoteReadMorePreview.BuildPopupText($"{token} https://example.com", maxCharacters: 10, maxLines: 5, readMoreLabel: TestLabel));
+    }
+
+    [Fact]
+    public void BuildPopupText_EmptyBody_ReturnsEmpty()
+    {
+        Assert.Equal(string.Empty, NoteReadMorePreview.BuildPopupText(string.Empty, maxCharacters: 10, maxLines: 5, readMoreLabel: TestLabel));
+    }
+
+    [Fact]
+    public void BuildPopupText_InvalidArguments_Throw()
+    {
+        Assert.Throws<ArgumentNullException>(() => NoteReadMorePreview.BuildPopupText(null!, 10, 5, TestLabel));
+        Assert.Throws<ArgumentOutOfRangeException>(() => NoteReadMorePreview.BuildPopupText("x", 0, 5, TestLabel));
+        Assert.Throws<ArgumentOutOfRangeException>(() => NoteReadMorePreview.BuildPopupText("x", 10, 0, TestLabel));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void BuildPopupText_BlankLabel_Throws(string? label)
+    {
+        Assert.ThrowsAny<ArgumentException>(() => NoteReadMorePreview.BuildPopupText("x", 10, 5, label!));
+    }
+
+    [Fact]
+    public void RemoveImagesAndUrls_KeepsOtherTextAndTrailingPunctuation()
+    {
+        Assert.Equal("go () now", NoteReadMorePreview.RemoveImagesAndUrls("go (https://example.com/a) now"));
     }
 }

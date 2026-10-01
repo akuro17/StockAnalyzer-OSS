@@ -298,7 +298,7 @@ public static class NoteTimelineTestFixture
         var attachmentRepository = new AttachmentRepository(connectionManager, NullLogger<AttachmentRepository>.Instance);
         var resolvedNotesSettingsManager = notesSettingsManager ?? new FakeNotesSettingsManager();
         var cacheSynchronizer = new TickerMetadataNotesCacheSynchronizer(
-            noteRepository, UserStrategyMetadataRepository.Instance, resolvedNotesSettingsManager, NullLogger<TickerMetadataNotesCacheSynchronizer>.Instance);
+            noteRepository, UserStrategyMetadataRepository.Instance, NullLogger<TickerMetadataNotesCacheSynchronizer>.Instance);
 
         var resolvedMarketDataProvider = marketDataProvider ?? new FakeMarketDataProvider();
         var resolvedWatchlistManager = watchlistManager ?? new FakeWatchlistManager();

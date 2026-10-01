@@ -90,6 +90,51 @@ public class BacktestConditionTreeViewTests
         }
     }
 
+    private static List<Border> GroupRows(BacktestResultsView view)
+        => view.GetVisualDescendants().OfType<Border>().Where(b => b.Classes.Contains("ConditionRow") && b.DataContext is BacktestConditionGroupViewModel).ToList();
+
+    /// <summary>
+    /// A list without conditions has no expression to show, so its row must not open a tooltip at all (an invisible content would still open an empty popup;
+    /// the opening itself was verified with real pointer input and a zero show delay, which a headless test cannot do reliably because of the frozen clock).
+    /// The tooltips that belong to controls inside the row (the Reverse hint, the context menu items) stay available.
+    /// </summary>
+    [AvaloniaFact]
+    public void EmptyLists_HaveNoRowTooltip_AndTheOwnTooltipsInsideTheRowRemain()
+    {
+        (BacktestIndicatorSelectionViewModel selection, BacktestResultsView view, Window window) = Show();
+        try
+        {
+            List<Border> rows = GroupRows(view);
+            Assert.Equal(6, rows.Count);
+            Assert.All(rows, row => Assert.False(ToolTip.GetServiceEnabled(row)));
+            Assert.All(rows, row => Assert.True(ToolTip.GetServiceEnabled(row.ContextMenu!)));
+
+            List<TextBlock> reverseHints = view.GetVisualDescendants().OfType<TextBlock>()
+                .Where(text => text.DataContext is BacktestConditionGroupViewModel { IsReverseRoot: true } && ToolTip.GetTip(text) is string { Length: > 0 })
+                .ToList();
+            Assert.Equal(2, reverseHints.Count);
+            Assert.All(reverseHints, hint => Assert.True(ToolTip.GetServiceEnabled(hint)));
+
+            selection.ConditionTree.TryAddLeaf(BacktestConditionSection.Entry, TradeSide.Long, Entry(PriceType.Open, PriceType.Close));
+            for (int i = 0; i < 3; i++) Render();
+
+            BacktestConditionGroupViewModel entryLong = selection.ConditionTree.Root(BacktestConditionSection.Entry, TradeSide.Long);
+            Assert.Single(GroupRows(view).Where(row => ToolTip.GetServiceEnabled(row)), row => ReferenceEquals(row.DataContext, entryLong));
+            Assert.Equal(5, GroupRows(view).Count(row => !ToolTip.GetServiceEnabled(row)));
+            Border leafRow = Assert.Single(view.GetVisualDescendants().OfType<Border>().Where(b => b.Classes.Contains("ConditionRow") && b.DataContext is BacktestConditionLeafViewModel));
+            Assert.True(ToolTip.GetServiceEnabled(leafRow));
+
+            selection.ConditionTree.Delete(entryLong.Children[0]);
+            for (int i = 0; i < 3; i++) Render();
+
+            Assert.All(GroupRows(view), row => Assert.False(ToolTip.GetServiceEnabled(row)));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     [AvaloniaFact]
     public void AddedLeaf_AppearsUnderItsRoot_AndTheOperatorSwitchIsShown()
     {

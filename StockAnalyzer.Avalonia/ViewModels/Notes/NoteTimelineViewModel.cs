@@ -418,7 +418,9 @@ public sealed partial class NoteTimelineItemViewModel : ObservableObject
             : string.Empty;
 
     /// <summary>Label for the "Read more"/"Show less" toggle button (spec section 5.3).</summary>
-    public string ToggleLabel => IsExpanded ? "Show less ▲" : "Read more ▼";
+    public string ToggleLabel => IsExpanded
+        ? $"{StockAnalyzer.Avalonia.Common.NoteReadMoreLabel.GetShowLess()} ▲"
+        : $"{StockAnalyzer.Avalonia.Common.NoteReadMoreLabel.Get()} ▼";
 
     /// <summary>Each Refresh rebuilds this item from the current immutable Note, so no change notification is needed here.</summary>
     public string PinButtonLabel => Note.IsPinned

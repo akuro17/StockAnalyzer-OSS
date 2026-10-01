@@ -23,6 +23,7 @@ namespace StockAnalyzer.Avalonia.Views.Chart.Renderers;
 public sealed class ChartRenderPipeline : IDisposable
 {
     private readonly BackgroundRenderer _backgroundRenderer;
+    private readonly TrainingPeriodRenderer _trainingPeriodRenderer = new();
     private readonly GridRenderer _gridRenderer;
     private readonly AxisRenderer _axisRenderer;
     private readonly IndicatorRenderer _indicatorRenderer;
@@ -99,6 +100,7 @@ public sealed class ChartRenderPipeline : IDisposable
     public void Dispose()
     {
         _backgroundRenderer.Dispose();
+        _trainingPeriodRenderer.Dispose();
         _gridRenderer.Dispose();
         _axisRenderer.Dispose();
         _indicatorRenderer.Dispose();
@@ -139,6 +141,8 @@ public sealed class ChartRenderPipeline : IDisposable
         var chartArea = layout.ChartArea;
         var volumeArea = layout.VolumeArea;
         bool showVolume = volumeArea.Height > 0;
+
+        _trainingPeriodRenderer.Render(canvas, chartArea, snapshot, coordinateTransform, theme);
 
         // 2. Prepare and Render Grid & Axis (Behind data, now with occlusion)
         PrepareAxisLabels(layout, snapshot, objectManager, renderConfig, mainRenderer);

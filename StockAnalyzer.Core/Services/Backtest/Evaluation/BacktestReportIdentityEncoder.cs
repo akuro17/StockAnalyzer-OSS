@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Security.Cryptography;
 using StockAnalyzer.Core.Models.Backtest.Engine;
 using StockAnalyzer.Core.Services.Backtest.Engine;
@@ -7,7 +8,12 @@ namespace StockAnalyzer.Core.Services.Backtest.Evaluation;
 
 internal static class BacktestReportIdentityEncoder
 {
+    /// <summary>Layout of a report without extended metrics; its byte output must never change.</summary>
     public const int SchemaVersion = 1;
+
+    /// <summary>Layout used when the report carries extended metrics: the schema-1 bytes plus an appended extended-metric block (count, named metrics, then the two drawdown right-censoring flags).</summary>
+    public const int ExtendedMetricsSchemaVersion = 2;
+
     private const string Domain = "StockAnalyzer.Backtest.Evaluation";
 
     public static EvaluationContentIdentity Compute(
@@ -25,10 +31,13 @@ internal static class BacktestReportIdentityEncoder
             return EvaluationContentIdentity.Unavailable(SchemaVersion, EvaluationContentIdentity.RunIdentityUnavailableReason);
         }
 
+        var extendedMetrics = report?.EnumerateExtendedMetrics().ToList();
+        int schemaVersion = extendedMetrics is { Count: > 0 } ? ExtendedMetricsSchemaVersion : SchemaVersion;
+
         using var writer = new CanonicalWriter();
         writer.String(Domain);
         writer.Int32(BacktestEvaluationArtifact.CurrentAuditSchemaVersion);
-        writer.Int32(SchemaVersion);
+        writer.Int32(schemaVersion);
 
         writer.Int32(runFingerprint.SchemaVersion);
         writer.Int32(runFingerprint.ExecutionSemanticsVersion);
@@ -112,21 +121,41 @@ internal static class BacktestReportIdentityEncoder
             writer.Int32(report.LossTrades);
             writer.Int32(report.BreakevenTrades);
             writer.Bool(report.SqnWarning);
+
+            if (schemaVersion == ExtendedMetricsSchemaVersion)
+            {
+                writer.Int32(extendedMetrics!.Count);
+                foreach ((string name, MetricValue metric, _) in extendedMetrics)
+                {
+                    writer.String(name);
+                    WriteMetric(writer, metric);
+                }
+                // Right-censoring flags of the two drawdown durations, in this fixed order: Bool(hasValue), then Bool(value) when present.
+                WriteOptionalBool(writer, report.MaxDepthDrawdownDurationRightCensored);
+                WriteOptionalBool(writer, report.LongestDrawdownDurationRightCensored);
+            }
         }
 
         WriteDrawdown(writer, ratioDrawdown);
         WriteDrawdown(writer, amountDrawdown);
 
         string hash = Convert.ToHexString(SHA256.HashData(writer.ToArray()));
-        return new EvaluationContentIdentity(true, hash, SchemaVersion, null);
+        return new EvaluationContentIdentity(true, hash, schemaVersion, null);
     }
 
-    private static void WriteMetric(CanonicalWriter writer, MetricValue metric)
+    /// <summary>Status, unit and reason as Int32, then the nullable decimal; internal so the byte layout can be pinned by tests.</summary>
+    internal static void WriteMetric(CanonicalWriter writer, MetricValue metric)
     {
         writer.Enum(metric.Status);
         writer.Enum(metric.Unit);
         writer.Enum(metric.Reason);
         writer.NullableDecimal(metric.Value);
+    }
+
+    private static void WriteOptionalBool(CanonicalWriter writer, bool? value)
+    {
+        writer.Bool(value.HasValue);
+        if (value.HasValue) writer.Bool(value.Value);
     }
 
     private static void WriteDrawdown(CanonicalWriter writer, DrawdownEpisodeResult result)

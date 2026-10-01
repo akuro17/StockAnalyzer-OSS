@@ -24,6 +24,7 @@ public static class SettingsConstants
         public const string AIPredictions = "AIPredictions";
         public const string Backtest = "Backtest";
         public const string TrainingWizard = "TrainingWizard";
+        public const string Tickers = "Tickers";
         public const string Notes = "Notes";
         public const string SeasonalityChart = "SeasonalityChart";
         public const string Chart = "Chart";
@@ -56,6 +57,7 @@ public static class SettingsConstants
         new(Keys.AIPredictions, "Settings_AIPredictions", "SettingsAdvIcon"),
         new(Keys.Backtest, "Settings_Backtest", "SettingsBacktestIcon"),
         new(Keys.TrainingWizard, "Settings_TrainingWizard", "SettingsAdvIcon"),
+        new(Keys.Tickers, "Settings_Tickers", "SettingsTickersIcon"),
         new(Keys.Notes, "Settings_Notes", "SettingsNotesIcon"),
         new(Keys.SeasonalityChart, "Tab_SeasonalityChart", "SettingsChartIcon"),
         new(Keys.Chart, "Settings_Chart", "SettingsChartIcon", true, new List<SettingsCategory>

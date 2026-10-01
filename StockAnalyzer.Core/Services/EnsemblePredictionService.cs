@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.ML.OnnxRuntime;
+using Microsoft.ML.OnnxRuntime.Tensors;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Indicators;
 using StockAnalyzer.Core.Models.Training;
@@ -17,6 +18,8 @@ namespace StockAnalyzer.Core.Services;
 /// <summary>Runs each immutable classification generation against the same candle history.</summary>
 public sealed class EnsemblePredictionService : IPredictionService, IDisposable
 {
+    public string? ActiveModelId => _registry.ActiveId;
+
     private readonly PredictionService _single;
     private readonly IEnsembleSettingsManager _ensembles;
     private readonly IModelGenerationRegistry _registry;
@@ -49,51 +52,65 @@ public sealed class EnsemblePredictionService : IPredictionService, IDisposable
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (!_loaded)
         {
-            await _initialization.WaitAsync();
+            await _initialization.WaitAsync().ConfigureAwait(false);
             try
             {
                 if (!_loaded)
                 {
-                    await _ensembles.LoadAsync();
+                    await _ensembles.LoadAsync().ConfigureAwait(false);
+                    ObjectDisposedException.ThrowIf(_disposed, this);
                     _loaded = true;
                 }
             }
             finally { _initialization.Release(); }
         }
-        if (_ensembles.Current is null) await _single.InitializeAsync();
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_ensembles.Current is null) await _single.InitializeAsync().ConfigureAwait(false);
+        ObjectDisposedException.ThrowIf(_disposed, this);
     }
 
     public async Task<PredictionResult> PredictAsync(IEnumerable<CandleData> candles)
     {
-        try { await InitializeAsync(); }
+        if (candles is null) return PredictionResult.Empty;
+        CandleData[] history;
+        try
+        {
+            history = PredictionService.SnapshotHistory(candles);
+            PredictionService.ValidateChronologicalHistory(history);
+            await InitializeAsync().ConfigureAwait(false);
+        }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Ensemble settings could not be loaded; returning fallback.");
+            _logger.LogWarning(ex, "Ensemble input or settings could not be used; returning fallback.");
             return PredictionResult.Empty;
         }
         var spec = _ensembles.Current;
         if (spec is null)
         {
-            await _runtimeGate.WaitAsync();
-            try { _runtime?.Dispose(); _runtime = null; _runtimeSpec = null; }
+            await _runtimeGate.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                if (_disposed) return PredictionResult.Empty;
+                _runtime?.Dispose(); _runtime = null; _runtimeSpec = null;
+            }
             finally { _runtimeGate.Release(); }
-            return await _single.PredictAsync(candles);
+            var result = await _single.PredictAsync(history).ConfigureAwait(false);
+            return _disposed ? PredictionResult.Empty : result;
         }
-        await _runtimeGate.WaitAsync();
+        await _runtimeGate.WaitAsync().ConfigureAwait(false);
         try
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            if (candles is null) return PredictionResult.Empty;
             if (!ReferenceEquals(_runtimeSpec, spec))
             {
                 _runtime?.Dispose();
                 _runtime = null;
                 _runtimeSpec = null;
-                _runtime = await Task.Run(() => BuildRuntime(spec));
+                _runtime = await Task.Run(() => BuildRuntime(spec)).ConfigureAwait(false);
+                ObjectDisposedException.ThrowIf(_disposed, this);
                 _runtimeSpec = spec;
             }
-            var history = candles as IReadOnlyList<CandleData> ?? candles.ToArray();
-            return await Task.Run(() => PredictBundle(spec, _runtime!, history));
+            return await Task.Run(() => PredictBundle(spec, _runtime!, history)).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -145,7 +162,7 @@ public sealed class EnsemblePredictionService : IPredictionService, IDisposable
         try
         {
             var metadata = session.ModelMetadata.CustomMetadataMap;
-            var scaler = metadata.ContainsKey(PredictionModelMetadata.ScalerReferenceKey)
+            var scaler = PredictionModelMetadata.RequiresFixedScaler(metadata)
                 ? FixedScaler.Load(lease.ModelPath, metadata) : null;
             var mode = PredictionModelMetadata.ParseFeatureMode(metadata[PredictionModelMetadata.FeatureModeKey])
                 ?? throw new InvalidDataException("Unknown feature mode.");
@@ -165,8 +182,8 @@ public sealed class EnsemblePredictionService : IPredictionService, IDisposable
             string output = PredictionService.ResolveNodeName(session.OutputMetadata.Keys, null);
             var inputMeta = session.InputMetadata[input];
             var outputMeta = session.OutputMetadata[output];
-            PredictionService.ValidateModelContract(inputMeta.IsTensor, inputMeta.Dimensions,
-                outputMeta.IsTensor, outputMeta.Dimensions, window, channels, labels.Length, input, output);
+            PredictionService.ValidateModelContract(inputMeta, outputMeta,
+                window, channels, labels.Length, input, output);
             int count = PredictionService.ComputeCheckedFeatureCount(window, channels,
                 (long)_settings.PredictionMaxComposedTensorSizeMB * TrainingResourceOverrides.MiB);
             var map = canonical.Select(label => Array.IndexOf(labels, label)).ToArray();
@@ -255,7 +272,19 @@ public sealed class EnsemblePredictionService : IPredictionService, IDisposable
         using var inputValue = OrtValue.CreateTensorValueFromMemory(OrtMemoryInfo.DefaultInstance, tensor.AsMemory(),
             member.InputShape);
         using var result = member.Session.Run(member.Options, member.InputNames, new[] { inputValue }, member.OutputNames);
-        return result[0].GetTensorDataAsSpan<float>().ToArray();
+        if (result.Count != 1 || !result[0].IsTensor)
+            throw new InvalidDataException("Member output must be one tensor.");
+        var shape = result[0].GetTensorTypeAndShape();
+        var dimensions = shape.Shape;
+        int expectedWidth = member.CanonicalIndices.Length;
+        if (shape.ElementDataType != TensorElementType.Float || shape.DimensionsCount != 2
+            || dimensions.Length != 2 || dimensions[0] != 1 || dimensions[1] != expectedWidth
+            || shape.ElementCount != expectedWidth)
+            throw new InvalidDataException("Member runtime output must be float32 [1, class count].");
+        var values = result[0].GetTensorDataAsSpan<float>();
+        if (values.Length != expectedWidth)
+            throw new InvalidDataException("Member runtime output element count disagrees with class labels.");
+        return values.ToArray();
     }
 
     public void Dispose()

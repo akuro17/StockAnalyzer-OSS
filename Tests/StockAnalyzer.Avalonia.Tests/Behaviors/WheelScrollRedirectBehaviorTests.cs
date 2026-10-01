@@ -34,6 +34,36 @@ public class WheelScrollRedirectBehaviorTests
     private const double BlankSpaceWindowHeight = 300;
     private const double BlankSpaceProbeInsetX = 60;
     private const double BlankSpaceProbeY = 20;
+    private const int MaxHitTestSettleTicks = 10;
+
+    /// <summary>
+    /// Renders until the hit test at <paramref name="point"/> resolves to <paramref name="expectedTarget"/> (or a descendant) or
+    /// <see cref="MaxHitTestSettleTicks"/> ticks have passed. Hit testing runs against the composed frame, which trails layout by a few
+    /// render ticks: measured right after Show + one tick + RunJobs, the hit test was still empty in about two thirds of runs, and a wheel
+    /// is routed to the hit-tested visual, so a wheel sent into an empty hit test is dropped (seen as a failed "did not scroll" assertion
+    /// with <c>hit=null</c>). If it still does not resolve, the test goes on and fails with its routing diagnostics.
+    /// </summary>
+    private static void SettleHitTest(Window window, Point point, Visual expectedTarget)
+    {
+        for (int tick = 0; tick < MaxHitTestSettleTicks; tick++)
+        {
+            Visual? hit = window.GetVisualAt(point);
+            if (hit is not null && (ReferenceEquals(hit, expectedTarget) || expectedTarget.IsVisualAncestorOf(hit))) return;
+            AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+            Dispatcher.UIThread.RunJobs();
+        }
+    }
+
+    /// <summary>Failure diagnostics for a wheel that did not scroll: what the hit test returned at the wheel point and whether it lies
+    /// inside <paramref name="expectedTarget"/>. A wheel is routed to the hit-tested visual, so a hit outside the target (or none)
+    /// means the wheel never reached the scroller, as opposed to reaching it and being ignored.</summary>
+    private static string DescribeWheelRouting(Window window, Point point, Visual expectedTarget)
+    {
+        Visual? hit = window.GetVisualAt(point);
+        bool insideTarget = hit is not null && (ReferenceEquals(hit, expectedTarget) || expectedTarget.IsVisualAncestorOf(hit));
+        return $"point={point} hit={hit?.GetType().Name ?? "null"} hitInsideExpectedTarget={insideTarget} "
+            + $"targetBounds={expectedTarget.Bounds} windowClientSize={window.ClientSize}";
+    }
 
     private static (Window window, ScrollViewer scrollViewer, StackPanel content, ComboBox combo, NumericUpDown spin) BuildHost()
     {
@@ -180,11 +210,13 @@ public class WheelScrollRedirectBehaviorTests
                 new Point(firstRow.Bounds.X + 8, firstRow.Bounds.Bottom + 6), window) ?? default;
 
             var before = scrollViewer.Offset.Y;
+            SettleHitTest(window, gapPoint, scrollViewer);
+            string routing = DescribeWheelRouting(window, gapPoint, scrollViewer);
             window.MouseWheel(gapPoint, new Vector(0, -3));
             AvaloniaHeadlessPlatform.ForceRenderTimerTick();
             Dispatcher.UIThread.RunJobs();
 
-            Assert.True(scrollViewer.Offset.Y > before);
+            Assert.True(scrollViewer.Offset.Y > before, $"{routing} offsetBefore={before} offsetAfter={scrollViewer.Offset.Y}");
         }
         finally
         {
@@ -206,6 +238,7 @@ public class WheelScrollRedirectBehaviorTests
 
             var point = combo.TranslatePoint(
                 new Point(combo.Bounds.Width / 2, combo.Bounds.Height / 2), window) ?? default;
+            SettleHitTest(window, point, combo);
             window.MouseWheel(point, new Vector(0, -3));
             AvaloniaHeadlessPlatform.ForceRenderTimerTick();
             Dispatcher.UIThread.RunJobs();
@@ -263,12 +296,15 @@ public class WheelScrollRedirectBehaviorTests
 
             var point = listBox.TranslatePoint(
                 new Point(listBox.Bounds.Width / 2, listBox.Bounds.Height / 2), window) ?? default;
+            SettleHitTest(window, point, listBox);
+            string routing = DescribeWheelRouting(window, point, listBox);
             window.MouseWheel(point, new Vector(0, -3));
             AvaloniaHeadlessPlatform.ForceRenderTimerTick();
             Dispatcher.UIThread.RunJobs();
 
-            Assert.Equal(outerBefore, outer.Offset.Y); // outer form must not have moved
-            Assert.True(innerScroller.Offset.Y > innerBefore); // the ListBox scrolled instead
+            string after = $"{routing} outerOffset={outer.Offset} innerOffset={innerScroller.Offset} (before: outerY={outerBefore} innerY={innerBefore})";
+            Assert.True(outerBefore == outer.Offset.Y, "outer form must not have moved; " + after);
+            Assert.True(innerScroller.Offset.Y > innerBefore, "the ListBox should have scrolled instead; " + after);
         }
         finally
         {
@@ -290,6 +326,7 @@ public class WheelScrollRedirectBehaviorTests
 
             var point = spin.TranslatePoint(
                 new Point(spin.Bounds.Width / 2, spin.Bounds.Height / 2), window) ?? default;
+            SettleHitTest(window, point, spin);
             window.MouseWheel(point, new Vector(0, -3));
             AvaloniaHeadlessPlatform.ForceRenderTimerTick();
             Dispatcher.UIThread.RunJobs();

@@ -95,25 +95,11 @@ internal static class DrawdownEpisodeCalculator
         ImmutableArray<double> series,
         CancellationToken cancellationToken)
     {
-        double maximum = 0d;
-        int peak = 0;
-        int latestPeak = 0;
-        int trough = 0;
-        for (int i = 0; i < series.Length; i++)
-        {
-            MetricCalculation.CheckCancellation(cancellationToken, i);
-            if (equity[i] >= equity[latestPeak]) latestPeak = i;
-            if (series[i] > maximum)
-            {
-                maximum = series[i];
-                peak = latestPeak;
-                trough = i;
-            }
-        }
-        if (maximum == 0d) return NoDrawdown();
-        MetricValue converted = MetricCalculation.FromDouble(maximum, MetricUnit.DrawdownRatio);
+        DrawdownSeriesCalculator.DrawdownTrough<double> deepest = DrawdownSeriesCalculator.FindFirstMaximalTrough(equity, series, cancellationToken);
+        if (deepest.Maximum == 0d) return NoDrawdown();
+        MetricValue converted = MetricCalculation.FromDouble(deepest.Maximum, MetricUnit.DrawdownRatio);
         if (converted.Status != MetricStatus.Valid) return new DrawdownEpisodeResult(DrawdownEpisodeStatus.Unavailable, converted.Reason.ToString(), null);
-        return Build(equity, timestamps, peak, trough, converted.Value!.Value, MetricUnit.DrawdownRatio, cancellationToken);
+        return Build(equity, timestamps, deepest.Peak, deepest.Trough, converted.Value!.Value, MetricUnit.DrawdownRatio, cancellationToken);
     }
 
     private static DrawdownEpisodeResult ComputeAmount(
@@ -122,23 +108,9 @@ internal static class DrawdownEpisodeCalculator
         ImmutableArray<decimal> series,
         CancellationToken cancellationToken)
     {
-        decimal maximum = 0m;
-        int peak = 0;
-        int latestPeak = 0;
-        int trough = 0;
-        for (int i = 0; i < series.Length; i++)
-        {
-            MetricCalculation.CheckCancellation(cancellationToken, i);
-            if (equity[i] >= equity[latestPeak]) latestPeak = i;
-            if (series[i] > maximum)
-            {
-                maximum = series[i];
-                peak = latestPeak;
-                trough = i;
-            }
-        }
-        if (maximum == 0m) return NoDrawdown();
-        return Build(equity, timestamps, peak, trough, maximum, MetricUnit.Currency, cancellationToken);
+        DrawdownSeriesCalculator.DrawdownTrough<decimal> deepest = DrawdownSeriesCalculator.FindFirstMaximalTrough(equity, series, cancellationToken);
+        if (deepest.Maximum == 0m) return NoDrawdown();
+        return Build(equity, timestamps, deepest.Peak, deepest.Trough, deepest.Maximum, MetricUnit.Currency, cancellationToken);
     }
 
     private static DrawdownEpisodeResult Build(
@@ -152,16 +124,7 @@ internal static class DrawdownEpisodeCalculator
     {
         if (timestamps.Length != equity.Length) return new DrawdownEpisodeResult(DrawdownEpisodeStatus.Unavailable, DrawdownReasonCodes.InvalidInput, null);
 
-        int? recovery = null;
-        for (int i = trough + 1; i < equity.Length; i++)
-        {
-            MetricCalculation.CheckCancellation(cancellationToken, i);
-            if (equity[i] >= equity[peak])
-            {
-                recovery = i;
-                break;
-            }
-        }
+        int? recovery = DrawdownSeriesCalculator.FindRecoveryIndex(equity, peak, trough, cancellationToken);
 
         DrawdownDuration decline = Duration(timestamps[peak], timestamps[trough]);
         DrawdownDuration recoveryDuration = recovery is { } recoveryIndex

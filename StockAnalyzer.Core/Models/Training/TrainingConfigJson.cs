@@ -46,6 +46,8 @@ public static class TrainingConfigJson
         options.Converters.Add(new TrainingFrameworkJsonConverter());
         options.Converters.Add(new TrainingFeatureModeJsonConverter());
         options.Converters.Add(new TrainingTargetTypeJsonConverter());
+        options.Converters.Add(new JsonStringEnumConverter<TrainingInitializationMode>(JsonNamingPolicy.SnakeCaseLower,
+            allowIntegerValues: false));
         options.Converters.Add(new FeatureChannelKindJsonConverter());
         options.Converters.Add(new PriceFieldJsonConverter());
         options.Converters.Add(new PriceTypeJsonConverter());

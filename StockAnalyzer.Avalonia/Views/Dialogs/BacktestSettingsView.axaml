@@ -12,8 +12,11 @@
 
     <UserControl.Resources>
         <conv:EnumToLocalizedDisplayNameConverter x:Key="EnumToLocalizedDisplayNameConverter"/>
+        <conv:HsvDataToAvaloniaHsvColorConverter x:Key="HsvConverter"/>
         <x:Double x:Key="BacktestSettingsInputWidth">150</x:Double>
         <x:Double x:Key="BacktestSettingsInputHeight">28</x:Double>
+        <x:Double x:Key="BacktestSettingsColorWidth">40</x:Double>
+        <x:Double x:Key="BacktestSettingsColorHeight">24</x:Double>
     </UserControl.Resources>
 
     <UserControl.Styles>
@@ -24,6 +27,11 @@
         </Style>
         <Style Selector="ComboBox.SettingInput">
             <Setter Property="MinWidth" Value="{StaticResource BacktestSettingsInputWidth}"/>
+        </Style>
+        <!-- Shared size of every color swatch on this page (Group E). -->
+        <Style Selector="ColorPicker.SettingColor">
+            <Setter Property="Width" Value="{StaticResource BacktestSettingsColorWidth}"/>
+            <Setter Property="Height" Value="{StaticResource BacktestSettingsColorHeight}"/>
         </Style>
     </UserControl.Styles>
 
@@ -247,6 +255,71 @@
                         <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
                         <TextBlock Text="{l:Localize Settings_Backtest_Desc_AnnualPeriods}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
                         <TextBlock Text="{Binding AnnualPeriodsError}" IsVisible="{Binding AnnualPeriodsError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" AutomationProperties.AutomationId="BacktestSettings_Error_AnnualPeriodsByFrame" Margin="0,4,0,0" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Semantic.Error}" TextWrapping="Wrap"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Group E: Equity Curve Color (stored in the global chart settings; saving repaints open Backtest windows) -->
+            <Border Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="{l:Localize Backtest_GroupE_Title}" FontSize="{DynamicResource BaseFontSize}" FontWeight="Bold" Foreground="{DynamicResource Brush.Accent.Primary}"/>
+                    <TextBlock Text="{l:Localize Settings_Backtest_GroupE_Note}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+
+                    <!-- Mode: the single switch deciding what the color follows -->
+                    <StackPanel>
+                        <Grid RowDefinitions="Auto,Auto" RowSpacing="4">
+                            <TextBlock Text="{l:Localize Backtest_Field_EquityColorMode}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                            <ComboBox Grid.Row="1" HorizontalAlignment="Right" Classes="SettingInput"
+                                      ItemsSource="{Binding EquityColorModeOptions}"
+                                      SelectedItem="{Binding EquityColorMode}"
+                                      AutomationProperties.AutomationId="BacktestSettings_EquityColorMode">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Converter={StaticResource EnumToLocalizedDisplayNameConverter}}"/>
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                        </Grid>
+                        <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                        <TextBlock Text="{l:Localize Settings_Backtest_Desc_EquityColorMode}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                        <TextBlock Text="{l:Localize Settings_Backtest_Hint_EquityMode_Single}" IsVisible="{Binding IsEquityColorModeSingle}" Margin="0,4,0,0" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                        <TextBlock Text="{l:Localize Settings_Backtest_Hint_EquityMode_PreviousBar}" IsVisible="{Binding IsEquityColorModePreviousBar}" Margin="0,4,0,0" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                        <TextBlock Text="{l:Localize Settings_Backtest_Hint_EquityMode_Drawdown}" IsVisible="{Binding IsEquityColorModeDrawdown}" Margin="0,4,0,0" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                    </StackPanel>
+
+                    <!-- Line color: always shown (Single mode and the one-point dot) -->
+                    <StackPanel>
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Text="{l:Localize Backtest_Field_EquityLineColor}" FontWeight="SemiBold" VerticalAlignment="Center" TextWrapping="Wrap"/>
+                            <ColorPicker Grid.Column="1" Classes="SettingColor" HsvColor="{Binding EquityLineColor, Mode=TwoWay, Converter={StaticResource HsvConverter}}"
+                                         AutomationProperties.AutomationId="BacktestSettings_EquityLineColor"/>
+                        </Grid>
+                        <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                        <TextBlock Text="{l:Localize Settings_Backtest_Desc_EquityLineColor}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                    </StackPanel>
+
+                    <!-- Up/Down colors: one picker each (the same two values in PreviousBar and Drawdown); only the label follows the mode. -->
+                    <StackPanel IsVisible="{Binding !IsEquityColorModeSingle}" Spacing="8">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <Panel VerticalAlignment="Center">
+                                <TextBlock Text="{l:Localize Label_UpColor}" IsVisible="{Binding IsEquityColorModePreviousBar}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                <TextBlock Text="{l:Localize Backtest_Field_EquityHighWaterColor}" IsVisible="{Binding IsEquityColorModeDrawdown}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                            </Panel>
+                            <ColorPicker Grid.Column="1" Classes="SettingColor" HsvColor="{Binding EquityUpColor, Mode=TwoWay, Converter={StaticResource HsvConverter}}"
+                                         AutomationProperties.AutomationId="BacktestSettings_EquityUpColor"/>
+                        </Grid>
+                        <Grid ColumnDefinitions="*,Auto">
+                            <Panel VerticalAlignment="Center">
+                                <TextBlock Text="{l:Localize Label_DownColor}" IsVisible="{Binding IsEquityColorModePreviousBar}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                <TextBlock Text="{l:Localize Backtest_Field_EquityDrawdownColor}" IsVisible="{Binding IsEquityColorModeDrawdown}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                            </Panel>
+                            <ColorPicker Grid.Column="1" Classes="SettingColor" HsvColor="{Binding EquityDownColor, Mode=TwoWay, Converter={StaticResource HsvConverter}}"
+                                         AutomationProperties.AutomationId="BacktestSettings_EquityDownColor"/>
+                        </Grid>
                     </StackPanel>
                 </StackPanel>
             </Border>

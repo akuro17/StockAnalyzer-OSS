@@ -29,6 +29,15 @@ public static class BacktestReportValidator
         ValidateMetric(nameof(report.SQN), report.SQN, MetricUnit.Dimensionless);
         ValidateMetric(nameof(report.RecoveryFactor), report.RecoveryFactor, MetricUnit.Dimensionless);
 
+        // Extended metrics are optional (absent in reports persisted before they existed); each present one is validated independently.
+        foreach ((string name, MetricValue metric, MetricUnit expectedUnit) in report.EnumerateExtendedMetrics())
+        {
+            ValidateMetric(name, metric, expectedUnit);
+        }
+        ValidateExtendedMetricValues(report);
+        ValidateCensoringFlag(nameof(report.MaxDepthDrawdownDurationRightCensored), report.MaxDepthDrawdownDurationRightCensored, nameof(report.MaxDepthDrawdownDuration), report.MaxDepthDrawdownDuration);
+        ValidateCensoringFlag(nameof(report.LongestDrawdownDurationRightCensored), report.LongestDrawdownDurationRightCensored, nameof(report.LongestDrawdownDuration), report.LongestDrawdownDuration);
+
         bool adjustedSortinoValid = report.AnnualizedSortinoAutocorrelationAdjusted.Status == MetricStatus.Valid;
         if (adjustedSortinoValid != report.AnnualizedSortinoAutocorrelationAdjustedConfidenceInterval.HasValue)
         {
@@ -93,6 +102,98 @@ public static class BacktestReportValidator
         {
             throw Invalid($"{name} must provide a reason when non-Valid.");
         }
+    }
+
+    /// <summary>
+    /// Value-domain and cross-field contracts of the extended metrics. Each contract applies only when the metrics it names are present
+    /// (legacy reports carry none) and Valid (a non-Valid metric has no value to constrain). TimeInMarket &lt;= sample bar count is not
+    /// checkable here because the sample size is not part of the report.
+    /// </summary>
+    private static void ValidateExtendedMetricValues(BacktestReport report)
+    {
+        decimal? grossProfit = ValidValue(report.GrossProfit);
+        decimal? grossLoss = ValidValue(report.GrossLoss);
+        decimal? averageWin = ValidValue(report.AverageWin);
+        decimal? averageLoss = ValidValue(report.AverageLoss);
+        decimal? largestWin = ValidValue(report.LargestWin);
+        decimal? largestLoss = ValidValue(report.LargestLoss);
+        decimal? maxDepthDrawdownDuration = ValidValue(report.MaxDepthDrawdownDuration);
+        decimal? longestDrawdownDuration = ValidValue(report.LongestDrawdownDuration);
+        decimal? timeInMarket = ValidValue(report.TimeInMarket);
+        decimal? exposure = ValidValue(report.Exposure);
+
+        RequireAtLeastZero(nameof(report.GrossProfit), grossProfit);
+        RequireAtLeastZero(nameof(report.GrossLoss), grossLoss);
+        RequirePositive(nameof(report.AverageWin), averageWin);
+        RequirePositive(nameof(report.AverageLoss), averageLoss);
+        RequirePositive(nameof(report.PayoffRatio), ValidValue(report.PayoffRatio));
+        RequirePositive(nameof(report.LargestWin), largestWin);
+        RequirePositive(nameof(report.LargestLoss), largestLoss);
+        RequireAtLeastZero(nameof(report.AverageHoldingPeriod), ValidValue(report.AverageHoldingPeriod));
+
+        RequireCount(nameof(report.MaxConsecutiveWins), ValidValue(report.MaxConsecutiveWins), report.WinTrades, nameof(report.WinTrades));
+        RequireCount(nameof(report.MaxConsecutiveLosses), ValidValue(report.MaxConsecutiveLosses), report.LossTrades, nameof(report.LossTrades));
+
+        RequireWholeNonNegative(nameof(report.MaxDepthDrawdownDuration), maxDepthDrawdownDuration);
+        RequireWholeNonNegative(nameof(report.LongestDrawdownDuration), longestDrawdownDuration);
+        if (maxDepthDrawdownDuration is { } depthBars && longestDrawdownDuration is { } longestBars && longestBars < depthBars)
+        {
+            throw Invalid($"{nameof(report.LongestDrawdownDuration)} must not be shorter than {nameof(report.MaxDepthDrawdownDuration)}.");
+        }
+
+        RequireWholeNonNegative(nameof(report.TimeInMarket), timeInMarket);
+        if (exposure is { } ratio && (ratio < 0m || ratio > 1m))
+        {
+            throw Invalid($"{nameof(report.Exposure)} must be within [0, 1].");
+        }
+        if (timeInMarket is { } barsInMarket && exposure is { } exposureRatio && (barsInMarket == 0m) != (exposureRatio == 0m))
+        {
+            throw Invalid($"{nameof(report.Exposure)} must be zero if and only if {nameof(report.TimeInMarket)} is zero.");
+        }
+
+        RequireOrdered(nameof(report.AverageWin), averageWin, nameof(report.LargestWin), largestWin);
+        RequireOrdered(nameof(report.LargestWin), largestWin, nameof(report.GrossProfit), grossProfit);
+        RequireOrdered(nameof(report.AverageLoss), averageLoss, nameof(report.LargestLoss), largestLoss);
+        RequireOrdered(nameof(report.LargestLoss), largestLoss, nameof(report.GrossLoss), grossLoss);
+    }
+
+    /// <summary>A right-censoring flag exists if and only if the duration metric it qualifies is present and Valid.</summary>
+    private static void ValidateCensoringFlag(string flagName, bool? flag, string metricName, MetricValue? metric)
+    {
+        bool metricIsValid = metric is { Status: MetricStatus.Valid };
+        if (metricIsValid != flag.HasValue)
+        {
+            throw Invalid($"{flagName} must be present if and only if {metricName} is present and Valid.");
+        }
+    }
+
+    private static decimal? ValidValue(MetricValue? metric) => metric is { Status: MetricStatus.Valid } valid ? valid.Value : null;
+
+    private static void RequireAtLeastZero(string name, decimal? value)
+    {
+        if (value < 0m) throw Invalid($"{name} must not be negative.");
+    }
+
+    private static void RequirePositive(string name, decimal? value)
+    {
+        if (value <= 0m) throw Invalid($"{name} must be greater than zero.");
+    }
+
+    private static void RequireWholeNonNegative(string name, decimal? value)
+    {
+        if (value is not { } number) return;
+        if (number < 0m || number != decimal.Truncate(number)) throw Invalid($"{name} must be a non-negative whole number.");
+    }
+
+    private static void RequireCount(string name, decimal? value, int limit, string limitName)
+    {
+        RequireWholeNonNegative(name, value);
+        if (value > limit) throw Invalid($"{name} must not exceed {limitName}.");
+    }
+
+    private static void RequireOrdered(string smallerName, decimal? smaller, string largerName, decimal? larger)
+    {
+        if (smaller > larger) throw Invalid($"{smallerName} must not exceed {largerName}.");
     }
 
     private static ArgumentException Invalid(string message) => new(message, "report");

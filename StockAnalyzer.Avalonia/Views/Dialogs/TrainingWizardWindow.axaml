@@ -57,6 +57,9 @@
             <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Secondary}"/>
         </Style>
+        <Style Selector="TextBox.clipInvalid">
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Semantic.Error}"/>
+        </Style>
         <Style Selector="Grid.foldRow > TextBlock">
             <Setter Property="FontSize" Value="{DynamicResource DetailFontSize}"/>
             <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Primary}"/>
@@ -267,7 +270,7 @@
                             <Grid ColumnDefinitions="*,*">
                                 <StackPanel Spacing="6" Margin="0,0,8,0">
                                     <TextBlock Text="{l:Localize TrainingWizard_Framework}" Classes="fieldLabel"/>
-                                    <ComboBox ItemsSource="{Binding AvailableFrameworks}"
+                                    <ComboBox ItemsSource="{Binding SelectableFrameworks}"
                                               SelectedItem="{Binding SelectedFramework, Mode=TwoWay}"
                                               HorizontalAlignment="Stretch" Height="34"
                                               Background="{DynamicResource Brush.Background.Tertiary}"
@@ -304,6 +307,32 @@
                                 <TextBlock Text="{l:Localize TrainingWizard_TargetHelp}" TextWrapping="Wrap"
                                            FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Tertiary}"/>
                             </StackPanel>
+                            <StackPanel Spacing="6">
+                                <TextBlock Text="{l:Localize TrainingWizard_InitializationMode}" Classes="fieldLabel"/>
+                                <ComboBox ItemsSource="{Binding AvailableInitializationModes}"
+                                          SelectedItem="{Binding SelectedInitializationMode, Mode=TwoWay}"
+                                          HorizontalAlignment="Stretch">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding Converter={StaticResource EnumToLocalizedDisplayNameConverter}}"/>
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+                                <TextBlock Text="{l:Localize TrainingWizard_TransferHelp}" TextWrapping="Wrap"
+                                           FontSize="{DynamicResource HelperFontSize}"/>
+                                <StackPanel IsVisible="{Binding IsTransferMode}" Spacing="6">
+                                    <TextBlock Text="{l:Localize TrainingWizard_CheckpointPath}" Classes="fieldLabel"/>
+                                    <TextBox Text="{Binding CheckpointPath, Mode=TwoWay}"/>
+                                </StackPanel>
+                                <StackPanel IsVisible="{Binding IsFineTuneMode}" Spacing="6">
+                                    <TextBlock Text="{l:Localize TrainingWizard_ParentModelId}" Classes="fieldLabel"/>
+                                    <TextBox Text="{Binding ParentModelId, Mode=TwoWay}"/>
+                                </StackPanel>
+                                <StackPanel IsVisible="{Binding CanFreezeModules}" Spacing="6">
+                                    <TextBlock Text="{l:Localize TrainingWizard_FreezePaths}" Classes="fieldLabel"/>
+                                    <TextBox Text="{Binding FreezePathsText, Mode=TwoWay}"/>
+                                </StackPanel>
+                            </StackPanel>
                             <Grid ColumnDefinitions="*,*">
                                 <StackPanel Spacing="6" Margin="0,0,8,0">
                                     <TextBlock Text="{l:Localize TrainingWizard_WindowSize}" Classes="fieldLabel"/>
@@ -331,9 +360,14 @@
                                       IsChecked="{Binding UseFixedZScore, Mode=TwoWay}"/>
                             <CheckBox Content="{l:Localize TrainingWizard_ClipSigmaEnabled}"
                                       IsChecked="{Binding UseClipSigma, Mode=TwoWay}"/>
-                            <NumericUpDown Value="{Binding ClipSigma, Mode=TwoWay}" Minimum="0.01"
-                                           Increment="0.1" FormatString="F2" Width="120"
-                                           HorizontalAlignment="Left"/>
+                            <TextBox Text="{Binding ClipSigmaText, Mode=TwoWay}" Width="120"
+                                     Classes.clipInvalid="{Binding HasErrors}"
+                                     AutomationProperties.AutomationId="TrainingWizard_ClipSigmaInput"
+                                     HorizontalAlignment="Left"/>
+                            <TextBlock Text="{Binding ClipSigmaValidationMessage}" IsVisible="{Binding HasErrors}"
+                                       AutomationProperties.AutomationId="TrainingWizard_ClipSigmaError"
+                                       TextWrapping="Wrap" FontSize="{DynamicResource HelperFontSize}"
+                                       Foreground="{DynamicResource Brush.Semantic.Error}"/>
                             <TextBlock Text="{l:Localize TrainingWizard_Lags}" Classes="fieldLabel"/>
                             <TextBox Text="{Binding LagsText, Mode=TwoWay}"
                                      Watermark="{l:Localize TrainingWizard_LagsWatermark}"/>
@@ -386,6 +420,12 @@
                                         Padding="10,4"
                                         Command="{Binding AddHyperparameterCommand}"/>
                             </Grid>
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="{l:Localize Monitoring_SaveDescription}" TextWrapping="Wrap"/>
+                                <Button Content="{l:Localize Monitoring_SaveConfiguration}"
+                                        Command="{Binding SaveRetrainingConfigurationCommand}"
+                                        IsEnabled="{Binding !IsTraining}"/>
+                            </StackPanel>
                             <ItemsControl ItemsSource="{Binding Hyperparameters}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate x:DataType="dialogs:TrainingHyperparameterEntry">
@@ -509,6 +549,10 @@
                     </TabItem>
 
                     </TabControl>
+                    <StackPanel Spacing="6" IsVisible="{Binding CheckpointManifestPath, Converter={x:Static ObjectConverters.IsNotNull}}">
+                        <TextBlock Text="{l:Localize TrainingWizard_CheckpointResult}"/>
+                        <TextBox Text="{Binding CheckpointManifestPath, Mode=OneWay}" IsReadOnly="True"/>
+                    </StackPanel>
 
                 </StackPanel>
                 </Border>

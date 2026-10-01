@@ -12,6 +12,28 @@ using StockAnalyzer.Core.Models.Training;
 
 namespace StockAnalyzer.Core.Services;
 
+public enum EnsembleValidationFailure
+{
+    MissingGeneration,
+    IncompatibleContract,
+    InvalidAccuracyEvidence,
+}
+
+internal static class EnsembleValidationErrors
+{
+    private static readonly object ReasonKey = new();
+
+    internal static EnsembleValidationFailure? GetReason(Exception exception) =>
+        exception.Data[ReasonKey] is EnsembleValidationFailure reason ? reason : null;
+
+    internal static InvalidOperationException Create(string message, EnsembleValidationFailure reason)
+    {
+        var exception = new InvalidOperationException(message);
+        exception.Data[ReasonKey] = reason;
+        return exception;
+    }
+}
+
 public sealed record EnsembleMember(string ModelId, double Weight);
 
 public sealed record EnsembleSpec(IReadOnlyList<EnsembleMember> Members)
@@ -49,13 +71,17 @@ public sealed record EnsembleSpec(IReadOnlyList<EnsembleMember> Members)
             || models.Select(m => m.ModelId).Distinct(StringComparer.Ordinal).Count() != models.Length
             || models.Any(m => m.TargetType != PredictionModelMetadata.TargetTypeClassification
                 || m.EvaluationRevision != models[0].EvaluationRevision))
-            throw new InvalidOperationException("Accuracy preset requires distinct classification generations at the same evaluation revision.");
+            throw EnsembleValidationErrors.Create(
+                "Accuracy preset requires distinct classification generations at the same evaluation revision.",
+                EnsembleValidationFailure.IncompatibleContract);
         var accuracies = models.Select(readFinalOuterAccuracy).ToArray();
         if (accuracies.Any(x => !double.IsFinite(x) || x < 0))
-            throw new InvalidOperationException("Final-outer accuracy must be finite and nonnegative.");
+            throw EnsembleValidationErrors.Create("Final-outer accuracy must be finite and nonnegative.",
+                EnsembleValidationFailure.InvalidAccuracyEvidence);
         double total = accuracies.Sum();
         if (!double.IsFinite(total) || total <= 0)
-            throw new InvalidOperationException("Final-outer accuracies must have a positive total.");
+            throw EnsembleValidationErrors.Create("Final-outer accuracies must have a positive total.",
+                EnsembleValidationFailure.InvalidAccuracyEvidence);
         return new EnsembleSpec(Array.AsReadOnly(models.Select((m, i) =>
             new EnsembleMember(m.ModelId, accuracies[i] / total)).ToArray()));
     }
@@ -71,6 +97,9 @@ public interface IEnsembleSettingsManager
 /// <summary>Atomically persists the selected generation IDs and unit-fraction weights.</summary>
 public sealed class EnsembleSettingsManager : IEnsembleSettingsManager
 {
+    public static EnsembleValidationFailure? GetValidationFailure(Exception exception) =>
+        EnsembleValidationErrors.GetReason(exception);
+
     private readonly string _path;
     private readonly IModelGenerationRegistry _registry;
     private readonly SemaphoreSlim _mutation = new(1, 1);
@@ -93,19 +122,20 @@ public sealed class EnsembleSettingsManager : IEnsembleSettingsManager
             if (!File.Exists(_path)) { Current = null; return; }
             var spec = await AtomicJsonFile.LoadAsync<EnsembleSpec>(_path);
             if (spec is null) { Current = null; return; }
-            await Task.Run(() => ValidateGenerations(spec, _registry));
-            Current = Freeze(spec);
+            var snapshot = Freeze(spec);
+            await Task.Run(() => ValidateGenerations(snapshot, _registry));
+            Current = snapshot;
         }
         finally { _mutation.Release(); }
     }
 
     public async Task SaveAsync(EnsembleSpec? spec)
     {
+        var snapshot = spec is null ? null : Freeze(spec);
         await _mutation.WaitAsync();
         try
         {
-            if (spec is not null) await Task.Run(() => ValidateGenerations(spec, _registry));
-            var snapshot = spec is null ? null : Freeze(spec);
+            if (snapshot is not null) await Task.Run(() => ValidateGenerations(snapshot, _registry));
             await AtomicJsonFile.SaveAsync(_path, snapshot);
             Current = snapshot;
         }
@@ -113,7 +143,7 @@ public sealed class EnsembleSettingsManager : IEnsembleSettingsManager
     }
 
     private static EnsembleSpec Freeze(EnsembleSpec spec) =>
-        new(Array.AsReadOnly(spec.Members.ToArray()));
+        new(Array.AsReadOnly(spec.Members?.ToArray() ?? Array.Empty<EnsembleMember>()));
 
     public static void ValidateGenerations(EnsembleSpec spec, IModelGenerationRegistry registry)
     {
@@ -124,31 +154,36 @@ public sealed class EnsembleSettingsManager : IEnsembleSettingsManager
         foreach (var member in spec.Members)
         {
             var manifest = registry.GetManifest(member.ModelId)
-                ?? throw new InvalidOperationException($"Generation '{member.ModelId}' is unavailable.");
+                ?? throw EnsembleValidationErrors.Create($"Generation '{member.ModelId}' is unavailable.",
+                    EnsembleValidationFailure.MissingGeneration);
             using var lease = registry.Acquire(member.ModelId)
-                ?? throw new InvalidOperationException($"Generation '{member.ModelId}' is unavailable.");
+                ?? throw EnsembleValidationErrors.Create($"Generation '{member.ModelId}' is unavailable.",
+                    EnsembleValidationFailure.MissingGeneration);
             using var session = new InferenceSession(lease.ModelPath);
             var metadata = session.ModelMetadata.CustomMetadataMap;
             string definition = (metadata.GetValueOrDefault("neutral_threshold") ?? "") + "\n"
                 + (metadata.GetValueOrDefault("price_adjustment") ?? "");
             if (manifest.TargetType != PredictionModelMetadata.TargetTypeClassification)
-                throw new InvalidOperationException("Only classification generations can be ensembled.");
+                throw EnsembleValidationErrors.Create("Only classification generations can be ensembled.",
+                    EnsembleValidationFailure.IncompatibleContract);
             var row = manifest.ClassOrder.Split(',');
             var set = new HashSet<string>(row, StringComparer.Ordinal);
-            if (row.Length == 0 || row.Any(string.IsNullOrWhiteSpace) || set.Count != row.Length)
-                throw new InvalidOperationException("Generation class labels are invalid.");
+            if (!PredictionModelMetadata.HasValidClassOrder(manifest.ClassOrder))
+                throw EnsembleValidationErrors.Create("Generation class labels are invalid.",
+                    EnsembleValidationFailure.IncompatibleContract);
             if (first is null) { first = manifest; labels = set; targetDefinition = definition; }
             else if (manifest.Timeframe != first.Timeframe || manifest.Horizon != first.Horizon
                 || manifest.TargetType != first.TargetType || !labels!.SetEquals(set)
                 || definition != targetDefinition)
-                throw new InvalidOperationException("Ensemble generations have incompatible target, timeframe, horizon, or class labels.");
+                throw EnsembleValidationErrors.Create("Ensemble generations have incompatible target, timeframe, horizon, or class labels.",
+                    EnsembleValidationFailure.IncompatibleContract);
         }
     }
 
     public static double ReadFinalOuterAccuracy(ModelGenerationManifest manifest, IModelGenerationRegistry registry)
     {
         using var lease = registry.Acquire(manifest.ModelId)
-            ?? throw new InvalidOperationException("Generation is unavailable.");
+            ?? throw EnsembleValidationErrors.Create("Generation is unavailable.", EnsembleValidationFailure.MissingGeneration);
         using var doc = JsonDocument.Parse(File.ReadAllText(lease.ModelPath + ".metrics.json"));
         var report = doc.RootElement;
         if (report.GetProperty("evaluation_status").GetString() != "independent_outer"

@@ -6,4 +6,6 @@ public interface IWindowManagementService
     IPanelTabFactory TabFactory { get; }
     IDetachedWindowFactory WindowFactory { get; }
     IWindowBoundaryService BoundaryService { get; }
+    void BringMainWindowToFront();
+    void BringWindowToFront(object dataContext);
 }

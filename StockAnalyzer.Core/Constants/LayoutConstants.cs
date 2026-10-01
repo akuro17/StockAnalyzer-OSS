@@ -32,7 +32,6 @@ public static class LayoutConstants
 
     // Panel Chart Management
     public const string PanelChartIdPrefix = "PanelChart_";
-    public const int MaxPanelTabs = 16;
 
     // Added for Step 80-6-1:
     public const double MinPanelHeight = 50.0;
@@ -59,8 +58,6 @@ public static class LayoutConstants
     public const int MAX_PANEL_WIDTH = 800;
     public const int MIN_PANEL_HEIGHT = 75;
     public const int MAX_PANEL_HEIGHT = 600;
-    public const int MAX_TABS_PER_PANEL = 20;
-    public const int MAX_TAB_REORDER_DISTANCE = 100;
 
     // Default Detached Window Geometry Fallbacks
     public const double DefaultDetachedWindowX = 100.0;

@@ -16,8 +16,10 @@ namespace StockAnalyzer.Avalonia.Tests.Services;
 /// <c>FilterSettings_ToolTip_TextInputMode</c>). This test fails instead, naming the key and the file.
 /// Scope: keys referenced from <c>*.axaml</c> via the <c>l:Localize</c> markup extension, plus the
 /// keys <c>DataWindowViewModel</c> resolves from code (see
-/// <see cref="DataWindowViewModel_CodeReferencedLocalizationKeys_ResolveInEveryLocale"/>). Keys looked
-/// up from code elsewhere (<c>LocalizationManager.Instance["..."]</c>) are still not covered here.
+/// <see cref="DataWindowViewModel_CodeReferencedLocalizationKeys_ResolveInEveryLocale"/>), the literal
+/// <c>LocalizationManager.Instance["..."]</c> keys of <c>TickerListViewModel</c>, the settings category
+/// title keys and the enum keys the <c>EnumToLocalizedNameConverter</c> resolves for the Tickers settings
+/// page. Keys looked up from code in other files are still not covered here.
 /// </summary>
 public class LocalizationKeyCoverageTests
 {
@@ -40,6 +42,10 @@ public class LocalizationKeyCoverageTests
     // and the variable form Instance[key] both fail the quotes, so only real key literals match.
     private static readonly Regex GetStringKeyPattern =
         new(@"GetString\(\s*""([A-Za-z0-9_]+)""\s*\)", RegexOptions.Compiled);
+
+    // A string-literal key in LocalizationManager.Instance["..."]; the variable form Instance[key] fails the quotes.
+    private static readonly Regex InstanceKeyPattern =
+        new(@"LocalizationManager\.Instance\[\s*""([A-Za-z0-9_]+)""\s*\]", RegexOptions.Compiled);
 
     private static string[] DiscoverLocaleCodes()
     {
@@ -179,6 +185,168 @@ public class LocalizationKeyCoverageTests
         }
 
         Assert.True(problems.Count == 0, "DataWindow code-referenced localization keys with no entry:\n" + string.Join("\n", problems));
+    }
+
+    /// <summary>
+    /// <c>TickerListViewModel</c> resolves its messages from code (<c>LocalizationManager.Instance["..."]</c>),
+    /// which the XAML scan never sees. That is how the Auto Play refusal message
+    /// (<c>TickerList_AutoPlay_EmptyList</c>) could have shipped without an entry. The literal keys are scanned
+    /// from the source, so keys added later are covered without editing this test.
+    /// </summary>
+    [Fact]
+    public void TickerListViewModel_CodeReferencedLocalizationKeys_ResolveInEveryLocale()
+    {
+        var source = File.ReadAllText(
+            Path.Combine(TestSolution.Root, "StockAnalyzer.Avalonia", "ViewModels", "TickerListViewModel.cs"));
+
+        var keys = InstanceKeyPattern.Matches(source)
+            .Select(m => m.Groups[1].Value)
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(k => k, StringComparer.Ordinal)
+            .ToList();
+
+        // Sentinels: the scan itself must work, and the Auto Play keys must be part of it.
+        Assert.True(keys.Count >= 10, $"Expected to scan >=10 Instance[\"...\"] keys from TickerListViewModel.cs, found {keys.Count}.");
+        Assert.Contains("TickerList_AutoPlay_EmptyList", keys);
+        Assert.Contains("TickerList_AutoPlay_Unavailable", keys);
+
+        AssertKeysResolveInEveryLocale(keys, "TickerListViewModel.cs");
+    }
+
+    /// <summary>
+    /// A settings category title is resolved by <c>LocalizeConverter</c> from <c>SettingsCategory.TitleKey</c>, not by
+    /// <c>l:Localize</c>, so a new category (Tickers) with a title key missing from a locale would show its raw key.
+    /// </summary>
+    [Fact]
+    public void SettingsCategoryTitleKeys_ResolveInEveryLocale()
+    {
+        var keys = new List<string>();
+        void Collect(IEnumerable<StockAnalyzer.Avalonia.Models.SettingsCategory> categories)
+        {
+            foreach (var category in categories)
+            {
+                keys.Add(category.TitleKey);
+                Collect(category.Children);
+            }
+        }
+        Collect(StockAnalyzer.Avalonia.Models.SettingsConstants.Categories);
+
+        Assert.Contains("Settings_Tickers", keys);
+        AssertKeysResolveInEveryLocale(keys.Distinct(StringComparer.Ordinal).OrderBy(k => k, StringComparer.Ordinal).ToList(), "SettingsConstants.Categories");
+    }
+
+    /// <summary>
+    /// The Tickers settings ComboBox shows <c>TickerColumnSelectionScope</c> through
+    /// <c>EnumToLocalizedNameConverter</c>, which resolves the key <c>{EnumTypeName}_{Value}</c> at runtime; nothing in
+    /// XAML or C# spells those keys out, so each value needs an explicit check (a renamed value silently loses its label).
+    /// </summary>
+    [Fact]
+    public void TickerColumnSelectionScope_ConverterResolvedKeys_ResolveInEveryLocale()
+    {
+        var keys = Enum.GetValues<StockAnalyzer.Core.Models.Settings.TickerColumnSelectionScope>()
+            .Select(v => $"{nameof(StockAnalyzer.Core.Models.Settings.TickerColumnSelectionScope)}_{v}")
+            .ToList();
+
+        Assert.Equal(2, keys.Count);
+        AssertKeysResolveInEveryLocale(keys, "EnumToLocalizedNameConverter");
+    }
+
+    /// <summary>
+    /// The "Read more" wording shared by the Notes timeline toggle and the Tickers Notes popup is resolved from C#
+    /// (<c>NoteReadMoreLabel</c>), which the XAML scan never sees. Its English wording must stay "Read more" so the
+    /// timeline toggle ("Read more" + arrow) reads exactly as it did before it was localized.
+    /// </summary>
+    [Fact]
+    public void NoteReadMoreLabel_LocalizationKey_ResolvesInEveryLocale_WithUnchangedEnglishWording()
+    {
+        var key = StockAnalyzer.Avalonia.Common.NoteReadMoreLabel.LocalizationKey;
+        AssertKeysResolveInEveryLocale(new[] { key }, "NoteReadMoreLabel");
+
+        using var stream = typeof(LocalizationManager).Assembly.GetManifestResourceStream(LocaleResourceName("en"));
+        Assert.NotNull(stream);
+        using var document = JsonDocument.Parse(stream!);
+        Assert.Equal("Read more", document.RootElement.GetProperty(key).GetString());
+    }
+
+    /// <summary>
+    /// The timeline toggle's "Show less" wording is resolved from C# as well. English is the wording in every shipped
+    /// locale on purpose (the Japanese UI keeps the English toggle words, as the "Read more" key does).
+    /// </summary>
+    [Fact]
+    public void NoteShowLessLabel_LocalizationKey_ResolvesInEveryLocale_WithEnglishWording()
+    {
+        var key = StockAnalyzer.Avalonia.Common.NoteReadMoreLabel.ShowLessLocalizationKey;
+        AssertKeysResolveInEveryLocale(new[] { key }, "NoteReadMoreLabel.ShowLess");
+
+        foreach (var locale in new[] { "en", "ja" })
+        {
+            using var stream = typeof(LocalizationManager).Assembly.GetManifestResourceStream(LocaleResourceName(locale));
+            Assert.NotNull(stream);
+            using var document = JsonDocument.Parse(stream!);
+            Assert.Equal("Show less", document.RootElement.GetProperty(key).GetString());
+        }
+    }
+
+    /// <summary>
+    /// The "redock into a full panel" notice is built in <c>MainWindowViewModel</c> from a title, two message templates (panel full,
+    /// re-host failed) and the four panel labels, resolved from code, so the XAML scan never sees them. The panel-full template must keep
+    /// its two placeholders (panel names, tab cap) and the re-host-failed template its three (plus the failed tab count) in every locale.
+    /// </summary>
+    [Fact]
+    public void RedockPanelFullNotice_LocalizationKeys_ResolveInEveryLocale_WithBothPlaceholders()
+    {
+        var keys = StockAnalyzer.Avalonia.ViewModels.MainWindowViewModel.RedockPanelFullLocalizationKeys;
+
+        Assert.Equal(7, keys.Count);
+        AssertKeysResolveInEveryLocale(keys, "MainWindowViewModel.RedockPanelFull");
+
+        foreach (var locale in Locales)
+        {
+            using var stream = typeof(LocalizationManager).Assembly.GetManifestResourceStream(LocaleResourceName(locale));
+            Assert.NotNull(stream);
+            using var document = JsonDocument.Parse(stream!);
+            var template = document.RootElement.GetProperty(StockAnalyzer.Avalonia.ViewModels.MainWindowViewModel.RedockPanelFullMessageKey).GetString();
+            Assert.Contains("{0}", template);
+            Assert.Contains("{1}", template);
+
+            var failedTemplate = document.RootElement.GetProperty(StockAnalyzer.Avalonia.ViewModels.MainWindowViewModel.RedockRehostFailedMessageKey).GetString();
+            Assert.Contains("{0}", failedTemplate);
+            Assert.Contains("{1}", failedTemplate);
+            Assert.Contains("{2}", failedTemplate);
+        }
+    }
+
+    /// <summary>
+    /// The Settings > Backtest equity-color ComboBox shows <c>BacktestEquityColorMode</c> through
+    /// <c>EnumToLocalizedDisplayNameConverter</c>, which resolves <c>Enum_{EnumTypeName}_{Value}</c> at runtime; nothing in XAML or C#
+    /// spells those keys out, so every defined value needs an explicit check (a renamed value silently loses its label).
+    /// </summary>
+    [Fact]
+    public void BacktestEquityColorMode_ConverterResolvedKeys_ResolveInEveryLocale()
+    {
+        var keys = Enum.GetValues<StockAnalyzer.Core.Models.Backtest.Configuration.BacktestEquityColorMode>()
+            .Select(v => $"Enum_{nameof(StockAnalyzer.Core.Models.Backtest.Configuration.BacktestEquityColorMode)}_{v}")
+            .ToList();
+
+        Assert.Equal(3, keys.Count);
+        AssertKeysResolveInEveryLocale(keys, "EnumToLocalizedDisplayNameConverter");
+    }
+
+    private static void AssertKeysResolveInEveryLocale(IReadOnlyList<string> keys, string origin)
+    {
+        var localeKeys = Locales.ToDictionary(l => l, LoadLocaleKeys);
+
+        var problems = new List<string>();
+        foreach (var key in keys)
+        {
+            foreach (var locale in Locales)
+            {
+                if (!localeKeys[locale].Contains(key))
+                    problems.Add($"  '{key}' ({origin}) missing from {locale}.json");
+            }
+        }
+
+        Assert.True(problems.Count == 0, $"Code-referenced localization keys with no entry ({origin}):\n" + string.Join("\n", problems));
     }
 
     /// <summary>

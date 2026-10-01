@@ -5,14 +5,50 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
 from pathlib import Path
+from typing import Mapping
 
 import numpy as np
 
 SCHEMA_VERSION = 1
-MAX_LAG = 512  # mirrors TrainingResourceOverrides.MaximumFeatureLag
+def _max_lag() -> int:
+    raw = os.environ.get("SA_MAX_FEATURE_LAG", "512")
+    try:
+        value = int(raw)
+    except ValueError:
+        return 512  # standalone fallback; managed runs validate the exact Core contract
+    return value if 0 < value <= 512 else 512
+
+
+MAX_LAG = _max_lag()
 EPSILON = float(np.float32(1e-7))  # mirrors the C# float constant IMLDataProcessor.Epsilon
 BASE_OHLCV = ("open", "high", "low", "close", "volume")
+
+
+def requires_fixed_scaler(metadata: Mapping[str, str]) -> bool:
+    """Choose preprocessing only after rejecting incomplete or contradictory fixed markers."""
+    normalization = metadata.get("normalization")
+    markers = ("scaler_ref", "lags", "clip_sigma")
+    if normalization == "fixed_zscore":
+        if (not metadata.get("scaler_ref", "").strip() or
+                any(marker not in metadata for marker in markers)):
+            raise ValueError("fixed z-score metadata requires scaler_ref, lags and clip_sigma")
+        return True
+    if any(marker in metadata for marker in markers):
+        raise ValueError("fixed preprocessing markers require normalization=fixed_zscore")
+    if "feature_spec" in metadata:
+        try:
+            spec = json.loads(metadata["feature_spec"])
+        except json.JSONDecodeError as exc:
+            raise ValueError("feature_spec metadata is invalid JSON") from exc
+        if not isinstance(spec, dict):
+            raise ValueError("feature_spec metadata must be an object")
+        if validate_lags(spec.get("lags", [])):
+            raise ValueError("composed lags require normalization=fixed_zscore and a scaler")
+    if normalization is not None and normalization != metadata.get("feature_mode"):
+        raise ValueError("ONNX normalization disagrees with feature_mode")
+    return False
 
 
 def validate_lags(value) -> tuple[int, ...]:
@@ -124,11 +160,17 @@ def transform(x_raw: np.ndarray, scaler: dict) -> np.ndarray:
                 np.clip(z, -clip, clip, out=z)
             if not np.isfinite(z).all():
                 raise ValueError("fixed scaler output is nonfinite")
-            result[sample_index, row_index] = z
+            with np.errstate(over="ignore", invalid="ignore"):
+                narrowed = z.astype(np.float32)
+            if not np.isfinite(narrowed).all():
+                raise ValueError("float32 fixed scaler output is nonfinite")
+            result[sample_index, row_index] = narrowed
     return result
 
 
 def write_sidecar(model_path: Path, scaler: dict, metadata: dict[str, str]) -> Path:
+    if not requires_fixed_scaler(metadata):
+        raise ValueError("ONNX metadata does not require a fixed scaler")
     if metadata.get("scaler_ref") != model_path.name + ".scaler.json":
         raise ValueError("ONNX scaler_ref does not name its sidecar")
     saved = {**scaler, "feature_contract_hash": contract_hash(metadata)}
@@ -138,6 +180,8 @@ def write_sidecar(model_path: Path, scaler: dict, metadata: dict[str, str]) -> P
 
 
 def load_sidecar(model_path: Path, metadata: dict[str, str]) -> dict:
+    if not requires_fixed_scaler(metadata):
+        raise ValueError("ONNX metadata does not require a fixed scaler")
     ref = metadata.get("scaler_ref")
     if ref != model_path.name + ".scaler.json":
         raise ValueError("ONNX scaler_ref is missing or does not name its own sidecar")

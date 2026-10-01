@@ -13,7 +13,15 @@ using StockAnalyzer.Core.Services.Analysis;
 using StockAnalyzer.Core.Models.Indicators;
 using StockAnalyzer.Core.Models.Analysis;
 using StockAnalyzer.Core.Strategies;
+using StockAnalyzer.Core.Models.UI;
+using StockAnalyzer.Avalonia.Common;
+using StockAnalyzer.Avalonia.Models;
+using StockAnalyzer.Avalonia.ViewModels.Notes;
+using StockAnalyzer.Avalonia.Tests.TestHelpers;
 using Microsoft.Extensions.DependencyInjection;
+using System.IO;
+using StockAnalyzer.Core.Interfaces;
+using Moq;
 
 namespace StockAnalyzer.Avalonia.Tests.ViewModels;
 
@@ -237,6 +245,206 @@ public class TabWindowVerificationTests
 
         dw.Dispose();
     }
+
+    private MainWindowViewModel CreateMainWindowViewModel(
+        IContainerRegistry containerRegistry,
+        IPanelTabFactory panelTabFactory,
+        IDispatcherService dispatcher) =>
+        MainWindowViewModelFactory.Create(dispatcher, panelTabFactory, containerRegistry).Vm;
+
+    [Fact]
+    public async Task TabWindow_WhenNotesTabExistsInSelf_SelectsExistingNoteTimelineTabAndFiltersTicker()
+    {
+        // Arrange
+        var tempDir = Path.Combine(Path.GetTempPath(), "sa_tab_window_test_" + Guid.NewGuid());
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var (timeline, _, _) = await NoteTimelineTestFixture.CreateTimelineAsync(tempDir);
+            var panelTabFactory = new MockPanelTabFactory();
+            var tearOffService = new MockTearOffService();
+            var containerRegistry = new ContainerRegistry();
+            var messenger = new StrongReferenceMessenger();
+            var dispatcher = new SynchronousDispatcherService();
+
+            using var mainVm = CreateMainWindowViewModel(containerRegistry, panelTabFactory, dispatcher);
+            using var detachedVm = new DetachedWindowViewModel(
+                _serviceProvider, panelTabFactory, tearOffService, containerRegistry, messenger, dispatcher);
+            containerRegistry.Register(detachedVm.ContainerId, detachedVm);
+
+            var existingTab = new WorkspaceViewItem { Id = "NoteTimeline", Title = "Notes", ViewModel = timeline };
+            detachedVm.AddItem(existingTab);
+
+            var otherTab = new WorkspaceViewItem { Id = "Other", Title = "Other", ViewModel = new object() };
+            detachedVm.AddItem(otherTab);
+            detachedVm.SelectedItem = otherTab;
+
+            // Act
+            mainVm.Receive(new NavigateToNoteTimelineRequestedMessage("AAPL", detachedVm.ContainerId));
+
+            // Assert: Selects the existing Notes tab in self and filters
+            Assert.Same(existingTab, detachedVm.SelectedItem);
+            Assert.Contains("AAPL", timeline.SelectedTickerCodes);
+            Assert.Equal(2, detachedVm.Items.Count);
+        }
+        finally
+        {
+            try { if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true); } catch { /* best-effort cleanup */ }
+        }
+    }
+
+    [Fact]
+    public async Task TabWindow_WhenNotesTabExistsInMainPanel_ReusesMainPanelNotesTabWithoutCreatingNewTab()
+    {
+        // Arrange
+        var tempDir = Path.Combine(Path.GetTempPath(), "sa_tab_window_test_" + Guid.NewGuid());
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var (mainTimeline, _, _) = await NoteTimelineTestFixture.CreateTimelineAsync(tempDir);
+            var panelTabFactory = new MockPanelTabFactory();
+            var tearOffService = new MockTearOffService();
+            var containerRegistry = new ContainerRegistry();
+            var messenger = new StrongReferenceMessenger();
+            var dispatcher = new SynchronousDispatcherService();
+
+            using var mainVm = CreateMainWindowViewModel(containerRegistry, panelTabFactory, dispatcher);
+            var mainNotesTab = new WorkspaceViewItem { Id = "NoteTimeline", Title = "Notes", ViewModel = mainTimeline };
+            mainVm.BottomPanelTabs.Add(mainNotesTab);
+
+            using var detachedVm = new DetachedWindowViewModel(
+                _serviceProvider, panelTabFactory, tearOffService, containerRegistry, messenger, dispatcher);
+            containerRegistry.Register(detachedVm.ContainerId, detachedVm);
+
+            var otherTab = new WorkspaceViewItem { Id = "Other", Title = "Other", ViewModel = new object() };
+            detachedVm.AddItem(otherTab);
+            detachedVm.SelectedItem = otherTab;
+
+            // Act: Click '+' in DetachedWindow while Notes tab already exists in main panel
+            mainVm.Receive(new NavigateToNoteTimelineRequestedMessage("MSFT", detachedVm.ContainerId));
+
+            // Assert: Does NOT add a new tab to detached window, reuses main panel's Notes tab!
+            Assert.Single(detachedVm.Items);
+            Assert.Same(otherTab, detachedVm.SelectedItem);
+            Assert.Contains("MSFT", mainTimeline.SelectedTickerCodes);
+        }
+        finally
+        {
+            try { if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true); } catch { /* best-effort cleanup */ }
+        }
+    }
+
+    [Fact]
+    public async Task TabWindowA_WhenNotesTabExistsInTabWindowB_ReusesTabWindowBNotesTabWithoutCreatingNewTab()
+    {
+        // Arrange
+        var tempDir = Path.Combine(Path.GetTempPath(), "sa_tab_window_test_" + Guid.NewGuid());
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var (bTimeline, _, _) = await NoteTimelineTestFixture.CreateTimelineAsync(tempDir);
+            var panelTabFactory = new MockPanelTabFactory();
+            var tearOffService = new MockTearOffService();
+            var containerRegistry = new ContainerRegistry();
+            var messenger = new StrongReferenceMessenger();
+            var dispatcher = new SynchronousDispatcherService();
+
+            using var mainVm = CreateMainWindowViewModel(containerRegistry, panelTabFactory, dispatcher);
+
+            using var detachedVmA = new DetachedWindowViewModel(
+                _serviceProvider, panelTabFactory, tearOffService, containerRegistry, messenger, dispatcher);
+            containerRegistry.Register(detachedVmA.ContainerId, detachedVmA);
+
+            using var detachedVmB = new DetachedWindowViewModel(
+                _serviceProvider, panelTabFactory, tearOffService, containerRegistry, messenger, dispatcher);
+            containerRegistry.Register(detachedVmB.ContainerId, detachedVmB);
+
+            var bNotesTab = new WorkspaceViewItem { Id = "NoteTimeline", Title = "Notes", ViewModel = bTimeline };
+            detachedVmB.AddItem(bNotesTab);
+
+            var aOtherTab = new WorkspaceViewItem { Id = "Other", Title = "Other", ViewModel = new object() };
+            detachedVmA.AddItem(aOtherTab);
+            detachedVmA.SelectedItem = aOtherTab;
+
+            // Act: Click '+' in TabWindow A while Notes tab already exists in TabWindow B
+            mainVm.Receive(new NavigateToNoteTimelineRequestedMessage("GOOG", detachedVmA.ContainerId));
+
+            // Assert: TabWindow A gets NO new tab, TabWindow B's Notes tab is selected and filtered!
+            Assert.Single(detachedVmA.Items);
+            Assert.Same(aOtherTab, detachedVmA.SelectedItem);
+            Assert.Same(bNotesTab, detachedVmB.SelectedItem);
+            Assert.Contains("GOOG", bTimeline.SelectedTickerCodes);
+        }
+        finally
+        {
+            try { if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true); } catch { /* best-effort cleanup */ }
+        }
+    }
+
+    [Fact]
+    public async Task TabWindow_WhenNoNotesTabExistsAnywhere_CreatesNewTabInRequestingTabWindow()
+    {
+        // Arrange
+        var tempDir = Path.Combine(Path.GetTempPath(), "sa_tab_window_test_" + Guid.NewGuid());
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var (timeline, _, _) = await NoteTimelineTestFixture.CreateTimelineAsync(tempDir);
+            var panelTabFactory = new MockPanelTabFactory
+            {
+                CreateTabFunc = id => id == "NoteTimeline" ? new WorkspaceViewItem { Id = "NoteTimeline", Title = "Notes", ViewModel = timeline } : null
+            };
+            var tearOffService = new MockTearOffService();
+            var containerRegistry = new ContainerRegistry();
+            var messenger = new StrongReferenceMessenger();
+            var dispatcher = new SynchronousDispatcherService();
+
+            using var mainVm = CreateMainWindowViewModel(containerRegistry, panelTabFactory, dispatcher);
+
+            using var detachedVm = new DetachedWindowViewModel(
+                _serviceProvider, panelTabFactory, tearOffService, containerRegistry, messenger, dispatcher);
+            containerRegistry.Register(detachedVm.ContainerId, detachedVm);
+
+            // Act: Click '+' in TabWindow when no Notes tab exists anywhere
+            mainVm.Receive(new NavigateToNoteTimelineRequestedMessage("AMZN", detachedVm.ContainerId));
+
+            // Assert: Creates a new tab in requesting TabWindow!
+            Assert.Single(detachedVm.Items);
+            Assert.Same(timeline, detachedVm.SelectedItem?.ViewModel);
+            Assert.Contains("AMZN", timeline.SelectedTickerCodes);
+        }
+        finally
+        {
+            try { if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true); } catch { /* best-effort cleanup */ }
+        }
+    }
+
+    [Fact]
+    public void DetachedWindowViewModel_FindExistingNoteTimelineTab_ReturnsNullWhenAbsent()
+    {
+        // Arrange
+        var panelTabFactory = new MockPanelTabFactory();
+        var tearOffService = new MockTearOffService();
+        var containerRegistry = new ContainerRegistry();
+        using var detachedVm = new DetachedWindowViewModel(
+            _serviceProvider, panelTabFactory, tearOffService, containerRegistry);
+
+        // Act
+        var result = detachedVm.FindExistingNoteTimelineTab();
+
+        // Assert
+        Assert.Null(result);
+        Assert.Empty(detachedVm.Items);
+    }
+}
+
+public class MockTearOffService : ITearOffService
+{
+    public void TearOff(WorkspaceViewItem item) { }
+    public void Restore(WorkspaceViewItem item) { }
+    public void RestoreDetached(WorkspaceViewItem item) { }
+    public void Redock(WorkspaceViewItem item) { }
+    public void RestoreDetachedGroup(IEnumerable<WorkspaceViewItem> items) { }
 }
 
 public class MockAnalysisPipelineService : IAnalysisPipelineService

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.IO;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using StockAnalyzer.Core.Common;
 
@@ -84,32 +85,8 @@ public class UserStrategyMetadataRepository
                 var metaTask = provider.GetMetadataAsync(ticker);
                 if (metaTask.IsCompleted)
                 {
-                    var meta = metaTask.Result;
-                    if (meta.Long != null || meta.ExitLong != null || meta.StopLossLong != null ||
-                        meta.Short != null || meta.ExitShort != null || meta.StopLossShort != null || meta.Notes != null || meta.Reminder != null ||
-                        meta.IsLong != null || meta.IsTPLong != null || meta.IsSLLong != null ||
-                        meta.IsShort != null || meta.IsTPShort != null || meta.IsSLShort != null)
+                    if (TryCreateItemFromMetadata(metaTask.Result, out var item))
                     {
-                        var item = new UserStrategyItem
-                        {
-                            Long = meta.Long,
-                            ExitLong = meta.ExitLong,
-                            StopLossLong = meta.StopLossLong,
-                            Short = meta.Short,
-                            ExitShort = meta.ExitShort,
-                            StopLossShort = meta.StopLossShort,
-                            IsLong = meta.IsLong,
-                            IsTPLong = meta.IsTPLong,
-                            IsSLLong = meta.IsSLLong,
-                            IsShort = meta.IsShort,
-                            IsTPShort = meta.IsTPShort,
-                            IsSLShort = meta.IsSLShort,
-                            EntryPrice = meta.Long ?? meta.EntryPrice,
-                            TargetPrice = meta.ExitLong ?? meta.TargetPrice,
-                            StopLoss = meta.StopLossLong ?? meta.StopLoss,
-                            Notes = meta.Notes,
-                            Reminder = meta.Reminder
-                        };
                         _cache[ticker] = item;
                         return item;
                     }
@@ -127,6 +104,162 @@ public class UserStrategyMetadataRepository
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Like <see cref="GetStrategy"/>, but waits for the persisted metadata to finish loading when the ticker is
+    /// not in the in-memory cache yet, so a null result means "this ticker has no stored strategy data" rather than
+    /// "not loaded yet". A caller that read-modifies-writes the strategy (<see cref="SaveStrategy(string, decimal?, decimal?, decimal?, decimal?, decimal?, decimal?, string?, bool?, bool?, bool?, bool?, bool?, bool?, string?)"/>
+    /// replaces every field it is given) must use this instead of <see cref="GetStrategy"/>: on an unloaded ticker
+    /// <see cref="GetStrategy"/> returns null immediately, and writing that back would erase the stored values.
+    /// Without a <see cref="MarketDataProvider"/> it behaves exactly like <see cref="GetStrategy"/>.
+    /// </summary>
+    /// <exception cref="StrategyLoadFailedException">The stored data exists but could not be read, so "no data" would be
+    /// a false answer; the caller must not write.</exception>
+    public async Task<UserStrategyItem?> GetStrategyAsync(string ticker, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(ticker)) return null;
+
+        var cached = GetCachedStrategy(ticker);
+        if (cached != null) return cached;
+
+        var provider = MarketDataProvider;
+        if (provider == null) return GetStrategy(ticker);
+
+        ct.ThrowIfCancellationRequested();
+        var load = await provider.TryLoadStoredMetadataAsync(ticker).ConfigureAwait(false);
+        if (load.ReadFailed) throw new StrategyLoadFailedException(ticker);
+
+        // The load registers what it found with UserStrategyMetadataRepository.Instance; this instance may be another one.
+        cached = GetCachedStrategy(ticker);
+        if (cached != null) return cached;
+        if (!TryCreateItemFromMetadata(load.Meta, out var item)) return null;
+
+        return _cache.GetOrAdd(ticker, item);
+    }
+
+    /// <summary>
+    /// The strategy item a persisted metadata row stands for, or false when the row holds no strategy data at all
+    /// (every strategy field null). The single field mapping shared by <see cref="GetStrategy"/> and
+    /// <see cref="GetStrategyAsync"/>.
+    /// </summary>
+    private static bool TryCreateItemFromMetadata(StockAnalyzer.Core.Models.Portfolio.TickerMetadata meta, out UserStrategyItem item)
+    {
+        if (meta.Long != null || meta.ExitLong != null || meta.StopLossLong != null ||
+            meta.Short != null || meta.ExitShort != null || meta.StopLossShort != null || meta.Notes != null || meta.Reminder != null ||
+            meta.IsLong != null || meta.IsTPLong != null || meta.IsSLLong != null ||
+            meta.IsShort != null || meta.IsTPShort != null || meta.IsSLShort != null)
+        {
+            item = new UserStrategyItem
+            {
+                Long = meta.Long,
+                ExitLong = meta.ExitLong,
+                StopLossLong = meta.StopLossLong,
+                Short = meta.Short,
+                ExitShort = meta.ExitShort,
+                StopLossShort = meta.StopLossShort,
+                IsLong = meta.IsLong,
+                IsTPLong = meta.IsTPLong,
+                IsSLLong = meta.IsSLLong,
+                IsShort = meta.IsShort,
+                IsTPShort = meta.IsTPShort,
+                IsSLShort = meta.IsSLShort,
+                EntryPrice = meta.Long ?? meta.EntryPrice,
+                TargetPrice = meta.ExitLong ?? meta.TargetPrice,
+                StopLoss = meta.StopLossLong ?? meta.StopLoss,
+                Notes = meta.Notes,
+                Reminder = meta.Reminder
+            };
+            return true;
+        }
+
+        item = null!;
+        return false;
+    }
+
+    /// <summary>
+    /// Sets only <see cref="UserStrategyItem.Notes"/> of the ticker's strategy and leaves every other field as it is:
+    /// the stored strategy is loaded first (<see cref="GetStrategyAsync"/>), the in-memory update is one atomic
+    /// AddOrUpdate on the cache (a concurrent edit of another field is merged, never overwritten) and the persisted
+    /// write goes through the same ordered, latest-wins queue as <c>SaveStrategy</c>. Raises <see cref="StrategyChanged"/>.
+    /// </summary>
+    /// <exception cref="StrategyLoadFailedException">The stored strategy could not be read; nothing is changed.</exception>
+    public async Task SetNotesAsync(string ticker, string? notes, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(ticker)) return;
+
+        await GetStrategyAsync(ticker, ct).ConfigureAwait(false);
+
+        var updated = _cache.AddOrUpdate(
+            ticker,
+            _ => new UserStrategyItem { Notes = notes },
+            (_, current) => current with { Notes = notes });
+        // Persist before notifying: a subscriber that throws must not leave the in-memory value ahead of the disk.
+        SchedulePersist(ticker, updated);
+        StrategyChanged?.Invoke(ticker);
+    }
+
+    /// <summary>Latest-wins persistence slot of one ticker (see <see cref="SchedulePersist"/>).</summary>
+    private sealed class PersistSlot
+    {
+        public UserStrategyItem? Pending;
+        public bool Running;
+    }
+
+    private readonly ConcurrentDictionary<string, PersistSlot> _persistSlots = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Persists <paramref name="item"/> in the background, one write at a time per ticker and in call order: while a
+    /// write runs, newer items replace the pending one, so the file always ends with the newest item. Independent
+    /// fire-and-forget writes used to race for the DuckDB lock, so an older item could land after a newer one.
+    /// </summary>
+    private void SchedulePersist(string ticker, UserStrategyItem item)
+    {
+        var slot = _persistSlots.GetOrAdd(ticker, _ => new PersistSlot());
+        bool startDrain;
+        lock (slot)
+        {
+            slot.Pending = item;
+            startDrain = !slot.Running;
+            slot.Running = true;
+        }
+
+        if (startDrain)
+        {
+            _ = Task.Run(() => DrainPersistAsync(ticker, slot));
+        }
+    }
+
+    private async Task DrainPersistAsync(string ticker, PersistSlot slot)
+    {
+        while (true)
+        {
+            UserStrategyItem? item;
+            lock (slot)
+            {
+                item = slot.Pending;
+                slot.Pending = null;
+                if (item is null)
+                {
+                    slot.Running = false;
+                    return;
+                }
+            }
+
+            try
+            {
+                var provider = MarketDataProvider;
+                if (provider != null)
+                {
+                    await provider.SaveStrategyMetadataAsync(ticker, item.Long, item.ExitLong, item.StopLossLong, item.Short, item.ExitShort, item.StopLossShort, item.Notes,
+                        item.IsLong, item.IsTPLong, item.IsSLLong, item.IsShort, item.IsTPShort, item.IsSLShort, item.Reminder);
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Failed to persist strategy to Parquet for {ticker}: {ex.Message}");
+            }
+        }
     }
 
     public void SaveStrategy(string ticker, decimal? longVal, decimal? exitLong, decimal? stopLossLong, decimal? shortVal, decimal? exitShort, decimal? stopLossShort, string? notes,
@@ -157,22 +290,8 @@ public class UserStrategyMetadataRepository
         _cache[ticker] = item;
         StrategyChanged?.Invoke(ticker);
 
-        // Persist into Data/Metadata/{ticker}.meta.parquet
-        Task.Run(async () =>
-        {
-            try
-            {
-                var provider = MarketDataProvider;
-                if (provider != null)
-                {
-                    await provider.SaveStrategyMetadataAsync(ticker, longVal, exitLong, stopLossLong, shortVal, exitShort, stopLossShort, notes, isLong, isTPLong, isSLLong, isShort, isTPShort, isSLShort, reminder);
-                }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Failed to persist strategy to Parquet for {ticker}: {ex.Message}");
-            }
-        });
+        // Persist into Data/Metadata/{ticker}.meta.parquet (ordered per ticker, latest item wins)
+        SchedulePersist(ticker, item);
     }
 
     public void SaveStrategy(string ticker, decimal? entryPrice, decimal? targetPrice, decimal? stopLoss, string? notes)

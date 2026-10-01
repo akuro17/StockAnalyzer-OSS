@@ -11,6 +11,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.ML.OnnxRuntime;
 using StockAnalyzer.Core.Common;
 using StockAnalyzer.Core.Models;
+using StockAnalyzer.Core.Models.Indicators;
 using StockAnalyzer.Core.Models.Training;
 
 namespace StockAnalyzer.Core.Services;
@@ -21,7 +22,10 @@ public sealed record ModelGenerationManifest(
     int SchemaVersion, string ModelId, string ModelFile, string ModelHash,
     IReadOnlyList<ModelSidecar> RequiredSidecars, string ContractHash,
     string EvaluationRevision, string TargetType, string Timeframe, int Horizon,
-    string ClassOrder, double Score);
+    string ClassOrder, double Score)
+{
+    public TrainingLineage? TrainingLineage { get; init; }
+}
 
 public sealed record ModelGenerationSummary(
     string ModelId, string ModelFile, string TargetType, string Timeframe,
@@ -35,6 +39,22 @@ public sealed class ModelActivationConfirmationRequiredException : InvalidOperat
 {
     public ModelActivationConfirmationRequiredException()
         : base("Activation would not improve the current score; explicit confirmation is required.") { }
+
+    public ModelActivationConfirmationRequiredException(string candidateId, string? expectedActiveId)
+        : this()
+    {
+        CandidateId = candidateId;
+        ExpectedActiveId = expectedActiveId;
+    }
+
+    public string? CandidateId { get; }
+    public string? ExpectedActiveId { get; }
+}
+
+public sealed class ModelActivationContextChangedException : InvalidOperationException
+{
+    public ModelActivationContextChangedException()
+        : base("Active model generation changed before confirmation.") { }
 }
 
 public interface IModelGenerationRegistry
@@ -44,6 +64,7 @@ public interface IModelGenerationRegistry
     IReadOnlyList<ModelGenerationSummary> List();
     Task<ModelGenerationManifest> RegisterAsync(string onnxPath, string? metricsPath = null, CancellationToken ct = default);
     Task<bool> ActivateAsync(string modelId, bool manual = false, bool confirmLowerScore = false, CancellationToken ct = default);
+    Task<bool> ConfirmActivationAsync(string modelId, string? expectedActiveId, CancellationToken ct = default);
     Task<bool> RollbackAsync(bool confirmLowerScore = false, CancellationToken ct = default);
     ModelGenerationLease? AcquireActive();
     ModelGenerationLease? Acquire(string modelId) => null;
@@ -68,7 +89,8 @@ public sealed class ModelGenerationLease : IDisposable
 /// <summary>Content-addressed, verified model generations and an atomic active pointer.</summary>
 public sealed class ModelGenerationRegistry : IModelGenerationRegistry, IDisposable
 {
-    public const int SchemaVersion = 1;
+    public const int SchemaVersion = 2;
+    private const int LegacySchemaVersion = 1;
     public const int PriorGenerationLimit = 5;
     private const string ManifestName = "manifest.json";
     private const string PointerName = "active.json";
@@ -152,33 +174,27 @@ public sealed class ModelGenerationRegistry : IModelGenerationRegistry, IDisposa
             var stagedMetrics = Path.Combine(stage, metricName);
             await CopyAsync(metricsPath, stagedMetrics, ct).ConfigureAwait(false);
             using var metricDoc = JsonDocument.Parse(File.ReadAllText(stagedMetrics));
-            var metric = metricDoc.RootElement;
-            string Required(string key) => metric.TryGetProperty(key, out var value) && value.ValueKind == JsonValueKind.String
-                ? value.GetString() ?? "" : throw new InvalidDataException($"Required metric field {key} is absent.");
-            if (Required("evaluation_status") != "independent_outer")
-                throw new InvalidDataException("Only independent outer evaluation is promotable.");
-            var revision = Required("evaluation_revision");
-            if (!IsHash(revision) || !string.Equals(Required("scored_model_sha256"), modelHash, StringComparison.OrdinalIgnoreCase))
-                throw new InvalidDataException("Evaluation revision or scored model hash is invalid.");
-            var target = Required("target_type");
-            var timeframe = Required("timeframe");
-            var classOrder = Required("class_order");
-            if (!Enum.TryParse<StockAnalyzer.Core.Models.Training.TrainingTimeframe>(timeframe, true, out var parsedTimeframe)
-                || parsedTimeframe.ToString().ToLowerInvariant() != timeframe)
-                throw new InvalidDataException("Evaluation timeframe is invalid.");
-            if (!metric.TryGetProperty("horizon", out var h) || !h.TryGetInt32(out var horizon) || horizon <= 0)
-                throw new InvalidDataException("Evaluation horizon is invalid.");
-            var scoreKey = target == PredictionModelMetadata.TargetTypeRegression ? "fold_rmse" : "fold_macro_f1";
-            if (target is not (PredictionModelMetadata.TargetTypeRegression or PredictionModelMetadata.TargetTypeClassification)
-                || !metric.TryGetProperty(scoreKey, out var scoreValue)
-                || !scoreValue.TryGetDouble(out var score) || !double.IsFinite(score)
-                || score < 0 || (target == PredictionModelMetadata.TargetTypeClassification && score > 1))
-                throw new InvalidDataException("Final independent score is missing or nonfinite.");
-            if (!FinalFoldEvidence(metric))
-                throw new InvalidDataException("Final outer fold evidence is missing.");
+            var report = metricDoc.RootElement;
+            var evidence = ValidateEvidence(metricDoc.RootElement, modelHash);
+            var (revision, target, timeframe, horizon, classOrder, score) = evidence;
 
             using var session = new InferenceSession(stagedModel);
             var metadata = session.ModelMetadata.CustomMetadataMap;
+            var outputContract = PredictionModelMetadata.ReadOutputContract(metadata);
+            var lineage = TrainingLineage.Read(metadata.GetValueOrDefault(TrainingCheckpointContract.LineageKey));
+            var metricLineage = report.TryGetProperty("training_lineage", out var lineageElement)
+                ? TrainingLineage.Read(lineageElement.GetRawText()) : null;
+            if (lineage != metricLineage)
+                throw new InvalidDataException("ONNX and evaluation training lineage disagree.");
+            if (lineage?.ParentModelId is { } parentId)
+            {
+                if (!_known.TryGetValue(parentId, out var parent) || !Verify(parent)
+                    || parent.ModelHash != lineage.ParentModelSha256)
+                    throw new InvalidDataException("Training parent generation is unavailable or mismatched.");
+            }
+            if (outputContract.HorizonBars != horizon
+                || !string.Equals(outputContract.Timeframe.ToString(), timeframe, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException("ONNX output semantic contract and evaluation horizon/timeframe disagree.");
             string Meta(string key) => metadata.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value)
                 ? value : throw new InvalidDataException($"ONNX metadata {key} is required.");
             _ = Meta(PredictionModelMetadata.FeatureModeKey);
@@ -192,9 +208,11 @@ public sealed class ModelGenerationRegistry : IModelGenerationRegistry, IDisposa
                 throw new InvalidDataException("ONNX metadata and evaluation contract disagree.");
             if (!ShapeValid(session, windowSize, target, classOrder))
                 throw new InvalidDataException("ONNX tensor shape disagrees with the evaluation contract.");
+            if (!FeatureContractValid(session))
+                throw new InvalidDataException("ONNX feature contract cannot be executed by prediction.");
             var scalerRef = metadata.GetValueOrDefault(PredictionModelMetadata.ScalerReferenceKey) ?? "";
             var sidecars = new List<ModelSidecar>();
-            if (scalerRef.Length > 0)
+            if (PredictionModelMetadata.RequiresFixedScaler(metadata))
             {
                 var scalerName = modelName + ".scaler.json";
                 if (scalerRef != scalerName || !SafeName(scalerRef))
@@ -206,11 +224,21 @@ public sealed class ModelGenerationRegistry : IModelGenerationRegistry, IDisposa
                 sidecars.Add(new ModelSidecar(scalerName, HashFile(Path.Combine(stage, scalerName)), "scaler"));
             }
             sidecars.Add(new ModelSidecar(metricName, HashFile(stagedMetrics), "metrics"));
+            if (metadata.ContainsKey(ModelAnalysisContract.ReferenceKey))
+            {
+                var analysisName = modelName + ".analysis.json";
+                if (metadata[ModelAnalysisContract.ReferenceKey] != analysisName)
+                    throw new InvalidDataException("Analysis reference must resolve inside its generation.");
+                await CopyAsync(onnxPath + ".analysis.json", Path.Combine(stage, analysisName), ct).ConfigureAwait(false);
+                _ = ModelAnalysis.Load(stagedModel, metadata, modelHash, report.GetProperty("data_revision").GetString() ?? "");
+                sidecars.Add(new ModelSidecar(analysisName, HashFile(Path.Combine(stage, analysisName)), "analysis"));
+            }
             sidecars.Sort((a, b) => StringComparer.Ordinal.Compare(a.File, b.File));
-            var contractHash = ComputeContractHash(metadata, windowSize, target, horizon, timeframe, classOrder);
+            var contractHash = ComputeContractHash(metadata, windowSize, target, horizon, timeframe, classOrder, SchemaVersion);
             var id = ComputeModelId(stagedModel, sidecars, contractHash);
             var manifest = new ModelGenerationManifest(SchemaVersion, id, modelName, modelHash,
-                Array.AsReadOnly(sidecars.ToArray()), contractHash, revision, target, timeframe, horizon, classOrder, score);
+                Array.AsReadOnly(sidecars.ToArray()), contractHash, revision, target, timeframe, horizon, classOrder, score)
+                { TrainingLineage = lineage };
             File.WriteAllText(Path.Combine(stage, ManifestName), JsonSerializer.Serialize(manifest, JsonOptions));
             if (!Verify(manifest, stage)) throw new InvalidDataException("Staged generation verification failed.");
             lock (_gate)
@@ -238,10 +266,14 @@ public sealed class ModelGenerationRegistry : IModelGenerationRegistry, IDisposa
     }
 
     public Task<bool> ActivateAsync(string modelId, bool manual = false, bool confirmLowerScore = false, CancellationToken ct = default)
-        => ActivateCoreAsync(modelId, manual, confirmLowerScore, expectedActiveId: null, ct);
+        => ActivateCoreAsync(modelId, manual, confirmLowerScore, expectedActiveId: null, checkExpectedActiveId: false, ct);
+
+    public Task<bool> ConfirmActivationAsync(string modelId, string? expectedActiveId, CancellationToken ct = default)
+        => ActivateCoreAsync(modelId, manual: true, confirmLowerScore: true, expectedActiveId,
+            checkExpectedActiveId: true, ct);
 
     private async Task<bool> ActivateCoreAsync(string modelId, bool manual, bool confirmLowerScore,
-        string? expectedActiveId, CancellationToken ct)
+        string? expectedActiveId, bool checkExpectedActiveId, CancellationToken ct)
     {
         await _mutation.WaitAsync(ct).ConfigureAwait(false);
         try
@@ -251,8 +283,8 @@ public sealed class ModelGenerationRegistry : IModelGenerationRegistry, IDisposa
             lock (_gate)
             {
                 ObjectDisposedException.ThrowIf(_disposed, this);
-                if (expectedActiveId is not null && _pointer.ActiveId != expectedActiveId)
-                    throw new InvalidOperationException("Active generation changed during rollback.");
+                if (checkExpectedActiveId && _pointer.ActiveId != expectedActiveId)
+                    throw new ModelActivationContextChangedException();
                 if (!_known.TryGetValue(modelId, out candidate!)) throw new KeyNotFoundException("Unknown model generation.");
                 if (_pointer.ActiveId == modelId) return false;
                 if (!Verify(candidate)) throw new InvalidDataException("Candidate generation is corrupt.");
@@ -269,7 +301,7 @@ public sealed class ModelGenerationRegistry : IModelGenerationRegistry, IDisposa
                         ? candidate.Score < current.Score : candidate.Score > current.Score;
                     if (!manual && !improves) return false;
                     if (manual && !improves && !confirmLowerScore)
-                        throw new ModelActivationConfirmationRequiredException();
+                        throw new ModelActivationConfirmationRequiredException(modelId, activeId);
                 }
                 var history = new List<string>(_pointer.History ?? Array.Empty<string>());
                 if (_pointer.ActiveId is { } previous)
@@ -302,7 +334,8 @@ public sealed class ModelGenerationRegistry : IModelGenerationRegistry, IDisposa
             current = _pointer.ActiveId;
         }
         return prior is null ? Task.FromResult(false)
-            : ActivateCoreAsync(prior, manual: true, confirmLowerScore, current, ct);
+            : ActivateCoreAsync(prior, manual: true, confirmLowerScore, current,
+                checkExpectedActiveId: true, ct);
     }
 
     public ModelGenerationLease? AcquireActive()
@@ -349,16 +382,18 @@ public sealed class ModelGenerationRegistry : IModelGenerationRegistry, IDisposa
     {
         try
         {
-            if (m.SchemaVersion != SchemaVersion || !IsHash(m.ModelId) || !SafeName(m.ModelFile)
+            if (m.SchemaVersion is not (LegacySchemaVersion or SchemaVersion) || !IsHash(m.ModelId) || !SafeName(m.ModelFile)
                 || !IsHash(m.ModelHash) || !IsHash(m.ContractHash) || !IsHash(m.EvaluationRevision)
-                || m.RequiredSidecars is null || m.RequiredSidecars.Count is < 1 or > 2) return false;
+                || m.RequiredSidecars is null || m.RequiredSidecars.Count is < 1 or > 3
+                || m.RequiredSidecars.Select(s => s?.Kind).Distinct().Count() != m.RequiredSidecars.Count) return false;
             directory ??= Path.Combine(_root, m.ModelId);
             if (HashFile(Path.Combine(directory, m.ModelFile)) != m.ModelHash) return false;
             foreach (var sidecar in m.RequiredSidecars)
                 if (sidecar is null || !SafeName(sidecar.File) || !IsHash(sidecar.Hash)
-                    || (sidecar.Kind != "metrics" && sidecar.Kind != "scaler")
+                    || (sidecar.Kind != "metrics" && sidecar.Kind != "scaler" && sidecar.Kind != "analysis")
                     || (sidecar.Kind == "metrics" && sidecar.File != m.ModelFile + ".metrics.json")
                     || (sidecar.Kind == "scaler" && sidecar.File != m.ModelFile + ".scaler.json")
+                    || (sidecar.Kind == "analysis" && sidecar.File != m.ModelFile + ".analysis.json")
                     || HashFile(Path.Combine(directory, sidecar.File)) != sidecar.Hash) return false;
             if (m.RequiredSidecars.Count(s => s.Kind == "metrics" && s.File == m.ModelFile + ".metrics.json") != 1)
                 return false;
@@ -366,34 +401,44 @@ public sealed class ModelGenerationRegistry : IModelGenerationRegistry, IDisposa
             if (expected != m.ModelId) return false;
             using var metrics = JsonDocument.Parse(File.ReadAllText(Path.Combine(directory, m.ModelFile + ".metrics.json")));
             var report = metrics.RootElement;
-            if (report.GetProperty("evaluation_status").GetString() != "independent_outer"
-                || report.GetProperty("evaluation_revision").GetString() != m.EvaluationRevision
-                || !string.Equals(report.GetProperty("scored_model_sha256").GetString(), m.ModelHash, StringComparison.OrdinalIgnoreCase)
-                || report.GetProperty("target_type").GetString() != m.TargetType
-                || report.GetProperty("timeframe").GetString() != m.Timeframe
-                || report.GetProperty("horizon").GetInt32() != m.Horizon
-                || report.GetProperty("class_order").GetString() != m.ClassOrder
-                || report.GetProperty(m.TargetType == PredictionModelMetadata.TargetTypeRegression
-                    ? "fold_rmse" : "fold_macro_f1").GetDouble() != m.Score
-                || !FinalFoldEvidence(report)) return false;
+            var evidence = ValidateEvidence(report, m.ModelHash);
+            if (evidence.Revision != m.EvaluationRevision || evidence.Target != m.TargetType
+                || evidence.Timeframe != m.Timeframe || evidence.Horizon != m.Horizon
+                || evidence.ClassOrder != m.ClassOrder || evidence.Score != m.Score) return false;
             using var session = new InferenceSession(Path.Combine(directory, m.ModelFile));
             var metadata = session.ModelMetadata.CustomMetadataMap;
+            var outputContract = PredictionModelMetadata.ReadOutputContract(metadata);
+            var lineage = TrainingLineage.Read(metadata.GetValueOrDefault(TrainingCheckpointContract.LineageKey));
+            var metricLineage = report.TryGetProperty("training_lineage", out var lineageElement)
+                ? TrainingLineage.Read(lineageElement.GetRawText()) : null;
+            if (lineage != m.TrainingLineage || lineage != metricLineage) return false;
+            if (outputContract.HorizonBars != m.Horizon
+                || !string.Equals(outputContract.Timeframe.ToString(), m.Timeframe, StringComparison.OrdinalIgnoreCase))
+                return false;
             var windowSize = int.Parse(metadata[PredictionModelMetadata.WindowSizeKey], System.Globalization.CultureInfo.InvariantCulture);
+            if (windowSize <= 0) return false;
             var scalerRef = metadata.GetValueOrDefault(PredictionModelMetadata.ScalerReferenceKey) ?? "";
             if (metadata[PredictionModelMetadata.TargetTypeKey] != m.TargetType
                 || metadata[PredictionModelMetadata.HorizonKey] != m.Horizon.ToString(System.Globalization.CultureInfo.InvariantCulture)
                 || (m.TargetType == PredictionModelMetadata.TargetTypeClassification
                     && metadata[PredictionModelMetadata.ClassOrderKey] != m.ClassOrder)) return false;
             if (!ShapeValid(session, windowSize, m.TargetType, m.ClassOrder)) return false;
-            if ((scalerRef.Length > 0 && (scalerRef != m.ModelFile + ".scaler.json"
+            if (!FeatureContractValid(session)) return false;
+            bool requiresScaler = PredictionModelMetadata.RequiresFixedScaler(metadata);
+            if ((requiresScaler && (scalerRef != m.ModelFile + ".scaler.json"
                 || !m.RequiredSidecars.Any(s => s.Kind == "scaler" && s.File == scalerRef)))
-                || (scalerRef.Length == 0 && m.RequiredSidecars.Any(s => s.Kind == "scaler"))) return false;
-            if (scalerRef.Length > 0)
+                || (!requiresScaler && m.RequiredSidecars.Any(s => s.Kind == "scaler"))) return false;
+            if (requiresScaler)
             {
                 var scaler = StockAnalyzer.Core.Models.Training.FixedScaler.Load(Path.Combine(directory, m.ModelFile), metadata);
                 if (session.InputMetadata.Values.Single().Dimensions[2] != scaler.Statistics.Length) return false;
             }
-            return ComputeContractHash(metadata, windowSize, m.TargetType, m.Horizon, m.Timeframe, m.ClassOrder) == m.ContractHash;
+            bool requiresAnalysis = metadata.ContainsKey(ModelAnalysisContract.ReferenceKey);
+            if (requiresAnalysis != m.RequiredSidecars.Any(s => s.Kind == "analysis")) return false;
+            if (requiresAnalysis)
+                _ = ModelAnalysis.Load(Path.Combine(directory, m.ModelFile), metadata, m.ModelHash,
+                    report.GetProperty("data_revision").GetString() ?? "");
+            return ComputeContractHash(metadata, windowSize, m.TargetType, m.Horizon, m.Timeframe, m.ClassOrder, m.SchemaVersion) == m.ContractHash;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException
             or JsonException or KeyNotFoundException or OnnxRuntimeException or InvalidOperationException
@@ -403,13 +448,11 @@ public sealed class ModelGenerationRegistry : IModelGenerationRegistry, IDisposa
     private void ValidateConfiguredPredictionContract(ModelGenerationManifest candidate)
     {
         if (_predictionSettings is null) return;
-        var target = _predictionSettings.PredictionTargetType == TargetType.Regression
-            ? PredictionModelMetadata.TargetTypeRegression : PredictionModelMetadata.TargetTypeClassification;
-        if (candidate.TargetType != target || (target == PredictionModelMetadata.TargetTypeClassification
-            && candidate.ClassOrder != string.Join(",", _predictionSettings.PredictionClassLabels)))
-            throw new InvalidOperationException("Model target or class labels disagree with current prediction settings.");
+        if (candidate.TargetType == PredictionModelMetadata.TargetTypeClassification
+            && candidate.ClassOrder != string.Join(",", _predictionSettings.PredictionClassLabels))
+            throw new InvalidOperationException("Model class labels disagree with current prediction settings.");
         using var session = new InferenceSession(Path.Combine(_root, candidate.ModelId, candidate.ModelFile));
-        if (session.ModelMetadata.CustomMetadataMap.ContainsKey(PredictionModelMetadata.ScalerReferenceKey))
+        if (PredictionModelMetadata.RequiresFixedScaler(session.ModelMetadata.CustomMetadataMap))
             StockAnalyzer.Core.Models.Training.FixedScaler.Load(
                 Path.Combine(_root, candidate.ModelId, candidate.ModelFile), session.ModelMetadata.CustomMetadataMap);
         string? featureSpec = _predictionSettings.PredictionFeatureMode == PredictionFeatureMode.ComposedFeatures
@@ -424,31 +467,79 @@ public sealed class ModelGenerationRegistry : IModelGenerationRegistry, IDisposa
         && name is not ("." or "..") && !name.Contains('/') && !name.Contains('\\')
         && name.IndexOfAny(Path.GetInvalidFileNameChars()) < 0;
     private static bool IsHash(string? value) => value is { Length: 64 } && value.All(Uri.IsHexDigit);
-    private static bool FinalFoldEvidence(JsonElement report)
+
+    private sealed record EvaluationEvidence(string Revision, string Target, string Timeframe,
+        int Horizon, string ClassOrder, double Score);
+
+    private static EvaluationEvidence ValidateEvidence(JsonElement report, string modelHash)
     {
-        if (!report.TryGetProperty("fold_is_holdout", out var holdout) || holdout.GetDouble() != 1.0
-            || !report.TryGetProperty("fold_n", out var count) || !count.TryGetDouble(out var n) || n <= 0
-            || !report.TryGetProperty("n_splits", out var splits) || !splits.TryGetDouble(out var totalRaw)
-            || !double.IsFinite(totalRaw) || totalRaw != Math.Truncate(totalRaw)
-            || totalRaw < 2 || totalRaw > StockAnalyzer.Core.Models.Training.TrainingResourceOverrides.MaximumEvaluationFolds
-            || !report.TryGetProperty("fold", out var fold) || fold.GetDouble() != totalRaw - 1
+        string Required(string key) => report.TryGetProperty(key, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString() ?? "" : throw new InvalidDataException($"Required metric field {key} is absent.");
+        if (Required("evaluation_status") != "independent_outer")
+            throw new InvalidDataException("Only independent outer evaluation is promotable.");
+        var revision = Required("evaluation_revision");
+        if (!IsHash(revision) || !string.Equals(Required("scored_model_sha256"), modelHash, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("Evaluation revision or scored model hash is invalid.");
+        var target = Required("target_type");
+        var timeframe = Required("timeframe");
+        var classOrder = Required("class_order");
+        if (target is not (PredictionModelMetadata.TargetTypeRegression or PredictionModelMetadata.TargetTypeClassification)
+            || (target == PredictionModelMetadata.TargetTypeRegression ? classOrder.Length != 0
+                : !PredictionModelMetadata.HasValidClassOrder(classOrder)))
+            throw new InvalidDataException("Evaluation target or class order is invalid.");
+        if (!Enum.TryParse<TrainingTimeframe>(timeframe, true, out var parsedTimeframe)
+            || !Enum.IsDefined(parsedTimeframe)
+            || parsedTimeframe.ToString().ToLowerInvariant() != timeframe)
+            throw new InvalidDataException("Evaluation timeframe is invalid.");
+        if (!report.TryGetProperty("horizon", out var h) || !h.TryGetInt32(out var horizon) || horizon <= 0)
+            throw new InvalidDataException("Evaluation horizon is invalid.");
+        var scoreKey = target == PredictionModelMetadata.TargetTypeRegression ? "fold_rmse" : "fold_macro_f1";
+        if (!report.TryGetProperty(scoreKey, out var scoreValue)
+            || !scoreValue.TryGetDouble(out var score) || !ValidScore(score, target)
+            || !FinalFoldEvidence(report, scoreKey, target))
+            throw new InvalidDataException("Final independent score or outer-fold evidence is invalid.");
+        return new EvaluationEvidence(revision, target, timeframe, horizon, classOrder, score);
+    }
+
+    private static bool ValidScore(double score, string target) => double.IsFinite(score) && score >= 0
+        && (target != PredictionModelMetadata.TargetTypeClassification || score <= 1);
+
+    private static bool PositiveInteger(JsonElement element, out int value)
+    {
+        value = 0;
+        return element.ValueKind == JsonValueKind.Number && element.TryGetDouble(out var raw)
+            && double.IsFinite(raw) && raw > 0 && raw <= int.MaxValue
+            && raw == Math.Truncate(raw) && (value = (int)raw) > 0;
+    }
+
+    private static bool FinalFoldEvidence(JsonElement report, string scoreKey, string target)
+    {
+        if (!report.TryGetProperty("fold_is_holdout", out var holdout) || !holdout.TryGetDouble(out var holdoutValue)
+            || holdoutValue != 1.0
+            || !report.TryGetProperty("fold_n", out var count) || !PositiveInteger(count, out _)
+            || !report.TryGetProperty("n_splits", out var splits) || !PositiveInteger(splits, out var total)
+            || total < 2 || total > TrainingResourceOverrides.MaximumEvaluationFolds
+            || !report.TryGetProperty("fold", out var fold) || !fold.TryGetDouble(out var finalFold)
+            || finalFold != total - 1
             || !report.TryGetProperty("outer_folds", out var rows) || rows.ValueKind != JsonValueKind.Array
-            || rows.GetArrayLength() != (int)totalRaw) return false;
-        for (var index = 0; index < (int)totalRaw; index++)
+            || rows.GetArrayLength() != total) return false;
+        for (var index = 0; index < total; index++)
         {
             var row = rows[index];
-            if (row.GetProperty("fold").GetDouble() != index
-                || !IsHash(row.GetProperty("evaluation_revision").GetString() ?? "")) return false;
+            if (!row.TryGetProperty("fold", out var rowFold) || !rowFold.TryGetDouble(out var rowIndex)
+                || rowIndex != index
+                || !row.TryGetProperty("evaluation_revision", out var rowRevision)
+                || !IsHash(rowRevision.GetString())
+                || !row.TryGetProperty(scoreKey, out var rowMetric)
+                || !rowMetric.TryGetDouble(out var rowScore) || !ValidScore(rowScore, target)) return false;
         }
-        var last = rows[(int)totalRaw - 1];
-        var scoreKey = report.GetProperty("target_type").GetString() == PredictionModelMetadata.TargetTypeRegression
-            ? "fold_rmse" : "fold_macro_f1";
+        var last = rows[total - 1];
         return last.GetProperty("evaluation_revision").GetString() == report.GetProperty("evaluation_revision").GetString()
             && last.GetProperty("scored_model_sha256").GetString() == report.GetProperty("scored_model_sha256").GetString()
             && last.GetProperty(scoreKey).GetDouble() == report.GetProperty(scoreKey).GetDouble();
     }
     private static string ComputeContractHash(IReadOnlyDictionary<string, string> metadata,
-        int windowSize, string target, int horizon, string timeframe, string classOrder)
+        int windowSize, string target, int horizon, string timeframe, string classOrder, int schemaVersion)
     {
         var contract = JsonSerializer.Serialize(new
         {
@@ -463,7 +554,9 @@ public sealed class ModelGenerationRegistry : IModelGenerationRegistry, IDisposa
             scalerRef = metadata.GetValueOrDefault(PredictionModelMetadata.ScalerReferenceKey) ?? "",
             target, horizon, timeframe, classOrder,
         });
-        return HashText(contract);
+        var legacyHash = HashText(contract);
+        return schemaVersion == LegacySchemaVersion ? legacyHash
+            : HashText("model-generation-contract-v2\n" + legacyHash + "\n" + FixedScaler.ComputeContractHash(metadata));
     }
     private static bool ShapeValid(InferenceSession session, int window, string target, string classOrder)
     {
@@ -471,11 +564,68 @@ public sealed class ModelGenerationRegistry : IModelGenerationRegistry, IDisposa
         var input = session.InputMetadata.Values.Single();
         var output = session.OutputMetadata.Values.Single();
         var width = target == PredictionModelMetadata.TargetTypeRegression
-            ? 1 : classOrder.Split(',', StringSplitOptions.RemoveEmptyEntries).Length;
-        return input.IsTensor && output.IsTensor
-            && input.Dimensions.Length == 3 && output.Dimensions.Length == 2
-            && input.Dimensions[1] == window && input.Dimensions[2] > 0
-            && (output.Dimensions[1] == width || output.Dimensions[1] == -1);
+            ? 1 : classOrder.Split(',').Length;
+        if (!input.IsTensor || input.Dimensions.Length != 3
+            || input.Dimensions[1] != window || input.Dimensions[2] <= 0) return false;
+        try
+        {
+            PredictionService.ValidateModelContract(input, output, window, input.Dimensions[2], width,
+                session.InputMetadata.Keys.Single(), session.OutputMetadata.Keys.Single());
+            return true;
+        }
+        catch (InvalidOperationException) { return false; }
+    }
+
+    private static bool FeatureContractValid(InferenceSession session)
+    {
+        var metadata = session.ModelMetadata.CustomMetadataMap;
+        var mode = PredictionModelMetadata.ParseFeatureMode(
+            metadata.GetValueOrDefault(PredictionModelMetadata.FeatureModeKey));
+        if (mode is null) return false;
+
+        bool fixedScaler = metadata.GetValueOrDefault("normalization") == "fixed_zscore";
+        if (fixedScaler && mode is not (PredictionFeatureMode.OhlcvMinMax or PredictionFeatureMode.ComposedFeatures))
+            return false;
+
+        FeatureSpec? spec = null;
+        if (mode == PredictionFeatureMode.ComposedFeatures)
+        {
+            if (!metadata.TryGetValue(PredictionModelMetadata.FeatureSpecKey, out var rawSpec)) return false;
+            try
+            {
+                spec = JsonSerializer.Deserialize<FeatureSpec>(rawSpec, TrainingConfigJson.Options);
+                PredictionService.ValidateComposedFeatureSpec(spec, FeatureSpec.MaxChannels, IndicatorFactory.Default);
+            }
+            catch (Exception ex) when (ex is JsonException or InvalidOperationException or ArgumentException)
+            {
+                return false;
+            }
+            if (fixedScaler && spec!.Channels.Any(channel => channel.Normalization != ChannelNormalization.None))
+                return false;
+        }
+        else if (metadata.ContainsKey(PredictionModelMetadata.FeatureSpecKey)) return false;
+
+        int baseChannels = PredictionService.ResolveFeaturesPerBar(mode.Value, spec);
+        int[] lags = Array.Empty<int>();
+        if (fixedScaler)
+        {
+            try
+            {
+                lags = JsonSerializer.Deserialize<int[]>(metadata["lags"]);
+            }
+            catch (Exception ex) when (ex is JsonException or KeyNotFoundException)
+            {
+                return false;
+            }
+            if (!TrainingResourceOverrides.ValidLags(lags, out _)
+                || (spec is not null && !spec.Lags!.SequenceEqual(lags))) return false;
+        }
+        int expectedWidth = checked(baseChannels * (1 + lags.Length));
+        if (metadata.TryGetValue("channels", out var rawChannels)
+            && (!int.TryParse(rawChannels, System.Globalization.NumberStyles.Integer,
+                    System.Globalization.CultureInfo.InvariantCulture, out var declaredChannels)
+                || declaredChannels != expectedWidth)) return false;
+        return session.InputMetadata.Values.Single().Dimensions[2] == expectedWidth;
     }
     private static string HashText(string text) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text))).ToLowerInvariant();
     private static string ComputeModelId(string modelPath, IEnumerable<ModelSidecar> sidecars, string contractHash)
@@ -507,9 +657,14 @@ public sealed class ModelGenerationRegistry : IModelGenerationRegistry, IDisposa
 
     public void Dispose()
     {
-        lock (_gate) _disposed = true;
+        // Activation owns _mutation through durable pointer save and memory publication.
+        // Shutdown becomes effective only after that whole commit has finished.
         _mutation.Wait();
-        _mutation.Release();
+        try
+        {
+            lock (_gate) _disposed = true;
+        }
+        finally { _mutation.Release(); }
     }
 
     internal sealed record Pointer(string? ActiveId, string[] History);

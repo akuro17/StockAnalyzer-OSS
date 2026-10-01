@@ -115,8 +115,10 @@
                    x:CompileBindings="False"
                    IsVisible="{Binding Items.Count, Converter={x:Static conv:NumericalConverters.IsEqualToZero}}"/>
 
-        <TabControl ItemsSource="{Binding Items}" 
+        <TabControl ItemsSource="{Binding Items}"
                     SelectedItem="{Binding SelectedItem}"
+                    behaviors:TabReorderBehavior.IsEnabled="True"
+                    behaviors:TabReorderBehavior.MoveCommand="{Binding MoveTabCommand}"
                     Padding="0">
             <TabControl.ItemTemplate>
                 <DataTemplate x:DataType="ui:WorkspaceViewItem">

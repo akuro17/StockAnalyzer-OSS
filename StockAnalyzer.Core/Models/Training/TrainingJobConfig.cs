@@ -66,6 +66,7 @@ public sealed record TrainingJobConfig
     public FeatureSpec? FeatureSpec { get; init; }
 
     /// <summary>Opt-in fitted population z-score; omitted leaves legacy transforms unchanged.</summary>
+    [JsonPropertyName("fixed_zscore")]
     public bool FixedZScore { get; init; }
 
     /// <summary>Optional positive sigma clip after fixed z-score transformation.</summary>
@@ -125,7 +126,7 @@ public sealed record TrainingJobConfig
     public string? OutputName { get; init; }
 
     /// <summary>
-    /// Orchestrator-assigned run identifier, set by <see cref="Services.TrainingOrchestrator"/>
+    /// Orchestrator-assigned run identifier (restored from the native manifest for Resume), set by <see cref="Services.TrainingOrchestrator"/>
     /// immediately before this config is serialized to the wire JSON -- never populated by the
     /// wizard UI. Threaded through to <c>run_training.py</c> so both sides share exactly one
     /// identifier for the experiment-log folder name, the trainer's own <c>run_id=</c> log line,
@@ -134,6 +135,20 @@ public sealed record TrainingJobConfig
     /// pre-launch UTC vs Python's post-launch local time), which were never guaranteed to match.
     /// </summary>
     public string? RunId { get; init; }
+
+    public TrainingInitializationMode InitializationMode { get; init; } = TrainingInitializationMode.Fresh;
+    /// <summary>Best native checkpoint for FineTune; run manifest for Resume. ONNX is never restorable.</summary>
+    public string? CheckpointPath { get; init; }
+    public string? ParentModelId { get; init; }
+    /// <summary>Resolved from the verified generation registry before launching Python.</summary>
+    public string? ParentModelHash { get; init; }
+    public IReadOnlyList<string> FreezePaths { get; init; } = Array.Empty<string>();
+
+    /// <summary>Core-resolved limits for this run. Omitted by standalone/legacy callers.</summary>
+    public TrainingResourceLimits? ResourceLimits { get; init; }
+
+    /// <summary>Monotonic budget remaining when Core hands this run to Python.</summary>
+    public double? RemainingRunBudgetSeconds { get; init; }
 
     /// <summary>
     /// Orchestrator-assigned map of symbol to the absolute path of a parquet file exported by
@@ -163,6 +178,38 @@ public sealed record TrainingJobConfig
     /// </summary>
     public void Validate()
     {
+        if (!Enum.IsDefined(InitializationMode) || FreezePaths is null)
+            throw new InvalidOperationException("TrainingJobConfig: invalid checkpoint initialization controls.");
+        if (InitializationMode == TrainingInitializationMode.Fresh)
+        {
+            if (CheckpointPath is not null || ParentModelId is not null || ParentModelHash is not null || FreezePaths.Count != 0)
+                throw new InvalidOperationException("TrainingJobConfig: fresh training cannot have transfer controls.");
+        }
+        else
+        {
+            if (Framework == TrainingFramework.TensorFlow
+                || (InitializationMode == TrainingInitializationMode.Resume && Framework != TrainingFramework.PyTorch))
+                throw new InvalidOperationException("TrainingJobConfig: selected framework cannot restore this checkpoint mode.");
+            if (string.IsNullOrWhiteSpace(CheckpointPath)
+                || !string.Equals(Path.GetExtension(CheckpointPath), ".json", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("TrainingJobConfig: a native checkpoint JSON is required; ONNX cannot restore training.");
+            if (InitializationMode == TrainingInitializationMode.Resume)
+            {
+                if (ParentModelId is not null || ParentModelHash is not null || FreezePaths.Count != 0)
+                    throw new InvalidOperationException("TrainingJobConfig: Resume restores original lineage and freeze paths.");
+            }
+            else if (!TrainingCheckpointContract.IsHash(ParentModelId)
+                || (ParentModelHash is not null && !TrainingCheckpointContract.IsHash(ParentModelHash)))
+                throw new InvalidOperationException("TrainingJobConfig: FineTune requires a registered parent ModelId.");
+            if (FreezePaths.Count > 0 && Framework != TrainingFramework.PyTorch)
+                throw new InvalidOperationException("TrainingJobConfig: only PyTorch FineTune supports frozen modules.");
+        }
+        if (FreezePaths.Distinct(StringComparer.Ordinal).Count() != FreezePaths.Count
+            || FreezePaths.Any(p => p is null || !TrainingCheckpointContract.IsModulePath(p)))
+            throw new InvalidOperationException("TrainingJobConfig: freeze paths must be distinct normalized module names.");
+        if (TargetType == TargetType.Regression && Framework != TrainingFramework.PyTorch)
+            throw new InvalidOperationException("TrainingJobConfig: regression training currently requires PyTorch.");
+
         if (Symbols is null || Symbols.Length == 0)
         {
             throw new InvalidOperationException("TrainingJobConfig: Symbols cannot be empty.");
@@ -250,11 +297,14 @@ public sealed record TrainingJobConfig
             throw new InvalidOperationException("TrainingJobConfig: ClipSigma must be finite and positive.");
         if (FixedZScore && FeatureSpec?.Channels.Any(c => c.Normalization != ChannelNormalization.None) == true)
             throw new InvalidOperationException("TrainingJobConfig: fixed z-score cannot follow per-window channel normalization.");
-        long channels = FeatureMode == PredictionFeatureMode.ComposedFeatures ? FeatureSpec!.Channels.Count : 5;
-        long expanded = checked(channels * (1 + effectiveLags.Count));
-        if (expanded > StockAnalyzer.Core.Models.Training.FeatureSpec.MaxChannels || checked((long)WindowSize * expanded * TrainingResourceOverrides.Float32Bytes)
-            > (long)TrainingResourceOverrides.MaximumTensorSizeMiB * TrainingResourceOverrides.MiB)
-            throw new InvalidOperationException("TrainingJobConfig: expanded tensor exceeds configured resource bounds.");
+        if (FixedZScore || FeatureMode == PredictionFeatureMode.ComposedFeatures)
+        {
+            long expanded = ExpandedFeatureChannelCount();
+            if (expanded > StockAnalyzer.Core.Models.Training.FeatureSpec.MaxChannels
+                || checked((long)WindowSize * expanded * TrainingResourceOverrides.Float32Bytes)
+                    > (long)TrainingResourceOverrides.MaximumTensorSizeMiB * TrainingResourceOverrides.MiB)
+                throw new InvalidOperationException("TrainingJobConfig: expanded tensor exceeds configured resource bounds.");
+        }
 
         if (RequiresFinalizedSource && string.IsNullOrWhiteSpace(SourceManifestPath))
             throw new InvalidOperationException("TrainingJobConfig: weekly/monthly indicator training requires a source manifest.");
@@ -270,5 +320,13 @@ public sealed record TrainingJobConfig
         {
             throw new InvalidOperationException("TrainingJobConfig: OutputName contains invalid file-name characters.");
         }
+    }
+
+    internal long ExpandedFeatureChannelCount()
+    {
+        long baseChannels = FeatureMode == PredictionFeatureMode.ComposedFeatures
+            ? FeatureSpec!.Channels.Count : TrainingResourceOverrides.RawOhlcvChannels;
+        var lags = FeatureMode == PredictionFeatureMode.ComposedFeatures ? FeatureSpec!.Lags! : Lags!;
+        return checked(baseChannels * (1L + lags.Count));
     }
 }

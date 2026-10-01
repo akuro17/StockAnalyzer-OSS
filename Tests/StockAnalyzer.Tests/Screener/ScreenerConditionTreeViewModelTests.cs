@@ -342,4 +342,38 @@ public class ScreenerConditionTreeViewModelTests
 
         Assert.Empty(vm.Root.Children);
     }
+
+    // ---- hover tooltip of an empty list ----
+
+    [Fact]
+    public void Hover_AnEmptyList_HasNoHoverText_SoNoEmptyTooltipIsOpened_UntilItGetsACondition()
+    {
+        var vm = Create();
+        var changed = new System.Collections.Generic.List<string?>();
+        vm.Root.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
+
+        Assert.Null(vm.Root.HoverUpperText);
+        Assert.Null(vm.Root.HoverLowerText);
+        Assert.False(vm.Root.HasHoverText);
+
+        Assert.NotNull(vm.TryAddLeaf(Entry()));
+        Assert.True(vm.Root.HasHoverText);
+        Assert.Contains(nameof(ScreenerConditionNodeViewModel.HasHoverText), changed);
+        Assert.True(vm.Root.Children[0].HasHoverText);
+
+        vm.Delete(vm.Root.Children[0]);
+        Assert.False(vm.Root.HasHoverText);
+    }
+
+    [Fact]
+    public void Hover_AnEmptySubGroup_StillShowsTheListAboveIt()
+    {
+        var vm = Create();
+        vm.TryAddLeaf(Entry());
+        Assert.True(vm.TryAddGroup(vm.Root, LogicalOperator.Or));
+        var empty = (ScreenerConditionGroupViewModel)vm.Root.Children[^1];
+
+        Assert.Null(empty.HoverLowerText);
+        Assert.True(empty.HasHoverText);
+    }
 }

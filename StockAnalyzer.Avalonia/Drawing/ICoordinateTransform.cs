@@ -17,6 +17,9 @@ public interface ICoordinateTransform
     /// <summary>Convert chart coordinate to screen coordinate</summary>
     global::Avalonia.Point ChartToScreen(ChartPoint chartPoint);
 
+    /// <summary>Maps time to local chart X without entering a price/Y transformation.</summary>
+    double GetXFromTime(DateTime time) => throw new NotSupportedException("This transform has no chronological X mapping.");
+
     /// <summary>Convert screen coordinate to chart coordinate</summary>
     ChartPoint ScreenToChart(global::Avalonia.Point screenPoint);
 
@@ -71,6 +74,7 @@ public interface ICoordinateTransform
 /// </summary>
 public class LinearCoordinateTransform : ICoordinateTransform
 {
+    public double GetXFromTime(DateTime time) => GetXFromIndex((time - _minTime).TotalMilliseconds);
     private DateTime _minTime;
     private DateTime _maxTime;
     private decimal _minPrice;

@@ -62,6 +62,26 @@ public sealed class BacktestReportOptions
     /// </summary>
     public int HistoryStartIndex { get; }
 
+    private const string TradingStartIndexBelowHistoryMessage = "TradingStartIndex must be >= HistoryStartIndex.";
+
+    private readonly int? _tradingStartIndex;
+    /// <summary>
+    /// Optional: the <c>BacktestInput.TradingStartIndex</c> of the run (the first bar on which the strategy is evaluated, so no position can exist
+    /// before it). Null means "same as <see cref="HistoryStartIndex"/>", which is what every current production run uses. Only the bar-presence
+    /// metrics (TimeInMarket / Exposure) use it, so that warm-up bars in <c>[HistoryStartIndex, TradingStartIndex)</c> do not dilute Exposure;
+    /// every other statistic keeps the <see cref="HistoryStartIndex"/> sample. Must be &gt;= <see cref="HistoryStartIndex"/>.
+    /// </summary>
+    public int? TradingStartIndex
+    {
+        get => _tradingStartIndex;
+        init => _tradingStartIndex = value is null || value >= HistoryStartIndex
+            ? value
+            : throw new ArgumentOutOfRangeException(nameof(TradingStartIndex), value, TradingStartIndexBelowHistoryMessage);
+    }
+
+    /// <summary><see cref="TradingStartIndex"/>, or <see cref="HistoryStartIndex"/> when it was not supplied.</summary>
+    public int EffectiveTradingStartIndex => _tradingStartIndex ?? HistoryStartIndex;
+
     /// <summary>CAGR's period-length anchor (Gate B): <c>Y = (EndUtc.Ticks - StartUtc.Ticks) / TicksPerDay / 365.2425</c>.</summary>
     public DateTime EvaluationStartUtc { get; }
 
@@ -140,6 +160,10 @@ public sealed class BacktestReportOptions
         {
             throw new ArgumentOutOfRangeException(nameof(HistoryStartIndex), HistoryStartIndex, "HistoryStartIndex must be >= 0.");
         }
+        if (_tradingStartIndex < HistoryStartIndex)
+        {
+            throw new ArgumentOutOfRangeException(nameof(TradingStartIndex), _tradingStartIndex, TradingStartIndexBelowHistoryMessage);
+        }
         if (AnnualPeriods is < 1 or > 366)
         {
             throw new ArgumentOutOfRangeException(nameof(AnnualPeriods), AnnualPeriods, "AnnualPeriods must be in [1, 366].");
@@ -166,11 +190,14 @@ public sealed class BacktestReportOptions
         }
     }
 
-    internal BacktestReportOptions WithRunFingerprintBuilder(BacktestRunFingerprintBuilder builder)
+    /// <param name="builder">The frozen run identity.</param>
+    /// <param name="tradingStartIndex">The run's own TradingStartIndex, supplied by the evaluation service that owns the input; null keeps this instance's value.</param>
+    internal BacktestReportOptions WithRunFingerprintBuilder(BacktestRunFingerprintBuilder builder, int? tradingStartIndex = null)
     {
         ArgumentNullException.ThrowIfNull(builder);
         return new BacktestReportOptions(Frame, HistoryStartIndex, EvaluationStartUtc, EvaluationEndUtc)
         {
+            TradingStartIndex = tradingStartIndex ?? TradingStartIndex,
             AnnualPeriods = AnnualPeriods,
             AnnualRiskFreeRate = AnnualRiskFreeRate,
             AnnualMAR = AnnualMAR,

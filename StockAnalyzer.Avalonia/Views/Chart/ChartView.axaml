@@ -3,6 +3,7 @@
              xmlns:chart="using:StockAnalyzer.Avalonia.Views.Chart"
              xmlns:vm="using:StockAnalyzer.Avalonia.ViewModels"
              xmlns:core="using:StockAnalyzer.Core.Models"
+             xmlns:training="using:StockAnalyzer.Core.Models.Training"
              xmlns:conv="clr-namespace:StockAnalyzer.Avalonia.Converters;assembly=StockAnalyzer.Avalonia"
              xmlns:l="clr-namespace:StockAnalyzer.Avalonia.Markup;assembly=StockAnalyzer.Avalonia"
              x:Class="StockAnalyzer.Avalonia.Views.Chart.ChartView"
@@ -87,6 +88,11 @@
                 <Separator Margin="0,8" Width="1" Background="{DynamicResource Brush.Border}"/>
 
                 <!-- Local Configuration Commands -->
+                <TextBlock Text="{Binding PredictionDisplay}" IsVisible="{Binding HasPredictionDisplay}"
+                           VerticalAlignment="Center" FontSize="{DynamicResource BaseFontSize}"
+                           Foreground="{DynamicResource Brush.Foreground.Secondary}"/>
+                <TextBlock Text="{Binding RegimeDisplay}" FontSize="{DynamicResource HelperFontSize}"/>
+
                 <Button Margin="2,0" Padding="4" Height="30" VerticalAlignment="Center"
                         Content="{l:Localize Chart_IndicatorsButton}"
                         Command="{Binding OpenIndicatorSettingsCommand}"
@@ -118,6 +124,35 @@
                     </ContextMenu>
                 </chart:ChartBaseControl.ContextMenu>
             </chart:ChartBaseControl>
+
+            <Canvas>
+                <StackPanel Canvas.Left="{Binding PeriodLegendLeft}" Canvas.Top="{Binding PeriodLegendTop}"
+                            Orientation="Horizontal" Spacing="{x:Static training:ModelAnalysisContract.LegendGap}"
+                            IsVisible="{Binding HasPeriodDisplay}">
+                    <StackPanel Orientation="Horizontal" Spacing="{x:Static training:ModelAnalysisContract.LegendGap}">
+                        <ToolTip.Tip><TextBlock Text="{Binding TrainPeriodTooltip}" FontSize="{DynamicResource TooltipFontSize}"/></ToolTip.Tip>
+                        <Border Width="{x:Static training:ModelAnalysisContract.LegendSwatchSize}"
+                                Height="{x:Static training:ModelAnalysisContract.LegendSwatchSize}"
+                                Background="{DynamicResource Brush.TrainingPeriod.Train}"/>
+                        <TextBlock Text="{l:Localize ModelAnalysis_Train}" FontSize="{DynamicResource HelperFontSize}"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="{x:Static training:ModelAnalysisContract.LegendGap}">
+                        <ToolTip.Tip><TextBlock Text="{Binding ValidationPeriodTooltip}" FontSize="{DynamicResource TooltipFontSize}"/></ToolTip.Tip>
+                        <Border Width="{x:Static training:ModelAnalysisContract.LegendSwatchSize}"
+                                Height="{x:Static training:ModelAnalysisContract.LegendSwatchSize}"
+                                Background="{DynamicResource Brush.TrainingPeriod.Validation}"/>
+                        <TextBlock Text="{l:Localize ModelAnalysis_Validation}" FontSize="{DynamicResource HelperFontSize}"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="{x:Static training:ModelAnalysisContract.LegendGap}"
+                                IsVisible="{Binding HasOosPeriodDisplay}">
+                        <ToolTip.Tip><TextBlock Text="{Binding OosPeriodTooltip}" FontSize="{DynamicResource TooltipFontSize}"/></ToolTip.Tip>
+                        <Border Width="{x:Static training:ModelAnalysisContract.LegendSwatchSize}"
+                                Height="{x:Static training:ModelAnalysisContract.LegendSwatchSize}"
+                                Background="{DynamicResource Brush.TrainingPeriod.Oos}"/>
+                        <TextBlock Text="{l:Localize ModelAnalysis_Oos}" FontSize="{DynamicResource HelperFontSize}"/>
+                    </StackPanel>
+                </StackPanel>
+            </Canvas>
 
             <!-- Price Scale Overlay -->
             <Button Classes="price-scale-btn"

@@ -4,6 +4,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using CommunityToolkit.Mvvm.Messaging;
 using StockAnalyzer.Avalonia.Common;
+using StockAnalyzer.Avalonia.ViewModels;
 using StockAnalyzer.Avalonia.ViewModels.Watchlist;
 using StockAnalyzer.Core.Models.Watchlist;
 
@@ -50,7 +51,14 @@ namespace StockAnalyzer.Avalonia.Views.Controls
             {
                 if (DataContext is WatchlistItemViewModel vm && !string.IsNullOrEmpty(vm.Symbol))
                 {
-                    WeakReferenceMessenger.Default.Send(new NavigateToNoteTimelineRequestedMessage(vm.Symbol));
+                    string? containerId = null;
+                    var topLevel = TopLevel.GetTopLevel(this);
+                    if (topLevel?.DataContext is IDetachedWindowContainer container)
+                    {
+                        containerId = container.ContainerId;
+                    }
+
+                    WeakReferenceMessenger.Default.Send(new NavigateToNoteTimelineRequestedMessage(vm.Symbol, containerId));
                 }
             };
 
@@ -64,15 +72,19 @@ namespace StockAnalyzer.Avalonia.Views.Controls
             };
             _textBlock.Bind(TextBlock.TextProperty, new global::Avalonia.Data.Binding(nameof(WatchlistItemViewModel.DisplayNotes)));
             _textBlock.Bind(TextBlock.ForegroundProperty, _textBlock.GetResourceObservable("Brush.Text.Primary"));
-            // Tooltip shows the full, unconverted preview text (real newlines preserved), unlike the
-            // single-line DisplayNotes shown in the cell itself.
+            // Tooltip shows NotesPopupText (real newlines preserved, images/URLs removed, cut to the Read More
+            // Threshold with a final "Read more" line, never wrapped), unlike the single-line DisplayNotes shown in the cell itself.
             // Built as an explicit TextBlock (not a bound string) so TooltipFontSize can be set on the Tip
             // content itself: the popup is rooted at the TopLevel, so a FontSize on the owner never reaches
             // it (same mechanism as ReminderCellControl).
-            var notesTip = new TextBlock { Margin = new Thickness(WatchlistConstants.TooltipContentMargin) };
-            notesTip.Bind(TextBlock.TextProperty, new global::Avalonia.Data.Binding(nameof(WatchlistItemViewModel.Notes)));
+            var notesTip = new TextBlock { Margin = new Thickness(WatchlistConstants.TooltipContentMargin), TextWrapping = TextWrapping.NoWrap };
+            notesTip.Bind(TextBlock.TextProperty, new global::Avalonia.Data.Binding(nameof(WatchlistItemViewModel.NotesPopupText)));
             notesTip.Bind(TextBlock.FontSizeProperty, notesTip.GetResourceObservable("TooltipFontSize"));
-            _textBlock.SetValue(ToolTip.TipProperty, notesTip);
+            // The popup itself is hidden while there is nothing to show (no note, or images/URLs only), instead of
+            // appearing as an empty framed box.
+            var notesPopup = UnwrappedToolTipFactory.Create(notesTip);
+            notesPopup.Bind(IsVisibleProperty, new global::Avalonia.Data.Binding(nameof(WatchlistItemViewModel.HasNotesPopupText)));
+            _textBlock.SetValue(ToolTip.TipProperty, notesPopup);
 
             _container.Children.Add(_openBtn);
             _container.Children.Add(_textBlock);

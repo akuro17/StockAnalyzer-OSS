@@ -29,6 +29,7 @@ import argparse
 import datetime
 import json
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -149,11 +150,13 @@ def _env_int(name: str, default: int) -> int:
     raw = os.environ.get(name)
     if raw is None:
         return default
+    if re.fullmatch(r"[+-]?[0-9]+", raw.strip()) is None:
+        return default
     try:
         value = int(raw)
     except ValueError:
         return default
-    return value if value > 0 else default
+    return value if 0 < value <= default else default
 
 
 MAX_COMPOSED_CHANNELS: int = _env_int("SA_MAX_COMPOSED_CHANNELS", 1024)
@@ -908,6 +911,15 @@ def label_triple_barrier(
 # --- Dataset assembly --------------------------------------------------------
 
 
+def _effective_lags(feature_mode: str, feature_spec: dict | None,
+                    lags: list[int] | tuple[int, ...] | None) -> tuple[int, ...]:
+    """Use the same ordered lag contract for window construction and fold purging."""
+    return fixed_scaler.validate_lags(
+        feature_spec.get("lags", []) if feature_mode == COMPOSED_FEATURES_MODE and feature_spec
+        else ([] if lags is None else list(lags))
+    )
+
+
 def build_dataset(
     ohlcv: np.ndarray,
     feature_mode: str,
@@ -965,10 +977,7 @@ def build_dataset(
             f"target_type: unknown {target_type!r}; expected 'classification' or 'regression'"
         )
 
-    effective_lags = fixed_scaler.validate_lags(
-        feature_spec.get("lags", []) if feature_mode == COMPOSED_FEATURES_MODE and feature_spec
-        else ([] if lags is None else list(lags))
-    )
+    effective_lags = _effective_lags(feature_mode, feature_spec, lags)
     if not fixed_zscore and effective_lags:
         raise ValueError("causal lags require fixed z-score")
     if fixed_zscore and feature_mode not in ("ohlcv_minmax", COMPOSED_FEATURES_MODE):
@@ -1364,6 +1373,15 @@ def independent_fold_data(
     if not symbols or fold_index < 0 or fold_index >= n_splits:
         raise ValueError("independent fold requires symbols and a valid original fold index")
     resolved_gap = resolve_purge_gap(window, horizon, gap)
+    effective_lags = _effective_lags(feature_mode, feature_spec, lags)
+    max_lag = max(effective_lags, default=0)
+    # True High/Low read the previous close at each window's first bar.
+    previous_close = int(feature_mode == COMPOSED_FEATURES_MODE and feature_spec is not None
+                         and any(ch.get("kind") == "price" and ch.get("price") in
+                                 ("true_high", "true_low") for ch in feature_spec.get("channels", [])))
+
+    def feature_start(anchor: int) -> int:
+        return max(0, anchor - window + 1 - max_lag - previous_close)
     selected = {}
     outer_starts = []
     for sym, arr in symbols.items():
@@ -1384,7 +1402,7 @@ def independent_fold_data(
         if fold_index not in folds:
             raise ValueError(f"selected symbol {sym!r} has no usable original fold {fold_index}")
         train, test = folds[fold_index]
-        outer_starts.append(d[anchors[test[0]] - window + 1])
+        outer_starts.append(d[feature_start(int(anchors[test[0]]))])
         selected[sym] = (x, y, anchors, train, test, d)
 
     earliest_outer_start = min(outer_starts)
@@ -1405,7 +1423,7 @@ def independent_fold_data(
             raise ValueError(f"selected symbol {sym!r} has no usable inner validation fold")
         _, inner_train, inner_test = folds[-1]
         fit, validation = train[inner_train], train[inner_test]
-        inner_starts.append(selected[sym][-1][anchors[validation[0]] - window + 1])
+        inner_starts.append(selected[sym][-1][feature_start(int(anchors[validation[0]]))])
         inner_candidates[sym] = (x, y, anchors, fit, validation)
     earliest_inner_start = min(inner_starts)
     result = {}

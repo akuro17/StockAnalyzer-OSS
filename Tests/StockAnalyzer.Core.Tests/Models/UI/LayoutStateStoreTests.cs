@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using Xunit;
 using StockAnalyzer.Core.Models.UI;
 using StockAnalyzer.Core.Constants;
+using StockAnalyzer.Core.Models.Settings;
 
 namespace StockAnalyzer.Tests.Models.UI;
 
@@ -233,5 +234,57 @@ public class LayoutStateStoreTests
 
         store.BottomPanel.WidthOrHeight = 1200.0;
         Assert.Equal(LayoutConstants.MaxPanelHeightClamp, store.BottomPanel.WidthOrHeight);
+    }
+
+    // =========================================================================
+    // Layout limits come from LayoutSettings (configuration), not from compiled constants
+    // =========================================================================
+    [Fact]
+    public void Limits_WithoutSettings_UseTheLayoutSettingsDefaults()
+    {
+        var defaults = new LayoutSettings();
+        var store = new LayoutStateStore();
+
+        Assert.Equal(defaults.MaxPanelTabs, store.MaxPanelTabs);
+        Assert.Equal(defaults.MaxTabReorderDistance, store.MaxTabReorderDistance);
+    }
+
+    [Fact]
+    public void SetTabIndex_HonorsConfiguredMaxPanelTabs()
+    {
+        var store = new LayoutStateStore(null, new LayoutSettings { MaxPanelTabs = 3 });
+
+        store.SetTabIndex(PanelRegion.Left, 2);
+
+        Assert.Equal(2, store.SelectedTabIndices[PanelRegion.Left]);
+        Assert.Equal(3, store.MaxPanelTabs);
+        Assert.Throws<ArgumentOutOfRangeException>(() => store.SetTabIndex(PanelRegion.Left, 3));
+    }
+
+    [Fact]
+    public void ConfiguredMaxTabReorderDistance_IsExposed()
+    {
+        var store = new LayoutStateStore(null, new LayoutSettings { MaxTabReorderDistance = 7 });
+
+        Assert.Equal(7, store.MaxTabReorderDistance);
+    }
+
+    [Theory]
+    [InlineData(0, 100)]
+    [InlineData(-1, 100)]
+    [InlineData(16, -1)]
+    public void InvalidLayoutSettings_AreRejectedInsteadOfBeingReplaced(int maxPanelTabs, int maxTabReorderDistance)
+    {
+        var settings = new LayoutSettings { MaxPanelTabs = maxPanelTabs, MaxTabReorderDistance = maxTabReorderDistance };
+
+        Assert.Throws<InvalidOperationException>(() => new LayoutStateStore(null, settings));
+    }
+
+    [Fact]
+    public void ZeroReorderDistance_IsAcceptedAsAValidLimit()
+    {
+        var store = new LayoutStateStore(null, new LayoutSettings { MaxTabReorderDistance = 0 });
+
+        Assert.Equal(0, store.MaxTabReorderDistance);
     }
 }

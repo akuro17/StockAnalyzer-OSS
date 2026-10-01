@@ -107,7 +107,8 @@ def check_aggregate_sample_cap(root: Path) -> None:
                      feature_spec=spec, indicator_channel_export_paths=None,
                      window=2, horizon=1, threshold=THRESHOLD,
                      wf_splits=2, gap=None, max_symbols=None, opset=OPSET,
-                     no_verify=False)
+                     no_verify=False, fixed_zscore=False, clip_sigma=None,
+                     outer_fold_index=None)
     ct.validate_flags(args)
     previous = ds.MAX_COMPOSED_BATCH_SAMPLES
     try:
@@ -146,7 +147,8 @@ args = Namespace(data_dir=sys.argv[2], feature_mode=ds.COMPOSED_FEATURES_MODE,
                  feature_spec=sys.argv[3], indicator_channel_export_paths=None,
                  window=2, horizon=1, threshold=ds.DEFAULT_THRESHOLD,
                  wf_splits=2, gap=None, max_symbols=None, opset=17,
-                 no_verify=False)
+                 no_verify=False, fixed_zscore=False, clip_sigma=None,
+                 outer_fold_index=None)
 ct.validate_flags(args)
 prepared = ct.prepare(args)
 print(len(prepared.x_train) + len(prepared.x_validation))
@@ -196,7 +198,8 @@ def check_dataset_parity(data: Path, spec: str, exports: dict[str, str] | None) 
                          json.dumps(exports) if exports is not None else None),
                      window=WINDOW, horizon=HORIZON, threshold=THRESHOLD,
                      wf_splits=SPLITS, gap=GAP, max_symbols=None, opset=OPSET,
-                     no_verify=False)
+                     no_verify=False, fixed_zscore=False, clip_sigma=None,
+                     outer_fold_index=None)
     ct.validate_flags(args)
     prepared = ct.prepare(args)
     split = ds.split_symbols_chronological(

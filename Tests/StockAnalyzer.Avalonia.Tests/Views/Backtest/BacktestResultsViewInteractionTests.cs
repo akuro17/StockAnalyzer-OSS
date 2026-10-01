@@ -8,6 +8,7 @@ using Avalonia.Headless.XUnit;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Moq;
+using StockAnalyzer.Avalonia.Converters;
 using StockAnalyzer.Avalonia.Services;
 using StockAnalyzer.Avalonia.ViewModels.Backtest;
 using StockAnalyzer.Avalonia.Views.Backtest;
@@ -19,9 +20,16 @@ using Xunit;
 
 namespace StockAnalyzer.Avalonia.Tests.Views.Backtest;
 
+// The group headings read the shared static LocalizationManager.Instance (see LocalizationSharedStateCollection.cs).
+[Collection("LocalizationSharedState")]
 public class BacktestResultsViewInteractionTests
 {
     private static readonly DateTime Start = new(2026, 1, 5, 0, 0, 0, DateTimeKind.Utc);
+
+    public BacktestResultsViewInteractionTests()
+    {
+        LocalizationManager.Instance.Initialize("en");
+    }
 
     [AvaloniaFact]
     public async Task PublishedRun_UpdatesVisibleModeMetricsCurveAndExportsTheSelectedArtifact()
@@ -55,13 +63,13 @@ public class BacktestResultsViewInteractionTests
 
             EquityCurveControl curve = Assert.Single(view.GetVisualDescendants().OfType<EquityCurveControl>());
             ItemsControl metrics = Assert.Single(view.GetVisualDescendants().OfType<ItemsControl>()
-                .Where(control => control.ItemsSource?.Cast<object>().FirstOrDefault() is BacktestMetricRow));
+                .Where(control => control.ItemsSource?.Cast<object>().FirstOrDefault() is BacktestMetricGroupPresentation));
             Button export = Assert.Single(view.GetVisualDescendants().OfType<Button>()
                 .Where(button => ReferenceEquals(button.Command, viewModel.ExportReportCommand)));
 
             Assert.True(viewModel.HasResult);
             Assert.True(export.IsEnabled);
-            Assert.Equal(18, metrics.ItemsSource!.Cast<BacktestMetricRow>().Count());
+            Assert.Equal(ExpectedGroupedMetricRowCount, metrics.ItemsSource!.Cast<BacktestMetricGroupPresentation>().Sum(group => group.Rows.Length));
             Assert.Equal(firstResult.EquityPoints, curve.EquityPoints);
             Assert.Equal(viewModel.ResultRevision, curve.ResultRevision);
             Assert.Contains(view.GetVisualDescendants().OfType<TextBlock>(),
@@ -81,13 +89,92 @@ public class BacktestResultsViewInteractionTests
             Assert.Same(secondReport, viewModel.Presentation.Report);
             Assert.Equal(secondResult.EquityPoints, curve.EquityPoints);
             Assert.Equal(viewModel.ResultRevision, curve.ResultRevision);
-            Assert.Equal(18, metrics.ItemsSource!.Cast<BacktestMetricRow>().Count());
+            Assert.Equal(ExpectedGroupedMetricRowCount, metrics.ItemsSource!.Cast<BacktestMetricGroupPresentation>().Sum(group => group.Rows.Length));
         }
         finally
         {
             window.Close();
         }
     }
+
+    [AvaloniaFact]
+    public void PublishedRun_ShowsSixMetricGroupsEachWithAHeadingAndNoExpander()
+    {
+        var viewModel = new BacktestResultsViewModel(
+            NullLocalizationService.Instance,
+            Mock.Of<IBacktestReportExporter>(),
+            Mock.Of<IDialogService>());
+        var view = new BacktestResultsView { DataContext = viewModel };
+        var window = new Window { Content = view, Width = 1100, Height = 900 };
+
+        try
+        {
+            window.Show();
+            (BacktestResult result, BacktestReport report) = MakeRun(110m);
+            viewModel.Update(result, report, 0);
+            Render();
+
+            ItemsControl groups = Assert.Single(view.GetVisualDescendants().OfType<ItemsControl>()
+                .Where(control => control.ItemsSource?.Cast<object>().FirstOrDefault() is BacktestMetricGroupPresentation));
+
+            Assert.Equal(6, groups.ItemsSource!.Cast<BacktestMetricGroupPresentation>().Count());
+            // Every group is shown the same way: there is no collapsible list inside the metrics section.
+            Assert.Empty(groups.GetVisualDescendants().OfType<Expander>());
+
+            // The culture is pinned to "en" by the constructor, so each heading is the localized text of its group key (never the bracketed missing-key marker).
+            string[] expectedHeadings = groups.ItemsSource!.Cast<BacktestMetricGroupPresentation>()
+                .Select(group => LocalizationManager.Instance.Get(group.GroupKey))
+                .ToArray();
+            Assert.DoesNotContain(expectedHeadings, heading => heading.StartsWith('['));
+            string?[] headings = groups.GetVisualDescendants().OfType<TextBlock>()
+                .Where(text => text.Classes.Contains("ColumnHeader"))
+                .Select(text => text.Text)
+                .ToArray();
+            Assert.Equal(expectedHeadings, headings);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public void PublishedRun_ShowsTheFiveItemSummaryAboveTheMetricsAndHidesItBeforeAResult()
+    {
+        var viewModel = new BacktestResultsViewModel(
+            NullLocalizationService.Instance,
+            Mock.Of<IBacktestReportExporter>(),
+            Mock.Of<IDialogService>());
+        var view = new BacktestResultsView { DataContext = viewModel };
+        var window = new Window { Content = view, Width = 1100, Height = 900 };
+
+        try
+        {
+            window.Show();
+            Render();
+            ItemsControl summary = Assert.Single(view.GetVisualDescendants().OfType<ItemsControl>()
+                .Where(control => global::Avalonia.Automation.AutomationProperties.GetAutomationId(control) == "Backtest_Results_Summary"));
+            Assert.False(summary.GetVisualAncestors().OfType<Border>().First().IsVisible);
+
+            (BacktestResult result, BacktestReport report) = MakeRun(110m);
+            viewModel.Update(result, report, 0);
+            Render();
+
+            Assert.True(summary.GetVisualAncestors().OfType<Border>().First().IsVisible);
+            Assert.Equal(5, summary.ItemsSource!.Cast<BacktestMetricDisplayRow>().Count());
+            Assert.Equal(viewModel.Summary, summary.ItemsSource!.Cast<BacktestMetricDisplayRow>());
+            ItemsControl groups = Assert.Single(view.GetVisualDescendants().OfType<ItemsControl>()
+                .Where(control => control.ItemsSource?.Cast<object>().FirstOrDefault() is BacktestMetricGroupPresentation));
+            Assert.Equal(6, groups.ItemsSource!.Cast<BacktestMetricGroupPresentation>().Count());
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>The 18 fixed metrics, the 15 extended metrics and Closed Trades of a generated report, shown in six groups.</summary>
+    private const int ExpectedGroupedMetricRowCount = 34;
 
     internal static (BacktestResult Result, BacktestReport Report) MakeRun(decimal finalEquity)
     {

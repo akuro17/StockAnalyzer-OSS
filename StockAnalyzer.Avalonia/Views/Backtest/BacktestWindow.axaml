@@ -5,6 +5,7 @@
         xmlns:l="clr-namespace:StockAnalyzer.Avalonia.Markup;assembly=StockAnalyzer.Avalonia"
         xmlns:vm="using:StockAnalyzer.Avalonia.ViewModels.Backtest"
         xmlns:views="using:StockAnalyzer.Avalonia.Views.Backtest"
+        xmlns:controls="using:StockAnalyzer.Avalonia.Views.Controls"
         mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="700"
         x:Class="StockAnalyzer.Avalonia.Views.Backtest.BacktestWindow"
         x:DataType="vm:BacktestWindowViewModel"
@@ -127,31 +128,14 @@
                 </Grid>
             </Border>
 
-            <!-- Toast Notification Overlay (Round 2): identical markup to
-                 IndicatorSettingsWindow.axaml's own toast overlay (independently verified against that
-                 file), reused verbatim per the explicit "no inventing a different notification style"
-                 instruction - confirms a condition was added the same way "Library -> Active" confirms an
+            <!-- Toast Notification Overlay: the shared ToastOverlay control (same look as the indicator settings
+                 window) - confirms a condition was added the same way "Library -> Active" confirms an
                  indicator was added. -->
-            <Border Grid.Row="0" Grid.RowSpan="3"
-                    IsVisible="{Binding IndicatorSelection.ToastService.IsNotificationVisible}"
-                    VerticalAlignment="Bottom" HorizontalAlignment="Center"
-                    Margin="0,0,0,60" Padding="16,10"
-                    Background="{DynamicResource Brush.Background.Tertiary}"
-                    CornerRadius="8" BoxShadow="0 4 10 0 #40000000"
-                    ZIndex="1000">
-                <Border.Transitions>
-                    <Transitions>
-                        <DoubleTransition Property="Opacity" Duration="0:0:0.2"/>
-                    </Transitions>
-                </Border.Transitions>
-                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock Text="✅" Margin="0,0,8,0" VerticalAlignment="Center" FontSize="{DynamicResource TitleFontSize}"/>
-                    <TextBlock Text="{Binding IndicatorSelection.ToastService.NotificationMessage}"
-                               Foreground="{DynamicResource Brush.Text.Primary}"
-                               FontSize="{DynamicResource BaseFontSize}" FontWeight="SemiBold"
-                               VerticalAlignment="Center"/>
-                </StackPanel>
-            </Border>
+            <controls:ToastOverlay Grid.Row="0" Grid.RowSpan="3"
+                                   Service="{Binding IndicatorSelection.ToastService}" Icon="✅"
+                                   VerticalAlignment="Bottom" HorizontalAlignment="Center"
+                                   Margin="0,0,0,60"
+                                   ZIndex="1000"/>
         </Grid>
     </Border>
 </Window>

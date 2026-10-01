@@ -21,6 +21,7 @@ Examples
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 from typing import Tuple
@@ -35,6 +36,7 @@ import fixed_scaler  # noqa: E402
 import composed_training  # noqa: E402
 import metrics  # noqa: E402
 import onnx_meta  # noqa: E402
+import checkpoints  # noqa: E402
 
 # --- Defaults (named; no magic numbers) -------------------------------------
 
@@ -100,12 +102,17 @@ def train_booster(args: argparse.Namespace, prepared: composed_training.Prepared
         date_ranges = prepared.date_ranges
         channels = prepared.channels
         symbol_count = len(prepared.symbols)
+        dates = prepared.dates
     spec = prepared.feature_spec if prepared is not None else None
     lags = fixed_scaler.trainer_lags(args, spec)
-    x_tr_3d, x_va_3d, scaler = fixed_scaler.prepare(
-        x_tr_3d, x_va_3d, enabled=args.fixed_zscore, mode=args.feature_mode,
-        feature_spec=spec, lags=lags, clip_sigma=args.clip_sigma,
-    )
+    source_symbols = prepared.symbols if prepared is not None else symbols
+    source_arrays = tuple(source_symbols[s] for s in sorted(source_symbols))
+    session = checkpoints.Session(args, "lightgbm", (x_tr_3d, y_tr, x_va_3d, y_va, *source_arrays),
+                                  dates, spec, lags,
+                                  {"lightgbm": lgb.__version__, "numpy": np.__version__})
+    args._checkpoint_session = session
+    x_tr_3d, x_va_3d, scaler = session.preprocess(
+        x_tr_3d, x_va_3d, feature_spec=spec, lags=lags)
     flat = args.window * channels
     x_tr = x_tr_3d.reshape(x_tr_3d.shape[0], flat).astype(np.float32)
     x_va = x_va_3d.reshape(x_va_3d.shape[0], flat).astype(np.float32)
@@ -130,11 +137,32 @@ def train_booster(args: argparse.Namespace, prepared: composed_training.Prepared
         f"feature_mode={args.feature_mode} channels={channels} flat={flat} "
         f"train={len(x_tr)} val={len(x_va)} symbols={symbol_count}"
     )
+    initial = lgb.Booster(model_file=str(session.blob)) if session.blob is not None else None
+    if initial is not None and (initial.num_feature() != flat or initial.num_model_per_iteration() != NUM_CLASSES):
+        raise ValueError("native Booster feature/class count mismatch")
+    if args.preflight:
+        return model, channels, flat, {}, date_ranges, scaler
+    best_loss = float("inf")
+
+    def checkpoint_iteration(env):
+        nonlocal best_loss
+        loss = float(env.evaluation_result_list[0][2])
+        if not np.isfinite(loss):
+            raise ValueError("nonfinite Booster validation loss")
+        iteration = env.iteration + 1
+        summary = dict(completed_iteration=iteration, validation_loss=loss)
+        writer = lambda path: env.model.save_model(str(path), num_iteration=iteration)
+        session.save(writer, ".lgb.txt", "last", summary)
+        if loss < best_loss:
+            best_loss = loss
+            session.save(writer, ".lgb.txt", "best", summary)
+    checkpoint_iteration.order = 25  # after evaluation, before LightGBM early stopping (order 30)
     model.fit(
         x_tr, y_tr,
+        init_model=initial,
         eval_set=[(x_va, y_va)],
         eval_metric="multi_logloss",
-        callbacks=[lgb.early_stopping(args.early_stopping, verbose=False), lgb.log_evaluation(0)],
+        callbacks=[lgb.early_stopping(args.early_stopping, verbose=False), lgb.log_evaluation(0), checkpoint_iteration],
     )
     val_acc = float((model.predict(x_va) == y_va).mean())
     print(f"validation accuracy={val_acc:.3f}  best_iteration={model.best_iteration_}")
@@ -267,6 +295,7 @@ def verify_onnx(out_path: Path, model, flat: int, window: int, channels: int) ->
 
 def _parse_args(argv) -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Train a LightGBM trend predictor and export a 3D-input ONNX.")
+    checkpoints.add_arguments(p)
     p.add_argument("--data-dir", type=Path, default=ds.DEFAULT_DATA_DIR)
     p.add_argument("--feature-mode", choices=ds.FEATURE_MODES + (ds.COMPOSED_FEATURES_MODE,), default="ohlcv_minmax")
     p.add_argument("--feature-spec", type=str, default=None)
@@ -276,6 +305,7 @@ def _parse_args(argv) -> argparse.Namespace:
     p.add_argument("--indicator-channel-export-paths", type=str, default=None)
     p.add_argument("--window", type=int, default=ds.DEFAULT_WINDOW)
     p.add_argument("--horizon", type=int, default=ds.DEFAULT_HORIZON)
+    p.add_argument("--timeframe", choices=tuple(ds.TIMEFRAME_DIRS), default=onnx_meta.DEFAULT_TIMEFRAME)
     p.add_argument("--threshold", type=float, default=ds.DEFAULT_THRESHOLD)
     p.add_argument("--n-estimators", type=int, default=DEFAULT_N_ESTIMATORS)
     p.add_argument("--learning-rate", type=float, default=DEFAULT_LEARNING_RATE)
@@ -301,6 +331,10 @@ def _parse_args(argv) -> argparse.Namespace:
     p.add_argument("--smoke", action="store_true",
                    help=f"Fast run: --max-symbols {SMOKE_MAX_SYMBOLS} --n-estimators {SMOKE_N_ESTIMATORS}.")
     args = p.parse_args(argv)
+    args.arch = "gbdt"
+    args.target_type = "classification"
+    checkpoints.validate_controls(args.initialization_mode, "lightgbm", args.init_from,
+                                  args.parent_model_id, args.parent_model_hash, json.loads(args.freeze_paths))
     if args.gap is not None and args.gap < 0:
         raise SystemExit(f"--gap must be non-negative, got {args.gap}")
     if args.outer_fold_index is not None and not 0 <= args.outer_fold_index < args.wf_splits:
@@ -320,16 +354,21 @@ def main(argv) -> int:
     args = _parse_args(argv)
     prepared = composed_training.prepare(args) if args.feature_mode == ds.COMPOSED_FEATURES_MODE else None
     model, channels, flat, report, date_ranges, scaler = train_booster(args, prepared)
+    if args.preflight:
+        return 0
     lags = fixed_scaler.trainer_lags(args, prepared.feature_spec if prepared is not None else None)
     contract = onnx_meta.build_contract(
         feature_mode=args.feature_mode, window_size=args.window, channels=channels,
         horizon=args.horizon, threshold=args.threshold, wf_splits=args.wf_splits,
         seed=args.seed, producer="train_lightgbm.py arch=gbdt", gap=args.gap,
+        timeframe=args.timeframe,
         price_adjustment=args.price_adjustment, date_ranges=date_ranges,
         feature_spec_json=args.feature_spec if prepared is not None else None,
         fixed_zscore=args.fixed_zscore, lags=lags, clip_sigma=args.clip_sigma,
         scaler_ref=args.out.name + ".scaler.json" if scaler is not None else None,
+        analysis_ref=args.out.name + ".analysis.json" if args.outer_fold_index is not None else None,
     )
+    contract.update(args._checkpoint_session.metadata())
     def export_with_scaler(path: Path) -> None:
         export_onnx(model, flat, args.window, channels, path, args.opset, contract)
         if scaler is not None:
@@ -345,11 +384,13 @@ def main(argv) -> int:
             ),
         )
         print(f"published {args.out} and metrics")
+        args._checkpoint_session.exported(args.out)
         return 0
     export_with_scaler(args.out)
     print(f"wrote {metrics.write_report(report, args.out)}")
     if not args.no_verify:
         verify_onnx(args.out, model, flat, args.window, channels)
+        args._checkpoint_session.exported(args.out)
     return 0
 
 

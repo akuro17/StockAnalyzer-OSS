@@ -952,6 +952,125 @@ public sealed class BacktestEvaluationServiceTests
     }
 
     [Fact]
+    public void ReportIdentity_ExtendedMetricsSelectSchema2_AndLegacyReportKeepsSchema1Bytes()
+    {
+        BacktestConfiguration configuration = Configuration();
+        BacktestInput input = Input(3);
+        BacktestEvaluationArtifact artifact = Service(
+            new ResultEngine(Result(configuration, RunStatus.Completed, new[] { 100m, 99m, 101m })),
+            new NoSamplingEvidenceTrustPolicy()).Evaluate(
+                input, configuration, BacktestStrategySpecification.NoOp(Array.Empty<StrategyIndicatorRequest>()), Options(input, 7));
+        BacktestReport legacy = StockAnalyzer.Core.Tests.Backtest.Reporting.ReportTestHelpers.ToLegacyReport(artifact.Report!);
+        Assert.Empty(legacy.EnumerateExtendedMetrics());
+
+        EvaluationContentIdentity extended = BacktestReportIdentityEncoder.Compute(
+            artifact.RunFingerprint, artifact.Metadata, artifact.RunStatus, artifact.Sampling, artifact.BootstrapDiagnostics,
+            artifact.Report, artifact.RatioDrawdown, artifact.AmountDrawdown);
+        EvaluationContentIdentity legacyIdentity = BacktestReportIdentityEncoder.Compute(
+            artifact.RunFingerprint, artifact.Metadata, artifact.RunStatus, artifact.Sampling, artifact.BootstrapDiagnostics,
+            legacy, artifact.RatioDrawdown, artifact.AmountDrawdown);
+
+        Assert.Equal(BacktestReportIdentityEncoder.ExtendedMetricsSchemaVersion, extended.SchemaVersion);
+        Assert.Equal(BacktestReportIdentityEncoder.SchemaVersion, legacyIdentity.SchemaVersion);
+        Assert.Equal(ExpectedIdentityHex(artifact, artifact.Report), extended.Sha256);
+        Assert.Equal(ExpectedIdentityHex(artifact, legacy), legacyIdentity.Sha256);
+        Assert.NotEqual(extended.Sha256, legacyIdentity.Sha256);
+    }
+
+    // ---- TradingStartIndex reaches the Exposure denominator (Y:\Temp\sa_implementation_plan_BacktestExposureSemantics.md, T5) ----
+
+    private static BacktestInput InputWithTradingStart(int count, int historyStart, int tradingStart)
+    {
+        ImmutableArray<CandleData> bars = Enumerable.Range(0, count)
+            .Select(i => new CandleData(T0.AddDays(i), 100m, 101m, 99m, 100m, 1_000L))
+            .ToImmutableArray();
+        return new BacktestInput(
+            bars, "TEST", TimeFrame.D1, BacktestInput.CurrentDataVersion, T0, T0.AddDays(count - 1), historyStart, tradingStart);
+    }
+
+    /// <summary>Flat equity; every bar from <paramref name="firstHeldBar"/> on shows an open position (cash-account MarketValue).</summary>
+    private static BacktestResult HeldFrom(BacktestConfiguration configuration, int count, int firstHeldBar)
+    {
+        var points = ImmutableArray.CreateBuilder<EquityPoint>(count);
+        for (int index = 0; index < count; index++)
+        {
+            points.Add(new EquityPoint(index, T0.AddDays(index), 1_000m, 1_000m, index >= firstHeldBar ? 50m : 0m, 0m));
+        }
+        return new BacktestResult(
+            ImmutableArray<BacktestOrder>.Empty, ImmutableArray<BacktestFill>.Empty, ImmutableArray<BacktestTrade>.Empty,
+            points.MoveToImmutable(), ImmutableArray<BacktestSignal>.Empty, configuration, RunStatus.Completed, "NoOp", new byte[32], false);
+    }
+
+    [Fact]
+    public void Evaluate_ExposureUsesTheInputsTradingStart_EvenWhenTheOptionsOmitIt()
+    {
+        BacktestConfiguration configuration = Configuration();
+        BacktestInput input = InputWithTradingStart(count: 10, historyStart: 0, tradingStart: 4);
+        BacktestResult result = HeldFrom(configuration, 10, firstHeldBar: 4); // held on every bar the strategy could trade
+
+        BacktestEvaluationArtifact omitted = Service(new ResultEngine(result), new NoSamplingEvidenceTrustPolicy()).Evaluate(
+            input, configuration, BacktestStrategySpecification.NoOp(Array.Empty<StrategyIndicatorRequest>()), Options(input, 7));
+        BacktestReportOptions matching = new(input.Frame, 0, input.EvaluationStartUtc, input.EvaluationEndUtc)
+        {
+            AnnualPeriods = 252, BootstrapSeed = 7, BootstrapIterations = 1000, TradingStartIndex = 4,
+        };
+        BacktestEvaluationArtifact supplied = Service(new ResultEngine(result), new NoSamplingEvidenceTrustPolicy()).Evaluate(
+            input, configuration, BacktestStrategySpecification.NoOp(Array.Empty<StrategyIndicatorRequest>()), matching);
+
+        Assert.Equal(1m, omitted.Report!.Exposure!.Value.Value);
+        Assert.Equal(6m, omitted.Report.TimeInMarket!.Value.Value);
+        Assert.Equal(1m, supplied.Report!.Exposure!.Value.Value);
+    }
+
+    [Fact]
+    public void Evaluate_OptionsTradingStartDifferingFromTheInput_IsRejected()
+    {
+        BacktestConfiguration configuration = Configuration();
+        BacktestInput input = InputWithTradingStart(count: 10, historyStart: 0, tradingStart: 4);
+        BacktestReportOptions mismatching = new(input.Frame, 0, input.EvaluationStartUtc, input.EvaluationEndUtc)
+        {
+            AnnualPeriods = 252, BootstrapSeed = 7, BootstrapIterations = 1000, TradingStartIndex = 2,
+        };
+
+        Assert.Throws<ArgumentException>(() => Service(new ResultEngine(HeldFrom(configuration, 10, 4)), new NoSamplingEvidenceTrustPolicy()).Evaluate(
+            input, configuration, BacktestStrategySpecification.NoOp(Array.Empty<StrategyIndicatorRequest>()), mismatching));
+    }
+
+    [Fact]
+    public void ReportIdentity_ChangesWhenARightCensoringFlagFlips_AndNothingElseChanged()
+    {
+        BacktestConfiguration configuration = Configuration();
+        BacktestInput input = Input(4);
+        BacktestEvaluationArtifact artifact = Service(
+            new ResultEngine(Result(configuration, RunStatus.Completed, new[] { 900m, 800m, 1_000m, 1_010m })),
+            new NoSamplingEvidenceTrustPolicy()).Evaluate(
+                input, configuration, BacktestStrategySpecification.NoOp(Array.Empty<StrategyIndicatorRequest>()), Options(input, 7));
+        BacktestReport original = artifact.Report!;
+        Assert.False(original.MaxDepthDrawdownDurationRightCensored);
+
+        string Hash(BacktestReport report) => BacktestReportIdentityEncoder.Compute(
+            artifact.RunFingerprint, artifact.Metadata, artifact.RunStatus, artifact.Sampling, artifact.BootstrapDiagnostics,
+            report, artifact.RatioDrawdown, artifact.AmountDrawdown).Sha256!;
+        BacktestReport WithFlags(bool? maxDepth, bool? longest)
+        {
+            System.Text.Json.Nodes.JsonObject node = System.Text.Json.Nodes.JsonNode.Parse(System.Text.Json.JsonSerializer.Serialize(original))!.AsObject();
+            node["MaxDepthDrawdownDurationRightCensored"] = maxDepth;
+            node["LongestDrawdownDurationRightCensored"] = longest;
+            return System.Text.Json.JsonSerializer.Deserialize<BacktestReport>(node.ToJsonString())!;
+        }
+
+        string baseline = Hash(original);
+        string depthFlipped = Hash(WithFlags(true, original.LongestDrawdownDurationRightCensored));
+        string longestFlipped = Hash(WithFlags(original.MaxDepthDrawdownDurationRightCensored, !original.LongestDrawdownDurationRightCensored));
+
+        Assert.Equal(baseline, Hash(WithFlags(original.MaxDepthDrawdownDurationRightCensored, original.LongestDrawdownDurationRightCensored)));
+        Assert.NotEqual(baseline, depthFlipped);
+        Assert.NotEqual(baseline, longestFlipped);
+        Assert.NotEqual(depthFlipped, longestFlipped);
+        Assert.Equal(ExpectedIdentityHex(artifact, original), baseline);
+    }
+
+    [Fact]
     public void ReportIdentity_UnavailableRunIdentityGivesUnavailableReportIdentityButKeepsMetadata()
     {
         BacktestConfiguration configuration = Configuration();
@@ -1196,7 +1315,9 @@ public sealed class BacktestEvaluationServiceTests
     }
 
     /// <summary>Authors the schema-1 preimage from the approved field list, independent of production writer code.</summary>
-    private static string ExpectedIdentityHex(BacktestEvaluationArtifact artifact)
+    private static string ExpectedIdentityHex(BacktestEvaluationArtifact artifact) => ExpectedIdentityHex(artifact, artifact.Report);
+
+    private static string ExpectedIdentityHex(BacktestEvaluationArtifact artifact, BacktestReport? r)
     {
         using var stream = new MemoryStream();
         using var w = new BinaryWriter(stream, new System.Text.UTF8Encoding(false), leaveOpen: true);
@@ -1211,6 +1332,7 @@ public sealed class BacktestEvaluationServiceTests
         void Dec(decimal v) { foreach (int part in decimal.GetBits(v)) w.Write(part); }
         void NDec(decimal? v) { w.Write(v.HasValue); if (v.HasValue) Dec(v.Value); }
         void NI32(int? v) { w.Write(v.HasValue); if (v.HasValue) w.Write(v.Value); }
+        void OptBool(bool? v) { w.Write(v.HasValue); if (v.HasValue) w.Write(v.Value); }
         void NI64(long? v) { w.Write(v.HasValue); if (v.HasValue) w.Write(v.Value); }
         void NTime(DateTime? v) { w.Write(v.HasValue); if (v.HasValue) w.Write(v.Value.Ticks); }
         void Metric(MetricValue v) { w.Write((int)v.Status); w.Write((int)v.Unit); w.Write((int)v.Reason); NDec(v.Value); }
@@ -1231,8 +1353,23 @@ public sealed class BacktestEvaluationServiceTests
         BacktestEvaluationMetadata m = artifact.Metadata;
         SamplingQualification s = artifact.Sampling;
         BootstrapDiagnostics b = artifact.BootstrapDiagnostics;
+        // Independent of production code: canonical extended-metric order authored here from the approved plan
+        // (Y:\Temp\sa_implementation_plan_BacktestReportExtendedMetrics.md); absent (null) metrics are skipped.
+        var extended = new List<(string Name, MetricValue? Metric)>();
+        if (r is not null)
+        {
+            extended.AddRange(new (string, MetricValue?)[]
+            {
+                ("GrossProfit", r.GrossProfit), ("GrossLoss", r.GrossLoss), ("AverageWin", r.AverageWin), ("AverageLoss", r.AverageLoss),
+                ("PayoffRatio", r.PayoffRatio), ("LargestWin", r.LargestWin), ("LargestLoss", r.LargestLoss),
+                ("AverageHoldingPeriod", r.AverageHoldingPeriod), ("MaxConsecutiveWins", r.MaxConsecutiveWins),
+                ("MaxConsecutiveLosses", r.MaxConsecutiveLosses), ("MaxDepthDrawdownDuration", r.MaxDepthDrawdownDuration),
+                ("LongestDrawdownDuration", r.LongestDrawdownDuration), ("TimeInMarket", r.TimeInMarket), ("Exposure", r.Exposure), ("ExposureAdjustedCAGR", r.ExposureAdjustedCAGR),
+            }.Where(e => e.Item2.HasValue));
+        }
+        int identitySchema = extended.Count > 0 ? 2 : 1;
         Str("StockAnalyzer.Backtest.Evaluation");
-        w.Write(1); w.Write(1);
+        w.Write(1); w.Write(identitySchema);
         w.Write(artifact.RunFingerprint.SchemaVersion); w.Write(artifact.RunFingerprint.ExecutionSemanticsVersion);
         Str(artifact.RunFingerprint.Sha256);
         w.Write((int)artifact.RunStatus); w.Write(0);
@@ -1248,7 +1385,6 @@ public sealed class BacktestEvaluationServiceTests
         w.Write(s.TimestampConvention.HasValue); if (s.TimestampConvention.HasValue) w.Write((int)s.TimestampConvention.Value);
         w.Write((int)s.Frame); NI32(s.ExpectedCount); w.Write(s.ObservedCount); Str(s.ExpectedTimestampsDigest);
 
-        BacktestReport? r = artifact.Report;
         w.Write(r is not null);
         if (r is not null)
         {
@@ -1265,6 +1401,13 @@ public sealed class BacktestEvaluationServiceTests
             w.Write(ci.HasValue);
             if (ci is { } interval) { Dec(interval.Lower); Dec(interval.Upper); }
             w.Write(r.TotalTrades); w.Write(r.WinTrades); w.Write(r.LossTrades); w.Write(r.BreakevenTrades); w.Write(r.SqnWarning);
+            if (identitySchema == 2)
+            {
+                w.Write(extended.Count);
+                foreach ((string name, MetricValue? metric) in extended) { Str(name); Metric(metric!.Value); }
+                OptBool(r.MaxDepthDrawdownDurationRightCensored);
+                OptBool(r.LongestDrawdownDurationRightCensored);
+            }
         }
         Drawdown(artifact.RatioDrawdown);
         Drawdown(artifact.AmountDrawdown);

@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Text;
 
 namespace StockAnalyzer.Core.Services.Notes;
 
@@ -7,9 +8,9 @@ namespace StockAnalyzer.Core.Services.Notes;
 /// Shared "Read more" collapse-boundary logic (Settings &gt; Notes: ReadMoreMaxCharacters/
 /// ReadMoreMaxLines), the single source of truth for what a Note body looks like before its
 /// "Read more" toggle is expanded. Consumed by both the Notes tab's card display
-/// (NoteTimelineItemViewModel.DisplayBody) and the Tickers-tab Notes column preview
-/// (TickerMetadataNotesCacheSynchronizer), so the two never define the collapse boundary
-/// differently.
+/// (NoteTimelineItemViewModel.DisplayBody) and the Tickers-tab Notes hover popup
+/// (WatchlistItemViewModel.NotesPopupText, applied at display time), so the two never define the
+/// collapse boundary differently.
 /// </summary>
 public static class NoteReadMorePreview
 {
@@ -44,6 +45,79 @@ public static class NoteReadMorePreview
         return EffectiveLength(lineLimited) <= maxCharacters
             ? lineLimited
             : TruncateToEffectiveLength(lineLimited, maxCharacters);
+    }
+
+    /// <summary>Removes every inline image placeholder token (<see cref="NoteImageTokenExtractor"/>) and every
+    /// validated http(s) URL occurrence (<see cref="UrlExtractor.Tokenize"/>, applied to each remaining plain-text
+    /// run - the same order the Notes timeline uses to linkify a body) from <paramref name="body"/>. Nothing else
+    /// is altered: no whitespace is collapsed or trimmed, and trailing sentence punctuation that
+    /// <see cref="UrlExtractor.Tokenize"/> splits off a URL stays.</summary>
+    public static string RemoveImagesAndUrls(string body)
+    {
+        ArgumentNullException.ThrowIfNull(body);
+
+        var result = new StringBuilder(body.Length);
+        foreach (var imageToken in NoteImageTokenExtractor.Tokenize(body))
+        {
+            if (imageToken.AttachmentId is not null)
+            {
+                continue;
+            }
+
+            foreach (var urlToken in UrlExtractor.Tokenize(imageToken.Text))
+            {
+                if (urlToken.NormalizedUrl is null)
+                {
+                    result.Append(urlToken.Text);
+                }
+            }
+        }
+
+        return result.ToString();
+    }
+
+    /// <summary>Tickers-tab Notes hover-popup text: images and URLs are removed first
+    /// (<see cref="RemoveImagesAndUrls"/>) so the limits count only visible text; when nothing but whitespace
+    /// remains the result is <see cref="string.Empty"/>; when the remainder is within both thresholds it is
+    /// returned unchanged; otherwise it is <see cref="BuildCollapsedText"/> followed by a line break and
+    /// <paramref name="readMoreLabel"/> (the Notes timeline's collapsed-card layout). The label is user-visible
+    /// text, so the caller supplies the localized wording (localization key Notes_ReadMore).</summary>
+    /// <exception cref="ArgumentNullException"><paramref name="body"/> is null.</exception>
+    /// <exception cref="ArgumentException"><paramref name="readMoreLabel"/> is null, empty or whitespace.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="maxCharacters"/> or <paramref name="maxLines"/> is below 1.</exception>
+    public static string BuildPopupText(string body, int maxCharacters, int maxLines, string readMoreLabel)
+    {
+        ArgumentNullException.ThrowIfNull(body);
+        ArgumentOutOfRangeException.ThrowIfLessThan(maxCharacters, 1);
+        ArgumentOutOfRangeException.ThrowIfLessThan(maxLines, 1);
+        ArgumentException.ThrowIfNullOrWhiteSpace(readMoreLabel);
+
+        var visible = RemoveImagesAndUrls(body);
+        if (string.IsNullOrWhiteSpace(visible))
+        {
+            return string.Empty;
+        }
+
+        return RequiresCollapse(visible, maxCharacters, maxLines)
+            ? BuildCollapsedText(visible, maxCharacters, maxLines) + "\n" + readMoreLabel
+            : visible;
+    }
+
+    /// <summary>Tickers-tab Notes column text: every CRLF pair, LF and CR becomes one space (same order and
+    /// semantics as the column's previous single-line conversion; runs of blank lines are not collapsed), then the
+    /// result is cut to <paramref name="maxCharacters"/> effective characters (image tokens stay atomic). No suffix
+    /// is appended and nothing is trimmed.</summary>
+    /// <exception cref="ArgumentNullException"><paramref name="body"/> is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="maxCharacters"/> is below 1.</exception>
+    public static string BuildSingleLineText(string body, int maxCharacters)
+    {
+        ArgumentNullException.ThrowIfNull(body);
+        ArgumentOutOfRangeException.ThrowIfLessThan(maxCharacters, 1);
+
+        var flat = body.Replace("\r\n", " ").Replace('\n', ' ').Replace('\r', ' ');
+        return EffectiveLength(flat) <= maxCharacters
+            ? flat
+            : TruncateToEffectiveLength(flat, maxCharacters);
     }
 
     /// <summary>Sums a plain-text run at its literal character length, but an inline image

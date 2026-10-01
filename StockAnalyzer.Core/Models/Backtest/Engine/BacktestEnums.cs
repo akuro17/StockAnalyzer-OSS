@@ -26,8 +26,9 @@ public enum ExecutionModel { Legacy = 0, StrictEvidence = 1, YFinanceApproximate
 /// <summary>
 /// Insolvent covers both the original end-of-bar Equity&lt;=0 condition and a maintenance-margin
 /// forced liquidation (see Y:\Temp\sa_ai_context_BacktestEngine_P1.md section 1.5.6) — both stop the run.
+/// Persisted as an integer in JSON and in the evaluation identity hash: never renumber or reuse a value; append only.
 /// </summary>
-public enum RunStatus { Completed, Cancelled, Failed, Insolvent }
+public enum RunStatus { Completed = 0, Cancelled = 1, Failed = 2, Insolvent = 3 }
 
 public enum ExpiredReason { EndOfData, Insolvency, GTDExpired }
 

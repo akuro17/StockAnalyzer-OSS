@@ -158,8 +158,9 @@ public sealed class TrainingResourceSettingsViewModelTests : IDisposable
     private static TrainingResourceSettingsViewModel Navigate(SettingsViewModel shell)
     {
         var category = SettingsConstants.Categories.Single(c => c.Key == SettingsConstants.Keys.TrainingWizard);
-        var notesIndex = SettingsConstants.Categories.ToList().FindIndex(c => c.Key == SettingsConstants.Keys.Notes);
-        Assert.Equal(notesIndex - 1, SettingsConstants.Categories.ToList().IndexOf(category));
+        // Tickers sits immediately above Notes (sa_implement Tickers settings category), so Training Wizard is now immediately above Tickers.
+        var tickersIndex = SettingsConstants.Categories.ToList().FindIndex(c => c.Key == SettingsConstants.Keys.Tickers);
+        Assert.Equal(tickersIndex - 1, SettingsConstants.Categories.ToList().IndexOf(category));
         shell.SelectedCategory = category;
         return Assert.IsType<TrainingResourceSettingsViewModel>(shell.CurrentPage);
     }

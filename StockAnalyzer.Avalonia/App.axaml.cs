@@ -233,6 +233,11 @@ public partial class App : Application, IDisposable, IThemeVariantDispatcher
                 var chartSettingsManager = Services.GetRequiredService<StockAnalyzer.Core.Services.IChartSettingsManager>();
                 var fontSettingsManager = Services.GetRequiredService<IFontSettingsManager>();
                 var notesSettingsManager = Services.GetRequiredService<StockAnalyzer.Core.Services.Notes.INotesSettingsManager>();
+                var tickersSettingsManager = Services.GetRequiredService<StockAnalyzer.Core.Services.Tickers.ITickersSettingsManager>();
+
+                // Tickers-tab Notes cell/popup read the Read More Threshold live through this context
+                // (WatchlistItemViewModel rows have no constructor DI); it must exist before any grid renders.
+                StockAnalyzer.Avalonia.Common.TickerNotesDisplayContext.Initialize(notesSettingsManager, Services.GetRequiredService<IMessenger>());
 
                 // FR: theme/font-aware drawing-tool labels (LongShortPositionObject, TargetPriceProjectionObject)
                 var iconDrawingService = Services.GetService<StockAnalyzer.Avalonia.Services.Drawing.IIconDrawingService>();
@@ -255,8 +260,10 @@ public partial class App : Application, IDisposable, IThemeVariantDispatcher
                 _ = chartSettingsManager.LoadAsync();
                 _ = fontSettingsManager.LoadAsync();
                 _ = notesSettingsManager.LoadAsync();
+                _ = tickersSettingsManager.LoadAsync();
                 var predictionSettingsManager = Services.GetRequiredService<IPredictionSettingsManager>();
                 _ = predictionSettingsManager.LoadAsync();
+                Services.GetRequiredService<PredictionOperationsLifetime>().Start();
 
                 desktop.MainWindow = new MainWindow
                 {
@@ -289,6 +296,33 @@ public partial class App : Application, IDisposable, IThemeVariantDispatcher
                     catch
                     {
                         // Best-effort background scan; must never crash or block startup.
+                    }
+                });
+
+                // The Tickers-tab Notes cache now stores each latest Note's full hashtag-free body (the Read
+                // More cut happens at display time). Caches written by the earlier truncated-preview format are
+                // converted exactly once (a persistent marker records it; a partly failed pass is retried on the
+                // next start), off the UI thread. Its wall time is logged so its cost stays observable.
+                _ = Task.Run(async () =>
+                {
+                    var logger = (Microsoft.Extensions.Logging.ILogger?)Services.GetService<Microsoft.Extensions.Logging.ILogger<App>>()
+                        ?? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
+                    try
+                    {
+                        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+                        await Services.GetRequiredService<StockAnalyzer.Core.Services.Notes.NoteSchemaInitializer>().InitializeAsync().ConfigureAwait(false);
+                        var result = await Services.GetRequiredService<StockAnalyzer.Core.Services.Notes.NotesCacheFormatMigration>()
+                            .RunIfNeededAsync().ConfigureAwait(false);
+                        stopwatch.Stop();
+                        if (result is { } pass)
+                        {
+                            Microsoft.Extensions.Logging.LoggerExtensions.LogInformation(logger, "Notes cache conversion finished: {Rewritten} of {Total} ticker(s) rewritten, {Failed} failed, in {ElapsedMs} ms.", pass.Rewritten, pass.Total, pass.Failed, stopwatch.ElapsedMilliseconds);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        // Best-effort background conversion; must never crash or block startup.
+                        Microsoft.Extensions.Logging.LoggerExtensions.LogWarning(logger, ex, "Notes cache backfill failed.");
                     }
                 });
             }
@@ -338,6 +372,8 @@ public partial class App : Application, IDisposable, IThemeVariantDispatcher
     {
         if (!_disposed)
         {
+            if (Services?.GetService<PredictionOperationsLifetime>() is { } operations)
+                Task.Run(operations.StopAsync).GetAwaiter().GetResult();
             if (Services is IAsyncDisposable asyncDisposable)
             {
                 asyncDisposable.DisposeAsync().AsTask().GetAwaiter().GetResult();
@@ -418,6 +454,9 @@ public partial class App : Application, IDisposable, IThemeVariantDispatcher
         }
 
         // Update Backgrounds
+        SetOrUpdateBrush("Brush.TrainingPeriod.Train", ToAvColor(colors.TrainingPeriodTrain));
+        SetOrUpdateBrush("Brush.TrainingPeriod.Validation", ToAvColor(colors.TrainingPeriodValidation));
+        SetOrUpdateBrush("Brush.TrainingPeriod.Oos", ToAvColor(colors.TrainingPeriodOos));
         var bg = ToAvColor(colors.ShellBackground);
         Resources["Color.Background.Primary"] = bg;
         Resources["Color.Background.Secondary"] = bg;

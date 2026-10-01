@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 using StockAnalyzer.Core.Models;
+using StockAnalyzer.Core.Models.Training;
 
 namespace StockAnalyzer.Core.Tests.Services;
 
@@ -16,6 +18,38 @@ public class PredictionModelMetadataTests
         PredictionFeatureMode mode = PredictionFeatureMode.OhlcvMinMax,
         int window = 10)
         => PredictionModelMetadata.Validate(map, mode, window, Classes, NullLogger.Instance);
+
+    internal static Dictionary<string, string> Version2Metadata(string? gap = "0")
+    {
+        var metadata = new Dictionary<string, string>
+        {
+            [PredictionModelMetadata.FeatureModeKey] = "ohlcv_minmax",
+            [PredictionModelMetadata.WindowSizeKey] = "10",
+            [PredictionModelMetadata.ClassOrderKey] = "Up,Down,Neutral",
+            [PredictionModelMetadata.ContractVersionKey] = "2",
+            [PredictionModelMetadata.TargetTypeKey] = "classification",
+            [PredictionModelMetadata.HorizonKey] = "5",
+            [PredictionModelMetadata.OutputSemanticKey] = "class_probabilities",
+            [PredictionModelMetadata.OutputUnitKey] = "probability",
+            [PredictionModelMetadata.OutputHorizonKey] = "5",
+            [PredictionModelMetadata.OutputTimeframeKey] = "daily",
+            [PredictionModelMetadata.OutputConfidenceTypeKey] = "class_probability",
+            [PredictionModelMetadata.TargetFormulaKey] = "thresholded_simple_return",
+        };
+        if (gap is not null) metadata[PredictionModelMetadata.PurgeGapKey] = gap;
+        return metadata;
+    }
+
+    private static Dictionary<string, string> RegressionMetadata()
+    {
+        var metadata = Version2Metadata();
+        metadata[PredictionModelMetadata.TargetTypeKey] = "regression";
+        metadata[PredictionModelMetadata.OutputSemanticKey] = "log_return";
+        metadata[PredictionModelMetadata.OutputUnitKey] = "dimensionless";
+        metadata[PredictionModelMetadata.OutputConfidenceTypeKey] = "none";
+        metadata[PredictionModelMetadata.TargetFormulaKey] = "log_future_close_over_anchor_close";
+        return metadata;
+    }
 
     /// <summary>Minimal <see cref="ILogger"/> that records each entry's level and rendered message.</summary>
     private sealed class CapturingLogger : ILogger
@@ -56,20 +90,147 @@ public class PredictionModelMetadataTests
         => Assert.Null(PredictionModelMetadata.ParseFeatureMode(wire));
 
     [Fact]
-    public void Validate_NullMap_DoesNotThrow() => Validate(null);
+    public void Validate_NullMap_RejectsMissingSemanticContract()
+        => Assert.Throws<InvalidOperationException>(() => Validate(null));
 
     [Fact]
-    public void Validate_EmptyMap_DoesNotThrow() => Validate(new Dictionary<string, string>());
+    public void Validate_EmptyMap_RejectsMissingSemanticContract()
+        => Assert.Throws<InvalidOperationException>(() => Validate(new Dictionary<string, string>()));
 
     [Fact]
     public void Validate_MatchingContract_DoesNotThrow()
     {
-        Validate(new Dictionary<string, string>
+        var metadata = Version2Metadata();
+        metadata[PredictionModelMetadata.ClassOrderKey] = "Up, Down, Neutral";
+        Validate(metadata);
+    }
+
+    [Theory]
+    [InlineData("0")]
+    [InlineData("12")]
+    public void Validate_Version2PurgeGap_AcceptsCanonicalBarCount(string gap)
+    {
+        Validate(Version2Metadata(gap));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("-1")]
+    [InlineData("01")]
+    [InlineData("1.5")]
+    public void Validate_Version2PurgeGap_RejectsMissingOrNoncanonicalValue(string? gap)
+    {
+        var metadata = Version2Metadata(gap);
+        Assert.Throws<InvalidOperationException>(() => Validate(metadata));
+    }
+
+    [Fact]
+    public void ReadOutputContract_Version2Regression_IsFrameworkNeutralAndTyped()
+    {
+        var metadata = Version2Metadata();
+        metadata[PredictionModelMetadata.TargetTypeKey] = "regression";
+        metadata[PredictionModelMetadata.OutputSemanticKey] = "log_return";
+        metadata[PredictionModelMetadata.OutputUnitKey] = "dimensionless";
+        metadata[PredictionModelMetadata.OutputTimeframeKey] = "weekly";
+        metadata[PredictionModelMetadata.OutputConfidenceTypeKey] = "none";
+        metadata[PredictionModelMetadata.TargetFormulaKey] = "log_future_close_over_anchor_close";
+
+        var contract = PredictionModelMetadata.ReadOutputContract(metadata);
+
+        Assert.NotNull(contract);
+        Assert.Equal(PredictionOutputSemantic.LogReturn, contract.Semantic);
+        Assert.Equal(PredictionOutputUnit.Dimensionless, contract.Unit);
+        Assert.Equal(5, contract.HorizonBars);
+        Assert.Equal(TimeframeType.Weekly, contract.Timeframe);
+        Assert.Equal(ConfidenceType.None, contract.ConfidenceType);
+        Validate(metadata);
+    }
+
+    [Fact]
+    public void ReadOutputContract_RejectsContradictorySemanticAndHorizon()
+    {
+        var metadata = Version2Metadata();
+        metadata[PredictionModelMetadata.OutputSemanticKey] = "log_return";
+        Assert.Throws<InvalidOperationException>(() => PredictionModelMetadata.ReadOutputContract(metadata));
+
+        metadata = Version2Metadata();
+        metadata[PredictionModelMetadata.OutputHorizonKey] = "4";
+        Assert.Throws<InvalidOperationException>(() => PredictionModelMetadata.ReadOutputContract(metadata));
+    }
+
+    [Theory]
+    [InlineData("fixed_zscore", null, "[]", "")]
+    [InlineData("fixed_zscore", "", "[]", "")]
+    [InlineData("fixed_zscore", "model.onnx.scaler.json", null, "")]
+    [InlineData("fixed_zscore", "model.onnx.scaler.json", "[]", null)]
+    [InlineData("ohlcv_minmax", "model.onnx.scaler.json", "[]", "")]
+    [InlineData("ohlcv_minmax", null, "[]", null)]
+    [InlineData("ohlcv_minmax", null, null, "3.0")]
+    [InlineData("unexpected", null, null, null)]
+    public void Validate_PartialOrContradictoryFixedContract_Throws(
+        string normalization, string? reference, string? lags, string? clip)
+    {
+        var metadata = new Dictionary<string, string>
         {
-            [PredictionModelMetadata.FeatureModeKey] = "ohlcv_minmax",
+            ["feature_mode"] = "ohlcv_minmax", ["window_size"] = "10",
+            ["normalization"] = normalization,
+        };
+        if (reference is not null) metadata["scaler_ref"] = reference;
+        if (lags is not null) metadata["lags"] = lags;
+        if (clip is not null) metadata["clip_sigma"] = clip;
+        Assert.Throws<InvalidOperationException>(() => Validate(metadata));
+    }
+
+    [Fact]
+    public void Validate_CompleteFixedContractAndCurrentNormalization_AreAccepted()
+    {
+        var fixedMetadata = Version2Metadata();
+        fixedMetadata["normalization"] = "fixed_zscore";
+        fixedMetadata["scaler_ref"] = "model.onnx.scaler.json";
+        fixedMetadata["lags"] = "[]";
+        fixedMetadata["clip_sigma"] = "";
+        Validate(fixedMetadata);
+
+        var normalMetadata = Version2Metadata();
+        normalMetadata["normalization"] = "ohlcv_minmax";
+        Validate(normalMetadata);
+    }
+
+    [Fact]
+    public void Validate_LegacyComposedSpecWithOmittedDefaults_MatchesCurrentEmptyLags()
+    {
+        const string legacy = """{"channels":[{"kind":"price","price":"close"}]}""";
+        var current = JsonSerializer.Serialize(new FeatureSpec
+        {
+            Channels = new[] { new FeatureChannel { Kind = FeatureChannelKind.Price, Price = PriceType.Close } },
+        }, TrainingConfigJson.Options);
+        var metadata = Version2Metadata();
+        metadata[PredictionModelMetadata.FeatureModeKey] = "composed_features";
+        metadata[PredictionModelMetadata.FeatureSpecKey] = legacy;
+        PredictionModelMetadata.Validate(metadata, PredictionFeatureMode.ComposedFeatures, 10,
+            Classes, NullLogger.Instance, current);
+
+        metadata[PredictionModelMetadata.FeatureSpecKey] =
+            """{"channels":[{"kind":"price","price":"open"}]}""";
+        Assert.Throws<InvalidOperationException>(() => PredictionModelMetadata.Validate(metadata,
+            PredictionFeatureMode.ComposedFeatures, 10, Classes, NullLogger.Instance, current));
+        metadata[PredictionModelMetadata.FeatureSpecKey] =
+            """{"channels":[{"kind":"price","price":"close"}],"lags":null}""";
+        Assert.Throws<InvalidOperationException>(() => PredictionModelMetadata.Validate(metadata,
+            PredictionFeatureMode.ComposedFeatures, 10, Classes, NullLogger.Instance, current));
+    }
+
+    [Fact]
+    public void Validate_NestedLagsWithoutScaler_RejectsLegacyPreprocessing()
+    {
+        var metadata = new Dictionary<string, string>
+        {
+            [PredictionModelMetadata.FeatureModeKey] = "composed_features",
             [PredictionModelMetadata.WindowSizeKey] = "10",
-            [PredictionModelMetadata.ClassOrderKey] = "Up, Down, Neutral",
-        });
+            [PredictionModelMetadata.FeatureSpecKey] =
+                """{"channels":[{"kind":"price","price":"close"}],"lags":[1]}""",
+        };
+        Assert.Throws<InvalidOperationException>(() => PredictionModelMetadata.RequiresFixedScaler(metadata));
     }
 
     [Fact]
@@ -121,12 +282,9 @@ public class PredictionModelMetadataTests
     [Fact]
     public void Validate_PresentKeysOnlyChecked_WhenFeatureModePresent()
     {
-        // feature_mode present and matching, class_order absent -> only present keys checked, no throw.
-        Validate(new Dictionary<string, string>
-        {
-            [PredictionModelMetadata.FeatureModeKey] = "ohlcv_minmax",
-            [PredictionModelMetadata.WindowSizeKey] = "10",
-        });
+        var metadata = Version2Metadata();
+        metadata.Remove(PredictionModelMetadata.ClassOrderKey);
+        Validate(metadata);
     }
 
     [Fact]
@@ -146,13 +304,9 @@ public class PredictionModelMetadataTests
     {
         // A regression model keeps class_order present (for a stable key set) but its
         // output index order is meaningless, so a mismatch must NOT be rejected.
-        Validate(new Dictionary<string, string>
-        {
-            [PredictionModelMetadata.FeatureModeKey] = "ohlcv_minmax",
-            [PredictionModelMetadata.WindowSizeKey] = "10",
-            [PredictionModelMetadata.ClassOrderKey] = "Up,Neutral,Down",
-            [PredictionModelMetadata.TargetTypeKey] = PredictionModelMetadata.TargetTypeRegression,
-        });
+        var metadata = RegressionMetadata();
+        metadata[PredictionModelMetadata.ClassOrderKey] = "Up,Neutral,Down";
+        Validate(metadata);
     }
 
     [Fact]
@@ -234,13 +388,7 @@ public class PredictionModelMetadataTests
     public void Validate_RegressionTarget_LogsTargetInContractLine()
     {
         var logger = new CapturingLogger();
-        var map = new Dictionary<string, string>
-        {
-            [PredictionModelMetadata.FeatureModeKey] = "ohlcv_minmax",
-            [PredictionModelMetadata.WindowSizeKey] = "10",
-            [PredictionModelMetadata.ClassOrderKey] = "Up,Down,Neutral",
-            [PredictionModelMetadata.TargetTypeKey] = PredictionModelMetadata.TargetTypeRegression,
-        };
+        var map = RegressionMetadata();
 
         PredictionModelMetadata.Validate(map, PredictionFeatureMode.OhlcvMinMax, 10, Classes, logger);
 
@@ -249,29 +397,23 @@ public class PredictionModelMetadataTests
     }
 
     [Fact]
-    public void Validate_ForeignKeyOnly_DoesNotThrow()
+    public void Validate_ForeignKeyOnly_RejectsMissingSemanticContract()
     {
-        // A metadata_props entry stamped by an unrelated tool is not a contract key -> ignored.
-        Validate(new Dictionary<string, string>
+        Assert.Throws<InvalidOperationException>(() => Validate(new Dictionary<string, string>
         {
             ["converted_by"] = "some_other_tool",
-        });
+        }));
     }
 
     [Fact]
     public void Validate_LogsTrainingAndValidationSpans()
     {
         var logger = new CapturingLogger();
-        var map = new Dictionary<string, string>
-        {
-            [PredictionModelMetadata.FeatureModeKey] = "ohlcv_minmax",
-            [PredictionModelMetadata.WindowSizeKey] = "10",
-            [PredictionModelMetadata.ClassOrderKey] = "Up,Down,Neutral",
-            [PredictionModelMetadata.TrainingStartKey] = "2015-01-02",
-            [PredictionModelMetadata.TrainingEndKey] = "2022-12-30",
-            [PredictionModelMetadata.ValidationStartKey] = "2023-01-03",
-            [PredictionModelMetadata.ValidationEndKey] = "2024-06-28",
-        };
+        var map = Version2Metadata();
+        map[PredictionModelMetadata.TrainingStartKey] = "2015-01-02";
+        map[PredictionModelMetadata.TrainingEndKey] = "2022-12-30";
+        map[PredictionModelMetadata.ValidationStartKey] = "2023-01-03";
+        map[PredictionModelMetadata.ValidationEndKey] = "2024-06-28";
 
         PredictionModelMetadata.Validate(
             map, PredictionFeatureMode.OhlcvMinMax, 10, Classes, logger);
@@ -287,13 +429,7 @@ public class PredictionModelMetadataTests
     public void Validate_LogsPredictionHorizon_WhenPresent()
     {
         var logger = new CapturingLogger();
-        var map = new Dictionary<string, string>
-        {
-            [PredictionModelMetadata.FeatureModeKey] = "ohlcv_minmax",
-            [PredictionModelMetadata.WindowSizeKey] = "10",
-            [PredictionModelMetadata.ClassOrderKey] = "Up,Down,Neutral",
-            [PredictionModelMetadata.HorizonKey] = "5",
-        };
+        var map = Version2Metadata();
 
         PredictionModelMetadata.Validate(map, PredictionFeatureMode.OhlcvMinMax, 10, Classes, logger);
 

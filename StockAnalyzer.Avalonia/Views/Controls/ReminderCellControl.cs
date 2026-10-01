@@ -63,15 +63,15 @@ namespace StockAnalyzer.Avalonia.Views.Controls
             };
             _textBlock.Bind(TextBlock.TextProperty, new global::Avalonia.Data.Binding(nameof(WatchlistItemViewModel.DisplayReminder)));
             _textBlock.Bind(TextBlock.ForegroundProperty, _textBlock.GetResourceObservable("Brush.Text.Primary"));
-            // Tooltip shows the full, unconverted preview text, unlike the possibly-trimmed
+            // Tooltip shows the full Reminder text (no length limit, never wrapped), unlike the possibly-trimmed
             // DisplayReminder shown in the cell itself (mirrors NotesCellControl's convention).
             // Built as an explicit TextBlock (rather than binding ToolTip.FontSizeProperty on the
             // owner) because the popup is rooted at the TopLevel, not the owner's visual tree, so a
             // FontSize set on the owner never reaches it - only FontSize set on the Tip content itself does.
-            var reminderTip = new TextBlock { Margin = new Thickness(WatchlistConstants.TooltipContentMargin) };
+            var reminderTip = new TextBlock { Margin = new Thickness(WatchlistConstants.TooltipContentMargin), TextWrapping = TextWrapping.NoWrap };
             reminderTip.Bind(TextBlock.TextProperty, new global::Avalonia.Data.Binding(nameof(WatchlistItemViewModel.Reminder)));
             reminderTip.Bind(TextBlock.FontSizeProperty, reminderTip.GetResourceObservable("TooltipFontSize"));
-            _textBlock.SetValue(ToolTip.TipProperty, reminderTip);
+            _textBlock.SetValue(ToolTip.TipProperty, UnwrappedToolTipFactory.Create(reminderTip));
 
             _container.Children.Add(_editBtn);
             _container.Children.Add(_textBlock);

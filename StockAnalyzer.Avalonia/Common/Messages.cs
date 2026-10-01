@@ -190,6 +190,23 @@ public class RegisterDetachedTabMessage : CommunityToolkit.Mvvm.Messaging.Messag
 }
 
 /// <summary>
+/// Published by DetachedWindowViewModel after a tab was moved inside its container.
+/// Consumed by MainWindowViewModel to mirror the order into the detached tab registry and request a debounced layout save.
+/// <see cref="OrderedItems"/> is a snapshot of the container's items in their new order.
+/// </summary>
+public sealed class DetachedTabOrderChangedMessage
+{
+    public string ContainerId { get; }
+    public IReadOnlyList<StockAnalyzer.Core.Models.UI.WorkspaceViewItem> OrderedItems { get; }
+
+    public DetachedTabOrderChangedMessage(string containerId, IReadOnlyList<StockAnalyzer.Core.Models.UI.WorkspaceViewItem> orderedItems)
+    {
+        ContainerId = containerId ?? throw new System.ArgumentNullException(nameof(containerId));
+        OrderedItems = orderedItems ?? throw new System.ArgumentNullException(nameof(orderedItems));
+    }
+}
+
+/// <summary>
 /// Published when a chart's symbol is changed.
 /// Used for updating UI elements like tab headers or window titles in a decoupled manner.
 /// </summary>
@@ -259,10 +276,12 @@ public class NoteChartJumpRequestedMessage
 public class NavigateToNoteTimelineRequestedMessage
 {
     public string Ticker { get; }
+    public string? ContainerId { get; }
 
-    public NavigateToNoteTimelineRequestedMessage(string ticker)
+    public NavigateToNoteTimelineRequestedMessage(string ticker, string? containerId = null)
     {
         Ticker = ticker;
+        ContainerId = containerId;
     }
 }
 
@@ -336,3 +355,11 @@ public class CurrentTimeframeRequestMessage : RequestMessage<StockAnalyzer.Core.
 {
 }
 
+
+/// <summary>
+/// Published by <see cref="TickerNotesDisplayContext"/> when Settings &gt; Notes "Read More Threshold"
+/// (Max Characters or Max Lines) changes, so Tickers-tab rows re-derive their Notes cell/popup text.
+/// </summary>
+public class NotesReadMoreThresholdChangedMessage
+{
+}

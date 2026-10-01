@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Avalonia;
+using Avalonia.Headless.XUnit;
 using StockAnalyzer.Avalonia.Drawing;
 using StockAnalyzer.Avalonia.Drawing.Behaviors;
 using StockAnalyzer.Avalonia.Services;
@@ -354,7 +355,7 @@ public class ClassicPivotPointsObjectTests
         Assert.Null(obj.Pivot);
     }
 
-    [Fact]
+    [AvaloniaFact]
     public void DrawingParameterViewBuilder_DoesNotHideExtendMode_UnderFallbackHiddenTags()
     {
         var anchor = new ChartPoint(new DateTime(2026, 9, 22), 100m);

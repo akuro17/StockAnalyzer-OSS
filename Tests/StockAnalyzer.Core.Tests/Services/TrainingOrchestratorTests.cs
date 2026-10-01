@@ -47,6 +47,23 @@ namespace StockAnalyzer.Core.Tests.Services
         }
 
         [Fact]
+        public async Task Resume_PreservesManifestRunId()
+        {
+            var manifest = Path.Combine(_workDir, "run.json");
+            File.WriteAllText(manifest, "{\"schema_version\":1,\"kind\":\"training_run\",\"run_id\":\"original_run\"}");
+            var config = new TrainingJobConfig
+            {
+                Symbols = new[] { "X" }, Architecture = "lstm", WindowSize = 4, Horizon = 1,
+                InitializationMode = TrainingInitializationMode.Resume, CheckpointPath = manifest,
+            };
+            var orchestrator = new TrainingOrchestrator(new FakePythonService(WriteFakeInterpreter(SuccessBatch)),
+                s_indicatorChannelExporter);
+            var result = await orchestrator.StartTrainingAsync(config);
+            Assert.True(result.Success);
+            Assert.Equal("original_run", result.RunId);
+        }
+
+        [Fact]
         public async Task StartTrainingAsync_InvalidConfig_ThrowsBeforeLaunchingAnyProcess()
         {
             var config = new TrainingJobConfig
@@ -76,6 +93,8 @@ namespace StockAnalyzer.Core.Tests.Services
             Assert.True(File.Exists(result.OnnxArtifactPath));
             Assert.NotNull(result.MetricsArtifactPath);
             Assert.True(File.Exists(result.MetricsArtifactPath));
+            Assert.Equal(Path.Combine(_workDir, "run.json"), result.CheckpointManifestPath);
+            Assert.Contains(progress.Updates, u => u.CheckpointManifestPath == result.CheckpointManifestPath);
             Assert.Equal(0.65, result.Metrics["accuracy"]);
             Assert.Null(result.Message);
 
@@ -166,7 +185,20 @@ namespace StockAnalyzer.Core.Tests.Services
 
             var line = (await File.ReadAllTextAsync(Path.Combine(_workDir, "captured_limits.txt"))).Trim();
             Assert.StartsWith("7,", line, StringComparison.Ordinal);
-            Assert.EndsWith(",23", line, StringComparison.Ordinal);
+            Assert.Contains(",23,", line, StringComparison.Ordinal);
+            using var captured = JsonDocument.Parse(await File.ReadAllTextAsync(
+                Path.Combine(_workDir, "captured_resource_config.json")));
+            var limits = captured.RootElement.GetProperty("resource_limits");
+            Assert.Equal(7, limits.GetProperty("max_channels").GetInt32());
+            Assert.Equal(23, limits.GetProperty("max_samples").GetInt32());
+            Assert.Equal(TrainingResourceOverrides.MaximumEvaluationFolds,
+                limits.GetProperty("max_evaluation_folds").GetInt32());
+            Assert.Equal(TrainingResourceOverrides.MaximumRunDurationMinutes * 60,
+                limits.GetProperty("max_run_duration_seconds").GetInt32());
+            Assert.InRange(captured.RootElement.GetProperty("remaining_run_budget_seconds").GetDouble(),
+                0.001, limits.GetProperty("max_run_duration_seconds").GetDouble());
+            Assert.Equal(limits.GetProperty("max_channels").GetInt32(),
+                (await running).ResourceLimits!.MaxChannels);
             Assert.Equal(original, Environment.GetEnvironmentVariable("SA_MAX_COMPOSED_CHANNELS"));
             settings.ReleasePreview(owner);
         }
@@ -186,6 +218,57 @@ namespace StockAnalyzer.Core.Tests.Services
             // The fake interpreter loops forever; a prompt return proves the process was killed
             // rather than the test waiting the loop out.
             Assert.True(DateTime.UtcNow - started < TimeSpan.FromSeconds(10));
+        }
+
+        [Fact]
+        public async Task StartTrainingAsync_DeadlineDuringChildExecution_KillsChildAndThrowsTimeout()
+        {
+            var scriptPath = WriteFakeInterpreter(LoopingBatch);
+            var orchestrator = new TrainingOrchestrator(new FakePythonService(scriptPath),
+                s_indicatorChannelExporter, maxRunDurationSeconds: 1);
+
+            var started = DateTime.UtcNow;
+            await Assert.ThrowsAsync<TimeoutException>(() => orchestrator.StartTrainingAsync(ValidConfig()));
+
+            Assert.True(DateTime.UtcNow - started < TimeSpan.FromSeconds(10));
+            Assert.False(File.Exists(Path.Combine(_workDir, "fake_model.onnx")));
+        }
+
+        [Fact]
+        public async Task StartTrainingAsync_DeadlineDuringSourcePreparation_FailsBeforeLaunchingChild()
+        {
+            var config = ValidConfig() with
+            {
+                Timeframe = TrainingTimeframe.Weekly,
+                FeatureMode = PredictionFeatureMode.ComposedFeatures,
+                FeatureSpec = new FeatureSpec { Channels = new[]
+                {
+                    new FeatureChannel { Kind = FeatureChannelKind.Indicator, Indicator = IndicatorType.SMA },
+                } },
+                SourceManifestPath = Path.Combine(_workDir, "manifest.json"),
+            };
+            string? runDirectory = null;
+            var never = new TaskCompletionSource<PreparedTrainingInput>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var provider = new Mock<ITrainingSourceSnapshotProvider>();
+            provider.Setup(p => p.PrepareAsync(It.IsAny<TrainingJobConfig>(), It.IsAny<string>(),
+                    It.IsAny<DateTimeOffset>(), It.IsAny<IProgress<string>>(), It.IsAny<CancellationToken>()))
+                .Returns((TrainingJobConfig job, string path, DateTimeOffset started, IProgress<string> stage,
+                    CancellationToken token) =>
+                {
+                    runDirectory = path;
+                    return never.Task.WaitAsync(token);
+                });
+            var orchestrator = new TrainingOrchestrator(
+                new FakePythonService(WriteFakeInterpreter(NeverCalledBatch)),
+                s_indicatorChannelExporter, maxRunDurationSeconds: 1, sourceSnapshotProvider: provider.Object);
+            var progress = new SyncProgress<TrainingProgress>();
+
+            await Assert.ThrowsAsync<TimeoutException>(() => orchestrator.StartTrainingAsync(config, progress));
+
+            Assert.NotNull(runDirectory);
+            Assert.False(Directory.Exists(runDirectory));
+            Assert.Equal("Failed", progress.Updates[^1].Stage);
+            Assert.False(File.Exists(Path.Combine(_workDir, "fake_model.onnx")));
         }
 
         [Fact]
@@ -476,6 +559,7 @@ namespace StockAnalyzer.Core.Tests.Services
             "echo {}> \"%~dp0fake_model.onnx.metrics.json\"\r\n" +
             "echo ARTIFACT:onnx:%~dp0fake_model.onnx\r\n" +
             "echo ARTIFACT:metrics:%~dp0fake_model.onnx.metrics.json\r\n" +
+            "echo ARTIFACT:checkpoint:%~dp0run.json\r\n" +
             "echo STAGE:done\r\n" +
             "echo PROGRESS:100\r\n" +
             "exit /b 0\r\n";
@@ -525,7 +609,8 @@ namespace StockAnalyzer.Core.Tests.Services
 
         private const string CaptureResourceEnvironmentBatch =
             "@echo off\r\n" +
-            "echo %SA_MAX_COMPOSED_CHANNELS%,%SA_MAX_COMPOSED_TENSOR_SIZE_MB%,%SA_MAX_COMPOSED_BATCH_SAMPLES%> \"%~dp0captured_limits.txt\"\r\n" +
+            "copy %4 \"%~dp0captured_resource_config.json\" >nul\r\n" +
+            "echo %SA_MAX_COMPOSED_CHANNELS%,%SA_MAX_COMPOSED_TENSOR_SIZE_MB%,%SA_MAX_COMPOSED_BATCH_SAMPLES%,%SA_MAX_EVALUATION_FOLDS%,%SA_MAX_FEATURE_LAG%,%SA_MAX_RUN_DURATION_SECONDS%> \"%~dp0captured_limits.txt\"\r\n" +
             "echo STAGE:done\r\n" +
             "echo PROGRESS:100\r\n" +
             "exit /b 0\r\n";

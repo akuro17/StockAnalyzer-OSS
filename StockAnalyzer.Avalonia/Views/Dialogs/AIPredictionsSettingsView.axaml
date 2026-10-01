@@ -57,6 +57,26 @@
                 </StackPanel>
             </Border>
 
+            <Border Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="1" CornerRadius="8" Padding="16">
+                <StackPanel Spacing="10">
+                    <TextBlock Text="{l:Localize Monitoring_Title}" FontWeight="Bold"/>
+                    <TextBlock Text="{l:Localize Monitoring_Description}" TextWrapping="Wrap"/>
+                    <TextBlock Text="{Binding MonitoringStatus}" TextWrapping="Wrap"/>
+                    <TextBlock Text="{l:Localize Monitoring_ScheduleDescription}" TextWrapping="Wrap"/>
+                    <TextBlock Text="{Binding ScheduleConfiguration}" TextWrapping="Wrap"/>
+                    <TextBlock Text="{Binding ScheduleStatus}" TextWrapping="Wrap"/>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button Content="{l:Localize Monitoring_Enable}" Command="{Binding EnableRetrainingCommand}"
+                                IsEnabled="{Binding HasScheduleConfiguration}" IsVisible="{Binding !IsScheduleEnabled}"/>
+                        <Button Content="{l:Localize Monitoring_Disable}" Command="{Binding DisableRetrainingCommand}"
+                                IsVisible="{Binding IsScheduleEnabled}"/>
+                        <Button Content="{l:Localize Monitoring_Cancel}" Command="{Binding CancelRetrainingCommand}"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
             <!-- Section 2: AI Prediction Parameters -->
             <Border Background="{DynamicResource Brush.Background.Secondary}"
                     BorderBrush="{DynamicResource Brush.Border.Primary}"
@@ -121,9 +141,47 @@
                         <Button Content="{l:Localize Settings_ModelGenerations_Activate}" Command="{Binding ActivateGenerationCommand}"/>
                         <Button Content="{l:Localize Settings_ModelGenerations_Restore}" Command="{Binding RollbackGenerationCommand}"/>
                     </StackPanel>
+                    <TextBlock Text="{Binding GenerationStatusMessage}"
+                               IsVisible="{Binding GenerationStatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                               FontSize="{DynamicResource DetailFontSize}"
+                               Foreground="{DynamicResource Brush.Accent.Primary}"
+                               TextWrapping="Wrap"/>
                     <TextBlock Text="{Binding ActivationWarning}" TextWrapping="Wrap"/>
                     <Button Content="{l:Localize Settings_ModelGenerations_Confirm}" Command="{Binding ConfirmActivationCommand}"
                             IsVisible="{Binding ActivationWarning, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                </StackPanel>
+            </Border>
+
+            <Border Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="1" CornerRadius="8" Padding="16">
+                <StackPanel Spacing="10">
+                    <TextBlock Text="{l:Localize ModelAnalysis_DetailsTitle}" FontWeight="Bold"/>
+                    <TextBlock Text="{Binding ImportanceTitle}" FontSize="{DynamicResource BaseFontSize}"/>
+                    <TextBlock Text="{Binding ImportanceStatus}" TextWrapping="Wrap"/>
+                    <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsAnalysisLoading}"/>
+                    <ItemsControl ItemsSource="{Binding ImportanceRows}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ImportanceDisplayRow">
+                                <StackPanel>
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <TextBlock Text="{Binding Channel}"/>
+                                        <TextBlock Grid.Column="1" Text="{Binding Display}"/>
+                                    </Grid>
+                                    <Grid ColumnDefinitions="*,*">
+                                        <ProgressBar Value="{Binding NegativeMagnitude}" Maximum="{Binding ScaleMaximum}"
+                                                     FlowDirection="RightToLeft" Height="{DynamicResource BaseFontSize}"
+                                                     Foreground="{DynamicResource Brush.Semantic.Error}"/>
+                                        <ProgressBar Grid.Column="1" Value="{Binding PositiveMagnitude}" Maximum="{Binding ScaleMaximum}"
+                                                     Height="{DynamicResource BaseFontSize}"
+                                                     Foreground="{DynamicResource Brush.Semantic.Success}"/>
+                                    </Grid>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock Text="{Binding ImportanceProvenance}" TextWrapping="Wrap"
+                               FontSize="{DynamicResource HelperFontSize}"/>
                 </StackPanel>
             </Border>
 

@@ -72,6 +72,9 @@ public class ThemeManager : IThemeManager
 
     private void UpdateCache()
     {
+        _colorsCache[ThemeColorKey.TrainingPeriodTrain] = _currentTheme.TrainingPeriodTrain;
+        _colorsCache[ThemeColorKey.TrainingPeriodValidation] = _currentTheme.TrainingPeriodValidation;
+        _colorsCache[ThemeColorKey.TrainingPeriodOos] = _currentTheme.TrainingPeriodOos;
         _colorsCache[ThemeColorKey.Background]  = _currentTheme.ChartBackground;
         _colorsCache[ThemeColorKey.Grid]        = _currentTheme.GridLine;
         _colorsCache[ThemeColorKey.Axis]        = _currentTheme.AxisText;
@@ -107,6 +110,9 @@ public class ThemeManager : IThemeManager
     {
         var updated = key switch
         {
+            ThemeColorKey.TrainingPeriodTrain => CurrentTheme with { TrainingPeriodTrain = color },
+            ThemeColorKey.TrainingPeriodValidation => CurrentTheme with { TrainingPeriodValidation = color },
+            ThemeColorKey.TrainingPeriodOos => CurrentTheme with { TrainingPeriodOos = color },
             ThemeColorKey.Background  => CurrentTheme with { ChartBackground = color },
             ThemeColorKey.Grid        => CurrentTheme with { GridLine = color },
             ThemeColorKey.Axis        => CurrentTheme with { AxisText = color },

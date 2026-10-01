@@ -264,6 +264,7 @@ def _parse_args(argv) -> argparse.Namespace:
     p.add_argument("--arch", choices=ARCHES, default=DEFAULT_ARCH)
     p.add_argument("--window", type=int, default=ds.DEFAULT_WINDOW)
     p.add_argument("--horizon", type=int, default=ds.DEFAULT_HORIZON)
+    p.add_argument("--timeframe", choices=tuple(ds.TIMEFRAME_DIRS), default=onnx_meta.DEFAULT_TIMEFRAME)
     p.add_argument("--threshold", type=float, default=ds.DEFAULT_THRESHOLD)
     p.add_argument("--hidden", type=int, default=DEFAULT_HIDDEN)
     p.add_argument("--dense", type=int, default=DEFAULT_DENSE)
@@ -312,10 +313,12 @@ def main(argv) -> int:
         feature_mode=args.feature_mode, window_size=args.window, channels=channels,
         horizon=args.horizon, threshold=args.threshold, wf_splits=args.wf_splits,
         seed=args.seed, producer=f"train_tensorflow.py arch={args.arch}", gap=args.gap,
+        timeframe=args.timeframe,
         price_adjustment=args.price_adjustment, date_ranges=date_ranges,
         feature_spec_json=args.feature_spec if prepared is not None else None,
         fixed_zscore=args.fixed_zscore, lags=lags, clip_sigma=args.clip_sigma,
         scaler_ref=args.out.name + ".scaler.json" if scaler is not None else None,
+        analysis_ref=args.out.name + ".analysis.json" if args.outer_fold_index is not None else None,
     )
     def export_with_scaler(path: Path) -> None:
         export_onnx(model, channels, args.window, path, args.opset, contract)

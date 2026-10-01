@@ -48,6 +48,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
     private readonly Core.Services.MarketStructureService? _marketStructureService; // Used for DTW projection
     private readonly Core.Services.IDispatcherService _dispatcherService;
     private readonly Core.Services.IPredictionService? _predictionService;
+    private int _predictionRequestId;
     private readonly Core.Services.IPythonService? _pythonService;
     private readonly Core.Services.IMarketDataProvider? _marketDataProvider;
     private readonly Core.Services.IComparisonDataAligner? _comparisonDataAligner;
@@ -178,6 +179,9 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
 
     private bool _isDisposed;
 
+    /// <summary>One-shot teardown guard: 0 = live, 1 = <see cref="Dispose"/> already claimed by a caller.</summary>
+    private int _disposeClaimed;
+
     [ObservableProperty]
     private IReadOnlyList<CoreCandleData> _candles = Array.Empty<CoreCandleData>();
 
@@ -197,6 +201,59 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
 
     [ObservableProperty]
     private PredictionResult? _currentPrediction;
+
+    [ObservableProperty]
+    private string? _predictionDisplay;
+
+    public bool HasPredictionDisplay => !string.IsNullOrEmpty(PredictionDisplay);
+
+    partial void OnPredictionDisplayChanged(string? value) => OnPropertyChanged(nameof(HasPredictionDisplay));
+
+    private async Task UpdatePredictionAsync(CoreCandleData[] candles, string symbol,
+        TimeframeType timeframe, long revision, int requestId, CancellationToken token)
+    {
+        if (_predictionService is null || candles.Length == 0) return;
+        try
+        {
+            var history = candles.Select(c => new CandleData(c.Timestamp, c.Open, c.High,
+                c.Low, c.Close, c.Volume)).ToArray();
+            var result = await _predictionService.PredictAsync(history);
+            ModelAnalysisSnapshot? analysis = null;
+            try
+            {
+                if (result.ModelId is { } modelId && !result.IsFallback && _modelAnalysisService is not null)
+                    analysis = await _modelAnalysisService.LoadAsync(modelId, token);
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested) { return; }
+            catch (Exception ex) { _logger?.LogWarning(ex, "Model analysis is unavailable for this chart request."); }
+            if (analysis is not null && !analysis.Analysis.Timeframe.Equals(timeframe.ToString(), StringComparison.OrdinalIgnoreCase))
+                analysis = null;
+            var regime = analysis is not null ? _modelAnalysisService!.Assign(analysis, history, timeframe) : null;
+            if (token.IsCancellationRequested) return;
+            _dispatcherService.Post(() =>
+            {
+                if (_isDisposed || token.IsCancellationRequested || requestId != _predictionRequestId
+                    || Symbol != symbol || SelectedTimeFrame != timeframe || DataRevision != revision
+                    || Candles.Count == 0 || Candles[^1].Timestamp != candles[^1].Timestamp
+                    || result.ModelId != _predictionService.ActiveModelId)
+                    return;
+
+                var display = PredictionDisplayFormatter.Format(result, timeframe,
+                    System.Globalization.CultureInfo.CurrentCulture, LocalizationManager.Instance.Get);
+                CurrentPrediction = display is null ? null : result;
+                PredictionDisplay = display;
+                if (display is not null)
+                    MonitoringUpdateTask = PersistPredictionAsync(result, symbol, timeframe, history, token);
+                ModelAnalysis = analysis;
+                RegimeDisplay = regime is null ? null : string.Format(System.Globalization.CultureInfo.CurrentCulture,
+                    LocalizationManager.Instance.Get("ModelAnalysis_Regime"), regime.Id);
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Chart prediction could not be produced.");
+        }
+    }
 
     [ObservableProperty]
     private decimal _currentPrice;
@@ -589,7 +646,11 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
 
     public void Dispose()
     {
+        // Repeat-safe: only the first caller runs the teardown below; later calls touch no resource.
+        if (Interlocked.Exchange(ref _disposeClaimed, 1) != 0) return;
+
         _isDisposed = true;
+        _predictionRequestId++;
 
         _messenger?.UnregisterAll(this);
 
@@ -678,6 +739,10 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
     partial void OnSymbolChanged(string value)
     {
         if (string.IsNullOrEmpty(value)) return;
+        _predictionRequestId++;
+        CurrentPrediction = null;
+        ClearModelAnalysis();
+        PredictionDisplay = null;
 
         // Security validation to prevent Directory Traversal or injection
         var decodedSymbol = System.Web.HttpUtility.UrlDecode(value);
@@ -1662,11 +1727,14 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
 
 
 
-    public ChartViewModel(IDataService dataService, IDialogService dialogService, IChartStrategyFactory strategyFactory, IStockAnalyzerSettings settings, ITimeFrameManager timeFrameManager, Core.Services.MarketStructureService marketStructureService, Core.Theme.IThemeManager themeManager, Core.Services.IChartSettingsManager chartSettingsManager, Core.Services.IDispatcherService dispatcherService, Core.Services.IPredictionService? predictionService, Core.Services.Analysis.IAnalysisPipelineService analysisPipelineService, Core.Services.IMarketDataProvider? marketDataProvider = null, Core.Services.IPythonService? pythonService = null, Core.Services.IComparisonDataAligner? comparisonDataAligner = null, IMessenger? messenger = null, Services.Drawing.IChartDrawingRepository? drawingRepository = null, Microsoft.Extensions.Logging.ILogger<ChartViewModel>? logger = null, ISpiralAnalysisDataSource? spiralAnalysisDataSource = null, ISeasonalityChartDataSource? seasonalityChartDataSource = null, Services.Drawing.DrawingDocumentSessionStore? sessionStore = null)
+    public ChartViewModel(IDataService dataService, IDialogService dialogService, IChartStrategyFactory strategyFactory, IStockAnalyzerSettings settings, ITimeFrameManager timeFrameManager, Core.Services.MarketStructureService marketStructureService, Core.Theme.IThemeManager themeManager, Core.Services.IChartSettingsManager chartSettingsManager, Core.Services.IDispatcherService dispatcherService, Core.Services.IPredictionService? predictionService, Core.Services.Analysis.IAnalysisPipelineService analysisPipelineService, Core.Services.IMarketDataProvider? marketDataProvider = null, Core.Services.IPythonService? pythonService = null, Core.Services.IComparisonDataAligner? comparisonDataAligner = null, IMessenger? messenger = null, Services.Drawing.IChartDrawingRepository? drawingRepository = null, Microsoft.Extensions.Logging.ILogger<ChartViewModel>? logger = null, ISpiralAnalysisDataSource? spiralAnalysisDataSource = null, ISeasonalityChartDataSource? seasonalityChartDataSource = null, Services.Drawing.DrawingDocumentSessionStore? sessionStore = null, Core.Services.IModelAnalysisService? modelAnalysisService = null, Core.Services.IPredictionLogService? predictionLog = null, TimeProvider? timeProvider = null)
     {
+        _timeProvider = timeProvider ?? TimeProvider.System;
         _logger = logger;
         _drawingRepository = drawingRepository;
         _sessionStore = sessionStore;
+        _modelAnalysisService = modelAnalysisService;
+        _predictionLog = predictionLog;
         _spiralAnalysisDataSource = spiralAnalysisDataSource;
         _seasonalityChartDataSource = seasonalityChartDataSource;
         _dataService = dataService;
@@ -2099,6 +2167,10 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
 
     private async Task LoadDataInternalAsync(bool forceRefresh)
     {
+        _predictionRequestId++;
+        CurrentPrediction = null;
+        ClearModelAnalysis();
+        PredictionDisplay = null;
         // Cancel any previous load operation
         _loadCts?.Cancel();
         _loadCts?.Dispose();
@@ -2206,13 +2278,23 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
             CoreCandleData[]? extendedCandlesForCalc = actualExtraLookback > 0 ? newCandles : null;
 
             var dispatcher = _dispatcherService;
-            dispatcher.Post<(ChartViewModel vm, CoreCandleData[] candles, CoreCandleData[]? extendedCandles, int extraLookback)>(static (state) =>
+            var predictionSymbol = Symbol;
+            var predictionTimeframe = SelectedTimeFrame;
+            dispatcher.Post<(ChartViewModel vm, CoreCandleData[] candles, CoreCandleData[]? extendedCandles, int extraLookback,
+                string symbol, TimeframeType timeframe, CancellationToken token)>(static (state) =>
             {
-                var (vm, candles, extendedCandles, extraLookback) = state;
-                if (vm._isDisposed) return;
+                var (vm, candles, extendedCandles, extraLookback, symbol, timeframe, loadToken) = state;
+                if (vm._isDisposed || loadToken.IsCancellationRequested || vm.Symbol != symbol
+                    || vm.SelectedTimeFrame != timeframe) return;
 
                 vm.Candles = candles;
                 vm.DataRevision++;
+                vm.MonitoringObservationTask = Task.Run(() => vm.RefreshMonitoringAsync(symbol, timeframe,
+                    candles, loadToken), loadToken);
+                var predictionRequestId = vm._predictionRequestId;
+                var predictionRevision = vm.DataRevision;
+                vm.PredictionUpdateTask = Task.Run(() => vm.UpdatePredictionAsync(candles, symbol, timeframe,
+                    predictionRevision, predictionRequestId, loadToken), loadToken);
                 vm._extendedCalculationCandles = extendedCandles;
                 vm._extendedLookbackBarCount = extraLookback;
                 vm.IndicatorResults = null; // Clear stale indicators immediately to prevent ghosting
@@ -2253,7 +2335,8 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
                 {
                     vm.CalculateComparisonDataAsync();
                 }
-             }, (this, renderedCandles, extendedCandlesForCalc, actualExtraLookback));
+             }, (this, renderedCandles, extendedCandlesForCalc, actualExtraLookback,
+                 predictionSymbol, predictionTimeframe, token));
         }
         catch (OperationCanceledException)
         {
@@ -2294,6 +2377,10 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
     /// </summary>
     partial void OnSelectedTimeFrameChanged(TimeframeType value)
     {
+        _predictionRequestId++;
+        CurrentPrediction = null;
+        ClearModelAnalysis();
+        PredictionDisplay = null;
         if (IsSyncEnabled && !_isReceivingTimeframeSync)
         {
             _messenger.Send(new ChartTimeframeChangedMessage(this, value));

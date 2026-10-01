@@ -2119,7 +2119,7 @@ public class NoteTimelineViewModelTests
             var attachmentRepository = new AttachmentRepository(connectionManager, NullLogger<AttachmentRepository>.Instance);
             var notesSettingsManager = new FakeNotesSettingsManager();
             var cacheSynchronizer = new TickerMetadataNotesCacheSynchronizer(
-                noteRepository, UserStrategyMetadataRepository.Instance, notesSettingsManager, NullLogger<TickerMetadataNotesCacheSynchronizer>.Instance);
+                noteRepository, UserStrategyMetadataRepository.Instance, NullLogger<TickerMetadataNotesCacheSynchronizer>.Instance);
             var dispatcherService = new SynchronousDispatcherService();
             NoteEditorViewModel EditorFactory() => new(noteRepository, attachmentRepository, cacheSynchronizer, new FakeMarketDataProvider(), dispatcherService, notesSettingsManager, NullLogger<NoteEditorViewModel>.Instance);
 

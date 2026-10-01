@@ -48,9 +48,14 @@ public abstract partial class ScreenerConditionNodeViewModel : ObservableObject
 
     /// <summary>Hover text: the expression one level above this node (its parent's children joined by the parent's operator, this node shown by name); null when there is no level above.</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasHoverText))]
     private string? _hoverUpperText;
 
     /// <summary>Hover text: the expression one level below (a group: its own children; a leaf: the list it belongs to); null when the node has nothing below. Sub-groups appear by name, never expanded.</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasHoverText))]
     private string? _hoverLowerText;
+
+    /// <summary>False for an empty list (no conditions): the row has nothing to show on hover, so it must not open an empty tooltip.</summary>
+    public bool HasHoverText => HoverUpperText is not null || HoverLowerText is not null;
 }

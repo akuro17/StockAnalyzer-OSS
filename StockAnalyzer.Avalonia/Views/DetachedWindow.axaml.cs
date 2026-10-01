@@ -4,6 +4,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Markup.Xaml;
+using Avalonia.VisualTree;
 using CommunityToolkit.Mvvm.Messaging;
 using Microsoft.Extensions.DependencyInjection;
 using StockAnalyzer.Avalonia.Common;
@@ -60,6 +61,17 @@ public partial class DetachedWindow : Window
 
     private void OnHeaderPointerPressed(object? sender, PointerPressedEventArgs e)
     {
+        if (!ShouldBeginWindowMove(e.Source as Visual)) return;
+
         BeginMoveDrag(e);
+    }
+
+    /// <summary>
+    /// A press that started on a tab belongs to the tab (select / drag-reorder) and must not move the window.
+    /// Presses on the empty header area still move the window.
+    /// </summary>
+    internal static bool ShouldBeginWindowMove(Visual? source)
+    {
+        return source?.FindAncestorOfType<TabItem>(includeSelf: true) == null;
     }
 }

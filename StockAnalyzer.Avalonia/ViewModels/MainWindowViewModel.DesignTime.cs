@@ -31,6 +31,7 @@ public partial class MainWindowViewModel
         _windowFactory = null!;
         _tearOffService = null!;
         _boundaryService = new WindowBoundaryService();
+        _windowManagement = new MockWindowManagementService();
         _dialogService = new DialogService();
         _serializationService = new WorkspaceSerializationService();
         _themeManager = new ThemeManager();
@@ -83,6 +84,7 @@ public partial class MainWindowViewModel
         public bool RemoveActiveDetachedTab(WorkspaceViewItem item) => false;
         public void Restore(StockAnalyzer.Core.Models.Settings.WorkspaceSettings settings) {}
         public void Capture(System.Collections.Generic.List<StockAnalyzer.Core.Models.Settings.DetachedTabInfo> destination, System.Collections.Generic.IReadOnlyList<StockAnalyzer.Core.Models.CoreIndicatorSettings>? fallbackIndicators = null) {}
+        public bool ReorderContainerItems(string containerId, System.Collections.Generic.IReadOnlyList<WorkspaceViewItem> orderedItems) => false;
         public void Dispose() {}
     }
 

@@ -14,6 +14,8 @@ public sealed record TrainingProgress
 
     /// <summary>Overall completion percentage, 0–100.</summary>
     public int Percent { get; init; }
+    /// <summary>Durable run manifest reported before fitting; remains available after cancellation.</summary>
+    public string? CheckpointManifestPath { get; init; }
 
     /// <summary>
     /// Latest <c>METRIC:</c> payload (for example a fold's accuracy / baseline / macro-F1),

@@ -8,6 +8,7 @@
              xmlns:c="clr-namespace:StockAnalyzer.Avalonia.Common"
              xmlns:models="clr-namespace:StockAnalyzer.Core.Models.Watchlist;assembly=StockAnalyzer.Core"
              xmlns:views="clr-namespace:StockAnalyzer.Avalonia.Views"
+             xmlns:controls="using:StockAnalyzer.Avalonia.Views.Controls"
              xmlns:node="clr-namespace:StockAnalyzer.Avalonia.ViewModels.TickerList"
              mc:Ignorable="d" d:DesignWidth="200" d:DesignHeight="600"
              x:Class="StockAnalyzer.Avalonia.Views.TickerListView"
@@ -513,6 +514,16 @@
                         </DataTemplate>
                     </ComboBox.ItemTemplate>
                 </ComboBox>
+                <!-- Auto Play (Y:\Temp\sa_implementation_plan_TickerAutoPlay.md): while checked, the next ticker of the
+                     displayed order is selected every interval set in Settings > Tickers. Runtime-only state. -->
+                <CheckBox x:Name="AutoPlayCheckBox"
+                          AutomationProperties.AutomationId="TickerAutoPlayCheckBox"
+                          VerticalAlignment="Center"
+                          FontSize="{DynamicResource BaseFontSize}"
+                          IsEnabled="{Binding IsAutoPlayAvailable}"
+                          IsChecked="{Binding IsAutoPlayEnabled, Mode=TwoWay}"
+                          Content="{l:Localize TickerList_AutoPlay}"
+                          ToolTip.Tip="{l:Localize TickerList_AutoPlay_ToolTip}"/>
             </StackPanel>
 
             <TreeDataGrid x:Name="MainGrid"
@@ -614,5 +625,14 @@
                 </TreeDataGrid.ContextMenu>
             </TreeDataGrid>
         </Grid>
+
+        <!-- Toast Notification Overlay - the shared ToastOverlay control, without the leading icon (its messages
+             are refusals, not confirmations). Shows messages that must be visible on this tab (e.g. Auto Play
+             refused to start on an empty list). -->
+        <controls:ToastOverlay Grid.ColumnSpan="3"
+                               Service="{Binding ToastService}"
+                               VerticalAlignment="Bottom" HorizontalAlignment="Center"
+                               Margin="0,0,0,16"
+                               ZIndex="1000"/>
     </Grid>
 </UserControl>

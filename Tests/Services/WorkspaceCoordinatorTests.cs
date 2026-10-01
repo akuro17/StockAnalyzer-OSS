@@ -191,6 +191,30 @@ public class WorkspaceCoordinatorTests : IDisposable
             vm.ImportCallOrder);
     }
 
+    /// <summary>sa_implement (Column Customization selection scope): the shared selection is a store-only import,
+    /// so it must run before the per-list restore, which is the single step that applies the active store.</summary>
+    [Fact]
+    public async Task ApplyLoadedWorkspace_RestoresSharedColumnSelectionBeforePerListSelection()
+    {
+        var vm = new MockLayoutTarget();
+        _coordinator.Bind(vm);
+        var sharedId = Guid.NewGuid();
+        var settings = new WorkspaceSettings
+        {
+            WatchlistProfiles = new System.Collections.Generic.List<StockAnalyzer.Core.Models.Watchlist.WatchlistProfile>(),
+            TickerListSharedColumnTemplateId = sharedId
+        };
+
+        await _coordinator.ApplyLoadedWorkspaceAsync(settings);
+
+        var order = vm.RestoreCallOrder;
+        Assert.Equal(sharedId, vm.RestoredSharedColumnTemplateId);
+        Assert.True(order.IndexOf(nameof(IWorkspaceLayoutTarget.RestoreTickerSharedColumnTemplateSelection)) >= 0);
+        Assert.True(
+            order.IndexOf(nameof(IWorkspaceLayoutTarget.RestoreTickerSharedColumnTemplateSelection)) <
+            order.IndexOf(nameof(IWorkspaceLayoutTarget.RestoreTickerColumnTemplateSelection)));
+    }
+
     [Fact]
     public async Task InitializeWorkspace_ValidFile_AppliesDimensionsAndTabSnapshots()
     {
@@ -319,7 +343,16 @@ public class WorkspaceCoordinatorTests : IDisposable
         public void RestoreChartSettings(WorkspaceSettings settings) { }
         public void SetActiveColumns(IEnumerable<string> columnNames) { }
         public void ApplyColumnWidths(Dictionary<string, string>? widths) { }
-        public void RestoreTickerColumnTemplateSelection(IReadOnlyDictionary<Guid, Guid>? selectionsByList) { }
+        // Both restore calls are recorded so a test can prove the shared selection is stored BEFORE the per-list
+        // restore applies the active store (sa_implement: Column Customization selection scope).
+        public void RestoreTickerColumnTemplateSelection(IReadOnlyDictionary<Guid, Guid>? selectionsByList) => RestoreCallOrder.Add(nameof(RestoreTickerColumnTemplateSelection));
+        public System.Collections.Generic.List<string> RestoreCallOrder { get; } = new();
+        public Guid RestoredSharedColumnTemplateId { get; private set; }
+        public void RestoreTickerSharedColumnTemplateSelection(Guid templateId)
+        {
+            RestoredSharedColumnTemplateId = templateId;
+            RestoreCallOrder.Add(nameof(RestoreTickerSharedColumnTemplateSelection));
+        }
         public void ApplySortState(string? columnName, int direction) { }
         public void CaptureWorkspaceSettings(WorkspaceSettings settings)
         {

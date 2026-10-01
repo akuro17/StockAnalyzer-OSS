@@ -7,6 +7,8 @@ using System.IO;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using System.Collections.Immutable;
+using System.Threading;
 
 namespace StockAnalyzer.Core.Services;
 
@@ -15,15 +17,69 @@ namespace StockAnalyzer.Core.Services;
 /// </summary>
 public class ParquetDataService : IDataService
 {
+    /// <summary>Optional source-authored BOOLEAN attestation; absent/null/false is unknown.</summary>
+    public const string FinalityColumn = "is_final";
     private readonly DuckDBConnectionManager _dbManager;
     private readonly MarketDataSettings _settings;
     private readonly ILogger<ParquetDataService> _logger;
+    private readonly TimeProvider _clock;
+
+    public async Task<MonitoringObservation?> LoadMonitoringObservationAsync(string symbol, TimeFrame timeFrame,
+        CancellationToken cancellationToken = default)
+    {
+        if (timeFrame is not (TimeFrame.D1 or TimeFrame.W1 or TimeFrame.MN1)) return null;
+        var basePath = ResolveBasePath(timeFrame);
+        var path = ResolveFilePath(basePath, symbol);
+        if (path is null) return null;
+
+        using (await _dbManager.AcquireLockAsync("MonitoringObservation", cancellationToken).ConfigureAwait(false))
+        {
+            // Capture before reading so a delayed older refresh cannot supersede a newer observation.
+            var observedUtc = _clock.GetUtcNow();
+            if (_dbManager.GetConnection() is not DbConnection connection)
+                throw new InvalidOperationException("Connection must support async operations.");
+            using var command = connection.CreateCommand();
+            // Read all rows, including pending forecasts outside the currently visible chart window.
+            command.CommandText = $"SELECT * FROM read_parquet('{EscapeDuckDbPath(path)}') ORDER BY date ASC";
+            using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            int date = reader.GetOrdinal("date"), open = reader.GetOrdinal("open"), high = reader.GetOrdinal("high"),
+                low = reader.GetOrdinal("low"), close = reader.GetOrdinal("close"), volume = reader.GetOrdinal("volume");
+            int final = -1;
+            for (int i = 0; i < reader.FieldCount; i++)
+                if (reader.GetName(i).Equals(FinalityColumn, StringComparison.OrdinalIgnoreCase)) final = i;
+            if (final >= 0 && reader.GetFieldType(final) != typeof(bool))
+                throw new InvalidDataException("Provider finality must be a BOOLEAN column.");
+            var candles = ImmutableArray.CreateBuilder<CandleData>();
+            var flags = ImmutableArray.CreateBuilder<bool>();
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                // Monitoring must not silently repair or discard a source bar, changing the horizon.
+                if (reader.IsDBNull(date) || reader.IsDBNull(open) || reader.IsDBNull(high)
+                    || reader.IsDBNull(low) || reader.IsDBNull(close) || reader.IsDBNull(volume))
+                    throw new InvalidDataException("Monitoring source has a missing OHLCV value.");
+                var candle = new CandleData(DateTime.SpecifyKind(reader.GetDateTime(date), DateTimeKind.Utc),
+                    Convert.ToDecimal(reader.GetValue(open)), Convert.ToDecimal(reader.GetValue(high)),
+                    Convert.ToDecimal(reader.GetValue(low)), Convert.ToDecimal(reader.GetValue(close)),
+                    Convert.ToInt64(reader.GetValue(volume)));
+                if (!candle.IsValid() || candle.Close <= 0
+                    || candles.Count > 0 && candle.Timestamp <= candles[candles.Count - 1].Timestamp)
+                    throw new InvalidDataException("Monitoring source has invalid or duplicate chronological bars.");
+                candles.Add(candle);
+                flags.Add(final >= 0 && !reader.IsDBNull(final) && reader.GetBoolean(final));
+            }
+            var snapshot = candles.ToImmutable();
+            return new MonitoringObservation(PredictionLogService.SourceRevision(snapshot), observedUtc,
+                snapshot, flags.ToImmutable());
+        }
+    }
 
     public ParquetDataService(
         DuckDBConnectionManager dbManager, 
         IOptions<MarketDataSettings> settings,
-        ILogger<ParquetDataService>? logger = null)
+        ILogger<ParquetDataService>? logger = null,
+        TimeProvider? timeProvider = null)
     {
+        _clock = timeProvider ?? TimeProvider.System;
         _dbManager = dbManager;
         _settings = settings.Value;
         _logger = logger ?? NullLogger<ParquetDataService>.Instance;
@@ -31,15 +87,7 @@ public class ParquetDataService : IDataService
 
     public async Task<IReadOnlyList<CandleData>> LoadCandlesAsync(string symbol, TimeFrame timeFrame, int count = 100)
     {
-        var (configuredPath, relativeFallback) = timeFrame switch
-        {
-            TimeFrame.D1 => (_settings.DailyDataPath, MarketDataSettings.DefaultDailyDataPath),
-            TimeFrame.W1 => (_settings.WeeklyDataPath, "Data/Weekly"),
-            TimeFrame.MN1 => (_settings.MonthlyDataPath, "Data/Monthly"),
-            _ => throw new NotSupportedException($"TimeFrame {timeFrame} is not currently supported for direct Parquet loading.")
-        };
-
-        var basePath = Common.PathDiscovery.ResolveDataPath(configuredPath, relativeFallback, "*.parquet");
+        var basePath = ResolveBasePath(timeFrame);
 
         var filePath = ResolveFilePath(basePath, symbol);
         if (filePath == null)
@@ -94,6 +142,18 @@ public class ParquetDataService : IDataService
             _logger.LogError(ex, "Failed to load candles from Parquet for {Symbol}", symbol);
             return Array.Empty<CandleData>();
         }
+    }
+
+    private string ResolveBasePath(TimeFrame timeFrame)
+    {
+        var (configuredPath, relativeFallback) = timeFrame switch
+        {
+            TimeFrame.D1 => (_settings.DailyDataPath, MarketDataSettings.DefaultDailyDataPath),
+            TimeFrame.W1 => (_settings.WeeklyDataPath, "Data/Weekly"),
+            TimeFrame.MN1 => (_settings.MonthlyDataPath, "Data/Monthly"),
+            _ => throw new NotSupportedException($"TimeFrame {timeFrame} is not currently supported for direct Parquet loading.")
+        };
+        return Common.PathDiscovery.ResolveDataPath(configuredPath, relativeFallback, "*.parquet");
     }
 
     private static string? ResolveFilePath(string basePath, string symbol)

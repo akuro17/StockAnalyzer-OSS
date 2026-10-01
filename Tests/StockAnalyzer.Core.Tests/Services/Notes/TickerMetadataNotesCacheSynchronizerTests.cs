@@ -10,6 +10,7 @@ using Xunit;
 
 namespace StockAnalyzer.Core.Tests.Services.Notes;
 
+[Collection("UserStrategyMetadataRepository MarketDataProvider")]
 public class TickerMetadataNotesCacheSynchronizerTests
 {
     private static string CreateIsolatedTempDirectory()
@@ -34,7 +35,6 @@ public class TickerMetadataNotesCacheSynchronizerTests
         var synchronizer = new TickerMetadataNotesCacheSynchronizer(
             noteRepository,
             UserStrategyMetadataRepository.Instance,
-            new FakeNotesSettingsManager(),
             NullLogger<TickerMetadataNotesCacheSynchronizer>.Instance);
 
         return (noteRepository, synchronizer);
@@ -233,26 +233,140 @@ public class TickerMetadataNotesCacheSynchronizerTests
     }
 
     [Fact]
-    public async Task RecalculateNotesCacheAsync_TruncatesToReadMoreBoundaryAndStripsHashtags()
+    public async Task RecalculateNotesCacheAsync_StoresFullHashtagFreeTrimmedBody_NotTruncated()
     {
         var tempDir = CreateIsolatedTempDirectory();
         try
         {
             var (noteRepository, synchronizer) = await CreateAsync(tempDir);
             var ticker = UniqueTicker();
-            var longBody = new string('あ', 250) + " #EV #中国";
+            var longBody = new string('\u3042', 250) + " #EV #\u4e2d\u56fd";
             var note = new Note(Guid.NewGuid(), longBody, DateTime.Now, DateTime.Now) { RelatedTicker = ticker };
             await noteRepository.CreateAsync(note);
 
             await synchronizer.RecalculateNotesCacheAsync(ticker);
 
-            // CreateAsync wires a FakeNotesSettingsManager with the production default
-            // ReadMoreMaxCharacters (150) - the same "Read more" collapse boundary the Notes tab
-            // itself uses, not a fixed 200-character cap.
-            var preview = UserStrategyMetadataRepository.Instance.GetStrategy(ticker)!.Notes;
-            Assert.NotNull(preview);
-            Assert.Equal(StockAnalyzer.Core.Models.Settings.NotesSettingsConstants.DefaultReadMoreMaxCharacters, preview!.Length);
-            Assert.DoesNotContain("#", preview);
+            // The Read-more boundary is applied at display time (Tickers grid), so the cache keeps the whole body.
+            var cached = UserStrategyMetadataRepository.Instance.GetStrategy(ticker)!.Notes;
+            Assert.Equal(new string('\u3042', 250), cached);
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, true); } catch { /* best-effort cleanup */ }
+        }
+    }
+
+    [Fact]
+    public async Task RecalculateNotesCacheAsync_WhenBodyIsOnlyHashtags_WritesNull()
+    {
+        var tempDir = CreateIsolatedTempDirectory();
+        try
+        {
+            var (noteRepository, synchronizer) = await CreateAsync(tempDir);
+            var ticker = UniqueTicker();
+            await noteRepository.CreateAsync(new Note(Guid.NewGuid(), "#EV #\u4e2d\u56fd", DateTime.Now, DateTime.Now) { RelatedTicker = ticker });
+
+            await synchronizer.RecalculateNotesCacheAsync(ticker);
+
+            Assert.Null(UserStrategyMetadataRepository.Instance.GetStrategy(ticker)!.Notes);
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, true); } catch { /* best-effort cleanup */ }
+        }
+    }
+
+    [Fact]
+    public async Task RecalculateAllNotesCachesAsync_RewritesOnlyTickersWhoseCacheDiffers()
+    {
+        var tempDir = CreateIsolatedTempDirectory();
+        try
+        {
+            var (noteRepository, synchronizer) = await CreateAsync(tempDir);
+            var stale = UniqueTicker();
+            var current = UniqueTicker();
+            var fullBody = new string('x', 300);
+            await noteRepository.CreateAsync(new Note(Guid.NewGuid(), fullBody, DateTime.Now, DateTime.Now) { RelatedTicker = stale });
+            await noteRepository.CreateAsync(new Note(Guid.NewGuid(), "already current", DateTime.Now, DateTime.Now) { RelatedTicker = current });
+            // Legacy format: a truncated preview stored for 'stale'; 'current' already holds its full text.
+            UserStrategyMetadataRepository.Instance.SaveStrategy(stale, null, null, null, null, null, null, new string('x', 150));
+            UserStrategyMetadataRepository.Instance.SaveStrategy(current, null, null, null, null, null, null, "already current");
+            var changedTickers = new System.Collections.Generic.List<string>();
+            void OnChanged(string t) { if (t == stale || t == current) changedTickers.Add(t); }
+            UserStrategyMetadataRepository.Instance.StrategyChanged += OnChanged;
+            try
+            {
+                var result = await synchronizer.RecalculateAllNotesCachesAsync();
+
+                Assert.Equal(1, result.Rewritten);
+                Assert.Equal(0, result.Failed);
+                Assert.Equal(fullBody, UserStrategyMetadataRepository.Instance.GetStrategy(stale)!.Notes);
+                Assert.Equal("already current", UserStrategyMetadataRepository.Instance.GetStrategy(current)!.Notes);
+                Assert.Contains(stale, changedTickers);
+                Assert.DoesNotContain(current, changedTickers);
+            }
+            finally
+            {
+                UserStrategyMetadataRepository.Instance.StrategyChanged -= OnChanged;
+            }
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, true); } catch { /* best-effort cleanup */ }
+        }
+    }
+
+    [Fact]
+    public async Task RecalculateAllNotesCachesAsync_PicksLatestCreatedAtPerTicker_CaseInsensitive()
+    {
+        var tempDir = CreateIsolatedTempDirectory();
+        try
+        {
+            var (noteRepository, synchronizer) = await CreateAsync(tempDir);
+            var ticker = UniqueTicker();
+            await noteRepository.CreateAsync(new Note(Guid.NewGuid(), "older", new DateTime(2026, 8, 1), new DateTime(2026, 8, 1)) { RelatedTicker = ticker.ToLowerInvariant() });
+            await noteRepository.CreateAsync(new Note(Guid.NewGuid(), "newer", new DateTime(2026, 8, 10), new DateTime(2026, 8, 10)) { RelatedTicker = ticker });
+
+            await synchronizer.RecalculateAllNotesCachesAsync();
+
+            Assert.Equal("newer", UserStrategyMetadataRepository.Instance.GetStrategy(ticker)!.Notes);
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, true); } catch { /* best-effort cleanup */ }
+        }
+    }
+
+    [Fact]
+    public async Task RecalculateAllNotesCachesAsync_WithNoActiveNotes_WritesNothing()
+    {
+        var tempDir = CreateIsolatedTempDirectory();
+        try
+        {
+            var (_, synchronizer) = await CreateAsync(tempDir);
+
+            var result = await synchronizer.RecalculateAllNotesCachesAsync();
+
+            Assert.Equal(new NotesCacheBackfillResult(Total: 0, Rewritten: 0, Failed: 0), result);
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, true); } catch { /* best-effort cleanup */ }
+        }
+    }
+
+    [Fact]
+    public async Task RecalculateAllNotesCachesAsync_WhenCancelled_Throws()
+    {
+        var tempDir = CreateIsolatedTempDirectory();
+        try
+        {
+            var (noteRepository, synchronizer) = await CreateAsync(tempDir);
+            await noteRepository.CreateAsync(new Note(Guid.NewGuid(), "body", DateTime.Now, DateTime.Now) { RelatedTicker = UniqueTicker() });
+            using var cts = new System.Threading.CancellationTokenSource();
+            cts.Cancel();
+
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => synchronizer.RecalculateAllNotesCachesAsync(cts.Token));
         }
         finally
         {

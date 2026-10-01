@@ -35,7 +35,9 @@
          the "ConditionRow" class below is also the hook the drop-indicator styles (further down this file) target. -->
     <Window.DataTemplates>
         <TreeDataTemplate DataType="svm:ScreenerConditionGroupViewModel" ItemsSource="{Binding Children}">
-            <Border Classes="ConditionRow" Background="Transparent" Padding="2">
+            <Border Classes="ConditionRow" Background="Transparent" Padding="2" ToolTip.ServiceEnabled="{Binding HasHoverText}">
+                <!-- A list without conditions has no expression to show: HasHoverText switches the tooltip service off for the row (an invisible content would still open an empty popup).
+                     ServiceEnabled is inherited, so the context menu below (it carries the disabled-add reason tooltip) switches it back on. -->
                 <ToolTip.Tip>
                     <StackPanel Spacing="2" AttachedToVisualTree="OnHoverTipAttached">
                         <TextBlock Text="{Binding HoverUpperText}" TextWrapping="NoWrap" IsVisible="{Binding HoverUpperText, Converter={x:Static ObjectConverters.IsNotNull}}"
@@ -45,7 +47,7 @@
                     </StackPanel>
                 </ToolTip.Tip>
                 <Border.ContextMenu>
-                    <ContextMenu>
+                    <ContextMenu ToolTip.ServiceEnabled="True">
                         <MenuItem Header="{l:Localize Screener_ConditionTree_AddGroup}"
                                   Command="{Binding Tree.AddGroupCommand}" CommandParameter="{Binding}"
                                   ToolTip.Tip="{Binding AddGroupToolTip}" ToolTip.ShowOnDisabled="True"/>

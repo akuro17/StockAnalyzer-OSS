@@ -92,4 +92,34 @@ public class WalkForwardDataRequirementTests
         Assert.Throws<ArgumentOutOfRangeException>(
             () => WalkForwardDataRequirement.MinimumRawBars(25, 5, WalkForwardDataRequirement.DefaultSplitCount, gap));
     }
+
+    [Fact]
+    public void MinimumRawBars_ExplicitMaxLagAddsRequiredHistoryWithoutChangingGap()
+    {
+        int baseline = WalkForwardDataRequirement.MinimumRawBars(25, 5, gap: 0);
+        Assert.Equal(baseline + 20,
+            WalkForwardDataRequirement.MinimumRawBars(25, 5, gap: 0, maxLag: 20));
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            WalkForwardDataRequirement.MinimumRawBars(25, 5, maxLag: -1));
+    }
+
+    [Fact]
+    public void MinimumRawBars_ExactIntLimitIsReturned_AndLagBeyondItIsRejected()
+    {
+        var window = int.MaxValue - (WalkForwardDataRequirement.DefaultSplitCount + 1);
+        Assert.Equal(int.MaxValue, WalkForwardDataRequirement.MinimumRawBars(window, 1, gap: 0));
+        Assert.Throws<OverflowException>(() =>
+            WalkForwardDataRequirement.MinimumRawBars(window, 1, gap: 0, maxLag: 1));
+    }
+
+    [Theory]
+    [InlineData(25, 5, 5, int.MaxValue)]
+    [InlineData(int.MaxValue, int.MaxValue, 5, 0)]
+    [InlineData(1, 1, int.MaxValue, 0)]
+    public void MinimumRawBars_OverLimitIntermediatesNeverWrapOrIterateThroughAllSplits(
+        int window, int horizon, int splits, int gap)
+    {
+        Assert.Throws<OverflowException>(() =>
+            WalkForwardDataRequirement.MinimumRawBars(window, horizon, splits, gap));
+    }
 }

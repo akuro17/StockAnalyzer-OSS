@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using StockAnalyzer.Avalonia.Views.Controls;
 using StockAnalyzer.Core.Analysis.Sankey;
@@ -14,7 +15,7 @@ public sealed class SankeyPlotControlTests
         SankeyProvenance.Observed,
         "test_v1");
 
-    [Fact]
+    [AvaloniaFact]
     public void Control_InitializesWithDefaultValues()
     {
         var control = new SankeyPlotControl();
@@ -28,7 +29,7 @@ public sealed class SankeyPlotControlTests
         Assert.Null(control.HoveredEdgeId);
     }
 
-    [Fact]
+    [AvaloniaFact]
     public void UpdateLayoutGeometry_UpdatesStatusToReady_WhenValidDataProvided()
     {
         var control = new SankeyPlotControl();
@@ -65,7 +66,7 @@ public sealed class SankeyPlotControlTests
         Assert.Null(hitOutsideBand);
     }
 
-    [Fact]
+    [AvaloniaFact]
     public void PaletteChange_UpdatesPaletteProperty()
     {
         var control = new SankeyPlotControl();
@@ -74,7 +75,7 @@ public sealed class SankeyPlotControlTests
         Assert.Equal(SankeyPalette.DefaultLight, control.Palette);
     }
 
-    [Fact]
+    [AvaloniaFact]
     public void FocusedNodeId_CanBeSetAndCleared()
     {
         var control = new SankeyPlotControl();
@@ -85,7 +86,7 @@ public sealed class SankeyPlotControlTests
         Assert.Null(control.FocusedNodeId);
     }
 
-    [Fact]
+    [AvaloniaFact]
     public void HitTestBand_FastReject_ReturnsNull_ForPointsOutsideBounds()
     {
         var control = new SankeyPlotControl();
@@ -107,7 +108,7 @@ public sealed class SankeyPlotControlTests
         Assert.Null(control.HitTestBand(new Point(795, 300)));
     }
 
-    [Fact]
+    [AvaloniaFact]
     public void Control_Dispose_IsIdempotentAndSafe()
     {
         var control = new SankeyPlotControl();
@@ -125,7 +126,7 @@ public sealed class SankeyPlotControlTests
         control.Dispose();
     }
 
-    [Fact]
+    [AvaloniaFact]
     public void RoutedSkipLinkGraph_RendersAndHitTestsOriginalEdgeId()
     {
         var control = new SankeyPlotControl();
@@ -168,7 +169,7 @@ public sealed class SankeyPlotControlTests
         }
     }
 
-    [Fact]
+    [AvaloniaFact]
     public void MicroFlow_GuaranteesMinVisibleBandWidth_AndHitTestingWithTolerance()
     {
         var control = new SankeyPlotControl();
@@ -203,7 +204,7 @@ public sealed class SankeyPlotControlTests
         }
     }
 
-    [Fact]
+    [AvaloniaFact]
     public void MinVisibleBandWidth_CustomProperty_UpdatesValueAndCanBeSet()
     {
         var control = new SankeyPlotControl();
@@ -212,7 +213,7 @@ public sealed class SankeyPlotControlTests
         Assert.Equal(2.5, control.MinVisibleBandWidth);
     }
 
-    [Fact]
+    [AvaloniaFact]
     public void KeyDown_TabOrArrows_SkipsDummyNodes()
     {
         var control = new SankeyPlotControl();

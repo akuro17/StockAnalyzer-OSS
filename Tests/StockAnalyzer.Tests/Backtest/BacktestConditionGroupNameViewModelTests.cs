@@ -229,6 +229,38 @@ public class BacktestConditionGroupNameViewModelTests
         Assert.Equal("SMA > 1", list.HoverLowerText);
     }
 
+    [Fact]
+    public void Hover_AnEmptyList_HasNoHoverText_SoNoEmptyTooltipIsOpened_UntilItGetsASignal()
+    {
+        BacktestConditionTreeViewModel tree = Create();
+        BacktestConditionGroupViewModel root = EntryLong(tree);
+        var changed = new List<string?>();
+        root.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
+
+        Assert.Null(root.HoverUpperText);
+        Assert.Null(root.HoverLowerText);
+        Assert.False(root.HasHoverText);
+
+        Assert.NotNull(tree.TryAddLeaf(BacktestConditionSection.Entry, TradeSide.Long, Entry(1)));
+        Assert.True(root.HasHoverText);
+        Assert.Contains(nameof(BacktestConditionNodeViewModel.HasHoverText), changed);
+        Assert.True(root.Children[0].HasHoverText);
+
+        tree.Delete(root.Children[0]);
+        Assert.False(root.HasHoverText);
+    }
+
+    [Fact]
+    public void Hover_AnEmptySubGroup_StillShowsTheListAboveIt()
+    {
+        (BacktestConditionTreeViewModel tree, BacktestConditionGroupViewModel _) = Example(name: null);
+        tree.TryAddGroup(EntryLong(tree), LogicalOperator.And);
+        var empty = (BacktestConditionGroupViewModel)EntryLong(tree).Children[^1];
+
+        Assert.Null(empty.HoverLowerText);
+        Assert.True(empty.HasHoverText);
+    }
+
     // ---- dialog view-model ----
 
     [Fact]

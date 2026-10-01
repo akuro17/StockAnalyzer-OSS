@@ -778,7 +778,9 @@ public partial class IndicatorSettingsDialogViewModel : ViewModelBase, IRecipien
     /// <summary>
     /// Rebuilds <see cref="SelectedTemplateIndicatorNames"/> from <see cref="SelectedTemplate"/>.
     /// Called on selection change and again after an in-place overwrite save of the selected
-    /// template, whose contents change without the selection reference changing.
+    /// template, whose contents change without the selection reference changing. Names come from
+    /// <see cref="CoreIndicatorSettings.GetFormattedDisplayName"/>, which is already parameterized,
+    /// so it must not be passed through <c>ParameterObject.GetDisplayName</c> a second time.
     /// </summary>
     private void RefreshSelectedTemplatePreview()
     {
@@ -790,12 +792,7 @@ public partial class IndicatorSettingsDialogViewModel : ViewModelBase, IRecipien
 
         foreach (var ind in value.Indicators)
         {
-            string name = ind.DisplayName;
-            if (ind.ParameterObject != null)
-            {
-                name = ind.ParameterObject.GetDisplayName(name);
-            }
-            SelectedTemplateIndicatorNames.Add(name);
+            SelectedTemplateIndicatorNames.Add(ind.GetFormattedDisplayName());
         }
     }
 
