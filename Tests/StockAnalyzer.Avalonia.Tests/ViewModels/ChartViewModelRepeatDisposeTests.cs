@@ -1,6 +1,7 @@
 using CommunityToolkit.Mvvm.Messaging;
 using StockAnalyzer.Avalonia.Services;
 using StockAnalyzer.Avalonia.Tests.Services;
+using StockAnalyzer.Avalonia.Tests.TestHelpers;
 using StockAnalyzer.Avalonia.ViewModels;
 using StockAnalyzer.Core.Services;
 using Xunit;
@@ -39,14 +40,14 @@ public sealed class ChartViewModelRepeatDisposeTests
     public void Dispose_DuplicateQueuedDispatcherCalls_CleansUpOnce()
     {
         var messenger = new CountingMessenger();
-        var dispatcher = new QueueingDispatcherService();
+        var dispatcher = new QueuedDispatcherService();
         var chart = Chart(messenger, dispatcher);
 
         dispatcher.Post(chart.Dispose);
         dispatcher.Post(chart.Dispose);
         Assert.Equal(0, messenger.UnregisterAllCalls);
 
-        var exception = Record.Exception(dispatcher.Drain);
+        var exception = Record.Exception(dispatcher.RunAll);
 
         Assert.Null(exception);
         Assert.Equal(1, messenger.UnregisterAllCalls);
@@ -76,22 +77,5 @@ public sealed class ChartViewModelRepeatDisposeTests
 
         public void Cleanup() => ((IMessenger)_inner).Cleanup();
         public void Reset() => _inner.Reset();
-    }
-
-    private sealed class QueueingDispatcherService : IDispatcherService
-    {
-        private readonly Queue<Action> _queue = new();
-
-        public void Post(Action action) => _queue.Enqueue(action);
-        public void Post<T>(Action<T> action, T state) => _queue.Enqueue(() => action(state));
-        public Task PostAsync(Func<Task> action) => throw new NotSupportedException();
-        public Task PostAsync<TState>(Func<TState, Task> action, TState state) => throw new NotSupportedException();
-        public bool CheckAccess() => true;
-        public void VerifyAccess() { }
-
-        public void Drain()
-        {
-            while (_queue.Count > 0) _queue.Dequeue()();
-        }
     }
 }

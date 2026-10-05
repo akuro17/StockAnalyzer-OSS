@@ -1,10 +1,13 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using StockAnalyzer.Core.Common;
+using StockAnalyzer.Core.Models.Training;
 
 namespace StockAnalyzer.Core.Services;
 
@@ -39,6 +42,28 @@ public sealed class ModelDeploymentService : IModelDeploymentService
             _logger.LogInformation(ex, "Generation {ModelId} was registered without automatic activation.", manifest.ModelId);
         }
         return manifest;
+    }
+
+    public async Task<EnsembleRegistration> RegisterEnsembleAsync(string ensembleManifestPath, CancellationToken ct = default)
+    {
+        if (_registry is null) throw new InvalidOperationException("Model generation registry is unavailable.");
+        var manifest = TrainingEnsembleManifest.Load(ensembleManifestPath);
+        // Every member passes the registration checks in staging before the first one is registered, so a bad member leaves
+        // the registry untouched (it has no delete operation to undo a partial registration). Registration is content-addressed
+        // and idempotent, so what can still fail afterwards is an I/O fault.
+        foreach (var member in manifest.Members)
+            await _registry.VerifyCandidateAsync(member.OnnxPath, member.MetricsPath, ct).ConfigureAwait(false);
+        var generations = new List<ModelGenerationManifest>();
+        foreach (var member in manifest.Members)
+            generations.Add(await _registry.RegisterAsync(member.OnnxPath, member.MetricsPath, ct).ConfigureAwait(false));
+        var spec = new EnsembleSpec(Array.AsReadOnly(generations
+            .Select((generation, index) => new EnsembleMember(generation.ModelId, manifest.Members[index].Weight)).ToArray()));
+        // Distinct ids, weights and the shared target/timeframe/horizon/class-order contract are the same rules the ensemble
+        // settings enforce, so a registration that cannot be used as an ensemble fails here rather than at prediction time.
+        await Task.Run(() => EnsembleSettingsManager.ValidateGenerations(spec, _registry), ct).ConfigureAwait(false);
+        _logger.LogInformation("Registered {Method} ensemble of {Count} generations (run {RunId}).",
+            manifest.Method, generations.Count, manifest.RunId);
+        return new EnsembleRegistration(manifest.Method, spec, Array.AsReadOnly(generations.ToArray()));
     }
 
     public async Task<string> DeployAsync(string onnxSourcePath, string? metricsSourcePath = null, CancellationToken ct = default)

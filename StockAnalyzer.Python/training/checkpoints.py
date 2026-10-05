@@ -16,6 +16,8 @@ import dataset as ds
 
 SCHEMA_VERSION = 1
 LINEAGE_KEY = "com.stockanalyzer.training.lineage"
+# directory under the training artifacts that holds every run's native checkpoints (mirror of C# TrainingCheckpointContract.DirectoryName)
+DIRECTORY_NAME = "checkpoints"
 MODES = ("fresh", "fine_tune", "resume")
 _HASH = re.compile(r"[0-9a-f]{64}\Z")
 _RUN = re.compile(r"[A-Za-z0-9_-]+\Z")
@@ -172,7 +174,7 @@ class Session:
         ignored = {"epochs", "out", "data_dir", "init_from", "checkpoint_dir", "run_id",
                    "parent_model_id", "parent_model_hash", "freeze_paths", "initialization_mode",
                    "no_verify", "smoke", "indicator_channel_export_paths", "feature_spec",
-                   "composed_export_paths", "composed_spec"}
+                   "composed_export_paths", "composed_spec", "calibration"}
         ignored.add("preflight")
         config = {key: value for key, value in vars(args).items() if key not in ignored
                   and not key.startswith("_")}

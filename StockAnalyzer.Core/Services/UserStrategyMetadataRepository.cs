@@ -60,6 +60,12 @@ public class UserStrategyMetadataRepository
 
     private readonly ConcurrentDictionary<string, UserStrategyItem> _cache = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// Tickers whose strategy this session has saved. Their cache entry is the newest truth: a disk read that began before the save
+    /// (the background persist itself reads the file first) would otherwise register the older stored values over it.
+    /// </summary>
+    private readonly ConcurrentDictionary<string, byte> _savedTickers = new(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>Raised after <see cref="SaveStrategy(string, decimal?, decimal?, decimal?, decimal?, decimal?, decimal?, string?, bool?, bool?, bool?, bool?, bool?, bool?, string?)"/>
     /// updates the in-memory cache for a ticker, so UI already displaying that ticker (e.g. the
     /// Tickers grid's Notes column) can refresh without waiting for a restart. May fire on a
@@ -87,8 +93,7 @@ public class UserStrategyMetadataRepository
                 {
                     if (TryCreateItemFromMetadata(metaTask.Result, out var item))
                     {
-                        _cache[ticker] = item;
-                        return item;
+                        return _cache.GetOrAdd(ticker, item); // a save that won the race stays
                     }
                 }
                 else
@@ -190,6 +195,7 @@ public class UserStrategyMetadataRepository
 
         await GetStrategyAsync(ticker, ct).ConfigureAwait(false);
 
+        _savedTickers[ticker] = 0;
         var updated = _cache.AddOrUpdate(
             ticker,
             _ => new UserStrategyItem { Notes = notes },
@@ -287,6 +293,7 @@ public class UserStrategyMetadataRepository
             Notes = notes,
             Reminder = reminder
         };
+        _savedTickers[ticker] = 0;
         _cache[ticker] = item;
         StrategyChanged?.Invoke(ticker);
 
@@ -303,6 +310,7 @@ public class UserStrategyMetadataRepository
         bool? isLong = null, bool? isTPLong = null, bool? isSLLong = null, bool? isShort = null, bool? isTPShort = null, bool? isSLShort = null, string? reminder = null)
     {
         if (string.IsNullOrWhiteSpace(ticker)) return;
+        if (_savedTickers.ContainsKey(ticker)) return; // saved in this session: the cache is newer than anything a load read from the file
         _cache.AddOrUpdate(ticker,
             _ => new UserStrategyItem
             {

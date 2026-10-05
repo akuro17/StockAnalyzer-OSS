@@ -19,6 +19,9 @@ public interface IMLDataProcessor
     /// </summary>
     const float SoftmaxSumTolerance = 1e-4f;
 
+    /// <summary>Class counts up to this size use a stack buffer for one probability row.</summary>
+    const int MaxStackAllocClassCount = 32;
+
     /// <summary>
     /// Maximum window/element count eligible for stackalloc'd scratch buffers before falling back
     /// to a heap array, chosen to keep worst-case stack usage per call well within default thread stack limits.

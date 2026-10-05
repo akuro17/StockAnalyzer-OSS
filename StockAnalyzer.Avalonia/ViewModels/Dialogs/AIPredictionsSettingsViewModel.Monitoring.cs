@@ -15,6 +15,7 @@ public partial class AIPredictionsSettingsViewModel
     private readonly IPredictionLogService? _predictionLog;
     private readonly IRetrainingScheduler? _retrainingScheduler;
     private readonly ICurrentPredictionHealthService? _currentHealth;
+    private readonly Core.Models.IAttestedEvidenceDiagnostics? _evidenceDiagnostics;
     private long _monitoringRevision;
     internal Task MonitoringRefreshTask { get; private set; } = Task.CompletedTask;
     [ObservableProperty] private string? _monitoringStatus;
@@ -59,6 +60,9 @@ public partial class AIPredictionsSettingsViewModel
                         LocalizationManager.Instance.Get("Monitoring_Accuracy"),
                         LocalizationManager.Instance.Get("Monitoring_Health_" + s.State),
                         s.Accuracy is { } accuracy ? accuracy.ToString("P2", CultureInfo.CurrentCulture) : "—", s.MaturedCount)));
+                // A data-integrity fault of the producer evidence is its own line, never folded into the performance state.
+                if (_evidenceDiagnostics is not null && await _evidenceDiagnostics.GetConflictedStreamsAsync().ConfigureAwait(false) is { IsEmpty: false } faults)
+                    status += Environment.NewLine + string.Format(CultureInfo.CurrentCulture, LocalizationManager.Instance.Get("Monitoring_EvidenceConflict"), faults.Length);
             }
             if (_retrainingScheduler is not null)
             {

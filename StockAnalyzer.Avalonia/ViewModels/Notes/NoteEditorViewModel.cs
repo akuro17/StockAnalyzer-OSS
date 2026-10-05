@@ -59,6 +59,9 @@ public partial class NoteEditorViewModel : ViewModelBase
     [ObservableProperty]
     private bool _isPinned;
 
+    [ObservableProperty]
+    private DateTime? _catalystDate;
+
     /// <summary>Images picked but not yet passed through <see cref="AttachmentRepository.SaveAsync"/>.</summary>
     public ObservableCollection<PendingImageAttachment> PendingAttachments { get; } = new();
 
@@ -133,6 +136,7 @@ public partial class NoteEditorViewModel : ViewModelBase
         ChartAnchorDate = note.ChartAnchorDate;
         ChartTimeframe = note.ChartTimeframe;
         IsPinned = note.IsPinned;
+        CatalystDate = note.CatalystDate;
 
         PendingAttachments.Clear();
         AttachmentErrors.Clear();
@@ -157,6 +161,7 @@ public partial class NoteEditorViewModel : ViewModelBase
         ChartAnchorDate = null;
         ChartTimeframe = null;
         IsPinned = false;
+        CatalystDate = null;
 
         PendingAttachments.Clear();
         AttachmentErrors.Clear();
@@ -242,6 +247,7 @@ public partial class NoteEditorViewModel : ViewModelBase
                 IsPinned = IsPinned,
                 QuotedNoteId = _quotedNoteId,
                 ParentNoteId = _parentNoteId,
+                CatalystDate = CatalystDate?.Date,
             };
             await _noteRepository.UpdateAsync(noteToSave);
         }
@@ -258,6 +264,7 @@ public partial class NoteEditorViewModel : ViewModelBase
                 IsPinned = IsPinned,
                 QuotedNoteId = _quotedNoteId,
                 ParentNoteId = _parentNoteId,
+                CatalystDate = CatalystDate?.Date,
             };
             await _noteRepository.CreateAsync(noteToSave);
         }

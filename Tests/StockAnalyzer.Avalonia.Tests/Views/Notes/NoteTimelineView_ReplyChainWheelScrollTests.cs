@@ -22,15 +22,13 @@ namespace StockAnalyzer.Avalonia.Tests.Views.Notes;
 /// wheel landed on the template Grid and never reached the presenter that handles it.</summary>
 public class NoteTimelineView_ReplyChainWheelScrollTests
 {
-    private const double WindowWidth = 480;
+    private const double WindowWidth = 900;
     private const double WindowHeight = 400;
     private const int ReplyChainLength = 5;
     private const double WheelDeltaY = -3;
 
-    /// <summary>Horizontal probe positions on the connector row: far left edge, far right edge, and
-    /// offsets relative to the connector line's own X (left of it, on it, right of it).</summary>
-    private static readonly double[] AbsoluteProbeXs = { 5.0, 400.0 };
-    private static readonly double[] LineRelativeProbeXOffsets = { -20.0, 1.0, 30.0 };
+    /// <summary>Horizontal probe offsets relative to the connector line's own X (on it and to the right of it in blank space).</summary>
+    private static readonly double[] LineRelativeProbeXOffsets = { 1.0, 15.0, 30.0, 60.0 };
 
     [AvaloniaFact]
     public async Task MouseWheel_ScrollsTimeline_OverBlankSpaceBesideReplyConnectorLine()
@@ -65,13 +63,15 @@ public class NoteTimelineView_ReplyChainWheelScrollTests
                 var line = view.GetVisualDescendants().OfType<Border>().First(b => b.Name == "ReplyThreadConnectorLine" && b.IsVisible);
                 var lineOrigin = line.TranslatePoint(new Point(0, 0), window)!.Value;
                 var midY = lineOrigin.Y + line.Bounds.Height / 2;
-                var probes = AbsoluteProbeXs
-                    .Concat(LineRelativeProbeXOffsets.Select(offset => lineOrigin.X + offset))
+
+                var probes = LineRelativeProbeXOffsets
+                    .Select(offset => lineOrigin.X + offset)
                     .Select(x => ($"x={x}", new Point(x, midY))).ToArray();
 
                 foreach (var (name, point) in probes)
                 {
                     scrollViewer.Offset = default;
+                    AvaloniaHeadlessPlatform.ForceRenderTimerTick();
                     Dispatcher.UIThread.RunJobs();
                     var hit = window.GetVisualAt(point);
                     // Let the pointer position settle first; a wheel with no settled pointer-over is

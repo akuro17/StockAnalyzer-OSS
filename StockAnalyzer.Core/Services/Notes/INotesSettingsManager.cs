@@ -45,6 +45,12 @@ namespace StockAnalyzer.Core.Services.Notes
         /// batch (Settings &gt; Notes).</summary>
         int TimelinePageSize { get; }
 
+        /// <summary>Maximum number of upcoming catalysts displayed in the sidebar (Settings &gt; Notes, "Upcoming Catalysts" section).</summary>
+        int UpcomingCatalystsLimit { get; }
+
+        /// <summary>Threshold in days relative to today (default: -1, meaning up to 1 day past due) for keeping scheduled notes in the Upcoming Catalysts sidebar (Settings &gt; Notes, "Upcoming Catalysts" section).</summary>
+        int UpcomingCatalystsPastDaysRetention { get; }
+
         /// <summary>Font size applied to every piece of text a Note renders - card body, header/ticker,
         /// timestamps, quoted-note preview, attachment counts (Settings &gt; Notes, both the main
         /// timeline/detail page and the Trash/orphaned-files views). Independent of the app's general
@@ -83,6 +89,8 @@ namespace StockAnalyzer.Core.Services.Notes
         void SetConnectorLineLength(double value);
         void SetDashLength(double value);
         void SetTimelinePageSize(int value);
+        void SetUpcomingCatalystsLimit(int value);
+        void SetUpcomingCatalystsPastDaysRetention(int value);
         void SetBodyFontSize(double value);
         void SetBodyTextColor(IndicatorColor value);
         void SetBodyBackgroundColor(IndicatorColor value);

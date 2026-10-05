@@ -6,6 +6,7 @@ using StockAnalyzer.Avalonia.Tests.Services;
 using StockAnalyzer.Avalonia.ViewModels;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Services;
+using StockAnalyzer.Core.Tests.Services;
 using Xunit;
 using Microsoft.Extensions.Options;
 using Microsoft.ML.OnnxRuntime;
@@ -74,10 +75,11 @@ public sealed class ChartPredictionMonitoringTests
             Enumerable.Repeat(true, bars.Length).ToImmutableArray());
 
     private static ChartViewModel Chart(IDataService data, IPredictionLogService log, IPredictionService? prediction = null,
-        TimeProvider? clock = null) =>
+        TimeProvider? clock = null, IMonitoringWorkOwner? work = null, IAttestedMonitoringRefresher? attested = null) =>
         new(data, new DialogService(), null!, new MockStockAnalyzerSettings(), new TimeFrameManager(data),
             null!, new StockAnalyzer.Core.Theme.ThemeManager(), new MockChartSettingsManager(),
-            new SynchronousDispatcherService(), prediction, null!, messenger: new StrongReferenceMessenger(), predictionLog: log, timeProvider: clock);
+            new SynchronousDispatcherService(), prediction, null!, messenger: new StrongReferenceMessenger(), predictionLog: log, timeProvider: clock,
+            monitoringWork: work, attestedMonitoring: attested);
 
     [Theory]
     [InlineData(false)]
@@ -124,7 +126,7 @@ public sealed class ChartPredictionMonitoringTests
         log.Setup(l => l.RefreshAsync(It.IsAny<string>(), It.IsAny<TimeframeType>(), It.IsAny<MonitoringObservation>(), It.IsAny<CancellationToken>()))
             .Callback<string, TimeframeType, MonitoringObservation, CancellationToken>((_, _, value, _) => received = value)
             .Returns(Task.CompletedTask);
-        using var chart = Chart(new LegacyDataService(Bars()), log.Object, clock: new FixedClock(instant));
+        using var chart = Chart(new LegacyDataService(Bars()), log.Object, clock: new ManualTimeProvider(instant));
         await chart.LoadDataAsync(); await chart.MonitoringObservationTask;
         Assert.NotNull(received); Assert.Equal(instant, received.ObservedUtc);
         Assert.All(received.FinalBars, flag => Assert.False(flag));
@@ -198,10 +200,89 @@ public sealed class ChartPredictionMonitoringTests
         log.Verify(l => l.MarkUnavailableAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
-    private sealed class FixedClock(DateTimeOffset now) : TimeProvider
+    [Fact]
+    public async Task AnAttestedRefresh_ReplacesTheLegacyObservation_ElseTheLegacyPathRunsUnchanged()
     {
-        public override DateTimeOffset GetUtcNow() => now;
+        var bars = Bars(); var source = new EvidenceDataService(bars, Observe(bars));
+        foreach (var attestedApplied in new[] { true, false })
+        {
+            var log = new Mock<IPredictionLogService>(); var attested = new Mock<IAttestedMonitoringRefresher>();
+            attested.Setup(a => a.TryRefreshAsync("AAPL", TimeframeType.Daily, It.IsAny<IReadOnlyList<CandleData>>(), It.IsAny<CancellationToken>())).ReturnsAsync(attestedApplied);
+            using var chart = Chart(source, log.Object, attested: attested.Object);
+            await chart.LoadDataAsync(); await chart.MonitoringObservationTask;
+            attested.Verify(a => a.TryRefreshAsync("AAPL", TimeframeType.Daily, It.Is<IReadOnlyList<CandleData>>(b => b.Count == 80), It.IsAny<CancellationToken>()), Times.Once);
+            log.Verify(l => l.RefreshAsync(It.IsAny<string>(), It.IsAny<TimeframeType>(), It.IsAny<MonitoringObservation>(), It.IsAny<CancellationToken>()),
+                attestedApplied ? Times.Never : Times.Once);
+        }
     }
+
+    [Fact]
+    public async Task AFaultingAttestation_IsLoggedAndNeverFallsBackToTheLegacyObservation()
+    {
+        var bars = Bars(); var source = new EvidenceDataService(bars, Observe(bars));
+        var log = new Mock<IPredictionLogService>(); var attested = new Mock<IAttestedMonitoringRefresher>();
+        attested.Setup(a => a.TryRefreshAsync(It.IsAny<string>(), It.IsAny<TimeframeType>(), It.IsAny<IReadOnlyList<CandleData>>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidDataException("corrupt attestation"));
+        using var chart = Chart(source, log.Object, attested: attested.Object);
+        await chart.LoadDataAsync(); await chart.MonitoringObservationTask;
+        log.Verify(l => l.RefreshAsync(It.IsAny<string>(), It.IsAny<TimeframeType>(), It.IsAny<MonitoringObservation>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    private static readonly PredictionOutputContract DailyClasses = new(PredictionOutputSemantic.ClassProbabilities,
+        PredictionOutputUnit.Probability, 1, TimeframeType.Daily, ConfidenceType.ClassProbability, PredictionTargetFormula.ThresholdedSimpleReturn);
+
+    [Fact]
+    public async Task RecordAndObservationActiveAtStop_AreCanceledAndDrained_AndNothingStartsAfterwards()
+    {
+        var bars = Bars(); var owner = new MonitoringWorkOwner(); var timeout = TimeSpan.FromSeconds(10);
+        var refreshEntered = new TaskCompletionSource<CancellationToken>(); var recordEntered = new TaskCompletionSource<CancellationToken>();
+        var release = new TaskCompletionSource();
+        var log = new Mock<IPredictionLogService>();
+        log.Setup(l => l.RefreshAsync(It.IsAny<string>(), It.IsAny<TimeframeType>(), It.IsAny<MonitoringObservation>(), It.IsAny<CancellationToken>()))
+            .Returns(async (string _, TimeframeType _, MonitoringObservation _, CancellationToken ct) => { refreshEntered.TrySetResult(ct); await release.Task; });
+        log.Setup(l => l.RecordAsync(It.IsAny<PredictionResult>(), It.IsAny<string>(), It.IsAny<TimeframeType>(), It.IsAny<IReadOnlyList<CandleData>>(), It.IsAny<CancellationToken>()))
+            .Returns(async (PredictionResult _, string _, TimeframeType _, IReadOnlyList<CandleData> _, CancellationToken ct) =>
+            { recordEntered.TrySetResult(ct); await release.Task; return (string?)"id"; });
+        var prediction = new Mock<IPredictionService>();
+        prediction.Setup(p => p.PredictAsync(It.IsAny<IEnumerable<CandleData>>())).ReturnsAsync(
+            new PredictionResult("Up", 1, [new("Up", 1)]) { OutputContract = DailyClasses });
+        using var chart = Chart(new EvidenceDataService(bars, Observe(bars)), log.Object, prediction.Object, work: owner);
+
+        await chart.LoadDataAsync();
+        var refreshToken = await refreshEntered.Task.WaitAsync(timeout); var recordToken = await recordEntered.Task.WaitAsync(timeout);
+        var refresh = chart.MonitoringObservationTask; var record = chart.MonitoringUpdateTask;
+
+        var stop = owner.StopAsync();
+        Assert.True(refreshToken.IsCancellationRequested); Assert.True(recordToken.IsCancellationRequested);
+        Assert.False(stop.IsCompleted);                                  // both workers are still alive: nothing may be disposed yet
+        release.SetResult();
+        await stop.WaitAsync(timeout); await refresh.WaitAsync(timeout); await record.WaitAsync(timeout);
+
+        await chart.LoadDataAsync(); await chart.PredictionUpdateTask;  // a later load can no longer start a monitoring write
+        Assert.True(chart.MonitoringObservationTask.IsCanceled);
+        log.Verify(l => l.RefreshAsync(It.IsAny<string>(), It.IsAny<TimeframeType>(), It.IsAny<MonitoringObservation>(), It.IsAny<CancellationToken>()), Times.Once);
+        log.Verify(l => l.RecordAsync(It.IsAny<PredictionResult>(), It.IsAny<string>(), It.IsAny<TimeframeType>(), It.IsAny<IReadOnlyList<CandleData>>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task DisposeWhileALoadStillHoldsTheLoadLock_DoesNotThrowWhenTheLoadFinishes()
+    {
+        var source = new BlockedCandleDataService(Bars()); var chart = Chart(source, Mock.Of<IPredictionLogService>());
+        var load = chart.LoadDataAsync();
+        await source.Started.Task.WaitAsync(TimeSpan.FromSeconds(10));  // the load now owns the semaphore
+        chart.Dispose();
+        source.Release.SetResult();
+        await load.WaitAsync(TimeSpan.FromSeconds(10));                 // its finally block releases the semaphore; it must not be disposed
+    }
+
+    private sealed class BlockedCandleDataService(ImmutableArray<CandleData> bars) : IDataService
+    {
+        public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public async Task<IReadOnlyList<CandleData>> LoadCandlesAsync(string symbol, TimeFrame timeFrame, int count = 100)
+        { Started.TrySetResult(); await Release.Task; return bars; }
+    }
+
     private class LegacyDataService(ImmutableArray<CandleData> bars) : IDataService
     {
         public Task<IReadOnlyList<CandleData>> LoadCandlesAsync(string symbol, TimeFrame timeFrame, int count = 100) =>

@@ -69,6 +69,31 @@ public sealed class LocalizationManager
             
         return _strings.TryGetValue(key, out var value) ? value : $"[{key}]";
     }
+
+    /// <summary>
+    /// Attempts to retrieve a localized string by key without returning a bracketed fallback.
+    /// </summary>
+    /// <param name="key">The localization key.</param>
+    /// <param name="value">The localized string if found; otherwise, null.</param>
+    /// <returns>True if the key exists; otherwise, false.</returns>
+    public bool TryGet(string key, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out string? value)
+    {
+        if (string.IsNullOrEmpty(key))
+        {
+            value = null;
+            return false;
+        }
+
+        return _strings.TryGetValue(key, out value);
+    }
+
+    /// <summary>
+    /// Determines whether the localization dictionary contains the specified key.
+    /// </summary>
+    public bool ContainsKey(string key)
+    {
+        return !string.IsNullOrEmpty(key) && _strings.ContainsKey(key);
+    }
     
     /// <summary>
     /// Indexer for convenient access to localized strings.

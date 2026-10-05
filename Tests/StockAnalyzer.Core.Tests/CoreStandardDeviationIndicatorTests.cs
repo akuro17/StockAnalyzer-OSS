@@ -73,5 +73,53 @@ namespace StockAnalyzer.Core.Tests
             indicator.Calculate(candles);
             Assert.Equal(0, indicator.Values.Last().Value, 4);
         }
+
+        [Fact]
+        public void Calculate_WithPeriodOne_DoesNotDivideByZero_ReturnsZero()
+        {
+            var indicator = new CoreStandardDeviationIndicator { Period = 1 };
+            var candles = CreateTestCandles(new decimal[] { 10, 12, 14 });
+            var result = indicator.Calculate(candles);
+
+            Assert.True(result.IsSuccessful);
+            Assert.Equal(3, indicator.Values.Count);
+            // Single period has 0 variance / standard deviation
+            Assert.All(indicator.Values, v => Assert.Equal(0m, v));
+        }
+
+        [Fact]
+        public void Calculate_WithIsPopulationTrue_CalculatesPopulationVariance()
+        {
+            // Closes: [10, 12, 14], Mean = 12. SumSqDiff = (10-12)^2 + (12-12)^2 + (14-12)^2 = 8
+            // Population Variance = 8 / 3 = 2.66666667, StdDev = Sqrt(8/3) ~ 1.63299316m
+            var indicator = new CoreStandardDeviationIndicator { Period = 3, IsPopulation = true };
+            var candles = CreateTestCandles(new decimal[] { 10, 12, 14 });
+            indicator.Calculate(candles);
+
+            Assert.Equal(3, indicator.Values.Count);
+            Assert.Null(indicator.Values[0]);
+            Assert.Null(indicator.Values[1]);
+            Assert.Equal(1.63299316m, indicator.Values[2]!.Value, 6);
+        }
+
+        [Fact]
+        public void Period_Setter_ClampsToMinimumOfOne()
+        {
+            var indicator = new CoreStandardDeviationIndicator { Period = 0 };
+            Assert.Equal(1, indicator.Period);
+
+            indicator.Period = -5;
+            Assert.Equal(1, indicator.Period);
+        }
+
+        [Theory]
+        [InlineData(0)]
+        [InlineData(-1)]
+        [InlineData(10001)]
+        public void Parameter_Validate_ThrowsArgumentOutOfRangeException(int invalidPeriod)
+        {
+            var param = new StockAnalyzer.Core.Models.Parameters.CoreStandardDeviationParameter { Period = invalidPeriod };
+            Assert.Throws<ArgumentOutOfRangeException>(() => param.Validate());
+        }
     }
 }

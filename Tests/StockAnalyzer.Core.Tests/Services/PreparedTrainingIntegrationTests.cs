@@ -7,6 +7,7 @@ using Xunit.Sdk;
 
 namespace StockAnalyzer.Core.Tests.Services;
 
+[Collection("ChildProcess")]
 public sealed class PreparedTrainingIntegrationTests
 {
     [Fact]

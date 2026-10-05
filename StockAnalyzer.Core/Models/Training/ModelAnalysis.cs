@@ -6,6 +6,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using StockAnalyzer.Core.Common;
 
 namespace StockAnalyzer.Core.Models.Training;
 
@@ -70,7 +71,7 @@ public sealed record ModelAnalysis(int SchemaVersion, string ModelSha256, string
 
     public void Validate(IReadOnlyDictionary<string, string> metadata, string modelHash, string dataRevision)
     {
-        static bool Hash(string? text) => text is { Length: 64 } && text.All(c => c is >= '0' and <= '9' or >= 'a' and <= 'f');
+        static bool Hash(string? text) => ContentHash.IsLowerHex64(text);
         static void Require([DoesNotReturnIf(false)] bool value) { if (!value) throw new InvalidDataException("Model analysis contract is invalid."); }
         Require(SchemaVersion == ModelAnalysisContract.SchemaVersion && Hash(ModelSha256) && Hash(DataRevision)
             && ModelSha256 == modelHash && DataRevision == dataRevision

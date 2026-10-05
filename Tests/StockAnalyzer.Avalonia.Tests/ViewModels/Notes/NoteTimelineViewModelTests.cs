@@ -3080,4 +3080,98 @@ public class NoteTimelineViewModelTests
             try { Directory.Delete(tempDir, true); } catch { /* best-effort cleanup */ }
         }
     }
+
+    [Fact]
+    public async Task SaveEdit_FromDetailView_UpdatesSelectedDetailItemCatalystDateAndPreservesOnReEdit()
+    {
+        var tempDir = CreateIsolatedTempDirectory();
+        try
+        {
+            var (timeline, noteRepository, _) = await CreateTimelineAsync(tempDir);
+            var initialDate = DateTime.Today.AddDays(5);
+            var note = MakeNote("test catalyst note", DateTime.Now) with { CatalystDate = initialDate };
+            await noteRepository.CreateAsync(note);
+            await timeline.RefreshAsync();
+
+            // Open detail view
+            timeline.DisplayedNotes[0].OpenDetailCommand.Execute(null);
+            Assert.NotNull(timeline.SelectedDetailItem);
+            Assert.Equal(initialDate, timeline.SelectedDetailItem!.Note.CatalystDate);
+            Assert.True(timeline.IsDetailVisible);
+
+            // Edit from detail view
+            timeline.SelectedDetailItem.EditCommand.Execute(null);
+            Assert.NotNull(timeline.EditingNote);
+            Assert.False(timeline.IsDetailVisible);
+            Assert.Equal(initialDate, timeline.EditingNote!.CatalystDate);
+
+            // Change catalyst date and save
+            var updatedDate = DateTime.Today.AddDays(10);
+            timeline.EditingNote.CatalystDate = updatedDate;
+            await timeline.SaveEditCommand.ExecuteAsync(null);
+
+            // SelectedDetailItem must reflect updated catalyst date
+            Assert.Null(timeline.EditingNote);
+            Assert.True(timeline.IsDetailVisible);
+            Assert.NotNull(timeline.SelectedDetailItem);
+            Assert.Equal(updatedDate, timeline.SelectedDetailItem!.Note.CatalystDate);
+
+            // Re-open edit from detail view: must retain updated date and not revert
+            timeline.SelectedDetailItem.EditCommand.Execute(null);
+            Assert.NotNull(timeline.EditingNote);
+            Assert.Equal(updatedDate, timeline.EditingNote!.CatalystDate);
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, true); } catch { /* best-effort cleanup */ }
+        }
+    }
+
+    [Fact]
+    public async Task UpcomingCatalysts_FiltersByRetentionDaysAndLimitsCount()
+    {
+        var tempDir = CreateIsolatedTempDirectory();
+        try
+        {
+            var notesSettingsManager = new FakeNotesSettingsManager();
+            var (timeline, noteRepository, _) = await CreateTimelineAsync(tempDir, notesSettingsManager: notesSettingsManager);
+
+            var today = DateTime.Today;
+            // Create notes from -2 days ago to +8 days ahead
+            var past2 = MakeNote("Past 2", DateTime.Now.AddDays(-5)) with { CatalystDate = today.AddDays(-2) };
+            var past1 = MakeNote("Past 1", DateTime.Now.AddDays(-4)) with { CatalystDate = today.AddDays(-1) };
+            var todayNote = MakeNote("Today", DateTime.Now.AddDays(-3)) with { CatalystDate = today };
+            await noteRepository.CreateAsync(past2);
+            await noteRepository.CreateAsync(past1);
+            await noteRepository.CreateAsync(todayNote);
+
+            for (int i = 1; i <= 8; i++)
+            {
+                var futureNote = MakeNote($"Future {i}", DateTime.Now.AddDays(-2)) with { CatalystDate = today.AddDays(i) };
+                await noteRepository.CreateAsync(futureNote);
+            }
+
+            await timeline.RefreshAsync();
+
+            // Default: retention = -1 (past 1 day included, past 2 excluded), limit = 7
+            Assert.Equal(7, timeline.UpcomingCatalysts.Count);
+            Assert.Equal(today.AddDays(-1), timeline.UpcomingCatalysts[0].CatalystDate);
+            Assert.DoesNotContain(timeline.UpcomingCatalysts, c => c.Note.Id == past2.Id);
+
+            // Change limit to 3: should take only 3
+            notesSettingsManager.SetUpcomingCatalystsLimit(3);
+            await timeline.RefreshAsync();
+            Assert.Equal(3, timeline.UpcomingCatalysts.Count);
+
+            // Change retention to 0 (only today and future): past 1 excluded
+            notesSettingsManager.SetUpcomingCatalystsPastDaysRetention(0);
+            await timeline.RefreshAsync();
+            Assert.Equal(today, timeline.UpcomingCatalysts[0].CatalystDate);
+            Assert.DoesNotContain(timeline.UpcomingCatalysts, c => c.Note.Id == past1.Id);
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, true); } catch { /* best-effort cleanup */ }
+        }
+    }
 }

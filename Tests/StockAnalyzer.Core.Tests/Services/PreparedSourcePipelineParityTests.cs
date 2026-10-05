@@ -22,6 +22,7 @@ namespace StockAnalyzer.Core.Tests.Services;
 /// One prepared run supplies the C# decimal candles, registry-calculated indicator exports,
 /// Python pre-fit tensors and C# inference windows. No indicator series is fabricated in Python.
 /// </summary>
+[Collection("ChildProcess")]
 public sealed class PreparedSourcePipelineParityTests
 {
     private const int Window = 6;

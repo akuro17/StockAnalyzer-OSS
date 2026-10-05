@@ -1620,7 +1620,7 @@ public class ParquetMarketDataProvider : IMarketDataProvider
         return map;
     }
 
-    private static string? ResolveFilePath(string basePath, string symbol)
+    internal static string? ResolveFilePath(string basePath, string symbol)
     {
         if (string.IsNullOrWhiteSpace(symbol)) return null;
 

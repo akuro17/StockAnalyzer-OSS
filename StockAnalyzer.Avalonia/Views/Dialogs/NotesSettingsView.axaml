@@ -275,6 +275,46 @@
                 </StackPanel>
             </Border>
 
+            <!-- Section: Upcoming Catalysts -->
+            <Border Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="{l:Localize Settings_Notes_UpcomingCatalystsTitle}" FontSize="{DynamicResource BaseFontSize}" FontWeight="Bold" Foreground="{DynamicResource Brush.Accent.Primary}"/>
+                    <TextBlock Text="{l:Localize Settings_Notes_UpcomingCatalystsDesc}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+
+                    <UniformGrid Columns="2">
+                        <!-- 1. Display Count -->
+                        <StackPanel Margin="0,0,24,0">
+                            <Grid ColumnDefinitions="*, Auto">
+                                <TextBlock Text="{l:Localize Settings_Notes_Item_UpcomingCatalystsLimit}" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                <NumericUpDown Grid.Column="1"
+                                               Value="{Binding SelectedUpcomingCatalystsLimit}"
+                                               Minimum="1" Maximum="100" Increment="1" FormatString="0"
+                                               Width="110" Height="28"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize Settings_Notes_Desc_UpcomingCatalystsLimit}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <!-- 2. Retention Days -->
+                        <StackPanel Margin="0,0,0,0">
+                            <Grid ColumnDefinitions="*, Auto">
+                                <TextBlock Text="{l:Localize Settings_Notes_Item_UpcomingCatalystsRetentionDays}" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                <NumericUpDown Grid.Column="1"
+                                               Value="{Binding SelectedUpcomingCatalystsPastDaysRetention}"
+                                               Minimum="-365" Maximum="365" Increment="1" FormatString="0"
+                                               Width="110" Height="28"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize Settings_Notes_Desc_UpcomingCatalystsRetentionDays}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </UniformGrid>
+                </StackPanel>
+            </Border>
+
         </StackPanel>
     </ScrollViewer>
 </UserControl>

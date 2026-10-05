@@ -104,6 +104,30 @@ public class NoteRepositoryTests
     }
 
     [Fact]
+    public async Task CreateAsync_ThenGetByIdAsync_RoundTripsCatalystDate()
+    {
+        var tempDir = CreateIsolatedTempDirectory();
+        try
+        {
+            var (repository, _) = await CreateInitializedRepositoryAsync(tempDir);
+            var catalystDate = DateTime.Today.AddDays(7);
+            var note = new Note(Guid.NewGuid(), "with catalyst", DateTime.Now, DateTime.Now)
+            {
+                CatalystDate = catalystDate
+            };
+            await repository.CreateAsync(note);
+
+            var fetched = await repository.GetByIdAsync(note.Id);
+            Assert.NotNull(fetched);
+            Assert.Equal(catalystDate.Date, fetched!.CatalystDate);
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, true); } catch { /* best-effort cleanup */ }
+        }
+    }
+
+    [Fact]
     public async Task UpdateAsync_DoesNotAllowChangingQuotedNoteIdOrParentNoteId()
     {
         var tempDir = CreateIsolatedTempDirectory();

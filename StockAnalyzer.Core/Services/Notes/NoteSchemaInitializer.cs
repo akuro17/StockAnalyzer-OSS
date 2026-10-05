@@ -13,7 +13,7 @@ namespace StockAnalyzer.Core.Services.Notes;
 /// </summary>
 public sealed class NoteSchemaInitializer
 {
-    private const long CurrentSchemaVersion = 2;
+    private const long CurrentSchemaVersion = 3;
 
     private readonly NoteDatabaseConnectionManager _connectionManager;
     private readonly ILogger<NoteSchemaInitializer>? _logger;
@@ -63,6 +63,16 @@ public sealed class NoteSchemaInitializer
 
                 await ExecuteAsync(connection, transaction, CreateNotesQuotedNoteIdIndexSql, ct).ConfigureAwait(false);
                 await ExecuteAsync(connection, transaction, CreateNotesParentNoteIdIndexSql, ct).ConfigureAwait(false);
+            }
+
+            if (currentVersion < 3)
+            {
+                if (currentVersion >= 1)
+                {
+                    await ExecuteAsync(connection, transaction, AddCatalystDateColumnSql, ct).ConfigureAwait(false);
+                }
+
+                await ExecuteAsync(connection, transaction, CreateNotesCatalystDateIndexSql, ct).ConfigureAwait(false);
             }
 
             await SetUserVersionAsync(connection, transaction, CurrentSchemaVersion, ct).ConfigureAwait(false);
@@ -117,7 +127,8 @@ public sealed class NoteSchemaInitializer
             IsPinned INTEGER NOT NULL DEFAULT 0,
             IsDeleted INTEGER NOT NULL DEFAULT 0,
             QuotedNoteId TEXT NULL,
-            ParentNoteId TEXT NULL
+            ParentNoteId TEXT NULL,
+            CatalystDate TEXT NULL
         );
         """;
 
@@ -151,4 +162,10 @@ public sealed class NoteSchemaInitializer
 
     private const string CreateNotesParentNoteIdIndexSql =
         "CREATE INDEX IF NOT EXISTS IX_Notes_ParentNoteId ON Notes(ParentNoteId);";
+
+    private const string AddCatalystDateColumnSql =
+        "ALTER TABLE Notes ADD COLUMN CatalystDate TEXT NULL;";
+
+    private const string CreateNotesCatalystDateIndexSql =
+        "CREATE INDEX IF NOT EXISTS IX_Notes_CatalystDate ON Notes(CatalystDate);";
 }

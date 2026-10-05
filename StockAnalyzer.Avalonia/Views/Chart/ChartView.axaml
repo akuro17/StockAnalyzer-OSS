@@ -4,6 +4,7 @@
              xmlns:vm="using:StockAnalyzer.Avalonia.ViewModels"
              xmlns:core="using:StockAnalyzer.Core.Models"
              xmlns:training="using:StockAnalyzer.Core.Models.Training"
+             xmlns:ui="using:StockAnalyzer.Avalonia.Common"
              xmlns:conv="clr-namespace:StockAnalyzer.Avalonia.Converters;assembly=StockAnalyzer.Avalonia"
              xmlns:l="clr-namespace:StockAnalyzer.Avalonia.Markup;assembly=StockAnalyzer.Avalonia"
              x:Class="StockAnalyzer.Avalonia.Views.Chart.ChartView"
@@ -110,8 +111,22 @@
             </StackPanel>
         </Border>
 
-        <Grid Grid.Row="1">
-            <chart:ChartBaseControl ViewModel="{Binding}" 
+        <Grid Grid.Row="1" RowDefinitions="*,Auto,Auto,Auto,Auto">
+            <chart:RlQPanel Grid.Row="1" ViewModel="{Binding}" IsVisible="{Binding HasRlPresentation}" BaseFontSize="{DynamicResource BaseFontSize}" HelperFontSize="{DynamicResource HelperFontSize}" TextBrush="{DynamicResource Brush.Foreground.Secondary}"/>
+            <TextBlock Grid.Row="2" Text="{Binding RlPresentation.ContinuousReadout, FallbackValue='', TargetNullValue=''}" IsVisible="{Binding RlPresentation.HasContinuousReadout, FallbackValue=False}"
+                       TextWrapping="Wrap"
+                       FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Foreground.Secondary}"
+                       AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.ContinuousReadout}"/>
+            <TextBlock Grid.Row="3" Text="{Binding RlPresentation.PolicyControlReadout, FallbackValue='', TargetNullValue=''}"
+                       IsVisible="{Binding RlPresentation.HasPolicyControlReadout, FallbackValue=False}" TextWrapping="Wrap"
+                       FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Foreground.Secondary}"
+                       AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.PolicyControlReadout}"/>
+            <Expander Grid.Row="4" IsVisible="{Binding RlPresentation.HasEvaluationReadout, FallbackValue=False}">
+                <Expander.Header><TextBlock Text="{l:Localize Rl.EvaluationDetails}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.EvaluationDetails}"/></Expander.Header>
+                <ScrollViewer MaxHeight="{x:Static ui:RlUiConstants.EvaluationMaximumHeight}"><TextBlock Text="{Binding RlPresentation.EvaluationReadout}" TextWrapping="Wrap"
+                    AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.EvaluationReport}"/></ScrollViewer>
+            </Expander>
+            <chart:ChartBaseControl RlFontSize="{DynamicResource BaseFontSize}" RlTextBrush="{DynamicResource Brush.Foreground.Secondary}" ViewModel="{Binding}"
                                      IsSubWindowVisible="{Binding EffectiveIsSubWindowVisible}"
                                      HoveredCandle="{Binding CurrentHoveredCandle, Mode=TwoWay}">
                 <chart:ChartBaseControl.ContextMenu>

@@ -51,7 +51,7 @@ namespace StockAnalyzer.UITests.Infrastructure
             Directory.CreateDirectory(_screenshotDirectory);
         }
 
-        protected void LaunchApplication()
+        protected void LaunchApplication(Action<string>? prepareFixture = null)
         {
             // These tests launch and maximize a real StockAnalyzer.Avalonia window (some for up to
             // 20 minutes), which steals OS focus/foreground from whatever else is running. Require an
@@ -74,6 +74,7 @@ namespace StockAnalyzer.UITests.Infrastructure
             try
             {
                 Environment.SetEnvironmentVariable(PathDiscovery.UiTestDataRootEnvironmentVariable, _isolatedDataRoot);
+                prepareFixture?.Invoke(IsolatedDataRoot);
                 App = Application.Launch(appPath);
             }
             finally

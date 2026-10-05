@@ -76,6 +76,13 @@ public sealed partial class BacktestConditionTreeViewModel : ObservableObject
         EntryRoots = SectionRoots(BacktestConditionSection.Entry);
         ExitRoots = SectionRoots(BacktestConditionSection.Exit);
         ReverseRoots = SectionRoots(BacktestConditionSection.Reverse);
+
+        LongEntryRoots = new[] { Root(BacktestConditionSection.Entry, TradeSide.Long) };
+        LongExitRoots = new[] { Root(BacktestConditionSection.Exit, TradeSide.Long) };
+        LongReverseRoots = new[] { Root(BacktestConditionSection.Reverse, TradeSide.Long) };
+        ShortEntryRoots = new[] { Root(BacktestConditionSection.Entry, TradeSide.Short) };
+        ShortExitRoots = new[] { Root(BacktestConditionSection.Exit, TradeSide.Short) };
+        ShortReverseRoots = new[] { Root(BacktestConditionSection.Reverse, TradeSide.Short) };
         RefreshAllDisplayState();
     }
 
@@ -90,6 +97,24 @@ public sealed partial class BacktestConditionTreeViewModel : ObservableObject
 
     /// <summary>The Long and Short roots of the Reverse section.</summary>
     public IReadOnlyList<BacktestConditionGroupViewModel> ReverseRoots { get; }
+
+    /// <summary>The Entry root of the Long side (the item of its tree view).</summary>
+    public IReadOnlyList<BacktestConditionGroupViewModel> LongEntryRoots { get; }
+
+    /// <summary>The Exit root of the Long side (the item of its tree view).</summary>
+    public IReadOnlyList<BacktestConditionGroupViewModel> LongExitRoots { get; }
+
+    /// <summary>The Reverse root of the Long side (the item of its tree view).</summary>
+    public IReadOnlyList<BacktestConditionGroupViewModel> LongReverseRoots { get; }
+
+    /// <summary>The Entry root of the Short side (the item of its tree view).</summary>
+    public IReadOnlyList<BacktestConditionGroupViewModel> ShortEntryRoots { get; }
+
+    /// <summary>The Exit root of the Short side (the item of its tree view).</summary>
+    public IReadOnlyList<BacktestConditionGroupViewModel> ShortExitRoots { get; }
+
+    /// <summary>The Reverse root of the Short side (the item of its tree view).</summary>
+    public IReadOnlyList<BacktestConditionGroupViewModel> ShortReverseRoots { get; }
 
     /// <summary>Raised after every change of the tree structure (add, delete, load); the operator switch does not change the structure.</summary>
     public event EventHandler? StructureChanged;

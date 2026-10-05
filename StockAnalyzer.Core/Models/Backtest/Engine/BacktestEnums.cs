@@ -32,4 +32,4 @@ public enum RunStatus { Completed = 0, Cancelled = 1, Failed = 2, Insolvent = 3 
 
 public enum ExpiredReason { EndOfData, Insolvency, GTDExpired }
 
-public enum RejectedReason { InsufficientFunds, PositionConflict, InvalidQuantity }
+public enum RejectedReason { InsufficientFunds, PositionConflict, InvalidQuantity, QuantityCapExceeded }

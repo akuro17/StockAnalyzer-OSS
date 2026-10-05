@@ -1,193 +1,305 @@
 using System;
+using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
-using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
-using Avalonia.Logging;
+using Avalonia.Layout;
+using Avalonia.Media;
 using Avalonia.VisualTree;
+using StockAnalyzer.Avalonia.Services;
 using StockAnalyzer.Avalonia.ViewModels.Backtest;
+using StockAnalyzer.Avalonia.ViewModels.Dialogs;
 
 namespace StockAnalyzer.Avalonia.Views.Backtest;
 
 public partial class BacktestResultsView : UserControl
 {
+    private BacktestResultsViewModel? _subscribedVm;
+
     public BacktestResultsView()
     {
         InitializeComponent();
-        // A right-click selects the row under the pointer first, so the context-menu command target is unambiguous. handledEventsToo: the
-        // tree view item's own gesture handling may already have marked the press as handled.
-        AddHandler(PointerPressedEvent, OnConditionTreePointerPressed, RoutingStrategies.Tunnel | RoutingStrategies.Bubble, handledEventsToo: true);
-
-        // Moving a comparison by drag and drop inside its own root: the view only turns pointer input into (leaf, target row, placement); the tree view-model decides.
-        AddHandler(PointerMovedEvent, OnConditionPointerMoved, RoutingStrategies.Bubble, handledEventsToo: true);
-        AddHandler(PointerReleasedEvent, OnConditionPointerReleased, RoutingStrategies.Bubble, handledEventsToo: true);
-        AddHandler(PointerCaptureLostEvent, OnConditionPointerCaptureLost, RoutingStrategies.Bubble, handledEventsToo: true);
-        DragDrop.SetAllowDrop(this, true);
-        AddHandler(DragDrop.DragOverEvent, OnConditionDragOver);
-        AddHandler(DragDrop.DragLeaveEvent, OnConditionDragLeave);
-        AddHandler(DragDrop.DropEvent, OnConditionDrop);
+        RebuildTradesHeader(null);
     }
 
-    /// <summary>Data format of a dragged condition; the payload is the leaf view-model (the drag never leaves this process).</summary>
-    internal const string ConditionLeafFormat = "StockAnalyzer.BacktestConditionLeaf";
-
-    private BacktestConditionLeafViewModel? _pressedLeaf;
-    private global::Avalonia.Point _pressPoint;
-    private Border? _dropRow;
-    private string? _dropClass;
-
-    private BacktestConditionTreeViewModel? ConditionTree => (DataContext as BacktestResultsViewModel)?.ConditionSelection?.ConditionTree;
-
-    private static Border? RowOf(TreeViewItem item)
-        => item.GetVisualDescendants().OfType<Border>().FirstOrDefault(b => b.Classes.Contains(ConditionDragGesture.RowClass));
-
-    private void OnConditionPointerMoved(object? sender, PointerEventArgs e)
+    protected override void OnDataContextChanged(EventArgs e)
     {
-        if (_pressedLeaf is not { } leaf || ConditionTree is not { } tree) return;
-        PointerPoint point = e.GetCurrentPoint(this);
-        if (!point.Properties.IsLeftButtonPressed)
+        base.OnDataContextChanged(e);
+        if (_subscribedVm != null)
         {
-            _pressedLeaf = null;
-            return;
+            _subscribedVm.PropertyChanged -= OnViewModelPropertyChanged;
+            _subscribedVm = null;
         }
-        if (!ConditionDragGesture.HasMovedFarEnough(_pressPoint, point.Position, tree.DragStartDistance)) return;
 
-        _pressedLeaf = null;
-#pragma warning disable CS0618 // DataObject/DoDragDrop: the same drag API the other views of this application use
-        var data = new DataObject();
-        data.Set(ConditionLeafFormat, leaf);
-        _ = RunConditionDragAsync(e, data);
-#pragma warning restore CS0618
-    }
-
-    /// <summary>Runs the drag loop and clears the drop indicator when it ends, however it ends; a failed drag is observed here so it never surfaces as an unobserved task exception.</summary>
-#pragma warning disable CS0618
-    private async Task RunConditionDragAsync(PointerEventArgs e, DataObject data)
-#pragma warning restore CS0618
-    {
-        try
+        if (DataContext is BacktestResultsViewModel vm)
         {
-#pragma warning disable CS0618
-            await DragDrop.DoDragDrop(e, data, DragDropEffects.Move);
-#pragma warning restore CS0618
-        }
-        catch (Exception ex)
-        {
-            Logger.TryGet(LogEventLevel.Warning, LogArea.Control)?.Log(this, "The condition drag failed: {Exception}", ex);
-        }
-        finally
-        {
-            ClearDropIndicator();
+            _subscribedVm = vm;
+            _subscribedVm.PropertyChanged += OnViewModelPropertyChanged;
+            RebuildTradesHeader(vm.ActiveTradeColumns);
         }
     }
 
-    private void OnConditionPointerReleased(object? sender, PointerReleasedEventArgs e) => _pressedLeaf = null;
-
-    private void OnConditionPointerCaptureLost(object? sender, PointerCaptureLostEventArgs e) => _pressedLeaf = null;
-
-    private (BacktestConditionNodeViewModel Target, Border Row, ConditionDropPlacement Placement)? TargetOf(DragEventArgs e)
+    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
-        // The drag events are raised on the element that allows the drop (this view), so the row is found by position, not by the event source.
-        if (this.GetVisualAt(e.GetPosition(this)) is not { } source) return null;
-        TreeViewItem? item = source.FindAncestorOfType<TreeViewItem>(includeSelf: true);
-        if (item?.DataContext is not BacktestConditionNodeViewModel target || RowOf(item) is not { } row) return null;
-
-        global::Avalonia.Point inRow = e.GetPosition(row);
-        return (target, row, ConditionDragGesture.PlacementFor(target, inRow.Y, row.Bounds.Height));
-    }
-
-    private static BacktestConditionLeafViewModel? DraggedLeaf(DragEventArgs e)
-    {
-#pragma warning disable CS0618
-        return e.Data.Contains(ConditionLeafFormat) ? e.Data.Get(ConditionLeafFormat) as BacktestConditionLeafViewModel : null;
-#pragma warning restore CS0618
-    }
-
-    private void OnConditionDragOver(object? sender, DragEventArgs e)
-    {
-        BacktestConditionLeafViewModel? leaf = DraggedLeaf(e);
-        if (leaf is null || ConditionTree is not { } tree || TargetOf(e) is not { } hit
-            || tree.EvaluateMove(leaf, hit.Target, hit.Placement) == ConditionMoveResult.Rejected)
+        base.OnAttachedToVisualTree(e);
+        LocalizationManager.Instance.LocaleChanged += OnLocaleChanged;
+        if (DataContext is BacktestResultsViewModel vm)
         {
-            e.DragEffects = DragDropEffects.None;
-            ClearDropIndicator();
-            return;
+            if (_subscribedVm != vm)
+            {
+                if (_subscribedVm != null)
+                {
+                    _subscribedVm.PropertyChanged -= OnViewModelPropertyChanged;
+                }
+                _subscribedVm = vm;
+                _subscribedVm.PropertyChanged += OnViewModelPropertyChanged;
+            }
+            RebuildTradesHeader(vm.ActiveTradeColumns);
+        }
+    }
+
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        LocalizationManager.Instance.LocaleChanged -= OnLocaleChanged;
+        if (_subscribedVm != null)
+        {
+            _subscribedVm.PropertyChanged -= OnViewModelPropertyChanged;
+            _subscribedVm = null;
+        }
+        base.OnDetachedFromVisualTree(e);
+    }
+
+    private void OnLocaleChanged(object? sender, EventArgs e)
+    {
+        RebuildTradesHeader(_subscribedVm?.ActiveTradeColumns);
+    }
+
+    private void OnViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(BacktestResultsViewModel.ActiveTradeColumns) && sender is BacktestResultsViewModel vm)
+        {
+            RebuildTradesHeader(vm.ActiveTradeColumns);
+        }
+        else if ((e.PropertyName == nameof(BacktestResultsViewModel.ActiveSortColumnId) ||
+                  e.PropertyName == nameof(BacktestResultsViewModel.ActiveSortOrder)) && sender is BacktestResultsViewModel)
+        {
+            UpdateTradeHeaderSortIndicators();
+        }
+    }
+
+    public void RebuildTradesHeader(IReadOnlyList<string>? activeColumns)
+    {
+        var headerGrid = this.FindControl<Grid>("TradesHeaderGrid");
+        if (headerGrid == null) return;
+
+        headerGrid.ColumnDefinitions.Clear();
+        headerGrid.Children.Clear();
+
+        var cols = activeColumns != null && activeColumns.Count > 0
+            ? activeColumns
+            : BacktestTradeHistoryColumnChooserViewModel.KnownColumns.Select(c => c.Id).ToList();
+
+        for (int i = 0; i < cols.Count; i++)
+        {
+            string colId = cols[i];
+            headerGrid.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Auto)
+            {
+                SharedSizeGroup = colId,
+                MinWidth = GetTradeColumnMinWidth(colId)
+            });
+
+            var headerCell = CreateTradeHeaderCell(colId, i);
+            Grid.SetColumn(headerCell, i);
+            headerGrid.Children.Add(headerCell);
         }
 
-        e.DragEffects = DragDropEffects.Move;
-        ShowDropIndicator(hit.Row, hit.Placement);
-        e.Handled = true;
+        UpdateTradeHeaderSortIndicators();
     }
 
-    private void OnConditionDragLeave(object? sender, DragEventArgs e) => ClearDropIndicator();
+    private static double GetTradeColumnMinWidth(string colId) =>
+        BacktestTradeHistoryColumnChooserViewModel.GetColumnMinWidth(colId);
 
-    private void OnConditionDrop(object? sender, DragEventArgs e)
+    private Border CreateTradeHeaderCell(string colId, int colIndex)
     {
-        ClearDropIndicator();
-        if (DraggedLeaf(e) is not { } leaf || ConditionTree is not { } tree || TargetOf(e) is not { } hit) return;
+        var border = new Border();
+        border.Classes.Add("TableHeaderCell");
+        border.Classes.Add($"Col{colId}");
+        border.MinWidth = GetTradeColumnMinWidth(colId);
 
-        tree.MoveLeaf(leaf, hit.Target, hit.Placement);
-        e.Handled = true;
-    }
+        var cellGrid = new Grid();
+        cellGrid.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
+        cellGrid.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Auto));
 
-    private void ShowDropIndicator(Border row, ConditionDropPlacement placement)
-    {
-        string dropClass = placement switch
+        string headerKey = BacktestTradeHistoryColumnChooserViewModel.GetColumnHeaderKey(colId);
+        string headerText = LocalizationManager.Instance[headerKey] ?? colId;
+
+        var clickArea = new Grid
         {
-            ConditionDropPlacement.Before => ConditionDragGesture.DropBeforeClass,
-            ConditionDropPlacement.After => ConditionDragGesture.DropAfterClass,
-            _ => ConditionDragGesture.DropInsideClass,
+            Background = Brushes.Transparent,
+            Cursor = new Cursor(StandardCursorType.Hand)
         };
-        if (ReferenceEquals(_dropRow, row) && _dropClass == dropClass) return;
-
-        ClearDropIndicator();
-        row.Classes.Add(dropClass);
-        _dropRow = row;
-        _dropClass = dropClass;
-    }
-
-    private void ClearDropIndicator()
-    {
-        if (_dropRow is not null && _dropClass is not null) _dropRow.Classes.Remove(_dropClass);
-        _dropRow = null;
-        _dropClass = null;
-    }
-
-    /// <summary>
-    /// The hover expression must never wrap: the ToolTip that hosts the content is limited in width by the theme, so it is made unbounded here. Done on this
-    /// tip only (the content is what knows it is an expression), never through a global ToolTip style, so other tooltips keep wrapping as before.
-    /// </summary>
-    private void OnHoverTipAttached(object? sender, VisualTreeAttachmentEventArgs e)
-    {
-        if (sender is Visual content && content.FindAncestorOfType<ToolTip>() is { } tip)
+        clickArea.Tapped += (s, e) =>
         {
-            tip.MaxWidth = double.PositiveInfinity;
+            if (DataContext is BacktestResultsViewModel vm)
+            {
+                vm.SortTradesCommand.Execute(colId);
+            }
+        };
+
+        var align = (colId == "Side" || colId == "ForcedLiquidation")
+            ? HorizontalAlignment.Center
+            : (colId == "EntrySignal" || colId == "ExitReason")
+                ? HorizontalAlignment.Left
+                : HorizontalAlignment.Right;
+
+        var contentStack = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = align,
+            VerticalAlignment = VerticalAlignment.Center,
+            Spacing = 4
+        };
+
+        var tb = new TextBlock
+        {
+            Text = headerText,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        tb.Classes.Add("ColumnHeader");
+        contentStack.Children.Add(tb);
+
+        var sortTb = new TextBlock
+        {
+            Tag = colId
+        };
+        sortTb.Classes.Add("SortIndicator");
+        contentStack.Children.Add(sortTb);
+
+        clickArea.Children.Add(contentStack);
+        Grid.SetColumn(clickArea, 0);
+        cellGrid.Children.Add(clickArea);
+
+        var thumb = new Thumb
+        {
+            Tag = colIndex.ToString(CultureInfo.InvariantCulture)
+        };
+        thumb.Classes.Add("ColumnResizer");
+        thumb.DragDelta += OnTradeColumnDragDelta;
+        thumb.DoubleTapped += OnTradeHeaderDoubleTapped;
+        Grid.SetColumn(thumb, 1);
+        cellGrid.Children.Add(thumb);
+
+        border.Child = cellGrid;
+        return border;
+    }
+
+    private void UpdateTradeHeaderSortIndicators()
+    {
+        var headerGrid = this.FindControl<Grid>("TradesHeaderGrid");
+        if (headerGrid == null || DataContext is not BacktestResultsViewModel vm) return;
+
+        foreach (var child in headerGrid.Children)
+        {
+            if (child is Border cellBorder && cellBorder.Child is Grid cellGrid)
+            {
+                foreach (var cellChild in cellGrid.Children)
+                {
+                    if (cellChild is Grid clickArea && clickArea.Children.FirstOrDefault() is StackPanel stack)
+                    {
+                        var sortTb = stack.Children.OfType<TextBlock>().FirstOrDefault(t => t.Classes.Contains("SortIndicator"));
+                        if (sortTb != null && sortTb.Tag is string colId)
+                        {
+                            if (string.Equals(vm.ActiveSortColumnId, colId, StringComparison.OrdinalIgnoreCase))
+                            {
+                                sortTb.Text = vm.ActiveSortOrder switch
+                                {
+                                    TradeSortOrder.Ascending => "▲",
+                                    TradeSortOrder.Descending => "▼",
+                                    _ => string.Empty
+                                };
+                            }
+                            else
+                            {
+                                sortTb.Text = string.Empty;
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
-    private void OnConditionTreePointerPressed(object? sender, PointerPressedEventArgs e)
+    private void OnTradeColumnDragDelta(object? sender, VectorEventArgs e)
     {
-        PointerPointProperties properties = e.GetCurrentPoint(this).Properties;
-        if (properties.IsLeftButtonPressed && e.Source is Visual pressed
-            && pressed.FindAncestorOfType<TreeViewItem>(includeSelf: true) is { DataContext: BacktestConditionLeafViewModel pressedLeaf } pressedItem
-            && pressedItem.FindAncestorOfType<TreeView>() is { } pressedTree && pressedTree.Classes.Contains("ConditionTree")
-            && pressed.FindAncestorOfType<global::Avalonia.Controls.Primitives.ToggleButton>(includeSelf: true) is null)
+        if (sender is Thumb thumb && thumb.Tag is string tagStr && int.TryParse(tagStr, out int colIndex))
         {
-            _pressedLeaf = pressedLeaf;
-            _pressPoint = e.GetPosition(this);
-            return;
+            var headerGrid = this.FindControl<Grid>("TradesHeaderGrid");
+            if (headerGrid != null && colIndex >= 0 && colIndex < headerGrid.ColumnDefinitions.Count)
+            {
+                var colDef = headerGrid.ColumnDefinitions[colIndex];
+                double current = colDef.ActualWidth;
+                if (current <= 0 && colIndex < headerGrid.Children.Count && headerGrid.Children[colIndex] is Control cellControl && cellControl.Bounds.Width > 0)
+                {
+                    current = cellControl.Bounds.Width;
+                }
+                double minWidth = colDef.MinWidth > 0 ? colDef.MinWidth : 40;
+                if (current <= 0) current = minWidth;
+                double newWidth = Math.Max(minWidth, current + e.Vector.X);
+                colDef.Width = new GridLength(newWidth);
+            }
         }
+    }
 
-        if (!properties.IsRightButtonPressed) return;
-        if (e.Source is not Visual source) return;
-
-        TreeViewItem? item = source.FindAncestorOfType<TreeViewItem>(includeSelf: true);
-        if (item?.FindAncestorOfType<TreeView>() is { } tree && tree.Classes.Contains("ConditionTree"))
+    private void OnTradeHeaderDoubleTapped(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Control control && control.Tag is string tagStr && int.TryParse(tagStr, out int colIndex))
         {
-            // SetCurrentValue keeps the style's two-way IsSelected binding (a local value would replace it).
-            item.SetCurrentValue(TreeViewItem.IsSelectedProperty, true);
+            var headerGrid = this.FindControl<Grid>("TradesHeaderGrid");
+            if (headerGrid != null && colIndex >= 0 && colIndex < headerGrid.ColumnDefinitions.Count)
+            {
+                headerGrid.ColumnDefinitions[colIndex].Width = GridLength.Auto;
+            }
+        }
+    }
+
+    private void OnMetricColumnDragDelta(object? sender, VectorEventArgs e)
+    {
+        int colIndex = 0;
+        if (sender is Thumb thumb && thumb.Tag is string tagStr && int.TryParse(tagStr, out int idx))
+        {
+            colIndex = idx;
+        }
+        var headerGrid = this.FindControl<Grid>("MetricsHeaderGrid");
+        if (headerGrid != null && colIndex >= 0 && colIndex < headerGrid.ColumnDefinitions.Count)
+        {
+            var colDef = headerGrid.ColumnDefinitions[colIndex];
+            double current = colDef.ActualWidth;
+            if (current <= 0 && sender is Visual visual && visual.FindAncestorOfType<Grid>() is { } rowGrid && colIndex < rowGrid.ColumnDefinitions.Count)
+            {
+                current = rowGrid.ColumnDefinitions[colIndex].ActualWidth;
+            }
+            double minWidth = colDef.MinWidth > 0 ? colDef.MinWidth : (colIndex == 0 ? 260 : 120);
+            if (current <= 0) current = minWidth;
+            double newWidth = Math.Max(minWidth, current + e.Vector.X);
+            colDef.Width = new GridLength(newWidth);
+        }
+    }
+
+    private void OnMetricHeaderDoubleTapped(object? sender, RoutedEventArgs e)
+    {
+        int colIndex = 0;
+        if (sender is Control control && control.Tag is string tagStr && int.TryParse(tagStr, out int idx))
+        {
+            colIndex = idx;
+        }
+        var headerGrid = this.FindControl<Grid>("MetricsHeaderGrid");
+        if (headerGrid != null && colIndex >= 0 && colIndex < headerGrid.ColumnDefinitions.Count)
+        {
+            headerGrid.ColumnDefinitions[colIndex].Width = GridLength.Auto;
         }
     }
 }

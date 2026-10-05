@@ -25,7 +25,7 @@ public enum IndicatorType
     [Description("Arnaud Legoux Moving Average")] ALMA,
     [Description("Zero Lag Exponential Moving Average")] ZLEMA,
     [Description("Least Squares Moving Average")] LSMA,
-    [Description("Guppy Moving Average")] GMA,
+    [Description("Guppy Multiple Moving Average")] GMA,
     
     // Batch 3
     [Description("TRIX Oscillator")] TRIX,

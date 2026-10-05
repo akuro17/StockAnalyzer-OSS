@@ -35,7 +35,7 @@ public class NoteTimelineView_ComposePanelTests
         var (timeline, _, _) = await CreateTimelineAsync(tempDir);
 
         var view = new NoteTimelineView { DataContext = timeline };
-        var window = new Window { Content = view, Width = 480, Height = 600 };
+        var window = new Window { Content = view, Width = 900, Height = 600 };
         window.Show();
         AvaloniaHeadlessPlatform.ForceRenderTimerTick();
         Dispatcher.UIThread.RunJobs();
@@ -64,29 +64,39 @@ public class NoteTimelineView_ComposePanelTests
                 Assert.Equal(160d, bodyTextBox.MaxHeight);
 
                 var composeStack = Assert.IsType<StackPanel>(bodyTextBox.Parent);
-                // TextBox (body), Grid (ticker + attach/cancel/save row), ScrollViewer (wrapping the
-                // PendingAttachments/AttachmentErrors lists - sa_minimal_fix, New Note Polish: height-
-                // capped with an internal scroll, same MaxHeight pattern as the body TextBox above) -
-                // the old separate bottom Cancel/Save row no longer exists.
-                Assert.Equal(3, composeStack.Children.Count);
-                var buttonsRowGrid = Assert.IsType<Grid>(composeStack.Children[1]);
-                Assert.IsType<ScrollViewer>(composeStack.Children[2]);
+                // In the 3-column layout: center column contains body TextBox and ScrollViewer (wrapping
+                // the PendingAttachments/AttachmentErrors lists). Action buttons and Ticker input are
+                // aggregated at the bottom of the left column.
+                Assert.Equal(2, composeStack.Children.Count);
+                Assert.IsType<ScrollViewer>(composeStack.Children[1]);
 
-                var tickerBox = buttonsRowGrid.GetVisualDescendants().OfType<AutoCompleteBox>().Single();
+                // Left column bottom composer controls:
+                // Ticker AutoCompleteBox, CalendarDatePicker, and Action buttons (Save, Cancel, Attach)
+                // are stacked vertically in a column arrangement
+                var calendarPicker = view.GetVisualDescendants().OfType<CalendarDatePicker>().Single();
+                var searchBox = view.FindControl<AutoCompleteBox>("SearchSuggestionBox");
+                var tickerBox = view.GetVisualDescendants().OfType<AutoCompleteBox>().Single(ac => !ReferenceEquals(ac, searchBox));
+
+                var composerLeftPanel = Assert.IsType<StackPanel>(tickerBox.Parent);
+                Assert.Same(composerLeftPanel, calendarPicker.Parent);
+                Assert.Equal(3, composerLeftPanel.Children.Count);
+                Assert.Same(tickerBox, composerLeftPanel.Children[0]);
+                Assert.Same(calendarPicker, composerLeftPanel.Children[1]);
+                var buttonsRowGrid = Assert.IsType<Grid>(composerLeftPanel.Children[2]);
                 var actionButtons = buttonsRowGrid.GetVisualDescendants().OfType<Button>().ToList();
-                Assert.Equal(3, actionButtons.Count); // Attach image, Cancel, Save
+                Assert.Equal(3, actionButtons.Count); // Save, Cancel, Attach
 
-                // Both controls are children of the same single-row Grid (asserted above via
-                // buttonsRowGrid), which is the structural guarantee of "same row" - their Y positions
-                // may still differ by a few px from template-internal padding/vertical-centering
-                // differences between AutoCompleteBox and Button, so allow a small tolerance rather
-                // than asserting exact pixel equality.
+                // CalendarDatePicker format must be Custom with "yyyyMMdd"
+                Assert.Equal(CalendarDatePickerFormat.Custom, calendarPicker.SelectedDateFormat);
+                Assert.Equal("yyyyMMdd", calendarPicker.CustomDateFormatString);
+
+                // Vertical layout order: ticker at top, calendar below it, action buttons below calendar
                 var tickerTop = tickerBox.TranslatePoint(new Point(0, 0), view)!.Value.Y;
-                var buttonsTop = actionButtons[0].TranslatePoint(new Point(0, 0), view)!.Value.Y;
-                Assert.True(Math.Abs(tickerTop - buttonsTop) < 10, $"ticker box (Y={tickerTop}) and action buttons (Y={buttonsTop}) must sit in the same row");
+                var calendarTop = calendarPicker.TranslatePoint(new Point(0, 0), view)!.Value.Y;
+                Assert.True(calendarTop >= tickerTop + 20, $"calendar picker (Y={calendarTop}) must sit below ticker box (Y={tickerTop})");
 
-                var bodyBottom = bodyTextBox.TranslatePoint(new Point(0, bodyTextBox.Bounds.Height), view)!.Value.Y;
-                Assert.True(buttonsTop >= bodyBottom - 1, $"buttons row (Y={buttonsTop}) must sit at/below the body TextBox's bottom edge (Y={bodyBottom})");
+                var buttonsTop = actionButtons[0].TranslatePoint(new Point(0, 0), view)!.Value.Y;
+                Assert.True(buttonsTop >= calendarTop + 20, $"action buttons row (Y={buttonsTop}) must sit below calendar picker (Y={calendarTop})");
             }
             finally
             {
@@ -156,7 +166,7 @@ public class NoteTimelineView_ComposePanelTests
                 // CanHorizontallyScroll="False", not the column's Auto/Star mode - that same doc comment
                 // shows both column modes measure this kind of fixed-size content identically. Asserts
                 // wrapping still occurs.
-                Assert.True(pendingAttachmentsItemsControl.Bounds.Width <= 480,
+                Assert.True(pendingAttachmentsItemsControl.Bounds.Width <= window.Bounds.Width,
                     $"the attachments area must still wrap within the window's width, but was {pendingAttachmentsItemsControl.Bounds.Width}px wide");
 
                 // sa_minimal_fix (common UI spec for layout-width optimization and scrollbar display control):
@@ -205,7 +215,7 @@ public class NoteTimelineView_ComposePanelTests
             var (timeline, _, _) = await CreateTimelineAsync(tempDir);
 
             var view = new NoteTimelineView { DataContext = timeline };
-            var window = new Window { Content = view, Width = 480, Height = 150 };
+            var window = new Window { Content = view, Width = 900, Height = 150 };
             window.Show();
             AvaloniaHeadlessPlatform.ForceRenderTimerTick();
             Dispatcher.UIThread.RunJobs();
@@ -215,8 +225,10 @@ public class NoteTimelineView_ComposePanelTests
                 AvaloniaHeadlessPlatform.ForceRenderTimerTick();
                 Dispatcher.UIThread.RunJobs();
 
-                var composeBorder = view.GetVisualDescendants().OfType<Border>()
-                    .Single(b => b.Classes.Contains("PremiumCard") && Equals(Grid.GetRow(b), 2));
+                var composeBodyTextBox = view.FindControl<TextBox>("ComposeBodyTextBox");
+                Assert.NotNull(composeBodyTextBox);
+                var composeBorder = composeBodyTextBox!.GetVisualAncestors().OfType<Border>()
+                    .First(b => b.Classes.Contains("PremiumCard"));
 
                 // The Border's own immediate Child must be a ScrollViewer wrapping the WHOLE compose
                 // panel (Ticker row + body + attachments together) - not merely an inner ScrollViewer

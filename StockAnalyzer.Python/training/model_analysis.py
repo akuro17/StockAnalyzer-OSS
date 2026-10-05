@@ -160,7 +160,8 @@ def validate_population(selected: dict, limits: dict) -> None:
 
 
 def build(cfg, model_path: Path, train_symbols, train_dates, full_symbols, full_dates,
-          *, predict, checkpoint_root: Path, deadline: float, resource_limits: dict) -> dict:
+          *, predict, checkpoint_root: Path, deadline: float, resource_limits: dict,
+          calibration: bool = False) -> dict:
     import onnxruntime as ort
     metadata = ort.InferenceSession(str(model_path), providers=["CPUExecutionProvider"]).get_modelmeta().custom_metadata_map
     base, expanded = channel_names(metadata)
@@ -169,7 +170,7 @@ def build(cfg, model_path: Path, train_symbols, train_dates, full_symbols, full_
         horizon=cfg.horizon, threshold=ds.DEFAULT_THRESHOLD, n_splits=cfg.n_splits,
         gap=cfg.gap, fold_index=cfg.n_splits - 1, feature_spec=cfg.feature_spec,
         target_type=cfg.target_type, indicator_export_paths=cfg.indicator_channel_export_paths,
-        inner=True, fixed_zscore=cfg.fixed_zscore, lags=cfg.lags)
+        inner=True, fixed_zscore=cfg.fixed_zscore, lags=cfg.lags, calibration=calibration)
     validate_population(selected, resource_limits)
     periods, fit_periods, observations, xs, ys = [], [], [], [], []
     for sym in train_symbols:  # same pooling order as the trainer

@@ -1,0 +1,101 @@
+<Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:StockAnalyzer.Avalonia.ViewModels" xmlns:l="using:StockAnalyzer.Avalonia.Markup"
+        xmlns:ui="using:StockAnalyzer.Avalonia.Common"
+        x:Class="StockAnalyzer.Avalonia.Views.RlTrainingWindow" x:DataType="vm:RlTrainingDialogViewModel"
+        AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.Window}"
+        Title="{l:Localize Rl.Title}" Width="900" Height="780" MinWidth="600" MinHeight="400" FontSize="{DynamicResource BaseFontSize}">
+ <ScrollViewer><StackPanel Margin="12" Spacing="12">
+  <TextBlock Text="{Binding FixedContract}" TextWrapping="Wrap" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Foreground.Secondary}"/>
+  <CheckBox Content="{l:Localize Rl.ContinuousMode}" IsChecked="{Binding UseContinuousPolicy}" IsEnabled="{Binding !IsBusy}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.ContinuousMode}"/>
+  <TextBlock Text="{Binding RecoveryDisplay}" TextWrapping="Wrap" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.RecoveryPreview}"/>
+  <StackPanel Orientation="Horizontal" Spacing="12">
+   <Button Content="{l:Localize Rl.InspectRecovery}" Command="{Binding InspectRecoveryCommand}" IsEnabled="{Binding !IsBusy}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.InspectRecovery}"/>
+   <Button Content="{l:Localize Rl.RecoverPointer}" Command="{Binding RecoverPointerCommand}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.RecoverPointer}"/>
+  </StackPanel>
+  <Expander IsVisible="{Binding StorageAvailable}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.StorageSettings}">
+   <Expander.Header><TextBlock Text="{l:Localize Rl.Storage.Title}"/></Expander.Header>
+   <StackPanel Spacing="8">
+    <TextBlock Text="{l:Localize Rl.Storage.Manual}" TextWrapping="Wrap"/>
+    <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" IsEnabled="{Binding !IsBusy}">
+     <TextBlock Text="{l:Localize Rl.Storage.Quota}"/><NumericUpDown Grid.Column="1" Value="{Binding StorageQuotaGiB}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.StorageQuota}"/>
+     <TextBlock Grid.Row="1" Text="{l:Localize Rl.Storage.MinimumFree}"/><NumericUpDown Grid.Row="1" Grid.Column="1" Value="{Binding StorageMinimumFreeGiB}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.StorageMinimumFree}"/>
+     <TextBlock Grid.Row="2" Text="{l:Localize Rl.Storage.FailedDays}"/><NumericUpDown Grid.Row="2" Grid.Column="1" Value="{Binding StorageFailedRetentionDays}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.StorageFailedDays}"/>
+     <TextBlock Grid.Row="3" Text="{l:Localize Rl.Storage.NonactiveDays}"/><NumericUpDown Grid.Row="3" Grid.Column="1" Value="{Binding StorageNonactiveDays}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.StorageNonactiveDays}"/>
+     <TextBlock Grid.Row="4" Text="{l:Localize Rl.Storage.KeepCount}"/><NumericUpDown Grid.Row="4" Grid.Column="1" Value="{Binding StorageKeepCount}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.StorageKeepCount}"/>
+     <TextBlock Grid.Row="5" Text="{l:Localize Rl.Checkpoint.KeepCount}"/><NumericUpDown Grid.Row="5" Grid.Column="1" Value="{Binding StorageCheckpointKeepCount}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.CheckpointKeepCount}"/>
+    </Grid>
+    <StackPanel Orientation="Horizontal" Spacing="12" IsEnabled="{Binding !IsBusy}">
+     <Button Content="{l:Localize Rl.Storage.Save}" Command="{Binding SaveArtifactSettingsCommand}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.StorageSave}"/>
+     <Button Content="{l:Localize Rl.Storage.Inspect}" Command="{Binding InspectArtifactsCommand}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.StorageInspect}"/>
+    </StackPanel>
+    <TextBlock Text="{Binding StorageDisplay}" TextWrapping="Wrap" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.StorageSummary}"/>
+    <ScrollViewer MaxHeight="{x:Static ui:RlUiConstants.EvaluationMaximumHeight}">
+     <ItemsControl ItemsSource="{Binding ArtifactRows}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.StorageEntries}">
+      <ItemsControl.ItemTemplate><DataTemplate x:DataType="vm:RlTrainingDialogViewModel+ArtifactRow"><TextBlock Text="{Binding Display}" TextWrapping="Wrap"/></DataTemplate></ItemsControl.ItemTemplate>
+     </ItemsControl>
+    </ScrollViewer>
+    <CheckBox Content="{l:Localize Rl.Storage.Confirm}" IsChecked="{Binding CleanupConfirmed}" IsEnabled="{Binding !IsBusy}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.StorageConfirm}"/>
+    <Button Content="{l:Localize Rl.Storage.Cleanup}" Command="{Binding CleanupArtifactsCommand}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.StorageCleanup}"/>
+   </StackPanel>
+  </Expander>
+  <StackPanel IsVisible="{Binding UseContinuousPolicy}" IsEnabled="{Binding !IsBusy}">
+   <TextBlock Text="{l:Localize Rl.FrozenDirection}"/>
+   <ComboBox ItemsSource="{Binding DirectionGenerations}" SelectedItem="{Binding SelectedDirectionGeneration}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.FrozenDirection}">
+    <ComboBox.ItemTemplate><DataTemplate x:DataType="{x:Null}"><StackPanel Orientation="Horizontal" Spacing="12"><TextBlock Text="{Binding Symbol}"/><TextBlock Text="{Binding ModelId}"/></StackPanel></DataTemplate></ComboBox.ItemTemplate>
+   </ComboBox>
+   <TextBlock Text="{Binding DirectionTemporalDisplay}" TextWrapping="Wrap" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.DirectionTemporal}"/>
+   <CheckBox Content="{l:Localize Rl.AllBlockOption}" IsChecked="{Binding UseAllCompleteBlocks}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.AllCompleteBlocks}"/>
+  </StackPanel>
+  <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto" IsEnabled="{Binding !IsBusy}">
+   <TextBlock Text="{l:Localize Rl.Symbol}"/><TextBox Grid.Column="1" Text="{Binding Symbol}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.Symbol}"/>
+   <TextBlock Grid.Row="1" Text="{l:Localize Rl.StartDate}"/><TextBox Grid.Row="1" Grid.Column="1" Text="{Binding StartDate}" Watermark="yyyy-MM-dd" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.StartDate}"/>
+   <TextBlock Grid.Row="2" Text="{l:Localize Rl.EndDate}"/><TextBox Grid.Row="2" Grid.Column="1" Text="{Binding EndDateExclusive}" Watermark="yyyy-MM-dd" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.EndDate}"/>
+  </Grid>
+  <Grid ColumnDefinitions="Auto,*,Auto,*" RowDefinitions="Auto,Auto,Auto" IsEnabled="{Binding !IsBusy}">
+   <TextBlock Text="{l:Localize Rl.Capital}"/><NumericUpDown Grid.Column="1" Value="{Binding InitialCapital}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.Capital}"/>
+   <TextBlock Grid.Column="2" Text="{l:Localize Rl.FlatCost}"/><NumericUpDown Grid.Column="3" Value="{Binding CommissionFlat}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.FlatCommission}"/>
+   <TextBlock Grid.Row="1" Text="{l:Localize Rl.UnitCost}"/><NumericUpDown Grid.Row="1" Grid.Column="1" Value="{Binding CommissionPerUnit}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.UnitCommission}"/>
+   <TextBlock Grid.Row="1" Grid.Column="2" Text="{l:Localize Rl.Slippage}"/><NumericUpDown Grid.Row="1" Grid.Column="3" Value="{Binding SlippageRatio}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.Slippage}"/>
+   <TextBlock Grid.Row="2" Text="{l:Localize Rl.Liquidation}"/><NumericUpDown Grid.Row="2" Grid.Column="1" Value="{Binding LiquidationPenaltyRatio}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.Liquidation}"/>
+   <Button Grid.Row="2" Grid.Column="3" Content="{l:Localize Rl.SaveCosts}" Command="{Binding SaveCostsCommand}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.SaveCosts}"/>
+  </Grid>
+  <StackPanel Orientation="Horizontal" Spacing="12">
+   <CheckBox Content="{l:Localize Rl.Smoke}" IsChecked="{Binding SmokeOnly}" IsEnabled="{Binding !IsBusy}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.Smoke}"/>
+   <Button Content="{l:Localize Rl.Train}" Command="{Binding TrainCommand}" IsEnabled="{Binding !IsBusy}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.Train}"/>
+   <Button Content="{l:Localize Rl.Cancel}" Command="{Binding CancelCommand}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.Cancel}"/>
+   <Button Content="{l:Localize Rl.Checkpoint.Pause}" Command="{Binding PauseCommand}" IsVisible="{Binding CheckpointAvailable}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.Pause}"/>
+  </StackPanel>
+  <Expander IsVisible="{Binding CheckpointAvailable}">
+   <Expander.Header><TextBlock Text="{l:Localize Rl.Checkpoint.Title}"/></Expander.Header>
+   <StackPanel Spacing="8">
+    <TextBlock Text="{l:Localize Rl.Checkpoint.Disclosure}" TextWrapping="Wrap"/>
+    <Button Content="{l:Localize Rl.Checkpoint.Inspect}" Command="{Binding InspectCheckpointsCommand}" IsEnabled="{Binding !IsBusy}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.CheckpointInspect}"/>
+    <ComboBox ItemsSource="{Binding CheckpointRows}" SelectedItem="{Binding SelectedCheckpoint}" IsEnabled="{Binding !IsBusy}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.CheckpointModels}">
+     <ComboBox.ItemTemplate><DataTemplate x:DataType="vm:RlTrainingDialogViewModel+CheckpointRow"><TextBlock Text="{Binding Display}" TextWrapping="Wrap"/></DataTemplate></ComboBox.ItemTemplate>
+    </ComboBox>
+    <CheckBox Content="{l:Localize Rl.Checkpoint.ResumeConfirm}" IsChecked="{Binding ResumeConfirmed}" IsEnabled="{Binding !IsBusy}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.CheckpointResumeConfirm}"/>
+    <Button Content="{l:Localize Rl.Checkpoint.Resume}" Command="{Binding ResumeCheckpointCommand}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.CheckpointResume}"/>
+    <CheckBox Content="{l:Localize Rl.Checkpoint.AbandonConfirm}" IsChecked="{Binding AbandonConfirmed}" IsEnabled="{Binding !IsBusy}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.CheckpointAbandonConfirm}"/>
+    <Button Content="{l:Localize Rl.Checkpoint.Abandon}" Command="{Binding AbandonCheckpointCommand}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.CheckpointAbandon}"/>
+   </StackPanel>
+  </Expander>
+  <TextBlock Text="{Binding StatusDisplay}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.Status}"/><TextBlock Text="{Binding Message}" TextWrapping="Wrap" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.Message}"/>
+  <TextBlock Text="{l:Localize Rl.QualifiedModels}"/>
+  <ComboBox ItemsSource="{Binding Generations}" SelectedItem="{Binding SelectedGeneration}" IsEnabled="{Binding !IsBusy}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.Models}">
+   <ComboBox.ItemTemplate><DataTemplate x:DataType="{x:Null}"><StackPanel Orientation="Horizontal" Spacing="12"><TextBlock Text="{Binding Target}"/><TextBlock Text="{Binding Symbol}"/><TextBlock Text="{Binding ModelId}"/><TextBlock Text="{Binding ValidationReturn}"/><TextBlock Text="{Binding OosReturn}"/></StackPanel></DataTemplate></ComboBox.ItemTemplate>
+  </ComboBox>
+  <TextBlock Text="{Binding TemporalStatusDisplay}" TextWrapping="Wrap" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.TemporalStatus}"/>
+  <Expander>
+   <Expander.Header><TextBlock Text="{l:Localize Rl.EvaluationDetails}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.EvaluationDetails}"/></Expander.Header>
+   <TextBlock Text="{Binding EvaluationReport}" TextWrapping="Wrap" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.EvaluationReport}"/>
+  </Expander>
+  <StackPanel Orientation="Horizontal" Spacing="12"><Button Content="{l:Localize Rl.Activate}" Command="{Binding ActivateCommand}" IsEnabled="{Binding !IsBusy}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.Activate}"/><TextBlock Text="{Binding ActiveId}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.ActiveModel}"/></StackPanel>
+  <Grid ColumnDefinitions="*,*,Auto,Auto" IsEnabled="{Binding !IsBusy}">
+   <ComboBox ItemsSource="{Binding Blocks}" SelectedItem="{Binding SelectedBlock}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.Blocks}"><ComboBox.ItemTemplate><DataTemplate x:DataType="{x:Null}"><TextBlock Text="{Binding Id}"/></DataTemplate></ComboBox.ItemTemplate></ComboBox>
+   <ComboBox Grid.Column="1" ItemsSource="{Binding Policies}" SelectedItem="{Binding SelectedPolicy}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.Policies}"/>
+   <NumericUpDown Grid.Column="2" Minimum="0" Maximum="{Binding MaximumDecision}" Value="{Binding Decision}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.Decision}"/>
+   <Button Grid.Column="3" Content="{l:Localize Rl.Replay}" Command="{Binding ReplayCommand}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.Replay}"/>
+  </Grid>
+  <TextBlock Text="{Binding Disclosure}" TextWrapping="Wrap" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Foreground.Secondary}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.Disclosure}"/>
+ </StackPanel></ScrollViewer>
+</Window>

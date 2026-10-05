@@ -10,11 +10,23 @@ namespace StockAnalyzer.Core.Models.Indicators.Volatility
     public class CoreStandardDeviationIndicator : CoreIndicatorBase
     {
         public override string Name => $"StdDev({Period})";
-        public int Period { get; set; } = 20;
+        private int _period = 20;
+        public int Period 
+        { 
+            get => _period; 
+            set => _period = Math.Max(1, value); 
+        }
+
+        public bool IsPopulation { get; set; } = false;
 
         public override void Configure(CoreIndicatorParameterBase parameters)
         {
-            if (parameters is CoreSmaParameter p)
+            if (parameters is CoreStandardDeviationParameter sdp)
+            {
+                Period = sdp.Period;
+                IsPopulation = sdp.IsPopulation;
+            }
+            else if (parameters is CoreSmaParameter p)
             {
                 Period = p.Period; 
             }
@@ -22,8 +34,7 @@ namespace StockAnalyzer.Core.Models.Indicators.Volatility
 
         protected override IIndicatorResult CalculateCore(IReadOnlyList<CoreCandleData> candles)
         {
-
-            if (candles.Count < Period)
+            if (Period <= 0 || candles.Count < Period)
             {
                 for (int i = 0; i < candles.Count; i++) _values.Add(null);
                 return IndicatorResult.Success(_values);
@@ -52,7 +63,9 @@ namespace StockAnalyzer.Core.Models.Indicators.Volatility
                     decimal diff = (priceSeries[start + j] ?? 0m) - mean;
                     sumSqDiff += diff * diff;
                 }
-                decimal variance = sumSqDiff / (Period - 1);
+                decimal variance = Period <= 1 
+                    ? 0m 
+                    : (IsPopulation ? sumSqDiff / Period : sumSqDiff / (Period - 1));
                 _values.Add((decimal)System.Math.Sqrt((double)variance));
             }
 

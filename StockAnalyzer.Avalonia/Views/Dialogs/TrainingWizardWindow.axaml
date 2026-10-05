@@ -409,6 +409,96 @@
                             </Grid>
                             <TextBlock Text="{l:Localize TrainingWizard_Validation_Note}" TextWrapping="Wrap"
                                        FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Tertiary}"/>
+                            <CheckBox Content="{l:Localize TrainingWizard_Calibration}"
+                                      IsChecked="{Binding UseCalibration, Mode=TwoWay}"
+                                      AutomationProperties.AutomationId="TrainingWizard_CalibrationCheck"/>
+                            <TextBlock Text="{l:Localize TrainingWizard_Calibration_Note}" TextWrapping="Wrap"
+                                       FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Tertiary}"/>
+                            <TextBlock Text="{Binding CalibrationValidationMessage}"
+                                       IsVisible="{Binding CalibrationValidationMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                       TextWrapping="Wrap" FontSize="{DynamicResource HelperFontSize}"
+                                       Foreground="{DynamicResource Brush.Semantic.Error}"/>
+
+                            <!-- T13 extended learning: ensemble (bagging / stacking) and self-supervised pretraining -->
+                            <TextBlock Text="{l:Localize TrainingWizard_Ensemble}" Classes="fieldLabel"/>
+                            <ComboBox ItemsSource="{Binding AvailableEnsembleMethods}"
+                                      SelectedItem="{Binding SelectedEnsembleMethod, Mode=TwoWay}"
+                                      HorizontalAlignment="Stretch" Height="34"
+                                      AutomationProperties.AutomationId="TrainingWizard_EnsembleMethodCombo"
+                                      Background="{DynamicResource Brush.Background.Tertiary}"
+                                      BorderBrush="{DynamicResource Brush.Border.Primary}">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Converter={StaticResource EnumToLocalizedDisplayNameConverter}}"/>
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                            <StackPanel Spacing="6" IsVisible="{Binding IsBaggingSelected}">
+                                <TextBlock Text="{l:Localize TrainingWizard_EnsembleMembers}" Classes="fieldLabel"/>
+                                <NumericUpDown Value="{Binding EnsembleMembers}" Minimum="2" Increment="1" FormatString="F0"
+                                               ClipValueToMinMax="True" Height="34"
+                                               AutomationProperties.AutomationId="TrainingWizard_EnsembleMembers"
+                                               Background="{DynamicResource Brush.Background.Tertiary}"
+                                               BorderBrush="{DynamicResource Brush.Border.Primary}"/>
+                            </StackPanel>
+                            <StackPanel Spacing="6" IsVisible="{Binding IsStackingSelected}">
+                                <TextBlock Text="{l:Localize TrainingWizard_StackingBases}" Classes="fieldLabel"/>
+                                <TextBox Text="{Binding StackingBasesText, Mode=TwoWay}" Watermark="pytorch:lstm, pytorch:cnn, lightgbm"
+                                         AutomationProperties.AutomationId="TrainingWizard_StackingBases"/>
+                                <TextBlock Text="{l:Localize TrainingWizard_StackingWeightSource}" Classes="fieldLabel"/>
+                                <ComboBox ItemsSource="{Binding AvailableStackingWeightSources}"
+                                          SelectedItem="{Binding SelectedStackingWeightSource, Mode=TwoWay}"
+                                          HorizontalAlignment="Stretch" Height="34"
+                                          AutomationProperties.AutomationId="TrainingWizard_StackingWeightSourceCombo"
+                                          Background="{DynamicResource Brush.Background.Tertiary}"
+                                          BorderBrush="{DynamicResource Brush.Border.Primary}">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding Converter={StaticResource EnumToLocalizedDisplayNameConverter}}"/>
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+                                <TextBlock Text="{l:Localize TrainingWizard_StackingWeightSource_Note}" TextWrapping="Wrap"
+                                           FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Tertiary}"/>
+                            </StackPanel>
+                            <TextBlock Text="{l:Localize TrainingWizard_Ensemble_Note}" TextWrapping="Wrap"
+                                       FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Tertiary}"/>
+                            <CheckBox Content="{l:Localize TrainingWizard_Pretraining}"
+                                      IsChecked="{Binding UsePretraining, Mode=TwoWay}"
+                                      AutomationProperties.AutomationId="TrainingWizard_PretrainingCheck"/>
+                            <TextBlock Text="{l:Localize TrainingWizard_Pretraining_Note}" TextWrapping="Wrap"
+                                       FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Tertiary}"/>
+                            <CheckBox Content="{l:Localize TrainingWizard_Cpcv}"
+                                      IsChecked="{Binding UseCpcv, Mode=TwoWay}"
+                                      AutomationProperties.AutomationId="TrainingWizard_CpcvCheck"/>
+                            <Grid ColumnDefinitions="*,*" IsVisible="{Binding UseCpcv}">
+                                <StackPanel Spacing="6" Margin="0,0,8,0">
+                                    <TextBlock Text="{l:Localize TrainingWizard_CpcvGroups}" Classes="fieldLabel"/>
+                                    <NumericUpDown Value="{Binding CpcvGroups}" Minimum="2" Increment="1" FormatString="F0"
+                                                   ClipValueToMinMax="True" Height="34"
+                                                   AutomationProperties.AutomationId="TrainingWizard_CpcvGroups"
+                                                   Background="{DynamicResource Brush.Background.Tertiary}"
+                                                   BorderBrush="{DynamicResource Brush.Border.Primary}"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Spacing="6" Margin="8,0,0,0">
+                                    <TextBlock Text="{l:Localize TrainingWizard_CpcvTestGroups}" Classes="fieldLabel"/>
+                                    <NumericUpDown Value="{Binding CpcvTestGroups}" Minimum="1" Increment="1" FormatString="F0"
+                                                   ClipValueToMinMax="True" Height="34"
+                                                   AutomationProperties.AutomationId="TrainingWizard_CpcvTestGroups"
+                                                   Background="{DynamicResource Brush.Background.Tertiary}"
+                                                   BorderBrush="{DynamicResource Brush.Border.Primary}"/>
+                                </StackPanel>
+                            </Grid>
+                            <TextBlock Text="{Binding CpcvCountText}"
+                                       IsVisible="{Binding CpcvCountText, Converter={x:Static ObjectConverters.IsNotNull}}"
+                                       FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Tertiary}"
+                                       AutomationProperties.AutomationId="TrainingWizard_CpcvCount"/>
+                            <TextBlock Text="{l:Localize TrainingWizard_Cpcv_Note}" TextWrapping="Wrap"
+                                       FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Tertiary}"/>
+                            <TextBlock Text="{Binding ExtendedLearningValidationMessage}"
+                                       IsVisible="{Binding ExtendedLearningValidationMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                       TextWrapping="Wrap" FontSize="{DynamicResource HelperFontSize}"
+                                       Foreground="{DynamicResource Brush.Semantic.Error}"/>
                         </StackPanel>
 
                         <!-- Section: Hyperparameters -->
@@ -472,6 +562,18 @@
                             </Border>
 
                             <!-- Per-fold results table (populated from fold-scoped METRIC: lines) -->
+                            <StackPanel Spacing="4" IsVisible="{Binding HasCpcvResults}">
+                                <TextBlock Text="{l:Localize TrainingWizard_CpcvResults_Header}" Classes="fieldLabel"/>
+                                <Border Classes="card" Padding="8" HorizontalAlignment="Stretch">
+                                    <ItemsControl ItemsSource="{Binding CpcvResults}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="dialogs:CpcvMetricRow">
+                                                <TextBlock Text="{Binding Display}" TextWrapping="Wrap" Margin="0,1"/>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </Border>
+                            </StackPanel>
                             <StackPanel Spacing="4" IsVisible="{Binding HasFoldResults}">
                                 <TextBlock Text="{l:Localize TrainingWizard_FoldResults_Header}" Classes="fieldLabel"/>
                                 <Border Classes="card" Padding="8" HorizontalAlignment="Stretch">
@@ -573,6 +675,11 @@
                                 Theme="{DynamicResource SecondaryButtonStyle}"
                                 Padding="16,0" Height="36"
                                 Command="{Binding DeployToModelsCommand}"/>
+                        <Button Content="{l:Localize TrainingWizard_UseAsEnsembleButton}"
+                                Theme="{DynamicResource SecondaryButtonStyle}"
+                                Padding="16,0" Height="36"
+                                IsVisible="{Binding HasRegisteredEnsemble}"
+                                Command="{Binding UseAsEnsembleCommand}"/>
                         <Button Content="{l:Localize TrainingWizard_CancelButton}"
                                 Theme="{DynamicResource SecondaryButtonStyle}"
                                 Padding="16,0" Height="36"

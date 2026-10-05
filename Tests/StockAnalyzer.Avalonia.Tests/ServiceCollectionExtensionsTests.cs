@@ -37,6 +37,27 @@ public class ServiceCollectionExtensionsTests
 
         Assert.IsType<StockAnalyzer.Core.Services.PredictionLogService>(log);
         Assert.Same(log, health); // one instance and one monitor gate behind both contracts
+
+        // The default backend is the legacy JSON store: its outbox is inactive and no monitoring database is created.
+        var outbox = provider.GetRequiredService<StockAnalyzer.Core.Services.IMonitoringNotificationOutbox>();
+        Assert.False(outbox.IsActive);
+        Assert.Same(outbox, provider.GetRequiredService<StockAnalyzer.Core.Services.IMonitoringNotificationOutbox>());
+    }
+
+    [Fact]
+    public async Task AddCommonServices_AttestedEvidenceIsDormantByDefault_AndNeverTouchesALegacyBackend()
+    {
+        var services = new ServiceCollection();
+        services.AddCommonServices(new ConfigurationBuilder().Build());
+        using var provider = services.BuildServiceProvider();
+
+        // JSON backend: the diagnostics resolve to the null object (never a null, never a conflict) and the refresher declines before reading any source.
+        var diagnostics = provider.GetRequiredService<StockAnalyzer.Core.Models.IAttestedEvidenceDiagnostics>();
+        Assert.IsType<StockAnalyzer.Core.Models.NoAttestedEvidenceDiagnostics>(diagnostics);
+        Assert.Empty(await diagnostics.GetConflictedStreamsAsync());
+        var refresher = provider.GetRequiredService<StockAnalyzer.Avalonia.Services.IAttestedMonitoringRefresher>();
+        Assert.False(await refresher.TryRefreshAsync("SYM", StockAnalyzer.Core.Models.TimeframeType.Daily, [], CancellationToken.None));
+        Assert.Same(refresher, provider.GetRequiredService<StockAnalyzer.Avalonia.Services.IAttestedMonitoringRefresher>());
     }
 
     [Fact]

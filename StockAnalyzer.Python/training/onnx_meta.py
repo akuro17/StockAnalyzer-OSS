@@ -49,6 +49,11 @@ DEFAULT_PRICE_ADJUSTMENT: str = "adjusted"
 TARGET_TYPE: str = "classification"
 TARGET_TYPES: tuple = ("classification", "regression")
 
+# T13 self-supervised encoder pretraining wire strings (SSoT; mirror of C# TrainingPretraining).
+PRETRAINING_NONE: str = "none"
+PRETRAINING_MASKED_RECONSTRUCTION: str = "masked_reconstruction"
+PRETRAINING_METHODS: tuple = (PRETRAINING_NONE, PRETRAINING_MASKED_RECONSTRUCTION)
+
 # Every exported model MUST carry exactly these keys. C# validates a subset
 # (feature_mode / window_size / class_order); the rest are informational.
 CONTRACT_KEYS: tuple = (
@@ -114,6 +119,7 @@ def build_contract(
     clip_sigma: float | None = None,
     scaler_ref: str | None = None,
     analysis_ref: str | None = None,
+    calibration_ref: str | None = None,
 ) -> Dict[str, str]:
     """Assemble the ``metadata_props`` mapping (every value stringified).
 
@@ -219,6 +225,13 @@ def build_contract(
         if Path(analysis_ref).name != analysis_ref or not analysis_ref.endswith(".onnx.analysis.json"):
             raise ValueError("analysis reference must name a local ONNX analysis sidecar")
         contract[model_analysis.REFERENCE_KEY] = analysis_ref
+    if calibration_ref is not None:
+        import calibration
+        if target_type != "classification":
+            raise ValueError("a calibration reference requires a classification model")
+        if Path(calibration_ref).name != calibration_ref or not calibration_ref.endswith(".onnx.calibration.json"):
+            raise ValueError("calibration reference must name a local ONNX calibration sidecar")
+        contract[calibration.REFERENCE_KEY] = calibration_ref
     return contract
 
 
@@ -315,6 +328,30 @@ def _run_selfcheck() -> None:
     # non-composed model's contract stays byte-for-byte unchanged from before this feature.
     assert "feature_spec" not in c5
     assert "feature_spec" not in creg
+    c_cal = build_contract(
+        feature_mode="ohlcv_minmax", window_size=75, channels=5,
+        horizon=5, threshold=0.005, wf_splits=5, seed=42, producer="selfcheck",
+        calibration_ref="m.onnx.calibration.json",
+    )
+    assert set(c_cal) == set(CONTRACT_KEYS) | {"com.stockanalyzer.calibration.ref"}
+    assert c_cal["com.stockanalyzer.calibration.ref"] == "m.onnx.calibration.json"
+    for bad_ref in ("../m.onnx.calibration.json", "m.calibration.json", "dir/m.onnx.calibration.json"):
+        try:
+            build_contract(feature_mode="ohlcv_minmax", window_size=75, channels=5, horizon=5,
+                           threshold=0.005, wf_splits=5, seed=42, producer="selfcheck",
+                           calibration_ref=bad_ref)
+        except ValueError:
+            pass
+        else:  # pragma: no cover
+            raise AssertionError(f"bad calibration_ref accepted: {bad_ref}")
+    try:
+        build_contract(feature_mode="ohlcv_minmax", window_size=75, channels=5, horizon=5,
+                       threshold=0.005, wf_splits=5, seed=42, producer="selfcheck",
+                       target_type="regression", calibration_ref="m.onnx.calibration.json")
+    except ValueError:
+        pass
+    else:  # pragma: no cover
+        raise AssertionError("calibration_ref on a regression model accepted")
     ccomposed = build_contract(
         feature_mode=ds.COMPOSED_FEATURES_MODE, window_size=75, channels=2,
         horizon=5, threshold=0.005, wf_splits=5, seed=42, producer="selfcheck",

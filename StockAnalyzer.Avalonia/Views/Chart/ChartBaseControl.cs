@@ -48,6 +48,11 @@ namespace StockAnalyzer.Avalonia.Views.Chart;
 /// </summary>
 public class ChartBaseControl : Control, ICustomHitTest
 {
+    public static readonly StyledProperty<double> RlFontSizeProperty = AvaloniaProperty.Register<ChartBaseControl, double>(nameof(RlFontSize));
+    public static readonly StyledProperty<global::Avalonia.Media.IBrush?> RlTextBrushProperty = AvaloniaProperty.Register<ChartBaseControl, global::Avalonia.Media.IBrush?>(nameof(RlTextBrush));
+    public double RlFontSize { get => GetValue(RlFontSizeProperty); set => SetValue(RlFontSizeProperty, value); }
+    public global::Avalonia.Media.IBrush? RlTextBrush { get => GetValue(RlTextBrushProperty); set => SetValue(RlTextBrushProperty, value); }
+    private SKColor _rlForeground;
     #region Effective Layout Margins
 
     protected float EffectiveMarginLeft => ChartTheme.MarginLeft;
@@ -385,6 +390,7 @@ public class ChartBaseControl : Control, ICustomHitTest
     private void OnViewModelChanged(ChartViewModel? oldVm, ChartViewModel? newVm)
     {
         SubscribeToViewModel(newVm);
+        _pipeline.PrepareRlHud(newVm?.RlPresentation, (float)RlFontSize);
 
         if (newVm != null)
         {
@@ -424,6 +430,8 @@ public class ChartBaseControl : Control, ICustomHitTest
 
     private void OnViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
+        if (e.PropertyName == nameof(ChartViewModel.RlPresentation))
+            _pipeline.PrepareRlHud(ViewModel?.RlPresentation, (float)RlFontSize);
         // Properties handled specially by Control (interaction/view logic)
         if (e.PropertyName == nameof(ChartViewModel.CurrentTool))
         {
@@ -702,7 +710,7 @@ public class ChartBaseControl : Control, ICustomHitTest
                     _dataCoordinator.Transform.ChartToScreen(_lastSnapChartPoint.Value).Y
                 ) : null,
             _currentDrawingObject, // Pass Current Drawing Object
-            _layeredScene
+            _layeredScene, ViewModel.RlPresentation, (float)RlFontSize, _rlForeground
             ));
         }
         finally
@@ -916,6 +924,9 @@ public class ChartBaseControl : Control, ICustomHitTest
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
         base.OnPropertyChanged(change);
+        if (change.Property == RlTextBrushProperty && RlTextBrush is global::Avalonia.Media.ISolidColorBrush rlBrush)
+        { var c = rlBrush.Color; _rlForeground = new SKColor(c.R, c.G, c.B, c.A); InvalidateVisual(); }
+        if (change.Property == RlFontSizeProperty) { _pipeline?.PrepareRlHud(ViewModel?.RlPresentation, (float)RlFontSize); InvalidateVisual(); }
 
         if (change.Property == ChartMarginTopProperty ||
             change.Property == ChartMarginBottomProperty ||

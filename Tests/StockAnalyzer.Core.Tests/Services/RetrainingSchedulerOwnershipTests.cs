@@ -6,8 +6,10 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Options;
 using Moq;
 using StockAnalyzer.Core.Common;
+using StockAnalyzer.Core.Models.Settings;
 using StockAnalyzer.Core.Models.Training;
 using StockAnalyzer.Core.Services;
 using Xunit;
@@ -32,8 +34,9 @@ public sealed class RetrainingSchedulerOwnershipTests : IDisposable
         public Mock<ITrainingOrchestrator> Trainer { get; } = new();
         public Mock<IModelGenerationRegistry> Registry { get; } = new();
         public RetrainingScheduler Scheduler { get; }
-        public Owner(TimeProvider clock, string root) =>
-            Scheduler = new(Trainer.Object, Registry.Object, new Mock<IExperimentLogService>().Object, clock: clock, root: root);
+        public Owner(TimeProvider clock, string root, PredictionMonitoringSettings? monitoring = null) =>
+            Scheduler = new(Trainer.Object, Registry.Object, new Mock<IExperimentLogService>().Object, clock: clock, root: root,
+                monitoring: monitoring is null ? null : Options.Create(monitoring));
         public RetrainingSchedule Current => Scheduler.Current!;
         public void VerifyStarts(Times times) => Trainer.Verify(t => t.StartTrainingAsync(It.IsAny<TrainingJobConfig>(),
             It.IsAny<IProgress<TrainingProgress>>(), It.IsAny<CancellationToken>()), times);
@@ -88,9 +91,34 @@ public sealed class RetrainingSchedulerOwnershipTests : IDisposable
             var owner = await ScheduledAsync(); owner.Returns(Failed); PassOneWeek();
             await owner.Scheduler.ProcessDueAsync();
             var names = Directory.GetFiles(OccurrenceDirectory(owner)).Select(Path.GetFileName).OrderBy(n => n, StringComparer.Ordinal).ToArray();
-            Assert.Equal(["20261004.claim", "20261004.json", "20261004.owner"], names);
+            Assert.Equal(["20261004.claim", "20261004.json"], names);                    // the owner lease file does not outlive the run
         }
         finally { CultureInfo.CurrentCulture = original; }
+    }
+
+    [Fact]
+    public async Task OwnerLeaseFiles_AreRemovedWhenConsumedAndUnheld_ButNeverHeldOnesOrOnesWithoutAClaim()
+    {
+        var owner = await ScheduledAsync(); owner.Returns(Failed); PassOneWeek();
+        await owner.Scheduler.ProcessDueAsync();
+        var directory = OccurrenceDirectory(owner);
+        Assert.Equal(["20261004.claim", "20261004.json"], Directory.GetFiles(directory).Select(Path.GetFileName).OrderBy(n => n, StringComparer.Ordinal));
+
+        // A leftover of the consumed week that a live owner still holds survives; a file without a claim is never touched.
+        var leftover = Path.Combine(directory, "20261004.owner"); var unclaimed = Path.Combine(directory, "20990101.owner");
+        File.WriteAllBytes(unclaimed, []);
+        PassOneWeek();
+        using (new FileStream(leftover, FileMode.Create, FileAccess.ReadWrite, FileShare.None))
+        {
+            await owner.Scheduler.ProcessDueAsync();
+            Assert.True(File.Exists(leftover)); Assert.True(File.Exists(unclaimed));
+            Assert.False(File.Exists(Path.Combine(directory, "20261011.owner")));
+        }
+        PassOneWeek();
+        await owner.Scheduler.ProcessDueAsync();                                                     // released now: swept with the next run
+        Assert.False(File.Exists(leftover)); Assert.True(File.Exists(unclaimed));
+        Assert.Equal(["20261004.claim", "20261004.json", "20261011.claim", "20261011.json", "20261018.claim", "20261018.json", "20990101.owner"],
+            Directory.GetFiles(directory).Select(Path.GetFileName).OrderBy(n => n, StringComparer.Ordinal));   // claims and journals are permanent
     }
 
     [Fact]
@@ -300,7 +328,37 @@ public sealed class RetrainingSchedulerOwnershipTests : IDisposable
 
         File.Copy(Path.Combine(source, "schedule.json"), SchedulePath, overwrite: true); // external repair
         clock.SetNow(clock.GetUtcNow().AddDays(7));
-        clock.Advance(PredictionMonitoringPolicy.SchedulerPollInterval);
+        clock.Advance(new PredictionMonitoringSettings().SchedulerPollInterval);
+        await started.Task.WaitAsync(Wait);
+        cts.Cancel(); await loop.WaitAsync(Wait);
+        owner.VerifyStarts(Times.Once());
+    }
+
+    [Fact]
+    public async Task RecoveryRunner_RetriesAfterTheConfiguredPollInterval_NotTheDefault()
+    {
+        var clock = new ManualTimeProvider(new DateTimeOffset(2026, 9, 28, 12, 0, 0, TimeSpan.Zero));
+        var source = Path.Combine(_root, "source");
+        var author = new Owner(clock, source);
+        await author.Scheduler.SaveConfigurationAsync(Config()); await author.Scheduler.SetEnabledAsync(true);
+        clock.SetNow(clock.GetUtcNow().AddDays(7));                                                // the occurrence is due before the loop starts
+
+        Directory.CreateDirectory(_root);
+        File.WriteAllText(SchedulePath, "{ corrupt");
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var configured = new PredictionMonitoringSettings { SchedulerPollIntervalSeconds = 30 };
+        var owner = new Owner(clock, _root, configured);
+        owner.Returns(() => { started.TrySetResult(); return Failed(); });
+        using var cts = new CancellationTokenSource();
+        var loop = Task.Run(() => owner.Scheduler.RunWithRecoveryAsync(cts.Token));
+        await clock.TimerArmed.WaitAsync(Wait);                                                    // first attempt failed, the delay is armed
+        Assert.Null(owner.Scheduler.Current);
+        owner.VerifyStarts(Times.Never());
+
+        File.Copy(Path.Combine(source, "schedule.json"), SchedulePath, overwrite: true);          // external repair
+        clock.Advance(configured.SchedulerPollInterval - TimeSpan.FromSeconds(1));
+        Assert.False(started.Task.IsCompleted);                                                    // not yet due
+        clock.Advance(TimeSpan.FromSeconds(1));
         await started.Task.WaitAsync(Wait);
         cts.Cancel(); await loop.WaitAsync(Wait);
         owner.VerifyStarts(Times.Once());

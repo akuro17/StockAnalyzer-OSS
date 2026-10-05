@@ -9,5 +9,10 @@ public class LocalizationService : ILocalizationService
         return LocalizationManager.Instance.Get(key);
     }
 
+    public bool TryGetString(string key, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out string? value)
+    {
+        return LocalizationManager.Instance.TryGet(key, out value);
+    }
+
     public string this[string key] => GetString(key);
 }

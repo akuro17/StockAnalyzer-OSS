@@ -20,6 +20,7 @@ namespace StockAnalyzer.Core.Tests.Models.Training;
 /// ONNX training UI foundation sprint (see the round-trip serialization note in
 /// Y:\Temp\sa_step_log_OnnxTrainingFoundation.md) and added here in Task 10.
 /// </summary>
+[Collection("ChildProcess")]
 public class TrainingConfigJsonTests
 {
     [Fact]

@@ -21,7 +21,7 @@ namespace StockAnalyzer.Core.Services.Backtest.Engine;
 /// <see cref="ExitPrecedenceResolver"/>) and wires indicator batch-prep (Gate G2) through
 /// <see cref="IIndicatorFactory"/>.
 /// </summary>
-public sealed class BacktestEngine : IBacktestEngine, IBacktestDiagnosticEngine
+public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosticEngine
 {
     /// <summary>Sentinel BacktestFill.OrderId for a forced-liquidation fill, which has no originating BacktestOrder. OrderIds are sequential starting at 1, so 0 is never a real order.</summary>
     private const long NoOriginatingOrderId = 0L;
@@ -192,8 +192,9 @@ public sealed class BacktestEngine : IBacktestEngine, IBacktestDiagnosticEngine
         // maintenance-margin breach on the same O->H->L->C path. Section 2.4's Exit-before-Entry rule
         // is enforced inside EvaluateStep2 itself: the pending Exit slot (if any) is always resolved
         // before the pending Entry slot is ever considered.
+        int tradesBeforeStep2 = env.StopOnForcedLiquidation ? s.Trades.Count : 0;
         bool insolventFromLiquidation = EvaluateStep2(s, i, bar, configuration);
-        if (insolventFromLiquidation)
+        if (insolventFromLiquidation || (env.StopOnForcedLiquidation && s.Trades.Count > tradesBeforeStep2 && s.Trades[^1].IsForcedLiquidation))
         {
             // Flat immediately after a forced liquidation: HeldMargin=0, UnrealizedPnL=0, so Equity == Cash.
             equityPoints.Add(new EquityPoint(i, bar.Timestamp, s.Cash, s.Cash, 0m, 0m));
@@ -223,6 +224,12 @@ public sealed class BacktestEngine : IBacktestEngine, IBacktestDiagnosticEngine
             {
                 s.LiquidationPending = TryFindNewPositionBreach(s, configuration, bar, FillPathScanner.ClosePoint(bar.Close), out _, out _);
             }
+        }
+
+        if (s.Q != 0m && s.EntryBar != i)
+        {
+            s.PositionHigh = Math.Max(s.PositionHigh, bar.High);
+            s.PositionLow = Math.Min(s.PositionLow, bar.Low);
         }
 
         // Step 5: mark to market at Close (section 1.5.5).
@@ -311,6 +318,7 @@ public sealed class BacktestEngine : IBacktestEngine, IBacktestDiagnosticEngine
         public readonly IBacktestOrderCancellationStrategy? CancellationStrategy;
         public readonly IndicatorSeriesSet Indicators;
         public readonly IndicatorSeriesSet[]? BarBoundedIndicators;
+        public readonly bool StopOnForcedLiquidation;
 
         public BarEnvironment(
             BacktestInput input,
@@ -318,7 +326,8 @@ public sealed class BacktestEngine : IBacktestEngine, IBacktestDiagnosticEngine
             IBacktestStrategy strategy,
             IBacktestOrderCancellationStrategy? cancellationStrategy,
             IndicatorSeriesSet indicators,
-            IndicatorSeriesSet[]? barBoundedIndicators)
+            IndicatorSeriesSet[]? barBoundedIndicators,
+            bool stopOnForcedLiquidation = false)
         {
             Input = input;
             Configuration = configuration;
@@ -326,6 +335,7 @@ public sealed class BacktestEngine : IBacktestEngine, IBacktestDiagnosticEngine
             CancellationStrategy = cancellationStrategy;
             Indicators = indicators;
             BarBoundedIndicators = barBoundedIndicators;
+            StopOnForcedLiquidation = stopOnForcedLiquidation;
         }
     }
 
@@ -357,6 +367,10 @@ public sealed class BacktestEngine : IBacktestEngine, IBacktestDiagnosticEngine
         public decimal EntryFeeAccum;
         public int EntryBar = -1;
         public DateTime EntryTime;
+        public decimal PositionHigh;
+        public decimal PositionLow;
+        public decimal EntrySlippageAccum;
+        public string CurrentEntryReason = string.Empty;
 
         /// <summary>
         /// Dual pending-order slots (Y:\Temp\sa_implementation_plan_BacktestPositionDirectionReversal.md
@@ -406,9 +420,10 @@ public sealed class BacktestEngine : IBacktestEngine, IBacktestDiagnosticEngine
     /// </summary>
     private readonly struct BarSnapshot
     {
-        private readonly decimal _cash, _heldMargin, _q, _entryPrice, _entryFeeAccum;
+        private readonly decimal _cash, _heldMargin, _q, _entryPrice, _entryFeeAccum, _positionHigh, _positionLow, _entrySlippageAccum;
         private readonly int _entryBar, _pendingEntryIndex, _pendingExitIndex, _orderCount, _fillCount, _tradeCount, _equityCount, _signalCount;
         private readonly DateTime _entryTime;
+        private readonly string _currentEntryReason;
         private readonly TradeSide _pendingEntrySide;
         private readonly long _nextOrderId, _nextFillId, _nextTradeId;
         private readonly bool _liquidationPending, _queuedEntryCancellation, _queuedExitCancellation;
@@ -423,6 +438,10 @@ public sealed class BacktestEngine : IBacktestEngine, IBacktestDiagnosticEngine
             _entryFeeAccum = s.EntryFeeAccum;
             _entryBar = s.EntryBar;
             _entryTime = s.EntryTime;
+            _positionHigh = s.PositionHigh;
+            _positionLow = s.PositionLow;
+            _entrySlippageAccum = s.EntrySlippageAccum;
+            _currentEntryReason = s.CurrentEntryReason;
             _pendingEntryIndex = s.PendingEntryOrderIndex;
             _pendingExitIndex = s.PendingExitOrderIndex;
             _pendingEntrySide = s.PendingEntrySide;
@@ -460,6 +479,10 @@ public sealed class BacktestEngine : IBacktestEngine, IBacktestDiagnosticEngine
             s.EntryFeeAccum = _entryFeeAccum;
             s.EntryBar = _entryBar;
             s.EntryTime = _entryTime;
+            s.PositionHigh = _positionHigh;
+            s.PositionLow = _positionLow;
+            s.EntrySlippageAccum = _entrySlippageAccum;
+            s.CurrentEntryReason = _currentEntryReason;
             s.PendingEntryOrderIndex = _pendingEntryIndex;
             s.PendingExitOrderIndex = _pendingExitIndex;
             s.PendingEntrySide = _pendingEntrySide;
@@ -717,7 +740,7 @@ public sealed class BacktestEngine : IBacktestEngine, IBacktestDiagnosticEngine
     /// (<see cref="ExecuteForcedLiquidation"/>), since both perform the exact same account-state
     /// transition (sections 1.5.4 and 1.5.6) - kept as a single method rather than duplicated inline.
     /// </summary>
-    private static void ClosePosition(RunState s, int i, CandleData bar, TradeSide side, long originatingOrderId, OrderSide fillSide, decimal fillPrice, decimal quantity, decimal commission, decimal slippageAmount, bool isForcedLiquidation)
+    private static void ClosePosition(RunState s, int i, CandleData bar, TradeSide side, long originatingOrderId, OrderSide fillSide, decimal fillPrice, decimal quantity, decimal commission, decimal slippageAmount, bool isForcedLiquidation, OrderType? orderType = null, string? orderReason = null)
     {
         s.Operation = BacktestArithmeticOperation.ExitAccounting;
         decimal realizedPnL = s.Q * (fillPrice - s.EntryPrice);
@@ -725,8 +748,37 @@ public sealed class BacktestEngine : IBacktestEngine, IBacktestDiagnosticEngine
 
         s.Cash = s.Cash + s.HeldMargin + realizedPnL - commission;
 
+        decimal pHigh = s.PositionHigh;
+        decimal pLow = s.PositionLow;
+        if (orderType == OrderType.Market)
+        {
+            pHigh = Math.Max(pHigh, fillPrice);
+            pLow = Math.Min(pLow, fillPrice);
+        }
+        else
+        {
+            pHigh = Math.Max(pHigh, Math.Max(fillPrice, bar.High));
+            pLow = Math.Min(pLow, Math.Min(fillPrice, bar.Low));
+        }
+
+        decimal mfePrice = (side == TradeSide.Long) ? Math.Max(0m, pHigh - s.EntryPrice) : Math.Max(0m, s.EntryPrice - pLow);
+        decimal maePrice = (side == TradeSide.Long) ? Math.Max(0m, s.EntryPrice - pLow) : Math.Max(0m, pHigh - s.EntryPrice);
+
+        string exitReason = isForcedLiquidation
+            ? "Margin Liquidation"
+            : (!string.IsNullOrWhiteSpace(orderReason) ? orderReason : "Signal Exit");
+
         s.Fills.Add(new BacktestFill(s.NextFillId++, originatingOrderId, i, bar.Timestamp, fillSide, fillPrice, quantity, commission, slippageAmount));
-        s.Trades.Add(new BacktestTrade(s.NextTradeId++, side, s.EntryBar, s.EntryTime, s.EntryPrice, i, bar.Timestamp, fillPrice, quantity, realizedPnL, closedNet, s.EntryFeeAccum, commission, i - s.EntryBar, IsForcedLiquidation: isForcedLiquidation));
+        s.Trades.Add(new BacktestTrade(
+            s.NextTradeId++, side, s.EntryBar, s.EntryTime, s.EntryPrice, i, bar.Timestamp, fillPrice, quantity, realizedPnL, closedNet, s.EntryFeeAccum, commission, i - s.EntryBar, IsForcedLiquidation: isForcedLiquidation)
+        {
+            EntrySlippage = s.EntrySlippageAccum,
+            ExitSlippage = slippageAmount,
+            MfePrice = mfePrice,
+            MaePrice = maePrice,
+            EntrySignal = s.CurrentEntryReason,
+            ExitReason = exitReason,
+        });
 
         s.HeldMargin = 0m;
         s.Q = 0m;
@@ -734,6 +786,10 @@ public sealed class BacktestEngine : IBacktestEngine, IBacktestDiagnosticEngine
         s.EntryFeeAccum = 0m;
         s.EntryBar = -1;
         s.LiquidationPending = false;
+        s.PositionHigh = 0m;
+        s.PositionLow = 0m;
+        s.EntrySlippageAccum = 0m;
+        s.CurrentEntryReason = string.Empty;
     }
 
     private static void CommitOrRejectFill(RunState s, int i, CandleData bar, OrderFillOutcome outcome, BacktestConfiguration config, bool isEntry)
@@ -766,6 +822,18 @@ public sealed class BacktestEngine : IBacktestEngine, IBacktestDiagnosticEngine
             s.EntryFeeAccum = outcome.Commission;
             s.EntryBar = i;
             s.EntryTime = bar.Timestamp;
+            s.CurrentEntryReason = order.Reason ?? string.Empty;
+            s.EntrySlippageAccum = outcome.SlippageAmount;
+            if (order.Type == OrderType.MarketOnClose)
+            {
+                s.PositionHigh = outcome.FillPrice;
+                s.PositionLow = outcome.FillPrice;
+            }
+            else
+            {
+                s.PositionHigh = Math.Max(outcome.FillPrice, bar.High);
+                s.PositionLow = Math.Min(outcome.FillPrice, bar.Low);
+            }
 
             s.Fills.Add(new BacktestFill(s.NextFillId++, order.OrderId, i, bar.Timestamp, order.Side, outcome.FillPrice, quantity, outcome.Commission, outcome.SlippageAmount));
             s.Orders[s.PendingEntryOrderIndex] = order with { Status = OrderStatus.Filled, StopActivated = outcome.StopActivated };
@@ -785,7 +853,7 @@ public sealed class BacktestEngine : IBacktestEngine, IBacktestDiagnosticEngine
         TradeSide side = s.Q > 0m ? TradeSide.Long : TradeSide.Short;
         decimal quantity = Math.Abs(s.Q);
 
-        ClosePosition(s, i, bar, side, order.OrderId, order.Side, outcome.FillPrice, quantity, outcome.Commission, outcome.SlippageAmount, isForcedLiquidation: false);
+        ClosePosition(s, i, bar, side, order.OrderId, order.Side, outcome.FillPrice, quantity, outcome.Commission, outcome.SlippageAmount, isForcedLiquidation: false, order.Type, order.Reason);
 
         s.Orders[s.PendingExitOrderIndex] = order with { Status = OrderStatus.Filled, StopActivated = outcome.StopActivated };
         s.PendingExitOrderIndex = -1;
@@ -840,15 +908,20 @@ public sealed class BacktestEngine : IBacktestEngine, IBacktestDiagnosticEngine
 
         if (conflict)
         {
-            s.Orders.Add(new BacktestOrder(s.NextOrderId++, side, req.OrderType, 0m, req.LimitPrice, req.StopPrice, OrderStatus.Rejected, req.TimeInForce, i, i + 1, false, null, RejectedReason.PositionConflict));
+            s.Orders.Add(new BacktestOrder(s.NextOrderId++, side, req.OrderType, 0m, req.LimitPrice, req.StopPrice, OrderStatus.Rejected, req.TimeInForce, i, i + 1, false, null, RejectedReason.PositionConflict) { Reason = req.Reason ?? string.Empty });
             return;
         }
 
         s.Operation = BacktestArithmeticOperation.PositionSizing;
-        decimal quantity = isEntry ? ComputeEntryQuantity(config, equity, bar.Close) : Math.Abs(s.Q);
+        decimal quantity = isEntry ? ComputeEntryQuantity(config, equity, bar.Close, req.EntrySizeRatio) : Math.Abs(s.Q);
+        if (isEntry && req.EntrySizeRatio is not null && quantity > Models.ReinforcementLearning.RlContract.MaxPositionQuantity)
+        {
+            s.Orders.Add(new BacktestOrder(s.NextOrderId++, side, req.OrderType, quantity, req.LimitPrice, req.StopPrice, OrderStatus.Rejected, req.TimeInForce, i, i + 1, false, null, RejectedReason.QuantityCapExceeded) { Reason = req.Reason ?? string.Empty });
+            return;
+        }
         if (isEntry && quantity < 1m)
         {
-            s.Orders.Add(new BacktestOrder(s.NextOrderId++, side, req.OrderType, 0m, req.LimitPrice, req.StopPrice, OrderStatus.Rejected, req.TimeInForce, i, i + 1, false, null, RejectedReason.InvalidQuantity));
+            s.Orders.Add(new BacktestOrder(s.NextOrderId++, side, req.OrderType, 0m, req.LimitPrice, req.StopPrice, OrderStatus.Rejected, req.TimeInForce, i, i + 1, false, null, RejectedReason.InvalidQuantity) { Reason = req.Reason ?? string.Empty });
             return;
         }
 
@@ -856,21 +929,22 @@ public sealed class BacktestEngine : IBacktestEngine, IBacktestDiagnosticEngine
         // (PositionConflict/InvalidQuantity) signal keeps its existing outcome.
         BacktestOrderRequestValidator.Validate(req, i);
 
-        var order = new BacktestOrder(s.NextOrderId++, side, req.OrderType, quantity, req.LimitPrice, req.StopPrice, OrderStatus.Submitted, req.TimeInForce, i, i + 1, false, null, null);
+        var order = new BacktestOrder(s.NextOrderId++, side, req.OrderType, quantity, req.LimitPrice, req.StopPrice, OrderStatus.Submitted, req.TimeInForce, i, i + 1, false, null, null) { Reason = req.Reason ?? string.Empty };
         s.Orders.Add(order);
         pendingIndex = s.Orders.Count - 1;
         if (isEntry) s.PendingEntrySide = entrySide;
     }
 
     /// <summary>Section 1.5.7 sizing, frozen at signal time using the signal bar's Close as the reference price (the actual next-bar fill price is not yet known).</summary>
-    private static decimal ComputeEntryQuantity(BacktestConfiguration config, decimal equity, decimal estimatePrice)
+    internal static decimal ComputeEntryQuantity(BacktestConfiguration config, decimal equity, decimal estimatePrice, decimal? entrySizeRatio = null)
     {
-        if (config.SizingModel == PositionSizingModel.FixedQuantity)
+        if (entrySizeRatio is < 0m or > 1m) throw new ArgumentOutOfRangeException(nameof(entrySizeRatio));
+        if (entrySizeRatio is null && config.SizingModel == PositionSizingModel.FixedQuantity)
         {
             return config.SizingParameter;
         }
 
-        decimal budget = equity * config.SizingParameter;
+        decimal budget = equity * (entrySizeRatio ?? config.SizingParameter);
         if (budget <= config.CommissionFlat) return 0m;
         decimal denominator = (estimatePrice * config.InitialMarginRatio) + config.CommissionPerUnit;
         return Math.Floor((budget - config.CommissionFlat) / denominator);

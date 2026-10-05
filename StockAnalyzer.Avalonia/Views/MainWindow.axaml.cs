@@ -47,7 +47,11 @@ public partial class MainWindow : Window
     {
         if (sender is AutoCompleteBox box && box.SelectedItem is string selectedSymbol && DataContext is MainWindowViewModel vm)
         {
-            SymbolAutoCompleteInputHelper.ApplySelectedSymbol(selectedSymbol, vm.SelectedTicker, symbol => vm.SelectedTicker = symbol);
+            // A replay updates the bound chart symbol before AutoCompleteBox confirms its match.
+            // Compare against that published symbol so this feedback does not reload ordinary history.
+            string? currentSymbol = vm.ChartViewModel.IsApplyingRlReplay || vm.ChartViewModel.HasRlPresentation
+                ? vm.ChartViewModel.Symbol : vm.SelectedTicker;
+            SymbolAutoCompleteInputHelper.ApplySelectedSymbol(selectedSymbol, currentSymbol, symbol => vm.SelectedTicker = symbol);
         }
     }
 }

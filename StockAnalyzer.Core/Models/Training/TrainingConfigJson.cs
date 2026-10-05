@@ -1,7 +1,10 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
 
 namespace StockAnalyzer.Core.Models.Training;
 
@@ -34,6 +37,44 @@ public static class TrainingConfigJson
         => JsonSerializer.Deserialize<TrainingJobConfig>(json, Options)
            ?? throw new JsonException("TrainingJobConfig JSON deserialized to null.");
 
+    /// <summary>
+    /// Job-config keys introduced after the first training package. They are written only when they differ from the
+    /// default the Python <c>JobConfig</c> assumes for an absent key, so a job that does not use them stays readable by
+    /// an older training package (which rejects unknown keys). <c>JsonIgnoreCondition.WhenWritingDefault</c> cannot
+    /// express this for the integer and list members (it compares with <c>default(T)</c>, not with the initializer).
+    /// </summary>
+    private static readonly string[] OmittedWhileDefault =
+    {
+        nameof(TrainingJobConfig.Calibration), nameof(TrainingJobConfig.EnsembleMethod),
+        nameof(TrainingJobConfig.EnsembleMembers), nameof(TrainingJobConfig.StackingBases),
+        nameof(TrainingJobConfig.StackingWeightSource),
+        nameof(TrainingJobConfig.Pretraining), nameof(TrainingJobConfig.Cpcv),
+        nameof(TrainingJobConfig.CpcvGroups), nameof(TrainingJobConfig.CpcvTestGroups),
+    };
+
+    private static void OmitNewKeysWhileDefault(JsonTypeInfo typeInfo)
+    {
+        if (typeInfo.Type != typeof(TrainingJobConfig))
+        {
+            return;
+        }
+
+        // Only the initializers of the listed members are read; the required members are placeholders that are never compared.
+        var defaults = new TrainingJobConfig
+        {
+            Symbols = Array.Empty<string>(), Architecture = string.Empty, WindowSize = 1, Horizon = 1,
+        };
+        foreach (var member in OmittedWhileDefault)
+        {
+            var wireName = JsonNamingPolicy.SnakeCaseLower.ConvertName(member);
+            var property = typeInfo.Properties.Single(p => p.Name == wireName);
+            var defaultValue = property.Get!(defaults);
+            property.ShouldSerialize = defaultValue is IReadOnlyCollection<string>
+                ? (_, value) => value is IReadOnlyCollection<string> { Count: > 0 }
+                : (_, value) => !Equals(value, defaultValue);
+        }
+    }
+
     private static JsonSerializerOptions CreateOptions()
     {
         var options = new JsonSerializerOptions
@@ -41,12 +82,19 @@ public static class TrainingConfigJson
             PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
             DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
             WriteIndented = true,
+            TypeInfoResolver = new DefaultJsonTypeInfoResolver { Modifiers = { OmitNewKeysWhileDefault } },
         };
         options.Converters.Add(new TrainingTimeframeJsonConverter());
         options.Converters.Add(new TrainingFrameworkJsonConverter());
         options.Converters.Add(new TrainingFeatureModeJsonConverter());
         options.Converters.Add(new TrainingTargetTypeJsonConverter());
         options.Converters.Add(new JsonStringEnumConverter<TrainingInitializationMode>(JsonNamingPolicy.SnakeCaseLower,
+            allowIntegerValues: false));
+        options.Converters.Add(new JsonStringEnumConverter<TrainingEnsembleMethod>(JsonNamingPolicy.SnakeCaseLower,
+            allowIntegerValues: false));
+        options.Converters.Add(new JsonStringEnumConverter<StackingWeightSource>(JsonNamingPolicy.SnakeCaseLower,
+            allowIntegerValues: false));
+        options.Converters.Add(new JsonStringEnumConverter<TrainingPretraining>(JsonNamingPolicy.SnakeCaseLower,
             allowIntegerValues: false));
         options.Converters.Add(new FeatureChannelKindJsonConverter());
         options.Converters.Add(new PriceFieldJsonConverter());

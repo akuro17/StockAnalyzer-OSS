@@ -57,7 +57,7 @@ public class PredictionService : IPredictionService, IDisposable
             string inputName, string outputName, int window, int featuresPerBar,
             PredictionFeatureMode mode, FeatureSpec? featureSpec, TargetType target,
             PredictionOutputContract? outputContract,
-            string[] classLabels, long maxTensorBytes)
+            string[] classLabels, long maxTensorBytes, ModelCalibration? calibration = null)
         {
             Session = session;
             Lease = lease;
@@ -74,6 +74,7 @@ public class PredictionService : IPredictionService, IDisposable
             OutputContract = outputContract;
             ClassLabels = classLabels;
             MaxTensorBytes = maxTensorBytes;
+            Calibration = calibration;
         }
 
         internal InferenceSession Session { get; }
@@ -91,6 +92,8 @@ public class PredictionService : IPredictionService, IDisposable
         internal PredictionOutputContract? OutputContract { get; }
         internal string[] ClassLabels { get; }
         internal long MaxTensorBytes { get; }
+        /// <summary>Generation-bound temperature calibration; null when the model declares none.</summary>
+        internal ModelCalibration? Calibration { get; }
         // Both fields are protected by _inferenceGate.
         internal int Users { get; set; }
         internal bool Retired { get; set; }
@@ -347,8 +350,21 @@ public class PredictionService : IPredictionService, IDisposable
                 _logger,
                 expectedFeatureSpecJson);
 
+            // A declared calibration reference is a contract: a missing, corrupt or mismatched sidecar fails the
+            // load; there is no fallback to uncalibrated probabilities.
+            ModelCalibration? calibration = null;
+            if (metadata.ContainsKey(ModelCalibrationContract.ReferenceKey))
+            {
+                if (target != TargetType.Classification)
+                    throw new InvalidOperationException("A calibration sidecar is defined for classification models only.");
+                calibration = ModelCalibration.Load(modelPath, metadata);
+                if (calibration.ClassOrder != string.Join(",", classLabels))
+                    throw new InvalidOperationException("Model calibration class order disagrees with the configured class labels.");
+            }
+
             var loaded = new RuntimeBundle(session, lease, fixedScaler, candidateId, inputName, outputName,
-                window, featuresPerBar, mode, featureSpec, target, outputContract, classLabels, maxTensorBytes);
+                window, featuresPerBar, mode, featureSpec, target, outputContract, classLabels, maxTensorBytes,
+                calibration);
 
             lock (_inferenceGate)
             {
@@ -915,7 +931,6 @@ public class PredictionService : IPredictionService, IDisposable
         return y;
     }
 
-    private const int MaxStackAllocClassCount = 32;
 
     private PredictionResult RunInference(RuntimeBundle runtime, float[] buffer, int featureCount)
     {
@@ -991,7 +1006,7 @@ public class PredictionService : IPredictionService, IDisposable
                 $"ONNX model produced {outputSpan.Length} output value(s) but {classCount} class label(s) are configured; the model output dimension and PredictionClassLabels must match.");
         }
 
-        Span<float> rawOutput = classCount <= MaxStackAllocClassCount ? stackalloc float[classCount] : new float[classCount];
+        Span<float> rawOutput = classCount <= IMLDataProcessor.MaxStackAllocClassCount ? stackalloc float[classCount] : new float[classCount];
         outputSpan.Slice(0, classCount).CopyTo(rawOutput);
 
         float sum = 0f;
@@ -1008,8 +1023,11 @@ public class PredictionService : IPredictionService, IDisposable
             || MathF.Abs(1.0f - sum) > IMLDataProcessor.SoftmaxSumTolerance
             || hasInvalidProbability)
             throw new InvalidOperationException("ONNX output declared class probabilities but contains invalid values.");
-        Span<float> probabilities = classCount <= MaxStackAllocClassCount ? stackalloc float[classCount] : new float[classCount];
-        rawOutput.CopyTo(probabilities);
+        Span<float> probabilities = classCount <= IMLDataProcessor.MaxStackAllocClassCount ? stackalloc float[classCount] : new float[classCount];
+        // Calibration runs after the softmax has been validated and before confidence/entropy are derived, so every
+        // downstream value (label, confidence, scores) is on the calibrated distribution.
+        if (runtime.Calibration is { IsEnabled: true } calibration) calibration.Apply(rawOutput, probabilities);
+        else rawOutput.CopyTo(probabilities);
 
         var (confidence, entropy) = _dataProcessor.ComputeConfidenceAndEntropy(probabilities);
 
@@ -1033,7 +1051,7 @@ public class PredictionService : IPredictionService, IDisposable
         return new PredictionResult(label, confidence, scores, confidence, entropy, IsFallback: false)
         {
             OutputContract = runtime.OutputContract,
-            ConfidenceType = ConfidenceType.ClassProbability,
+            ConfidenceType = runtime.Calibration is { IsEnabled: true } ? ConfidenceType.CalibratedProbability : ConfidenceType.ClassProbability,
             ConfidenceValue = confidence,
             ModelId = runtime.ModelId,
         };

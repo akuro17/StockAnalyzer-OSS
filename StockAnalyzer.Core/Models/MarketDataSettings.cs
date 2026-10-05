@@ -8,6 +8,7 @@ namespace StockAnalyzer.Core.Models;
 public class MarketDataSettings
 {
     public const string DefaultDailyDataPath = "Data/Daily";
+    public const string DefaultMetadataDataPath = "Data/Metadata";
 
     /// <summary>
     /// Base directory path for daily Parquet files.
@@ -27,7 +28,7 @@ public class MarketDataSettings
     /// <summary>
     /// Base directory path for metadata Parquet files.
     /// </summary>
-    public string? MetadataPath { get; set; } = "Data/Metadata";
+    public string? MetadataPath { get; set; } = DefaultMetadataDataPath;
 
     /// <summary>
     /// Path to the master ticker list JSON file.

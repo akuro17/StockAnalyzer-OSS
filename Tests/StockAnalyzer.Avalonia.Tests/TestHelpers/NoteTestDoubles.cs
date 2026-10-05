@@ -17,6 +17,7 @@ using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Notes;
 using StockAnalyzer.Core.Models.Portfolio;
 using StockAnalyzer.Core.Models.Screener;
+using StockAnalyzer.Core.Models.Settings;
 using StockAnalyzer.Core.Models.Watchlist;
 using StockAnalyzer.Core.Services;
 using StockAnalyzer.Core.Services.Notes;
@@ -151,6 +152,8 @@ public sealed class FakeNotesSettingsManager : INotesSettingsManager
     // the full fixture note count is displayed - keep passing unmodified. Tests that specifically
     // exercise paging/infinite-scroll behavior set this explicitly via SetTimelinePageSize.
     public int TimelinePageSize { get; private set; } = int.MaxValue;
+    public int UpcomingCatalystsLimit { get; private set; } = NotesSettingsConstants.DefaultUpcomingCatalystsLimit;
+    public int UpcomingCatalystsPastDaysRetention { get; private set; } = NotesSettingsConstants.DefaultUpcomingCatalystsPastDaysRetention;
 
     public double BodyFontSize { get; private set; } = 16.0;
     public IndicatorColor BodyTextColor { get; private set; } = IndicatorColor.FromRgb(255, 255, 255);
@@ -168,6 +171,8 @@ public sealed class FakeNotesSettingsManager : INotesSettingsManager
     public void SetConnectorLineLength(double value) { ConnectorLineLength = value; RaisePropertyChanged(nameof(ConnectorLineLength)); }
     public void SetDashLength(double value) { DashLength = value; RaisePropertyChanged(nameof(DashLength)); }
     public void SetTimelinePageSize(int value) { TimelinePageSize = value; RaisePropertyChanged(nameof(TimelinePageSize)); }
+    public void SetUpcomingCatalystsLimit(int value) { UpcomingCatalystsLimit = value; RaisePropertyChanged(nameof(UpcomingCatalystsLimit)); }
+    public void SetUpcomingCatalystsPastDaysRetention(int value) { UpcomingCatalystsPastDaysRetention = value; RaisePropertyChanged(nameof(UpcomingCatalystsPastDaysRetention)); }
     public void SetBodyFontSize(double value) { BodyFontSize = value; RaisePropertyChanged(nameof(BodyFontSize)); }
     public void SetBodyTextColor(IndicatorColor value) { BodyTextColor = value; RaisePropertyChanged(nameof(BodyTextColor)); }
     public void SetBodyBackgroundColor(IndicatorColor value) { BodyBackgroundColor = value; RaisePropertyChanged(nameof(BodyBackgroundColor)); }

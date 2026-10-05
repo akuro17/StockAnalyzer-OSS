@@ -51,36 +51,38 @@ public class BacktestConditionTreeViewTests
 
     private static string? Id(global::Avalonia.Controls.Control control) => global::Avalonia.Automation.AutomationProperties.GetAutomationId(control);
 
-    private static (BacktestIndicatorSelectionViewModel Selection, BacktestResultsView View, Window Window) Show()
+    private static (BacktestIndicatorSelectionViewModel Selection, BacktestTradingSignalView View, Window Window) Show()
     {
         var selection = new BacktestIndicatorSelectionViewModel(new EmptyCatalogProvider(), NullLocalizationService.Instance);
-        var results = new BacktestResultsViewModel(
-            NullLocalizationService.Instance,
-            new Mock<IBacktestReportExporter>().Object,
-            new Mock<IDialogService>().Object)
-        {
-            ConditionSelection = selection,
-        };
-        var view = new BacktestResultsView { DataContext = results };
+        var tradingSignal = new BacktestTradingSignalViewModel(selection.ConditionTree, selection);
+        var view = new BacktestTradingSignalView { DataContext = tradingSignal };
         var window = new Window { Content = view, Width = 1100, Height = 900 };
         window.Show();
         Render();
         return (selection, view, window);
     }
 
-    private static List<TextBlock> TextsWithId(BacktestResultsView view, string id)
+    private static List<TextBlock> TextsWithId(BacktestTradingSignalView view, string id)
         => view.GetVisualDescendants().OfType<TextBlock>().Where(t => Id(t) == id && t.IsEffectivelyVisible).ToList();
 
     [AvaloniaFact]
-    public void ThreeTreeViews_ShowTheFixedLongAndShortRoots()
+    public void SixTreeViews_ShowTheFixedLongAndShortRoots()
     {
-        (_, BacktestResultsView view, Window window) = Show();
+        (_, BacktestTradingSignalView view, Window window) = Show();
         try
         {
             var trees = view.GetVisualDescendants().OfType<TreeView>().Where(t => Id(t)?.StartsWith("Backtest_ConditionTree_") == true).ToList();
 
-            Assert.Equal(new[] { "Backtest_ConditionTree_Entry", "Backtest_ConditionTree_Exit", "Backtest_ConditionTree_Reverse" }, trees.Select(Id));
-            Assert.All(trees, tree => Assert.Equal(2, tree.GetVisualDescendants().OfType<TreeViewItem>().Count()));
+            Assert.Equal(new[]
+            {
+                "Backtest_ConditionTree_LongEntry",
+                "Backtest_ConditionTree_LongExit",
+                "Backtest_ConditionTree_ShortEntry",
+                "Backtest_ConditionTree_ShortExit",
+                "Backtest_ConditionTree_LongReverse",
+                "Backtest_ConditionTree_ShortReverse"
+            }, trees.Select(Id));
+            Assert.All(trees, tree => Assert.Equal(1, tree.GetVisualDescendants().OfType<TreeViewItem>().Count()));
             // Every root starts as an empty AND group.
             Assert.Equal(6, TextsWithId(view, "Backtest_ConditionTree_Operator_And").Count);
         }
@@ -90,7 +92,7 @@ public class BacktestConditionTreeViewTests
         }
     }
 
-    private static List<Border> GroupRows(BacktestResultsView view)
+    private static List<Border> GroupRows(BacktestTradingSignalView view)
         => view.GetVisualDescendants().OfType<Border>().Where(b => b.Classes.Contains("ConditionRow") && b.DataContext is BacktestConditionGroupViewModel).ToList();
 
     /// <summary>
@@ -101,7 +103,7 @@ public class BacktestConditionTreeViewTests
     [AvaloniaFact]
     public void EmptyLists_HaveNoRowTooltip_AndTheOwnTooltipsInsideTheRowRemain()
     {
-        (BacktestIndicatorSelectionViewModel selection, BacktestResultsView view, Window window) = Show();
+        (BacktestIndicatorSelectionViewModel selection, BacktestTradingSignalView view, Window window) = Show();
         try
         {
             List<Border> rows = GroupRows(view);
@@ -138,7 +140,7 @@ public class BacktestConditionTreeViewTests
     [AvaloniaFact]
     public void AddedLeaf_AppearsUnderItsRoot_AndTheOperatorSwitchIsShown()
     {
-        (BacktestIndicatorSelectionViewModel selection, BacktestResultsView view, Window window) = Show();
+        (BacktestIndicatorSelectionViewModel selection, BacktestTradingSignalView view, Window window) = Show();
         try
         {
             Assert.Empty(TextsWithId(view, "Backtest_ConditionTree_Leaf"));
@@ -164,7 +166,7 @@ public class BacktestConditionTreeViewTests
     [AvaloniaFact]
     public void Selection_IsSharedAcrossTheThreeTrees_AndFollowsTheViewModel()
     {
-        (BacktestIndicatorSelectionViewModel selection, BacktestResultsView view, Window window) = Show();
+        (BacktestIndicatorSelectionViewModel selection, BacktestTradingSignalView view, Window window) = Show();
         try
         {
             BacktestConditionTreeViewModel tree = selection.ConditionTree;
@@ -191,7 +193,7 @@ public class BacktestConditionTreeViewTests
     [AvaloniaFact]
     public void RowTooltips_ContainOnlyTheExpression_NoCaptionsOrExplanatoryText()
     {
-        (BacktestIndicatorSelectionViewModel selection, BacktestResultsView view, Window window) = Show();
+        (BacktestIndicatorSelectionViewModel selection, BacktestTradingSignalView view, Window window) = Show();
         try
         {
             selection.ConditionTree.TryAddLeaf(BacktestConditionSection.Entry, TradeSide.Long, Entry(PriceType.Open, PriceType.Close));
@@ -222,7 +224,7 @@ public class BacktestConditionTreeViewTests
     [AvaloniaFact]
     public void HoverTip_NeverWraps_AndItsToolTipHasNoWidthLimit()
     {
-        (BacktestIndicatorSelectionViewModel selection, BacktestResultsView view, Window window) = Show();
+        (BacktestIndicatorSelectionViewModel selection, BacktestTradingSignalView view, Window window) = Show();
         try
         {
             selection.ConditionTree.TryAddLeaf(BacktestConditionSection.Entry, TradeSide.Long, Entry(PriceType.Open, PriceType.Close));
@@ -252,7 +254,7 @@ public class BacktestConditionTreeViewTests
     [AvaloniaFact]
     public void GroupContextMenu_IsBoundToTheTreeCommands_AndExplainsADisabledAddGroup()
     {
-        (BacktestIndicatorSelectionViewModel selection, BacktestResultsView view, Window window) = Show();
+        (BacktestIndicatorSelectionViewModel selection, BacktestTradingSignalView view, Window window) = Show();
         try
         {
             BacktestConditionTreeViewModel tree = selection.ConditionTree;
@@ -323,7 +325,7 @@ public class BacktestConditionTreeViewTests
     [AvaloniaFact]
     public void RealClicks_SelectAGroup_AddALeafIntoIt_ThenDeleteTheLeaf_RemovesTheEmptiedGroup()
     {
-        (BacktestIndicatorSelectionViewModel selection, BacktestResultsView view, Window window) = Show();
+        (BacktestIndicatorSelectionViewModel selection, BacktestTradingSignalView view, Window window) = Show();
         try
         {
             BacktestConditionTreeViewModel tree = selection.ConditionTree;
@@ -366,7 +368,7 @@ public class BacktestConditionTreeViewTests
     [AvaloniaFact]
     public void ClickingTheExpandArrow_TogglesTheGroupOnce_WithoutChangingTheTreeStructure()
     {
-        (BacktestIndicatorSelectionViewModel selection, BacktestResultsView view, Window window) = Show();
+        (BacktestIndicatorSelectionViewModel selection, BacktestTradingSignalView view, Window window) = Show();
         try
         {
             BacktestConditionTreeViewModel tree = selection.ConditionTree;
@@ -402,7 +404,7 @@ public class BacktestConditionTreeViewTests
     [AvaloniaFact]
     public void RightClickOnARow_SelectsIt_WithoutTogglingItsExpansion()
     {
-        (BacktestIndicatorSelectionViewModel selection, BacktestResultsView view, Window window) = Show();
+        (BacktestIndicatorSelectionViewModel selection, BacktestTradingSignalView view, Window window) = Show();
         try
         {
             BacktestConditionTreeViewModel tree = selection.ConditionTree;
@@ -459,7 +461,7 @@ public class BacktestConditionTreeViewTests
     [AvaloniaFact]
     public void DroppingAConditionOnTheLowerHalfOfAnotherRow_MovesItBehindThatRow_AndTheIndicatorIsCleared()
     {
-        (BacktestIndicatorSelectionViewModel selection, BacktestResultsView view, Window window) = Show();
+        (BacktestIndicatorSelectionViewModel selection, BacktestTradingSignalView view, Window window) = Show();
         try
         {
             BacktestConditionTreeViewModel tree = selection.ConditionTree;
@@ -477,7 +479,7 @@ public class BacktestConditionTreeViewTests
             #pragma warning disable CS0618
             var data = new global::Avalonia.Input.DataObject();
             #pragma warning restore CS0618
-            data.Set(BacktestResultsView.ConditionLeafFormat, first);
+            data.Set(BacktestTradingSignalView.ConditionLeafFormat, first);
             Drag(window, lowerHalf, global::Avalonia.Input.Raw.RawDragEventType.DragEnter, data);
             Drag(window, lowerHalf, global::Avalonia.Input.Raw.RawDragEventType.DragOver, data);
             Assert.Contains(ConditionDragGesture.DropAfterClass, row.Classes);
@@ -500,7 +502,7 @@ public class BacktestConditionTreeViewTests
     [AvaloniaFact]
     public void DroppingAConditionOnAnotherRoot_IsNotAccepted_AndChangesNothing()
     {
-        (BacktestIndicatorSelectionViewModel selection, BacktestResultsView view, Window window) = Show();
+        (BacktestIndicatorSelectionViewModel selection, BacktestTradingSignalView view, Window window) = Show();
         try
         {
             BacktestConditionTreeViewModel tree = selection.ConditionTree;
@@ -517,7 +519,7 @@ public class BacktestConditionTreeViewTests
             #pragma warning disable CS0618
             var data = new global::Avalonia.Input.DataObject();
             #pragma warning restore CS0618
-            data.Set(BacktestResultsView.ConditionLeafFormat, entryLong.Children[0]);
+            data.Set(BacktestTradingSignalView.ConditionLeafFormat, entryLong.Children[0]);
             Drag(window, center, global::Avalonia.Input.Raw.RawDragEventType.DragEnter, data);
             Drag(window, center, global::Avalonia.Input.Raw.RawDragEventType.DragOver, data);
             Assert.DoesNotContain(ConditionDragGesture.DropInsideClass, row.Classes);
@@ -527,6 +529,38 @@ public class BacktestConditionTreeViewTests
             Assert.Single(entryLong.Children);
             Assert.Empty(entryShort.Children);
             Assert.Equal(revision, tree.Revision);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public void TradingSignalViewModel_Dispose_UnsubscribesFromSelectionPropertyChanged()
+    {
+        (BacktestIndicatorSelectionViewModel selection, BacktestTradingSignalView view, Window window) = Show();
+        try
+        {
+            var tradingSignal = (BacktestTradingSignalViewModel)view.DataContext!;
+            int propertyChangedCount = 0;
+            tradingSignal.PropertyChanged += (_, _) => propertyChangedCount++;
+
+            // PropertyChanged on selection triggers PropertyChanged on tradingSignal
+            selection.ConditionTreeSummaryText = "Custom Summary 1";
+            Assert.Equal(1, propertyChangedCount);
+            Assert.Equal("Custom Summary 1", tradingSignal.ConditionTreeSummaryText);
+
+            // Dispose tradingSignal - should unhook from selection
+            tradingSignal.Dispose();
+            tradingSignal.Dispose(); // Verify idempotency
+
+            // Mutate selection again
+            selection.ConditionTreeSummaryText = "Custom Summary 2";
+
+            // tradingSignal must not receive any updates after disposal
+            Assert.Equal(1, propertyChangedCount);
+            Assert.Equal("Custom Summary 1", tradingSignal.ConditionTreeSummaryText);
         }
         finally
         {

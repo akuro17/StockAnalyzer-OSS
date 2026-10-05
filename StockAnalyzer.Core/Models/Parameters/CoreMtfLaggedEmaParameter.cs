@@ -26,9 +26,9 @@ public class CoreMtfLaggedEmaParameter : CoreIndicatorParameterBase
     }
 
     private int _lag = 1;
-    [CoreParameterRange(0, 1000)]
+    [CoreParameterRange(1, 1000)]
     [DisplayName("Lag")]
-    [Description("Lag offset.")]
+    [Description("Lag offset (must be >= 1 to prevent lookahead bias from incomplete higher timeframe bars).")]
     public int Lag 
     { 
         get => _lag; 
@@ -41,6 +41,6 @@ public class CoreMtfLaggedEmaParameter : CoreIndicatorParameterBase
     {
         if (Period <= 0) throw new ArgumentOutOfRangeException(nameof(Period));
         if (TimeFrameMultiplier <= 0) throw new ArgumentOutOfRangeException(nameof(TimeFrameMultiplier));
-        if (Lag < 0) throw new ArgumentOutOfRangeException(nameof(Lag));
+        if (Lag < 1) throw new ArgumentOutOfRangeException(nameof(Lag), "Lag must be >= 1 to ensure completed higher-timeframe bar reference and prevent lookahead bias.");
     }
 }

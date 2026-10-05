@@ -14,6 +14,7 @@ using Xunit;
 
 namespace StockAnalyzer.Core.Tests.Services;
 
+[Collection("ChildProcess")]
 public sealed class ModelAnalysisTests : IDisposable
 {
     private readonly string _directory = Path.Combine(Path.GetTempPath(), "sa_t09_" + Guid.NewGuid().ToString("N"));
@@ -74,6 +75,37 @@ public sealed class ModelAnalysisTests : IDisposable
         File.AppendAllText(lease!.ModelPath + ".analysis.json", " ");
         await Assert.ThrowsAsync<InvalidDataException>(() => service.LoadAsync(model.ModelId));
         Assert.Equal(model.ModelId, registry.GetManifest(model.ModelId)!.ModelId);
+    }
+
+    [Fact]
+    public async Task Service_KeepsAtMostTheBoundedNumberOfSnapshots_EvictingTheLeastRecentlyUsed()
+    {
+        using var registry = new ModelGenerationRegistry(Path.Combine(_directory, "registry"));
+        var model = await registry.RegisterAsync(Source());
+        var service = new ModelAnalysisService(new CountingRegistry(registry, model.ModelId), new MLDataProcessor(), cacheCapacity: 2);
+        var a = await service.LoadAsync("alias-a");
+        var b = await service.LoadAsync("alias-b");
+        Assert.Same(a, await service.LoadAsync("alias-a")); // a is now more recent than b
+
+        await service.LoadAsync("alias-c"); // evicts b, the least recently used
+        Assert.Same(a, await service.LoadAsync("alias-a")); // still cached
+        var reloaded = await service.LoadAsync("alias-b"); // loaded and verified again
+        Assert.NotNull(reloaded);
+        Assert.NotSame(b, reloaded);
+        Assert.Equal("alias-b", reloaded!.ModelId);
+    }
+
+    [Fact]
+    public async Task Service_AppliesTheSharedGenerationBoundByDefault()
+    {
+        using var registry = new ModelGenerationRegistry(Path.Combine(_directory, "registry"));
+        var model = await registry.RegisterAsync(Source());
+        var service = new ModelAnalysisService(new CountingRegistry(registry, model.ModelId), new MLDataProcessor());
+        var first = await service.LoadAsync("alias-0");
+        for (int i = 1; i <= ModelExplanationLimits.MaxCachedGenerations; i++)
+            await service.LoadAsync("alias-" + i);
+
+        Assert.NotSame(first, await service.LoadAsync("alias-0")); // the oldest of MaxCachedGenerations + 1 loads was evicted
     }
 
     [Theory]

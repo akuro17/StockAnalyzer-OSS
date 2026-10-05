@@ -171,5 +171,19 @@ namespace StockAnalyzer.Core.Tests
             Assert.Empty(indicator.SenkouSpanB);
             Assert.Empty(indicator.ChikouSpan);
         }
+
+        [Theory]
+        [InlineData("ChikouSpan", true)]
+        [InlineData("chikouspan", true)]
+        [InlineData("TenkanSen", false)]
+        [InlineData("KijunSen", false)]
+        [InlineData("SenkouSpanA", false)]
+        [InlineData("SenkouSpanB", false)]
+        [InlineData("InvalidSeries", false)]
+        [InlineData(null, false)]
+        public void IsNonCausalSeries_CorrectlyIdentifiesChikouSpan(string? seriesName, bool expected)
+        {
+            Assert.Equal(expected, CoreIchimokuIndicator.IsNonCausalSeries(seriesName));
+        }
     }
 }

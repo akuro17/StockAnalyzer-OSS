@@ -26,8 +26,11 @@ a dataset from real parquet data and print its shape and class distribution.
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import datetime
+import fractions
 import json
+import math
 import os
 import re
 import shutil
@@ -1191,6 +1194,124 @@ def walk_forward_split_indexed(
     return splits
 
 
+# --- T13 Bagging (decisions 13-1=B, 13-2): time-series block bootstrap of the FIT indices ----------
+
+# Share of a symbol's contiguous blocks drawn (with replacement) for one bagging member.
+BAGGING_FRACTION: float = 0.8
+
+
+@dataclasses.dataclass(frozen=True)
+class BaggingSpec:
+    """One bagging member: which member of how many, the run seed, and the drawn block share."""
+    index: int
+    count: int
+    seed: int
+    fraction: float = BAGGING_FRACTION
+    # Bootstrap block length in samples; ``None`` resolves to ``bagging_block_length(window, horizon)``.
+    block_length: int | None = None
+
+    def validate(self) -> None:
+        if self.count < 1 or not 0 <= self.index < self.count:
+            raise ValueError("bagging member index must lie within the member count")
+        if type(self.seed) is not int or self.seed < 0:
+            raise ValueError("bagging seed must be a non-negative integer")
+        if not math.isfinite(self.fraction) or not 0 < self.fraction <= 1:
+            raise ValueError("bagging fraction must lie in (0, 1]")
+        if self.block_length is not None and (type(self.block_length) is not int or self.block_length < 1):
+            raise ValueError("bagging block length must be a positive integer")
+
+    def resolved_block_length(self, window: int, horizon: int) -> int:
+        return bagging_block_length(window, horizon) if self.block_length is None else self.block_length
+
+
+def bagging_block_length(window: int, horizon: int) -> int:
+    """Bootstrap block length in samples: ``window + horizon - 1`` -- the span one sliding window plus
+    its forward label covers (the same quantity :func:`resolve_purge_gap` resolves ``None`` to), so a
+    block is the shortest unit that does not split a window/label dependency chain."""
+    return resolve_purge_gap(window, horizon, None)
+
+
+def bagging_block_bootstrap(train_idx: np.ndarray, block_length: int, fraction: float,
+                            seed_key: Tuple[int, ...]) -> np.ndarray:
+    """Time-series block bootstrap of one symbol's fit indices.
+
+    ``train_idx`` is cut into consecutive blocks of ``block_length`` positions (the last may be
+    shorter). ``ceil(fraction * n_blocks)`` blocks are drawn WITH replacement, ordered by block
+    position so chronological order is preserved. Only indices already inside ``train_idx`` are
+    ever returned, so no validation, calibration or test row can enter. The generator is
+    ``SeedSequence(seed_key[0], spawn_key=seed_key[1:])`` (member, fold, symbol rank), so every
+    stream is independent of iteration order. ``ceil`` is exact (rational arithmetic).
+    """
+    indices = np.asarray(train_idx, dtype=np.int64).reshape(-1)
+    if block_length < 1:
+        raise ValueError("bagging block length must be positive")
+    if not math.isfinite(fraction) or not 0 < fraction <= 1:
+        raise ValueError("bagging fraction must lie in (0, 1]")
+    if len(seed_key) < 1 or any(type(k) is not int or k < 0 for k in seed_key):
+        raise ValueError("bagging seed key must be non-negative integers")
+    if indices.size == 0:
+        return indices
+    n_blocks = -(-indices.size // block_length)
+    draws = max(1, math.ceil(fractions.Fraction(repr(float(fraction))) * n_blocks))
+    rng = np.random.default_rng(np.random.SeedSequence(seed_key[0], spawn_key=tuple(seed_key[1:])))
+    chosen = np.sort(rng.integers(0, n_blocks, size=draws))
+    return np.concatenate([indices[b * block_length:(b + 1) * block_length] for b in chosen])
+
+
+def bagging_member_seed(run_seed: int, member: int) -> int:
+    """Per-member trainer seed (weight init / shuffling): ``SeedSequence(run_seed).spawn(M)[i]``."""
+    if type(run_seed) is not int or run_seed < 0 or member < 0:
+        raise ValueError("bagging seeds must be non-negative integers")
+    return int(np.random.SeedSequence(run_seed, spawn_key=(member,)).generate_state(1)[0])
+
+
+def add_bagging_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--bag-index", type=int, default=None,
+                        help="Bagging member index; fits on a time-series block bootstrap of its train side.")
+    parser.add_argument("--bag-count", type=int, default=None, help="Bagging member count.")
+    parser.add_argument("--bag-seed", type=int, default=None, help="Run seed the bootstrap streams derive from.")
+    parser.add_argument("--bag-fraction", type=float, default=BAGGING_FRACTION,
+                        help="Share of blocks drawn per symbol (ceil).")
+    parser.add_argument("--bag-block-length", type=int, default=None,
+                        help="Bootstrap block length in samples (default: window + horizon - 1).")
+
+
+def add_meta_segment_argument(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--meta-segment", action="store_true",
+                        help="Carve the stacking meta segment (the same time-ordered tail as --calibration) out of the outer "
+                             "train side without stamping a calibration reference (requires --outer-fold-index).")
+
+
+def holdout_segment_requested(args: argparse.Namespace) -> bool:
+    """Whether the fit/validation windows must exclude a dedicated tail segment: a calibration segment or a meta segment.
+
+    Both use the identical carve (:func:`independent_fold_data` with ``calibration=True``); only ``--calibration`` stamps the
+    calibration reference into the ONNX. getattr: hand-assembled namespaces never set either option."""
+    return bool(getattr(args, "calibration", False) or getattr(args, "meta_segment", False))
+
+
+def check_meta_segment(args: argparse.Namespace, target_type: str) -> None:
+    """``--meta-segment`` needs an independent outer fold on a classification target and excludes ``--calibration``."""
+    if getattr(args, "meta_segment", False) and (
+            args.outer_fold_index is None or target_type != "classification" or getattr(args, "calibration", False)):
+        raise SystemExit("--meta-segment requires --outer-fold-index and a classification target, and excludes --calibration")
+
+
+def bagging_from_args(args: argparse.Namespace) -> BaggingSpec | None:
+    """The bagging spec a trainer namespace asks for, or ``None``. Half-specified input is rejected."""
+    # getattr: callers that assemble a Namespace by hand (integration checks) never set the bagging options
+    given = (getattr(args, "bag_index", None), getattr(args, "bag_count", None), getattr(args, "bag_seed", None))
+    if all(value is None for value in given):
+        return None
+    if any(value is None for value in given):
+        raise ValueError("--bag-index, --bag-count and --bag-seed must be given together")
+    spec = BaggingSpec(index=given[0], count=given[1], seed=given[2],
+                       fraction=getattr(args, "bag_fraction", BAGGING_FRACTION),
+                       block_length=getattr(args, "bag_block_length", None))
+    spec.validate()
+    return spec
+
+
 def resolve_purge_gap(window: int, horizon: int, gap: int | None = None) -> int:
     """Purge margin in bars a walk-forward split drops between each fold's train
     and test blocks.
@@ -1356,6 +1477,24 @@ def _last_fold(
     return x, y, anchor_rows, train_idx, val_idx
 
 
+def _feature_start_function(feature_mode: str, feature_spec: dict | None,
+                            lags: list[int] | tuple[int, ...] | None, window: int):
+    """``anchor_row -> first source row a window anchored there reads`` (also accepts an ndarray of anchors).
+
+    Single owner of the rule: ``window - 1`` bars back, plus the deepest lag, plus one bar when a True High/Low
+    channel reads the previous close at the window's first bar.
+    """
+    max_lag = max(_effective_lags(feature_mode, feature_spec, lags), default=0)
+    previous_close = int(feature_mode == COMPOSED_FEATURES_MODE and feature_spec is not None
+                         and any(ch.get("kind") == "price" and ch.get("price") in
+                                 ("true_high", "true_low") for ch in feature_spec.get("channels", [])))
+
+    def feature_start(anchor):
+        return np.maximum(0, np.asarray(anchor) - window + 1 - max_lag - previous_close) \
+            if isinstance(anchor, np.ndarray) else max(0, anchor - window + 1 - max_lag - previous_close)
+    return feature_start
+
+
 def independent_fold_data(
     symbols: Dict[str, np.ndarray], dates: Dict[str, np.ndarray],
     *, feature_mode: str, window: int, horizon: int, threshold: float,
@@ -1363,25 +1502,25 @@ def independent_fold_data(
     feature_spec: dict | None = None, target_type: str = "classification",
     indicator_export_paths: Dict[str, str] | None = None, inner: bool = False,
     fixed_zscore: bool = False, lags: list[int] | tuple[int, ...] | None = None,
+    calibration: bool = False, calibration_out: Dict[str, np.ndarray] | None = None,
 ) -> Dict[str, Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]]:
     """Select one original outer fold, optionally splitting its train side for fitting.
 
     Each symbol keeps its original fold ID. Train labels must finish before the
     earliest test feature begins across *all* selected symbols. The same rule is
     applied to the inner validation boundary when ``inner`` is true.
+
+    ``calibration`` (requires ``inner``) first carves a calibration segment from the tail of
+    the outer train side by the same rule; the returned fit/validation pair is then taken from
+    what precedes it. The segment's sample indices are written to ``calibration_out`` (keyed by
+    symbol). With ``calibration`` false the result is exactly the legacy split.
     """
     if not symbols or fold_index < 0 or fold_index >= n_splits:
         raise ValueError("independent fold requires symbols and a valid original fold index")
+    if calibration and not inner:
+        raise ValueError("a calibration segment requires the inner fit/validation split")
     resolved_gap = resolve_purge_gap(window, horizon, gap)
-    effective_lags = _effective_lags(feature_mode, feature_spec, lags)
-    max_lag = max(effective_lags, default=0)
-    # True High/Low read the previous close at each window's first bar.
-    previous_close = int(feature_mode == COMPOSED_FEATURES_MODE and feature_spec is not None
-                         and any(ch.get("kind") == "price" and ch.get("price") in
-                                 ("true_high", "true_low") for ch in feature_spec.get("channels", [])))
-
-    def feature_start(anchor: int) -> int:
-        return max(0, anchor - window + 1 - max_lag - previous_close)
+    feature_start = _feature_start_function(feature_mode, feature_spec, lags, window)
     selected = {}
     outer_starts = []
     for sym, arr in symbols.items():
@@ -1415,25 +1554,287 @@ def independent_fold_data(
     if not inner:
         return outer
 
-    inner_candidates = {}
-    inner_starts = []
-    for sym, (x, y, anchors, train, _test) in outer.items():
-        folds = walk_forward_split_indexed(len(train), n_splits, resolved_gap)
+    sym_dates = {sym: parts[-1] for sym, parts in selected.items()}
+    inner_source = {sym: (x, y, anchors, train) for sym, (x, y, anchors, train, _test) in outer.items()}
+    if calibration:
+        # A dedicated calibration segment is the time-ordered tail of the outer train side.
+        # The fit/validation pair is then carved from what precedes it, so the calibrator never
+        # sees data the model fitted or early-stopped on, and never sees the outer test.
+        carved = _carve_tail(inner_source, sym_dates, feature_start, horizon, n_splits,
+                             resolved_gap, "calibration", "calibration")
+        if calibration_out is not None:
+            calibration_out.update({sym: tail for sym, (_x, _y, _a, _head, tail) in carved.items()})
+        inner_source = {sym: (x, y, anchors, head) for sym, (x, y, anchors, head, _tail) in carved.items()}
+    return _carve_tail(inner_source, sym_dates, feature_start, horizon, n_splits,
+                       resolved_gap, "inner validation", "inner")
+
+
+def _carve_tail(items, sym_dates, feature_start, horizon: int, n_splits: int, gap: int,
+                kind: str, short: str):
+    """Split each symbol's ordered train indices into ``(head, tail)`` with the last
+    walk-forward fold, then purge every head whose label ends at or after the earliest tail
+    feature start across *all* symbols. Shared by the inner validation boundary and the
+    calibration segment so both apply the identical rule."""
+    candidates = {}
+    starts = []
+    for sym, (x, y, anchors, train) in items.items():
+        folds = walk_forward_split_indexed(len(train), n_splits, gap)
         if not folds:
-            raise ValueError(f"selected symbol {sym!r} has no usable inner validation fold")
-        _, inner_train, inner_test = folds[-1]
-        fit, validation = train[inner_train], train[inner_test]
-        inner_starts.append(selected[sym][-1][feature_start(int(anchors[validation[0]]))])
-        inner_candidates[sym] = (x, y, anchors, fit, validation)
-    earliest_inner_start = min(inner_starts)
+            raise ValueError(f"selected symbol {sym!r} has no usable {kind} fold")
+        _, head_index, tail_index = folds[-1]
+        head, tail = train[head_index], train[tail_index]
+        starts.append(sym_dates[sym][feature_start(int(anchors[tail[0]]))])
+        candidates[sym] = (x, y, anchors, head, tail)
+    earliest_start = min(starts)
     result = {}
-    for sym, (x, y, anchors, fit, validation) in inner_candidates.items():
-        d = selected[sym][-1]
-        fit = fit[d[anchors[fit] + horizon] < earliest_inner_start]
-        if not len(fit) or not len(validation):
-            raise ValueError(f"selected symbol {sym!r} has empty purged inner fold")
-        result[sym] = (x, y, anchors, fit, validation)
+    for sym, (x, y, anchors, head, tail) in candidates.items():
+        d = sym_dates[sym]
+        head = head[d[anchors[head] + horizon] < earliest_start]
+        if not len(head) or not len(tail):
+            raise ValueError(f"selected symbol {sym!r} has empty purged {short} fold")
+        result[sym] = (x, y, anchors, head, tail)
     return result
+
+
+# --- T14 CPCV (decisions 13-16 .. 13-22): combinatorial purged cross-validation, evaluation only -------
+# A separate split strategy: it never changes ``walk_forward_split*`` or the expanding outer folds.
+
+CPCV_DEFAULT_GROUPS: int = 6
+CPCV_DEFAULT_TEST_GROUPS: int = 2
+# Safety bounds (code Limits, mirrored by C# TrainingCpcvContract): the combination count is compared against
+# the cap BEFORE it is formed, so an oversized request fails explicitly instead of being shrunk silently.
+CPCV_MAX_GROUPS: int = 20
+CPCV_MAX_COMBINATIONS: int = 45
+
+
+def cpcv_combination_count(groups: int, test_groups: int, cap: int = CPCV_MAX_COMBINATIONS) -> int:
+    """``C(groups, test_groups)`` with ``1 <= test_groups < groups``; raises once the running value would exceed ``cap``.
+
+    The running value is compared with ``cap`` after every step, so it never exceeds ``cap`` before the next
+    multiplication and every product stays below ``cap * groups`` (the C# mirror relies on this to stay inside ``long``).
+    """
+    if type(groups) is not int or type(test_groups) is not int:
+        raise ValueError("CPCV group counts must be integers")
+    if not 1 <= test_groups < groups:
+        raise ValueError("CPCV requires 1 <= test groups < groups")
+    if groups > CPCV_MAX_GROUPS:
+        raise ValueError(f"CPCV groups must not exceed {CPCV_MAX_GROUPS}")
+    k = min(test_groups, groups - test_groups)
+    count = 1
+    for i in range(1, k + 1):
+        count = count * (groups - k + i) // i
+        if count > cap:
+            raise ValueError(f"CPCV would need more than {cap} combinations; reduce the groups or test groups")
+    return count
+
+
+def cpcv_combination(groups: int, test_groups: int, index: int) -> Tuple[int, ...]:
+    """The ``index``-th test-group set in lexicographic order (0-based)."""
+    total = cpcv_combination_count(groups, test_groups)
+    if type(index) is not int or not 0 <= index < total:
+        raise ValueError("CPCV combination index is out of range")
+    chosen: List[int] = []
+    remaining = index
+    start = 0
+    for position in range(test_groups):
+        for candidate in range(start, groups):
+            block = math.comb(groups - candidate - 1, test_groups - position - 1)
+            if remaining < block:
+                chosen.append(candidate)
+                start = candidate + 1
+                break
+            remaining -= block
+    return tuple(chosen)
+
+
+@dataclasses.dataclass(frozen=True)
+class CpcvSpec:
+    """One CPCV combination: ``groups`` consecutive calendar groups, ``test_groups`` held out per combination."""
+    groups: int
+    test_groups: int
+    combination: int
+
+    def validate(self) -> None:
+        cpcv_combination(self.groups, self.test_groups, self.combination)
+
+    @property
+    def test_set(self) -> Tuple[int, ...]:
+        return cpcv_combination(self.groups, self.test_groups, self.combination)
+
+
+def cpcv_group_bounds(all_dates, groups: int) -> List[Tuple[np.datetime64, np.datetime64]]:
+    """Inclusive ``(first, last)`` calendar dates of ``groups`` consecutive groups over the common calendar.
+
+    The calendar is the sorted union of every selected symbol's dates; with ``n`` dates, ``q = n // groups`` and
+    ``r = n % groups``, the first ``r`` groups hold ``q + 1`` dates and the rest ``q`` (13-18=A: a different
+    strategy from the walk-forward split, which gives the remainder to the final fold).
+    """
+    calendar = np.unique(np.asarray(all_dates).astype("datetime64[D]"))
+    if calendar.size < groups:
+        raise ValueError("the common calendar has fewer dates than CPCV groups")
+    quotient, remainder = divmod(int(calendar.size), groups)
+    sizes = [quotient + 1 if g < remainder else quotient for g in range(groups)]
+    last = np.cumsum(sizes) - 1
+    first = last - np.asarray(sizes) + 1
+    return [(calendar[a], calendar[b]) for a, b in zip(first, last)]
+
+
+def _cpcv_group_layout(
+    symbols: Dict[str, np.ndarray], dates: Dict[str, np.ndarray], *, groups: int, feature_mode: str, window: int,
+    horizon: int, threshold: float, feature_spec: dict | None, target_type: str,
+    indicator_export_paths: Dict[str, str] | None, fixed_zscore: bool,
+    lags: list[int] | tuple[int, ...] | None, feature_start,
+):
+    """Shared group layout of every CPCV combination: ``(sym_dates, bounds, built, group_of)``.
+
+    ``built[sym]`` is ``(x, y, anchor_rows, feature_start_rows, anchor_dates, feature_dates, label_dates)`` and
+    ``group_of[sym]`` the calendar group of each window's anchor date. It is independent of the combination, so
+    :func:`cpcv_fold_data` and :func:`cpcv_group_window_counts` read the one definition.
+    """
+    if not symbols:
+        raise ValueError("CPCV requires symbols")
+    sym_dates: Dict[str, np.ndarray] = {}
+    for sym in symbols:
+        if sym not in dates:
+            raise ValueError(f"missing dates for selected symbol {sym!r}")
+        d = np.asarray(dates[sym]).astype("datetime64[D]").reshape(-1)
+        if len(d) != len(symbols[sym]) or len(d) == 0 or np.any(d[1:] <= d[:-1]):
+            raise ValueError(f"dates for {sym!r} must be non-empty, aligned and strictly increasing")
+        sym_dates[sym] = d
+    bounds = cpcv_group_bounds(np.concatenate(list(sym_dates.values())), groups)
+    group_starts = np.array([first for first, _ in bounds], dtype="datetime64[D]")
+
+    built = {}
+    for sym, arr in symbols.items():
+        d = sym_dates[sym]
+        x, y, anchors = build_dataset(
+            arr, feature_mode, window, horizon, threshold,
+            feature_spec=feature_spec, target_type=target_type, return_anchor_rows=True,
+            dates=d, indicator_export_path=(indicator_export_paths.get(sym) if indicator_export_paths else None),
+            fixed_zscore=fixed_zscore, lags=lags,
+        )
+        anchors = np.asarray(anchors, dtype=np.int64)
+        starts = np.asarray(feature_start(anchors), dtype=np.int64)
+        built[sym] = (x, y, anchors, starts, d[anchors], d[starts], d[np.minimum(anchors + horizon, len(d) - 1)])
+
+    group_of = {sym: np.searchsorted(group_starts, v[4], side="right") - 1 for sym, v in built.items()}
+    return sym_dates, bounds, built, group_of
+
+
+def cpcv_group_window_counts(
+    symbols: Dict[str, np.ndarray], dates: Dict[str, np.ndarray], *,
+    feature_mode: str, window: int, horizon: int, threshold: float, groups: int,
+    feature_spec: dict | None = None, target_type: str = "classification",
+    indicator_export_paths: Dict[str, str] | None = None,
+    fixed_zscore: bool = False, lags: list[int] | tuple[int, ...] | None = None,
+) -> List[Dict[str, object]]:
+    """Windows per CPCV calendar group, per symbol (before purge and embargo).
+
+    One entry per group ``{"group": g, "windows": n, "symbol_windows": {symbol: n}}``; a symbol without windows in a
+    group is absent from ``symbol_windows`` (the same rule :func:`cpcv_fold_data` applies to its output).
+    """
+    feature_start = _feature_start_function(feature_mode, feature_spec, lags, window)
+    _, _, _, group_of = _cpcv_group_layout(
+        symbols, dates, groups=groups, feature_mode=feature_mode, window=window, horizon=horizon,
+        threshold=threshold, feature_spec=feature_spec, target_type=target_type,
+        indicator_export_paths=indicator_export_paths, fixed_zscore=fixed_zscore, lags=lags,
+        feature_start=feature_start)
+    counts: List[Dict[str, object]] = []
+    for g in range(groups):
+        per_symbol = {sym: int((assigned == g).sum()) for sym, assigned in group_of.items()}
+        per_symbol = {sym: n for sym, n in per_symbol.items() if n > 0}
+        counts.append({"group": g, "windows": sum(per_symbol.values()), "symbol_windows": per_symbol})
+    return counts
+
+
+def cpcv_fold_data(
+    symbols: Dict[str, np.ndarray], dates: Dict[str, np.ndarray], *,
+    feature_mode: str, window: int, horizon: int, threshold: float, n_splits: int, gap: int | None,
+    spec: CpcvSpec, feature_spec: dict | None = None, target_type: str = "classification",
+    indicator_export_paths: Dict[str, str] | None = None, inner: bool = False,
+    fixed_zscore: bool = False, lags: list[int] | tuple[int, ...] | None = None,
+) -> Dict[str, Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]]:
+    """One CPCV combination: per symbol ``(x, y, anchor_rows, train_idx, test_idx)``.
+
+    * **Groups** (13-19=A): the common calendar is cut once, so every symbol shares the boundaries; a window
+      belongs to the group of its anchor date; a symbol without windows in a group is simply absent from it.
+    * **Purge** (13-20=A): each test group's *span* is ``[earliest feature date, latest label-end date]`` over
+      its windows of all symbols; a train window whose information interval ``[feature start, anchor + horizon]``
+      intersects any test span is dropped.
+    * **Embargo** (13-20=A): in bars of the symbol's own history, ``horizon`` bars after each test span.
+    * Train windows come from both sides of a test group (that is what CPCV is); the past-only rule of the
+      expanding split is therefore deliberately NOT applied here (no silent exemption: this is a different strategy).
+
+    With ``inner`` the train side is split into fit / validation with the same tail rule as the other inner splits;
+    symbols that cannot supply a fit and a validation block are left out of that split. Raises when no train or no
+    test window remains.
+    """
+    spec.validate()
+    resolved_gap = resolve_purge_gap(window, horizon, gap)
+    feature_start = _feature_start_function(feature_mode, feature_spec, lags, window)
+    test_set = spec.test_set
+    sym_dates, bounds, built, group_of = _cpcv_group_layout(
+        symbols, dates, groups=spec.groups, feature_mode=feature_mode, window=window, horizon=horizon,
+        threshold=threshold, feature_spec=feature_spec, target_type=target_type,
+        indicator_export_paths=indicator_export_paths, fixed_zscore=fixed_zscore, lags=lags,
+        feature_start=feature_start)
+    spans = []
+    for g in test_set:
+        firsts = [v[5][group_of[sym] == g].min() for sym, v in built.items() if (group_of[sym] == g).any()]
+        lasts = [v[6][group_of[sym] == g].max() for sym, v in built.items() if (group_of[sym] == g).any()]
+        if not firsts:
+            raise ValueError(f"CPCV group {g} has no windows")
+        spans.append((min(firsts), max(lasts)))
+
+    outer = {}
+    for sym, (x, y, anchors, starts, _anchor_dates, feature_dates, label_dates) in built.items():
+        d = sym_dates[sym]
+        in_test = np.isin(group_of[sym], test_set)
+        excluded = in_test.copy()
+        for span_start, span_end in spans:
+            excluded |= (feature_dates <= span_end) & (label_dates >= span_start)
+            last_row = int(np.searchsorted(d, span_end, side="right")) - 1
+            excluded |= (starts > last_row) & (starts <= last_row + horizon)
+        train = np.flatnonzero(~excluded)
+        test = np.flatnonzero(in_test)
+        outer[sym] = (x, y, anchors, train, test)
+    if not any(len(v[3]) for v in outer.values()) or not any(len(v[4]) for v in outer.values()):
+        raise ValueError("CPCV combination leaves no train or no test window after purge and embargo")
+    if not inner:
+        return {sym: v for sym, v in outer.items() if len(v[4])}
+
+    candidates = {sym: v for sym, v in outer.items() if len(v[3])}
+    while candidates:
+        items = {sym: (x, y, anchors, train) for sym, (x, y, anchors, train, _test) in candidates.items()}
+        try:
+            return _carve_tail(items, sym_dates, feature_start, horizon, n_splits, resolved_gap,
+                               "CPCV inner validation", "CPCV inner")
+        except ValueError as error:
+            failing = [sym for sym in candidates if f"selected symbol {sym!r}" in str(error)]
+            if not failing:
+                raise
+            for sym in failing:
+                del candidates[sym]
+    raise ValueError("CPCV train side is too short for an inner validation block")
+
+
+def add_cpcv_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--cpcv-groups", type=int, default=None,
+                        help="CPCV: fit one combination (groups N); evaluation-only, never published.")
+    parser.add_argument("--cpcv-test-groups", type=int, default=None, help="CPCV: test groups k per combination.")
+    parser.add_argument("--cpcv-combination", type=int, default=None, help="CPCV: 0-based combination index.")
+
+
+def cpcv_from_args(args: argparse.Namespace) -> CpcvSpec | None:
+    given = (getattr(args, "cpcv_groups", None), getattr(args, "cpcv_test_groups", None),
+             getattr(args, "cpcv_combination", None))
+    if all(value is None for value in given):
+        return None
+    if any(value is None for value in given):
+        raise ValueError("--cpcv-groups, --cpcv-test-groups and --cpcv-combination must be given together")
+    spec = CpcvSpec(groups=given[0], test_groups=given[1], combination=given[2])
+    spec.validate()
+    return spec
 
 
 def split_symbols_chronological(
@@ -1451,8 +1852,19 @@ def split_symbols_chronological(
     outer_fold_index: int | None = None,
     fixed_zscore: bool = False,
     lags: list[int] | tuple[int, ...] | None = None,
+    calibration: bool = False,
+    bagging: BaggingSpec | None = None,
+    cpcv: CpcvSpec | None = None,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Per-symbol chronological train/validation split, then pool.
+
+    ``bagging`` (T13) replaces each symbol's FIT indices by a time-series block bootstrap of
+    themselves (:func:`bagging_block_bootstrap`); validation, calibration and test indices are
+    untouched, so early stopping and every evaluation stay independent of the resample.
+
+    ``cpcv`` (T14) selects one combinatorial-purged-CV combination (:func:`cpcv_fold_data`) instead of an outer
+    fold; it excludes ``outer_fold_index`` / ``calibration`` / ``bagging`` and symbols with no usable window are
+    left out of the fit.
 
     For each symbol the sliding windows from :func:`build_dataset` are split by
     :func:`walk_forward_split` (last fold), which places the validation block
@@ -1501,10 +1913,29 @@ def split_symbols_chronological(
             threshold=threshold, n_splits=n_splits, gap=gap, fold_index=outer_fold_index,
             feature_spec=feature_spec, target_type=target_type,
             indicator_export_paths=indicator_export_paths, inner=True,
+            fixed_zscore=fixed_zscore, lags=lags, calibration=calibration,
+        )
+    elif cpcv is not None:
+        if calibration or bagging is not None:
+            raise ValueError("CPCV cannot be combined with calibration or bagging")
+        if dates is None:
+            raise ValueError("CPCV requires dates for every symbol")
+        independent = cpcv_fold_data(
+            symbols, dates, feature_mode=feature_mode, window=window, horizon=horizon,
+            threshold=threshold, n_splits=n_splits, gap=gap, spec=cpcv,
+            feature_spec=feature_spec, target_type=target_type,
+            indicator_export_paths=indicator_export_paths, inner=True,
             fixed_zscore=fixed_zscore, lags=lags,
         )
+    elif calibration:
+        raise ValueError("a calibration segment requires an independent outer fold")
+    if cpcv is not None and outer_fold_index is not None:
+        raise ValueError("CPCV cannot be combined with an outer fold")
+    if bagging is not None:
+        bagging.validate()
+    symbol_rank = {sym: rank for rank, sym in enumerate(sorted(symbols))}
     for sym, arr in symbols.items():
-        fold = independent[sym] if independent is not None else _last_fold(
+        fold = independent.get(sym) if independent is not None else _last_fold(
             arr, feature_mode, window, horizon, threshold, n_splits, resolved_gap,
             feature_spec, target_type,
             dates=dates.get(sym) if dates is not None else None,
@@ -1516,6 +1947,10 @@ def split_symbols_chronological(
         if fold is None:
             continue
         x, y, _anchor_rows, train_idx, val_idx = fold
+        if bagging is not None:
+            train_idx = bagging_block_bootstrap(
+                train_idx, bagging.resolved_block_length(window, horizon), bagging.fraction,
+                (bagging.seed, bagging.index, outer_fold_index or 0, symbol_rank[sym]))
         total_samples = _checked_cumulative_samples(
             total_samples, len(train_idx) + len(val_idx), feature_mode, fixed_zscore,
         )
@@ -1555,6 +1990,8 @@ def train_val_date_ranges(
     outer_fold_index: int | None = None,
     fixed_zscore: bool = False,
     lags: list[int] | tuple[int, ...] | None = None,
+    calibration: bool = False,
+    cpcv: CpcvSpec | None = None,
 ) -> Dict[str, str]:
     """Calendar span of the training and validation blocks of the chronological split.
 
@@ -1586,12 +2023,24 @@ def train_val_date_ranges(
             threshold=threshold, n_splits=n_splits, gap=gap, fold_index=outer_fold_index,
             feature_spec=feature_spec, target_type=target_type,
             indicator_export_paths=indicator_export_paths, inner=True,
+            fixed_zscore=fixed_zscore, lags=lags, calibration=calibration,
+        )
+    elif cpcv is not None:
+        independent = cpcv_fold_data(
+            symbols, dates, feature_mode=feature_mode, window=window, horizon=horizon,
+            threshold=threshold, n_splits=n_splits, gap=gap, spec=cpcv,
+            feature_spec=feature_spec, target_type=target_type,
+            indicator_export_paths=indicator_export_paths, inner=True,
             fixed_zscore=fixed_zscore, lags=lags,
         )
+    elif calibration:
+        raise ValueError("a calibration segment requires an independent outer fold")
 
     for sym, arr in symbols.items():
         if sym not in dates:
             raise ValueError(f"train_val_date_ranges: no dates for symbol {sym!r}")
+        if independent is not None and sym not in independent:
+            continue
         fold = independent[sym] if independent is not None else _last_fold(
             arr, feature_mode, window, horizon, threshold, n_splits, resolved_gap,
             feature_spec, target_type,
@@ -1718,7 +2167,7 @@ def build_parity_vectors(
 def _run_emit_parity(args: argparse.Namespace) -> None:
     vectors = build_parity_vectors(args.data_dir)
     path = Path(args.emit_parity_vectors)
-    path.write_text(json.dumps(vectors, indent=2), encoding="utf-8")
+    path.write_bytes(json.dumps(vectors, indent=2).encode("utf-8"))  # bytes: no CRLF translation on Windows
     names = ", ".join(v["name"] for v in vectors)
     print(f"wrote {path} ({len(vectors)} vectors: {names})")
 
@@ -2388,7 +2837,397 @@ def _run_selfcheck() -> None:
     )
     assert y_multi.dtype == np.float32 and y_multi.shape[1:] == (1,)
 
-    print("dataset.py selfcheck: OK (28 groups passed)")
+    # (25) calibration segment (T12): a time-ordered tail of the outer train side, disjoint from
+    # fit / early-stopping validation / outer test, separated from each by the purge rule; the
+    # legacy split is untouched when the flag is off.
+    cal_rows = 900
+    cal_rng = np.random.default_rng(7)
+    def _walk(base: float) -> np.ndarray:
+        p = base * np.exp(np.cumsum(cal_rng.normal(0.0, 0.01, cal_rows)))
+        a = np.empty((cal_rows, 5))
+        a[:, OPEN] = p; a[:, HIGH] = p * 1.01; a[:, LOW] = p * 0.99; a[:, CLOSE] = p
+        a[:, VOLUME] = 1_000_000.0
+        return a
+    cal_days = np.datetime64("2016-01-01") + np.arange(cal_rows).astype("timedelta64[D]")
+    cal_symbols = {"A": _walk(100.0), "B": _walk(60.0)}
+    cal_dates = {"A": cal_days, "B": cal_days.copy()}
+    cal_args = dict(feature_mode="ohlcv_minmax", window=10, horizon=3, threshold=0.005,
+                    n_splits=4, gap=None, fold_index=3)
+    legacy = independent_fold_data(cal_symbols, cal_dates, inner=True, **cal_args)
+    cal_out: Dict[str, np.ndarray] = {}
+    carved = independent_fold_data(cal_symbols, cal_dates, inner=True, calibration=True,
+                                   calibration_out=cal_out, **cal_args)
+    outer_only = independent_fold_data(cal_symbols, cal_dates, **cal_args)
+    cal_gap = resolve_purge_gap(10, 3, None)
+    for sym in cal_symbols:
+        _x, _y, anchors, fit, validation = carved[sym]
+        calib = cal_out[sym]
+        test = outer_only[sym][4]
+        assert len(fit) and len(validation) and len(calib) and len(test), sym
+        sets = [set(fit.tolist()), set(validation.tolist()), set(calib.tolist()), set(test.tolist())]
+        assert all(not (sets[i] & sets[j]) for i in range(4) for j in range(i + 1, 4)), sym
+        assert fit.max() < validation.min() and validation.max() < calib.min() and calib.max() < test.min(), sym
+        # label of the last fit/validation/calibration window ends before the next block's first feature.
+        assert anchors[fit].max() + 3 < anchors[validation].min() - 10 + 1, sym
+        assert anchors[validation].max() + 3 < anchors[calib].min() - 10 + 1, sym
+        assert anchors[calib].max() + 3 < anchors[test].min() - 10 + 1, sym
+        # the legacy inner split is unchanged and its validation reaches further than the carved one.
+        assert legacy[sym][4].max() > validation.max(), sym
+        assert np.array_equal(legacy[sym][3], independent_fold_data(
+            cal_symbols, cal_dates, inner=True, **cal_args)[sym][3]), sym
+    try:
+        independent_fold_data(cal_symbols, cal_dates, calibration=True, **cal_args)
+    except ValueError:
+        pass
+    else:  # pragma: no cover
+        raise AssertionError("calibration without the inner split must be rejected")
+    try:
+        split_symbols_chronological(cal_symbols, "ohlcv_minmax", window=10, horizon=3,
+                                    n_splits=4, dates=cal_dates, calibration=True)
+    except ValueError:
+        pass
+    else:  # pragma: no cover
+        raise AssertionError("calibration without an outer fold must be rejected")
+    x_c, y_c, x_cv, y_cv = split_symbols_chronological(
+        cal_symbols, "ohlcv_minmax", window=10, horizon=3, n_splits=4, dates=cal_dates,
+        outer_fold_index=3, calibration=True)
+    assert x_c.shape[0] == sum(len(carved[s][3]) for s in cal_symbols)
+    assert x_cv.shape[0] == sum(len(carved[s][4]) for s in cal_symbols)
+
+    # (26) bagging (T13, 13-1=B / 13-2): block bootstrap stays inside the fit indices, keeps
+    # chronological order, draws ceil(0.8 * n_blocks) blocks, is deterministic per seed key and
+    # independent between members; validation rows never change.
+    fit_indices = np.arange(100, 100 + 97, dtype=np.int64)  # 97 samples, block length 12 -> 9 blocks
+    block = bagging_block_length(10, 3)
+    assert block == 12
+    sample = bagging_block_bootstrap(fit_indices, block, BAGGING_FRACTION, (7, 0, 3, 0))
+    assert set(sample.tolist()) <= set(fit_indices.tolist())
+    n_blocks = -(-fit_indices.size // block)
+    assert n_blocks == 9
+    block_ids = (sample - 100) // block
+    assert np.all(np.diff(block_ids) >= 0), "blocks are ordered by position"
+    assert int(np.sum((sample - 100) % block == 0)) == math.ceil(0.8 * n_blocks), "one start per drawn block"
+    assert np.array_equal(sample, bagging_block_bootstrap(fit_indices, block, BAGGING_FRACTION, (7, 0, 3, 0)))
+    assert not np.array_equal(sample, bagging_block_bootstrap(fit_indices, block, BAGGING_FRACTION, (7, 1, 3, 0)))
+    assert not np.array_equal(sample, bagging_block_bootstrap(fit_indices, block, BAGGING_FRACTION, (7, 0, 4, 0)))
+    # exact ceil: 0.8 * 5 blocks is exactly 4 draws (a float product could overshoot to 5)
+    five = np.arange(60, dtype=np.int64)
+    assert len(bagging_block_bootstrap(five, 12, 0.8, (1, 0, 0, 0))) == 4 * 12
+    assert len(bagging_block_bootstrap(five, 12, 1.0, (1, 0, 0, 0))) == 5 * 12
+    assert bagging_block_bootstrap(np.empty(0, dtype=np.int64), 12, 0.8, (1,)).size == 0
+    for bad in ((0, 0.8, (1,)), (12, 0.0, (1,)), (12, 1.5, (1,)), (12, 0.8, (-1,)), (12, 0.8, ())):
+        try:
+            bagging_block_bootstrap(fit_indices, *bad)
+        except ValueError:
+            pass
+        else:  # pragma: no cover
+            raise AssertionError(f"bagging input {bad} must be rejected")
+    assert bagging_member_seed(42, 0) != bagging_member_seed(42, 1)
+    assert bagging_member_seed(42, 2) == bagging_member_seed(42, 2)
+    plain_tr, plain_ytr, plain_va, plain_yva = split_symbols_chronological(
+        cal_symbols, "ohlcv_minmax", window=10, horizon=3, n_splits=4, dates=cal_dates, outer_fold_index=3)
+    spec = BaggingSpec(index=1, count=3, seed=11)
+    bag_tr, bag_ytr, bag_va, bag_yva = split_symbols_chronological(
+        cal_symbols, "ohlcv_minmax", window=10, horizon=3, n_splits=4, dates=cal_dates, outer_fold_index=3,
+        bagging=spec)
+    assert np.array_equal(plain_va, bag_va) and np.array_equal(plain_yva, bag_yva)
+    assert bag_tr.shape[1:] == plain_tr.shape[1:] and bag_tr.shape[0] != 0
+    plain_rows = {row.tobytes() for row in plain_tr}
+    assert all(row.tobytes() in plain_rows for row in bag_tr), "bootstrap rows come from the fit side only"
+    again = split_symbols_chronological(
+        cal_symbols, "ohlcv_minmax", window=10, horizon=3, n_splits=4, dates=cal_dates, outer_fold_index=3,
+        bagging=spec)
+    assert np.array_equal(bag_tr, again[0])
+    ns = argparse.Namespace(bag_index=None, bag_count=None, bag_seed=None, bag_fraction=BAGGING_FRACTION)
+    assert bagging_from_args(ns) is None
+    ns.bag_index, ns.bag_count = 1, 3
+    try:
+        bagging_from_args(ns)
+    except ValueError:
+        pass
+    else:  # pragma: no cover
+        raise AssertionError("half-specified bagging must be rejected")
+    ns.bag_seed = 5
+    assert bagging_from_args(ns) == BaggingSpec(1, 3, 5, BAGGING_FRACTION)
+    # tunable block length and fraction (default W+H-1 / 0.8 unchanged): validated, carried by the spec, and used by the split
+    assert BaggingSpec(0, 2, 1).resolved_block_length(10, 3) == 12
+    assert BaggingSpec(0, 2, 1, block_length=24).resolved_block_length(10, 3) == 24
+    for bad_block in (0, -3, 1.5, True):
+        try:
+            BaggingSpec(0, 2, 1, block_length=bad_block).validate()
+        except ValueError:
+            pass
+        else:  # pragma: no cover
+            raise AssertionError(f"bagging block length {bad_block!r} must be rejected")
+    ns.bag_block_length, ns.bag_fraction = 24, 0.5
+    assert bagging_from_args(ns) == BaggingSpec(1, 3, 5, 0.5, 24)
+    wide_tr = split_symbols_chronological(
+        cal_symbols, "ohlcv_minmax", window=10, horizon=3, n_splits=4, dates=cal_dates, outer_fold_index=3,
+        bagging=BaggingSpec(1, 3, 11, 0.8, 48))[0]
+    assert wide_tr.shape[1:] == plain_tr.shape[1:] and not np.array_equal(wide_tr, bag_tr), "the block length reaches the split"
+    half_tr = split_symbols_chronological(
+        cal_symbols, "ohlcv_minmax", window=10, horizon=3, n_splits=4, dates=cal_dates, outer_fold_index=3,
+        bagging=BaggingSpec(1, 3, 11, 0.5))[0]
+    assert half_tr.shape[0] < bag_tr.shape[0], "a smaller fraction draws fewer blocks"
+
+    # (27) CPCV counting (13-16 / 13-21): C(N, k) with the cap compared before the value forms; the
+    # combination count is asserted separately from any path notion (none is constructed -- 13-17=B).
+    import itertools
+    assert [cpcv_combination_count(*nk) for nk in ((6, 2), (6, 3), (10, 2), (7, 2), (5, 1), (3, 2))] == [15, 20, 45, 21, 5, 3]
+    for nk in ((10, 3), (12, 2), (20, 10), (CPCV_MAX_GROUPS + 1, 1)):
+        try:
+            cpcv_combination_count(*nk)
+        except ValueError:
+            pass
+        else:  # pragma: no cover
+            raise AssertionError(f"CPCV request {nk} must be rejected")
+    for nk in ((6, 0), (6, 6), (6, 7), (6, -1), (1, 1), (0, 0), (6.0, 2), (6, True)):
+        try:
+            cpcv_combination_count(*nk)
+        except ValueError:
+            pass
+        else:  # pragma: no cover
+            raise AssertionError(f"CPCV request {nk} must be rejected")
+    assert cpcv_combination_count(10, 3, cap=120) == 120
+    try:
+        cpcv_combination_count(10, 3, cap=119)
+    except ValueError:
+        pass
+    else:  # pragma: no cover
+        raise AssertionError("the cap boundary must reject one below the count")
+    for groups, k in ((6, 2), (6, 3), (5, 1), (7, 2)):
+        listed = list(itertools.combinations(range(groups), k))
+        assert [cpcv_combination(groups, k, i) for i in range(len(listed))] == listed
+        per_group = [sum(g in c for c in listed) for g in range(groups)]
+        assert per_group == [math.comb(groups - 1, k - 1)] * groups  # every group is tested equally often
+    for bad_index in (-1, 15, 1.5):
+        try:
+            cpcv_combination(6, 2, bad_index)
+        except ValueError:
+            pass
+        else:  # pragma: no cover
+            raise AssertionError("combination index out of range must be rejected")
+
+    # (28) CPCV groups: common calendar, remainder to the FIRST groups (13-18=A), shared boundaries for every symbol
+    union = np.datetime64("2020-01-01") + np.arange(10).astype("timedelta64[D]")
+    spans = cpcv_group_bounds(union, 4)
+    assert [int((b - a).astype(int)) + 1 for a, b in spans] == [3, 3, 2, 2]
+    assert spans[0][0] == union[0] and spans[-1][1] == union[-1] and spans[1][0] == union[3]
+    late = np.concatenate([union[:5], union[3:]])  # duplicates collapse: the calendar is a union
+    assert cpcv_group_bounds(late, 4) == spans
+    try:
+        cpcv_group_bounds(union[:3], 4)
+    except ValueError:
+        pass
+    else:  # pragma: no cover
+        raise AssertionError("fewer calendar dates than groups must be rejected")
+
+    # (29) CPCV purge + embargo + train on both sides of the test groups, on two symbols (B lists late)
+    c_args = dict(feature_mode="ohlcv_minmax", window=10, horizon=3, threshold=0.005, n_splits=4, gap=None)
+    late_symbols = {"A": cal_symbols["A"], "B": cal_symbols["B"][300:]}
+    late_dates = {"A": cal_dates["A"], "B": cal_dates["B"][300:]}
+    spec = CpcvSpec(groups=6, test_groups=2, combination=3)  # test groups (0, 4)
+    assert spec.test_set == (0, 4)
+    selection = cpcv_fold_data(late_symbols, late_dates, spec=spec, **c_args)
+    boundaries = cpcv_group_bounds(np.concatenate(list(late_dates.values())), 6)
+    first_starts = np.array([a for a, _ in boundaries], dtype="datetime64[D]")
+    feature_start = _feature_start_function("ohlcv_minmax", None, None, 10)
+    test_spans = []
+    for g in spec.test_set:
+        rows = []
+        for sym in selection:
+            _x, _y, anchors, _train, test = selection[sym]
+            dd = np.asarray(late_dates[sym]).astype("datetime64[D]")
+            gid = np.searchsorted(first_starts, dd[anchors[test]], side="right") - 1
+            if (gid == g).any():
+                rows.append((dd[feature_start(anchors[test][gid == g])].min(),
+                             dd[np.minimum(anchors[test][gid == g] + 3, len(dd) - 1)].max()))
+        test_spans.append((min(r[0] for r in rows), max(r[1] for r in rows)))
+    for sym, (_x, _y, anchors, train, test) in selection.items():
+        dd = np.asarray(late_dates[sym]).astype("datetime64[D]")
+        assert not set(train.tolist()) & set(test.tolist()), sym
+        gid_test = np.searchsorted(first_starts, dd[anchors[test]], side="right") - 1
+        assert set(gid_test.tolist()) <= set(spec.test_set), sym
+        gid_train = np.searchsorted(first_starts, dd[anchors[train]], side="right") - 1
+        assert not set(gid_train.tolist()) & set(spec.test_set), sym
+        for span_start, span_end in test_spans:
+            f_dates = dd[feature_start(anchors[train])]
+            l_dates = dd[np.minimum(anchors[train] + 3, len(dd) - 1)]
+            assert not np.any((f_dates <= span_end) & (l_dates >= span_start)), "purge leaves no overlapping window"
+            last_row = int(np.searchsorted(dd, span_end, side="right")) - 1
+            fs = feature_start(anchors[train])
+            assert not np.any((fs > last_row) & (fs <= last_row + 3)), "embargo of `horizon` bars after the test span"
+    # train windows exist on both sides of the later test group (that is what CPCV is)
+    gid_a = np.searchsorted(first_starts, np.asarray(late_dates["A"]).astype("datetime64[D]")[selection["A"][2][selection["A"][3]]],
+                            side="right") - 1
+    assert (gid_a > 4).any() and ((gid_a > 0) & (gid_a < 4)).any()
+    # B lists late: it has windows only in the later groups, so it never tests in group 0 (13-19=A)
+    gid_b_test = np.searchsorted(first_starts, np.asarray(late_dates["B"]).astype("datetime64[D]")[
+        selection["B"][2][selection["B"][4]]], side="right") - 1
+    assert set(gid_b_test.tolist()) == {4}
+    # per-group window counts reuse the same group layout: they partition each symbol's windows, a symbol without
+    # windows in a group is absent from it, and the test windows of a combination match the counted groups
+    counts = cpcv_group_window_counts(
+        late_symbols, late_dates, groups=6,
+        **{k: v for k, v in c_args.items() if k in ("feature_mode", "window", "horizon", "threshold")})
+    assert [c["group"] for c in counts] == list(range(6))
+    for sym, arr in late_symbols.items():
+        _x, _y, all_anchors = build_dataset(arr, "ohlcv_minmax", 10, 3, 0.005, return_anchor_rows=True,
+                                            dates=late_dates[sym])
+        assert sum(c["symbol_windows"].get(sym, 0) for c in counts) == len(all_anchors), sym
+    assert all(c["windows"] == sum(c["symbol_windows"].values()) for c in counts)
+    assert "B" not in counts[0]["symbol_windows"] and "A" in counts[0]["symbol_windows"]
+    assert all(n > 0 for c in counts for n in c["symbol_windows"].values())
+    for sym in selection:
+        assert len(selection[sym][4]) == sum(counts[g]["symbol_windows"].get(sym, 0) for g in spec.test_set), sym
+
+    # inner split: fit / validation are disjoint subsets of the train side, validation later than fit
+    inner = cpcv_fold_data(cal_symbols, cal_dates, spec=CpcvSpec(6, 2, 7), inner=True, **c_args)
+    outer = cpcv_fold_data(cal_symbols, cal_dates, spec=CpcvSpec(6, 2, 7), **c_args)
+    for sym in cal_symbols:
+        _x, _y, anchors, fit, validation = inner[sym]
+        train = set(outer[sym][3].tolist())
+        assert len(fit) and len(validation) and set(fit.tolist()) | set(validation.tolist()) <= train
+        assert not set(fit.tolist()) & set(validation.tolist()) and fit.max() < validation.min()
+        assert not set(validation.tolist()) & set(outer[sym][4].tolist())
+
+    # (30) CPCV through the trainer split + argparse helpers; exclusivity is explicit
+    x_f, y_f, x_v, y_v = split_symbols_chronological(
+        cal_symbols, "ohlcv_minmax", window=10, horizon=3, n_splits=4, dates=cal_dates, cpcv=CpcvSpec(6, 2, 7))
+    assert x_f.shape[0] == sum(len(inner[s][3]) for s in inner) and x_v.shape[0] == sum(len(inner[s][4]) for s in inner)
+    ranges = train_val_date_ranges(cal_symbols, cal_dates, feature_mode="ohlcv_minmax", window=10, horizon=3,
+                                   n_splits=4, cpcv=CpcvSpec(6, 2, 7))
+    assert ranges[DATE_RANGE_KEYS[0]] and ranges[DATE_RANGE_KEYS[2]]
+    for extra in (dict(outer_fold_index=3), dict(calibration=True), dict(bagging=BaggingSpec(0, 2, 1))):
+        try:
+            split_symbols_chronological(cal_symbols, "ohlcv_minmax", window=10, horizon=3, n_splits=4,
+                                        dates=cal_dates, cpcv=CpcvSpec(6, 2, 7), **extra)
+        except ValueError:
+            pass
+        else:  # pragma: no cover
+            raise AssertionError(f"CPCV with {list(extra)} must be rejected")
+    try:
+        split_symbols_chronological(cal_symbols, "ohlcv_minmax", window=10, horizon=3, n_splits=4, cpcv=CpcvSpec(6, 2, 7))
+    except ValueError:
+        pass
+    else:  # pragma: no cover
+        raise AssertionError("CPCV needs dates")
+    cp = argparse.Namespace(cpcv_groups=None, cpcv_test_groups=None, cpcv_combination=None)
+    assert cpcv_from_args(cp) is None and cpcv_from_args(argparse.Namespace()) is None
+    cp.cpcv_groups = 6
+    try:
+        cpcv_from_args(cp)
+    except ValueError:
+        pass
+    else:  # pragma: no cover
+        raise AssertionError("half-specified CPCV must be rejected")
+    cp.cpcv_test_groups, cp.cpcv_combination = 2, 14
+    assert cpcv_from_args(cp) == CpcvSpec(6, 2, 14)
+    cp.cpcv_combination = 15
+    try:
+        cpcv_from_args(cp)
+    except ValueError:
+        pass
+    else:  # pragma: no cover
+        raise AssertionError("combination index beyond C(N, k) must be rejected")
+
+    # (31) CPCV temporality property: on random irregular calendars of three symbols with different spans, EVERY combination
+    # keeps every train window's information interval clear of every test span (purge), leaves `horizon` bars after each
+    # span out (embargo), never lets a train window sit in a test group, and the test windows are exactly the counted ones.
+    prop_horizon, prop_window = 4, 8
+    prop_args = dict(feature_mode="ohlcv_minmax", window=prop_window, horizon=prop_horizon, threshold=0.005,
+                     n_splits=4, gap=None)
+    prop_feature_start = _feature_start_function("ohlcv_minmax", None, None, prop_window)
+    checked, two_sided = 0, 0
+    for prop_seed in range(6):
+        prop_rng = np.random.default_rng(500 + prop_seed)
+        prop_symbols, prop_dates = {}, {}
+        for name in ("P", "Q", "R"):
+            rows = int(prop_rng.integers(260, 420))
+            steps = prop_rng.integers(1, 4, size=rows)  # irregular calendar: 1..3 days between bars
+            start = np.datetime64("2018-01-01") + np.timedelta64(int(prop_rng.integers(0, 90)), "D")
+            prop_dates[name] = start + np.cumsum(steps).astype("timedelta64[D]")
+            walk = 50.0 * np.exp(np.cumsum(prop_rng.normal(0.0, 0.012, rows)))
+            block = np.empty((rows, 5))
+            block[:, OPEN] = walk; block[:, HIGH] = walk * 1.01; block[:, LOW] = walk * 0.99; block[:, CLOSE] = walk
+            block[:, VOLUME] = 1_000_000.0
+            prop_symbols[name] = block
+        union = np.concatenate(list(prop_dates.values()))
+        for groups_n, test_n in ((4, 1), (5, 2), (6, 2), (6, 3)):
+            counts_all = cpcv_group_window_counts(
+                prop_symbols, prop_dates, groups=groups_n,
+                feature_mode="ohlcv_minmax", window=prop_window, horizon=prop_horizon, threshold=0.005)
+            first_days = np.array([a for a, _ in cpcv_group_bounds(union, groups_n)], dtype="datetime64[D]")
+            for combination in range(cpcv_combination_count(groups_n, test_n)):
+                spec_i = CpcvSpec(groups_n, test_n, combination)
+                try:
+                    chosen = cpcv_fold_data(prop_symbols, prop_dates, spec=spec_i, **prop_args)
+                except ValueError:
+                    continue  # a combination may leave no train or no test window; that is an explicit failure, not a leak
+                checked += 1
+                test_set = spec_i.test_set
+                spans = []
+                for g in test_set:
+                    firsts, lasts = [], []
+                    for sym, (_x, _y, anchors, _train, test) in chosen.items():
+                        d = np.asarray(prop_dates[sym]).astype("datetime64[D]")
+                        group_ids = np.searchsorted(first_days, d[anchors[test]], side="right") - 1
+                        in_group = anchors[test][group_ids == g]
+                        if in_group.size:
+                            firsts.append(d[prop_feature_start(in_group)].min())
+                            lasts.append(d[np.minimum(in_group + prop_horizon, len(d) - 1)].max())
+                    spans.append((min(firsts), max(lasts)))
+                for sym, (_x, _y, anchors, train, test) in chosen.items():
+                    d = np.asarray(prop_dates[sym]).astype("datetime64[D]")
+                    assert not set(train.tolist()) & set(test.tolist())
+                    train_groups = np.searchsorted(first_days, d[anchors[train]], side="right") - 1
+                    assert not set(train_groups.tolist()) & set(test_set), "no train window sits inside a test group"
+                    feature_dates = d[prop_feature_start(anchors[train])]
+                    label_dates = d[np.minimum(anchors[train] + prop_horizon, len(d) - 1)]
+                    starts = prop_feature_start(anchors[train])
+                    for span_start, span_end in spans:
+                        assert not np.any((feature_dates <= span_end) & (label_dates >= span_start)), "purge"
+                        last_row = int(np.searchsorted(d, span_end, side="right")) - 1
+                        assert not np.any((starts > last_row) & (starts <= last_row + prop_horizon)), "embargo"
+                    if train.size and test.size and (train_groups.min() < min(test_set) < train_groups.max()
+                                                     or train_groups.min() < max(test_set) < train_groups.max()):
+                        two_sided += 1
+                    assert len(test) == sum(counts_all[g]["symbol_windows"].get(sym, 0) for g in test_set), (sym, test_set)
+    assert checked >= 100, checked  # the property was exercised on many combinations, not vacuously
+    assert two_sided >= 1, "some combination trains on both sides of a test group (that is what CPCV is)"
+
+    # (36) the stacking meta segment is the calibration carve: the flags select the same holdout, only --calibration stamps a ref
+    def namespace(**kwargs):
+        defaults = dict(calibration=False, meta_segment=False, outer_fold_index=2)
+        return argparse.Namespace(**{**defaults, **kwargs})
+
+    assert not holdout_segment_requested(namespace())
+    assert holdout_segment_requested(namespace(calibration=True)) and holdout_segment_requested(namespace(meta_segment=True))
+    assert not holdout_segment_requested(argparse.Namespace())  # a hand-assembled namespace sets neither option
+    check_meta_segment(namespace(meta_segment=True), "classification")
+    check_meta_segment(namespace(), "regression")  # nothing requested: nothing to check
+    for bad_meta in (namespace(meta_segment=True, outer_fold_index=None), namespace(meta_segment=True, calibration=True)):
+        try:
+            check_meta_segment(bad_meta, "classification")
+        except SystemExit:
+            pass
+        else:  # pragma: no cover
+            raise AssertionError("an unsupported --meta-segment combination must be rejected")
+    try:
+        check_meta_segment(namespace(meta_segment=True), "regression")
+    except SystemExit:
+        pass
+    else:  # pragma: no cover
+        raise AssertionError("--meta-segment needs a classification target")
+    meta_parser = argparse.ArgumentParser()
+    add_meta_segment_argument(meta_parser)
+    assert meta_parser.parse_args([]).meta_segment is False and meta_parser.parse_args(["--meta-segment"]).meta_segment is True
+    # same carve as the calibration segment: the meta tail is disjoint from fit / validation and from the outer test
+    meta_out: Dict[str, np.ndarray] = {}
+    meta_selected = independent_fold_data(cal_symbols, cal_dates, inner=True, calibration=True, calibration_out=meta_out, **cal_args)
+    for sym, (_x, _y, _a, fit_idx, val_idx) in meta_selected.items():
+        assert not set(meta_out[sym].tolist()) & (set(fit_idx.tolist()) | set(val_idx.tolist())) and len(meta_out[sym])
+    print("dataset.py selfcheck: OK (36 groups passed)")
 
 
 def _run_build(args: argparse.Namespace) -> None:

@@ -57,7 +57,10 @@ internal static class BacktestMetricGroupBuilder
     private const string TwoDecimalsFormat = "F2";
     private const string WholeNumberFormat = "F0";
 
-    public static ImmutableArray<BacktestMetricGroupPresentation> Build(BacktestReport report, ILocalizationService localization)
+    public static ImmutableArray<BacktestMetricGroupPresentation> Build(
+        BacktestReport report,
+        ILocalizationService localization,
+        IReadOnlySet<string>? visibleMetricNames = null)
     {
         ArgumentNullException.ThrowIfNull(report);
         ArgumentNullException.ThrowIfNull(localization);
@@ -74,7 +77,9 @@ internal static class BacktestMetricGroupBuilder
             ImmutableArray<BacktestMetricDisplayRow>.Builder rows = ImmutableArray.CreateBuilder<BacktestMetricDisplayRow>();
             foreach (BacktestMetricDefinition definition in BacktestMetricCatalog.Definitions)
             {
-                if (definition.Group != group || definition.Select(report) is not { } metric) continue;
+                if (definition.Group != group) continue;
+                if (visibleMetricNames != null && !visibleMetricNames.Contains(definition.Name)) continue;
+                if (definition.Select(report) is not { } metric) continue;
                 rows.Add(BuildRow(definition, metric, report, localization));
             }
 
@@ -87,6 +92,104 @@ internal static class BacktestMetricGroupBuilder
         }
 
         return groups.ToImmutable();
+    }
+
+    /// <summary>
+    /// Builds placeholder metric groups for pre-run state: all catalog groups and definitions are populated
+    /// with placeholder value ("-") in Neutral semantic, allowing users to see all available metric items
+    /// and their definitions before executing a run.
+    /// </summary>
+    public static ImmutableArray<BacktestMetricGroupPresentation> BuildPlaceholder(
+        ILocalizationService localization,
+        IReadOnlySet<string>? visibleMetricNames = null)
+    {
+        ArgumentNullException.ThrowIfNull(localization);
+
+        ImmutableArray<BacktestMetricGroupPresentation>.Builder groups = ImmutableArray.CreateBuilder<BacktestMetricGroupPresentation>();
+        foreach (BacktestMetricGroup group in BacktestMetricCatalog.Groups)
+        {
+            ImmutableArray<BacktestMetricDisplayRow>.Builder rows = ImmutableArray.CreateBuilder<BacktestMetricDisplayRow>();
+            foreach (BacktestMetricDefinition definition in BacktestMetricCatalog.Definitions)
+            {
+                if (definition.Group != group) continue;
+                if (visibleMetricNames != null && !visibleMetricNames.Contains(definition.Name)) continue;
+                string? definitionText = definition.HasDefinitionTooltip ? localization.GetString(TooltipKeyPrefix + definition.Name) : null;
+                rows.Add(new BacktestMetricDisplayRow
+                {
+                    LabelKey = LabelKeyPrefix + definition.Name,
+                    ValueText = "-",
+                    TooltipText = definitionText,
+                    Status = MetricStatus.NotApplicable,
+                    Semantic = BacktestMetricSemantic.Neutral,
+                    IsLowerBound = false,
+                    ConfidenceIntervalText = null,
+                });
+            }
+
+            if (rows.Count == 0) continue;
+            groups.Add(new BacktestMetricGroupPresentation
+            {
+                GroupKey = BacktestMetricCatalog.GroupKey(group),
+                Rows = rows.ToImmutable(),
+            });
+        }
+
+        return groups.ToImmutable();
+    }
+
+    /// <summary>
+    /// Filters the given metric groups to include only rows whose metric names are present in <paramref name="visibleMetricNames"/>,
+    /// retaining the exact same row object instances as <paramref name="groups"/> and omitting empty groups.
+    /// When <paramref name="visibleMetricNames"/> is ordered, groups and rows are ordered according to the sequence in <paramref name="visibleMetricNames"/>.
+    /// </summary>
+    public static ImmutableArray<BacktestMetricGroupPresentation> FilterGroups(
+        ImmutableArray<BacktestMetricGroupPresentation> groups,
+        IEnumerable<string>? visibleMetricNames)
+    {
+        if (visibleMetricNames == null) return groups;
+
+        var rowMap = new Dictionary<string, (string GroupKey, BacktestMetricDisplayRow Row)>(StringComparer.OrdinalIgnoreCase);
+        foreach (BacktestMetricGroupPresentation group in groups)
+        {
+            foreach (BacktestMetricDisplayRow row in group.Rows)
+            {
+                if (row.LabelKey.StartsWith(LabelKeyPrefix, StringComparison.Ordinal))
+                {
+                    string metricName = row.LabelKey.Substring(LabelKeyPrefix.Length);
+                    rowMap[metricName] = (group.GroupKey, row);
+                }
+            }
+        }
+
+        var groupRows = new Dictionary<string, List<BacktestMetricDisplayRow>>(StringComparer.Ordinal);
+        var groupOrder = new List<string>();
+        var seenMetrics = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (string name in visibleMetricNames)
+        {
+            if (seenMetrics.Add(name) && rowMap.TryGetValue(name, out var item))
+            {
+                if (!groupRows.TryGetValue(item.GroupKey, out var list))
+                {
+                    list = new List<BacktestMetricDisplayRow>();
+                    groupRows[item.GroupKey] = list;
+                    groupOrder.Add(item.GroupKey);
+                }
+                list.Add(item.Row);
+            }
+        }
+
+        ImmutableArray<BacktestMetricGroupPresentation>.Builder result = ImmutableArray.CreateBuilder<BacktestMetricGroupPresentation>();
+        foreach (string groupKey in groupOrder)
+        {
+            result.Add(new BacktestMetricGroupPresentation
+            {
+                GroupKey = groupKey,
+                Rows = groupRows[groupKey].ToImmutableArray(),
+            });
+        }
+
+        return result.ToImmutable();
     }
 
     /// <summary>
@@ -142,6 +245,7 @@ internal static class BacktestMetricGroupBuilder
         string? definitionText = BuildDefinitionText(definition, report, localization);
         string? confidenceInterval = definition.ShowsConfidenceInterval ? BuildConfidenceIntervalText(report, localization) : null;
 
+        string? valueText = null;
         if (metric.Status != MetricStatus.Valid || metric.Value is not { } value)
         {
             return new BacktestMetricDisplayRow
@@ -157,12 +261,17 @@ internal static class BacktestMetricGroupBuilder
         }
 
         bool isLowerBound = definition.IsRightCensored?.Invoke(report) == true;
-        string valueText = FormatValue(definition.Format, value);
+        valueText = FormatValue(definition.Format, value);
         string? tooltip = definitionText;
         if (isLowerBound)
         {
             valueText = localization.GetFormattedString(LowerBoundTemplateKey, LowerBoundFallbackFormat, valueText);
             tooltip = Join(tooltip, localization.GetString(LowerBoundTooltipKey));
+        }
+
+        if (report.AnnualizedSortinoAutocorrelationAdjustedConfidenceInterval is not null && !string.IsNullOrEmpty(confidenceInterval))
+        {
+            valueText = $"{valueText} {confidenceInterval}";
         }
 
         return new BacktestMetricDisplayRow

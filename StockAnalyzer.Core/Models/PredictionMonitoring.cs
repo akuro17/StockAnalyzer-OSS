@@ -13,7 +13,7 @@ public sealed record MonitoredPrediction(string PredictionId, string ModelId, st
 
 public sealed record PredictionOutcomeRevision(long Revision, string SourceRevision,
     PredictionOutcomeState State, DateTimeOffset ObservedUtc, DateTimeOffset? LabelEndUtc = null,
-    string? ActualLabel = null, string? Error = null, string? DatasetRevision = null);
+    string? ActualLabel = null, string? Error = null, string? DatasetRevision = null, string? PendingReason = null);
 
 public sealed record PredictionAuditRecord(int SchemaVersion, MonitoredPrediction Prediction,
     ImmutableArray<PredictionOutcomeRevision> Outcomes);

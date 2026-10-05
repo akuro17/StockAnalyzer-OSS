@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using StockAnalyzer.Core.Common;
 
 namespace StockAnalyzer.Core.Models.Training;
 
@@ -9,8 +10,10 @@ public static class TrainingCheckpointContract
 {
     public const int SchemaVersion = 1;
     public const string LineageKey = "com.stockanalyzer.training.lineage";
-    public static bool IsHash(string? value) => value is not null
-        && Regex.IsMatch(value, @"\A[0-9a-f]{64}\z", RegexOptions.CultureInvariant);
+
+    /// <summary>Directory under the training artifacts that holds every run's native checkpoints (mirror of <c>checkpoints.DIRECTORY_NAME</c>).</summary>
+    public const string DirectoryName = "checkpoints";
+    public static bool IsHash(string? value) => ContentHash.IsLowerHex64(value);
     public static bool IsModulePath(string value) => Regex.IsMatch(value,
         @"\A[A-Za-z_][A-Za-z0-9_]*(?:\.(?:[A-Za-z_][A-Za-z0-9_]*|[0-9]+))*\z", RegexOptions.CultureInvariant);
 

@@ -72,7 +72,7 @@ public enum BacktestRunState
 /// <see cref="CancelBacktestCommand"/>'s CanExecute gate: once a commit has already flipped <see cref="State"/>
 /// away from Running/Cancelling, Cancel can no longer execute.
 /// </summary>
-public partial class BacktestWindowViewModel : ViewModelBase
+public partial class BacktestWindowViewModel : ViewModelBase, IDisposable
 {
     private readonly IBacktestRunPreparationService _runPreparationService;
     private readonly IBacktestEngine _engine;
@@ -95,6 +95,8 @@ public partial class BacktestWindowViewModel : ViewModelBase
     private CancellationTokenSource? _cts;
 
     public BacktestIndicatorSelectionViewModel IndicatorSelection { get; }
+
+    public BacktestTradingSignalViewModel TradingSignal { get; }
 
     public BacktestResultsViewModel Results { get; }
 
@@ -220,7 +222,8 @@ public partial class BacktestWindowViewModel : ViewModelBase
         BacktestIndicatorSelectionViewModel indicatorSelection,
         BacktestResultsViewModel results,
         IBacktestDefaultSettingsManager? defaultSettingsManager = null,
-        IBacktestEvaluationService? evaluationService = null)
+        IBacktestEvaluationService? evaluationService = null,
+        BacktestTradingSignalViewModel? tradingSignal = null)
     {
         _defaultSettingsManager = defaultSettingsManager;
         _runPreparationService = runPreparationService ?? throw new ArgumentNullException(nameof(runPreparationService));
@@ -234,6 +237,7 @@ public partial class BacktestWindowViewModel : ViewModelBase
         IndicatorSelection = indicatorSelection ?? throw new ArgumentNullException(nameof(indicatorSelection));
         Results = results ?? throw new ArgumentNullException(nameof(results));
         Results.ConditionSelection = IndicatorSelection;
+        TradingSignal = tradingSignal ?? new BacktestTradingSignalViewModel(IndicatorSelection.ConditionTree, IndicatorSelection);
 
         ApplyBuiltInDefaults();
         StateDisplayText = string.Empty;
@@ -773,6 +777,22 @@ public partial class BacktestWindowViewModel : ViewModelBase
         lock (_ctsGate)
         {
             _cts?.Cancel();
+        }
+    }
+
+    private bool _disposed;
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+
+        OnWindowClosing();
+        TradingSignal.Dispose();
+        lock (_ctsGate)
+        {
+            _cts?.Dispose();
+            _cts = null;
         }
     }
 }

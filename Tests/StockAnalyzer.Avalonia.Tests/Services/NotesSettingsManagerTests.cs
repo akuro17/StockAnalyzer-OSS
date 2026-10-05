@@ -31,6 +31,8 @@ public class NotesSettingsManagerTests
         Assert.Equal(60.0, manager.ConnectorLineLength);
         Assert.Equal(8.0, manager.DashLength);
         Assert.Equal(10, manager.TimelinePageSize);
+        Assert.Equal(7, manager.UpcomingCatalystsLimit);
+        Assert.Equal(-1, manager.UpcomingCatalystsPastDaysRetention);
         Assert.Equal(16.0, manager.BodyFontSize);
         Assert.Equal(IndicatorColor.FromUInt(0xFFE0E0E0), manager.BodyTextColor);
         Assert.Equal(IndicatorColor.FromUInt(0xFF181A20), manager.BodyBackgroundColor);
@@ -239,5 +241,41 @@ public class NotesSettingsManagerTests
 
         Assert.Equal(url, manager.UrlColor);
         Assert.Equal(hashtag, manager.HashtagColor);
+    }
+
+    [Fact]
+    public void SetUpcomingCatalystsLimit_ValidValue_IsPersistedInMemory()
+    {
+        var manager = new NotesSettingsManager(new FakeThemeManager());
+        manager.SetUpcomingCatalystsLimit(14);
+        Assert.Equal(14, manager.UpcomingCatalystsLimit);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(101)]
+    public void SetUpcomingCatalystsLimit_OutOfRange_IsIgnored(int value)
+    {
+        var manager = new NotesSettingsManager(new FakeThemeManager());
+        manager.SetUpcomingCatalystsLimit(value);
+        Assert.Equal(7, manager.UpcomingCatalystsLimit);
+    }
+
+    [Fact]
+    public void SetUpcomingCatalystsPastDaysRetention_ValidValue_IsPersistedInMemory()
+    {
+        var manager = new NotesSettingsManager(new FakeThemeManager());
+        manager.SetUpcomingCatalystsPastDaysRetention(-7);
+        Assert.Equal(-7, manager.UpcomingCatalystsPastDaysRetention);
+    }
+
+    [Theory]
+    [InlineData(-366)]
+    [InlineData(366)]
+    public void SetUpcomingCatalystsPastDaysRetention_OutOfRange_IsIgnored(int value)
+    {
+        var manager = new NotesSettingsManager(new FakeThemeManager());
+        manager.SetUpcomingCatalystsPastDaysRetention(value);
+        Assert.Equal(-1, manager.UpcomingCatalystsPastDaysRetention);
     }
 }

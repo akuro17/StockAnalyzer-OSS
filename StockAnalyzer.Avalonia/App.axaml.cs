@@ -27,6 +27,7 @@ namespace StockAnalyzer.Avalonia;
 public partial class App : Application, IDisposable, IThemeVariantDispatcher
 {
     private bool _disposed;
+    private PredictionOperationsLifetime? _operations;
     private Window? _pythonProgressWindow;
     private TextBlock? _pythonProgressTextBlock;
     private IProgress<string>? _currentPythonProgress;
@@ -263,14 +264,15 @@ public partial class App : Application, IDisposable, IThemeVariantDispatcher
                 _ = tickersSettingsManager.LoadAsync();
                 var predictionSettingsManager = Services.GetRequiredService<IPredictionSettingsManager>();
                 _ = predictionSettingsManager.LoadAsync();
-                Services.GetRequiredService<PredictionOperationsLifetime>().Start();
 
                 desktop.MainWindow = new MainWindow
                 {
                     DataContext = mainViewModel,
                 };
 
-                _ = mainViewModel.TryLoadDefaultWorkspaceAsync();
+                // The monitoring backend may have to import its JSON files once, which can take long: it initialises on a pool thread
+                // while the window is already shown, and its consumers (the lifetime, the charts of the default workspace) start after it.
+                _ = StartMonitoringAndWorkspaceAsync(mainViewModel);
 
                 // Ticker Note spec section 4.5: detect (never auto-delete) orphaned attachment
                 // files once per launch, in the background so it never delays startup. The result
@@ -368,11 +370,49 @@ public partial class App : Application, IDisposable, IThemeVariantDispatcher
         }
     }
 
+    /// <summary>
+    /// Initialises the monitoring backend off the UI thread, then starts the prediction-operations lifetime and loads the default
+    /// workspace on the UI context. A failed initialisation keeps its fail-fast meaning (no fallback): it is logged and rethrown on
+    /// the UI thread, now after the window is visible instead of before it exists.
+    /// </summary>
+    private async Task StartMonitoringAndWorkspaceAsync(MainWindowViewModel mainViewModel)
+    {
+        try
+        {
+            await Services!.GetRequiredService<StockAnalyzer.Core.Services.PredictionMonitoringBackendFactory>().InitializeAsync();
+        }
+        catch (Exception ex)
+        {
+            FailStartup(ex, "The prediction monitoring backend could not be initialised.");
+            return;
+        }
+        try
+        {
+            // Kept before Start so that a lifetime that started only partly is still stopped; Dispose never constructs one.
+            _operations = Services!.GetRequiredService<PredictionOperationsLifetime>();
+            _operations.Start();
+        }
+        catch (Exception ex)
+        {
+            FailStartup(ex, "The prediction operations could not be started.");
+            return;
+        }
+        await mainViewModel.TryLoadDefaultWorkspaceAsync();
+    }
+
+    private void FailStartup(Exception ex, string message)
+    {
+        if (Services?.GetService<Microsoft.Extensions.Logging.ILogger<App>>() is { } logger)
+            Microsoft.Extensions.Logging.LoggerExtensions.LogCritical(logger, ex, message);
+        global::Avalonia.Threading.Dispatcher.UIThread.Post(() => System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(ex).Throw());
+    }
+
     public void Dispose()
     {
         if (!_disposed)
         {
-            if (Services?.GetService<PredictionOperationsLifetime>() is { } operations)
+            // Only a lifetime this application started: resolving it here would wait for (or rethrow the failure of) the backend initialisation.
+            if (_operations is { } operations)
                 Task.Run(operations.StopAsync).GetAwaiter().GetResult();
             if (Services is IAsyncDisposable asyncDisposable)
             {

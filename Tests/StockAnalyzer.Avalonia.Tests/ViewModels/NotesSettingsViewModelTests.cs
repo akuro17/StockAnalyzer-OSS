@@ -126,4 +126,47 @@ public class NotesSettingsViewModelTests
         Assert.True(vm.IsModified);
         Assert.Equal(newColor, manager.HashtagColor);
     }
+
+    [Fact]
+    public void ChangingUpcomingCatalystsLimit_UpdatesManagerAndIsModified()
+    {
+        var manager = new FakeNotesSettingsManager();
+        var vm = new NotesSettingsViewModel(manager);
+
+        vm.SelectedUpcomingCatalystsLimit = 15;
+
+        Assert.True(vm.IsModified);
+        Assert.Equal(15, manager.UpcomingCatalystsLimit);
+    }
+
+    [Fact]
+    public void ChangingUpcomingCatalystsPastDaysRetention_UpdatesManagerAndIsModified()
+    {
+        var manager = new FakeNotesSettingsManager();
+        var vm = new NotesSettingsViewModel(manager);
+
+        vm.SelectedUpcomingCatalystsPastDaysRetention = -3;
+
+        Assert.True(vm.IsModified);
+        Assert.Equal(-3, manager.UpcomingCatalystsPastDaysRetention);
+    }
+
+    [Fact]
+    public void RevertChanges_RestoresUpcomingCatalystsSettingsToSnapshot()
+    {
+        var manager = new FakeNotesSettingsManager();
+        var vm = new NotesSettingsViewModel(manager);
+
+        vm.SelectedUpcomingCatalystsLimit = 20;
+        vm.SelectedUpcomingCatalystsPastDaysRetention = -5;
+        Assert.True(vm.IsModified);
+
+        vm.RevertChanges();
+
+        Assert.False(vm.IsModified);
+        Assert.Equal(7, vm.SelectedUpcomingCatalystsLimit);
+        Assert.Equal(-1, vm.SelectedUpcomingCatalystsPastDaysRetention);
+        Assert.Equal(7, manager.UpcomingCatalystsLimit);
+        Assert.Equal(-1, manager.UpcomingCatalystsPastDaysRetention);
+    }
 }

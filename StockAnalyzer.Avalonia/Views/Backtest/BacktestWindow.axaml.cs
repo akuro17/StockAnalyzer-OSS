@@ -18,6 +18,21 @@ namespace StockAnalyzer.Avalonia.Views.Backtest
                 _subscribedViewModel = DataContext as BacktestWindowViewModel;
                 if (_subscribedViewModel != null) _subscribedViewModel.RequestClose += Close;
             };
+
+            Closing += (_, _) =>
+            {
+                _subscribedViewModel?.OnWindowClosing();
+            };
+
+            Closed += (_, _) =>
+            {
+                if (_subscribedViewModel != null)
+                {
+                    _subscribedViewModel.RequestClose -= Close;
+                    _subscribedViewModel.Dispose();
+                    _subscribedViewModel = null;
+                }
+            };
         }
 
         private void OnHeaderPointerPressed(object? sender, PointerPressedEventArgs e)

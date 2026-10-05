@@ -333,4 +333,62 @@ public class NoteTimelineView_UnifiedSearchTests
             try { Directory.Delete(tempDir, true); } catch { /* best-effort cleanup */ }
         }
     }
+
+    [AvaloniaFact]
+    public async Task SearchBarRow_HeightRemainsConstant_WhenDetailItemOpenedAndClosed()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), "sa_note_search_row_height_test_" + Guid.NewGuid());
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var note = new Note(Guid.NewGuid(), "Test Note", DateTime.UtcNow, DateTime.UtcNow);
+            var (timeline, window, view, _) = await MountViewAsync(tempDir, async repo => await repo.CreateAsync(note));
+            try
+            {
+                await timeline.RefreshAsync();
+                Assert.NotEmpty(timeline.DisplayedNotes);
+
+                var searchBox = view.FindControl<AutoCompleteBox>("SearchSuggestionBox");
+                Assert.NotNull(searchBox);
+
+                // Parent Grid of SearchSuggestionBox is the search bar row
+                var searchBarGrid = (Grid)searchBox!.Parent!;
+                Assert.NotNull(searchBarGrid);
+
+                AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+                Dispatcher.UIThread.RunJobs();
+
+                double normalHeight = searchBarGrid.Bounds.Height;
+                Assert.True(normalHeight > 0, "SearchBar Grid should have measured a non-zero height");
+
+                // Navigate to detail view (simulate clicking card timestamp to open individual note)
+                timeline.DisplayedNotes[0].OpenDetailCommand.Execute(null);
+
+                AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+                Dispatcher.UIThread.RunJobs();
+
+                Assert.NotNull(timeline.SelectedDetailItem);
+                double detailHeight = searchBarGrid.Bounds.Height;
+                Assert.Equal(normalHeight, detailHeight);
+
+                // Navigate back via BackToListCommand
+                timeline.BackToListCommand.Execute(null);
+                AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+                Dispatcher.UIThread.RunJobs();
+
+                Assert.Null(timeline.SelectedDetailItem);
+                double returnedHeight = searchBarGrid.Bounds.Height;
+                Assert.Equal(normalHeight, returnedHeight);
+            }
+            finally
+            {
+                window.Close();
+            }
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, true); } catch { /* best-effort cleanup */ }
+        }
+    }
 }
+

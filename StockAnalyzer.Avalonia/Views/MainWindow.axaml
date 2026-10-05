@@ -10,6 +10,7 @@
         xmlns:l="clr-namespace:StockAnalyzer.Avalonia.Markup;assembly=StockAnalyzer.Avalonia"
         xmlns:controls="using:StockAnalyzer.Avalonia.Views.Controls"
         xmlns:ui="using:StockAnalyzer.Core.Models.UI"
+        xmlns:rlui="using:StockAnalyzer.Avalonia.Common"
         xmlns:primitives="clr-namespace:Avalonia.Controls.Primitives;assembly=Avalonia.Controls"
         xmlns:behaviors="using:StockAnalyzer.Avalonia.Behaviors"
         mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="600"
@@ -229,6 +230,7 @@
                         <MenuItem Header="{l:Localize Menu_Screener}" AutomationProperties.AutomationId="Menu_Screener" Command="{Binding OpenScreenerCommand}"/>
                         <MenuItem Header="{l:Localize Menu_Backtest}" AutomationProperties.AutomationId="Menu_Backtest" Command="{Binding OpenBacktestWindowCommand}"/>
                         <MenuItem Header="{l:Localize Menu_TrainingWizard}" AutomationProperties.AutomationId="Menu_TrainingWizard" Command="{Binding OpenTrainingWizardCommand}"/>
+                        <MenuItem Header="{l:Localize Rl.Title}" Command="{Binding OpenRlTrainingCommand}" AutomationProperties.AutomationId="{x:Static rlui:RlUiConstants.Menu}"/>
                         <MenuItem Header="{l:Localize Menu_AddChartPanel}" Command="{Binding AddPanelChartCommand}"/>
                         <MenuItem Header="{l:Localize TickerList_AddTicker}" AutomationProperties.AutomationId="Menu_AddTicker" Command="{Binding TickerListViewModel.AddTickerToMasterCommand}"/>
                         <Separator/>
@@ -464,8 +466,22 @@
                         <MenuItem Header="{l:Localize Chart_ExportImage}" Command="{Binding ExportChartImageCommand}"/>
                     </ContextMenu>
                 </Border.ContextMenu>
-                <Grid>
-                    <chart:ChartBaseControl Name="ChartControl"
+                <Grid RowDefinitions="*,Auto,Auto,Auto,Auto">
+                    <chart:RlQPanel Grid.Row="1" ViewModel="{Binding ChartViewModel}" IsVisible="{Binding ChartViewModel.HasRlPresentation}" BaseFontSize="{DynamicResource BaseFontSize}" HelperFontSize="{DynamicResource HelperFontSize}" TextBrush="{DynamicResource Brush.Foreground.Secondary}"/>
+                    <TextBlock Grid.Row="2" Text="{Binding ChartViewModel.RlPresentation.ContinuousReadout, FallbackValue='', TargetNullValue=''}"
+                               IsVisible="{Binding ChartViewModel.RlPresentation.HasContinuousReadout, FallbackValue=False}" TextWrapping="Wrap"
+                               FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Foreground.Secondary}"
+                               AutomationProperties.AutomationId="{x:Static rlui:RlUiConstants.ContinuousReadout}"/>
+                    <TextBlock Grid.Row="3" Text="{Binding ChartViewModel.RlPresentation.PolicyControlReadout, FallbackValue='', TargetNullValue=''}"
+                               IsVisible="{Binding ChartViewModel.RlPresentation.HasPolicyControlReadout, FallbackValue=False}" TextWrapping="Wrap"
+                               FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Foreground.Secondary}"
+                               AutomationProperties.AutomationId="{x:Static rlui:RlUiConstants.PolicyControlReadout}"/>
+                    <Expander Grid.Row="4" IsVisible="{Binding ChartViewModel.RlPresentation.HasEvaluationReadout, FallbackValue=False}">
+                        <Expander.Header><TextBlock Text="{l:Localize Rl.EvaluationDetails}" AutomationProperties.AutomationId="{x:Static rlui:RlUiConstants.EvaluationDetails}"/></Expander.Header>
+                        <ScrollViewer MaxHeight="{x:Static rlui:RlUiConstants.EvaluationMaximumHeight}"><TextBlock Text="{Binding ChartViewModel.RlPresentation.EvaluationReadout}" TextWrapping="Wrap"
+                            AutomationProperties.AutomationId="{x:Static rlui:RlUiConstants.EvaluationReport}"/></ScrollViewer>
+                    </Expander>
+                    <chart:ChartBaseControl RlFontSize="{DynamicResource BaseFontSize}" RlTextBrush="{DynamicResource Brush.Foreground.Secondary}" Name="ChartControl"
                                             AutomationProperties.AutomationId="ChartCanvas"
                                             AutomationProperties.Name="Chart Area"
                                             ViewModel="{Binding ChartViewModel}"

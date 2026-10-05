@@ -31,6 +31,14 @@ public static class NotesSettingsConstants
     // --- Timeline Loading ---
     public const int DefaultTimelinePageSize = 10;
 
+    // --- Upcoming Catalysts ---
+    public const int DefaultUpcomingCatalystsLimit = 7;
+    public const int MinUpcomingCatalystsLimit = 1;
+    public const int MaxUpcomingCatalystsLimit = 100;
+    public const int DefaultUpcomingCatalystsPastDaysRetention = -1;
+    public const int MinUpcomingCatalystsPastDaysRetention = -365;
+    public const int MaxUpcomingCatalystsPastDaysRetention = 365;
+
     // --- Appearance ---
     public const double DefaultBodyFontSize = 16.0;
     public const double MinBodyFontSize = 12.0;

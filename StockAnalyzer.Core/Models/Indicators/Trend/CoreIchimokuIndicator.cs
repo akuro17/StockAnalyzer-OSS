@@ -30,6 +30,13 @@ namespace StockAnalyzer.Core.Models.Indicators.Trend
         /// <summary>The lagging span carries a FUTURE close at each bar, so a backtest must refuse it (see <c>BacktestIndicatorEligibility</c>).</summary>
         public const string ChikouSpanSeriesName = "ChikouSpan";
 
+        /// <summary>
+        /// Determines whether the specified output series name represents a non-causal series (carries future price data).
+        /// Specifically, <see cref="ChikouSpanSeriesName"/> is the only non-causal series in Ichimoku; all other series are causal.
+        /// </summary>
+        public static bool IsNonCausalSeries(string? seriesName) =>
+            string.Equals(seriesName, ChikouSpanSeriesName, StringComparison.OrdinalIgnoreCase);
+
         public override void Configure(CoreIndicatorParameterBase parameters)
         {
             if (parameters is CoreIchimokuParameter p)

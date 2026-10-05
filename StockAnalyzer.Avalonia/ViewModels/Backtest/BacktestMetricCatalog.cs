@@ -122,10 +122,14 @@ internal static class BacktestMetricCatalog
 
             // Risk-adjusted
             Fixed(nameof(BacktestReport.AnnualizedSharpe), BacktestMetricGroup.RiskAdjusted, BacktestMetricValueFormat.FourDecimals, r => r.AnnualizedSharpe) with { SummaryOrder = 4 },
-            Fixed(nameof(BacktestReport.AnnualizedSharpeAutocorrelationAdjusted), BacktestMetricGroup.RiskAdjusted, BacktestMetricValueFormat.FourDecimals, r => r.AnnualizedSharpeAutocorrelationAdjusted),
+            Fixed(nameof(BacktestReport.AnnualizedSharpeAutocorrelationAdjusted), BacktestMetricGroup.RiskAdjusted, BacktestMetricValueFormat.FourDecimals, r => r.AnnualizedSharpeAutocorrelationAdjusted) with
+            {
+                HasDefinitionTooltip = true,
+            },
             Fixed(nameof(BacktestReport.AnnualizedSortino), BacktestMetricGroup.RiskAdjusted, BacktestMetricValueFormat.FourDecimals, r => r.AnnualizedSortino),
             Fixed(nameof(BacktestReport.AnnualizedSortinoAutocorrelationAdjusted), BacktestMetricGroup.RiskAdjusted, BacktestMetricValueFormat.FourDecimals, r => r.AnnualizedSortinoAutocorrelationAdjusted) with
             {
+                HasDefinitionTooltip = true,
                 ShowsConfidenceInterval = true,
             },
             Fixed(nameof(BacktestReport.CalmarFullPeriod), BacktestMetricGroup.RiskAdjusted, BacktestMetricValueFormat.FourDecimals, r => r.CalmarFullPeriod),

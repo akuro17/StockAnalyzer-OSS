@@ -24,6 +24,8 @@ public sealed class ChartRenderPipeline : IDisposable
 {
     private readonly BackgroundRenderer _backgroundRenderer;
     private readonly TrainingPeriodRenderer _trainingPeriodRenderer = new();
+    private readonly RlQRenderer _rlRenderer = new();
+    public void PrepareRlHud(ViewModels.RlPresentation? presentation, float fontSize) => _rlRenderer.PrepareHud(presentation, fontSize);
     private readonly GridRenderer _gridRenderer;
     private readonly AxisRenderer _axisRenderer;
     private readonly IndicatorRenderer _indicatorRenderer;
@@ -99,6 +101,7 @@ public sealed class ChartRenderPipeline : IDisposable
 
     public void Dispose()
     {
+        _rlRenderer.Dispose();
         _backgroundRenderer.Dispose();
         _trainingPeriodRenderer.Dispose();
         _gridRenderer.Dispose();
@@ -129,7 +132,8 @@ public sealed class ChartRenderPipeline : IDisposable
         global::Avalonia.Rect controlBounds,
         global::Avalonia.Point? snapPoint,
         IChartObject? currentDrawingObject,
-        LayeredDrawingScene? layeredScene = null)
+        LayeredDrawingScene? layeredScene = null,
+        ViewModels.RlPresentation? rlPresentation = null, float rlFontSize = 0, SKColor rlForeground = default)
     {
         // 0. Update Semantic Paint Cache with current theme
         var theme = renderConfig.ThemeManager?.CurrentTheme ?? ThemeColors.Light;
@@ -246,6 +250,7 @@ public sealed class ChartRenderPipeline : IDisposable
         DrawAxisLabels(canvas, chartArea);
 
         // 9. Render Crosshair
+        _rlRenderer.DrawHud(canvas, chartArea, rlPresentation, rlFontSize, rlForeground);
         if (isCrosshairVisible)
         {
             RenderCrosshair(canvas, layout, chartArea, volumeArea, mousePosition, snapshot, controlBounds, renderConfig, chartType);

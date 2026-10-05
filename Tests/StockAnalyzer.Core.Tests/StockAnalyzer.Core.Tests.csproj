@@ -19,6 +19,11 @@
     <None Include="Assets\*.onnx.scaler.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="Assets\*.onnx.analysis.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="Assets\analysis_fixture.onnx.metrics.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Assets\explain_calibration_fixture.onnx.metrics.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Assets\*.onnx.calibration.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Assets\*.onnx.explain.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Assets\ensemble_fixture_*.onnx.metrics.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Assets\*.ensemble.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="Assets\feature_parity_vectors.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="Assets\BacktestGolden\*.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="Assets\MetricsGolden\*.json" CopyToOutputDirectory="PreserveNewest" />

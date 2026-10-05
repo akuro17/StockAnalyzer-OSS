@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -21,19 +20,38 @@ public interface IModelAnalysisService
     RegimeAssignment? Assign(ModelAnalysisSnapshot snapshot, IReadOnlyList<CandleData> candles, TimeframeType timeframe);
 }
 
-/// <summary>Loads verified immutable analysis outside rendering; never fits at inference time.</summary>
-public sealed class ModelAnalysisService(IModelGenerationRegistry registry, IMLDataProcessor processor) : IModelAnalysisService
+/// <summary>
+/// Loads verified immutable analysis outside rendering; never fits at inference time. Loaded snapshots are kept in a least-recently-used
+/// cache bounded by <see cref="ModelExplanationLimits.MaxCachedGenerations"/> (the bound of the explanation and calibration caches);
+/// an evicted snapshot is simply loaded and verified again on the next request.
+/// </summary>
+public sealed class ModelAnalysisService : IModelAnalysisService
 {
-    private readonly ConcurrentDictionary<string, ModelAnalysisSnapshot> _cache = new(StringComparer.Ordinal);
+    private readonly IModelGenerationRegistry _registry;
+    private readonly IMLDataProcessor _processor;
+    private readonly BoundedLruCache<string, ModelAnalysisSnapshot> _cache;
+
+    public ModelAnalysisService(IModelGenerationRegistry registry, IMLDataProcessor processor)
+        : this(registry, processor, ModelExplanationLimits.MaxCachedGenerations)
+    {
+    }
+
+    /// <summary>A smaller capacity than the contract bound, so tests can exercise eviction without registering many generations.</summary>
+    internal ModelAnalysisService(IModelGenerationRegistry registry, IMLDataProcessor processor, int cacheCapacity)
+    {
+        _registry = registry;
+        _processor = processor;
+        _cache = new BoundedLruCache<string, ModelAnalysisSnapshot>(cacheCapacity, StringComparer.Ordinal);
+    }
 
     public Task<ModelAnalysisSnapshot?> LoadAsync(string modelId, CancellationToken ct = default) => Task.Run(() =>
     {
         ct.ThrowIfCancellationRequested();
-        using var lease = registry.Acquire(modelId);
+        using var lease = _registry.Acquire(modelId);
         if (lease is null) return null;
-        var manifest = registry.GetManifest(modelId);
+        var manifest = _registry.GetManifest(modelId);
         if (manifest is null || !manifest.RequiredSidecars.Any(s => s.Kind == "analysis")) return null;
-        if (_cache.TryGetValue(modelId, out var cached)) return cached;
+        if (_cache.TryGet(modelId, out var cached)) return cached;
         using var session = new InferenceSession(lease.ModelPath);
         using var metrics = JsonDocument.Parse(File.ReadAllText(lease.ModelPath + ".metrics.json"));
         var analysis = ModelAnalysis.Load(lease.ModelPath, session.ModelMetadata.CustomMetadataMap,
@@ -53,7 +71,7 @@ public sealed class ModelAnalysisService(IModelGenerationRegistry registry, IMLD
         for (int i = first; i < candles.Count; i++)
             if (candles[i].Close <= 0 || (i > first && candles[i].Timestamp <= candles[i - 1].Timestamp)) return null;
         Span<float> returns = stackalloc float[ModelAnalysisContract.VolatilityBars + 1];
-        processor.ComputeLogReturns(candles, first, returns.Length, returns);
+        _processor.ComputeLogReturns(candles, first, returns.Length, returns);
         double mean = 0;
         for (int i = 1; i < returns.Length; i++)
         {

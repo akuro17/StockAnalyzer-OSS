@@ -1,3 +1,4 @@
+#nullable enable
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
@@ -111,15 +112,8 @@ internal sealed class MonitoringParquetFixture : IDisposable
             _ => _settings.DailyDataPath!
         };
         Directory.CreateDirectory(folder);
-        var path = Path.Combine(folder, "X.parquet").Replace("\\", "/").Replace("'", "''");
-        static string Decimal(decimal value) => value.ToString(CultureInfo.InvariantCulture);
-        var rows = string.Join(",", bars.Select(c => $"(DATE '{c.Timestamp:yyyy-MM-dd}',{Decimal(c.Open)},"
-            + $"{Decimal(c.High)},{Decimal(c.Low)},{Decimal(c.Close)},{c.Volume})"));
-        using var command = _db.GetConnection().CreateCommand();
-        var flag = final is null ? "" : $", {final} AS {ParquetDataService.FinalityColumn}";
-        command.CommandText = $"COPY (SELECT *{flag} FROM (VALUES {rows}) "
-            + $"AS bars(date,open,high,low,close,volume)) TO '{path}' (FORMAT PARQUET)";
-        command.ExecuteNonQuery();
+        TestParquetWriter.Write(_db, Path.Combine(folder, "X.parquet"), bars, floatPrices: false,
+            final is null ? null : $"{final} AS {ParquetDataService.FinalityColumn}");
     }
     public void Dispose() { _db.Dispose(); if (Directory.Exists(_root)) Directory.Delete(_root, true); }
 }

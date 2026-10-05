@@ -105,8 +105,9 @@ public class BacktestResultsSummaryTests
         BacktestResultsViewModel vm = CreateViewModel();
         var raised = new System.Collections.Generic.List<string?>();
         vm.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
-        Assert.False(vm.HasSummary);
-        Assert.Equal(0, vm.Summary.Length);
+        Assert.True(vm.HasSummary);
+        Assert.Equal(ExpectedSummaryLabelKeys, vm.Summary.Select(row => row.LabelKey));
+        Assert.All(vm.Summary, row => Assert.Equal("-", row.ValueText));
 
         vm.Update(BacktestTestFactory.CreateResult(), GenerateReport(10m, -4m, 6m, -2m), 0);
 

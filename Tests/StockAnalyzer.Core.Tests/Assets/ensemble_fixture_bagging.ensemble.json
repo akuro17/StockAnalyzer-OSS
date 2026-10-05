@@ -1,0 +1,97 @@
+{
+  "schema_version": 1,
+  "kind": "ensemble_manifest",
+  "method": "bagging",
+  "run_id": "fixture-run",
+  "target_type": "classification",
+  "timeframe": "daily",
+  "horizon": 5,
+  "class_order": "Up,Down,Neutral",
+  "mixture": "linear_normalized",
+  "members": [
+    {
+      "index": 0,
+      "file": "ensemble_fixture_m01.onnx",
+      "sha256": "4c036f06583caf2898ddf7ae89c5133009fb23b528892a1e0a216fdffbc08ea6",
+      "metrics_file": "ensemble_fixture_m01.onnx.metrics.json",
+      "weight": 0.5,
+      "framework": "pytorch",
+      "architecture": "lstm",
+      "release_fold_macro_f1": 0.5,
+      "release_fold_accuracy": 0.5,
+      "bagging": null
+    },
+    {
+      "index": 1,
+      "file": "ensemble_fixture_m02.onnx",
+      "sha256": "a430fa7a4e21b33cd26981f49083d9c7dfc0f84e773bdbb198affe2338b9ac15",
+      "metrics_file": "ensemble_fixture_m02.onnx.metrics.json",
+      "weight": 0.5,
+      "framework": "pytorch",
+      "architecture": "lstm",
+      "release_fold_macro_f1": 0.5,
+      "release_fold_accuracy": 0.5,
+      "bagging": null
+    }
+  ],
+  "weights": [
+    0.5,
+    0.5
+  ],
+  "weights_fit": {
+    "method": "equal",
+    "fit_folds": [],
+    "fit_samples": 0,
+    "fit_rows_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "iterations": 0,
+    "release_rows_sha256": "23589daa0a24bf2229000daadb748bff5dc38868b0f1910199b58d1bb7852faf",
+    "release_rows": 120,
+    "row_overlap": 0
+  },
+  "folds": [
+    {
+      "fold": 0,
+      "status": "evaluated",
+      "weights": [
+        0.5,
+        0.5
+      ],
+      "metrics": {
+        "fold": 0.0,
+        "n_splits": 2.0,
+        "fold_n": 160.0,
+        "fold_accuracy": 0.78125,
+        "fold_macro_f1": 0.7813501780285556,
+        "fold_baseline_accuracy": 0.4,
+        "fold_is_holdout": 0.0,
+        "fold_multi_logloss": 0.4962596427819683
+      }
+    },
+    {
+      "fold": 1,
+      "status": "evaluated",
+      "weights": [
+        0.5,
+        0.5
+      ],
+      "metrics": {
+        "fold": 1.0,
+        "n_splits": 2.0,
+        "fold_n": 120.0,
+        "fold_accuracy": 0.725,
+        "fold_macro_f1": 0.7248290193072003,
+        "fold_baseline_accuracy": 0.4083333333333333,
+        "fold_is_holdout": 1.0,
+        "fold_multi_logloss": 0.6187264901094494
+      }
+    }
+  ],
+  "bagging": {
+    "members": 2,
+    "resample": "time_series_block_bootstrap",
+    "block_length": 14,
+    "fraction": 0.8,
+    "rounding": "ceil_blocks"
+  },
+  "max_ensemble_members": 8
+}

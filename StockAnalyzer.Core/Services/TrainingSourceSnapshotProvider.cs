@@ -205,7 +205,7 @@ public sealed class TrainingSourceSnapshotProvider : ITrainingSourceSnapshotProv
         return candles;
     }
 
-    private static decimal ToDecimal(object value)
+    internal static decimal ToDecimal(object value)
     {
         try
         {

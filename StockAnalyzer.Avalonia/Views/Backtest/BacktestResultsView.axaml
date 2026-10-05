@@ -10,10 +10,35 @@
              xmlns:backtest="clr-namespace:StockAnalyzer.Avalonia.Views.Backtest;assembly=StockAnalyzer.Avalonia"
              mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="700"
              x:Class="StockAnalyzer.Avalonia.Views.Backtest.BacktestResultsView"
+             x:Name="BacktestResultsViewRoot"
              x:DataType="vm:BacktestResultsViewModel">
     <UserControl.Resources>
         <conv:LocalizeConverter x:Key="LocalizeConverter"/>
         <conv:BacktestSemanticToBrushConverter x:Key="SemanticToBrushConverter"/>
+
+        <!-- sa_improve BF01: view-owned DIP geometry; each table shares its measured column widths. -->
+        <x:Double x:Key="ResultsDataViewportHeight">320</x:Double>
+        <GridLength x:Key="ResultsMetricsColumnWidth">2*</GridLength>
+        <GridLength x:Key="ResultsTradesColumnWidth">3*</GridLength>
+        <x:Double x:Key="ResultsSeparatorThickness">1</x:Double>
+        <Thickness x:Key="ResultsCardBorderThickness">1</Thickness>
+        <CornerRadius x:Key="ResultsCardCornerRadius">8</CornerRadius>
+        <Thickness x:Key="ResultsCardPadding">16</Thickness>
+        <Thickness x:Key="ResultsSectionMargin">0,0,0,16</Thickness>
+        <Thickness x:Key="ResultsTitleBottomMargin">0,0,0,8</Thickness>
+        <Thickness x:Key="ResultsUtilityTopMargin">0,8,0,0</Thickness>
+        <Thickness x:Key="ResultsDividerMargin">16,0</Thickness>
+        <x:Double x:Key="ResultsMetricNameMinWidth">260</x:Double>
+        <x:Double x:Key="ResultsMetricValueMinWidth">120</x:Double>
+        <x:Double x:Key="ResultsTradeIdMinWidth">50</x:Double>
+        <x:Double x:Key="ResultsSideMinWidth">60</x:Double>
+        <x:Double x:Key="ResultsEntryTimeMinWidth">150</x:Double>
+        <x:Double x:Key="ResultsEntryPriceMinWidth">90</x:Double>
+        <x:Double x:Key="ResultsExitTimeMinWidth">150</x:Double>
+        <x:Double x:Key="ResultsExitPriceMinWidth">90</x:Double>
+        <x:Double x:Key="ResultsQuantityMinWidth">80</x:Double>
+        <x:Double x:Key="ResultsClosedNetMinWidth">110</x:Double>
+        <x:Double x:Key="ResultsForcedLiquidationMinWidth">110</x:Double>
 
         <!-- Transparent hover target of a metric tooltip (definition, status and reason); placed over the cells it explains and visible only when there is text,
              so a row without text has no tooltip at all. Font size = Settings > Fonts > Tooltip Font Size (TooltipFontSize) and color = Brush.Text.Primary are set
@@ -28,127 +53,33 @@
             </Border>
         </DataTemplate>
 
-        <!-- One metric row (label, value, optional confidence interval); used by every metric group. -->
+        <!-- One metric row (label, value with optional inline confidence interval); used by every metric group. -->
         <DataTemplate x:Key="MetricRowTemplate" x:DataType="vm:BacktestMetricDisplayRow">
-            <Grid ColumnDefinitions="*,140,220" Margin="0,2">
-                <TextBlock Classes="CellValue" Grid.Column="0"
-                           Text="{Binding LabelKey, Converter={StaticResource LocalizeConverter}}"/>
-                <TextBlock Classes="CellValue" Grid.Column="1" Text="{Binding ValueText}"
-                           Foreground="{Binding Semantic, Converter={StaticResource SemanticToBrushConverter}}"/>
-                <TextBlock Classes="CellValue" Grid.Column="2" Text="{Binding ConfidenceIntervalText}"/>
+            <Grid HorizontalAlignment="Left">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" MinWidth="{StaticResource ResultsMetricNameMinWidth}" SharedSizeGroup="MetricName"/>
+                    <ColumnDefinition Width="Auto" MinWidth="{StaticResource ResultsMetricValueMinWidth}" SharedSizeGroup="MetricValue"/>
+                </Grid.ColumnDefinitions>
+                <Border Grid.Column="0" Classes="TableCell">
+                    <Grid>
+                        <TextBlock Classes="CellValue" Grid.Column="0"
+                                   Text="{Binding LabelKey, Converter={StaticResource LocalizeConverter}}"/>
+                        <Thumb Classes="ColumnResizer" DragDelta="OnMetricColumnDragDelta" DoubleTapped="OnMetricHeaderDoubleTapped" Tag="0"/>
+                    </Grid>
+                </Border>
+                <Border Grid.Column="1" Classes="TableCell">
+                    <Grid>
+                        <TextBlock Classes="CellValue NumericValue" Text="{Binding ValueText}"
+                                   Foreground="{Binding Semantic, Converter={StaticResource SemanticToBrushConverter}}"/>
+                        <Thumb Classes="ColumnResizer" DragDelta="OnMetricColumnDragDelta" DoubleTapped="OnMetricHeaderDoubleTapped" Tag="1"/>
+                    </Grid>
+                </Border>
                 <ContentControl Grid.Column="0" Grid.ColumnSpan="2" Content="{Binding}" ContentTemplate="{StaticResource MetricTipHostTemplate}"/>
             </Grid>
         </DataTemplate>
     </UserControl.Resources>
 
-    <UserControl.DataTemplates>
-        <!-- Group row: side (roots only), AND/OR, a Reverse-root hint, and the empty-root hint. The context menu commands live on the tree view-model
-             (Tree); a disabled "add group" shows the limit through AddGroupToolTip (null while enabled, SA_UI_INTERACTION section 29). -->
-        <TreeDataTemplate DataType="vm:BacktestConditionGroupViewModel" ItemsSource="{Binding Children}">
-            <Border Classes="ConditionRow" Background="Transparent" Padding="2" ToolTip.ServiceEnabled="{Binding HasHoverText}">
-                <!-- A list without conditions has no expression to show: HasHoverText switches the tooltip service off for the row (an invisible content would still open an empty popup).
-                     ServiceEnabled is inherited, so the controls below that carry their own tooltip (the Reverse hint, the context menu) switch it back on.
-                     A long expression stays on one line: the popup's ToolTip is unbounded in width (OnHoverTipAttached) and the text never wraps.
-                     Hover shows the expressions only (no captions or explanatory text). Font size = Settings > Fonts > Tooltip Font Size (TooltipFontSize),
-                     color = Settings > Theme > Main Text (Brush.Text.Primary); set on the content because the popup does not inherit them from the row. -->
-                <ToolTip.Tip>
-                    <StackPanel Spacing="2" AttachedToVisualTree="OnHoverTipAttached">
-                        <TextBlock Text="{Binding HoverUpperText}" TextWrapping="NoWrap" IsVisible="{Binding HoverUpperText, Converter={x:Static ObjectConverters.IsNotNull}}"
-                                   FontSize="{DynamicResource TooltipFontSize}" Foreground="{DynamicResource Brush.Text.Primary}"
-                                   AutomationProperties.AutomationId="Backtest_ConditionTree_HoverUpper"/>
-                        <TextBlock Text="{Binding HoverLowerText}" TextWrapping="NoWrap" IsVisible="{Binding HoverLowerText, Converter={x:Static ObjectConverters.IsNotNull}}"
-                                   FontSize="{DynamicResource TooltipFontSize}" Foreground="{DynamicResource Brush.Text.Primary}"
-                                   AutomationProperties.AutomationId="Backtest_ConditionTree_HoverLower"/>
-                    </StackPanel>
-                </ToolTip.Tip>
-                <Border.ContextMenu>
-                    <ContextMenu ToolTip.ServiceEnabled="True">
-                        <MenuItem Header="{l:Localize Backtest_ConditionTree_AddGroup}"
-                                  Command="{Binding Tree.AddGroupCommand}" CommandParameter="{Binding}"
-                                  ToolTip.Tip="{Binding AddGroupToolTip}" ToolTip.ShowOnDisabled="True"
-                                  AutomationProperties.AutomationId="Backtest_ConditionTree_Menu_AddGroup"/>
-                        <MenuItem Header="{l:Localize Backtest_ConditionTree_EditGroup}"
-                                  Command="{Binding Tree.EditGroupCommand}" CommandParameter="{Binding}"
-                                  AutomationProperties.AutomationId="Backtest_ConditionTree_Menu_EditGroup"/>
-                        <MenuItem Header="{l:Localize Backtest_ConditionTree_ClearRoot}" IsVisible="{Binding IsRoot}"
-                                  Command="{Binding Tree.DeleteNodeCommand}" CommandParameter="{Binding}"
-                                  AutomationProperties.AutomationId="Backtest_ConditionTree_Menu_Clear"/>
-                        <MenuItem Header="{l:Localize Backtest_ConditionTree_DeleteNode}" IsVisible="{Binding !IsRoot}"
-                                  Command="{Binding Tree.DeleteNodeCommand}" CommandParameter="{Binding}"
-                                  ToolTip.Tip="{l:Localize Backtest_ConditionTree_DeleteNodeHint}"
-                                  AutomationProperties.AutomationId="Backtest_ConditionTree_Menu_Delete"/>
-                    </ContextMenu>
-                </Border.ContextMenu>
-                <StackPanel Orientation="Horizontal" Spacing="8">
-                    <StackPanel Orientation="Horizontal" IsVisible="{Binding IsRoot}">
-                        <TextBlock Classes="ColumnHeader" Text="{l:Localize Btn_PositionLong}" IsVisible="{Binding IsLongSide}"/>
-                        <TextBlock Classes="ColumnHeader" Text="{l:Localize Btn_PositionShort}" IsVisible="{Binding !IsLongSide}"/>
-                    </StackPanel>
-                    <TextBlock Classes="CellValue" FontWeight="SemiBold" Text="{Binding Name, StringFormat=[{0}]}" IsVisible="{Binding HasName}"
-                               TextTrimming="CharacterEllipsis"
-                               AutomationProperties.AutomationId="Backtest_ConditionTree_GroupName"/>
-                    <TextBlock Classes="CellValue" FontWeight="Bold" Foreground="{DynamicResource Brush.Accent.Primary}"
-                               Text="{l:Localize Backtest_ConditionTree_And}" IsVisible="{Binding IsAndOperator}"
-                               AutomationProperties.AutomationId="Backtest_ConditionTree_Operator_And"/>
-                    <TextBlock Classes="CellValue" FontWeight="Bold" Foreground="{DynamicResource Brush.Accent.Primary}"
-                               Text="{l:Localize Backtest_ConditionTree_Or}" IsVisible="{Binding !IsAndOperator}"
-                               AutomationProperties.AutomationId="Backtest_ConditionTree_Operator_Or"/>
-                    <TextBlock Classes="CellValue" Text="{l:Localize Backtest_ConditionTree_ReverseMarker}" Foreground="{DynamicResource Brush.Text.Secondary}"
-                               IsVisible="{Binding IsReverseRoot}"
-                               ToolTip.Tip="{l:Localize Backtest_ConditionTree_ReverseHint}" ToolTip.ServiceEnabled="True"/>
-                    <TextBlock Classes="CellValue" Text="{l:Localize Backtest_ConditionTree_EmptyRoot}"
-                               Foreground="{DynamicResource Brush.Text.Secondary}" IsVisible="{Binding IsEmptyRoot}"/>
-                </StackPanel>
-            </Border>
-        </TreeDataTemplate>
-
-        <DataTemplate DataType="vm:BacktestConditionLeafViewModel">
-            <Border Classes="ConditionRow" Background="Transparent" Padding="2">
-                <ToolTip.Tip>
-                    <TextBlock Text="{Binding HoverLowerText}" TextWrapping="NoWrap" AttachedToVisualTree="OnHoverTipAttached"
-                               FontSize="{DynamicResource TooltipFontSize}" Foreground="{DynamicResource Brush.Text.Primary}"
-                               AutomationProperties.AutomationId="Backtest_ConditionTree_HoverLower"/>
-                </ToolTip.Tip>
-                <Border.ContextMenu>
-                    <ContextMenu>
-                        <MenuItem Header="{l:Localize Backtest_ConditionTree_DeleteNode}"
-                                  Command="{Binding Tree.DeleteNodeCommand}" CommandParameter="{Binding}"
-                                  AutomationProperties.AutomationId="Backtest_ConditionTree_Menu_DeleteLeaf"/>
-                    </ContextMenu>
-                </Border.ContextMenu>
-                <TextBlock Classes="CellValue" Text="{Binding DisplayText}"
-                           AutomationProperties.AutomationId="Backtest_ConditionTree_Leaf"/>
-            </Border>
-        </DataTemplate>
-    </UserControl.DataTemplates>
-
     <UserControl.Styles>
-        <Style Selector="TreeView.ConditionTree TreeViewItem" x:DataType="vm:BacktestConditionNodeViewModel">
-            <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}"/>
-            <Setter Property="IsSelected" Value="{Binding IsSelected, Mode=TwoWay}"/>
-            <Setter Property="ContextMenu" Value="{x:Null}"/>
-        </Style>
-        <Style Selector="TreeView.ConditionTree TreeViewItem /template/ ContentPresenter#PART_HeaderPresenter">
-            <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="HorizontalAlignment" Value="Stretch"/>
-        </Style>
-        <!-- Drop indicator while a comparison is dragged (on the row Border; the padding is reduced by what the line adds, so the row never changes size and
-             the hit areas stay put): a line above / below the row, or an outline for "append to this group". Theme color only. -->
-        <Style Selector="Border.ConditionRow.DropBefore">
-            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Accent.Primary}"/>
-            <Setter Property="BorderThickness" Value="0,1,0,0"/>
-            <Setter Property="Padding" Value="2,1,2,2"/>
-        </Style>
-        <Style Selector="Border.ConditionRow.DropAfter">
-            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Accent.Primary}"/>
-            <Setter Property="BorderThickness" Value="0,0,0,1"/>
-            <Setter Property="Padding" Value="2,2,2,1"/>
-        </Style>
-        <Style Selector="Border.ConditionRow.DropInside">
-            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Accent.Primary}"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Padding" Value="1"/>
-        </Style>
         <Style Selector="TextBlock.SectionTitle">
             <Setter Property="FontSize" Value="{DynamicResource BaseFontSize}"/>
             <Setter Property="FontWeight" Value="Bold"/>
@@ -184,16 +115,128 @@
             <Setter Property="Padding" Value="16"/>
             <Setter Property="Margin" Value="0,0,0,16"/>
         </Style>
+
+        <!-- Only the new results card adopts the common sub-window typography; other sections keep their contracts. -->
+        <Style Selector="TextBlock.ResultsSectionTitle">
+            <Setter Property="FontSize" Value="{DynamicResource TitleFontSize}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{DynamicResource Brush.Accent.Primary}"/>
+            <Setter Property="Margin" Value="{StaticResource ResultsTitleBottomMargin}"/>
+        </Style>
+        <Style Selector="Border.ResultsDetails TextBlock.ColumnHeader">
+            <Setter Property="FontSize" Value="{DynamicResource BaseFontSize}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+        <Style Selector="Border.ResultsDetails TextBlock.NumericValue">
+            <Setter Property="FontFamily" Value="{StaticResource Font_Mono}"/>
+            <Setter Property="TextAlignment" Value="Right"/>
+        </Style>
+
+        <!-- Table Grid Formatting matching TickerListView right-column standard -->
+        <Style Selector="Border.TableHeaderCell">
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border.Primary}"/>
+            <Setter Property="BorderThickness" Value="0,1,1,1"/>
+            <Setter Property="Background" Value="{DynamicResource Brush.Background.Secondary}"/>
+            <Setter Property="Padding" Value="8,4"/>
+        </Style>
+        <Style Selector="Border.TableCell">
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border.Primary}"/>
+            <Setter Property="BorderThickness" Value="0,0,1,1"/>
+            <Setter Property="Padding" Value="8,3"/>
+        </Style>
+        <Style Selector="Border.GroupHeaderBanner">
+            <Setter Property="Background" Value="{DynamicResource Brush.Background.Tertiary}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border.Primary}"/>
+            <Setter Property="BorderThickness" Value="0,1,0,1"/>
+            <Setter Property="Padding" Value="8,4"/>
+        </Style>
+        <Style Selector="Border.GroupHeaderBanner TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource Brush.Accent.Primary}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+        <Style Selector="Thumb.ColumnResizer">
+            <Setter Property="Width" Value="8"/>
+            <Setter Property="Margin" Value="0,-4,-8,-4"/>
+            <Setter Property="HorizontalAlignment" Value="Right"/>
+            <Setter Property="VerticalAlignment" Value="Stretch"/>
+            <Setter Property="Cursor" Value="SizeWestEast"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="ZIndex" Value="2"/>
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <Border Background="Transparent" Width="8" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"/>
+                </ControlTemplate>
+            </Setter>
+        </Style>
+        <Style Selector="TextBlock.DataLabel">
+            <Setter Property="FontSize" Value="{DynamicResource HelperFontSize}"/>
+            <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Secondary}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+        <Style Selector="TextBlock.DataValue">
+            <Setter Property="FontSize" Value="{DynamicResource DetailFontSize}"/>
+            <Setter Property="FontFamily" Value="{StaticResource Font_Mono}"/>
+            <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Primary}"/>
+        </Style>
+        <Style Selector="Button.CollapseToggle">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="Button.CollapseToggle:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource Brush.Background.Secondary}"/>
+        </Style>
+        <Style Selector="Button.PaginationNavBtn">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border.Primary}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="3"/>
+            <Setter Property="Padding" Value="6,2"/>
+            <Setter Property="FontSize" Value="{DynamicResource HelperFontSize}"/>
+            <Setter Property="MinHeight" Value="24"/>
+            <Setter Property="MinWidth" Value="24"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        <Style Selector="Button.PaginationNumberBtn">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border.Primary}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="3"/>
+            <Setter Property="Padding" Value="6,2"/>
+            <Setter Property="FontSize" Value="{DynamicResource HelperFontSize}"/>
+            <Setter Property="MinHeight" Value="24"/>
+            <Setter Property="MinWidth" Value="24"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        <Style Selector="Button.PaginationNumberBtn.ActivePage">
+            <Setter Property="Background" Value="{DynamicResource Brush.Accent.Primary}"/>
+            <Setter Property="Foreground" Value="{DynamicResource Brush.Text.OnAccent}"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Accent.Primary}"/>
+        </Style>
+        <Style Selector="TextBlock.SortIndicator">
+            <Setter Property="FontSize" Value="10"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Foreground" Value="{DynamicResource Brush.Accent.Primary}"/>
+        </Style>
     </UserControl.Styles>
 
     <ScrollViewer VerticalScrollBarVisibility="Auto"
                   HorizontalScrollBarVisibility="Disabled"
                   AllowAutoHide="False"
-                  Padding="0,0,12,0">
+                  Padding="0">
         <StackPanel Margin="16">
 
-            <!-- Result summary: the key metrics at a glance. Every item is a row of the metrics table below (same text, color and tooltip). -->
-            <Border Classes="SectionCard" IsVisible="{Binding HasSummary}">
+            <!-- Result summary: key metrics at a glance (scrolls with content, not pinned) -->
+            <Border Classes="SectionCard" IsVisible="{Binding HasSummary}"
+                    AutomationProperties.AutomationId="Backtest_Results_SummaryContainer">
                 <ItemsControl ItemsSource="{Binding Summary}" AutomationProperties.AutomationId="Backtest_Results_Summary">
                     <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate>
@@ -207,7 +250,6 @@
                                     <TextBlock Classes="CellValue" TextWrapping="Wrap"
                                                Foreground="{DynamicResource Brush.Text.Secondary}"
                                                Text="{Binding LabelKey, Converter={StaticResource LocalizeConverter}}"/>
-                                    <!-- The value reuses the SectionTitle style (base size, bold) on purpose: P3 section 9 forbids defining a new style; the color is set per item. -->
                                     <TextBlock Classes="SectionTitle" Margin="0" TextWrapping="Wrap"
                                                Text="{Binding ValueText}"
                                                Foreground="{Binding Semantic, Converter={StaticResource SemanticToBrushConverter}}"/>
@@ -219,91 +261,254 @@
                 </ItemsControl>
             </Border>
 
-            <!-- Registered conditions (MP-2 Phase 3, layout confirmed by the owner: three stacked sections Entry / Exit / Reverse).
-                 Each section is a TreeView whose two top-level items are the fixed Long and Short root groups; groups nest, leaves are
-                 the comparisons. The editor works on BacktestConditionTreeViewModel only. A custom context menu sits on the row
-                 (SA_UI_INTERACTION section 9: ContextMenu is nulled on the TreeViewItem container so the default menu never shows);
-                 a disabled "add group" explains itself through a dynamic tooltip property (section 29, ShowOnDisabled). -->
-            <Expander Classes="SectionCard" IsExpanded="True" ExpandDirection="Down">
-                <Expander.Header>
-                    <TextBlock Classes="SectionTitle" Margin="0" Text="{l:Localize Backtest_Section_RegisteredConditions}"/>
-                </Expander.Header>
-                <StackPanel Spacing="6" Margin="0,8,0,0">
-                    <TextBlock Classes="CellValue" Text="{Binding ConditionSelection.ConditionTreeLimitWarning}"
-                               IsVisible="{Binding ConditionSelection.ConditionTreeLimitWarning, Converter={x:Static ObjectConverters.IsNotNull}}"
-                               Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"
-                               AutomationProperties.AutomationId="Backtest_ConditionTree_LimitWarning"/>
-
-                    <TextBlock Classes="ColumnHeader" Text="{l:Localize Btn_ConditionRoleEntry}"/>
-                    <TreeView x:Name="EntryConditionTree" Classes="ConditionTree"
-                              ItemsSource="{Binding ConditionSelection.ConditionTree.EntryRoots}"
-                              AutomationProperties.AutomationId="Backtest_ConditionTree_Entry"/>
-                    <Border Height="1" Background="{DynamicResource Brush.Border.Primary}"/>
-
-                    <TextBlock Classes="ColumnHeader" Text="{l:Localize Btn_ConditionRoleExit}"/>
-                    <TreeView x:Name="ExitConditionTree" Classes="ConditionTree"
-                              ItemsSource="{Binding ConditionSelection.ConditionTree.ExitRoots}"
-                              AutomationProperties.AutomationId="Backtest_ConditionTree_Exit"/>
-                    <Border Height="1" Background="{DynamicResource Brush.Border.Primary}"/>
-
-                    <TextBlock Classes="ColumnHeader" Text="{l:Localize Btn_ConditionRoleBoth}"/>
-                    <TreeView x:Name="ReverseConditionTree" Classes="ConditionTree"
-                              ItemsSource="{Binding ConditionSelection.ConditionTree.ReverseRoots}"
-                              AutomationProperties.AutomationId="Backtest_ConditionTree_Reverse"/>
-
-                    <TextBlock Classes="CellValue" Text="{Binding ConditionSelection.ConditionTreeSummaryText}"
-                               Foreground="{DynamicResource Brush.Text.Secondary}"
-                               AutomationProperties.AutomationId="Backtest_ConditionTree_Summary"/>
-                </StackPanel>
-            </Expander>
-
-            <Border Classes="SectionCard" Background="{DynamicResource Brush.Background.Secondary}"
-                    IsVisible="{Binding HasResult}">
-                <StackPanel>
-                    <TextBlock Classes="CellValue" Text="{Binding ExecutionModeDescription}"
-                               AutomationProperties.AutomationId="Backtest_Results_ModeDescription"
-                               Foreground="{DynamicResource Brush.Text.Secondary}"
-                               TextWrapping="Wrap"/>
-                    <TextBlock Classes="CellValue" Text="{Binding RiskManagementDescription}"
-                               Foreground="{DynamicResource Brush.Text.Secondary}"
-                               TextWrapping="Wrap"/>
-                </StackPanel>
-            </Border>
-
-            <!-- Execution-mode notice (sa_implementation_plan_BacktestP3Hardening.md Task 4): originally
-                 written when NoOpBacktestStrategy (P3 Gate G7, always 0 trades by design) was the ONLY
-                 strategy RunBacktestAsync could ever select - without it, a Completed run with 0 trades
-                 read as "the strategy ran and found no opportunity" rather than "no strategy logic ran at
-                 all yet". Since Task 5 of sa_implementation_plan_BacktestComparisonSignals.md,
-                 ConditionBasedBacktestStrategy is selected instead whenever at least one condition is
-                 registered - this notice is now gated on ConditionEntries.Count == 0 too
-                 (Y:\Temp\sa_improvement_plan_BacktestPriceSourceConditionFix.md bug fix), so it no longer
-                 shows - misleadingly, "0 trades expected" - for a real condition-driven run. -->
-            <Border IsVisible="{Binding HasResult}">
-                <Border Classes="SectionCard" Background="{DynamicResource Brush.Background.Secondary}"
-                        IsVisible="{Binding IsNoOp}">
-                    <TextBlock Classes="CellValue" Text="{l:Localize Backtest_Results_ExecutionModeNotice}"
-                               Foreground="{DynamicResource Brush.Text.Secondary}"
-                               TextWrapping="Wrap"/>
+                <!-- Equity Curve: 2-column card with full-bleed chart on the left and bordered collapsible vertical data panel on the right -->
+                <Border Classes="SectionCard"
+                        Padding="0"
+                        ClipToBounds="True"
+                        AutomationProperties.AutomationId="Backtest_Results_EquityCard">
+                    <Grid ColumnDefinitions="*, Auto">
+                        <backtest:EquityCurveControl Grid.Column="0" Height="260" HorizontalAlignment="Stretch"
+                                                      AutomationProperties.AutomationId="Backtest_Results_EquityCurve"
+                                                      ShowHoverTooltip="False"
+                                                      HoveredPoint="{Binding HoveredEquityPoint, Mode=OneWayToSource}"
+                                                      EquityPoints="{Binding EquityPoints}"
+                                                      UnderwaterFlags="{Binding EquityUnderwaterFlags}"
+                                                      Trades="{Binding Trades}"
+                                                      ResultRevision="{Binding ResultRevision}"
+                                                      LineSemantic="{Binding EquityLineSemantic}"
+                                                      UnavailableText="{l:Localize Backtest_Chart_Unavailable}"/>
+                        <Grid Grid.Column="1" ColumnDefinitions="Auto, Auto" Margin="8,8,8,8">
+                            <Border Grid.Column="0"
+                                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                                    BorderThickness="1"
+                                    CornerRadius="4"
+                                    Background="{DynamicResource Brush.Background.Secondary}"
+                                    Padding="12,10"
+                                    Margin="0,0,6,0"
+                                    VerticalAlignment="Top"
+                                    IsVisible="{Binding IsEquityDataPanelExpanded}"
+                                    AutomationProperties.AutomationId="Backtest_Results_EquityDataPanel">
+                                <StackPanel Width="140" Spacing="8">
+                                    <StackPanel Spacing="2">
+                                        <TextBlock Classes="DataLabel" Text="{l:Localize Backtest_EquityHover_Date}"/>
+                                        <TextBlock Classes="DataValue" Text="{Binding DisplayEquityDate}"
+                                                   AutomationProperties.AutomationId="Backtest_Results_DisplayDate"/>
+                                    </StackPanel>
+                                    <StackPanel Spacing="2">
+                                        <TextBlock Classes="DataLabel" Text="{l:Localize Backtest_EquityHover_Equity}"/>
+                                        <TextBlock Classes="DataValue" Text="{Binding DisplayEquityValue}"
+                                                   AutomationProperties.AutomationId="Backtest_Results_DisplayEquity"/>
+                                    </StackPanel>
+                                    <StackPanel Spacing="2">
+                                        <TextBlock Classes="DataLabel" Text="{l:Localize Backtest_EquityHover_Cash}"/>
+                                        <TextBlock Classes="DataValue" Text="{Binding DisplayEquityCash}"
+                                                   AutomationProperties.AutomationId="Backtest_Results_DisplayCash"/>
+                                    </StackPanel>
+                                    <StackPanel Spacing="2">
+                                        <TextBlock Classes="DataLabel" Text="{l:Localize Backtest_EquityHover_MarketValue}"/>
+                                        <TextBlock Classes="DataValue" Text="{Binding DisplayEquityMarketValue}"
+                                                   AutomationProperties.AutomationId="Backtest_Results_DisplayMarketValue"/>
+                                    </StackPanel>
+                                    <StackPanel Spacing="2">
+                                        <TextBlock Classes="DataLabel" Text="{l:Localize Backtest_EquityHover_HeldMargin}"/>
+                                        <TextBlock Classes="DataValue" Text="{Binding DisplayEquityHeldMargin}"
+                                                   AutomationProperties.AutomationId="Backtest_Results_DisplayHeldMargin"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+                            <Button Grid.Column="1" Classes="CollapseToggle"
+                                    Width="24" Height="24"
+                                    VerticalAlignment="Top"
+                                    Command="{Binding ToggleEquityDataPanelCommand}"
+                                    AutomationProperties.AutomationId="Backtest_Results_ToggleEquityDataPanel"
+                                    ToolTip.Tip="{l:Localize Backtest_Btn_TogglePanel}">
+                                <PathIcon Data="{Binding ToggleButtonIconGeometry}" Width="16" Height="16"
+                                          Foreground="{DynamicResource Brush.Text.Secondary}"/>
+                            </Button>
+                        </Grid>
+                    </Grid>
                 </Border>
-            </Border>
 
-            <Expander Classes="SectionCard" IsExpanded="True" ExpandDirection="Down">
-                <Expander.Header>
-                    <TextBlock Classes="SectionTitle" Margin="0" Text="{l:Localize Backtest_Section_EquityChart}"/>
-                </Expander.Header>
-                <!-- EmptyStateText intentionally unset (Round 2: "No equity data..." message removed per
-                     explicit user request) - EquityCurveControl's DrawCenteredMessage already no-ops
-                     cleanly on a null/empty message, so no control-level change was needed. -->
-                <backtest:EquityCurveControl Height="260" HorizontalAlignment="Stretch" Margin="0,8,0,0"
-                                              AutomationProperties.AutomationId="Backtest_Results_EquityCurve"
-                                              EquityPoints="{Binding EquityPoints}"
-                                              UnderwaterFlags="{Binding EquityUnderwaterFlags}"
-                                              Trades="{Binding Trades}"
-                                              ResultRevision="{Binding ResultRevision}"
-                                              LineSemantic="{Binding EquityLineSemantic}"
-                                              UnavailableText="{l:Localize Backtest_Chart_Unavailable}"/>
-            </Expander>
+
+            <!-- BF01: always-open Metrics and Trade History, directly below the curve. -->
+            <Border Classes="ResultsDetails"
+                    AutomationProperties.AutomationId="Backtest_Results_DetailsBlock"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="{StaticResource ResultsCardBorderThickness}"
+                    CornerRadius="{StaticResource ResultsCardCornerRadius}"
+                    Padding="{StaticResource ResultsCardPadding}"
+                    Margin="{StaticResource ResultsSectionMargin}"
+                    Background="{DynamicResource Brush.Background.Secondary}">
+                <Grid RowDefinitions="Auto,Auto,Auto" HorizontalAlignment="Stretch">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="{StaticResource ResultsMetricsColumnWidth}"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="{StaticResource ResultsTradesColumnWidth}"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Row="0" Grid.Column="0" Classes="ResultsSectionTitle"
+                               Text="{l:Localize Backtest_Section_MetricsTable}">
+                        <TextBlock.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="{l:Localize Backtest_Metrics_ContextMenu_CustomizeColumns}"
+                                          Command="{Binding ShowMetricsChooserCommand}"/>
+                            </ContextMenu>
+                        </TextBlock.ContextMenu>
+                    </TextBlock>
+                    <Grid Grid.Row="0" Grid.Column="2" ColumnDefinitions="Auto,*,Auto" Margin="{StaticResource ResultsTitleBottomMargin}">
+                        <TextBlock Grid.Column="0" Classes="ResultsSectionTitle" Margin="0" VerticalAlignment="Center"
+                                   Text="{l:Localize Backtest_Section_TradeList}"/>
+                        <TextBlock Grid.Column="1" Text="{Binding ExportStatusMessage}" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource Brush.Text.Secondary}"
+                                   FontSize="{DynamicResource HelperFontSize}"
+                                   VerticalAlignment="Center" HorizontalAlignment="Right"
+                                   Margin="8,0"/>
+                        <Button Grid.Column="2" TabIndex="2" Content="{l:Localize Backtest_Btn_Export}"
+                                AutomationProperties.AutomationId="Backtest_Results_ExportButton"
+                                FontSize="{DynamicResource BaseFontSize}"
+                                HorizontalAlignment="Right" HorizontalContentAlignment="Center"
+                                Theme="{StaticResource SecondaryButtonStyle}"
+                                Command="{Binding ExportReportCommand}"/>
+                    </Grid>
+                    <!-- Vertical separator line (1-DIP visible line, centered) -->
+                    <Border Grid.Column="1" Grid.RowSpan="3" IsHitTestVisible="False"
+                            AutomationProperties.AutomationId="Backtest_Results_DetailsSeparator"
+                            Width="{StaticResource ResultsSeparatorThickness}"
+                            Margin="{StaticResource ResultsDividerMargin}"
+                            Background="{DynamicResource Brush.Border.Primary}"/>
+                    <ScrollViewer Grid.Row="1" Grid.Column="0" Focusable="True" TabIndex="0"
+                                  AutomationProperties.AutomationId="Backtest_Results_MetricsScroll"
+                                  Height="{StaticResource ResultsDataViewportHeight}"
+                                  MaxHeight="{StaticResource ResultsDataViewportHeight}"
+                                  VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
+                                  AllowAutoHide="False" ScrollViewer.IsScrollChainingEnabled="True"
+                                  Background="Transparent">
+                        <StackPanel Grid.IsSharedSizeScope="True" Background="Transparent">
+                            <StackPanel.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="{l:Localize Backtest_Metrics_ContextMenu_CustomizeColumns}"
+                                              Command="{Binding ShowMetricsChooserCommand}"/>
+                                </ContextMenu>
+                            </StackPanel.ContextMenu>
+                            <!-- Sizing scope anchor for MetricName and MetricValue (Metric/Value header row removed per user request) -->
+                            <Grid x:Name="MetricsHeaderGrid" Height="0" HorizontalAlignment="Left" IsHitTestVisible="False">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" MinWidth="{StaticResource ResultsMetricNameMinWidth}" SharedSizeGroup="MetricName"/>
+                                    <ColumnDefinition Width="Auto" MinWidth="{StaticResource ResultsMetricValueMinWidth}" SharedSizeGroup="MetricValue"/>
+                                </Grid.ColumnDefinitions>
+                                <Border x:Name="MetricNameAnchor" Grid.Column="0" Width="{StaticResource ResultsMetricNameMinWidth}"/>
+                                <Border x:Name="MetricValueAnchor" Grid.Column="1" Width="{StaticResource ResultsMetricValueMinWidth}"/>
+                            </Grid>
+                            <!-- Top horizontal border line directly above Total P&L / metrics table -->
+                            <Border Height="{StaticResource ResultsSeparatorThickness}" Background="{DynamicResource Brush.Border.Primary}" HorizontalAlignment="Stretch"/>
+                            <ItemsControl ItemsSource="{Binding MetricGroups}" AutomationProperties.AutomationId="Backtest_Results_Metrics">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:BacktestMetricGroupPresentation">
+                                        <ItemsControl ItemsSource="{Binding Rows}" ItemTemplate="{StaticResource MetricRowTemplate}"/>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </ScrollViewer>
+                    <ScrollViewer Grid.Row="1" Grid.Column="2" Focusable="True" TabIndex="1"
+                                  AutomationProperties.AutomationId="Backtest_Results_TradesScroll"
+                                  Height="{StaticResource ResultsDataViewportHeight}"
+                                  MaxHeight="{StaticResource ResultsDataViewportHeight}"
+                                  VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
+                                  AllowAutoHide="False" ScrollViewer.IsScrollChainingEnabled="True"
+                                  Background="Transparent">
+                        <StackPanel x:Name="TradesContainerPanel"
+                                    Grid.IsSharedSizeScope="True">
+                            <StackPanel.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="{l:Localize Backtest_TradeList_ContextMenu_CustomizeColumns}"
+                                              Command="{Binding ShowTradeColumnsChooserCommand}"/>
+                                </ContextMenu>
+                            </StackPanel.ContextMenu>
+                            <Grid x:Name="TradesHeaderGrid">
+                                <Grid.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Header="{l:Localize Backtest_TradeList_ContextMenu_CustomizeColumns}"
+                                                  Command="{Binding ShowTradeColumnsChooserCommand}"/>
+                                    </ContextMenu>
+                                </Grid.ContextMenu>
+                            </Grid>
+                            <ItemsControl ItemsSource="{Binding PagedTrades}" AutomationProperties.AutomationId="Backtest_Results_Trades">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:BacktestTradeRow">
+                                        <backtest:TradeRowGrid ActiveColumns="{Binding #BacktestResultsViewRoot.((vm:BacktestResultsViewModel)DataContext).ActiveTradeColumns}"/>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+
+                    </ScrollViewer>
+
+                    <!-- Trade History Pagination Bar -->
+                    <Border Grid.Row="2" Grid.Column="2" Margin="0,8,0,0"
+                            AutomationProperties.AutomationId="Backtest_Results_TradesPaginationBar">
+                        <Grid ColumnDefinitions="Auto,*,Auto">
+                            <TextBlock Grid.Column="0"
+                                       VerticalAlignment="Center"
+                                       FontSize="{DynamicResource HelperFontSize}"
+                                       Foreground="{DynamicResource Brush.Text.Secondary}"
+                                       Text="{Binding TradePaginationInfoText}"
+                                       AutomationProperties.AutomationId="Backtest_Results_TradesPaginationInfo"/>
+
+                            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                                <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                                    <Button Content="{l:Localize Backtest_TradeList_Pagination_Prev}"
+                                            Command="{Binding PreviousTradePageCommand}"
+                                            IsEnabled="{Binding CanPreviousTradePage}"
+                                            Classes="PaginationNavBtn"
+                                            AutomationProperties.AutomationId="Backtest_Results_TradesPrevPageBtn"/>
+                                    <ItemsControl ItemsSource="{Binding TradePaginationTokens}"
+                                                  AutomationProperties.AutomationId="Backtest_Results_TradesPaginationTokens">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <StackPanel Orientation="Horizontal" Spacing="2"/>
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="vm:TradePaginationToken">
+                                                <Panel>
+                                                    <Button Content="{Binding PageNumber}"
+                                                            IsVisible="{Binding !IsEllipsis}"
+                                                            Command="{Binding #BacktestResultsViewRoot.((vm:BacktestResultsViewModel)DataContext).GoToTradePageCommand}"
+                                                            CommandParameter="{Binding PageNumber}"
+                                                            Classes.ActivePage="{Binding IsActive}"
+                                                            Classes="PaginationNumberBtn"/>
+                                                    <TextBlock Text="{l:Localize Backtest_TradeList_Pagination_Ellipsis}"
+                                                               IsVisible="{Binding IsEllipsis}"
+                                                               VerticalAlignment="Center"
+                                                               Padding="4,0"
+                                                               Foreground="{DynamicResource Brush.Text.Secondary}"/>
+                                                </Panel>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                    <Button Content="{l:Localize Backtest_TradeList_Pagination_Next}"
+                                            Command="{Binding NextTradePageCommand}"
+                                            IsEnabled="{Binding CanNextTradePage}"
+                                            Classes="PaginationNavBtn"
+                                            AutomationProperties.AutomationId="Backtest_Results_TradesNextPageBtn"/>
+                                </StackPanel>
+
+                                <ComboBox ItemsSource="{Binding TradePageSizeOptions}"
+                                          SelectedItem="{Binding SelectedTradePageSize}"
+                                          VerticalAlignment="Center"
+                                          MinHeight="26"
+                                          AutomationProperties.AutomationId="Backtest_Results_TradesPageSizeDropdown">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:TradePageSizeOption">
+                                            <TextBlock Text="{Binding DisplayText}"/>
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                </Grid>
+            </Border>
 
             <Expander Classes="SectionCard" IsExpanded="True" ExpandDirection="Down"
                       IsVisible="{Binding HasAudit}">
@@ -314,96 +519,24 @@
                               AutomationProperties.AutomationId="Backtest_Results_EvaluationAudit">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="vm:BacktestAuditRow">
-                            <Grid ColumnDefinitions="220,*" Margin="0,3">
-                                <TextBlock Grid.Column="0" Classes="ColumnHeader"
-                                           Text="{Binding LabelKey, Converter={StaticResource LocalizeConverter}}"/>
-                                <SelectableTextBlock Grid.Column="1" Classes="CellValue"
-                                                     Text="{Binding ValueText}" TextWrapping="Wrap"/>
-                            </Grid>
+                            <Border BorderBrush="{DynamicResource Brush.Border.Primary}"
+                                    BorderThickness="0,0,0,1"
+                                    Padding="4,8">
+                                <Grid ColumnDefinitions="260,*">
+                                    <TextBlock Grid.Column="0" Classes="ColumnHeader"
+                                               VerticalAlignment="Top"
+                                               TextWrapping="Wrap"
+                                               Margin="0,0,16,0"
+                                               Text="{Binding LabelKey, Converter={StaticResource LocalizeConverter}}"/>
+                                    <SelectableTextBlock Grid.Column="1" Classes="CellValue"
+                                                         VerticalAlignment="Top"
+                                                         TextWrapping="Wrap"
+                                                         Text="{Binding ValueText}"/>
+                                </Grid>
+                            </Border>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
-            </Expander>
-
-            <Expander Classes="SectionCard" IsExpanded="True" ExpandDirection="Down">
-                <Expander.Header>
-                    <TextBlock Classes="SectionTitle" Margin="0" Text="{l:Localize Backtest_Section_MetricsTable}"/>
-                </Expander.Header>
-                <StackPanel Margin="0,8,0,0">
-                    <Grid ColumnDefinitions="*,140,220" Margin="0,0,0,4">
-                        <TextBlock Classes="ColumnHeader" Grid.Column="0" Text="{l:Localize Backtest_MetricsTable_Header_Metric}"/>
-                        <TextBlock Classes="ColumnHeader" Grid.Column="1" Text="{l:Localize Backtest_MetricsTable_Header_Value}"/>
-                        <TextBlock Classes="ColumnHeader" Grid.Column="2" Text="{l:Localize Backtest_MetricsTable_Header_ConfidenceInterval}"/>
-                    </Grid>
-                    <ItemsControl ItemsSource="{Binding MetricGroups}" AutomationProperties.AutomationId="Backtest_Results_Metrics">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate x:DataType="vm:BacktestMetricGroupPresentation">
-                                <!-- Every group is shown the same way: a heading and its rows. -->
-                                <StackPanel Margin="0,6,0,0">
-                                    <TextBlock Classes="ColumnHeader"
-                                               Text="{Binding GroupKey, Converter={StaticResource LocalizeConverter}}"/>
-                                    <ItemsControl ItemsSource="{Binding Rows}" ItemTemplate="{StaticResource MetricRowTemplate}"/>
-                                </StackPanel>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                    <!-- Owner decision G5: the run's identity (SHA-256 fingerprint, or the reason none exists); selectable so it can be copied. -->
-                    <SelectableTextBlock Classes="CellValue" Margin="0,8,0,0" TextWrapping="Wrap"
-                                         AutomationProperties.AutomationId="Backtest_Results_Fingerprint"
-                                         Text="{Binding RunFingerprintText}"
-                                         IsVisible="{Binding RunFingerprintText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-                </StackPanel>
-            </Expander>
-
-            <Expander Classes="SectionCard" IsExpanded="True" ExpandDirection="Down">
-                <Expander.Header>
-                    <TextBlock Classes="SectionTitle" Margin="0" Text="{l:Localize Backtest_Section_TradeList}"/>
-                </Expander.Header>
-                <StackPanel Margin="0,8,0,0">
-                    <Grid ColumnDefinitions="50,60,150,90,150,90,80,110,110" Margin="0,0,0,4">
-                        <TextBlock Classes="ColumnHeader" Grid.Column="0" Text="{l:Localize Backtest_TradeList_Header_TradeId}"/>
-                        <TextBlock Classes="ColumnHeader" Grid.Column="1" Text="{l:Localize Backtest_TradeList_Header_Side}"/>
-                        <TextBlock Classes="ColumnHeader" Grid.Column="2" Text="{l:Localize Backtest_TradeList_Header_EntryTime}"/>
-                        <TextBlock Classes="ColumnHeader" Grid.Column="3" Text="{l:Localize Backtest_TradeList_Header_EntryPrice}"/>
-                        <TextBlock Classes="ColumnHeader" Grid.Column="4" Text="{l:Localize Backtest_TradeList_Header_ExitTime}"/>
-                        <TextBlock Classes="ColumnHeader" Grid.Column="5" Text="{l:Localize Backtest_TradeList_Header_ExitPrice}"/>
-                        <TextBlock Classes="ColumnHeader" Grid.Column="6" Text="{l:Localize Backtest_TradeList_Header_Quantity}"/>
-                        <TextBlock Classes="ColumnHeader" Grid.Column="7" Text="{l:Localize Backtest_TradeList_Header_ClosedNet}"/>
-                        <TextBlock Classes="ColumnHeader" Grid.Column="8" Text="{l:Localize Backtest_TradeList_Header_ForcedLiquidation}"/>
-                    </Grid>
-                    <ItemsControl ItemsSource="{Binding Trades}">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate x:DataType="vm:BacktestTradeRow">
-                                <Grid ColumnDefinitions="50,60,150,90,150,90,80,110,110" Margin="0,2">
-                                    <TextBlock Classes="CellValue" Grid.Column="0" Text="{Binding TradeId}"/>
-                                    <TextBlock Classes="CellValue" Grid.Column="1" Text="{Binding Side}"/>
-                                    <TextBlock Classes="CellValue" Grid.Column="2" Text="{Binding EntryTime, StringFormat=\{0:yyyy-MM-dd HH:mm\}}"/>
-                                    <TextBlock Classes="CellValue" Grid.Column="3" Text="{Binding EntryPrice, StringFormat=\{0:F4\}}"/>
-                                    <TextBlock Classes="CellValue" Grid.Column="4" Text="{Binding ExitTime, StringFormat=\{0:yyyy-MM-dd HH:mm\}}"/>
-                                    <TextBlock Classes="CellValue" Grid.Column="5" Text="{Binding ExitPrice, StringFormat=\{0:F4\}}"/>
-                                    <TextBlock Classes="CellValue" Grid.Column="6" Text="{Binding Quantity, StringFormat=\{0:F4\}}"/>
-                                    <TextBlock Classes="CellValue" Grid.Column="7" Text="{Binding ClosedNet, StringFormat=\{0:F4\}}"
-                                               Foreground="{Binding PnLSemantic, Converter={StaticResource SemanticToBrushConverter}}"/>
-                                    <TextBlock Classes="CellValue" Grid.Column="8" Text="{l:Localize Backtest_TradeList_ForcedLiquidation_Badge}"
-                                               Foreground="{DynamicResource Brush.Semantic.Error}"
-                                               IsVisible="{Binding IsForcedLiquidation}"/>
-                                </Grid>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                    <!-- Export moved to the bottom-right of the card (Task 1; previously top-right
-                         next to the section title). -->
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8" Margin="0,8,0,0">
-                        <TextBlock Text="{Binding ExportStatusMessage}"
-                                   Foreground="{DynamicResource Brush.Text.Secondary}"
-                                   FontSize="{DynamicResource HelperFontSize}"
-                                   VerticalAlignment="Center"/>
-                        <Button Content="{l:Localize Backtest_Btn_Export}"
-                                AutomationProperties.AutomationId="Backtest_Results_ExportButton"
-                                Theme="{StaticResource SecondaryButtonStyle}"
-                                Command="{Binding ExportReportCommand}"/>
-                    </StackPanel>
-                </StackPanel>
             </Expander>
 
         </StackPanel>

@@ -20,8 +20,6 @@ public sealed class ModelGenerationRegistryTests : IDisposable
     private readonly string _root = Path.Combine(Path.GetTempPath(), "sa_generations_" + Guid.NewGuid().ToString("N"));
     private readonly string _fixture = Path.Combine("Assets", "trend_predictor_goodmeta.onnx");
     private const string Revision = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-    private const int CleanupAttempts = 5;
-    private const int CleanupRetryDelayMilliseconds = 50;
 
     private string Source(string name, double score, string revision = Revision, string? fixture = null)
     {
@@ -57,6 +55,28 @@ public sealed class ModelGenerationRegistryTests : IDisposable
         };
         File.WriteAllText(model + ".metrics.json", JsonSerializer.Serialize(report));
         return model;
+    }
+
+    [Fact]
+    public async Task FailedRegistration_WhoseStagingCleanupAlsoFails_StillReleasesTheMutation()
+    {
+        // Root cause of the intermittent full-suite hang: a failing registration whose staging directory could not be deleted
+        // (a scanner or indexer briefly holds a file in it on Windows) skipped the mutex release, so the next operation and
+        // Dispose waited forever. The cleanup is best effort and must never keep the registry locked or hide the real error.
+        var deletions = 0;
+        var registry = new ModelGenerationRegistry(Path.Combine(_root, "registry_stuck"))
+        {
+            DeleteDirectory = _ => { Interlocked.Increment(ref deletions); throw new IOException("the staging directory is locked"); },
+        };
+        var limit = TimeSpan.FromSeconds(10);
+
+        await Assert.ThrowsAsync<InvalidDataException>(() => registry.RegisterAsync(Source("not_an_onnx_name.txt", 0.4))
+            .WaitAsync(limit)); // the registration's own error, not the cleanup's
+        Assert.Equal(1, deletions);
+
+        var healthy = await registry.RegisterAsync(Source("healthy.onnx", 0.4)).WaitAsync(limit); // the registry is not wedged
+        Assert.NotNull(registry.GetManifest(healthy.ModelId));
+        await Task.Run(registry.Dispose).WaitAsync(limit); // and shutdown completes
     }
 
     [Fact]
@@ -125,6 +145,20 @@ public sealed class ModelGenerationRegistryTests : IDisposable
         Assert.Equal(replacement.ModelId, renewedWarning.ExpectedActiveId);
         Assert.True(await registry.ConfirmActivationAsync(renewedWarning.CandidateId!, renewedWarning.ExpectedActiveId));
         Assert.Equal(candidate.ModelId, registry.ActiveId);
+    }
+
+    [Fact] public async Task R07_IndependentInstancesRefreshSupervisedCatalogAndConfirmationContext()
+    {
+        string root = Path.Combine(_root, "registry");
+        using var first = new ModelGenerationRegistry(root); using var second = new ModelGenerationRegistry(root);
+        var baseline = await first.RegisterAsync(Source("same.onnx", .4));
+        var lower = await second.RegisterAsync(Source("same.onnx", .3));
+        Assert.NotNull(first.GetManifest(lower.ModelId)); Assert.NotNull(second.GetManifest(baseline.ModelId));
+        Assert.True(await first.ActivateAsync(baseline.ModelId)); Assert.Equal(baseline.ModelId, second.ActiveId);
+        var warning = await Assert.ThrowsAsync<ModelActivationConfirmationRequiredException>(() => first.ActivateAsync(lower.ModelId, manual: true));
+        var better = await second.RegisterAsync(Source("same.onnx", .6)); Assert.True(await second.ActivateAsync(better.ModelId));
+        await Assert.ThrowsAsync<ModelActivationContextChangedException>(() => first.ConfirmActivationAsync(lower.ModelId, warning.ExpectedActiveId));
+        Assert.Equal(better.ModelId, first.ActiveId); Assert.Equal(baseline.ModelId, first.PreviousId);
     }
 
     [Fact]
@@ -300,7 +334,7 @@ public sealed class ModelGenerationRegistryTests : IDisposable
             RequiredSidecars = sidecars, ContractHash = contractHash, ClassOrder = classOrder,
         };
         var movedDirectory = Path.Combine(registryRoot, id);
-        Directory.Move(directory, movedDirectory);
+        TestDirectory.Move(directory, movedDirectory);
         File.WriteAllText(Path.Combine(movedDirectory, "manifest.json"),
             JsonSerializer.Serialize(invalid, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
         File.WriteAllText(Path.Combine(registryRoot, "active.json"),
@@ -516,19 +550,5 @@ public sealed class ModelGenerationRegistryTests : IDisposable
         Assert.Throws<InvalidDataException>(() => new ModelGenerationRegistry(registryPath));
     }
 
-    public void Dispose()
-    {
-        for (var attempt = 1; attempt <= CleanupAttempts; attempt++)
-        {
-            try
-            {
-                if (Directory.Exists(_root)) Directory.Delete(_root, recursive: true);
-                return;
-            }
-            catch (IOException) when (attempt < CleanupAttempts)
-            {
-                Thread.Sleep(CleanupRetryDelayMilliseconds);
-            }
-        }
-    }
+    public void Dispose() => TestDirectory.Delete(_root);
 }

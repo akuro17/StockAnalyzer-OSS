@@ -77,7 +77,7 @@
                     <TextBlock Classes="GroupTitle" Margin="0" Text="{l:Localize Backtest_GroupA_Title}"/>
                 </Expander.Header>
                 <StackPanel Margin="0,8,0,0">
-                    <Grid Classes="FieldGrid" ColumnDefinitions="200,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto">
+                    <Grid Classes="FieldGrid" ColumnDefinitions="200,*" RowDefinitions="Auto,Auto,Auto,Auto">
                         <TextBlock Classes="FieldLabel" Grid.Row="0" Grid.Column="0" Text="{l:Localize Backtest_Field_Symbol}"/>
                         <AutoCompleteBox Grid.Row="0" Grid.Column="1"
                                           AutomationProperties.AutomationId="Backtest_Symbol"
@@ -118,24 +118,13 @@
                                 </DataTemplate>
                             </ComboBox.ItemTemplate>
                         </ComboBox>
-                        <TextBlock Classes="FieldLabel" Grid.Row="2" Grid.Column="0" Text="{l:Localize Backtest_Field_ExecutionModel}"/>
-                        <ComboBox Grid.Row="2" Grid.Column="1" ItemsSource="{Binding AvailableExecutionModels}" SelectedItem="{Binding ExecutionModel}" HorizontalAlignment="Stretch">
-                            <ComboBox.ItemTemplate>
-                                <DataTemplate>
-                                    <TextBlock Text="{Binding Converter={StaticResource EnumToLocalizedDisplayNameConverter}}"/>
-                                </DataTemplate>
-                            </ComboBox.ItemTemplate>
-                        </ComboBox>
-                        <StackPanel Grid.Row="3" Grid.Column="1" Spacing="4">
-                            <TextBlock Classes="HelperText" Text="{l:Localize Backtest_YFinanceApproximate_ModeHelper}" TextWrapping="Wrap"/>
-                        </StackPanel>
-                        <TextBlock Classes="FieldLabel" Grid.Row="4" Grid.Column="0" Text="{l:Localize Backtest_Field_EvaluationStartUtc}"/>
-                        <CalendarDatePicker Grid.Row="4" Grid.Column="1" SelectedDate="{Binding EvaluationStartUtc}"
+                        <TextBlock Classes="FieldLabel" Grid.Row="2" Grid.Column="0" Text="{l:Localize Backtest_Field_EvaluationStartUtc}"/>
+                        <CalendarDatePicker Grid.Row="2" Grid.Column="1" SelectedDate="{Binding EvaluationStartUtc}"
                                              SelectedDateFormat="Custom" CustomDateFormatString="yyyy-MM-dd"
                                              ToolTip.Tip="{Binding EvaluationStartUtcTooltip}"
                                              HorizontalAlignment="Stretch"/>
-                        <TextBlock Classes="FieldLabel" Grid.Row="5" Grid.Column="0" Text="{l:Localize Backtest_Field_EvaluationEndUtc}"/>
-                        <CalendarDatePicker Grid.Row="5" Grid.Column="1" SelectedDate="{Binding EvaluationEndUtc}"
+                        <TextBlock Classes="FieldLabel" Grid.Row="3" Grid.Column="0" Text="{l:Localize Backtest_Field_EvaluationEndUtc}"/>
+                        <CalendarDatePicker Grid.Row="3" Grid.Column="1" SelectedDate="{Binding EvaluationEndUtc}"
                                              SelectedDateFormat="Custom" CustomDateFormatString="yyyy-MM-dd"
                                              ToolTip.Tip="{Binding EvaluationEndUtcTooltip}"
                                              HorizontalAlignment="Stretch"/>

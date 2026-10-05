@@ -38,6 +38,8 @@ public interface IDialogService
     Task ShowThemeSettingsDialogAsync();
     Task ShowSettingsDialogAsync(string? initialCategoryKey = null);
     Task<List<string>?> ShowColumnChooserDialogAsync(IEnumerable<WatchlistColumnMetadata> allColumns, IEnumerable<string> activeColumns, Action<List<string>>? onApply = null);
+    Task<List<string>?> ShowBacktestTradeHistoryColumnChooserDialogAsync(IEnumerable<string> activeColumns, Action<List<string>>? onApply = null) => Task.FromResult<List<string>?>(null);
+    Task<List<string>?> ShowBacktestMetricsColumnChooserDialogAsync(IEnumerable<string> activeMetricNames, Action<List<string>>? onApply = null) => Task.FromResult<List<string>?>(null);
     Task<StockAnalyzer.Core.Models.Settings.FilterSettings?> ShowFilterSettingsDialogAsync(
         StockAnalyzer.Core.Models.Settings.FilterSettings initialSettings,
         Action<StockAnalyzer.Core.Models.Settings.FilterSettings>? onApply = null);
@@ -50,6 +52,7 @@ public interface IDialogService
     Task ShowScreenerDialogAsync();
     Task ShowBacktestWindowAsync();
     Task ShowTrainingWizardDialogAsync();
+    Task ShowRlTrainingDialogAsync(ChartViewModel chart) => Task.CompletedTask;
     Task<BulkTagEditResult?> ShowBulkTagEditDialogAsync(IEnumerable<string> existingTags);
 
     /// <summary>Modal Add/Edit Group dialog of the backtest condition tree editor; null when cancelled.</summary>

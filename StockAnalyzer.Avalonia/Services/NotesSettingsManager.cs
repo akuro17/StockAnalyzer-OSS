@@ -36,6 +36,8 @@ namespace StockAnalyzer.Avalonia.Services
         private double _connectorLineLength = NotesSettingsConstants.DefaultConnectorLineLength;
         private double _dashLength = NotesSettingsConstants.DefaultDashLength;
         private int _timelinePageSize = NotesSettingsConstants.DefaultTimelinePageSize;
+        private int _upcomingCatalystsLimit = NotesSettingsConstants.DefaultUpcomingCatalystsLimit;
+        private int _upcomingCatalystsPastDaysRetention = NotesSettingsConstants.DefaultUpcomingCatalystsPastDaysRetention;
         private double _bodyFontSize = NotesSettingsConstants.DefaultBodyFontSize;
         private IndicatorColor _bodyTextColor = IndicatorColor.FromUInt(NotesSettingsConstants.DefaultBodyTextColorArgb);
         private IndicatorColor _bodyBackgroundColor = IndicatorColor.FromUInt(NotesSettingsConstants.DefaultBodyBackgroundColorArgb);
@@ -297,6 +299,48 @@ namespace StockAnalyzer.Avalonia.Services
             TimelinePageSize = value;
         }
 
+        public int UpcomingCatalystsLimit
+        {
+            get => _upcomingCatalystsLimit;
+            private set
+            {
+                if (_upcomingCatalystsLimit != value)
+                {
+                    _upcomingCatalystsLimit = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        public void SetUpcomingCatalystsLimit(int value)
+        {
+            if (value < NotesSettingsConstants.MinUpcomingCatalystsLimit || value > NotesSettingsConstants.MaxUpcomingCatalystsLimit)
+                return;
+
+            UpcomingCatalystsLimit = value;
+        }
+
+        public int UpcomingCatalystsPastDaysRetention
+        {
+            get => _upcomingCatalystsPastDaysRetention;
+            private set
+            {
+                if (_upcomingCatalystsPastDaysRetention != value)
+                {
+                    _upcomingCatalystsPastDaysRetention = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        public void SetUpcomingCatalystsPastDaysRetention(int value)
+        {
+            if (value < NotesSettingsConstants.MinUpcomingCatalystsPastDaysRetention || value > NotesSettingsConstants.MaxUpcomingCatalystsPastDaysRetention)
+                return;
+
+            UpcomingCatalystsPastDaysRetention = value;
+        }
+
         public double BodyFontSize
         {
             get => _bodyFontSize;
@@ -400,6 +444,8 @@ namespace StockAnalyzer.Avalonia.Services
                     ConnectorLineLength = ConnectorLineLength,
                     DashLength = DashLength,
                     TimelinePageSize = TimelinePageSize,
+                    UpcomingCatalystsLimit = UpcomingCatalystsLimit,
+                    UpcomingCatalystsPastDaysRetention = UpcomingCatalystsPastDaysRetention,
                     BodyFontSize = BodyFontSize,
                     BodyTextColor = BodyTextColor,
                     BodyBackgroundColor = BodyBackgroundColor,
@@ -469,6 +515,14 @@ namespace StockAnalyzer.Avalonia.Services
                     {
                         SetTimelinePageSize(timelinePageSize);
                     }
+                    if (data.Value.UpcomingCatalystsLimit is { } upcomingCatalystsLimit)
+                    {
+                        SetUpcomingCatalystsLimit(upcomingCatalystsLimit);
+                    }
+                    if (data.Value.UpcomingCatalystsPastDaysRetention is { } upcomingCatalystsPastDaysRetention)
+                    {
+                        SetUpcomingCatalystsPastDaysRetention(upcomingCatalystsPastDaysRetention);
+                    }
                     if (data.Value.BodyFontSize is { } bodyFontSize)
                     {
                         SetBodyFontSize(bodyFontSize);
@@ -511,6 +565,8 @@ namespace StockAnalyzer.Avalonia.Services
             public double? ConnectorLineLength { get; init; }
             public double? DashLength { get; init; }
             public int? TimelinePageSize { get; init; }
+            public int? UpcomingCatalystsLimit { get; init; }
+            public int? UpcomingCatalystsPastDaysRetention { get; init; }
             public double? BodyFontSize { get; init; }
             public IndicatorColor? BodyTextColor { get; init; }
             public IndicatorColor? BodyBackgroundColor { get; init; }

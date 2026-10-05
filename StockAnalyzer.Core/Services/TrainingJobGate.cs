@@ -34,14 +34,20 @@ public sealed class TrainingJobGate
     }
 
     public IDisposable Acquire(TrainingJobConfig config)
+        => AcquireIdentity(Identity(config));
+
+    /// <summary>Reuse the managed cross-process gate for a separately versioned training contract.</summary>
+    public IDisposable AcquireIdentity(string identity)
     {
+        if (identity.Length != SHA256.HashSizeInBytes * 2 || identity.Any(c => !Uri.IsHexDigit(c)))
+            throw new ArgumentException("Training identity must be a SHA256 hash.", nameof(identity));
         Directory.CreateDirectory(_root);
         try
         {
-            return new FileStream(Path.Combine(_root, Identity(config) + ".lock"),
+            return new FileStream(Path.Combine(_root, identity + ".lock"),
                 FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
         }
-        catch (IOException ex) when ((ex.HResult & 0xffff) is 32 or 33 or 11)
+        catch (IOException ex) when (FileLockViolation.IsHeldByAnotherOwner(ex))
         {
             throw new TrainingJobBusyException();
         }

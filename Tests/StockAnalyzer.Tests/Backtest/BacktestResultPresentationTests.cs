@@ -59,16 +59,63 @@ public class BacktestResultPresentationTests
         var exporter = new FakeBacktestReportExporter();
         var dialog = new FakeDialogService { FolderResponse = new TaskCompletionSource<string?>() };
         var vm = new BacktestResultsViewModel(NullLocalizationService.Instance, exporter, dialog);
-        var reportA = BacktestTestFactory.CreateStubReport();
-        var reportB = BacktestTestFactory.CreateStubReport();
-        vm.Update(BacktestTestFactory.CreateResult(), reportA, 0);
+        var tradesA = ImmutableArray.Create(new BacktestTrade(1, TradeSide.Long, 0, DateTime.UtcNow, 100m, 1, DateTime.UtcNow, 110m, 1m, 10m, 10m, 0m, 0m, 1, false));
+        var tradesB = ImmutableArray.Create(new BacktestTrade(2, TradeSide.Short, 0, DateTime.UtcNow, 200m, 1, DateTime.UtcNow, 190m, 1m, 10m, 10m, 0m, 0m, 1, false));
+        vm.Update(BacktestTestFactory.CreateResult(trades: tradesA), BacktestTestFactory.CreateStubReport(), 0);
 
         Task export = vm.ExportReportCommand.ExecuteAsync(null);
-        vm.Update(BacktestTestFactory.CreateResult(), reportB, 0);
+        vm.Update(BacktestTestFactory.CreateResult(trades: tradesB), BacktestTestFactory.CreateStubReport(), 0);
         dialog.FolderResponse.SetResult(System.IO.Path.GetTempPath());
         await export;
 
-        Assert.Same(reportA, exporter.LastReport);
+        Assert.Equal(tradesA, exporter.LastTrades);
+    }
+
+    [Fact]
+    public async Task Export_UsesSaveFileDialogAndExportsToUserSpecifiedFileName()
+    {
+        var exporter = new FakeBacktestReportExporter();
+        var dialog = new FakeDialogService
+        {
+            FileToReturn = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "custom_strategy_trades.csv")
+        };
+        var localization = new FakeLocalizationService(new System.Collections.Generic.Dictionary<string, string>
+        {
+            ["Backtest_Export_SaveFileTitle"] = "Save Trades As",
+            ["Backtest_Export_Success"] = "Saved: {0}",
+        });
+        var vm = new BacktestResultsViewModel(localization, exporter, dialog);
+        var trades = ImmutableArray.Create(new BacktestTrade(10, TradeSide.Long, 0, DateTime.UtcNow, 150m, 1, DateTime.UtcNow, 160m, 1m, 10m, 10m, 0m, 0m, 1, false));
+        vm.Update(BacktestTestFactory.CreateResult(trades: trades), BacktestTestFactory.CreateStubReport(), 0);
+
+        await vm.ExportReportCommand.ExecuteAsync(null);
+
+        Assert.Equal(1, dialog.SaveFileDialogCallCount);
+        Assert.Equal("Save Trades As", dialog.LastSaveTitle);
+        Assert.Equal("csv", dialog.LastSaveDefaultExtension);
+        Assert.NotNull(dialog.LastSaveDefaultFilename);
+        Assert.StartsWith("backtest_trades_", dialog.LastSaveDefaultFilename);
+        Assert.EndsWith(".csv", dialog.LastSaveDefaultFilename);
+        Assert.Equal(new[] { "csv" }, dialog.LastSaveFilters);
+
+        Assert.Equal(trades, exporter.LastTrades);
+        Assert.Equal("custom_strategy_trades.csv", exporter.LastFileName);
+        Assert.Equal("Saved: custom_strategy_trades.csv", vm.ExportStatusMessage);
+    }
+
+    [Fact]
+    public async Task Export_CancelledDialog_DoesNotExport()
+    {
+        var exporter = new FakeBacktestReportExporter();
+        var dialog = new FakeDialogService { FileToReturn = null };
+        var vm = new BacktestResultsViewModel(NullLocalizationService.Instance, exporter, dialog);
+        vm.Update(BacktestTestFactory.CreateResult(), BacktestTestFactory.CreateStubReport(), 0);
+
+        await vm.ExportReportCommand.ExecuteAsync(null);
+
+        Assert.Equal(1, dialog.SaveFileDialogCallCount);
+        Assert.Equal(0, exporter.ExportCallCount);
+        Assert.Null(vm.ExportStatusMessage);
     }
 
     [Fact]
@@ -157,9 +204,7 @@ public class BacktestResultPresentationTests
 
         await vm.ExportReportCommand.ExecuteAsync(null);
 
-        Assert.Same(artifact, exporter.LastEvaluationArtifact);
-        Assert.Null(exporter.LastReport);
-        Assert.Equal("EVALUATION-JSON v1", dialog.LastFolderTitle);
+        Assert.Equal(result.Trades, exporter.LastTrades);
     }
 
     [Fact]

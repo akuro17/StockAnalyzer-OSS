@@ -1,0 +1,64 @@
+namespace StockAnalyzer.Avalonia.Common;
+
+/// <summary>One owner for RL accessibility identifiers used by the production views and desktop tests.</summary>
+public static class RlUiConstants
+{
+    public const string Menu = "Menu_RlTraining";
+    public const string Window = "Rl_TrainingWindow";
+    public const string Symbol = "Rl_Symbol";
+    public const string StartDate = "Rl_StartDate";
+    public const string EndDate = "Rl_EndDateExclusive";
+    public const string Capital = "Rl_InitialCapital";
+    public const string FlatCommission = "Rl_CommissionFlat";
+    public const string UnitCommission = "Rl_CommissionPerUnit";
+    public const string Slippage = "Rl_SlippageRatio";
+    public const string Liquidation = "Rl_LiquidationPenaltyRatio";
+    public const string SaveCosts = "Rl_SaveCosts";
+    public const string Smoke = "Rl_SmokeOnly";
+    public const string Train = "Rl_Train";
+    public const string StorageSettings = "Rl_StorageSettings";
+    public const string StorageQuota = "Rl_StorageQuota";
+    public const string StorageMinimumFree = "Rl_StorageMinimumFree";
+    public const string StorageFailedDays = "Rl_StorageFailedDays";
+    public const string StorageNonactiveDays = "Rl_StorageNonactiveDays";
+    public const string StorageKeepCount = "Rl_StorageKeepCount";
+    public const string StorageSave = "Rl_StorageSave";
+    public const string StorageInspect = "Rl_StorageInspect";
+    public const string StorageConfirm = "Rl_StorageConfirm";
+    public const string StorageCleanup = "Rl_StorageCleanup";
+    public const string StorageSummary = "Rl_StorageSummary";
+    public const string StorageEntries = "Rl_StorageEntries";
+    public const string Cancel = "Rl_Cancel";
+    public const string Pause = "Rl_Pause";
+    public const string CheckpointInspect = "Rl_CheckpointInspect";
+    public const string CheckpointModels = "Rl_CheckpointModels";
+    public const string CheckpointResume = "Rl_CheckpointResume";
+    public const string CheckpointResumeConfirm = "Rl_CheckpointResumeConfirm";
+    public const string CheckpointAbandon = "Rl_CheckpointAbandon";
+    public const string CheckpointAbandonConfirm = "Rl_CheckpointAbandonConfirm";
+    public const string CheckpointKeepCount = "Rl_CheckpointKeepCount";
+    public const string Status = "Rl_Status";
+    public const string Message = "Rl_Message";
+    public const string Models = "Rl_Generations";
+    public const string Activate = "Rl_Activate";
+    public const string ActiveModel = "Rl_ActiveModel";
+    public const string Blocks = "Rl_Blocks";
+    public const string Policies = "Rl_Policies";
+    public const string Decision = "Rl_Decision";
+    public const string Replay = "Rl_Replay";
+    public const string Disclosure = "Rl_Disclosure";
+    public const string QPanel = "Rl_QPanel";
+    public const string ContinuousMode = "Rl_ContinuousMode";
+    public const string AllCompleteBlocks = "Rl_AllCompleteBlocks";
+    public const string RecoveryPreview = "Rl_RecoveryPreview";
+    public const string InspectRecovery = "Rl_InspectRecovery";
+    public const string RecoverPointer = "Rl_RecoverPointer";
+    public const string FrozenDirection = "Rl_FrozenDirection";
+    public const string ContinuousReadout = "Rl_ContinuousReadout";
+    public const string DirectionTemporal = "Rl_DirectionTemporal";
+    public const string TemporalStatus = "Rl_TemporalStatus";
+    public const string PolicyControlReadout = "Rl_PolicyControlReadout";
+    public const string EvaluationReport = "Rl_EvaluationReport";
+    public const string EvaluationDetails = "Rl_EvaluationDetails";
+    public const double EvaluationMaximumHeight = 240d;
+}

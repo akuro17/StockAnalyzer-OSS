@@ -768,6 +768,9 @@ public partial class NoteTimelineViewModel : ViewModelBase, IDisposable
     /// <summary>Non-null while the inline create/edit compose panel should be shown.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsTimelineListVisible))]
+    [NotifyPropertyChangedFor(nameof(IsTimelineBrowsingMode))]
+    [NotifyPropertyChangedFor(nameof(IsDetailVisible))]
+    [NotifyPropertyChangedFor(nameof(EditingNoteTitle))]
     private NoteEditorViewModel? _editingNote;
 
     /// <summary>Non-null while the individual Note detail page (opened by clicking a card's posted-time
@@ -775,6 +778,8 @@ public partial class NoteTimelineViewModel : ViewModelBase, IDisposable
     /// list. Same null-as-"hidden" contract as <see cref="EditingNote"/>.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsTimelineListVisible))]
+    [NotifyPropertyChangedFor(nameof(IsTimelineBrowsingMode))]
+    [NotifyPropertyChangedFor(nameof(IsDetailVisible))]
     private NoteTimelineItemViewModel? _selectedDetailItem;
 
     /// <summary>True when the posted-Notes timeline list itself should be shown (sa_improve, Note Tab
@@ -784,6 +789,20 @@ public partial class NoteTimelineViewModel : ViewModelBase, IDisposable
     /// (<see cref="SelectedDetailItem"/>) is showing instead - the timeline list is mutually exclusive
     /// with both, one at a time.</summary>
     public bool IsTimelineListVisible => EditingNote is null && SelectedDetailItem is null;
+
+    /// <summary>True when in standard timeline browsing mode (neither editing nor viewing single note detail).</summary>
+    public bool IsTimelineBrowsingMode => EditingNote is null && SelectedDetailItem is null;
+
+    /// <summary>True when the individual Note detail page should be shown (i.e. an item is selected and we are not currently composing/editing).</summary>
+    public bool IsDetailVisible => EditingNote is null && SelectedDetailItem is not null;
+
+    /// <summary>Header title for the composer panel depending on whether creating a new note or editing.</summary>
+    public string EditingNoteTitle => EditingNote?.IsEditingExistingNote == true
+        ? LocalizationManager.Instance["Note_EditNoteTitle"] ?? "Edit Note"
+        : LocalizationManager.Instance["Note_NewNoteTitle"] ?? "New Note";
+
+    /// <summary>Active notes scheduled for upcoming dates, sorted by nearest deadline first.</summary>
+    public BulkObservableCollection<UpcomingCatalystItemViewModel> UpcomingCatalysts { get; } = new();
 
     /// <summary>The detail page's thread ancestors (spec section 6: Reply Chain), root-first (oldest
     /// ancestor first, immediate parent last) so the View can render them above <see cref="SelectedDetailItem"/>
@@ -1400,6 +1419,16 @@ public partial class NoteTimelineViewModel : ViewModelBase, IDisposable
 
         var quotedNotesById = await ResolveQuotedNotesAsync(visible, ct).ConfigureAwait(false);
 
+        var today = DateTime.Today;
+        var upcomingCatalysts = activeNotes
+            .Where(note => !note.IsDeleted && note.CatalystDate.HasValue && (note.CatalystDate.Value.Date - today).Days >= _notesSettingsManager.UpcomingCatalystsPastDaysRetention)
+            .OrderBy(note => note.CatalystDate!.Value.Date)
+            .ThenByDescending(note => note.CreatedAt)
+            .ThenBy(note => note.Id)
+            .Take(_notesSettingsManager.UpcomingCatalystsLimit)
+            .Select(note => new UpcomingCatalystItemViewModel(note, today, HandleOpenDetailForNote))
+            .ToList();
+
         // RefreshAsync's _refreshChain.ContinueWith(..., TaskScheduler.Default) deliberately keeps
         // this whole method off the UI thread for the DB read/filter/sort work, but DisplayedNotes
         // is bound to the timeline's ItemsControl - mutating it from a background thread (as the
@@ -1411,7 +1440,7 @@ public partial class NoteTimelineViewModel : ViewModelBase, IDisposable
         // SA_RENDERING_PERFORMANCE.md "Dispatcher Synchronization") instead of a capturing closure.
         await _dispatcherService.PostAsync(static state =>
         {
-            var (self, notes, hashtags, deletedCount, orphanedCount, quotedNotes, collapsedCounts, tombstoneIds, leafIds) = state;
+            var (self, notes, hashtags, deletedCount, orphanedCount, quotedNotes, collapsedCounts, tombstoneIds, leafIds, upcoming) = state;
             self.DeletedNotesCount = deletedCount;
             self.OrphanedFilesCount = orphanedCount;
 
@@ -1432,6 +1461,7 @@ public partial class NoteTimelineViewModel : ViewModelBase, IDisposable
 
             var items = self.BuildItemViewModels(notes, 0, revealCount, quotedNotes, collapsedCounts, tombstoneIds, leafIds);
             self.DisplayedNotes.ReplaceRange(items);
+            self.UpcomingCatalysts.ReplaceRange(upcoming);
 
             // Skip-if-equal (same optimization as WatchlistManager.Initialize): avoids rebuilding
             // AvailableSearchSuggestions - and thus flashing the suggestion dropdown - on every
@@ -1443,7 +1473,7 @@ public partial class NoteTimelineViewModel : ViewModelBase, IDisposable
             }
 
             return Task.CompletedTask;
-        }, (Self: this, Notes: visible, Hashtags: availableHashtags, DeletedCount: deletedNotesCount, OrphanedCount: orphanedFilesCount, QuotedNotes: quotedNotesById, CollapsedCounts: threadedOrder.CollapsedReplyCountAfterNoteId, TombstoneIds: threadedOrder.TombstoneNoteIds, LeafIds: threadedOrder.LeafNoteIds)).ConfigureAwait(false);
+        }, (Self: this, Notes: visible, Hashtags: availableHashtags, DeletedCount: deletedNotesCount, OrphanedCount: orphanedFilesCount, QuotedNotes: quotedNotesById, CollapsedCounts: threadedOrder.CollapsedReplyCountAfterNoteId, TombstoneIds: threadedOrder.TombstoneNoteIds, LeafIds: threadedOrder.LeafNoteIds, Upcoming: upcomingCatalysts)).ConfigureAwait(false);
     }
 
     /// <summary>Reveals the next <see cref="INotesSettingsManager.TimelinePageSize"/> notes of the most
@@ -1641,8 +1671,20 @@ public partial class NoteTimelineViewModel : ViewModelBase, IDisposable
         await EditingNote.SaveCommand.ExecuteAsync(null);
         if (EditingNote.SavedNote is not null)
         {
+            var savedNote = EditingNote.SavedNote;
             EditingNote = null;
+
+            if (SelectedDetailItem is not null && SelectedDetailItem.Note.Id == savedNote.Id)
+            {
+                SelectedDetailItem = CreateItemViewModel(savedNote, GetExpandedState(savedNote.Id), SelectedDetailItem.QuotedNotePreview, isTombstone: savedNote.IsDeleted, canReply: SelectedDetailItem.CanReply);
+            }
+
             await RefreshAsync();
+
+            if (SelectedDetailItem is not null)
+            {
+                DetailThreadLoadTask = LoadDetailThreadAsync(SelectedDetailItem.Note);
+            }
         }
     }
 
@@ -1723,6 +1765,7 @@ public partial class NoteTimelineViewModel : ViewModelBase, IDisposable
         // GetRepliesAsync's old behavior of dropping everything below it - in a single batched query
         // (sa_constraint_check: the previous per-node recursive repository-call walk opened a new DB
         // connection per descendant, an N+1 pattern).
+        var freshNote = await _noteRepository.GetByIdAsync(note.Id).ConfigureAwait(false) ?? note;
         var ancestors = await _noteRepository.GetAncestorChainAsync(note.Id).ConfigureAwait(false);
         var descendants = await _noteRepository.GetDescendantRepliesIncludingDeletedAsync(note.Id).ConfigureAwait(false);
         var repliesByParentId = descendants
@@ -1736,7 +1779,7 @@ public partial class NoteTimelineViewModel : ViewModelBase, IDisposable
         // whichever card was clicked to get here - see HandleOpenDetailRequested), only its pruned
         // descendants are. The detail page never applies thread-collapse windowing (existing design:
         // it's the "escape hatch" for a collapsed thread), so every surviving descendant renders.
-        var pruned = NoteThreadOrganizer.CollectPrunedSubtree(note, repliesByParentId);
+        var pruned = NoteThreadOrganizer.CollectPrunedSubtree(freshNote, repliesByParentId);
         var replies = pruned.Notes.Skip(1).ToList();
 
         var quotedNotesById = await ResolveQuotedNotesAsync(ancestors.Concat(replies), CancellationToken.None).ConfigureAwait(false);
@@ -1745,7 +1788,7 @@ public partial class NoteTimelineViewModel : ViewModelBase, IDisposable
         // Synchronization") instead of a capturing closure - same pattern as RefreshCoreAsync's post above.
         await _dispatcherService.PostAsync(static state =>
         {
-            var (self, note, ancestors, replies, quotedNotesById, pruned) = state;
+            var (self, note, freshNote, ancestors, replies, quotedNotesById, pruned) = state;
 
             // Stale-response guard: if the user navigated to a different Note's detail page (or back
             // to the list) while the DB reads above were in flight, SelectedDetailItem no longer
@@ -1756,13 +1799,15 @@ public partial class NoteTimelineViewModel : ViewModelBase, IDisposable
                 return Task.CompletedTask;
             }
 
+            self.SelectedDetailItem = self.CreateItemViewModel(freshNote, self.GetExpandedState(freshNote.Id), self.SelectedDetailItem.QuotedNotePreview, isTombstone: freshNote.IsDeleted, canReply: self.SelectedDetailItem.CanReply);
+
             // Every ancestor in the chain always has exactly one child - the next ancestor, or
             // ultimately `note` itself - so none of them can ever be the leaf of their branch;
             // canReply is unconditionally false rather than computed, unlike replies below.
             self.DetailAncestorChain.ReplaceRange(ancestors.Select(a => self.CreateItemViewModel(a, self.GetExpandedState(a.Id), ResolveQuotedPreview(a, quotedNotesById), isTombstone: a.IsDeleted, canReply: false)));
             self.DetailReplies.ReplaceRange(replies.Select(r => self.CreateItemViewModel(r, self.GetExpandedState(r.Id), ResolveQuotedPreview(r, quotedNotesById), isTombstone: pruned.TombstoneNoteIds.Contains(r.Id), canReply: pruned.LeafNoteIds.Contains(r.Id))));
             return Task.CompletedTask;
-        }, (Self: this, Note: note, Ancestors: ancestors, Replies: replies, QuotedNotesById: quotedNotesById, Pruned: pruned)).ConfigureAwait(false);
+        }, (Self: this, Note: note, FreshNote: freshNote, Ancestors: ancestors, Replies: replies, QuotedNotesById: quotedNotesById, Pruned: pruned)).ConfigureAwait(false);
     }
 
     private void HandleQuoteRequested(NoteTimelineItemViewModel item)
@@ -1786,6 +1831,18 @@ public partial class NoteTimelineViewModel : ViewModelBase, IDisposable
         SelectedDetailItem = null;
         DetailAncestorChain.Clear();
         DetailReplies.Clear();
+    }
+
+    /// <summary>Navigates directly to the detail view of <paramref name="note"/> from an Upcoming Catalyst card click.</summary>
+    public void HandleOpenDetailForNote(Note note)
+    {
+        if (EditingNote is not null)
+        {
+            EditingNote = null;
+        }
+
+        var itemVm = CreateItemViewModel(note, GetExpandedState(note.Id), quotedNotePreview: null, isTombstone: note.IsDeleted, canReply: false);
+        HandleOpenDetailRequested(itemVm);
     }
 
     /// <summary>

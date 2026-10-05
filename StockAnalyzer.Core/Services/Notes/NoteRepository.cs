@@ -36,8 +36,8 @@ public sealed class NoteRepository
         using var connection = await _connectionManager.OpenConnectionAsync(ct).ConfigureAwait(false);
         using var command = connection.CreateCommand();
         command.CommandText = """
-            INSERT INTO Notes (Id, Body, CreatedAt, UpdatedAt, ChartAnchorDate, ChartTimeframe, RelatedTicker, HashtagsJson, AttachmentIdsJson, LinkUrlsJson, IsPinned, IsDeleted, QuotedNoteId, ParentNoteId)
-            VALUES ($id, $body, $createdAt, $updatedAt, $chartAnchorDate, $chartTimeframe, $relatedTicker, $hashtagsJson, $attachmentIdsJson, $linkUrlsJson, $isPinned, $isDeleted, $quotedNoteId, $parentNoteId);
+            INSERT INTO Notes (Id, Body, CreatedAt, UpdatedAt, ChartAnchorDate, ChartTimeframe, RelatedTicker, HashtagsJson, AttachmentIdsJson, LinkUrlsJson, IsPinned, IsDeleted, QuotedNoteId, ParentNoteId, CatalystDate)
+            VALUES ($id, $body, $createdAt, $updatedAt, $chartAnchorDate, $chartTimeframe, $relatedTicker, $hashtagsJson, $attachmentIdsJson, $linkUrlsJson, $isPinned, $isDeleted, $quotedNoteId, $parentNoteId, $catalystDate);
             """;
         BindNoteParameters(command, note);
 
@@ -265,7 +265,8 @@ public sealed class NoteRepository
                 AttachmentIdsJson = $attachmentIdsJson,
                 LinkUrlsJson = $linkUrlsJson,
                 IsPinned = $isPinned,
-                IsDeleted = $isDeleted
+                IsDeleted = $isDeleted,
+                CatalystDate = $catalystDate
             WHERE Id = $id;
             """;
 
@@ -280,6 +281,7 @@ public sealed class NoteRepository
         command.Parameters.AddWithValue("$linkUrlsJson", JsonSerializer.Serialize(note.LinkUrls));
         command.Parameters.AddWithValue("$isPinned", note.IsPinned ? 1 : 0);
         command.Parameters.AddWithValue("$isDeleted", note.IsDeleted ? 1 : 0);
+        command.Parameters.AddWithValue("$catalystDate", (object?)(note.CatalystDate is { } catalyst ? SerializeDateTime(catalyst.Date) : null) ?? DBNull.Value);
 
         var rowsAffected = await command.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
         if (rowsAffected == 0)
@@ -509,6 +511,7 @@ public sealed class NoteRepository
         command.Parameters.AddWithValue("$isDeleted", note.IsDeleted ? 1 : 0);
         command.Parameters.AddWithValue("$quotedNoteId", (object?)note.QuotedNoteId?.ToString() ?? DBNull.Value);
         command.Parameters.AddWithValue("$parentNoteId", (object?)note.ParentNoteId?.ToString() ?? DBNull.Value);
+        command.Parameters.AddWithValue("$catalystDate", (object?)(note.CatalystDate is { } catalyst ? SerializeDateTime(catalyst.Date) : null) ?? DBNull.Value);
     }
 
     private static Note MapNote(SqliteDataReader reader)
@@ -544,6 +547,11 @@ public sealed class NoteRepository
         var parentNoteIdOrdinal = reader.GetOrdinal("ParentNoteId");
         Guid? parentNoteId = reader.IsDBNull(parentNoteIdOrdinal) ? null : Guid.Parse(reader.GetString(parentNoteIdOrdinal));
 
+        var catalystDateOrdinal = reader.GetOrdinal("CatalystDate");
+        DateTime? catalystDate = reader.IsDBNull(catalystDateOrdinal)
+            ? null
+            : DeserializeDateTime(reader.GetString(catalystDateOrdinal)).Date;
+
         return new Note(id, body, createdAt, updatedAt)
         {
             ChartAnchorDate = chartAnchorDate,
@@ -556,6 +564,7 @@ public sealed class NoteRepository
             IsDeleted = isDeleted,
             QuotedNoteId = quotedNoteId,
             ParentNoteId = parentNoteId,
+            CatalystDate = catalystDate,
         };
     }
 

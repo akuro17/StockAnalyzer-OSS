@@ -69,6 +69,15 @@ public interface IModelGenerationRegistry
     ModelGenerationLease? AcquireActive();
     ModelGenerationLease? Acquire(string modelId) => null;
     ModelGenerationManifest? GetManifest(string modelId) => null;
+
+    /// <summary>
+    /// Runs exactly the checks <see cref="RegisterAsync"/> runs (in the registry's private staging area only), publishes nothing and
+    /// returns the manifest the registration would produce. Lets a caller that registers several candidates reject a bad one before
+    /// registering any. A registry that cannot do this refuses explicitly.
+    /// </summary>
+    Task<ModelGenerationManifest> VerifyCandidateAsync(string onnxPath, string? metricsPath = null, CancellationToken ct = default) =>
+        Task.FromException<ModelGenerationManifest>(
+            new NotSupportedException("This model generation registry cannot verify a candidate without registering it."));
 }
 
 public sealed class ModelGenerationLease : IDisposable
@@ -87,11 +96,13 @@ public sealed class ModelGenerationLease : IDisposable
 }
 
 /// <summary>Content-addressed, verified model generations and an atomic active pointer.</summary>
-public sealed class ModelGenerationRegistry : IModelGenerationRegistry, IDisposable
+public sealed partial class ModelGenerationRegistry : IModelGenerationRegistry, IDisposable, ReinforcementLearning.IRlModelGenerationRegistry
 {
     public const int SchemaVersion = 2;
     private const int LegacySchemaVersion = 1;
     public const int PriorGenerationLimit = 5;
+    /// <summary>metrics, scaler, analysis and calibration: each kind occurs at most once.</summary>
+    private const int MaxRequiredSidecars = 4;
     private const string ManifestName = "manifest.json";
     private const string PointerName = "active.json";
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
@@ -101,6 +112,12 @@ public sealed class ModelGenerationRegistry : IModelGenerationRegistry, IDisposa
     private readonly Dictionary<string, ModelGenerationManifest> _known = new(StringComparer.Ordinal);
     private readonly Dictionary<string, int> _leases = new(StringComparer.Ordinal);
     private readonly Func<string, Pointer, Task> _savePointer;
+
+    /// <summary>
+    /// Removes a staging directory. An init-only seam rather than a constructor parameter, so the constructor shape that
+    /// reflection-based tests rely on stays unchanged; tests replace it to make the cleanup fail.
+    /// </summary>
+    internal Action<string> DeleteDirectory { get; init; } = path => Directory.Delete(path, recursive: true);
     private readonly IStockAnalyzerSettings? _predictionSettings;
     private Pointer _pointer = new(null, Array.Empty<string>());
     private bool _disposed;
@@ -116,60 +133,54 @@ public sealed class ModelGenerationRegistry : IModelGenerationRegistry, IDisposa
         _root = Path.GetFullPath(root);
         _predictionSettings = predictionSettings;
         _savePointer = savePointer ?? ((path, pointer) => AtomicJsonFile.SaveAsync(path, pointer, JsonOptions));
+        RequireStorePath(_root);
         Directory.CreateDirectory(_root);
-        var pointerPath = Path.Combine(_root, PointerName);
-        if (File.Exists(pointerPath))
-            _pointer = JsonSerializer.Deserialize<Pointer>(File.ReadAllText(pointerPath), JsonOptions)
-                ?? throw new InvalidDataException("Model active pointer is invalid.");
-        foreach (var dir in Directory.EnumerateDirectories(_root))
-        {
-            if (Path.GetFileName(dir).StartsWith(".stage_", StringComparison.Ordinal)) continue;
-            var path = Path.Combine(dir, ManifestName);
-            if (!File.Exists(path)) continue;
-            try
-            {
-                var manifest = JsonSerializer.Deserialize<ModelGenerationManifest>(File.ReadAllText(path), JsonOptions);
-                if (manifest is not null && manifest.ModelId == Path.GetFileName(dir) && Verify(manifest, dir))
-                    _known.Add(manifest.ModelId, manifest);
-            }
-            catch (Exception ex) when (ex is JsonException or ArgumentException) { /* invalid generation stays unavailable */ }
-        }
-        if (_pointer.ActiveId is { } active && (!_known.ContainsKey(active) || !Verify(_known[active])))
-            throw new InvalidDataException("Active model generation is missing or corrupt.");
+        using var transaction = EnterStore();
     }
 
-    public string? ActiveId { get { lock (_gate) return _pointer.ActiveId; } }
-    public string? PreviousId { get { lock (_gate) return _pointer.History?.FirstOrDefault(); } }
+    public string? ActiveId { get { lock (_gate) { if (_disposed) return _pointer.ActiveId; using var transaction = EnterStore(); return _pointer.ActiveId; } } }
+    public string? PreviousId { get { lock (_gate) { if (_disposed) return _pointer.History?.FirstOrDefault(); using var transaction = EnterStore(); return _pointer.History?.FirstOrDefault(); } } }
 
     public IReadOnlyList<ModelGenerationSummary> List()
     {
         lock (_gate)
+        {
+            using var transaction = EnterStore();
             return _known.Values.Select(m => new ModelGenerationSummary(
                 m.ModelId, m.ModelFile, m.TargetType, m.Timeframe, m.Horizon,
                 m.Score, m.EvaluationRevision, m.ModelId == _pointer.ActiveId))
                 .OrderBy(m => m.ModelId, StringComparer.Ordinal).ToArray();
+        }
     }
 
-    public async Task<ModelGenerationManifest> RegisterAsync(string onnxPath, string? metricsPath = null, CancellationToken ct = default)
+    public Task<ModelGenerationManifest> RegisterAsync(string onnxPath, string? metricsPath = null, CancellationToken ct = default)
+        => StageAsync(onnxPath, metricsPath, publish: true, ct);
+
+    public Task<ModelGenerationManifest> VerifyCandidateAsync(string onnxPath, string? metricsPath = null, CancellationToken ct = default)
+        => StageAsync(onnxPath, metricsPath, publish: false, ct);
+
+    /// <summary>Builds and verifies the staged generation; with <paramref name="publish"/> it is then moved into the store, otherwise discarded.</summary>
+    private async Task<ModelGenerationManifest> StageAsync(string onnxPath, string? metricsPath, bool publish, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(onnxPath) || !File.Exists(onnxPath))
             throw new FileNotFoundException("ONNX generation source is missing.", onnxPath);
         metricsPath ??= onnxPath + ".metrics.json";
         if (!File.Exists(metricsPath))
             throw new FileNotFoundException("Independent evaluation metrics are required.", metricsPath);
-        await _mutation.WaitAsync(ct).ConfigureAwait(false);
+        await EnterMutationAsync(ct).ConfigureAwait(false);
         string? stage = null;
         try
         {
+            using var transaction = EnterStore(ct);
             lock (_gate) ObjectDisposedException.ThrowIf(_disposed, this);
             stage = Path.Combine(_root, ".stage_" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(stage);
             var modelName = Path.GetFileName(onnxPath);
-            if (!modelName.EndsWith(".onnx", StringComparison.OrdinalIgnoreCase) || !SafeName(modelName))
+            if (!modelName.EndsWith(".onnx", StringComparison.OrdinalIgnoreCase) || !PlainFileName.IsValid(modelName))
                 throw new InvalidDataException("Invalid ONNX filename.");
             var stagedModel = Path.Combine(stage, modelName);
             await CopyAsync(onnxPath, stagedModel, ct).ConfigureAwait(false);
-            var modelHash = HashFile(stagedModel);
+            var modelHash = ContentHash.OfFile(stagedModel);
             var metricName = modelName + ".metrics.json";
             var stagedMetrics = Path.Combine(stage, metricName);
             await CopyAsync(metricsPath, stagedMetrics, ct).ConfigureAwait(false);
@@ -215,15 +226,15 @@ public sealed class ModelGenerationRegistry : IModelGenerationRegistry, IDisposa
             if (PredictionModelMetadata.RequiresFixedScaler(metadata))
             {
                 var scalerName = modelName + ".scaler.json";
-                if (scalerRef != scalerName || !SafeName(scalerRef))
+                if (scalerRef != scalerName || !PlainFileName.IsValid(scalerRef))
                     throw new InvalidDataException("Scaler reference must resolve inside its generation.");
                 var scalerSource = onnxPath + ".scaler.json";
                 if (!File.Exists(scalerSource)) throw new FileNotFoundException("Required scaler sidecar is missing.", scalerSource);
                 await CopyAsync(scalerSource, Path.Combine(stage, scalerName), ct).ConfigureAwait(false);
                 using var _ = JsonDocument.Parse(File.ReadAllText(Path.Combine(stage, scalerName)));
-                sidecars.Add(new ModelSidecar(scalerName, HashFile(Path.Combine(stage, scalerName)), "scaler"));
+                sidecars.Add(new ModelSidecar(scalerName, ContentHash.OfFile(Path.Combine(stage, scalerName)), "scaler"));
             }
-            sidecars.Add(new ModelSidecar(metricName, HashFile(stagedMetrics), "metrics"));
+            sidecars.Add(new ModelSidecar(metricName, ContentHash.OfFile(stagedMetrics), "metrics"));
             if (metadata.ContainsKey(ModelAnalysisContract.ReferenceKey))
             {
                 var analysisName = modelName + ".analysis.json";
@@ -231,8 +242,27 @@ public sealed class ModelGenerationRegistry : IModelGenerationRegistry, IDisposa
                     throw new InvalidDataException("Analysis reference must resolve inside its generation.");
                 await CopyAsync(onnxPath + ".analysis.json", Path.Combine(stage, analysisName), ct).ConfigureAwait(false);
                 _ = ModelAnalysis.Load(stagedModel, metadata, modelHash, report.GetProperty("data_revision").GetString() ?? "");
-                sidecars.Add(new ModelSidecar(analysisName, HashFile(Path.Combine(stage, analysisName)), "analysis"));
+                sidecars.Add(new ModelSidecar(analysisName, ContentHash.OfFile(Path.Combine(stage, analysisName)), "analysis"));
             }
+            if (metadata.ContainsKey(ModelCalibrationContract.ReferenceKey))
+            {
+                var calibrationName = modelName + ModelCalibrationContract.SidecarSuffix;
+                if (metadata[ModelCalibrationContract.ReferenceKey] != calibrationName)
+                    throw new InvalidDataException("Calibration reference must resolve inside its generation.");
+                var calibrationSource = onnxPath + ModelCalibrationContract.SidecarSuffix;
+                if (!File.Exists(calibrationSource))
+                    throw new FileNotFoundException("Required calibration sidecar is missing.", calibrationSource);
+                await CopyAsync(calibrationSource, Path.Combine(stage, calibrationName), ct).ConfigureAwait(false);
+                _ = ModelCalibration.Load(stagedModel, metadata, modelHash, report.GetProperty("data_revision").GetString() ?? "");
+                sidecars.Add(new ModelSidecar(calibrationName, ContentHash.OfFile(Path.Combine(stage, calibrationName)),
+                    ModelCalibrationContract.SidecarKind));
+            }
+            // The explanation is optional: it is carried with the generation but is neither a required sidecar nor part of
+            // the model identity, so its absence or corruption never affects prediction (it validates itself on load).
+            var explainSource = onnxPath + ModelExplanationContract.SidecarSuffix;
+            if (File.Exists(explainSource))
+                await CopyAsync(explainSource, Path.Combine(stage, modelName + ModelExplanationContract.SidecarSuffix), ct)
+                    .ConfigureAwait(false);
             sidecars.Sort((a, b) => StringComparer.Ordinal.Compare(a.File, b.File));
             var contractHash = ComputeContractHash(metadata, windowSize, target, horizon, timeframe, classOrder, SchemaVersion);
             var id = ComputeModelId(stagedModel, sidecars, contractHash);
@@ -241,6 +271,7 @@ public sealed class ModelGenerationRegistry : IModelGenerationRegistry, IDisposa
                 { TrainingLineage = lineage };
             File.WriteAllText(Path.Combine(stage, ManifestName), JsonSerializer.Serialize(manifest, JsonOptions));
             if (!Verify(manifest, stage)) throw new InvalidDataException("Staged generation verification failed.");
+            if (!publish) return manifest; // the staging directory is removed below; nothing becomes known or visible
             lock (_gate)
             {
                 ObjectDisposedException.ThrowIf(_disposed, this);
@@ -251,17 +282,31 @@ public sealed class ModelGenerationRegistry : IModelGenerationRegistry, IDisposa
                 {
                     if (!Verify(manifest, destination))
                         throw new InvalidDataException("An existing generation with this ID is corrupt.");
-                    Directory.Delete(stage, recursive: true);
+                    var stagedExplanation = Path.Combine(stage, modelName + ModelExplanationContract.SidecarSuffix);
+                    var storedExplanation = Path.Combine(destination, modelName + ModelExplanationContract.SidecarSuffix);
+                    if (File.Exists(stagedExplanation) && !File.Exists(storedExplanation))
+                        CopyIntoPlace(stagedExplanation, storedExplanation);
+                    RequireStoreTree(stage); DeleteDirectory(stage);
                 }
                 _known[id] = manifest;
             }
             stage = null;
             return manifest;
         }
+        catch (Exception error) { RecordStoreFailure("register", error); throw; }
         finally
         {
-            if (stage is not null && Directory.Exists(stage)) Directory.Delete(stage, recursive: true);
-            _mutation.Release();
+            try
+            {
+                if (stage is not null && Directory.Exists(stage)) { RequireStoreTree(stage); DeleteDirectory(stage); }
+            }
+            catch (Exception cleanupError) when (cleanupError is IOException or UnauthorizedAccessException)
+            {
+                // Best effort: a staging directory that cannot be removed now (a scanner or indexer briefly holds a file in it)
+                // is skipped when the store is loaded and never read, but it must neither hide the registration's own outcome nor
+                // keep the registry locked -- a skipped release would block every later operation and Dispose forever.
+            }
+            finally { _mutation.Release(); }
         }
     }
 
@@ -275,9 +320,10 @@ public sealed class ModelGenerationRegistry : IModelGenerationRegistry, IDisposa
     private async Task<bool> ActivateCoreAsync(string modelId, bool manual, bool confirmLowerScore,
         string? expectedActiveId, bool checkExpectedActiveId, CancellationToken ct)
     {
-        await _mutation.WaitAsync(ct).ConfigureAwait(false);
+        await EnterMutationAsync(ct).ConfigureAwait(false);
         try
         {
+            using var transaction = EnterStore(ct);
             ModelGenerationManifest candidate;
             Pointer next;
             lock (_gate)
@@ -285,7 +331,11 @@ public sealed class ModelGenerationRegistry : IModelGenerationRegistry, IDisposa
                 ObjectDisposedException.ThrowIf(_disposed, this);
                 if (checkExpectedActiveId && _pointer.ActiveId != expectedActiveId)
                     throw new ModelActivationContextChangedException();
-                if (!_known.TryGetValue(modelId, out candidate!)) throw new KeyNotFoundException("Unknown model generation.");
+                if (!_known.TryGetValue(modelId, out candidate!))
+                {
+                    if (IsHash(modelId) && Directory.Exists(Path.Combine(_root, modelId))) throw new InvalidDataException("Candidate generation is corrupt.");
+                    throw new KeyNotFoundException("Unknown model generation.");
+                }
                 if (_pointer.ActiveId == modelId) return false;
                 if (!Verify(candidate)) throw new InvalidDataException("Candidate generation is corrupt.");
                 ValidateConfiguredPredictionContract(candidate);
@@ -314,6 +364,7 @@ public sealed class ModelGenerationRegistry : IModelGenerationRegistry, IDisposa
             }
             lock (_gate) ObjectDisposedException.ThrowIf(_disposed, this);
             ct.ThrowIfCancellationRequested();
+            RequirePointerWritePaths(Path.Combine(_root, PointerName));
             await _savePointer(Path.Combine(_root, PointerName), next).ConfigureAwait(false);
             lock (_gate)
             {
@@ -321,6 +372,7 @@ public sealed class ModelGenerationRegistry : IModelGenerationRegistry, IDisposa
             }
             return true;
         }
+        catch (Exception error) { RecordStoreFailure("activate", error); throw; }
         finally { _mutation.Release(); }
     }
 
@@ -330,6 +382,7 @@ public sealed class ModelGenerationRegistry : IModelGenerationRegistry, IDisposa
         string? current;
         lock (_gate)
         {
+            using var transaction = EnterStore(ct);
             prior = _pointer.History?.FirstOrDefault();
             current = _pointer.ActiveId;
         }
@@ -342,14 +395,16 @@ public sealed class ModelGenerationRegistry : IModelGenerationRegistry, IDisposa
     {
         lock (_gate)
         {
+            using var transaction = EnterStore();
             ObjectDisposedException.ThrowIf(_disposed, this);
             if (_pointer.ActiveId is not { } id) return null;
             var manifest = _known[id];
             if (!Verify(manifest)) throw new InvalidDataException("Active generation is corrupt.");
+            var storeLease = CreateStoreLease(Coordination.PredictionLease, id);
             _leases[id] = _leases.GetValueOrDefault(id) + 1;
             return new ModelGenerationLease(id, Path.Combine(_root, id, manifest.ModelFile), () =>
             {
-                lock (_gate) _leases[id]--;
+                storeLease.Dispose(); lock (_gate) _leases[id]--;
             });
         }
     }
@@ -358,6 +413,7 @@ public sealed class ModelGenerationRegistry : IModelGenerationRegistry, IDisposa
     {
         lock (_gate)
         {
+            using var transaction = EnterStore();
             ObjectDisposedException.ThrowIf(_disposed, this);
             return _known.GetValueOrDefault(modelId);
         }
@@ -367,13 +423,15 @@ public sealed class ModelGenerationRegistry : IModelGenerationRegistry, IDisposa
     {
         lock (_gate)
         {
+            using var transaction = EnterStore();
             ObjectDisposedException.ThrowIf(_disposed, this);
             if (!_known.TryGetValue(modelId, out var manifest)) return null;
             if (!Verify(manifest)) throw new InvalidDataException($"Generation '{modelId}' is corrupt.");
+            var storeLease = CreateStoreLease(Coordination.PredictionLease, modelId);
             _leases[modelId] = _leases.GetValueOrDefault(modelId) + 1;
             return new ModelGenerationLease(modelId, Path.Combine(_root, modelId, manifest.ModelFile), () =>
             {
-                lock (_gate) _leases[modelId]--;
+                storeLease.Dispose(); lock (_gate) _leases[modelId]--;
             });
         }
     }
@@ -382,19 +440,22 @@ public sealed class ModelGenerationRegistry : IModelGenerationRegistry, IDisposa
     {
         try
         {
-            if (m.SchemaVersion is not (LegacySchemaVersion or SchemaVersion) || !IsHash(m.ModelId) || !SafeName(m.ModelFile)
+            if (m.SchemaVersion is not (LegacySchemaVersion or SchemaVersion) || !IsHash(m.ModelId) || !PlainFileName.IsValid(m.ModelFile)
                 || !IsHash(m.ModelHash) || !IsHash(m.ContractHash) || !IsHash(m.EvaluationRevision)
-                || m.RequiredSidecars is null || m.RequiredSidecars.Count is < 1 or > 3
+                || m.RequiredSidecars is null || m.RequiredSidecars.Count is < 1 or > MaxRequiredSidecars
                 || m.RequiredSidecars.Select(s => s?.Kind).Distinct().Count() != m.RequiredSidecars.Count) return false;
             directory ??= Path.Combine(_root, m.ModelId);
-            if (HashFile(Path.Combine(directory, m.ModelFile)) != m.ModelHash) return false;
+            if (ContentHash.OfFile(Path.Combine(directory, m.ModelFile)) != m.ModelHash) return false;
             foreach (var sidecar in m.RequiredSidecars)
-                if (sidecar is null || !SafeName(sidecar.File) || !IsHash(sidecar.Hash)
-                    || (sidecar.Kind != "metrics" && sidecar.Kind != "scaler" && sidecar.Kind != "analysis")
+                if (sidecar is null || !PlainFileName.IsValid(sidecar.File) || !IsHash(sidecar.Hash)
+                    || (sidecar.Kind != "metrics" && sidecar.Kind != "scaler" && sidecar.Kind != "analysis"
+                        && sidecar.Kind != ModelCalibrationContract.SidecarKind)
                     || (sidecar.Kind == "metrics" && sidecar.File != m.ModelFile + ".metrics.json")
                     || (sidecar.Kind == "scaler" && sidecar.File != m.ModelFile + ".scaler.json")
                     || (sidecar.Kind == "analysis" && sidecar.File != m.ModelFile + ".analysis.json")
-                    || HashFile(Path.Combine(directory, sidecar.File)) != sidecar.Hash) return false;
+                    || (sidecar.Kind == ModelCalibrationContract.SidecarKind
+                        && sidecar.File != m.ModelFile + ModelCalibrationContract.SidecarSuffix)
+                    || ContentHash.OfFile(Path.Combine(directory, sidecar.File)) != sidecar.Hash) return false;
             if (m.RequiredSidecars.Count(s => s.Kind == "metrics" && s.File == m.ModelFile + ".metrics.json") != 1)
                 return false;
             var expected = ComputeModelId(Path.Combine(directory, m.ModelFile), m.RequiredSidecars, m.ContractHash);
@@ -438,11 +499,19 @@ public sealed class ModelGenerationRegistry : IModelGenerationRegistry, IDisposa
             if (requiresAnalysis)
                 _ = ModelAnalysis.Load(Path.Combine(directory, m.ModelFile), metadata, m.ModelHash,
                     report.GetProperty("data_revision").GetString() ?? "");
+            bool requiresCalibration = metadata.ContainsKey(ModelCalibrationContract.ReferenceKey);
+            if (requiresCalibration != m.RequiredSidecars.Any(s => s.Kind == ModelCalibrationContract.SidecarKind)) return false;
+            if (requiresCalibration)
+            {
+                var calibration = ModelCalibration.Load(Path.Combine(directory, m.ModelFile), metadata, m.ModelHash,
+                    report.GetProperty("data_revision").GetString() ?? "");
+                if (calibration.ClassOrder != m.ClassOrder) return false;
+            }
             return ComputeContractHash(metadata, windowSize, m.TargetType, m.Horizon, m.Timeframe, m.ClassOrder, m.SchemaVersion) == m.ContractHash;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException
             or JsonException or KeyNotFoundException or OnnxRuntimeException or InvalidOperationException
-            or FormatException or OverflowException) { return false; }
+            or FormatException or OverflowException or InvalidDataException) { return false; }
     }
 
     private void ValidateConfiguredPredictionContract(ModelGenerationManifest candidate)
@@ -463,9 +532,6 @@ public sealed class ModelGenerationRegistry : IModelGenerationRegistry, IDisposa
             _predictionSettings.PredictionClassLabels, NullLogger.Instance, featureSpec);
     }
 
-    private static bool SafeName(string? name) => !string.IsNullOrEmpty(name) && name == Path.GetFileName(name)
-        && name is not ("." or "..") && !name.Contains('/') && !name.Contains('\\')
-        && name.IndexOfAny(Path.GetInvalidFileNameChars()) < 0;
     private static bool IsHash(string? value) => value is { Length: 64 } && value.All(Uri.IsHexDigit);
 
     private sealed record EvaluationEvidence(string Revision, string Target, string Timeframe,
@@ -643,11 +709,25 @@ public sealed class ModelGenerationRegistry : IModelGenerationRegistry, IDisposa
         digest.AppendData(Convert.FromHexString(contractHash));
         return Convert.ToHexString(digest.GetHashAndReset()).ToLowerInvariant();
     }
-    private static string HashFile(string path)
+    /// <summary>Copies under a temporary name and moves it into place, so a concurrent reader never sees a half-written file.</summary>
+    private static void CopyIntoPlace(string source, string destination)
     {
-        using var stream = File.OpenRead(path);
-        return Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant();
+        var temporary = destination + ".tmp-" + Guid.NewGuid().ToString("N");
+        try
+        {
+            File.Copy(source, temporary);
+            File.Move(temporary, destination);
+        }
+        catch (IOException) when (File.Exists(destination))
+        {
+            // another registration placed it first; the content is the same generation's explanation
+        }
+        finally
+        {
+            if (File.Exists(temporary)) File.Delete(temporary);
+        }
     }
+
     private static async Task CopyAsync(string source, string destination, CancellationToken ct)
     {
         await using var input = File.OpenRead(source);
@@ -667,5 +747,6 @@ public sealed class ModelGenerationRegistry : IModelGenerationRegistry, IDisposa
         finally { _mutation.Release(); }
     }
 
-    internal sealed record Pointer(string? ActiveId, string[] History);
+    internal sealed record Pointer(string? ActiveId, string[] History)
+    { public int SchemaVersion { get; init; } = Coordination.PointerSchema; }
 }

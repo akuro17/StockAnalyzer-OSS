@@ -67,13 +67,16 @@
                 </StackPanel>
             </Border>
 
-            <!-- Tab switching area (spec section 9.4/5.2): 3 tabs, each hosting one already-built tab View. -->
+            <!-- Tab switching area: 4 tabs, each hosting one already-built tab View. -->
             <TabControl Grid.Row="1" Background="{DynamicResource Brush.Background.Primary}">
                 <TabItem Header="{l:Localize Backtest_Tab_Configuration}" AutomationProperties.AutomationId="Backtest_Tab_Configuration">
                     <views:BacktestConfigurationView/>
                 </TabItem>
-                <TabItem Header="{l:Localize Backtest_Tab_IndicatorSelection}" AutomationProperties.AutomationId="Backtest_Tab_IndicatorSelection">
+                <TabItem Header="{l:Localize Backtest_Tab_Indicator}" AutomationProperties.AutomationId="Backtest_Tab_Indicator">
                     <views:BacktestIndicatorSelectionView DataContext="{Binding IndicatorSelection}"/>
+                </TabItem>
+                <TabItem Header="{l:Localize Backtest_Tab_TradingSignal}" AutomationProperties.AutomationId="Backtest_Tab_TradingSignal">
+                    <views:BacktestTradingSignalView DataContext="{Binding TradingSignal}"/>
                 </TabItem>
                 <TabItem Header="{l:Localize Backtest_Tab_Results}" AutomationProperties.AutomationId="Backtest_Tab_Results">
                     <views:BacktestResultsView DataContext="{Binding Results}"/>

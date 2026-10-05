@@ -1,0 +1,98 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:StockAnalyzer.Avalonia.ViewModels.Dialogs"
+             xmlns:l="using:StockAnalyzer.Avalonia.Markup"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="400"
+             x:Class="StockAnalyzer.Avalonia.Views.Dialogs.ModelExplainabilityView"
+             x:DataType="vm:ModelExplainabilityViewModel">
+
+    <Design.DataContext>
+        <vm:ModelExplainabilityViewModel/>
+    </Design.DataContext>
+
+    <Border Background="{DynamicResource Brush.Background.Secondary}"
+            BorderBrush="{DynamicResource Brush.Border.Primary}"
+            BorderThickness="1" CornerRadius="8" Padding="16">
+        <StackPanel Spacing="10">
+            <TextBlock Text="{l:Localize Explainability_Title}" FontWeight="Bold"/>
+            <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsLoading}"/>
+
+            <TextBlock Text="{l:Localize Calibration_Title}" FontWeight="SemiBold"/>
+            <TextBlock Text="{Binding CalibrationStatus}" TextWrapping="Wrap"/>
+            <TextBlock Text="{Binding CalibrationDetail}" TextWrapping="Wrap"
+                       IsVisible="{Binding CalibrationDetail, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                       FontSize="{DynamicResource HelperFontSize}"/>
+            <TextBlock Text="{Binding CalibrationWarning}" TextWrapping="Wrap"
+                       IsVisible="{Binding CalibrationWarning, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                       Foreground="{DynamicResource Brush.Semantic.Error}"/>
+
+            <TextBlock Text="{l:Localize Explainability_ContributionTitle}" FontWeight="SemiBold"/>
+            <TextBlock Text="{Binding ExplanationStatus}" TextWrapping="Wrap"
+                       IsVisible="{Binding ExplanationStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+            <TextBlock Text="{Binding RepresentativeNote}" TextWrapping="Wrap"
+                       IsVisible="{Binding RepresentativeNote, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                       FontSize="{DynamicResource HelperFontSize}"/>
+            <TextBlock Text="{Binding ContributionNote}" TextWrapping="Wrap"
+                       IsVisible="{Binding ContributionNote, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                       FontSize="{DynamicResource HelperFontSize}"/>
+            <TextBlock Text="{Binding StabilityNote}" TextWrapping="Wrap"
+                       IsVisible="{Binding StabilityNote, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                       FontSize="{DynamicResource HelperFontSize}"/>
+            <ItemsControl ItemsSource="{Binding Cases}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:ExplainCaseDisplay">
+                        <StackPanel Spacing="6" Margin="0,6,0,6">
+                            <TextBlock Text="{Binding Header}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                            <ItemsControl ItemsSource="{Binding Outputs}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:ExplainOutputDisplay">
+                                        <StackPanel Spacing="2" Margin="0,2,0,2">
+                                            <TextBlock Text="{Binding Title}"/>
+                                            <ItemsControl ItemsSource="{Binding Rows}">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate x:DataType="vm:ContributionDisplayRow">
+                                                        <StackPanel>
+                                                            <Grid ColumnDefinitions="*,Auto">
+                                                                <TextBlock Text="{Binding Channel}"/>
+                                                                <TextBlock Grid.Column="1" Text="{Binding Display}"/>
+                                                            </Grid>
+                                                            <Grid ColumnDefinitions="*,*">
+                                                                <ProgressBar Value="{Binding NegativeMagnitude}" Maximum="{Binding ScaleMaximum}"
+                                                                             FlowDirection="RightToLeft" Height="{DynamicResource BaseFontSize}"
+                                                                             Foreground="{DynamicResource Brush.Semantic.Error}"/>
+                                                                <ProgressBar Grid.Column="1" Value="{Binding PositiveMagnitude}" Maximum="{Binding ScaleMaximum}"
+                                                                             Height="{DynamicResource BaseFontSize}"
+                                                                             Foreground="{DynamicResource Brush.Semantic.Success}"/>
+                                                            </Grid>
+                                                        </StackPanel>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <TextBlock Text="{l:Localize Explainability_PdpTitle}" FontWeight="SemiBold"
+                       IsVisible="{Binding PartialDependenceNote, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+            <TextBlock Text="{Binding PartialDependenceNote}" TextWrapping="Wrap"
+                       IsVisible="{Binding PartialDependenceNote, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                       FontSize="{DynamicResource HelperFontSize}"/>
+            <ItemsControl ItemsSource="{Binding PartialDependenceRows}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:PartialDependenceDisplayRow">
+                        <TextBlock Text="{Binding Text}" TextWrapping="Wrap"/>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <TextBlock Text="{Binding Provenance}" TextWrapping="Wrap"
+                       FontSize="{DynamicResource HelperFontSize}"/>
+        </StackPanel>
+    </Border>
+</UserControl>

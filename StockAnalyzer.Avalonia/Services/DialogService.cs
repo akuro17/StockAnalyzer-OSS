@@ -14,6 +14,7 @@ using StockAnalyzer.Avalonia.ViewModels.Dialogs;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Portfolio;
 using StockAnalyzer.Core.Models.Watchlist;
+using StockAnalyzer.Core.Interfaces;
 using Avalonia.Platform.Storage;
 using System.Linq;
 using CommunityToolkit.Mvvm.Messaging;
@@ -25,7 +26,7 @@ using StockAnalyzer.Avalonia.Common;
 
 namespace StockAnalyzer.Avalonia.Services;
 
-public class DialogService : IDialogService
+public partial class DialogService : IDialogService
 {
 
 
@@ -876,6 +877,68 @@ public class DialogService : IDialogService
                     var parent = desktop.MainWindow;
                     var result = await window.ShowDialog<bool>(parent!);
                     return result ? vm.GetActiveColumnNames() : null;
+                }
+                finally
+                {
+                    vm.Dispose();
+                }
+            });
+        }
+        return null;
+    }
+
+    public async Task<List<string>?> ShowBacktestTradeHistoryColumnChooserDialogAsync(IEnumerable<string> activeColumns, Action<List<string>>? onApply = null)
+    {
+        if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+        {
+            return await global::Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(async () =>
+            {
+                var localization = _serviceProvider?.GetService<ILocalizationService>();
+                var vm = new BacktestTradeHistoryColumnChooserViewModel(activeColumns, localization)
+                {
+                    OnApplyAction = onApply
+                };
+                try
+                {
+                    var window = new BacktestTradeHistoryColumnChooserWindow
+                    {
+                        DataContext = vm
+                    };
+                    
+                    var parent = desktop.Windows.FirstOrDefault(w => w.IsActive) ?? desktop.MainWindow;
+                    var result = await window.ShowDialog<bool>(parent!);
+                    return result ? vm.GetActiveColumnIds() : null;
+                }
+                finally
+                {
+                    vm.Dispose();
+                }
+            });
+        }
+        return null;
+    }
+
+    public async Task<List<string>?> ShowBacktestMetricsColumnChooserDialogAsync(IEnumerable<string> activeMetricNames, Action<List<string>>? onApply = null)
+    {
+        if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+        {
+            return await global::Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(async () =>
+            {
+                var localization = _serviceProvider?.GetService<ILocalizationService>();
+                var vm = new BacktestMetricsColumnChooserViewModel(activeMetricNames, localization)
+                {
+                    OnApplyAction = onApply
+                };
+                try
+                {
+                    var window = new BacktestMetricsColumnChooserWindow
+                    {
+                        DataContext = vm
+                    };
+                    
+                    var parent = desktop.Windows.FirstOrDefault(w => w.IsActive) ?? desktop.MainWindow;
+                    var result = await window.ShowDialog<bool>(parent!);
+                    return result ? vm.GetActiveMetricNames() : null;
                 }
                 finally
                 {

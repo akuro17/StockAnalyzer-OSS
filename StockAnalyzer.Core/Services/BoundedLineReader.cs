@@ -17,15 +17,17 @@ namespace StockAnalyzer.Core.Services
 
         private readonly Stream _stream;
         private readonly int _maxLineBytes;
+        private readonly bool _strict;
         private readonly byte[] _chunk = new byte[ReadChunkSize];
         private readonly ArrayBufferWriter<byte> _line = new();
         private int _start;
         private int _end;
 
-        public BoundedLineReader(Stream stream, int maxLineBytes)
+        public BoundedLineReader(Stream stream, int maxLineBytes, bool strict = false)
         {
             _stream = stream;
             _maxLineBytes = maxLineBytes;
+            _strict = strict;
         }
 
         /// <summary>
@@ -42,6 +44,7 @@ namespace StockAnalyzer.Core.Services
                     _start = 0;
                     if (_end == 0)
                     {
+                        if (_strict && _line.WrittenCount != 0) throw new InvalidDataException("Incomplete LF-terminated protocol frame.");
                         return _line.WrittenCount == 0 ? null : TakeLine();
                     }
                 }
@@ -72,7 +75,9 @@ namespace StockAnalyzer.Core.Services
                 span = span[..^1];
             }
 
-            string text = Encoding.UTF8.GetString(span);
+            if (_strict && span.Length >= 3 && span[0] == 0xef && span[1] == 0xbb && span[2] == 0xbf)
+                throw new InvalidDataException("A UTF-8 BOM is not a protocol frame.");
+            string text = (_strict ? new UTF8Encoding(false, true) : Encoding.UTF8).GetString(span);
             _line.ResetWrittenCount();
             return text;
         }

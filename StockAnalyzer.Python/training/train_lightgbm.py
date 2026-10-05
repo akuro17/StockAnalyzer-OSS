@@ -85,6 +85,7 @@ def train_booster(args: argparse.Namespace, prepared: composed_training.Prepared
             horizon=args.horizon, threshold=args.threshold, n_splits=args.wf_splits,
             gap=args.gap, dates=dates, outer_fold_index=args.outer_fold_index,
             fixed_zscore=args.fixed_zscore, lags=fixed_scaler.trainer_lags(args, None),
+            calibration=ds.holdout_segment_requested(args), bagging=ds.bagging_from_args(args), cpcv=ds.cpcv_from_args(args),
         )
         if x_tr_3d.shape[0] == 0 or x_va_3d.shape[0] == 0:
             raise SystemExit("Empty train or val split; check --window/--horizon/--wf-splits vs data length.")
@@ -93,6 +94,7 @@ def train_booster(args: argparse.Namespace, prepared: composed_training.Prepared
             horizon=args.horizon, threshold=args.threshold, n_splits=args.wf_splits,
             gap=args.gap, outer_fold_index=args.outer_fold_index,
             fixed_zscore=args.fixed_zscore, lags=fixed_scaler.trainer_lags(args, None),
+            calibration=ds.holdout_segment_requested(args), cpcv=ds.cpcv_from_args(args),
         )
         channels = ds.feature_channels(args.feature_mode) * (1 + len(fixed_scaler.trainer_lags(args, None)))
         symbol_count = len(symbols)
@@ -318,6 +320,12 @@ def _parse_args(argv) -> argparse.Namespace:
     p.add_argument("--wf-splits", type=int, default=DEFAULT_WF_SPLITS)
     p.add_argument("--outer-fold-index", type=int, default=None,
                    help="Original outer fold to fit independently.")
+    p.add_argument("--calibration", action="store_true",
+                   help="Carve a calibration segment from the tail of the outer train side and stamp "
+                        "the calibration reference (requires --outer-fold-index).")
+    ds.add_meta_segment_argument(p)
+    ds.add_bagging_arguments(p)
+    ds.add_cpcv_arguments(p)
     p.add_argument("--gap", type=int, default=None,
                    help="Purge gap in bars between each walk-forward fold's train/val blocks "
                         "(default: None -> dataset.resolve_purge_gap picks window + horizon - 1).")
@@ -331,6 +339,14 @@ def _parse_args(argv) -> argparse.Namespace:
     p.add_argument("--smoke", action="store_true",
                    help=f"Fast run: --max-symbols {SMOKE_MAX_SYMBOLS} --n-estimators {SMOKE_N_ESTIMATORS}.")
     args = p.parse_args(argv)
+    try:
+        ds.bagging_from_args(args)
+        cpcv_spec = ds.cpcv_from_args(args)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
+    if cpcv_spec is not None and (args.outer_fold_index is not None or ds.holdout_segment_requested(args)
+                                  or args.bag_index is not None):
+        raise SystemExit("CPCV combinations are evaluation-only fits: no outer fold, calibration or bagging")
     args.arch = "gbdt"
     args.target_type = "classification"
     checkpoints.validate_controls(args.initialization_mode, "lightgbm", args.init_from,
@@ -339,6 +355,9 @@ def _parse_args(argv) -> argparse.Namespace:
         raise SystemExit(f"--gap must be non-negative, got {args.gap}")
     if args.outer_fold_index is not None and not 0 <= args.outer_fold_index < args.wf_splits:
         raise SystemExit("--outer-fold-index must be within --wf-splits")
+    if args.calibration and args.outer_fold_index is None:
+        raise SystemExit("--calibration requires --outer-fold-index")
+    ds.check_meta_segment(args, "classification")
     if args.smoke:
         if args.max_symbols is None:
             args.max_symbols = SMOKE_MAX_SYMBOLS
@@ -367,6 +386,7 @@ def main(argv) -> int:
         fixed_zscore=args.fixed_zscore, lags=lags, clip_sigma=args.clip_sigma,
         scaler_ref=args.out.name + ".scaler.json" if scaler is not None else None,
         analysis_ref=args.out.name + ".analysis.json" if args.outer_fold_index is not None else None,
+        calibration_ref=args.out.name + ".calibration.json" if args.calibration else None,
     )
     contract.update(args._checkpoint_session.metadata())
     def export_with_scaler(path: Path) -> None:

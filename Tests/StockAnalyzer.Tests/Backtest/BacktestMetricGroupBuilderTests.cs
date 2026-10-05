@@ -189,8 +189,9 @@ public class BacktestMetricGroupBuilderTests
         BacktestResultsViewModel vm = CreateViewModel(NullLocalizationService.Instance);
         var raised = new System.Collections.Generic.List<string?>();
         vm.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
-        Assert.False(vm.HasMetricGroups);
-        Assert.Equal(0, vm.MetricGroups.Length);
+        Assert.True(vm.HasMetricGroups);
+        Assert.Equal(6, vm.MetricGroups.Length);
+        Assert.All(vm.MetricGroups.SelectMany(g => g.Rows), row => Assert.Equal("-", row.ValueText));
 
         vm.Update(BacktestTestFactory.CreateResult(), GenerateReport(10m, -4m, 6m, -2m), 0);
 

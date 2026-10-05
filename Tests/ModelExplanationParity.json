@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "output_space": "probability",
+  "method": "shapley_permutation_sampling",
+  "seed": 42,
+  "background_size": 100,
+  "representative_per_class": 2,
+  "representative_latest": 2,
+  "pdp_grid_points": 11,
+  "pdp_quantile_low": 0.05,
+  "pdp_quantile_high": 0.95,
+  "pdp_semantics": "input_space_constant_offset_not_ohlc_consistent",
+  "max_model_calls": 2000000,
+  "explanation_type": "grouped_interventional_permutation_shapley",
+  "rng_policy": "per_case_seed_sequence",
+  "reason_latest": "latest",
+  "reason_top_prefix": "top_",
+  "target_contract": {
+    "metadata": {
+      "class_order": "Up,Down,Neutral",
+      "com.stockanalyzer.output.target_formula": "thresholded_simple_return",
+      "neutral_threshold": "0.005",
+      "prediction_horizon": "5",
+      "target_type": "classification"
+    },
+    "hash": "b20c8559fd2a8b1adaed9a78a47d0e863da998e65eb88f4ea62e4b31489fa175"
+  }
+}

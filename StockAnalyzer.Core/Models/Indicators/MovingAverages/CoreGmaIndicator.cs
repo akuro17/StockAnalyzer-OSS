@@ -5,6 +5,12 @@ using StockAnalyzer.Core.Models.Parameters;
 
 namespace StockAnalyzer.Core.Models.Indicators.MovingAverages;
 
+/// <summary>
+/// Core indicator implementation for Guppy Multiple Moving Average (GMMA).
+/// Evaluates relationships between short-term trader sentiment (3, 5, 8, 10, 12, 15 EMA)
+/// and long-term investor sentiment (30, 35, 40, 45, 50, 60 EMA).
+/// Preserves the historical enum identifier <see cref="IndicatorType.GMA"/> for serialization and ABI compatibility.
+/// </summary>
 [StockAnalyzerIndicator(IndicatorType.GMA)]
 public class CoreGmaIndicator : CoreIndicatorBase
 {

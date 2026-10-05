@@ -12,14 +12,16 @@ namespace StockAnalyzer.Core.Common;
 /// </summary>
 public static class AtomicJsonFile
 {
+    internal const string BackupSuffix = ".bak";
+    internal const string TemporarySuffix = ".tmp";
     /// <summary>
     /// Serializes <paramref name="data"/> to a temp file next to <paramref name="filePath"/>,
     /// then atomically replaces (or creates) the target. Exceptions propagate to the caller,
     /// which retains its own try/catch for feature-specific error logging.
     /// </summary>
-    public static async Task SaveAsync<T>(string filePath, T data, JsonSerializerOptions? options = null)
+    public static async Task SaveAsync<T>(string filePath, T data, JsonSerializerOptions? options = null, bool preserveBackup = false)
     {
-        string tempPath = filePath + ".tmp";
+        string tempPath = filePath + TemporarySuffix;
         try
         {
             var directory = Path.GetDirectoryName(filePath);
@@ -35,7 +37,7 @@ public static class AtomicJsonFile
 
             if (File.Exists(filePath))
             {
-                File.Replace(tempPath, filePath, filePath + ".bak");
+                File.Replace(tempPath, filePath, preserveBackup ? null : filePath + BackupSuffix);
             }
             else
             {

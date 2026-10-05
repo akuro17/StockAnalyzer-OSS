@@ -8,7 +8,9 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using StockAnalyzer.Core.Common;
+using StockAnalyzer.Core.Models.Settings;
 using StockAnalyzer.Core.Models.Training;
 
 namespace StockAnalyzer.Core.Services;
@@ -48,6 +50,7 @@ public sealed class RetrainingScheduler : IRetrainingScheduler
     private readonly IExperimentLogService _experiments;
     private readonly TimeProvider _clock;
     private readonly ILogger<RetrainingScheduler> _logger;
+    private readonly PredictionMonitoringSettings _settings;
     private readonly string _root;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly object _cancellationGate = new();
@@ -58,11 +61,13 @@ public sealed class RetrainingScheduler : IRetrainingScheduler
 
     public RetrainingScheduler(ITrainingOrchestrator orchestrator, IModelGenerationRegistry registry,
         IExperimentLogService experiments, ILogger<RetrainingScheduler>? logger = null,
-        TimeProvider? clock = null, string? root = null)
+        TimeProvider? clock = null, string? root = null, IOptions<PredictionMonitoringSettings>? monitoring = null)
     {
         _orchestrator = orchestrator; _registry = registry; _experiments = experiments;
         _clock = clock ?? TimeProvider.System;
         _logger = logger ?? NullLogger<RetrainingScheduler>.Instance;
+        _settings = monitoring?.Value ?? new PredictionMonitoringSettings();
+        PredictionMonitoringSettingsValidator.ValidateIntervals(_settings);
         _root = root ?? Path.Combine(PathDiscovery.ResolveDataPath(null, "Data"), "TrainingArtifacts", "retraining");
     }
 
@@ -99,7 +104,7 @@ public sealed class RetrainingScheduler : IRetrainingScheduler
         {
             if (TryAcquireRootLease() is { } lease) return lease;
             // The root lease is only ever held for short file I/O and its holders never wait for an owner lease.
-            await Task.Delay(PredictionMonitoringPolicy.LeaseRetryInterval, _clock, CancellationToken.None).ConfigureAwait(false);
+            await Task.Delay(_settings.LeaseRetryInterval, _clock, CancellationToken.None).ConfigureAwait(false);
         }
     }
 
@@ -107,6 +112,30 @@ public sealed class RetrainingScheduler : IRetrainingScheduler
     {
         Directory.CreateDirectory(OccurrenceDirectory(jobId));
         return SchedulerFileLease.TryAcquire(OccurrencePath(jobId, due, OwnerExtension));
+    }
+
+    /// <summary>
+    /// Removes the owner lease files of CONSUMED occurrences (their claim exists, so none can start again) that no one holds. The
+    /// probe is the lease itself: a held file is left alone. Claims and journals are never touched. Best effort.
+    /// </summary>
+    private void CleanupConsumedOwnerFiles(string jobId)
+    {
+        var directory = OccurrenceDirectory(jobId);
+        try
+        {
+            if (!Directory.Exists(directory)) return;
+            foreach (var owner in Directory.EnumerateFiles(directory, "*" + OwnerExtension))
+            {
+                if (!File.Exists(Path.Combine(directory, Path.GetFileNameWithoutExtension(owner) + ClaimExtension))) continue;
+                if (SchedulerFileLease.TryAcquire(owner) is not { } probe) continue; // still held by a live owner
+                probe.Dispose();
+                File.Delete(owner);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _logger.LogDebug(ex, "Owner lease files of {JobId} could not be cleaned up; they are retried after the next occurrence.", jobId);
+        }
     }
 
     private bool IsOwnerLeaseHeld(string jobId, DateTimeOffset due) =>
@@ -336,6 +365,7 @@ public sealed class RetrainingScheduler : IRetrainingScheduler
         {
             // Released only after terminal persistence was attempted: a failed save leaves the due consumed, never re-run.
             claim.Owner?.Dispose();
+            if (claim.State is { } finished) CleanupConsumedOwnerFiles(finished.JobId);
             lock (_cancellationGate) _runCancellation = null;
             Volatile.Write(ref _running, 0);
         }
@@ -371,6 +401,7 @@ public sealed class RetrainingScheduler : IRetrainingScheduler
                     // Consumed by an owner that has since exited (we hold its lease): reconcile, never re-run.
                     state = MergeConsumed(state, due, scan, ownerHeld: false);
                     owner.Dispose(); claim.Owner = null;
+                    CleanupConsumedOwnerFiles(state.JobId);
                 }
                 else
                 {
@@ -431,29 +462,30 @@ public sealed class RetrainingScheduler : IRetrainingScheduler
     public async Task RunAsync(CancellationToken ct)
     {
         await InitializeAsync().ConfigureAwait(false);
-        while (!ct.IsCancellationRequested)
-        {
-            try { await ProcessDueAsync(ct).ConfigureAwait(false); }
-            catch (OperationCanceledException) when (ct.IsCancellationRequested) { break; }
-            catch (Exception ex) { _logger.LogError(ex, "Retraining scheduler persistence failed."); }
-            try { await Task.Delay(PredictionMonitoringPolicy.SchedulerPollInterval, _clock, ct).ConfigureAwait(false); }
-            catch (OperationCanceledException) when (ct.IsCancellationRequested) { break; }
-        }
+        await PollLoopAsync(ex => _logger.LogError(ex, "Retraining scheduler persistence failed."), ct).ConfigureAwait(false);
     }
 
-    public async Task RunWithRecoveryAsync(CancellationToken ct)
+    // ProcessDueAsync initializes first, so a failed startup load is reported and retried at the poll cadence.
+    public Task RunWithRecoveryAsync(CancellationToken ct) => PollLoopAsync(ReportRecoverableFault, ct);
+
+    private void ReportRecoverableFault(Exception ex)
+    {
+        if (ex is IOException or UnauthorizedAccessException or RetrainingScheduleBusyException)
+            _logger.LogWarning(ex, "Retraining scheduler state could not be accessed; retrying after the poll interval.");
+        else
+            _logger.LogError(ex, "Retraining scheduler state is invalid or could not be persisted; it is re-read after the poll interval.");
+    }
+
+    /// <summary>The one poll cadence of both runners: process what is due, report a fault with <paramref name="report"/>, wait, repeat until canceled.</summary>
+    private async Task PollLoopAsync(Action<Exception> report, CancellationToken ct)
     {
         while (!ct.IsCancellationRequested)
         {
-            // ProcessDueAsync initializes first, so a failed startup load is reported and retried at the poll cadence.
             try { await ProcessDueAsync(ct).ConfigureAwait(false); }
-            catch (OperationCanceledException) when (ct.IsCancellationRequested) { break; }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or RetrainingScheduleBusyException)
-            { _logger.LogWarning(ex, "Retraining scheduler state could not be accessed; retrying after the poll interval."); }
-            catch (Exception ex)
-            { _logger.LogError(ex, "Retraining scheduler state is invalid or could not be persisted; it is re-read after the poll interval."); }
-            try { await Task.Delay(PredictionMonitoringPolicy.SchedulerPollInterval, _clock, ct).ConfigureAwait(false); }
-            catch (OperationCanceledException) when (ct.IsCancellationRequested) { break; }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { return; }
+            catch (Exception ex) { report(ex); }
+            try { await Task.Delay(_settings.SchedulerPollInterval, _clock, ct).ConfigureAwait(false); }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { return; }
         }
     }
 }

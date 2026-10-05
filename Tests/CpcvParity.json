@@ -1,0 +1,1836 @@
+{
+ "default_groups": 6,
+ "default_test_groups": 2,
+ "max_groups": 20,
+ "max_combinations": 45,
+ "accepted": [
+  {
+   "groups": 2,
+   "test_groups": 1,
+   "count": 2
+  },
+  {
+   "groups": 3,
+   "test_groups": 1,
+   "count": 3
+  },
+  {
+   "groups": 3,
+   "test_groups": 2,
+   "count": 3
+  },
+  {
+   "groups": 4,
+   "test_groups": 1,
+   "count": 4
+  },
+  {
+   "groups": 4,
+   "test_groups": 2,
+   "count": 6
+  },
+  {
+   "groups": 4,
+   "test_groups": 3,
+   "count": 4
+  },
+  {
+   "groups": 5,
+   "test_groups": 1,
+   "count": 5
+  },
+  {
+   "groups": 5,
+   "test_groups": 2,
+   "count": 10
+  },
+  {
+   "groups": 5,
+   "test_groups": 3,
+   "count": 10
+  },
+  {
+   "groups": 5,
+   "test_groups": 4,
+   "count": 5
+  },
+  {
+   "groups": 6,
+   "test_groups": 1,
+   "count": 6
+  },
+  {
+   "groups": 6,
+   "test_groups": 2,
+   "count": 15
+  },
+  {
+   "groups": 6,
+   "test_groups": 3,
+   "count": 20
+  },
+  {
+   "groups": 6,
+   "test_groups": 4,
+   "count": 15
+  },
+  {
+   "groups": 6,
+   "test_groups": 5,
+   "count": 6
+  },
+  {
+   "groups": 7,
+   "test_groups": 1,
+   "count": 7
+  },
+  {
+   "groups": 7,
+   "test_groups": 2,
+   "count": 21
+  },
+  {
+   "groups": 7,
+   "test_groups": 3,
+   "count": 35
+  },
+  {
+   "groups": 7,
+   "test_groups": 4,
+   "count": 35
+  },
+  {
+   "groups": 7,
+   "test_groups": 5,
+   "count": 21
+  },
+  {
+   "groups": 7,
+   "test_groups": 6,
+   "count": 7
+  },
+  {
+   "groups": 8,
+   "test_groups": 1,
+   "count": 8
+  },
+  {
+   "groups": 8,
+   "test_groups": 2,
+   "count": 28
+  },
+  {
+   "groups": 8,
+   "test_groups": 6,
+   "count": 28
+  },
+  {
+   "groups": 8,
+   "test_groups": 7,
+   "count": 8
+  },
+  {
+   "groups": 9,
+   "test_groups": 1,
+   "count": 9
+  },
+  {
+   "groups": 9,
+   "test_groups": 2,
+   "count": 36
+  },
+  {
+   "groups": 9,
+   "test_groups": 7,
+   "count": 36
+  },
+  {
+   "groups": 9,
+   "test_groups": 8,
+   "count": 9
+  },
+  {
+   "groups": 10,
+   "test_groups": 1,
+   "count": 10
+  },
+  {
+   "groups": 10,
+   "test_groups": 2,
+   "count": 45
+  },
+  {
+   "groups": 10,
+   "test_groups": 8,
+   "count": 45
+  },
+  {
+   "groups": 10,
+   "test_groups": 9,
+   "count": 10
+  },
+  {
+   "groups": 11,
+   "test_groups": 1,
+   "count": 11
+  },
+  {
+   "groups": 11,
+   "test_groups": 10,
+   "count": 11
+  },
+  {
+   "groups": 12,
+   "test_groups": 1,
+   "count": 12
+  },
+  {
+   "groups": 12,
+   "test_groups": 11,
+   "count": 12
+  },
+  {
+   "groups": 13,
+   "test_groups": 1,
+   "count": 13
+  },
+  {
+   "groups": 13,
+   "test_groups": 12,
+   "count": 13
+  },
+  {
+   "groups": 14,
+   "test_groups": 1,
+   "count": 14
+  },
+  {
+   "groups": 14,
+   "test_groups": 13,
+   "count": 14
+  },
+  {
+   "groups": 15,
+   "test_groups": 1,
+   "count": 15
+  },
+  {
+   "groups": 15,
+   "test_groups": 14,
+   "count": 15
+  },
+  {
+   "groups": 16,
+   "test_groups": 1,
+   "count": 16
+  },
+  {
+   "groups": 16,
+   "test_groups": 15,
+   "count": 16
+  },
+  {
+   "groups": 17,
+   "test_groups": 1,
+   "count": 17
+  },
+  {
+   "groups": 17,
+   "test_groups": 16,
+   "count": 17
+  },
+  {
+   "groups": 18,
+   "test_groups": 1,
+   "count": 18
+  },
+  {
+   "groups": 18,
+   "test_groups": 17,
+   "count": 18
+  },
+  {
+   "groups": 19,
+   "test_groups": 1,
+   "count": 19
+  },
+  {
+   "groups": 19,
+   "test_groups": 18,
+   "count": 19
+  },
+  {
+   "groups": 20,
+   "test_groups": 1,
+   "count": 20
+  },
+  {
+   "groups": 20,
+   "test_groups": 19,
+   "count": 20
+  }
+ ],
+ "rejected": [
+  {
+   "groups": 1,
+   "test_groups": -1
+  },
+  {
+   "groups": 1,
+   "test_groups": 0
+  },
+  {
+   "groups": 1,
+   "test_groups": 1
+  },
+  {
+   "groups": 1,
+   "test_groups": 2
+  },
+  {
+   "groups": 2,
+   "test_groups": -1
+  },
+  {
+   "groups": 2,
+   "test_groups": 0
+  },
+  {
+   "groups": 2,
+   "test_groups": 2
+  },
+  {
+   "groups": 2,
+   "test_groups": 3
+  },
+  {
+   "groups": 3,
+   "test_groups": -1
+  },
+  {
+   "groups": 3,
+   "test_groups": 0
+  },
+  {
+   "groups": 3,
+   "test_groups": 3
+  },
+  {
+   "groups": 3,
+   "test_groups": 4
+  },
+  {
+   "groups": 4,
+   "test_groups": -1
+  },
+  {
+   "groups": 4,
+   "test_groups": 0
+  },
+  {
+   "groups": 4,
+   "test_groups": 4
+  },
+  {
+   "groups": 4,
+   "test_groups": 5
+  },
+  {
+   "groups": 5,
+   "test_groups": -1
+  },
+  {
+   "groups": 5,
+   "test_groups": 0
+  },
+  {
+   "groups": 5,
+   "test_groups": 5
+  },
+  {
+   "groups": 5,
+   "test_groups": 6
+  },
+  {
+   "groups": 6,
+   "test_groups": -1
+  },
+  {
+   "groups": 6,
+   "test_groups": 0
+  },
+  {
+   "groups": 6,
+   "test_groups": 6
+  },
+  {
+   "groups": 6,
+   "test_groups": 7
+  },
+  {
+   "groups": 7,
+   "test_groups": -1
+  },
+  {
+   "groups": 7,
+   "test_groups": 0
+  },
+  {
+   "groups": 7,
+   "test_groups": 7
+  },
+  {
+   "groups": 7,
+   "test_groups": 8
+  },
+  {
+   "groups": 8,
+   "test_groups": -1
+  },
+  {
+   "groups": 8,
+   "test_groups": 0
+  },
+  {
+   "groups": 8,
+   "test_groups": 3
+  },
+  {
+   "groups": 8,
+   "test_groups": 4
+  },
+  {
+   "groups": 8,
+   "test_groups": 5
+  },
+  {
+   "groups": 8,
+   "test_groups": 8
+  },
+  {
+   "groups": 8,
+   "test_groups": 9
+  },
+  {
+   "groups": 9,
+   "test_groups": -1
+  },
+  {
+   "groups": 9,
+   "test_groups": 0
+  },
+  {
+   "groups": 9,
+   "test_groups": 3
+  },
+  {
+   "groups": 9,
+   "test_groups": 4
+  },
+  {
+   "groups": 9,
+   "test_groups": 5
+  },
+  {
+   "groups": 9,
+   "test_groups": 6
+  },
+  {
+   "groups": 9,
+   "test_groups": 9
+  },
+  {
+   "groups": 9,
+   "test_groups": 10
+  },
+  {
+   "groups": 10,
+   "test_groups": -1
+  },
+  {
+   "groups": 10,
+   "test_groups": 0
+  },
+  {
+   "groups": 10,
+   "test_groups": 3
+  },
+  {
+   "groups": 10,
+   "test_groups": 4
+  },
+  {
+   "groups": 10,
+   "test_groups": 5
+  },
+  {
+   "groups": 10,
+   "test_groups": 6
+  },
+  {
+   "groups": 10,
+   "test_groups": 7
+  },
+  {
+   "groups": 10,
+   "test_groups": 10
+  },
+  {
+   "groups": 10,
+   "test_groups": 11
+  },
+  {
+   "groups": 11,
+   "test_groups": -1
+  },
+  {
+   "groups": 11,
+   "test_groups": 0
+  },
+  {
+   "groups": 11,
+   "test_groups": 2
+  },
+  {
+   "groups": 11,
+   "test_groups": 3
+  },
+  {
+   "groups": 11,
+   "test_groups": 4
+  },
+  {
+   "groups": 11,
+   "test_groups": 5
+  },
+  {
+   "groups": 11,
+   "test_groups": 6
+  },
+  {
+   "groups": 11,
+   "test_groups": 7
+  },
+  {
+   "groups": 11,
+   "test_groups": 8
+  },
+  {
+   "groups": 11,
+   "test_groups": 9
+  },
+  {
+   "groups": 11,
+   "test_groups": 11
+  },
+  {
+   "groups": 11,
+   "test_groups": 12
+  },
+  {
+   "groups": 12,
+   "test_groups": -1
+  },
+  {
+   "groups": 12,
+   "test_groups": 0
+  },
+  {
+   "groups": 12,
+   "test_groups": 2
+  },
+  {
+   "groups": 12,
+   "test_groups": 3
+  },
+  {
+   "groups": 12,
+   "test_groups": 4
+  },
+  {
+   "groups": 12,
+   "test_groups": 5
+  },
+  {
+   "groups": 12,
+   "test_groups": 6
+  },
+  {
+   "groups": 12,
+   "test_groups": 7
+  },
+  {
+   "groups": 12,
+   "test_groups": 8
+  },
+  {
+   "groups": 12,
+   "test_groups": 9
+  },
+  {
+   "groups": 12,
+   "test_groups": 10
+  },
+  {
+   "groups": 12,
+   "test_groups": 12
+  },
+  {
+   "groups": 12,
+   "test_groups": 13
+  },
+  {
+   "groups": 13,
+   "test_groups": -1
+  },
+  {
+   "groups": 13,
+   "test_groups": 0
+  },
+  {
+   "groups": 13,
+   "test_groups": 2
+  },
+  {
+   "groups": 13,
+   "test_groups": 3
+  },
+  {
+   "groups": 13,
+   "test_groups": 4
+  },
+  {
+   "groups": 13,
+   "test_groups": 5
+  },
+  {
+   "groups": 13,
+   "test_groups": 6
+  },
+  {
+   "groups": 13,
+   "test_groups": 7
+  },
+  {
+   "groups": 13,
+   "test_groups": 8
+  },
+  {
+   "groups": 13,
+   "test_groups": 9
+  },
+  {
+   "groups": 13,
+   "test_groups": 10
+  },
+  {
+   "groups": 13,
+   "test_groups": 11
+  },
+  {
+   "groups": 13,
+   "test_groups": 13
+  },
+  {
+   "groups": 13,
+   "test_groups": 14
+  },
+  {
+   "groups": 14,
+   "test_groups": -1
+  },
+  {
+   "groups": 14,
+   "test_groups": 0
+  },
+  {
+   "groups": 14,
+   "test_groups": 2
+  },
+  {
+   "groups": 14,
+   "test_groups": 3
+  },
+  {
+   "groups": 14,
+   "test_groups": 4
+  },
+  {
+   "groups": 14,
+   "test_groups": 5
+  },
+  {
+   "groups": 14,
+   "test_groups": 6
+  },
+  {
+   "groups": 14,
+   "test_groups": 7
+  },
+  {
+   "groups": 14,
+   "test_groups": 8
+  },
+  {
+   "groups": 14,
+   "test_groups": 9
+  },
+  {
+   "groups": 14,
+   "test_groups": 10
+  },
+  {
+   "groups": 14,
+   "test_groups": 11
+  },
+  {
+   "groups": 14,
+   "test_groups": 12
+  },
+  {
+   "groups": 14,
+   "test_groups": 14
+  },
+  {
+   "groups": 14,
+   "test_groups": 15
+  },
+  {
+   "groups": 15,
+   "test_groups": -1
+  },
+  {
+   "groups": 15,
+   "test_groups": 0
+  },
+  {
+   "groups": 15,
+   "test_groups": 2
+  },
+  {
+   "groups": 15,
+   "test_groups": 3
+  },
+  {
+   "groups": 15,
+   "test_groups": 4
+  },
+  {
+   "groups": 15,
+   "test_groups": 5
+  },
+  {
+   "groups": 15,
+   "test_groups": 6
+  },
+  {
+   "groups": 15,
+   "test_groups": 7
+  },
+  {
+   "groups": 15,
+   "test_groups": 8
+  },
+  {
+   "groups": 15,
+   "test_groups": 9
+  },
+  {
+   "groups": 15,
+   "test_groups": 10
+  },
+  {
+   "groups": 15,
+   "test_groups": 11
+  },
+  {
+   "groups": 15,
+   "test_groups": 12
+  },
+  {
+   "groups": 15,
+   "test_groups": 13
+  },
+  {
+   "groups": 15,
+   "test_groups": 15
+  },
+  {
+   "groups": 15,
+   "test_groups": 16
+  },
+  {
+   "groups": 16,
+   "test_groups": -1
+  },
+  {
+   "groups": 16,
+   "test_groups": 0
+  },
+  {
+   "groups": 16,
+   "test_groups": 2
+  },
+  {
+   "groups": 16,
+   "test_groups": 3
+  },
+  {
+   "groups": 16,
+   "test_groups": 4
+  },
+  {
+   "groups": 16,
+   "test_groups": 5
+  },
+  {
+   "groups": 16,
+   "test_groups": 6
+  },
+  {
+   "groups": 16,
+   "test_groups": 7
+  },
+  {
+   "groups": 16,
+   "test_groups": 8
+  },
+  {
+   "groups": 16,
+   "test_groups": 9
+  },
+  {
+   "groups": 16,
+   "test_groups": 10
+  },
+  {
+   "groups": 16,
+   "test_groups": 11
+  },
+  {
+   "groups": 16,
+   "test_groups": 12
+  },
+  {
+   "groups": 16,
+   "test_groups": 13
+  },
+  {
+   "groups": 16,
+   "test_groups": 14
+  },
+  {
+   "groups": 16,
+   "test_groups": 16
+  },
+  {
+   "groups": 16,
+   "test_groups": 17
+  },
+  {
+   "groups": 17,
+   "test_groups": -1
+  },
+  {
+   "groups": 17,
+   "test_groups": 0
+  },
+  {
+   "groups": 17,
+   "test_groups": 2
+  },
+  {
+   "groups": 17,
+   "test_groups": 3
+  },
+  {
+   "groups": 17,
+   "test_groups": 4
+  },
+  {
+   "groups": 17,
+   "test_groups": 5
+  },
+  {
+   "groups": 17,
+   "test_groups": 6
+  },
+  {
+   "groups": 17,
+   "test_groups": 7
+  },
+  {
+   "groups": 17,
+   "test_groups": 8
+  },
+  {
+   "groups": 17,
+   "test_groups": 9
+  },
+  {
+   "groups": 17,
+   "test_groups": 10
+  },
+  {
+   "groups": 17,
+   "test_groups": 11
+  },
+  {
+   "groups": 17,
+   "test_groups": 12
+  },
+  {
+   "groups": 17,
+   "test_groups": 13
+  },
+  {
+   "groups": 17,
+   "test_groups": 14
+  },
+  {
+   "groups": 17,
+   "test_groups": 15
+  },
+  {
+   "groups": 17,
+   "test_groups": 17
+  },
+  {
+   "groups": 17,
+   "test_groups": 18
+  },
+  {
+   "groups": 18,
+   "test_groups": -1
+  },
+  {
+   "groups": 18,
+   "test_groups": 0
+  },
+  {
+   "groups": 18,
+   "test_groups": 2
+  },
+  {
+   "groups": 18,
+   "test_groups": 3
+  },
+  {
+   "groups": 18,
+   "test_groups": 4
+  },
+  {
+   "groups": 18,
+   "test_groups": 5
+  },
+  {
+   "groups": 18,
+   "test_groups": 6
+  },
+  {
+   "groups": 18,
+   "test_groups": 7
+  },
+  {
+   "groups": 18,
+   "test_groups": 8
+  },
+  {
+   "groups": 18,
+   "test_groups": 9
+  },
+  {
+   "groups": 18,
+   "test_groups": 10
+  },
+  {
+   "groups": 18,
+   "test_groups": 11
+  },
+  {
+   "groups": 18,
+   "test_groups": 12
+  },
+  {
+   "groups": 18,
+   "test_groups": 13
+  },
+  {
+   "groups": 18,
+   "test_groups": 14
+  },
+  {
+   "groups": 18,
+   "test_groups": 15
+  },
+  {
+   "groups": 18,
+   "test_groups": 16
+  },
+  {
+   "groups": 18,
+   "test_groups": 18
+  },
+  {
+   "groups": 18,
+   "test_groups": 19
+  },
+  {
+   "groups": 19,
+   "test_groups": -1
+  },
+  {
+   "groups": 19,
+   "test_groups": 0
+  },
+  {
+   "groups": 19,
+   "test_groups": 2
+  },
+  {
+   "groups": 19,
+   "test_groups": 3
+  },
+  {
+   "groups": 19,
+   "test_groups": 4
+  },
+  {
+   "groups": 19,
+   "test_groups": 5
+  },
+  {
+   "groups": 19,
+   "test_groups": 6
+  },
+  {
+   "groups": 19,
+   "test_groups": 7
+  },
+  {
+   "groups": 19,
+   "test_groups": 8
+  },
+  {
+   "groups": 19,
+   "test_groups": 9
+  },
+  {
+   "groups": 19,
+   "test_groups": 10
+  },
+  {
+   "groups": 19,
+   "test_groups": 11
+  },
+  {
+   "groups": 19,
+   "test_groups": 12
+  },
+  {
+   "groups": 19,
+   "test_groups": 13
+  },
+  {
+   "groups": 19,
+   "test_groups": 14
+  },
+  {
+   "groups": 19,
+   "test_groups": 15
+  },
+  {
+   "groups": 19,
+   "test_groups": 16
+  },
+  {
+   "groups": 19,
+   "test_groups": 17
+  },
+  {
+   "groups": 19,
+   "test_groups": 19
+  },
+  {
+   "groups": 19,
+   "test_groups": 20
+  },
+  {
+   "groups": 20,
+   "test_groups": -1
+  },
+  {
+   "groups": 20,
+   "test_groups": 0
+  },
+  {
+   "groups": 20,
+   "test_groups": 2
+  },
+  {
+   "groups": 20,
+   "test_groups": 3
+  },
+  {
+   "groups": 20,
+   "test_groups": 4
+  },
+  {
+   "groups": 20,
+   "test_groups": 5
+  },
+  {
+   "groups": 20,
+   "test_groups": 6
+  },
+  {
+   "groups": 20,
+   "test_groups": 7
+  },
+  {
+   "groups": 20,
+   "test_groups": 8
+  },
+  {
+   "groups": 20,
+   "test_groups": 9
+  },
+  {
+   "groups": 20,
+   "test_groups": 10
+  },
+  {
+   "groups": 20,
+   "test_groups": 11
+  },
+  {
+   "groups": 20,
+   "test_groups": 12
+  },
+  {
+   "groups": 20,
+   "test_groups": 13
+  },
+  {
+   "groups": 20,
+   "test_groups": 14
+  },
+  {
+   "groups": 20,
+   "test_groups": 15
+  },
+  {
+   "groups": 20,
+   "test_groups": 16
+  },
+  {
+   "groups": 20,
+   "test_groups": 17
+  },
+  {
+   "groups": 20,
+   "test_groups": 18
+  },
+  {
+   "groups": 20,
+   "test_groups": 20
+  },
+  {
+   "groups": 20,
+   "test_groups": 21
+  },
+  {
+   "groups": 21,
+   "test_groups": -1
+  },
+  {
+   "groups": 21,
+   "test_groups": 0
+  },
+  {
+   "groups": 21,
+   "test_groups": 1
+  },
+  {
+   "groups": 21,
+   "test_groups": 2
+  },
+  {
+   "groups": 21,
+   "test_groups": 3
+  },
+  {
+   "groups": 21,
+   "test_groups": 4
+  },
+  {
+   "groups": 21,
+   "test_groups": 5
+  },
+  {
+   "groups": 21,
+   "test_groups": 6
+  },
+  {
+   "groups": 21,
+   "test_groups": 7
+  },
+  {
+   "groups": 21,
+   "test_groups": 8
+  },
+  {
+   "groups": 21,
+   "test_groups": 9
+  },
+  {
+   "groups": 21,
+   "test_groups": 10
+  },
+  {
+   "groups": 21,
+   "test_groups": 11
+  },
+  {
+   "groups": 21,
+   "test_groups": 12
+  },
+  {
+   "groups": 21,
+   "test_groups": 13
+  },
+  {
+   "groups": 21,
+   "test_groups": 14
+  },
+  {
+   "groups": 21,
+   "test_groups": 15
+  },
+  {
+   "groups": 21,
+   "test_groups": 16
+  },
+  {
+   "groups": 21,
+   "test_groups": 17
+  },
+  {
+   "groups": 21,
+   "test_groups": 18
+  },
+  {
+   "groups": 21,
+   "test_groups": 19
+  },
+  {
+   "groups": 21,
+   "test_groups": 20
+  },
+  {
+   "groups": 21,
+   "test_groups": 21
+  },
+  {
+   "groups": 21,
+   "test_groups": 22
+  },
+  {
+   "groups": 22,
+   "test_groups": -1
+  },
+  {
+   "groups": 22,
+   "test_groups": 0
+  },
+  {
+   "groups": 22,
+   "test_groups": 1
+  },
+  {
+   "groups": 22,
+   "test_groups": 2
+  },
+  {
+   "groups": 22,
+   "test_groups": 3
+  },
+  {
+   "groups": 22,
+   "test_groups": 4
+  },
+  {
+   "groups": 22,
+   "test_groups": 5
+  },
+  {
+   "groups": 22,
+   "test_groups": 6
+  },
+  {
+   "groups": 22,
+   "test_groups": 7
+  },
+  {
+   "groups": 22,
+   "test_groups": 8
+  },
+  {
+   "groups": 22,
+   "test_groups": 9
+  },
+  {
+   "groups": 22,
+   "test_groups": 10
+  },
+  {
+   "groups": 22,
+   "test_groups": 11
+  },
+  {
+   "groups": 22,
+   "test_groups": 12
+  },
+  {
+   "groups": 22,
+   "test_groups": 13
+  },
+  {
+   "groups": 22,
+   "test_groups": 14
+  },
+  {
+   "groups": 22,
+   "test_groups": 15
+  },
+  {
+   "groups": 22,
+   "test_groups": 16
+  },
+  {
+   "groups": 22,
+   "test_groups": 17
+  },
+  {
+   "groups": 22,
+   "test_groups": 18
+  },
+  {
+   "groups": 22,
+   "test_groups": 19
+  },
+  {
+   "groups": 22,
+   "test_groups": 20
+  },
+  {
+   "groups": 22,
+   "test_groups": 21
+  },
+  {
+   "groups": 22,
+   "test_groups": 22
+  },
+  {
+   "groups": 22,
+   "test_groups": 23
+  }
+ ],
+ "enumerations": [
+  {
+   "groups": 6,
+   "test_groups": 2,
+   "combinations": [
+    [
+     0,
+     1
+    ],
+    [
+     0,
+     2
+    ],
+    [
+     0,
+     3
+    ],
+    [
+     0,
+     4
+    ],
+    [
+     0,
+     5
+    ],
+    [
+     1,
+     2
+    ],
+    [
+     1,
+     3
+    ],
+    [
+     1,
+     4
+    ],
+    [
+     1,
+     5
+    ],
+    [
+     2,
+     3
+    ],
+    [
+     2,
+     4
+    ],
+    [
+     2,
+     5
+    ],
+    [
+     3,
+     4
+    ],
+    [
+     3,
+     5
+    ],
+    [
+     4,
+     5
+    ]
+   ]
+  },
+  {
+   "groups": 6,
+   "test_groups": 3,
+   "combinations": [
+    [
+     0,
+     1,
+     2
+    ],
+    [
+     0,
+     1,
+     3
+    ],
+    [
+     0,
+     1,
+     4
+    ],
+    [
+     0,
+     1,
+     5
+    ],
+    [
+     0,
+     2,
+     3
+    ],
+    [
+     0,
+     2,
+     4
+    ],
+    [
+     0,
+     2,
+     5
+    ],
+    [
+     0,
+     3,
+     4
+    ],
+    [
+     0,
+     3,
+     5
+    ],
+    [
+     0,
+     4,
+     5
+    ],
+    [
+     1,
+     2,
+     3
+    ],
+    [
+     1,
+     2,
+     4
+    ],
+    [
+     1,
+     2,
+     5
+    ],
+    [
+     1,
+     3,
+     4
+    ],
+    [
+     1,
+     3,
+     5
+    ],
+    [
+     1,
+     4,
+     5
+    ],
+    [
+     2,
+     3,
+     4
+    ],
+    [
+     2,
+     3,
+     5
+    ],
+    [
+     2,
+     4,
+     5
+    ],
+    [
+     3,
+     4,
+     5
+    ]
+   ]
+  },
+  {
+   "groups": 5,
+   "test_groups": 1,
+   "combinations": [
+    [
+     0
+    ],
+    [
+     1
+    ],
+    [
+     2
+    ],
+    [
+     3
+    ],
+    [
+     4
+    ]
+   ]
+  },
+  {
+   "groups": 7,
+   "test_groups": 2,
+   "combinations": [
+    [
+     0,
+     1
+    ],
+    [
+     0,
+     2
+    ],
+    [
+     0,
+     3
+    ],
+    [
+     0,
+     4
+    ],
+    [
+     0,
+     5
+    ],
+    [
+     0,
+     6
+    ],
+    [
+     1,
+     2
+    ],
+    [
+     1,
+     3
+    ],
+    [
+     1,
+     4
+    ],
+    [
+     1,
+     5
+    ],
+    [
+     1,
+     6
+    ],
+    [
+     2,
+     3
+    ],
+    [
+     2,
+     4
+    ],
+    [
+     2,
+     5
+    ],
+    [
+     2,
+     6
+    ],
+    [
+     3,
+     4
+    ],
+    [
+     3,
+     5
+    ],
+    [
+     3,
+     6
+    ],
+    [
+     4,
+     5
+    ],
+    [
+     4,
+     6
+    ],
+    [
+     5,
+     6
+    ]
+   ]
+  },
+  {
+   "groups": 4,
+   "test_groups": 3,
+   "combinations": [
+    [
+     0,
+     1,
+     2
+    ],
+    [
+     0,
+     1,
+     3
+    ],
+    [
+     0,
+     2,
+     3
+    ],
+    [
+     1,
+     2,
+     3
+    ]
+   ]
+  },
+  {
+   "groups": 10,
+   "test_groups": 2,
+   "combinations": [
+    [
+     0,
+     1
+    ],
+    [
+     0,
+     2
+    ],
+    [
+     0,
+     3
+    ],
+    [
+     0,
+     4
+    ],
+    [
+     0,
+     5
+    ],
+    [
+     0,
+     6
+    ],
+    [
+     0,
+     7
+    ],
+    [
+     0,
+     8
+    ],
+    [
+     0,
+     9
+    ],
+    [
+     1,
+     2
+    ],
+    [
+     1,
+     3
+    ],
+    [
+     1,
+     4
+    ],
+    [
+     1,
+     5
+    ],
+    [
+     1,
+     6
+    ],
+    [
+     1,
+     7
+    ],
+    [
+     1,
+     8
+    ],
+    [
+     1,
+     9
+    ],
+    [
+     2,
+     3
+    ],
+    [
+     2,
+     4
+    ],
+    [
+     2,
+     5
+    ],
+    [
+     2,
+     6
+    ],
+    [
+     2,
+     7
+    ],
+    [
+     2,
+     8
+    ],
+    [
+     2,
+     9
+    ],
+    [
+     3,
+     4
+    ],
+    [
+     3,
+     5
+    ],
+    [
+     3,
+     6
+    ],
+    [
+     3,
+     7
+    ],
+    [
+     3,
+     8
+    ],
+    [
+     3,
+     9
+    ],
+    [
+     4,
+     5
+    ],
+    [
+     4,
+     6
+    ],
+    [
+     4,
+     7
+    ],
+    [
+     4,
+     8
+    ],
+    [
+     4,
+     9
+    ],
+    [
+     5,
+     6
+    ],
+    [
+     5,
+     7
+    ],
+    [
+     5,
+     8
+    ],
+    [
+     5,
+     9
+    ],
+    [
+     6,
+     7
+    ],
+    [
+     6,
+     8
+    ],
+    [
+     6,
+     9
+    ],
+    [
+     7,
+     8
+    ],
+    [
+     7,
+     9
+    ],
+    [
+     8,
+     9
+    ]
+   ]
+  }
+ ]
+}

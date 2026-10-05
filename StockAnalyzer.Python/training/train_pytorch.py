@@ -71,6 +71,8 @@ DEFAULT_LR: float = 1e-3
 DEFAULT_WEIGHT_DECAY: float = 1e-4
 DEFAULT_PATIENCE: int = 4
 DEFAULT_SEED: int = 42
+PRETRAIN_NONE: str = onnx_meta.PRETRAINING_NONE
+PRETRAIN_METHODS: Tuple[str, str] = onnx_meta.PRETRAINING_METHODS
 DEFAULT_OPSET: int = 17
 DEFAULT_WF_SPLITS: int = ds.DEFAULT_WF_SPLITS  # SSoT: dataset.DEFAULT_WF_SPLITS
 EARLY_STOP_MIN_DELTA: float = 1e-5
@@ -100,9 +102,12 @@ class LstmClassifier(nn.Module):
         )
         self.head = nn.Linear(hidden, out_dim)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:  # x: [N, W, C] -> [N, out_dim]
+    def encode_sequence(self, x: torch.Tensor) -> torch.Tensor:  # x: [N, W, C] -> [N, W, hidden]
         out, _ = self.lstm(x)
-        return self.head(out[:, -1, :])
+        return out
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:  # x: [N, W, C] -> [N, out_dim]
+        return self.head(self.encode_sequence(x)[:, -1, :])
 
 
 class CnnClassifier(nn.Module):
@@ -119,6 +124,9 @@ class CnnClassifier(nn.Module):
         )
         self.drop = nn.Dropout(dropout)
         self.head = nn.Linear(hidden, out_dim)
+
+    def encode_sequence(self, x: torch.Tensor) -> torch.Tensor:  # x: [N, W, C] -> [N, W, hidden]
+        return self.features[:-1](x.transpose(1, 2)).transpose(1, 2)  # the conv stack before the global pool
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # x: [N, W, C] -> [N, out_dim]
         z = self.features(x.transpose(1, 2)).squeeze(-1)
@@ -259,7 +267,8 @@ def train_model(args: argparse.Namespace) -> Tuple[nn.Module, int, dict, dict]:
         gap=args.gap, feature_spec=feature_spec, target_type=args.target_type,
         dates=dates, indicator_export_paths=indicator_export_paths,
         outer_fold_index=args.outer_fold_index,
-        fixed_zscore=args.fixed_zscore, lags=lags,
+        fixed_zscore=args.fixed_zscore, lags=lags, calibration=ds.holdout_segment_requested(args),
+        bagging=ds.bagging_from_args(args), cpcv=ds.cpcv_from_args(args),
     )
     if x_tr_np.shape[0] == 0 or x_va_np.shape[0] == 0:
         raise SystemExit("Empty train or val split; check --window/--horizon/--wf-splits vs data length.")
@@ -271,7 +280,7 @@ def train_model(args: argparse.Namespace) -> Tuple[nn.Module, int, dict, dict]:
         gap=args.gap, feature_spec=feature_spec, target_type=args.target_type,
         indicator_export_paths=indicator_export_paths,
         outer_fold_index=args.outer_fold_index,
-        fixed_zscore=args.fixed_zscore, lags=lags,
+        fixed_zscore=args.fixed_zscore, lags=lags, calibration=ds.holdout_segment_requested(args), cpcv=ds.cpcv_from_args(args),
     )
 
     channels = ds.feature_channels(args.feature_mode, feature_spec=feature_spec) * (1 + len(lags))
@@ -296,6 +305,17 @@ def train_model(args: argparse.Namespace) -> Tuple[nn.Module, int, dict, dict]:
         # Validate both weight sets before fitting, even when only weights are reused.
         model.load_state_dict(restored["best_state"], strict=True)
         model.load_state_dict(restored["model"], strict=True)
+    if args.pretrain != PRETRAIN_NONE and session.mode == "fresh" and not args.preflight:
+        import ssl_pretrain
+        _note_ssl = ssl_pretrain.run(
+            model, x_tr, epochs=args.ssl_epochs, batch=args.batch, lr=args.lr, weight_decay=args.weight_decay,
+            rng=rng, root=session.root, mask_rate=args.ssl_mask_rate,
+            context={"arch": args.arch, "channels": channels, "window": args.window, "hidden": args.hidden,
+                     "layers": args.layers, "dropout": args.dropout, "target_type": args.target_type,
+                     "fold": args.outer_fold_index, "data_revision": session.context["data_revision"],
+                     "method": ssl_pretrain.METHOD})
+        print(f"self-supervised pretraining: {ssl_pretrain.METHOD} loss "
+              f"{_note_ssl['loss_first']:.4f} -> {_note_ssl['loss_last']:.4f} over {_note_ssl['epochs']} epochs")
     checkpoints.freeze_modules(model, session.context["freeze_paths"])
     optimizer = torch.optim.AdamW((p for p in model.parameters() if p.requires_grad),
                                   lr=args.lr, weight_decay=args.weight_decay)
@@ -538,6 +558,20 @@ def _parse_args(argv) -> argparse.Namespace:
     p.add_argument("--wf-splits", type=int, default=DEFAULT_WF_SPLITS)
     p.add_argument("--outer-fold-index", type=int, default=None,
                    help="Original outer fold to fit independently; omitted keeps the standalone path.")
+    p.add_argument("--calibration", action="store_true",
+                   help="Carve a calibration segment from the tail of the outer train side and stamp "
+                        "the calibration reference (requires --outer-fold-index).")
+    ds.add_meta_segment_argument(p)
+    ds.add_bagging_arguments(p)
+    ds.add_cpcv_arguments(p)
+    p.add_argument("--pretrain", choices=PRETRAIN_METHODS, default=PRETRAIN_NONE,
+                   help="Self-supervised encoder pretraining on the fit windows before the supervised stage "
+                        "(fresh initialization only; skipped when a fold is resumed).")
+    p.add_argument("--ssl-epochs", type=int, default=None,
+                   help="Pretraining epochs (default: ssl_pretrain.DEFAULT_EPOCHS).")
+    p.add_argument("--ssl-mask-rate", type=float, default=None,
+                   help="Share of each window's bars masked during pretraining, strictly between 0 and 1 "
+                        "(default: ssl_pretrain.DEFAULT_MASK_RATE).")
     p.add_argument("--gap", type=int, default=None,
                    help="Purge gap in bars between each walk-forward fold's train/val blocks "
                         "(default: None -> dataset.resolve_purge_gap picks window + horizon - 1).")
@@ -551,6 +585,30 @@ def _parse_args(argv) -> argparse.Namespace:
     p.add_argument("--smoke", action="store_true",
                    help=f"Fast run: --max-symbols {SMOKE_MAX_SYMBOLS} --epochs {SMOKE_EPOCHS}.")
     args = p.parse_args(argv)
+    try:
+        ds.bagging_from_args(args)
+        cpcv_spec = ds.cpcv_from_args(args)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
+    if cpcv_spec is not None and (args.outer_fold_index is not None or ds.holdout_segment_requested(args)
+                                  or args.bag_index is not None):
+        raise SystemExit("CPCV combinations are evaluation-only fits: no outer fold, calibration or bagging")
+    if args.pretrain != PRETRAIN_NONE:
+        if args.initialization_mode == "fine_tune":
+            raise SystemExit("--pretrain cannot be combined with FineTune initialization")
+        import ssl_pretrain
+        if args.ssl_epochs is None:
+            args.ssl_epochs = ssl_pretrain.DEFAULT_EPOCHS
+        if args.ssl_epochs < 1:
+            raise SystemExit("--ssl-epochs must be positive")
+        if args.ssl_mask_rate is None:
+            args.ssl_mask_rate = ssl_pretrain.DEFAULT_MASK_RATE
+        try:
+            args.ssl_mask_rate = ssl_pretrain.validate_mask_rate(args.ssl_mask_rate)
+        except ValueError as exc:
+            raise SystemExit(f"--ssl-mask-rate: {exc}") from exc
+    elif args.ssl_epochs is not None or args.ssl_mask_rate is not None:
+        raise SystemExit("--ssl-epochs and --ssl-mask-rate require --pretrain")
     if args.epochs <= 0 or args.patience <= 0 or args.batch <= 0:
         p.error("epochs, patience and batch must be positive")
     checkpoints.validate_controls(args.initialization_mode, "pytorch", args.init_from,
@@ -560,6 +618,9 @@ def _parse_args(argv) -> argparse.Namespace:
         raise SystemExit(f"--gap must be non-negative, got {args.gap}")
     if args.outer_fold_index is not None and not 0 <= args.outer_fold_index < args.wf_splits:
         raise SystemExit("--outer-fold-index must be within --wf-splits")
+    if args.calibration and (args.outer_fold_index is None or args.target_type != "classification"):
+        raise SystemExit("--calibration requires --outer-fold-index and a classification target")
+    ds.check_meta_segment(args, args.target_type)
     # --feature-spec is required (and must be valid JSON) iff composed_features -- mirrors the
     # symmetric rule in TrainingJobConfig.validate / run_training.py's JobConfig.validate.
     if args.feature_mode == ds.COMPOSED_FEATURES_MODE:
@@ -609,6 +670,7 @@ def main(argv) -> int:
         fixed_zscore=args.fixed_zscore, lags=lags, clip_sigma=args.clip_sigma,
         scaler_ref=args.out.name + ".scaler.json" if scaler is not None else None,
         analysis_ref=args.out.name + ".analysis.json" if args.outer_fold_index is not None else None,
+        calibration_ref=args.out.name + ".calibration.json" if args.calibration else None,
     )
     contract.update(args._checkpoint_session.metadata())
     export_onnx(model, channels, args.window, args.out, args.opset, contract, target_type=args.target_type)
@@ -690,6 +752,19 @@ def _run_selfcheck() -> None:
         pass
     else:  # pragma: no cover
         raise AssertionError("expected SystemExit for unknown --target-type")
+
+    # (f2) --ssl-mask-rate: defaults to the pretraining default, is validated, and needs --pretrain
+    pre = ["--pretrain", "masked_reconstruction"]
+    assert _parse_args(pre).ssl_mask_rate == 0.30 and _parse_args([]).ssl_mask_rate is None
+    assert _parse_args(pre + ["--ssl-mask-rate", "0.45"]).ssl_mask_rate == 0.45
+    for bad_rate_args in (["--ssl-mask-rate", "0.4"], pre + ["--ssl-mask-rate", "0"], pre + ["--ssl-mask-rate", "1"],
+                          pre + ["--ssl-mask-rate", "nan"], pre + ["--ssl-mask-rate", "-0.2"]):
+        try:
+            _parse_args(bad_rate_args)
+        except SystemExit:
+            pass
+        else:  # pragma: no cover
+            raise AssertionError(f"{bad_rate_args} must be rejected")
 
     # (g) build_model's out_dim wiring: a pure forward pass (no data loading, no optimizer,
     # no training loop -- stays fast/deterministic per this module's selfcheck scope) confirms

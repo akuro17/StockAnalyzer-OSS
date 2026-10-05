@@ -113,8 +113,10 @@ def prepare(args: argparse.Namespace) -> PreparedComposedData:
         indicator_export_paths=exports,
         outer_fold_index=args.outer_fold_index,
         fixed_zscore=args.fixed_zscore, lags=lags,
+        calibration=ds.holdout_segment_requested(args), cpcv=ds.cpcv_from_args(args),
     )
-    x_tr, y_tr, x_va, y_va = ds.split_symbols_chronological(symbols, **split_args)
+    x_tr, y_tr, x_va, y_va = ds.split_symbols_chronological(
+        symbols, bagging=ds.bagging_from_args(args), **split_args)
     if not len(x_tr) or not len(x_va):
         raise ValueError("Empty train or val split; check --window/--horizon/--wf-splits vs data length")
     if x_tr.shape[2] != channels or x_va.shape[2] != channels:

@@ -107,6 +107,160 @@ namespace StockAnalyzer.Core.Tests.Services
         }
 
         [Fact]
+        public async Task StartTrainingAsync_EnsembleRun_ReturnsTheManifestBesideTheFirstMemberArtifact()
+        {
+            var scriptPath = WriteFakeInterpreter(SuccessBatch.Replace(
+                "echo ARTIFACT:checkpoint",
+                "echo ARTIFACT:ensemble_member:%~dp0fake_model.onnx\r\n" +
+                "echo ARTIFACT:ensemble:%~dp0group.ensemble.json\r\n" +
+                "echo ARTIFACT:checkpoint"));
+            var orchestrator = new TrainingOrchestrator(new FakePythonService(scriptPath), s_indicatorChannelExporter);
+
+            var result = await orchestrator.StartTrainingAsync(ValidConfig() with
+            {
+                EnsembleMethod = TrainingEnsembleMethod.Bagging, EnsembleMembers = 3,
+            });
+
+            Assert.True(result.Success);
+            Assert.Equal(Path.Combine(_workDir, "group.ensemble.json"), result.EnsembleManifestPath);
+            Assert.NotNull(result.OnnxArtifactPath); // the first member keeps single-model consumers working
+            var single = await new TrainingOrchestrator(new FakePythonService(WriteFakeInterpreter(SuccessBatch)),
+                s_indicatorChannelExporter).StartTrainingAsync(ValidConfig());
+            Assert.Null(single.EnsembleManifestPath);
+        }
+
+        // Two published members (with sidecars), their manifest and neighbours whose name only shares the member's prefix.
+        private const string PublishTwoMembersBatch =
+            "@echo off\r\n" +
+            "echo STAGE:load\r\n" +
+            // the run id the orchestrator wrote into the --config file (%4), to name checkpoint directories like the trainer does
+            "for /f \"tokens=2 delims=:, \" %%a in ('findstr /c:run_id \"%~4\"') do set RID=%%~a\r\n" +
+            "echo %RID%> \"%~dp0captured_run_id.txt\"\r\n" +
+            "echo ARTIFACT:ensemble_checkpoints:%~dp0checkpoints\r\n" +
+            "for %%d in (\"%RID%-m01\" \"%RID%-m02\" \"%RID%\" \"%RID%-mx\" \"%RID%x-m01\" \"other-run-m01\") do " +
+            "(mkdir \"%~dp0checkpoints\\%%~d\\fold_0\" & echo c> \"%~dp0checkpoints\\%%~d\\fold_0\\last.json\")\r\n" +
+            "echo m> \"%~dp0grp_m01.onnx\"\r\n" +
+            "echo {}> \"%~dp0grp_m01.onnx.metrics.json\"\r\n" +
+            "echo {}> \"%~dp0grp_m01.onnx.analysis.json\"\r\n" +
+            "echo ARTIFACT:ensemble_member:%~dp0grp_m01.onnx\r\n" +
+            "echo m> \"%~dp0grp_m02.onnx\"\r\n" +
+            "echo {}> \"%~dp0grp_m02.onnx.metrics.json\"\r\n" +
+            "echo ARTIFACT:ensemble_member:%~dp0grp_m02.onnx\r\n" +
+            "echo {}> \"%~dp0grp.ensemble.json\"\r\n" +
+            "echo ARTIFACT:ensemble:%~dp0grp.ensemble.json\r\n" +
+            "echo keep> \"%~dp0grp_m010.onnx\"\r\n" +
+            "echo keep> \"%~dp0grp_m01.onnx2\"\r\n";
+
+        private string[] MemberFiles() => new[] { "grp_m01.onnx", "grp_m01.onnx.metrics.json", "grp_m01.onnx.analysis.json",
+            "grp_m02.onnx", "grp_m02.onnx.metrics.json", "grp.ensemble.json" }.Select(name => Path.Combine(_workDir, name)).ToArray();
+
+        private string[] NeighbourFiles() => new[] { "grp_m010.onnx", "grp_m01.onnx2" }
+            .Select(name => Path.Combine(_workDir, name)).ToArray();
+
+        private string RunId()
+        {
+            var id = File.ReadAllText(Path.Combine(_workDir, "captured_run_id.txt")).Trim();
+            Assert.Matches(@"^\d{8}-\d{9}-[0-9a-f]{8}$", id); // the id the batch read from the config really is the run's
+            return id;
+        }
+
+        /// <summary>The checkpoint directories of this run's members (`&lt;run id&gt;-mNN`): the only ones a rollback may remove.</summary>
+        private string[] MemberCheckpointDirectories() => new[] { "-m01", "-m02" }
+            .Select(suffix => Path.Combine(_workDir, "checkpoints", RunId() + suffix)).ToArray();
+
+        /// <summary>Directories that merely look similar (the run's own plain directory, a non-numeric suffix, another run).</summary>
+        private string[] OtherCheckpointDirectories() => new[] { RunId(), RunId() + "-mx", RunId() + "x-m01", "other-run-m01" }
+            .Select(name => Path.Combine(_workDir, "checkpoints", name)).ToArray();
+
+        [Fact]
+        public async Task StartTrainingAsync_EnsembleFailsAfterPublishingMembers_RollsBackMembersSidecarsAndManifest()
+        {
+            var scriptPath = WriteFakeInterpreter(PublishTwoMembersBatch + "echo STDERR: member 3 failed 1>&2\r\nexit /b 3\r\n");
+            var orchestrator = new TrainingOrchestrator(new FakePythonService(scriptPath), s_indicatorChannelExporter);
+
+            var result = await orchestrator.StartTrainingAsync(ValidConfig() with
+            {
+                EnsembleMethod = TrainingEnsembleMethod.Bagging, EnsembleMembers = 3,
+            });
+
+            Assert.False(result.Success);
+            Assert.Contains("member 3 failed", result.Message); // the run's own outcome is not replaced
+            Assert.All(MemberFiles(), file => Assert.False(File.Exists(file), file));
+            Assert.All(NeighbourFiles(), file => Assert.True(File.Exists(file), file)); // only `<onnx>` and `<onnx>.*`
+            Assert.All(MemberCheckpointDirectories(), directory => Assert.False(Directory.Exists(directory), directory));
+            Assert.All(OtherCheckpointDirectories(), directory => Assert.True(Directory.Exists(directory), directory));
+        }
+
+        [Fact]
+        public async Task StartTrainingAsync_EnsembleFails_NeverDeletesAnnouncedPathsOutsideTheRunsOwnFiles()
+        {
+            // Lines the trainer must never be able to turn into deletes: a member file in another directory, a name that is not a
+            // member name, a manifest that is not an ensemble manifest, and a checkpoint root that is not <directory>/checkpoints.
+            var foreign = Path.Combine(_workDir, "foreign");
+            Directory.CreateDirectory(Path.Combine(foreign, "checkpoints", "run-m01"));
+            var outsiders = new[]
+            {
+                Path.Combine(foreign, "victim_m01.onnx"), Path.Combine(foreign, "victim_m01.onnx.metrics.json"),
+                Path.Combine(_workDir, "plain.onnx"), Path.Combine(_workDir, "plain.onnx.metrics.json"),
+                Path.Combine(_workDir, "notes.json"),
+            };
+            foreach (var file in outsiders) File.WriteAllText(file, "keep");
+            var scriptPath = WriteFakeInterpreter(PublishTwoMembersBatch +
+                $"echo ARTIFACT:ensemble_member:{foreign}\\victim_m01.onnx\r\n" +
+                "echo ARTIFACT:ensemble_member:%~dp0plain.onnx\r\n" +
+                "echo ARTIFACT:ensemble:%~dp0notes.json\r\n" +
+                $"echo ARTIFACT:ensemble_checkpoints:{foreign}\\checkpoints\r\n" +
+                "echo STDERR: member 3 failed 1>&2\r\nexit /b 3\r\n");
+            var orchestrator = new TrainingOrchestrator(new FakePythonService(scriptPath), s_indicatorChannelExporter);
+
+            var result = await orchestrator.StartTrainingAsync(ValidConfig() with
+            {
+                EnsembleMethod = TrainingEnsembleMethod.Bagging, EnsembleMembers = 3,
+            });
+
+            Assert.False(result.Success);
+            Assert.All(outsiders, file => Assert.True(File.Exists(file), file));
+            Assert.True(Directory.Exists(Path.Combine(foreign, "checkpoints", "run-m01")));
+            Assert.All(MemberFiles().Where(f => !f.EndsWith("grp.ensemble.json")), file => Assert.False(File.Exists(file), file)); // the run's own members still go
+        }
+
+        [Fact]
+        public async Task StartTrainingAsync_EnsembleCancelledAfterPublishingMembers_RollsBackMembersSidecarsAndManifest()
+        {
+            var scriptPath = WriteFakeInterpreter(PublishTwoMembersBatch +
+                ":loop\r\nping -n 2 127.0.0.1 >nul\r\ngoto loop\r\n");
+            var orchestrator = new TrainingOrchestrator(new FakePythonService(scriptPath), s_indicatorChannelExporter);
+            using var cts = new CancellationTokenSource();
+            cts.CancelAfter(TimeSpan.FromSeconds(3));
+
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => orchestrator.StartTrainingAsync(
+                ValidConfig() with { EnsembleMethod = TrainingEnsembleMethod.Bagging, EnsembleMembers = 3 }, ct: cts.Token));
+
+            Assert.All(MemberFiles(), file => Assert.False(File.Exists(file), file));
+            Assert.All(NeighbourFiles(), file => Assert.True(File.Exists(file), file));
+            Assert.All(MemberCheckpointDirectories(), directory => Assert.False(Directory.Exists(directory), directory));
+            Assert.All(OtherCheckpointDirectories(), directory => Assert.True(Directory.Exists(directory), directory));
+        }
+
+        [Fact]
+        public async Task StartTrainingAsync_EnsembleSucceeds_KeepsEveryMemberFileAndTheManifest()
+        {
+            var scriptPath = WriteFakeInterpreter(PublishTwoMembersBatch +
+                "echo ARTIFACT:onnx:%~dp0grp_m01.onnx\r\n" +
+                "exit /b 0\r\n");
+            var orchestrator = new TrainingOrchestrator(new FakePythonService(scriptPath), s_indicatorChannelExporter);
+
+            var result = await orchestrator.StartTrainingAsync(ValidConfig() with
+            {
+                EnsembleMethod = TrainingEnsembleMethod.Bagging, EnsembleMembers = 3,
+            });
+
+            Assert.True(result.Success);
+            Assert.All(MemberFiles(), file => Assert.True(File.Exists(file), file));
+            Assert.All(MemberCheckpointDirectories(), directory => Assert.True(Directory.Exists(directory), directory)); // success keeps them
+        }
+
+        [Fact]
         public async Task StartTrainingAsync_TrainerExitsNonZero_ReturnsFailureResultWithStdErrMessage()
         {
             var scriptPath = WriteFakeInterpreter(FailureBatch);

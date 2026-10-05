@@ -86,6 +86,7 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
             _pendingActivation = null;
             ActivationWarning = null;
             SelectAnalysis(value, _generationSelectionRevision);
+            Explainability.Select(value?.ModelId);
             MonitoringRefreshTask = RefreshMonitoringAsync();
         }
 
@@ -99,8 +100,10 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
             ILogger<AIPredictionsSettingsViewModel>? logger = null,
             IModelAnalysisService? modelAnalysisService = null, IDispatcherService? analysisDispatcher = null,
             IPredictionLogService? predictionLog = null, IRetrainingScheduler? retrainingScheduler = null,
-            ICurrentPredictionHealthService? currentHealth = null)
+            ICurrentPredictionHealthService? currentHealth = null, IAttestedEvidenceDiagnostics? evidenceDiagnostics = null,
+            IModelExplainabilityService? explainabilityService = null)
         {
+            Explainability = new ModelExplainabilityViewModel(explainabilityService, analysisDispatcher, logger);
             _predictionSettingsManager = predictionSettingsManager;
             _clipboardService = clipboardService;
             _toastNotificationService = toastNotificationService;
@@ -113,6 +116,7 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
             _predictionLog = predictionLog;
             _retrainingScheduler = retrainingScheduler;
             _currentHealth = currentHealth;
+            _evidenceDiagnostics = evidenceDiagnostics;
 
             TakeSnapshot();
             InitializeFromSnapshot();
@@ -126,6 +130,7 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
         public AIPredictionsSettingsViewModel()
         {
             // Designer fallback
+            Explainability = new ModelExplainabilityViewModel();
             _predictionSettingsManager = new DesignPredictionSettingsManager();
             _clipboardService = new DesignClipboardService();
             _toastNotificationService = new DesignToastNotificationService();
@@ -560,6 +565,7 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
         {
             if (_isDisposed) return;
             _isDisposed = true;
+            Explainability.Dispose();
             DisposeMonitoring();
             EnsembleMembers.CollectionChanged -= OnEnsembleMembersChanged;
             foreach (var row in _observedEnsembleRows) row.PropertyChanged -= OnEnsembleRowChanged;

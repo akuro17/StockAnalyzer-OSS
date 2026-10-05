@@ -71,12 +71,13 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
         new Dictionary<TrainingFramework, string[]>
         {
             [TrainingFramework.PyTorch] = new[] { "lstm", "cnn" },
-            [TrainingFramework.LightGBM] = new[] { "gbdt" },
+            [TrainingFramework.LightGBM] = new[] { TrainingEnsembleContract.LightGbmArchitecture },
             [TrainingFramework.TensorFlow] = new[] { "lstm", "gru", "cnn" },
         };
 
     private readonly ITrainingOrchestrator? _orchestrator;
     private readonly IModelDeploymentService? _modelDeploymentService;
+    private readonly IEnsembleSettingsManager? _ensembleSettings;
     private readonly IExperimentLogService? _experimentLogService;
     private readonly IWatchlistManager? _watchlistManager;
     private readonly IMarketDataProvider? _marketDataProvider;
@@ -302,6 +303,132 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(StartTrainingCommand))]
+    [NotifyPropertyChangedFor(nameof(CalibrationValidationMessage))]
+    private bool _useCalibration;
+
+    /// <summary>Calibration is defined for classification models whose source is not manifest-prepared.</summary>
+    private bool CalibrationUnavailable() => UseCalibration
+        && (SelectedTargetType != TargetType.Classification || CreateCurrentTrainingConfig()?.RequiresFinalizedSource == true);
+
+    public string? CalibrationValidationMessage => CalibrationUnavailable()
+        ? LocalizationManager.Instance["TrainingWizard_Validation_Calibration"] : null;
+
+    /// <summary>The ensemble methods the Extended-learning combo box offers (T13).</summary>
+    public static IReadOnlyList<TrainingEnsembleMethod> AvailableEnsembleMethods { get; } = Enum.GetValues<TrainingEnsembleMethod>();
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsBaggingSelected))]
+    [NotifyPropertyChangedFor(nameof(IsStackingSelected))]
+    private TrainingEnsembleMethod _selectedEnsembleMethod = TrainingEnsembleMethod.None;
+
+    public bool IsBaggingSelected => SelectedEnsembleMethod == TrainingEnsembleMethod.Bagging;
+    public bool IsStackingSelected => SelectedEnsembleMethod == TrainingEnsembleMethod.Stacking;
+
+    [ObservableProperty]
+    private int _ensembleMembers = TrainingEnsembleContract.DefaultBaggingMembers;
+
+    /// <summary>Stacking bases, comma separated <c>framework[:architecture]</c> entries.</summary>
+    [ObservableProperty]
+    private string _stackingBasesText = string.Empty;
+
+    /// <summary>The weight sources the stacking panel offers (D2).</summary>
+    public static IReadOnlyList<StackingWeightSource> AvailableStackingWeightSources { get; } = Enum.GetValues<StackingWeightSource>();
+
+    [ObservableProperty]
+    private StackingWeightSource _selectedStackingWeightSource = StackingWeightSource.PastOutOfFold;
+
+    /// <summary>The source of the run whose ensemble may be registered next; the weight-transfer note applies to past out-of-fold weights only.</summary>
+    private StackingWeightSource _runStackingWeightSource = StackingWeightSource.PastOutOfFold;
+
+    [ObservableProperty]
+    private bool _usePretraining;
+
+    /// <summary>Evaluation-only CPCV (T14): C(groups, test groups) extra fits whose scores are reported, nothing is published.</summary>
+    [ObservableProperty]
+    private bool _useCpcv;
+
+    [ObservableProperty]
+    private int _cpcvGroups = TrainingCpcvContract.DefaultGroups;
+
+    [ObservableProperty]
+    private int _cpcvTestGroups = TrainingCpcvContract.DefaultTestGroups;
+
+    /// <summary>The combination count of the current CPCV request, or <see langword="null"/> while it is malformed or over the cap.</summary>
+    public int? CpcvCombinationCount => TrainingCpcvContract.TryCountCombinations(CpcvGroups, CpcvTestGroups, out var count, out _)
+        ? count : null;
+
+    public string? CpcvCountText => CpcvCombinationCount is { } count
+        ? string.Format(LocalizationManager.Instance["TrainingWizard_CpcvCount"], count) : null;
+
+    /// <summary>Per-combination CPCV scores, appended live from the run's <c>cpcv_*</c> metric lines.</summary>
+    public ObservableCollection<CpcvMetricRow> CpcvResults { get; } = new();
+
+    public bool HasCpcvResults => CpcvResults.Count > 0;
+
+    private int _runCpcvGroups;
+    private int _runCpcvTestGroups;
+
+    private string[] StackingBases() => StackingBasesText
+        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+    /// <summary>
+    /// The first reason the extended-learning choices (ensemble / pretraining) cannot run, or <see langword="null"/>. These rules mirror
+    /// <see cref="TrainingJobConfig.Validate"/> so Start is disabled with a specific message instead of failing at launch.
+    /// </summary>
+    public string? ExtendedLearningValidationMessage
+    {
+        get
+        {
+            string Text(string key) => LocalizationManager.Instance[key];
+            if (SelectedEnsembleMethod != TrainingEnsembleMethod.None)
+            {
+                if (SelectedTargetType != TargetType.Classification) return Text("TrainingWizard_Validation_EnsembleTarget");
+                if (UseCalibration || UsePretraining || SelectedInitializationMode != TrainingInitializationMode.Fresh)
+                    return Text("TrainingWizard_Validation_EnsembleExclusive");
+                try
+                {
+                    TrainingEnsembleContract.Validate(SelectedEnsembleMethod, EnsembleMembers, StackingBases(), SelectedTargetType);
+                }
+                catch (InvalidOperationException)
+                {
+                    return string.Format(Text(IsBaggingSelected ? "TrainingWizard_Validation_EnsembleMembers"
+                            : "TrainingWizard_Validation_EnsembleBases"),
+                        TrainingEnsembleContract.MinimumMembers, TrainingResourceOverrides.MaximumEnsembleMembers);
+                }
+            }
+
+            if (UseCpcv)
+            {
+                if (SelectedEnsembleMethod != TrainingEnsembleMethod.None || SelectedInitializationMode != TrainingInitializationMode.Fresh)
+                    return Text("TrainingWizard_Validation_CpcvExclusive");
+                if (CpcvCombinationCount is null)
+                    return string.Format(Text("TrainingWizard_Validation_CpcvGroups"),
+                        TrainingCpcvContract.MaxGroups, TrainingCpcvContract.MaxCombinations);
+            }
+
+            return UsePretraining && (SelectedFramework != TrainingFramework.PyTorch
+                    || SelectedInitializationMode == TrainingInitializationMode.FineTune)
+                ? Text("TrainingWizard_Validation_Pretraining") : null;
+        }
+    }
+
+    protected override void OnPropertyChanged(System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        base.OnPropertyChanged(e);
+        if (e.PropertyName is nameof(SelectedTargetType) or nameof(SelectedFramework) or nameof(SelectedInitializationMode)
+            or nameof(UseCalibration) or nameof(SelectedEnsembleMethod) or nameof(EnsembleMembers)
+            or nameof(StackingBasesText) or nameof(UsePretraining) or nameof(UseCpcv) or nameof(CpcvGroups)
+            or nameof(CpcvTestGroups))
+        {
+            OnPropertyChanged(nameof(ExtendedLearningValidationMessage));
+            OnPropertyChanged(nameof(CpcvCombinationCount));
+            OnPropertyChanged(nameof(CpcvCountText));
+            StartTrainingCommand.NotifyCanExecuteChanged();
+        }
+    }
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(StartTrainingCommand))]
     private bool _useClipSigma;
 
     partial void OnUseClipSigmaChanged(bool value) => RefreshClipSigmaValidation();
@@ -381,11 +508,13 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
     [NotifyCanExecuteChangedFor(nameof(StartTrainingCommand))]
     [NotifyCanExecuteChangedFor(nameof(CancelTrainingCommand))]
     [NotifyCanExecuteChangedFor(nameof(DeployToModelsCommand))]
+    [NotifyCanExecuteChangedFor(nameof(UseAsEnsembleCommand))]
     private bool _isTraining;
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(StartTrainingCommand))]
     [NotifyCanExecuteChangedFor(nameof(DeployToModelsCommand))]
+    [NotifyCanExecuteChangedFor(nameof(UseAsEnsembleCommand))]
     private bool _isDeploying;
 
     [ObservableProperty]
@@ -413,6 +542,16 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
     [NotifyCanExecuteChangedFor(nameof(DeployToModelsCommand))]
     private TrainingRunResult? _lastResult;
 
+    /// <summary>The generations registered from the last ensemble run, awaiting an explicit "use as ensemble".</summary>
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(UseAsEnsembleCommand))]
+    [NotifyPropertyChangedFor(nameof(HasRegisteredEnsemble))]
+    private EnsembleRegistration? _registeredEnsemble;
+
+    public bool HasRegisteredEnsemble => RegisteredEnsemble is not null;
+
+    partial void OnLastResultChanged(TrainingRunResult? value) => RegisteredEnsemble = null;
+
     /// <summary>
     /// Feature-composition picker for a <see cref="PredictionFeatureMode.ComposedFeatures"/> run.
     /// Only consulted when <see cref="UseComposedFeatures"/> is set; otherwise the run stays on the
@@ -437,9 +576,11 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
         ILogger<TrainingWizardViewModel>? logger = null,
         IIndicatorFactory? indicatorFactory = null,
         ITemplateService? templateService = null,
-        Services.IToastNotificationService? toastService = null, IRetrainingScheduler? retrainingScheduler = null)
+        Services.IToastNotificationService? toastService = null, IRetrainingScheduler? retrainingScheduler = null,
+        IEnsembleSettingsManager? ensembleSettings = null)
     {
         _orchestrator = orchestrator;
+        _ensembleSettings = ensembleSettings;
         _retrainingScheduler = retrainingScheduler;
         _modelDeploymentService = modelDeploymentService;
         _experimentLogService = experimentLogService;
@@ -459,6 +600,8 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
             OnPropertyChanged(nameof(UseComposedFeatures));
             OnPropertyChanged(nameof(IsManifestMissing));
         };
+
+        CpcvResults.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasCpcvResults));
 
         FoldResults.CollectionChanged += (_, _) =>
         {
@@ -567,6 +710,8 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
     partial void OnSelectedTargetTypeChanged(TargetType value)
     {
         OnPropertyChanged(nameof(SelectableFrameworks));
+        OnPropertyChanged(nameof(CalibrationValidationMessage));
+        StartTrainingCommand.NotifyCanExecuteChanged();
         if (value == TargetType.Regression && SelectedFramework != TrainingFramework.PyTorch)
             SelectedFramework = TrainingFramework.PyTorch;
     }
@@ -633,6 +778,8 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
         && NSplits is >= 2 and <= TrainingResourceOverrides.MaximumEvaluationFolds
         && Gap is not (< 0)
         && OosTailDays is not (< 0)
+        && !CalibrationUnavailable()
+        && ExtendedLearningValidationMessage is null
         && TryParseLags(out var lags)
         && (!UseClipSigma || (UseFixedZScore && TryGetClipSigma(out _)))
         && (UseFixedZScore || lags.Length == 0)
@@ -666,6 +813,15 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
             FeatureMode = composedSpec is not null ? PredictionFeatureMode.ComposedFeatures : PredictionFeatureMode.OhlcvMinMax,
             FeatureSpec = composedSpec,
             FixedZScore = UseFixedZScore,
+            Calibration = UseCalibration,
+            StackingWeightSource = IsStackingSelected ? SelectedStackingWeightSource : StackingWeightSource.PastOutOfFold,
+            EnsembleMethod = SelectedEnsembleMethod,
+            EnsembleMembers = EnsembleMembers,
+            StackingBases = IsStackingSelected ? StackingBases() : Array.Empty<string>(),
+            Pretraining = UsePretraining ? TrainingPretraining.MaskedReconstruction : TrainingPretraining.None,
+            Cpcv = UseCpcv,
+            CpcvGroups = CpcvGroups,
+            CpcvTestGroups = CpcvTestGroups,
             ClipSigma = UseClipSigma ? clipSigma : null,
             Lags = composedSpec is null ? lags : Array.Empty<int>(),
             SourceManifestPath = SourceManifestPath,
@@ -714,6 +870,10 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
         CurrentStage = null;
         LogLines.Clear();
         FoldResults.Clear();
+        CpcvResults.Clear();
+        _runStackingWeightSource = config.StackingWeightSource;
+        _runCpcvGroups = config.Cpcv ? config.CpcvGroups : 0;
+        _runCpcvTestGroups = config.Cpcv ? config.CpcvTestGroups : 0;
         LastResult = null;
         CheckpointManifestPath = null;
         StatusMessage = LocalizationManager.Instance["TrainingWizard_Status_Starting"] ?? "Starting training...";
@@ -837,6 +997,13 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
             var summary = string.Join(", ", metric.Select(kv => $"{kv.Key}={kv.Value:0.####}"));
             AppendLogLine($"[{timestamp}] {summary}");
 
+            if (_runCpcvGroups > 0 && CpcvMetricRow.FromMetric(metric, _runCpcvGroups, _runCpcvTestGroups) is { } cpcvRow)
+            {
+                var existing = CpcvResults.ToList().FindIndex(r => r.Combination == cpcvRow.Combination);
+                if (existing >= 0) CpcvResults[existing] = cpcvRow;
+                else CpcvResults.Add(cpcvRow);
+            }
+
             if (FoldMetricRow.FromMetric(metric) is { } foldRow)
             {
                 var existingIndex = -1;
@@ -902,6 +1069,28 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
         IsDeploying = true;
         try
         {
+            if (result.EnsembleManifestPath is { } ensemblePath)
+            {
+                // Every member becomes its own generation; none is activated and the active ensemble is untouched
+                // until the user chooses "Use as ensemble".
+                var registration = await _modelDeploymentService.RegisterEnsembleAsync(ensemblePath).ConfigureAwait(true);
+                RegisteredEnsemble = registration;
+                StatusMessage = string.Format(
+                    LocalizationManager.Instance["TrainingWizard_Status_EnsembleRegistered"]
+                    ?? "Registered {0} ensemble member generations (none activated).",
+                    registration.Generations.Count);
+                if (registration.Method == TrainingEnsembleMethod.Stacking
+                    && _runStackingWeightSource == StackingWeightSource.PastOutOfFold)
+                {
+                    // Stacking weights come from earlier folds' out-of-fold rows but apply to the release-fold models.
+                    StatusMessage += Environment.NewLine
+                        + (LocalizationManager.Instance["TrainingWizard_Status_EnsembleWeightTransfer"]
+                           ?? "Note: the stacking weights were fitted on earlier folds.");
+                }
+
+                return;
+            }
+
             var generation = await _modelDeploymentService.RegisterGenerationAsync(onnxPath, result.MetricsArtifactPath).ConfigureAwait(true);
             StatusMessage = string.Format(
                 LocalizationManager.Instance["TrainingWizard_Status_Registered"] ?? "Registered model generation {0}.",
@@ -912,6 +1101,34 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
             _logger.LogError(ex, "TrainingWizardViewModel: DeployToModelsAsync failed.");
             StatusMessage = string.Format(
                 LocalizationManager.Instance["TrainingWizard_Status_DeployError"] ?? "Deployment failed: {0}",
+                ex.Message);
+        }
+        finally
+        {
+            IsDeploying = false;
+        }
+    }
+
+    private bool CanUseAsEnsemble() => !IsTraining && !IsDeploying && _ensembleSettings is not null && RegisteredEnsemble is not null;
+
+    /// <summary>Makes the registered ensemble (equal bagging weights or the fitted stacking weights) the active ensemble.</summary>
+    [RelayCommand(CanExecute = nameof(CanUseAsEnsemble))]
+    private async Task UseAsEnsembleAsync()
+    {
+        if (_ensembleSettings is null || RegisteredEnsemble is not { } registration) return;
+        IsDeploying = true;
+        try
+        {
+            await _ensembleSettings.SaveAsync(registration.Spec).ConfigureAwait(true);
+            StatusMessage = string.Format(
+                LocalizationManager.Instance["TrainingWizard_Status_EnsembleApplied"] ?? "The active ensemble now has {0} members.",
+                registration.Spec.Members.Count);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "TrainingWizardViewModel: UseAsEnsembleAsync failed.");
+            StatusMessage = string.Format(
+                LocalizationManager.Instance["TrainingWizard_Status_EnsembleError"] ?? "The ensemble could not be applied: {0}",
                 ex.Message);
         }
         finally

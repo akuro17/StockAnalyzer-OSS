@@ -19,6 +19,8 @@ public partial class AIPredictionsSettingsViewModel
 {
     private readonly IModelAnalysisService? _modelAnalysisService;
     private readonly IDispatcherService? _analysisDispatcher;
+    /// <summary>Offline Shapley/PDP explanation and probability calibration of the selected generation.</summary>
+    public ModelExplainabilityViewModel Explainability { get; }
     public ObservableCollection<ImportanceDisplayRow> ImportanceRows { get; } = new();
     [ObservableProperty] private string? _importanceTitle;
     [ObservableProperty] private string? _importanceStatus;

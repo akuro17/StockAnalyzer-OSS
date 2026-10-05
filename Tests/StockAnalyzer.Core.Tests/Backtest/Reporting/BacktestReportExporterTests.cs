@@ -3,6 +3,7 @@ using System.IO;
 using System.Threading.Tasks;
 using System.Linq;
 using StockAnalyzer.Core.Common;
+using StockAnalyzer.Core.Models.Backtest.Engine;
 using StockAnalyzer.Core.Services.Backtest.Reporting;
 using Xunit;
 
@@ -171,5 +172,65 @@ public class BacktestReportExporterTests
         {
             if (Directory.Exists(directoryPath)) Directory.Delete(directoryPath, recursive: true);
         }
+    }
+
+    [Fact]
+    public async Task ExportTradesCsvAsync_WithTrades_WritesExpectedCsv()
+    {
+        string directoryPath = Path.Combine(Path.GetTempPath(), "sa_trades_export_" + Guid.NewGuid().ToString("N"));
+        var exporter = new BacktestReportExporter();
+        DateTime entry = new(2026, 1, 5, 9, 30, 0, DateTimeKind.Utc);
+        DateTime exit = new(2026, 1, 6, 15, 0, 0, DateTimeKind.Utc);
+        var trades = new[]
+        {
+            new BacktestTrade(1, TradeSide.Long, 0, entry, 100.5m, 1, exit, 110.25m, 10m, 97.5m, 95m, 1m, 1.5m, 1, false),
+            new BacktestTrade(2, TradeSide.Short, 2, entry.AddDays(2), 200m, 3, exit.AddDays(2), 190m, 5m, 50m, 48m, 1m, 1m, 1, true)
+        };
+
+        try
+        {
+            await exporter.ExportTradesCsvAsync(trades, directoryPath, "trades.csv");
+            string fullPath = Path.Combine(directoryPath, "trades.csv");
+            Assert.True(File.Exists(fullPath));
+
+            string[] lines = await File.ReadAllLinesAsync(fullPath);
+            Assert.Equal(3, lines.Length);
+            Assert.Equal("TradeId,Side,EntryTime,EntryPrice,ExitTime,ExitPrice,Quantity,ClosedNet,IsForcedLiquidation", lines[0]);
+            Assert.Equal("1,Long,2026-01-05 09:30:00,100.5000,2026-01-06 15:00:00,110.2500,10.0000,95.0000,false", lines[1]);
+            Assert.Equal("2,Short,2026-01-07 09:30:00,200.0000,2026-01-08 15:00:00,190.0000,5.0000,48.0000,true", lines[2]);
+        }
+        finally
+        {
+            if (Directory.Exists(directoryPath)) Directory.Delete(directoryPath, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task ExportTradesCsvAsync_EmptyTrades_WritesHeaderOnly()
+    {
+        string directoryPath = Path.Combine(Path.GetTempPath(), "sa_empty_trades_" + Guid.NewGuid().ToString("N"));
+        var exporter = new BacktestReportExporter();
+
+        try
+        {
+            await exporter.ExportTradesCsvAsync(Array.Empty<BacktestTrade>(), directoryPath, "empty.csv");
+            string fullPath = Path.Combine(directoryPath, "empty.csv");
+            Assert.True(File.Exists(fullPath));
+
+            string[] lines = await File.ReadAllLinesAsync(fullPath);
+            Assert.Single(lines);
+            Assert.Equal("TradeId,Side,EntryTime,EntryPrice,ExitTime,ExitPrice,Quantity,ClosedNet,IsForcedLiquidation", lines[0]);
+        }
+        finally
+        {
+            if (Directory.Exists(directoryPath)) Directory.Delete(directoryPath, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task ExportTradesCsvAsync_NullTrades_Throws()
+    {
+        var exporter = new BacktestReportExporter();
+        await Assert.ThrowsAsync<ArgumentNullException>(() => exporter.ExportTradesCsvAsync(null!, "trades.csv"));
     }
 }

@@ -11,3 +11,14 @@ namespace StockAnalyzer.Core.Tests;
 public class PythonIpcCollection
 {
 }
+
+// Test classes that start a real child process (the training Python environment) run in this collection, alone, never beside
+// another test. Windows' CreateProcess, which Process.Start uses with redirected streams, hands the child every INHERITABLE handle
+// of this process, and native libraries open files that way (OnnxRuntime reads a model through a C runtime descriptor). A child
+// started while another test is loading an ONNX model therefore keeps that model file locked for as long as it runs, and the other
+// test's cleanup (Directory.Delete or Directory.Move) fails with "being used by another process" (R2-5; the holder was identified
+// as the Python child of PreparedSourcePipelineParityTests, whose parent was this test host).
+[CollectionDefinition("ChildProcess", DisableParallelization = true)]
+public class ChildProcessCollection
+{
+}

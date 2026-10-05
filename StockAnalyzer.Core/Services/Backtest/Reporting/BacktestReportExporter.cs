@@ -1,10 +1,13 @@
 using System;
+using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Threading.Tasks;
 using System.Threading;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using StockAnalyzer.Core.Common;
+using StockAnalyzer.Core.Models.Backtest.Engine;
 using StockAnalyzer.Core.Services;
 using StockAnalyzer.Core.Services.Backtest.Evaluation;
 
@@ -58,6 +61,62 @@ public sealed class BacktestReportExporter : IBacktestReportExporter
         ValidateEvaluationExport(artifact, fileName);
 
         await SaveToDirectoryAsync(directoryPath, fileName, new BacktestEvaluationExportEnvelope(artifact)).ConfigureAwait(false);
+    }
+
+    public async Task ExportTradesCsvAsync(IReadOnlyList<BacktestTrade> trades, string fileName)
+    {
+        ArgumentNullException.ThrowIfNull(trades);
+        ValidateFileName(fileName);
+
+        string path = PathDiscovery.ResolveBacktestReportExportPath(fileName);
+        await SaveTradesCsvAsync(path, trades).ConfigureAwait(false);
+    }
+
+    public async Task ExportTradesCsvAsync(IReadOnlyList<BacktestTrade> trades, string directoryPath, string fileName)
+    {
+        if (string.IsNullOrWhiteSpace(directoryPath)) throw new ArgumentException("directoryPath must not be blank.", nameof(directoryPath));
+        ArgumentNullException.ThrowIfNull(trades);
+        ValidateFileName(fileName);
+
+        string path = Path.Combine(directoryPath, fileName);
+        await SaveTradesCsvAsync(path, trades).ConfigureAwait(false);
+    }
+
+    private async Task SaveTradesCsvAsync(string path, IReadOnlyList<BacktestTrade> trades)
+    {
+        string? directoryPath = Path.GetDirectoryName(path);
+        if (!string.IsNullOrEmpty(directoryPath))
+        {
+            Directory.CreateDirectory(directoryPath);
+        }
+
+        string tempPath = path + ".tmp." + Guid.NewGuid().ToString("N");
+        var utf8NoBom = new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
+
+        await _exportGate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            await using (var writer = new StreamWriter(tempPath, false, utf8NoBom))
+            {
+                await writer.WriteLineAsync("TradeId,Side,EntryTime,EntryPrice,ExitTime,ExitPrice,Quantity,ClosedNet,IsForcedLiquidation").ConfigureAwait(false);
+                foreach (var trade in trades)
+                {
+                    await writer.WriteLineAsync(string.Create(CultureInfo.InvariantCulture,
+                        $"{trade.TradeId},{trade.Side},{trade.EntryTime:yyyy-MM-dd HH:mm:ss},{trade.EntryPrice:F4},{trade.ExitTime:yyyy-MM-dd HH:mm:ss},{trade.ExitPrice:F4},{trade.Quantity:F4},{trade.ClosedNet:F4},{trade.IsForcedLiquidation.ToString().ToLowerInvariant()}")).ConfigureAwait(false);
+                }
+            }
+
+            File.Move(tempPath, path, overwrite: true);
+            _logger.LogDebug("Backtest trades CSV export written: FileName={FileName}, TradeCount={TradeCount}", Path.GetFileName(path), trades.Count);
+        }
+        finally
+        {
+            if (File.Exists(tempPath))
+            {
+                try { File.Delete(tempPath); } catch { /* ignore */ }
+            }
+            _exportGate.Release();
+        }
     }
 
     private async Task SaveToDirectoryAsync<T>(string directoryPath, string fileName, T value)

@@ -64,6 +64,12 @@ public sealed class EquityCurveControl : Control
     public static readonly StyledProperty<double> LabelFontSizeProperty =
         AvaloniaProperty.Register<EquityCurveControl, double>(nameof(LabelFontSize), 11d);
 
+    public static readonly StyledProperty<bool> ShowHoverTooltipProperty =
+        AvaloniaProperty.Register<EquityCurveControl, bool>(nameof(ShowHoverTooltip), true);
+
+    public static readonly StyledProperty<EquityPoint?> HoveredPointProperty =
+        AvaloniaProperty.Register<EquityCurveControl, EquityPoint?>(nameof(HoveredPoint));
+
     static EquityCurveControl()
     {
         AffectsRender<EquityCurveControl>(
@@ -75,7 +81,20 @@ public sealed class EquityCurveControl : Control
             LineStyleProperty,
             EmptyStateTextProperty,
             UnavailableTextProperty,
-            LabelFontSizeProperty);
+            LabelFontSizeProperty,
+            ShowHoverTooltipProperty);
+    }
+
+    public bool ShowHoverTooltip
+    {
+        get => GetValue(ShowHoverTooltipProperty);
+        set => SetValue(ShowHoverTooltipProperty, value);
+    }
+
+    public EquityPoint? HoveredPoint
+    {
+        get => GetValue(HoveredPointProperty);
+        set => SetValue(HoveredPointProperty, value);
     }
 
     public ImmutableArray<BacktestTradeRow> Trades
@@ -334,6 +353,15 @@ public sealed class EquityCurveControl : Control
             {
                 InvalidateVisual();
             }
+        }
+        EquityPoint? hoveredPoint = null;
+        if (next is { Kind: EquityHoverKind.Point } ptHover && ptHover.Index >= 0 && ptHover.Index < EquityPoints.Length)
+        {
+            hoveredPoint = EquityPoints[ptHover.Index];
+        }
+        if (HoveredPoint != hoveredPoint)
+        {
+            SetCurrentValue(HoveredPointProperty, hoveredPoint);
         }
     }
 
@@ -622,11 +650,14 @@ public sealed class EquityCurveControl : Control
             context.DrawEllipse(null, palette.BoxPen, hover.Anchor, ring, ring);
         }
 
-        context.DrawRectangle(
-            palette.Box, palette.BoxPen, visual.PanelRect, BacktestUiConstants.EquityHoverCornerRadius, BacktestUiConstants.EquityHoverCornerRadius);
-        context.DrawText(
-            visual.PanelText,
-            new AvaloniaPoint(visual.PanelRect.X + BacktestUiConstants.EquityHoverPadding, visual.PanelRect.Y + BacktestUiConstants.EquityHoverPadding));
+        if (ShowHoverTooltip)
+        {
+            context.DrawRectangle(
+                palette.Box, palette.BoxPen, visual.PanelRect, BacktestUiConstants.EquityHoverCornerRadius, BacktestUiConstants.EquityHoverCornerRadius);
+            context.DrawText(
+                visual.PanelText,
+                new AvaloniaPoint(visual.PanelRect.X + BacktestUiConstants.EquityHoverPadding, visual.PanelRect.Y + BacktestUiConstants.EquityHoverPadding));
+        }
     }
 
     private HoverVisual? GetHoverVisual(EquityHoverView hover, EquityHoverContext hoverContext)

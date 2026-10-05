@@ -25,6 +25,8 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
         private double _snapshotConnectorLineLength;
         private double _snapshotDashLength;
         private int _snapshotTimelinePageSize;
+        private int _snapshotUpcomingCatalystsLimit;
+        private int _snapshotUpcomingCatalystsPastDaysRetention;
         private double _snapshotBodyFontSize;
         private IndicatorColor _snapshotBodyTextColor;
         private IndicatorColor _snapshotBodyBackgroundColor;
@@ -50,6 +52,8 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
         [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private double _selectedConnectorLineLength = NotesSettingsConstants.DefaultConnectorLineLength;
         [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private double _selectedDashLength = NotesSettingsConstants.DefaultDashLength;
         [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private int _selectedTimelinePageSize = NotesSettingsConstants.DefaultTimelinePageSize;
+        [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private int _selectedUpcomingCatalystsLimit = NotesSettingsConstants.DefaultUpcomingCatalystsLimit;
+        [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private int _selectedUpcomingCatalystsPastDaysRetention = NotesSettingsConstants.DefaultUpcomingCatalystsPastDaysRetention;
 
         [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private double _selectedBodyFontSize = NotesSettingsConstants.DefaultBodyFontSize;
         [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private IndicatorColor _selectedBodyTextColor = IndicatorColor.FromUInt(NotesSettingsConstants.DefaultBodyTextColorArgb);
@@ -87,6 +91,8 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
             public double ConnectorLineLength => NotesSettingsConstants.DefaultConnectorLineLength;
             public double DashLength => NotesSettingsConstants.DefaultDashLength;
             public int TimelinePageSize => NotesSettingsConstants.DefaultTimelinePageSize;
+            public int UpcomingCatalystsLimit => NotesSettingsConstants.DefaultUpcomingCatalystsLimit;
+            public int UpcomingCatalystsPastDaysRetention => NotesSettingsConstants.DefaultUpcomingCatalystsPastDaysRetention;
             public double BodyFontSize => NotesSettingsConstants.DefaultBodyFontSize;
             public IndicatorColor BodyTextColor => IndicatorColor.FromUInt(NotesSettingsConstants.DefaultBodyTextColorArgb);
             public IndicatorColor BodyBackgroundColor => IndicatorColor.FromUInt(NotesSettingsConstants.DefaultBodyBackgroundColorArgb);
@@ -102,6 +108,8 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
             public void SetConnectorLineLength(double value) { }
             public void SetDashLength(double value) { }
             public void SetTimelinePageSize(int value) { }
+            public void SetUpcomingCatalystsLimit(int value) { }
+            public void SetUpcomingCatalystsPastDaysRetention(int value) { }
             public void SetBodyFontSize(double value) { }
             public void SetBodyTextColor(IndicatorColor value) { }
             public void SetBodyBackgroundColor(IndicatorColor value) { }
@@ -124,6 +132,8 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
             _snapshotConnectorLineLength = _notesSettingsManager.ConnectorLineLength;
             _snapshotDashLength = _notesSettingsManager.DashLength;
             _snapshotTimelinePageSize = _notesSettingsManager.TimelinePageSize;
+            _snapshotUpcomingCatalystsLimit = _notesSettingsManager.UpcomingCatalystsLimit;
+            _snapshotUpcomingCatalystsPastDaysRetention = _notesSettingsManager.UpcomingCatalystsPastDaysRetention;
             _snapshotBodyFontSize = _notesSettingsManager.BodyFontSize;
             _snapshotBodyTextColor = _notesSettingsManager.BodyTextColor;
             _snapshotBodyBackgroundColor = _notesSettingsManager.BodyBackgroundColor;
@@ -143,6 +153,8 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
             SelectedConnectorLineLength = _notesSettingsManager.ConnectorLineLength;
             SelectedDashLength = _notesSettingsManager.DashLength;
             SelectedTimelinePageSize = _notesSettingsManager.TimelinePageSize;
+            SelectedUpcomingCatalystsLimit = _notesSettingsManager.UpcomingCatalystsLimit;
+            SelectedUpcomingCatalystsPastDaysRetention = _notesSettingsManager.UpcomingCatalystsPastDaysRetention;
             SelectedBodyFontSize = _notesSettingsManager.BodyFontSize;
             SelectedBodyTextColor = _notesSettingsManager.BodyTextColor;
             SelectedBodyBackgroundColor = _notesSettingsManager.BodyBackgroundColor;
@@ -162,6 +174,8 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
             SelectedConnectorLineLength != _snapshotConnectorLineLength ||
             SelectedDashLength != _snapshotDashLength ||
             SelectedTimelinePageSize != _snapshotTimelinePageSize ||
+            SelectedUpcomingCatalystsLimit != _snapshotUpcomingCatalystsLimit ||
+            SelectedUpcomingCatalystsPastDaysRetention != _snapshotUpcomingCatalystsPastDaysRetention ||
             SelectedBodyFontSize != _snapshotBodyFontSize ||
             SelectedBodyTextColor != _snapshotBodyTextColor ||
             SelectedBodyBackgroundColor != _snapshotBodyBackgroundColor ||
@@ -187,6 +201,10 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
         partial void OnSelectedDashLengthChanged(double value) => _notesSettingsManager.SetDashLength(value);
 
         partial void OnSelectedTimelinePageSizeChanged(int value) => _notesSettingsManager.SetTimelinePageSize(value);
+
+        partial void OnSelectedUpcomingCatalystsLimitChanged(int value) => _notesSettingsManager.SetUpcomingCatalystsLimit(value);
+
+        partial void OnSelectedUpcomingCatalystsPastDaysRetentionChanged(int value) => _notesSettingsManager.SetUpcomingCatalystsPastDaysRetention(value);
 
         partial void OnSelectedBodyFontSizeChanged(double value) => _notesSettingsManager.SetBodyFontSize(value);
 
@@ -217,6 +235,8 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
             _notesSettingsManager.SetConnectorLineLength(_snapshotConnectorLineLength);
             _notesSettingsManager.SetDashLength(_snapshotDashLength);
             _notesSettingsManager.SetTimelinePageSize(_snapshotTimelinePageSize);
+            _notesSettingsManager.SetUpcomingCatalystsLimit(_snapshotUpcomingCatalystsLimit);
+            _notesSettingsManager.SetUpcomingCatalystsPastDaysRetention(_snapshotUpcomingCatalystsPastDaysRetention);
             _notesSettingsManager.SetBodyFontSize(_snapshotBodyFontSize);
             _notesSettingsManager.SetBodyTextColor(_snapshotBodyTextColor);
             _notesSettingsManager.SetBodyBackgroundColor(_snapshotBodyBackgroundColor);
@@ -237,6 +257,8 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
             SelectedConnectorLineLength = NotesSettingsConstants.DefaultConnectorLineLength;
             SelectedDashLength = NotesSettingsConstants.DefaultDashLength;
             SelectedTimelinePageSize = NotesSettingsConstants.DefaultTimelinePageSize;
+            SelectedUpcomingCatalystsLimit = NotesSettingsConstants.DefaultUpcomingCatalystsLimit;
+            SelectedUpcomingCatalystsPastDaysRetention = NotesSettingsConstants.DefaultUpcomingCatalystsPastDaysRetention;
             SelectedBodyFontSize = NotesSettingsConstants.DefaultBodyFontSize;
             SelectedBodyTextColor = IndicatorColor.FromUInt(NotesSettingsConstants.DefaultBodyTextColorArgb);
             SelectedBodyBackgroundColor = IndicatorColor.FromUInt(NotesSettingsConstants.DefaultBodyBackgroundColorArgb);

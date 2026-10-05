@@ -145,6 +145,7 @@ public sealed class TrainingOrchestrator : ITrainingOrchestrator
         var ownsPreparedRunDirectory = false;
         RunState? processState = null;
         string? configPath = null;
+        var keepEnsembleArtifacts = false;
         try
         {
         if (config.RequiresFinalizedSource)
@@ -287,6 +288,7 @@ public sealed class TrainingOrchestrator : ITrainingOrchestrator
 
         if (config.RequiresFinalizedSource)
             ReportTerminal(success ? "Completed" : "Failed", requireNotCancelled: true);
+        keepEnsembleArtifacts = success;
         return new TrainingRunResult
         {
             RunId = runId,
@@ -295,6 +297,7 @@ public sealed class TrainingOrchestrator : ITrainingOrchestrator
             OnnxArtifactPath = state.OnnxArtifactPath,
             MetricsArtifactPath = state.MetricsArtifactPath,
             CheckpointManifestPath = state.CheckpointManifestPath,
+            EnsembleManifestPath = state.EnsembleManifestPath,
             Metrics = state.LastMetric ?? new Dictionary<string, double>(),
             Message = success ? null : BuildFailureMessage(process.ExitCode, state),
             StartedUtc = startedUtc,
@@ -329,6 +332,9 @@ public sealed class TrainingOrchestrator : ITrainingOrchestrator
         }
         finally
         {
+            // The trainer has exited (or been killed) by now. A run that did not succeed leaves none of its ensemble files behind.
+            if (!keepEnsembleArtifacts && processState is not null)
+                DeleteEnsembleArtifacts(processState, runId);
             if (configPath is not null)
                 TryDeleteFile(configPath);
             if (ownsPreparedRunDirectory && preparedRunDirectory is not null && Directory.Exists(preparedRunDirectory))
@@ -391,6 +397,12 @@ public sealed class TrainingOrchestrator : ITrainingOrchestrator
                 }
                 else if (string.Equals(kind, "checkpoint", StringComparison.OrdinalIgnoreCase))
                     state.CheckpointManifestPath = path;
+                else if (string.Equals(kind, "ensemble", StringComparison.OrdinalIgnoreCase))
+                    state.EnsembleManifestPath = path;
+                else if (string.Equals(kind, "ensemble_member", StringComparison.OrdinalIgnoreCase))
+                    state.EnsembleMemberPaths.Add(path);
+                else if (string.Equals(kind, "ensemble_checkpoints", StringComparison.OrdinalIgnoreCase))
+                    state.EnsembleCheckpointRoot = path;
             }
             ReportProgress(state, progress);
         }
@@ -458,6 +470,126 @@ public sealed class TrainingOrchestrator : ITrainingOrchestrator
         }
     }
 
+    /// <summary>
+    /// Rolls an ensemble run that did not succeed back: removes every ensemble member the trainer announced
+    /// (<c>ARTIFACT:ensemble_member:&lt;onnx&gt;</c>) together with its sidecars (<c>&lt;onnx&gt;.*</c>) and the ensemble manifest
+    /// (<c>ARTIFACT:ensemble:&lt;path&gt;</c>), and the members' checkpoint directories (<c>&lt;checkpoint root&gt;/&lt;run id&gt;-mNN</c>
+    /// under the root announced by <c>ARTIFACT:ensemble_checkpoints:&lt;dir&gt;</c>; only directories of this run's own id), so a failed
+    /// run leaves none of the files it produced. The host owns this cleanup, so it also works when the trainer was killed. A deletion
+    /// that fails is logged and never replaces the run's own outcome.
+    /// </summary>
+    /// <remarks>
+    /// The announced paths come from the trainer's text protocol, so a delete is confined to what the run owns
+    /// (<see cref="TrainingEnsembleArtifactLayout"/>): a member is a fully qualified <c>&lt;stem&gt;_m&lt;digits&gt;.onnx</c>; the
+    /// artifact directory is the one of the first such member; the manifest and every further member must be files of that directory;
+    /// the checkpoint root must be its <see cref="TrainingCheckpointContract.DirectoryName"/> subdirectory. Anything else is skipped and logged.
+    /// </remarks>
+    private void DeleteEnsembleArtifacts(RunState state, string runId)
+    {
+        string[] announced;
+        string? manifest;
+        string? checkpointRoot;
+        lock (state.Lock)
+        {
+            announced = state.EnsembleMemberPaths.ToArray();
+            manifest = state.EnsembleManifestPath;
+            checkpointRoot = state.EnsembleCheckpointRoot;
+        }
+
+        var directory = announced.Where(IsOwnedMemberPath).Select(Path.GetDirectoryName).FirstOrDefault();
+        if (directory is null)
+        {
+            if (announced.Length > 0 || manifest is not null || checkpointRoot is not null)
+                _logger.LogWarning("TrainingOrchestrator: no announced ensemble member is a valid member file; nothing was removed.");
+            return;
+        }
+
+        if (checkpointRoot is not null)
+        {
+            if (IsSamePath(checkpointRoot, Path.Combine(directory, TrainingCheckpointContract.DirectoryName)))
+                DeleteMemberCheckpointDirectories(checkpointRoot, runId);
+            else
+                _logger.LogWarning("TrainingOrchestrator: skipped the announced checkpoint root {Root}: it is not {Directory}/{Name}.",
+                    checkpointRoot, directory, TrainingCheckpointContract.DirectoryName);
+        }
+
+        if (manifest is not null)
+        {
+            if (Path.IsPathFullyQualified(manifest) && IsSamePath(Path.GetDirectoryName(manifest), directory)
+                && manifest.EndsWith(TrainingEnsembleManifest.FileSuffix, StringComparison.OrdinalIgnoreCase))
+            {
+                try { File.Delete(manifest); }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+                {
+                    _logger.LogWarning(error, "TrainingOrchestrator: could not remove the ensemble manifest {Manifest}", manifest);
+                }
+            }
+            else
+            {
+                _logger.LogWarning("TrainingOrchestrator: skipped the announced ensemble manifest {Manifest}: it is not an ensemble manifest in {Directory}.",
+                    manifest, directory);
+            }
+        }
+
+        foreach (var member in announced)
+        {
+            if (!IsOwnedMemberPath(member) || !IsSamePath(Path.GetDirectoryName(member), directory))
+            {
+                _logger.LogWarning("TrainingOrchestrator: skipped the announced ensemble member {Member}: it is not a member file in {Directory}.",
+                    member, directory);
+                continue;
+            }
+
+            var name = Path.GetFileName(member);
+            try
+            {
+                var files = Directory.EnumerateFiles(directory, name + ".*")
+                    .Where(f => Path.GetFileName(f).StartsWith(name + ".", StringComparison.Ordinal)).ToList();
+                files.Add(member);
+                foreach (var file in files)
+                    File.Delete(file); // a missing file is not an error
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                _logger.LogWarning(error, "TrainingOrchestrator: could not remove the artifacts of ensemble member {Member}", member);
+            }
+        }
+    }
+
+    private static bool IsOwnedMemberPath(string path) =>
+        Path.IsPathFullyQualified(path) && TrainingEnsembleArtifactLayout.IsMemberFileName(Path.GetFileName(path));
+
+    private static bool IsSamePath(string? left, string? right) =>
+        left is not null && right is not null
+        && string.Equals(Path.GetFullPath(left).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+            Path.GetFullPath(right).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+            OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+
+    /// <summary>Deletes <c>&lt;root&gt;/&lt;runId&gt;-m&lt;digits&gt;</c> directories only (never another run's, never a link target).</summary>
+    private void DeleteMemberCheckpointDirectories(string? checkpointRoot, string runId)
+    {
+        if (string.IsNullOrEmpty(checkpointRoot) || string.IsNullOrEmpty(runId) || !Directory.Exists(checkpointRoot))
+            return;
+        try
+        {
+            foreach (var directory in Directory.EnumerateDirectories(checkpointRoot).ToList())
+            {
+                if (!TrainingEnsembleArtifactLayout.IsMemberCheckpointDirectory(Path.GetFileName(directory), runId)
+                    || new DirectoryInfo(directory).Attributes.HasFlag(FileAttributes.ReparsePoint))
+                    continue;
+                try { Directory.Delete(directory, recursive: true); }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+                {
+                    _logger.LogWarning(error, "TrainingOrchestrator: could not remove the checkpoint directory {Directory}", directory);
+                }
+            }
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            _logger.LogWarning(error, "TrainingOrchestrator: could not list the checkpoint root {Root}", checkpointRoot);
+        }
+    }
+
     private void TryKillProcess(Process process)
     {
         try
@@ -481,6 +613,9 @@ public sealed class TrainingOrchestrator : ITrainingOrchestrator
         public string? Stage;
         public int Percent;
         public string? CheckpointManifestPath;
+        public string? EnsembleManifestPath;
+        public readonly List<string> EnsembleMemberPaths = new();
+        public string? EnsembleCheckpointRoot;
         public IReadOnlyDictionary<string, double>? LastMetric;
         public string? OnnxArtifactPath;
         public string? MetricsArtifactPath;

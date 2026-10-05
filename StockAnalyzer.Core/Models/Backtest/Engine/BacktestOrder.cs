@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace StockAnalyzer.Core.Models.Backtest.Engine;
 
 public readonly record struct BacktestOrder(
@@ -6,4 +8,8 @@ public readonly record struct BacktestOrder(
     OrderStatus Status, TimeInForce TimeInForce,
     int SubmittedBar, int EarliestFillBar,
     bool StopActivated,
-    ExpiredReason? ExpiredReason, RejectedReason? RejectedReason);
+    ExpiredReason? ExpiredReason, RejectedReason? RejectedReason)
+{
+    [JsonIgnore]
+    public string Reason { get; init; } = string.Empty;
+}

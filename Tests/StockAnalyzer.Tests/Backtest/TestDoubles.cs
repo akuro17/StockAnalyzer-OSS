@@ -197,6 +197,27 @@ internal sealed class FakeBacktestReportExporter : IBacktestReportExporter
         LastEvaluationArtifact = artifact;
         return Task.CompletedTask;
     }
+
+    public IReadOnlyList<BacktestTrade>? LastTrades { get; private set; }
+    public string? LastDirectoryPath { get; private set; }
+    public string? LastFileName { get; private set; }
+
+    public Task ExportTradesCsvAsync(IReadOnlyList<BacktestTrade> trades, string fileName)
+    {
+        ExportCallCount++;
+        LastTrades = trades;
+        LastFileName = fileName;
+        return Task.CompletedTask;
+    }
+
+    public Task ExportTradesCsvAsync(IReadOnlyList<BacktestTrade> trades, string directoryPath, string fileName)
+    {
+        ExportCallCount++;
+        LastTrades = trades;
+        LastDirectoryPath = directoryPath;
+        LastFileName = fileName;
+        return Task.CompletedTask;
+    }
 }
 
 internal sealed class BlockingCancellableReportGenerator : IBacktestReportGenerator, ICancellableBacktestReportGenerator
@@ -228,6 +249,15 @@ internal sealed class FakeDialogService : IDialogService
     public TaskCompletionSource<string?>? FolderResponse { get; set; }
     public int OpenFolderDialogCallCount { get; private set; }
     public string? LastFolderTitle { get; private set; }
+
+    public string? FileToReturn { get; set; }
+    public TaskCompletionSource<string?>? FileResponse { get; set; }
+    public int SaveFileDialogCallCount { get; private set; }
+    public string? LastSaveTitle { get; private set; }
+    public string? LastSaveDefaultExtension { get; private set; }
+    public string? LastSaveDefaultFilename { get; private set; }
+    public string[]? LastSaveFilters { get; private set; }
+    public string? LastSaveInitialDirectory { get; private set; }
 
     public Task<string?> ShowOpenFolderDialogAsync(string title, string? initialDirectory = null)
     {
@@ -279,7 +309,32 @@ internal sealed class FakeDialogService : IDialogService
     public object? GetMainWindowOwner() => null;
     public Task ShowLogViewerAsync() => throw new NotImplementedException();
     public Task<string?> ShowOpenFileDialogAsync(string title, string[]? filters = null) => throw new NotImplementedException();
-    public Task<string?> ShowSaveFileDialogAsync(string title, string defaultExtension = "", string defaultFilename = "", string[]? filters = null, string? initialDirectory = null) => throw new NotImplementedException();
+    public Task<string?> ShowSaveFileDialogAsync(string title, string defaultExtension = "", string defaultFilename = "", string[]? filters = null, string? initialDirectory = null)
+    {
+        SaveFileDialogCallCount++;
+        LastSaveTitle = title;
+        LastSaveDefaultExtension = defaultExtension;
+        LastSaveDefaultFilename = defaultFilename;
+        LastSaveFilters = filters;
+        LastSaveInitialDirectory = initialDirectory;
+
+        if (FileResponse is not null)
+        {
+            return FileResponse.Task;
+        }
+
+        if (FolderResponse is not null)
+        {
+            return FolderResponse.Task.ContinueWith(t =>
+            {
+                string? folder = t.Result;
+                return folder is not null ? System.IO.Path.Combine(folder, defaultFilename) : null;
+            }, TaskScheduler.Default);
+        }
+
+        string? result = FileToReturn ?? (FolderToReturn is not null ? System.IO.Path.Combine(FolderToReturn, defaultFilename) : null);
+        return Task.FromResult(result);
+    }
     public Task<bool> ShowExportChartImageDialogAsync(StockAnalyzer.Avalonia.ViewModels.ChartViewModel chartViewModel) => throw new NotImplementedException();
     public void Shutdown() { }
     public void ActivateMainWindow() { }
@@ -445,11 +500,11 @@ internal static class BacktestTestFactory
     }
 
     public static BacktestResult CreateResult(RunStatus status = RunStatus.Completed, ImmutableArray<EquityPoint>? equityPoints = null,
-        ExecutionModel executionModel = ExecutionModel.Legacy) =>
+        ExecutionModel executionModel = ExecutionModel.Legacy, ImmutableArray<BacktestTrade>? trades = null) =>
         new(
             orders: ImmutableArray<BacktestOrder>.Empty,
             fills: ImmutableArray<BacktestFill>.Empty,
-            trades: ImmutableArray<BacktestTrade>.Empty,
+            trades: trades ?? ImmutableArray<BacktestTrade>.Empty,
             equityPoints: equityPoints ?? ImmutableArray<EquityPoint>.Empty,
             signals: ImmutableArray<BacktestSignal>.Empty,
             configuration: new BacktestConfiguration { ExecutionModel = executionModel, InitialCapital = 1_000_000m, SizingModel = PositionSizingModel.FixedQuantity, SizingParameter = 1m },

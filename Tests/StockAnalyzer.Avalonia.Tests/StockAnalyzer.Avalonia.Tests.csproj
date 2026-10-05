@@ -19,6 +19,12 @@
     <ProjectReference Include="..\..\StockAnalyzer.Avalonia\StockAnalyzer.Avalonia.csproj" />
   </ItemGroup>
 
+  <!-- One manual clock and one capturing logger for both test projects (a shared helper project would be a new csproj). -->
+  <ItemGroup>
+    <Compile Include="..\StockAnalyzer.Core.Tests\Services\ManualTimeProvider.cs" Link="TestHelpers\ManualTimeProvider.cs" />
+    <Compile Include="..\StockAnalyzer.Core.Tests\Services\CapturingLogger.cs" Link="TestHelpers\CapturingLogger.cs" />
+  </ItemGroup>
+
   <!-- Tests for the retained Phase Space Spiral UI sources are excluded with that UI. -->
   <ItemGroup>
     <Compile Remove="ViewModels\SpiralAnalysisViewModelTests.cs" />

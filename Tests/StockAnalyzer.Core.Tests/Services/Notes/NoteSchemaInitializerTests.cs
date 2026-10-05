@@ -73,7 +73,7 @@ public class NoteSchemaInitializerTests
             await initializer.InitializeAsync();
 
             var version = await GetUserVersionAsync(connectionManager);
-            Assert.Equal(2, version);
+            Assert.Equal(3, version);
         }
         finally
         {
@@ -96,7 +96,7 @@ public class NoteSchemaInitializerTests
             var tables = await GetTableNamesAsync(connectionManager);
             Assert.Contains("Notes", tables);
             Assert.Contains("Attachments", tables);
-            Assert.Equal(2, await GetUserVersionAsync(connectionManager));
+            Assert.Equal(3, await GetUserVersionAsync(connectionManager));
         }
         finally
         {
@@ -211,11 +211,12 @@ public class NoteSchemaInitializerTests
             var initializer = new NoteSchemaInitializer(connectionManager, NullLogger<NoteSchemaInitializer>.Instance);
             await initializer.InitializeAsync();
 
-            Assert.Equal(2, await GetUserVersionAsync(connectionManager));
+            Assert.Equal(3, await GetUserVersionAsync(connectionManager));
 
             var columns = await GetNotesColumnNamesAsync(connectionManager);
             Assert.Contains("QuotedNoteId", columns);
             Assert.Contains("ParentNoteId", columns);
+            Assert.Contains("CatalystDate", columns);
 
             using var verifyConnection = await connectionManager.OpenConnectionAsync();
             using var verifyCommand = verifyConnection.CreateCommand();

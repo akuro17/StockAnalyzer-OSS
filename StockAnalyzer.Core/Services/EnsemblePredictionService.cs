@@ -188,8 +188,16 @@ public sealed class EnsemblePredictionService : IPredictionService, IDisposable
                 (long)_settings.PredictionMaxComposedTensorSizeMB * TrainingResourceOverrides.MiB);
             var map = canonical.Select(label => Array.IndexOf(labels, label)).ToArray();
             if (map.Any(index => index < 0)) throw new InvalidDataException("Label mapping is incomplete.");
+            // Each member is calibrated in its own class order, before the label reordering and the linear mixture.
+            ModelCalibration? calibration = null;
+            if (metadata.ContainsKey(ModelCalibrationContract.ReferenceKey))
+            {
+                calibration = ModelCalibration.Load(lease.ModelPath, metadata, manifest.ModelHash, expectedDataRevision: null);
+                if (calibration.ClassOrder != manifest.ClassOrder)
+                    throw new InvalidDataException("Member calibration class order disagrees with its generation.");
+            }
             return new MemberRuntime(lease, session, mode, window, channels, count, featureSpec, scaler,
-                input, output, map);
+                input, output, map) { Calibration = calibration };
         }
         catch { session.Dispose(); throw; }
     }
@@ -284,6 +292,12 @@ public sealed class EnsemblePredictionService : IPredictionService, IDisposable
         var values = result[0].GetTensorDataAsSpan<float>();
         if (values.Length != expectedWidth)
             throw new InvalidDataException("Member runtime output element count disagrees with class labels.");
+        if (member.Calibration is { IsEnabled: true } calibration)
+        {
+            var calibrated = new float[expectedWidth];
+            calibration.Apply(values, calibrated);
+            return calibrated;
+        }
         return values.ToArray();
     }
 
@@ -323,6 +337,7 @@ public sealed class EnsemblePredictionService : IPredictionService, IDisposable
             InputShape = new long[] { 1, window, channels };
         }
         public ModelGenerationLease Lease { get; }
+        public ModelCalibration? Calibration { get; init; }
         public InferenceSession Session { get; }
         public PredictionFeatureMode Mode { get; }
         public int Window { get; }

@@ -15,4 +15,8 @@ public readonly record struct StrategyOrderRequest(
     decimal? LimitPrice,
     decimal? StopPrice,
     TimeInForce TimeInForce,
-    string Reason);
+    string Reason)
+{
+    /// <summary>Optional entry-only budget override; existing positional callers keep their configuration sizing.</summary>
+    public decimal? EntrySizeRatio { get; init; }
+}

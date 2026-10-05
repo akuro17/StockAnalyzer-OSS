@@ -69,6 +69,49 @@ public sealed record TrainingJobConfig
     [JsonPropertyName("fixed_zscore")]
     public bool FixedZScore { get; init; }
 
+    /// <summary>
+    /// Opt-in temperature calibration (D12): a dedicated calibration segment is carved from the tail of the release fold's
+    /// train side and a single temperature is fitted on it. Classification only; omitted keeps the legacy split.
+    /// </summary>
+    public bool Calibration { get; init; }
+
+    /// <summary>
+    /// Ensemble of independent members (T13): <see cref="TrainingEnsembleMethod.Bagging"/> trains <see cref="EnsembleMembers"/>
+    /// block-bootstrap members mixed with equal weights; <see cref="TrainingEnsembleMethod.Stacking"/> trains the
+    /// <see cref="StackingBases"/> and fits the mixture weights on out-of-fold probabilities. Classification only; members are fresh
+    /// models, so it cannot be combined with calibration, pretraining, FineTune or Resume.
+    /// </summary>
+    public TrainingEnsembleMethod EnsembleMethod { get; init; } = TrainingEnsembleMethod.None;
+
+    /// <summary>Bagging member count (ignored unless <see cref="EnsembleMethod"/> is Bagging).</summary>
+    public int EnsembleMembers { get; init; } = TrainingEnsembleContract.DefaultBaggingMembers;
+
+    /// <summary>Stacking base models, each <c>framework[:architecture]</c> (for example <c>pytorch:lstm</c>, <c>lightgbm</c>).</summary>
+    public IReadOnlyList<string> StackingBases { get; init; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Where the stacking weights are fitted (D2). <see cref="Training.StackingWeightSource.ReleaseMetaSegment"/> carves a meta segment
+    /// from the release fold's train side, so the deployed members lose that tail from their training data. Stacking only; omitted
+    /// from the wire while it is the default.
+    /// </summary>
+    public StackingWeightSource StackingWeightSource { get; init; } = StackingWeightSource.PastOutOfFold;
+
+    /// <summary>Self-supervised encoder pretraining on the fit windows (PyTorch only).</summary>
+    public TrainingPretraining Pretraining { get; init; } = TrainingPretraining.None;
+
+    /// <summary>
+    /// Evaluation-only combinatorial purged cross-validation (T14). Every one of the <c>C(<see cref="CpcvGroups"/>, <see cref="CpcvTestGroups"/>)</c>
+    /// combinations fits a fresh model of this recipe on its purged train windows and is scored on its test groups; the results are
+    /// reported in the run metrics' <c>cpcv</c> block. No backtest path is constructed, and the released model is not a CPCV member.
+    /// </summary>
+    public bool Cpcv { get; init; }
+
+    /// <summary>Consecutive common-calendar groups (see <see cref="TrainingCpcvContract"/>).</summary>
+    public int CpcvGroups { get; init; } = TrainingCpcvContract.DefaultGroups;
+
+    /// <summary>Test groups held out in each combination.</summary>
+    public int CpcvTestGroups { get; init; } = TrainingCpcvContract.DefaultTestGroups;
+
     /// <summary>Optional positive sigma clip after fixed z-score transformation.</summary>
     public double? ClipSigma { get; init; }
 
@@ -308,6 +351,30 @@ public sealed record TrainingJobConfig
 
         if (RequiresFinalizedSource && string.IsNullOrWhiteSpace(SourceManifestPath))
             throw new InvalidOperationException("TrainingJobConfig: weekly/monthly indicator training requires a source manifest.");
+        if (Calibration && (TargetType != TargetType.Classification || RequiresFinalizedSource))
+            throw new InvalidOperationException(
+                "TrainingJobConfig: calibration requires a classification target and a source that is not prepared from a finalized manifest.");
+        if (!Enum.IsDefined(Pretraining))
+            throw new InvalidOperationException("TrainingJobConfig: invalid pretraining method.");
+        TrainingEnsembleContract.Validate(EnsembleMethod, EnsembleMembers, StackingBases, TargetType);
+        if (!Enum.IsDefined(StackingWeightSource)
+            || (StackingWeightSource != StackingWeightSource.PastOutOfFold && EnsembleMethod != TrainingEnsembleMethod.Stacking))
+            throw new InvalidOperationException("TrainingJobConfig: StackingWeightSource applies to EnsembleMethod 'Stacking' only.");
+        if (EnsembleMethod != TrainingEnsembleMethod.None
+            && (InitializationMode != TrainingInitializationMode.Fresh || Calibration || Pretraining != TrainingPretraining.None))
+            throw new InvalidOperationException(
+                "TrainingJobConfig: an ensemble trains fresh members and cannot be combined with calibration, pretraining, FineTune or Resume.");
+        if (Pretraining != TrainingPretraining.None
+            && (Framework != TrainingFramework.PyTorch || InitializationMode == TrainingInitializationMode.FineTune))
+            throw new InvalidOperationException(
+                "TrainingJobConfig: self-supervised pretraining requires PyTorch and a fresh or resumed run.");
+        if (Cpcv)
+        {
+            _ = TrainingCpcvContract.CombinationCount(CpcvGroups, CpcvTestGroups);
+            if (EnsembleMethod != TrainingEnsembleMethod.None || InitializationMode != TrainingInitializationMode.Fresh)
+                throw new InvalidOperationException(
+                    "TrainingJobConfig: CPCV evaluates a fresh single-model recipe: no ensemble, FineTune or Resume.");
+        }
 
         if (Hyperparameters is null)
         {

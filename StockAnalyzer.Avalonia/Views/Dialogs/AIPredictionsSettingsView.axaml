@@ -4,6 +4,7 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:StockAnalyzer.Avalonia.ViewModels.Dialogs"
              xmlns:l="using:StockAnalyzer.Avalonia.Markup"
+             xmlns:views="using:StockAnalyzer.Avalonia.Views.Dialogs"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="600"
              x:Class="StockAnalyzer.Avalonia.Views.Dialogs.AIPredictionsSettingsView"
              x:DataType="vm:AIPredictionsSettingsViewModel">
@@ -184,6 +185,8 @@
                                FontSize="{DynamicResource HelperFontSize}"/>
                 </StackPanel>
             </Border>
+
+            <views:ModelExplainabilityView DataContext="{Binding Explainability}"/>
 
             <Border Background="{DynamicResource Brush.Background.Secondary}"
                     BorderBrush="{DynamicResource Brush.Border.Primary}"

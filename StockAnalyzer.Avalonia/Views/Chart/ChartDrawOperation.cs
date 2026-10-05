@@ -34,6 +34,9 @@ internal sealed class ChartDrawOperation : ICustomDrawOperation
     private readonly ChartType _chartType;
     private readonly Renderers.ChartLayoutContext _layout;
     private readonly Drawing.LayeredDrawingScene? _layeredScene;
+    private readonly ViewModels.RlPresentation? _rlPresentation;
+    private readonly float _rlFontSize;
+    private readonly SKColor _rlForeground;
 
     public ChartDrawOperation(
         global::Avalonia.Rect bounds,  
@@ -52,7 +55,8 @@ internal sealed class ChartDrawOperation : ICustomDrawOperation
         Renderers.ChartLayoutContext layout,
         global::Avalonia.Point? snapPoint = null,
         Drawing.IChartObject? currentDrawingObject = null,
-        Drawing.LayeredDrawingScene? layeredScene = null) 
+        Drawing.LayeredDrawingScene? layeredScene = null,
+        ViewModels.RlPresentation? rlPresentation = null, float rlFontSize = 0, SKColor rlForeground = default)
     {
         _bounds = bounds;
         _snapshot = snapshot;
@@ -72,6 +76,7 @@ internal sealed class ChartDrawOperation : ICustomDrawOperation
         _renderConfig = renderConfig;
         _currentDrawingObject = currentDrawingObject;
         _layeredScene = layeredScene;
+        _rlPresentation = rlPresentation; _rlFontSize = rlFontSize; _rlForeground = rlForeground;
     }
     
     public global::Avalonia.Rect Bounds => _bounds;
@@ -124,7 +129,7 @@ internal sealed class ChartDrawOperation : ICustomDrawOperation
             _controlBounds,
             _snapPoint,
             _currentDrawingObject,
-            _layeredScene);
+            _layeredScene, _rlPresentation, _rlFontSize, _rlForeground);
 
         canvas.Restore();
     }

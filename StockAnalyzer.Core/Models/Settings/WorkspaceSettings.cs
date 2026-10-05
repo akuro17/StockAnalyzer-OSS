@@ -151,6 +151,18 @@ public class WorkspaceSettings
     public List<string> TickerListVisibleColumns { get; set; } = new();
 
     /// <summary>
+    /// The list of visible columns in the Backtest Trade History table.
+    /// If empty or null, all columns are visible by default.
+    /// </summary>
+    public List<string> BacktestTradeVisibleColumns { get; set; } = new();
+
+    /// <summary>
+    /// The list of visible metric names in the Backtest Metrics table.
+    /// If empty or null, all metrics are visible by default.
+    /// </summary>
+    public List<string> BacktestMetricVisibleNames { get; set; } = new();
+
+    /// <summary>
     /// Custom column widths mapped by column member name.
     /// </summary>
     public Dictionary<string, string> TickerListColumnWidths { get; set; } = new();

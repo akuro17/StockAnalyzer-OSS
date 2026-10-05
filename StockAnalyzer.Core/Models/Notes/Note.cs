@@ -42,4 +42,7 @@ public sealed record Note(
 
     /// <summary>The Note this one directly replies to, if created via the Reply action (forms a thread chain).</summary>
     public Guid? ParentNoteId { get; init; }
+
+    /// <summary>The target date for upcoming events/catalysts associated with this Note. Normalized to local date (00:00:00).</summary>
+    public DateTime? CatalystDate { get; init; }
 }

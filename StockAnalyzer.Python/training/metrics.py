@@ -227,7 +227,7 @@ def write_report(report: Dict[str, object], onnx_out_path) -> str:
 
     out = Path(onnx_out_path)
     metrics_path = out.with_name(out.name + ".metrics.json")
-    metrics_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    metrics_path.write_bytes(json.dumps(report, indent=2).encode("utf-8"))  # bytes: no CRLF translation on Windows
     return str(metrics_path)
 
 

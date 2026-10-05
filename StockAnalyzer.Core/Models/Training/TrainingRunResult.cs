@@ -30,6 +30,12 @@ public sealed record TrainingRunResult
     public string? MetricsArtifactPath { get; init; }
     public string? CheckpointManifestPath { get; init; }
 
+    /// <summary>
+    /// Absolute path of the <c>.ensemble.json</c> manifest of a bagging / stacking run (T13), or <see langword="null"/> for a single model.
+    /// <see cref="OnnxArtifactPath"/> then names the first member so single-model consumers keep working.
+    /// </summary>
+    public string? EnsembleManifestPath { get; init; }
+
     /// <summary>Final aggregated metrics reported by the run (accuracy, majority baseline, macro-F1, log-loss, …).</summary>
     public IReadOnlyDictionary<string, double> Metrics { get; init; }
         = new Dictionary<string, double>();

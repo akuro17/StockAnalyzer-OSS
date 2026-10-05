@@ -1,0 +1,98 @@
+{
+  "schema_version": 1,
+  "reference_key": "com.stockanalyzer.calibration.ref",
+  "method": "temperature",
+  "score": "log_probability",
+  "epsilon": 1e-15,
+  "ece_bins": 10,
+  "softmax_sum_tolerance": 0.0001,
+  "status_available": "available",
+  "status_boundary": "temperature_at_boundary",
+  "nll_definition": "probability_clamped_epsilon",
+  "evaluation_population": "release_outer_test",
+  "temperature_hard_min": 0.01,
+  "temperature_hard_max": 100.0,
+  "temperature_standard_min": 0.25,
+  "temperature_standard_max": 4.0,
+  "min_samples": 100,
+  "cases": [
+    {
+      "probabilities": [
+        0.8,
+        0.1,
+        0.1
+      ],
+      "temperature": 2.0,
+      "calibrated": [
+        0.585786437626905,
+        0.20710678118654754,
+        0.20710678118654754
+      ]
+    },
+    {
+      "probabilities": [
+        0.8,
+        0.1,
+        0.1
+      ],
+      "temperature": 1.0,
+      "calibrated": [
+        0.8,
+        0.10000000000000002,
+        0.10000000000000002
+      ]
+    },
+    {
+      "probabilities": [
+        0.34,
+        0.33,
+        0.33
+      ],
+      "temperature": 0.5,
+      "calibrated": [
+        0.3467306538692263,
+        0.3266346730653869,
+        0.3266346730653869
+      ]
+    },
+    {
+      "probabilities": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "temperature": 3.0,
+      "calibrated": [
+        0.9999800003999919,
+        9.999800003999917e-06,
+        9.999800003999917e-06
+      ]
+    },
+    {
+      "probabilities": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "temperature": 0.25,
+      "calibrated": [
+        1.0000000000000048e-60,
+        1.0000000000000048e-60,
+        1.0
+      ]
+    },
+    {
+      "probabilities": [
+        0.6,
+        0.3,
+        0.1
+      ],
+      "temperature": 4.0,
+      "calibrated": [
+        0.40325190083333745,
+        0.3390930778549998,
+        0.2576550213116627
+      ]
+    }
+  ]
+}

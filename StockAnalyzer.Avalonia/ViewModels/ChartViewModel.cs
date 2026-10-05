@@ -243,7 +243,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
                 CurrentPrediction = display is null ? null : result;
                 PredictionDisplay = display;
                 if (display is not null)
-                    MonitoringUpdateTask = PersistPredictionAsync(result, symbol, timeframe, history, token);
+                    MonitoringUpdateTask = StartPersistPrediction(result, symbol, timeframe, history, token);
                 ModelAnalysis = analysis;
                 RegimeDisplay = regime is null ? null : string.Format(System.Globalization.CultureInfo.CurrentCulture,
                     LocalizationManager.Instance.Get("ModelAnalysis_Regime"), regime.Id);
@@ -701,7 +701,8 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
         _displayModeSubject.OnCompleted();
         _displayModeSubject.Dispose();
 
-        _loadLock.Dispose();
+        // _loadLock is deliberately NOT disposed: a load that still holds it releases it in its finally block, and a disposed
+        // SemaphoreSlim would throw there (and would not wake waiters that are already queued). It owns no unmanaged resource.
 
         // Clear collections to release references
         Candles = Array.Empty<CoreCandleData>();
@@ -738,6 +739,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
     /// </summary>
     partial void OnSymbolChanged(string value)
     {
+        if (!_applyingRlReplay) ClearRlPresentation();
         if (string.IsNullOrEmpty(value)) return;
         _predictionRequestId++;
         CurrentPrediction = null;
@@ -774,7 +776,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
         // until the user has actually chosen a symbol.
         _seasonalityChartDataSource?.SetActiveSymbol(value);
 
-        _ = LoadDataCommand.ExecuteAsync(null);
+        if (!_applyingRlReplay) _ = LoadDataCommand.ExecuteAsync(null);
     }
 
     [ObservableProperty]
@@ -1727,9 +1729,11 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
 
 
 
-    public ChartViewModel(IDataService dataService, IDialogService dialogService, IChartStrategyFactory strategyFactory, IStockAnalyzerSettings settings, ITimeFrameManager timeFrameManager, Core.Services.MarketStructureService marketStructureService, Core.Theme.IThemeManager themeManager, Core.Services.IChartSettingsManager chartSettingsManager, Core.Services.IDispatcherService dispatcherService, Core.Services.IPredictionService? predictionService, Core.Services.Analysis.IAnalysisPipelineService analysisPipelineService, Core.Services.IMarketDataProvider? marketDataProvider = null, Core.Services.IPythonService? pythonService = null, Core.Services.IComparisonDataAligner? comparisonDataAligner = null, IMessenger? messenger = null, Services.Drawing.IChartDrawingRepository? drawingRepository = null, Microsoft.Extensions.Logging.ILogger<ChartViewModel>? logger = null, ISpiralAnalysisDataSource? spiralAnalysisDataSource = null, ISeasonalityChartDataSource? seasonalityChartDataSource = null, Services.Drawing.DrawingDocumentSessionStore? sessionStore = null, Core.Services.IModelAnalysisService? modelAnalysisService = null, Core.Services.IPredictionLogService? predictionLog = null, TimeProvider? timeProvider = null)
+    public ChartViewModel(IDataService dataService, IDialogService dialogService, IChartStrategyFactory strategyFactory, IStockAnalyzerSettings settings, ITimeFrameManager timeFrameManager, Core.Services.MarketStructureService marketStructureService, Core.Theme.IThemeManager themeManager, Core.Services.IChartSettingsManager chartSettingsManager, Core.Services.IDispatcherService dispatcherService, Core.Services.IPredictionService? predictionService, Core.Services.Analysis.IAnalysisPipelineService analysisPipelineService, Core.Services.IMarketDataProvider? marketDataProvider = null, Core.Services.IPythonService? pythonService = null, Core.Services.IComparisonDataAligner? comparisonDataAligner = null, IMessenger? messenger = null, Services.Drawing.IChartDrawingRepository? drawingRepository = null, Microsoft.Extensions.Logging.ILogger<ChartViewModel>? logger = null, ISpiralAnalysisDataSource? spiralAnalysisDataSource = null, ISeasonalityChartDataSource? seasonalityChartDataSource = null, Services.Drawing.DrawingDocumentSessionStore? sessionStore = null, Core.Services.IModelAnalysisService? modelAnalysisService = null, Core.Services.IPredictionLogService? predictionLog = null, TimeProvider? timeProvider = null, Services.IMonitoringWorkOwner? monitoringWork = null, Services.IAttestedMonitoringRefresher? attestedMonitoring = null)
     {
         _timeProvider = timeProvider ?? TimeProvider.System;
+        _monitoringWork = monitoringWork;
+        _attestedMonitoring = attestedMonitoring;
         _logger = logger;
         _drawingRepository = drawingRepository;
         _sessionStore = sessionStore;
@@ -2167,6 +2171,8 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
 
     private async Task LoadDataInternalAsync(bool forceRefresh)
     {
+        if (_applyingRlReplay) return;
+        ClearRlPresentation();
         _predictionRequestId++;
         CurrentPrediction = null;
         ClearModelAnalysis();
@@ -2289,8 +2295,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
 
                 vm.Candles = candles;
                 vm.DataRevision++;
-                vm.MonitoringObservationTask = Task.Run(() => vm.RefreshMonitoringAsync(symbol, timeframe,
-                    candles, loadToken), loadToken);
+                vm.MonitoringObservationTask = vm.StartRefreshMonitoring(symbol, timeframe, candles, loadToken);
                 var predictionRequestId = vm._predictionRequestId;
                 var predictionRevision = vm.DataRevision;
                 vm.PredictionUpdateTask = Task.Run(() => vm.UpdatePredictionAsync(candles, symbol, timeframe,
@@ -2377,6 +2382,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
     /// </summary>
     partial void OnSelectedTimeFrameChanged(TimeframeType value)
     {
+        if (!_applyingRlReplay) ClearRlPresentation();
         _predictionRequestId++;
         CurrentPrediction = null;
         ClearModelAnalysis();
@@ -2385,7 +2391,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
         {
             _messenger.Send(new ChartTimeframeChangedMessage(this, value));
         }
-        _ = LoadDataInternalAsync(true);
+        if (!_applyingRlReplay) _ = LoadDataInternalAsync(true);
         if (ChartType == ChartType.RelativePerformance)
         {
             CalculateComparisonDataAsync();

@@ -38,12 +38,6 @@
              internally (default ItemsPanel has no spacing). Only the Back button keeps its own
              breathing room via an explicit bottom Margin instead. -->
         <StackPanel Spacing="0">
-            <Button Theme="{DynamicResource PrimaryButtonStyle}"
-                    Content="{l:Localize Note_BackToListButton}"
-                    Command="{Binding BackToListCommand}"
-                    HorizontalAlignment="Left"
-                    Margin="0,0,0,8"/>
-
             <!-- Thread ancestors (spec section 6: Reply Chain, Task B7), root-first so the chain
                  reads top-to-bottom in the order it was actually posted. Each card is a full
                  NoteTimelineItemViewModel wired the same way as the main list (NoteTimelineViewModel.

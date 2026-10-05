@@ -1323,6 +1323,14 @@ public partial class MainWindowViewModel : ViewModelBase,
                 settings.PanelCharts.Add(chartSettings);
             }
         }
+
+        // Capture Backtest column settings
+        var backtestSettings = new StockAnalyzer.Core.Services.Backtest.Configuration.BacktestColumnSettingsManager().Load();
+        if (backtestSettings != null)
+        {
+            settings.BacktestTradeVisibleColumns = new List<string>(backtestSettings.TradeVisibleColumns);
+            settings.BacktestMetricVisibleNames = new List<string>(backtestSettings.MetricVisibleNames);
+        }
     }
 
     public void RestoreChartSettings(WorkspaceSettings settings)

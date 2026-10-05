@@ -30,6 +30,7 @@ public static class ServiceCollectionExtensions
         services.Configure<PythonSettings>(configuration.GetSection("Python"));
         services.Configure<ChartDefaultSettings>(configuration.GetSection("Chart"));
         services.Configure<PredictionSettings>(configuration.GetSection("Prediction"));
+        services.Configure<Core.Models.Settings.PredictionMonitoringSettings>(configuration.GetSection(Core.Models.Settings.PredictionMonitoringSettings.SectionName));
         services.Configure<MarketDataSettings>(configuration.GetSection("MarketDataSettings"));
         services.Configure<ScreenerSettings>(configuration.GetSection("Screener"));
         services.Configure<TickersSettings>(configuration.GetSection("Tickers"));
@@ -178,18 +179,38 @@ public static class ServiceCollectionExtensions
           services.AddSingleton<Core.Services.PredictionService>();
           services.AddSingleton<Core.Services.IEnsembleSettingsManager, Core.Services.EnsembleSettingsManager>();
           services.AddSingleton<Core.Services.IPredictionService, Core.Services.EnsemblePredictionService>();
-        services.AddSingleton<Core.Services.IModelGenerationRegistry, Core.Services.ModelGenerationRegistry>();
+        services.AddSingleton<Core.Services.ReinforcementLearning.RlArtifactSettings>();
+        services.AddSingleton<Core.Services.ModelGenerationRegistry>(sp =>
+        {
+            var registry = new Core.Services.ModelGenerationRegistry(sp.GetRequiredService<Core.Services.IStockAnalyzerSettings>());
+            registry.ConfigureRlArtifacts(Core.Common.PathDiscovery.ResolveDataPath(null, "Data"),
+                sp.GetRequiredService<Core.Services.ReinforcementLearning.RlArtifactSettings>());
+            return registry;
+        });
+        services.AddSingleton<Core.Services.IModelGenerationRegistry>(sp => sp.GetRequiredService<Core.Services.ModelGenerationRegistry>());
+        services.AddSingleton<Core.Services.ReinforcementLearning.IRlModelGenerationRegistry>(sp => sp.GetRequiredService<Core.Services.ModelGenerationRegistry>());
+        services.AddSingleton<Core.Services.ReinforcementLearning.IRlTrainingService, Core.Services.ReinforcementLearning.RlTrainingService>();
+        services.AddSingleton<Core.Services.ReinforcementLearning.QValueService>();
+        services.AddSingleton<Core.Services.ReinforcementLearning.IQValueService>(sp => sp.GetRequiredService<Core.Services.ReinforcementLearning.QValueService>());
         services.AddSingleton<Core.Services.IModelAnalysisService, Core.Services.ModelAnalysisService>();
+        services.AddSingleton<Core.Services.IModelExplainabilityService, Core.Services.ModelExplainabilityService>();
         services.AddSingleton<Core.Services.IMLDataProcessor, Core.Services.MLDataProcessor>();
         services.AddSingleton<Core.Services.IndicatorChannelExporter>(); // TrainingOrchestrator dependency
         services.AddSingleton<Core.Services.ITrainingSourceSnapshotProvider, Core.Services.TrainingSourceSnapshotProvider>();
         services.AddSingleton<Core.Services.ITrainingOrchestrator, Core.Services.TrainingOrchestrator>();
         services.AddSingleton<Core.Services.TrainingJobGate>();
-        // One instance (and one monitor gate) behind both the cached-read and the current-health contracts.
-        services.AddSingleton<Core.Services.PredictionLogService>();
-        services.AddSingleton<Core.Services.IPredictionLogService>(sp => sp.GetRequiredService<Core.Services.PredictionLogService>());
-        services.AddSingleton<Core.Services.ICurrentPredictionHealthService>(sp => sp.GetRequiredService<Core.Services.PredictionLogService>());
+        // The backend (legacy JSON or monitoring.db) is selected once at startup; one instance (and one monitor gate) per
+        // backend sits behind the cached-read, current-health and notification-outbox contracts.
+        services.AddSingleton<Core.Services.PredictionMonitoringBackendFactory>();
+        services.AddSingleton<Core.Services.IPredictionLogService>(sp => sp.GetRequiredService<Core.Services.PredictionMonitoringBackendFactory>().Log);
+        services.AddSingleton<Core.Services.ICurrentPredictionHealthService>(sp => sp.GetRequiredService<Core.Services.PredictionMonitoringBackendFactory>().Health);
+        services.AddSingleton<Core.Services.IMonitoringNotificationOutbox>(sp => sp.GetRequiredService<Core.Services.PredictionMonitoringBackendFactory>().Outbox);
+        // Producer-attested evidence is dormant by default (no enrollment) and exists only with the SQLite backend; the diagnostics
+        // resolve to null with the JSON backend.
+        services.AddSingleton<Core.Models.IAttestedEvidenceDiagnostics>(sp => sp.GetRequiredService<Core.Services.PredictionMonitoringBackendFactory>().Diagnostics ?? new Core.Models.NoAttestedEvidenceDiagnostics());
+        services.AddSingleton<IAttestedMonitoringRefresher, AttestedMonitoringRefresher>();
         services.AddSingleton<Core.Services.IRetrainingScheduler, Core.Services.RetrainingScheduler>();
+        services.AddSingleton<IMonitoringWorkOwner, MonitoringWorkOwner>();
         services.AddSingleton<PredictionOperationsLifetime>();
         services.AddSingleton<Core.Services.IModelDeploymentService, Core.Services.ModelDeploymentService>();
         services.AddSingleton<Core.Services.IExperimentLogService, Core.Services.ExperimentLogService>();
@@ -258,6 +279,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<Core.Services.Backtest.Reporting.IBacktestReportExporter, Core.Services.Backtest.Reporting.BacktestReportExporter>();
         services.AddSingleton<Core.Services.Backtest.Configuration.IBacktestConfigurationManager, Core.Services.Backtest.Configuration.BacktestConfigurationManager>();
         services.AddSingleton<Core.Services.Backtest.Configuration.IBacktestDefaultSettingsManager, Core.Services.Backtest.Configuration.BacktestDefaultSettingsManager>();
+        services.AddSingleton<Core.Services.Backtest.Configuration.IBacktestColumnSettingsManager, Core.Services.Backtest.Configuration.BacktestColumnSettingsManager>();
         services.AddSingleton<Services.IBacktestRunPreparationService, Services.BacktestRunPreparationService>();
         services.AddSingleton<Services.IBacktestSettingsCoordinator, Services.BacktestSettingsCoordinator>();
         services.AddTransient<ViewModels.Backtest.BacktestIndicatorSelectionViewModel>();

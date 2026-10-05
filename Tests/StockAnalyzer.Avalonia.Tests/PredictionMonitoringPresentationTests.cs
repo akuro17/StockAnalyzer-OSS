@@ -1,13 +1,16 @@
 using System.Collections.Immutable;
 using System.IO;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Moq;
 using StockAnalyzer.Avalonia.Services;
 using StockAnalyzer.Avalonia.Tests.Services;
 using StockAnalyzer.Avalonia.ViewModels.Dialogs;
 using StockAnalyzer.Core.Models;
+using StockAnalyzer.Core.Models.Settings;
 using StockAnalyzer.Core.Models.Training;
 using StockAnalyzer.Core.Services;
+using StockAnalyzer.Core.Tests.Services;
 using Xunit;
 
 namespace StockAnalyzer.Avalonia.Tests;
@@ -15,16 +18,17 @@ namespace StockAnalyzer.Avalonia.Tests;
 [Collection("LocalizationSharedState")]
 public sealed class PredictionMonitoringPresentationTests : IDisposable
 {
+    private static readonly DateTimeOffset Epoch = new(2026, 10, 2, 0, 0, 0, TimeSpan.Zero);
     private readonly string _language = LocalizationManager.Instance.CurrentLanguage;
     public PredictionMonitoringPresentationTests() => LocalizationManager.Instance.Initialize("en");
     public void Dispose() => LocalizationManager.Instance.Initialize(_language);
     private static ModelGenerationSummary Generation(string id, string target = "classification") =>
         new(id, "model.onnx", target, "daily", 5, .7, new string('a', 64), false);
     private static AIPredictionsSettingsViewModel Settings(IPredictionLogService log, IRetrainingScheduler? scheduler = null,
-        ICurrentPredictionHealthService? currentHealth = null) =>
+        ICurrentPredictionHealthService? currentHealth = null, IAttestedEvidenceDiagnostics? evidenceDiagnostics = null) =>
         new(Mock.Of<IPredictionSettingsManager>(s => s.WindowSize == 75), Mock.Of<IClipboardService>(),
             Mock.Of<IToastNotificationService>(), analysisDispatcher: new SynchronousDispatcherService(),
-            predictionLog: log, retrainingScheduler: scheduler, currentHealth: currentHealth);
+            predictionLog: log, retrainingScheduler: scheduler, currentHealth: currentHealth, evidenceDiagnostics: evidenceDiagnostics);
 
     [Fact]
     public async Task OlderSelectionAndDisposedCompletions_DoNotOverwriteCurrentMonitoring()
@@ -121,6 +125,20 @@ public sealed class PredictionMonitoringPresentationTests : IDisposable
     }
 
     [Fact]
+    public async Task ProducerEvidenceConflict_IsItsOwnIntegrityLine_NeverRelabelingThePerformanceState()
+    {
+        var health = new Mock<ICurrentPredictionHealthService>(); var diagnostics = new Mock<IAttestedEvidenceDiagnostics>();
+        health.Setup(h => h.EvaluateCurrentAsync(CurrentModel, It.IsAny<CancellationToken>())).ReturnsAsync(
+            ImmutableArray.Create(Snapshot(CurrentModel, ModelHealthState.Healthy, 30, 16)));
+        diagnostics.Setup(d => d.GetConflictedStreamsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new AttestedStreamFault("prov", "INST", TimeframeType.Daily)]);
+        using var vm = Settings(Mock.Of<IPredictionLogService>(), currentHealth: health.Object, evidenceDiagnostics: diagnostics.Object);
+        vm.SelectedGeneration = Generation(CurrentModel); await vm.MonitoringRefreshTask;
+        Assert.Contains("Healthy", vm.MonitoringStatus);                                         // the performance state is unchanged ...
+        Assert.Contains(string.Format(LocalizationManager.Instance.Get("Monitoring_EvidenceConflict"), 1), vm.MonitoringStatus); // ... the fault is separate
+    }
+
+    [Fact]
     public async Task FailedCurrentEvaluation_ShowsLoadFailure_NeverTheCachedHealthyCard()
     {
         var log = new Mock<IPredictionLogService>(); var health = new Mock<ICurrentPredictionHealthService>();
@@ -157,7 +175,8 @@ public sealed class PredictionMonitoringPresentationTests : IDisposable
     {
         var scheduler = new Mock<IRetrainingScheduler>(); var toast = new Mock<IToastNotificationService>();
         scheduler.Setup(s => s.RunWithRecoveryAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
-        var clock = new ManualTimeProvider(); var calls = new SemaphoreSlim(0); int count = 0;
+        var clock = new ManualTimeProvider(Epoch); var calls = new SemaphoreSlim(0); int count = 0;
+        var configured = new PredictionMonitoringSettings { HealthEvaluationIntervalSeconds = 90 };
         var health = new Mock<ICurrentPredictionHealthService>();
         health.Setup(h => h.EvaluateCurrentAsync(null, It.IsAny<CancellationToken>())).Returns((string? _, CancellationToken _) =>
         {
@@ -165,9 +184,9 @@ public sealed class PredictionMonitoringPresentationTests : IDisposable
             return n == 2 ? throw new InvalidDataException("corrupt state") : Task.FromResult(ImmutableArray<ModelMonitoringSnapshot>.Empty);
         });
         var lifetime = new PredictionOperationsLifetime(scheduler.Object, Mock.Of<IPredictionLogService>(), new SynchronousDispatcherService(),
-            toast.Object, NullLogger<PredictionOperationsLifetime>.Instance, health.Object, clock);
-        var interval = PredictionMonitoringPolicy.HealthEvaluationInterval;
-        Assert.Equal(TimeSpan.FromMinutes(1), interval);
+            toast.Object, NullLogger<PredictionOperationsLifetime>.Instance, health.Object, clock, monitoring: Options.Create(configured));
+        var interval = configured.HealthEvaluationInterval;
+        Assert.Equal(TimeSpan.FromSeconds(90), interval);                                            // the configured cadence, not the default
         lifetime.Start(); lifetime.Start();
         await calls.WaitAsync(TimeSpan.FromSeconds(10)); await clock.TimerArmed.WaitAsync(TimeSpan.FromSeconds(10));
         Assert.Equal(1, count);
@@ -187,52 +206,140 @@ public sealed class PredictionMonitoringPresentationTests : IDisposable
     {
         var scheduler = new Mock<IRetrainingScheduler>();
         scheduler.Setup(s => s.RunWithRecoveryAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
-        var clock = new ManualTimeProvider();
+        var clock = new ManualTimeProvider(Epoch);
         var lifetime = new PredictionOperationsLifetime(scheduler.Object, Mock.Of<IPredictionLogService>(), new SynchronousDispatcherService(),
             Mock.Of<IToastNotificationService>(), NullLogger<PredictionOperationsLifetime>.Instance, clock: clock);
         lifetime.Start(); await lifetime.StopAsync();
         Assert.Equal(0, clock.TimerArmed.CurrentCount);
     }
 
-    /// <summary>Manual clock whose delay timers only fire when <see cref="Advance"/> passes their due time.</summary>
-    private sealed class ManualTimeProvider : TimeProvider
+    private static ModelDecayAlert Alert(string id) =>
+        new(id, new ModelMonitoringSnapshot("model", "target", 30, 10, 1m / 3, ModelHealthState.Decayed, DateTimeOffset.UtcNow, id));
+
+    [Fact]
+    public async Task ActiveOutbox_DeliversThroughTheDispatcherSink_WakesOnDecayed_AndStopsWithTheLifetime()
     {
-        private readonly object _gate = new();
-        private readonly List<ManualTimer> _timers = [];
-        private DateTimeOffset _now = new(2026, 10, 2, 0, 0, 0, TimeSpan.Zero);
-        public SemaphoreSlim TimerArmed { get; } = new(0);
-        public override DateTimeOffset GetUtcNow() { lock (_gate) return _now; }
-        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
-        {
-            var timer = new ManualTimer(this, callback, state);
-            lock (_gate) _timers.Add(timer);
-            timer.Change(dueTime, period);
-            return timer;
-        }
-        public void Advance(TimeSpan by)
-        {
-            List<ManualTimer> due;
-            lock (_gate)
+        var scheduler = new Mock<IRetrainingScheduler>(); var log = new Mock<IPredictionLogService>(); var toast = new Mock<IToastNotificationService>();
+        scheduler.Setup(s => s.RunWithRecoveryAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        var clock = new ManualTimeProvider(Epoch); var passes = new SemaphoreSlim(0); int count = 0; var stable = Alert("stable-id");
+        var outbox = new Mock<IMonitoringNotificationOutbox>();
+        outbox.SetupGet(o => o.IsActive).Returns(true); outbox.SetupGet(o => o.PollInterval).Returns(TimeSpan.FromMinutes(1));
+        outbox.Setup(o => o.DispatchPendingAsync(It.IsAny<Func<ModelDecayAlert, CancellationToken, Task>>(), It.IsAny<CancellationToken>()))
+            .Returns(async (Func<ModelDecayAlert, CancellationToken, Task> sink, CancellationToken ct) =>
             {
-                _now += by;
-                due = _timers.Where(t => t.DueAt is { } at && at <= _now).ToList();
-                foreach (var t in due) t.Disarm();
-            }
-            foreach (var t in due) t.Fire();
-        }
-        private sealed class ManualTimer(ManualTimeProvider owner, TimerCallback callback, object? state) : ITimer
-        {
-            public DateTimeOffset? DueAt { get; private set; }
-            public void Disarm() => DueAt = null;
-            public void Fire() => callback(state);
-            public bool Change(TimeSpan dueTime, TimeSpan period)
+                int pass = Interlocked.Increment(ref count);
+                if (pass == 1) await sink(stable, ct);
+                passes.Release();
+                return pass == 1 ? 1 : 0;
+            });
+        var lifetime = new PredictionOperationsLifetime(scheduler.Object, log.Object, new SynchronousDispatcherService(), toast.Object,
+            NullLogger<PredictionOperationsLifetime>.Instance, clock: clock, outbox: outbox.Object);
+        lifetime.Start(); lifetime.Start();
+        await passes.WaitAsync(TimeSpan.FromSeconds(10)); await clock.TimerArmed.WaitAsync(TimeSpan.FromSeconds(10));
+        toast.Verify(t => t.ShowNotification(It.IsAny<string>()), Times.Once);                 // delivered by the sink on the dispatcher
+
+        log.Raise(l => l.Decayed += null, log.Object, Alert("committed-event"));                            // wakes the loop; the event itself shows nothing
+        await passes.WaitAsync(TimeSpan.FromSeconds(10)); await clock.TimerArmed.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(2, count);
+        toast.Verify(t => t.ShowNotification(It.IsAny<string>()), Times.Once);
+
+        clock.Advance(TimeSpan.FromMinutes(1)); await passes.WaitAsync(TimeSpan.FromSeconds(10)); // the retry cadence
+        Assert.True(count >= 3);
+        await lifetime.StopAsync();
+        int stopped = count; clock.Advance(TimeSpan.FromMinutes(5));
+        Assert.Equal(stopped, count);
+    }
+
+    [Fact]
+    public async Task FailingDelivery_IsLoggedAndRetriedAtTheNextCadence_NeverEndingTheLoop()
+    {
+        var scheduler = new Mock<IRetrainingScheduler>(); scheduler.Setup(s => s.RunWithRecoveryAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        var clock = new ManualTimeProvider(Epoch); var passes = new SemaphoreSlim(0); int count = 0;
+        var outbox = new Mock<IMonitoringNotificationOutbox>();
+        outbox.SetupGet(o => o.IsActive).Returns(true); outbox.SetupGet(o => o.PollInterval).Returns(TimeSpan.FromMinutes(1));
+        outbox.Setup(o => o.DispatchPendingAsync(It.IsAny<Func<ModelDecayAlert, CancellationToken, Task>>(), It.IsAny<CancellationToken>()))
+            .Returns((Func<ModelDecayAlert, CancellationToken, Task> _, CancellationToken _) =>
             {
-                lock (owner._gate) DueAt = dueTime == Timeout.InfiniteTimeSpan ? null : owner._now + dueTime;
-                if (dueTime != Timeout.InfiniteTimeSpan) owner.TimerArmed.Release();
-                return true;
-            }
-            public void Dispose() { lock (owner._gate) { DueAt = null; owner._timers.Remove(this); } }
-            public ValueTask DisposeAsync() { Dispose(); return ValueTask.CompletedTask; }
-        }
+                Interlocked.Increment(ref count); passes.Release();
+                return Task.FromException<int>(new IOException("database busy"));
+            });
+        var lifetime = new PredictionOperationsLifetime(scheduler.Object, Mock.Of<IPredictionLogService>(), new SynchronousDispatcherService(),
+            Mock.Of<IToastNotificationService>(), NullLogger<PredictionOperationsLifetime>.Instance, clock: clock, outbox: outbox.Object);
+        lifetime.Start();
+        await passes.WaitAsync(TimeSpan.FromSeconds(10)); await clock.TimerArmed.WaitAsync(TimeSpan.FromSeconds(10));
+        clock.Advance(TimeSpan.FromMinutes(1)); await passes.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(2, count);
+        await lifetime.StopAsync();
+    }
+
+    [Fact]
+    public async Task InactiveOutbox_KeepsTheLegacyInProcessDecayToast()
+    {
+        var scheduler = new Mock<IRetrainingScheduler>(); scheduler.Setup(s => s.RunWithRecoveryAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        var log = new Mock<IPredictionLogService>(); var toast = new Mock<IToastNotificationService>(); var outbox = new Mock<IMonitoringNotificationOutbox>();
+        outbox.SetupGet(o => o.IsActive).Returns(false);
+        var lifetime = new PredictionOperationsLifetime(scheduler.Object, log.Object, new SynchronousDispatcherService(), toast.Object,
+            NullLogger<PredictionOperationsLifetime>.Instance, outbox: outbox.Object);
+        lifetime.Start();
+        log.Raise(l => l.Decayed += null, log.Object, Alert("legacy"));
+        toast.Verify(t => t.ShowNotification(It.IsAny<string>()), Times.Once);
+        await lifetime.StopAsync();
+        outbox.Verify(o => o.DispatchPendingAsync(It.IsAny<Func<ModelDecayAlert, CancellationToken, Task>>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Stop_DrainsWorkRegisteredThroughTheSharedOwner_RejectsLaterWork_AndIsRepeatSafe()
+    {
+        var scheduler = new Mock<IRetrainingScheduler>(); scheduler.Setup(s => s.RunWithRecoveryAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        var owner = new MonitoringWorkOwner(); var entered = new TaskCompletionSource<CancellationToken>(); var exit = new TaskCompletionSource();
+        var lifetime = new PredictionOperationsLifetime(scheduler.Object, Mock.Of<IPredictionLogService>(), new SynchronousDispatcherService(),
+            Mock.Of<IToastNotificationService>(), NullLogger<PredictionOperationsLifetime>.Instance, work: owner);
+        lifetime.Start();
+        var chartWork = owner.Run(async ct => { entered.SetResult(ct); await exit.Task; }, CancellationToken.None); // as a chart registers its record/observation task
+        var token = await entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+        var stop = lifetime.StopAsync();
+        Assert.True(token.IsCancellationRequested); Assert.False(stop.IsCompleted);   // the lifetime does not finish before the chart's worker
+        exit.SetResult(); await stop.WaitAsync(TimeSpan.FromSeconds(10)); await chartWork.WaitAsync(TimeSpan.FromSeconds(10));
+
+        int late = 0;
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => owner.Run(_ => { late++; return Task.CompletedTask; }, CancellationToken.None));
+        Assert.Equal(0, late);
+        await lifetime.StopAsync(); lifetime.Dispose();                               // repeat Stop / Dispose are safe
+        lifetime.Start();                                                              // a stopped lifetime never starts again
+        scheduler.Verify(s => s.RunWithRecoveryAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task OutboxSinkWaitingForAStuckUiThread_DoesNotBlockShutdown()
+    {
+        var scheduler = new Mock<IRetrainingScheduler>(); scheduler.Setup(s => s.RunWithRecoveryAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        var toast = new Mock<IToastNotificationService>(); var sinkEntered = new TaskCompletionSource();
+        var outbox = new Mock<IMonitoringNotificationOutbox>();
+        outbox.SetupGet(o => o.IsActive).Returns(true); outbox.SetupGet(o => o.PollInterval).Returns(TimeSpan.FromMinutes(1));
+        outbox.Setup(o => o.DispatchPendingAsync(It.IsAny<Func<ModelDecayAlert, CancellationToken, Task>>(), It.IsAny<CancellationToken>()))
+            .Returns(async (Func<ModelDecayAlert, CancellationToken, Task> sink, CancellationToken ct) =>
+            {
+                sinkEntered.TrySetResult();
+                await sink(Alert("stuck"), ct);                                        // the UI thread never runs the posted action
+                return 1;
+            });
+        var lifetime = new PredictionOperationsLifetime(scheduler.Object, Mock.Of<IPredictionLogService>(), new NeverRunningUiDispatcher(),
+            toast.Object, NullLogger<PredictionOperationsLifetime>.Instance, clock: new ManualTimeProvider(Epoch), outbox: outbox.Object);
+        lifetime.Start();
+        await sinkEntered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        await lifetime.StopAsync().WaitAsync(TimeSpan.FromSeconds(10));               // shutdown blocks the UI thread, so it cannot wait for it
+        toast.Verify(t => t.ShowNotification(It.IsAny<string>()), Times.Never);
+    }
+
+    /// <summary>A dispatcher whose UI thread is blocked: posted work never starts, so awaiting it never completes.</summary>
+    private sealed class NeverRunningUiDispatcher : IDispatcherService
+    {
+        public void Post(Action action) { }
+        public void Post<T>(Action<T> action, T state) { }
+        public Task PostAsync(Func<Task> action) => new TaskCompletionSource().Task;
+        public Task PostAsync<TState>(Func<TState, Task> action, TState state) => new TaskCompletionSource().Task;
+        public bool CheckAccess() => false;
+        public void VerifyAccess() { }
     }
 }

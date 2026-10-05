@@ -26,7 +26,7 @@
 
             <Color x:Key="Color.Semantic.Success">#FF4CAF50</Color>
             <Color x:Key="Color.Semantic.Warning">#FFFFC107</Color>
-            <Color x:Key="Color.Semantic.Error">#FFF44336</Color>
+            <Color x:Key="Color.Semantic.Error">#FFFF7B72</Color>
             <Color x:Key="Color.Semantic.Info">#FF2196F3</Color>
 
             <!-- Dialog Spec (Cream for charts is usually Light-only, but for Dark we use Dark Grey) -->
@@ -92,7 +92,7 @@
 
             <Color x:Key="Color.Semantic.Success">#FF4CAF50</Color>
             <Color x:Key="Color.Semantic.Warning">#FFFFC107</Color>
-            <Color x:Key="Color.Semantic.Error">#FFF44336</Color>
+            <Color x:Key="Color.Semantic.Error">#FFFF7B72</Color>
             <Color x:Key="Color.Semantic.Info">#FF2196F3</Color>
 
             <Color x:Key="Color.Dialog.Background">#FF1E1E1E</Color>
