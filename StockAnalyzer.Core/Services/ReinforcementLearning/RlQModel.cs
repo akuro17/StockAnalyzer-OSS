@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -15,8 +16,18 @@ namespace StockAnalyzer.Core.Services.ReinforcementLearning;
 /// <summary>Strict CPU Q/actor tensor boundary. Supervised classifiers and their output parsers are not involved.</summary>
 internal sealed class RlQModel : IDisposable
 {
+    private static readonly long[] s_inputShape = { 1, RlContract.ObservationLength };
+    private static readonly string[] s_inputNames = { RlContract.OnnxInputName };
     private readonly InferenceSession _session;
     private readonly bool _continuous;
+    // One owner for the pooled input buffer and its native wrapper: Infer and Dispose serialize on _gate, so the session
+    // cannot be freed during native work and concurrent calls never share the buffer.
+    private readonly object _gate = new();
+    private readonly string[] _outputNames;
+    private readonly RunOptions _runOptions = new();
+    private float[]? _inputBuffer;
+    private OrtValue[]? _inputs;
+    private bool _disposed;
     private string OutputName => _continuous ? RlContinuousContract.OutputName : RlContract.OnnxOutputName;
     private int OutputCount => _continuous ? RlContinuousContract.ActionCount : RlContract.ActionCount;
     private string OutputDescription => $"{OutputName}[1,{OutputCount}] ({(_continuous ? "normalized actor actions" : "Q values")})";
@@ -26,6 +37,7 @@ internal sealed class RlQModel : IDisposable
     public RlQModel(string modelPath, bool continuous = false)
     {
         _continuous = continuous;
+        _outputNames = new[] { OutputName };
         using var options = new SessionOptions
         {
             ExecutionMode = ExecutionMode.ORT_SEQUENTIAL,
@@ -40,8 +52,10 @@ internal sealed class RlQModel : IDisposable
             if (Scaler.WindowSize != RlContract.WindowLength || Scaler.Statistics.Length != RlContract.MarketChannelCount
                 || Scaler.Lags.Length != 0 || Scaler.ClipSigma is not null)
                 throw new InvalidDataException("RL scaler must implement the un-clipped five-channel, 64-bar contract.");
+            _inputBuffer = ArrayPool<float>.Shared.Rent(RlContract.ObservationLength);
+            _inputs = new[] { OrtValue.CreateTensorValueFromMemory(OrtMemoryInfo.DefaultInstance, _inputBuffer.AsMemory(0, RlContract.ObservationLength), s_inputShape) };
         }
-        catch { _session.Dispose(); throw; }
+        catch { ReleaseNative(); throw; }
     }
 
     private void ValidateMetadata()
@@ -90,25 +104,34 @@ internal sealed class RlQModel : IDisposable
     public float[] Infer(float[] observation)
     {
         ValidateObservation(observation);
-        var tensor = new DenseTensor<float>(observation, new[] { 1, RlContract.ObservationLength });
-        using var results = _session.Run(new[] { NamedOnnxValue.CreateFromTensor(RlContract.OnnxInputName, tensor) });
-        var output = results.Single(r => r.Name == OutputName).AsTensor<float>();
-        if (!output.Dimensions.ToArray().SequenceEqual(new[] { 1, OutputCount }))
-            throw new InvalidDataException($"RL output {OutputDescription} changed its fixed tensor shape.");
-        var q = output.ToArray();
-        if (_continuous)
+        lock (_gate)
         {
-            if (q.Any(value => !float.IsFinite(value))) throw new InvalidDataException("Actor output must be finite.");
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            observation.AsSpan().CopyTo(_inputBuffer);
+            using var results = _session.Run(_runOptions, s_inputNames, _inputs!, _outputNames);
+            var output = results[0];
+            var info = output.GetTensorTypeAndShape();
+            var shape = info.Shape;
+            if (info.ElementDataType != TensorElementType.Float || shape.Length != 2 || shape[0] != 1 || shape[1] != OutputCount)
+                throw new InvalidDataException($"RL output {OutputDescription} changed its fixed tensor shape.");
+            // The span is scoped to the native result; the returned array is a new independently owned copy.
+            var q = output.GetTensorDataAsSpan<float>().ToArray();
+            if (_continuous)
+            {
+                foreach (float value in q)
+                    if (!float.IsFinite(value)) throw new InvalidDataException("Actor output must be finite.");
+            }
+            else _ = RlContract.SelectAction(q);
+            return q;
         }
-        else _ = RlContract.SelectAction(q);
-        return q;
     }
 
     internal static void ValidateObservation(float[] observation)
     {
         ArgumentNullException.ThrowIfNull(observation);
-        if (observation.Length != RlContract.ObservationLength || observation.Any(value => !float.IsFinite(value)))
-            throw new InvalidDataException($"RL observation must contain exactly {RlContract.ObservationLength} finite float32 values.");
+        bool valid = observation.Length == RlContract.ObservationLength;
+        for (int i = 0; valid && i < observation.Length; i++) valid = float.IsFinite(observation[i]);
+        if (!valid) throw new InvalidDataException($"RL observation must contain exactly {RlContract.ObservationLength} finite float32 values.");
     }
 
     public void ValidateParity(string parityPath)
@@ -133,5 +156,23 @@ internal sealed class RlQModel : IDisposable
         }
     }
 
-    public void Dispose() => _session.Dispose();
+    public void Dispose()
+    {
+        lock (_gate)
+        {
+            if (_disposed) return;
+            _disposed = true;
+            ReleaseNative();
+        }
+    }
+
+    private void ReleaseNative()
+    {
+        if (_inputs is not null) foreach (var input in _inputs) input.Dispose();
+        _inputs = null;
+        _runOptions.Dispose();
+        if (_inputBuffer is not null) ArrayPool<float>.Shared.Return(_inputBuffer);
+        _inputBuffer = null;
+        _session.Dispose();
+    }
 }

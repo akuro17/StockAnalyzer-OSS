@@ -26,11 +26,11 @@ public sealed partial class RlTrainingDialogViewModel
     private bool _cleanupConfirmed;
     private RlArtifactPreview? _artifactPreview;
     private long _artifactRevision;
-    private CancellationTokenSource? _artifactCts;
-    public bool CanCleanupArtifacts => !IsBusy && CleanupConfirmed && _artifactPreview?.Entries.Any(e => e.Candidate) == true;
+    
+    public bool CanCleanupArtifacts => Editable && CleanupConfirmed && ArtifactsState == RlDialogLoadState.Loaded && _savedPolicy?.IsComplete == true && ValidRetentionEditors && DraftPolicy() == _artifactPreview?.Policy && _artifactPreview?.Entries.Any(e => e.Candidate) == true;
     private void InvalidateArtifactReview()
     {
-        ++_artifactRevision; _artifactPreview = null; CleanupConfirmed = false; ArtifactRows.Clear();
+        NextRevision(ref _artifactRevision); _artifactPreview = null; _lastCleanupResult = null; CleanupConfirmed = false; ArtifactRows.Clear(); ArtifactsState = StorageAvailable ? RlDialogLoadState.Unloaded : RlDialogLoadState.Unsupported;
         OnPropertyChanged(nameof(CanCleanupArtifacts)); CleanupArtifactsCommand.NotifyCanExecuteChanged();
     }
     partial void OnStorageQuotaGiBChanged(decimal value) => InvalidateArtifactReview();
@@ -41,74 +41,68 @@ public sealed partial class RlTrainingDialogViewModel
     partial void OnStorageCheckpointKeepCountChanged(int value) => InvalidateArtifactReview();
     private async Task InitializeArtifactSettingsAsync()
     {
+        if (!StorageAvailable) return;
         try
         {
             var policy = await Task.Run(() => _registry.RlArtifactPolicy);
-            if (_disposed || policy is null) return;
+            if (_disposed) return; if (policy is null) throw new System.IO.InvalidDataException("Storage policy is unavailable."); _savedPolicy = policy;
             StorageAvailable = true; StorageQuotaGiB = policy.QuotaGiB; StorageMinimumFreeGiB = policy.MinimumFreeGiB;
             StorageFailedRetentionDays = policy.FailedRetentionDays; StorageNonactiveDays = policy.NonactiveRetentionDays;
             StorageKeepCount = policy.NonactiveKeepCount;
             StorageCheckpointKeepCount = policy.CheckpointKeepCount;
             StorageDisplay = _localization.GetString(policy.IsComplete ? "Rl.Storage.Ready" : "Rl.Storage.Incomplete");
         }
-        catch (Exception error) { if (!_disposed) { StorageAvailable = true; StorageDisplay = error.Message; } }
+        catch (Exception error) { if (!_disposed) { StorageDisplay = DescribeError(error); } }
     }
-    [RelayCommand] private async Task SaveArtifactSettingsAsync()
+    [RelayCommand(CanExecute = nameof(CanSaveRetention))] private async Task SaveArtifactSettingsAsync()
     {
-        if (IsBusy || _disposed) return;
+        if (!CanSaveRetention) return;
         var policy = new RlArtifactPolicy(StorageQuotaGiB, StorageMinimumFreeGiB, StorageFailedRetentionDays, StorageNonactiveDays, StorageKeepCount, StorageCheckpointKeepCount);
-        InvalidateArtifactReview(); IsBusy = true;
+        InvalidateArtifactReview(); BeginOperation(RlDialogOperation.SavingRetention);
         try
         {
             await Task.Run(() => _registry.SaveRlArtifactPolicyAsync(policy));
-            if (!_disposed) StorageDisplay = _localization.GetString(policy.IsComplete ? "Rl.Storage.Saved" : "Rl.Storage.Incomplete");
+            if (!_disposed) { _savedPolicy = policy; StorageDisplay = _localization.GetString(policy.IsComplete ? "Rl.Storage.Saved" : "Rl.Storage.Incomplete"); NotifyUi(); }
         }
-        catch (Exception error) { if (!_disposed) StorageDisplay = error.Message; }
-        finally { if (!_disposed) IsBusy = false; }
+        catch (Exception error) { if (!_disposed) StorageDisplay = DescribeError(error); }
+        finally { EndOperation(); }
     }
-    [RelayCommand] private async Task InspectArtifactsAsync()
+    [RelayCommand(CanExecute = nameof(CanInspectArtifacts))] private async Task InspectArtifactsAsync()
     {
-        if (IsBusy || _disposed) return;
-        InvalidateArtifactReview(); long revision = _artifactRevision; IsBusy = true;
+        if (!CanInspectArtifacts) return;
+        InvalidateArtifactReview(); long revision = _artifactRevision; using var cancel = new CancellationTokenSource(); BeginOperation(RlDialogOperation.InspectingArtifacts, cancel); ArtifactsState = RlDialogLoadState.Loading;
         var draft = new RlArtifactPolicy(StorageQuotaGiB, StorageMinimumFreeGiB, StorageFailedRetentionDays, StorageNonactiveDays, StorageKeepCount, StorageCheckpointKeepCount);
         try
         {
-            var preview = await Task.Run(() => _registry.PreviewRlArtifacts());
-            if (_disposed || revision != _artifactRevision || preview is null) return;
-            if (draft != preview.Policy) { StorageDisplay = _localization.GetString("Rl.Storage.Unsaved"); return; }
-            _artifactPreview = preview;
-            foreach (var entry in preview.Entries)
-            {
-                string reasons = string.Join(", ", entry.Reasons.Select(r => _localization.GetString("Rl.Storage.Reason." + r)));
-                ArtifactRows.Add(new(string.Format(CultureInfo.CurrentCulture, _localization.GetString("Rl.Storage.Entry"),
-                    _localization.GetString("Rl.Storage.Kind." + entry.Kind), entry.Id,
-                    entry.Bytes / (decimal)RlArtifactSettings.BytesPerGiB, reasons), entry.Candidate));
-            }
-            StorageDisplay = string.Format(CultureInfo.CurrentCulture, _localization.GetString("Rl.Storage.Summary"),
-                preview.UsedBytes / (decimal)RlArtifactSettings.BytesPerGiB, preview.FreeBytes / (decimal)RlArtifactSettings.BytesPerGiB,
-                preview.Entries.Count(e => e.Candidate), preview.Entries.Where(e => e.Candidate).Sum(e => e.Bytes) / (decimal)RlArtifactSettings.BytesPerGiB);
-            if (!preview.Policy.IsComplete) StorageDisplay += " " + _localization.GetString("Rl.Storage.Incomplete");
+            var preview = await Task.Run(() => _registry.PreviewRlArtifacts(cancel.Token));
+            cancel.Token.ThrowIfCancellationRequested(); if (_disposed || revision != _artifactRevision) return; if (preview is null || preview.Entries.IsDefault) throw new System.IO.InvalidDataException("Storage inspection is unavailable.");
+            if (draft != preview.Policy) { ArtifactsState = RlDialogLoadState.Unloaded; StorageDisplay = _localization.GetString("Rl.Storage.Unsaved"); return; }
+            _artifactPreview = preview; ArtifactsState = RlDialogLoadState.Loaded;
+            RefreshArtifactText();
+            NotifyUi();
         }
-        catch (Exception error) { if (!_disposed) StorageDisplay = error.Message; }
-        finally { if (!_disposed) { IsBusy = false; OnPropertyChanged(nameof(CanCleanupArtifacts)); CleanupArtifactsCommand.NotifyCanExecuteChanged(); } }
+        catch (OperationCanceledException) { if (!_disposed) ArtifactsState = RlDialogLoadState.Unloaded; }
+        catch (Exception error) { if (!_disposed) { ArtifactsState = RlDialogLoadState.Failed; StorageDisplay = DescribeError(error); } }
+        finally { EndOperation(); }
     }
     [RelayCommand(CanExecute = nameof(CanCleanupArtifacts))] private async Task CleanupArtifactsAsync()
     {
         if (!CanCleanupArtifacts || _disposed) return;
-        var reviewed = _artifactPreview!; InvalidateArtifactReview(); IsBusy = true;
-        using var cts = new CancellationTokenSource(); _artifactCts = cts;
+        var reviewed = _artifactPreview!; InvalidateArtifactReview();
+        using var cts = new CancellationTokenSource(); BeginOperation(RlDialogOperation.Cleaning, cts);
         try
         {
             var result = await Task.Run(() => _registry.CleanupRlArtifactsAsync(reviewed, cts.Token));
             if (!_disposed)
             {
+                _lastCleanupResult = result;
                 StorageDisplay = string.Format(CultureInfo.CurrentCulture, _localization.GetString("Rl.Storage.Cleaned"), result.Deleted.Length,
                     result.Failures.Length, result.RemainingBytes / (decimal)RlArtifactSettings.BytesPerGiB);
-                if (result.Failures.Length > 0) StorageDisplay += " " + string.Join(Environment.NewLine, result.Failures);
-                RefreshGenerations();
+                if (result.Failures.Length > 0) TechnicalDetails = string.Join(Environment.NewLine, result.Failures);
+                await RefreshGenerationsAsync();
             }
         }
-        catch (Exception error) { if (!_disposed) StorageDisplay = error.Message; }
-        finally { _artifactCts = null; if (!_disposed) IsBusy = false; }
+        catch (Exception error) { if (!_disposed) StorageDisplay = DescribeError(error); }
+        finally { EndOperation(); }
     }
 }

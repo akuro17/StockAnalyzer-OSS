@@ -6,6 +6,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks;
+using StockAnalyzer.Core.Common;
 using StockAnalyzer.Core.Models.Training;
 using StockAnalyzer.Core.Services;
 using Xunit;
@@ -539,8 +540,13 @@ public sealed class TrainingEnsembleTests : IDisposable
         await Assert.ThrowsAnyAsync<Exception>(() => service.RegisterEnsembleAsync(Manifest(folder, "bagging")));
 
         Assert.Empty(registry.List());
-        Assert.Empty(Directory.EnumerateDirectories(root)); // no published generation and no leftover staging directory
+        AssertNoGenerationOrStagingDirectory(root);
     }
+
+    // The registry keeps its own coordination and RL folders under the root; only generations and staging leftovers matter here.
+    private static void AssertNoGenerationOrStagingDirectory(string root) =>
+        Assert.DoesNotContain(Directory.EnumerateDirectories(root).Select(Path.GetFileName),
+            name => ContentHash.IsLowerHex64(name) || name!.StartsWith(".stage_", StringComparison.Ordinal));
 
     [Fact]
     public async Task VerifyCandidate_RunsTheRegistrationChecksButPublishesNothing()
@@ -552,7 +558,7 @@ public sealed class TrainingEnsembleTests : IDisposable
 
         var verified = await registry.VerifyCandidateAsync(onnx);
         Assert.Empty(registry.List());
-        Assert.Empty(Directory.EnumerateDirectories(root));
+        AssertNoGenerationOrStagingDirectory(root);
         Assert.Null(registry.GetManifest(verified.ModelId));
 
         var registered = await registry.RegisterAsync(onnx);

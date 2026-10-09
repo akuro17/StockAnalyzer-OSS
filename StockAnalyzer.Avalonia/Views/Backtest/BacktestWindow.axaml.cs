@@ -11,6 +11,7 @@ namespace StockAnalyzer.Avalonia.Views.Backtest
         public BacktestWindow()
         {
             InitializeComponent();
+            SubWindowKeys.CloseOnEscape(this);
 
             DataContextChanged += (_, _) =>
             {

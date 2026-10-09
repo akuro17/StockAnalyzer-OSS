@@ -16,6 +16,11 @@ public static class RlSourceContract
     public const string LocalProvenance = "local_file_bytes_verified";
     public const string Unverified = "unverified";
     public const string FinalityPolicy = "exclude_current_exchange_date";
+    /// <summary>Single owner of the insufficient-history rejection text prefix, so producers and the UI classify it identically.</summary>
+    public const string InsufficientDataMarker = "InsufficientData";
+    public static string InsufficientData(string detail) => $"{InsufficientDataMarker}: {detail}";
+    public static bool IsInsufficientData(System.Exception error)
+        => error is InvalidDataException && error.Message.StartsWith(InsufficientDataMarker, System.StringComparison.Ordinal);
     public const string DateLabelSemantics = "UTC-kind midnight is an exchange-local date label, not an execution event or PIT evidence.";
 
     // The existing public name is retained for compatibility; these describe local ingress, not network acquisition.

@@ -202,7 +202,7 @@ public sealed partial class RlGenerationAndQValueTests
             await Assert.ThrowsAnyAsync<OperationCanceledException>(() => registry.ActivateRlAsync(new string('a', 64), cancelled.Token));
             using var waiting = new CancellationTokenSource(TimeSpan.FromMilliseconds(50));
             await Assert.ThrowsAnyAsync<OperationCanceledException>(() => registry.ActivateRlAsync(new string('a', 64), waiting.Token));
-            Assert.NotEmpty(Directory.GetFiles(Path.Combine(RegistryRoot, ModelGenerationRegistry.Coordination.Folder), "failure_*.json"));
+            Assert.NotEmpty(Directory.GetFiles(Path.Combine(RegistryRoot, ModelGenerationRegistry.Coordination.Folder), ModelGenerationRegistry.Coordination.FailureEvidencePattern));
             StopWorker(process); Assert.Empty(registry.ListRl());
         }
         catch { StopWorker(process); throw; }
@@ -272,7 +272,7 @@ public sealed partial class RlGenerationAndQValueTests
         using var registry = new ModelGenerationRegistry(RegistryRoot) { RecoveryPointerWriter = (_, _) => Task.FromException(new IOException("simulated disk full")) };
         await Assert.ThrowsAsync<IOException>(() => registry.RecoverRlPointerAsync(registry.PreviewRlRecovery(RlFiles.Target)));
         Assert.Equal("{", File.ReadAllText(fixture.Pointer)); Assert.Equal(backup, File.ReadAllBytes(fixture.Pointer + ".bak")); Assert.Null(registry.RlActiveId);
-        Assert.NotEmpty(Directory.GetFiles(Path.Combine(RegistryRoot, ModelGenerationRegistry.Coordination.Folder), "failure_*.json"));
+        Assert.NotEmpty(Directory.GetFiles(Path.Combine(RegistryRoot, ModelGenerationRegistry.Coordination.Folder), ModelGenerationRegistry.Coordination.FailureEvidencePattern));
     }
     [Fact] public async Task R07_WrongTargetBackupAndCorruptManifestCannotSelectAnUnknownGeneration()
     {

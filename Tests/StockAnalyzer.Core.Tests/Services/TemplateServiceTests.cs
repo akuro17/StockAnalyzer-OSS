@@ -9,6 +9,9 @@ using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Indicators;
 using StockAnalyzer.Core.Models.Parameters;
 using StockAnalyzer.Core.Models.Templates;
+using StockAnalyzer.Core.Models.Backtest.Configuration;
+using StockAnalyzer.Core.Models.Backtest.Engine;
+using StockAnalyzer.Core.Models.Screener;
 using StockAnalyzer.Core.Services;
 using StockAnalyzer.Core.Theme;
 using Xunit;
@@ -349,5 +352,97 @@ public class TemplateServiceTests : IDisposable
 
         Assert.True(result.IsValid);
         Assert.NotEmpty(result.Warnings);
+    }
+
+    [Fact]
+    public async Task SaveAsync_And_GetAsync_ShouldPersistAndRetrieveBacktestConditionTemplate()
+    {
+        var template = new BacktestConditionTemplate
+        {
+            Id = Guid.NewGuid(),
+            Name = "Golden Cross Strategy",
+            Description = "EMA crossover with stop loss",
+            ConditionTree = new BacktestConditionTreeDto(),
+            RiskManagement = new BacktestRiskManagementSettingsDto
+            {
+                StopLossPercent = 0.05m,
+                TakeProfitPercent = 0.15m
+            }
+        };
+
+        await _service.SaveAsync(template);
+        var loaded = await _service.GetAsync<BacktestConditionTemplate>(TemplateType.BacktestCondition, template.Id);
+
+        Assert.NotNull(loaded);
+        Assert.Equal(template.Id, loaded.Id);
+        Assert.Equal("Golden Cross Strategy", loaded.Name);
+        Assert.Equal("EMA crossover with stop loss", loaded.Description);
+        Assert.NotNull(loaded.ConditionTree);
+        Assert.NotNull(loaded.RiskManagement);
+        Assert.Equal(0.05m, loaded.RiskManagement.StopLossPercent);
+        Assert.Equal(0.15m, loaded.RiskManagement.TakeProfitPercent);
+
+        await _service.DeleteAsync(TemplateType.BacktestCondition, template.Id);
+    }
+
+    [Fact]
+    public async Task ValidateAsync_BacktestConditionTemplate_ValidatesCorrectly()
+    {
+        // 1. Null Tree -> invalid
+        var invalidTemplate = new BacktestConditionTemplate
+        {
+            Id = Guid.NewGuid(),
+            Name = "Invalid",
+            ConditionTree = null!
+        };
+        var invalidResult = await _service.ValidateAsync(invalidTemplate);
+        Assert.False(invalidResult.IsValid);
+        Assert.NotEmpty(invalidResult.Errors);
+
+        // 2. Empty Tree -> valid with warning
+        var emptyTreeTemplate = new BacktestConditionTemplate
+        {
+            Id = Guid.NewGuid(),
+            Name = "Empty Tree",
+            ConditionTree = new BacktestConditionTreeDto()
+        };
+        var emptyResult = await _service.ValidateAsync(emptyTreeTemplate);
+        Assert.True(emptyResult.IsValid);
+        Assert.NotEmpty(emptyResult.Warnings);
+
+        // 3. Tree with leaf -> valid without warnings
+        var treeWithLeaf = new BacktestConditionTreeDto
+        {
+            EntryLong = new BacktestConditionNodeDto
+            {
+                Kind = BacktestConditionNodeKind.Group,
+                Operator = LogicalOperator.And,
+                Children = new List<BacktestConditionNodeDto>
+                {
+                    new()
+                    {
+                        Kind = BacktestConditionNodeKind.Leaf,
+                        Comparison = new BacktestConditionEntryDto
+                        {
+                            Left = new BacktestConditionSideDto { IndicatorType = IndicatorType.SMA },
+                            Operator = ComparisonOperator.GreaterThan,
+                            TargetMode = RightHandTargetMode.NumericValue,
+                            RightNumericValue = 100m
+                        }
+                    }
+                }
+            }
+        };
+
+        var validTemplate = new BacktestConditionTemplate
+        {
+            Id = Guid.NewGuid(),
+            Name = "Valid Template",
+            ConditionTree = treeWithLeaf
+        };
+        var validResult = await _service.ValidateAsync(validTemplate);
+        Assert.True(validResult.IsValid);
+        Assert.Empty(validResult.Warnings);
+        Assert.Empty(validResult.Errors);
     }
 }

@@ -61,6 +61,21 @@ public class ServiceCollectionExtensionsTests
     }
 
     [Fact]
+    public void AddCommonServices_RegistersTheStoredModelServiceNextToThePortfolioServiceOnTheSameSettings()
+    {
+        var services = new ServiceCollection();
+        services.AddCommonServices(new ConfigurationBuilder().Build());
+        using var provider = services.BuildServiceProvider();
+
+        var portfolio = provider.GetRequiredService<StockAnalyzer.Core.Services.ReinforcementLearning.IRlPortfolioService>();
+        var transfer = provider.GetRequiredService<StockAnalyzer.Core.Services.ReinforcementLearning.IRlPortfolioTransferService>();
+
+        Assert.IsType<StockAnalyzer.Core.Services.ReinforcementLearning.RlPortfolioTransferService>(transfer);
+        Assert.Same(transfer, provider.GetRequiredService<StockAnalyzer.Core.Services.ReinforcementLearning.IRlPortfolioTransferService>());
+        Assert.Equal(portfolio.Settings.PartitionMode, ((StockAnalyzer.Core.Services.ReinforcementLearning.RlPortfolioTransferService)transfer).Settings.PartitionMode);
+    }
+
+    [Fact]
     public void AddCommonServices_ResolvesLayeredChartImageExportService()
     {
         var services = new ServiceCollection();

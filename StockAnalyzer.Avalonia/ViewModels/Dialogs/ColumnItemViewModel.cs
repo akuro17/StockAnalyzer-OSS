@@ -16,6 +16,7 @@ public enum ColumnCategory
     Valuation,
     Ratio,
     Financial,
+    Metrics,
     Templates
 }
 

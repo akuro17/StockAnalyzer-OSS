@@ -18,6 +18,7 @@ from typing import Callable
 
 import numpy as np
 
+import checkpoints
 import dataset as ds
 import feature_spec_strict
 import fixed_scaler
@@ -198,23 +199,23 @@ def publish_verified(out_path: Path, report: dict, export: Callable[[Path], None
         if final_scaler.exists():
             shutil.copy2(final_scaler, old_scaler)
         try:
-            os.replace(staged_metrics, final_metrics)
+            checkpoints.replace_with_retry(staged_metrics, final_metrics)
             metrics_published = True
-            os.replace(staged_model, final_model)
+            checkpoints.replace_with_retry(staged_model, final_model)
             if staged_scaler.exists():
-                os.replace(staged_scaler, final_scaler)
+                checkpoints.replace_with_retry(staged_scaler, final_scaler)
         except OSError:
             if old_model.exists():
-                os.replace(old_model, final_model)
+                checkpoints.replace_with_retry(old_model, final_model)
             else:
                 final_model.unlink(missing_ok=True)
             if metrics_published:
                 if had_metrics:
-                    os.replace(old_metrics, final_metrics)
+                    checkpoints.replace_with_retry(old_metrics, final_metrics)
                 else:
                     final_metrics.unlink()
             if old_scaler.exists():
-                os.replace(old_scaler, final_scaler)
+                checkpoints.replace_with_retry(old_scaler, final_scaler)
             else:
                 final_scaler.unlink(missing_ok=True)
             raise

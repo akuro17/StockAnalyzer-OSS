@@ -27,7 +27,8 @@ internal static class VerificationHarness
         decimal initialCapital = 1_000_000m, decimal commissionFlat = 0m, decimal commissionPerUnit = 0m,
         decimal slippageRatio = 0m, PositionSizingModel sizingModel = PositionSizingModel.FixedQuantity,
         decimal sizingParameter = 100m, decimal initialMarginRatio = 1m, decimal maintenanceMarginRatio = 0.5m,
-        decimal liquidationPenaltyRatio = 0m)
+        decimal liquidationPenaltyRatio = 0m,
+        IntrabarPathMode intrabarPathMode = IntrabarPathMode.DeterministicCandleShape)
         => new()
         {
             InitialCapital = initialCapital,
@@ -39,6 +40,7 @@ internal static class VerificationHarness
             InitialMarginRatio = initialMarginRatio,
             MaintenanceMarginRatio = maintenanceMarginRatio,
             LiquidationPenaltyRatio = liquidationPenaltyRatio,
+            IntrabarPathMode = intrabarPathMode,
         };
 
     public static BacktestEngine CreateEngine() => new(new IndicatorFactory());

@@ -345,5 +345,5 @@ public sealed class PredictionLogServiceTests : IDisposable
         Assert.False(Directory.Exists(Path.Combine(_root, "monitor")));
     }
 
-    public void Dispose() { _registry?.Dispose(); if (Directory.Exists(_root)) Directory.Delete(_root, true); }
+    public void Dispose() { _registry?.Dispose(); TestDirectory.Delete(_root); }
 }

@@ -11,7 +11,9 @@ public partial class TrainingWizardViewModel
 {
     private readonly IRetrainingScheduler? _retrainingScheduler;
 
-    [RelayCommand]
+    private bool CanSaveRetrainingConfiguration() => _retrainingScheduler is not null && !IsTraining && !IsDeploying;
+
+    [RelayCommand(CanExecute = nameof(CanSaveRetrainingConfiguration))]
     private async Task SaveRetrainingConfigurationAsync()
     {
         if (_retrainingScheduler is null || IsTraining || IsDeploying) return;

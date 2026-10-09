@@ -41,6 +41,15 @@ public static class LayoutConstants
     public const double DefaultTopHeight = 0.0;
     public const double ScreenerLabelColumnWidth = 260.0;
 
+    // Indicator Settings Form Layout
+    public const double IndicatorFormMinFieldWidth = 280.0;
+    public const double IndicatorFormMaxFieldWidth = 360.0;
+    public const double IndicatorFormColumnSpacing = 24.0;
+    public const double IndicatorFormRowSpacing = 12.0;
+    public const double IndicatorFormLabelInputSpacing = 4.0;
+    public const double IndicatorFormControlHeight = 30.0;
+    public const int IndicatorFormMaxColumns = 2;
+
     // Layout Clamping Boundaries
     public const double MinPanelWidthClamp = 50.0;
     public const double MaxPanelWidthClamp = 2000.0;

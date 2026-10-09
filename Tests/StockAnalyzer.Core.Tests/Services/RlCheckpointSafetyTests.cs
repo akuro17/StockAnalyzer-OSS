@@ -16,6 +16,7 @@ using Xunit;
 
 namespace StockAnalyzer.Core.Tests.Services;
 
+[Collection("ChildProcess")]
 public sealed class RlCheckpointSafetyTests
 {
     [Fact] public async Task AcceptedAttemptRecordsPreparationFailureBeforeDirectionQualification()

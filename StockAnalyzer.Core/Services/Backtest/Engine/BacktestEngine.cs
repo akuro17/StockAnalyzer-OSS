@@ -90,6 +90,8 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
             return new BacktestDiagnosedRun(BacktestResult.CreateEmpty(configuration), null);
         }
 
+        ImmutableArray<BacktestWarning> warnings = CorporateActionDetector.DetectPotentialSplits(input.Bars);
+
         // A strategy call, kept outside the arithmetic scope below: an OverflowException from it is a strategy failure, never an engine diagnostic.
         IReadOnlyList<StrategyIndicatorRequest> requests = strategy.GetRequiredIndicators();
         IndicatorSeriesSet indicatorSeries;
@@ -101,7 +103,7 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
         {
             // A batch indicator calculation has no bar: the diagnostic carries none and the committed prefix is empty.
             var diagnostic = new BacktestRunDiagnostic(BacktestDiagnosticCode.ArithmeticOverflow, BacktestRunPhase.Preparation, null, BacktestArithmeticOperation.Unknown, ex.Message);
-            return new BacktestDiagnosedRun(BuildResult(input, configuration, strategy, new RunState { Orders = new List<BacktestOrder>(), Fills = new List<BacktestFill>(), Trades = new List<BacktestTrade>(), EquityPoints = new List<EquityPoint>(), Signals = new List<BacktestSignal>() }, RunStatus.Failed), diagnostic);
+            return new BacktestDiagnosedRun(BuildResult(input, configuration, strategy, new RunState { Orders = new List<BacktestOrder>(), Fills = new List<BacktestFill>(), Trades = new List<BacktestTrade>(), EquityPoints = new List<EquityPoint>(), Signals = new List<BacktestSignal>() }, RunStatus.Failed, warnings), diagnostic);
         }
         // The series cover the whole bar array, so each bar's context gets its own view bound to that bar (never a shared mutable cursor:
         // a strategy that keeps an old context must not gain access to later bars). With nothing declared there is nothing to bound.
@@ -160,7 +162,7 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
         }
 
         cancellationToken.ThrowIfCancellationRequested();
-        return new BacktestDiagnosedRun(BuildResult(input, configuration, strategy, s, runStatus), runDiagnostic);
+        return new BacktestDiagnosedRun(BuildResult(input, configuration, strategy, s, runStatus, warnings), runDiagnostic);
     }
 
     /// <summary>
@@ -181,6 +183,11 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
         CandleData bar = input.Bars[i];
         s.Operation = BacktestArithmeticOperation.Unknown;
 
+        decimal? maxParticipationRatio = configuration.MaxVolumeParticipationRatio;
+        decimal availableVolume = maxParticipationRatio.HasValue
+            ? Math.Floor(bar.Volume * maxParticipationRatio.Value)
+            : decimal.MaxValue;
+
         // Step 1: cancellations queued from the previous bar's Close are applied first (a cancellation before expiry wins), then the GTD expiry check ("i > ExpiryBar" is strictly greater - the expiry bar itself may still fill).
         // Dual pending-order slots (Y:\Temp\sa_implementation_plan_BacktestPositionDirectionReversal.md
         // section 2.3): each slot expires independently, exactly mirroring the old single-slot check.
@@ -193,7 +200,7 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
         // is enforced inside EvaluateStep2 itself: the pending Exit slot (if any) is always resolved
         // before the pending Entry slot is ever considered.
         int tradesBeforeStep2 = env.StopOnForcedLiquidation ? s.Trades.Count : 0;
-        bool insolventFromLiquidation = EvaluateStep2(s, i, bar, configuration);
+        bool insolventFromLiquidation = EvaluateStep2(s, i, bar, configuration, ref availableVolume);
         if (insolventFromLiquidation || (env.StopOnForcedLiquidation && s.Trades.Count > tradesBeforeStep2 && s.Trades[^1].IsForcedLiquidation))
         {
             // Flat immediately after a forced liquidation: HeldMargin=0, UnrealizedPnL=0, so Equity == Cash.
@@ -207,22 +214,76 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
         if (s.PendingExitOrderIndex != -1 && s.Orders[s.PendingExitOrderIndex].Type == OrderType.MarketOnClose && s.Orders[s.PendingExitOrderIndex].EarliestFillBar <= i)
         {
             s.Operation = BacktestArithmeticOperation.OrderFillPricing;
-            OrderFillOutcome mocExitOutcome = OrderFillEvaluator.EvaluateMarketOnClose(s.Orders[s.PendingExitOrderIndex], bar, configuration.SlippageRatio, configuration.CommissionFlat, configuration.CommissionPerUnit);
-            CommitOrRejectFill(s, i, bar, mocExitOutcome, configuration, isEntry: false);
+            decimal exitQty = Math.Abs(s.Q);
+            if (maxParticipationRatio.HasValue && (availableVolume <= 0m || exitQty > availableVolume))
+            {
+                s.Orders[s.PendingExitOrderIndex] = s.Orders[s.PendingExitOrderIndex] with { Status = OrderStatus.Rejected, RejectedReason = RejectedReason.InsufficientVolume };
+                s.PendingExitOrderIndex = -1;
+            }
+            else
+            {
+                if (maxParticipationRatio.HasValue) availableVolume -= exitQty;
+                OrderFillOutcome mocExitOutcome = OrderFillEvaluator.EvaluateMarketOnClose(s.Orders[s.PendingExitOrderIndex], bar, configuration.SlippageRatio, configuration.CommissionFlat, configuration.CommissionPerUnit);
+                CommitOrRejectFill(s, i, bar, mocExitOutcome, configuration, isEntry: false);
+            }
         }
         // An Entry (MOC included) is only ever admitted while Flat - the same rule EvaluateStep2 applies to every other Entry
         // type - so a MOC Entry waiting behind a still-open position must not overwrite it (it stays pending until Flat).
         if (s.Q == 0m && s.PendingEntryOrderIndex != -1 && s.Orders[s.PendingEntryOrderIndex].Type == OrderType.MarketOnClose && s.Orders[s.PendingEntryOrderIndex].EarliestFillBar <= i)
         {
             s.Operation = BacktestArithmeticOperation.OrderFillPricing;
-            OrderFillOutcome mocEntryOutcome = OrderFillEvaluator.EvaluateMarketOnClose(s.Orders[s.PendingEntryOrderIndex], bar, configuration.SlippageRatio, configuration.CommissionFlat, configuration.CommissionPerUnit);
-            CommitOrRejectFill(s, i, bar, mocEntryOutcome, configuration, isEntry: true);
+            decimal reqQty = s.Orders[s.PendingEntryOrderIndex].Quantity;
+            bool reject = false;
+            decimal? fillQty = null;
 
-            // A MOC Entry opens AT Close, so its only exposure is its Close state (G2-1): a breach there cannot be executed on this bar
-            // (no executable price is observable after Close), so the position waits as LiquidationPending for the next bar's Open.
-            if (s.Q != 0m && s.EntryBar == i)
+            if (maxParticipationRatio.HasValue)
             {
-                s.LiquidationPending = TryFindNewPositionBreach(s, configuration, bar, FillPathScanner.ClosePoint(bar.Close), out _, out _);
+                if (availableVolume <= 0m)
+                {
+                    reject = true;
+                }
+                else if (reqQty > availableVolume)
+                {
+                    if (configuration.VolumeConstraintMode == VolumeConstraintMode.RejectIfExceeds)
+                    {
+                        reject = true;
+                    }
+                    else // ClampAndCancelRemainder
+                    {
+                        decimal clampedQty = availableVolume;
+                        if (clampedQty < 1m)
+                        {
+                            reject = true;
+                        }
+                        else
+                        {
+                            fillQty = clampedQty;
+                            availableVolume = 0m;
+                        }
+                    }
+                }
+                else
+                {
+                    availableVolume -= reqQty;
+                }
+            }
+
+            if (reject)
+            {
+                s.Orders[s.PendingEntryOrderIndex] = s.Orders[s.PendingEntryOrderIndex] with { Status = OrderStatus.Rejected, RejectedReason = RejectedReason.InsufficientVolume };
+                s.PendingEntryOrderIndex = -1;
+            }
+            else
+            {
+                OrderFillOutcome mocEntryOutcome = OrderFillEvaluator.EvaluateMarketOnClose(s.Orders[s.PendingEntryOrderIndex], bar, configuration.SlippageRatio, configuration.CommissionFlat, configuration.CommissionPerUnit, fillQty);
+                CommitOrRejectFill(s, i, bar, mocEntryOutcome, configuration, isEntry: true);
+
+                // A MOC Entry opens AT Close, so its only exposure is its Close state (G2-1): a breach there cannot be executed on this bar
+                // (no executable price is observable after Close), so the position waits as LiquidationPending for the next bar's Open.
+                if (s.Q != 0m && s.EntryBar == i)
+                {
+                    s.LiquidationPending = TryFindNewPositionBreach(s, configuration, bar, FillPathScanner.ClosePoint(bar.Close), out _, out _);
+                }
             }
         }
 
@@ -234,6 +295,17 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
 
         // Step 5: mark to market at Close (section 1.5.5).
         s.Operation = BacktestArithmeticOperation.MarkToMarket;
+        if (s.Q < 0m && s.EntryBar < i && configuration.ShortBorrowAnnualRate > 0m && i > 0)
+        {
+            decimal deltaDays = (decimal)(bar.Timestamp.Ticks - input.Bars[i - 1].Timestamp.Ticks) / (decimal)TimeSpan.TicksPerDay;
+            if (deltaDays > 0m)
+            {
+                decimal borrowFee = Math.Abs(s.Q) * s.EntryPrice * configuration.ShortBorrowAnnualRate * (deltaDays / 365m);
+                s.Cash -= borrowFee;
+                s.TotalBorrowFeeAccum += borrowFee;
+            }
+        }
+
         decimal unrealizedPnL = s.Q * (bar.Close - s.EntryPrice);
         decimal equity = s.Cash + s.HeldMargin + unrealizedPnL;
         decimal marketValue = s.Q * bar.Close;
@@ -340,7 +412,7 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
     }
 
     private static BacktestResult BuildResult(BacktestInput input, BacktestConfiguration configuration, IBacktestStrategy strategy,
-        RunState s, RunStatus runStatus)
+        RunState s, RunStatus runStatus, ImmutableArray<BacktestWarning> warnings = default)
     {
         byte[] hash = ComputeReproducibilityHash(input, configuration, strategy.Name, s.Orders, s.Fills, s.Trades, s.EquityPoints, s.Signals);
 
@@ -354,7 +426,8 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
             runStatus,
             strategy.Name,
             hash,
-            isInsufficientData: false);
+            isInsufficientData: false,
+            warnings: warnings);
     }
 
     /// <summary>Mutable per-run account/bookkeeping state. Kept as a single object (not a long ref-parameter list) so the Step helpers below stay readable.</summary>
@@ -371,6 +444,7 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
         public decimal PositionLow;
         public decimal EntrySlippageAccum;
         public string CurrentEntryReason = string.Empty;
+        public decimal TotalBorrowFeeAccum;
 
         /// <summary>
         /// Dual pending-order slots (Y:\Temp\sa_implementation_plan_BacktestPositionDirectionReversal.md
@@ -420,7 +494,7 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
     /// </summary>
     private readonly struct BarSnapshot
     {
-        private readonly decimal _cash, _heldMargin, _q, _entryPrice, _entryFeeAccum, _positionHigh, _positionLow, _entrySlippageAccum;
+        private readonly decimal _cash, _heldMargin, _q, _entryPrice, _entryFeeAccum, _positionHigh, _positionLow, _entrySlippageAccum, _totalBorrowFeeAccum;
         private readonly int _entryBar, _pendingEntryIndex, _pendingExitIndex, _orderCount, _fillCount, _tradeCount, _equityCount, _signalCount;
         private readonly DateTime _entryTime;
         private readonly string _currentEntryReason;
@@ -436,6 +510,7 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
             _q = s.Q;
             _entryPrice = s.EntryPrice;
             _entryFeeAccum = s.EntryFeeAccum;
+            _totalBorrowFeeAccum = s.TotalBorrowFeeAccum;
             _entryBar = s.EntryBar;
             _entryTime = s.EntryTime;
             _positionHigh = s.PositionHigh;
@@ -477,6 +552,7 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
             s.Q = _q;
             s.EntryPrice = _entryPrice;
             s.EntryFeeAccum = _entryFeeAccum;
+            s.TotalBorrowFeeAccum = _totalBorrowFeeAccum;
             s.EntryBar = _entryBar;
             s.EntryTime = _entryTime;
             s.PositionHigh = _positionHigh;
@@ -553,7 +629,7 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
     /// the account insolvent (post-liquidation Equity &lt;= 0), signalling the caller to stop the run immediately per
     /// section 1.5.6's user-confirmed run-continuation rule.
     /// </summary>
-    private static bool EvaluateStep2(RunState s, int i, CandleData bar, BacktestConfiguration config)
+    private static bool EvaluateStep2(RunState s, int i, CandleData bar, BacktestConfiguration config, ref decimal availableVolume)
     {
         if (s.LiquidationPending)
         {
@@ -570,7 +646,7 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
             s.Operation = BacktestArithmeticOperation.LiquidationPricing;
             TradeSide openSide = s.Q > 0m ? TradeSide.Long : TradeSide.Short;
             decimal liquidationPrice = MarginLiquidationCalculator.ComputeLiquidationPrice(openSide, Math.Abs(s.Q), s.EntryPrice, s.Cash, s.HeldMargin, config.MaintenanceMarginRatio);
-            decimal? marginPosition = MarginLiquidationCalculator.TryFindBreachPosition(openSide, liquidationPrice, bar);
+            decimal? marginPosition = MarginLiquidationCalculator.TryFindBreachPosition(openSide, liquidationPrice, bar, config.IntrabarPathMode);
             // Owner decision (gap rule): when the Open is already at/through the threshold the position trades at the Open, not at the threshold.
             decimal rawLiquidationPrice = marginPosition == FillPathScanner.OpenPoint(bar.Open).Position ? bar.Open : liquidationPrice;
             bool exitEligible = s.PendingExitOrderIndex != -1
@@ -579,7 +655,7 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
             // Rank the pending Exit by where it would actually FILL (a StopLimit's Stop trigger alone closes nothing), not where it activates.
             s.Operation = BacktestArithmeticOperation.OrderFillPricing;
             PathPoint? exitFillPoint = exitEligible
-                ? OrderFillEvaluator.EvaluateFrom(s.Orders[s.PendingExitOrderIndex], bar, pathStart, 0m, 0m, 0m).FillPoint
+                ? OrderFillEvaluator.EvaluateFrom(s.Orders[s.PendingExitOrderIndex], bar, pathStart, 0m, 0m, 0m, null, config.IntrabarPathMode, openSide).FillPoint
                 : null;
 
             ExitWinner winner = ExitPrecedenceResolver.Resolve(exitFillPoint?.Position, marginPosition);
@@ -595,7 +671,7 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
             // be persisted even on a no-touch bar); if the "winning" order does not actually resolve into a
             // fill this bar (e.g. a StopLimit that only activates), a same-bar margin breach that exists
             // independently still applies as a fallback - see EvaluatePendingExitIfEligible's remarks.
-            if (exitEligible && EvaluatePendingExitIfEligible(s, i, bar, config, marginPosition, openSide, rawLiquidationPrice))
+            if (exitEligible && EvaluatePendingExitIfEligible(s, i, bar, config, marginPosition, openSide, rawLiquidationPrice, ref availableVolume))
             {
                 return true;
             }
@@ -607,7 +683,7 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
         // Section 2.4: only after the Exit slot has been fully resolved against this bar's O->H->L->C path
         // do we consider the Entry slot - and only once the account is actually Flat (whether it already
         // was, or just became so above), so a same-bar reversal's Entry funds-check reads the freed Cash.
-        return s.Q == 0m && EvaluatePendingEntryIfEligible(s, i, bar, config, pathStart);
+        return s.Q == 0m && EvaluatePendingEntryIfEligible(s, i, bar, config, pathStart, ref availableVolume);
     }
 
     /// <summary>
@@ -620,14 +696,14 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
     /// - because an order that only activates without filling never actually closes the position, so
     /// nothing should shield the account from a real maintenance-margin breach.
     /// </summary>
-    private static bool EvaluatePendingExitIfEligible(RunState s, int i, CandleData bar, BacktestConfiguration config, decimal? marginPosition, TradeSide openSide, decimal rawLiquidationPrice)
+    private static bool EvaluatePendingExitIfEligible(RunState s, int i, CandleData bar, BacktestConfiguration config, decimal? marginPosition, TradeSide openSide, decimal rawLiquidationPrice, ref decimal availableVolume)
     {
         int idx = s.PendingExitOrderIndex;
         bool eligible = idx != -1 && s.Orders[idx].Type != OrderType.MarketOnClose && s.Orders[idx].EarliestFillBar <= i;
         if (!eligible) return false;
 
         s.Operation = BacktestArithmeticOperation.OrderFillPricing;
-        OrderFillOutcome outcome = OrderFillEvaluator.Evaluate(s.Orders[idx], bar, config.SlippageRatio, config.CommissionFlat, config.CommissionPerUnit);
+        OrderFillOutcome outcome = OrderFillEvaluator.Evaluate(s.Orders[idx], bar, config.SlippageRatio, config.CommissionFlat, config.CommissionPerUnit, null, config.IntrabarPathMode, openSide);
         if (outcome.StopActivated != s.Orders[idx].StopActivated)
         {
             s.Orders[idx] = s.Orders[idx] with { StopActivated = outcome.StopActivated };
@@ -635,6 +711,24 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
 
         if (outcome.Filled)
         {
+            if (config.MaxVolumeParticipationRatio.HasValue)
+            {
+                decimal exitQty = Math.Abs(s.Q);
+                if (availableVolume <= 0m || exitQty > availableVolume)
+                {
+                    s.Orders[idx] = s.Orders[idx] with { Status = OrderStatus.Rejected, RejectedReason = RejectedReason.InsufficientVolume };
+                    s.PendingExitOrderIndex = -1;
+
+                    if (marginPosition is not null)
+                    {
+                        return ExecuteForcedLiquidation(s, i, bar, config, openSide, rawLiquidationPrice);
+                    }
+                    return false;
+                }
+
+                availableVolume -= exitQty;
+            }
+
             CommitExitFill(s, i, bar, outcome);
             return false;
         }
@@ -657,7 +751,7 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
     /// A position that opens is then assessed for margin liquidation from its own fill point onward. Returns true only when that
     /// liquidation leaves the account insolvent.
     /// </summary>
-    private static bool EvaluatePendingEntryIfEligible(RunState s, int i, CandleData bar, BacktestConfiguration config, PathPoint pathStart)
+    private static bool EvaluatePendingEntryIfEligible(RunState s, int i, CandleData bar, BacktestConfiguration config, PathPoint pathStart, ref decimal availableVolume)
     {
         int idx = s.PendingEntryOrderIndex;
         bool eligible = idx != -1 && s.Orders[idx].Type != OrderType.MarketOnClose && s.Orders[idx].EarliestFillBar <= i;
@@ -667,7 +761,8 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
         if (afterIntrabarExit && s.Orders[idx].Type != OrderType.Limit) return false;
 
         s.Operation = BacktestArithmeticOperation.OrderFillPricing;
-        ResidualFill residual = OrderFillEvaluator.EvaluateFrom(s.Orders[idx], bar, pathStart, config.SlippageRatio, config.CommissionFlat, config.CommissionPerUnit);
+        TradeSide? pendingSide = s.PendingEntrySide;
+        ResidualFill residual = OrderFillEvaluator.EvaluateFrom(s.Orders[idx], bar, pathStart, config.SlippageRatio, config.CommissionFlat, config.CommissionPerUnit, null, config.IntrabarPathMode, pendingSide);
         if (afterIntrabarExit && residual.FillPoint != pathStart) return false; // not marketable at the Exit's reference price
         OrderFillOutcome outcome = residual.Outcome;
         if (outcome.StopActivated != s.Orders[idx].StopActivated)
@@ -676,6 +771,44 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
         }
 
         if (!outcome.Filled || residual.FillPoint is not { } entryPoint) return false;
+
+        if (config.MaxVolumeParticipationRatio.HasValue)
+        {
+            if (availableVolume <= 0m)
+            {
+                s.Orders[idx] = s.Orders[idx] with { Status = OrderStatus.Rejected, RejectedReason = RejectedReason.InsufficientVolume };
+                s.PendingEntryOrderIndex = -1;
+                return false;
+            }
+
+            decimal reqQty = s.Orders[idx].Quantity;
+            if (reqQty > availableVolume)
+            {
+                if (config.VolumeConstraintMode == VolumeConstraintMode.RejectIfExceeds)
+                {
+                    s.Orders[idx] = s.Orders[idx] with { Status = OrderStatus.Rejected, RejectedReason = RejectedReason.InsufficientVolume };
+                    s.PendingEntryOrderIndex = -1;
+                    return false;
+                }
+                else // ClampAndCancelRemainder
+                {
+                    decimal clampedQty = availableVolume;
+                    if (clampedQty < 1m)
+                    {
+                        s.Orders[idx] = s.Orders[idx] with { Status = OrderStatus.Rejected, RejectedReason = RejectedReason.InsufficientVolume };
+                        s.PendingEntryOrderIndex = -1;
+                        return false;
+                    }
+
+                    outcome = OrderFillEvaluator.EvaluateFrom(s.Orders[idx], bar, pathStart, config.SlippageRatio, config.CommissionFlat, config.CommissionPerUnit, clampedQty, config.IntrabarPathMode, pendingSide).Outcome;
+                    availableVolume = 0m;
+                }
+            }
+            else
+            {
+                availableVolume -= reqQty;
+            }
+        }
 
         CommitEntryFill(s, i, bar, outcome, config);
         return s.Q != 0m && AssessNewPositionLiquidation(s, i, bar, config, entryPoint);
@@ -701,7 +834,7 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
         side = s.Q > 0m ? TradeSide.Long : TradeSide.Short;
         decimal liquidationPrice = MarginLiquidationCalculator.ComputeLiquidationPrice(side, Math.Abs(s.Q), s.EntryPrice, s.Cash, s.HeldMargin, config.MaintenanceMarginRatio);
         TouchDirection breachDirection = side == TradeSide.Long ? TouchDirection.Downward : TouchDirection.Upward;
-        PathPoint? breach = FillPathScanner.TryFindTouchFrom(bar.Open, bar.High, bar.Low, bar.Close, liquidationPrice, breachDirection, entryPoint);
+        PathPoint? breach = FillPathScanner.TryFindTouchFrom(bar.Open, bar.High, bar.Low, bar.Close, liquidationPrice, breachDirection, entryPoint, config.IntrabarPathMode, side);
         rawFillPrice = breach?.Price ?? liquidationPrice;
         return breach is not null;
     }
@@ -809,7 +942,7 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
     {
         s.Operation = BacktestArithmeticOperation.EntryAccounting;
         BacktestOrder order = s.Orders[s.PendingEntryOrderIndex];
-        decimal quantity = order.Quantity;
+        decimal quantity = outcome.FilledQuantity > 0m ? outcome.FilledQuantity : order.Quantity;
         decimal notional = quantity * outcome.FillPrice;
         decimal initialMarginRequired = notional * config.InitialMarginRatio;
 

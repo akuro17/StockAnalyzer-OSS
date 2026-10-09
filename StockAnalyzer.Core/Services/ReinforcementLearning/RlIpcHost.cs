@@ -335,6 +335,11 @@ internal sealed partial class RlIpcHost : IDisposable
             ["resources"] = new { processed_transitions = Transitions, episode_starts = EpisodeStarts, work = _work.Snapshot() },
             ["disclosure"] = RlFiles.Disclosure + (Continuous ? " " + RlContinuousContract.Disclosure : ""),
         };
+        if (_source.ShortHistoryEvaluation)
+        {
+            report[RlShortHistoryEvaluationContract.MetadataKey] = RlShortHistoryEvaluationContract.SpecificationId;
+            report[RlShortHistoryEvaluationContract.ReportKey] = RlConstraintEvaluation.ToWire(RlShortHistoryEvaluation.Create(_source, validation, oos, smoke));
+        }
         if (Continuous && _metadata.ContainsKey("diagnostics_specification_id")) report["diagnostics"] = CreateDiagnostics();
         if (ConstraintEvidence)
         {

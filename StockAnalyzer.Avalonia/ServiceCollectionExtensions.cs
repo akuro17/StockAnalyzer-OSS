@@ -31,6 +31,7 @@ public static class ServiceCollectionExtensions
         services.Configure<ChartDefaultSettings>(configuration.GetSection("Chart"));
         services.Configure<PredictionSettings>(configuration.GetSection("Prediction"));
         services.Configure<Core.Models.Settings.PredictionMonitoringSettings>(configuration.GetSection(Core.Models.Settings.PredictionMonitoringSettings.SectionName));
+        services.Configure<Core.Models.Settings.FileReplaceRetrySettings>(configuration.GetSection(Core.Models.Settings.FileReplaceRetrySettings.SectionName));
         services.Configure<MarketDataSettings>(configuration.GetSection("MarketDataSettings"));
         services.Configure<ScreenerSettings>(configuration.GetSection("Screener"));
         services.Configure<TickersSettings>(configuration.GetSection("Tickers"));
@@ -183,6 +184,10 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<Core.Services.ModelGenerationRegistry>(sp =>
         {
             var registry = new Core.Services.ModelGenerationRegistry(sp.GetRequiredService<Core.Services.IStockAnalyzerSettings>());
+            var replaceRetry = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<Core.Models.Settings.FileReplaceRetrySettings>>().Value;
+            var replaceRetryLogger = sp.GetService<ILogger<Core.Services.ModelGenerationRegistry>>();
+            foreach (var warning in Core.Models.Settings.FileReplaceRetrySettingsValidator.Validate(replaceRetry)) replaceRetryLogger?.LogWarning("{SettingWarning}", warning);
+            registry.ConfigureFileReplaceRetry(replaceRetry);
             registry.ConfigureRlArtifacts(Core.Common.PathDiscovery.ResolveDataPath(null, "Data"),
                 sp.GetRequiredService<Core.Services.ReinforcementLearning.RlArtifactSettings>());
             return registry;
@@ -191,6 +196,24 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<Core.Services.ReinforcementLearning.IRlModelGenerationRegistry>(sp => sp.GetRequiredService<Core.Services.ModelGenerationRegistry>());
         services.AddSingleton<Core.Services.ReinforcementLearning.IRlTrainingService, Core.Services.ReinforcementLearning.RlTrainingService>();
         services.AddSingleton<Core.Services.ReinforcementLearning.QValueService>();
+        services.AddSingleton<Core.Services.ReinforcementLearning.RlDialogDataService>();
+        // Portfolio RL: tunables from the "RlPortfolio" section; a value outside the hard bands stops the start-up with an exception naming the key.
+        var portfolioSettings = configuration.GetSection(Core.Models.Settings.RlPortfolioSettings.SectionName).Get<Core.Models.Settings.RlPortfolioSettings>()
+            ?? new Core.Models.Settings.RlPortfolioSettings();
+        _ = Core.Models.Settings.RlPortfolioSettingsValidator.Validate(portfolioSettings, Core.Models.ReinforcementLearning.RlTrainingValidation.FreezeLimits(continuous: true));
+        services.AddSingleton<Core.Services.ReinforcementLearning.IRlPortfolioService>(sp =>
+        {
+            var service = new Core.Services.ReinforcementLearning.RlPortfolioService(portfolioSettings, sp.GetRequiredService<Core.Services.TrainingJobGate>());
+            var portfolioLogger = sp.GetService<ILogger<Core.Services.ReinforcementLearning.RlPortfolioService>>();
+            foreach (var warning in service.Warnings) portfolioLogger?.LogWarning("{SettingWarning}", warning);
+            return service;
+        });
+        // Stored base models (fine-tune and evaluation without training) run on the same settings, the same data root and the same training gate as the portfolio service.
+        services.AddSingleton<Core.Services.ReinforcementLearning.IRlPortfolioTransferService>(sp =>
+            new Core.Services.ReinforcementLearning.RlPortfolioTransferService(portfolioSettings, sp.GetRequiredService<Core.Services.TrainingJobGate>()));
+        services.AddSingleton<Services.ITickerSourceResolver>(sp => new Services.TickerSourceResolver(
+            sp.GetRequiredService<Core.Services.IMarketDataProvider>(), sp.GetRequiredService<Core.Interfaces.IWatchlistManager>(),
+            sp.GetRequiredService<Services.ITickerStateStore>()));
         services.AddSingleton<Core.Services.ReinforcementLearning.IQValueService>(sp => sp.GetRequiredService<Core.Services.ReinforcementLearning.QValueService>());
         services.AddSingleton<Core.Services.IModelAnalysisService, Core.Services.ModelAnalysisService>();
         services.AddSingleton<Core.Services.IModelExplainabilityService, Core.Services.ModelExplainabilityService>();

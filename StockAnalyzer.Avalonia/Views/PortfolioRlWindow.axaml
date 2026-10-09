@@ -1,0 +1,484 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:StockAnalyzer.Avalonia.ViewModels"
+        xmlns:l="using:StockAnalyzer.Avalonia.Markup"
+        xmlns:ui="using:StockAnalyzer.Avalonia.Common"
+        xmlns:node="using:StockAnalyzer.Avalonia.ViewModels.TickerList"
+        x:Class="StockAnalyzer.Avalonia.Views.PortfolioRlWindow"
+        x:DataType="vm:PortfolioRlDialogViewModel"
+        AutomationProperties.AutomationId="{x:Static ui:PrlUiConstants.Window}"
+        Title="{l:Localize Prl.Title}"
+        Width="{x:Static ui:RlUiLayout.WindowWidth}"
+        Height="{x:Static ui:RlUiLayout.WindowHeight}"
+        MinWidth="{x:Static ui:RlUiLayout.MinimumWidth}"
+        MinHeight="{x:Static ui:RlUiLayout.MinimumHeight}"
+        FontSize="{DynamicResource BaseFontSize}"
+        Background="{DynamicResource Brush.Background.Primary}"
+        Foreground="{DynamicResource Brush.Text.Primary}"
+        ExtendClientAreaToDecorationsHint="True"
+        ExtendClientAreaTitleBarHeightHint="-1"
+        WindowStartupLocation="CenterOwner">
+  <Window.Styles>
+    <!-- Calendar picker button icon (the default glyph reads as a number); one resource file shared by this window. -->
+    <StyleInclude Source="avares://StockAnalyzer.Avalonia/Assets/CalendarDatePickerIcon.axaml" />
+    <Style Selector="Border.section">
+      <Setter Property="Padding" Value="{x:Static ui:RlUiLayout.SectionPadding}" />
+      <Setter Property="BorderThickness" Value="{x:Static ui:RlUiLayout.SectionBorder}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border.Primary}" />
+      <Setter Property="Background" Value="{DynamicResource Brush.Background.Secondary}" />
+      <Setter Property="CornerRadius" Value="{x:Static ui:PrlUiLayout.SectionCornerRadius}" />
+    </Style>
+    <Style Selector="TextBlock.heading">
+      <Setter Property="FontSize" Value="{DynamicResource BaseFontSize}" />
+      <Setter Property="FontWeight" Value="Bold" />
+      <Setter Property="Foreground" Value="{DynamicResource Brush.Accent.Primary}" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+      <Setter Property="HorizontalAlignment" Value="Left" />
+    </Style>
+    <Style Selector="TextBlock.label">
+      <Setter Property="FontSize" Value="{DynamicResource DetailFontSize}" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="HorizontalAlignment" Value="Left" />
+      <Setter Property="MaxWidth" Value="{x:Static ui:RlUiLayout.LabelMaximumWidth}" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+      <Setter Property="Margin" Value="{x:Static ui:PrlUiLayout.LabelMargin}" />
+    </Style>
+    <Style Selector="TextBlock.value">
+      <Setter Property="FontSize" Value="{DynamicResource DetailFontSize}" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+    <Style Selector="TextBlock.diagnostic">
+      <Setter Property="FontSize" Value="{DynamicResource HelperFontSize}" />
+      <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Secondary}" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+    <Style Selector="TextBlock.warning">
+      <Setter Property="FontSize" Value="{DynamicResource DetailFontSize}" />
+      <Setter Property="Foreground" Value="{DynamicResource Brush.Semantic.Warning}" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+    <Style Selector="TextBox">
+      <Setter Property="FontSize" Value="{DynamicResource BaseFontSize}" />
+      <Setter Property="MinWidth" Value="{x:Static ui:RlUiLayout.InputMinimumWidth}" />
+      <Setter Property="MaxWidth" Value="{x:Static ui:RlUiLayout.InputMaximumWidth}" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="Height" Value="{x:Static ui:PrlUiLayout.ControlHeight}" />
+    </Style>
+    <Style Selector="CalendarDatePicker">
+      <Setter Property="FontSize" Value="{DynamicResource BaseFontSize}" />
+      <Setter Property="MinWidth" Value="{x:Static ui:RlUiLayout.DateMinimumWidth}" />
+      <Setter Property="MaxWidth" Value="{x:Static ui:RlUiLayout.InputMaximumWidth}" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="Height" Value="{x:Static ui:PrlUiLayout.ControlHeight}" />
+      <Setter Property="Background" Value="{DynamicResource Brush.Background.Tertiary}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border.Primary}" />
+    </Style>
+    <Style Selector="CheckBox">
+      <Setter Property="FontSize" Value="{DynamicResource BaseFontSize}" />
+    </Style>
+    <Style Selector="RadioButton">
+      <Setter Property="FontSize" Value="{DynamicResource BaseFontSize}" />
+    </Style>
+    <!-- Button standard per SA_UI_SUBWINDOW_STANDARD 2.1: scoped by class (a global Button selector would corrupt the spinner buttons of composite controls). -->
+    <Style Selector="Button.action">
+      <Setter Property="FontSize" Value="{DynamicResource BaseFontSize}" />
+      <Setter Property="Height" Value="{x:Static ui:PrlUiLayout.ControlHeight}" />
+      <Setter Property="Padding" Value="{x:Static ui:PrlUiLayout.ActionPadding}" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="Theme" Value="{DynamicResource SecondaryButtonStyle}" />
+    </Style>
+    <!-- The ticker-list tree: rows of the ticker tab's list view (minimum height, expanded), written for this window only. -->
+    <Style Selector="TreeView.sources TreeViewItem">
+      <Setter Property="MinHeight" Value="{x:Static ui:PrlUiLayout.SourceRowHeight}" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="IsExpanded" Value="True" />
+    </Style>
+    <Style Selector="TreeView.sources TreeViewItem /template/ ContentPresenter#PART_HeaderPresenter">
+      <Setter Property="MinHeight" Value="{x:Static ui:PrlUiLayout.SourceRowHeight}" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+    </Style>
+  </Window.Styles>
+
+  <Window.KeyBindings>
+    <KeyBinding Gesture="Enter" Command="{Binding StartCommand}" />
+  </Window.KeyBindings>
+
+  <Border BorderBrush="{DynamicResource Brush.Border.Primary}" BorderThickness="{x:Static ui:RlUiLayout.SectionBorder}">
+    <Grid>
+      <Grid.RowDefinitions>
+        <RowDefinition Height="{x:Static ui:PrlUiLayout.HeaderRow}" />
+        <RowDefinition Height="{x:Static ui:PrlUiLayout.BodyRow}" />
+        <RowDefinition Height="{x:Static ui:PrlUiLayout.FooterRow}" />
+      </Grid.RowDefinitions>
+
+      <!-- Header (SA_UI_SUBWINDOW_STANDARD 1.1) -->
+      <Border Grid.Row="0" Background="{DynamicResource Brush.Background.Tertiary}" BorderBrush="{DynamicResource Brush.Border.Primary}"
+              BorderThickness="{x:Static ui:PrlUiLayout.HeaderBorder}" Padding="{x:Static ui:PrlUiLayout.BarPadding}"
+              PointerPressed="OnHeaderPointerPressed">
+        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="{x:Static ui:PrlUiLayout.ButtonSpacing}">
+          <PathIcon Data="{x:Static node:TickerGroupIconGeometries.Portfolio}"
+                    Width="{x:Static ui:PrlUiLayout.HeaderIconSize}" Height="{x:Static ui:PrlUiLayout.HeaderIconSize}"
+                    Foreground="{DynamicResource Brush.Accent.Primary}" />
+          <TextBlock Text="{l:Localize Prl.Title}" FontSize="{DynamicResource TitleFontSize}" FontWeight="SemiBold"
+                     Foreground="{DynamicResource Brush.Text.Primary}" VerticalAlignment="Center" />
+        </StackPanel>
+      </Border>
+
+      <!-- Body -->
+      <ScrollViewer Grid.Row="1" AllowAutoHide="False" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="{x:Static ui:RlUiLayout.OuterMargin}" Spacing="{x:Static ui:RlUiLayout.SectionGap}"
+                    MaxWidth="{x:Static ui:RlUiLayout.FormMaximumWidth}" HorizontalAlignment="Stretch">
+
+          <!-- Row A: ticker lists (left) | period over evaluation (right) -->
+          <Grid ColumnDefinitions="*,*" ColumnSpacing="{x:Static ui:RlUiLayout.ColumnSpacing}">
+            <Border Grid.Column="0" Classes="section">
+              <StackPanel Spacing="{x:Static ui:RlUiLayout.FieldGap}" IsEnabled="{Binding Editable}">
+                <TextBlock Classes="heading" Text="{l:Localize Prl.Section.Sources}" />
+                <TextBlock Classes="diagnostic" Text="{l:Localize Prl.Source.None}" IsVisible="{Binding !HasSources}" />
+                <TreeView Classes="sources" ItemsSource="{Binding SourceTree}" AutomationProperties.AutomationId="{x:Static ui:PrlUiConstants.Sources}"
+                          MaxHeight="{x:Static ui:PrlUiLayout.SourceListMaxHeight}" Background="Transparent" BorderThickness="0"
+                          ScrollViewer.AllowAutoHide="False" ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                  <TreeView.DataTemplates>
+                    <TreeDataTemplate DataType="vm:PortfolioSourceTreeItem" ItemsSource="{Binding Children}">
+                      <StackPanel Orientation="Horizontal" Spacing="{x:Static ui:RlUiLayout.FieldGap}">
+                        <CheckBox IsVisible="{Binding IsSelectable}" IsChecked="{Binding IsSelected, Mode=TwoWay}" Content="{Binding Name}"
+                                  AutomationProperties.Name="{Binding Name}" />
+                        <TextBlock IsVisible="{Binding !IsSelectable}" Classes="value" Text="{Binding Name}" VerticalAlignment="Center" />
+                        <PathIcon IsVisible="{Binding HasIcon}" Data="{Binding IconData}" VerticalAlignment="Center"
+                                  Width="{x:Static ui:PrlUiLayout.TreeIconSize}" Height="{x:Static ui:PrlUiLayout.TreeIconSize}"
+                                  Foreground="{DynamicResource Brush.Accent.Primary}" />
+                      </StackPanel>
+                    </TreeDataTemplate>
+                  </TreeView.DataTemplates>
+                </TreeView>
+              </StackPanel>
+            </Border>
+
+            <StackPanel Grid.Column="1" Spacing="{x:Static ui:RlUiLayout.SectionGap}">
+              <!-- Period -->
+              <Border Classes="section">
+                <StackPanel Spacing="{x:Static ui:RlUiLayout.FieldGap}" IsEnabled="{Binding Editable}">
+                  <TextBlock Classes="heading" Text="{l:Localize Prl.Section.Period}" />
+                  <StackPanel Spacing="{x:Static ui:PrlUiLayout.LabelGap}">
+                    <TextBlock Classes="label" Text="{l:Localize Rl.StartDate}" />
+                    <CalendarDatePicker Classes="isoDate isoDateHint" SelectedDate="{Binding StartDateAsDateTime, Mode=TwoWay}"
+                                        AutomationProperties.AutomationId="{x:Static ui:PrlUiConstants.StartDate}"
+                                        AutomationProperties.Name="{l:Localize Rl.StartDate}" />
+                    <TextBlock Classes="diagnostic" Text="{Binding StartMessage}" IsVisible="{Binding StartMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                    <Button Classes="action" Content="{l:Localize Prl.Start.Recalculate}" Command="{Binding RecalculateStartCommand}" HorizontalAlignment="Left"
+                            IsVisible="{Binding CanRecalculateStart}" AutomationProperties.AutomationId="{x:Static ui:PrlUiConstants.RecalculateStart}" />
+                  </StackPanel>
+                  <StackPanel Spacing="{x:Static ui:PrlUiLayout.LabelGap}">
+                    <TextBlock Classes="label" Text="{l:Localize Rl.EndDate}" />
+                    <CalendarDatePicker Classes="isoDate isoDateHint" SelectedDate="{Binding EndDateExclusiveAsDateTime, Mode=TwoWay}" DisplayDateEnd="{Binding EndDateLatest}"
+                                        AutomationProperties.AutomationId="{x:Static ui:PrlUiConstants.EndDate}"
+                                        AutomationProperties.Name="{l:Localize Rl.EndDate}" />
+                    <TextBlock Classes="diagnostic" Text="{l:Localize Prl.EndHint}" />
+                  </StackPanel>
+                  <TextBlock Classes="warning" Text="{Binding PeriodMessage}" IsVisible="{Binding PeriodMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                </StackPanel>
+              </Border>
+
+              <!-- Evaluation -->
+              <Border Classes="section">
+                <StackPanel Spacing="{x:Static ui:RlUiLayout.FieldGap}" IsEnabled="{Binding Editable}">
+                  <TextBlock Classes="heading" Text="{l:Localize Prl.Section.Evaluation}" />
+                  <CheckBox IsChecked="{Binding UseShortHistory}" AutomationProperties.AutomationId="{x:Static ui:PrlUiConstants.ShortHistory}"
+                            AutomationProperties.Name="{l:Localize Prl.ShortHistory}">
+                    <TextBlock Classes="value" Text="{l:Localize Prl.ShortHistory}" />
+                  </CheckBox>
+                  <CheckBox IsChecked="{Binding SymbolHoldout}" AutomationProperties.AutomationId="{x:Static ui:PrlUiConstants.SymbolHoldout}"
+                            AutomationProperties.Name="{l:Localize Prl.SymbolHoldout}">
+                    <TextBlock Classes="value" Text="{l:Localize Prl.SymbolHoldout}" />
+                  </CheckBox>
+                  <CheckBox IsChecked="{Binding SmokeOnly}" AutomationProperties.AutomationId="{x:Static ui:PrlUiConstants.Smoke}"
+                            AutomationProperties.Name="{l:Localize Rl.Smoke}">
+                    <TextBlock Classes="value" Text="{l:Localize Rl.Smoke}" />
+                  </CheckBox>
+                  <StackPanel Spacing="{x:Static ui:PrlUiLayout.LabelGap}">
+                    <TextBlock Classes="label" Text="{l:Localize Prl.HoldoutPercent}" />
+                    <TextBox Text="{Binding HoldoutPercentText, Mode=TwoWay}" IsEnabled="{Binding HoldoutPercentEditable}"
+                             AutomationProperties.AutomationId="{x:Static ui:PrlUiConstants.HoldoutPercent}" AutomationProperties.Name="{l:Localize Prl.HoldoutPercent}" />
+                  </StackPanel>
+                  <StackPanel Spacing="{x:Static ui:PrlUiLayout.LabelGap}">
+                    <TextBlock Classes="label" Text="{l:Localize Prl.MaxWeight}" />
+                    <TextBox Text="{Binding MaxWeightPercentText, Mode=TwoWay}"
+                             AutomationProperties.AutomationId="{x:Static ui:PrlUiConstants.MaxWeight}" AutomationProperties.Name="{l:Localize Prl.MaxWeight}" />
+                  </StackPanel>
+                  <TextBlock Classes="warning" Text="{Binding PercentMessage}" IsVisible="{Binding PercentMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                </StackPanel>
+              </Border>
+            </StackPanel>
+          </Grid>
+
+          <!-- Partition of the short-history evaluation: method and minimum bars (the Standard evaluation keeps its fixed minimum) -->
+          <Border Classes="section">
+            <StackPanel Spacing="{x:Static ui:RlUiLayout.FieldGap}">
+              <TextBlock Classes="heading" Text="{l:Localize Prl.Section.Partition}" />
+              <TextBlock Classes="diagnostic" Text="{Binding PartitionFixedText}" IsVisible="{Binding ShowPartitionFixed}" />
+              <StackPanel Spacing="{x:Static ui:RlUiLayout.FieldGap}" IsEnabled="{Binding PartitionEditable}">
+                <RadioButton GroupName="PrlPartition" IsChecked="{Binding IsRatioPartition, Mode=TwoWay}"
+                             AutomationProperties.AutomationId="{x:Static ui:PrlUiConstants.PartitionRatio}"
+                             AutomationProperties.Name="{l:Localize Prl.Partition.Ratio}">
+                  <TextBlock Classes="value" Text="{l:Localize Prl.Partition.Ratio}" />
+                </RadioButton>
+                <TextBlock Classes="diagnostic" Text="{Binding RatioHelp}" />
+                <RadioButton GroupName="PrlPartition" IsChecked="{Binding IsBlockCountPartition, Mode=TwoWay}"
+                             AutomationProperties.AutomationId="{x:Static ui:PrlUiConstants.PartitionBlockCount}"
+                             AutomationProperties.Name="{l:Localize Prl.Partition.BlockCount}">
+                  <TextBlock Classes="value" Text="{l:Localize Prl.Partition.BlockCount}" />
+                </RadioButton>
+                <TextBlock Classes="diagnostic" Text="{Binding BlockCountHelp}" />
+                <!-- Train / validation / test: the bars and the blocks of one item share a row (labels above, boxes below), the effective bars under them. -->
+                <StackPanel Spacing="{x:Static ui:PrlUiLayout.LabelGap}">
+                  <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" ColumnSpacing="{x:Static ui:RlUiLayout.ColumnSpacing}" RowSpacing="{x:Static ui:PrlUiLayout.LabelGap}">
+                    <TextBlock Grid.Row="0" Grid.Column="0" Classes="label" Text="{l:Localize Prl.Minimum.Train}" />
+                    <TextBox Grid.Row="1" Grid.Column="0" Text="{Binding MinimumTrainBarsText, Mode=TwoWay}" AutomationProperties.AutomationId="{x:Static ui:PrlUiConstants.MinimumTrain}"
+                             AutomationProperties.Name="{l:Localize Prl.Minimum.Train}" />
+                    <TextBlock Grid.Row="0" Grid.Column="1" Classes="label" Text="{l:Localize Prl.Blocks.Train}" />
+                    <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding TrainBlocksText, Mode=TwoWay}"
+                             AutomationProperties.AutomationId="{x:Static ui:PrlUiConstants.TrainBlocks}" AutomationProperties.Name="{l:Localize Prl.Blocks.Train}" />
+                  </Grid>
+                  <TextBlock Classes="diagnostic" Text="{Binding TrainBarsEffective}" />
+                </StackPanel>
+                <StackPanel Spacing="{x:Static ui:PrlUiLayout.LabelGap}">
+                  <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" ColumnSpacing="{x:Static ui:RlUiLayout.ColumnSpacing}" RowSpacing="{x:Static ui:PrlUiLayout.LabelGap}">
+                    <TextBlock Grid.Row="0" Grid.Column="0" Classes="label" Text="{l:Localize Prl.Minimum.Validation}" />
+                    <TextBox Grid.Row="1" Grid.Column="0" Text="{Binding MinimumValidationBarsText, Mode=TwoWay}" AutomationProperties.AutomationId="{x:Static ui:PrlUiConstants.MinimumValidation}"
+                             AutomationProperties.Name="{l:Localize Prl.Minimum.Validation}" />
+                    <TextBlock Grid.Row="0" Grid.Column="1" Classes="label" Text="{l:Localize Prl.Blocks.Validation}" />
+                    <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding ValidationBlocksText, Mode=TwoWay}"
+                             AutomationProperties.AutomationId="{x:Static ui:PrlUiConstants.ValidationBlocks}" AutomationProperties.Name="{l:Localize Prl.Blocks.Validation}" />
+                  </Grid>
+                  <TextBlock Classes="diagnostic" Text="{Binding ValidationBarsEffective}" />
+                </StackPanel>
+                <StackPanel Spacing="{x:Static ui:PrlUiLayout.LabelGap}">
+                  <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" ColumnSpacing="{x:Static ui:RlUiLayout.ColumnSpacing}" RowSpacing="{x:Static ui:PrlUiLayout.LabelGap}">
+                    <TextBlock Grid.Row="0" Grid.Column="0" Classes="label" Text="{l:Localize Prl.Minimum.Test}" />
+                    <TextBox Grid.Row="1" Grid.Column="0" Text="{Binding MinimumTestBarsText, Mode=TwoWay}" AutomationProperties.AutomationId="{x:Static ui:PrlUiConstants.MinimumTest}"
+                             AutomationProperties.Name="{l:Localize Prl.Minimum.Test}" />
+                    <TextBlock Grid.Row="0" Grid.Column="1" Classes="label" Text="{l:Localize Prl.Blocks.Test}" />
+                    <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding TestBlocksText, Mode=TwoWay}"
+                             AutomationProperties.AutomationId="{x:Static ui:PrlUiConstants.TestBlocks}" AutomationProperties.Name="{l:Localize Prl.Blocks.Test}" />
+                  </Grid>
+                  <TextBlock Classes="diagnostic" Text="{Binding TestBarsEffective}" />
+                </StackPanel>
+                <TextBlock Classes="warning" Text="{Binding MinimumBarsMessage}" IsVisible="{Binding MinimumBarsMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                <ItemsControl ItemsSource="{Binding PartitionNotices}" AutomationProperties.AutomationId="{x:Static ui:PrlUiConstants.PartitionNotices}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="x:String"><TextBlock Classes="warning" Text="{Binding}" /></DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
+            </StackPanel>
+          </Border>
+
+          <!-- Stored base model: train from scratch, fine-tune from a stored run, or only evaluate it; hidden when the application offers no stored-model service -->
+          <Border Classes="section" IsVisible="{Binding TransferAvailable}">
+            <StackPanel Spacing="{x:Static ui:RlUiLayout.FieldGap}" IsEnabled="{Binding Editable}">
+              <TextBlock Classes="heading" Text="{l:Localize Prl.Section.Transfer}" />
+              <TextBlock Classes="diagnostic" Text="{l:Localize Prl.Transfer.Help}" />
+              <RadioButton GroupName="PrlRunKind" IsChecked="{Binding IsScratchRun, Mode=TwoWay}"
+                           AutomationProperties.AutomationId="{x:Static ui:PrlUiConstants.RunKindScratch}" AutomationProperties.Name="{l:Localize Prl.Transfer.Scratch}">
+                <TextBlock Classes="value" Text="{l:Localize Prl.Transfer.Scratch}" />
+              </RadioButton>
+              <RadioButton GroupName="PrlRunKind" IsChecked="{Binding IsFineTuneRun, Mode=TwoWay}"
+                           AutomationProperties.AutomationId="{x:Static ui:PrlUiConstants.RunKindFineTune}" AutomationProperties.Name="{l:Localize Prl.Transfer.FineTune}">
+                <TextBlock Classes="value" Text="{l:Localize Prl.Transfer.FineTune}" />
+              </RadioButton>
+              <RadioButton GroupName="PrlRunKind" IsChecked="{Binding IsEvaluateBaseRun, Mode=TwoWay}"
+                           AutomationProperties.AutomationId="{x:Static ui:PrlUiConstants.RunKindEvaluateBase}" AutomationProperties.Name="{l:Localize Prl.Transfer.EvaluateBase}">
+                <TextBlock Classes="value" Text="{l:Localize Prl.Transfer.EvaluateBase}" />
+              </RadioButton>
+              <!-- Panel: capture a new one (default) or run again on a panel an earlier run stored -->
+              <StackPanel Spacing="{x:Static ui:PrlUiLayout.LabelGap}">
+                <TextBlock Classes="label" Text="{l:Localize Prl.Panel.Heading}" />
+                <TextBlock Classes="diagnostic" Text="{l:Localize Prl.Panel.Help}" />
+                <ComboBox ItemsSource="{Binding StoredPanels}" SelectedItem="{Binding SelectedStoredPanel, Mode=TwoWay}" HorizontalAlignment="Stretch"
+                          FontSize="{DynamicResource BaseFontSize}" IsEnabled="{Binding PanelSelectionEditable}"
+                          AutomationProperties.AutomationId="{x:Static ui:PrlUiConstants.StoredPanel}" AutomationProperties.Name="{l:Localize Prl.Panel.Heading}">
+                  <ComboBox.ItemTemplate>
+                    <DataTemplate x:DataType="vm:PortfolioStoredPanelRow"><TextBlock Classes="value" Text="{Binding Text}" /></DataTemplate>
+                  </ComboBox.ItemTemplate>
+                </ComboBox>
+                <TextBlock Classes="diagnostic" Classes.warning="{Binding StoredPanelFailed}" Text="{Binding StoredPanelMessage}" IsVisible="{Binding UseStoredPanel}"
+                           AutomationProperties.AutomationId="{x:Static ui:PrlUiConstants.StoredPanelMessage}" />
+              </StackPanel>
+              <StackPanel Spacing="{x:Static ui:PrlUiLayout.LabelGap}" IsVisible="{Binding ShowBaseSelection}">
+                <TextBlock Classes="label" Text="{l:Localize Prl.Transfer.Base}" />
+                <ComboBox ItemsSource="{Binding BaseRuns}" SelectedItem="{Binding SelectedBaseRun, Mode=TwoWay}" HorizontalAlignment="Stretch"
+                          FontSize="{DynamicResource BaseFontSize}" IsEnabled="{Binding BaseSelectionEditable}"
+                          AutomationProperties.AutomationId="{x:Static ui:PrlUiConstants.BaseRun}" AutomationProperties.Name="{l:Localize Prl.Transfer.Base}">
+                  <ComboBox.ItemTemplate>
+                    <DataTemplate x:DataType="vm:PortfolioBaseRunRow"><TextBlock Classes="value" Text="{Binding Text}" /></DataTemplate>
+                  </ComboBox.ItemTemplate>
+                </ComboBox>
+                <TextBlock Classes="diagnostic" Text="{l:Localize Prl.Transfer.NoBases}" IsVisible="{Binding NoBaseRuns}" />
+                <CheckBox IsChecked="{Binding FreezeEncoder}" IsVisible="{Binding ShowFreeze}"
+                          AutomationProperties.AutomationId="{x:Static ui:PrlUiConstants.FreezeEncoder}" AutomationProperties.Name="{l:Localize Prl.Transfer.Freeze}">
+                  <TextBlock Classes="value" Text="{l:Localize Prl.Transfer.Freeze}" />
+                </CheckBox>
+                <!-- One line for every admission state; a rejection takes the warning style (declared after the diagnostic style, so it wins). -->
+                <TextBlock Classes="diagnostic" Classes.warning="{Binding AdmissionRejected}" Text="{Binding AdmissionMessage}"
+                           AutomationProperties.AutomationId="{x:Static ui:PrlUiConstants.Admission}" />
+              </StackPanel>
+            </StackPanel>
+          </Border>
+
+          <!-- Compare two stored runs made on the same stored panel; hidden when the application offers no stored-model service -->
+          <Border Classes="section" IsVisible="{Binding TransferAvailable}">
+            <StackPanel Spacing="{x:Static ui:RlUiLayout.FieldGap}" IsEnabled="{Binding Editable}">
+              <TextBlock Classes="heading" Text="{l:Localize Prl.Compare.Section}" />
+              <TextBlock Classes="diagnostic" Text="{l:Localize Prl.Compare.Help}" />
+              <TextBlock Classes="diagnostic" Text="{l:Localize Prl.Compare.None}" IsVisible="{Binding NoComparableRuns}" />
+              <TextBlock Classes="label" Text="{l:Localize Prl.Compare.RunA}" />
+              <ComboBox ItemsSource="{Binding ComparableRuns}" SelectedItem="{Binding SelectedRunA, Mode=TwoWay}" HorizontalAlignment="Stretch"
+                        FontSize="{DynamicResource BaseFontSize}"
+                        AutomationProperties.AutomationId="{x:Static ui:PrlUiConstants.CompareRunA}" AutomationProperties.Name="{l:Localize Prl.Compare.RunA}">
+                <ComboBox.ItemTemplate>
+                  <DataTemplate x:DataType="vm:PortfolioComparableRunRow"><TextBlock Classes="value" Text="{Binding Text}" /></DataTemplate>
+                </ComboBox.ItemTemplate>
+              </ComboBox>
+              <TextBlock Classes="label" Text="{l:Localize Prl.Compare.RunB}" />
+              <ComboBox ItemsSource="{Binding ReferenceRuns}" SelectedItem="{Binding SelectedRunB, Mode=TwoWay}" HorizontalAlignment="Stretch"
+                        FontSize="{DynamicResource BaseFontSize}"
+                        AutomationProperties.AutomationId="{x:Static ui:PrlUiConstants.CompareRunB}" AutomationProperties.Name="{l:Localize Prl.Compare.RunB}">
+                <ComboBox.ItemTemplate>
+                  <DataTemplate x:DataType="vm:PortfolioComparableRunRow"><TextBlock Classes="value" Text="{Binding Text}" /></DataTemplate>
+                </ComboBox.ItemTemplate>
+              </ComboBox>
+              <TextBlock Classes="diagnostic" Text="{l:Localize Prl.Compare.NoReference}" IsVisible="{Binding NoReferenceRuns}" />
+              <Button Classes="action" Content="{l:Localize Prl.Compare.Button}" Command="{Binding CompareCommand}" HorizontalAlignment="Left"
+                      MinWidth="{x:Static ui:PrlUiLayout.ButtonMinimumWidth}" AutomationProperties.AutomationId="{x:Static ui:PrlUiConstants.Compare}" />
+              <TextBlock Classes="diagnostic warning" Text="{Binding ComparisonMessage}" IsVisible="{Binding HasComparisonMessage}"
+                         AutomationProperties.AutomationId="{x:Static ui:PrlUiConstants.ComparisonMessage}" />
+              <ItemsControl ItemsSource="{Binding ComparisonLines}" IsVisible="{Binding HasComparison}" AutomationProperties.AutomationId="{x:Static ui:PrlUiConstants.Comparison}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="x:String"><TextBlock Classes="value" Text="{Binding}" /></DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
+          </Border>
+
+          <!-- Initial equity and costs -->
+          <Border Classes="section">
+            <StackPanel Spacing="{x:Static ui:RlUiLayout.FieldGap}" IsEnabled="{Binding Editable}">
+              <TextBlock Classes="heading" Text="{l:Localize Prl.Section.Costs}" />
+              <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" ColumnSpacing="{x:Static ui:RlUiLayout.ColumnSpacing}" RowSpacing="{x:Static ui:RlUiLayout.RowSpacing}">
+                <StackPanel Spacing="{x:Static ui:PrlUiLayout.LabelGap}">
+                  <TextBlock Classes="label" Text="{l:Localize Rl.Capital}" />
+                  <TextBox Text="{Binding InitialCapitalText, Mode=TwoWay}" AutomationProperties.AutomationId="{x:Static ui:PrlUiConstants.Capital}"
+                           AutomationProperties.Name="{l:Localize Rl.Capital}" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Spacing="{x:Static ui:PrlUiLayout.LabelGap}">
+                  <TextBlock Classes="label" Text="{l:Localize Rl.FlatCost}" />
+                  <TextBox Text="{Binding CommissionFlatText, Mode=TwoWay}" AutomationProperties.AutomationId="{x:Static ui:PrlUiConstants.FlatCommission}"
+                           AutomationProperties.Name="{l:Localize Rl.FlatCost}" />
+                </StackPanel>
+                <StackPanel Grid.Row="1" Spacing="{x:Static ui:PrlUiLayout.LabelGap}">
+                  <TextBlock Classes="label" Text="{l:Localize Rl.UnitCost}" />
+                  <TextBox Text="{Binding CommissionPerUnitText, Mode=TwoWay}" AutomationProperties.AutomationId="{x:Static ui:PrlUiConstants.UnitCommission}"
+                           AutomationProperties.Name="{l:Localize Rl.UnitCost}" />
+                </StackPanel>
+                <StackPanel Grid.Row="1" Grid.Column="1" Spacing="{x:Static ui:PrlUiLayout.LabelGap}">
+                  <TextBlock Classes="label" Text="{l:Localize Rl.Slippage}" />
+                  <TextBox Text="{Binding SlippageRatioText, Mode=TwoWay}" AutomationProperties.AutomationId="{x:Static ui:PrlUiConstants.Slippage}"
+                           AutomationProperties.Name="{l:Localize Rl.Slippage}" />
+                </StackPanel>
+              </Grid>
+              <TextBlock Classes="warning" Text="{Binding CostsMessage}" IsVisible="{Binding CostsMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+            </StackPanel>
+          </Border>
+
+          <!-- Data check -->
+          <Border Classes="section">
+            <StackPanel Spacing="{x:Static ui:RlUiLayout.FieldGap}">
+              <TextBlock Classes="heading" Text="{l:Localize Prl.Section.Preflight}" />
+              <TextBlock Classes="value" Text="{Binding PreflightText}" AutomationProperties.AutomationId="{x:Static ui:PrlUiConstants.PreflightSummary}" />
+              <ItemsControl ItemsSource="{Binding Cells}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="x:String"><TextBlock Classes="value" Text="{Binding}" /></DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+              <Grid ColumnDefinitions="2*,4*,2*,2*,3*" IsVisible="{Binding HasSymbols}">
+                <TextBlock Classes="label" Text="{l:Localize Prl.Table.Symbol}" FontWeight="Bold" />
+                <TextBlock Grid.Column="1" Classes="label" Text="{l:Localize Prl.Table.Status}" FontWeight="Bold" />
+                <TextBlock Grid.Column="2" Classes="label" Text="{l:Localize Prl.Table.Bars}" FontWeight="Bold" />
+                <TextBlock Grid.Column="3" Classes="label" Text="{l:Localize Prl.Table.Needed}" FontWeight="Bold" />
+                <TextBlock Grid.Column="4" Classes="label" Text="{l:Localize Prl.Table.Role}" FontWeight="Bold" />
+              </Grid>
+              <ItemsControl ItemsSource="{Binding Symbols}" AutomationProperties.AutomationId="{x:Static ui:PrlUiConstants.SymbolTable}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="vm:PortfolioSymbolRow">
+                    <Grid ColumnDefinitions="2*,4*,2*,2*,3*" Margin="{x:Static ui:PrlUiLayout.TableRowMargin}">
+                      <TextBlock Classes="value" Text="{Binding Symbol}" />
+                      <StackPanel Grid.Column="1">
+                        <TextBlock Classes="value" Text="{Binding StatusText}" />
+                        <TextBlock Classes="diagnostic" Text="{Binding Detail}" IsVisible="{Binding HasDetail}" />
+                      </StackPanel>
+                      <TextBlock Grid.Column="2" Classes="value" Text="{Binding BarsInPeriod}" />
+                      <TextBlock Grid.Column="3" Classes="value" Text="{Binding RequiredBarsPerBlock}" />
+                      <TextBlock Grid.Column="4" Classes="value" Text="{Binding RoleText}" />
+                    </Grid>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+              <TextBlock Classes="diagnostic" Text="{l:Localize Prl.Role.Legend}" IsVisible="{Binding HasSymbols}" />
+              <CheckBox IsChecked="{Binding ExcludeUnavailable}" IsVisible="{Binding HasUnavailableSymbols}" IsEnabled="{Binding Editable}"
+                        AutomationProperties.AutomationId="{x:Static ui:PrlUiConstants.Exclude}" AutomationProperties.Name="{l:Localize Prl.Exclude}">
+                <TextBlock Classes="value" Text="{l:Localize Prl.Exclude}" />
+              </CheckBox>
+              <ItemsControl ItemsSource="{Binding Notices}" AutomationProperties.AutomationId="{x:Static ui:PrlUiConstants.Notices}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="x:String"><TextBlock Classes="warning" Text="{Binding}" /></DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+              <TextBlock Classes="warning" Text="{Binding BlockerText}" IsVisible="{Binding BlockerText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+            </StackPanel>
+          </Border>
+
+          <!-- Progress -->
+          <Border Classes="section">
+            <StackPanel Spacing="{x:Static ui:RlUiLayout.FieldGap}">
+              <TextBlock Classes="heading" Text="{l:Localize Prl.Section.Run}" />
+              <TextBlock Classes="value" Text="{Binding Message}" AutomationProperties.AutomationId="{x:Static ui:PrlUiConstants.Message}" />
+              <TextBlock Classes="diagnostic" Text="{Binding TechnicalDetails}" />
+            </StackPanel>
+          </Border>
+
+          <!-- Result -->
+          <Border Classes="section" IsVisible="{Binding HasResult}">
+            <StackPanel Spacing="{x:Static ui:RlUiLayout.FieldGap}">
+              <TextBlock Classes="heading" Text="{l:Localize Prl.Section.Result}" />
+              <ItemsControl ItemsSource="{Binding ResultLines}" AutomationProperties.AutomationId="{x:Static ui:PrlUiConstants.Result}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="x:String"><TextBlock Classes="value" Text="{Binding}" /></DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
+          </Border>
+        </StackPanel>
+      </ScrollViewer>
+
+      <!-- Footer (SA_UI_SUBWINDOW_STANDARD 1.1): status on the left, Start then Cancel on the right -->
+      <Border Grid.Row="2" Background="{DynamicResource Brush.Background.Tertiary}" BorderBrush="{DynamicResource Brush.Border.Primary}"
+              BorderThickness="{x:Static ui:PrlUiLayout.FooterBorder}" Padding="{x:Static ui:PrlUiLayout.BarPadding}">
+        <Grid ColumnDefinitions="Auto,*,Auto">
+          <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="{x:Static ui:RlUiLayout.FieldGap}">
+            <TextBlock Classes="label" Text="{l:Localize Rl.Ui.Field.Status}" Foreground="{DynamicResource Brush.Text.Secondary}" Margin="0" />
+            <TextBlock Classes="value" Text="{Binding StatusDisplay}" FontWeight="SemiBold" VerticalAlignment="Center"
+                       AutomationProperties.AutomationId="{x:Static ui:PrlUiConstants.Status}" />
+          </StackPanel>
+          <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Spacing="{x:Static ui:PrlUiLayout.ButtonSpacing}">
+            <Button Classes="action" Content="{l:Localize Prl.Start}" Command="{Binding StartCommand}" Theme="{DynamicResource PrimaryButtonStyle}" FontWeight="Bold"
+                    MinWidth="{x:Static ui:PrlUiLayout.ButtonMinimumWidth}" AutomationProperties.AutomationId="{x:Static ui:PrlUiConstants.Start}" />
+            <Button Classes="action" Content="{l:Localize Rl.Cancel}" Command="{Binding CancelCommand}" IsVisible="{Binding IsBusy}"
+                    MinWidth="{x:Static ui:PrlUiLayout.ButtonMinimumWidth}" AutomationProperties.AutomationId="{x:Static ui:PrlUiConstants.Cancel}" />
+          </StackPanel>
+        </Grid>
+      </Border>
+    </Grid>
+  </Border>
+</Window>

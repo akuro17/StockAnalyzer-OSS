@@ -73,6 +73,7 @@
                     <ContentPresenter Name="PART_ContentPresenter"
                                       Content="{TemplateBinding Content}"
                                       ContentTemplate="{TemplateBinding ContentTemplate}"
+                                      RecognizesAccessKey="True"
                                       HorizontalAlignment="Center"
                                       VerticalAlignment="Center"/>
                 </Border>

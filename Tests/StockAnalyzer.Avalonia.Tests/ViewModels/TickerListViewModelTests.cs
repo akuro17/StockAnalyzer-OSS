@@ -30,7 +30,8 @@ public class TickerListViewModelTests
 
     internal static TickerListViewModel CreateViewModel(
         IMarketDataProvider marketDataProvider,
-        StockAnalyzer.Avalonia.Tests.Services.SynchronousDispatcherService dispatcher)
+        StockAnalyzer.Avalonia.Tests.Services.SynchronousDispatcherService dispatcher,
+        IMessenger? messenger = null)
     {
         var mockWatchlistManager = new Mock<IWatchlistManager>();
         mockWatchlistManager.Setup(w => w.GetAllProfiles()).Returns(new List<StockAnalyzer.Core.Models.Watchlist.WatchlistProfile>());
@@ -38,7 +39,7 @@ public class TickerListViewModelTests
         return new TickerListViewModel(
             marketDataProvider: marketDataProvider,
             pythonService: null!,
-            messenger: WeakReferenceMessenger.Default,
+            messenger: messenger ?? WeakReferenceMessenger.Default,
             dispatcherService: dispatcher,
             watchlistManager: mockWatchlistManager.Object,
             portfolioManager: null!,

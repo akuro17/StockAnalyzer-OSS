@@ -1032,19 +1032,19 @@ def _publish_release_bundle(release_path: Path, staged_metrics: Path,
             operations.append((model_copy, out_path))
             for source, destination in operations:
                 attempted.append(destination)
-                os.replace(source, destination)
+                checkpoints.replace_with_retry(source, destination)
             if scaler_copy is None and scaler_path.exists():
                 attempted.append(scaler_path)
-                os.replace(scaler_path, stage / "retired.scaler.json")
+                checkpoints.replace_with_retry(scaler_path, stage / "retired.scaler.json")
             if analysis_copy is None and analysis_path.exists():
                 attempted.append(analysis_path)
-                os.replace(analysis_path, stage / "retired.analysis.json")
+                checkpoints.replace_with_retry(analysis_path, stage / "retired.analysis.json")
             if calibration_copy is None and calibration_path.exists():
                 attempted.append(calibration_path)
-                os.replace(calibration_path, stage / "retired.calibration.json")
+                checkpoints.replace_with_retry(calibration_path, stage / "retired.calibration.json")
             if explain_copy is None and explain_path.exists():
                 attempted.append(explain_path)
-                os.replace(explain_path, stage / "retired.explain.json")
+                checkpoints.replace_with_retry(explain_path, stage / "retired.explain.json")
         except OSError as publish_error:
             restoration_errors = []
             for destination in reversed(attempted):
@@ -1052,7 +1052,7 @@ def _publish_release_bundle(release_path: Path, staged_metrics: Path,
                     if destination in backups:
                         restore_copy = stage / ("restore_" + destination.name)
                         shutil.copy2(backups[destination], restore_copy)
-                        os.replace(restore_copy, destination)
+                        checkpoints.replace_with_retry(restore_copy, destination)
                     else:
                         destination.unlink(missing_ok=True)
                 except OSError as restore_error:

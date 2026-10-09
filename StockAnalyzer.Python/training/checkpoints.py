@@ -6,7 +6,9 @@ import hashlib
 import json
 import os
 import re
+import sys
 import tempfile
+import time
 import uuid
 from pathlib import Path
 
@@ -23,6 +25,19 @@ _HASH = re.compile(r"[0-9a-f]{64}\Z")
 _RUN = re.compile(r"[A-Za-z0-9_-]+\Z")
 _MODULE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*(?:\.(?:[A-Za-z_][A-Za-z0-9_]*|[0-9]+))*\Z")
 
+# Windows briefly denies replacing a file that a scanner or watcher has just opened (WinError 5 access denied,
+# WinError 32 sharing violation). The replace is retried a bounded number of times; every other failure is final.
+# Tunable operational values (environment variables, the Python-side configuration channel) with a three-tier check:
+# outside the hard band the process fails naming the key, outside the standard band it runs and warns once.
+REPLACE_ATTEMPTS_ENV = "SA_CHECKPOINT_REPLACE_ATTEMPTS"
+REPLACE_DELAY_MS_ENV = "SA_CHECKPOINT_REPLACE_DELAY_MS"
+REPLACE_ATTEMPTS_DEFAULT, REPLACE_ATTEMPTS_HARD, REPLACE_ATTEMPTS_STANDARD = 10, (1, 50), (1, 20)
+REPLACE_DELAY_MS_DEFAULT, REPLACE_DELAY_MS_HARD, REPLACE_DELAY_MS_STANDARD = 100, (1, 1000), (10, 500)
+# Safety bound: the checkpoint is saved inside the training loop, so one failing save may never stall it for longer.
+REPLACE_TOTAL_WAIT_MAX_MS = 10_000
+_LOCK_WINERRORS = (5, 32)
+_IS_WINDOWS = os.name == "nt"
+
 
 def canonical(value) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
@@ -36,6 +51,50 @@ def hash_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def resolve_band(name: str, default: int, hard: tuple[int, int], standard: tuple[int, int]) -> int:
+    """Read an integer setting from the environment: *default* if unset, ValueError outside *hard*, a warning outside *standard*."""
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    if re.fullmatch(r"[+-]?[0-9]+", raw.strip()) is None:
+        raise ValueError(f"{name} must be an integer, got {raw!r}")
+    value = int(raw)
+    if not hard[0] <= value <= hard[1]:
+        raise ValueError(f"{name}={value} is outside the allowed range {hard[0]}..{hard[1]}")
+    if not standard[0] <= value <= standard[1]:
+        print(f"WARNING: {name}={value} is outside the standard range {standard[0]}..{standard[1]}", file=sys.stderr)
+    return value
+
+
+def resolve_replace_policy() -> tuple[int, int]:
+    """The (attempts, delay in milliseconds) of a checkpoint replace, validated as one policy."""
+    attempts = resolve_band(REPLACE_ATTEMPTS_ENV, REPLACE_ATTEMPTS_DEFAULT, REPLACE_ATTEMPTS_HARD, REPLACE_ATTEMPTS_STANDARD)
+    delay = resolve_band(REPLACE_DELAY_MS_ENV, REPLACE_DELAY_MS_DEFAULT, REPLACE_DELAY_MS_HARD, REPLACE_DELAY_MS_STANDARD)
+    if attempts * delay > REPLACE_TOTAL_WAIT_MAX_MS:
+        raise ValueError(f"{REPLACE_ATTEMPTS_ENV} x {REPLACE_DELAY_MS_ENV} = {attempts * delay} ms exceeds {REPLACE_TOTAL_WAIT_MAX_MS} ms")
+    return attempts, delay
+
+
+REPLACE_ATTEMPTS, REPLACE_DELAY_MS = resolve_replace_policy()
+
+
+def replace_with_retry(source, target, sleep=time.sleep) -> None:
+    for attempt in range(1, REPLACE_ATTEMPTS + 1):
+        try:
+            os.replace(source, target)
+            return
+        except PermissionError as error:
+            if not _IS_WINDOWS or getattr(error, "winerror", None) not in _LOCK_WINERRORS:
+                raise
+            if attempt == REPLACE_ATTEMPTS:
+                raise PermissionError(error.errno, f"{error.strerror} (gave up after {attempt} attempts)",
+                                      error.filename, error.winerror, error.filename2) from error
+            if attempt == 1:
+                print(f"WARNING: replacing {target} was denied; retrying up to {REPLACE_ATTEMPTS} attempts "
+                      f"every {REPLACE_DELAY_MS} ms", file=sys.stderr)
+            sleep(REPLACE_DELAY_MS / 1000)
+
+
 def atomic_json(path: Path, value) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -45,7 +104,7 @@ def atomic_json(path: Path, value) -> None:
             stream.write(canonical(value))
             stream.flush()
             os.fsync(stream.fileno())
-        os.replace(name, path)
+        replace_with_retry(name, path)
     finally:
         if os.path.exists(name):
             os.unlink(name)
@@ -244,7 +303,7 @@ class Session:
                 if hash_file(blob) != digest:
                     raise ValueError("immutable checkpoint blob was corrupted")
             else:
-                os.replace(temporary, blob)
+                replace_with_retry(temporary, blob)
             pointer = dict(schema_version=SCHEMA_VERSION, slot=slot, blob=blob.name,
                            sha256=digest, context=self.context, **summary)
             path = self.root / (slot + ".json")

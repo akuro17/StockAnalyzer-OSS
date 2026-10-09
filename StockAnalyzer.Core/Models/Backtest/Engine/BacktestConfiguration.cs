@@ -141,6 +141,33 @@ public sealed class BacktestConfiguration
             : throw new ArgumentOutOfRangeException(nameof(LiquidationPenaltyRatio), value, "LiquidationPenaltyRatio must satisfy 0 <= p < 1.");
     }
 
+    private readonly decimal _shortBorrowAnnualRate;
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public decimal ShortBorrowAnnualRate
+    {
+        get => _shortBorrowAnnualRate;
+        init => _shortBorrowAnnualRate = value >= BacktestConfigurationBounds.InclusiveRatioMinimum
+            && value <= BacktestConfigurationBounds.InclusiveRatioMaximum
+            ? value
+            : throw new ArgumentOutOfRangeException(nameof(ShortBorrowAnnualRate), value, "ShortBorrowAnnualRate must satisfy 0 <= r <= 1.");
+    }
+
+    [JsonIgnore]
+    public VolumeConstraintMode VolumeConstraintMode { get; init; } = VolumeConstraintMode.RejectIfExceeds;
+
+    private readonly decimal? _maxVolumeParticipationRatio;
+    [JsonIgnore]
+    public decimal? MaxVolumeParticipationRatio
+    {
+        get => _maxVolumeParticipationRatio;
+        init => _maxVolumeParticipationRatio = value is null || (value > BacktestConfigurationBounds.InclusiveRatioMinimum && value <= BacktestConfigurationBounds.InclusiveRatioMaximum)
+            ? value
+            : throw new ArgumentOutOfRangeException(nameof(MaxVolumeParticipationRatio), value, "MaxVolumeParticipationRatio must be in (0, 1].");
+    }
+
+    [JsonIgnore]
+    public IntrabarPathMode IntrabarPathMode { get; init; } = IntrabarPathMode.DeterministicCandleShape;
+
     /// <summary>
     /// Cross-property checks that require both sides to already hold their final value.
     /// Must be called after construction (BacktestInput's validation pipeline calls this).
@@ -150,6 +177,26 @@ public sealed class BacktestConfiguration
         if (!Enum.IsDefined(ExecutionModel))
         {
             throw new ArgumentOutOfRangeException(nameof(ExecutionModel), ExecutionModel, "Unknown ExecutionModel.");
+        }
+
+        if (!Enum.IsDefined(VolumeConstraintMode))
+        {
+            throw new ArgumentOutOfRangeException(nameof(VolumeConstraintMode), VolumeConstraintMode, "Unknown VolumeConstraintMode.");
+        }
+
+        if (!Enum.IsDefined(IntrabarPathMode))
+        {
+            throw new ArgumentOutOfRangeException(nameof(IntrabarPathMode), IntrabarPathMode, "Unknown IntrabarPathMode.");
+        }
+
+        if (MaxVolumeParticipationRatio is { } ratio && (ratio <= BacktestConfigurationBounds.InclusiveRatioMinimum || ratio > BacktestConfigurationBounds.InclusiveRatioMaximum))
+        {
+            throw new ArgumentOutOfRangeException(nameof(MaxVolumeParticipationRatio), ratio, "MaxVolumeParticipationRatio must be in (0, 1].");
+        }
+
+        if (ShortBorrowAnnualRate is < BacktestConfigurationBounds.InclusiveRatioMinimum or > BacktestConfigurationBounds.InclusiveRatioMaximum)
+        {
+            throw new ArgumentOutOfRangeException(nameof(ShortBorrowAnnualRate), ShortBorrowAnnualRate, "ShortBorrowAnnualRate must satisfy 0 <= r <= 1.");
         }
 
         if (MaintenanceMarginRatio >= InitialMarginRatio)

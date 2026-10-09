@@ -115,6 +115,7 @@ public partial class ColumnChooserViewModel : ColumnPickerViewModelBase<ColumnIt
 
     public bool IsTemplatesCategory => SelectedCategory == ColumnCategory.Templates;
     public bool IsNotTemplatesCategory => SelectedCategory != ColumnCategory.Templates;
+    public bool HasMetricsCategory => AllItems.Any(item => item.Category == ColumnCategory.Metrics);
 
     protected override void UpdateFilteredItems()
     {

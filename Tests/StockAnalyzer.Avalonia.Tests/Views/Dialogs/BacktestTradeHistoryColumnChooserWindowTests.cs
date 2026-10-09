@@ -93,20 +93,23 @@ public class BacktestTradeHistoryColumnChooserWindowTests
         }
     }
 
+    /// <summary>The number of trade-history columns: the production list is the only owner, so the tests follow it instead of repeating a number.</summary>
+    private static int KnownCount => BacktestTradeHistoryColumnChooserViewModel.KnownColumns.Count;
+
     [Fact]
-    public void ViewModel_InitializesWithAll9ColumnsByDefault()
+    public void ViewModel_InitializesWithAllKnownColumnsByDefault()
     {
         var vm = new BacktestTradeHistoryColumnChooserViewModel();
-        Assert.Equal(9, vm.AllItems.Count);
+        Assert.Equal(KnownCount, vm.AllItems.Count);
         Assert.All(vm.AllItems, item => Assert.True(item.IsActive));
-        Assert.Equal(9, vm.GetActiveColumnIds().Count);
+        Assert.Equal(KnownCount, vm.GetActiveColumnIds().Count);
     }
 
     [Fact]
     public void ViewModel_CategoryFiltering_ActiveVsAll()
     {
         var vm = new BacktestTradeHistoryColumnChooserViewModel(new[] { "TradeId", "Side", "ClosedNet" });
-        Assert.Equal(9, vm.AllItems.Count);
+        Assert.Equal(KnownCount, vm.AllItems.Count);
 
         // SelectedCategory defaults to Active: only 3 active items shown
         Assert.Equal(BacktestTradeColumnCategory.Active, vm.SelectedCategory);
@@ -115,9 +118,9 @@ public class BacktestTradeHistoryColumnChooserWindowTests
         Assert.Contains(vm.FilteredItems, x => x.ColumnId == "Side");
         Assert.Contains(vm.FilteredItems, x => x.ColumnId == "ClosedNet");
 
-        // Switch to All: all 9 items shown
+        // Switch to All: every known item is shown
         vm.SelectedCategory = BacktestTradeColumnCategory.All;
-        Assert.Equal(9, vm.FilteredItems.Count);
+        Assert.Equal(KnownCount, vm.FilteredItems.Count);
     }
 
     [Fact]
@@ -127,11 +130,14 @@ public class BacktestTradeHistoryColumnChooserWindowTests
         vm.SelectedCategory = BacktestTradeColumnCategory.All;
 
         vm.SearchQuery = "Price";
-        Assert.Equal(2, vm.FilteredItems.Count); // EntryPrice, ExitPrice
+        var expected = BacktestTradeHistoryColumnChooserViewModel.KnownColumns.Where(c => c.Id.Contains("Price", StringComparison.OrdinalIgnoreCase)).Select(c => c.Id).ToArray();
+        Assert.Contains("EntryPrice", expected);
+        Assert.Contains("ExitPrice", expected);
+        Assert.Equal(expected, vm.FilteredItems.Select(x => x.ColumnId).OrderBy(id => Array.IndexOf(expected, id)).ToArray());
         Assert.All(vm.FilteredItems, x => Assert.Contains("Price", x.ColumnId, StringComparison.OrdinalIgnoreCase));
 
         vm.SearchQuery = string.Empty;
-        Assert.Equal(9, vm.FilteredItems.Count);
+        Assert.Equal(KnownCount, vm.FilteredItems.Count);
     }
 
     [Fact]
@@ -190,11 +196,11 @@ public class BacktestTradeHistoryColumnChooserWindowTests
             exporter.Object,
             dialog.Object);
 
-        // Default: all 9 visible
+        // Default: every known column is visible
         Assert.True(vm.IsTradeIdVisible);
         Assert.True(vm.IsSideVisible);
         Assert.True(vm.IsClosedNetVisible);
-        Assert.Equal(9, vm.ActiveTradeColumns.Count);
+        Assert.Equal(KnownCount, vm.ActiveTradeColumns.Count);
 
         // Hide Side and EntryPrice
         vm.SetActiveTradeColumns(new[] { "TradeId", "EntryTime", "ClosedNet" });
@@ -286,7 +292,7 @@ public class BacktestTradeHistoryColumnChooserWindowTests
     public void ViewModel_DuplicateActiveColumns_FilteredDefensively()
     {
         var vm = new BacktestTradeHistoryColumnChooserViewModel(new[] { "TradeId", "TradeId", "Side" });
-        Assert.Equal(9, vm.AllItems.Count);
+        Assert.Equal(KnownCount, vm.AllItems.Count);
         Assert.Equal(2, vm.GetActiveColumnIds().Count);
         Assert.Equal(new[] { "TradeId", "Side" }, vm.GetActiveColumnIds());
     }

@@ -59,7 +59,7 @@ public sealed record RlPresentation(string ModelId, string RequestKey, string Le
         string Percentage(decimal? value, int decimals) => value.HasValue
             ? (value.Value * 100m).ToString("F" + decimals, CultureInfo.CurrentCulture) + "%" : localization.GetString("Rl.State.Unavailable");
         var control = readout.SelectedPolicyControl;
-        return string.Format(CultureInfo.CurrentCulture, localization.GetString("Rl.PolicyControlReadout"), snapshot.PolicyId,
+        return string.Format(CultureInfo.CurrentCulture, localization.GetString("Rl.PolicyControlReadout"), RlUiDisplay.Policy(snapshot.PolicyId, localization),
             localization.GetString("Rl." + (readout.PolicyAction ?? snapshot.SelectedAction)),
             Percentage(control?.SizeRatio, RlContract.SizeDisplayDecimals), Percentage(control?.StopDistance, RlContract.StopDisplayDecimals),
             localization.GetString(control is null ? "Rl.State.Unavailable"
@@ -71,15 +71,29 @@ public sealed record RlPresentation(string ModelId, string RequestKey, string Le
             + " " + localization.GetString("Rl.ControlMeaning");
     }
 
+    private static string FormatDistribution(string label, RlReturnDistribution values, StockAnalyzer.Core.Interfaces.ILocalizationService localization)
+        => string.Format(CultureInfo.CurrentCulture,
+            localization.GetString("Rl.AllBlockDistribution"), label, values.Count,
+            values.Count == 0 ? "—" : (values.Mean * 100m).ToString("F" + RlContract.DisplayDecimals, CultureInfo.CurrentCulture),
+            values.Count == 0 ? "—" : (values.Median * 100m).ToString("F" + RlContract.DisplayDecimals, CultureInfo.CurrentCulture),
+            values.Count == 0 ? "—" : (values.Minimum * 100m).ToString("F" + RlContract.DisplayDecimals, CultureInfo.CurrentCulture),
+            values.Count == 0 ? "—" : (values.Maximum * 100m).ToString("F" + RlContract.DisplayDecimals, CultureInfo.CurrentCulture),
+            values.Count == 0 ? "—" : (values.PositiveRate * 100m).ToString("F" + RlContract.DisplayDecimals, CultureInfo.CurrentCulture));
+
+    public static string FormatShortHistory(RlShortHistoryEvaluationReport report, StockAnalyzer.Core.Interfaces.ILocalizationService localization)
+    {
+        var lines = new System.Collections.Generic.List<string> { localization.GetString("Rl.ShortHistoryMode"),
+            string.Format(CultureInfo.CurrentCulture, localization.GetString("Rl.ShortHistoryCounts"),
+                report.BlockCount.Train, report.BlockCount.Validation, report.BlockCount.Oos),
+            FormatDistribution(localization.GetString("Rl.ValidationActor"), report.Validation, localization) };
+        if (report.Oos is { } oos) lines.Add(FormatDistribution(localization.GetString("Rl.OosActor"), oos, localization));
+        lines.Add(localization.GetString("Rl.ShortHistoryDisclosure"));
+        return string.Join(Environment.NewLine, lines);
+    }
+
     public static string FormatAllBlocks(RlAllBlockEvaluationReport report, StockAnalyzer.Core.Interfaces.ILocalizationService localization)
     {
-        string Distribution(string label, RlReturnDistribution values) => string.Format(CultureInfo.CurrentCulture,
-            localization.GetString("Rl.AllBlockDistribution"), label, values.Count,
-            (values.Mean * 100m).ToString("F" + RlContract.DisplayDecimals, CultureInfo.CurrentCulture),
-            (values.Median * 100m).ToString("F" + RlContract.DisplayDecimals, CultureInfo.CurrentCulture),
-            (values.Minimum * 100m).ToString("F" + RlContract.DisplayDecimals, CultureInfo.CurrentCulture),
-            (values.Maximum * 100m).ToString("F" + RlContract.DisplayDecimals, CultureInfo.CurrentCulture),
-            (values.PositiveRate * 100m).ToString("F" + RlContract.DisplayDecimals, CultureInfo.CurrentCulture));
+        string Distribution(string label, RlReturnDistribution values) => FormatDistribution(label, values, localization);
         var lines = new System.Collections.Generic.List<string> { localization.GetString("Rl.AllBlockMode"),
             Distribution(localization.GetString("Rl.ValidationActor"), report.Validation),
             Distribution(localization.GetString("Rl.PairedValidation"), report.PairedValidationDelta) };
@@ -100,23 +114,23 @@ public sealed record RlPresentation(string ModelId, string RequestKey, string Le
             Entries(localization.GetString("Rl.OosActor"), report.Oos),
         };
         foreach (var policy in report.BaselinePolicies)
-            lines.Add(Entries(policy.Partition + "/" + policy.PolicyId, policy.Entries));
+            lines.Add(Entries(RlUiDisplay.Partition(policy.Partition, localization) + "/" + RlUiDisplay.Policy(policy.PolicyId, localization), policy.Entries));
         foreach (var partition in report.Coverage.Partitions)
-            lines.Add(string.Format(CultureInfo.CurrentCulture, localization.GetString("Rl.CoveragePartition"), partition.Partition,
+            lines.Add(string.Format(CultureInfo.CurrentCulture, localization.GetString("Rl.CoveragePartition"), RlUiDisplay.Partition(partition.Partition, localization),
                 partition.SelectedBlocks, partition.PotentialCompleteBlocks, partition.EvaluatedBlocks, partition.EvaluatedDecisions,
                 partition.UnusedCompleteBlocks, partition.UnusedRemainderBars));
         lines.Add(string.Format(CultureInfo.CurrentCulture, localization.GetString("Rl.CoveragePeriod"),
             report.Coverage.SupportStart.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), report.Coverage.SupportEnd.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
             report.Coverage.PossibleDecisionStart.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), report.Coverage.PossibleDecisionEnd.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)));
         foreach (var partition in report.PairedDeltas.GroupBy(d => d.Partition))
-            lines.Add(string.Format(CultureInfo.CurrentCulture, localization.GetString("Rl.PairedDelta"), partition.Key,
+            lines.Add(string.Format(CultureInfo.CurrentCulture, localization.GetString("Rl.PairedDelta"), RlUiDisplay.Partition(partition.Key, localization),
                 (partition.Sum(d => d.Delta) / partition.Count() * 100m).ToString("F" + RlContract.DisplayDecimals, CultureInfo.CurrentCulture)));
         foreach (var mark in report.TerminalMarks)
             lines.Add(string.Format(CultureInfo.CurrentCulture, localization.GetString("Rl.TerminalMark"), mark.BlockId, mark.ResidualQuantity,
                 (mark.MarkReturn * 100m).ToString("F" + RlContract.DisplayDecimals, CultureInfo.CurrentCulture),
                 (mark.CloseMarkMaximumDrawdown * 100m).ToString("F" + RlContract.DisplayDecimals, CultureInfo.CurrentCulture),
                 (mark.AdjustedReturn * 100m).ToString("F" + RlContract.DisplayDecimals, CultureInfo.CurrentCulture)));
-        lines.Add(string.Format(CultureInfo.CurrentCulture, localization.GetString("Rl.EvaluationEvidence"), report.SelectionMetric,
+        lines.Add(string.Format(CultureInfo.CurrentCulture, localization.GetString("Rl.EvaluationEvidence"), RlUiDisplay.Metric(report.SelectionMetric, localization),
             report.LearningGamma, report.HorizonBars, localization.GetString("Rl.Temporal." + report.TemporalDependencyEvidence)));
         lines.Add(localization.GetString("Rl.ConstraintDisclosure"));
         return string.Join(Environment.NewLine, lines);

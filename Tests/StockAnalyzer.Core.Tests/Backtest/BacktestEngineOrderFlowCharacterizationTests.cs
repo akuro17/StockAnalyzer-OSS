@@ -47,6 +47,7 @@ public class BacktestEngineOrderFlowCharacterizationTests
         SizingParameter = 1m,
         InitialMarginRatio = 1m,
         MaintenanceMarginRatio = 0.5m,
+        IntrabarPathMode = IntrabarPathMode.CanonicalOHLC,
     };
 
     private static StrategyOrderRequest Req(SignalType type, OrderType orderType, decimal? limitPrice = null, decimal? stopPrice = null)

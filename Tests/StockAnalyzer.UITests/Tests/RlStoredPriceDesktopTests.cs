@@ -18,7 +18,7 @@ namespace StockAnalyzer.UITests.Tests;
 
 /// <summary>Real local training and a real qualified model, entirely in a disposable desktop-test data root.</summary>
 [Collection("UI Tests")]
-public sealed class RlStoredPriceDesktopTests(ITestOutputHelper output) : UITestBase(output)
+public sealed partial class RlStoredPriceDesktopTests(ITestOutputHelper output) : UITestBase(output)
 {
     public const string QualifiedDirectoryVariable = "SA_RL_UI_QUALIFIED_DIRECTORY";
     public const string EvidenceDirectoryVariable = "SA_RL_UI_EVIDENCE_DIRECTORY";

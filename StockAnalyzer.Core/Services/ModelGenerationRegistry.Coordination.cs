@@ -22,6 +22,10 @@ public sealed partial class ModelGenerationRegistry
         internal const string LeaseFolder = "leases";
         internal const string LeaseExtension = ".lease";
         internal const string BackupSuffix = AtomicJsonFile.BackupSuffix;
+        internal const string FailureEvidencePrefix = "failure_";
+        internal const string FailureEvidenceExtension = ".json";
+        internal const string FailureEvidencePattern = FailureEvidencePrefix + "*" + FailureEvidenceExtension;
+        internal static string FailureEvidenceFileName(int processId) => FailureEvidencePrefix + processId + FailureEvidenceExtension;
         internal const string PredictionLease = "model";
         internal const string RlLease = "rl";
         internal const int PointerSchema = 1;
@@ -203,17 +207,25 @@ public sealed partial class ModelGenerationRegistry
         RequireStorePath(path + AtomicJsonFile.TemporarySuffix);
         RequireStorePath(path + Coordination.BackupSuffix);
     }
+    // Evidence ownership is independent of the failed transaction: one process-wide leaf lock that serializes every evidence destination
+    // (a superset of per-destination serialization, with no per-root state), never _gate, _mutation or the store lock.
+    private static readonly object s_failureEvidenceGate = new();
     private void RecordStoreFailure(string operation, Exception error)
     {
         try
         {
             string directory = Path.Combine(_root, Coordination.Folder);
-            RequireStorePath(directory); Directory.CreateDirectory(directory);
-            string file = Path.Combine(directory, "failure_" + Environment.ProcessId + ".json");
-            RequireStorePath(file);
-            File.WriteAllText(file, JsonSerializer.Serialize(new {
-                operation, utc = DateTimeOffset.UtcNow, process_id = Environment.ProcessId, error_type = error.GetType().Name, message = error.Message }, JsonOptions));
+            RequireStorePath(directory);
+            string file = Path.GetFullPath(Path.Combine(directory, Coordination.FailureEvidenceFileName(Environment.ProcessId)));
+            lock (s_failureEvidenceGate)
+            {
+                Directory.CreateDirectory(directory);
+                RequirePointerWritePaths(file);
+                var record = new { operation, utc = DateTimeOffset.UtcNow, process_id = Environment.ProcessId, error_type = error.GetType().Name, message = error.Message };
+                AtomicJsonFile.Save(file, record, JsonOptions);
+            }
         }
-        catch (Exception failure) when (failure is IOException or InvalidDataException or UnauthorizedAccessException) { }
+        // Diagnostics are best effort: a failure here must never replace the operation failure being recorded; only process-fatal memory exhaustion propagates.
+        catch (Exception failure) when (failure is not OutOfMemoryException) { }
     }
 }

@@ -26,7 +26,7 @@ namespace StockAnalyzer.Avalonia.Services;
 /// </summary>
 public class ParameterViewBuilder
 {
-    public Control Build(object parameterObject) => Build(parameterObject, Array.Empty<string>());
+    public Control Build(object parameterObject) => Build(parameterObject, Array.Empty<string>(), ParameterFormLayout.InlineLabel);
 
     /// <summary>
     /// Builds the settings panel. <paramref name="hiddenTags"/> is currently always empty at every call
@@ -35,14 +35,19 @@ public class ParameterViewBuilder
     /// (Period) that still affects calculation results while the driver's own warm-up window has no
     /// value yet. The parameter is kept as a general extensibility point for a future tag-based use.
     /// </summary>
-    public Control Build(object parameterObject, IReadOnlyCollection<string> hiddenTags)
+    public Control Build(object parameterObject, IReadOnlyCollection<string> hiddenTags) =>
+        Build(parameterObject, hiddenTags, ParameterFormLayout.InlineLabel);
+
+    /// <summary>
+    /// Builds the settings panel with the specified <see cref="ParameterFormLayout"/>.
+    /// </summary>
+    public Control Build(object parameterObject, IReadOnlyCollection<string> hiddenTags, ParameterFormLayout layout)
     {
         if (parameterObject == null) return new TextBlock { Text = "No parameters" };
 
-        var stackPanel = new StackPanel
-        {
-            Spacing = 0
-        };
+        Panel container = layout == ParameterFormLayout.TwoColumnFields
+            ? new StockAnalyzer.Avalonia.Views.Controls.ResponsiveFormPanel()
+            : new StackPanel { Spacing = 0 };
 
         var type = parameterObject.GetType();
         var properties = type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
@@ -77,10 +82,13 @@ public class ParameterViewBuilder
         {
             foreach (var item in validProperties)
             {
-                var row = BuildPropertyRow(item.Prop, parameterObject, item.Display, item.Desc, item.Range, item.CoreRange);
+                var row = layout == ParameterFormLayout.TwoColumnFields
+                    ? BuildFieldPropertyControl(item.Prop, parameterObject, item.Display, item.Desc, item.Range, item.CoreRange)
+                    : BuildPropertyRow(item.Prop, parameterObject, item.Display, item.Desc, item.Range, item.CoreRange);
+
                 if (row != null)
                 {
-                    stackPanel.Children.Add(row);
+                    container.Children.Add(row);
                 }
             }
         }
@@ -99,9 +107,9 @@ public class ParameterViewBuilder
                     {
                         Background = (Application.Current?.FindResource("Brush.Background.Tertiary") as IBrush) ?? Brushes.Transparent,
                         BorderBrush = (Application.Current?.FindResource("Brush.Border.Primary") as IBrush) ?? Brushes.Gray,
-                        BorderThickness = new Thickness(0, stackPanel.Children.Count > 0 ? 1 : 0, 0, 1),
+                        BorderThickness = new Thickness(0, container.Children.Count > 0 ? 1 : 0, 0, 1),
                         Padding = new Thickness(12, 6, 12, 6),
-                        Margin = stackPanel.Children.Count > 0 ? new Thickness(0, 8, 0, 0) : new Thickness(0, 0, 0, 0)
+                        Margin = container.Children.Count > 0 ? new Thickness(0, 8, 0, 0) : new Thickness(0, 0, 0, 0)
                     };
 
                     var headerText = new TextBlock
@@ -113,21 +121,30 @@ public class ParameterViewBuilder
                         VerticalAlignment = VerticalAlignment.Center
                     };
                     headerBorder.Child = headerText;
-                    stackPanel.Children.Add(headerBorder);
+
+                    if (layout == ParameterFormLayout.TwoColumnFields)
+                    {
+                        StockAnalyzer.Avalonia.Views.Controls.ResponsiveFormPanel.SetIsFullWidth(headerBorder, true);
+                    }
+
+                    container.Children.Add(headerBorder);
                 }
 
                 foreach (var item in group)
                 {
-                    var row = BuildPropertyRow(item.Prop, parameterObject, item.Display, item.Desc, item.Range, item.CoreRange);
+                    var row = layout == ParameterFormLayout.TwoColumnFields
+                        ? BuildFieldPropertyControl(item.Prop, parameterObject, item.Display, item.Desc, item.Range, item.CoreRange)
+                        : BuildPropertyRow(item.Prop, parameterObject, item.Display, item.Desc, item.Range, item.CoreRange);
+
                     if (row != null)
                     {
-                        stackPanel.Children.Add(row);
+                        container.Children.Add(row);
                     }
                 }
             }
         }
 
-        return stackPanel;
+        return container;
     }
 
     private Control? BuildPropertyRow(
@@ -398,6 +415,248 @@ public class ParameterViewBuilder
 
             rowBorder.Child = rowGrid;
             return rowBorder;
+        }
+
+        return null;
+    }
+
+    private Control? BuildFieldPropertyControl(
+        PropertyInfo prop,
+        object parameterObject,
+        DisplayNameAttribute? displayAttribute,
+        DescriptionAttribute? descAttribute,
+        RangeAttribute? rangeAttribute,
+        CoreParameterRangeAttribute? coreRangeAttribute)
+    {
+        var rawName = displayAttribute?.DisplayName ?? prop.Name;
+        var displayLabel = ResolveDisplayName(prop, rawName);
+
+        if (prop.PropertyType == typeof(bool))
+        {
+            var checkBox = new CheckBox
+            {
+                Content = displayLabel,
+                MinHeight = LayoutConstants.IndicatorFormControlHeight,
+                VerticalAlignment = VerticalAlignment.Bottom
+            };
+
+            if (descAttribute != null || rawName != displayLabel)
+            {
+                ToolTip.SetTip(checkBox, descAttribute?.Description ?? rawName);
+            }
+
+            var binding = new Binding(prop.Name)
+            {
+                Source = parameterObject,
+                Mode = BindingMode.TwoWay
+            };
+            checkBox.Bind(CheckBox.IsCheckedProperty, binding);
+
+            return checkBox;
+        }
+
+        var fieldPanel = new StackPanel
+        {
+            Spacing = LayoutConstants.IndicatorFormLabelInputSpacing
+        };
+
+        var label = new TextBlock
+        {
+            Text = displayLabel,
+            FontWeight = FontWeight.SemiBold,
+            TextWrapping = TextWrapping.Wrap,
+            VerticalAlignment = VerticalAlignment.Center,
+            HorizontalAlignment = HorizontalAlignment.Left
+        };
+        if (descAttribute != null || rawName != displayLabel)
+        {
+            ToolTip.SetTip(label, descAttribute?.Description ?? rawName);
+        }
+        fieldPanel.Children.Add(label);
+
+        Control? inputControl = null;
+
+        if (prop.PropertyType == typeof(int) || prop.PropertyType == typeof(decimal) || prop.PropertyType == typeof(double))
+        {
+            var nud = new NumericUpDown
+            {
+                FormatString = prop.PropertyType == typeof(int) ? "F0" : "F2",
+                ParsingNumberStyle = System.Globalization.NumberStyles.Any,
+                Height = LayoutConstants.IndicatorFormControlHeight,
+                Padding = new Thickness(6, 2),
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+
+            // Range
+            if (rangeAttribute != null)
+            {
+                ToolTip.SetTip(nud, $"Range: {rangeAttribute.Minimum} - {rangeAttribute.Maximum}");
+                if (decimal.TryParse(rangeAttribute.Minimum.ToString(), out var min)) nud.Minimum = min;
+                if (decimal.TryParse(rangeAttribute.Maximum.ToString(), out var max)) nud.Maximum = max;
+            }
+            else if (coreRangeAttribute != null)
+            {
+                ToolTip.SetTip(nud, $"Range: {coreRangeAttribute.Minimum} - {coreRangeAttribute.Maximum}");
+                try
+                {
+                    nud.Minimum = Convert.ToDecimal(coreRangeAttribute.Minimum);
+                    nud.Maximum = Convert.ToDecimal(coreRangeAttribute.Maximum);
+                }
+                catch { /* Ignore invalid range values */ }
+            }
+
+            // Increment
+            if (prop.PropertyType == typeof(int))
+                nud.Increment = 1;
+            else
+                nud.Increment = 0.1m;
+
+            // Binding
+            var binding = new Binding(prop.Name)
+            {
+                Source = parameterObject,
+                Mode = BindingMode.TwoWay
+            };
+
+            if (prop.PropertyType == typeof(int))
+            {
+                binding.Converter = new DecimalToIntConverter();
+            }
+
+            nud.Bind(NumericUpDown.ValueProperty, binding);
+            inputControl = nud;
+        }
+        else if (prop.PropertyType.IsEnum)
+        {
+            var comboBox = new ComboBox
+            {
+                ItemsSource = Enum.GetValues(prop.PropertyType),
+                Height = LayoutConstants.IndicatorFormControlHeight,
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+
+            var binding = new Binding(prop.Name)
+            {
+                Source = parameterObject,
+                Mode = BindingMode.TwoWay
+            };
+            comboBox.Bind(ComboBox.SelectedItemProperty, binding);
+            inputControl = comboBox;
+        }
+        else if (prop.PropertyType == typeof(IndicatorColor) || prop.PropertyType == typeof(IndicatorColor?))
+        {
+            var colorPicker = new ColorPicker
+            {
+                Height = LayoutConstants.IndicatorFormControlHeight,
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                VerticalAlignment = VerticalAlignment.Center,
+                MinWidth = 0
+            };
+
+            var binding = new Binding(prop.Name)
+            {
+                Source = parameterObject,
+                Mode = BindingMode.TwoWay,
+                Converter = new IndicatorColorToAvaloniaColorConverter()
+            };
+            colorPicker.Bind(ColorPicker.ColorProperty, binding);
+            inputControl = colorPicker;
+        }
+        else if (prop.PropertyType == typeof(string))
+        {
+            bool isTickerProp = prop.Name.Contains("Symbol", StringComparison.OrdinalIgnoreCase) || 
+                               prop.Name.Contains("Ticker", StringComparison.OrdinalIgnoreCase);
+
+            if (isTickerProp)
+            {
+                var autoBox = new AutoCompleteBox
+                {
+                    Height = LayoutConstants.IndicatorFormControlHeight,
+                    Padding = new Thickness(6, 2),
+                    HorizontalAlignment = HorizontalAlignment.Stretch,
+                    Watermark = (parameterObject is StockAnalyzer.Core.Models.Parameters.ICrossTickerParameter &&
+                                 parameterObject is not StockAnalyzer.Core.Models.Parameters.CoreCorrelationParameter &&
+                                 parameterObject is not StockAnalyzer.Core.Models.Parameters.CoreCrossCorrelationParameter)
+                                 ? string.Empty : "Price vs Volume",
+                    ItemTemplate = BuildTickerItemTemplate()
+                };
+
+                if (_cachedTickers != null && _cachedTickers.Count > 0)
+                {
+                    autoBox.ItemsSource = _cachedTickers;
+                }
+                else
+                {
+                    _ = LoadAvailableTickersAsync().ContinueWith(t =>
+                    {
+                        if (t.IsCompletedSuccessfully && t.Result != null && t.Result.Count > 0)
+                        {
+                            global::Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                            {
+                                autoBox.ItemsSource = t.Result;
+                            });
+                        }
+                    });
+                }
+
+                var binding = new Binding(prop.Name)
+                {
+                    Source = parameterObject,
+                    Mode = BindingMode.TwoWay
+                };
+                autoBox.Bind(AutoCompleteBox.TextProperty, binding);
+
+                autoBox.SelectionChanged += (s, e) =>
+                {
+                    if (autoBox.SelectedItem is string selected)
+                    {
+                        prop.SetValue(parameterObject, selected.Trim().ToUpperInvariant());
+                    }
+                };
+
+                autoBox.KeyDown += (s, e) =>
+                {
+                    if (e.Key == global::Avalonia.Input.Key.Enter)
+                    {
+                        prop.SetValue(parameterObject, string.IsNullOrWhiteSpace(autoBox.Text) ? string.Empty : autoBox.Text.Trim().ToUpperInvariant());
+                        autoBox.IsDropDownOpen = false;
+                    }
+                };
+
+                autoBox.LostFocus += (s, e) =>
+                {
+                    prop.SetValue(parameterObject, string.IsNullOrWhiteSpace(autoBox.Text) ? string.Empty : autoBox.Text.Trim().ToUpperInvariant());
+                };
+
+                inputControl = autoBox;
+            }
+            else
+            {
+                var textBox = new TextBox
+                {
+                    Height = LayoutConstants.IndicatorFormControlHeight,
+                    Padding = new Thickness(6, 4),
+                    HorizontalAlignment = HorizontalAlignment.Stretch,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Watermark = descAttribute?.Description
+                };
+
+                var binding = new Binding(prop.Name)
+                {
+                    Source = parameterObject,
+                    Mode = BindingMode.TwoWay
+                };
+                textBox.Bind(TextBox.TextProperty, binding);
+                inputControl = textBox;
+            }
+        }
+
+        if (inputControl != null)
+        {
+            fieldPanel.Children.Add(inputControl);
+            return fieldPanel;
         }
 
         return null;

@@ -24,10 +24,12 @@ using StockAnalyzer.Core.Services.Backtest.Engine;
 using StockAnalyzer.Core.Services.ReinforcementLearning;
 using Xunit;
 using Xunit.Abstractions;
+using StockAnalyzer.Avalonia.Tests.TestHelpers;
 
 namespace StockAnalyzer.Avalonia.Tests.ViewModels;
 
-public sealed class RlUiTests(ITestOutputHelper output)
+[Collection("LocalizationSharedState")]
+public sealed partial class RlUiTests(ITestOutputHelper output)
 {
     private static RlQSnapshot Snapshot(params float[] q)
     {
@@ -73,7 +75,7 @@ public sealed class RlUiTests(ITestOutputHelper output)
     }
     [Fact] public async Task Dialog_FreezesActualCostsAndLateSuccessAfterCancelDoesNotRegisterOrPresentSuccess()
     {
-        using var chart = Chart(new ImmediateData()); var training = new DelayedTraining(); var defaults = new Defaults();
+        using var chart = Chart(new ImmediateData()); var training = new DelayedTraining(); var defaults = new FakeBacktestDefaultSettingsManager();
         var registry = new EmptyRegistry();
         using var vm = new RlTrainingDialogViewModel(training, registry, new UnavailableQ(), defaults, chart, StockAnalyzer.Core.Interfaces.NullLocalizationService.Instance);
         await vm.InitializeAsync(); vm.Symbol="SPY"; vm.StartDate="2000-01-01";vm.EndDateExclusive="2026-01-01";
@@ -90,7 +92,7 @@ public sealed class RlUiTests(ITestOutputHelper output)
     [Fact] public async Task ClosingDialogPreservesPublishedReplayWhileChartChangesInvalidateIt()
     {
         using var chart = Chart(new ImmediateData());
-        using var vm = new RlTrainingDialogViewModel(new DelayedTraining(), new EmptyRegistry(), new UnavailableQ(), new Defaults(), chart, StockAnalyzer.Core.Interfaces.NullLocalizationService.Instance);
+        using var vm = new RlTrainingDialogViewModel(new DelayedTraining(), new EmptyRegistry(), new UnavailableQ(), new FakeBacktestDefaultSettingsManager(), chart, StockAnalyzer.Core.Interfaces.NullLocalizationService.Instance);
         var snapshot = Snapshot(0, 1, -1);
         await chart.ApplyRlReplayAsync(snapshot, StockAnalyzer.Core.Interfaces.NullLocalizationService.Instance);
         vm.Dispose();
@@ -101,11 +103,12 @@ public sealed class RlUiTests(ITestOutputHelper output)
     [Fact] public async Task ContinuousModeRequiresExplicitDirectionAndFreezesItsIdentityBeforeAwait()
     {
         using var chart = Chart(new ImmediateData()); var training = new DelayedTraining();
-        using var vm = new RlTrainingDialogViewModel(training, new EmptyRegistry(), new UnavailableQ(), new Defaults(), chart, StockAnalyzer.Core.Interfaces.NullLocalizationService.Instance);
+        var direction = new RlGeneration(new string('a', 64), "SPY", "revision", RlContract.ContractHash, "evaluation", 0m, 0m, new(), DateTimeOffset.UtcNow);
+        using var vm = new RlTrainingDialogViewModel(training, new EmptyRegistry { Generations = new[] { direction } }, new UnavailableQ(), new FakeBacktestDefaultSettingsManager(), chart, StockAnalyzer.Core.Interfaces.NullLocalizationService.Instance);
         await vm.InitializeAsync(); Assert.False(vm.UseAllCompleteBlocks); vm.UseContinuousPolicy = true; vm.UseAllCompleteBlocks = true; vm.Symbol = "SPY"; vm.StartDate = "2000-01-01"; vm.EndDateExclusive = "2026-01-01";
-        await vm.TrainCommand.ExecuteAsync(null); Assert.Equal("Unavailable", vm.Status); Assert.Null(training.Job);
+        Assert.False(vm.CanTrain); await vm.TrainCommand.ExecuteAsync(null); Assert.Null(training.Job);
         string id = new('a', 64);
-        vm.SelectedDirectionGeneration = new(id, "SPY", "revision", RlContract.ContractHash, "evaluation", 0m, 0m, new(), DateTimeOffset.UtcNow);
+        vm.SelectedDirectionGeneration = vm.DirectionGenerations.Single();
         var run = vm.TrainCommand.ExecuteAsync(null); await training.Started.Task;
         vm.SelectedDirectionGeneration = null; vm.UseContinuousPolicy = false; vm.CancelCommand.Execute(null);
         Assert.Equal(id, training.Job!.FrozenDirectionModelId);
@@ -116,7 +119,7 @@ public sealed class RlUiTests(ITestOutputHelper output)
     [Fact] public async Task ExpandedOptionIsIgnoredForAnExplicitDirectionJob()
     {
         using var chart = Chart(new ImmediateData()); var training = new DelayedTraining();
-        using var vm = new RlTrainingDialogViewModel(training, new EmptyRegistry(), new UnavailableQ(), new Defaults(), chart, StockAnalyzer.Core.Interfaces.NullLocalizationService.Instance);
+        using var vm = new RlTrainingDialogViewModel(training, new EmptyRegistry(), new UnavailableQ(), new FakeBacktestDefaultSettingsManager(), chart, StockAnalyzer.Core.Interfaces.NullLocalizationService.Instance);
         await vm.InitializeAsync(); vm.UseAllCompleteBlocks = true; vm.Symbol = "SPY"; vm.StartDate = "2000-01-01"; vm.EndDateExclusive = "2026-01-01";
         var run = vm.TrainCommand.ExecuteAsync(null); await training.Started.Task;
         Assert.Null(training.Job!.EvaluationSpecificationId); Assert.Null(training.Job.FrozenDirectionModelId);
@@ -131,8 +134,8 @@ public sealed class RlUiTests(ITestOutputHelper output)
         var localization = new FixtureLocalization(json.RootElement);
         using var chart = Chart(new ImmediateData());
         var reviewed = new RlPointerRecovery(RlFiles.Target, true, "malformed pointer", new string('a', 64), "current", "backup");
-        var registry = new EmptyRegistry { Recovery = reviewed, RecoveryCompletion = new(TaskCreationOptions.RunContinuationsAsynchronously) };
-        using var vm = new RlTrainingDialogViewModel(new DelayedTraining(), registry, new UnavailableQ(), new Defaults(), chart, localization);
+        var registry = new EmptyRegistry { Capabilities = new(false, true, false), Recovery = reviewed, RecoveryCompletion = new(TaskCreationOptions.RunContinuationsAsynchronously) };
+        using var vm = new RlTrainingDialogViewModel(new DelayedTraining(), registry, new UnavailableQ(), new FakeBacktestDefaultSettingsManager(), chart, localization);
         await vm.InitializeAsync(); Assert.True(vm.CanRecover); Assert.Null(registry.LastRecovered);
         Assert.Equal("Unavailable", vm.Status); Assert.Contains(reviewed.BackupModelId!, vm.RecoveryDisplay);
         var command = vm.RecoverPointerCommand.ExecuteAsync(null);
@@ -146,15 +149,15 @@ public sealed class RlUiTests(ITestOutputHelper output)
     [Fact] public async Task MissingVerifiedRecoveryCandidateLeavesTheCommandDisabled()
     {
         using var chart = Chart(new ImmediateData());
-        var registry = new EmptyRegistry { Recovery = new(RlFiles.Target, true, "wrong target", null, "current", "backup") };
-        using var vm = new RlTrainingDialogViewModel(new DelayedTraining(), registry, new UnavailableQ(), new Defaults(), chart, StockAnalyzer.Core.Interfaces.NullLocalizationService.Instance);
+        var registry = new EmptyRegistry { Capabilities = new(false, true, false), Recovery = new(RlFiles.Target, true, "wrong target", null, "current", "backup") };
+        using var vm = new RlTrainingDialogViewModel(new DelayedTraining(), registry, new UnavailableQ(), new FakeBacktestDefaultSettingsManager(), chart, StockAnalyzer.Core.Interfaces.NullLocalizationService.Instance);
         await vm.InitializeAsync(); Assert.False(vm.CanRecover); Assert.False(vm.RecoverPointerCommand.CanExecute(null)); Assert.Null(registry.LastRecovered);
     }
     [Fact] public async Task ChangingRecoveryTargetImmediatelyInvalidatesThePreviousCandidate()
     {
         using var chart = Chart(new ImmediateData());
-        var registry = new EmptyRegistry { Recovery = new(RlFiles.Target, true, "malformed", new string('a', 64), "current", "backup") };
-        using var vm = new RlTrainingDialogViewModel(new DelayedTraining(), registry, new UnavailableQ(), new Defaults(), chart, StockAnalyzer.Core.Interfaces.NullLocalizationService.Instance);
+        var registry = new EmptyRegistry { Capabilities = new(false, true, false), Recovery = new(RlFiles.Target, true, "malformed", new string('a', 64), "current", "backup") };
+        using var vm = new RlTrainingDialogViewModel(new DelayedTraining(), registry, new UnavailableQ(), new FakeBacktestDefaultSettingsManager(), chart, StockAnalyzer.Core.Interfaces.NullLocalizationService.Instance);
         await vm.InitializeAsync(); Assert.True(vm.CanRecover);
         vm.UseContinuousPolicy = true;
         Assert.False(vm.CanRecover);
@@ -188,8 +191,8 @@ public sealed class RlUiTests(ITestOutputHelper output)
         using var json=JsonDocument.Parse(File.ReadAllText(Path.Combine(repo!.FullName,"StockAnalyzer.Avalonia","Resources","Locales",language+".json")));
         var localization=new FixtureLocalization(json.RootElement);
         using var chart=Chart(new ImmediateData());
-        var registry=new EmptyRegistry { RlArtifactPolicy=new() };
-        using var vm=new RlTrainingDialogViewModel(new DelayedTraining(),registry,new UnavailableQ(),new Defaults(),chart,localization);
+        var registry=new EmptyRegistry { Capabilities = new(true, true, true), RlArtifactPolicy=new() };
+        using var vm=new RlTrainingDialogViewModel(new DelayedTraining(),registry,new UnavailableQ(),new FakeBacktestDefaultSettingsManager(),chart,localization);
         await vm.InitializeAsync(); Assert.True(vm.StorageAvailable); Assert.Equal(10m,vm.StorageQuotaGiB);
         Assert.Equal(5m,vm.StorageMinimumFreeGiB); Assert.Equal(7,vm.StorageFailedRetentionDays);
         Assert.Null(vm.StorageNonactiveDays); Assert.Null(vm.StorageKeepCount); Assert.False(vm.CanCleanupArtifacts);
@@ -220,10 +223,10 @@ public sealed class RlUiTests(ITestOutputHelper output)
         using var chart = Chart(new ImmediateData());
         var review = new RlCheckpointReview(Guid.NewGuid(), "owned", Guid.NewGuid().ToString("N"), RlContract.CandidateSeeds[0], RlContinuousContract.RolloutSteps, "train", "review", true, null);
         var generation = new RlGeneration(new string('a', 64), "SPY", "source", RlContract.ContractHash, "evaluation", 0m, 0m, new(), DateTimeOffset.UtcNow);
-        var registry = new EmptyRegistry { RlArtifactPolicy = new(NonactiveRetentionDays: 0, NonactiveKeepCount: 1),
+        var registry = new EmptyRegistry { Capabilities = new(true, true, true), RlArtifactPolicy = new(NonactiveRetentionDays: 0, NonactiveKeepCount: 1),
             Generations = new[] { generation }, Checkpoints = new[] { review } };
         var training = new DelayedTraining();
-        using var vm = new RlTrainingDialogViewModel(training, registry, new UnavailableQ(), new Defaults(), chart, localization);
+        using var vm = new RlTrainingDialogViewModel(training, registry, new UnavailableQ(), new FakeBacktestDefaultSettingsManager(), chart, localization);
         await vm.InitializeAsync(); Assert.True(vm.CheckpointAvailable); Assert.Equal(2, vm.StorageCheckpointKeepCount);
         vm.UseContinuousPolicy = true; vm.SelectedDirectionGeneration = generation;
         vm.Symbol = "SPY"; vm.StartDate = "2004-01-01"; vm.EndDateExclusive = "2026-10-04";
@@ -283,7 +286,7 @@ public sealed class RlUiTests(ITestOutputHelper output)
     {
         public string GetString(string key) => strings.GetProperty(key).GetString()!;
     }
-    [Theory] [InlineData("en", "quantity cap 1", "actual entries 0")] [InlineData("ja", "数量cap拒否 1", "実entry 0")]
+    [Theory] [InlineData("en", "quantity limit 1", "filled entries 0")] [InlineData("ja", "\u6570\u91cf\u4e0a\u9650\u8d85\u904e 1", "\u6210\u7acb\u30a8\u30f3\u30c8\u30ea\u30fc 0")] // ja: quantity-cap exceeded 1 / filled entries 0
     public void R04ReportDistinguishesRealCapRejectionFromFlatHold(string language, string capText, string entryText)
     {
         var repo = new DirectoryInfo(AppContext.BaseDirectory);
@@ -316,7 +319,7 @@ public sealed class RlUiTests(ITestOutputHelper output)
         Assert.Contains(capText, rendered); Assert.Contains(entryText, rendered);
         Assert.Contains(localization.GetString("Rl.ConstraintStatus.NoAdmittedBuyBecauseOfCap"), rendered);
         Assert.Contains(localization.GetString("Rl.ConstraintStatus.NotApplicable"), rendered);
-        Assert.Contains("NotEstablished", rendered); Assert.Contains("Unverified", rendered);
+        Assert.Contains(localization.GetString("Rl.ConstraintDisclosure"), rendered);
     }
     [Fact] public async Task TemporalRejectionIsLocalizedAndRefreshKeepsExplicitDirectionSelection()
     {
@@ -324,7 +327,7 @@ public sealed class RlUiTests(ITestOutputHelper output)
         var generation = new RlGeneration(new string('a', 64), "SPY", "source", RlContract.ContractHash, "evaluation", 0m, 0m, new(), DateTimeOffset.UtcNow);
         var registry = new EmptyRegistry { Generations = new[] { generation } };
         var training = new DelayedTraining();
-        using var vm = new RlTrainingDialogViewModel(training, registry, new UnavailableQ(), new Defaults(), chart, StockAnalyzer.Core.Interfaces.NullLocalizationService.Instance);
+        using var vm = new RlTrainingDialogViewModel(training, registry, new UnavailableQ(), new FakeBacktestDefaultSettingsManager(), chart, StockAnalyzer.Core.Interfaces.NullLocalizationService.Instance);
         await vm.InitializeAsync(); vm.UseContinuousPolicy = true; vm.SelectedDirectionGeneration = generation;
         vm.Symbol = "SPY"; vm.StartDate = "2004-01-01"; vm.EndDateExclusive = "2026-10-04";
         var run = vm.TrainCommand.ExecuteAsync(null); await training.Started.Task;
@@ -337,6 +340,15 @@ public sealed class RlUiTests(ITestOutputHelper output)
         Assert.Equal(generation.ModelId, vm.SelectedDirectionGeneration!.ModelId);
         Assert.Equal("Rl.Temporal.Unverified", vm.TemporalStatusDisplay);
     }
+    /// <summary>Measured windows of <see cref="RlContract.InferenceMeasuredCalls"/> draws; the verdict is taken from the smallest one.</summary>
+    private const int AllocationWindowCount = 20;
+
+    /// <summary>
+    /// The cached draw paths allocate nothing. <see cref="GC.GetAllocatedBytesForCurrentThread"/> is not exact while other threads trigger garbage collections: a GC inside
+    /// the measured window adds roughly one allocation chunk to this thread's reading although the draws allocated nothing (captured here in full-suite runs: 3,592 B and 6,144 B,
+    /// the guideline's "Allocation Measurements Take the Smallest of Several Short Windows"). The artifact only ever ADDS to a reading, whereas a real allocation adds to EVERY
+    /// window, so the verdict is the smallest reading of several windows: 0 unless every window was disturbed, above 0 whenever the draws allocate.
+    /// </summary>
     [Fact] public void CachedSkiaDrawPaths_Warmed100Measured1000HaveZeroManagedAllocation()
     {
         using var renderer = new RlQRenderer(); using var bitmap = new SKBitmap(1200, 600); using var canvas = new SKCanvas(bitmap);
@@ -346,10 +358,16 @@ public sealed class RlUiTests(ITestOutputHelper output)
         void Draw() { renderer.DrawPanel(canvas,panel,p,14,12,SKColors.Gray,SKColors.Gray,SKColors.Green,SKColors.Red); renderer.DrawHud(canvas,chart,p,14,SKColors.Gray); }
         for(int i=0;i<RlContract.InferenceWarmupCalls;i++)Draw();
         using var process = Process.GetCurrentProcess(); process.Refresh(); long beforeNative=process.PrivateMemorySize64;
-        long before=GC.GetAllocatedBytesForCurrentThread();for(int i=0;i<RlContract.InferenceMeasuredCalls;i++)Draw();long allocated=GC.GetAllocatedBytesForCurrentThread()-before;
+        var windowReadings = new long[AllocationWindowCount];
+        for (int window = 0; window < windowReadings.Length; window++)
+        {
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            for (int i = 0; i < RlContract.InferenceMeasuredCalls; i++) Draw();
+            windowReadings[window] = GC.GetAllocatedBytesForCurrentThread() - before;
+        }
         process.Refresh(); long afterNative=process.PrivateMemorySize64;
-        output.WriteLine($"100 warmup/1000 cached panel+HUD draws: managed={allocated} B; process private memory proxy before={beforeNative}, after={afterNative}, delta={afterNative-beforeNative} B (process-wide, not isolated native allocator accounting).");
-        Assert.Equal(0, allocated);
+        output.WriteLine($"{RlContract.InferenceWarmupCalls} warmup/{windowReadings.Length} windows of {RlContract.InferenceMeasuredCalls} cached panel+HUD draws: managed per window={string.Join(", ", windowReadings)} B; process private memory proxy before={beforeNative}, after={afterNative}, delta={afterNative-beforeNative} B (process-wide, not isolated native allocator accounting).");
+        Assert.True(windowReadings.Min() == 0, $"The smallest of {windowReadings.Length} windows of {RlContract.InferenceMeasuredCalls} draws still read {windowReadings.Min()} B; readings: {string.Join(", ", windowReadings)}");
     }
     private sealed class DelayedData : IDataService
     {
@@ -358,8 +376,6 @@ public sealed class RlUiTests(ITestOutputHelper output)
         public Task<IReadOnlyList<CandleData>> LoadCandlesAsync(string symbol,TimeFrame frame,int count=100){Started.TrySetResult();return Result.Task;}
     }
     private sealed class ImmediateData : IDataService { public Task<IReadOnlyList<CandleData>> LoadCandlesAsync(string symbol,TimeFrame frame,int count=100)=>Task.FromResult<IReadOnlyList<CandleData>>(Array.Empty<CandleData>()); }
-    private sealed class Defaults : IBacktestDefaultSettingsManager
-    { public BacktestDefaultSettings Settings=BacktestDefaultSettings.BuiltIn; public Task<BacktestDefaultSettingsLoadResult> LoadAsync()=>Task.FromResult(new BacktestDefaultSettingsLoadResult(Settings,BacktestDefaultSettingsLoadStatus.Loaded));public Task SaveAsync(BacktestDefaultSettings settings){Settings=settings;return Task.CompletedTask;} }
     private sealed class DelayedTraining : IRlResumableTrainingService
     {
         public RlTrainingJob? Job; public CancellationToken PauseRequest, CancelRequest; public RlCheckpointReview? LastResume;
@@ -375,6 +391,25 @@ public sealed class RlUiTests(ITestOutputHelper output)
     private sealed class UnavailableQ : IQValueService {public Task<RlQSnapshot> ReplayAsync(RlReplayRequest request,CancellationToken cancellationToken=default)=>throw new InvalidOperationException("No generation supplied.");}
     private sealed class EmptyRegistry : IRlModelGenerationRegistry
     {
+        public RlRegistryCapabilities Capabilities { get; init; } = new(false, false, false);
+        public Exception? SnapshotError { get; init; }
+        public bool DefaultSnapshot { get; init; }
+        public TaskCompletionSource? SnapshotStarted { get; init; }
+        public TaskCompletionSource? SnapshotRelease { get; init; }
+        /// <summary>Per-call snapshot content and an optional gate that deliberately ignores cancellation (a superseded owner still completes).</summary>
+        public Func<int, (ImmutableArray<RlGeneration> Generations, Task? Gate)>? SnapshotPlan { get; init; }
+        private int _snapshotCalls;
+        public RlRegistrySnapshot CaptureRlSnapshot(CancellationToken ct = default)
+        {
+            if (SnapshotPlan is { } plan)
+            {
+                var (planned, gate) = plan(Interlocked.Increment(ref _snapshotCalls)); gate?.Wait();
+                return new(planned, null, null, false, false) { Capabilities = Capabilities };
+            }
+            SnapshotStarted?.TrySetResult(); SnapshotRelease?.Task.Wait(ct);
+            ct.ThrowIfCancellationRequested(); if (SnapshotError is { } error) throw error;
+            return new(DefaultSnapshot ? default : Generations.ToImmutableArray(), null, null, Recovery?.Target == RlFiles.Target && Recovery.Unavailable, Recovery?.Target == RlContinuousContract.Target && Recovery.Unavailable) { Capabilities = Capabilities };
+        }
         public IReadOnlyList<RlCheckpointReview> Checkpoints { get; set; } = Array.Empty<RlCheckpointReview>();
         public RlCheckpointReview? LastAbandoned { get; private set; }
         public IReadOnlyList<RlCheckpointReview> ListRlCheckpoints() => Checkpoints;

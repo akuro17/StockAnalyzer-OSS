@@ -72,6 +72,7 @@ public sealed class ConditionBasedBacktestStrategy : IBacktestStrategy
     private static readonly TimeInForce Gtc = new(true, -1);
 
     // Signal reasons: part of the run's reproducibility hash, so the list-built and tree-built paths share these single definitions.
+    public const string EntryConflictReason = "Entry conflict: Long and Short entry conditions met simultaneously";
     private const string EntryChainReason = "Condition entry chain matched";
     private const string ExitChainReason = "Condition exit chain matched";
     private const string ReversalOpenShortReason = "Reversal: opening Short";
@@ -154,13 +155,20 @@ public sealed class ConditionBasedBacktestStrategy : IBacktestStrategy
 
         if (context.PositionSide is null)
         {
-            if (_longEntryChain.Count > 0 &&
-                BacktestConditionEvaluator.Evaluate(_longEntryChain, _sideToIndicatorKey, context.Indicators, context.BarIndex))
+            bool longMatch = _longEntryChain.Count > 0 &&
+                BacktestConditionEvaluator.Evaluate(_longEntryChain, _sideToIndicatorKey, context.Indicators, context.BarIndex);
+            bool shortMatch = _shortEntryChain.Count > 0 &&
+                BacktestConditionEvaluator.Evaluate(_shortEntryChain, _sideToIndicatorKey, context.Indicators, context.BarIndex);
+
+            if (longMatch && shortMatch)
+            {
+                return new StrategyOrderRequest(SignalType.None, OrderType.Market, null, null, Gtc, EntryConflictReason);
+            }
+            if (longMatch)
             {
                 return new StrategyOrderRequest(SignalType.LongEntry, OrderType.Market, null, null, Gtc, EntryChainReason);
             }
-            if (_shortEntryChain.Count > 0 &&
-                BacktestConditionEvaluator.Evaluate(_shortEntryChain, _sideToIndicatorKey, context.Indicators, context.BarIndex))
+            if (shortMatch)
             {
                 return new StrategyOrderRequest(SignalType.ShortEntry, OrderType.Market, null, null, Gtc, EntryChainReason);
             }
@@ -231,11 +239,18 @@ public sealed class ConditionBasedBacktestStrategy : IBacktestStrategy
     {
         if (context.PositionSide is null)
         {
-            if (TreeRootMatches(tree.EntryLong, context))
+            bool longMatch = TreeRootMatches(tree.EntryLong, context);
+            bool shortMatch = TreeRootMatches(tree.EntryShort, context);
+
+            if (longMatch && shortMatch)
+            {
+                return new StrategyOrderRequest(SignalType.None, OrderType.Market, null, null, Gtc, EntryConflictReason);
+            }
+            if (longMatch)
             {
                 return new StrategyOrderRequest(SignalType.LongEntry, OrderType.Market, null, null, Gtc, EntryChainReason);
             }
-            if (TreeRootMatches(tree.EntryShort, context))
+            if (shortMatch)
             {
                 return new StrategyOrderRequest(SignalType.ShortEntry, OrderType.Market, null, null, Gtc, EntryChainReason);
             }

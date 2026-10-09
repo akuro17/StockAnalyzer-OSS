@@ -13,6 +13,7 @@ public partial class SettingsWindow : Window
     public SettingsWindow()
     {
         InitializeComponent();
+        SubWindowKeys.CloseOnEscape(this);
 
         DataContextChanged += (s, e) =>
         {

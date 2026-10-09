@@ -818,4 +818,139 @@ public class ConditionBasedBacktestStrategyTests
 
         Assert.Null(strategy.EvaluateExit(context));
     }
+
+    [Fact]
+    public void Evaluate_WhileFlat_LongAndShortEntryBothMatch_ReturnsNoneWithEntryConflictReason()
+    {
+        var longEntry = new BacktestConditionEntry
+        {
+            Left = CloseSide(),
+            Operator = ComparisonOperator.GreaterThan,
+            TargetMode = RightHandTargetMode.NumericValue,
+            RightNumericValue = 10m,
+            Role = BacktestConditionRole.EntryOnly,
+            Position = TradeSide.Long,
+        };
+        var shortEntry = new BacktestConditionEntry
+        {
+            Left = CloseSide(),
+            Operator = ComparisonOperator.GreaterThan,
+            TargetMode = RightHandTargetMode.NumericValue,
+            RightNumericValue = 10m,
+            Role = BacktestConditionRole.EntryOnly,
+            Position = TradeSide.Short,
+        };
+
+        var strategy = new ConditionBasedBacktestStrategy(new[] { longEntry, shortEntry });
+        StrategyIndicatorRequest request = Assert.Single(strategy.GetRequiredIndicators());
+        var indicators = new IndicatorSeriesSet(new Dictionary<string, ImmutableArray<decimal?>>
+        {
+            [request.Key] = ImmutableArray.Create<decimal?>(20m),
+        });
+        var context = new StrategyContext
+        {
+            BarIndex = 0,
+            Bar = FlatBar(0, 20m),
+            PositionSide = null,
+            Snapshot = default,
+            Indicators = indicators,
+        };
+
+        StrategyOrderRequest? result = strategy.Evaluate(context);
+
+        Assert.True(result.HasValue);
+        Assert.Equal(SignalType.None, result!.Value.SignalType);
+        Assert.Equal(ConditionBasedBacktestStrategy.EntryConflictReason, result!.Value.Reason);
+    }
+
+    [Fact]
+    public void EvaluateTree_WhileFlat_LongAndShortEntryBothMatch_ReturnsNoneWithEntryConflictReason()
+    {
+        var longComparison = new BacktestConditionEntry
+        {
+            Left = CloseSide(),
+            Operator = ComparisonOperator.GreaterThan,
+            TargetMode = RightHandTargetMode.NumericValue,
+            RightNumericValue = 10m,
+        };
+        var shortComparison = new BacktestConditionEntry
+        {
+            Left = CloseSide(),
+            Operator = ComparisonOperator.GreaterThan,
+            TargetMode = RightHandTargetMode.NumericValue,
+            RightNumericValue = 10m,
+        };
+
+        var tree = new BacktestConditionTree(
+            new BacktestConditionGroup(LogicalOperator.And, ImmutableArray.Create<IBacktestConditionNode>(new BacktestConditionLeaf(longComparison))),
+            new BacktestConditionGroup(LogicalOperator.And, ImmutableArray.Create<IBacktestConditionNode>(new BacktestConditionLeaf(shortComparison))),
+            BacktestConditionGroup.EmptyAnd,
+            BacktestConditionGroup.EmptyAnd,
+            BacktestConditionGroup.EmptyAnd,
+            BacktestConditionGroup.EmptyAnd);
+
+        var strategy = ConditionBasedBacktestStrategy.FromTree(tree);
+        StrategyIndicatorRequest request = Assert.Single(strategy.GetRequiredIndicators());
+        var indicators = new IndicatorSeriesSet(new Dictionary<string, ImmutableArray<decimal?>>
+        {
+            [request.Key] = ImmutableArray.Create<decimal?>(20m),
+        });
+        var context = new StrategyContext
+        {
+            BarIndex = 0,
+            Bar = FlatBar(0, 20m),
+            PositionSide = null,
+            Snapshot = default,
+            Indicators = indicators,
+        };
+
+        StrategyOrderRequest? result = strategy.Evaluate(context);
+
+        Assert.True(result.HasValue);
+        Assert.Equal(SignalType.None, result!.Value.SignalType);
+        Assert.Equal(ConditionBasedBacktestStrategy.EntryConflictReason, result!.Value.Reason);
+    }
+
+    [Fact]
+    public void RunLevel_SimultaneousEntryConflict_LogsSignalNone_AndOpensNoPosition()
+    {
+        var longEntry = new BacktestConditionEntry
+        {
+            Left = CloseSide(),
+            Operator = ComparisonOperator.GreaterThan,
+            TargetMode = RightHandTargetMode.NumericValue,
+            RightNumericValue = 10m,
+            Role = BacktestConditionRole.EntryOnly,
+            Position = TradeSide.Long,
+        };
+        var shortEntry = new BacktestConditionEntry
+        {
+            Left = CloseSide(),
+            Operator = ComparisonOperator.GreaterThan,
+            TargetMode = RightHandTargetMode.NumericValue,
+            RightNumericValue = 10m,
+            Role = BacktestConditionRole.EntryOnly,
+            Position = TradeSide.Short,
+        };
+
+        var strategy = new ConditionBasedBacktestStrategy(new[] { longEntry, shortEntry });
+        var bars = ImmutableArray.Create(FlatBar(0, 20m), FlatBar(1, 20m));
+        var input = new BacktestInput(bars, "TEST", TimeFrame.D1, BacktestInput.CurrentDataVersion, DailyStart, DailyStart.AddDays(2), 0, 0);
+        var config = MakeConfig();
+
+        var engine = new BacktestEngine(new FakeIndicatorFactory());
+        BacktestResult result = engine.Run(input, config, strategy);
+
+        Assert.Equal(RunStatus.Completed, result.Status);
+        // Signals with SignalType.None were logged for both conflicting bars
+        Assert.Equal(2, result.Signals.Length);
+        Assert.All(result.Signals, signal =>
+        {
+            Assert.Equal(SignalType.None, signal.Type);
+            Assert.Equal(ConditionBasedBacktestStrategy.EntryConflictReason, signal.Reason);
+        });
+        // No orders and no trades occurred
+        Assert.Empty(result.Orders);
+        Assert.Empty(result.Trades);
+    }
 }

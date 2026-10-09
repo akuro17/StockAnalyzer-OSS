@@ -23,7 +23,6 @@
         ExtendClientAreaTitleBarHeightHint="-1">
 
     <Window.KeyBindings>
-        <KeyBinding Gesture="Escape" Command="{Binding $parent[Window].Close}"/>
         <KeyBinding Gesture="Enter" Command="{Binding ScanCommand}"/>
     </Window.KeyBindings>
 

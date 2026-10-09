@@ -37,18 +37,8 @@
     </UserControl.Resources>
 
     <UserControl.Styles>
-        <!-- Replace CalendarDatePicker's default button visual (day-number glyph) with DateRange icon (SSoT: SharedIconGeometries) -->
-        <Style Selector="CalendarDatePicker /template/ Button#PART_Button">
-            <Setter Property="Template">
-                <ControlTemplate>
-                    <Border Background="Transparent">
-                        <PathIcon Data="{x:Static c:SharedIconGeometries.DateRange}"
-                                  Width="14" Height="14"
-                                  Foreground="{DynamicResource Brush.Text.Secondary}"/>
-                    </Border>
-                </ControlTemplate>
-            </Setter>
-        </Style>
+        <!-- CalendarDatePicker button icon: the shared date_range visual (replaces the default day-number glyph). -->
+        <StyleInclude Source="avares://StockAnalyzer.Avalonia/Assets/CalendarDatePickerIcon.axaml"/>
 
         <!-- Action icon buttons in search bar (e.g. Back button) matching post action icon styling -->
         <Style Selector="Button.NoteActionIcon">

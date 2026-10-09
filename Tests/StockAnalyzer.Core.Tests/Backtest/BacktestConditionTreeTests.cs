@@ -6,6 +6,7 @@ using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Backtest.Engine;
 using StockAnalyzer.Core.Models.Screener;
 using StockAnalyzer.Core.Services.Backtest.Engine;
+using StockAnalyzer.Core.Tests.Common;
 using Xunit;
 using static StockAnalyzer.Core.Tests.Backtest.ConditionTreeTestKit;
 
@@ -308,11 +309,12 @@ public class BacktestConditionTreeTests
 
         for (int warm = 0; warm < 100; warm++) BacktestConditionTreeEvaluator.Evaluate(tree, map, series, warm % 32);
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
         bool sink = false;
-        for (int i = 0; i < 10_000; i++) sink ^= BacktestConditionTreeEvaluator.Evaluate(tree, map, series, i % 32);
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        long allocated = AllocationProbe.Minimum(() =>
+        {
+            for (int i = 0; i < 10_000; i++) sink ^= BacktestConditionTreeEvaluator.Evaluate(tree, map, series, i % 32);
+        });
 
-        Assert.True(allocated == 0, $"Evaluation allocated {allocated} bytes (sink={sink}).");
+        Assert.True(allocated == 0, $"Evaluation allocated {allocated} bytes in every one of {AllocationProbe.Samples} samples (sink={sink}).");
     }
 }

@@ -17,6 +17,7 @@ public class ParameterViewBuilderTests
 {
     private static TextBlock? FindLabel(Control built, string labelText)
     {
+        var expectedLoc = LocalizationManager.Instance.Get($"Param_{labelText}") ?? labelText;
         var stackPanel = Assert.IsType<StackPanel>(built);
         foreach (var child in stackPanel.Children)
         {
@@ -24,7 +25,7 @@ public class ParameterViewBuilderTests
             var rowGrid = Assert.IsType<Grid>(rowBorder.Child);
             var labelCell = (Border)rowGrid.Children[0];
             var label = (TextBlock)labelCell.Child!;
-            if (label.Text == labelText) return label;
+            if (label.Text == labelText || label.Text == expectedLoc) return label;
         }
         return null;
     }
@@ -97,6 +98,49 @@ public class ParameterViewBuilderTests
         }
 
         Assert.True(autoCompleteBoxFound, "Expected to find an AutoCompleteBox for ComparisonSymbol property.");
+    }
+
+    [AvaloniaFact]
+    public void Build_WithTwoColumnFields_RendersResponsiveFormPanelWithFields()
+    {
+        var builder = new ParameterViewBuilder();
+        var parameter = new CoreSmaParameter { Period = 25 };
+
+        var control = builder.Build(parameter, Array.Empty<string>(), ParameterFormLayout.TwoColumnFields);
+        var panel = Assert.IsType<StockAnalyzer.Avalonia.Views.Controls.ResponsiveFormPanel>(control);
+
+        Assert.NotEmpty(panel.Children);
+        var field = Assert.IsType<StackPanel>(panel.Children[0]);
+        var label = Assert.IsType<TextBlock>(field.Children[0]);
+        var expectedLoc = LocalizationManager.Instance.Get("Param_Period") ?? "Period";
+        Assert.True(label.Text == "Period" || label.Text == expectedLoc);
+
+        var nud = Assert.IsType<NumericUpDown>(field.Children[1]);
+        Assert.Equal(double.NaN, nud.Width);
+        Assert.Equal(25, nud.Value);
+
+        // Verify two-way binding writes through
+        nud.Value = 30;
+        Assert.Equal(30, parameter.Period);
+    }
+
+    [AvaloniaFact]
+    public void Build_WithTwoColumnFields_SetsFullWidthOnCategoryHeaders()
+    {
+        var builder = new ParameterViewBuilder();
+        var parameter = new CoreIchimokuParameter();
+
+        var control = builder.Build(parameter, Array.Empty<string>(), ParameterFormLayout.TwoColumnFields);
+        var panel = Assert.IsType<StockAnalyzer.Avalonia.Views.Controls.ResponsiveFormPanel>(control);
+
+        var headers = panel.Children.OfType<Border>().ToList();
+        if (headers.Count > 0)
+        {
+            foreach (var header in headers)
+            {
+                Assert.True(StockAnalyzer.Avalonia.Views.Controls.ResponsiveFormPanel.GetIsFullWidth(header));
+            }
+        }
     }
 }
 

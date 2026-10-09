@@ -7,13 +7,18 @@ using System.Threading.Tasks;
 
 namespace StockAnalyzer.Core.Tests.Services;
 
-/// <summary>Manual clock: delay timers fire only when <see cref="Advance"/> passes their due time; <see cref="TimerArmed"/> counts armed delays.</summary>
-internal sealed class ManualTimeProvider(DateTimeOffset now) : TimeProvider
+/// <summary>
+/// Manual clock: delay timers fire only when <see cref="Advance"/> passes their due time; <see cref="TimerArmed"/> counts armed delays.
+/// <paramref name="localTimeZone"/> fixes the local zone (the machine's zone when null), so a test about "today" does not depend on where it runs.
+/// </summary>
+internal sealed class ManualTimeProvider(DateTimeOffset now, TimeZoneInfo? localTimeZone = null) : TimeProvider
 {
     private readonly object _gate = new();
     private readonly List<ManualTimer> _timers = [];
     private DateTimeOffset _now = now;
     public SemaphoreSlim TimerArmed { get; } = new(0);
+
+    public override TimeZoneInfo LocalTimeZone => localTimeZone ?? base.LocalTimeZone;
 
     public override DateTimeOffset GetUtcNow() { lock (_gate) return _now; }
 

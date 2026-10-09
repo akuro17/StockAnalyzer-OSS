@@ -32,4 +32,8 @@ public enum RunStatus { Completed = 0, Cancelled = 1, Failed = 2, Insolvent = 3 
 
 public enum ExpiredReason { EndOfData, Insolvency, GTDExpired }
 
-public enum RejectedReason { InsufficientFunds, PositionConflict, InvalidQuantity, QuantityCapExceeded }
+public enum VolumeConstraintMode { RejectIfExceeds = 0, ClampAndCancelRemainder = 1 }
+
+public enum IntrabarPathMode { CanonicalOHLC = 0, DeterministicCandleShape = 1 }
+
+public enum RejectedReason { InsufficientFunds, PositionConflict, InvalidQuantity, QuantityCapExceeded, InsufficientVolume }

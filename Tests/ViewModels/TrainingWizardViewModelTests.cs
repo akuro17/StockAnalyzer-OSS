@@ -5,7 +5,9 @@ using System.Threading;
 using System.Threading.Tasks;
 using Xunit;
 using StockAnalyzer.Avalonia.Services;
+using StockAnalyzer.Avalonia.ViewModels;
 using StockAnalyzer.Avalonia.ViewModels.Dialogs;
+using StockAnalyzer.Avalonia.ViewModels.TickerList;
 using StockAnalyzer.Core.Interfaces;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Portfolio;
@@ -67,50 +69,6 @@ public class TrainingWizardViewModelTests : IDisposable
         vm.SelectedFramework = TrainingFramework.TensorFlow;
         Assert.Equal(TrainingInitializationMode.Fresh, vm.SelectedInitializationMode);
         Assert.Single(vm.AvailableInitializationModes);
-    }
-
-    [Fact]
-    public async Task Constructor_SplitsProfilesIntoWatchlistAndPortfolioCollections()
-    {
-        var watchlist = MakeProfile("Tech Watch", isPortfolio: false, "AAPL", "MSFT");
-        var portfolio = MakeProfile("Core Holdings", isPortfolio: true, "GOOGL");
-        var watchlistManager = new DummyWatchlistManager(new[] { watchlist, portfolio });
-        var market = new DummyMarketDataProvider("AAPL", "MSFT", "GOOGL", "AMZN");
-
-        var vm = new TrainingWizardViewModel(watchlistManager: watchlistManager, marketDataProvider: market);
-        await WaitForInitializationAsync(vm);
-
-        Assert.Single(vm.WatchlistProfiles);
-        Assert.Equal("Tech Watch", vm.WatchlistProfiles[0].Name);
-        Assert.Single(vm.PortfolioProfiles);
-        Assert.Equal("Core Holdings", vm.PortfolioProfiles[0].Name);
-    }
-
-    [Fact]
-    public async Task WatchlistsChanged_AfterConstruction_RepopulatesProfileCollections()
-    {
-        // Reproduces the reported bug: a wizard instance constructed before the watchlist/portfolio
-        // data finished loading (e.g. opened while WorkspaceCoordinator.Initialize is still running,
-        // or before the user has created any watchlist yet) saw permanently empty
-        // WatchlistProfiles/PortfolioProfiles, because the VM only read GetAllProfiles() once at
-        // construction and never listened for a later change.
-        var watchlistManager = new DummyWatchlistManager(Array.Empty<WatchlistProfile>());
-        var market = new DummyMarketDataProvider("AAPL", "MSFT");
-
-        var vm = new TrainingWizardViewModel(watchlistManager: watchlistManager, marketDataProvider: market);
-        await WaitForInitializationAsync(vm);
-
-        Assert.Empty(vm.WatchlistProfiles);
-        Assert.Empty(vm.PortfolioProfiles);
-
-        var watchlist = MakeProfile("Tech Watch", isPortfolio: false, "AAPL");
-        var portfolio = MakeProfile("Core Holdings", isPortfolio: true, "MSFT");
-        watchlistManager.SetProfiles(new[] { watchlist, portfolio });
-
-        Assert.Single(vm.WatchlistProfiles);
-        Assert.Equal("Tech Watch", vm.WatchlistProfiles[0].Name);
-        Assert.Single(vm.PortfolioProfiles);
-        Assert.Equal("Core Holdings", vm.PortfolioProfiles[0].Name);
     }
 
     [Fact]
@@ -215,29 +173,109 @@ public class TrainingWizardViewModelTests : IDisposable
         Assert.Contains(nameof(TrainingWizardViewModel.WindowUnitNote), raised);
     }
 
-    [Theory]
-    [InlineData("AllTickers", TrainingScopeKind.AllTickers)]
-    [InlineData("Watchlist", TrainingScopeKind.Watchlist)]
-    [InlineData("Portfolio", TrainingScopeKind.Portfolio)]
-    public void SetScopeCommand_ValidMemberName_UpdatesSelectedScope(string scopeName, TrainingScopeKind expected)
+    // ----- ticker-list tree (replaces the scope radio buttons and the profile lists) -----
+
+    private sealed class FakeTickerStore : ITickerStateStore
     {
-        // Bound from the view's scope RadioButtons via CommandParameter (string), so the
-        // command must round-trip the same Enum.TryParse conversion MainWindowViewModel.SetTimeframe(string) uses.
-        var vm = new TrainingWizardViewModel();
+        public List<TickerGroupNode> Nodes { get; } = new();
+        public Dictionary<Guid, string[]> Members { get; } = new();
+        public int Resolutions { get; private set; }
+        public IEnumerable<TickerGroupNode> Groups => Nodes;
+        public IEnumerable<StockAnalyzer.Core.Models.Screener.IFilterableSymbol> DisplayItems => Array.Empty<StockAnalyzer.Core.Models.Screener.IFilterableSymbol>();
+        public IReadOnlyList<string> GetTickersForNode(TickerGroupNode? node)
+        {
+            Resolutions++;
+            return node is not null && Members.TryGetValue(node.Id, out var members) ? members : Array.Empty<string>();
+        }
+    }
 
-        vm.SetScopeCommand.Execute(scopeName);
-
-        Assert.Equal(expected, vm.SelectedScope);
+    private static (FakeTickerStore Store, WatchlistNode Watchlist, PortfolioNode Portfolio) TreeStore()
+    {
+        var store = new FakeTickerStore();
+        var watchlist = new WatchlistNode(MakeProfile("Tech Watch", isPortfolio: false, "AAPL", "MSFT"));
+        var portfolio = new PortfolioNode(MakeProfile("Core Holdings", isPortfolio: true, "GOOGL"));
+        var watchlists = new CategoryNode(TickerListViewModel.WatchlistsCategoryId, "Watchlists"); watchlists.Children!.Add(watchlist);
+        var portfolios = new CategoryNode(TickerListViewModel.PortfoliosCategoryId, "Portfolios"); portfolios.Children!.Add(portfolio);
+        store.Nodes.AddRange(new TickerGroupNode[] { new AllTickersNode("All"), watchlists, portfolios, new CategoryNode(Guid.NewGuid(), "Other"),
+            new ActionNode(Guid.NewGuid(), "Create", new CommunityToolkit.Mvvm.Input.RelayCommand(() => { })) });
+        store.Members[watchlist.Id] = new[] { "AAPL", "MSFT" };
+        store.Members[portfolio.Id] = new[] { "GOOGL", "MSFT" };
+        store.Members[watchlists.Id] = new[] { "AAPL", "MSFT" };
+        return (store, watchlist, portfolio);
     }
 
     [Fact]
-    public void SetScopeCommand_UnknownMemberName_LeavesSelectedScopeUnchanged()
+    public async Task Constructor_BuildsTheTickerTreeAndTicksOnlyAllTickers()
     {
-        var vm = new TrainingWizardViewModel { SelectedScope = TrainingScopeKind.Watchlist };
+        var (store, _, _) = TreeStore();
+        using var vm = new TrainingWizardViewModel(watchlistManager: new DummyWatchlistManager(Array.Empty<WatchlistProfile>()),
+            marketDataProvider: new DummyMarketDataProvider("AAPL", "MSFT", "GOOGL", "AMZN"), tickerStore: store);
+        await WaitForInitializationAsync(vm);
 
-        vm.SetScopeCommand.Execute("NotARealScope");
+        Assert.True(vm.HasSourceTree);
+        Assert.Equal(new[] { "All", "Watchlists", "Portfolios", "Other" }, vm.SourceTree.Select(i => i.Name).ToArray());     // the action node is not a row
+        Assert.Equal(new[] { true, true, true, false }, vm.SourceTree.Select(i => i.IsSelectable).ToArray());
+        Assert.Equal(new[] { true, false, false, false }, vm.SourceTree.Select(i => i.IsSelected).ToArray());
+        Assert.Equal("Tech Watch", Assert.Single(vm.SourceTree[1].Children).Name);
+        Assert.Equal("Core Holdings", Assert.Single(vm.SourceTree[2].Children).Name);
+        Assert.True(vm.SourceTree[1].Children[0].HasIcon);
+        Assert.False(vm.SourceTree[0].HasIcon);
+    }
 
-        Assert.Equal(TrainingScopeKind.Watchlist, vm.SelectedScope);
+    [Fact]
+    public async Task WatchlistsChanged_AfterConstruction_RebuildsTheTreeAndKeepsTheTickedRows()
+    {
+        // A wizard opened before the watchlists finished loading (or before the user created one) must not keep an empty list for its lifetime.
+        var store = new FakeTickerStore();
+        store.Nodes.Add(new AllTickersNode("All"));
+        var watchlistManager = new DummyWatchlistManager(Array.Empty<WatchlistProfile>());
+        using var vm = new TrainingWizardViewModel(watchlistManager: watchlistManager, marketDataProvider: new DummyMarketDataProvider("AAPL", "MSFT"), tickerStore: store);
+        await WaitForInitializationAsync(vm);
+        Assert.Single(vm.SourceTree);
+
+        var (full, _, _) = TreeStore();
+        store.Nodes.Clear(); store.Nodes.AddRange(full.Nodes.Where(n => n is not AllTickersNode)); store.Nodes.Insert(0, vm.SourceTree[0].Node);
+        watchlistManager.SetProfiles(new[] { MakeProfile("Tech Watch", isPortfolio: false, "AAPL") });
+
+        Assert.Equal(new[] { "All", "Watchlists", "Portfolios", "Other" }, vm.SourceTree.Select(i => i.Name).ToArray());
+        Assert.True(vm.SourceTree[0].IsSelected);                       // the ticked row survives the rebuild
+        Assert.All(vm.SourceTree.Skip(1), i => Assert.False(i.IsSelected));
+    }
+
+    [Fact]
+    public async Task StartTrainingAsync_TickedLists_ResolveTheUnionOfTheirTickersWithoutDuplicates()
+    {
+        var (store, watchlist, portfolio) = TreeStore();
+        var orchestrator = new FakeTrainingOrchestrator();
+        using var vm = new TrainingWizardViewModel(orchestrator: orchestrator, watchlistManager: new DummyWatchlistManager(Array.Empty<WatchlistProfile>()),
+            marketDataProvider: new DummyMarketDataProvider("AAPL", "MSFT", "GOOGL", "AMZN"), tickerStore: store);
+        await WaitForInitializationAsync(vm);
+        vm.Horizon = 5;
+
+        vm.SourceTree[0].IsSelected = false;                            // All tickers off
+        Assert.False(vm.StartTrainingCommand.CanExecute(null));          // nothing ticked: no population
+        vm.SourceTree[1].Children[0].IsSelected = true;                  // Tech Watch: AAPL, MSFT
+        vm.SourceTree[2].Children[0].IsSelected = true;                  // Core Holdings: GOOGL, MSFT
+        Assert.True(vm.StartTrainingCommand.CanExecute(null));
+        await vm.StartTrainingCommand.ExecuteAsync(null);
+
+        Assert.Equal(new[] { "AAPL", "GOOGL", "MSFT" }, orchestrator.CapturedConfig!.Symbols.OrderBy(s => s).ToArray());
+    }
+
+    [Fact]
+    public async Task TickedAllTickers_UsesTheMarketDataProviderListAndTheCheckIsNotRepeatedPerChange()
+    {
+        var (store, _, _) = TreeStore();
+        var orchestrator = new FakeTrainingOrchestrator();
+        using var vm = new TrainingWizardViewModel(orchestrator: orchestrator, watchlistManager: new DummyWatchlistManager(Array.Empty<WatchlistProfile>()),
+            marketDataProvider: new DummyMarketDataProvider("AAPL", "MSFT", "GOOGL", "AMZN"), tickerStore: store);
+        await WaitForInitializationAsync(vm);
+        vm.Horizon = 5;
+
+        for (int i = 0; i < 5; i++) _ = vm.StartTrainingCommand.CanExecute(null);
+        Assert.Equal(0, store.Resolutions);                             // "All tickers" never asks the store; the answer is cached
+        await vm.StartTrainingCommand.ExecuteAsync(null);
+        Assert.Equal(new[] { "AAPL", "AMZN", "GOOGL", "MSFT" }, orchestrator.CapturedConfig!.Symbols.OrderBy(s => s).ToArray());
     }
 
     [Fact]
@@ -473,27 +511,6 @@ public class TrainingWizardViewModelTests : IDisposable
         Assert.True(double.IsNaN(row.Mae));
         Assert.True(double.IsNaN(row.DirectionalAccuracy));
         Assert.True(double.IsNaN(row.RmseBaseline));
-    }
-
-    [Fact]
-    public async Task StartTrainingAsync_WatchlistScope_ResolvesOnlySelectedProfilesTickers()
-    {
-        var selected = MakeProfile("Selected", isPortfolio: false, "AAPL", "MSFT");
-        var notSelected = MakeProfile("NotSelected", isPortfolio: false, "GOOGL");
-        var watchlistManager = new DummyWatchlistManager(new[] { selected, notSelected });
-        var orchestrator = new FakeTrainingOrchestrator();
-        var vm = new TrainingWizardViewModel(orchestrator: orchestrator, watchlistManager: watchlistManager);
-        await WaitForInitializationAsync(vm);
-
-        vm.SelectedScope = TrainingScopeKind.Watchlist;
-        vm.WatchlistProfiles.Single(p => p.Name == "Selected").IsSelected = true;
-        vm.Horizon = 5;
-
-        Assert.True(vm.StartTrainingCommand.CanExecute(null));
-        await vm.StartTrainingCommand.ExecuteAsync(null);
-
-        Assert.NotNull(orchestrator.CapturedConfig);
-        Assert.Equal(new[] { "AAPL", "MSFT" }.OrderBy(s => s), orchestrator.CapturedConfig!.Symbols.OrderBy(s => s));
     }
 
     [Fact]

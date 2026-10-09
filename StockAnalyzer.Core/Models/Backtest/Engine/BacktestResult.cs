@@ -27,6 +27,7 @@ public sealed class BacktestResult
     /// (see the DERIVED CONVENTION remarks on CreateEmpty below).
     /// </summary>
     public bool IsInsufficientData { get; }
+    public ImmutableArray<BacktestWarning> Warnings { get; }
 
     public BacktestResult(
         ImmutableArray<BacktestOrder> orders,
@@ -38,7 +39,8 @@ public sealed class BacktestResult
         RunStatus status,
         string strategyName,
         byte[] reproducibilityHash,
-        bool isInsufficientData)
+        bool isInsufficientData,
+        ImmutableArray<BacktestWarning> warnings = default)
     {
         Orders = orders.IsDefault ? ImmutableArray<BacktestOrder>.Empty : orders;
         Fills = fills.IsDefault ? ImmutableArray<BacktestFill>.Empty : fills;
@@ -50,6 +52,7 @@ public sealed class BacktestResult
         StrategyName = strategyName ?? throw new ArgumentNullException(nameof(strategyName));
         _reproducibilityHash = (byte[])(reproducibilityHash ?? throw new ArgumentNullException(nameof(reproducibilityHash))).Clone();
         IsInsufficientData = isInsufficientData;
+        Warnings = warnings.IsDefault ? ImmutableArray<BacktestWarning>.Empty : warnings;
     }
 
     /// <summary>

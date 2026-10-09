@@ -30,6 +30,7 @@ public class BacktestEngineStopLimitLiquidationPriorityTests
         InitialMarginRatio = 0.3m,
         MaintenanceMarginRatio = 0.2m,
         LiquidationPenaltyRatio = 0m,
+        IntrabarPathMode = IntrabarPathMode.CanonicalOHLC,
     };
 
     /// <summary>bar0 (flat 100) signals the entry, bar1 (flat 100) fills it and signals the StopLimit exit, bar2 is the contested bar.</summary>

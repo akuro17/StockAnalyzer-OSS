@@ -170,6 +170,6 @@ public sealed class ModelAnalysisTests : IDisposable
 
     public void Dispose()
     {
-        if (Directory.Exists(_directory)) Directory.Delete(_directory, recursive: true);
+        TestDirectory.Delete(_directory);
     }
 }

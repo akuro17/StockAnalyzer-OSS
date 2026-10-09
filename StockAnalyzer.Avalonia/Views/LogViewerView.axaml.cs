@@ -10,6 +10,7 @@ public partial class LogViewerView : Window
     public LogViewerView()
     {
         InitializeComponent();
+        SubWindowKeys.CloseOnEscape(this);
     }
 
     public void OnHeaderPointerPressed(object? sender, PointerPressedEventArgs e)

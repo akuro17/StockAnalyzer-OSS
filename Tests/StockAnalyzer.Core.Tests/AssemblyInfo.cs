@@ -18,6 +18,8 @@ public class PythonIpcCollection
 // started while another test is loading an ONNX model therefore keeps that model file locked for as long as it runs, and the other
 // test's cleanup (Directory.Delete or Directory.Move) fails with "being used by another process" (R2-5; the holder was identified
 // as the Python child of PreparedSourcePipelineParityTests, whose parent was this test host).
+// ChildProcessCollectionGuardTests enforces this: a test class in this project that calls a process starter must carry the attribute, or another
+// collection defined with DisableParallelization (a class can have only one collection, e.g. the portfolio tests that also change an environment variable).
 [CollectionDefinition("ChildProcess", DisableParallelization = true)]
 public class ChildProcessCollection
 {

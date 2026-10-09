@@ -17,6 +17,8 @@ public sealed record RlTrainingJob(
 {
     public string? FrozenDirectionModelId { get; init; }
     public string? EvaluationSpecificationId { get; init; }
+    /// <summary>Opt-in short-history evaluation of the discrete T15 target; mutually exclusive with the all-block id and a frozen direction.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? ShortHistorySpecificationId { get; init; }
 }
 
 public sealed record RlTrainingProgress(Guid RunId, long Sequence, string State, string Message, int CompletedSteps);
@@ -97,6 +99,7 @@ public sealed record RlEpisodeCatalog(ImmutableArray<RlEpisodeBlock> Train,
 {
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? EvaluationSpecificationId { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public int? SchemaVersion { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? ShortHistorySpecificationId { get; init; }
 }
 
 public sealed record RlReplayRequest(string ModelId, string SourceDirectory, string BlockId,
@@ -136,14 +139,20 @@ public static class RlTrainingValidation
         long rowBytes = checked(RlContract.ObservationLength * sizeof(float) * 2L + sizeof(long) + sizeof(float) * 3L);
         long replay = checked((long)(RlContract.ReplayCapacity + RlContract.BatchSize) * rowBytes
             + RlContract.BatchSize * sizeof(long) + RlContract.IpcFrameByteLimit * 2L);
-        if (continuous)
-            replay = checked((long)(RlContinuousContract.RolloutSteps + RlContract.BatchSize) *
-                (RlContract.ObservationLength * sizeof(float) + ((long)RlContinuousContract.ActionCount + RlContinuousContract.RolloutAuxiliaryFieldCount) * sizeof(float))
-                + RlContract.IpcFrameByteLimit * 2L);
+        if (continuous) replay = ContinuousReplayBytes(RlContract.ObservationLength, RlContinuousContract.ActionCount);
         if (replay > RlContract.BufferByteLimit || replay > (long)limits.MaxTensorSizeMiB * TrainingResourceOverrides.MiB)
             throw new InvalidOperationException("RL replay cannot fit captured resource limits.");
         return limits;
     }
+
+    /// <summary>
+    /// Single owner of the PPO rollout-buffer byte rule: rollout and sampled-batch rows of (observation + action + auxiliary) float32
+    /// values plus two IPC frames. The portfolio limits use it with their own observation and action sizes.
+    /// </summary>
+    internal static long ContinuousReplayBytes(long observationLength, long actionCount)
+        => checked((RlContinuousContract.RolloutSteps + RlContract.BatchSize) *
+            (observationLength * sizeof(float) + (actionCount + RlContinuousContract.RolloutAuxiliaryFieldCount) * sizeof(float))
+            + RlContract.IpcFrameByteLimit * 2L);
 
     public static RlTrainingJob Freeze(RlTrainingJob job)
     {
@@ -155,6 +164,9 @@ public static class RlTrainingValidation
             throw new ArgumentException("The source date interval must be nonempty.", nameof(job));
         if (job.PreparedSourceDirectory is not null)
             throw new ArgumentException("External prepared market sources are prohibited; use existing Data/Daily files.", nameof(job));
+        if (RlShortHistoryEvaluationContract.IsShortHistory(job.ShortHistorySpecificationId)
+            && (job.FrozenDirectionModelId is not null || job.EvaluationSpecificationId is not null))
+            throw new ArgumentException("Short-history evaluation applies to the discrete T15 target only and excludes a frozen direction and the all-block specification.", nameof(job));
         if (RlAllBlockEvaluationContract.IsExpanded(job.EvaluationSpecificationId) && job.FrozenDirectionModelId is null)
             throw new ArgumentException("All-block evaluation requires an explicit qualified frozen T15 direction.", nameof(job));
         return job with { Symbol = job.Symbol.Trim(), Costs = RlContract.CreateConfiguration(job.Costs) };

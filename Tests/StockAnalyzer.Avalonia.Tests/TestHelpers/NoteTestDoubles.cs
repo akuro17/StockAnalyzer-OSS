@@ -242,12 +242,14 @@ public sealed class FakeMarketDataProvider : IMarketDataProvider
 /// profile - for tests to pick a SelectedScopeNode and verify GetTickersForNode resolves it, without
 /// depending on the real (heavy) TickerListViewModel. FilterNode entries are not built by
 /// FromProfiles (WatchlistManager profiles have no concept of a Filter) - add them to Groups
-/// directly when a test needs one.</summary>
+/// directly when a test needs one. Also the one ticker-store double of the dialog tests (hand-built node trees; <see cref="Rows"/> are the displayed
+/// ticker-list rows).</summary>
 public sealed class FakeTickerStateStore : ITickerStateStore
 {
     public List<TickerGroupNode> Groups { get; } = new();
     IEnumerable<TickerGroupNode> ITickerStateStore.Groups => Groups;
-    public IEnumerable<IFilterableSymbol> DisplayItems => Array.Empty<IFilterableSymbol>();
+    public List<IFilterableSymbol> Rows { get; } = new();
+    public IEnumerable<IFilterableSymbol> DisplayItems => Rows;
 
     public IReadOnlyList<string> GetTickersForNode(TickerGroupNode? node) => node switch
     {

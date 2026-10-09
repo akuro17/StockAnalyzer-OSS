@@ -15,5 +15,6 @@ public enum TemplateType
     Feature = 7,
     SourceIndicator = 8,
     DynamicPeriodDriver = 9,
-    Screener = 10
+    Screener = 10,
+    BacktestCondition = 11
 }

@@ -20,9 +20,10 @@ public class FuturePoisonTests
     private static ImmutableArray<CandleData> Original() => SyntheticBars.SeededRandomWalk(
         VerificationParameters.PrimarySeed, VerificationParameters.PoisonBarCount, VerificationParameters.FuzzStartPrice);
 
-    private static BacktestConfiguration Config() => VerificationHarness.MakeConfig(
+    private static BacktestConfiguration Config(IntrabarPathMode intrabarPathMode = IntrabarPathMode.DeterministicCandleShape) => VerificationHarness.MakeConfig(
         initialCapital: 100_000m, commissionFlat: 1m, commissionPerUnit: 0.01m, slippageRatio: 0.001m,
-        sizingParameter: 50m, initialMarginRatio: 0.5m, maintenanceMarginRatio: 0.25m, liquidationPenaltyRatio: 0.005m);
+        sizingParameter: 50m, initialMarginRatio: 0.5m, maintenanceMarginRatio: 0.25m, liquidationPenaltyRatio: 0.005m,
+        intrabarPathMode: intrabarPathMode);
 
     private static BacktestResult RunSma(ImmutableArray<CandleData> bars)
         => VerificationHarness.Run(VerificationHarness.MakeInput(bars, VerificationParameters.SmaPeriod), Config(),
@@ -156,11 +157,12 @@ public class FuturePoisonTests
         ImmutableArray<CandleData> untouchedSuffix = prefix.Add(
             new CandleData(start.AddDays(2), 100m, 105m, 80m, 100m, 1000));
         var strategy = new OneShotGtcStrategy(type);
+        BacktestConfiguration config = Config(IntrabarPathMode.CanonicalOHLC);
 
-        BacktestResult filling = VerificationHarness.Run(VerificationHarness.MakeInput(fillingSuffix), Config(), strategy);
-        BacktestResult untouched = VerificationHarness.Run(VerificationHarness.MakeInput(untouchedSuffix), Config(), new OneShotGtcStrategy(type));
-        BacktestResult truncatedA = VerificationHarness.Run(VerificationHarness.MakeInput(prefix), Config(), new OneShotGtcStrategy(type));
-        BacktestResult truncatedB = VerificationHarness.Run(VerificationHarness.MakeInput(prefix), Config(), new OneShotGtcStrategy(type));
+        BacktestResult filling = VerificationHarness.Run(VerificationHarness.MakeInput(fillingSuffix), config, strategy);
+        BacktestResult untouched = VerificationHarness.Run(VerificationHarness.MakeInput(untouchedSuffix), config, new OneShotGtcStrategy(type));
+        BacktestResult truncatedA = VerificationHarness.Run(VerificationHarness.MakeInput(prefix), config, new OneShotGtcStrategy(type));
+        BacktestResult truncatedB = VerificationHarness.Run(VerificationHarness.MakeInput(prefix), config, new OneShotGtcStrategy(type));
 
         Assert.Empty(FindPrefixDifferences(filling, untouched, prefix.Length));
         Assert.NotEqual(Assert.Single(filling.Orders).Status, Assert.Single(untouched.Orders).Status);

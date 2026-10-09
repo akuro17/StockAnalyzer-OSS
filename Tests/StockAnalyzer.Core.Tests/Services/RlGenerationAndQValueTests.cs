@@ -24,6 +24,7 @@ using Xunit;
 namespace StockAnalyzer.Core.Tests.Services;
 
 /// <summary>Numerical ONNX/source/evaluation fixtures test integrity and lifecycle only; they are never trained-market qualification evidence.</summary>
+[Collection("ChildProcess")]
 public sealed partial class RlGenerationAndQValueTests : IDisposable
 {
     private readonly string _root = Path.Combine(Path.GetTempPath(), "sa_rl_generation_contract_" + Guid.NewGuid().ToString("N"));
@@ -37,12 +38,13 @@ public sealed partial class RlGenerationAndQValueTests : IDisposable
         TrainingResourceOverrides.MaximumRunDurationMinutes * 60);
     private string RegistryRoot => Path.Combine(_root, "registry");
 
-    private (string Directory, RlSourceSnapshot Source, FixedScaler Scaler) Candidate(decimal score = -0.01m, bool tieFixture = false)
+    private (string Directory, RlSourceSnapshot Source, FixedScaler Scaler) Candidate(decimal score = -0.01m, bool tieFixture = false,
+        bool shortHistory = false, int barCount = 5_200)
     {
         string directory = Path.Combine(_root, "candidate_" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
         // Complete bounded numerical rows establish contract support; no fixture claims vendor acquisition or profitable training.
-        var bars = Enumerable.Range(0, 5_200).Select(i => new CandleData(Start.AddDays(i), 100m, 110m, 90m, 100m, 1_000)).ToImmutableArray();
+        var bars = Enumerable.Range(0, barCount).Select(i => new CandleData(Start.AddDays(i), 100m, 110m, 90m, 100m, 1_000)).ToImmutableArray();
         Write(Path.Combine(directory, RlFiles.Bars), bars);
         Write(Path.Combine(directory, RlFiles.Actions), Array.Empty<RlCorporateAction>());
         CreateParquet(Path.Combine(directory, RlFiles.RawParquet),
@@ -65,13 +67,16 @@ public sealed partial class RlGenerationAndQValueTests : IDisposable
                 FirstDate = DateOnly.FromDateTime(bars[0].Timestamp), LastDate = DateOnly.FromDateTime(bars[^1].Timestamp),
                 ActionsPeriodStart = null, ActionsPeriodEnd = null };
         Write(Path.Combine(directory, RlFiles.SourceManifest), manifest);
+        // The saved job selects the evaluation specification; the complete job document replaces this stub below.
+        if (shortHistory) Write(Path.Combine(directory, RlFiles.Job), new Dictionary<string, object> { [RlShortHistoryEvaluationContract.MetadataKey] = RlShortHistoryEvaluationContract.SpecificationId });
         var source = RlSourceSnapshot.Load(directory, Limits);
         Write(Path.Combine(directory, RlFiles.Catalog), source.Catalog);
         var actions = source.Catalog.Train.Concat(source.Catalog.Validation).Concat(source.Catalog.Oos)
             .ToDictionary(block => block.Id, _ => new int[RlContract.EpisodeHorizon]);
         Write(Path.Combine(directory, RlFiles.BaselineActions), actions);
         var metadata = RlObservationBuilder.CreateMetadata(Symbol, source.Revision, Revision);
-        byte[] model = File.ReadAllBytes(Path.Combine("Assets", "rl_numeric_q_fixture.onnx"));
+        if (shortHistory) metadata[RlShortHistoryEvaluationContract.MetadataKey] = RlShortHistoryEvaluationContract.SpecificationId;
+        byte[] model =File.ReadAllBytes(Path.Combine("Assets", "rl_numeric_q_fixture.onnx"));
         if (tieFixture)
         {
             byte[] bias = new byte[3 * sizeof(float)];
@@ -101,7 +106,16 @@ public sealed partial class RlGenerationAndQValueTests : IDisposable
             torch_device = "cpu", deterministic_algorithms = true, source_script_sha256 = Revision });
         var costs = RlContract.CreateConfiguration(new BacktestConfiguration
         { InitialCapital = 1_000m, SizingModel = PositionSizingModel.FixedQuantity, SizingParameter = 1m });
-        Write(Path.Combine(directory, RlFiles.Job), new { source_directory = directory, costs, defaults = RlContract.ToWireDefaults(), resource_limits = Limits, smoke_only = false });
+        var jobDocument = new Dictionary<string, object> { ["source_directory"] = directory, ["costs"] = costs, ["defaults"] = RlContract.ToWireDefaults(),
+            ["resource_limits"] = Limits, ["smoke_only"] = false };
+        if (shortHistory)
+        {
+            jobDocument[RlShortHistoryEvaluationContract.MetadataKey] = RlShortHistoryEvaluationContract.SpecificationId;
+            jobDocument[RlShortHistoryEvaluationContract.ContractKey] = new { specification_id = RlShortHistoryEvaluationContract.SpecificationId,
+                schema_version = RlShortHistoryEvaluationContract.SchemaVersion, contract_hash = RlShortHistoryEvaluationContract.ContractHash };
+            jobDocument["evaluation_resource_estimate"] = RlConstraintEvaluation.ToWire(RlShortHistoryEvaluation.Estimate(source, false));
+        }
+        Write(Path.Combine(directory, RlFiles.Job), jobDocument);
         using var session = new BacktestEngine(new IndicatorFactory()).CreateRlSession(source.CreateInput(source.Catalog.Validation[0]), costs);
         float[] observation = RlObservationBuilder.Build(session.Reset(), scaler);
         Write(Path.Combine(directory, RlFiles.Parity), new { observations = new[] { observation }, q_values = new[] { tieFixture ? new[] { 1f, 1f, -1f } : new[] { 0f, 1f, -1f } } });
@@ -125,19 +139,28 @@ public sealed partial class RlGenerationAndQValueTests : IDisposable
             };
             return report;
         }
-        Write(Path.Combine(directory, RlFiles.Model + RlFiles.EvaluationSuffix), new
+        var report = new Dictionary<string, object>
         {
-            schema_version = RlContract.SchemaVersion, smoke_only = false, contract_hash = RlContract.ContractHash,
-            source_revision = source.Revision, evaluation_revision = Revision, symbol = Symbol,
-            model_sha256 = ContentHash.OfFile(Path.Combine(directory, RlFiles.Model)), parity_verified = true,
-            validation_mean_return = Text(score), oos_mean_return = Text(score),
-            validation_episodes = Episodes(source.Catalog.Validation), oos_episodes = Episodes(source.Catalog.Oos),
-            candidate_seed = RlContract.CandidateSeeds[0], checkpoint_step = RlContract.ValidationCheckpointInterval,
-            candidate_evaluations = RlContract.CandidateSeeds.SelectMany(seed => new[] { RlContract.ValidationCheckpointInterval, RlContract.TrainingTransitionsPerSeed }
+            ["schema_version"] = RlContract.SchemaVersion, ["smoke_only"] = false, ["contract_hash"] = RlContract.ContractHash,
+            ["source_revision"] = source.Revision, ["evaluation_revision"] = Revision, ["symbol"] = Symbol,
+            ["model_sha256"] = ContentHash.OfFile(Path.Combine(directory, RlFiles.Model)), ["parity_verified"] = true,
+            ["validation_mean_return"] = Text(score), ["oos_mean_return"] = Text(score),
+            ["validation_episodes"] = Episodes(source.Catalog.Validation), ["oos_episodes"] = Episodes(source.Catalog.Oos),
+            ["candidate_seed"] = RlContract.CandidateSeeds[0], ["checkpoint_step"] = RlContract.ValidationCheckpointInterval,
+            ["candidate_evaluations"] = RlContract.CandidateSeeds.SelectMany(seed => new[] { RlContract.ValidationCheckpointInterval, RlContract.TrainingTransitionsPerSeed }
                 .Select(checkpoint => new { seed, checkpoint_step = checkpoint, summary = new { episodes = Episodes(source.Catalog.Validation), mean_return = Text(score) } })).ToArray(),
-            configuration = costs, resources = new { processed_transitions = RlContract.TrainingTransitionsPerSeed * RlContract.CandidateSeeds.Length, episode_starts = 300 },
-            baselines = new { validation = Baselines(source.Catalog.Validation), oos = Baselines(source.Catalog.Oos) },
-        });
+            ["configuration"] = costs, ["resources"] = new { processed_transitions = RlContract.TrainingTransitionsPerSeed * RlContract.CandidateSeeds.Length, episode_starts = 300 },
+            ["baselines"] = new { validation = Baselines(source.Catalog.Validation), oos = Baselines(source.Catalog.Oos) },
+        };
+        if (shortHistory)
+        {
+            RlEpisodeEvaluation[] Rows(IEnumerable<RlEpisodeBlock> blocks) => blocks.Select(b => new RlEpisodeEvaluation(b.Id, b.Partition, Text(score), "0.01",
+                RlContract.EpisodeHorizon, nameof(RlTerminalReason.Horizon), "0", "-10", "0", "0", 0, 0)).ToArray();
+            report[RlShortHistoryEvaluationContract.MetadataKey] = RlShortHistoryEvaluationContract.SpecificationId;
+            report[RlShortHistoryEvaluationContract.ReportKey] = RlConstraintEvaluation.ToWire(
+                RlShortHistoryEvaluation.Create(source, Rows(source.Catalog.Validation), Rows(source.Catalog.Oos), false));
+        }
+        Write(Path.Combine(directory, RlFiles.Model + RlFiles.EvaluationSuffix), report);
         return (directory, source, scaler);
     }
 

@@ -12,6 +12,7 @@ using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using StockAnalyzer.Avalonia.Services;
+using StockAnalyzer.Avalonia.ViewModels.TickerList;
 using StockAnalyzer.Core.Interfaces;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Indicators;
@@ -21,14 +22,22 @@ using StockAnalyzer.Core.Services;
 namespace StockAnalyzer.Avalonia.ViewModels.Dialogs;
 
 /// <summary>
-/// Which population of tickers a training run scopes to. Resolved into
-/// <see cref="TrainingJobConfig.Symbols"/> by <see cref="TrainingWizardViewModel"/>.
+/// One row of the ticker-list tree of the Training Settings tab: the node's own name, an optional icon (path data from the ticker tab's SSoT) and, for a node
+/// that can be trained on, a selection flag. Written for the wizard alone; the portfolio RL dialog has its own item type.
 /// </summary>
-public enum TrainingScopeKind
+public sealed partial class TrainingSourceTreeItem : ObservableObject
 {
-    AllTickers,
-    Watchlist,
-    Portfolio,
+    public TrainingSourceTreeItem(TickerGroupNode node, string? iconData, bool isSelectable)
+    {
+        Node = node; Name = node.DisplayName; IconData = iconData; IsSelectable = isSelectable;
+    }
+    public TickerGroupNode Node { get; }
+    public string Name { get; }
+    public string? IconData { get; }
+    public bool HasIcon => IconData is not null;
+    public bool IsSelectable { get; }
+    [ObservableProperty] private bool _isSelected;
+    public ObservableCollection<TrainingSourceTreeItem> Children { get; } = new();
 }
 
 /// <summary>
@@ -81,6 +90,8 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
     private readonly IExperimentLogService? _experimentLogService;
     private readonly IWatchlistManager? _watchlistManager;
     private readonly IMarketDataProvider? _marketDataProvider;
+    private readonly ITickerStateStore? _tickerStore;
+    private string[]? _resolvedSymbols;
     private readonly ILogger<TrainingWizardViewModel> _logger;
 
     private IReadOnlyList<string> _allTickers = Array.Empty<string>();
@@ -88,10 +99,20 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
     private long _progressGeneration;
     private bool _runTerminal;
 
-    public ObservableCollection<WatchlistProfileSelectItemViewModel> WatchlistProfiles { get; } = new();
-    public ObservableCollection<WatchlistProfileSelectItemViewModel> PortfolioProfiles { get; } = new();
+    /// <summary>The ticker tab's hierarchy as a checkbox tree; the selected rows decide which symbols the run trains on.</summary>
+    public ObservableCollection<TrainingSourceTreeItem> SourceTree { get; } = new();
     public ObservableCollection<TrainingHyperparameterEntry> Hyperparameters { get; } = new();
     public ObservableCollection<string> LogLines { get; } = new();
+
+    public bool HasSourceTree => SourceTree.Count > 0;
+    public bool HasLogLines => LogLines.Count > 0;
+    public bool HasRunActivity => IsTraining || LastResult is not null || LogLines.Count > 0 || StatusMessage is not null;
+    public bool IsRetrainingSaveAvailable => _retrainingScheduler is not null;
+    public bool HasFrameworkChoice => SelectableFrameworks.Count > 1;
+    public bool HasArchitectureChoice => AvailableArchitectures.Count > 1;
+    public bool HasInitializationChoice => AvailableInitializationModes.Count > 1;
+    public bool IsManifestRelevant => SelectedTimeframe is TrainingTimeframe.Weekly or TrainingTimeframe.Monthly;
+    public bool CanEditClipSigma => UseFixedZScore && UseClipSigma;
 
     /// <summary>
     /// Per-fold results table, appended live as the run emits fold-scoped <c>METRIC:</c> lines
@@ -115,23 +136,19 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
     /// Informational note the view surfaces next to Window/Horizon (Domain Invariant: bar
     /// counts, not calendar time). While both values are valid (&gt; 0) this also names the
     /// minimum raw bar count the selected scope's shortest history must contain for training to
-    /// succeed at all (see <see cref="WalkForwardDataRequirement"/>) - added after three
-    /// "Empty train or val split" reports that all traced back to a selected date range looking
-    /// adequate by eye but not actually meeting this (non-obvious) requirement.
+    /// succeed at all (see <see cref="WalkForwardDataRequirement"/>).
     /// </summary>
     public string WindowUnitNote
     {
         get
         {
-            var baseNote = LocalizationManager.Instance["TrainingWizard_WindowUnitNote"]
-                ?? "Window and horizon are counted in bars; their calendar span changes with the selected timeframe.";
             if (WindowSize <= 0 || Horizon <= 0)
             {
-                return baseNote;
+                return string.Empty;
             }
 
             var minBarsTemplate = LocalizationManager.Instance["TrainingWizard_WindowUnitNote_MinBars"]
-                ?? " At least {0} bars of history are required for this Window/Horizon.";
+                ?? "Minimum bars required: {0}";
             var splitCount = NSplits >= 2 ? NSplits : WalkForwardDataRequirement.DefaultSplitCount;
             // A negative Gap (transient invalid input; Start stays disabled) falls back to the
             // default purge gap rather than throwing out of this getter, matching splitCount above.
@@ -140,26 +157,15 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
                 var minBars = WalkForwardDataRequirement.MinimumRawBars(
                     WindowSize, Horizon, splitCount, Gap is >= 0 ? Gap : null,
                     maxLag: UseFixedZScore && TryParseLags(out var lags) ? lags.DefaultIfEmpty().Max() : 0);
-                return baseNote + string.Format(minBarsTemplate, minBars);
+                return string.Format(minBarsTemplate, minBars);
             }
             catch (OverflowException)
             {
-                return baseNote + (LocalizationManager.Instance["TrainingWizard_WindowUnitNote_OverLimit"]
-                    ?? " Required history exceeds the supported bar count. Reduce the window, horizon, gap or splits.");
+                return LocalizationManager.Instance["TrainingWizard_WindowUnitNote_OverLimit"]
+                    ?? "Required history exceeds the supported bar count. Reduce the window, horizon, gap or splits.";
             }
         }
     }
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsAllTickersScope))]
-    [NotifyPropertyChangedFor(nameof(IsWatchlistScope))]
-    [NotifyPropertyChangedFor(nameof(IsPortfolioScope))]
-    [NotifyCanExecuteChangedFor(nameof(StartTrainingCommand))]
-    private TrainingScopeKind _selectedScope = TrainingScopeKind.AllTickers;
-
-    public bool IsAllTickersScope => SelectedScope == TrainingScopeKind.AllTickers;
-    public bool IsWatchlistScope => SelectedScope == TrainingScopeKind.Watchlist;
-    public bool IsPortfolioScope => SelectedScope == TrainingScopeKind.Portfolio;
 
     // DateTime?, not DateTimeOffset?: matches Avalonia's CalendarDatePicker.SelectedDate type
     // exactly (see EditTransactionDialogViewModel.ExecutedAt for the same established
@@ -174,6 +180,7 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(StartTrainingCommand))]
     [NotifyPropertyChangedFor(nameof(IsManifestMissing))]
+    [NotifyPropertyChangedFor(nameof(IsManifestRelevant))]
     private TrainingTimeframe _selectedTimeframe = TrainingTimeframe.Daily;
 
     [ObservableProperty]
@@ -299,6 +306,7 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(StartTrainingCommand))]
     [NotifyPropertyChangedFor(nameof(WindowUnitNote))]
+    [NotifyPropertyChangedFor(nameof(CanEditClipSigma))]
     private bool _useFixedZScore;
 
     [ObservableProperty]
@@ -429,11 +437,20 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(StartTrainingCommand))]
+    [NotifyPropertyChangedFor(nameof(CanEditClipSigma))]
     private bool _useClipSigma;
 
     partial void OnUseClipSigmaChanged(bool value) => RefreshClipSigmaValidation();
 
-    partial void OnUseFixedZScoreChanged(bool value) => RefreshClipSigmaValidation();
+    partial void OnUseFixedZScoreChanged(bool value)
+    {
+        if (!value)
+        {
+            UseClipSigma = false;
+            LagsText = string.Empty;
+        }
+        RefreshClipSigmaValidation();
+    }
 
     private const decimal DefaultClipSigma = 3.0m;
 
@@ -509,12 +526,15 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
     [NotifyCanExecuteChangedFor(nameof(CancelTrainingCommand))]
     [NotifyCanExecuteChangedFor(nameof(DeployToModelsCommand))]
     [NotifyCanExecuteChangedFor(nameof(UseAsEnsembleCommand))]
+    [NotifyCanExecuteChangedFor(nameof(SaveRetrainingConfigurationCommand))]
+    [NotifyPropertyChangedFor(nameof(HasRunActivity))]
     private bool _isTraining;
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(StartTrainingCommand))]
     [NotifyCanExecuteChangedFor(nameof(DeployToModelsCommand))]
     [NotifyCanExecuteChangedFor(nameof(UseAsEnsembleCommand))]
+    [NotifyCanExecuteChangedFor(nameof(SaveRetrainingConfigurationCommand))]
     private bool _isDeploying;
 
     [ObservableProperty]
@@ -536,10 +556,12 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
     private int _progressPercent;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasRunActivity))]
     private string? _statusMessage;
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(DeployToModelsCommand))]
+    [NotifyPropertyChangedFor(nameof(HasRunActivity))]
     private TrainingRunResult? _lastResult;
 
     /// <summary>The generations registered from the last ensemble run, awaiting an explicit "use as ensemble".</summary>
@@ -577,8 +599,10 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
         IIndicatorFactory? indicatorFactory = null,
         ITemplateService? templateService = null,
         Services.IToastNotificationService? toastService = null, IRetrainingScheduler? retrainingScheduler = null,
-        IEnsembleSettingsManager? ensembleSettings = null)
+        IEnsembleSettingsManager? ensembleSettings = null,
+        ITickerStateStore? tickerStore = null)
     {
+        _tickerStore = tickerStore;
         _orchestrator = orchestrator;
         _ensembleSettings = ensembleSettings;
         _retrainingScheduler = retrainingScheduler;
@@ -609,6 +633,12 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
             OnPropertyChanged(nameof(FoldResultsAreRegression));
         };
 
+        LogLines.CollectionChanged += (_, _) =>
+        {
+            OnPropertyChanged(nameof(HasLogLines));
+            OnPropertyChanged(nameof(HasRunActivity));
+        };
+
         if (_watchlistManager is not null)
         {
             _watchlistManager.WatchlistsChanged += OnWatchlistsChanged;
@@ -629,10 +659,10 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
         {
             if (_marketDataProvider is not null)
             {
-                _allTickers = await _marketDataProvider.GetAvailableTickersAsync();
+                _allTickers = await _marketDataProvider.GetAvailableTickersAsync(); _resolvedSymbols = null;
             }
 
-            RefreshProfileLists();
+            RefreshSourceTree();
         }
         catch (Exception ex)
         {
@@ -643,56 +673,104 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
     }
 
     /// <summary>
-    /// (Re)builds <see cref="WatchlistProfiles"/> / <see cref="PortfolioProfiles"/> from
-    /// <see cref="_watchlistManager"/>'s current profile set.
+    /// (Re)builds <see cref="SourceTree"/> from the ticker tab's hierarchy. The first build ticks "All tickers" (the population a run used before the list
+    /// choice existed); later builds keep the rows that were ticked, matched by node id.
     /// </summary>
     /// <remarks>
-    /// Called once from <see cref="InitializeAsync"/> and again on every
-    /// <see cref="IWatchlistManager.WatchlistsChanged"/> (subscribed in the constructor, matching
-    /// the established pattern in <c>MainWindowViewModel</c> / <c>TickerListViewModel</c> /
-    /// <c>ScreenerViewModel</c> / <c>PortfolioSummaryViewModel</c>). Without the re-subscription,
-    /// a wizard instance opened before <c>WorkspaceCoordinator</c> finishes loading watchlists
-    /// from disk (see <c>WorkspaceCoordinator.Initialize</c>) - or before the user creates a
-    /// watchlist/portfolio in the same session - saw an empty list for its lifetime: this method
-    /// only ran once, at construction, and never again (bug: selecting the Watchlist/Portfolio
-    /// scope showed no entries).
+    /// Called once from <see cref="InitializeAsync"/> and again on every <see cref="IWatchlistManager.WatchlistsChanged"/> (subscribed in the constructor),
+    /// so a wizard opened before the watchlists finished loading, or before the user created one, does not keep an empty list for its lifetime.
     /// </remarks>
-    private void RefreshProfileLists()
+    private void RefreshSourceTree()
     {
-        if (_watchlistManager is null)
+        if (_tickerStore is null)
         {
             return;
         }
 
-        WatchlistProfiles.Clear();
-        PortfolioProfiles.Clear();
-
-        var profiles = _watchlistManager.GetAllProfiles();
-
-        foreach (var profile in profiles.Where(p => !p.IsPortfolio).OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase))
+        bool first = !_sourceTreeBuilt;
+        var kept = new HashSet<Guid>();
+        foreach (var item in Flatten(SourceTree))
         {
-            AddSelectableProfile(WatchlistProfiles, profile);
+            item.PropertyChanged -= OnSourceSelectionChanged;
+            if (item.IsSelected) kept.Add(item.Node.Id);
         }
 
-        foreach (var profile in profiles.Where(p => p.IsPortfolio).OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase))
+        SourceTree.Clear();
+        var visited = new HashSet<TickerGroupNode>(ReferenceEqualityComparer.Instance);
+        foreach (var group in _tickerStore.Groups)
         {
-            AddSelectableProfile(PortfolioProfiles, profile);
+            AddSourceNode(group, SourceTree, visited, kept, first);
+        }
+
+        _sourceTreeBuilt = true;
+        _resolvedSymbols = null;
+        OnPropertyChanged(nameof(HasSourceTree));
+        StartTrainingCommand.NotifyCanExecuteChanged();
+    }
+
+    private bool _sourceTreeBuilt;
+
+    private void AddSourceNode(TickerGroupNode node, ObservableCollection<TrainingSourceTreeItem> into, HashSet<TickerGroupNode> visited, HashSet<Guid> kept, bool first)
+    {
+        if (node is ActionNode || !visited.Add(node))
+        {
+            return;
+        }
+
+        bool selectable = IsTrainableSource(node);
+        var item = new TrainingSourceTreeItem(node, IconFor(node), selectable)
+        {
+            IsSelected = selectable && (first ? node is AllTickersNode : kept.Contains(node.Id)),
+        };
+        item.PropertyChanged += OnSourceSelectionChanged;
+        into.Add(item);
+        if (node.Children is not null)
+        {
+            foreach (var child in node.Children)
+            {
+                AddSourceNode(child, item.Children, visited, kept, first);
+            }
         }
     }
 
-    private void OnWatchlistsChanged(object? sender, EventArgs e) => RefreshProfileLists();
-
-    private void AddSelectableProfile(ObservableCollection<WatchlistProfileSelectItemViewModel> target, StockAnalyzer.Core.Models.Watchlist.WatchlistProfile profile)
+    /// <summary>All tickers, the two fixed Watchlists/Portfolios categories, watchlists, portfolios, saved filters, custom categories and their lists.</summary>
+    private static bool IsTrainableSource(TickerGroupNode node) => node switch
     {
-        var item = new WatchlistProfileSelectItemViewModel(profile.Id, profile.Name, profile.IsPortfolio, isSelected: false);
-        item.PropertyChanged += OnProfileSelectionChanged;
-        target.Add(item);
+        AllTickersNode or WatchlistNode or PortfolioNode or FilterNode or CustomCategoryNode or TickerListFolderNode => true,
+        CategoryNode { Id: var id } => id == TickerListViewModel.WatchlistsCategoryId || id == TickerListViewModel.PortfoliosCategoryId,
+        _ => false,
+    };
+
+    private static string? IconFor(TickerGroupNode node) => node switch
+    {
+        WatchlistNode => TickerGroupIconGeometries.Watchlist,
+        PortfolioNode => TickerGroupIconGeometries.Portfolio,
+        FilterNode => TickerGroupIconGeometries.Filter,
+        _ => null,
+    };
+
+    private static IEnumerable<TrainingSourceTreeItem> Flatten(IEnumerable<TrainingSourceTreeItem> items)
+    {
+        foreach (var item in items)
+        {
+            yield return item;
+            foreach (var child in Flatten(item.Children)) yield return child;
+        }
     }
 
-    private void OnProfileSelectionChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    private void OnWatchlistsChanged(object? sender, EventArgs e)
     {
-        if (e.PropertyName == nameof(WatchlistProfileSelectItemViewModel.IsSelected))
+        // The ticker store updates its nodes in its own handler of the same event, so rebuild after the current handlers have run.
+        var context = SynchronizationContext.Current;
+        if (context is null) RefreshSourceTree();
+        else context.Post(_ => RefreshSourceTree(), null);
+    }
+
+    private void OnSourceSelectionChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(TrainingSourceTreeItem.IsSelected))
         {
+            _resolvedSymbols = null;
             StartTrainingCommand.NotifyCanExecuteChanged();
         }
     }
@@ -701,6 +779,8 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
     {
         OnPropertyChanged(nameof(AvailableArchitectures));
         OnPropertyChanged(nameof(AvailableInitializationModes));
+        OnPropertyChanged(nameof(HasArchitectureChoice));
+        OnPropertyChanged(nameof(HasInitializationChoice));
         OnPropertyChanged(nameof(CanFreezeModules));
         if (!AvailableInitializationModes.Contains(SelectedInitializationMode))
             SelectedInitializationMode = TrainingInitializationMode.Fresh;
@@ -710,25 +790,11 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
     partial void OnSelectedTargetTypeChanged(TargetType value)
     {
         OnPropertyChanged(nameof(SelectableFrameworks));
+        OnPropertyChanged(nameof(HasFrameworkChoice));
         OnPropertyChanged(nameof(CalibrationValidationMessage));
         StartTrainingCommand.NotifyCanExecuteChanged();
         if (value == TargetType.Regression && SelectedFramework != TrainingFramework.PyTorch)
             SelectedFramework = TrainingFramework.PyTorch;
-    }
-
-    /// <summary>
-    /// Sets <see cref="SelectedScope"/> from a <see cref="TrainingScopeKind"/> member name.
-    /// Bound from the view's scope RadioButtons via CommandParameter, mirroring the existing
-    /// string-CommandParameter -&gt; Enum.TryParse pattern used by
-    /// <c>MainWindowViewModel.SetTimeframe(string)</c>.
-    /// </summary>
-    [RelayCommand]
-    private void SetScope(string scopeName)
-    {
-        if (Enum.TryParse<TrainingScopeKind>(scopeName, out var scope))
-        {
-            SelectedScope = scope;
-        }
     }
 
     [RelayCommand]
@@ -743,30 +809,30 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
         }
     }
 
-    /// <summary>Resolves the current scope selection into a concrete, de-duplicated symbol list.</summary>
-    private string[] ResolveSymbols()
+    /// <summary>
+    /// The symbols of the ticked rows as one de-duplicated list. "All tickers" is the market data provider's list; every other row is what the ticker tab
+    /// shows for that node. Without a ticker tree (no store) the only population is all tickers. Cached until the selection or the tree changes
+    /// (resolving a saved filter is not free and the Start command asks on every change); <paramref name="refresh"/> resolves again, for the run itself.
+    /// </summary>
+    private string[] ResolveSymbols(bool refresh = false)
     {
-        IEnumerable<string> symbols = SelectedScope switch
+        if (!refresh && _resolvedSymbols is not null)
         {
-            TrainingScopeKind.AllTickers => _allTickers,
-            TrainingScopeKind.Watchlist => ResolveProfileSymbols(WatchlistProfiles),
-            TrainingScopeKind.Portfolio => ResolveProfileSymbols(PortfolioProfiles),
-            _ => Array.Empty<string>(),
-        };
-
-        return symbols.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-    }
-
-    private IEnumerable<string> ResolveProfileSymbols(ObservableCollection<WatchlistProfileSelectItemViewModel> profiles)
-    {
-        if (_watchlistManager is null)
-        {
-            return Array.Empty<string>();
+            return _resolvedSymbols;
         }
 
-        return profiles
-            .Where(p => p.IsSelected)
-            .SelectMany(p => _watchlistManager.GetProfileById(p.Id)?.Items.Select(i => i.Ticker) ?? Enumerable.Empty<string>());
+        IEnumerable<string> symbols;
+        if (_tickerStore is null)
+        {
+            symbols = _allTickers;
+        }
+        else
+        {
+            symbols = Flatten(SourceTree).Where(i => i.IsSelectable && i.IsSelected)
+                .SelectMany(i => i.Node is AllTickersNode ? _allTickers : _tickerStore.GetTickersForNode(i.Node));
+        }
+
+        return _resolvedSymbols = symbols.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
     }
 
     private bool CanStartTraining() =>
@@ -800,7 +866,7 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
 
         return new TrainingJobConfig
         {
-            Symbols = ResolveSymbols(),
+            Symbols = ResolveSymbols(refresh: true),
             StartDate = StartDate is { } sd ? DateOnly.FromDateTime(sd.Date) : null,
             EndDate = EndDate is { } ed ? DateOnly.FromDateTime(ed.Date) : null,
             Timeframe = SelectedTimeframe,

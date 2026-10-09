@@ -36,7 +36,7 @@ public class LocalizationKeyCoverageTests
     private static readonly string[] Locales = DiscoverLocaleCodes();
 
     private static readonly Regex LocalizeKeyPattern =
-        new(@"\{\s*l:Localize\s+(?:Key\s*=\s*)?([A-Za-z0-9_]+)", RegexOptions.Compiled);
+        new(@"\{\s*l:Localize\s+(?:Key\s*=\s*)?([A-Za-z0-9_.]+)", RegexOptions.Compiled);
 
     // A string-literal argument to GetString("..."); the parameter declaration GetString(string key)
     // and the variable form Instance[key] both fail the quotes, so only real key literals match.

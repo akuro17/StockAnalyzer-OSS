@@ -231,6 +231,64 @@ def orchestrator_cases(data, root):
     print("native orchestrator: per-fold durable Resume and configuration guard PASS")
 
 
+def replace_retry_cases(root):
+    target = root / "retry_target.json"
+    real_replace = cp.os.replace
+    denied = lambda winerror: PermissionError(13, "denied", str(target), winerror)
+
+    def failing(times, winerror=5):
+        left = [times]
+
+        def replace(source, destination):
+            if left[0] > 0:
+                left[0] -= 1
+                raise denied(winerror)
+            return real_replace(source, destination)
+        return replace
+
+    # a transient lock (WinError 5 / 32) is retried with the configured pause and then succeeds
+    for winerror in (5, 32):
+        pauses = []
+        with patch.object(cp, "REPLACE_ATTEMPTS", 3), patch.object(cp, "REPLACE_DELAY_MS", 7), \
+             patch.object(cp, "_IS_WINDOWS", True), patch.object(cp.os, "replace", failing(2, winerror)):
+            source = root / f"retry_source_{winerror}.json"
+            source.write_text("{}")
+            cp.replace_with_retry(source, target, sleep=pauses.append)
+        assert pauses == [0.007, 0.007] and target.read_text() == "{}", pauses
+    # exhausted attempts surface the permission error with the attempt count
+    source = root / "retry_source_exhausted.json"
+    source.write_text("{}")
+    pauses = []
+    with patch.object(cp, "REPLACE_ATTEMPTS", 3), patch.object(cp, "_IS_WINDOWS", True), \
+         patch.object(cp.os, "replace", failing(99)):
+        rejects(lambda: cp.replace_with_retry(source, target, sleep=pauses.append), "gave up after 3 attempts")
+    assert len(pauses) == 2
+    # any other failure (another winerror, not Windows) is final at once
+    for name, winerror in (("nt", 3), ("posix", 5)):  # another winerror, and not Windows at all
+        pauses = []
+        with patch.object(cp, "REPLACE_ATTEMPTS", 3), patch.object(cp, "_IS_WINDOWS", name == "nt"), \
+             patch.object(cp.os, "replace", failing(99, winerror)):
+            rejects(lambda: cp.replace_with_retry(source, target, sleep=pauses.append), "denied")
+        assert pauses == []
+    # the three-tier setting check: default, warning band, hard band, total wait bound
+    env = {}
+    with patch.dict(cp.os.environ, env, clear=False):
+        for key in (cp.REPLACE_ATTEMPTS_ENV, cp.REPLACE_DELAY_MS_ENV):
+            cp.os.environ.pop(key, None)
+        assert cp.resolve_replace_policy() == (cp.REPLACE_ATTEMPTS_DEFAULT, cp.REPLACE_DELAY_MS_DEFAULT)
+        cp.os.environ[cp.REPLACE_ATTEMPTS_ENV] = "30"          # hard band, outside the standard band: runs
+        assert cp.resolve_replace_policy()[0] == 30
+        for text in ("0", "51", "x"):
+            cp.os.environ[cp.REPLACE_ATTEMPTS_ENV] = text
+            rejects(cp.resolve_replace_policy, cp.REPLACE_ATTEMPTS_ENV)
+        cp.os.environ[cp.REPLACE_ATTEMPTS_ENV] = "20"
+        cp.os.environ[cp.REPLACE_DELAY_MS_ENV] = "1001"
+        rejects(cp.resolve_replace_policy, cp.REPLACE_DELAY_MS_ENV)
+        cp.os.environ[cp.REPLACE_DELAY_MS_ENV] = "600"          # 20 x 600 ms exceeds the total wait bound
+        rejects(cp.resolve_replace_policy, "exceeds")
+    print("native checkpoint replace: bounded Windows lock retry and tiered settings PASS")
+
+
 def registry_bundle(root, parent_id, parent_hash):
     root.mkdir(parents=True, exist_ok=True)
     data, child = root / "data", root / "later"
@@ -269,4 +327,5 @@ if __name__ == "__main__":
         interrupted_and_scaler_cases(data, child, root)
         lightgbm_cases(data, child, root)
         orchestrator_cases(data, root)
+        replace_retry_cases(root)
     print("T08 native checkpoint acceptance: PASS")

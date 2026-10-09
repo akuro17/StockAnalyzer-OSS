@@ -534,7 +534,7 @@ public sealed class ModelExplainCalibrationTests : IDisposable
                 Assert.True(File.Exists(lease!.ModelPath + ".explain.json"));
                 // the explanation is outside the model identity: tampering never makes the generation corrupt
                 File.AppendAllText(lease.ModelPath + ".explain.json", " ");
-                Assert.NotNull(registry.Acquire(manifest.ModelId));
+                using (var second = registry.Acquire(manifest.ModelId)) Assert.NotNull(second); // a lease holds a store file until disposed
                 File.AppendAllText(lease.ModelPath + ".calibration.json", " ");
             }
             Assert.Throws<InvalidDataException>(() => registry.Acquire(manifest.ModelId));
@@ -934,6 +934,6 @@ public sealed class ModelExplainCalibrationTests : IDisposable
 
     public void Dispose()
     {
-        if (Directory.Exists(_directory)) Directory.Delete(_directory, recursive: true);
+        TestDirectory.Delete(_directory);
     }
 }

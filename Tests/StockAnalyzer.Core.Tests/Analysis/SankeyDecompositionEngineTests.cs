@@ -1,5 +1,6 @@
 using System;
 using StockAnalyzer.Core.Analysis.Sankey;
+using StockAnalyzer.Core.Tests.Common;
 using Xunit;
 
 namespace StockAnalyzer.Core.Tests.Analysis;
@@ -581,13 +582,40 @@ public sealed class SankeyDecompositionEngineTests
             SankeyDecompositionEngine.Analyze(nodes, edges, ValidMeasure, nodeBuf, edgeBuf, workspace, out _);
         }
 
-        long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < 100; i++)
+        long allocated = AllocationProbe.Minimum(() =>
+        {
+            for (int i = 0; i < 100; i++)
+            {
+                SankeyDecompositionEngine.Analyze(nodes, edges, ValidMeasure, nodeBuf, edgeBuf, workspace, out _);
+            }
+        });
+
+        Assert.Equal(0, allocated);
+    }
+
+    [Fact]
+    public void ZeroAllocation_OnTheFirstCallAfterAGarbageCollection()
+    {
+        // The measure check used Enum.IsDefined, whose per-type cache the runtime drops at a collection: the first call afterwards rebuilt it
+        // (480 bytes), so the hot path allocated once per collection. Every sample here collects first and measures only the next call.
+        using var workspace = new SankeyWorkspace();
+        var nodes = new[] { new SankeyNode(1), new SankeyNode(2), new SankeyNode(3) };
+        var edges = new[]
+        {
+            new SankeyEdge(1, 1, 2, 100m),
+            new SankeyEdge(2, 2, 3, 100m)
+        };
+        var nodeBuf = new SankeyNodeValue[3];
+        var edgeBuf = new SankeyEdgeValue[2];
+        for (int i = 0; i < 50; i++)
         {
             SankeyDecompositionEngine.Analyze(nodes, edges, ValidMeasure, nodeBuf, edgeBuf, workspace, out _);
         }
-        long allocatedAfter = GC.GetAllocatedBytesForCurrentThread();
 
-        Assert.Equal(0, allocatedAfter - allocatedBefore);
+        long allocated = AllocationProbe.Minimum(
+            () => SankeyDecompositionEngine.Analyze(nodes, edges, ValidMeasure, nodeBuf, edgeBuf, workspace, out _),
+            () => GC.Collect(2, GCCollectionMode.Forced, blocking: true));
+
+        Assert.Equal(0, allocated);
     }
 }

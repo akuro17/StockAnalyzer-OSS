@@ -9,6 +9,9 @@ namespace StockAnalyzer.Avalonia.Tests;
 // singleton mid-flight (observed transiently in both FilterTemplateFormattingTests and
 // ParameterLocalizationTests). Grouping all three into one non-parallel collection prevents that
 // cross-class locale collision without affecting any other (unrelated) test class's parallelism.
+// Rule: every test class that calls LocalizationManager.Instance.Initialize belongs here. A class outside this
+// collection runs in parallel with the readers of the singleton (for example Drawing, Notes and Ticker tests that
+// expect English) and leaks its "ja" into them.
 [CollectionDefinition("LocalizationSharedState", DisableParallelization = true)]
 public class LocalizationSharedStateCollection
 {

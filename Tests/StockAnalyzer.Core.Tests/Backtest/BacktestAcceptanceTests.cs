@@ -41,7 +41,8 @@ public class BacktestAcceptanceTests
         decimal initialCapital = 1000m, decimal commissionFlat = 0m, decimal commissionPerUnit = 0m,
         decimal slippageRatio = 0m, PositionSizingModel sizingModel = PositionSizingModel.FixedQuantity,
         decimal sizingParameter = 1m, decimal initialMarginRatio = 1m, decimal maintenanceMarginRatio = 0.5m,
-        decimal liquidationPenaltyRatio = 0m)
+        decimal liquidationPenaltyRatio = 0m,
+        IntrabarPathMode intrabarPathMode = IntrabarPathMode.DeterministicCandleShape)
         => new()
         {
             InitialCapital = initialCapital,
@@ -53,6 +54,7 @@ public class BacktestAcceptanceTests
             InitialMarginRatio = initialMarginRatio,
             MaintenanceMarginRatio = maintenanceMarginRatio,
             LiquidationPenaltyRatio = liquidationPenaltyRatio,
+            IntrabarPathMode = intrabarPathMode,
         };
 
     private static StrategyOrderRequest Req(SignalType type, OrderType orderType, decimal? limitPrice = null, decimal? stopPrice = null, TimeInForce? tif = null, string reason = "r")
@@ -604,7 +606,7 @@ public class BacktestAcceptanceTests
         // order must win and execute as a NORMAL exit, not a forced liquidation, even though the same bar
         // also independently breaches the maintenance margin later on.
         // Q=20 @ EntryPrice=100, ratio=0.3: notional=2000, margin=600, cash=400. P_liq=(2000-1000)/16=62.5.
-        BacktestConfiguration config = MakeConfig(initialCapital: 1000m, sizingParameter: 20m, initialMarginRatio: 0.3m, maintenanceMarginRatio: 0.2m, liquidationPenaltyRatio: 0.1m);
+        BacktestConfiguration config = MakeConfig(initialCapital: 1000m, sizingParameter: 20m, initialMarginRatio: 0.3m, maintenanceMarginRatio: 0.2m, liquidationPenaltyRatio: 0.1m, intrabarPathMode: IntrabarPathMode.CanonicalOHLC);
         ImmutableArray<CandleData> bars = ImmutableArray.Create(
             Bar(0, 100m, 100m, 100m, 100m),
             Bar(1, 100m, 100m, 100m, 100m),

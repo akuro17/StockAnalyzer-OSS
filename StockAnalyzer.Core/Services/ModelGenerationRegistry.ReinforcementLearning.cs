@@ -371,14 +371,16 @@ public sealed partial class ModelGenerationRegistry
         if (!catalog.Train.SequenceEqual(source.Catalog.Train) || !catalog.Validation.SequenceEqual(source.Catalog.Validation)
             || !catalog.Oos.SequenceEqual(source.Catalog.Oos) || !catalog.Excluded.SequenceEqual(source.Catalog.Excluded)
             || catalog.TrainCut != source.Catalog.TrainCut || catalog.ValidationCut != source.Catalog.ValidationCut
-            || catalog.EvaluationSpecificationId != source.Catalog.EvaluationSpecificationId || catalog.SchemaVersion != source.Catalog.SchemaVersion)
+            || catalog.EvaluationSpecificationId != source.Catalog.EvaluationSpecificationId || catalog.SchemaVersion != source.Catalog.SchemaVersion
+            || catalog.ShortHistorySpecificationId != source.Catalog.ShortHistorySpecificationId)
             throw new InvalidDataException("Declared episode catalog disagrees with independent source support.");
         using var model = new RlQModel(Path.Combine(directory, RlFiles.Model), continuous);
         using var metrics = JsonDocument.Parse(File.ReadAllText(Path.Combine(directory, RlFiles.Model + RlFiles.EvaluationSuffix)));
         JsonElement report = metrics.RootElement;
         // Version/resource rejection precedes independent financial qualification work.
         RlAllBlockEvaluation.Validate(directory, job, report, model.Metadata, source, costs);
-        if (temporal != model.Metadata.ContainsKey("temporal_specification_id")
+        RlShortHistoryEvaluation.Validate(job, report, model.Metadata, source);
+        if (temporal !=model.Metadata.ContainsKey("temporal_specification_id")
             || (temporal && (model.Metadata["temporal_specification_id"] != RlTemporalContract.SpecificationId
                 || model.Metadata["temporal_snapshot_sha256"] != RlTemporalValidator.JobIdentity(job))))
             throw new RlTemporalException(RlTemporalRejection.IdentityMismatch, "ONNX temporal version/snapshot differs from the captured source, costs and job.");

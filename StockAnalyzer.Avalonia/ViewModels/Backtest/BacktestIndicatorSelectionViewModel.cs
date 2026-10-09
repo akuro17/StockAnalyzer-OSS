@@ -3,21 +3,30 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Linq;
+using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using StockAnalyzer.Avalonia.Converters;
 using StockAnalyzer.Avalonia.Services;
+using StockAnalyzer.Avalonia.ViewModels.Dialogs.Common;
 using StockAnalyzer.Core.Interfaces;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Backtest.Configuration;
 using StockAnalyzer.Core.Models.Backtest.Engine;
 using StockAnalyzer.Core.Models.Indicators;
 using StockAnalyzer.Core.Models.Screener;
+using StockAnalyzer.Core.Models.Templates;
 using StockAnalyzer.Core.Services;
 using StockAnalyzer.Core.Services.Backtest.Configuration;
 using StockAnalyzer.Core.Services.Backtest.Engine;
 
 namespace StockAnalyzer.Avalonia.ViewModels.Backtest;
+
+/// <summary>Display preview section for a saved backtest condition template.</summary>
+public sealed record BacktestTemplatePreviewSection(
+    string SectionTitle,
+    IReadOnlyList<string> ConditionDescriptions,
+    bool HasItems);
 
 /// <summary>Left-column nav display item (spec-external UX request: mirror the reference
 /// Screener/Indicator "All Filters"/"Indicators" hierarchical nav list exactly, instead of a flat
@@ -29,8 +38,11 @@ public sealed class BacktestIndicatorGroupDisplayItem
 {
     public bool IsHeader { get; init; }
     public bool IsAllFilters { get; init; }
+    public bool IsSeparator { get; init; }
+    public bool IsTemplates { get; init; }
     public string DisplayName { get; init; } = string.Empty;
-    public bool IsStandardItem => !IsHeader && !IsAllFilters;
+    public bool IsSelectable => !IsHeader && !IsSeparator;
+    public bool IsStandardItem => !IsHeader && !IsAllFilters && !IsSeparator && !IsTemplates;
 }
 
 /// <summary>Task 6 condition-builder Timeframe picker item: wraps <see cref="BacktestConditionSide.Frame"/>'s
@@ -120,6 +132,31 @@ public partial class BacktestIndicatorSelectionViewModel : ViewModelBase
     /// A run whose tree has no comparison behaves like a run without conditions (falls back to <see cref="Services.Backtest.Engine.NoOpBacktestStrategy"/>).
     /// </summary>
     public BacktestConditionTreeViewModel ConditionTree { get; }
+
+    private readonly TemplateCrudHelper<BacktestConditionTemplate>? _templateCrud;
+
+    /// <summary>Stored signal condition templates.</summary>
+    public ObservableCollection<BacktestConditionTemplate> ConditionTemplates { get; } = new();
+
+    /// <summary>Display sections previewing the contents of the currently selected template.</summary>
+    public ObservableCollection<BacktestTemplatePreviewSection> SelectedTemplateConditionPreviewSections { get; } = new();
+
+    /// <summary>Name entered in the top editor to save the current condition tree as a new template.</summary>
+    [ObservableProperty]
+    private string _newTemplateName = string.Empty;
+
+    /// <summary>The template currently selected in the center column template list.</summary>
+    [ObservableProperty]
+    private BacktestConditionTemplate? _selectedConditionTemplate;
+
+    /// <summary>True when the left column selection is the "Templates" navigation item.</summary>
+    public bool IsTemplatesCategory => SelectedGroupItem?.IsTemplates == true;
+
+    /// <summary>True when the left column selection is not the "Templates" item (i.e. standard catalog mode).</summary>
+    public bool IsNotTemplatesCategory => !IsTemplatesCategory;
+
+    /// <summary>True when no template is selected or the selected template has no conditions.</summary>
+    public bool IsSelectedTemplateEmpty => SelectedConditionTemplate == null || SelectedTemplateConditionPreviewSections.Count == 0;
 
     /// <summary>"Leaves n / Groups n / Largest section n of m nodes" for the editor's footer line.</summary>
     [ObservableProperty]
@@ -406,7 +443,8 @@ public partial class BacktestIndicatorSelectionViewModel : ViewModelBase
         IToastNotificationService? toastService,
         IIndicatorFactory? indicatorFactory = null,
         StockAnalyzer.Core.Services.IStockAnalyzerSettings? settings = null,
-        IDialogService? dialogService = null)
+        IDialogService? dialogService = null,
+        ITemplateService? templateService = null)
     {
         _dialogService = dialogService;
         var defaultBacktestSettings = new StockAnalyzer.Core.Models.Settings.BacktestSettings();
@@ -430,6 +468,7 @@ public partial class BacktestIndicatorSelectionViewModel : ViewModelBase
         ToastService = toastService ?? new ToastNotificationService();
         ConditionTree.EditRejected += (_, reason) => ToastService.ShowNotification(reason);
         _indicatorFactory = indicatorFactory;
+        _templateCrud = templateService != null ? new TemplateCrudHelper<BacktestConditionTemplate>(templateService, ToastService, TemplateType.BacktestCondition) : null;
 
         AddedIndicators.CollectionChanged += (_, _) => UpdateAddedIndicatorsSummary();
         UpdateAddedIndicatorsSummary();
@@ -465,9 +504,32 @@ public partial class BacktestIndicatorSelectionViewModel : ViewModelBase
         NavGroups.Clear();
         NavGroups.Add(new BacktestIndicatorGroupDisplayItem { IsAllFilters = true, DisplayName = _localizationService.GetString("Nav_AllFilters") });
         NavGroups.Add(new BacktestIndicatorGroupDisplayItem { IsHeader = true, DisplayName = _localizationService.GetString("Backtest_IndicatorSelection_NavHeader") });
-        foreach (var group in _allIndicatorItems.Select(i => i.GroupName).Distinct().OrderBy(g => g, StringComparer.Ordinal))
+
+        bool templatesAdded = false;
+        var distinctGroups = _allIndicatorItems.Select(i => i.GroupName).Distinct().OrderBy(g => g, StringComparer.Ordinal).ToList();
+        foreach (var group in distinctGroups)
         {
             NavGroups.Add(new BacktestIndicatorGroupDisplayItem { DisplayName = group });
+            if (string.Equals(group, "Volume", StringComparison.OrdinalIgnoreCase))
+            {
+                NavGroups.Add(new BacktestIndicatorGroupDisplayItem { IsSeparator = true });
+                NavGroups.Add(new BacktestIndicatorGroupDisplayItem
+                {
+                    IsTemplates = true,
+                    DisplayName = _localizationService.GetString("Library_Templates")
+                });
+                templatesAdded = true;
+            }
+        }
+
+        if (!templatesAdded)
+        {
+            NavGroups.Add(new BacktestIndicatorGroupDisplayItem { IsSeparator = true });
+            NavGroups.Add(new BacktestIndicatorGroupDisplayItem
+            {
+                IsTemplates = true,
+                DisplayName = _localizationService.GetString("Library_Templates")
+            });
         }
 
         ApplyFilter();
@@ -498,7 +560,14 @@ public partial class BacktestIndicatorSelectionViewModel : ViewModelBase
 
     partial void OnSelectedGroupItemChanged(BacktestIndicatorGroupDisplayItem? value)
     {
-        if (value is { IsHeader: true }) return;
+        if (value is { IsHeader: true } or { IsSeparator: true }) return;
+        OnPropertyChanged(nameof(IsTemplatesCategory));
+        OnPropertyChanged(nameof(IsNotTemplatesCategory));
+        if (value is { IsTemplates: true })
+        {
+            _ = LoadTemplatesAsync();
+            return;
+        }
         ApplyFilter();
     }
 
@@ -751,5 +820,254 @@ public partial class BacktestIndicatorSelectionViewModel : ViewModelBase
             string displayName = _allIndicatorItems.FirstOrDefault(i => i.IndicatorType == dto.Type)?.DisplayName ?? dto.Type.ToString();
             AddedIndicators.Add(new BacktestIndicatorSelectionItem(dto.Key, dto.Type, displayName, dto.Frame, dto.Parameters?.Clone()));
         }
+    }
+
+    partial void OnSelectedConditionTemplateChanged(BacktestConditionTemplate? value) => RefreshSelectedTemplatePreview();
+
+    /// <summary>
+    /// Rebuilds <see cref="SelectedTemplateConditionPreviewSections"/> from <see cref="SelectedConditionTemplate"/>.
+    /// </summary>
+    private void RefreshSelectedTemplatePreview()
+    {
+        SelectedTemplateConditionPreviewSections.Clear();
+        OnPropertyChanged(nameof(IsSelectedTemplateEmpty));
+        if (SelectedConditionTemplate is not { } template || template.ConditionTree is null) return;
+
+        BacktestConditionTree tree;
+        try
+        {
+            tree = BacktestConditionTreeDtoMapper.ToTree(template.ConditionTree, ConditionTree.MaxDepth);
+        }
+        catch
+        {
+            return;
+        }
+
+        foreach ((BacktestConditionSection section, TradeSide side) in BacktestConditionTree.CanonicalRoots)
+        {
+            BacktestConditionGroup root = tree.Root(section, side);
+            if (!root.HasLeaf) continue;
+
+            var descriptions = new List<string>();
+            CollectLeafDescriptions(root, descriptions);
+            if (descriptions.Count > 0)
+            {
+                string title = FormatSectionTitle(section, side);
+                SelectedTemplateConditionPreviewSections.Add(new BacktestTemplatePreviewSection(title, descriptions, true));
+            }
+        }
+
+        if (template.RiskManagement is { } risk && (risk.StopLossPercent.HasValue || risk.TakeProfitPercent.HasValue))
+        {
+            var riskItems = new List<string>();
+            if (risk.StopLossPercent.HasValue)
+            {
+                riskItems.Add($"{_localizationService.GetString("Backtest_Field_StopLossPercent")}: {risk.StopLossPercent.Value:P2}");
+            }
+            if (risk.TakeProfitPercent.HasValue)
+            {
+                riskItems.Add($"{_localizationService.GetString("Backtest_Field_TakeProfitPercent")}: {risk.TakeProfitPercent.Value:P2}");
+            }
+            SelectedTemplateConditionPreviewSections.Add(new BacktestTemplatePreviewSection(
+                _localizationService.GetString("Backtest_Condition_RiskManagementHeader"),
+                riskItems,
+                true));
+        }
+
+        OnPropertyChanged(nameof(IsSelectedTemplateEmpty));
+    }
+
+    private static void CollectLeafDescriptions(BacktestConditionGroup group, List<string> descriptions)
+    {
+        foreach (IBacktestConditionNode child in group.Children)
+        {
+            if (child is BacktestConditionLeaf leaf)
+            {
+                descriptions.Add(BacktestConditionFormatter.Format(leaf.Comparison));
+            }
+            else if (child is BacktestConditionGroup nested)
+            {
+                CollectLeafDescriptions(nested, descriptions);
+            }
+        }
+    }
+
+    private string FormatSectionTitle(BacktestConditionSection section, TradeSide side)
+    {
+        string rootKey = $"Backtest_Template_Root_{BacktestConditionTree.RootName(section, side)}";
+        if (_localizationService.TryGetString(rootKey, out string? localizedTitle))
+        {
+            return localizedTitle;
+        }
+
+        return $"{section} ({side})";
+    }
+
+    [RelayCommand]
+    private async Task SaveTemplateAsync()
+    {
+        if (_templateCrud == null || _templateCrud.IsBusy) return;
+        if (string.IsNullOrWhiteSpace(NewTemplateName)) return;
+
+        BacktestConditionTree tree = ConditionTree.Build();
+        int totalLeaves = CountLeavesAcrossRoots(tree);
+        if (totalLeaves == 0)
+        {
+            ToastService.ShowNotification(_localizationService.GetString("Msg_Template_InvalidForSave"));
+            return;
+        }
+
+        var trimmedName = NewTemplateName.Trim();
+        await _templateCrud.SaveAsync(
+            trimmedName,
+            ConditionTemplates,
+            build: existing =>
+            {
+                var template = existing ?? new BacktestConditionTemplate
+                {
+                    Id = Guid.NewGuid(),
+                    Name = trimmedName,
+                    CreatedAt = DateTime.UtcNow
+                };
+                template.ConditionTree = BacktestConditionTreeDtoMapper.ToDto(tree);
+                template.RiskManagement = BuildRiskManagementSettingsDto();
+                template.UpdatedAt = DateTime.UtcNow;
+                return template;
+            },
+            commit: (saved, existing) =>
+            {
+                if (existing == null)
+                {
+                    ConditionTemplates.Add(saved);
+                    SelectedConditionTemplate = saved;
+                }
+                else if (existing == SelectedConditionTemplate)
+                {
+                    RefreshSelectedTemplatePreview();
+                }
+                NewTemplateName = string.Empty;
+            });
+    }
+
+    private static int CountLeavesAcrossRoots(BacktestConditionTree tree)
+    {
+        int count = 0;
+        foreach ((BacktestConditionSection section, TradeSide side) in BacktestConditionTree.CanonicalRoots)
+        {
+            count += CountLeaves(tree.Root(section, side));
+        }
+        return count;
+    }
+
+    [RelayCommand]
+    private async Task LoadTemplateAsync(BacktestConditionTemplate? template)
+    {
+        if (_templateCrud == null || _templateCrud.IsBusy || template == null || template.ConditionTree == null) return;
+
+        await _templateCrud.ApplyAsync(
+            template,
+            append: false,
+            apply: t =>
+            {
+                BacktestConditionTree domainTree = BacktestConditionTreeDtoMapper.ToTree(t.ConditionTree, ConditionTree.MaxDepth);
+                ConditionTree.Load(domainTree);
+                ReplaceRiskManagementSettings(t.RiskManagement);
+                return Task.CompletedTask;
+            });
+    }
+
+    [RelayCommand]
+    private async Task AppendTemplateAsync(BacktestConditionTemplate? template)
+    {
+        if (_templateCrud == null || _templateCrud.IsBusy || template == null || template.ConditionTree == null) return;
+
+        await _templateCrud.ApplyAsync(
+            template,
+            append: true,
+            apply: t =>
+            {
+                BacktestConditionTree incomingTree = BacktestConditionTreeDtoMapper.ToTree(t.ConditionTree, ConditionTree.MaxDepth);
+
+                // Check bounds before applying
+                foreach ((BacktestConditionSection section, TradeSide side) in BacktestConditionTree.CanonicalRoots)
+                {
+                    BacktestConditionGroup incomingRoot = incomingTree.Root(section, side);
+                    if (!incomingRoot.HasLeaf) continue;
+
+                    BacktestConditionGroup currentDomainRoot = ConditionTree.Root(section, side).ToDomain();
+                    int incomingNodes = BacktestConditionTreeRule.Measure(incomingRoot).NodeCount - 1;
+                    int currentNodes = BacktestConditionTreeRule.Measure(currentDomainRoot).NodeCount;
+
+                    if (currentNodes + incomingNodes > ConditionTree.MaxNodes)
+                    {
+                        throw new InvalidOperationException(_localizationService.GetFormattedString(
+                            "Backtest_ConditionTree_LimitReached",
+                            "The condition limit of this section is reached ({0} nodes).",
+                            ConditionTree.MaxNodes));
+                    }
+                }
+
+                foreach ((BacktestConditionSection section, TradeSide side) in BacktestConditionTree.CanonicalRoots)
+                {
+                    BacktestConditionGroup incomingRoot = incomingTree.Root(section, side);
+                    if (!incomingRoot.HasLeaf) continue;
+
+                    BacktestConditionGroupViewModel targetRoot = ConditionTree.Root(section, side);
+                    foreach (IBacktestConditionNode child in incomingRoot.Children)
+                    {
+                        AppendNodeToGroup(targetRoot, child);
+                    }
+                }
+
+                return Task.CompletedTask;
+            });
+    }
+
+    private static void AppendNodeToGroup(BacktestConditionGroupViewModel targetGroup, IBacktestConditionNode sourceNode)
+    {
+        if (sourceNode is BacktestConditionLeaf leaf)
+        {
+            var leafVm = new BacktestConditionLeafViewModel(BacktestConditionValidator.CloneEntry(leaf.Comparison))
+            {
+                Parent = targetGroup
+            };
+            targetGroup.MutableChildren.Add(leafVm);
+        }
+        else if (sourceNode is BacktestConditionGroup group)
+        {
+            var groupVm = new BacktestConditionGroupViewModel(targetGroup.Section, targetGroup.Side, isRoot: false, group.Operator)
+            {
+                Name = group.Name,
+                Parent = targetGroup
+            };
+            foreach (IBacktestConditionNode child in group.Children)
+            {
+                AppendNodeToGroup(groupVm, child);
+            }
+            targetGroup.MutableChildren.Add(groupVm);
+        }
+    }
+
+    [RelayCommand]
+    private async Task DeleteTemplateAsync(BacktestConditionTemplate? template)
+    {
+        if (_templateCrud == null || _templateCrud.IsBusy || template == null) return;
+
+        await _templateCrud.DeleteAsync(
+            template,
+            ConditionTemplates,
+            afterRemove: removed =>
+            {
+                if (SelectedConditionTemplate == removed)
+                {
+                    SelectedConditionTemplate = null;
+                }
+            });
+    }
+
+    private async Task LoadTemplatesAsync()
+    {
+        if (_templateCrud == null) return;
+        await _templateCrud.LoadAllAsync(ConditionTemplates);
     }
 }

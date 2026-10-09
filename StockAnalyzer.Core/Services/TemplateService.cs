@@ -11,6 +11,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using StockAnalyzer.Core.Common;
 using StockAnalyzer.Core.Interfaces;
 using StockAnalyzer.Core.Models;
+using StockAnalyzer.Core.Models.Backtest.Configuration;
 using StockAnalyzer.Core.Models.Templates;
 using StockAnalyzer.Core.Serialization;
 using StockAnalyzer.Core.Utilities;
@@ -315,8 +316,44 @@ public class TemplateService : ITemplateService, IDisposable
                 return Task.FromResult(TemplateValidationResult.WithWarning("Screener indicator template contains no entries."));
             }
         }
+        else if (template is BacktestConditionTemplate conditionTemplate)
+        {
+            if (conditionTemplate.ConditionTree == null)
+            {
+                return Task.FromResult(TemplateValidationResult.Failure("Backtest condition template contains no condition tree."));
+            }
+
+            int leafCount = CountTotalLeaves(conditionTemplate.ConditionTree);
+            if (leafCount == 0)
+            {
+                return Task.FromResult(TemplateValidationResult.WithWarning("Backtest condition template contains no trading conditions."));
+            }
+        }
 
         return Task.FromResult(TemplateValidationResult.Success());
+    }
+
+    private static int CountTotalLeaves(BacktestConditionTreeDto tree)
+    {
+        return CountNodeLeaves(tree.EntryLong)
+             + CountNodeLeaves(tree.EntryShort)
+             + CountNodeLeaves(tree.ExitLong)
+             + CountNodeLeaves(tree.ExitShort)
+             + CountNodeLeaves(tree.ReverseLong)
+             + CountNodeLeaves(tree.ReverseShort);
+    }
+
+    private static int CountNodeLeaves(BacktestConditionNodeDto? node)
+    {
+        if (node == null) return 0;
+        if (node.Kind == BacktestConditionNodeKind.Leaf) return 1;
+        if (node.Children == null) return 0;
+        int sum = 0;
+        foreach (var child in node.Children)
+        {
+            sum += CountNodeLeaves(child);
+        }
+        return sum;
     }
 
     /// <inheritdoc />

@@ -11,6 +11,7 @@ using Xunit;
 
 namespace StockAnalyzer.Avalonia.Tests.Views.Backtest;
 
+[Collection("LocalizationSharedState")]
 public class EquityCurveControlCacheTests
 {
     [AvaloniaFact]

@@ -30,13 +30,25 @@ public class DynamicIndicatorSettingsView : UserControl
         set => SetValue(HiddenParameterTagsProperty, value);
     }
 
+    public static readonly StyledProperty<ParameterFormLayout> FormLayoutProperty =
+        AvaloniaProperty.Register<DynamicIndicatorSettingsView, ParameterFormLayout>(
+            nameof(FormLayout), ParameterFormLayout.InlineLabel);
+
+    public ParameterFormLayout FormLayout
+    {
+        get => GetValue(FormLayoutProperty);
+        set => SetValue(FormLayoutProperty, value);
+    }
+
     private readonly ParameterViewBuilder _builder = new();
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
         base.OnPropertyChanged(change);
 
-        if (change.Property == ParameterObjectProperty || change.Property == HiddenParameterTagsProperty)
+        if (change.Property == ParameterObjectProperty ||
+            change.Property == HiddenParameterTagsProperty ||
+            change.Property == FormLayoutProperty)
         {
             UpdateContent();
         }
@@ -50,6 +62,6 @@ public class DynamicIndicatorSettingsView : UserControl
             return;
         }
 
-        Content = _builder.Build(ParameterObject, HiddenParameterTags ?? Array.Empty<string>());
+        Content = _builder.Build(ParameterObject, HiddenParameterTags ?? Array.Empty<string>(), FormLayout);
     }
 }

@@ -17,8 +17,19 @@ internal static class RlLocalSnapshotFactory
     public static async Task<RlSourceSnapshot> PrepareAsync(RlTrainingJob job, string directory,
         TrainingResourceLimits limits, CancellationToken ct)
     {
+        await WriteSourceFilesAsync(job.Symbol, job.StartDate, job.EndDateExclusive, directory, limits, ct).ConfigureAwait(false);
+        return RlSourceSnapshot.Load(directory, limits, job.SmokeOnly, ct, job.EvaluationSpecificationId, job.ShortHistorySpecificationId);
+    }
+
+    /// <summary>
+    /// Captures the existing local files of one symbol and writes the immutable source files and manifest of the period, without
+    /// building an episode catalog (a short history is a valid source here). Shared by the single-symbol and the portfolio snapshots.
+    /// </summary>
+    internal static async Task WriteSourceFilesAsync(string symbol, DateOnly startDate, DateOnly endDateExclusive, string directory,
+        TrainingResourceLimits limits, CancellationToken ct)
+    {
         var started = DateTimeOffset.UtcNow;
-        var bytes = await RlLocalSourceFiles.CaptureAsync(job.Symbol, directory, limits, ct).ConfigureAwait(false);
+        var bytes = await RlLocalSourceFiles.CaptureAsync(symbol, directory, limits, ct).ConfigureAwait(false);
         var metadata = RlLocalParquetReader.ReadMetadata(Path.Combine(directory, RlFiles.MetadataParquet));
         string Require(string name) => metadata.TryGetValue(name, out var value) && !string.IsNullOrWhiteSpace(value)
             ? value : throw new InvalidDataException($"Unavailable: local metadata {name} is missing; no symbol inference is permitted.");
@@ -29,17 +40,17 @@ internal static class RlLocalSnapshotFactory
         catch (Exception ex) when (ex is TimeZoneNotFoundException or InvalidTimeZoneException)
         { throw new InvalidDataException("Unavailable: stored exchange timezone is unsupported.", ex); }
         var capturedDate = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(started, zone).DateTime);
-        var ingress = RlLocalParquetReader.Read(Path.Combine(directory, RlFiles.RawParquet), job.StartDate, job.EndDateExclusive, limits, ct);
+        var ingress = RlLocalParquetReader.Read(Path.Combine(directory, RlFiles.RawParquet), startDate, endDateExclusive, limits, ct);
         if (DateOnly.FromDateTime(ingress.Bars[^1].Timestamp) >= capturedDate)
             throw new InvalidDataException("Unavailable: selected stored bars include the current or a future exchange date.");
         string barsPath = Path.Combine(directory, RlFiles.Bars), actionsPath = Path.Combine(directory, RlFiles.Actions);
         await WriteAsync(barsPath, ingress.Bars, ct).ConfigureAwait(false);
         await WriteAsync(actionsPath, ImmutableArray<RlCorporateAction>.Empty, ct).ConfigureAwait(false);
         var manifest = new RlSourceManifest(RlSourceContract.SchemaVersion, RlSourceContract.Provider, RlSourceContract.ProviderVersion,
-            job.Symbol, currency, timezone, started, DateTimeOffset.UtcNow,
+            symbol, currency, timezone, started, DateTimeOffset.UtcNow,
             ContentHash.OfFile(barsPath), ContentHash.OfFile(actionsPath), ingress.Bars.Length, RlSourceContract.Adjustment,
             RlSourceContract.LocalProvenance, RlSourceContract.Unverified, ingress.StorageDtype,
-            RlSourceContract.FinalityPolicy, capturedDate, job.StartDate, job.EndDateExclusive,
+            RlSourceContract.FinalityPolicy, capturedDate, startDate, endDateExclusive,
             RlSourceContract.Acquisition.ToDictionary(p => p.Key, p => JsonSerializer.SerializeToElement(p.Value)))
         {
             InstrumentType = type, MappedSymbol = bytes.MappedSymbol, SourcePathIdentity = bytes.SourceIdentity,
@@ -53,7 +64,6 @@ internal static class RlLocalSnapshotFactory
         };
         await WriteAsync(Path.Combine(directory, RlFiles.SourceManifest), manifest, ct).ConfigureAwait(false);
         ct.ThrowIfCancellationRequested();
-        return RlSourceSnapshot.Load(directory, limits, job.SmokeOnly, ct, job.EvaluationSpecificationId);
     }
 
     private static Task WriteAsync<T>(string path, T value, CancellationToken ct) =>

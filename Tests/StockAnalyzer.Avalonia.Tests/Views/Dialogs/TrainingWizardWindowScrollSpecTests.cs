@@ -17,7 +17,7 @@ namespace StockAnalyzer.Avalonia.Tests.Views.Dialogs;
 /// <summary>
 /// sa_improve (per the common UI spec for layout-width optimization and scrollbar display control):
 /// TrainingWizardWindow's body ScrollViewer already used <c>SidebarScrollViewerTheme</c> +
-/// <c>AllowAutoHide="False"</c>, but the Scope pick-lists (Watchlist / Portfolio), the progress
+/// <c>AllowAutoHide="False"</c>, but the progress
 /// log <c>ListBox</c>, and the Per-Fold Results table still inherited Avalonia FluentTheme's
 /// Overlay/Auto-hide scrollbar (collapses to near-invisible outside hover, floats over content).
 /// These checks mount the real window and assert, at the element-property level (unconditional in
@@ -48,31 +48,6 @@ public class TrainingWizardWindowScrollSpecTests
         AvaloniaHeadlessPlatform.ForceRenderTimerTick();
         Dispatcher.UIThread.RunJobs();
         return (window, vm);
-    }
-
-    [AvaloniaFact]
-    public void ScopePickLists_UseNonOverlayThemeAndStayAlwaysVisible()
-    {
-        var (window, vm) = Mount();
-        try
-        {
-            vm.SelectedScope = TrainingScopeKind.Watchlist;
-            AvaloniaHeadlessPlatform.ForceRenderTimerTick();
-            Dispatcher.UIThread.RunJobs();
-
-            var expectedTheme = (ControlTheme)Application.Current!.FindResource("SidebarScrollViewerTheme")!;
-            var pickList = window.GetVisualDescendants().OfType<ItemsControl>()
-                .Single(ic => ReferenceEquals(ic.ItemsSource, vm.WatchlistProfiles));
-            var scrollViewer = pickList.GetVisualAncestors().OfType<ScrollViewer>().First();
-
-            Assert.Same(expectedTheme, scrollViewer.Theme);
-            Assert.False(scrollViewer.AllowAutoHide,
-                "the Watchlist pick-list scrollbar must stay permanently visible (AllowAutoHide=False)");
-        }
-        finally
-        {
-            window.Close();
-        }
     }
 
     [AvaloniaFact]

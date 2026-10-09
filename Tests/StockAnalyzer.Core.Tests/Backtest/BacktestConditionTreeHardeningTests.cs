@@ -180,7 +180,8 @@ public class BacktestConditionTreeHardeningTests
     public static IEnumerable<object?[]> StateTable()
     {
         // id, roots, position, stop-loss, take-profit, entry price, low, high, evaluate (signal, order, limit, stop, reason), evaluateExit (signal, reason)
-        yield return new object?[] { "S01", "TT----", null, null, null, null, 100m, 100m, SignalType.LongEntry, OrderType.Market, null, null, EntryReason, null, null };
+        yield return new object?[] { "S01", "TT----", null, null, null, null, 100m, 100m, SignalType.None, OrderType.Market, null, null, ConditionBasedBacktestStrategy.EntryConflictReason, null, null };
+        yield return new object?[] { "S01b", "TF----", null, null, null, null, 100m, 100m, SignalType.LongEntry, OrderType.Market, null, null, EntryReason, null, null };
         yield return new object?[] { "S02", "FT----", null, null, null, null, 100m, 100m, SignalType.ShortEntry, OrderType.Market, null, null, EntryReason, null, null };
         yield return new object?[] { "S03", "FFTTTT", null, null, null, null, 100m, 100m, null, null, null, null, null, null, null };
         yield return new object?[] { "S04", "------", null, null, null, null, 100m, 100m, null, null, null, null, null, null, null };

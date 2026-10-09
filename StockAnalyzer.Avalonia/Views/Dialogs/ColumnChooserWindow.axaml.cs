@@ -36,9 +36,16 @@ public partial class ColumnChooserWindow : Window
 
     private void OnCategorySelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (sender is ListBox listBox && listBox.SelectedIndex >= 0 && DataContext is ColumnChooserViewModel vm)
+        if (sender is ListBox listBox && DataContext is ColumnChooserViewModel vm)
         {
-            vm.SelectedCategory = (ColumnCategory)listBox.SelectedIndex;
+            if (listBox.SelectedItem is ListBoxItem item && item.Tag is ColumnCategory cat)
+            {
+                vm.SelectedCategory = cat;
+            }
+            else if (listBox.SelectedIndex >= 0)
+            {
+                vm.SelectedCategory = (ColumnCategory)listBox.SelectedIndex;
+            }
         }
     }
 

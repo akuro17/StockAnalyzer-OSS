@@ -114,7 +114,13 @@ namespace StockAnalyzer.UITests.PageObjects
         public Window OpenRlTrainingWindow()
         {
             InvokeToolsMenuItem(StockAnalyzer.Avalonia.Common.RlUiConstants.Menu);
-            return WaitForProcessWindow("Reinforcement learning", "強化学習");
+            return WaitForProcessWindow("Reinforcement Learning", "強化学習");
+        }
+
+        public Window OpenPortfolioRlWindow()
+        {
+            InvokeToolsMenuItem(StockAnalyzer.Avalonia.Common.PrlUiConstants.Menu);
+            return WaitForProcessWindow("Portfolio Reinforcement Learning", "ポートフォリオ強化学習");
         }
 
         public Window WaitForProcessWindow(params string[] titles)

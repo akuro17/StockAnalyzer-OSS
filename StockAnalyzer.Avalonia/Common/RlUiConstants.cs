@@ -50,6 +50,7 @@ public static class RlUiConstants
     public const string QPanel = "Rl_QPanel";
     public const string ContinuousMode = "Rl_ContinuousMode";
     public const string AllCompleteBlocks = "Rl_AllCompleteBlocks";
+    public const string ShortHistory = "Rl_ShortHistory";
     public const string RecoveryPreview = "Rl_RecoveryPreview";
     public const string InspectRecovery = "Rl_InspectRecovery";
     public const string RecoverPointer = "Rl_RecoverPointer";
@@ -61,4 +62,11 @@ public static class RlUiConstants
     public const string EvaluationReport = "Rl_EvaluationReport";
     public const string EvaluationDetails = "Rl_EvaluationDetails";
     public const double EvaluationMaximumHeight = 240d;
+    public const string TrainingSetupSection = "Rl_TrainingSetupSection";
+    public const string CostsSection = "Rl_CostsSection";
+    public const string TrainingSection = "Rl_TrainingSection";
+    public const string ModelsSection = "Rl_ModelsSection";
+    public const string MaintenanceSection = "Rl_MaintenanceSection";
+    public const string VerificationSection = "Rl_VerificationSection";
+    public const string NumericEditorSuffix = "_Editor";
 }

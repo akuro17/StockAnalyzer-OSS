@@ -13,10 +13,6 @@
         Background="{DynamicResource Brush.Background.Primary}"
         Foreground="{DynamicResource Brush.Text.Primary}">
 
-    <Window.KeyBindings>
-        <KeyBinding Gesture="Escape" Command="{Binding $parent[Window].Close}"/>
-    </Window.KeyBindings>
-
     <Window.Resources>
         <c:LogLevelToBrushConverter x:Key="LevelToColorConverter"/>
         <c:BytesToReadableSizeConverter x:Key="BytesConverter"/>

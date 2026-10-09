@@ -272,7 +272,7 @@ public class BacktestConfigurationTreePersistenceTests : IDisposable
             new BacktestConditionEntryDto { Left = SideDto(), RightNumericValue = 1m, Role = BacktestConditionRole.EntryOnly, LogicalOperator = LogicalOperator.Or },
             new BacktestConditionEntryDto { Left = SideDto(), RightNumericValue = 2m, Role = BacktestConditionRole.EntryOnly },
             new BacktestConditionEntryDto { Left = SideDto(), RightNumericValue = 3m, Role = BacktestConditionRole.ExitOnly },
-            new BacktestConditionEntryDto { Left = SideDto(), RightNumericValue = 0m, Role = BacktestConditionRole.Reversal, Position = TradeSide.Short },
+            new BacktestConditionEntryDto { Left = SideDto(), RightNumericValue = 3m, Role = BacktestConditionRole.Reversal, Position = TradeSide.Short },
         };
         BacktestConditionTree fromV1 = BacktestConditionTreeDtoMapper.ResolveTree(Config(BacktestConfigurationDto.CurrentSchemaVersion, entries), 500, 8, 64);
 

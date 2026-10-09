@@ -90,6 +90,7 @@ public sealed class BacktestResultPresentation
     public required string ConditionExpression { get; init; }
     public required string? RunFingerprintText { get; init; }
     public required BacktestMetricSemantic EquityLineSemantic { get; init; }
+    public ImmutableArray<BacktestWarning> Warnings { get; init; } = ImmutableArray<BacktestWarning>.Empty;
     public required long Revision { get; init; }
 }
 
@@ -176,6 +177,11 @@ public partial class BacktestResultsViewModel : ViewModelBase, IDisposable
     public string ExecutionModeDescription => _presentation?.ExecutionModeDescription ?? string.Empty;
     public string RiskManagementDescription => _presentation?.RiskManagementDescription ?? string.Empty;
     public BacktestEvaluationArtifact? EvaluationArtifact => _presentation?.Artifact;
+    public ImmutableArray<BacktestWarning> Warnings => _presentation?.Warnings ?? ImmutableArray<BacktestWarning>.Empty;
+    public bool HasWarnings => Warnings.Length > 0;
+    public string? WarningSummaryText => HasWarnings
+        ? string.Join("; ", Warnings.Select(w => w.Message))
+        : null;
 
     [ObservableProperty]
     private string? _exportStatusMessage;
@@ -733,6 +739,7 @@ public partial class BacktestResultsViewModel : ViewModelBase, IDisposable
             ConditionExpression = expression,
             RunFingerprintText = BuildRunFingerprintText(report.RunFingerprint),
             EquityLineSemantic = lineSemantic,
+            Warnings = result.Warnings,
             Revision = revision,
         };
     }
@@ -789,6 +796,9 @@ public partial class BacktestResultsViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(DisplayEquityCash));
         OnPropertyChanged(nameof(DisplayEquityMarketValue));
         OnPropertyChanged(nameof(DisplayEquityHeldMargin));
+        OnPropertyChanged(nameof(Warnings));
+        OnPropertyChanged(nameof(HasWarnings));
+        OnPropertyChanged(nameof(WarningSummaryText));
         _currentTradePage = 1;
         UpdatePagedTrades();
         ExportReportCommand.NotifyCanExecuteChanged();

@@ -12,6 +12,7 @@ using Microsoft.ML.OnnxRuntime;
 using StockAnalyzer.Core.Common;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Indicators;
+using StockAnalyzer.Core.Models.Settings;
 using StockAnalyzer.Core.Models.Training;
 
 namespace StockAnalyzer.Core.Services;
@@ -118,6 +119,10 @@ public sealed partial class ModelGenerationRegistry : IModelGenerationRegistry, 
     /// reflection-based tests rely on stays unchanged; tests replace it to make the cleanup fail.
     /// </summary>
     internal Action<string> DeleteDirectory { get; init; } = path => Directory.Delete(path, recursive: true);
+
+    /// <summary>Publishes a staging directory under its generation id. A seam for the same reason as <see cref="DeleteDirectory"/>.</summary>
+    internal Action<string, string> MoveDirectory { get; init; } = Directory.Move;
+    private FileReplaceRetrySettings _replaceRetry = new();
     private readonly IStockAnalyzerSettings? _predictionSettings;
     private Pointer _pointer = new(null, Array.Empty<string>());
     private bool _disposed;
@@ -136,6 +141,16 @@ public sealed partial class ModelGenerationRegistry : IModelGenerationRegistry, 
         RequireStorePath(_root);
         Directory.CreateDirectory(_root);
         using var transaction = EnterStore();
+    }
+
+    /// <summary>
+    /// Sets how a generation publication is retried when a scanner briefly holds the staging directory. Throws on a hard-limit
+    /// violation; the caller reports the warnings of <see cref="FileReplaceRetrySettingsValidator.Validate"/>.
+    /// </summary>
+    public void ConfigureFileReplaceRetry(FileReplaceRetrySettings settings)
+    {
+        FileReplaceRetrySettingsValidator.Validate(settings);
+        lock (_gate) _replaceRetry = new FileReplaceRetrySettings { Attempts = settings.Attempts, DelayMilliseconds = settings.DelayMilliseconds };
     }
 
     public string? ActiveId { get { lock (_gate) { if (_disposed) return _pointer.ActiveId; using var transaction = EnterStore(); return _pointer.ActiveId; } } }
@@ -277,7 +292,9 @@ public sealed partial class ModelGenerationRegistry : IModelGenerationRegistry, 
                 ObjectDisposedException.ThrowIf(_disposed, this);
                 ct.ThrowIfCancellationRequested();
                 var destination = Path.Combine(_root, id);
-                if (!Directory.Exists(destination)) Directory.Move(stage, destination);
+                if (!Directory.Exists(destination))
+                    TransientFileLockRetry.Run(() => MoveDirectory(stage, destination), _replaceRetry,
+                        canRetry: () => Directory.Exists(stage) && !Directory.Exists(destination));
                 else
                 {
                     if (!Verify(manifest, destination))

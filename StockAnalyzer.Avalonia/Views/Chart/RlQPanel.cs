@@ -5,6 +5,7 @@ using Avalonia.Controls;
 using Avalonia.Media;
 using Avalonia.Rendering.SceneGraph;
 using Avalonia.Skia;
+using Avalonia.VisualTree;
 using SkiaSharp;
 using StockAnalyzer.Avalonia.ViewModels;
 using StockAnalyzer.Avalonia.Views.Chart.Renderers;
@@ -22,7 +23,7 @@ public sealed class RlQPanel : Control
     public double BaseFontSize { get => GetValue(BaseFontSizeProperty); set => SetValue(BaseFontSizeProperty, value); }
     public double HelperFontSize { get => GetValue(HelperFontSizeProperty); set => SetValue(HelperFontSizeProperty, value); }
     public IBrush? TextBrush { get => GetValue(TextBrushProperty); set => SetValue(TextBrushProperty, value); }
-    private Operation? _operation;
+    private Scene? _scene;
     private RlQRenderer? _renderer;
     protected override global::Avalonia.Automation.Peers.AutomationPeer OnCreateAutomationPeer() => new global::Avalonia.Automation.Peers.ControlAutomationPeer(this);
     public RlQPanel() { Height = (double)RlContract.PanelHeight; global::Avalonia.Automation.AutomationProperties.SetAutomationId(this, Common.RlUiConstants.QPanel); }
@@ -41,7 +42,9 @@ public sealed class RlQPanel : Control
     { if (e.PropertyName is nameof(ChartViewModel.RlPresentation) or nameof(ChartViewModel.BullishColor) or nameof(ChartViewModel.BearishColor) or nameof(ChartViewModel.NeutralColor)) Rebuild(); }
     private void Rebuild()
     {
-        var old = _operation; _operation = null;
+        _scene = null;
+        // Native resources exist only while attached; OnAttachedToVisualTree rebuilds, so detached property changes create nothing.
+        if (this.GetVisualRoot() is null) return;
         var presentation = ViewModel?.RlPresentation;
         global::Avalonia.Automation.AutomationProperties.SetName(this, presentation is null ? ""
             : string.Join(" · ", presentation.ModelId, presentation.PolicyId, presentation.Units, presentation.Legend, presentation.HudText));
@@ -49,27 +52,30 @@ public sealed class RlQPanel : Control
         if (ViewModel?.RlPresentation is { } p && TextBrush is ISolidColorBrush brush)
         {
             var c = brush.Color;
-            _operation = new(_renderer ??= new RlQRenderer(), new Rect(Bounds.Size), p, (float)BaseFontSize, (float)HelperFontSize, new(c.R,c.G,c.B,c.A),
+            _scene = new(p, (float)BaseFontSize, (float)HelperFontSize, new(c.R,c.G,c.B,c.A),
                 Utilities.ColorHelper.ParseColorSafe(ViewModel.NeutralColor), Utilities.ColorHelper.ParseColorSafe(ViewModel.BullishColor), Utilities.ColorHelper.ParseColorSafe(ViewModel.BearishColor));
         }
-        old?.Dispose(); InvalidateVisual();
+        InvalidateVisual();
     }
-    public override void Render(DrawingContext context) { if (_operation is not null) context.Custom(_operation); }
-    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e) { if (ViewModel is not null) ViewModel.PropertyChanged -= Changed; _operation = null; _renderer?.Dispose(); _renderer = null; base.OnDetachedFromVisualTree(e); }
+    // A fresh lightweight operation per submission; expensive resources stay in the renderer and the immutable scene prepared in Rebuild.
+    public override void Render(DrawingContext context)
+    { if (_scene is { } scene && _renderer is { } renderer) context.Custom(new Operation(renderer, scene, new Rect(Bounds.Size))); }
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e) { if (ViewModel is not null) ViewModel.PropertyChanged -= Changed; _scene = null; _renderer?.Dispose(); _renderer = null; base.OnDetachedFromVisualTree(e); }
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e) { base.OnAttachedToVisualTree(e); if (ViewModel is not null) { ViewModel.PropertyChanged -= Changed; ViewModel.PropertyChanged += Changed; } Rebuild(); }
-    private sealed class Operation(RlQRenderer renderer, Rect bounds, RlPresentation presentation, float baseSize, float helperSize, SKColor foreground, SKColor hold, SKColor buy, SKColor sell) : ICustomDrawOperation
+    private sealed record Scene(RlPresentation Presentation, float BaseSize, float HelperSize, SKColor Foreground, SKColor Hold, SKColor Buy, SKColor Sell);
+    private sealed class Operation(RlQRenderer renderer, Scene scene, Rect bounds) : ICustomDrawOperation
     {
-
         public Rect Bounds => bounds;
         public bool HitTest(global::Avalonia.Point p) => false;
-        public bool Equals(ICustomDrawOperation? other) => ReferenceEquals(this, other);
-        // Lifetime belongs to the control; Avalonia may dispose scene references between frames.
+        // Each submission is a new operation that must be treated as changed; never equal to another submission.
+        public bool Equals(ICustomDrawOperation? other) => false;
+        // The renderer belongs to the control (its own gate makes a draw after disposal a no-op); the operation owns nothing native.
         public void Dispose() { }
         public void Render(ImmediateDrawingContext context)
         {
             if (context.TryGetFeature(typeof(ISkiaSharpApiLeaseFeature)) is not ISkiaSharpApiLeaseFeature feature) return;
             using var lease = feature.Lease();
-            renderer.DrawPanel(lease.SkCanvas, bounds, presentation, baseSize, helperSize, foreground, hold, buy, sell);
+            renderer.DrawPanel(lease.SkCanvas, bounds, scene.Presentation, scene.BaseSize, scene.HelperSize, scene.Foreground, scene.Hold, scene.Buy, scene.Sell);
         }
     }
 }

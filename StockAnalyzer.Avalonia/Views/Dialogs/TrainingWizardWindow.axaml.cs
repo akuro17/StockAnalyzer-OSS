@@ -17,6 +17,7 @@ public partial class TrainingWizardWindow : Window
     public TrainingWizardWindow()
     {
         InitializeComponent();
+        SubWindowKeys.CloseOnEscape(this);
     }
 
     private void OnHeaderPointerPressed(object? sender, PointerPressedEventArgs e)

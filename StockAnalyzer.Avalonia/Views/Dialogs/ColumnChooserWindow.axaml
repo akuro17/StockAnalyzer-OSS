@@ -85,14 +85,15 @@
                             <Setter Property="FontWeight" Value="SemiBold"/>
                         </Style>
                     </ListBox.Styles>
-                    <ListBoxItem Content="{l:Localize ColumnChooser_Category_Active}"/>
-                    <ListBoxItem Content="{l:Localize ColumnChooser_Category_All}"/>
-                    <ListBoxItem Content="{l:Localize ColumnChooser_Category_Basic}"/>
-                    <ListBoxItem Content="{l:Localize ColumnChooser_Category_PriceVolume}"/>
-                    <ListBoxItem Content="{l:Localize ColumnChooser_Category_Valuation}"/>
-                    <ListBoxItem Content="{l:Localize ColumnChooser_Category_Profitability}"/>
-                    <ListBoxItem Content="{l:Localize ColumnChooser_Category_FinancialHealth}"/>
-                    <ListBoxItem Content="{l:Localize ColumnChooser_Category_Templates}"/>
+                    <ListBoxItem Content="{l:Localize ColumnChooser_Category_Active}" Tag="{x:Static vm:ColumnCategory.Active}"/>
+                    <ListBoxItem Content="{l:Localize ColumnChooser_Category_All}" Tag="{x:Static vm:ColumnCategory.All}"/>
+                    <ListBoxItem Content="{l:Localize ColumnChooser_Category_Basic}" Tag="{x:Static vm:ColumnCategory.Basic}"/>
+                    <ListBoxItem Content="{l:Localize ColumnChooser_Category_PriceVolume}" Tag="{x:Static vm:ColumnCategory.PriceVolume}"/>
+                    <ListBoxItem Content="{l:Localize ColumnChooser_Category_Valuation}" Tag="{x:Static vm:ColumnCategory.Valuation}"/>
+                    <ListBoxItem Content="{l:Localize ColumnChooser_Category_Profitability}" Tag="{x:Static vm:ColumnCategory.Ratio}"/>
+                    <ListBoxItem Content="{l:Localize ColumnChooser_Category_FinancialHealth}" Tag="{x:Static vm:ColumnCategory.Financial}"/>
+                    <ListBoxItem Content="{l:Localize ColumnChooser_Category_Metrics}" IsVisible="{Binding HasMetricsCategory}" Tag="{x:Static vm:ColumnCategory.Metrics}"/>
+                    <ListBoxItem Content="{l:Localize ColumnChooser_Category_Templates}" Tag="{x:Static vm:ColumnCategory.Templates}"/>
                 </ListBox>
             </Border>
 

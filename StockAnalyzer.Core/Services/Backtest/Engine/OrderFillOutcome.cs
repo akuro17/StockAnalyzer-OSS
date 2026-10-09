@@ -13,11 +13,12 @@ public readonly record struct OrderFillOutcome(
     decimal FillPrice,
     decimal Commission,
     decimal SlippageAmount,
-    bool StopActivated)
+    bool StopActivated,
+    decimal FilledQuantity = 0m)
 {
-    public static readonly OrderFillOutcome NoFill = new(false, 0m, 0m, 0m, false);
+    public static readonly OrderFillOutcome NoFill = new(false, 0m, 0m, 0m, false, 0m);
 
-    public static OrderFillOutcome StopTriggeredNoLimitFill() => new(false, 0m, 0m, 0m, true);
+    public static OrderFillOutcome StopTriggeredNoLimitFill() => new(false, 0m, 0m, 0m, true, 0m);
 }
 
 /// <summary>Outcome of <see cref="OrderFillEvaluator.EvaluateFrom"/>: the usual <see cref="OrderFillOutcome"/> plus the path point where the fill happened (null when not filled).</summary>

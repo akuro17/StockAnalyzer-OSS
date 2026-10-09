@@ -85,11 +85,12 @@ public sealed partial class ModelGenerationRegistry
         return ContentHash.OfText((File.Exists(pointer) ? ContentHash.OfFile(pointer) : string.Empty) + ":" +
             (File.Exists(manifest) ? ContentHash.OfFile(manifest) : string.Empty) + ":" + id);
     }
-    public IReadOnlyList<RlCheckpointReview> ListRlCheckpoints()
+    public IReadOnlyList<RlCheckpointReview> ListRlCheckpoints() => ListRlCheckpoints(default);
+    public IReadOnlyList<RlCheckpointReview> ListRlCheckpoints(CancellationToken ct)
     {
         lock (_gate)
         {
-            using var transaction = EnterStore(); var rows = new List<RlCheckpointReview>();
+            using var transaction = EnterStore(ct); var rows = new List<RlCheckpointReview>();
             if (_artifactRunRoot is null || !Directory.Exists(_artifactRunRoot)) return rows;
             foreach (string directory in Directory.EnumerateDirectories(_artifactRunRoot))
             {

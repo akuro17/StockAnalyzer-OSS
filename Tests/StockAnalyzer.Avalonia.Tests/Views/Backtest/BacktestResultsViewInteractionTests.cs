@@ -11,6 +11,7 @@ using Moq;
 using StockAnalyzer.Avalonia.Converters;
 using StockAnalyzer.Avalonia.Services;
 using StockAnalyzer.Avalonia.ViewModels.Backtest;
+using StockAnalyzer.Avalonia.ViewModels.Dialogs;
 using StockAnalyzer.Avalonia.Views.Backtest;
 using StockAnalyzer.Core.Interfaces;
 using StockAnalyzer.Core.Models;
@@ -237,7 +238,7 @@ public class BacktestResultsViewInteractionTests
             var tradeItems = view.GetVisualDescendants().OfType<ItemsControl>()
                 .Single(c => global::Avalonia.Automation.AutomationProperties.GetAutomationId(c) == "Backtest_Results_Trades");
             var firstRowGrid = tradeItems.GetVisualDescendants().OfType<Grid>()
-                .First(g => g.DataContext is BacktestTradeRow && g.ColumnDefinitions.Count == 9);
+                .First(g => g.DataContext is BacktestTradeRow && g.ColumnDefinitions.Count == BacktestTradeHistoryColumnChooserViewModel.KnownColumns.Count);
 
             double initialHeaderCol0 = tradesHeader.ColumnDefinitions[0].ActualWidth;
             double initialRowCol0 = firstRowGrid.ColumnDefinitions[0].ActualWidth;

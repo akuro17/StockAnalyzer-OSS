@@ -34,10 +34,10 @@ public static class MarginLiquidationCalculator
     /// same [0,2] path-position scale as <see cref="FillPathScanner"/> so it can be compared directly
     /// against a competing pending exit order's own touch position via <see cref="ExitPrecedenceResolver"/>.
     /// </summary>
-    public static decimal? TryFindBreachPosition(TradeSide side, decimal liquidationPrice, CandleData bar)
+    public static decimal? TryFindBreachPosition(TradeSide side, decimal liquidationPrice, CandleData bar, IntrabarPathMode pathMode = IntrabarPathMode.CanonicalOHLC)
     {
         TouchDirection direction = side == TradeSide.Long ? TouchDirection.Downward : TouchDirection.Upward;
-        return FillPathScanner.TryFindTouchPosition(bar.Open, bar.High, bar.Low, bar.Close, liquidationPrice, direction);
+        return FillPathScanner.TryFindTouchPosition(bar.Open, bar.High, bar.Low, bar.Close, liquidationPrice, direction, pathMode, side);
     }
 
     /// <summary>

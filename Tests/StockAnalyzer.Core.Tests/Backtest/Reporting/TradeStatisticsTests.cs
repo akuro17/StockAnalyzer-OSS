@@ -204,6 +204,39 @@ public class TradeStatisticsTests
     }
 
     [Fact]
+    public void AllWinningTrades_WinRateIsOne_AndProfitFactorIsInfinity()
+    {
+        ImmutableArray<BacktestTrade> trades = Trades(new[] { (5m, 1), (10m, 2) });
+        TradeStatistics stats = TradeStatistics.Compute(trades, CancellationToken.None);
+
+        Assert.Equal(2, stats.Count);
+        Assert.Equal(2, stats.Wins);
+        Assert.Equal(0, stats.Losses);
+        Assert.Equal(0, stats.Breakevens);
+        Assert.Equal(15m, stats.GrossProfit);
+        Assert.Equal(0m, stats.GrossLoss);
+
+        MetricValue winRate = BasicMetricsCalculator.ComputeWinRate(stats);
+        Assert.Equal(1m, winRate.Value);
+
+        MetricValue pf = BasicMetricsCalculator.ComputeProfitFactor(stats);
+        Assert.Equal(MetricStatus.PositiveInfinity, pf.Status);
+    }
+
+    [Fact]
+    public void IdenticalTrades_CalculatesConsistentStatistics()
+    {
+        ImmutableArray<BacktestTrade> trades = Trades(new[] { (0.1m, 1), (0.1m, 1), (0.1m, 1) });
+        TradeStatistics stats = TradeStatistics.Compute(trades, CancellationToken.None);
+
+        Assert.Equal(3, stats.Count);
+        Assert.Equal(3, stats.Wins);
+        Assert.Equal(0.3m, stats.GrossProfit);
+        Assert.Equal(0.1m, stats.LargestWin);
+        AssertEqualsNaive(trades);
+    }
+
+    [Fact]
     public void Cancellation_IsObserved()
     {
         ImmutableArray<BacktestTrade> trades = Trades(Enumerable.Repeat((1m, 0), 10));

@@ -37,11 +37,12 @@ public sealed partial class ModelGenerationRegistry
         { RecordStoreFailure("rl-pointer", error); return (new(null, Array.Empty<string>()), error.Message); }
     }
 
-    public RlPointerRecovery PreviewRlRecovery(string target)
+    public RlPointerRecovery PreviewRlRecovery(string target) => PreviewRlRecovery(target, default);
+    public RlPointerRecovery PreviewRlRecovery(string target, CancellationToken ct)
     {
         lock (_gate)
         {
-            using var transaction = EnterStore(); EnsureRlLoaded();
+            using var transaction = EnterStore(ct); EnsureRlLoaded();
             string path = RlPointerPath(target), backup = path + Coordination.BackupSuffix;
             var current = LoadRlPointer(target);
             string? candidate = null, error = current.Error;

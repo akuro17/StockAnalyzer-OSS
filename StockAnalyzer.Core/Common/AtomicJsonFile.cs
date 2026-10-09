@@ -54,6 +54,45 @@ public static class AtomicJsonFile
     }
 
     /// <summary>
+    /// Synchronous counterpart of <see cref="SaveAsync{T}"/> with the same temp-write-then-replace/move semantics
+    /// (including the <c>.bak</c> backup unless <paramref name="preserveBackup"/> is true). For callers that cannot await;
+    /// <see cref="SaveAsync{T}"/> is unchanged. Exceptions propagate to the caller.
+    /// </summary>
+    public static void Save<T>(string filePath, T data, JsonSerializerOptions? options = null, bool preserveBackup = false)
+    {
+        string tempPath = filePath + TemporarySuffix;
+        try
+        {
+            var directory = Path.GetDirectoryName(filePath);
+            if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            using (var stream = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None))
+            {
+                JsonSerializer.Serialize(stream, data, options);
+            }
+
+            if (File.Exists(filePath))
+            {
+                File.Replace(tempPath, filePath, preserveBackup ? null : filePath + BackupSuffix);
+            }
+            else
+            {
+                File.Move(tempPath, filePath);
+            }
+        }
+        finally
+        {
+            if (File.Exists(tempPath))
+            {
+                try { File.Delete(tempPath); } catch { /* Ignore cleanup errors */ }
+            }
+        }
+    }
+
+    /// <summary>
     /// Reads and deserializes <paramref name="filePath"/>. Callers are expected to check
     /// <see cref="File.Exists(string)"/> beforehand, since "file absent" typically means
     /// "apply defaults" rather than an error for these settings files.

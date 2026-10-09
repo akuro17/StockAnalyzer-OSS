@@ -14,6 +14,8 @@ using Avalonia.Controls.Templates;
 using System.Runtime.CompilerServices;
 using Microsoft.Extensions.DependencyInjection;
 using StockAnalyzer.Core.Interfaces;
+using StockAnalyzer.Avalonia.ViewModels.Backtest;
+using StockAnalyzer.Avalonia.ViewModels.TickerList;
 
 namespace StockAnalyzer.Avalonia.Common;
 
@@ -585,6 +587,10 @@ public static class TreeDataGridExtensions
             case "IsSLShort":
                 return CreateSignalColumn(header, nameof(WatchlistItemViewModel.DisplayIsSLShort), nameof(WatchlistItemViewModel.ToolTipIsSLShort), width);
             default:
+                if (memberName.StartsWith(BacktestMetricColumnRegistry.MetricMemberPrefix))
+                {
+                    return CreateMetricColumn(header, memberName, width);
+                }
                 if (memberName.StartsWith("Indicator_"))
                 {
                     return CreateDynamicIndicatorColumn(header, memberName, width);
@@ -637,6 +643,158 @@ public static class TreeDataGridExtensions
                 CompareAscending = (a, b) => CompareDynamicValues(a?.GetRawValue(memberName), b?.GetRawValue(memberName)),
                 CompareDescending = (a, b) => CompareDynamicValues(b?.GetRawValue(memberName), a?.GetRawValue(memberName))
             });
+    }
+
+    internal sealed class MetricValueTextConverter : global::Avalonia.Data.Converters.IValueConverter
+    {
+        private readonly BacktestMetricDefinition? _def;
+        internal MetricValueTextConverter(BacktestMetricDefinition? def) => _def = def;
+        public object? Convert(object? value, Type targetType, object? parameter, System.Globalization.CultureInfo culture)
+        {
+            var (text, _) = FormatMetricValue(value, _def);
+            return string.IsNullOrEmpty(text) ? "-" : text;
+        }
+        public object? ConvertBack(object? value, Type targetType, object? parameter, System.Globalization.CultureInfo culture) => throw new NotSupportedException();
+    }
+
+    internal sealed class MetricValueBrushConverter : global::Avalonia.Data.Converters.IValueConverter
+    {
+        private readonly BacktestMetricDefinition? _def;
+        internal MetricValueBrushConverter(BacktestMetricDefinition? def) => _def = def;
+        public object? Convert(object? value, Type targetType, object? parameter, System.Globalization.CultureInfo culture)
+        {
+            var (_, brush) = FormatMetricValue(value, _def);
+            return brush;
+        }
+        public object? ConvertBack(object? value, Type targetType, object? parameter, System.Globalization.CultureInfo culture) => throw new NotSupportedException();
+    }
+
+    private static IColumn CreateMetricColumn(string header, string memberName, GridLength width)
+    {
+        string metricName = memberName.StartsWith(BacktestMetricColumnRegistry.MetricMemberPrefix)
+            ? memberName.Substring(BacktestMetricColumnRegistry.MetricMemberPrefix.Length)
+            : memberName;
+
+        BacktestMetricDefinition? def = BacktestMetricCatalog.Definitions.FirstOrDefault(d => d.Name == metricName);
+        var textConverter = new MetricValueTextConverter(def);
+        var brushConverter = new MetricValueBrushConverter(def);
+        string bindingPath = $"[{memberName}]";
+
+        return new TemplateColumn<WatchlistItemViewModel>(
+            header: header,
+            cellTemplate: new FuncDataTemplate<WatchlistItemViewModel>((_, _) =>
+            {
+                var tb = new global::Avalonia.Controls.TextBlock
+                {
+                    VerticalAlignment = global::Avalonia.Layout.VerticalAlignment.Center,
+                    HorizontalAlignment = global::Avalonia.Layout.HorizontalAlignment.Right,
+                    Margin = new global::Avalonia.Thickness(4, 0)
+                };
+                tb.Bind(global::Avalonia.Controls.TextBlock.TextProperty,
+                    new global::Avalonia.Data.Binding(bindingPath)
+                    {
+                        Converter = textConverter,
+                        TargetNullValue = "-",
+                        FallbackValue = "-"
+                    });
+                tb.Bind(global::Avalonia.Controls.TextBlock.ForegroundProperty,
+                    new global::Avalonia.Data.Binding(bindingPath) { Converter = brushConverter });
+
+                var tip = CreateTooltipContentTextBlock();
+                tip.Bind(global::Avalonia.Controls.TextBlock.TextProperty,
+                    new global::Avalonia.Data.Binding(bindingPath)
+                    {
+                        Converter = new global::Avalonia.Data.Converters.FuncValueConverter<object?, string>(v =>
+                        {
+                            var (formatted, _) = FormatMetricValue(v, def);
+                            return FormatTooltipValue(header, formatted);
+                        }),
+                        TargetNullValue = FormatTooltipValue(header, "-"),
+                        FallbackValue = FormatTooltipValue(header, "-")
+                    });
+                tb.SetValue(ToolTip.TipProperty, tip);
+                return tb;
+            }),
+            cellEditingTemplate: null,
+            width: width,
+            options: new global::Avalonia.Controls.Models.TreeDataGrid.TemplateColumnOptions<WatchlistItemViewModel>
+            {
+                CanUserResizeColumn = true,
+                MinWidth = new GridLength(WatchlistConstants.DefaultColumnMinWidth, GridUnitType.Pixel),
+                MaxWidth = new GridLength(WatchlistConstants.DefaultColumnMaxWidth, GridUnitType.Pixel),
+                CompareAscending = (a, b) => CompareMetricValues(a?[memberName], b?[memberName], true),
+                CompareDescending = (a, b) => CompareMetricValues(a?[memberName], b?[memberName], false)
+            });
+    }
+
+    private static (string Text, IBrush? Brush) FormatMetricValue(object? rawVal, BacktestMetricDefinition? def)
+    {
+        decimal? val = ExtractMetricDecimal(rawVal);
+        if (!val.HasValue || def == null)
+        {
+            return ("-", null);
+        }
+
+        decimal d = val.Value;
+        string text = def.Format switch
+        {
+            BacktestMetricValueFormat.Percentage => (d >= 0 ? "+" : "") + (d * 100m).ToString("F2", System.Globalization.CultureInfo.InvariantCulture) + "%",
+            BacktestMetricValueFormat.FourDecimals => d.ToString("F4", System.Globalization.CultureInfo.InvariantCulture),
+            BacktestMetricValueFormat.TwoDecimals => d.ToString("F2", System.Globalization.CultureInfo.InvariantCulture),
+            BacktestMetricValueFormat.WholeNumber => ((long)Math.Round(d)).ToString("N0", System.Globalization.CultureInfo.InvariantCulture),
+            _ => d.ToString(System.Globalization.CultureInfo.InvariantCulture)
+        };
+
+        IBrush? successBrush = null;
+        IBrush? errorBrush = null;
+        if (global::Avalonia.Application.Current != null)
+        {
+            if (global::Avalonia.Application.Current.TryGetResource("Brush.Semantic.Success", null, out var sRes) && sRes is IBrush sb)
+                successBrush = sb;
+            if (global::Avalonia.Application.Current.TryGetResource("Brush.Semantic.Error", null, out var eRes) && eRes is IBrush eb)
+                errorBrush = eb;
+        }
+        successBrush ??= Brushes.LimeGreen;
+        errorBrush ??= Brushes.Crimson;
+
+        IBrush? brush = def.Rule switch
+        {
+            BacktestMetricSemanticRule.Sign => d > 0 ? successBrush : (d < 0 ? errorBrush : null),
+            BacktestMetricSemanticRule.GainMagnitude => d > 0 ? successBrush : null,
+            BacktestMetricSemanticRule.LossMagnitude => d > 0 ? errorBrush : null,
+            _ => null
+        };
+
+        return (text, brush);
+    }
+
+    private static decimal? ExtractMetricDecimal(object? val)
+    {
+        if (val == null) return null;
+        if (val is decimal m) return m;
+        if (val is double db) return double.IsNaN(db) || double.IsInfinity(db) ? null : (decimal)db;
+        if (val is float f) return float.IsNaN(f) || float.IsInfinity(f) ? null : (decimal)f;
+        if (val is int i) return (decimal)i;
+        if (val is long l) return (decimal)l;
+        if (val is StockAnalyzer.Core.Services.Backtest.Reporting.MetricValue mv)
+        {
+            if (mv.Status == StockAnalyzer.Core.Services.Backtest.Reporting.MetricStatus.Valid)
+                return mv.Value;
+            return null;
+        }
+        if (decimal.TryParse(val.ToString(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var parsed))
+            return parsed;
+        return null;
+    }
+
+    private static int CompareMetricValues(object? valA, object? valB, bool isAscending)
+    {
+        decimal? dA = ExtractMetricDecimal(valA);
+        decimal? dB = ExtractMetricDecimal(valB);
+        if (!dA.HasValue && !dB.HasValue) return 0;
+        if (!dA.HasValue) return 1; // null is always sorted to the bottom
+        if (!dB.HasValue) return -1;
+        return isAscending ? dA.Value.CompareTo(dB.Value) : dB.Value.CompareTo(dA.Value);
     }
 
     private static string FormatIndicatorValue(object? val)

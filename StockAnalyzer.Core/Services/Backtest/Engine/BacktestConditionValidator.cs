@@ -347,7 +347,7 @@ public static class BacktestConditionValidator
         }
     }
 
-    internal static BacktestConditionEntry CloneEntry(BacktestConditionEntry entry) => new()
+    public static BacktestConditionEntry CloneEntry(BacktestConditionEntry entry) => new()
     {
         Left = CloneSide(entry.Left),
         Operator = entry.Operator,

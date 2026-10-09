@@ -23,6 +23,13 @@ using StockAnalyzer.Avalonia.Models;
 using StockAnalyzer.Core.Models.Screener;
 using StockAnalyzer.Core.Models.Templates;
 using StockAnalyzer.Core.Services.Screener;
+using StockAnalyzer.Core.Models.Backtest.Engine;
+using StockAnalyzer.Core.Services.Backtest.Engine;
+using StockAnalyzer.Core.Services.Backtest.Reporting;
+using StockAnalyzer.Avalonia.ViewModels.Backtest;
+using StockAnalyzer.Core.Services.Backtest.Configuration;
+using System.Collections.Immutable;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace StockAnalyzer.Avalonia.ViewModels;
 
@@ -510,7 +517,8 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
 
     public ObservableCollection<string> ExistingTags { get; } = new();
 
-    private readonly IReadOnlyList<WatchlistColumnMetadata> _allColumns = WatchlistColumnRegistry.AllColumns;
+    private readonly IReadOnlyList<WatchlistColumnMetadata> _allColumns = 
+        WatchlistColumnRegistry.AllColumns.Concat(BacktestMetricColumnRegistry.AllColumns).ToList();
 
     private void InitializeColumns()
     {
@@ -593,6 +601,19 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
     /// <summary>Column Customization dropdown (Y:\Temp\sa_implementation_plan_TickerColumnTemplateDropdown.md):
     /// the entry currently selected in the dropdown receives the user's column edit.</summary>
     public TickerColumnTemplateSelectorViewModel ColumnTemplateSelector { get; }
+
+    /// <summary>Backtest Template dropdown: selecting 'Backtest Template' clears results; selecting a template runs backtests.</summary>
+    public TickerBacktestTemplateSelectorViewModel BacktestTemplateSelector { get; }
+
+    [ObservableProperty]
+    private bool _isEvaluatingBacktestTemplate;
+
+    private readonly StockAnalyzer.Core.Services.IDataService? _dataService;
+    private readonly IBacktestEngine? _backtestEngine;
+    private readonly IBacktestReportGenerator? _backtestReportGenerator;
+    private long _backtestGeneration;
+    private CancellationTokenSource? _backtestCts;
+    private readonly object _backtestGate = new();
 
     private readonly StockAnalyzer.Core.Services.Tickers.ITickersSettingsManager? _tickersSettingsManager;
 
@@ -759,6 +780,196 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
 
     private void NotifyColumnsEditedByUser() => ColumnTemplateSelector.OnColumnsEditedByUser(GetDisplayedColumnNames());
 
+    private void OnBacktestTemplateSelectionChanged(object? sender, EventArgs e)
+    {
+        var selected = BacktestTemplateSelector.SelectedEntry;
+        if (BacktestTemplateSelector.IsDefaultEntry(selected))
+        {
+            CancelAndClearBacktestResults();
+        }
+        else if (selected != null)
+        {
+            RunBacktestForTemplate(selected);
+        }
+    }
+
+    private void CancelAndClearBacktestResults()
+    {
+        lock (_backtestGate)
+        {
+            _backtestCts?.Cancel();
+            _backtestCts = null;
+        }
+        Interlocked.Increment(ref _backtestGeneration);
+        IsEvaluatingBacktestTemplate = false;
+
+        foreach (var item in DisplayItems)
+        {
+            item.ClearMetricValues();
+        }
+    }
+
+    private void RunBacktestForTemplate(BacktestConditionTemplate template)
+    {
+        long gen;
+        CancellationTokenSource cts;
+        lock (_backtestGate)
+        {
+            _backtestCts?.Cancel();
+            _backtestCts = new CancellationTokenSource();
+            cts = _backtestCts;
+            gen = Interlocked.Increment(ref _backtestGeneration);
+        }
+
+        var items = DisplayItems.ToList();
+        if (items.Count == 0)
+        {
+            IsEvaluatingBacktestTemplate = false;
+            return;
+        }
+
+        // Reset metrics to "-" immediately for current items
+        foreach (var item in items)
+        {
+            item.ClearMetricValues();
+        }
+
+        IsEvaluatingBacktestTemplate = true;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var dataService = _dataService ?? App.Current?.Services?.GetService<StockAnalyzer.Core.Services.IDataService>();
+                var engine = _backtestEngine ?? App.Current?.Services?.GetService<IBacktestEngine>();
+                var reportGen = _backtestReportGenerator ?? App.Current?.Services?.GetService<IBacktestReportGenerator>();
+
+                if (dataService == null || engine == null || reportGen == null || cts.Token.IsCancellationRequested)
+                {
+                    await _dispatcherService.PostAsync(() =>
+                    {
+                        if (gen == _backtestGeneration) IsEvaluatingBacktestTemplate = false;
+                        return Task.CompletedTask;
+                    }).ConfigureAwait(false);
+                    return;
+                }
+
+                TimeFrame frame = TimeFrame.D1;
+
+                BacktestConditionTree domainTree = BacktestConditionTreeDtoMapper.ToTree(template.ConditionTree);
+                if (!domainTree.HasAnyLeaf)
+                {
+                    await _dispatcherService.PostAsync(() =>
+                    {
+                        if (gen == _backtestGeneration) IsEvaluatingBacktestTemplate = false;
+                        return Task.CompletedTask;
+                    }).ConfigureAwait(false);
+                    return;
+                }
+
+                BacktestRiskManagementSettings? risk = template.RiskManagement is null
+                    ? null
+                    : new BacktestRiskManagementSettings
+                    {
+                        StopLossPercent = template.RiskManagement.StopLossPercent,
+                        TakeProfitPercent = template.RiskManagement.TakeProfitPercent
+                    };
+                IBacktestStrategy strategy = ConditionBasedBacktestStrategy.FromTree(domainTree, risk);
+
+                var config = new BacktestConfiguration
+                {
+                    ExecutionModel = ExecutionModel.Legacy,
+                    InitialCapital = 100_000m,
+                    CommissionFlat = 0m,
+                    CommissionPerUnit = 0m,
+                    SlippageRatio = 0m,
+                    SizingModel = PositionSizingModel.PercentOfEquity,
+                    SizingParameter = 0.1m
+                };
+
+                var results = new Dictionary<string, Dictionary<string, object?>>(StringComparer.OrdinalIgnoreCase);
+
+                foreach (var item in items)
+                {
+                    if (cts.Token.IsCancellationRequested || gen != _backtestGeneration) break;
+                    try
+                    {
+                        var candles = await dataService.LoadCandlesAsync(item.Symbol, frame, count: 0).ConfigureAwait(false);
+                        if (candles == null || candles.Count < 2) continue;
+
+                        DateTime startUtc = candles[0].Timestamp;
+                        DateTime endUtc = candles[^1].Timestamp;
+                        if (startUtc >= endUtc)
+                        {
+                            endUtc = startUtc.AddDays(1);
+                        }
+
+                        var rawBars = ImmutableArray.CreateRange(candles);
+                        var input = new BacktestInput(rawBars, item.Symbol, frame, BacktestInput.CurrentDataVersion, startUtc, endUtc, 0, 0);
+                        var result = engine.Run(input, config, strategy, cts.Token);
+                        if (result.Status == RunStatus.Completed)
+                        {
+                            var reportOptions = new BacktestReportOptions(frame, 0, startUtc, endUtc)
+                            {
+                                AnnualPeriods = 252,
+                                AnnualRiskFreeRate = 0m,
+                                AnnualMAR = 0m
+                            };
+                            var report = reportGen.Generate(result, reportOptions);
+                            var metricDict = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+                            foreach (var def in BacktestMetricCatalog.Definitions)
+                            {
+                                var mv = def.Select(report);
+                                if (mv != null && mv.Value.Status == MetricStatus.Valid)
+                                {
+                                    metricDict[BacktestMetricColumnRegistry.MetricMemberPrefix + def.Name] = mv.Value.Value;
+                                }
+                            }
+                            results[item.Symbol] = metricDict;
+
+                            if (!cts.Token.IsCancellationRequested && gen == _backtestGeneration)
+                            {
+                                _ = _dispatcherService.PostAsync(() =>
+                                {
+                                    if (gen != _backtestGeneration) return Task.CompletedTask;
+                                    item.SetMetricValues(metricDict);
+                                    return Task.CompletedTask;
+                                });
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to run backtest for ticker {Symbol}", item.Symbol);
+                    }
+                }
+
+                await _dispatcherService.PostAsync(() =>
+                {
+                    if (gen != _backtestGeneration) return Task.CompletedTask;
+                    IsEvaluatingBacktestTemplate = false;
+                    foreach (var item in items)
+                    {
+                        if (!results.ContainsKey(item.Symbol))
+                        {
+                            item.ClearMetricValues();
+                        }
+                    }
+                    return Task.CompletedTask;
+                }).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error executing backtest condition template across tickers.");
+                await _dispatcherService.PostAsync(() =>
+                {
+                    if (gen == _backtestGeneration) IsEvaluatingBacktestTemplate = false;
+                    return Task.CompletedTask;
+                }).ConfigureAwait(false);
+            }
+        }, cts.Token);
+    }
+
     private void UpdateColumns()
     {
         ActiveColumns.Clear();
@@ -784,13 +995,19 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
         ITemplateService? templateService = null,
         IScreenerTemplateEvaluator? screenerTemplateEvaluator = null,
         StockAnalyzer.Core.Services.Tickers.ITickersSettingsManager? tickersSettingsManager = null,
-        IToastNotificationService? toastService = null)
+        IToastNotificationService? toastService = null,
+        StockAnalyzer.Core.Services.IDataService? dataService = null,
+        StockAnalyzer.Core.Services.Backtest.Engine.IBacktestEngine? backtestEngine = null,
+        StockAnalyzer.Core.Services.Backtest.Reporting.IBacktestReportGenerator? backtestReportGenerator = null)
     {
         ToastService = toastService;
         _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<TickerListViewModel>.Instance;
 
         try 
         {
+            _dataService = dataService;
+            _backtestEngine = backtestEngine;
+            _backtestReportGenerator = backtestReportGenerator;
             _marketDataProvider = marketDataProvider;
             _pythonService = pythonService;
             _messenger = messenger;
@@ -814,6 +1031,12 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
                 ApplyColumnNamesKeepingWidths,
                 _dispatcherService,
                 _logger);
+            BacktestTemplateSelector = new TickerBacktestTemplateSelectorViewModel(
+                _templateService,
+                LocalizationManager.Instance["TickerList_BacktestTemplate_Default"],
+                _dispatcherService,
+                _logger);
+            BacktestTemplateSelector.SelectionChanged += OnBacktestTemplateSelectionChanged;
             _tickersSettingsManager = tickersSettingsManager;
             if (_tickersSettingsManager != null)
             {
@@ -861,6 +1084,7 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
             SelectedScreenerTemplate = ScreenerTemplateOff;
             _ = LoadAvailableScreenerTemplatesAsync();
             _ = ColumnTemplateSelector.ReloadEntriesAsync();
+            _ = BacktestTemplateSelector.ReloadEntriesAsync();
 
             _logger.LogInformation("TickerListViewModel initialized successfully.");
         }
@@ -3153,6 +3377,19 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
         OnPropertyChanged(nameof(DisplayItems));
         StartHydration(DisplayItems.ToList());
         OnPropertyChanged(nameof(SelectAll));
+
+        if (BacktestTemplateSelector?.SelectedEntry is { } activeTemplate &&
+            !BacktestTemplateSelector.IsDefaultEntry(activeTemplate))
+        {
+            RunBacktestForTemplate(activeTemplate);
+        }
+        else
+        {
+            foreach (var item in DisplayItems)
+            {
+                item.ClearMetricValues();
+            }
+        }
     }
 
     /// <inheritdoc/>
@@ -4111,6 +4348,14 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
         }
         _autoPlay?.Dispose();
         ColumnTemplateSelector.Dispose();
+        BacktestTemplateSelector.SelectionChanged -= OnBacktestTemplateSelectionChanged;
+        BacktestTemplateSelector.Dispose();
+        lock (_backtestGate)
+        {
+            _backtestCts?.Cancel();
+            _backtestCts?.Dispose();
+            _backtestCts = null;
+        }
         
         try
         {

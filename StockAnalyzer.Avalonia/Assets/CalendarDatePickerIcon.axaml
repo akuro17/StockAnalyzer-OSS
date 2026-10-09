@@ -1,0 +1,27 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:StockAnalyzer.Avalonia.Common">
+    <!-- Replace the CalendarDatePicker's default button visual (a day-number-in-a-circle glyph, which reads as a number) with the date_range icon
+         (Material Symbols "date_range"; the geometry's single copy is SharedIconGeometries.DateRange, the size is CalendarDatePickerIconLayout.Size).
+         The Template, not the picker's, is replaced so the button keeps its PART_Button name and Click handling. -->
+    <Style Selector="CalendarDatePicker /template/ Button#PART_Button">
+        <Setter Property="Template">
+            <ControlTemplate>
+                <Border Background="Transparent">
+                    <PathIcon Data="{x:Static ui:SharedIconGeometries.DateRange}"
+                              Width="{x:Static ui:CalendarDatePickerIconLayout.Size}" Height="{x:Static ui:CalendarDatePickerIconLayout.Size}"
+                              Foreground="{DynamicResource Brush.Text.Secondary}" />
+                </Border>
+            </ControlTemplate>
+        </Setter>
+    </Style>
+
+    <!-- The pickers of the training and backtest windows show ISO dates: class isoDate sets the format, isoDateHint the hint of an empty picker. -->
+    <Style Selector="CalendarDatePicker.isoDate">
+        <Setter Property="SelectedDateFormat" Value="Custom" />
+        <Setter Property="CustomDateFormatString" Value="{x:Static ui:IsoDatePickerFormat.Format}" />
+    </Style>
+    <Style Selector="CalendarDatePicker.isoDateHint">
+        <Setter Property="Watermark" Value="{x:Static ui:IsoDatePickerFormat.Hint}" />
+    </Style>
+</Styles>

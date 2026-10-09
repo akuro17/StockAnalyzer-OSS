@@ -360,9 +360,15 @@ public static class SankeyDecompositionEngine
         }
     }
 
+    // Enum.IsDefined keeps its per-type data in a runtime cache that a garbage collection discards; the first call afterwards rebuilt it and
+    // allocated, which broke the zero-allocation guarantee of Analyze once per collection. Static arrays of the defined values keep the
+    // same meaning (every declared member, nothing else) without that cache.
+    private static readonly SankeyMeasureKind[] s_definedKinds = Enum.GetValues<SankeyMeasureKind>();
+    private static readonly SankeyProvenance[] s_definedProvenances = Enum.GetValues<SankeyProvenance>();
+
     private static bool ValidateMeasure(in SankeyMeasure measure)
     {
-        if (!Enum.IsDefined(measure.Kind) || !Enum.IsDefined(measure.Provenance))
+        if (Array.IndexOf(s_definedKinds, measure.Kind) < 0 || Array.IndexOf(s_definedProvenances, measure.Provenance) < 0)
             return false;
 
         if (measure.UnitCode is null ||

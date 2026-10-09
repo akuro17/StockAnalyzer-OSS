@@ -53,6 +53,7 @@ public interface IDialogService
     Task ShowBacktestWindowAsync();
     Task ShowTrainingWizardDialogAsync();
     Task ShowRlTrainingDialogAsync(ChartViewModel chart) => Task.CompletedTask;
+    Task ShowPortfolioRlDialogAsync() => Task.CompletedTask;
     Task<BulkTagEditResult?> ShowBulkTagEditDialogAsync(IEnumerable<string> existingTags);
 
     /// <summary>Modal Add/Edit Group dialog of the backtest condition tree editor; null when cancelled.</summary>

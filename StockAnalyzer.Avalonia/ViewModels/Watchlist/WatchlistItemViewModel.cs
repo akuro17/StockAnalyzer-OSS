@@ -805,6 +805,63 @@ namespace StockAnalyzer.Avalonia.ViewModels.Watchlist
         /// </summary>
         public System.Collections.Generic.Dictionary<string, object?> DynamicIndicatorValues { get; } = new();
 
+        /// <summary>
+        /// Indexer allowing XAML / Avalonia bindings to bind to arbitrary column values, including dynamic metrics (e.g. "[Metric_TotalPnL]").
+        /// </summary>
+        public object? this[string memberName] => GetRawValue(memberName);
+
+        /// <summary>
+        /// Sets a dynamic backtest metric value and raises indexer property notification so bindings update immediately.
+        /// </summary>
+        public void SetMetricValue(string memberName, object? value)
+        {
+            DynamicIndicatorValues[memberName] = value;
+            OnPropertyChanged(memberName);
+            OnPropertyChanged($"Item[{memberName}]");
+            OnPropertyChanged("Item[]");
+            OnPropertyChanged("Item");
+            OnPropertyChanged(string.Empty);
+        }
+
+        /// <summary>
+        /// Sets multiple dynamic backtest metric values in bulk and raises property change notifications once,
+        /// minimizing UI thread notification overhead.
+        /// </summary>
+        public void SetMetricValues(System.Collections.Generic.IReadOnlyDictionary<string, object?> values)
+        {
+            if (values == null || values.Count == 0) return;
+
+            foreach (var kvp in values)
+            {
+                DynamicIndicatorValues[kvp.Key] = kvp.Value;
+                OnPropertyChanged(kvp.Key);
+                OnPropertyChanged($"Item[{kvp.Key}]");
+            }
+            OnPropertyChanged("Item[]");
+            OnPropertyChanged("Item");
+            OnPropertyChanged(string.Empty);
+        }
+
+        /// <summary>
+        /// Clears all dynamic backtest metric values and raises indexer property notification so cells revert to null/"-".
+        /// </summary>
+        public void ClearMetricValues()
+        {
+            var metricKeys = DynamicIndicatorValues.Keys
+                .Where(k => k.StartsWith("Metric_", StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            foreach (var key in metricKeys)
+            {
+                DynamicIndicatorValues.Remove(key);
+                OnPropertyChanged(key);
+                OnPropertyChanged($"Item[{key}]");
+            }
+            OnPropertyChanged("Item[]");
+            OnPropertyChanged("Item");
+            OnPropertyChanged(string.Empty);
+        }
+
         public IComparable? GetRawValue(string memberName) => memberName switch
         {
             "Symbol" => Symbol,

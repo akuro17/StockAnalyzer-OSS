@@ -3,11 +3,9 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using Polly;
 using StockAnalyzer.Core.Common;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.ReinforcementLearning;
@@ -69,7 +67,8 @@ public sealed class RlTrainingService : IRlResumableTrainingService
         var ct = linked.Token;
         bool continuous = job.FrozenDirectionModelId is not null;
         bool expanded = RlAllBlockEvaluationContract.IsExpanded(job.EvaluationSpecificationId);
-        string root = _dataRoot ?? PathDiscovery.ResolveDataPath(null, "Data");
+        bool shortHistory = RlShortHistoryEvaluationContract.IsShortHistory(job.ShortHistorySpecificationId);
+        string root =_dataRoot ?? PathDiscovery.ResolveDataPath(null, "Data");
         using var artifactRun = reviewed is null ? await _registry.BeginRlArtifactRunAsync(runId, root, ct).ConfigureAwait(false)
             : await ((ModelGenerationRegistry)_registry).ResumeArtifactRunAsync(reviewed, ct).ConfigureAwait(false);
         string directory = artifactRun?.Directory ?? Path.Combine(root, RlFiles.TrainingFolder, RlFiles.RlFolder, runId.ToString("N"));
@@ -127,6 +126,12 @@ public sealed class RlTrainingService : IRlResumableTrainingService
                 wire["evaluation_contract"] = new { specification_id = RlAllBlockEvaluationContract.SpecificationId,
                     schema_version = RlAllBlockEvaluationContract.SchemaVersion };
             }
+            if (shortHistory)
+            {
+                wire[RlShortHistoryEvaluationContract.MetadataKey] = job.ShortHistorySpecificationId;
+                wire[RlShortHistoryEvaluationContract.ContractKey] = new { specification_id = RlShortHistoryEvaluationContract.SpecificationId,
+                    schema_version = RlShortHistoryEvaluationContract.SchemaVersion, contract_hash = RlShortHistoryEvaluationContract.ContractHash };
+            }
             if (continuous)
             {
                 string directionPath = Path.Combine(directory, RlContinuousContract.DirectionModel);
@@ -163,6 +168,14 @@ public sealed class RlTrainingService : IRlResumableTrainingService
                 wire["evaluation_resource_estimate"] = RlConstraintEvaluation.ToWire(estimate);
                 await WriteAsync(configPath, wire, ct).ConfigureAwait(false);
             }
+            if (shortHistory)
+            {
+                // Every complete block is evaluated: reject an over-capacity request before any worker starts, never by dropping blocks.
+                var shortEstimate = RlShortHistoryEvaluation.Estimate(source, job.SmokeOnly);
+                RlAllBlockEvaluation.RequireCapacity(shortEstimate, limits);
+                wire["evaluation_resource_estimate"] = RlConstraintEvaluation.ToWire(shortEstimate);
+                await WriteAsync(configPath, wire, ct).ConfigureAwait(false);
+            }
             wire["mapped_symbol"] = source.Manifest.MappedSymbol;
             wire["source_revision"] = source.Revision;
             await RunWorkerAsync(RlFiles.DependenciesScript, configPath, directory, limits, null, ct).ConfigureAwait(false);
@@ -174,13 +187,15 @@ public sealed class RlTrainingService : IRlResumableTrainingService
             foreach (string name in new[] { RlFiles.SourceManifest, RlFiles.Bars, RlFiles.Actions, RlFiles.RawParquet, RlFiles.MetadataParquet })
                 File.Copy(Path.Combine(sourceDirectory, name), Path.Combine(directory, name), overwrite: false);
             await WriteAsync(Path.Combine(directory, RlFiles.Catalog), source.Catalog, ct).ConfigureAwait(false);
-            evaluationRevision = ContentHash.OfText(JsonSerializer.Serialize(new { revision = expanded ? RlAllBlockEvaluationContract.SpecificationId : RlFiles.EvaluationRevision,
+            evaluationRevision = ContentHash.OfText(JsonSerializer.Serialize(new { revision = expanded ? RlAllBlockEvaluationContract.SpecificationId
+                    : shortHistory ? RlShortHistoryEvaluationContract.SpecificationId : RlFiles.EvaluationRevision,
                 source_revision = source.Revision, catalog = source.Catalog, costs = job.Costs,
                 contract_hash = continuous ? RlContinuousContract.ContractHash : RlContract.ContractHash, direction_id = job.FrozenDirectionModelId }, RlFiles.Json));
             metadata = RlObservationBuilder.CreateMetadata(job.Symbol, source.Revision, evaluationRevision);
             metadata["temporal_specification_id"] = RlTemporalContract.SpecificationId;
             metadata["temporal_producer_revision"] = RlTemporalContract.ProducerRevision;
             if (expanded) metadata[RlAllBlockEvaluationContract.MetadataKey] = job.EvaluationSpecificationId!;
+            if (shortHistory) metadata[RlShortHistoryEvaluationContract.MetadataKey] = job.ShortHistorySpecificationId!;
             if (continuous)
             {
                 metadata["rl_contract_hash"] = RlContinuousContract.ContractHash;
@@ -247,6 +262,8 @@ public sealed class RlTrainingService : IRlResumableTrainingService
                     RlTemporalValidator.Reconstruct(directory, source), ct).ConfigureAwait(false);
             RlAllBlockEvaluation.Validate(directory, JsonSerializer.SerializeToElement(wire, RlFiles.Json),
                 JsonSerializer.SerializeToElement(report, RlFiles.Json), metadata, source, job.Costs);
+            RlShortHistoryEvaluation.Validate(JsonSerializer.SerializeToElement(wire, RlFiles.Json),
+                JsonSerializer.SerializeToElement(report, RlFiles.Json), metadata, source);
             var generation = job.SmokeOnly ? null : await _registry.RegisterRlAsync(directory, ct).ConfigureAwait(false);
             checkpointStore?.Complete();
             if (artifactRun is not null) await artifactRun.FinishAsync(RlArtifactRunState.Completed, generation?.ModelId, ct).ConfigureAwait(false);
@@ -275,83 +292,15 @@ public sealed class RlTrainingService : IRlResumableTrainingService
         finally { checkpointStore?.Dispose(); }
     }
 
-    private async Task RunWorkerAsync(string relativeScript, string configPath, string directory,
+    private Task RunWorkerAsync(string relativeScript, string configPath, string directory,
         TrainingResourceLimits limits, RlIpcHost? host, CancellationToken ct)
     {
-        string script = PythonScriptLocator.Resolve(relativeScript);
-        string pythonRoot = Directory.GetParent(Path.GetDirectoryName(script)!)!.FullName;
-        string python = Path.Combine(pythonRoot, RlFiles.VirtualEnvironment,
-            OperatingSystem.IsWindows() ? "Scripts" : "bin", OperatingSystem.IsWindows() ? "python.exe" : "python");
-        if (!File.Exists(python)) throw new FileNotFoundException("Managed RL virtual environment is unavailable.", python);
-        var start = new ProcessStartInfo(python)
-        {
-            UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true,
-            RedirectStandardOutput = true, RedirectStandardError = true, WorkingDirectory = pythonRoot,
-            StandardOutputEncoding = new UTF8Encoding(false, true), StandardErrorEncoding = Encoding.UTF8,
-            StandardInputEncoding = new UTF8Encoding(false, true),
-        };
-        start.ArgumentList.Add("-u"); start.ArgumentList.Add(script); start.ArgumentList.Add("--config"); start.ArgumentList.Add(configPath);
-        start.Environment["PYTHONIOENCODING"] = "utf-8";
-        start.Environment["PYTHONDONTWRITEBYTECODE"] = "1";
-        TrainingResourceGuard.ApplyToChild(start, limits);
-        using var process = new Process { StartInfo = start };
-        using var stderr = new StreamWriter(Path.Combine(directory, Path.GetFileNameWithoutExtension(script) + ".stderr.log"), false, TrainingConfigJson.Utf8NoBom);
-        var requests = new ResiliencePipelineBuilder().AddTimeout(TimeSpan.FromSeconds(RlContract.IpcTimeoutSeconds)).Build();
-        ct.ThrowIfCancellationRequested();
-        if (host?.Checkpoints is not null) RlExecutionIdentity.Verify(Path.Combine(directory, RlFiles.Dependencies), ct);
-        if (!process.Start()) throw new InvalidOperationException("RL interpreter did not start.");
-        if (host?.Checkpoints is not null) OwnedWorkerStarted?.Invoke(process.Id);
-        using var jobObject = WindowsJobObject.TryAssign(process);
-        var diagnostics = DrainDiagnosticsAsync(process.StandardError, stderr, ct);
-        try
-        {
-            var reader = new BoundedLineReader(process.StandardOutput.BaseStream, RlContract.IpcFrameByteLimit, strict: true);
-            while (await reader.ReadLineAsync(ct).ConfigureAwait(false) is { } line)
-            {
-                if (host is null) throw new InvalidDataException("Source worker wrote unexpected protocol output.");
-                using var frame = JsonDocument.Parse(line);
-                await requests.ExecuteAsync(async requestToken =>
-                {
-                    object response = host.Handle(frame.RootElement, requestToken);
-                    string encoded = JsonSerializer.Serialize(response, RlFiles.Json);
-                    if (Encoding.UTF8.GetByteCount(encoded) >= RlContract.IpcFrameByteLimit) throw new InvalidDataException("RL response exceeds frame bound.");
-                    await process.StandardInput.WriteLineAsync(encoded.AsMemory(), requestToken).ConfigureAwait(false);
-                    await process.StandardInput.FlushAsync(requestToken).ConfigureAwait(false);
-                }, ct).ConfigureAwait(false);
-            }
-            await process.WaitForExitAsync(ct).ConfigureAwait(false);
-            await diagnostics.ConfigureAwait(false);
-            if (process.ExitCode != 0) throw new InvalidOperationException($"RL worker exited {process.ExitCode}; see {(stderr.BaseStream is FileStream file ? file.Name : directory)}.");
-        }
-        finally
-        {
-            if (!process.HasExited)
-            {
-                process.StandardInput.Close();
-                using var grace = new CancellationTokenSource(TimeSpan.FromSeconds(RlContract.CancellationTimeoutSeconds));
-                try { await process.WaitForExitAsync(grace.Token).ConfigureAwait(false); }
-                catch (OperationCanceledException)
-                {
-                    if (!process.HasExited) process.Kill(entireProcessTree: true);
-                    using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(RlContract.CancellationTimeoutSeconds));
-                    await process.WaitForExitAsync(cleanup.Token).ConfigureAwait(false);
-                }
-            }
-            try { await diagnostics.ConfigureAwait(false); } catch (OperationCanceledException) { }
-        }
+        bool owned = host?.Checkpoints is not null;       // T16: strict identity verified before the start, the owned pid reported after it
+        return RlWorkerProcess.RunAsync(relativeScript, configPath, directory, limits, host is null ? null : host.Handle, ct,
+            owned ? () => RlExecutionIdentity.Verify(Path.Combine(directory, RlFiles.Dependencies), ct) : null,
+            owned ? pid => OwnedWorkerStarted?.Invoke(pid) : null);
     }
 
-    private static async Task DrainDiagnosticsAsync(StreamReader reader, StreamWriter output, CancellationToken ct)
-    {
-        var bounded = new BoundedLineReader(reader.BaseStream, RlContract.IpcFrameByteLimit);
-        long bytes = 0;
-        while (await bounded.ReadLineAsync(ct).ConfigureAwait(false) is { } line)
-        {
-            bytes = checked(bytes + Encoding.UTF8.GetByteCount(line));
-            if (bytes <= RlContract.BufferByteLimit) await output.WriteLineAsync(line.AsMemory(), ct).ConfigureAwait(false);
-        }
-        await output.FlushAsync(ct).ConfigureAwait(false);
-    }
     private static Task WriteAsync<T>(string path, T value, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();

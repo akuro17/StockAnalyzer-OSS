@@ -9,7 +9,7 @@ namespace StockAnalyzer.Core.Tests.Backtest.Verification;
 /// <summary>Account state reconstructed for one recorded bar.</summary>
 internal readonly record struct LedgerState(
     int BarIndex, decimal Quantity, decimal EntryPrice, decimal Cash, decimal HeldMargin,
-    decimal MarketValue, decimal Equity, decimal OpenEntryFee);
+    decimal MarketValue, decimal Equity, decimal OpenEntryFee, decimal TotalBorrowFee);
 
 /// <summary>
 /// Replays <see cref="BacktestResult.Fills"/> in FillId order against the input bars with its OWN arithmetic (written from
@@ -32,6 +32,8 @@ internal static class IndependentLedger
         decimal quantity = 0m;
         decimal entryPrice = 0m;
         decimal openEntryFee = 0m;
+        int entryBar = -1;
+        decimal totalBorrowFee = 0m;
         int cursor = 0;
 
         foreach (EquityPoint point in result.EquityPoints)
@@ -47,6 +49,7 @@ internal static class IndependentLedger
                     quantity = fill.Side == OrderSide.Buy ? fill.Quantity : -fill.Quantity;
                     entryPrice = fill.Price;
                     openEntryFee = fill.Commission;
+                    entryBar = fill.BarIndex;
                 }
                 else
                 {
@@ -58,13 +61,27 @@ internal static class IndependentLedger
                     quantity = 0m;
                     entryPrice = 0m;
                     openEntryFee = 0m;
+                    entryBar = -1;
+                }
+            }
+
+            if (quantity < 0m && entryBar < point.BarIndex && config.ShortBorrowAnnualRate > 0m && point.BarIndex > 0)
+            {
+                CandleData prevBar = input.Bars[point.BarIndex - 1];
+                CandleData currBar = input.Bars[point.BarIndex];
+                decimal deltaDays = (decimal)(currBar.Timestamp.Ticks - prevBar.Timestamp.Ticks) / (decimal)TimeSpan.TicksPerDay;
+                if (deltaDays > 0m)
+                {
+                    decimal borrowFee = Math.Abs(quantity) * entryPrice * config.ShortBorrowAnnualRate * (deltaDays / 365m);
+                    cash -= borrowFee;
+                    totalBorrowFee += borrowFee;
                 }
             }
 
             CandleData bar = input.Bars[point.BarIndex];
             decimal marketValue = quantity * bar.Close;
             decimal equity = cash + held + (quantity * (bar.Close - entryPrice));
-            states.Add(new LedgerState(point.BarIndex, quantity, entryPrice, cash, held, marketValue, equity, openEntryFee));
+            states.Add(new LedgerState(point.BarIndex, quantity, entryPrice, cash, held, marketValue, equity, openEntryFee, totalBorrowFee));
         }
 
         return states;

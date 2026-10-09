@@ -10,6 +10,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.ML.OnnxRuntime;
 using StockAnalyzer.Core.Models;
+using StockAnalyzer.Core.Models.Settings;
 using StockAnalyzer.Core.Services;
 using Xunit;
 
@@ -77,6 +78,53 @@ public sealed class ModelGenerationRegistryTests : IDisposable
         var healthy = await registry.RegisterAsync(Source("healthy.onnx", 0.4)).WaitAsync(limit); // the registry is not wedged
         Assert.NotNull(registry.GetManifest(healthy.ModelId));
         await Task.Run(registry.Dispose).WaitAsync(limit); // and shutdown completes
+    }
+
+    [Fact]
+    public async Task Publication_RetriesAStagingDirectoryAScannerBrieflyHolds_ThenRegisters()
+    {
+        if (!OperatingSystem.IsWindows()) return; // only the Windows lock codes are transient
+        var attempts = 0;
+        using var registry = new ModelGenerationRegistry(Path.Combine(_root, "registry_locked"))
+        {
+            MoveDirectory = (from, to) =>
+            {
+                if (++attempts <= 2) throw new IOException("Access to the path is denied.", unchecked((int)0x80070005));
+                Directory.Move(from, to);
+            },
+        };
+        registry.ConfigureFileReplaceRetry(new FileReplaceRetrySettings { Attempts = 3, DelayMilliseconds = 1 });
+
+        var generation = await registry.RegisterAsync(Source("model.onnx", 0.4));
+
+        Assert.Equal(3, attempts);
+        Assert.NotNull(registry.GetManifest(generation.ModelId));
+        Assert.DoesNotContain(Directory.EnumerateDirectories(Path.Combine(_root, "registry_locked")),
+            d => Path.GetFileName(d).StartsWith(".stage_", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Publication_WhoseLockNeverClears_FailsWithTheLockError_AndLeavesNoGeneration()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        var attempts = 0;
+        using var registry = new ModelGenerationRegistry(Path.Combine(_root, "registry_held"))
+        {
+            MoveDirectory = (_, _) => { attempts++; throw new IOException("sharing violation", unchecked((int)0x80070020)); },
+        };
+        registry.ConfigureFileReplaceRetry(new FileReplaceRetrySettings { Attempts = 3, DelayMilliseconds = 1 });
+
+        await Assert.ThrowsAsync<IOException>(() => registry.RegisterAsync(Source("model.onnx", 0.4)));
+
+        Assert.Equal(3, attempts);
+        Assert.Empty(registry.List());
+    }
+
+    [Fact]
+    public void ConfigureFileReplaceRetry_RejectsAPolicyOutsideTheHardLimits()
+    {
+        using var registry = new ModelGenerationRegistry(Path.Combine(_root, "registry_policy"));
+        Assert.Throws<ArgumentOutOfRangeException>(() => registry.ConfigureFileReplaceRetry(new FileReplaceRetrySettings { Attempts = 0 }));
     }
 
     [Fact]

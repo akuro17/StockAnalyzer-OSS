@@ -188,7 +188,7 @@ def save_encoder(root: Path, model: nn.Module, context: dict, report: dict) -> P
             if checkpoints.hash_file(blob) != digest:
                 raise ValueError("immutable SSL blob was corrupted")
         else:
-            os.replace(temporary, blob)
+            checkpoints.replace_with_retry(temporary, blob)
     finally:
         temporary.unlink(missing_ok=True)
     pointer = root / POINTER_NAME

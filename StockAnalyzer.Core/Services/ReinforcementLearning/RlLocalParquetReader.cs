@@ -63,8 +63,44 @@ internal static class RlLocalParquetReader
             if (bars.Count >= limits.MaxSamples) throw new InvalidDataException("Requested local date interval exceeds the captured row ceiling.");
             bars.Add(bar);
         }
-        if (bars.Count == 0) throw new InvalidDataException("InsufficientData: requested local interval is empty.");
+        if (bars.Count == 0) throw new InvalidDataException(RlSourceContract.InsufficientData("requested local interval is empty."));
         return new(bars.ToImmutable(), dtype, sourceRows);
+    }
+
+    /// <summary>
+    /// The stored dates before <paramref name="endExclusive"/> only (no OHLCV is read or validated, no row ceiling is applied). The stored order must be strictly
+    /// increasing over the whole file, as in <see cref="Read"/>. Meant for the start-date advisor, which needs the calendar and never the prices.
+    /// </summary>
+    public static ImmutableArray<DateOnly> ReadDates(string snapshotPath, DateOnly endExclusive, TrainingResourceLimits limits, CancellationToken ct)
+    {
+        limits.Validate();
+        using var db = new DuckDBConnection("DataSource=:memory:");
+        db.Open();
+        using var command = db.CreateCommand();
+        command.CommandText = "SET threads=" + RlContract.CpuThreads.ToString(CultureInfo.InvariantCulture);
+        command.ExecuteNonQuery();
+        command.CommandText = "SET memory_limit='" + Math.Min(RlContract.BufferByteLimit,
+            checked((long)limits.MaxTensorSizeMiB * TrainingResourceOverrides.MiB)).ToString(CultureInfo.InvariantCulture) + "B'";
+        command.ExecuteNonQuery();
+        string escaped = ParquetMarketDataProvider.EscapeDuckDbPath(snapshotPath.Replace('\\', '/'));
+        command.CommandText = $"DESCRIBE SELECT date FROM read_parquet('{escaped}')";
+        using (var schema = command.ExecuteReader())
+            if (!schema.Read() || schema.GetString(0) != "date" || !string.Equals(schema.GetString(1), "DATE", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException("Unsupported local source column/type: date.");
+        command.CommandText = $"SELECT date FROM read_parquet('{escaped}')";
+        var dates = ImmutableArray.CreateBuilder<DateOnly>();
+        DateOnly? previous = null;
+        using var rows = command.ExecuteReader();
+        while (rows.Read())
+        {
+            ct.ThrowIfCancellationRequested();
+            if (rows.IsDBNull(0)) throw new InvalidDataException("A local date is missing; no row may be silently removed.");
+            var date = DateOnly.FromDateTime(rows.GetDateTime(0));
+            if (previous is { } last && date <= last) throw new InvalidDataException("Local source dates must be strictly increasing in stored order.");
+            previous = date;
+            if (date < endExclusive) dates.Add(date);
+        }
+        return dates.ToImmutable();
     }
 
     public static IReadOnlyDictionary<string, string?> ReadMetadata(string metadataSnapshot)

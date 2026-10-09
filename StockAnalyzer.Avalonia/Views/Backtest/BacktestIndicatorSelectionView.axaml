@@ -7,6 +7,8 @@
              xmlns:models="using:StockAnalyzer.Core.Models.Screener"
              xmlns:controls="using:StockAnalyzer.Avalonia.Views.Controls"
              xmlns:converters="using:StockAnalyzer.Avalonia.Converters"
+             xmlns:c="clr-namespace:StockAnalyzer.Avalonia.Common;assembly=StockAnalyzer.Avalonia"
+             xmlns:templates="using:StockAnalyzer.Core.Models.Templates"
              mc:Ignorable="d" d:DesignWidth="960" d:DesignHeight="700"
              x:Class="StockAnalyzer.Avalonia.Views.Backtest.BacktestIndicatorSelectionView"
              x:DataType="vm:BacktestIndicatorSelectionViewModel">
@@ -25,7 +27,7 @@
             <Setter Property="Margin" Value="0,1"/>
             <Setter Property="CornerRadius" Value="3"/>
             <Setter Property="FontSize" Value="{DynamicResource DetailFontSize}"/>
-            <Setter Property="IsEnabled" Value="{Binding !IsHeader}"/>
+            <Setter Property="IsEnabled" Value="{Binding IsSelectable}"/>
         </Style>
         <Style Selector="ListBox.NavGroups ListBoxItem[IsEnabled=False]">
             <Setter Property="Background" Value="Transparent"/>
@@ -127,6 +129,20 @@
                                        Text="{Binding DisplayName}"
                                        VerticalAlignment="Center"
                                        Margin="8,0,0,0"/>
+
+                            <!-- Divider between categories and templates -->
+                            <Border IsVisible="{Binding IsSeparator}"
+                                    Height="1"
+                                    Background="{DynamicResource Brush.Border.Primary}"
+                                    Margin="-4,4,-4,4"/>
+
+                            <!-- "Templates" Row -->
+                            <TextBlock IsVisible="{Binding IsTemplates}"
+                                       Text="{Binding DisplayName}"
+                                       FontWeight="SemiBold"
+                                       FontSize="{DynamicResource DetailFontSize}"
+                                       VerticalAlignment="Center"
+                                       Margin="8,0,0,0"/>
                         </Panel>
                     </DataTemplate>
                 </ListBox.ItemTemplate>
@@ -152,41 +168,128 @@
                 BorderThickness="1"
                 CornerRadius="4"
                 Padding="8">
-            <DockPanel>
-                <TextBox DockPanel.Dock="Top" Watermark="{l:Localize Indicator_SearchPlaceholder}" Text="{Binding SearchText}" Height="34" Margin="0,0,0,8"
-                         AutomationProperties.AutomationId="Backtest_Condition_Search"/>
-                <ListBox Classes="Catalog" ItemsSource="{Binding FilteredItems}" SelectedItem="{Binding SelectedCatalogItem}"
-                         AutomationProperties.AutomationId="Backtest_Condition_Catalog"
-                         Background="Transparent"
-                         BorderThickness="0"
-                         Padding="{DynamicResource ListScrollGutter}"
-                         ScrollViewer.AllowAutoHide="False"
-                         ScrollViewer.VerticalScrollBarVisibility="Auto"
-                         ScrollViewer.HorizontalScrollBarVisibility="Disabled">
-                    <ListBox.ItemTemplate>
-                        <!-- Font size/color set inline, byte-identical to IndicatorRegistrationView.axaml's
-                             own catalog DataTemplate (2026-09-18 request: the previous
-                             `Classes="CatalogRow"`/`ListBoxItem.CatalogRow TextBlock.ShortName` style
-                             selector never matched anything, because Classes="CatalogRow" was set on the
-                             inner StackPanel, not the auto-generated ListBoxItem container - these
-                             TextBlocks were silently falling back to default TextBlock styling instead of
-                             the intended DetailFontSize/HelperFontSize + theme colors). -->
-                        <DataTemplate x:DataType="models:ScreenerCatalogItem">
-                            <StackPanel Spacing="2">
-                                <TextBlock Text="{Binding ShortName}"
-                                           FontWeight="SemiBold"
-                                           FontSize="{DynamicResource DetailFontSize}"
-                                           Foreground="{DynamicResource Brush.Text.Primary}"
-                                           TextTrimming="CharacterEllipsis"/>
-                                <TextBlock Text="{Binding DisplayName}"
-                                           FontSize="{DynamicResource HelperFontSize}"
-                                           Foreground="{DynamicResource Brush.Text.Secondary}"
-                                           TextTrimming="CharacterEllipsis"/>
-                            </StackPanel>
-                        </DataTemplate>
-                    </ListBox.ItemTemplate>
-                </ListBox>
-            </DockPanel>
+            <Grid>
+                <!-- Catalog View (when not templates) -->
+                <DockPanel IsVisible="{Binding IsNotTemplatesCategory}">
+                    <TextBox DockPanel.Dock="Top" Watermark="{l:Localize Indicator_SearchPlaceholder}" Text="{Binding SearchText}" Height="34" Margin="0,0,0,8"
+                             AutomationProperties.AutomationId="Backtest_Condition_Search"/>
+                    <ListBox Classes="Catalog" ItemsSource="{Binding FilteredItems}" SelectedItem="{Binding SelectedCatalogItem}"
+                             AutomationProperties.AutomationId="Backtest_Condition_Catalog"
+                             Background="Transparent"
+                             BorderThickness="0"
+                             Padding="{DynamicResource ListScrollGutter}"
+                             ScrollViewer.AllowAutoHide="False"
+                             ScrollViewer.VerticalScrollBarVisibility="Auto"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate x:DataType="models:ScreenerCatalogItem">
+                                <StackPanel Spacing="2">
+                                    <TextBlock Text="{Binding ShortName}"
+                                               FontWeight="SemiBold"
+                                               FontSize="{DynamicResource DetailFontSize}"
+                                               Foreground="{DynamicResource Brush.Text.Primary}"
+                                               TextTrimming="CharacterEllipsis"/>
+                                    <TextBlock Text="{Binding DisplayName}"
+                                               FontSize="{DynamicResource HelperFontSize}"
+                                               Foreground="{DynamicResource Brush.Text.Secondary}"
+                                               TextTrimming="CharacterEllipsis"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </DockPanel>
+
+                <!-- Templates View (when templates) -->
+                <Grid RowDefinitions="Auto, *" IsVisible="{Binding IsTemplatesCategory}">
+                    <!-- Top Editor -->
+                    <Grid Grid.Row="0" ColumnDefinitions="*, Auto" Margin="0,0,0,8" VerticalAlignment="Center">
+                        <TextBox Grid.Column="0"
+                                 Text="{Binding NewTemplateName, Mode=TwoWay}"
+                                 Watermark="{l:Localize Library_TemplateNamePlaceholder}"
+                                 Height="32"
+                                 Margin="0,0,8,0"
+                                 VerticalContentAlignment="Center"
+                                 AutomationProperties.AutomationId="Backtest_Condition_TemplateName"/>
+                        <Button Grid.Column="1"
+                                Command="{Binding SaveTemplateCommand}"
+                                Theme="{DynamicResource PrimaryButtonStyle}"
+                                Foreground="{DynamicResource Brush.Button.Text}"
+                                Width="32" Height="32"
+                                Padding="0"
+                                ToolTip.Tip="{l:Localize Btn_Save}"
+                                AutomationProperties.AutomationId="Backtest_Condition_SaveTemplate">
+                            <PathIcon Data="{x:Static c:SharedIconGeometries.Save}" Width="16" Height="16" Foreground="{DynamicResource Brush.Button.Text}"/>
+                        </Button>
+                    </Grid>
+
+                    <!-- List of templates -->
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" AllowAutoHide="False" HorizontalScrollBarVisibility="Disabled" Padding="{DynamicResource ListScrollGutter}">
+                        <ListBox ItemsSource="{Binding ConditionTemplates}"
+                                 SelectedItem="{Binding SelectedConditionTemplate}"
+                                 Background="Transparent"
+                                 BorderThickness="0"
+                                 ScrollViewer.AllowAutoHide="False"
+                                 AutomationProperties.AutomationId="Backtest_Condition_TemplateList">
+                            <ListBox.Styles>
+                                <Style Selector="ListBoxItem">
+                                    <Setter Property="Padding" Value="4"/>
+                                    <Setter Property="Margin" Value="0,1"/>
+                                </Style>
+                                <Style Selector="ListBoxItem:selected TextBlock">
+                                    <Setter Property="FontWeight" Value="SemiBold"/>
+                                </Style>
+                            </ListBox.Styles>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate x:DataType="templates:BacktestConditionTemplate">
+                                    <Grid ColumnDefinitions="*, Auto, Auto, Auto" Margin="4,2" Background="Transparent">
+                                        <TextBlock Grid.Column="0"
+                                                   Text="{Binding Name}"
+                                                   FontSize="{DynamicResource DetailFontSize}"
+                                                   VerticalAlignment="Center"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   Foreground="{DynamicResource Brush.Text.Primary}"/>
+
+                                        <Button Grid.Column="1"
+                                                Command="{Binding $parent[ListBox].((vm:BacktestIndicatorSelectionViewModel)DataContext).LoadTemplateCommand}"
+                                                CommandParameter="{Binding}"
+                                                Theme="{DynamicResource PrimaryButtonStyle}"
+                                                Foreground="{DynamicResource Brush.Button.Text}"
+                                                Width="26" Height="26"
+                                                Padding="0"
+                                                Margin="0,0,4,0"
+                                                ToolTip.Tip="{l:Localize Library_Btn_LoadTemplate}">
+                                            <PathIcon Data="{x:Static c:SharedIconGeometries.Load}" Width="12" Height="12" Foreground="{DynamicResource Brush.Button.Text}"/>
+                                        </Button>
+
+                                        <Button Grid.Column="2"
+                                                Command="{Binding $parent[ListBox].((vm:BacktestIndicatorSelectionViewModel)DataContext).AppendTemplateCommand}"
+                                                CommandParameter="{Binding}"
+                                                Theme="{DynamicResource PrimaryButtonStyle}"
+                                                Foreground="{DynamicResource Brush.Button.Text}"
+                                                Width="26" Height="26"
+                                                Padding="0"
+                                                Margin="0,0,4,0"
+                                                ToolTip.Tip="{l:Localize Library_Btn_AppendTemplate}">
+                                            <PathIcon Data="{x:Static c:SharedIconGeometries.Add}" Width="12" Height="12" Foreground="{DynamicResource Brush.Button.Text}"/>
+                                        </Button>
+
+                                        <Button Grid.Column="3"
+                                                Command="{Binding $parent[ListBox].((vm:BacktestIndicatorSelectionViewModel)DataContext).DeleteTemplateCommand}"
+                                                CommandParameter="{Binding}"
+                                                Theme="{DynamicResource PrimaryButtonStyle}"
+                                                Foreground="{DynamicResource Brush.Button.Text}"
+                                                Width="26" Height="26"
+                                                Padding="0"
+                                                ToolTip.Tip="{l:Localize Btn_Delete}">
+                                            <PathIcon Data="{x:Static c:SharedIconGeometries.Delete}" Width="12" Height="12" Foreground="{DynamicResource Brush.Button.Text}"/>
+                                        </Button>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </ScrollViewer>
+                </Grid>
+            </Grid>
         </Border>
 
         <GridSplitter Grid.Column="3"
@@ -212,12 +315,13 @@
                 BorderThickness="1"
                 CornerRadius="4"
                 Padding="10">
-            <!-- SA_UI_SUBWINDOW_STANDARD.md section 2.3 (Scrollable Container & ScrollBar Standards):
+            <Grid>
+                <!-- SA_UI_SUBWINDOW_STANDARD.md section 2.3 (Scrollable Container & ScrollBar Standards):
                  AllowAutoHide must be explicitly False so the scrollbar stays permanently visible/
                  actionable, and the shared ListScrollGutter padding reserves its track's width instead of
                  letting content overlap it (this ScrollViewer previously had neither, matching every other
                  plain ScrollViewer in this codebase, e.g. IndicatorSettingsWindow.axaml). -->
-            <ScrollViewer VerticalScrollBarVisibility="Auto" AllowAutoHide="False" HorizontalScrollBarVisibility="Disabled" Padding="{DynamicResource ListScrollGutter}">
+            <ScrollViewer IsVisible="{Binding IsNotTemplatesCategory}" VerticalScrollBarVisibility="Auto" AllowAutoHide="False" HorizontalScrollBarVisibility="Disabled" Padding="{DynamicResource ListScrollGutter}">
                 <StackPanel Spacing="10">
 
                     <TextBlock Text="{Binding UnsupportedWarningMessage}"
@@ -404,6 +508,58 @@
                     </Border>
                 </StackPanel>
             </ScrollViewer>
+
+            <!-- Template Conditions Preview (when templates) -->
+            <ScrollViewer IsVisible="{Binding IsTemplatesCategory}"
+                          VerticalScrollBarVisibility="Auto" AllowAutoHide="False" HorizontalScrollBarVisibility="Disabled" Padding="{DynamicResource ListScrollGutter}">
+                <StackPanel Spacing="10">
+                    <!-- Template Header Card -->
+                    <Border Classes="ConditionCard">
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="{l:Localize Backtest_Template_PreviewHeader}"
+                                       FontWeight="Bold" Foreground="{DynamicResource Brush.Accent.Primary}"/>
+                            <TextBlock Text="{Binding SelectedConditionTemplate.Name}"
+                                       FontSize="{DynamicResource TitleFontSize}" FontWeight="Bold"
+                                       Foreground="{DynamicResource Brush.Text.Primary}" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Empty notice -->
+                    <TextBlock Text="{l:Localize Backtest_Template_NoConditions}"
+                               Foreground="{DynamicResource Brush.Text.Secondary}"
+                               FontSize="{DynamicResource DetailFontSize}"
+                               Margin="4,8"
+                               IsVisible="{Binding IsSelectedTemplateEmpty}"/>
+
+                    <!-- Condition Sections -->
+                    <ItemsControl ItemsSource="{Binding SelectedTemplateConditionPreviewSections}"
+                                  IsVisible="{Binding !IsSelectedTemplateEmpty}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:BacktestTemplatePreviewSection">
+                                <Border Classes="ConditionCard" Margin="0,0,0,8" IsVisible="{Binding HasItems}">
+                                    <StackPanel Spacing="6">
+                                        <TextBlock Text="{Binding SectionTitle}"
+                                                   FontWeight="Bold"
+                                                   FontSize="{DynamicResource BaseFontSize}"
+                                                   Foreground="{DynamicResource Brush.Accent.Primary}"/>
+                                        <ItemsControl ItemsSource="{Binding ConditionDescriptions}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock Text="{Binding}"
+                                                               FontSize="{DynamicResource DetailFontSize}"
+                                                               Foreground="{DynamicResource Brush.Text.Primary}"
+                                                               Margin="0,2"/>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </ScrollViewer>
+            </Grid>
         </Border>
     </Grid>
 </UserControl>

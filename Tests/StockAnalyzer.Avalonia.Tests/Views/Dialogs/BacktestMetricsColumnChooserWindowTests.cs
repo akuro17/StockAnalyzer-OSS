@@ -26,6 +26,7 @@ namespace StockAnalyzer.Avalonia.Tests.Views.Dialogs;
 /// for compliance with SA_UI_SUBWINDOW_STANDARD.md, category filtering, boundary invariants,
 /// and ResultsViewModel summary immunity and category pruning.
 /// </summary>
+[Collection("LocalizationSharedState")]
 public class BacktestMetricsColumnChooserWindowTests
 {
     private static BacktestMetricsColumnChooserWindow ShowWindow(BacktestMetricsColumnChooserViewModel vm)

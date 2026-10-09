@@ -138,9 +138,10 @@ public sealed partial class ModelGenerationRegistry
                 }
         return result;
     }
-    public RlArtifactPreview? PreviewRlArtifacts()
+    public RlArtifactPreview? PreviewRlArtifacts() => PreviewRlArtifacts(default);
+    public RlArtifactPreview? PreviewRlArtifacts(CancellationToken ct)
     {
-        lock (_gate) { using var transaction = EnterStore(); return PreviewArtifactsCore(); }
+        lock (_gate) { using var transaction = EnterStore(ct); return PreviewArtifactsCore(); }
     }
     private RlArtifactPreview? PreviewArtifactsCore()
     {

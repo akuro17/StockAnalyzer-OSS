@@ -23,21 +23,25 @@ public sealed class RlSourceSnapshot
     public string Revision { get; }
     public RlEpisodeCatalog Catalog { get; }
     public bool ExpandedEvaluation => RlAllBlockEvaluationContract.IsExpanded(Catalog.EvaluationSpecificationId);
+    public bool ShortHistoryEvaluation => RlShortHistoryEvaluationContract.IsShortHistory(Catalog.ShortHistorySpecificationId);
 
     private RlSourceSnapshot(string directory, RlSourceManifest manifest,
-        ImmutableArray<CandleData> bars, ImmutableArray<RlCorporateAction> actions, string revision, bool smoke, string? evaluationSpecification)
+        ImmutableArray<CandleData> bars, ImmutableArray<RlCorporateAction> actions, string revision, bool smoke, string? evaluationSpecification,
+        string? shortHistorySpecification = null)
     {
         Directory = directory; Manifest = manifest; Bars = bars; Actions = actions; Revision = revision;
-        Catalog = BuildCatalog(bars, actions, manifest.KnownImputedDates, smoke, evaluationSpecification);
+        Catalog = shortHistorySpecification is null
+            ? BuildCatalog(bars, actions, manifest.KnownImputedDates, smoke, evaluationSpecification)
+            : BuildShortHistoryCatalog(bars, actions, manifest.KnownImputedDates, smoke);
     }
 
     public static RlSourceSnapshot Load(string directory, TrainingResourceLimits limits, bool smokeOnly = false, CancellationToken cancellationToken = default,
-        string? evaluationSpecificationId = null)
+        string? evaluationSpecificationId = null, string? shortHistorySpecificationId = null)
     {
         ArgumentNullException.ThrowIfNull(limits);
         limits.Validate();
         directory = Path.GetFullPath(directory);
-        long byteBound = Math.Min(RlContract.BufferByteLimit, checked((long)limits.MaxTensorSizeMiB * TrainingResourceOverrides.MiB));
+        long byteBound = ByteBound(limits);
         void RequireBoundedFile(string path)
         {
             if ((File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0 || new FileInfo(path).Length > byteBound)
@@ -45,6 +49,8 @@ public sealed class RlSourceSnapshot
         }
         string? specification = evaluationSpecificationId;
         _ = RlAllBlockEvaluationContract.IsExpanded(specification);
+        string? shortHistory = shortHistorySpecificationId;
+        _ = RlShortHistoryEvaluationContract.IsShortHistory(shortHistory);
         string jobPath = Path.Combine(directory, RlFiles.Job), catalogPath = Path.Combine(directory, RlFiles.Catalog);
         if (File.Exists(jobPath))
         {
@@ -53,6 +59,9 @@ public sealed class RlSourceSnapshot
             string? saved = RlAllBlockEvaluationContract.Read(job.RootElement);
             if (specification is not null && saved != specification) throw new InvalidDataException("Requested and saved evaluation specifications differ.");
             specification = saved;
+            string? savedShort = RlShortHistoryEvaluationContract.Read(job.RootElement);
+            if (shortHistory is not null && savedShort != shortHistory) throw new InvalidDataException("Requested and saved short-history evaluation specifications differ.");
+            shortHistory = savedShort;
         }
         if (File.Exists(catalogPath))
         {
@@ -63,7 +72,34 @@ public sealed class RlSourceSnapshot
             if (saved != specification || (saved is null && catalog.RootElement.TryGetProperty("schema_version", out _))
                 || (saved is not null && catalog.RootElement.GetProperty("schema_version").GetInt32() != RlAllBlockEvaluationContract.SchemaVersion))
                 throw new InvalidDataException("Evaluation catalog version was downgraded or changed.");
+            string? savedShort = RlShortHistoryEvaluationContract.Read(catalog.RootElement);
+            if (!File.Exists(jobPath) && shortHistory is null) shortHistory = savedShort;
+            if (savedShort != shortHistory) throw new InvalidDataException("Evaluation catalog version was downgraded or changed.");
         }
+        if (specification is not null && shortHistory is not null)
+            throw new InvalidDataException("All-block and short-history evaluation specifications are mutually exclusive.");
+        var validated = ValidateSourceFiles(directory, limits, cancellationToken);
+        return new RlSourceSnapshot(directory, validated.Manifest, validated.Bars, validated.Actions, validated.Revision, smokeOnly, specification, shortHistory);
+    }
+
+    internal static long ByteBound(TrainingResourceLimits limits)
+        => Math.Min(RlContract.BufferByteLimit, checked((long)limits.MaxTensorSizeMiB * TrainingResourceOverrides.MiB));
+
+    /// <summary>The files of one validated source snapshot directory, before any episode catalog exists.</summary>
+    internal sealed record RlValidatedSource(RlSourceManifest Manifest, ImmutableArray<CandleData> Bars,
+        ImmutableArray<RlCorporateAction> Actions, string Revision);
+
+    /// <summary>
+    /// Single owner of the per-file validation of an immutable source snapshot (provenance contract, path identities, captured exchange
+    /// date, hashes, bar integrity, stored metadata and Parquet equality). <see cref="Load"/> builds the episode catalog on top of it;
+    /// the portfolio snapshot validates every symbol with it and never needs a single-symbol catalog.
+    /// </summary>
+    internal static RlValidatedSource ValidateSourceFiles(string directory, TrainingResourceLimits limits, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(limits);
+        limits.Validate();
+        directory = Path.GetFullPath(directory);
+        long byteBound = ByteBound(limits);
         var manifestPath = Path.Combine(directory, RlFiles.SourceManifest);
         if ((File.GetAttributes(manifestPath) & FileAttributes.ReparsePoint) != 0 || new FileInfo(manifestPath).Length > byteBound)
             throw new InvalidDataException("Linked or oversized immutable source artifact is prohibited.");
@@ -132,7 +168,7 @@ public sealed class RlSourceSnapshot
         var stored = RlLocalParquetReader.Read(rawPath, manifest.PeriodStartInclusive, manifest.PeriodEndExclusive, limits, cancellationToken);
         if (stored.SourceRows != manifest.SourceRows || stored.StorageDtype != manifest.SourceStorageDtype || !stored.Bars.SequenceEqual(bars))
             throw new InvalidDataException("Prepared decimal bars or precision differ from the copied local Parquet ingress.");
-        return new RlSourceSnapshot(directory, manifest, bars, actions, ContentHash.OfFile(manifestPath), smokeOnly, specification);
+        return new RlValidatedSource(manifest, bars, actions, ContentHash.OfFile(manifestPath));
     }
 
     public BacktestInput CreateInput(RlEpisodeBlock block)
@@ -143,6 +179,15 @@ public sealed class RlSourceSnapshot
         return new BacktestInput(bars, Manifest.Symbol, TimeFrame.D1, BacktestInput.CurrentDataVersion,
             bars[RlContract.WindowLength - 1].Timestamp, bars[^1].Timestamp, 0, RlContract.WindowLength - 1);
     }
+
+    /// <summary>
+    /// Short-history catalog: by contract the all-block rule (one complete block per partition at minimum, every complete block kept,
+    /// non-empty train), re-tagged with the short-history id so no all-block key or schema version appears in the saved catalog.
+    /// </summary>
+    internal static RlEpisodeCatalog BuildShortHistoryCatalog(ImmutableArray<CandleData> bars,
+        ImmutableArray<RlCorporateAction> actions, ImmutableArray<DateOnly> imputedDates, bool smoke)
+        => BuildCatalog(bars, actions, imputedDates, smoke, RlAllBlockEvaluationContract.SpecificationId)
+            with { EvaluationSpecificationId = null, SchemaVersion = null, ShortHistorySpecificationId = RlShortHistoryEvaluationContract.SpecificationId };
 
     internal static RlEpisodeCatalog BuildCatalog(ImmutableArray<CandleData> bars,
         ImmutableArray<RlCorporateAction> actions, ImmutableArray<DateOnly> imputedDates, bool smoke, string? evaluationSpecification = null)
@@ -172,7 +217,7 @@ public sealed class RlSourceSnapshot
         bool expanded = RlAllBlockEvaluationContract.IsExpanded(evaluationSpecification);
         int needed = smoke || expanded ? 1 : RlContract.EvaluationEpisodeCount;
         if (train.IsEmpty || validation.Length < needed || (!smoke && oos.Length < needed))
-            throw new InvalidDataException("InsufficientData: complete independent RL episode support is unavailable.");
+            throw new InvalidDataException(RlSourceContract.InsufficientData("complete independent RL episode support is unavailable."));
         return new RlEpisodeCatalog(train, expanded ? validation : validation.Take(needed).ToImmutableArray(),
             smoke ? ImmutableArray<RlEpisodeBlock>.Empty : expanded ? oos : oos.Take(needed).ToImmutableArray(), excluded.ToImmutable(), cut1, cut2)
             { EvaluationSpecificationId = evaluationSpecification, SchemaVersion = expanded ? RlAllBlockEvaluationContract.SchemaVersion : null };

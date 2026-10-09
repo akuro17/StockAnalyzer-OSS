@@ -514,6 +514,26 @@
                         </DataTemplate>
                     </ComboBox.ItemTemplate>
                 </ComboBox>
+                <!-- Backtest Condition templates: first entry "Backtest Template" clears backtest results.
+                     Selecting a template runs backtest across displayed tickers and updates Metrics columns. -->
+                <ProgressBar Width="16" Height="16" VerticalAlignment="Center"
+                             IsIndeterminate="True"
+                             IsVisible="{Binding IsEvaluatingBacktestTemplate}"
+                             ToolTip.Tip="{l:Localize TickerList_BacktestRunning_ToolTip}"/>
+                <ComboBox x:Name="BacktestTemplateComboBox" Width="200" Height="28"
+                          VerticalAlignment="Center"
+                          AutomationProperties.AutomationId="TickerBacktestTemplateComboBox"
+                          ToolTip.Tip="{l:Localize TickerList_BacktestTemplate_ToolTip}"
+                          ItemsSource="{Binding BacktestTemplateSelector.Entries}"
+                          SelectedItem="{Binding BacktestTemplateSelector.SelectedEntry, Mode=TwoWay}"
+                          IsDropDownOpen="{Binding BacktestTemplateSelector.IsDropDownOpen, Mode=TwoWay}"
+                          x:CompileBindings="False">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding Name}" />
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
                 <!-- Auto Play (Y:\Temp\sa_implementation_plan_TickerAutoPlay.md): while checked, the next ticker of the
                      displayed order is selected every interval set in Settings > Tickers. Runtime-only state. -->
                 <CheckBox x:Name="AutoPlayCheckBox"

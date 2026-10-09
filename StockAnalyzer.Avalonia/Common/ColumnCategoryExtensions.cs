@@ -20,6 +20,7 @@ public static class ColumnCategoryExtensions
             ColumnCategory.Valuation => "ColumnChooser_Category_Valuation",
             ColumnCategory.Ratio => "ColumnChooser_Category_Profitability",
             ColumnCategory.Financial => "ColumnChooser_Category_FinancialHealth",
+            ColumnCategory.Metrics => "ColumnChooser_Category_Metrics",
             ColumnCategory.Templates => "ColumnChooser_Category_Templates",
             _ => $"ColumnChooser_Category_{category}"
         };

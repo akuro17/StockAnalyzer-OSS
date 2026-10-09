@@ -10,6 +10,7 @@
         xmlns:controls="clr-namespace:StockAnalyzer.Avalonia.Views.Controls;assembly=StockAnalyzer.Avalonia"
         xmlns:behaviors="using:StockAnalyzer.Avalonia.Behaviors"
         xmlns:c="using:StockAnalyzer.Avalonia.Common"
+        xmlns:lc="clr-namespace:StockAnalyzer.Core.Constants;assembly=StockAnalyzer.Core"
         mc:Ignorable="d" d:DesignWidth="850" d:DesignHeight="700"
         x:Class="StockAnalyzer.Avalonia.Views.IndicatorSettingsWindow"
         x:DataType="vm:IndicatorSettingsDialogViewModel"
@@ -243,13 +244,16 @@
                                             Padding="16"
                                             Margin="0,0,0,16">
                                         <StackPanel Spacing="12">
-                                            <TextBlock Text="{l:Localize Label_DisplayName}" Foreground="{DynamicResource Brush.Text.Primary}" FontSize="{DynamicResource BaseFontSize}" FontWeight="Bold"/>
-                                            <TextBox Text="{Binding SelectedIndicator.DisplayName}" Margin="0,0,0,4"/>
+                                            <!-- Panel A: Identity + Input Data (2-Column Form) -->
+                                            <controls:ResponsiveFormPanel>
+                                                <!-- Display Name (Full Width) -->
+                                                <StackPanel controls:ResponsiveFormPanel.IsFullWidth="True" Spacing="{x:Static lc:LayoutConstants.IndicatorFormLabelInputSpacing}">
+                                                    <TextBlock Text="{l:Localize Label_DisplayName}" Foreground="{DynamicResource Brush.Text.Primary}" FontSize="{DynamicResource BaseFontSize}" FontWeight="Bold"/>
+                                                    <TextBox Text="{Binding SelectedIndicator.DisplayName}" Height="{x:Static lc:LayoutConstants.IndicatorFormControlHeight}"/>
+                                                </StackPanel>
 
-                                            <!-- Price Type & Base Indicator (hidden for VolumeProfile) -->
-                                            <StackPanel IsVisible="{Binding ShowPriceTypeAndSourceIndicator}" Spacing="12">
                                                 <!-- Price Type -->
-                                                <StackPanel Spacing="4">
+                                                <StackPanel IsVisible="{Binding ShowPriceTypeAndSourceIndicator}" Spacing="{x:Static lc:LayoutConstants.IndicatorFormLabelInputSpacing}">
                                                     <TextBlock Text="{l:Localize Label_PriceType}" Foreground="{DynamicResource Brush.Text.Primary}" FontSize="{DynamicResource BaseFontSize}" FontWeight="Bold"/>
                                                     <ComboBox ItemsSource="{Binding PriceTypeOptions}" 
                                                               SelectedItem="{Binding SelectedIndicator.PriceSource, Mode=TwoWay}"
@@ -257,82 +261,99 @@
                                                               ToolTip.Tip="{Binding PriceTypeToolTip}"
                                                               ToolTip.ShowOnDisabled="True"
                                                               HorizontalAlignment="Stretch"
-                                                              Margin="0,0,0,4"/>
+                                                              Height="{x:Static lc:LayoutConstants.IndicatorFormControlHeight}"/>
                                                 </StackPanel>
 
                                                 <!-- Input Source (Indicator on Indicator) -->
-                                                <StackPanel Spacing="4">
+                                                <StackPanel IsVisible="{Binding ShowPriceTypeAndSourceIndicator}" Spacing="{x:Static lc:LayoutConstants.IndicatorFormLabelInputSpacing}">
                                                     <TextBlock Text="{l:Localize Label_SourceIndicator}" Foreground="{DynamicResource Brush.Text.Primary}" FontSize="{DynamicResource BaseFontSize}" FontWeight="Bold"/>
-                                                    <Grid ColumnDefinitions="*, Auto" Margin="0,0,0,4">
+                                                    <Grid ColumnDefinitions="*, Auto">
                                                         <ComboBox Grid.Column="0"
                                                                   ItemsSource="{Binding AvailableSourceIndicators}" 
                                                                   SelectedItem="{Binding SelectedSourceIndicatorOption, Mode=TwoWay}"
                                                                   DisplayMemberBinding="{Binding DisplayName}"
                                                                   HorizontalAlignment="Stretch"
+                                                                  Height="{x:Static lc:LayoutConstants.IndicatorFormControlHeight}"
                                                                   Margin="0,0,6,0"/>
                                                         <Button Grid.Column="1"
                                                                 Command="{Binding OpenSourceIndicatorSettingsCommand}"
                                                                 Theme="{DynamicResource SecondaryButtonStyle}"
-                                                                Width="32" Height="32" Padding="0"
+                                                                Width="32" Height="{x:Static lc:LayoutConstants.IndicatorFormControlHeight}" Padding="0"
                                                                 ToolTip.Tip="{l:Localize Label_SourceIndicatorRegistration}"
                                                                 VerticalAlignment="Center">
                                                             <PathIcon Data="{StaticResource SettingsSvgIconData}" Width="16" Height="16" Foreground="{DynamicResource Brush.Text.Primary}"/>
                                                         </Button>
                                                     </Grid>
                                                 </StackPanel>
-                                            </StackPanel>
+                                            </controls:ResponsiveFormPanel>
 
+                                            <!-- Parameters heading -->
                                             <TextBlock Text="{l:Localize Label_Parameters}" Foreground="{DynamicResource Brush.Text.Primary}" FontSize="{DynamicResource BaseFontSize}" FontWeight="Bold"/>
+
+                                            <!-- Generated Parameters in TwoColumnFields layout -->
                                             <controls:DynamicIndicatorSettingsView ParameterObject="{Binding SelectedIndicator.ParameterObject}"
                                                                                     HiddenParameterTags="{Binding HiddenParameterTags}"
+                                                                                    FormLayout="TwoColumnFields"
                                                                                     Margin="0,0,0,4"/>
 
-                                            <!-- Dynamic Period Driver -->
-                                            <StackPanel IsVisible="{Binding HasDynamicPeriodDriver}" Spacing="4">
-                                                <TextBlock Text="{l:Localize Label_DynamicPeriodDriver}" Foreground="{DynamicResource Brush.Text.Primary}" FontSize="{DynamicResource BaseFontSize}" FontWeight="Bold"/>
-                                                <Grid ColumnDefinitions="*, Auto" Margin="0,0,0,4">
-                                                    <ComboBox Grid.Column="0"
-                                                              ItemsSource="{Binding AvailableDynamicPeriodDrivers}"
-                                                              SelectedItem="{Binding SelectedDynamicPeriodDriverOption, Mode=TwoWay}"
-                                                              DisplayMemberBinding="{Binding DisplayName}"
-                                                              HorizontalAlignment="Stretch"
-                                                              Margin="0,0,6,0"/>
-                                                    <Button Grid.Column="1"
-                                                            Command="{Binding OpenDynamicPeriodDriverSettingsCommand}"
-                                                            Theme="{DynamicResource SecondaryButtonStyle}"
-                                                            Width="32" Height="32" Padding="0"
-                                                            ToolTip.Tip="{l:Localize Label_DynamicPeriodDriverRegistration}"
-                                                            VerticalAlignment="Center">
-                                                        <PathIcon Data="{StaticResource SettingsSvgIconData}" Width="16" Height="16" Foreground="{DynamicResource Brush.Text.Primary}"/>
-                                                    </Button>
-                                                </Grid>
-                                            </StackPanel>
+                                            <!-- Panel B: Dynamic Period Driver (paired with enabling checkbox) -->
+                                            <controls:ResponsiveFormPanel>
+                                                <!-- Dynamic Period Driver Checkbox -->
+                                                <CheckBox Content="{l:Localize Check_UseDynamicPeriodDriver}"
+                                                          IsChecked="{Binding HasDynamicPeriodDriver, Mode=TwoWay}"
+                                                          Foreground="{DynamicResource Brush.Text.Primary}"
+                                                          FontSize="{DynamicResource BaseFontSize}"
+                                                          FontWeight="SemiBold"
+                                                          MinHeight="{x:Static lc:LayoutConstants.IndicatorFormControlHeight}"
+                                                          VerticalAlignment="Bottom"/>
 
-                                            <!-- Positioned below Period / Dynamic Period Driver -->
-                                            <CheckBox Content="{l:Localize Check_UseDynamicPeriodDriver}"
-                                                      IsChecked="{Binding HasDynamicPeriodDriver, Mode=TwoWay}"
-                                                      Foreground="{DynamicResource Brush.Text.Primary}"
-                                                      FontSize="{DynamicResource BaseFontSize}"
-                                                      FontWeight="SemiBold"
-                                                      Margin="0,0,0,4"/>
+                                                <!-- Dynamic Period Driver Registration Combo -->
+                                                <StackPanel IsVisible="{Binding HasDynamicPeriodDriver}" Spacing="{x:Static lc:LayoutConstants.IndicatorFormLabelInputSpacing}">
+                                                    <TextBlock Text="{l:Localize Label_DynamicPeriodDriver}" Foreground="{DynamicResource Brush.Text.Primary}" FontSize="{DynamicResource BaseFontSize}" FontWeight="Bold"/>
+                                                    <Grid ColumnDefinitions="*, Auto">
+                                                        <ComboBox Grid.Column="0"
+                                                                  ItemsSource="{Binding AvailableDynamicPeriodDrivers}"
+                                                                  SelectedItem="{Binding SelectedDynamicPeriodDriverOption, Mode=TwoWay}"
+                                                                  DisplayMemberBinding="{Binding DisplayName}"
+                                                                  HorizontalAlignment="Stretch"
+                                                                  Height="{x:Static lc:LayoutConstants.IndicatorFormControlHeight}"
+                                                                  Margin="0,0,6,0"/>
+                                                        <Button Grid.Column="1"
+                                                                Command="{Binding OpenDynamicPeriodDriverSettingsCommand}"
+                                                                Theme="{DynamicResource SecondaryButtonStyle}"
+                                                                Width="32" Height="{x:Static lc:LayoutConstants.IndicatorFormControlHeight}" Padding="0"
+                                                                ToolTip.Tip="{l:Localize Label_DynamicPeriodDriverRegistration}"
+                                                                VerticalAlignment="Center">
+                                                            <PathIcon Data="{StaticResource SettingsSvgIconData}" Width="16" Height="16" Foreground="{DynamicResource Brush.Text.Primary}"/>
+                                                        </Button>
+                                                    </Grid>
+                                                </StackPanel>
+                                            </controls:ResponsiveFormPanel>
 
-                                            <!-- Offset -->
-                                            <StackPanel IsVisible="{Binding ShowThicknessAndOffset}">
-                                                <TextBlock Text="{l:Localize Label_Offset}" Foreground="{DynamicResource Brush.Text.Primary}" FontSize="{DynamicResource BaseFontSize}" FontWeight="Bold" Margin="0,0,0,4"/>
-                                                <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                                                    <Slider Value="{Binding SelectedIndicator.Offset}"
+                                            <!-- Offset (visually separated, visible when ShowThicknessAndOffset) -->
+                                            <StackPanel IsVisible="{Binding ShowThicknessAndOffset}"
+                                                        Spacing="{x:Static lc:LayoutConstants.IndicatorFormLabelInputSpacing}"
+                                                        Margin="0,4,0,0"
+                                                        MaxWidth="{x:Static lc:LayoutConstants.IndicatorFormMaxFieldWidth}"
+                                                        HorizontalAlignment="Left">
+                                                <TextBlock Text="{l:Localize Label_Offset}" Foreground="{DynamicResource Brush.Text.Primary}" FontSize="{DynamicResource BaseFontSize}" FontWeight="Bold"/>
+                                                <Grid ColumnDefinitions="*,Auto" Height="{x:Static lc:LayoutConstants.IndicatorFormControlHeight}">
+                                                    <Slider Grid.Column="0"
+                                                            Value="{Binding SelectedIndicator.Offset}"
                                                             Minimum="-50"
                                                             Maximum="50"
-                                                            Width="200"
+                                                            MinWidth="140"
                                                             TickFrequency="1"
                                                             IsSnapToTickEnabled="True"
-                                                            VerticalAlignment="Center"/>
-                                                    <TextBox Text="{Binding SelectedIndicator.Offset}"
+                                                            VerticalAlignment="Center"
+                                                            HorizontalAlignment="Stretch"/>
+                                                    <TextBox Grid.Column="1"
+                                                             Text="{Binding SelectedIndicator.Offset}"
                                                              Width="40"
                                                              Margin="10,0,0,0"
                                                              VerticalAlignment="Center"
                                                              TextAlignment="Center"/>
-                                                </StackPanel>
+                                                </Grid>
                                             </StackPanel>
                                         </StackPanel>
                                     </Border>
@@ -347,103 +368,133 @@
                                         <StackPanel Spacing="12">
                                             <TextBlock Text="{l:Localize Label_ColorSettings}" Foreground="{DynamicResource Brush.Text.Primary}" FontSize="{DynamicResource BaseFontSize}" FontWeight="Bold"/>
 
-                                            <!-- Main Color (Hidden if SeriesColors is present) -->
-                                            <StackPanel Margin="0,0,0,4" IsVisible="{Binding SelectedIndicator.SeriesColors.Count, Converter={x:Static converters:NumericalConverters.IsEqualToZero}}">
-                                                <TextBlock Text="{l:Localize Label_MainColor}" Foreground="{DynamicResource Brush.Text.Primary}" FontSize="{DynamicResource DetailFontSize}" Margin="0,0,0,4"/>
-                                                <ColorPicker Color="{Binding SelectedIndicator.Color, Converter={StaticResource ColorConverter}}" 
-                                                             ColorSpectrumShape="Box"
-                                                             Height="30" Width="200" HorizontalAlignment="Left" />
-                                            </StackPanel>
+                                            <!-- Panel C: Main Color & Line Thickness (paired) -->
+                                            <controls:ResponsiveFormPanel>
+                                                <!-- Main Color (Hidden if SeriesColors is present) -->
+                                                <StackPanel IsVisible="{Binding SelectedIndicator.SeriesColors.Count, Converter={x:Static converters:NumericalConverters.IsEqualToZero}}"
+                                                            Spacing="{x:Static lc:LayoutConstants.IndicatorFormLabelInputSpacing}">
+                                                    <TextBlock Text="{l:Localize Label_MainColor}" Foreground="{DynamicResource Brush.Text.Primary}" FontSize="{DynamicResource DetailFontSize}"/>
+                                                    <ColorPicker Color="{Binding SelectedIndicator.Color, Converter={StaticResource ColorConverter}}" 
+                                                                 ColorSpectrumShape="Box"
+                                                                 Height="{x:Static lc:LayoutConstants.IndicatorFormControlHeight}"
+                                                                 HorizontalAlignment="Stretch"
+                                                                 MinWidth="0"/>
+                                                </StackPanel>
+
+                                                <!-- Line Thickness -->
+                                                <StackPanel IsVisible="{Binding ShowThicknessAndOffset}"
+                                                            Spacing="{x:Static lc:LayoutConstants.IndicatorFormLabelInputSpacing}">
+                                                    <TextBlock Text="{l:Localize Label_Thickness}" Foreground="{DynamicResource Brush.Text.Primary}" FontSize="{DynamicResource BaseFontSize}" FontWeight="Bold"/>
+                                                    <Grid ColumnDefinitions="*,Auto" Height="{x:Static lc:LayoutConstants.IndicatorFormControlHeight}">
+                                                        <Slider Name="ThicknessSlider"
+                                                                Grid.Column="0"
+                                                                Value="{Binding SelectedIndicator.Thickness, Mode=TwoWay}"
+                                                                Minimum="0.5"
+                                                                Maximum="5"
+                                                                MinWidth="140"
+                                                                TickFrequency="0.5"
+                                                                IsSnapToTickEnabled="True"
+                                                                VerticalAlignment="Center"
+                                                                HorizontalAlignment="Stretch"/>
+                                                        <TextBox Grid.Column="1"
+                                                                 Text="{Binding #ThicknessSlider.Value, Mode=TwoWay, StringFormat={}{0:F1}}"
+                                                                 Width="40"
+                                                                 Margin="10,0,0,0"
+                                                                 VerticalAlignment="Center"
+                                                                 TextAlignment="Center"/>
+                                                    </Grid>
+                                                </StackPanel>
+                                            </controls:ResponsiveFormPanel>
 
                                             <!-- Multi-Series Colors -->
-                                            <StackPanel Margin="0,0,0,4" IsVisible="{Binding SelectedIndicator.SeriesColors.Count, Converter={x:Static converters:NumericalConverters.IsGreaterThanZero}}">
-                                                <ItemsControl ItemsSource="{Binding SelectedIndicator.SeriesColors}">
-                                                    <ItemsControl.ItemTemplate>
-                                                        <DataTemplate>
-                                                            <StackPanel Margin="0,0,0,8">
-                                                                <TextBlock Text="{Binding DisplayName}" Foreground="{DynamicResource Brush.Text.Primary}" FontSize="{DynamicResource DetailFontSize}" Margin="0,0,0,4"/>
-                                                                <ColorPicker Color="{Binding Color, Converter={StaticResource ColorConverter}}" 
-                                                                             ColorSpectrumShape="Box"
-                                                                             Height="30" Width="200" HorizontalAlignment="Left" />
-                                                            </StackPanel>
-                                                        </DataTemplate>
-                                                    </ItemsControl.ItemTemplate>
-                                                </ItemsControl>
-                                            </StackPanel>
+                                            <ItemsControl ItemsSource="{Binding SelectedIndicator.SeriesColors}"
+                                                          IsVisible="{Binding SelectedIndicator.SeriesColors.Count, Converter={x:Static converters:NumericalConverters.IsGreaterThanZero}}">
+                                                <ItemsControl.ItemsPanel>
+                                                    <ItemsPanelTemplate>
+                                                        <controls:ResponsiveFormPanel/>
+                                                    </ItemsPanelTemplate>
+                                                </ItemsControl.ItemsPanel>
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <StackPanel Spacing="{x:Static lc:LayoutConstants.IndicatorFormLabelInputSpacing}">
+                                                            <TextBlock Text="{Binding DisplayName}" Foreground="{DynamicResource Brush.Text.Primary}" FontSize="{DynamicResource DetailFontSize}"/>
+                                                            <ColorPicker Color="{Binding Color, Converter={StaticResource ColorConverter}}" 
+                                                                         ColorSpectrumShape="Box"
+                                                                         Height="{x:Static lc:LayoutConstants.IndicatorFormControlHeight}"
+                                                                         HorizontalAlignment="Stretch"
+                                                                         MinWidth="0"/>
+                                                        </StackPanel>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
 
                                             <!-- Use Up/Down Colors -->
-                                            <StackPanel Margin="0,4,0,4" IsVisible="{Binding ShowUpDownColors}">
+                                            <StackPanel Margin="0,4,0,4" IsVisible="{Binding ShowUpDownColors}" Spacing="6">
                                                 <CheckBox Name="UseUpDownColorsCheck"
                                                           IsChecked="{Binding SelectedIndicator.UseUpDownColors}"
                                                           Content="{l:Localize Check_UseUpDownColors}"
-                                                          Foreground="{DynamicResource Brush.Text.Primary}"
-                                                          Margin="0,0,0,6"/>
+                                                          Foreground="{DynamicResource Brush.Text.Primary}"/>
 
-                                                <StackPanel IsVisible="{Binding #UseUpDownColorsCheck.IsChecked}">
-                                                    <TextBlock Text="{l:Localize Label_UpColor}" Foreground="{DynamicResource Brush.Text.Primary}" FontSize="{DynamicResource DetailFontSize}" Margin="0,4,0,4"/>
-                                                    <ColorPicker Color="{Binding SelectedIndicator.UpColor, Converter={StaticResource ColorConverter}}" 
-                                                                 ColorSpectrumShape="Box"
-                                                                 Height="30" Width="200" HorizontalAlignment="Left" Margin="0,0,0,8"/>
+                                                <controls:ResponsiveFormPanel IsVisible="{Binding #UseUpDownColorsCheck.IsChecked}">
+                                                    <!-- Up Color -->
+                                                    <StackPanel Spacing="{x:Static lc:LayoutConstants.IndicatorFormLabelInputSpacing}">
+                                                        <TextBlock Text="{l:Localize Label_UpColor}" Foreground="{DynamicResource Brush.Text.Primary}" FontSize="{DynamicResource DetailFontSize}"/>
+                                                        <ColorPicker Color="{Binding SelectedIndicator.UpColor, Converter={StaticResource ColorConverter}}" 
+                                                                     ColorSpectrumShape="Box"
+                                                                     Height="{x:Static lc:LayoutConstants.IndicatorFormControlHeight}"
+                                                                     HorizontalAlignment="Stretch"
+                                                                     MinWidth="0"/>
+                                                    </StackPanel>
 
-                                                    <TextBlock Text="{l:Localize Label_DownColor}" Foreground="{DynamicResource Brush.Text.Primary}" FontSize="{DynamicResource DetailFontSize}" Margin="0,4,0,4"/>
-                                                    <ColorPicker Color="{Binding SelectedIndicator.DownColor, Converter={StaticResource ColorConverter}}" 
-                                                                 ColorSpectrumShape="Box"
-                                                                 Height="30" Width="200" HorizontalAlignment="Left" />
-                                                </StackPanel>
-                                            </StackPanel>
-
-                                            <!-- Line Thickness -->
-                                            <StackPanel IsVisible="{Binding ShowThicknessAndOffset}">
-                                                <TextBlock Text="{l:Localize Label_Thickness}" Foreground="{DynamicResource Brush.Text.Primary}" FontSize="{DynamicResource BaseFontSize}" FontWeight="Bold" Margin="0,4,0,4"/>
-                                                <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                                                    <Slider Name="ThicknessSlider"
-                                                            Value="{Binding SelectedIndicator.Thickness, Mode=TwoWay}"
-                                                            Minimum="0.5"
-                                                            Maximum="5"
-                                                            Width="200"
-                                                            TickFrequency="0.5"
-                                                            IsSnapToTickEnabled="True"
-                                                            VerticalAlignment="Center"/>
-                                                    <TextBox Text="{Binding #ThicknessSlider.Value, Mode=TwoWay, StringFormat={}{0:F1}}"
-                                                             Width="40"
-                                                             Margin="10,0,0,0"
-                                                             VerticalAlignment="Center"
-                                                             TextAlignment="Center"/>
-                                                </StackPanel>
+                                                    <!-- Down Color -->
+                                                    <StackPanel Spacing="{x:Static lc:LayoutConstants.IndicatorFormLabelInputSpacing}">
+                                                        <TextBlock Text="{l:Localize Label_DownColor}" Foreground="{DynamicResource Brush.Text.Primary}" FontSize="{DynamicResource DetailFontSize}"/>
+                                                        <ColorPicker Color="{Binding SelectedIndicator.DownColor, Converter={StaticResource ColorConverter}}" 
+                                                                     ColorSpectrumShape="Box"
+                                                                     Height="{x:Static lc:LayoutConstants.IndicatorFormControlHeight}"
+                                                                     HorizontalAlignment="Stretch"
+                                                                     MinWidth="0"/>
+                                                    </StackPanel>
+                                                </controls:ResponsiveFormPanel>
                                             </StackPanel>
 
                                             <!-- Divider line under visual properties -->
                                             <Separator Background="{DynamicResource Brush.Border.Primary}" Height="1" Margin="0,8"/>
 
-                                            <!-- Display & Layout Options -->
-                                            <!-- Overlay Panel Selection -->
-                                            <StackPanel IsVisible="{Binding ShowPanelSelector}">
-                                                <TextBlock Text="{l:Localize Label_OverlayPanel}" Foreground="{DynamicResource Brush.Text.Primary}" FontSize="14" FontWeight="Bold" Margin="0,0,0,4"/>
-                                                <ComboBox ItemsSource="{Binding PanelOptions}"
-                                                          SelectedItem="{Binding SelectedOverlayPanelOption}"
-                                                          MinWidth="200"
-                                                          HorizontalAlignment="Left"
-                                                          Margin="0,0,0,8"/>
+                                            <!-- Display & Layout Options (paired) -->
+                                            <controls:ResponsiveFormPanel>
+                                                <!-- Overlay Panel Selection -->
+                                                <StackPanel IsVisible="{Binding ShowPanelSelector}" Spacing="{x:Static lc:LayoutConstants.IndicatorFormLabelInputSpacing}">
+                                                    <TextBlock Text="{l:Localize Label_OverlayPanel}" Foreground="{DynamicResource Brush.Text.Primary}" FontSize="14" FontWeight="Bold"/>
+                                                    <ComboBox ItemsSource="{Binding PanelOptions}"
+                                                              SelectedItem="{Binding SelectedOverlayPanelOption}"
+                                                              HorizontalAlignment="Stretch"
+                                                              Height="{x:Static lc:LayoutConstants.IndicatorFormControlHeight}"/>
+                                                </StackPanel>
 
                                                 <!-- Show Cross Markers -->
                                                 <CheckBox IsChecked="{Binding SelectedIndicator.ShowCrossMarkers}"
                                                           Content="{l:Localize Check_ShowCrossMarkers}"
                                                           Foreground="{DynamicResource Brush.Text.Primary}"
-                                                          Margin="0,0,0,8"/>
-                                            </StackPanel>
+                                                          IsVisible="{Binding ShowPanelSelector}"
+                                                          MinHeight="{x:Static lc:LayoutConstants.IndicatorFormControlHeight}"
+                                                          VerticalAlignment="Bottom"/>
 
-                                            <!-- Show Value on Y-Axis -->
-                                            <CheckBox IsChecked="{Binding SelectedIndicator.ShowAxisLabel}"
-                                                      Content="{l:Localize Check_ShowAxisLabel}"
-                                                      Foreground="{DynamicResource Brush.Text.Primary}"
-                                                      Margin="0,0,0,8"/>
+                                                <!-- Show Value on Y-Axis -->
+                                                <CheckBox IsChecked="{Binding SelectedIndicator.ShowAxisLabel}"
+                                                          Content="{l:Localize Check_ShowAxisLabel}"
+                                                          Foreground="{DynamicResource Brush.Text.Primary}"
+                                                          MinHeight="{x:Static lc:LayoutConstants.IndicatorFormControlHeight}"
+                                                          VerticalAlignment="Bottom"/>
 
-                                            <!-- Show Signals -->
-                                            <CheckBox IsChecked="{Binding SelectedIndicator.ShowSignals}"
-                                                      Content="{l:Localize Check_ShowSignals}"
-                                                      Foreground="{DynamicResource Brush.Text.Primary}"
-                                                      IsVisible="{Binding ShowSignals}"
-                                                      Margin="0,0,0,8"/>
+                                                <!-- Show Signals -->
+                                                <CheckBox IsChecked="{Binding SelectedIndicator.ShowSignals}"
+                                                          Content="{l:Localize Check_ShowSignals}"
+                                                          Foreground="{DynamicResource Brush.Text.Primary}"
+                                                          IsVisible="{Binding ShowSignals}"
+                                                          MinHeight="{x:Static lc:LayoutConstants.IndicatorFormControlHeight}"
+                                                          VerticalAlignment="Bottom"/>
+                                            </controls:ResponsiveFormPanel>
                                         </StackPanel>
                                     </Border>
                                 </StackPanel>
