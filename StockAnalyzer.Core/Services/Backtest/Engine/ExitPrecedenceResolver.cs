@@ -1,3 +1,6 @@
+using StockAnalyzer.Core.Models;
+using StockAnalyzer.Core.Models.Backtest.Engine;
+
 namespace StockAnalyzer.Core.Services.Backtest.Engine;
 
 public enum ExitWinner { None, PendingOrder, MarginLiquidation }
@@ -48,5 +51,81 @@ public static class ExitPrecedenceResolver
         }
 
         return stopLossPosition.Value < takeProfitPosition.Value ? SlTpWinner.StopLoss : SlTpWinner.TakeProfit;
+    }
+
+    /// <summary>
+    /// Resolves precedence between Stop-Loss (SL) and Take-Profit (TP) breaches on the same candle.
+    /// When both thresholds are breached:
+    /// - Conservative: SL unconditionally wins (loss realization / worst-case principle).
+    /// - CanonicalOHLC: Follows standard OHLC path progression:
+    ///   - Bullish candle (Close &gt; Open): O -&gt; L -&gt; H -&gt; C.
+    ///     Long: touches SL (Low) first =&gt; StopLoss wins.
+    ///     Short: touches TP (Low) first =&gt; TakeProfit wins.
+    ///   - Bearish candle (Close &lt; Open): O -&gt; H -&gt; L -&gt; C.
+    ///     Long: touches TP (High) first =&gt; TakeProfit wins.
+    ///     Short: touches SL (High) first =&gt; StopLoss wins.
+    ///   - Doji (Close == Open): Falls back to Conservative (StopLoss wins).
+    /// Gaps through thresholds at Open resolve immediately at Open before intrabar path.
+    /// </summary>
+    public static SlTpWinner ResolveIntrabarSlTp(
+        CandleData bar,
+        TradeSide side,
+        decimal stopPrice,
+        decimal limitPrice,
+        PricePathConflictMode mode = PricePathConflictMode.Conservative)
+    {
+        bool isLong = side == TradeSide.Long;
+        bool slBreached = isLong ? bar.Low <= stopPrice : bar.High >= stopPrice;
+        bool tpBreached = isLong ? bar.High >= limitPrice : bar.Low <= limitPrice;
+
+        if (!slBreached && !tpBreached) return SlTpWinner.None;
+        if (slBreached && !tpBreached) return SlTpWinner.StopLoss;
+        if (!slBreached && tpBreached) return SlTpWinner.TakeProfit;
+
+        // Both breached on the same bar
+        if (mode == PricePathConflictMode.Conservative)
+        {
+            return SlTpWinner.StopLoss;
+        }
+
+        // CanonicalOHLC mode:
+        if (isLong)
+        {
+            if (bar.Open <= stopPrice) return SlTpWinner.StopLoss;
+            if (bar.Open >= limitPrice) return SlTpWinner.TakeProfit;
+
+            if (bar.Close > bar.Open)
+            {
+                // Bullish: O -> L -> H -> C. Low (SL) visited first.
+                return SlTpWinner.StopLoss;
+            }
+            if (bar.Close < bar.Open)
+            {
+                // Bearish: O -> H -> L -> C. High (TP) visited first.
+                return SlTpWinner.TakeProfit;
+            }
+
+            // Doji (Close == Open): fallback to conservative
+            return SlTpWinner.StopLoss;
+        }
+        else // Short
+        {
+            if (bar.Open >= stopPrice) return SlTpWinner.StopLoss;
+            if (bar.Open <= limitPrice) return SlTpWinner.TakeProfit;
+
+            if (bar.Close > bar.Open)
+            {
+                // Bullish: O -> L -> H -> C. Low (TP) visited first.
+                return SlTpWinner.TakeProfit;
+            }
+            if (bar.Close < bar.Open)
+            {
+                // Bearish: O -> H -> L -> C. High (SL) visited first.
+                return SlTpWinner.StopLoss;
+            }
+
+            // Doji (Close == Open): fallback to conservative
+            return SlTpWinner.StopLoss;
+        }
     }
 }

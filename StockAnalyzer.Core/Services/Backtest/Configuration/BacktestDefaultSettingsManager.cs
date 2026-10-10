@@ -24,6 +24,11 @@ public sealed class BacktestDefaultSettingsManager : IBacktestDefaultSettingsMan
     private readonly SemaphoreSlim _semaphore = new(1, 1);
     private readonly ILogger<BacktestDefaultSettingsManager> _logger;
 
+    private static readonly JsonSerializerOptions s_jsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+    };
+
     public BacktestDefaultSettingsManager(
         string? settingsFilePath = null,
         ILogger<BacktestDefaultSettingsManager>? logger = null)
@@ -40,7 +45,7 @@ public sealed class BacktestDefaultSettingsManager : IBacktestDefaultSettingsMan
             BacktestDefaultSettings? data;
             try
             {
-                data = await AtomicJsonFile.LoadAsync<BacktestDefaultSettings?>(_settingsFilePath).ConfigureAwait(false);
+                data = await AtomicJsonFile.LoadAsync<BacktestDefaultSettings?>(_settingsFilePath, s_jsonOptions).ConfigureAwait(false);
             }
             catch (FileNotFoundException ex)
             {
@@ -61,6 +66,35 @@ public sealed class BacktestDefaultSettingsManager : IBacktestDefaultSettingsMan
             {
                 _logger.LogWarning(ex, "Backtest default settings schema is unsupported; built-in defaults will be used.");
                 return Fallback();
+            }
+
+            if (data is not null && data.SchemaVersion == 1)
+            {
+                BacktestDefaultSettings builtIn = BacktestDefaultSettings.BuiltIn;
+                data = new BacktestDefaultSettings
+                {
+                    SchemaVersion = BacktestDefaultSettings.CurrentSchemaVersion,
+                    DefaultTimeFrame = builtIn.DefaultTimeFrame,
+                    EndDateMode = builtIn.EndDateMode,
+                    FixedEndDateUtc = builtIn.FixedEndDateUtc,
+                    StartDateMode = builtIn.StartDateMode,
+                    StartDateRelativeYears = builtIn.StartDateRelativeYears,
+                    FixedStartDateUtc = builtIn.FixedStartDateUtc,
+                    InitialCapital = data.InitialCapital,
+                    CommissionFlat = data.CommissionFlat,
+                    CommissionPerUnit = data.CommissionPerUnit,
+                    SlippageRatio = data.SlippageRatio,
+                    SizingModel = data.SizingModel,
+                    SizingParameter = data.SizingParameter,
+                    InitialMarginRatio = data.InitialMarginRatio,
+                    MaintenanceMarginRatio = data.MaintenanceMarginRatio,
+                    LiquidationPenaltyRatio = data.LiquidationPenaltyRatio,
+                    AnnualRiskFreeRate = data.AnnualRiskFreeRate,
+                    AnnualMAR = data.AnnualMAR,
+                    AnnualPeriodsByFrame = data.AnnualPeriodsByFrame,
+                    BootstrapSeed = data.BootstrapSeed,
+                    BootstrapIterations = data.BootstrapIterations,
+                };
             }
 
             try

@@ -78,5 +78,33 @@ public class BacktestEngineGapLiquidationTests
         Assert.Equal(RunStatus.Insolvent, result.Status);
         Assert.Equal(45m, Assert.Single(result.Trades).ExitPrice);
         Assert.Equal(3, result.EquityPoints.Length);
+        Assert.Equal(0m, result.EquityPoints[2].Cash);
+        Assert.Equal(0m, result.EquityPoints[2].Equity);
+    }
+
+    [Fact]
+    public void GapLiquidation_AllowNegativeEquity_PreservesDeficitBalance()
+    {
+        // Open 45: 400 + 600 + 20 * (45 - 100) = -100 <= 0.
+        var config = new BacktestConfiguration
+        {
+            InitialCapital = 1000m,
+            SizingParameter = 20m,
+            InitialMarginRatio = 0.3m,
+            MaintenanceMarginRatio = 0.2m,
+            LiquidationPenaltyRatio = 0m,
+            IntrabarPathMode = IntrabarPathMode.DeterministicCandleShape,
+            MarginLiquidationDeficitMode = MarginLiquidationDeficitMode.AllowNegativeEquity,
+        };
+        BacktestResult result = VerificationHarness.Run(
+            VerificationHarness.MakeInput(ImmutableArray.Create(Flat(0, 100m), Flat(1, 100m), Flat(2, 45m), Flat(3, 45m))),
+            config,
+            new ScriptedStrategy(new Dictionary<int, StrategyOrderRequest> { [0] = VerificationHarness.Req(SignalType.LongEntry) }));
+
+        Assert.Equal(RunStatus.Insolvent, result.Status);
+        Assert.Equal(45m, Assert.Single(result.Trades).ExitPrice);
+        Assert.Equal(3, result.EquityPoints.Length);
+        Assert.Equal(-100m, result.EquityPoints[2].Cash);
+        Assert.Equal(-100m, result.EquityPoints[2].Equity);
     }
 }

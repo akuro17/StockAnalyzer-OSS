@@ -91,6 +91,20 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
         }
 
         ImmutableArray<BacktestWarning> warnings = CorporateActionDetector.DetectPotentialSplits(input.Bars);
+        if (!warnings.IsEmpty)
+        {
+            if (configuration.CorporateActionHandlingMode == CorporateActionHandlingMode.AbortOnDetection)
+            {
+                throw new DataIntegrityException(
+                    $"Potential unadjusted corporate action detected ({warnings.Length} warnings). Backtest aborted per AbortOnDetection configuration.");
+            }
+            if (configuration.CorporateActionHandlingMode == CorporateActionHandlingMode.AutoAdjustHistorical)
+            {
+                ImmutableArray<CandleData> adjustedBars = CorporateActionDetector.AdjustSplits(input.Bars, warnings);
+                input = input.WithBars(adjustedBars);
+                warnings = CorporateActionDetector.DetectPotentialSplits(input.Bars);
+            }
+        }
 
         // A strategy call, kept outside the arithmetic scope below: an OverflowException from it is a strategy failure, never an engine diagnostic.
         IReadOnlyList<StrategyIndicatorRequest> requests = strategy.GetRequiredIndicators();
@@ -203,6 +217,10 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
         bool insolventFromLiquidation = EvaluateStep2(s, i, bar, configuration, ref availableVolume);
         if (insolventFromLiquidation || (env.StopOnForcedLiquidation && s.Trades.Count > tradesBeforeStep2 && s.Trades[^1].IsForcedLiquidation))
         {
+            if (configuration.MarginLiquidationDeficitMode == MarginLiquidationDeficitMode.CapAtZero && s.Cash < 0m)
+            {
+                s.Cash = 0m;
+            }
             // Flat immediately after a forced liquidation: HeldMargin=0, UnrealizedPnL=0, so Equity == Cash.
             equityPoints.Add(new EquityPoint(i, bar.Timestamp, s.Cash, s.Cash, 0m, 0m));
             return RunStatus.Insolvent;
@@ -213,34 +231,58 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
         // evaluated before Entry (section 2.4) so a same-bar MOC reversal pair sees the freed Cash.
         if (s.PendingExitOrderIndex != -1 && s.Orders[s.PendingExitOrderIndex].Type == OrderType.MarketOnClose && s.Orders[s.PendingExitOrderIndex].EarliestFillBar <= i)
         {
-            s.Operation = BacktestArithmeticOperation.OrderFillPricing;
-            decimal exitQty = Math.Abs(s.Q);
-            if (maxParticipationRatio.HasValue && (availableVolume <= 0m || exitQty > availableVolume))
+            if (IsAtPriceLimit(s.Orders[s.PendingExitOrderIndex], bar, bar.Close, configuration.PriceLimitFillMode))
             {
-                s.Orders[s.PendingExitOrderIndex] = s.Orders[s.PendingExitOrderIndex] with { Status = OrderStatus.Rejected, RejectedReason = RejectedReason.InsufficientVolume };
-                s.PendingExitOrderIndex = -1;
+                s.Orders[s.PendingExitOrderIndex] = s.Orders[s.PendingExitOrderIndex] with { EarliestFillBar = i + 1 };
             }
             else
             {
-                if (maxParticipationRatio.HasValue) availableVolume -= exitQty;
-                OrderFillOutcome mocExitOutcome = OrderFillEvaluator.EvaluateMarketOnClose(s.Orders[s.PendingExitOrderIndex], bar, configuration.SlippageRatio, configuration.CommissionFlat, configuration.CommissionPerUnit);
-                CommitOrRejectFill(s, i, bar, mocExitOutcome, configuration, isEntry: false);
+                s.Operation = BacktestArithmeticOperation.OrderFillPricing;
+                decimal exitQty = Math.Abs(s.Q);
+                if (maxParticipationRatio.HasValue && (availableVolume <= 0m || exitQty > availableVolume))
+                {
+                    if (configuration.VolumeConstraintMode != VolumeConstraintMode.ClampAndCarryOverRemainder)
+                    {
+                        s.Orders[s.PendingExitOrderIndex] = s.Orders[s.PendingExitOrderIndex] with { Status = OrderStatus.Rejected, RejectedReason = RejectedReason.InsufficientVolume };
+                        s.PendingExitOrderIndex = -1;
+                    }
+                }
+                else
+                {
+                    if (maxParticipationRatio.HasValue) availableVolume -= exitQty;
+                    OrderFillOutcome mocExitOutcome = OrderFillEvaluator.EvaluateMarketOnClose(s.Orders[s.PendingExitOrderIndex], bar, configuration.SlippageRatio, configuration.CommissionFlat, configuration.CommissionPerUnit);
+                    CommitOrRejectFill(s, i, bar, mocExitOutcome, configuration, isEntry: false);
+                }
             }
         }
         // An Entry (MOC included) is only ever admitted while Flat - the same rule EvaluateStep2 applies to every other Entry
         // type - so a MOC Entry waiting behind a still-open position must not overwrite it (it stays pending until Flat).
         if (s.Q == 0m && s.PendingEntryOrderIndex != -1 && s.Orders[s.PendingEntryOrderIndex].Type == OrderType.MarketOnClose && s.Orders[s.PendingEntryOrderIndex].EarliestFillBar <= i)
         {
-            s.Operation = BacktestArithmeticOperation.OrderFillPricing;
-            decimal reqQty = s.Orders[s.PendingEntryOrderIndex].Quantity;
+            if (IsAtPriceLimit(s.Orders[s.PendingEntryOrderIndex], bar, bar.Close, configuration.PriceLimitFillMode))
+            {
+                s.Orders[s.PendingEntryOrderIndex] = s.Orders[s.PendingEntryOrderIndex] with { EarliestFillBar = i + 1 };
+            }
+            else
+            {
+                s.Operation = BacktestArithmeticOperation.OrderFillPricing;
+                decimal reqQty = s.Orders[s.PendingEntryOrderIndex].Quantity;
             bool reject = false;
+            bool skipFill = false;
             decimal? fillQty = null;
 
             if (maxParticipationRatio.HasValue)
             {
                 if (availableVolume <= 0m)
                 {
-                    reject = true;
+                    if (configuration.VolumeConstraintMode == VolumeConstraintMode.ClampAndCarryOverRemainder)
+                    {
+                        skipFill = true;
+                    }
+                    else
+                    {
+                        reject = true;
+                    }
                 }
                 else if (reqQty > availableVolume)
                 {
@@ -248,12 +290,19 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
                     {
                         reject = true;
                     }
-                    else // ClampAndCancelRemainder
+                    else // ClampAndCancelRemainder or ClampAndCarryOverRemainder
                     {
                         decimal clampedQty = availableVolume;
                         if (clampedQty < 1m)
                         {
-                            reject = true;
+                            if (configuration.VolumeConstraintMode == VolumeConstraintMode.ClampAndCarryOverRemainder)
+                            {
+                                skipFill = true;
+                            }
+                            else
+                            {
+                                reject = true;
+                            }
                         }
                         else
                         {
@@ -273,10 +322,29 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
                 s.Orders[s.PendingEntryOrderIndex] = s.Orders[s.PendingEntryOrderIndex] with { Status = OrderStatus.Rejected, RejectedReason = RejectedReason.InsufficientVolume };
                 s.PendingEntryOrderIndex = -1;
             }
-            else
+            else if (!skipFill)
             {
-                OrderFillOutcome mocEntryOutcome = OrderFillEvaluator.EvaluateMarketOnClose(s.Orders[s.PendingEntryOrderIndex], bar, configuration.SlippageRatio, configuration.CommissionFlat, configuration.CommissionPerUnit, fillQty);
+                BacktestOrder origMocOrder = s.Orders[s.PendingEntryOrderIndex];
+                OrderFillOutcome mocEntryOutcome = OrderFillEvaluator.EvaluateMarketOnClose(origMocOrder, bar, configuration.SlippageRatio, configuration.CommissionFlat, configuration.CommissionPerUnit, fillQty);
                 CommitOrRejectFill(s, i, bar, mocEntryOutcome, configuration, isEntry: true);
+
+                if (configuration.VolumeConstraintMode == VolumeConstraintMode.ClampAndCarryOverRemainder && fillQty.HasValue && reqQty > fillQty.Value)
+                {
+                    decimal remQty = reqQty - fillQty.Value;
+                    if (remQty >= 1m)
+                    {
+                        var carryOrder = origMocOrder with
+                        {
+                            OrderId = s.NextOrderId++,
+                            Quantity = remQty,
+                            EarliestFillBar = i + 1,
+                            Status = OrderStatus.Submitted,
+                            StopActivated = mocEntryOutcome.StopActivated,
+                        };
+                        s.Orders.Add(carryOrder);
+                        s.PendingEntryOrderIndex = s.Orders.Count - 1;
+                    }
+                }
 
                 // A MOC Entry opens AT Close, so its only exposure is its Close state (G2-1): a breach there cannot be executed on this bar
                 // (no executable price is observable after Close), so the position waits as LiquidationPending for the next bar's Open.
@@ -286,6 +354,7 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
                 }
             }
         }
+    }
 
         if (s.Q != 0m && s.EntryBar != i)
         {
@@ -300,7 +369,10 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
             decimal deltaDays = (decimal)(bar.Timestamp.Ticks - input.Bars[i - 1].Timestamp.Ticks) / (decimal)TimeSpan.TicksPerDay;
             if (deltaDays > 0m)
             {
-                decimal borrowFee = Math.Abs(s.Q) * s.EntryPrice * configuration.ShortBorrowAnnualRate * (deltaDays / 365m);
+                decimal priceBasis = configuration.BorrowFeeBasisMode == BorrowFeeBasisMode.MarkToMarketDaily
+                    ? bar.Close
+                    : s.EntryPrice;
+                decimal borrowFee = Math.Abs(s.Q) * priceBasis * configuration.ShortBorrowAnnualRate * (deltaDays / 365m);
                 s.Cash -= borrowFee;
                 s.TotalBorrowFeeAccum += borrowFee;
             }
@@ -334,6 +406,7 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
                 PendingExitOrderId = s.PendingExitOrderIndex != -1 ? s.Orders[s.PendingExitOrderIndex].OrderId : null,
                 Indicators = barBoundedIndicators is null ? indicatorSeries : barBoundedIndicators[i],
                 EntryPrice = positionSide is null ? null : s.EntryPrice,
+                PricePathConflictMode = configuration.PricePathConflictMode,
             };
 
             // G4: the intent is only QUEUED here (applied at Step 1 of the next bar), so the slot stays occupied for this Close's own submissions below.
@@ -616,6 +689,19 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
     }
 
     /// <summary>
+    /// Checks whether an order attempting to fill at <paramref name="rawFillPrice"/> is blocked by price limit rules
+    /// (e.g. trading halt when High == Low, buy lock when Close == High, sell lock when Close == Low).
+    /// </summary>
+    private static bool IsAtPriceLimit(BacktestOrder order, CandleData bar, decimal rawFillPrice, PriceLimitFillMode mode)
+    {
+        if (mode == PriceLimitFillMode.AlwaysFill) return false;
+        if (bar.High == bar.Low) return true;
+        if (order.Side == OrderSide.Buy && bar.Close == bar.High && rawFillPrice >= bar.High) return true;
+        if (order.Side == OrderSide.Sell && bar.Close == bar.Low && rawFillPrice <= bar.Low) return true;
+        return false;
+    }
+
+    /// <summary>
     /// Step 2 + section 1.5.6's margin-call precedence, amended per plan section 2.4 to sequence the
     /// pending EXIT slot strictly before the pending ENTRY slot: margin liquidation only ever competes
     /// with the pending Exit (a forced liquidation is itself a way of closing the currently-held
@@ -657,6 +743,10 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
             PathPoint? exitFillPoint = exitEligible
                 ? OrderFillEvaluator.EvaluateFrom(s.Orders[s.PendingExitOrderIndex], bar, pathStart, 0m, 0m, 0m, null, config.IntrabarPathMode, openSide).FillPoint
                 : null;
+            if (exitEligible && exitFillPoint is { } efp && IsAtPriceLimit(s.Orders[s.PendingExitOrderIndex], bar, efp.Price, config.PriceLimitFillMode))
+            {
+                exitFillPoint = null;
+            }
 
             ExitWinner winner = ExitPrecedenceResolver.Resolve(exitFillPoint?.Position, marginPosition);
             if (winner == ExitWinner.MarginLiquidation)
@@ -703,19 +793,38 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
         if (!eligible) return false;
 
         s.Operation = BacktestArithmeticOperation.OrderFillPricing;
-        OrderFillOutcome outcome = OrderFillEvaluator.Evaluate(s.Orders[idx], bar, config.SlippageRatio, config.CommissionFlat, config.CommissionPerUnit, null, config.IntrabarPathMode, openSide);
+        ResidualFill residual = OrderFillEvaluator.EvaluateFrom(s.Orders[idx], bar, FillPathScanner.OpenPoint(bar.Open), config.SlippageRatio, config.CommissionFlat, config.CommissionPerUnit, null, config.IntrabarPathMode, openSide);
+        OrderFillOutcome outcome = residual.Outcome;
         if (outcome.StopActivated != s.Orders[idx].StopActivated)
         {
             s.Orders[idx] = s.Orders[idx] with { StopActivated = outcome.StopActivated };
         }
 
-        if (outcome.Filled)
+        if (outcome.Filled && residual.FillPoint is { } exitPoint)
         {
+            if (IsAtPriceLimit(s.Orders[idx], bar, exitPoint.Price, config.PriceLimitFillMode))
+            {
+                if (marginPosition is not null)
+                {
+                    return ExecuteForcedLiquidation(s, i, bar, config, openSide, rawLiquidationPrice);
+                }
+                return false;
+            }
+
             if (config.MaxVolumeParticipationRatio.HasValue)
             {
                 decimal exitQty = Math.Abs(s.Q);
                 if (availableVolume <= 0m || exitQty > availableVolume)
                 {
+                    if (config.VolumeConstraintMode == VolumeConstraintMode.ClampAndCarryOverRemainder)
+                    {
+                        if (marginPosition is not null)
+                        {
+                            return ExecuteForcedLiquidation(s, i, bar, config, openSide, rawLiquidationPrice);
+                        }
+                        return false;
+                    }
+
                     s.Orders[idx] = s.Orders[idx] with { Status = OrderStatus.Rejected, RejectedReason = RejectedReason.InsufficientVolume };
                     s.PendingExitOrderIndex = -1;
 
@@ -772,10 +881,21 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
 
         if (!outcome.Filled || residual.FillPoint is not { } entryPoint) return false;
 
+        if (IsAtPriceLimit(s.Orders[idx], bar, entryPoint.Price, config.PriceLimitFillMode))
+        {
+            return false;
+        }
+
+        decimal remQty = 0m;
         if (config.MaxVolumeParticipationRatio.HasValue)
         {
             if (availableVolume <= 0m)
             {
+                if (config.VolumeConstraintMode == VolumeConstraintMode.ClampAndCarryOverRemainder)
+                {
+                    return false;
+                }
+
                 s.Orders[idx] = s.Orders[idx] with { Status = OrderStatus.Rejected, RejectedReason = RejectedReason.InsufficientVolume };
                 s.PendingEntryOrderIndex = -1;
                 return false;
@@ -790,11 +910,16 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
                     s.PendingEntryOrderIndex = -1;
                     return false;
                 }
-                else // ClampAndCancelRemainder
+                else // ClampAndCancelRemainder or ClampAndCarryOverRemainder
                 {
                     decimal clampedQty = availableVolume;
                     if (clampedQty < 1m)
                     {
+                        if (config.VolumeConstraintMode == VolumeConstraintMode.ClampAndCarryOverRemainder)
+                        {
+                            return false;
+                        }
+
                         s.Orders[idx] = s.Orders[idx] with { Status = OrderStatus.Rejected, RejectedReason = RejectedReason.InsufficientVolume };
                         s.PendingEntryOrderIndex = -1;
                         return false;
@@ -802,6 +927,11 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
 
                     outcome = OrderFillEvaluator.EvaluateFrom(s.Orders[idx], bar, pathStart, config.SlippageRatio, config.CommissionFlat, config.CommissionPerUnit, clampedQty, config.IntrabarPathMode, pendingSide).Outcome;
                     availableVolume = 0m;
+
+                    if (config.VolumeConstraintMode == VolumeConstraintMode.ClampAndCarryOverRemainder)
+                    {
+                        remQty = reqQty - clampedQty;
+                    }
                 }
             }
             else
@@ -810,7 +940,23 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
             }
         }
 
+        BacktestOrder origOrder = s.Orders[idx];
         CommitEntryFill(s, i, bar, outcome, config);
+
+        if (config.VolumeConstraintMode == VolumeConstraintMode.ClampAndCarryOverRemainder && remQty >= 1m)
+        {
+            var carryOrder = origOrder with
+            {
+                OrderId = s.NextOrderId++,
+                Quantity = remQty,
+                EarliestFillBar = i + 1,
+                Status = OrderStatus.Submitted,
+                StopActivated = outcome.StopActivated,
+            };
+            s.Orders.Add(carryOrder);
+            s.PendingEntryOrderIndex = s.Orders.Count - 1;
+        }
+
         return s.Q != 0m && AssessNewPositionLiquidation(s, i, bar, config, entryPoint);
     }
 
@@ -862,6 +1008,11 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
         (OrderStatus status, ExpiredReason? reason) = insolvent ? (OrderStatus.Expired, (ExpiredReason?)ExpiredReason.Insolvency) : (OrderStatus.Cancelled, null);
         EndPendingOrder(s, ref s.PendingExitOrderIndex, status, reason);
         EndPendingOrder(s, ref s.PendingEntryOrderIndex, status, reason);
+
+        if (insolvent && config.MarginLiquidationDeficitMode == MarginLiquidationDeficitMode.CapAtZero && s.Cash < 0m)
+        {
+            s.Cash = 0m;
+        }
 
         return insolvent;
     }

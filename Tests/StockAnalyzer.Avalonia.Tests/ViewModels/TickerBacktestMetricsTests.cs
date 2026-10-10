@@ -16,6 +16,7 @@ using StockAnalyzer.Core.Models.Watchlist;
 using StockAnalyzer.Core.Services.Backtest.Configuration;
 using StockAnalyzer.Core.Services.Backtest.Engine;
 using StockAnalyzer.Core.Services.Backtest.Reporting;
+using Avalonia.Headless.XUnit;
 using Xunit;
 
 namespace StockAnalyzer.Avalonia.Tests.ViewModels;
@@ -207,7 +208,7 @@ public class TickerBacktestMetricsTests
         Assert.Contains(string.Empty, notifiedProperties);
     }
 
-    [Fact]
+    [AvaloniaFact]
     public void MetricBinding_OnTextBlock_ReactsToSetMetricValue()
     {
         var item = new WatchlistItemViewModel("AAPL", "Apple Inc.", "Tech", "Consumer", 150m, 155m, 149m, 153m, 1000000, 2.0);
@@ -262,4 +263,319 @@ public class TickerBacktestMetricsTests
         Assert.Contains("Metric_SharpeRatio", notifiedProperties);
         Assert.Contains("Metric_MaxDrawdown", notifiedProperties);
     }
+
+    [AvaloniaFact]
+    public void MetricBinding_WithValidMetricValue_DisplaysFormattedDecimal()
+    {
+        var item = new WatchlistItemViewModel("AAPL", "Apple Inc.", "Tech", "Consumer", 150m, 155m, 149m, 153m, 1000000, 2.0);
+        var tb = new global::Avalonia.Controls.TextBlock();
+        tb.DataContext = item;
+
+        var def = BacktestMetricCatalog.Definitions.FirstOrDefault(d => d.Name == "ProfitFactor");
+        Assert.NotNull(def);
+        var textConverter = new StockAnalyzer.Avalonia.Common.TreeDataGridExtensions.MetricValueTextConverter(def);
+        tb.Bind(global::Avalonia.Controls.TextBlock.TextProperty, new global::Avalonia.Data.Binding("[Metric_ProfitFactor]")
+        {
+            Converter = textConverter,
+            TargetNullValue = "-",
+            FallbackValue = "-"
+        });
+
+        // Initial state before backtest evaluation: "-"
+        Assert.Equal("-", tb.Text);
+
+        // Evaluated with Valid status
+        var validMv = MetricValue.Valid(2.5m, MetricUnit.Dimensionless);
+        item.SetMetricValue("Metric_ProfitFactor", validMv);
+
+        Assert.Equal("2.5000", tb.Text);
+        Assert.Equal(validMv, item["Metric_ProfitFactor"]);
+        Assert.Equal(2.5m, item.GetRawValue("Metric_ProfitFactor"));
+    }
+
+    [AvaloniaFact]
+    public void MetricBinding_WithPositiveInfinityMetricValue_DisplaysNotAvailable()
+    {
+        var item = new WatchlistItemViewModel("AAPL", "Apple Inc.", "Tech", "Consumer", 150m, 155m, 149m, 153m, 1000000, 2.0);
+        var tb = new global::Avalonia.Controls.TextBlock();
+        tb.DataContext = item;
+
+        var def = BacktestMetricCatalog.Definitions.FirstOrDefault(d => d.Name == "ProfitFactor");
+        Assert.NotNull(def);
+        var textConverter = new StockAnalyzer.Avalonia.Common.TreeDataGridExtensions.MetricValueTextConverter(def);
+        tb.Bind(global::Avalonia.Controls.TextBlock.TextProperty, new global::Avalonia.Data.Binding("[Metric_ProfitFactor]")
+        {
+            Converter = textConverter,
+            TargetNullValue = "-",
+            FallbackValue = "-"
+        });
+
+        // When all trades win and GrossLoss == 0, status is PositiveInfinity
+        var infMv = MetricValue.NonValid(MetricStatus.PositiveInfinity, MetricUnit.Dimensionless, MetricReason.ZeroDivisor);
+        item.SetMetricValue("Metric_ProfitFactor", infMv);
+
+        // Should display N/A (or localized NotAvailable), not "-"
+        Assert.NotEqual("-", tb.Text);
+        Assert.Equal(infMv, item["Metric_ProfitFactor"]);
+        Assert.Equal(decimal.MaxValue, item.GetRawValue("Metric_ProfitFactor"));
+    }
+
+    [AvaloniaFact]
+    public void MetricBinding_WithInsufficientDataMetricValue_DisplaysNotAvailable()
+    {
+        var item = new WatchlistItemViewModel("AAPL", "Apple Inc.", "Tech", "Consumer", 150m, 155m, 149m, 153m, 1000000, 2.0);
+        var tb = new global::Avalonia.Controls.TextBlock();
+        tb.DataContext = item;
+
+        var def = BacktestMetricCatalog.Definitions.FirstOrDefault(d => d.Name == "ProfitFactor");
+        Assert.NotNull(def);
+        var textConverter = new StockAnalyzer.Avalonia.Common.TreeDataGridExtensions.MetricValueTextConverter(def);
+        tb.Bind(global::Avalonia.Controls.TextBlock.TextProperty, new global::Avalonia.Data.Binding("[Metric_ProfitFactor]")
+        {
+            Converter = textConverter,
+            TargetNullValue = "-",
+            FallbackValue = "-"
+        });
+
+        // When trade count is 0, status is InsufficientData(NoClosedTrades)
+        var noTradesMv = MetricValue.NonValid(MetricStatus.InsufficientData, MetricUnit.Dimensionless, MetricReason.NoClosedTrades);
+        item.SetMetricValue("Metric_ProfitFactor", noTradesMv);
+
+        // Should display N/A (or localized NotAvailable), not "-"
+        Assert.NotEqual("-", tb.Text);
+        Assert.Equal(noTradesMv, item["Metric_ProfitFactor"]);
+        Assert.Null(item.GetRawValue("Metric_ProfitFactor"));
+    }
+
+    [AvaloniaFact]
+    public async Task EvaluateBacktestTemplate_AaplTemplateAa_ProducesMatchingMetrics()
+    {
+        var dailyPath = StockAnalyzer.Core.Common.PathDiscovery.ResolveDataPath(null, "Data/Daily");
+        var dbManager = new StockAnalyzer.Core.Services.DuckDBConnectionManager();
+        var dataService = new StockAnalyzer.Core.Services.ParquetDataService(dbManager, Microsoft.Extensions.Options.Options.Create(new MarketDataSettings { DailyDataPath = dailyPath }));
+
+        var templateService = new StockAnalyzer.Core.Services.TemplateService();
+        var template = await templateService.GetAsync<BacktestConditionTemplate>(TemplateType.BacktestCondition, Guid.Parse("40625a3c-e1c1-47f1-ac39-bbd3efc68a1e"));
+        Assert.NotNull(template);
+
+        var domainTree = StockAnalyzer.Core.Services.Backtest.Configuration.BacktestConditionTreeDtoMapper.ToTree(template.ConditionTree);
+        var engine = new StockAnalyzer.Core.Services.Backtest.Engine.BacktestEngine(new IndicatorFactory());
+        var reportGen = new StockAnalyzer.Core.Services.Backtest.Reporting.BacktestReportGenerator();
+
+        var today = DateTime.UtcNow.Date;
+        var prepService = new StockAnalyzer.Avalonia.Services.BacktestRunPreparationService(dataService);
+        var snapshot = new StockAnalyzer.Avalonia.Services.BacktestRunSnapshot(
+            "AAPL",
+            TimeFrame.D1,
+            today.AddYears(-1),
+            today,
+            new BacktestConfiguration
+            {
+                ExecutionModel = ExecutionModel.Legacy,
+                InitialCapital = 1_000_000m,
+                SizingModel = PositionSizingModel.FixedQuantity,
+                SizingParameter = 1m
+            },
+            System.Collections.Immutable.ImmutableArray<BacktestConditionEntry>.Empty,
+            null,
+            System.Collections.Immutable.ImmutableArray<StrategyIndicatorRequest>.Empty,
+            BacktestReportDefaults.BuiltIn,
+            42,
+            2000,
+            domainTree);
+
+        var prepared = await prepService.PrepareAsync(snapshot, default);
+        var evalService = new StockAnalyzer.Core.Services.Backtest.Evaluation.BacktestEvaluationService(
+            engine,
+            reportGen,
+            new StockAnalyzer.Core.Services.Backtest.Evaluation.NoSamplingEvidenceTrustPolicy());
+
+        var artifact = evalService.Evaluate(prepared.Input, prepared.Configuration, prepared.StrategySpecification, prepared.ReportOptions);
+        Assert.Equal(RunStatus.Completed, artifact.Result.Status);
+        Assert.NotNull(artifact.Report);
+
+        var report = artifact.Report;
+
+        // Verify ProfitFactor is valid and formats to 0.0520
+        Assert.Equal(MetricStatus.Valid, report.ProfitFactor.Status);
+        Assert.Equal(0.0520m, Math.Round(report.ProfitFactor.Value!.Value, 4));
+
+        // Verify AnnualizedSharpe is Valid
+        Assert.Equal(MetricStatus.Valid, report.AnnualizedSharpe.Status);
+
+        // Verify UI mapping and formatting via WatchlistItemViewModel
+        var item = new WatchlistItemViewModel("AAPL", "Apple Inc.", "Tech", "Consumer", 150m, 155m, 149m, 153m, 1000000, 2.0);
+        var metricDict = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+        foreach (var def in BacktestMetricCatalog.Definitions)
+        {
+            var mv = def.Select(report);
+            if (mv != null)
+            {
+                metricDict[BacktestMetricColumnRegistry.MetricMemberPrefix + def.Name] = mv.Value;
+            }
+        }
+        item.SetMetricValues(metricDict);
+
+        // Verify ProfitFactor cell
+        var pfDef = BacktestMetricCatalog.Definitions.First(d => d.Name == "ProfitFactor");
+        var pfConverter = new StockAnalyzer.Avalonia.Common.TreeDataGridExtensions.MetricValueTextConverter(pfDef);
+        var tbPf = new global::Avalonia.Controls.TextBlock { DataContext = item };
+        tbPf.Bind(global::Avalonia.Controls.TextBlock.TextProperty, new global::Avalonia.Data.Binding("[Metric_ProfitFactor]")
+        {
+            Converter = pfConverter,
+            TargetNullValue = "-",
+            FallbackValue = "-"
+        });
+        Assert.Equal("0.0520", tbPf.Text);
+        Assert.Equal(report.ProfitFactor.Value, item.GetRawValue("Metric_ProfitFactor"));
+
+        // Verify AnnualizedSharpe cell
+        var sharpeDef = BacktestMetricCatalog.Definitions.First(d => d.Name == "AnnualizedSharpe");
+        var sharpeConverter = new StockAnalyzer.Avalonia.Common.TreeDataGridExtensions.MetricValueTextConverter(sharpeDef);
+        var tbSharpe = new global::Avalonia.Controls.TextBlock { DataContext = item };
+        tbSharpe.Bind(global::Avalonia.Controls.TextBlock.TextProperty, new global::Avalonia.Data.Binding("[Metric_AnnualizedSharpe]")
+        {
+            Converter = sharpeConverter,
+            TargetNullValue = "-",
+            FallbackValue = "-"
+        });
+        Assert.NotEqual("-", tbSharpe.Text);
+        Assert.Equal(report.AnnualizedSharpe.Value, item.GetRawValue("Metric_AnnualizedSharpe"));
+    }
+
+    [AvaloniaFact]
+    public async Task TemplateBB_JapaneseWatchlistTickers_CalculatesAndDisplaysProfitFactor()
+    {
+        var dailyPath = StockAnalyzer.Core.Common.PathDiscovery.ResolveDataPath(null, "Data/Daily");
+        var dbManager = new StockAnalyzer.Core.Services.DuckDBConnectionManager();
+        var dataService = new StockAnalyzer.Core.Services.ParquetDataService(dbManager, Microsoft.Extensions.Options.Options.Create(new MarketDataSettings { DailyDataPath = dailyPath }));
+        var templateService = new StockAnalyzer.Core.Services.TemplateService();
+        var template = await templateService.GetAsync<BacktestConditionTemplate>(TemplateType.BacktestCondition, Guid.Parse("c04296a3-2f62-4742-bc81-5ed2bd55e807"));
+        if (template == null) return;
+
+        var domainTree = StockAnalyzer.Core.Services.Backtest.Configuration.BacktestConditionTreeDtoMapper.ToTree(template.ConditionTree);
+        var engine = new StockAnalyzer.Core.Services.Backtest.Engine.BacktestEngine(new IndicatorFactory());
+        var reportGen = new StockAnalyzer.Core.Services.Backtest.Reporting.BacktestReportGenerator();
+        var today = DateTime.UtcNow.Date;
+        var prepService = new StockAnalyzer.Avalonia.Services.BacktestRunPreparationService(dataService);
+        var evalService = new StockAnalyzer.Core.Services.Backtest.Evaluation.BacktestEvaluationService(
+            engine,
+            reportGen,
+            new StockAnalyzer.Core.Services.Backtest.Evaluation.NoSamplingEvidenceTrustPolicy());
+
+        var defaultSettingsManager = new StockAnalyzer.Core.Services.Backtest.Configuration.BacktestDefaultSettingsManager();
+        var defaultLoad = await defaultSettingsManager.LoadAsync();
+        var defaultSettings = defaultLoad.Settings;
+        var (startUtc, endUtc, resolvedFrame) = defaultSettings.ResolveTargetDataAndPeriod();
+
+        string[] symbols = new[] { "3382-T", "2681-T", "3036-T", "7741-T", "6098-T", "6367-T" };
+        var evaluatedCount = 0;
+
+        foreach (var sym in symbols)
+        {
+            var snapshot = new StockAnalyzer.Avalonia.Services.BacktestRunSnapshot(
+                sym,
+                resolvedFrame,
+                startUtc,
+                endUtc,
+                new BacktestConfiguration
+                {
+                    ExecutionModel = ExecutionModel.Legacy,
+                    InitialCapital = defaultSettings.InitialCapital,
+                    SizingModel = defaultSettings.SizingModel,
+                    SizingParameter = defaultSettings.SizingParameter
+                },
+                System.Collections.Immutable.ImmutableArray<BacktestConditionEntry>.Empty,
+                null,
+                System.Collections.Immutable.ImmutableArray<StrategyIndicatorRequest>.Empty,
+                BacktestReportDefaults.BuiltIn,
+                42,
+                2000,
+                domainTree);
+
+            var prepared = await prepService.PrepareAsync(snapshot, default);
+            var artifact = evalService.Evaluate(prepared.Input, prepared.Configuration, prepared.StrategySpecification, prepared.ReportOptions);
+            var report = artifact.Report;
+            if (report != null)
+            {
+                evaluatedCount++;
+                var item = new WatchlistItemViewModel(sym, "Name", "Sec", "Ind", 100, 105, 95, 102, 1000, 1.0);
+                var metricDict = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+                foreach (var def in BacktestMetricCatalog.Definitions)
+                {
+                    var mv = def.Select(report);
+                    if (mv != null)
+                    {
+                        metricDict[BacktestMetricColumnRegistry.MetricMemberPrefix + def.Name] = mv.Value;
+                    }
+                }
+                item.SetMetricValues(metricDict);
+
+                var pfDef = BacktestMetricCatalog.Definitions.First(d => d.Name == "ProfitFactor");
+                var pfTextConverter = new StockAnalyzer.Avalonia.Common.TreeDataGridExtensions.MetricValueTextConverter(pfDef);
+                var pfBrushConverter = new StockAnalyzer.Avalonia.Common.TreeDataGridExtensions.MetricValueBrushConverter(pfDef);
+
+                var tbPf = new global::Avalonia.Controls.TextBlock { DataContext = item };
+                tbPf.Bind(global::Avalonia.Controls.TextBlock.TextProperty, new global::Avalonia.Data.Binding("[Metric_ProfitFactor]")
+                {
+                    Converter = pfTextConverter,
+                    TargetNullValue = "-",
+                    FallbackValue = "-"
+                });
+                tbPf.Bind(global::Avalonia.Controls.TextBlock.ForegroundProperty, new global::Avalonia.Data.Binding("[Metric_ProfitFactor]")
+                {
+                    Converter = pfBrushConverter,
+                    TargetNullValue = global::Avalonia.AvaloniaProperty.UnsetValue,
+                    FallbackValue = global::Avalonia.AvaloniaProperty.UnsetValue
+                });
+
+                Assert.Equal(MetricStatus.Valid, report.ProfitFactor.Status);
+                Assert.NotEqual("-", tbPf.Text);
+                Assert.NotEqual("N/A", tbPf.Text);
+                Assert.True(decimal.TryParse(tbPf.Text, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var parsedPf));
+                Assert.True(parsedPf > 0m);
+
+                // Critical: Neutral metrics must return UnsetValue so TextBlock.Foreground is NOT set to null (which makes text invisible)
+                var brushPf = pfBrushConverter.Convert(item["Metric_ProfitFactor"], typeof(global::Avalonia.Media.IBrush), null, System.Globalization.CultureInfo.InvariantCulture);
+                Assert.Equal(global::Avalonia.AvaloniaProperty.UnsetValue, brushPf);
+                Assert.False(tbPf.IsSet(global::Avalonia.Controls.TextBlock.ForegroundProperty));
+
+                // Verify GainMagnitude metric (GrossProfit) sets explicit colored brush
+                var gpDef = BacktestMetricCatalog.Definitions.First(d => d.Name == "GrossProfit");
+                var gpBrushConverter = new StockAnalyzer.Avalonia.Common.TreeDataGridExtensions.MetricValueBrushConverter(gpDef);
+                var brushGp = gpBrushConverter.Convert(item["Metric_GrossProfit"], typeof(global::Avalonia.Media.IBrush), null, System.Globalization.CultureInfo.InvariantCulture);
+                Assert.NotNull(brushGp);
+                Assert.NotEqual(global::Avalonia.AvaloniaProperty.UnsetValue, brushGp);
+            }
+        }
+
+        Assert.Equal(symbols.Length, evaluatedCount);
+    }
+
+    [Fact]
+    public void MetricValueBrushConverter_NeutralMetricsAndNull_ReturnUnsetValue()
+    {
+        var neutralDefs = BacktestMetricCatalog.Definitions.Where(d => d.Rule == BacktestMetricSemanticRule.Neutral).ToList();
+        Assert.NotEmpty(neutralDefs);
+
+        foreach (var def in neutralDefs)
+        {
+            var converter = new StockAnalyzer.Avalonia.Common.TreeDataGridExtensions.MetricValueBrushConverter(def);
+
+            // Null value
+            var resultNull = converter.Convert(null, typeof(global::Avalonia.Media.IBrush), null, System.Globalization.CultureInfo.InvariantCulture);
+            Assert.Equal(global::Avalonia.AvaloniaProperty.UnsetValue, resultNull);
+
+            // Valid decimal value (e.g. ProfitFactor = 1.2345)
+            var validMv = MetricValue.Valid(1.2345m, MetricUnit.Dimensionless);
+            var resultValid = converter.Convert(validMv, typeof(global::Avalonia.Media.IBrush), null, System.Globalization.CultureInfo.InvariantCulture);
+            Assert.Equal(global::Avalonia.AvaloniaProperty.UnsetValue, resultValid);
+
+            // Boxed decimal directly
+            var resultDecimal = converter.Convert(1.2345m, typeof(global::Avalonia.Media.IBrush), null, System.Globalization.CultureInfo.InvariantCulture);
+            Assert.Equal(global::Avalonia.AvaloniaProperty.UnsetValue, resultDecimal);
+        }
+    }
 }
+
+

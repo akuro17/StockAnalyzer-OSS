@@ -171,4 +171,10 @@ public sealed class BacktestInput
             }
         }
     }
+
+    /// <summary>
+    /// Creates a new <see cref="BacktestInput"/> with adjusted bars while preserving all other properties and metadata.
+    /// </summary>
+    public BacktestInput WithBars(ImmutableArray<CandleData> bars)
+        => new(bars, Symbol, Frame, DataVersion, EvaluationStartUtc, EvaluationEndUtc, HistoryStartIndex, TradingStartIndex, AdditionalTimeframeBars);
 }

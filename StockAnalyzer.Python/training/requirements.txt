@@ -2,8 +2,10 @@
 #
 # Base (dataset.py):
 numpy>=1.26
-polars>=0.20.22
+polars>=1.30.0   # dataset.py reads / writes parquet key-value metadata (synthetic marks); first release with both APIs = 1.30.0 (0.20.22..1.29.0 lack them)
 pyarrow>=23.0.1
+#   tzdata: event_eval.py resolves IANA timezone names with zoneinfo; Windows ships no IANA database, so the package is the source of the zones.
+tzdata>=2024.1
 #
 # PyTorch training + ONNX export (train_pytorch.py):
 #   torch is CPU-only here; install via:
@@ -22,5 +24,7 @@ tf2onnx>=1.16
 #   onnxmltools' LightGBM converter caps at ai.onnx opset 15.
 lightgbm>=4.0
 scikit-learn>=1.1
+#   scipy: the t quantile of the CR1 interval in causal_analysis.py (installed with scikit-learn; the bound is the one scikit-learn 1.1 imposes).
+scipy>=1.3.2
 skl2onnx>=1.16
 onnxmltools>=1.12

@@ -15,6 +15,7 @@ from pathlib import Path
 import numpy as np
 import fixed_scaler
 import dataset as ds
+import semi_supervised
 
 SCHEMA_VERSION = 1
 LINEAGE_KEY = "com.stockanalyzer.training.lineage"
@@ -235,6 +236,7 @@ class Session:
                    "no_verify", "smoke", "indicator_channel_export_paths", "feature_spec",
                    "composed_export_paths", "composed_spec", "calibration"}
         ignored.add("preflight")
+        ignored.update(semi_supervised.ARGUMENT_KEYS)  # T19 options never change the checkpoint contract of an existing run
         config = {key: value for key, value in vars(args).items() if key not in ignored
                   and not key.startswith("_")}
         config = json.loads(canonical(config))

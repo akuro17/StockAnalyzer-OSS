@@ -199,6 +199,80 @@ public class VolumeConstraintTests
         Assert.Equal(50m, result.Fills[2].Quantity);
     }
 
+    [Fact]
+    public void ClampAndCarryOverRemainder_ZeroVolumeBar_RetainsOrderAndFillsOnNextLiquidBar()
+    {
+        // Bar 0: volume = 1000, signal generated
+        // Bar 1: volume = 0 => 0 available. Under ClampAndCarryOverRemainder, order is NOT rejected, stays pending.
+        // Bar 2: volume = 1000, ratio 0.1 => 100 available. Order fills!
+        var bars = ImmutableArray.Create(
+            MakeBar(0, 100m, 100m, 100m, 100m, 1000),
+            MakeBar(1, 100m, 100m, 100m, 100m, 0),    // Zero volume bar
+            MakeBar(2, 100m, 100m, 100m, 100m, 1000));
+
+        var config = new BacktestConfiguration
+        {
+            InitialCapital = 100_000m,
+            SizingModel = PositionSizingModel.FixedQuantity,
+            SizingParameter = 50m,
+            MaxVolumeParticipationRatio = 0.5m,
+            VolumeConstraintMode = VolumeConstraintMode.ClampAndCarryOverRemainder,
+        };
+
+        var strategy = new ScriptedStrategy(new Dictionary<int, StrategyOrderRequest>
+        {
+            [0] = Req(SignalType.LongEntry, OrderType.Market),
+        });
+
+        BacktestResult result = VerificationHarness.CreateEngine().Run(MakeInput(bars), config, strategy);
+
+        Assert.Equal(RunStatus.Completed, result.Status);
+        BacktestFill fill = Assert.Single(result.Fills);
+        Assert.Equal(2, fill.BarIndex); // Filled on Day 2!
+        Assert.Equal(50m, fill.Quantity);
+    }
+
+    [Fact]
+    public void ClampAndCarryOverRemainder_ClampsAndCarriesOverRemainderOrder()
+    {
+        // Bar 0: volume = 1000, order requested for 150 shares
+        // Bar 1: volume = 1000, ratio 0.1 => ceiling = 100 shares.
+        // Long entry clamped to 100 shares, remaining 50 carried over!
+        var bars = ImmutableArray.Create(
+            MakeBar(0, 100m, 100m, 100m, 100m, 1000),
+            MakeBar(1, 100m, 100m, 100m, 100m, 1000),
+            MakeBar(2, 100m, 100m, 100m, 100m, 1000));
+
+        var config = new BacktestConfiguration
+        {
+            InitialCapital = 100_000m,
+            SizingModel = PositionSizingModel.FixedQuantity,
+            SizingParameter = 150m,
+            MaxVolumeParticipationRatio = 0.1m,
+            VolumeConstraintMode = VolumeConstraintMode.ClampAndCarryOverRemainder,
+        };
+
+        var strategy = new ScriptedStrategy(new Dictionary<int, StrategyOrderRequest>
+        {
+            [0] = Req(SignalType.LongEntry, OrderType.Market),
+        });
+
+        BacktestResult result = VerificationHarness.CreateEngine().Run(MakeInput(bars), config, strategy);
+
+        Assert.Equal(RunStatus.Completed, result.Status);
+        BacktestFill fill = Assert.Single(result.Fills);
+        Assert.Equal(100m, fill.Quantity); // First fill is clamped to 100
+
+        // There should be 2 orders: initial order (Filled, 150) and carry-over remainder order (50, EndOfData expired at end)
+        Assert.Equal(2, result.Orders.Length);
+        Assert.Equal(OrderStatus.Filled, result.Orders[0].Status);
+        Assert.Equal(150m, result.Orders[0].Quantity);
+
+        Assert.Equal(50m, result.Orders[1].Quantity);
+        Assert.Equal(OrderStatus.Expired, result.Orders[1].Status);
+        Assert.Equal(ExpiredReason.EndOfData, result.Orders[1].ExpiredReason);
+    }
+
     private sealed class ReversalTestStrategy : IBacktestStrategy
     {
         public string Name => "ReversalTestStrategy";

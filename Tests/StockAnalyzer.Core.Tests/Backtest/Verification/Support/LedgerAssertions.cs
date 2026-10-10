@@ -83,6 +83,10 @@ internal static class LedgerAssertions
 
             LedgerState s = states[k];
             decimal expectedCashPlusMargin = config.InitialCapital + closedNet - s.OpenEntryFee - s.TotalBorrowFee;
+            if (config.MarginLiquidationDeficitMode == MarginLiquidationDeficitMode.CapAtZero && result.Status == RunStatus.Insolvent && expectedCashPlusMargin < 0m)
+            {
+                expectedCashPlusMargin = 0m;
+            }
             Eq(expectedCashPlusMargin, p.Cash + p.HeldMargin, $"Cash+HeldMargin identity@{k}");
             decimal unrealized = s.Quantity * (input.Bars[k].Close - s.EntryPrice);
             Eq(expectedCashPlusMargin + unrealized, p.Equity, $"Equity identity@{k}");

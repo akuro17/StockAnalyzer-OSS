@@ -484,4 +484,22 @@ public class BacktestMetricsColumnChooserWindowTests
         Assert.False(string.IsNullOrEmpty(okVal));
         Assert.False(okVal!.StartsWith("["));
     }
+
+    [Fact]
+    public void ViewModel_FilteredItems_AreSortedByDisplayName_ForNonActiveCategories()
+    {
+        var vm = new BacktestMetricsColumnChooserViewModel();
+
+        // Check All category
+        vm.SelectedCategory = BacktestMetricsCategory.All;
+        var displayNamesAll = vm.FilteredItems.Select(x => x.DisplayName).ToList();
+        var sortedAll = displayNamesAll.OrderBy(x => x, StringComparer.CurrentCultureIgnoreCase).ToList();
+        Assert.Equal(sortedAll, displayNamesAll);
+
+        // Check Performance category
+        vm.SelectedCategory = BacktestMetricsCategory.Performance;
+        var displayNamesPerf = vm.FilteredItems.Select(x => x.DisplayName).ToList();
+        var sortedPerf = displayNamesPerf.OrderBy(x => x, StringComparer.CurrentCultureIgnoreCase).ToList();
+        Assert.Equal(sortedPerf, displayNamesPerf);
+    }
 }

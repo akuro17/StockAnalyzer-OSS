@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using StockAnalyzer.Avalonia.Models;
 using StockAnalyzer.Avalonia.ViewModels.Dialogs;
+using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Backtest.Configuration;
 using StockAnalyzer.Core.Models.Backtest.Engine;
 using StockAnalyzer.Core.Services.Backtest.Configuration;
@@ -60,6 +61,15 @@ public class BacktestSettingsViewModelTests
     {
         var (vm, _, _) = await CreateAsync();
 
+        Assert.Equal(TimeFrame.D1, vm.DefaultTimeFrame);
+        Assert.Equal(BacktestEndDateMode.Today, vm.EndDateMode);
+        Assert.Null(vm.FixedEndDateUtc);
+        Assert.Equal(BacktestStartDateMode.RelativeYears, vm.StartDateMode);
+        Assert.Equal(1, vm.StartDateRelativeYears);
+        Assert.Null(vm.FixedStartDateUtc);
+        Assert.False(vm.IsFixedEndDate);
+        Assert.True(vm.IsRelativeStartDate);
+        Assert.False(vm.IsFixedStartDate);
         Assert.Equal(1_000_000m, vm.InitialCapital);
         Assert.Equal(0.30m, vm.InitialMarginRatio);
         Assert.Equal(252, vm.AnnualPeriodsD1);
@@ -75,10 +85,12 @@ public class BacktestSettingsViewModelTests
         var (vm, _, _) = await CreateAsync();
 
         vm.InitialCapital = 5m;
+        vm.StartDateRelativeYears = 5;
 
         Assert.True(vm.IsModified);
         vm.RevertChanges();
         Assert.Equal(1_000_000m, vm.InitialCapital);
+        Assert.Equal(1, vm.StartDateRelativeYears);
         Assert.False(vm.IsModified);
     }
 
@@ -86,11 +98,15 @@ public class BacktestSettingsViewModelTests
     public async Task ResetToDefault_ReturnsToFactoryValues()
     {
         var (vm, _, _) = await CreateAsync();
+        vm.DefaultTimeFrame = TimeFrame.W1;
+        vm.StartDateRelativeYears = 10;
         vm.SlippageRatio = 0.01m;
         vm.BootstrapSeed = 99;
 
         vm.ResetToDefault();
 
+        Assert.Equal(TimeFrame.D1, vm.DefaultTimeFrame);
+        Assert.Equal(1, vm.StartDateRelativeYears);
         Assert.Equal(0m, vm.SlippageRatio);
         Assert.Equal(42, vm.BootstrapSeed);
     }
@@ -101,6 +117,8 @@ public class BacktestSettingsViewModelTests
         var (vm, manager, path) = await CreateAsync();
         try
         {
+            vm.DefaultTimeFrame = TimeFrame.MN1;
+            vm.StartDateRelativeYears = 4;
             vm.InitialCapital = 500_000m;
             vm.SizingModel = PositionSizingModel.PercentOfEquity;
             vm.SizingParameter = 0.5m;
@@ -111,6 +129,8 @@ public class BacktestSettingsViewModelTests
             Assert.True(vm.IsValid);
             var reloaded = new BacktestSettingsViewModel(manager);
             await reloaded.LoadTask;
+            Assert.Equal(TimeFrame.MN1, reloaded.DefaultTimeFrame);
+            Assert.Equal(4, reloaded.StartDateRelativeYears);
             Assert.Equal(500_000m, reloaded.InitialCapital);
             Assert.Equal(PositionSizingModel.PercentOfEquity, reloaded.SizingModel);
         }

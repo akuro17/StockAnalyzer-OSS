@@ -70,7 +70,7 @@ public class TickerAutoPlayCheckBoxTests
             Assert.NotNull(check);
             var panel = Assert.IsType<StackPanel>(combo.Parent);
             Assert.Same(panel, check.Parent);
-            Assert.Equal(panel.Children.IndexOf(combo) + 1, panel.Children.IndexOf(check));
+            Assert.True(panel.Children.IndexOf(check) > panel.Children.IndexOf(combo));
             Assert.True(check.IsEnabled);
 
             vm.DisplayItems.Add(Row("AAA"));

@@ -315,29 +315,53 @@ public sealed class ConditionBasedBacktestStrategy : IBacktestStrategy
 
         CandleData bar = context.Bar;
         bool isLong = context.PositionSide == TradeSide.Long;
+        TradeSide side = isLong ? TradeSide.Long : TradeSide.Short;
         SignalType exitSignal = isLong ? SignalType.LongExit : SignalType.ShortExit;
 
+        decimal? stopPrice = null;
         if (_riskManagement!.StopLossPercent is { } stopLossPercent)
         {
-            decimal stopPrice = EnsurePositiveThreshold(
+            stopPrice = EnsurePositiveThreshold(
                 isLong ? checked(entryPrice * (1m - stopLossPercent)) : checked(entryPrice * (1m + stopLossPercent)),
                 "Stop-Loss");
-            bool breached = isLong ? bar.Low <= stopPrice : bar.High >= stopPrice;
+        }
+
+        decimal? limitPrice = null;
+        if (_riskManagement.TakeProfitPercent is { } takeProfitPercent)
+        {
+            limitPrice = EnsurePositiveThreshold(
+                isLong ? checked(entryPrice * (1m + takeProfitPercent)) : checked(entryPrice * (1m - takeProfitPercent)),
+                "Take-Profit");
+        }
+
+        if (stopPrice.HasValue && limitPrice.HasValue)
+        {
+            SlTpWinner winner = ExitPrecedenceResolver.ResolveIntrabarSlTp(
+                bar, side, stopPrice.Value, limitPrice.Value, context.PricePathConflictMode);
+
+            return winner switch
+            {
+                SlTpWinner.StopLoss => new StrategyOrderRequest(exitSignal, OrderType.Stop, null, stopPrice.Value, Gtc, "Stop-Loss breach"),
+                SlTpWinner.TakeProfit => new StrategyOrderRequest(exitSignal, OrderType.Limit, limitPrice.Value, null, Gtc, "Take-Profit breach"),
+                _ => null,
+            };
+        }
+
+        if (stopPrice.HasValue)
+        {
+            bool breached = isLong ? bar.Low <= stopPrice.Value : bar.High >= stopPrice.Value;
             if (breached)
             {
-                return new StrategyOrderRequest(exitSignal, OrderType.Stop, null, stopPrice, Gtc, "Stop-Loss breach");
+                return new StrategyOrderRequest(exitSignal, OrderType.Stop, null, stopPrice.Value, Gtc, "Stop-Loss breach");
             }
         }
 
-        if (_riskManagement.TakeProfitPercent is { } takeProfitPercent)
+        if (limitPrice.HasValue)
         {
-            decimal limitPrice = EnsurePositiveThreshold(
-                isLong ? checked(entryPrice * (1m + takeProfitPercent)) : checked(entryPrice * (1m - takeProfitPercent)),
-                "Take-Profit");
-            bool breached = isLong ? bar.High >= limitPrice : bar.Low <= limitPrice;
+            bool breached = isLong ? bar.High >= limitPrice.Value : bar.Low <= limitPrice.Value;
             if (breached)
             {
-                return new StrategyOrderRequest(exitSignal, OrderType.Limit, limitPrice, null, Gtc, "Take-Profit breach");
+                return new StrategyOrderRequest(exitSignal, OrderType.Limit, limitPrice.Value, null, Gtc, "Take-Profit breach");
             }
         }
 

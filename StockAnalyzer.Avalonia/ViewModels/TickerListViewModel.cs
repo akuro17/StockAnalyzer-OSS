@@ -23,8 +23,10 @@ using StockAnalyzer.Avalonia.Models;
 using StockAnalyzer.Core.Models.Screener;
 using StockAnalyzer.Core.Models.Templates;
 using StockAnalyzer.Core.Services.Screener;
+using StockAnalyzer.Core.Models.Backtest.Configuration;
 using StockAnalyzer.Core.Models.Backtest.Engine;
 using StockAnalyzer.Core.Services.Backtest.Engine;
+using StockAnalyzer.Core.Services.Backtest.Evaluation;
 using StockAnalyzer.Core.Services.Backtest.Reporting;
 using StockAnalyzer.Avalonia.ViewModels.Backtest;
 using StockAnalyzer.Core.Services.Backtest.Configuration;
@@ -611,6 +613,10 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
     private readonly StockAnalyzer.Core.Services.IDataService? _dataService;
     private readonly IBacktestEngine? _backtestEngine;
     private readonly IBacktestReportGenerator? _backtestReportGenerator;
+    private readonly IBacktestRunPreparationService? _backtestRunPreparationService;
+    private readonly IBacktestEvaluationService? _backtestEvaluationService;
+    private readonly IBacktestDefaultSettingsManager? _backtestDefaultSettingsManager;
+    private readonly IBacktestSettingsCoordinator? _backtestSettingsCoordinator;
     private long _backtestGeneration;
     private CancellationTokenSource? _backtestCts;
     private readonly object _backtestGate = new();
@@ -843,8 +849,12 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
                 var dataService = _dataService ?? App.Current?.Services?.GetService<StockAnalyzer.Core.Services.IDataService>();
                 var engine = _backtestEngine ?? App.Current?.Services?.GetService<IBacktestEngine>();
                 var reportGen = _backtestReportGenerator ?? App.Current?.Services?.GetService<IBacktestReportGenerator>();
+                var prepService = _backtestRunPreparationService ?? App.Current?.Services?.GetService<IBacktestRunPreparationService>();
+                var evalService = _backtestEvaluationService ?? App.Current?.Services?.GetService<IBacktestEvaluationService>();
+                var defaultSettingsManager = _backtestDefaultSettingsManager ?? App.Current?.Services?.GetService<IBacktestDefaultSettingsManager>();
+                var settingsCoordinator = _backtestSettingsCoordinator ?? App.Current?.Services?.GetService<IBacktestSettingsCoordinator>();
 
-                if (dataService == null || engine == null || reportGen == null || cts.Token.IsCancellationRequested)
+                if (dataService == null || (prepService == null && (engine == null || reportGen == null)) || cts.Token.IsCancellationRequested)
                 {
                     await _dispatcherService.PostAsync(() =>
                     {
@@ -874,18 +884,50 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
                         StopLossPercent = template.RiskManagement.StopLossPercent,
                         TakeProfitPercent = template.RiskManagement.TakeProfitPercent
                     };
-                IBacktestStrategy strategy = ConditionBasedBacktestStrategy.FromTree(domainTree, risk);
+
+                BacktestDefaultSettings defaultSettings = BacktestDefaultSettings.BuiltIn;
+                if (defaultSettingsManager != null)
+                {
+                    try
+                    {
+                        var load = await defaultSettingsManager.LoadAsync().ConfigureAwait(false);
+                        defaultSettings = load.Settings;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to load backtest default settings, using built-in defaults.");
+                    }
+                }
+
+                BacktestReportDefaults reportDefaults = BacktestReportDefaults.BuiltIn;
+                if (settingsCoordinator != null)
+                {
+                    try
+                    {
+                        reportDefaults = await settingsCoordinator.LoadReportDefaultsAsync().ConfigureAwait(false);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to load backtest report defaults, using built-in defaults.");
+                    }
+                }
 
                 var config = new BacktestConfiguration
                 {
                     ExecutionModel = ExecutionModel.Legacy,
-                    InitialCapital = 100_000m,
-                    CommissionFlat = 0m,
-                    CommissionPerUnit = 0m,
-                    SlippageRatio = 0m,
-                    SizingModel = PositionSizingModel.PercentOfEquity,
-                    SizingParameter = 0.1m
+                    InitialCapital = defaultSettings.InitialCapital,
+                    CommissionFlat = defaultSettings.CommissionFlat,
+                    CommissionPerUnit = defaultSettings.CommissionPerUnit,
+                    SlippageRatio = defaultSettings.SlippageRatio,
+                    SizingModel = defaultSettings.SizingModel,
+                    SizingParameter = defaultSettings.SizingParameter,
+                    InitialMarginRatio = defaultSettings.InitialMarginRatio,
+                    MaintenanceMarginRatio = defaultSettings.MaintenanceMarginRatio,
+                    LiquidationPenaltyRatio = defaultSettings.LiquidationPenaltyRatio,
                 };
+
+                var (evaluationStartUtc, evaluationEndUtc, resolvedFrame) = defaultSettings.ResolveTargetDataAndPeriod();
+                frame = resolvedFrame;
 
                 var results = new Dictionary<string, Dictionary<string, object?>>(StringComparer.OrdinalIgnoreCase);
 
@@ -894,35 +936,76 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
                     if (cts.Token.IsCancellationRequested || gen != _backtestGeneration) break;
                     try
                     {
-                        var candles = await dataService.LoadCandlesAsync(item.Symbol, frame, count: 0).ConfigureAwait(false);
-                        if (candles == null || candles.Count < 2) continue;
-
-                        DateTime startUtc = candles[0].Timestamp;
-                        DateTime endUtc = candles[^1].Timestamp;
-                        if (startUtc >= endUtc)
+                        BacktestReport? report = null;
+                        if (prepService != null && evalService != null)
                         {
-                            endUtc = startUtc.AddDays(1);
+                            var snapshot = new BacktestRunSnapshot(
+                                item.Symbol,
+                                frame,
+                                evaluationStartUtc,
+                                evaluationEndUtc,
+                                config,
+                                ImmutableArray<BacktestConditionEntry>.Empty,
+                                risk,
+                                ImmutableArray<StrategyIndicatorRequest>.Empty,
+                                reportDefaults,
+                                defaultSettings.BootstrapSeed,
+                                defaultSettings.BootstrapIterations,
+                                domainTree);
+
+                            PreparedBacktestRun prepared = await prepService.PrepareAsync(snapshot, cts.Token).ConfigureAwait(false);
+                            var artifact = evalService.Evaluate(
+                                prepared.Input,
+                                prepared.Configuration,
+                                prepared.StrategySpecification,
+                                prepared.ReportOptions,
+                                samplingEvidence: null,
+                                cts.Token);
+
+                            if (artifact.Result.Status == RunStatus.Completed)
+                            {
+                                report = artifact.Report;
+                            }
+                        }
+                        else if (engine != null && reportGen != null)
+                        {
+                            var candles = await dataService.LoadCandlesAsync(item.Symbol, frame, count: 0).ConfigureAwait(false);
+                            if (candles == null || candles.Count < 2) continue;
+
+                            var rawBars = ImmutableArray.CreateRange(candles);
+                            (ImmutableArray<CandleData> bars, int evaluationStartIndex) = BacktestRunPreparationService.BuildEvaluationWindow(
+                                rawBars,
+                                evaluationStartUtc,
+                                evaluationEndUtc);
+                            if (bars.Length == 0) continue;
+
+                            IBacktestStrategy strategy = ConditionBasedBacktestStrategy.FromTree(domainTree, risk);
+                            var input = new BacktestInput(bars, item.Symbol, frame, BacktestInput.CurrentDataVersion, evaluationStartUtc, evaluationEndUtc, evaluationStartIndex, evaluationStartIndex);
+                            var result = engine.Run(input, config, strategy, cts.Token);
+                            if (result.Status == RunStatus.Completed)
+                            {
+                                int annualPeriods = reportDefaults.AnnualPeriodsByFrame.TryGetValue(frame, out int ap) ? ap : 252;
+                                var reportOptions = new BacktestReportOptions(frame, evaluationStartIndex, evaluationStartUtc, evaluationEndUtc)
+                                {
+                                    AnnualPeriods = annualPeriods,
+                                    AnnualRiskFreeRate = reportDefaults.AnnualRiskFreeRate,
+                                    AnnualMAR = reportDefaults.AnnualMAR,
+                                    BootstrapSeed = defaultSettings.BootstrapSeed,
+                                    BootstrapIterations = defaultSettings.BootstrapIterations
+                                };
+                                report = reportGen.Generate(result, reportOptions);
+                            }
                         }
 
-                        var rawBars = ImmutableArray.CreateRange(candles);
-                        var input = new BacktestInput(rawBars, item.Symbol, frame, BacktestInput.CurrentDataVersion, startUtc, endUtc, 0, 0);
-                        var result = engine.Run(input, config, strategy, cts.Token);
-                        if (result.Status == RunStatus.Completed)
+                        if (report != null)
                         {
-                            var reportOptions = new BacktestReportOptions(frame, 0, startUtc, endUtc)
-                            {
-                                AnnualPeriods = 252,
-                                AnnualRiskFreeRate = 0m,
-                                AnnualMAR = 0m
-                            };
-                            var report = reportGen.Generate(result, reportOptions);
                             var metricDict = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
                             foreach (var def in BacktestMetricCatalog.Definitions)
                             {
                                 var mv = def.Select(report);
-                                if (mv != null && mv.Value.Status == MetricStatus.Valid)
+                                if (mv != null)
                                 {
-                                    metricDict[BacktestMetricColumnRegistry.MetricMemberPrefix + def.Name] = mv.Value.Value;
+                                    metricDict[BacktestMetricColumnRegistry.MetricMemberPrefix + def.Name] = mv.Value;
                                 }
                             }
                             results[item.Symbol] = metricDict;
@@ -998,7 +1081,11 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
         IToastNotificationService? toastService = null,
         StockAnalyzer.Core.Services.IDataService? dataService = null,
         StockAnalyzer.Core.Services.Backtest.Engine.IBacktestEngine? backtestEngine = null,
-        StockAnalyzer.Core.Services.Backtest.Reporting.IBacktestReportGenerator? backtestReportGenerator = null)
+        StockAnalyzer.Core.Services.Backtest.Reporting.IBacktestReportGenerator? backtestReportGenerator = null,
+        StockAnalyzer.Avalonia.Services.IBacktestRunPreparationService? backtestRunPreparationService = null,
+        StockAnalyzer.Core.Services.Backtest.Evaluation.IBacktestEvaluationService? backtestEvaluationService = null,
+        StockAnalyzer.Core.Services.Backtest.Configuration.IBacktestDefaultSettingsManager? backtestDefaultSettingsManager = null,
+        StockAnalyzer.Avalonia.Services.IBacktestSettingsCoordinator? backtestSettingsCoordinator = null)
     {
         ToastService = toastService;
         _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<TickerListViewModel>.Instance;
@@ -1008,6 +1095,10 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
             _dataService = dataService;
             _backtestEngine = backtestEngine;
             _backtestReportGenerator = backtestReportGenerator;
+            _backtestRunPreparationService = backtestRunPreparationService;
+            _backtestEvaluationService = backtestEvaluationService;
+            _backtestDefaultSettingsManager = backtestDefaultSettingsManager;
+            _backtestSettingsCoordinator = backtestSettingsCoordinator;
             _marketDataProvider = marketDataProvider;
             _pythonService = pythonService;
             _messenger = messenger;

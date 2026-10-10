@@ -152,11 +152,26 @@ public sealed class BacktestConfiguration
             : throw new ArgumentOutOfRangeException(nameof(ShortBorrowAnnualRate), value, "ShortBorrowAnnualRate must satisfy 0 <= r <= 1.");
     }
 
-    [JsonIgnore]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public VolumeConstraintMode VolumeConstraintMode { get; init; } = VolumeConstraintMode.RejectIfExceeds;
 
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public CorporateActionHandlingMode CorporateActionHandlingMode { get; init; } = CorporateActionHandlingMode.WarnOnly;
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public BorrowFeeBasisMode BorrowFeeBasisMode { get; init; } = BorrowFeeBasisMode.EntryPriceFixed;
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public PricePathConflictMode PricePathConflictMode { get; init; } = PricePathConflictMode.Conservative;
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public MarginLiquidationDeficitMode MarginLiquidationDeficitMode { get; init; } = MarginLiquidationDeficitMode.CapAtZero;
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public PriceLimitFillMode PriceLimitFillMode { get; init; } = PriceLimitFillMode.AlwaysFill;
+
     private readonly decimal? _maxVolumeParticipationRatio;
-    [JsonIgnore]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public decimal? MaxVolumeParticipationRatio
     {
         get => _maxVolumeParticipationRatio;
@@ -182,6 +197,31 @@ public sealed class BacktestConfiguration
         if (!Enum.IsDefined(VolumeConstraintMode))
         {
             throw new ArgumentOutOfRangeException(nameof(VolumeConstraintMode), VolumeConstraintMode, "Unknown VolumeConstraintMode.");
+        }
+
+        if (!Enum.IsDefined(CorporateActionHandlingMode))
+        {
+            throw new ArgumentOutOfRangeException(nameof(CorporateActionHandlingMode), CorporateActionHandlingMode, "Unknown CorporateActionHandlingMode.");
+        }
+
+        if (!Enum.IsDefined(BorrowFeeBasisMode))
+        {
+            throw new ArgumentOutOfRangeException(nameof(BorrowFeeBasisMode), BorrowFeeBasisMode, "Unknown BorrowFeeBasisMode.");
+        }
+
+        if (!Enum.IsDefined(PricePathConflictMode))
+        {
+            throw new ArgumentOutOfRangeException(nameof(PricePathConflictMode), PricePathConflictMode, "Unknown PricePathConflictMode.");
+        }
+
+        if (!Enum.IsDefined(MarginLiquidationDeficitMode))
+        {
+            throw new ArgumentOutOfRangeException(nameof(MarginLiquidationDeficitMode), MarginLiquidationDeficitMode, "Unknown MarginLiquidationDeficitMode.");
+        }
+
+        if (!Enum.IsDefined(PriceLimitFillMode))
+        {
+            throw new ArgumentOutOfRangeException(nameof(PriceLimitFillMode), PriceLimitFillMode, "Unknown PriceLimitFillMode.");
         }
 
         if (!Enum.IsDefined(IntrabarPathMode))

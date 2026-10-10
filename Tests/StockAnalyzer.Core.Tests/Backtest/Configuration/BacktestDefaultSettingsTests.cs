@@ -17,6 +17,12 @@ public class BacktestDefaultSettingsTests
     private static BacktestDefaultSettings Custom() => new()
     {
         SchemaVersion = BacktestDefaultSettings.CurrentSchemaVersion,
+        DefaultTimeFrame = TimeFrame.W1,
+        EndDateMode = BacktestEndDateMode.FixedDate,
+        FixedEndDateUtc = new DateTime(2025, 6, 30, 0, 0, 0, DateTimeKind.Utc),
+        StartDateMode = BacktestStartDateMode.RelativeYears,
+        StartDateRelativeYears = 3,
+        FixedStartDateUtc = null,
         InitialCapital = 250_000m,
         CommissionFlat = 1.5m,
         CommissionPerUnit = 0.01m,
@@ -38,6 +44,12 @@ public class BacktestDefaultSettingsTests
     {
         BacktestDefaultSettings builtIn = BacktestDefaultSettings.BuiltIn;
 
+        Assert.Equal(TimeFrame.D1, builtIn.DefaultTimeFrame);
+        Assert.Equal(BacktestEndDateMode.Today, builtIn.EndDateMode);
+        Assert.Null(builtIn.FixedEndDateUtc);
+        Assert.Equal(BacktestStartDateMode.RelativeYears, builtIn.StartDateMode);
+        Assert.Equal(1, builtIn.StartDateRelativeYears);
+        Assert.Null(builtIn.FixedStartDateUtc);
         Assert.Equal(1_000_000m, builtIn.InitialCapital);
         Assert.Equal(0m, builtIn.CommissionFlat);
         Assert.Equal(0m, builtIn.CommissionPerUnit);
@@ -229,6 +241,12 @@ public class BacktestDefaultSettingsTests
 
             Assert.Equal(BacktestDefaultSettingsLoadStatus.Loaded, result.Status);
             BacktestDefaultSettings loaded = result.Settings;
+            Assert.Equal(TimeFrame.W1, loaded.DefaultTimeFrame);
+            Assert.Equal(BacktestEndDateMode.FixedDate, loaded.EndDateMode);
+            Assert.Equal(new DateTime(2025, 6, 30, 0, 0, 0, DateTimeKind.Utc), loaded.FixedEndDateUtc);
+            Assert.Equal(BacktestStartDateMode.RelativeYears, loaded.StartDateMode);
+            Assert.Equal(3, loaded.StartDateRelativeYears);
+            Assert.Null(loaded.FixedStartDateUtc);
             Assert.Equal(250_000m, loaded.InitialCapital);
             Assert.Equal(1.5m, loaded.CommissionFlat);
             Assert.Equal(0.01m, loaded.CommissionPerUnit);
@@ -248,6 +266,239 @@ public class BacktestDefaultSettingsTests
         {
             if (File.Exists(path)) File.Delete(path);
         }
+    }
+
+    [Fact]
+    public async Task Manager_SchemaVersion1_MigratesWithBuiltInGroupA()
+    {
+        string path = NewTempPath();
+        try
+        {
+            // Valid schema v1 content without Group A
+            string v1Json = """
+            {
+                "schemaVersion": 1,
+                "initialCapital": 500000.0,
+                "commissionFlat": 0.0,
+                "commissionPerUnit": 0.0,
+                "slippageRatio": 0.0,
+                "sizingModel": 0,
+                "sizingParameter": 1.0,
+                "initialMarginRatio": 0.3,
+                "maintenanceMarginRatio": 0.2,
+                "liquidationPenaltyRatio": 0.005,
+                "annualRiskFreeRate": 0.0,
+                "annualMAR": 0.0,
+                "annualPeriodsByFrame": { "D1": 252, "W1": 52, "MN1": 12 },
+                "bootstrapSeed": 42,
+                "bootstrapIterations": 2000
+            }
+            """;
+            await File.WriteAllTextAsync(path, v1Json);
+
+            var manager = new BacktestDefaultSettingsManager(path);
+            BacktestDefaultSettingsLoadResult result = await manager.LoadAsync();
+
+            Assert.Equal(BacktestDefaultSettingsLoadStatus.Loaded, result.Status);
+            BacktestDefaultSettings loaded = result.Settings;
+            Assert.Equal(BacktestDefaultSettings.CurrentSchemaVersion, loaded.SchemaVersion);
+            Assert.Equal(TimeFrame.D1, loaded.DefaultTimeFrame);
+            Assert.Equal(BacktestEndDateMode.Today, loaded.EndDateMode);
+            Assert.Null(loaded.FixedEndDateUtc);
+            Assert.Equal(BacktestStartDateMode.RelativeYears, loaded.StartDateMode);
+            Assert.Equal(1, loaded.StartDateRelativeYears);
+            Assert.Null(loaded.FixedStartDateUtc);
+            Assert.Equal(500_000m, loaded.InitialCapital);
+        }
+        finally
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void SnapshotValidated_GroupA_Rejections()
+    {
+        BacktestDefaultSettings valid = Custom();
+
+        // 1. Invalid TimeFrame
+        Assert.Throws<ArgumentOutOfRangeException>(() => BacktestDefaultSettings.SnapshotValidated(new BacktestDefaultSettings
+        {
+            SchemaVersion = valid.SchemaVersion,
+            DefaultTimeFrame = (TimeFrame)999,
+            InitialCapital = valid.InitialCapital,
+            SizingModel = valid.SizingModel,
+            SizingParameter = valid.SizingParameter,
+            InitialMarginRatio = valid.InitialMarginRatio,
+            MaintenanceMarginRatio = valid.MaintenanceMarginRatio,
+            AnnualPeriodsByFrame = valid.AnnualPeriodsByFrame,
+            BootstrapIterations = valid.BootstrapIterations,
+        }));
+
+        // 2. FixedEndDate missing
+        Assert.Throws<ArgumentException>(() => BacktestDefaultSettings.SnapshotValidated(new BacktestDefaultSettings
+        {
+            SchemaVersion = valid.SchemaVersion,
+            DefaultTimeFrame = TimeFrame.D1,
+            EndDateMode = BacktestEndDateMode.FixedDate,
+            FixedEndDateUtc = null,
+            InitialCapital = valid.InitialCapital,
+            SizingModel = valid.SizingModel,
+            SizingParameter = valid.SizingParameter,
+            InitialMarginRatio = valid.InitialMarginRatio,
+            MaintenanceMarginRatio = valid.MaintenanceMarginRatio,
+            AnnualPeriodsByFrame = valid.AnnualPeriodsByFrame,
+            BootstrapIterations = valid.BootstrapIterations,
+        }));
+
+        // 3. StartDateRelativeYears out of range [1, 50]
+        Assert.Throws<ArgumentOutOfRangeException>(() => BacktestDefaultSettings.SnapshotValidated(new BacktestDefaultSettings
+        {
+            SchemaVersion = valid.SchemaVersion,
+            DefaultTimeFrame = TimeFrame.D1,
+            StartDateMode = BacktestStartDateMode.RelativeYears,
+            StartDateRelativeYears = 0,
+            InitialCapital = valid.InitialCapital,
+            SizingModel = valid.SizingModel,
+            SizingParameter = valid.SizingParameter,
+            InitialMarginRatio = valid.InitialMarginRatio,
+            MaintenanceMarginRatio = valid.MaintenanceMarginRatio,
+            AnnualPeriodsByFrame = valid.AnnualPeriodsByFrame,
+            BootstrapIterations = valid.BootstrapIterations,
+        }));
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => BacktestDefaultSettings.SnapshotValidated(new BacktestDefaultSettings
+        {
+            SchemaVersion = valid.SchemaVersion,
+            DefaultTimeFrame = TimeFrame.D1,
+            StartDateMode = BacktestStartDateMode.RelativeYears,
+            StartDateRelativeYears = 51,
+            InitialCapital = valid.InitialCapital,
+            SizingModel = valid.SizingModel,
+            SizingParameter = valid.SizingParameter,
+            InitialMarginRatio = valid.InitialMarginRatio,
+            MaintenanceMarginRatio = valid.MaintenanceMarginRatio,
+            AnnualPeriodsByFrame = valid.AnnualPeriodsByFrame,
+            BootstrapIterations = valid.BootstrapIterations,
+        }));
+
+        // 4. FixedStartDate missing
+        Assert.Throws<ArgumentException>(() => BacktestDefaultSettings.SnapshotValidated(new BacktestDefaultSettings
+        {
+            SchemaVersion = valid.SchemaVersion,
+            DefaultTimeFrame = TimeFrame.D1,
+            StartDateMode = BacktestStartDateMode.FixedDate,
+            FixedStartDateUtc = null,
+            InitialCapital = valid.InitialCapital,
+            SizingModel = valid.SizingModel,
+            SizingParameter = valid.SizingParameter,
+            InitialMarginRatio = valid.InitialMarginRatio,
+            MaintenanceMarginRatio = valid.MaintenanceMarginRatio,
+            AnnualPeriodsByFrame = valid.AnnualPeriodsByFrame,
+            BootstrapIterations = valid.BootstrapIterations,
+        }));
+
+        // 5. FixedStartDate >= FixedEndDate
+        Assert.Throws<ArgumentException>(() => BacktestDefaultSettings.SnapshotValidated(new BacktestDefaultSettings
+        {
+            SchemaVersion = valid.SchemaVersion,
+            DefaultTimeFrame = TimeFrame.D1,
+            EndDateMode = BacktestEndDateMode.FixedDate,
+            FixedEndDateUtc = new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+            StartDateMode = BacktestStartDateMode.FixedDate,
+            FixedStartDateUtc = new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+            InitialCapital = valid.InitialCapital,
+            SizingModel = valid.SizingModel,
+            SizingParameter = valid.SizingParameter,
+            InitialMarginRatio = valid.InitialMarginRatio,
+            MaintenanceMarginRatio = valid.MaintenanceMarginRatio,
+            AnnualPeriodsByFrame = valid.AnnualPeriodsByFrame,
+            BootstrapIterations = valid.BootstrapIterations,
+        }));
+    }
+
+    [Fact]
+    public void FindErrors_GroupA_ReportsAppropriateKeys()
+    {
+        var invalid = new BacktestDefaultSettings
+        {
+            SchemaVersion = BacktestDefaultSettings.CurrentSchemaVersion,
+            DefaultTimeFrame = (TimeFrame)999,
+            EndDateMode = BacktestEndDateMode.FixedDate,
+            FixedEndDateUtc = null,
+            StartDateMode = BacktestStartDateMode.RelativeYears,
+            StartDateRelativeYears = 100,
+            InitialCapital = 1_000_000m,
+            SizingModel = PositionSizingModel.FixedQuantity,
+            SizingParameter = 1m,
+            InitialMarginRatio = 0.3m,
+            MaintenanceMarginRatio = 0.2m,
+            AnnualPeriodsByFrame = { [TimeFrame.D1] = 252 },
+            BootstrapIterations = 2000,
+        };
+
+        var errors = BacktestDefaultSettings.FindErrors(invalid);
+
+        Assert.Contains(nameof(BacktestDefaultSettings.DefaultTimeFrame), errors.Keys);
+        Assert.Contains(nameof(BacktestDefaultSettings.FixedEndDateUtc), errors.Keys);
+        Assert.Contains(nameof(BacktestDefaultSettings.StartDateRelativeYears), errors.Keys);
+    }
+
+    [Fact]
+    public void ResolveTargetDataAndPeriod_EnforcesInvariants()
+    {
+        DateTime nowUtc = new(2025, 10, 10, 15, 30, 0, DateTimeKind.Utc);
+        DateTime expectedTodayUtc = new(2025, 10, 10, 0, 0, 0, DateTimeKind.Utc);
+
+        // 1. BuiltIn: Today + 1 year relative + D1
+        var (start1, end1, frame1) = BacktestDefaultSettings.BuiltIn.ResolveTargetDataAndPeriod(nowUtc);
+        Assert.Equal(expectedTodayUtc, end1);
+        Assert.Equal(expectedTodayUtc.AddYears(-1), start1);
+        Assert.Equal(TimeFrame.D1, frame1);
+        Assert.Equal(DateTimeKind.Utc, end1.Kind);
+        Assert.Equal(DateTimeKind.Utc, start1.Kind);
+
+        // 2. Fixed End Date + Relative 3 years + W1
+        DateTime fixedEnd = new(2024, 12, 31, 0, 0, 0, DateTimeKind.Utc);
+        var settings2 = new BacktestDefaultSettings
+        {
+            DefaultTimeFrame = TimeFrame.W1,
+            EndDateMode = BacktestEndDateMode.FixedDate,
+            FixedEndDateUtc = fixedEnd,
+            StartDateMode = BacktestStartDateMode.RelativeYears,
+            StartDateRelativeYears = 3,
+        };
+        var (start2, end2, frame2) = settings2.ResolveTargetDataAndPeriod(nowUtc);
+        Assert.Equal(fixedEnd, end2);
+        Assert.Equal(fixedEnd.AddYears(-3), start2);
+        Assert.Equal(TimeFrame.W1, frame2);
+
+        // 3. Fixed End Date + Fixed Start Date (valid ordering)
+        DateTime fixedStart = new(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var settings3 = new BacktestDefaultSettings
+        {
+            DefaultTimeFrame = TimeFrame.MN1,
+            EndDateMode = BacktestEndDateMode.FixedDate,
+            FixedEndDateUtc = fixedEnd,
+            StartDateMode = BacktestStartDateMode.FixedDate,
+            FixedStartDateUtc = fixedStart,
+        };
+        var (start3, end3, frame3) = settings3.ResolveTargetDataAndPeriod(nowUtc);
+        Assert.Equal(fixedEnd, end3);
+        Assert.Equal(fixedStart, start3);
+        Assert.Equal(TimeFrame.MN1, frame3);
+
+        // 4. Fixed Start Date >= End Date falls back to endUtc.AddYears(-1)
+        var settings4 = new BacktestDefaultSettings
+        {
+            EndDateMode = BacktestEndDateMode.FixedDate,
+            FixedEndDateUtc = fixedEnd,
+            StartDateMode = BacktestStartDateMode.FixedDate,
+            FixedStartDateUtc = fixedEnd.AddDays(1),
+        };
+        var (start4, end4, _) = settings4.ResolveTargetDataAndPeriod(nowUtc);
+        Assert.Equal(fixedEnd, end4);
+        Assert.Equal(fixedEnd.AddYears(-1), start4);
     }
 
     [Fact]

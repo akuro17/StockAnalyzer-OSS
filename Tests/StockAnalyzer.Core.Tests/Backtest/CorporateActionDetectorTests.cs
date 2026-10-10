@@ -197,6 +197,85 @@ public class CorporateActionDetectorTests
         }
     }
 
+    [Fact]
+    public void CorporateActionHandling_AbortOnDetection_ThrowsDataIntegrityException()
+    {
+        var builder = ImmutableArray.CreateBuilder<CandleData>();
+        for (int i = 0; i < 5; i++)
+        {
+            builder.Add(MakeBar(i, 100m, 10_000));
+        }
+        builder.Add(MakeBar(5, 50m, 30_000));
+        var bars = builder.ToImmutable();
+
+        var input = new BacktestInput(bars, "TEST", TimeFrame.D1, BacktestInput.CurrentDataVersion, BaseTime, BaseTime.AddDays(10), 0, 0);
+        var config = new BacktestConfiguration
+        {
+            InitialCapital = 100_000m,
+            SizingParameter = 1m,
+            CorporateActionHandlingMode = CorporateActionHandlingMode.AbortOnDetection,
+        };
+
+        var engine = new BacktestEngine(new StockAnalyzer.Core.Models.Indicators.IndicatorFactory());
+        Action runAction = () => engine.Run(input, config, new NullStrategy());
+        Assert.Throws<DataIntegrityException>(runAction);
+    }
+
+    [Fact]
+    public void CorporateActionHandling_AutoAdjustHistorical_AdjustsBarsAndClearsWarnings()
+    {
+        var builder = ImmutableArray.CreateBuilder<CandleData>();
+        for (int i = 0; i < 5; i++)
+        {
+            builder.Add(MakeBar(i, 100m, 10_000));
+        }
+        builder.Add(MakeBar(5, 50m, 30_000));
+        var bars = builder.ToImmutable();
+
+        var input = new BacktestInput(bars, "TEST", TimeFrame.D1, BacktestInput.CurrentDataVersion, BaseTime, BaseTime.AddDays(10), 0, 0);
+        var config = new BacktestConfiguration
+        {
+            InitialCapital = 100_000m,
+            SizingParameter = 1m,
+            CorporateActionHandlingMode = CorporateActionHandlingMode.AutoAdjustHistorical,
+        };
+
+        var engine = new BacktestEngine(new StockAnalyzer.Core.Models.Indicators.IndicatorFactory());
+        BacktestResult result = engine.Run(input, config, new NullStrategy());
+
+        Assert.Equal(RunStatus.Completed, result.Status);
+        // After backward adjustment (100 -> 50), the price ratio 50/50 is 1.0 (no jump), so no warning
+        Assert.Empty(result.Warnings);
+    }
+
+    [Fact]
+    public void AdjustSplits_BackwardAdjustment_PreservesSpreadAndAdjustsVolume()
+    {
+        var builder = ImmutableArray.CreateBuilder<CandleData>();
+        for (int i = 0; i < 5; i++)
+        {
+            builder.Add(MakeBar(i, 100m, 10_000));
+        }
+        builder.Add(MakeBar(5, 50m, 30_000));
+        var bars = builder.ToImmutable();
+
+        var warnings = CorporateActionDetector.DetectPotentialSplits(bars);
+        Assert.Single(warnings);
+
+        var adjusted = CorporateActionDetector.AdjustSplits(bars, warnings);
+
+        Assert.Equal(bars.Length, adjusted.Length);
+        // Prior bars (0 to 4) should have close adjusted to 100 / 2 = 50, and volume to 10,000 * 2 = 20,000
+        for (int i = 0; i < 5; i++)
+        {
+            Assert.Equal(50m, adjusted[i].Close);
+            Assert.Equal(20_000, adjusted[i].Volume);
+        }
+        // Split bar (5) should remain untouched (50 close, 30,000 volume)
+        Assert.Equal(50m, adjusted[5].Close);
+        Assert.Equal(30_000, adjusted[5].Volume);
+    }
+
     private sealed class NullStrategy : IBacktestStrategy
     {
         public string Name => "Null";

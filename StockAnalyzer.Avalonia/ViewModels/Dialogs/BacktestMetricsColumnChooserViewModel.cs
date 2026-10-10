@@ -72,10 +72,23 @@ public partial class BacktestMetricsColumnChooserViewModel : ViewModelBase, IDis
         var catalogLookup = BacktestMetricCatalog.Definitions.ToDictionary(d => d.Name, StringComparer.OrdinalIgnoreCase);
         var seenActive = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        // Phase 1: Add active items in the caller's order (preserving drag-reorder sequence)
-        var orderedActiveNames = activeList != null && activeList.Count > 0
-            ? activeList.Where(n => catalogLookup.ContainsKey(n))
-            : BacktestMetricCatalog.Definitions.Where(d => activeSet.Contains(d.Name)).Select(d => d.Name);
+        // Phase 1: Add active items (sorted by display name if default sequence, or preserving caller's custom order)
+        bool isDefaultSequence = activeList == null ||
+            (activeList.Count == BacktestMetricCatalog.Definitions.Length &&
+             activeList.SequenceEqual(BacktestMetricCatalog.Definitions.Select(d => d.Name)));
+
+        IEnumerable<string> orderedActiveNames;
+        if (isDefaultSequence)
+        {
+            orderedActiveNames = BacktestMetricCatalog.Definitions
+                .OrderBy(d => (localization != null && localization.TryGetString(MetricLabelPrefix + d.Name, out var dn)) ? dn : d.Name, StringComparer.CurrentCultureIgnoreCase)
+                .ThenBy(d => d.Name, StringComparer.OrdinalIgnoreCase)
+                .Select(d => d.Name);
+        }
+        else
+        {
+            orderedActiveNames = activeList!.Where(n => catalogLookup.ContainsKey(n));
+        }
 
         foreach (var name in orderedActiveNames)
         {
@@ -83,10 +96,14 @@ public partial class BacktestMetricsColumnChooserViewModel : ViewModelBase, IDis
             AddItem(catalogLookup[name], isActive: true, localization);
         }
 
-        // Phase 2: Add remaining inactive items in catalog order
-        foreach (var def in BacktestMetricCatalog.Definitions)
+        // Phase 2: Add remaining inactive items sorted by display name
+        var inactiveDefs = BacktestMetricCatalog.Definitions
+            .Where(d => !activeSet.Contains(d.Name))
+            .OrderBy(d => (localization != null && localization.TryGetString(MetricLabelPrefix + d.Name, out var dn)) ? dn : d.Name, StringComparer.CurrentCultureIgnoreCase)
+            .ThenBy(d => d.Name, StringComparer.OrdinalIgnoreCase);
+
+        foreach (var def in inactiveDefs)
         {
-            if (activeSet.Contains(def.Name)) continue;
             AddItem(def, isActive: false, localization);
         }
 
@@ -178,29 +195,35 @@ public partial class BacktestMetricsColumnChooserViewModel : ViewModelBase, IDis
             _ => null
         };
 
-        foreach (var item in AllItems)
+        IEnumerable<BacktestMetricItemViewModel> items;
+        if (SelectedCategory == BacktestMetricsCategory.Active)
         {
-            if (SelectedCategory == BacktestMetricsCategory.Active && !item.IsActive)
-            {
-                continue;
-            }
+            items = AllItems.Where(item => item.IsActive);
+        }
+        else if (targetGroup.HasValue)
+        {
+            items = AllItems
+                .Where(item => item.Group == targetGroup.Value)
+                .OrderBy(item => item.DisplayName, StringComparer.CurrentCultureIgnoreCase)
+                .ThenBy(item => item.MetricName, StringComparer.OrdinalIgnoreCase);
+        }
+        else // SelectedCategory == BacktestMetricsCategory.All
+        {
+            items = AllItems
+                .OrderBy(item => item.DisplayName, StringComparer.CurrentCultureIgnoreCase)
+                .ThenBy(item => item.MetricName, StringComparer.OrdinalIgnoreCase);
+        }
 
-            if (targetGroup.HasValue && item.Group != targetGroup.Value)
-            {
-                continue;
-            }
+        if (!string.IsNullOrEmpty(query))
+        {
+            items = items.Where(item =>
+                item.DisplayName.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                item.MetricName.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                item.Description.Contains(query, StringComparison.OrdinalIgnoreCase));
+        }
 
-            if (!string.IsNullOrEmpty(query))
-            {
-                bool matchesName = item.DisplayName.Contains(query, StringComparison.OrdinalIgnoreCase) ||
-                                  item.MetricName.Contains(query, StringComparison.OrdinalIgnoreCase);
-                bool matchesDesc = item.Description.Contains(query, StringComparison.OrdinalIgnoreCase);
-                if (!matchesName && !matchesDesc)
-                {
-                    continue;
-                }
-            }
-
+        foreach (var item in items)
+        {
             FilteredItems.Add(item);
         }
 

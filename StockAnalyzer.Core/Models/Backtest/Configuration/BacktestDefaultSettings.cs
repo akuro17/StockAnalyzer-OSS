@@ -7,18 +7,26 @@ namespace StockAnalyzer.Core.Models.Backtest.Configuration;
 
 /// <summary>
 /// User-defined default values (Settings > Backtest) for the Backtest window's Configuration groups
-/// B (capital and cost model), C (margin model) and D (report aggregation). Group A (target data and
-/// period) is deliberately absent. Persisted separately from the window's own saved configuration and
-/// report settings so that neither Save Settings nor this Settings page can overwrite the other.
+/// A (target data and period), B (capital and cost model), C (margin model) and D (report aggregation).
+/// Persisted separately from the window's own saved configuration and report settings so that neither
+/// Save Settings nor this Settings page can overwrite the other.
 /// Validation delegates to the existing domain validators; no bound is restated here.
 /// </summary>
 public sealed class BacktestDefaultSettings
 {
     /// <summary>Bump when a field is added, removed, or reinterpreted.</summary>
-    public const int CurrentSchemaVersion = 1;
+    public const int CurrentSchemaVersion = 2;
 
     /// <summary>Defaults to 0 so a file without "schemaVersion" is treated as unrecognized (same convention as <see cref="BacktestReportDefaults"/>).</summary>
     public int SchemaVersion { get; init; }
+
+    // Group A: Target Data and Period defaults
+    public TimeFrame DefaultTimeFrame { get; init; } = TimeFrame.D1;
+    public BacktestEndDateMode EndDateMode { get; init; } = BacktestEndDateMode.Today;
+    public DateTime? FixedEndDateUtc { get; init; }
+    public BacktestStartDateMode StartDateMode { get; init; } = BacktestStartDateMode.RelativeYears;
+    public int StartDateRelativeYears { get; init; } = 1;
+    public DateTime? FixedStartDateUtc { get; init; }
 
     // Group B: capital and cost model.
     public decimal InitialCapital { get; init; }
@@ -40,7 +48,7 @@ public sealed class BacktestDefaultSettings
     public int BootstrapSeed { get; init; }
     public int BootstrapIterations { get; init; }
 
-    /// <summary>Factory defaults: <see cref="BacktestDefaults"/> for B/C/bootstrap, <see cref="BacktestReportDefaults.BuiltIn"/> for the report values.</summary>
+    /// <summary>Factory defaults: TimeFrame.D1, Today, 1 year lookback, <see cref="BacktestDefaults"/> for B/C/bootstrap, <see cref="BacktestReportDefaults.BuiltIn"/> for report values.</summary>
     public static BacktestDefaultSettings BuiltIn
     {
         get
@@ -49,6 +57,12 @@ public sealed class BacktestDefaultSettings
             return new BacktestDefaultSettings
             {
                 SchemaVersion = CurrentSchemaVersion,
+                DefaultTimeFrame = TimeFrame.D1,
+                EndDateMode = BacktestEndDateMode.Today,
+                FixedEndDateUtc = null,
+                StartDateMode = BacktestStartDateMode.RelativeYears,
+                StartDateRelativeYears = 1,
+                FixedStartDateUtc = null,
                 InitialCapital = BacktestDefaults.InitialCapital,
                 CommissionFlat = BacktestDefaults.CommissionFlat,
                 CommissionPerUnit = BacktestDefaults.CommissionPerUnit,
@@ -65,6 +79,41 @@ public sealed class BacktestDefaultSettings
                 BootstrapIterations = BacktestDefaults.BootstrapIterations,
             };
         }
+    }
+
+    /// <summary>
+    /// Resolves canonical evaluation window and timeframe according to Group A default settings.
+    /// Strictly enforces UTC midnight normalization and chronological invariants.
+    /// </summary>
+    public (DateTime StartUtc, DateTime EndUtc, TimeFrame Frame) ResolveTargetDataAndPeriod(DateTime? nowUtc = null)
+    {
+        DateTime referenceDate = (nowUtc ?? DateTime.UtcNow).Date;
+        if (referenceDate.Kind != DateTimeKind.Utc)
+        {
+            referenceDate = DateTime.SpecifyKind(referenceDate, DateTimeKind.Utc);
+        }
+
+        DateTime endUtc = EndDateMode switch
+        {
+            BacktestEndDateMode.FixedDate when FixedEndDateUtc.HasValue =>
+                DateTime.SpecifyKind(FixedEndDateUtc.Value.Date, DateTimeKind.Utc),
+            _ => referenceDate
+        };
+
+        DateTime startUtc;
+        if (StartDateMode == BacktestStartDateMode.FixedDate && FixedStartDateUtc.HasValue)
+        {
+            DateTime candidate = DateTime.SpecifyKind(FixedStartDateUtc.Value.Date, DateTimeKind.Utc);
+            startUtc = candidate < endUtc ? candidate : endUtc.AddYears(-1);
+        }
+        else
+        {
+            int lookbackYears = Math.Clamp(StartDateRelativeYears, 1, 50);
+            startUtc = endUtc.AddYears(-lookbackYears);
+        }
+
+        TimeFrame frame = Enum.IsDefined(DefaultTimeFrame) ? DefaultTimeFrame : TimeFrame.D1;
+        return (startUtc, endUtc, frame);
     }
 
     /// <summary>Annualization periods of <paramref name="frame"/>; 0 when the timeframe has no entry.</summary>
@@ -87,7 +136,13 @@ public sealed class BacktestDefaultSettings
             }
         }
 
-        return InitialCapital == other.InitialCapital
+        return DefaultTimeFrame == other.DefaultTimeFrame
+            && EndDateMode == other.EndDateMode
+            && Nullable.Equals(FixedEndDateUtc, other.FixedEndDateUtc)
+            && StartDateMode == other.StartDateMode
+            && StartDateRelativeYears == other.StartDateRelativeYears
+            && Nullable.Equals(FixedStartDateUtc, other.FixedStartDateUtc)
+            && InitialCapital == other.InitialCapital
             && CommissionFlat == other.CommissionFlat
             && CommissionPerUnit == other.CommissionPerUnit
             && SlippageRatio == other.SlippageRatio
@@ -136,6 +191,40 @@ public sealed class BacktestDefaultSettings
             {
                 errors.TryAdd(key, ex.Message);
             }
+        }
+
+        if (!Enum.IsDefined(source.DefaultTimeFrame))
+        {
+            errors.TryAdd(nameof(DefaultTimeFrame), "DefaultTimeFrame is not a valid TimeFrame value.");
+        }
+
+        if (source.EndDateMode == BacktestEndDateMode.FixedDate && !source.FixedEndDateUtc.HasValue)
+        {
+            errors.TryAdd(nameof(FixedEndDateUtc), "Fixed end date is required when EndDateMode is FixedDate.");
+        }
+
+        if (source.StartDateMode == BacktestStartDateMode.RelativeYears)
+        {
+            if (source.StartDateRelativeYears < 1 || source.StartDateRelativeYears > 50)
+            {
+                errors.TryAdd(nameof(StartDateRelativeYears), "StartDateRelativeYears must be between 1 and 50.");
+            }
+        }
+        else if (source.StartDateMode == BacktestStartDateMode.FixedDate)
+        {
+            if (!source.FixedStartDateUtc.HasValue)
+            {
+                errors.TryAdd(nameof(FixedStartDateUtc), "Fixed start date is required when StartDateMode is FixedDate.");
+            }
+        }
+
+        if (source.EndDateMode == BacktestEndDateMode.FixedDate
+            && source.StartDateMode == BacktestStartDateMode.FixedDate
+            && source.FixedEndDateUtc.HasValue
+            && source.FixedStartDateUtc.HasValue
+            && source.FixedStartDateUtc.Value.Date >= source.FixedEndDateUtc.Value.Date)
+        {
+            errors.TryAdd(nameof(FixedStartDateUtc), "Start date must precede end date.");
         }
 
         Check(nameof(InitialCapital), () => _ = new BacktestConfiguration { InitialCapital = source.InitialCapital });
@@ -207,6 +296,40 @@ public sealed class BacktestDefaultSettings
             throw new ArgumentException($"SchemaVersion must equal {CurrentSchemaVersion}.", nameof(source));
         }
 
+        if (!Enum.IsDefined(source.DefaultTimeFrame))
+        {
+            throw new ArgumentOutOfRangeException(nameof(source.DefaultTimeFrame), "DefaultTimeFrame is not a valid TimeFrame value.");
+        }
+
+        if (source.EndDateMode == BacktestEndDateMode.FixedDate && !source.FixedEndDateUtc.HasValue)
+        {
+            throw new ArgumentException("FixedEndDateUtc is required when EndDateMode is FixedDate.", nameof(source.FixedEndDateUtc));
+        }
+
+        if (source.StartDateMode == BacktestStartDateMode.RelativeYears)
+        {
+            if (source.StartDateRelativeYears < 1 || source.StartDateRelativeYears > 50)
+            {
+                throw new ArgumentOutOfRangeException(nameof(source.StartDateRelativeYears), "StartDateRelativeYears must be between 1 and 50.");
+            }
+        }
+        else if (source.StartDateMode == BacktestStartDateMode.FixedDate)
+        {
+            if (!source.FixedStartDateUtc.HasValue)
+            {
+                throw new ArgumentException("FixedStartDateUtc is required when StartDateMode is FixedDate.", nameof(source.FixedStartDateUtc));
+            }
+        }
+
+        if (source.EndDateMode == BacktestEndDateMode.FixedDate
+            && source.StartDateMode == BacktestStartDateMode.FixedDate
+            && source.FixedEndDateUtc.HasValue
+            && source.FixedStartDateUtc.HasValue
+            && source.FixedStartDateUtc.Value.Date >= source.FixedEndDateUtc.Value.Date)
+        {
+            throw new ArgumentException("FixedStartDateUtc must precede FixedEndDateUtc.", nameof(source.FixedStartDateUtc));
+        }
+
         new BacktestConfiguration
         {
             InitialCapital = source.InitialCapital,
@@ -237,9 +360,22 @@ public sealed class BacktestDefaultSettings
             AnnualPeriodsByFrame = source.AnnualPeriodsByFrame,
         });
 
+        DateTime? fixedEndUtc = source.FixedEndDateUtc.HasValue
+            ? DateTime.SpecifyKind(source.FixedEndDateUtc.Value.Date, DateTimeKind.Utc)
+            : null;
+        DateTime? fixedStartUtc = source.FixedStartDateUtc.HasValue
+            ? DateTime.SpecifyKind(source.FixedStartDateUtc.Value.Date, DateTimeKind.Utc)
+            : null;
+
         return new BacktestDefaultSettings
         {
             SchemaVersion = CurrentSchemaVersion,
+            DefaultTimeFrame = source.DefaultTimeFrame,
+            EndDateMode = source.EndDateMode,
+            FixedEndDateUtc = fixedEndUtc,
+            StartDateMode = source.StartDateMode,
+            StartDateRelativeYears = source.StartDateRelativeYears,
+            FixedStartDateUtc = fixedStartUtc,
             InitialCapital = source.InitialCapital,
             CommissionFlat = source.CommissionFlat,
             CommissionPerUnit = source.CommissionPerUnit,

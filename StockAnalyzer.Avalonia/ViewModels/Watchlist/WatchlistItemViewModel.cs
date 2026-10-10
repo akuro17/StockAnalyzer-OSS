@@ -5,6 +5,7 @@ using StockAnalyzer.Avalonia.Common;
 using StockAnalyzer.Core.Services.Notes;
 using StockAnalyzer.Core.Models.Watchlist;
 using StockAnalyzer.Core.Models.Screener;
+using StockAnalyzer.Core.Services.Backtest.Reporting;
 
 namespace StockAnalyzer.Avalonia.ViewModels.Watchlist
 {
@@ -808,7 +809,9 @@ namespace StockAnalyzer.Avalonia.ViewModels.Watchlist
         /// <summary>
         /// Indexer allowing XAML / Avalonia bindings to bind to arbitrary column values, including dynamic metrics (e.g. "[Metric_TotalPnL]").
         /// </summary>
-        public object? this[string memberName] => GetRawValue(memberName);
+        public object? this[string memberName] => DynamicIndicatorValues.TryGetValue(memberName, out var dynamicVal)
+            ? dynamicVal
+            : GetRawValue(memberName);
 
         /// <summary>
         /// Sets a dynamic backtest metric value and raises indexer property notification so bindings update immediately.
@@ -969,7 +972,9 @@ namespace StockAnalyzer.Avalonia.ViewModels.Watchlist
             "IsShort" => IsShort,
             "IsTPShort" => IsTPShort,
             "IsSLShort" => IsSLShort,
-            _ => DynamicIndicatorValues.TryGetValue(memberName, out var dynamicVal) ? dynamicVal as IComparable : GetRawValueReflectionFallback(memberName)
+            _ => DynamicIndicatorValues.TryGetValue(memberName, out var dynamicVal)
+                ? (dynamicVal as IComparable ?? (dynamicVal is MetricValue mv ? (mv.Status == MetricStatus.Valid ? mv.Value : (mv.Status == MetricStatus.PositiveInfinity ? decimal.MaxValue : null)) : null))
+                : GetRawValueReflectionFallback(memberName)
         };
 
         private static readonly (System.Reflection.PropertyInfo Prop, string CleanedName)[] _preNormalizedWatchlistProperties =

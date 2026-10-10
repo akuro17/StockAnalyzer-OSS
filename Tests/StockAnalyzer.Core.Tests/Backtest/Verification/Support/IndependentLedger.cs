@@ -57,6 +57,10 @@ internal static class IndependentLedger
                         $"Fill {fill.FillId} closes {fill.Quantity} but the ledger holds {quantity} (exit must be full-quantity).");
                     decimal realized = quantity * (fill.Price - entryPrice);
                     cash += held + realized - fill.Commission;
+                    if (config.MarginLiquidationDeficitMode == MarginLiquidationDeficitMode.CapAtZero && result.Status == RunStatus.Insolvent && cash < 0m)
+                    {
+                        cash = 0m;
+                    }
                     held = 0m;
                     quantity = 0m;
                     entryPrice = 0m;
@@ -72,7 +76,10 @@ internal static class IndependentLedger
                 decimal deltaDays = (decimal)(currBar.Timestamp.Ticks - prevBar.Timestamp.Ticks) / (decimal)TimeSpan.TicksPerDay;
                 if (deltaDays > 0m)
                 {
-                    decimal borrowFee = Math.Abs(quantity) * entryPrice * config.ShortBorrowAnnualRate * (deltaDays / 365m);
+                    decimal priceBasis = config.BorrowFeeBasisMode == BorrowFeeBasisMode.MarkToMarketDaily
+                        ? currBar.Close
+                        : entryPrice;
+                    decimal borrowFee = Math.Abs(quantity) * priceBasis * config.ShortBorrowAnnualRate * (deltaDays / 365m);
                     cash -= borrowFee;
                     totalBorrowFee += borrowFee;
                 }

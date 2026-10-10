@@ -32,7 +32,17 @@ public enum RunStatus { Completed = 0, Cancelled = 1, Failed = 2, Insolvent = 3 
 
 public enum ExpiredReason { EndOfData, Insolvency, GTDExpired }
 
-public enum VolumeConstraintMode { RejectIfExceeds = 0, ClampAndCancelRemainder = 1 }
+public enum VolumeConstraintMode { RejectIfExceeds = 0, ClampAndCancelRemainder = 1, ClampAndCarryOverRemainder = 2 }
+
+public enum CorporateActionHandlingMode { WarnOnly = 0, AbortOnDetection = 1, AutoAdjustHistorical = 2 }
+
+public enum BorrowFeeBasisMode { EntryPriceFixed = 0, MarkToMarketDaily = 1 }
+
+public enum PricePathConflictMode { Conservative = 0, CanonicalOHLC = 1 }
+
+public enum MarginLiquidationDeficitMode { CapAtZero = 0, AllowNegativeEquity = 1 }
+
+public enum PriceLimitFillMode { AlwaysFill = 0, RejectIfAtLimitPrice = 1 }
 
 public enum IntrabarPathMode { CanonicalOHLC = 0, DeterministicCandleShape = 1 }
 

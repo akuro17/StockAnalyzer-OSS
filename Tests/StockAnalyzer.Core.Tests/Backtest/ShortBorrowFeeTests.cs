@@ -225,4 +225,91 @@ public class ShortBorrowFeeTests
         Assert.Equal(config.InitialCapital, result.EquityPoints[4].Cash);
         LedgerAssertions.AllInvariants(input, config, result);
     }
+
+    [Fact]
+    public void BorrowFeeBasisMode_Validation_EnforcesDefinedEnum()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => new BacktestConfiguration
+        {
+            InitialCapital = 10_000m,
+            SizingParameter = 1m,
+            BorrowFeeBasisMode = (BorrowFeeBasisMode)999,
+        }.Validate());
+    }
+
+    [Fact]
+    public void ShortBorrowFee_MarkToMarketDaily_CalculatesFeesAgainstDailyClosingPrices()
+    {
+        // 5 daily bars with rising price for a Short position
+        var bars = ImmutableArray.Create(
+            FlatBar(0, 100m),
+            FlatBar(1, 100m),
+            FlatBar(2, 150m),
+            FlatBar(3, 200m),
+            FlatBar(4, 200m));
+
+        var input = new BacktestInput(
+            bars,
+            "TEST",
+            TimeFrame.D1,
+            BacktestInput.CurrentDataVersion,
+            bars[0].Timestamp,
+            bars[^1].Timestamp.AddDays(1),
+            historyStartIndex: 0,
+            tradingStartIndex: 0);
+
+        decimal annualRate = 0.073m; // 7.3% per year -> exactly 0.0002 (0.02%) per day
+
+        var script = new Dictionary<int, StrategyOrderRequest>
+        {
+            [0] = new(SignalType.ShortEntry, OrderType.Market, null, null, Gtc, "entry"),
+            [3] = new(SignalType.ShortExit, OrderType.Market, null, null, Gtc, "exit"),
+        };
+
+        var configFixed = new BacktestConfiguration
+        {
+            InitialCapital = 10_000m,
+            CommissionFlat = 0m,
+            CommissionPerUnit = 0m,
+            SlippageRatio = 0m,
+            InitialMarginRatio = 0.5m,
+            MaintenanceMarginRatio = 0.25m,
+            SizingModel = PositionSizingModel.FixedQuantity,
+            SizingParameter = 10m,
+            ShortBorrowAnnualRate = annualRate,
+            BorrowFeeBasisMode = BorrowFeeBasisMode.EntryPriceFixed,
+        };
+
+        var configMtm = new BacktestConfiguration
+        {
+            InitialCapital = 10_000m,
+            CommissionFlat = 0m,
+            CommissionPerUnit = 0m,
+            SlippageRatio = 0m,
+            InitialMarginRatio = 0.5m,
+            MaintenanceMarginRatio = 0.25m,
+            SizingModel = PositionSizingModel.FixedQuantity,
+            SizingParameter = 10m,
+            ShortBorrowAnnualRate = annualRate,
+            BorrowFeeBasisMode = BorrowFeeBasisMode.MarkToMarketDaily,
+        };
+
+        var engine = new BacktestEngine(new IndicatorFactory());
+        BacktestResult resultFixed = engine.Run(input, configFixed, new ScriptedStrategy(script));
+        BacktestResult resultMtm = engine.Run(input, configMtm, new ScriptedStrategy(script));
+
+        Assert.Equal(RunStatus.Completed, resultFixed.Status);
+        Assert.Equal(RunStatus.Completed, resultMtm.Status);
+
+        // Fixed entry price ($100): Bar 2 fee = 10 * 100 * 0.0002 = 0.20, Bar 3 fee = 10 * 100 * 0.0002 = 0.20 -> Total = 0.40
+        // MarkToMarketDaily: Bar 2 fee = 10 * 150 * 0.0002 = 0.30, Bar 3 fee = 10 * 200 * 0.0002 = 0.40 -> Total = 0.70
+        // Initial capital 10,000, Short 10 @ 100 closed @ 200 -> Loss = -1,000
+        // Fixed: 10,000 - 1,000 - 0.40 = 8,999.60
+        // MtM:   10,000 - 1,000 - 0.70 = 8,999.30
+        Assert.Equal(8999.60m, resultFixed.EquityPoints[^1].Cash);
+        Assert.Equal(8999.30m, resultMtm.EquityPoints[^1].Cash);
+
+        LedgerAssertions.AllInvariants(input, configFixed, resultFixed);
+        LedgerAssertions.AllInvariants(input, configMtm, resultMtm);
+    }
 }

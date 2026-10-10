@@ -1,0 +1,16 @@
+{
+  "max_prob_delta": 0.05,
+  "ops": [
+    "MatMul",
+    "Gemm",
+    "LSTM"
+  ],
+  "quantized_compute_nodes": {
+    "MatMulInteger": 1
+  },
+  "quantized_file": "trend_predictor_goodmeta_quantized.onnx",
+  "removed_ref_keys": [],
+  "source": "trend_predictor_goodmeta.onnx",
+  "source_sha256": "7caa63c68bd4d8e4a9733f86a6bc4c7f051800e7ccbb0307bfc48af6274557be",
+  "weight_type": "qint8"
+}

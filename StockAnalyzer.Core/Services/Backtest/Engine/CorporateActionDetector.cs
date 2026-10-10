@@ -125,4 +125,69 @@ public static class CorporateActionDetector
 
         return ((decimal)buffer[mid - 1] + (decimal)buffer[mid]) / 2m;
     }
+
+    /// <summary>
+    /// Applies backward adjustment to bars preceding detected unadjusted stock splits.
+    /// For a split detected at index t with ratio K (Close_{t-1} / Close_t):
+    /// All bars k &lt; t have their OHLC divided by K, and Volume multiplied by K (integer rounded).
+    /// </summary>
+    public static ImmutableArray<CandleData> AdjustSplits(ImmutableArray<CandleData> bars, ImmutableArray<BacktestWarning> warnings)
+    {
+        if (bars.IsDefaultOrEmpty || warnings.IsDefaultOrEmpty)
+        {
+            return bars;
+        }
+
+        var splitEvents = new List<(int BarIndex, decimal Ratio)>();
+        foreach (BacktestWarning warning in warnings)
+        {
+            if (warning.Code == WarningCode.PotentialUnadjustedSplit && warning.BarIndex > 0 && warning.BarIndex < bars.Length)
+            {
+                decimal prevClose = bars[warning.BarIndex - 1].Close;
+                decimal currClose = bars[warning.BarIndex].Close;
+                if (prevClose > 0m && currClose > 0m && MatchesTargetRatio(prevClose / currClose, out decimal matchedTarget))
+                {
+                    splitEvents.Add((warning.BarIndex, matchedTarget));
+                }
+            }
+        }
+
+        if (splitEvents.Count == 0)
+        {
+            return bars;
+        }
+
+        CandleData[] result = bars.ToArray();
+        foreach (var (splitBarIndex, ratio) in splitEvents)
+        {
+            for (int k = 0; k < splitBarIndex; k++)
+            {
+                CandleData b = result[k];
+                decimal adjOpen = b.Open / ratio;
+                decimal adjHigh = b.High / ratio;
+                decimal adjLow = b.Low / ratio;
+                decimal adjClose = b.Close / ratio;
+                long adjVolume = (long)Math.Floor(b.Volume * ratio);
+
+                result[k] = new CandleData(
+                    Timestamp: b.Timestamp,
+                    Open: adjOpen,
+                    High: adjHigh,
+                    Low: adjLow,
+                    Close: adjClose,
+                    Volume: adjVolume);
+            }
+        }
+
+        return result.ToImmutableArray();
+    }
+}
+
+/// <summary>
+/// Thrown when market data integrity checks fail (e.g., unadjusted stock splits detected under AbortOnDetection mode).
+/// </summary>
+public sealed class DataIntegrityException : InvalidOperationException
+{
+    public DataIntegrityException(string message) : base(message) { }
+    public DataIntegrityException(string message, Exception innerException) : base(message, innerException) { }
 }

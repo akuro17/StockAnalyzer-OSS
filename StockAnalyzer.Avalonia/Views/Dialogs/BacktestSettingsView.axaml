@@ -20,6 +20,7 @@
     </UserControl.Resources>
 
     <UserControl.Styles>
+        <StyleInclude Source="avares://StockAnalyzer.Avalonia/Assets/CalendarDatePickerIcon.axaml"/>
         <!-- Shared size of every value input on this page (wide enough for a 4-digit annualization period and the longest sizing-model name). -->
         <Style Selector="NumericUpDown.SettingInput">
             <Setter Property="Width" Value="{StaticResource BacktestSettingsInputWidth}"/>
@@ -27,6 +28,10 @@
         </Style>
         <Style Selector="ComboBox.SettingInput">
             <Setter Property="MinWidth" Value="{StaticResource BacktestSettingsInputWidth}"/>
+        </Style>
+        <Style Selector="CalendarDatePicker.SettingInput">
+            <Setter Property="Width" Value="{StaticResource BacktestSettingsInputWidth}"/>
+            <Setter Property="Height" Value="{StaticResource BacktestSettingsInputHeight}"/>
         </Style>
         <!-- Shared size of every color swatch on this page (Group E). -->
         <Style Selector="ColorPicker.SettingColor">
@@ -42,13 +47,106 @@
     <ScrollViewer VerticalScrollBarVisibility="Auto">
         <StackPanel Spacing="20" Margin="16">
 
-            <TextBlock Text="{l:Localize Settings_Backtest_Intro}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
-
             <TextBlock Text="{Binding ValidationMessage}"
                        IsVisible="{Binding HasValidationMessage}"
                        AutomationProperties.AutomationId="BacktestSettings_SaveFailureMessage"
                        FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Semantic.Error}" TextWrapping="Wrap"/>
 
+
+            <!-- Group A: Target Data and Period -->
+            <Border Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="{l:Localize Backtest_GroupA_Title}" FontSize="{DynamicResource BaseFontSize}" FontWeight="Bold" Foreground="{DynamicResource Brush.Accent.Primary}"/>
+
+                    <UniformGrid Columns="2">
+                        <!-- Start Date: Mode + Relative Years / CalendarDatePicker -->
+                        <StackPanel Margin="0,0,24,16">
+                            <Grid RowDefinitions="Auto,Auto" RowSpacing="4">
+                                <TextBlock Text="{l:Localize Backtest_Field_EvaluationStartUtc}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                <WrapPanel Grid.Row="1" HorizontalAlignment="Right" Orientation="Horizontal">
+                                    <ComboBox Classes="SettingInput"
+                                              ItemsSource="{Binding StartDateModeOptions}"
+                                              SelectedItem="{Binding StartDateMode}"
+                                              AutomationProperties.AutomationId="BacktestSettings_StartDateMode"
+                                              Margin="0,0,8,0">
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding Converter={StaticResource EnumToLocalizedDisplayNameConverter}}"/>
+                                            </DataTemplate>
+                                        </ComboBox.ItemTemplate>
+                                    </ComboBox>
+                                    <NumericUpDown Classes="SettingInput"
+                                                   Value="{Binding StartDateRelativeYears}"
+                                                   Minimum="1" Maximum="50" Increment="1" FormatString="0"
+                                                   IsEnabled="{Binding IsRelativeStartDate}"
+                                                   IsVisible="{Binding IsRelativeStartDate}"
+                                                   AutomationProperties.AutomationId="BacktestSettings_StartDateRelativeYears"/>
+                                    <CalendarDatePicker Classes="SettingInput isoDate isoDateHint"
+                                                        SelectedDate="{Binding FixedStartDateUtc}"
+                                                        IsEnabled="{Binding IsFixedStartDate}"
+                                                        IsVisible="{Binding IsFixedStartDate}"
+                                                        AutomationProperties.AutomationId="BacktestSettings_FixedStartDateUtc"/>
+                                </WrapPanel>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize Settings_Backtest_Desc_StartDateMode}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                            <TextBlock Text="{Binding StartDateRelativeYearsError}" IsVisible="{Binding StartDateRelativeYearsError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" AutomationProperties.AutomationId="BacktestSettings_Error_StartDateRelativeYears" Margin="0,4,0,0" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Semantic.Error}" TextWrapping="Wrap"/>
+                            <TextBlock Text="{Binding FixedStartDateError}" IsVisible="{Binding FixedStartDateError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" AutomationProperties.AutomationId="BacktestSettings_Error_FixedStartDateUtc" Margin="0,4,0,0" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Semantic.Error}" TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <!-- End Date: Mode + CalendarDatePicker -->
+                        <StackPanel Margin="0,0,0,16">
+                            <Grid RowDefinitions="Auto,Auto" RowSpacing="4">
+                                <TextBlock Text="{l:Localize Backtest_Field_EvaluationEndUtc}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                <WrapPanel Grid.Row="1" HorizontalAlignment="Right" Orientation="Horizontal">
+                                    <ComboBox Classes="SettingInput"
+                                              ItemsSource="{Binding EndDateModeOptions}"
+                                              SelectedItem="{Binding EndDateMode}"
+                                              AutomationProperties.AutomationId="BacktestSettings_EndDateMode"
+                                              Margin="0,0,8,0">
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding Converter={StaticResource EnumToLocalizedDisplayNameConverter}}"/>
+                                            </DataTemplate>
+                                        </ComboBox.ItemTemplate>
+                                    </ComboBox>
+                                    <CalendarDatePicker Classes="SettingInput isoDate isoDateHint"
+                                                        SelectedDate="{Binding FixedEndDateUtc}"
+                                                        IsEnabled="{Binding IsFixedEndDate}"
+                                                        AutomationProperties.AutomationId="BacktestSettings_FixedEndDateUtc"/>
+                                </WrapPanel>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize Settings_Backtest_Desc_EndDateMode}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                            <TextBlock Text="{Binding FixedEndDateError}" IsVisible="{Binding FixedEndDateError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" AutomationProperties.AutomationId="BacktestSettings_Error_FixedEndDateUtc" Margin="0,4,0,0" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Semantic.Error}" TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <!-- TimeFrame -->
+                        <StackPanel Margin="0,0,24,0">
+                            <Grid RowDefinitions="Auto,Auto" RowSpacing="4">
+                                <TextBlock Text="{l:Localize Backtest_Field_Frame}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                <ComboBox Grid.Row="1" HorizontalAlignment="Right" Classes="SettingInput"
+                                          ItemsSource="{Binding AvailableFrames}"
+                                          SelectedItem="{Binding DefaultTimeFrame}"
+                                          AutomationProperties.AutomationId="BacktestSettings_DefaultTimeFrame">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding Converter={StaticResource EnumToLocalizedDisplayNameConverter}}"/>
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize Settings_Backtest_Desc_DefaultTimeFrame}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                            <TextBlock Text="{Binding DefaultTimeFrameError}" IsVisible="{Binding DefaultTimeFrameError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" AutomationProperties.AutomationId="BacktestSettings_Error_DefaultTimeFrame" Margin="0,4,0,0" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Semantic.Error}" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </UniformGrid>
+                </StackPanel>
+            </Border>
 
             <!-- Group B: Capital and Cost Model -->
             <Border Background="{DynamicResource Brush.Background.Secondary}"

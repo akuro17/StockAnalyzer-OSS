@@ -64,13 +64,14 @@ public class ConditionBasedBacktestStrategyTests
         public IEnumerable<IndicatorType> GetRegisteredTypes() => new[] { IndicatorType.SMA };
     }
 
-    private static BacktestConfiguration MakeConfig() => new()
+    private static BacktestConfiguration MakeConfig(PricePathConflictMode pricePathConflictMode = PricePathConflictMode.Conservative) => new()
     {
         InitialCapital = 1000m,
         SizingModel = PositionSizingModel.FixedQuantity,
         SizingParameter = 1m,
         InitialMarginRatio = 1m,
         MaintenanceMarginRatio = 0.5m,
+        PricePathConflictMode = pricePathConflictMode,
     };
 
     private static BacktestConditionSide CloseSide(TimeFrame? frame = null, string outputName = IndicatorResult.MainSeriesName, PriceType? priceSource = null) => new()
@@ -348,6 +349,67 @@ public class ConditionBasedBacktestStrategyTests
         BacktestTrade trade = Assert.Single(result.Trades);
         Assert.Equal(95m, trade.ExitPrice);
         Assert.DoesNotContain(result.Orders, o => o.Type == OrderType.Limit);
+    }
+
+    [Fact]
+    public void PricePathConflictMode_CanonicalOHLC_BearishBar_PrioritizesTakeProfit_OverStopLoss()
+    {
+        // On a Bearish bar (Close < Open), Canonical OHLC path visits High before Low (O -> H -> L -> C).
+        // For Long: High breaches Take-Profit (110) BEFORE Low breaches Stop-Loss (95).
+        // Therefore, Take-Profit Limit order is submitted and fills on bar 4.
+        ImmutableArray<CandleData> bars = ImmutableArray.Create(
+            FlatBar(0, 1m),
+            FlatBar(1, 20m),
+            Bar(2, 100m, 102m, 99m, 100m),
+            Bar(3, 100m, 112m, 90m, 98m), // Bearish: O=100, H=112 (hits 110), L=90 (hits 95), C=98
+            Bar(4, 110m, 115m, 108m, 110m));
+        var input = new BacktestInput(bars, "TEST", TimeFrame.D1, BacktestInput.CurrentDataVersion, DailyStart, DailyStart.AddDays(10), 0, 0);
+
+        var strategy = new ConditionBasedBacktestStrategy(
+            new[] { LongEntryAbove10() },
+            new BacktestRiskManagementSettings { StopLossPercent = 0.05m, TakeProfitPercent = 0.10m });
+
+        var config = MakeConfig(PricePathConflictMode.CanonicalOHLC);
+
+        BacktestResult result = new BacktestEngine(new FakeIndicatorFactory()).Run(input, config, strategy);
+
+        BacktestTrade trade = Assert.Single(result.Trades);
+        Assert.Equal(110m, trade.ExitPrice);
+        Assert.Contains(result.Orders, o => o.Type == OrderType.Limit);
+        Assert.DoesNotContain(result.Orders, o => o.Type == OrderType.Stop);
+    }
+
+    [Fact]
+    public void PricePathConflictMode_Conservative_BearishBar_StillPrioritizesStopLoss()
+    {
+        // On Conservative mode, even on a Bearish bar where High would be visited first in canonical order,
+        // Stop-Loss unconditionally wins over Take-Profit.
+        ImmutableArray<CandleData> bars = ImmutableArray.Create(
+            FlatBar(0, 1m),
+            FlatBar(1, 20m),
+            Bar(2, 100m, 102m, 99m, 100m),
+            Bar(3, 100m, 112m, 90m, 98m), // Bearish: O=100, H=112 (hits 110), L=90 (hits 95), C=98
+            Bar(4, 96m, 97m, 95m, 96m));
+        var input = new BacktestInput(bars, "TEST", TimeFrame.D1, BacktestInput.CurrentDataVersion, DailyStart, DailyStart.AddDays(10), 0, 0);
+
+        var strategy = new ConditionBasedBacktestStrategy(
+            new[] { LongEntryAbove10() },
+            new BacktestRiskManagementSettings { StopLossPercent = 0.05m, TakeProfitPercent = 0.10m });
+
+        var config = MakeConfig(PricePathConflictMode.Conservative);
+
+        BacktestResult result = new BacktestEngine(new FakeIndicatorFactory()).Run(input, config, strategy);
+
+        BacktestTrade trade = Assert.Single(result.Trades);
+        Assert.Equal(95m, trade.ExitPrice);
+        Assert.Contains(result.Orders, o => o.Type == OrderType.Stop);
+        Assert.DoesNotContain(result.Orders, o => o.Type == OrderType.Limit);
+    }
+
+    [Fact]
+    public void PricePathConflictMode_Validation_EnforcesDefinedEnum()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => MakeConfig((PricePathConflictMode)999).Validate());
     }
 
     [Fact]

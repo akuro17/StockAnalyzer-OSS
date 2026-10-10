@@ -25,6 +25,8 @@
     <None Include="Assets\explain_calibration_fixture.onnx.metrics.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="Assets\*.onnx.calibration.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="Assets\*.onnx.explain.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Assets\*.quantization.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Assets\*.candles.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="Assets\ensemble_fixture_*.onnx.metrics.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="Assets\*.ensemble.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="Assets\feature_parity_vectors.json" CopyToOutputDirectory="PreserveNewest" />

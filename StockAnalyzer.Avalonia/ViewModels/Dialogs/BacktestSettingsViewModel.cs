@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using StockAnalyzer.Core.Models;
@@ -37,6 +38,9 @@ public partial class BacktestSettingsViewModel : ViewModelBase, ISettingsPageVie
     public string TitleKey => "Settings_Backtest";
     public string IconKey => "SettingsBacktestIcon";
 
+    public IReadOnlyList<TimeFrame> AvailableFrames { get; } = Enum.GetValues<TimeFrame>();
+    public IReadOnlyList<BacktestEndDateMode> EndDateModeOptions { get; } = Enum.GetValues<BacktestEndDateMode>();
+    public IReadOnlyList<BacktestStartDateMode> StartDateModeOptions { get; } = Enum.GetValues<BacktestStartDateMode>();
     public IReadOnlyList<PositionSizingModel> SizingModelOptions { get; } = Enum.GetValues<PositionSizingModel>();
     public IReadOnlyList<BacktestEquityColorMode> EquityColorModeOptions { get; } = Enum.GetValues<BacktestEquityColorMode>();
 
@@ -44,6 +48,23 @@ public partial class BacktestSettingsViewModel : ViewModelBase, ISettingsPageVie
     public decimal RatioPositiveMinimum => BacktestConfigurationBounds.PositiveRatioMinimum;
     public decimal RatioInclusiveMaximum => BacktestConfigurationBounds.InclusiveRatioMaximum;
     public decimal RatioBelowUnitMaximum => BacktestConfigurationBounds.BelowUnitRatioMaximum;
+
+    // Group A: target data and period.
+    [ObservableProperty] private TimeFrame _defaultTimeFrame = TimeFrame.D1;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsFixedEndDate))]
+    private BacktestEndDateMode _endDateMode = BacktestEndDateMode.Today;
+    [ObservableProperty] private DateTime? _fixedEndDateUtc;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsRelativeStartDate))]
+    [NotifyPropertyChangedFor(nameof(IsFixedStartDate))]
+    private BacktestStartDateMode _startDateMode = BacktestStartDateMode.RelativeYears;
+    [ObservableProperty] private int _startDateRelativeYears = 1;
+    [ObservableProperty] private DateTime? _fixedStartDateUtc;
+
+    public bool IsFixedEndDate => EndDateMode == BacktestEndDateMode.FixedDate;
+    public bool IsRelativeStartDate => StartDateMode == BacktestStartDateMode.RelativeYears;
+    public bool IsFixedStartDate => StartDateMode == BacktestStartDateMode.FixedDate;
 
     // Group B: capital and cost model.
     [ObservableProperty] private decimal _initialCapital;
@@ -92,6 +113,10 @@ public partial class BacktestSettingsViewModel : ViewModelBase, ISettingsPageVie
     private string ErrorOf(string field) => _errors.TryGetValue(field, out string? message) ? message : string.Empty;
 
     // Per-item reasons for the view (plain properties: bind reliably with compiled bindings).
+    public string DefaultTimeFrameError => ErrorOf(nameof(BacktestDefaultSettings.DefaultTimeFrame));
+    public string FixedEndDateError => ErrorOf(nameof(BacktestDefaultSettings.FixedEndDateUtc));
+    public string StartDateRelativeYearsError => ErrorOf(nameof(BacktestDefaultSettings.StartDateRelativeYears));
+    public string FixedStartDateError => ErrorOf(nameof(BacktestDefaultSettings.FixedStartDateUtc));
     public string InitialCapitalError => ErrorOf(nameof(BacktestDefaultSettings.InitialCapital));
     public string CommissionFlatError => ErrorOf(nameof(BacktestDefaultSettings.CommissionFlat));
     public string CommissionPerUnitError => ErrorOf(nameof(BacktestDefaultSettings.CommissionPerUnit));
@@ -194,6 +219,10 @@ public partial class BacktestSettingsViewModel : ViewModelBase, ISettingsPageVie
     private void Validate()
     {
         _errors = BacktestDefaultSettings.FindErrors(BuildRaw());
+        OnPropertyChanged(nameof(DefaultTimeFrameError));
+        OnPropertyChanged(nameof(FixedEndDateError));
+        OnPropertyChanged(nameof(StartDateRelativeYearsError));
+        OnPropertyChanged(nameof(FixedStartDateError));
         OnPropertyChanged(nameof(InitialCapitalError));
         OnPropertyChanged(nameof(CommissionFlatError));
         OnPropertyChanged(nameof(CommissionPerUnitError));
@@ -212,6 +241,12 @@ public partial class BacktestSettingsViewModel : ViewModelBase, ISettingsPageVie
     private BacktestDefaultSettings BuildRaw() => new()
     {
         SchemaVersion = BacktestDefaultSettings.CurrentSchemaVersion,
+        DefaultTimeFrame = DefaultTimeFrame,
+        EndDateMode = EndDateMode,
+        FixedEndDateUtc = FixedEndDateUtc,
+        StartDateMode = StartDateMode,
+        StartDateRelativeYears = StartDateRelativeYears,
+        FixedStartDateUtc = FixedStartDateUtc,
         InitialCapital = InitialCapital,
         CommissionFlat = CommissionFlat,
         CommissionPerUnit = CommissionPerUnit,
@@ -239,6 +274,12 @@ public partial class BacktestSettingsViewModel : ViewModelBase, ISettingsPageVie
         _isApplying = true;
         try
         {
+            DefaultTimeFrame = source.DefaultTimeFrame;
+            EndDateMode = source.EndDateMode;
+            FixedEndDateUtc = source.FixedEndDateUtc;
+            StartDateMode = source.StartDateMode;
+            StartDateRelativeYears = source.StartDateRelativeYears;
+            FixedStartDateUtc = source.FixedStartDateUtc;
             InitialCapital = source.InitialCapital;
             CommissionFlat = source.CommissionFlat;
             CommissionPerUnit = source.CommissionPerUnit;

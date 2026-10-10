@@ -41,10 +41,10 @@ public class BacktestSettingsViewTests
             AvaloniaHeadlessPlatform.ForceRenderTimerTick();
             Dispatcher.UIThread.RunJobs();
 
-            // 14 numeric items in groups B-D (incl. 3 annualization periods) minus none: 11 single + 3 periods.
-            Assert.Equal(15, view.GetVisualDescendants().OfType<NumericUpDown>().Count());
-            // The sizing-model selector plus the Group E equity color mode selector.
-            Assert.Equal(2, view.GetVisualDescendants().OfType<ComboBox>().Count());
+            // 15 numeric items in groups B-D (incl. 3 annualization periods) + 1 in Group A (StartDateRelativeYears): 16.
+            Assert.Equal(16, view.GetVisualDescendants().OfType<NumericUpDown>().Count());
+            // Sizing-model & Group E equity color mode selector + 3 Group A selectors (StartDateMode, EndDateMode, DefaultTimeFrame): 5.
+            Assert.Equal(5, view.GetVisualDescendants().OfType<ComboBox>().Count());
 
             TextBlock Error(string key) => view.GetVisualDescendants().OfType<TextBlock>()
                 .Single(t => t.GetValue(global::Avalonia.Automation.AutomationProperties.AutomationIdProperty) == $"BacktestSettings_Error_{key}");

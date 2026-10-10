@@ -237,7 +237,24 @@ internal static class RiskAdjustedMetricsCalculator
         int bootstrapIterations,
         CancellationToken cancellationToken = default)
     {
-        BootstrapMetricComputation computation = ComputeAnnualizedSortinoAutocorrelationAdjustedCore(
+        BootstrapMetricComputation computation = ComputeAnnualizedSortinoAutocorrelationAdjustedComputation(
+            sample,
+            mar,
+            annualPeriods,
+            bootstrapSeed,
+            bootstrapIterations,
+            cancellationToken);
+        return (computation.Point, computation.Interval);
+    }
+
+    public static BootstrapMetricComputation ComputeAnnualizedSortinoAutocorrelationAdjustedComputation(
+        EquitySample sample,
+        decimal mar,
+        int annualPeriods,
+        int bootstrapSeed,
+        int bootstrapIterations,
+        CancellationToken cancellationToken = default)
+        => ComputeAnnualizedSortinoAutocorrelationAdjustedCore(
             sample,
             mar,
             annualPeriods,
@@ -245,8 +262,6 @@ internal static class RiskAdjustedMetricsCalculator
             bootstrapIterations,
             null,
             cancellationToken);
-        return (computation.Point, computation.Interval);
-    }
 
     public static BootstrapMetricComputation ComputeQualifiedAnnualizedSortinoAutocorrelationAdjusted(
         EquitySample sample,

@@ -89,10 +89,9 @@ public sealed class BacktestReportGenerator : IBacktestReportGenerator, ICancell
         cancellationToken.ThrowIfCancellationRequested();
         MetricValue cagr = MetricCalculation.Run(
             MetricUnit.ReturnRatio,
-            () => sampling is null
-                ? BasicMetricsCalculator.ComputeCagr(sample.Equity, options, cancellationToken)
-                : BasicMetricsCalculator.ComputeQualifiedCagr(
-                    sample.Equity, options, sampling.Status == SamplingStatus.Verified, cancellationToken));
+            () => sampling?.Status == SamplingStatus.Rejected
+                ? MetricValue.NonValid(MetricStatus.NotApplicable, MetricUnit.ReturnRatio, MetricReason.SamplingRejected)
+                : BasicMetricsCalculator.ComputeCagr(sample.Equity, options, cancellationToken));
         cancellationToken.ThrowIfCancellationRequested();
         TradeStatistics tradeStats = TradeStatistics.Compute(trades, cancellationToken);
         MetricValue winRate = MetricCalculation.Run(
@@ -189,38 +188,26 @@ public sealed class BacktestReportGenerator : IBacktestReportGenerator, ICancell
         cancellationToken.ThrowIfCancellationRequested();
         MetricValue barSharpe = RiskAdjustedMetricsCalculator.ComputeBarSharpe(sample, rf, cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
-        MetricValue annualizedSharpe = sampling is null || sampling.Status == SamplingStatus.Verified
-            ? RiskAdjustedMetricsCalculator.ComputeAnnualizedSharpe(barSharpe, options.AnnualPeriods)
-            : ApplySamplingGate(barSharpe, sampling.Status);
+        MetricValue annualizedSharpe = sampling?.Status == SamplingStatus.Rejected
+            ? ApplySamplingGate(barSharpe, sampling.Status)
+            : RiskAdjustedMetricsCalculator.ComputeAnnualizedSharpe(barSharpe, options.AnnualPeriods);
         cancellationToken.ThrowIfCancellationRequested();
-        MetricValue annualizedSharpeAutocorrelationAdjusted =
-            sampling is null
-                ? RiskAdjustedMetricsCalculator.ComputeAnnualizedSharpeAutocorrelationAdjusted(sample, rf, options.AnnualPeriods, cancellationToken)
-                : RiskAdjustedMetricsCalculator.ComputeQualifiedAnnualizedSharpeAutocorrelationAdjusted(
-                    sample, rf, options.AnnualPeriods, sampling.Status, cancellationToken);
+        MetricValue annualizedSharpeAutocorrelationAdjusted = sampling?.Status == SamplingStatus.Rejected
+            ? RiskAdjustedMetricsCalculator.ComputeQualifiedAnnualizedSharpeAutocorrelationAdjusted(
+                sample, rf, options.AnnualPeriods, sampling.Status, cancellationToken)
+            : RiskAdjustedMetricsCalculator.ComputeAnnualizedSharpeAutocorrelationAdjusted(
+                sample, rf, options.AnnualPeriods, cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
         MetricValue barSortino = RiskAdjustedMetricsCalculator.ComputeBarSortino(sample, mar, cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
-        MetricValue annualizedSortino = sampling is null || sampling.Status == SamplingStatus.Verified
-            ? RiskAdjustedMetricsCalculator.ComputeAnnualizedSortino(barSortino, options.AnnualPeriods)
-            : ApplySamplingGate(barSortino, sampling.Status);
+        MetricValue annualizedSortino = sampling?.Status == SamplingStatus.Rejected
+            ? ApplySamplingGate(barSortino, sampling.Status)
+            : RiskAdjustedMetricsCalculator.ComputeAnnualizedSortino(barSortino, options.AnnualPeriods);
         cancellationToken.ThrowIfCancellationRequested();
         MetricValue annualizedSortinoAutocorrelationAdjusted;
         ConfidenceInterval? adjustedSortinoInterval;
         BootstrapDiagnostics bootstrapDiagnostics;
-        if (sampling is null)
-        {
-            (annualizedSortinoAutocorrelationAdjusted, adjustedSortinoInterval) =
-                RiskAdjustedMetricsCalculator.ComputeAnnualizedSortinoAutocorrelationAdjusted(
-                    sample,
-                    mar,
-                    options.AnnualPeriods,
-                    options.BootstrapSeed,
-                    options.BootstrapIterations,
-                    cancellationToken);
-            bootstrapDiagnostics = BootstrapDiagnostics.NotComputed(BootstrapDiagnostics.LegacyEntryPointReason);
-        }
-        else
+        if (sampling?.Status == SamplingStatus.Rejected)
         {
             BootstrapMetricComputation computation =
                 RiskAdjustedMetricsCalculator.ComputeQualifiedAnnualizedSortinoAutocorrelationAdjusted(
@@ -234,6 +221,22 @@ public sealed class BacktestReportGenerator : IBacktestReportGenerator, ICancell
             annualizedSortinoAutocorrelationAdjusted = computation.Point;
             adjustedSortinoInterval = computation.Interval;
             bootstrapDiagnostics = computation.Diagnostics;
+        }
+        else
+        {
+            BootstrapMetricComputation computation =
+                RiskAdjustedMetricsCalculator.ComputeAnnualizedSortinoAutocorrelationAdjustedComputation(
+                    sample,
+                    mar,
+                    options.AnnualPeriods,
+                    options.BootstrapSeed,
+                    options.BootstrapIterations,
+                    cancellationToken);
+            annualizedSortinoAutocorrelationAdjusted = computation.Point;
+            adjustedSortinoInterval = computation.Interval;
+            bootstrapDiagnostics = sampling is null
+                ? BootstrapDiagnostics.NotComputed(BootstrapDiagnostics.LegacyEntryPointReason)
+                : computation.Diagnostics;
         }
         cancellationToken.ThrowIfCancellationRequested();
 

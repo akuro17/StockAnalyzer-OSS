@@ -224,7 +224,7 @@ public sealed class BacktestRunPreparationService : IBacktestRunPreparationServi
         }
     }
 
-    private static (ImmutableArray<CandleData> Bars, int EvaluationStartIndex) BuildEvaluationWindow(
+    internal static (ImmutableArray<CandleData> Bars, int EvaluationStartIndex) BuildEvaluationWindow(
         ImmutableArray<CandleData> allBars,
         DateTime evaluationStartUtc,
         DateTime evaluationEndUtc)
@@ -234,7 +234,7 @@ public sealed class BacktestRunPreparationService : IBacktestRunPreparationServi
         return (trimmed, LowerBound(trimmed, evaluationStartUtc));
     }
 
-    private static int LowerBound(IReadOnlyList<CandleData> bars, DateTime threshold)
+    internal static int LowerBound(IReadOnlyList<CandleData> bars, DateTime threshold)
     {
         int lo = 0;
         int hi = bars.Count;
@@ -247,7 +247,7 @@ public sealed class BacktestRunPreparationService : IBacktestRunPreparationServi
         return lo;
     }
 
-    private static int UpperBound(IReadOnlyList<CandleData> bars, DateTime threshold)
+    internal static int UpperBound(IReadOnlyList<CandleData> bars, DateTime threshold)
     {
         int lo = 0;
         int hi = bars.Count;

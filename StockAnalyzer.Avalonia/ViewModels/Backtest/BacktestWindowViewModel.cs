@@ -249,6 +249,10 @@ public partial class BacktestWindowViewModel : ViewModelBase, IDisposable
         if (_defaultSettingsManager is not null)
         {
             _defaultSettings = (await _defaultSettingsManager.LoadAsync().ConfigureAwait(true)).Settings;
+            var (startUtc, endUtc, frame) = _defaultSettings.ResolveTargetDataAndPeriod();
+            Frame = frame;
+            EvaluationStartUtc = startUtc;
+            EvaluationEndUtc = endUtc;
             ApplyCapitalMarginAndBootstrap(BuildBuiltInConfigurationDto());
         }
 
@@ -546,15 +550,15 @@ public partial class BacktestWindowViewModel : ViewModelBase, IDisposable
 
     private BacktestConfigurationDto BuildBuiltInConfigurationDto()
     {
-        DateTime todayUtc = DateTime.UtcNow.Date;
+        var (startUtc, endUtc, frame) = _defaultSettings.ResolveTargetDataAndPeriod();
         return new BacktestConfigurationDto
         {
             SchemaVersion = BacktestConfigurationDto.ConditionTreeSchemaVersion,
             ExecutionModel = StockAnalyzer.Core.Models.Backtest.Engine.ExecutionModel.Legacy,
             Symbol = string.Empty,
-            Frame = TimeFrame.D1,
-            EvaluationStartUtc = todayUtc.AddYears(-1),
-            EvaluationEndUtc = todayUtc,
+            Frame = frame,
+            EvaluationStartUtc = startUtc,
+            EvaluationEndUtc = endUtc,
             InitialCapital = _defaultSettings.InitialCapital,
             CommissionFlat = _defaultSettings.CommissionFlat,
             CommissionPerUnit = _defaultSettings.CommissionPerUnit,

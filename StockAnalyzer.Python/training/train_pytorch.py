@@ -57,6 +57,7 @@ import fixed_scaler  # noqa: E402
 import metrics  # noqa: E402  (sibling module)
 import onnx_meta  # noqa: E402  (sibling module)
 import checkpoints  # noqa: E402
+import semi_supervised  # noqa: E402  (T19 pseudo-label training; inert unless --semi-supervised)
 
 # --- Defaults (named; no magic numbers) -------------------------------------
 
@@ -163,13 +164,18 @@ def _class_weights(y: np.ndarray) -> torch.Tensor:
     return torch.tensor(w, dtype=torch.float32)
 
 
-def _iterate_minibatches(x: torch.Tensor, y: torch.Tensor, batch: int, shuffle: bool, rng: np.random.Generator):
+def _iterate_minibatches(x: torch.Tensor, y: torch.Tensor, batch: int, shuffle: bool, rng: np.random.Generator,
+                         weights: torch.Tensor | None = None):
+    """Shuffled minibatches; with *weights* each batch also carries its per-sample weights (T19), otherwise the pair as before."""
     order = np.arange(x.shape[0])
     if shuffle:
         rng.shuffle(order)
     for start in range(0, len(order), batch):
         idx = order[start:start + batch]
-        yield x[idx], y[idx]
+        if weights is None:
+            yield x[idx], y[idx]
+        else:
+            yield x[idx], y[idx], weights[idx]
 
 
 def validate_checkpoint(path):
@@ -238,6 +244,8 @@ def train_model(args: argparse.Namespace) -> Tuple[nn.Module, int, dict, dict]:
     rng = np.random.default_rng(args.seed)
 
     symbols, dates = ds.load_parquet_dir(args.data_dir, return_dates=True)
+    if args.semi_supervised:  # T19: the unlabeled symbols are not part of the labeled set (fit, validation, scaler, metrics)
+        symbols, dates = semi_supervised.exclude_unlabeled(symbols, dates, args)
     if args.max_symbols is not None:
         symbols = dict(list(symbols.items())[: args.max_symbols])
     dates = {k: dates[k] for k in symbols}
@@ -291,6 +299,15 @@ def train_model(args: argparse.Namespace) -> Tuple[nn.Module, int, dict, dict]:
     args._checkpoint_session = session
     x_tr_np, x_va_np, scaler = session.preprocess(
         x_tr_np, x_va_np, feature_spec=feature_spec, lags=lags)
+    pseudo = getattr(args, "_pseudo", None)
+    sample_weight = None
+    if pseudo is not None:  # T19 student: pseudo-labeled windows join the FIT side only, after the scaler was fitted on labeled windows
+        labeled_count = x_tr_np.shape[0]
+        x_tr_np = np.concatenate([x_tr_np, semi_supervised.to_features(pseudo["x"], scaler).astype(x_tr_np.dtype, copy=False)])
+        y_tr_np = np.concatenate([y_tr_np, pseudo["y"].astype(y_tr_np.dtype, copy=False)])
+        sample_weight = torch.from_numpy(np.concatenate([
+            np.ones(labeled_count, dtype=np.float32),
+            np.full(pseudo["x"].shape[0], pseudo["weight"], dtype=np.float32)]))
     is_regression = args.target_type == "regression"
     out_dim = 1 if is_regression else NUM_CLASSES
     x_tr = torch.from_numpy(x_tr_np)
@@ -319,7 +336,9 @@ def train_model(args: argparse.Namespace) -> Tuple[nn.Module, int, dict, dict]:
     checkpoints.freeze_modules(model, session.context["freeze_paths"])
     optimizer = torch.optim.AdamW((p for p in model.parameters() if p.requires_grad),
                                   lr=args.lr, weight_decay=args.weight_decay)
-    loss_fn = nn.MSELoss() if is_regression else nn.CrossEntropyLoss(weight=_class_weights(y_tr_np))
+    class_weights = None if is_regression else _class_weights(y_tr_np)
+    loss_fn = nn.MSELoss() if is_regression else nn.CrossEntropyLoss(weight=class_weights)
+    loss_each = nn.CrossEntropyLoss(weight=class_weights, reduction="none") if sample_weight is not None else None
 
     best_val = float("inf")
     best_state = copy.deepcopy(model.state_dict())
@@ -375,9 +394,13 @@ def train_model(args: argparse.Namespace) -> Tuple[nn.Module, int, dict, dict]:
         t0 = time.time()
         run_loss = 0.0
         n_seen = 0
-        for xb, yb in _iterate_minibatches(x_tr, y_tr, args.batch, shuffle=True, rng=rng):
+        for batch_tensors in _iterate_minibatches(x_tr, y_tr, args.batch, shuffle=True, rng=rng, weights=sample_weight):
+            xb, yb = batch_tensors[0], batch_tensors[1]
             optimizer.zero_grad()
-            loss = loss_fn(model(xb), yb)
+            if sample_weight is None:
+                loss = loss_fn(model(xb), yb)
+            else:
+                loss = semi_supervised.weighted_cross_entropy(loss_each(model(xb), yb), class_weights, yb, batch_tensors[2])
             loss.backward()
             optimizer.step()
             run_loss += loss.item() * xb.shape[0]
@@ -434,6 +457,9 @@ def train_model(args: argparse.Namespace) -> Tuple[nn.Module, int, dict, dict]:
             y_va_np, val_probs.argmax(axis=1), probs=val_probs
         )
         print(metrics.format_report(report))
+        if getattr(args, "_collect_validation", False):  # T19 diagnostics (I2): a read-only hand-over; nothing above depends on it
+            n_pseudo = 0 if pseudo is None else pseudo["x"].shape[0]
+            args._validation_outputs = dict(probs=val_probs, y=y_va_np.copy(), y_labeled_train=y_tr_np[: y_tr_np.shape[0] - n_pseudo].copy())
     return model, channels, report, date_ranges, scaler
 
 
@@ -572,6 +598,7 @@ def _parse_args(argv) -> argparse.Namespace:
     p.add_argument("--ssl-mask-rate", type=float, default=None,
                    help="Share of each window's bars masked during pretraining, strictly between 0 and 1 "
                         "(default: ssl_pretrain.DEFAULT_MASK_RATE).")
+    semi_supervised.add_arguments(p)
     p.add_argument("--gap", type=int, default=None,
                    help="Purge gap in bars between each walk-forward fold's train/val blocks "
                         "(default: None -> dataset.resolve_purge_gap picks window + horizon - 1).")
@@ -611,6 +638,10 @@ def _parse_args(argv) -> argparse.Namespace:
         raise SystemExit("--ssl-epochs and --ssl-mask-rate require --pretrain")
     if args.epochs <= 0 or args.patience <= 0 or args.batch <= 0:
         p.error("epochs, patience and batch must be positive")
+    try:
+        semi_supervised.validate_and_default(args)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
     checkpoints.validate_controls(args.initialization_mode, "pytorch", args.init_from,
                                   args.parent_model_id, args.parent_model_hash,
                                   json.loads(args.freeze_paths) if args.initialization_mode != "resume" else [])
@@ -654,7 +685,10 @@ def _parse_args(argv) -> argparse.Namespace:
 
 def main(argv) -> int:
     args = _parse_args(argv)
-    model, channels, report, date_ranges, scaler = train_model(args)
+    if args.semi_supervised and not args.preflight:
+        model, channels, report, date_ranges, scaler = semi_supervised.run(args, train_model)
+    else:
+        model, channels, report, date_ranges, scaler = train_model(args)
     if args.preflight:
         return 0
     spec = json.loads(args.feature_spec) if args.feature_spec else None
@@ -677,6 +711,8 @@ def main(argv) -> int:
     if scaler is not None:
         fixed_scaler.write_sidecar(args.out, scaler, contract)
     print(f"wrote {metrics.write_report(report, args.out)}")
+    if args.semi_supervised:
+        print(f"wrote {semi_supervised.write_sidecar(args.out, args._pseudo_summary)}")
     if not args.no_verify:
         verify_onnx(args.out, model, channels, args.window, target_type=args.target_type)
         args._checkpoint_session.exported(args.out)

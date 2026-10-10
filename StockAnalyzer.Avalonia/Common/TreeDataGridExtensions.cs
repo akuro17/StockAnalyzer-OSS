@@ -664,7 +664,7 @@ public static class TreeDataGridExtensions
         public object? Convert(object? value, Type targetType, object? parameter, System.Globalization.CultureInfo culture)
         {
             var (_, brush) = FormatMetricValue(value, _def);
-            return brush;
+            return brush ?? global::Avalonia.AvaloniaProperty.UnsetValue;
         }
         public object? ConvertBack(object? value, Type targetType, object? parameter, System.Globalization.CultureInfo culture) => throw new NotSupportedException();
     }
@@ -698,7 +698,12 @@ public static class TreeDataGridExtensions
                         FallbackValue = "-"
                     });
                 tb.Bind(global::Avalonia.Controls.TextBlock.ForegroundProperty,
-                    new global::Avalonia.Data.Binding(bindingPath) { Converter = brushConverter });
+                    new global::Avalonia.Data.Binding(bindingPath)
+                    {
+                        Converter = brushConverter,
+                        TargetNullValue = global::Avalonia.AvaloniaProperty.UnsetValue,
+                        FallbackValue = global::Avalonia.AvaloniaProperty.UnsetValue
+                    });
 
                 var tip = CreateTooltipContentTextBlock();
                 tip.Bind(global::Avalonia.Controls.TextBlock.TextProperty,
@@ -706,8 +711,7 @@ public static class TreeDataGridExtensions
                     {
                         Converter = new global::Avalonia.Data.Converters.FuncValueConverter<object?, string>(v =>
                         {
-                            var (formatted, _) = FormatMetricValue(v, def);
-                            return FormatTooltipValue(header, formatted);
+                            return FormatMetricTooltip(header, v, def);
                         }),
                         TargetNullValue = FormatTooltipValue(header, "-"),
                         FallbackValue = FormatTooltipValue(header, "-")
@@ -729,13 +733,34 @@ public static class TreeDataGridExtensions
 
     private static (string Text, IBrush? Brush) FormatMetricValue(object? rawVal, BacktestMetricDefinition? def)
     {
-        decimal? val = ExtractMetricDecimal(rawVal);
-        if (!val.HasValue || def == null)
+        if (rawVal == null || def == null)
         {
             return ("-", null);
         }
 
-        decimal d = val.Value;
+        if (rawVal is StockAnalyzer.Core.Services.Backtest.Reporting.MetricValue mv)
+        {
+            if (mv.Status != StockAnalyzer.Core.Services.Backtest.Reporting.MetricStatus.Valid || !mv.Value.HasValue)
+            {
+                var loc = (global::Avalonia.Application.Current as StockAnalyzer.Avalonia.App)?.Services?.GetService<StockAnalyzer.Core.Interfaces.ILocalizationService>();
+                string notAvailable = loc?.GetString("Backtest_Metric_NotAvailable") ?? "N/A";
+                return (notAvailable, null);
+            }
+
+            return FormatValidMetricDecimal(mv.Value.Value, def);
+        }
+
+        decimal? val = ExtractMetricDecimal(rawVal);
+        if (!val.HasValue)
+        {
+            return ("-", null);
+        }
+
+        return FormatValidMetricDecimal(val.Value, def);
+    }
+
+    private static (string Text, IBrush? Brush) FormatValidMetricDecimal(decimal d, BacktestMetricDefinition def)
+    {
         string text = def.Format switch
         {
             BacktestMetricValueFormat.Percentage => (d >= 0 ? "+" : "") + (d * 100m).ToString("F2", System.Globalization.CultureInfo.InvariantCulture) + "%",
@@ -768,6 +793,39 @@ public static class TreeDataGridExtensions
         return (text, brush);
     }
 
+    private static string FormatMetricTooltip(string header, object? rawVal, BacktestMetricDefinition? def)
+    {
+        if (rawVal == null || def == null)
+        {
+            return FormatTooltipValue(header, "-");
+        }
+
+        if (rawVal is StockAnalyzer.Core.Services.Backtest.Reporting.MetricValue mv)
+        {
+            if (mv.Status == StockAnalyzer.Core.Services.Backtest.Reporting.MetricStatus.Valid && mv.Value.HasValue)
+            {
+                var (formatted, _) = FormatValidMetricDecimal(mv.Value.Value, def);
+                return FormatTooltipValue(header, formatted);
+            }
+
+            var loc = (global::Avalonia.Application.Current as StockAnalyzer.Avalonia.App)?.Services?.GetService<StockAnalyzer.Core.Interfaces.ILocalizationService>();
+            string notAvailable = loc?.GetString("Backtest_Metric_NotAvailable") ?? "N/A";
+            string statusKey = "Backtest_Metric_Status_" + mv.Status;
+            string statusName = loc?.GetString(statusKey) ?? mv.Status.ToString();
+            string reasonDetail = string.Empty;
+            if (mv.Reason != StockAnalyzer.Core.Services.Backtest.Reporting.MetricReason.None)
+            {
+                string reasonKey = "Backtest_Metric_Reason_" + mv.Reason;
+                string reasonName = loc?.GetString(reasonKey) ?? mv.Reason.ToString();
+                reasonDetail = $" ({reasonName})";
+            }
+            return $"{header}: {notAvailable}\n{statusName}{reasonDetail}";
+        }
+
+        var (fText, _) = FormatMetricValue(rawVal, def);
+        return FormatTooltipValue(header, fText);
+    }
+
     private static decimal? ExtractMetricDecimal(object? val)
     {
         if (val == null) return null;
@@ -780,6 +838,8 @@ public static class TreeDataGridExtensions
         {
             if (mv.Status == StockAnalyzer.Core.Services.Backtest.Reporting.MetricStatus.Valid)
                 return mv.Value;
+            if (mv.Status == StockAnalyzer.Core.Services.Backtest.Reporting.MetricStatus.PositiveInfinity)
+                return decimal.MaxValue;
             return null;
         }
         if (decimal.TryParse(val.ToString(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var parsed))
@@ -789,10 +849,16 @@ public static class TreeDataGridExtensions
 
     private static int CompareMetricValues(object? valA, object? valB, bool isAscending)
     {
+        bool aIsNull = valA == null;
+        bool bIsNull = valB == null;
+        if (aIsNull && bIsNull) return 0;
+        if (aIsNull) return 1; // null is always sorted to the bottom
+        if (bIsNull) return -1;
+
         decimal? dA = ExtractMetricDecimal(valA);
         decimal? dB = ExtractMetricDecimal(valB);
         if (!dA.HasValue && !dB.HasValue) return 0;
-        if (!dA.HasValue) return 1; // null is always sorted to the bottom
+        if (!dA.HasValue) return 1; // non-valid sorted below valid numbers, but above null
         if (!dB.HasValue) return -1;
         return isAscending ? dA.Value.CompareTo(dB.Value) : dB.Value.CompareTo(dA.Value);
     }
@@ -1124,7 +1190,7 @@ public static class TreeDataGridExtensions
                 if (iVal < 0) return errorBrush;
                 return neutralBrush;
             }
-            return null;
+            return global::Avalonia.AvaloniaProperty.UnsetValue;
         }
 
         public object? ConvertBack(object? value, Type targetType, object? parameter, System.Globalization.CultureInfo culture)

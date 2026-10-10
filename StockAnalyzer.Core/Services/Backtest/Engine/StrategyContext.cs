@@ -50,4 +50,9 @@ public readonly struct StrategyContext
     /// construction site (<c>BacktestEngine</c>'s bar loop) is the only place this is ever set.
     /// </summary>
     public decimal? EntryPrice { get; init; }
+
+    /// <summary>
+    /// Intrabar path conflict mode for resolving Stop-Loss vs Take-Profit on same-bar double breaches.
+    /// </summary>
+    public PricePathConflictMode PricePathConflictMode { get; init; }
 }

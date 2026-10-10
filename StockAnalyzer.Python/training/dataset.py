@@ -442,6 +442,79 @@ def _parse_date_bound(value: str | datetime.date | None) -> datetime.date | None
     return datetime.date.fromisoformat(str(value).strip())
 
 
+# --- Synthetic data marks (T20 writes them; the loaders below refuse them unless told otherwise) ----------------
+
+
+SYNTHETIC_ORIGIN: str = "synthetic"
+SYNTHETIC_ORIGIN_KEY: str = "sa.data_origin"          # parquet key-value metadata of every synthetic file
+SYNTHETIC_MANIFEST: str = "synthetic_manifest.json"   # folder-level mark (``data_origin: synthetic``)
+SA_METADATA_PREFIX: str = "sa."                       # parquet key-value metadata keys that survive a row-filtering rewrite
+
+
+def _parquet_metadata_reader():
+    """``pl.read_parquet_metadata`` or a ``ValueError``: without it a synthetic mark cannot be verified, so the caller must not guess (DF14 B)."""
+    reader = getattr(pl, "read_parquet_metadata", None)
+    if reader is None:
+        raise ValueError(f"cannot verify the synthetic mark: polars {pl.__version__} has no read_parquet_metadata; "
+                         "install the polars version declared in requirements.txt")
+    return reader
+
+
+def is_synthetic_parquet(path: Path | str) -> bool:
+    """True when a parquet file carries ``sa.data_origin=synthetic``.
+
+    A readable file without the mark is not synthetic; a file whose metadata cannot be read is "not marked" (the data read of the same file
+    fails on its own). When polars lacks the metadata API the mark cannot be verified at all and ``ValueError`` is raised (DF14 B / WR4 B)."""
+    reader = _parquet_metadata_reader()
+    try:
+        return reader(Path(path)).get(SYNTHETIC_ORIGIN_KEY) == SYNTHETIC_ORIGIN
+    except Exception:
+        return False
+
+
+def is_synthetic_dir(path: Path | str) -> bool:
+    """True when the folder holds a synthetic manifest (``data_origin == synthetic``).
+
+    No manifest -> False (an observed folder). A manifest that EXISTS but cannot be read, is not a JSON object or has no string
+    ``data_origin`` cannot be classified: ``ValueError`` naming the file (DF14 B / WR4 B). A readable manifest of another origin -> False."""
+    manifest = Path(path) / SYNTHETIC_MANIFEST
+    if not manifest.is_file():
+        return False
+    try:
+        origin = json.loads(manifest.read_text(encoding="utf-8")).get("data_origin")
+    except (OSError, ValueError, AttributeError) as exc:
+        raise ValueError(f"{manifest}: cannot verify the synthetic mark ({exc.__class__.__name__}); the manifest exists but is unreadable "
+                         "or not a JSON object") from exc
+    if not isinstance(origin, str):
+        raise ValueError(f"{manifest}: cannot verify the synthetic mark (data_origin is missing or not a string)")
+    return origin == SYNTHETIC_ORIGIN
+
+
+def _synthetic_refusal(where: Path | str, how: str) -> ValueError:
+    return ValueError(f"{where}: synthetic data ({how}); observed-data pipelines refuse it. "
+                      f"Pass allow_synthetic=True (or the tool's explicit --allow-synthetic) only for a deliberate use")
+
+
+def _refuse_synthetic_dir(directory: Path, allow_synthetic: bool) -> None:
+    if not allow_synthetic and is_synthetic_dir(directory):
+        raise _synthetic_refusal(directory, f"{SYNTHETIC_MANIFEST}")
+
+
+def _refuse_synthetic_file(path: Path, allow_synthetic: bool) -> None:
+    if not allow_synthetic and is_synthetic_parquet(path):
+        raise _synthetic_refusal(path, f"{SYNTHETIC_ORIGIN_KEY}={SYNTHETIC_ORIGIN}")
+
+
+def _sa_file_metadata(path: Path) -> dict | None:
+    """The ``sa.*`` key-value metadata of *path* (so a row-filtering rewrite keeps a synthetic mark), or ``None`` when there is none."""
+    reader = _parquet_metadata_reader()  # no API -> a mark could be lost silently on a rewrite: refuse (DF14 B)
+    try:
+        found = {k: v for k, v in reader(path).items() if k.startswith(SA_METADATA_PREFIX)}
+    except Exception:
+        return None
+    return found or None
+
+
 # --- Parquet loading --------------------------------------------------------
 
 
@@ -500,6 +573,7 @@ def load_parquet_dir(
     symbols: Iterable[str] | None = None,
     start: str | datetime.date | None = None,
     end: str | datetime.date | None = None,
+    allow_synthetic: bool = False,
 ):
     """Load every ``*.parquet`` under *data_dir* into ``{symbol: ndarray(rows, 5)}``.
 
@@ -525,10 +599,14 @@ def load_parquet_dir(
     * *start* / *end* -- inclusive calendar bounds (``date`` / ``YYYY-MM-DD``)
       applied to the ``date`` column before any window is built; a file with no
       ``date`` column raises ``ValueError`` when either bound is given.
+    * *allow_synthetic* -- a folder with a synthetic manifest, or a file marked
+      ``sa.data_origin=synthetic``, raises ``ValueError`` unless this is true (default false), so
+      generated data cannot enter an observed-data pipeline by accident.
     """
     directory = Path(data_dir)
     if not directory.is_dir():
         raise FileNotFoundError(f"Data directory not found: {directory}")
+    _refuse_synthetic_dir(directory, allow_synthetic)
 
     symbol_filter: set[str] | None = None
     if symbols is not None:
@@ -546,6 +624,7 @@ def load_parquet_dir(
     for path in sorted(directory.glob("*.parquet")):
         if symbol_filter is not None and path.stem.lower() not in symbol_filter:
             continue
+        _refuse_synthetic_file(path, allow_synthetic)
         frame = pl.read_parquet(path).sort("date")
         missing = [c for c in OHLCV_COLUMNS if c not in frame.columns]
         if missing:
@@ -593,6 +672,7 @@ def materialize_filtered_dir(
     symbols: Iterable[str] | None = None,
     start: str | datetime.date | None = None,
     end: str | datetime.date | None = None,
+    allow_synthetic: bool = False,
 ) -> Path:
     """Write the *symbols* / calendar subset of *src_dir*'s parquet files into *dst_dir*.
 
@@ -602,11 +682,13 @@ def materialize_filtered_dir(
     ``.meta``-style columns -- is preserved; a calendar bound triggers a row filter
     on the ``date`` column and rewrites the file. *dst_dir* is created if absent and
     is returned. The empty-symbols guard and the ``date``-column requirement match
-    :func:`load_parquet_dir`.
+    :func:`load_parquet_dir`. Synthetic sources are refused unless *allow_synthetic* (as in
+    :func:`load_parquet_dir`); when allowed, a rewritten file keeps its ``sa.*`` metadata.
     """
     source = Path(src_dir)
     if not source.is_dir():
         raise FileNotFoundError(f"Data directory not found: {source}")
+    _refuse_synthetic_dir(source, allow_synthetic)
     destination = Path(dst_dir)
     destination.mkdir(parents=True, exist_ok=True)
 
@@ -625,6 +707,7 @@ def materialize_filtered_dir(
     for path in sorted(source.glob("*.parquet")):
         if symbol_filter is not None and path.stem.lower() not in symbol_filter:
             continue
+        _refuse_synthetic_file(path, allow_synthetic)
         target = destination / path.name
         if not has_bound:
             shutil.copy2(path, target)
@@ -640,7 +723,7 @@ def materialize_filtered_dir(
         if frame.height == 0:
             continue
         tmp = target.with_name(target.name + ".tmp")
-        frame.write_parquet(tmp)
+        frame.write_parquet(tmp, metadata=_sa_file_metadata(path))
         tmp.replace(target)
     return destination
 
@@ -1394,7 +1477,7 @@ def oos_split(
 
 
 def materialize_main_dir(src_dir: Path | str, dst_dir: Path | str, *, oos_tail_days: int,
-                         common_end: datetime.date | None = None) -> Path:
+                         common_end: datetime.date | None = None, allow_synthetic: bool = False) -> Path:
     """Write only the "main" (non-out-of-sample) rows of every symbol in *src_dir*
     into *dst_dir*, using the same supplied common boundary :func:`oos_split` uses --
     both call :func:`resolve_oos_cutoff`, so this Polars row filter and that NumPy
@@ -1406,15 +1489,18 @@ def materialize_main_dir(src_dir: Path | str, dst_dir: Path | str, *, oos_tail_d
     first place. ``oos_tail_days <= 0`` copies every file through unchanged only
     when ``common_end`` is also omitted; otherwise later rows are truncated.
     A file with no ``date`` column raises ``ValueError`` (the same
-    requirement :func:`oos_split` has for locating the boundary).
+    requirement :func:`oos_split` has for locating the boundary). Synthetic sources are refused
+    unless *allow_synthetic*; when allowed, a rewritten file keeps its ``sa.*`` metadata.
     """
     source = Path(src_dir)
     if not source.is_dir():
         raise FileNotFoundError(f"Data directory not found: {source}")
+    _refuse_synthetic_dir(source, allow_synthetic)
     destination = Path(dst_dir)
     destination.mkdir(parents=True, exist_ok=True)
 
     for path in sorted(source.glob("*.parquet")):
+        _refuse_synthetic_file(path, allow_synthetic)
         target = destination / path.name
         if oos_tail_days <= 0 and common_end is None:
             shutil.copy2(path, target)
@@ -1432,7 +1518,7 @@ def materialize_main_dir(src_dir: Path | str, dst_dir: Path | str, *, oos_tail_d
         if frame.height == 0:
             continue
         tmp = target.with_name(target.name + ".tmp")
-        frame.write_parquet(tmp)
+        frame.write_parquet(tmp, metadata=_sa_file_metadata(path))
         tmp.replace(target)
     return destination
 
@@ -1475,6 +1561,10 @@ def _last_fold(
         return None
     train_idx, val_idx = folds[-1]
     return x, y, anchor_rows, train_idx, val_idx
+
+
+# Public name for offline tools that must identify single windows of the legacy last-fold split (counterfactual.py).
+last_fold = _last_fold
 
 
 def _feature_start_function(feature_mode: str, feature_spec: dict | None,
@@ -3227,7 +3317,68 @@ def _run_selfcheck() -> None:
     meta_selected = independent_fold_data(cal_symbols, cal_dates, inner=True, calibration=True, calibration_out=meta_out, **cal_args)
     for sym, (_x, _y, _a, fit_idx, val_idx) in meta_selected.items():
         assert not set(meta_out[sym].tolist()) & (set(fit_idx.tolist()) | set(val_idx.tolist())) and len(meta_out[sym])
-    print("dataset.py selfcheck: OK (36 groups passed)")
+    # (t) synthetic marks (R4 / S01 B, S02 A, S03 A): marked data is refused by default, an unmarked folder behaves as before
+    with tempfile.TemporaryDirectory(prefix="sa_ds_synth_") as _syn_name:
+        _syn_root = Path(_syn_name)
+        _days = [datetime.date(2021, 1, 4) + datetime.timedelta(days=i) for i in range(10)]
+        _frame = pl.DataFrame({"date": _days, "open": [10.0] * 10, "high": [11.0] * 10, "low": [9.0] * 10, "close": [10.5] * 10,
+                               "volume": [100] * 10})
+        _mixed = _syn_root / "mixed"
+        _mixed.mkdir()
+        _frame.write_parquet(_mixed / "REAL.parquet")
+        _frame.write_parquet(_mixed / "SYN_1.parquet", metadata={SYNTHETIC_ORIGIN_KEY: SYNTHETIC_ORIGIN, "sa.synthetic_run_id": "r"})
+        assert is_synthetic_parquet(_mixed / "SYN_1.parquet") and not is_synthetic_parquet(_mixed / "REAL.parquet")
+        assert not is_synthetic_parquet(_syn_root / "missing.parquet") and not is_synthetic_dir(_mixed) and not is_synthetic_dir(_syn_root / "x")
+
+        def _refused(call) -> str:
+            try:
+                call()
+            except ValueError as exc:
+                return str(exc)
+            raise AssertionError("a synthetic source must be refused")
+
+        assert "SYN_1.parquet" in _refused(lambda: load_parquet_dir(_mixed))                                # a marked file, no manifest (S02 A)
+        assert set(load_parquet_dir(_mixed, symbols=["REAL"])) == {"REAL"}                                     # only loaded files are inspected
+        assert set(load_parquet_dir(_mixed, allow_synthetic=True)) == {"REAL", "SYN_1"}
+        assert "synthetic data" in _refused(lambda: materialize_filtered_dir(_mixed, _syn_root / "m1"))
+        assert "synthetic data" in _refused(lambda: materialize_main_dir(_mixed, _syn_root / "m2", oos_tail_days=3))
+        materialize_filtered_dir(_mixed, _syn_root / "m3", symbols=["REAL"])                                  # the unmarked file passes
+        assert not is_synthetic_parquet(_syn_root / "m3" / "REAL.parquet")
+        materialize_filtered_dir(_mixed, _syn_root / "m4", symbols=["SYN_1"], allow_synthetic=True)           # verbatim copy keeps the mark
+        assert is_synthetic_parquet(_syn_root / "m4" / "SYN_1.parquet")
+        materialize_filtered_dir(_mixed, _syn_root / "m5", symbols=["SYN_1"], start="2021-01-06", allow_synthetic=True)
+        assert is_synthetic_parquet(_syn_root / "m5" / "SYN_1.parquet") and load_parquet_dir(_syn_root / "m5", allow_synthetic=True)["SYN_1"].shape[0] == 8
+        materialize_main_dir(_mixed, _syn_root / "m6", oos_tail_days=3, allow_synthetic=True)                 # a row-filtering rewrite keeps the mark too
+        assert is_synthetic_parquet(_syn_root / "m6" / "SYN_1.parquet") and not is_synthetic_parquet(_syn_root / "m6" / "REAL.parquet")
+        _manifest_only = _syn_root / "manifest_only"
+        _manifest_only.mkdir()
+        _frame.write_parquet(_manifest_only / "AAA.parquet")
+        (_manifest_only / SYNTHETIC_MANIFEST).write_text(json.dumps({"data_origin": SYNTHETIC_ORIGIN}), encoding="utf-8")
+        assert is_synthetic_dir(_manifest_only) and "synthetic_manifest.json" in _refused(lambda: load_parquet_dir(_manifest_only))
+        assert set(load_parquet_dir(_manifest_only, allow_synthetic=True)) == {"AAA"}
+        # H2 / DF14 B: a manifest that EXISTS but cannot be classified is refused (fail closed), naming the file; allow_synthetic bypasses
+        for _bad_manifest in ("not json", json.dumps(["data_origin"]), json.dumps({}), json.dumps({"data_origin": 5}), json.dumps({"data_origin": None})):
+            (_manifest_only / SYNTHETIC_MANIFEST).write_text(_bad_manifest, encoding="utf-8")
+            assert "synthetic_manifest.json" in _refused(lambda: is_synthetic_dir(_manifest_only)), _bad_manifest
+            assert "cannot verify" in _refused(lambda: load_parquet_dir(_manifest_only)), _bad_manifest
+            assert "cannot verify" in _refused(lambda: materialize_filtered_dir(_manifest_only, _syn_root / "m7"))
+            assert set(load_parquet_dir(_manifest_only, allow_synthetic=True)) == {"AAA"}                     # the explicit opt-in is unchanged
+        (_manifest_only / SYNTHETIC_MANIFEST).write_bytes(b"\xff\xfe\x00bad")                                 # not even UTF-8
+        assert "cannot verify" in _refused(lambda: load_parquet_dir(_manifest_only))
+        (_manifest_only / SYNTHETIC_MANIFEST).write_text(json.dumps({"data_origin": "observed"}), encoding="utf-8")
+        assert not is_synthetic_dir(_manifest_only) and set(load_parquet_dir(_manifest_only)) == {"AAA"}     # readable, another origin: loads as before
+        (_manifest_only / SYNTHETIC_MANIFEST).unlink()
+        assert not is_synthetic_dir(_manifest_only) and set(load_parquet_dir(_manifest_only)) == {"AAA"}     # no manifest: an observed folder
+        # no polars metadata API: the mark cannot be verified -> refuse, except under allow_synthetic (which never asks); a readable unmarked file loads
+        from unittest import mock
+        with mock.patch.object(pl, "read_parquet_metadata", None):
+            assert "read_parquet_metadata" in _refused(lambda: is_synthetic_parquet(_mixed / "REAL.parquet"))
+            assert "cannot verify" in _refused(lambda: load_parquet_dir(_mixed, symbols=["REAL"]))
+            assert set(load_parquet_dir(_mixed, symbols=["REAL"], allow_synthetic=True)) == {"REAL"}
+            assert "read_parquet_metadata" in _refused(lambda: materialize_filtered_dir(_mixed, _syn_root / "m8", symbols=["REAL"], start="2021-01-06",
+                                                                                         allow_synthetic=True))
+        assert not is_synthetic_parquet(_mixed / "REAL.parquet") and set(load_parquet_dir(_mixed, symbols=["REAL"])) == {"REAL"}
+    print("dataset.py selfcheck: OK (37 groups passed)")
 
 
 def _run_build(args: argparse.Namespace) -> None:

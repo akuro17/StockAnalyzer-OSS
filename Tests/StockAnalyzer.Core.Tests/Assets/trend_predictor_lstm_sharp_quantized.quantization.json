@@ -1,0 +1,351 @@
+{
+  "candles_file": "trend_predictor_lstm_sharp.candles.json",
+  "combinations_tried": [
+    {
+      "argmax_agreement": 0.48,
+      "argmax_agreement_first_csharp_windows": 0.425,
+      "classes_at_share": 2,
+      "criteria_met": false,
+      "head_scale": 4.0,
+      "input_scale": 2.0,
+      "max_prob_delta": 0.0700787603855133,
+      "median_max_prob": 0.3601790517568588,
+      "top_class_counts": [
+        77,
+        31,
+        92
+      ],
+      "windows": 200
+    },
+    {
+      "argmax_agreement": 0.48,
+      "argmax_agreement_first_csharp_windows": 0.425,
+      "classes_at_share": 2,
+      "criteria_met": false,
+      "head_scale": 8.0,
+      "input_scale": 2.0,
+      "max_prob_delta": 0.14421164989471436,
+      "median_max_prob": 0.38692985475063324,
+      "top_class_counts": [
+        77,
+        31,
+        92
+      ],
+      "windows": 200
+    },
+    {
+      "argmax_agreement": 0.48,
+      "argmax_agreement_first_csharp_windows": 0.425,
+      "classes_at_share": 2,
+      "criteria_met": false,
+      "head_scale": 16.0,
+      "input_scale": 2.0,
+      "max_prob_delta": 0.2698359787464142,
+      "median_max_prob": 0.4376440793275833,
+      "top_class_counts": [
+        77,
+        31,
+        92
+      ],
+      "windows": 200
+    },
+    {
+      "argmax_agreement": 0.48,
+      "argmax_agreement_first_csharp_windows": 0.425,
+      "classes_at_share": 2,
+      "criteria_met": false,
+      "head_scale": 24.0,
+      "input_scale": 2.0,
+      "max_prob_delta": 0.3328908085823059,
+      "median_max_prob": 0.4820680618286133,
+      "top_class_counts": [
+        77,
+        31,
+        92
+      ],
+      "windows": 200
+    },
+    {
+      "argmax_agreement": 0.705,
+      "argmax_agreement_first_csharp_windows": 0.775,
+      "classes_at_share": 2,
+      "criteria_met": false,
+      "head_scale": 4.0,
+      "input_scale": 4.0,
+      "max_prob_delta": 0.1260468065738678,
+      "median_max_prob": 0.3740345984697342,
+      "top_class_counts": [
+        83,
+        27,
+        90
+      ],
+      "windows": 200
+    },
+    {
+      "argmax_agreement": 0.705,
+      "argmax_agreement_first_csharp_windows": 0.775,
+      "classes_at_share": 2,
+      "criteria_met": false,
+      "head_scale": 8.0,
+      "input_scale": 4.0,
+      "max_prob_delta": 0.2576531171798706,
+      "median_max_prob": 0.41006478667259216,
+      "top_class_counts": [
+        83,
+        27,
+        90
+      ],
+      "windows": 200
+    },
+    {
+      "argmax_agreement": 0.705,
+      "argmax_agreement_first_csharp_windows": 0.775,
+      "classes_at_share": 2,
+      "criteria_met": false,
+      "head_scale": 16.0,
+      "input_scale": 4.0,
+      "max_prob_delta": 0.4578322172164917,
+      "median_max_prob": 0.4757242351770401,
+      "top_class_counts": [
+        83,
+        27,
+        90
+      ],
+      "windows": 200
+    },
+    {
+      "argmax_agreement": 0.705,
+      "argmax_agreement_first_csharp_windows": 0.775,
+      "classes_at_share": 2,
+      "criteria_met": false,
+      "head_scale": 24.0,
+      "input_scale": 4.0,
+      "max_prob_delta": 0.5489809513092041,
+      "median_max_prob": 0.5363715291023254,
+      "top_class_counts": [
+        83,
+        27,
+        90
+      ],
+      "windows": 200
+    },
+    {
+      "argmax_agreement": 0.87,
+      "argmax_agreement_first_csharp_windows": 0.875,
+      "classes_at_share": 3,
+      "criteria_met": false,
+      "head_scale": 4.0,
+      "input_scale": 8.0,
+      "max_prob_delta": 0.12238600850105286,
+      "median_max_prob": 0.3856069892644882,
+      "top_class_counts": [
+        78,
+        46,
+        76
+      ],
+      "windows": 200
+    },
+    {
+      "argmax_agreement": 0.87,
+      "argmax_agreement_first_csharp_windows": 0.875,
+      "classes_at_share": 3,
+      "criteria_met": false,
+      "head_scale": 8.0,
+      "input_scale": 8.0,
+      "max_prob_delta": 0.2540718615055084,
+      "median_max_prob": 0.438671350479126,
+      "top_class_counts": [
+        78,
+        46,
+        76
+      ],
+      "windows": 200
+    },
+    {
+      "argmax_agreement": 0.87,
+      "argmax_agreement_first_csharp_windows": 0.875,
+      "classes_at_share": 3,
+      "criteria_met": false,
+      "head_scale": 16.0,
+      "input_scale": 8.0,
+      "max_prob_delta": 0.4844781160354614,
+      "median_max_prob": 0.5337485671043396,
+      "top_class_counts": [
+        78,
+        46,
+        76
+      ],
+      "windows": 200
+    },
+    {
+      "argmax_agreement": 0.87,
+      "argmax_agreement_first_csharp_windows": 0.875,
+      "classes_at_share": 3,
+      "criteria_met": false,
+      "head_scale": 24.0,
+      "input_scale": 8.0,
+      "max_prob_delta": 0.6317430436611176,
+      "median_max_prob": 0.627761721611023,
+      "top_class_counts": [
+        78,
+        46,
+        76
+      ],
+      "windows": 200
+    },
+    {
+      "argmax_agreement": 0.975,
+      "argmax_agreement_first_csharp_windows": 0.95,
+      "classes_at_share": 3,
+      "criteria_met": false,
+      "head_scale": 4.0,
+      "input_scale": 16.0,
+      "max_prob_delta": 0.0495358407497406,
+      "median_max_prob": 0.406924307346344,
+      "top_class_counts": [
+        69,
+        49,
+        82
+      ],
+      "windows": 200
+    },
+    {
+      "argmax_agreement": 0.975,
+      "argmax_agreement_first_csharp_windows": 0.95,
+      "classes_at_share": 3,
+      "criteria_met": false,
+      "head_scale": 8.0,
+      "input_scale": 16.0,
+      "max_prob_delta": 0.09330415725708008,
+      "median_max_prob": 0.481460765004158,
+      "top_class_counts": [
+        69,
+        49,
+        82
+      ],
+      "windows": 200
+    },
+    {
+      "argmax_agreement": 0.975,
+      "argmax_agreement_first_csharp_windows": 0.95,
+      "classes_at_share": 3,
+      "criteria_met": false,
+      "head_scale": 16.0,
+      "input_scale": 16.0,
+      "max_prob_delta": 0.1597430408000946,
+      "median_max_prob": 0.6253492832183838,
+      "top_class_counts": [
+        69,
+        49,
+        82
+      ],
+      "windows": 200
+    },
+    {
+      "argmax_agreement": 0.975,
+      "argmax_agreement_first_csharp_windows": 0.95,
+      "classes_at_share": 3,
+      "criteria_met": false,
+      "head_scale": 24.0,
+      "input_scale": 16.0,
+      "max_prob_delta": 0.19445587694644928,
+      "median_max_prob": 0.7445567846298218,
+      "top_class_counts": [
+        69,
+        49,
+        82
+      ],
+      "windows": 200
+    },
+    {
+      "argmax_agreement": 0.98,
+      "argmax_agreement_first_csharp_windows": 0.95,
+      "classes_at_share": 3,
+      "criteria_met": false,
+      "head_scale": 4.0,
+      "input_scale": 32.0,
+      "max_prob_delta": 0.06175792217254639,
+      "median_max_prob": 0.41803228855133057,
+      "top_class_counts": [
+        54,
+        45,
+        101
+      ],
+      "windows": 200
+    },
+    {
+      "argmax_agreement": 0.98,
+      "argmax_agreement_first_csharp_windows": 0.95,
+      "classes_at_share": 3,
+      "criteria_met": false,
+      "head_scale": 8.0,
+      "input_scale": 32.0,
+      "max_prob_delta": 0.09758587181568146,
+      "median_max_prob": 0.504403293132782,
+      "top_class_counts": [
+        54,
+        45,
+        101
+      ],
+      "windows": 200
+    },
+    {
+      "argmax_agreement": 0.98,
+      "argmax_agreement_first_csharp_windows": 0.95,
+      "classes_at_share": 3,
+      "criteria_met": true,
+      "head_scale": 16.0,
+      "input_scale": 32.0,
+      "max_prob_delta": 0.12518252432346344,
+      "median_max_prob": 0.6636767387390137,
+      "top_class_counts": [
+        54,
+        45,
+        101
+      ],
+      "windows": 200
+    }
+  ],
+  "criteria": {
+    "min_class_share": 0.2,
+    "min_classes_at_share": 2,
+    "min_csharp_argmax_agreement": 0.95,
+    "min_median_max_prob": 0.6,
+    "min_python_argmax_agreement": 0.98
+  },
+  "csharp_series": 40,
+  "head_bias": "centered_on_the_measurement_windows",
+  "head_scale": 16.0,
+  "input_scale": 32.0,
+  "inputs": "closed-form sin / cos candles, series k = 0..199; see fixture_candles()",
+  "max_prob_delta": 0.05,
+  "measured_python_batch1": {
+    "argmax_agreement": 0.98,
+    "argmax_agreement_first_csharp_windows": 0.95,
+    "classes_at_share": 3,
+    "max_prob_delta": 0.12518252432346344,
+    "median_max_prob": 0.6636767387390137,
+    "top_class_counts": [
+      54,
+      45,
+      101
+    ],
+    "windows": 200
+  },
+  "ops": [
+    "MatMul",
+    "Gemm",
+    "LSTM"
+  ],
+  "quantized_compute_nodes": {
+    "DynamicQuantizeLSTM": 1,
+    "MatMulInteger": 1
+  },
+  "quantized_file": "trend_predictor_lstm_sharp_quantized.onnx",
+  "removed_ref_keys": [],
+  "series_bars": 20,
+  "source": "trend_predictor_lstm_sharp.onnx",
+  "source_sha256": "09e238db124f8605828282bf4c70984e6189b1875ecb946f99f841b82a60d7a8",
+  "weight_type": "qint8",
+  "window": 10
+}

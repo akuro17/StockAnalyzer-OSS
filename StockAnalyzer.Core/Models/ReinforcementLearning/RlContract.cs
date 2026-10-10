@@ -133,6 +133,7 @@ public static class RlContract
             SizingParameter = FixedQuantity,
             InitialMarginRatio = InitialMarginRatio,
             MaintenanceMarginRatio = BacktestDefaults.MaintenanceMarginRatio,
+            MarginLiquidationDeficitMode = MarginLiquidationDeficitMode.AllowNegativeEquity,
         };
     }
 

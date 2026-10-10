@@ -88,7 +88,7 @@ public class PredictionServiceTests
         public string? LocaleResourcePath => null;
     }
 
-    private static List<CandleData> BuildCandles(int count)
+    internal static List<CandleData> BuildCandles(int count)
     {
         var candles = new List<CandleData>();
         for (int i = 0; i < count; i++)
