@@ -24,8 +24,9 @@ public interface IDrawingLayerService
 
     /// <summary>
     /// Creates a new layer in the specified panel and makes it the active layer for that panel.
+    /// Supports specifying whether the layer operates in screen-space (viewport-normalized) mode.
     /// </summary>
-    DrawingCommandResult CreateLayer(PanelKey panel, string name);
+    DrawingCommandResult CreateLayer(PanelKey panel, string name, bool isScreenSpace = false);
 
     /// <summary>
     /// Deletes the specified layer. Rejects deletion if it is the sole remaining layer for the panel,
@@ -48,6 +49,11 @@ public interface IDrawingLayerService
     /// Toggles the edit-lock state of the specified layer. Unlocking is always permitted even if currently locked.
     /// </summary>
     DrawingCommandResult SetLayerEditLock(Guid layerId, bool locked);
+
+    /// <summary>
+    /// Toggles whether the layer operates in screen-space (viewport-normalized) mode.
+    /// </summary>
+    DrawingCommandResult SetLayerScreenSpace(Guid layerId, bool isScreenSpace);
 
     /// <summary>
     /// Moves a layer up (+1) or down (-1) within its owning panel. Cross-panel layer moves are prohibited.

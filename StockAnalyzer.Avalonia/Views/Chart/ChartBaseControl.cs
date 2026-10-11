@@ -323,7 +323,77 @@ public class ChartBaseControl : Control, ICustomHitTest
         // Enable Focus for Key Events
         Focusable = true;
 
+        _interactionController.PixelColorSampler = SamplePixelColor;
+
         DoubleTapped += OnDoubleTappedHandler;
+    }
+
+    /// <summary>
+    /// Samples the pixel color from an offscreen snapshot of the current chart render pipeline.
+    /// Used by the Eyedropper tool to sample rendered pixel colors without platform GPU lease limitations.
+    /// </summary>
+    public SKColor? SamplePixelColor(global::Avalonia.Point screenPoint)
+    {
+        if (ViewModel == null) return null;
+
+        int x = (int)Math.Round(screenPoint.X);
+        int y = (int)Math.Round(screenPoint.Y);
+        if (x < 0 || y < 0 || x >= Bounds.Width || y >= Bounds.Height)
+            return null;
+
+        int width = (int)Math.Max(1, Bounds.Width);
+        int height = (int)Math.Max(1, Bounds.Height);
+
+        using var surface = SKSurface.Create(new SKImageInfo(width, height, SKColorType.Rgba8888, SKAlphaType.Premul));
+        if (surface == null) return null;
+
+        var canvas = surface.Canvas;
+        canvas.Clear(SKColors.Transparent);
+
+        if (_currentLayout != null && _pipeline != null && _dataCoordinator.Transform != null)
+        {
+            var profile = ChartTypeProfileRegistry.Get(ViewModel.ChartType);
+            var mainRenderer = _rendererRegistry.GetRenderer(ViewModel.ChartType);
+            var config = profile.CreateRenderConfig(
+                ViewModel,
+                ViewModel.Candles?.LastOrDefault()?.Close ?? 0,
+                _startIndex,
+                _visibleCandleCount,
+                new StockAnalyzer.Core.Models.Point(_currentMousePosition.X, _currentMousePosition.Y),
+                _dataCoordinator.Transform,
+                TopLevel.GetTopLevel(this)?.RenderScaling ?? 1.0,
+                _reverseWatchData,
+                _comparisonData);
+
+            _pipeline.Execute(
+                canvas,
+                _currentLayout.Value,
+                _currentSnapshot,
+                mainRenderer,
+                config,
+                ViewModel.ChartType,
+                _dataCoordinator.Transform,
+                ViewModel.ObjectManager,
+                _interactionController.RulerRenderer,
+                _currentMousePosition,
+                _isCrosshairVisible,
+                new Rect(Bounds.Size),
+                snapPoint: null,
+                _currentDrawingObject,
+                _layeredScene,
+                ViewModel.RlPresentation,
+                (float)RlFontSize,
+                _rlForeground);
+
+            using var image = surface.Snapshot();
+            using var pixmap = image.PeekPixels();
+            if (pixmap != null)
+            {
+                return pixmap.GetPixelColor(x, y);
+            }
+        }
+
+        return null;
     }
 
     // === Hit Test Fix: Ensure this control ALWAYS receives pointer events ===
@@ -709,7 +779,7 @@ public class ChartBaseControl : Control, ICustomHitTest
                     Math.Floor(_dataCoordinator.Transform.ChartToScreen(_lastSnapChartPoint.Value).X) + 0.5,
                     _dataCoordinator.Transform.ChartToScreen(_lastSnapChartPoint.Value).Y
                 ) : null,
-            _currentDrawingObject, // Pass Current Drawing Object
+            _currentDrawingObject, // Pass Current Drawing Object (evaluated via property: Freehand/Highlighter or Controller)
             _layeredScene, ViewModel.RlPresentation, (float)RlFontSize, _rlForeground
             ));
         }
@@ -1173,7 +1243,7 @@ public class ChartBaseControl : Control, ICustomHitTest
              // Freehand interaction routing:
              // 1. Existing selection handle drag takes precedence
              // 2. If no handle hit, route to FreehandPointerAdapter
-             if (allowDrawingInteraction && ViewModel?.CurrentTool == DrawingTool.Freehand)
+             if (allowDrawingInteraction && (ViewModel?.CurrentTool == DrawingTool.Freehand || ViewModel?.CurrentTool == DrawingTool.Highlighter))
              {
                  if (_interactionController.TryHandleSelectionHandle(position, target.ChartPos, ViewModel, target.Transform))
                  {
@@ -1413,7 +1483,7 @@ public class ChartBaseControl : Control, ICustomHitTest
             }
         }
 
-        if (_interactionController.HandleKeyDown(e, ViewModel))
+        if (_interactionController.HandleKeyDown(e, ViewModel, coordinateTransform: _dataCoordinator.Transform))
         {
             InvalidateVisual();
             return;
@@ -1499,7 +1569,7 @@ public class ChartBaseControl : Control, ICustomHitTest
             }
         }
         
-        if (_interactionController.HandlePointerReleased(ViewModel))
+        if (_interactionController.HandlePointerReleased(ViewModel, _dataCoordinator?.Transform))
         {
              // Sync State
              _isDrawingNewShape = _interactionController.IsDrawingNewShape;
@@ -1568,6 +1638,25 @@ public class ChartBaseControl : Control, ICustomHitTest
         var mousePos = e.GetPosition(this);
         double chartWidth = Bounds.Width - EffectiveMarginLeft - EffectiveMarginRight;
         if (chartWidth <= 0) return;
+
+        // Support horizontal scrolling via tilt wheel (e.Delta.X) or Shift + vertical wheel (e.Delta.Y)
+        bool isHorizontalWheel = Math.Abs(e.Delta.X) > 0.001;
+        bool isShiftScroll = e.KeyModifiers.HasFlag(KeyModifiers.Shift) && Math.Abs(e.Delta.Y) > 0.001;
+
+        if (isHorizontalWheel || isShiftScroll)
+        {
+            double horizontalDelta = isHorizontalWheel ? e.Delta.X : e.Delta.Y;
+            double panPixels = horizontalDelta * 50.0;
+            int totalCount = ViewModel.Candles.Count;
+            var futureOffset = ViewModel.RequiredFutureOffset;
+            if (_dataCoordinator.ApplyPan(panPixels, chartWidth, totalCount, ViewModel.ChartType, futureOffset))
+            {
+                UpdateSnapshot();
+                InvalidateVisual();
+            }
+            e.Handled = true;
+            return;
+        }
 
         double mouseRel = (mousePos.X - EffectiveMarginLeft) / chartWidth;
         // Clamp 0..1

@@ -368,6 +368,9 @@ public sealed record TrainingJobConfig
             && (Framework != TrainingFramework.PyTorch || InitializationMode == TrainingInitializationMode.FineTune))
             throw new InvalidOperationException(
                 "TrainingJobConfig: self-supervised pretraining requires PyTorch and a fresh or resumed run.");
+        if (Pretraining != TrainingPretraining.None && AttentionContract.IsAttentionArchitecture(Architecture))
+            throw new InvalidOperationException(
+                $"TrainingJobConfig: self-supervised pretraining is not supported for the '{AttentionContract.Architecture}' architecture.");
         if (Cpcv)
         {
             _ = TrainingCpcvContract.CombinationCount(CpcvGroups, CpcvTestGroups);

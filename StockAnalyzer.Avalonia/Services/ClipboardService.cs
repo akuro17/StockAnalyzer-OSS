@@ -24,4 +24,14 @@ public class ClipboardService : IClipboardService
             System.Diagnostics.Debug.WriteLine("[ClipboardService] Clipboard not available or empty text.");
         }
     }
+
+    public async Task<string?> GetTextAsync()
+    {
+        if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop &&
+            desktop.MainWindow?.Clipboard != null)
+        {
+            return await desktop.MainWindow.Clipboard.GetTextAsync();
+        }
+        return null;
+    }
 }

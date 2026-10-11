@@ -118,5 +118,8 @@ public enum DrawingTool
     HoughResonantFan,
     HoughMagneticLine,
     Freehand,
-    ClassicPivotPoints
+    ClassicPivotPoints,
+    Highlighter,
+    StepBadge,
+    Eyedropper
 }

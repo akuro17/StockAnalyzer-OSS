@@ -68,6 +68,28 @@ public class ChartObjectManager
     /// <summary>Currently selected object (first one found in current context)</summary>
     public IChartObject? SelectedObject => _currentObjects.FirstOrDefault(o => o.IsSelected);
 
+    /// <summary>IDs of all currently selected objects in current context</summary>
+    public IReadOnlyCollection<Guid> SelectedIds => _selectedIds;
+
+    /// <summary>Currently selected objects in current context</summary>
+    public IReadOnlyList<IChartObject> SelectedObjects
+    {
+        get
+        {
+            if (_selectedIds.Count == 0) return Array.Empty<IChartObject>();
+            var list = new List<IChartObject>(_selectedIds.Count);
+            for (int i = 0; i < _currentObjects.Count; i++)
+            {
+                var obj = _currentObjects[i];
+                if (_selectedIds.Contains(obj.Id))
+                {
+                    list.Add(obj);
+                }
+            }
+            return list;
+        }
+    }
+
     private Objects.InformationObject? _informationObject;
 
     /// <summary>
@@ -314,6 +336,102 @@ public class ChartObjectManager
         return null;
     }
 
+    /// <summary>
+    /// Duplicates multiple drawing objects in the current context, applying offsets,
+    /// re-mapping internal link groups, and selecting all newly duplicated objects.
+    /// </summary>
+    public IReadOnlyList<IChartObject> DuplicateObjects(
+        IReadOnlyList<Guid> ids,
+        TimeSpan? timeOffset = null,
+        decimal? priceOffset = null)
+    {
+        if (ids == null || ids.Count == 0) return Array.Empty<IChartObject>();
+
+        var clones = new List<IChartObject>(ids.Count);
+        var idMap = new Dictionary<Guid, Guid>();
+
+        for (int i = 0; i < ids.Count; i++)
+        {
+            var id = ids[i];
+            var source = GetObject(id);
+            if (source == null) continue;
+
+            var concreteType = source.GetType();
+            var clone = Serialization.ChartObjectInstanceFactory.Create(concreteType);
+
+            clone.Points.Clear();
+            clone.Points.AddRange(source.Points);
+
+            foreach (var prop in concreteType.GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance))
+            {
+                if (prop.Name is "Id" or "IsSelected" or "ZIndex" or "Points") continue;
+                if (prop.GetIndexParameters().Length > 0) continue;
+                if (!prop.CanRead) continue;
+                if (prop.GetCustomAttribute<System.Text.Json.Serialization.JsonIgnoreAttribute>() != null) continue;
+                var setter = prop.GetSetMethod(nonPublic: true);
+                if (setter == null) continue;
+
+                try
+                {
+                    var val = prop.GetValue(source);
+                    setter.Invoke(clone, new[] { val });
+                }
+                catch
+                {
+                    // Best-effort property copy
+                }
+            }
+
+            clone.IsVisible = true;
+            clone.IsLocked = false;
+
+            if (timeOffset.HasValue || priceOffset.HasValue)
+            {
+                clone.Translate(timeOffset ?? TimeSpan.Zero, priceOffset ?? 0m);
+            }
+
+            if (AddObject(clone))
+            {
+                var srcMode = GetMoveAxisMode(id);
+                SetMoveAxisMode(clone.Id, srcMode);
+                idMap[id] = clone.Id;
+                clones.Add(clone);
+            }
+        }
+
+        // Re-map internal link groups among the duplicated objects
+        var processedParents = new HashSet<Guid>();
+        for (int i = 0; i < ids.Count; i++)
+        {
+            var id = ids[i];
+            if (GetLinkRole(id) == LinkRole.Parent && processedParents.Add(id))
+            {
+                if (idMap.TryGetValue(id, out var newParent) && TryGetLinkedMembers(id, out var members))
+                {
+                    var newChildren = new List<Guid>();
+                    for (int m = 1; m < members.Count; m++)
+                    {
+                        if (idMap.TryGetValue(members[m], out var newChild))
+                        {
+                            newChildren.Add(newChild);
+                        }
+                    }
+                    if (newChildren.Count > 0)
+                    {
+                        LinkObjects(newParent, newChildren);
+                    }
+                }
+            }
+        }
+
+        if (clones.Count > 0)
+        {
+            SelectObjects(clones.Select(c => c.Id), clearExisting: true);
+        }
+
+        return clones;
+    }
+
     /// <summary>Gets the 0-based physical Z-Index of the object in the current context.</summary>
     public int GetZIndex(Guid id) => _currentObjects.FindIndex(o => o.Id == id);
 
@@ -425,6 +543,62 @@ public class ChartObjectManager
         return true;
     }
     
+    /// <summary>
+    /// Selects multiple objects by their IDs.
+    /// If clearExisting is true, previous selection is cleared before adding new objects.
+    /// Invisible objects are excluded.
+    /// </summary>
+    public bool SelectObjects(IEnumerable<Guid> ids, bool clearExisting = true)
+    {
+        if (ids == null) return false;
+
+        if (clearExisting)
+        {
+            _selectedIds.Clear();
+        }
+
+        bool changed = false;
+        foreach (var id in ids)
+        {
+            if (id != Guid.Empty && IsVisible(id) && _currentObjects.Any(o => o.Id == id))
+            {
+                if (_selectedIds.Add(id))
+                {
+                    changed = true;
+                }
+            }
+        }
+
+        UpdateSelectionState();
+        NotifyChanged();
+        return changed || clearExisting;
+    }
+
+    /// <summary>
+    /// Toggles the selection state of the specified object.
+    /// Invisible objects cannot be selected.
+    /// </summary>
+    public bool ToggleSelectObject(Guid id)
+    {
+        if (id == Guid.Empty || !IsVisible(id) || !_currentObjects.Any(o => o.Id == id))
+        {
+            return false;
+        }
+
+        if (_selectedIds.Contains(id))
+        {
+            _selectedIds.Remove(id);
+        }
+        else
+        {
+            _selectedIds.Add(id);
+        }
+
+        UpdateSelectionState();
+        NotifyChanged();
+        return true;
+    }
+
     /// <summary>Deselect all objects</summary>
     public void DeselectAll()
     {

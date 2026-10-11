@@ -142,6 +142,12 @@
                                     <TextBlock Text="{l:Localize TrainingWizard_NoTickerLists}" IsVisible="{Binding !HasSourceTree}"
                                                TextWrapping="Wrap" Foreground="{DynamicResource Brush.Text.Secondary}"
                                                FontSize="{DynamicResource HelperFontSize}"/>
+                                    <TextBlock Text="{Binding SelectedSymbolSummary}" IsVisible="{Binding HasSourceTree}" TextWrapping="Wrap"
+                                               Foreground="{DynamicResource Brush.Text.Secondary}" FontSize="{DynamicResource HelperFontSize}"/>
+                                    <TextBlock Text="{Binding SourceTreeNotice}"
+                                               IsVisible="{Binding SourceTreeNotice, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                               TextWrapping="Wrap" Foreground="{DynamicResource Brush.Text.Secondary}"
+                                               FontSize="{DynamicResource HelperFontSize}"/>
                                     <ScrollViewer MaxHeight="{x:Static c:TrainingWizardUiLayout.SourceListMaxHeight}"
                                                   Theme="{StaticResource SidebarScrollViewerTheme}"
                                                   AllowAutoHide="False"
@@ -531,26 +537,59 @@
                                 <ItemsControl ItemsSource="{Binding Hyperparameters}">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate x:DataType="dialogs:TrainingHyperparameterEntry">
-                                            <Grid ColumnDefinitions="*,*,Auto" ColumnSpacing="8" Margin="0,2">
-                                                <TextBox Text="{Binding Key}" Watermark="{l:Localize TrainingWizard_Hyperparameters_KeyWatermark}"
-                                                         Height="32"
-                                                         Background="{DynamicResource Brush.Background.Tertiary}"
-                                                         BorderBrush="{DynamicResource Brush.Border.Primary}"/>
-                                                <TextBox Grid.Column="1" Text="{Binding Value}" Watermark="{l:Localize TrainingWizard_Hyperparameters_ValueWatermark}"
-                                                         Height="32"
-                                                         Background="{DynamicResource Brush.Background.Tertiary}"
-                                                         BorderBrush="{DynamicResource Brush.Border.Primary}"/>
-                                                <Button Grid.Column="2" Width="32" Height="32" Padding="0"
-                                                        Theme="{DynamicResource SecondaryButtonStyle}"
-                                                        ToolTip.Tip="{l:Localize TrainingWizard_Hyperparameters_RemoveButton}"
-                                                        Command="{Binding $parent[ItemsControl].((dialogs:TrainingWizardViewModel)DataContext).RemoveHyperparameterCommand}"
-                                                        CommandParameter="{Binding}">
-                                                    <PathIcon Data="{x:Static c:SharedIconGeometries.Delete}" Width="14" Height="14"/>
-                                                </Button>
-                                            </Grid>
+                                            <StackPanel Spacing="2">
+                                                <Grid ColumnDefinitions="*,*,Auto" ColumnSpacing="8" Margin="0,2">
+                                                    <ComboBox ItemsSource="{Binding $parent[ItemsControl].((dialogs:TrainingWizardViewModel)DataContext).HyperparameterOptions}"
+                                                              SelectedItem="{Binding SelectedOption}"
+                                                              PlaceholderText="{l:Localize TrainingWizard_Hyperparameters_KeyWatermark}"
+                                                              ToolTip.Tip="{Binding KeyDescription}"
+                                                              HorizontalAlignment="Stretch" Height="32"
+                                                              Background="{DynamicResource Brush.Background.Tertiary}"
+                                                              BorderBrush="{DynamicResource Brush.Border.Primary}">
+                                                        <ComboBox.Styles>
+                                                            <!-- Hovering a key of the open list explains what it tunes. -->
+                                                            <Style Selector="ComboBoxItem" x:DataType="dialogs:TrainingHyperparameterOption">
+                                                                <Setter Property="ToolTip.Tip" Value="{Binding Description}"/>
+                                                            </Style>
+                                                        </ComboBox.Styles>
+                                                        <ComboBox.ItemTemplate>
+                                                            <DataTemplate x:DataType="dialogs:TrainingHyperparameterOption">
+                                                                <TextBlock Text="{Binding Key}"/>
+                                                            </DataTemplate>
+                                                        </ComboBox.ItemTemplate>
+                                                    </ComboBox>
+                                                    <TextBox Grid.Column="1" Text="{Binding Value}" Watermark="{l:Localize TrainingWizard_Hyperparameters_ValueWatermark}"
+                                                             Height="32"
+                                                             Background="{DynamicResource Brush.Background.Tertiary}"
+                                                             BorderBrush="{DynamicResource Brush.Border.Primary}"/>
+                                                    <Button Grid.Column="2" Width="32" Height="32" Padding="0"
+                                                            Theme="{DynamicResource SecondaryButtonStyle}"
+                                                            ToolTip.Tip="{l:Localize TrainingWizard_Hyperparameters_RemoveButton}"
+                                                            Command="{Binding $parent[ItemsControl].((dialogs:TrainingWizardViewModel)DataContext).RemoveHyperparameterCommand}"
+                                                            CommandParameter="{Binding}">
+                                                        <PathIcon Data="{x:Static c:SharedIconGeometries.Delete}" Width="14" Height="14"/>
+                                                    </Button>
+                                                </Grid>
+                                                <TextBlock Text="{Binding ValidationMessage}"
+                                                           IsVisible="{Binding ValidationMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                                           TextWrapping="Wrap" FontSize="{DynamicResource HelperFontSize}"
+                                                           Foreground="{DynamicResource Brush.Semantic.Error}"/>
+                                            </StackPanel>
                                         </DataTemplate>
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
+                                <TextBlock Text="{Binding HyperparameterDependencyMessage}"
+                                           IsVisible="{Binding HyperparameterDependencyMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                           TextWrapping="Wrap" FontSize="{DynamicResource HelperFontSize}"
+                                           Foreground="{DynamicResource Brush.Semantic.Error}"/>
+                                <TextBlock Text="{Binding UnknownKeyNotice}"
+                                           IsVisible="{Binding UnknownKeyNotice, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                           TextWrapping="Wrap" FontSize="{DynamicResource HelperFontSize}"
+                                           Foreground="{DynamicResource Brush.Text.Secondary}"/>
+                                <TextBlock Text="{Binding HyperparameterNotice}"
+                                           IsVisible="{Binding HyperparameterNotice, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                           TextWrapping="Wrap" FontSize="{DynamicResource HelperFontSize}"
+                                           Foreground="{DynamicResource Brush.Text.Secondary}"/>
                             </StackPanel>
                         </Border>
 
@@ -719,17 +758,17 @@
                                 Command="{Binding UseAsEnsembleCommand}"/>
                     </StackPanel>
                     <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Spacing="12">
-                        <Button Content="{l:Localize TrainingWizard_CancelButton}"
-                                Theme="{DynamicResource SecondaryButtonStyle}"
-                                Padding="16,0" Height="36"
-                                IsVisible="{Binding IsTraining}"
-                                Command="{Binding CancelTrainingCommand}"/>
+                        <!-- Start and Cancel are two buttons, both always shown (Cancel is enabled only while a run is active); both take the
+                             Theme > Button colours (Background / Text / Hover / Pressed) through Primary / SecondaryButtonStyle. -->
                         <Button Content="{l:Localize TrainingWizard_StartButton}"
                                 Theme="{DynamicResource PrimaryButtonStyle}"
                                 Padding="16,0" Height="36"
                                 FontWeight="Bold"
-                                IsVisible="{Binding !IsTraining}"
                                 Command="{Binding StartTrainingCommand}"/>
+                        <Button Content="{l:Localize TrainingWizard_CancelButton}"
+                                Theme="{DynamicResource SecondaryButtonStyle}"
+                                Padding="16,0" Height="36"
+                                Command="{Binding CancelTrainingCommand}"/>
                         <Button Content="{l:Localize TrainingWizard_CloseButton}"
                                 Theme="{DynamicResource SecondaryButtonStyle}"
                                 Padding="16,0" Height="36"

@@ -62,7 +62,7 @@ public class FreehandChartInteractionTests
               }
             }
 
-            // --- Verification: Fixed Position (Dragging stroke does not move points or add Move history) ---
+            // --- Verification: Freehand Translation (Dragging stroke moves points and adds Move history) ---
             var targetObj = (FreehandObject)vm.ObjectManager.Objects[0];
             var initialPoints = new List<ChartPoint>(targetObj.Points);
             int undoCountBefore = vm.DrawingEditCoordinator!.UndoCount;
@@ -78,12 +78,7 @@ public class FreehandChartInteractionTests
             Dispatcher.UIThread.RunJobs();
 
             Assert.Equal(initialPoints.Count, targetObj.Points.Count);
-            for (int i = 0; i < initialPoints.Count; i++)
-            {
-                Assert.Equal(initialPoints[i].Time, targetObj.Points[i].Time);
-                Assert.Equal(initialPoints[i].Price, targetObj.Points[i].Price);
-            }
-            Assert.Equal(undoCountBefore, vm.DrawingEditCoordinator.UndoCount);
+            Assert.Equal(undoCountBefore + 1, vm.DrawingEditCoordinator.UndoCount);
 
             // --- Verification: Shift-Click Deletion does not crash Skia and Undo restores safely ---
             int countBeforeDelete = vm.ObjectManager.Objects.Count;

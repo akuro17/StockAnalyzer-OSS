@@ -16,6 +16,7 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="Assets\*.onnx" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Assets\graph_fixture\*" CopyToOutputDirectory="PreserveNewest" />
     <None Include="Assets\rl_portfolio_fixture_n3.parity.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="Assets\rl_portfolio_policy_selfcheck.py" CopyToOutputDirectory="PreserveNewest" />
     <None Include="Assets\rl_portfolio_state_compare.py" CopyToOutputDirectory="PreserveNewest" />

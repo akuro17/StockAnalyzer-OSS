@@ -38,7 +38,7 @@ public sealed class FreehandPointerAdapter
     /// <summary>
     /// Gets the temporary preview object currently being drawn, or null if idle.
     /// </summary>
-    public FreehandObject? PreviewObject { get; private set; }
+    public RelativeGeometricRenderer? PreviewObject { get; private set; }
 
     /// <summary>
     /// Gets whether a freehand stroke is actively in progress.
@@ -46,7 +46,7 @@ public sealed class FreehandPointerAdapter
     public bool IsActive => _controller.IsDrawing;
 
     /// <summary>
-    /// Handles the pointer pressed event when the Freehand tool is active.
+    /// Handles the pointer pressed event when the Freehand or Highlighter tool is active.
     /// </summary>
     public bool HandlePointerPressed(
         Point position,
@@ -57,7 +57,7 @@ public sealed class FreehandPointerAdapter
         int panelIndex,
         PanelKey panelKey)
     {
-        if (viewModel?.CurrentTool != DrawingTool.Freehand)
+        if (viewModel?.CurrentTool != DrawingTool.Freehand && viewModel?.CurrentTool != DrawingTool.Highlighter)
         {
             return false;
         }
@@ -118,16 +118,31 @@ public sealed class FreehandPointerAdapter
 
                 // Lock style at press time and pre-allocate stroke capacity
                 var strokeColor = DrawingThemeContext.DefaultColor;
-                var strokeThickness = DrawingThemeContext.DefaultStrokeThickness;
-
-                PreviewObject = new FreehandObject
+                if (viewModel.CurrentTool == DrawingTool.Highlighter)
                 {
-                    Color = strokeColor,
-                    Thickness = strokeThickness,
-                    PanelIndex = panelIndex
-                };
-                PreviewObject.Points.Capacity = _controller.Capacity;
-                PreviewObject.Points.Add(chartPoint);
+                    var highlighter = new HighlighterObject
+                    {
+                        Color = strokeColor,
+                        Thickness = 12.0,
+                        PanelIndex = panelIndex
+                    };
+                    highlighter.Points.Capacity = _controller.Capacity;
+                    highlighter.Points.Add(chartPoint);
+                    PreviewObject = highlighter;
+                }
+                else
+                {
+                    var strokeThickness = DrawingThemeContext.DefaultStrokeThickness;
+                    var freehand = new FreehandObject
+                    {
+                        Color = strokeColor,
+                        Thickness = strokeThickness,
+                        PanelIndex = panelIndex
+                    };
+                    freehand.Points.Capacity = _controller.Capacity;
+                    freehand.Points.Add(chartPoint);
+                    PreviewObject = freehand;
+                }
                 return true;
             }
 

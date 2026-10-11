@@ -208,6 +208,10 @@ public class BacktestWindowViewModelStateMachineTests
         Task run = vm.RunBacktestCommand.ExecuteAsync(null);
         Assert.Equal(BacktestRunState.Running, vm.State);
 
+        // RunBacktestAsync checks the token before it calls the engine, so a Cancel that wins the race against
+        // the start of the engine call never reaches the engine. Cancel only once the engine call is blocked.
+        Assert.True(engine.Entered.Wait(TimeSpan.FromSeconds(5)), "the engine call must start");
+
         vm.CancelBacktestCommand.Execute(null);
         Assert.Equal(BacktestRunState.Cancelling, vm.State);
 

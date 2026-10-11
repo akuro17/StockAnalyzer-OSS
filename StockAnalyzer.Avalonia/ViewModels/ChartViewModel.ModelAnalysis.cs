@@ -39,5 +39,7 @@ public partial class ChartViewModel
     {
         ModelAnalysis = null;
         RegimeDisplay = null;
+        PredictionNotice = null;
+        ClearAttention();
     }
 }

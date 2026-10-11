@@ -10,7 +10,7 @@ namespace StockAnalyzer.Avalonia.Drawing;
 /// Chart object representing a freehand stroke captured as an exact sequence of raw points.
 /// Guarantees zero smoothing, zero point elimination, and zero-allocation rendering.
 /// </summary>
-public class FreehandObject : RelativeGeometricRenderer
+public class FreehandObject : RelativeGeometricRenderer, IAabbDeformableObject
 {
     public override ChartObjectType Type => ChartObjectType.Freehand;
 
@@ -116,9 +116,29 @@ public class FreehandObject : RelativeGeometricRenderer
 
         paint.Color = SkiaColor;
         paint.StrokeWidth = (float)Thickness;
+        paint.PathEffect = StrokeStyle.ToSkPathEffect();
         path.Reset();
 
         DrawGeometry(canvas, transform);
+
+        if (IsSelected && Points.Count > 0)
+        {
+            EnsureDataBounds();
+            var pMin = transform.ChartToScreen(new ChartPoint(_minTime, _maxPrice));
+            var pMax = transform.ChartToScreen(new ChartPoint(_maxTime, _minPrice));
+            double left = Math.Min(pMin.X, pMax.X);
+            double right = Math.Max(pMin.X, pMax.X);
+            double top = Math.Min(pMin.Y, pMax.Y);
+            double bottom = Math.Max(pMin.Y, pMax.Y);
+            var aabbRect = new global::Avalonia.Rect(left, top, Math.Max(1.0, right - left), Math.Max(1.0, bottom - top));
+            SelectionHandleRenderer.DrawAabbHandles(
+                canvas,
+                aabbRect,
+                handleColor: DrawingThemeContext.HandleColor,
+                anchorColor: DrawingThemeContext.AnchorPointColor,
+                frameColor: DrawingThemeContext.DefaultSkColor,
+                anchorHandleIndex: AnchorPointIndex);
+        }
     }
 
     private void DrawSinglePoint(SKCanvas canvas, ICoordinateTransform transform, ChartPoint chartPoint)
@@ -166,6 +186,48 @@ public class FreehandObject : RelativeGeometricRenderer
         _minPrice = minP;
         _maxPrice = maxP;
         _boundsPointCount = Points.Count;
+    }
+
+    /// <summary>
+    /// Gets the axis-aligned bounding box of the freehand stroke in chart coordinates.
+    /// </summary>
+    public void GetDataBounds(out DateTime minTime, out DateTime maxTime, out decimal minPrice, out decimal maxPrice)
+    {
+        EnsureDataBounds();
+        minTime = _minTime;
+        maxTime = _maxTime;
+        minPrice = _minPrice;
+        maxPrice = _maxPrice;
+    }
+
+    /// <summary>
+    /// Computes the 8 deformation handle positions in screen coordinates:
+    /// 0=TopLeft, 1=TopCenter, 2=TopRight, 3=RightCenter,
+    /// 4=BottomRight, 5=BottomCenter, 6=BottomLeft, 7=LeftCenter.
+    /// </summary>
+    public global::Avalonia.Point[] GetAabbHandlePositions(ICoordinateTransform transform)
+    {
+        EnsureDataBounds();
+        var pMin = transform.ChartToScreen(new ChartPoint(_minTime, _maxPrice));
+        var pMax = transform.ChartToScreen(new ChartPoint(_maxTime, _minPrice));
+        double left = Math.Min(pMin.X, pMax.X);
+        double right = Math.Max(pMin.X, pMax.X);
+        double top = Math.Min(pMin.Y, pMax.Y);
+        double bottom = Math.Max(pMin.Y, pMax.Y);
+        double midX = (left + right) * 0.5;
+        double midY = (top + bottom) * 0.5;
+
+        return new global::Avalonia.Point[]
+        {
+            new global::Avalonia.Point(left, top),     // 0: TopLeft
+            new global::Avalonia.Point(midX, top),     // 1: TopCenter
+            new global::Avalonia.Point(right, top),    // 2: TopRight
+            new global::Avalonia.Point(right, midY),   // 3: RightCenter
+            new global::Avalonia.Point(right, bottom), // 4: BottomRight
+            new global::Avalonia.Point(midX, bottom),  // 5: BottomCenter
+            new global::Avalonia.Point(left, bottom),  // 6: BottomLeft
+            new global::Avalonia.Point(left, midY)     // 7: LeftCenter
+        };
     }
 
     public override bool HitTest(global::Avalonia.Point screenPoint, ICoordinateTransform transform, double tolerance = ChartConstants.DefaultHitTestTolerance)
@@ -220,12 +282,72 @@ public class FreehandObject : RelativeGeometricRenderer
     }
 
     /// <summary>
-    /// Freehand points are permanently fixed in chart coordinates (Time and Price) once committed.
-    /// Whole-object translation is strictly prohibited.
+    /// Translates all freehand points rigidly by the specified time and price deltas.
+    /// Invalidates cached data bounds.
     /// </summary>
     public override void Translate(TimeSpan timeDelta, decimal priceDelta)
     {
-        // Fixed position: suppress translation
+        for (int i = 0; i < Points.Count; i++)
+        {
+            Points[i] = new ChartPoint(Points[i].Time.Add(timeDelta), Points[i].Price + priceDelta);
+        }
+        _boundsPointCount = -1;
+    }
+
+    /// <summary>
+    /// Deforms the freehand stroke to fit the new axis-aligned bounding box.
+    /// Applies normalized affine mapping per Section 1.2.1 with zero-span guards.
+    /// </summary>
+    public void TransformAabb(DateTime newMinTime, DateTime newMaxTime, decimal newMinPrice, decimal newMaxPrice)
+    {
+        if (Points.Count == 0) return;
+
+        EnsureDataBounds();
+
+        if (Points.Count == 1)
+        {
+            Points[0] = new ChartPoint(newMinTime, newMinPrice);
+            _boundsPointCount = -1;
+            EnsureDataBounds();
+            return;
+        }
+
+        TimeSpan currentDeltaT = _maxTime - _minTime;
+        decimal currentDeltaP = _maxPrice - _minPrice;
+        TimeSpan targetDeltaT = newMaxTime - newMinTime;
+        decimal targetDeltaP = newMaxPrice - newMinPrice;
+
+        for (int i = 0; i < Points.Count; i++)
+        {
+            var p = Points[i];
+            DateTime newTime;
+            if (currentDeltaT.Ticks > 0)
+            {
+                double ratioT = (double)(p.Time.Ticks - _minTime.Ticks) / (double)currentDeltaT.Ticks;
+                long newTicks = newMinTime.Ticks + (long)Math.Round(ratioT * targetDeltaT.Ticks);
+                newTime = new DateTime(newTicks, DateTimeKind.Utc);
+            }
+            else
+            {
+                newTime = newMinTime;
+            }
+
+            decimal newPrice;
+            if (currentDeltaP > 0m)
+            {
+                decimal ratioP = (p.Price - _minPrice) / currentDeltaP;
+                newPrice = newMinPrice + ratioP * targetDeltaP;
+            }
+            else
+            {
+                newPrice = newMinPrice;
+            }
+
+            Points[i] = new ChartPoint(newTime, newPrice);
+        }
+
+        _boundsPointCount = -1;
+        EnsureDataBounds();
     }
 
     public override void Dispose()

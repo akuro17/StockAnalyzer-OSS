@@ -166,7 +166,31 @@
                         <Border Classes="SettingsCard">
                             <Grid ColumnDefinitions="*, Auto" MinHeight="32">
                                 <TextBlock Text="{l:Localize Label_Thickness}" Foreground="{DynamicResource Brush.Dialog.LabelText}" VerticalAlignment="Center"/>
-                                <NumericUpDown x:Name="ThicknessSpin" Minimum="1" Maximum="10" Value="1" FormatString="0" Width="120" Height="30" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                <NumericUpDown x:Name="ThicknessSpin" Minimum="1" Maximum="100" Value="1" FormatString="0" Width="120" Height="30" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                            </Grid>
+                        </Border>
+                    </StackPanel>
+
+                    <!-- Stroke Style -->
+                    <StackPanel x:Name="StrokeStylePanel" IsVisible="False">
+                        <Border Classes="SettingsCard">
+                            <Grid ColumnDefinitions="*, Auto" MinHeight="32">
+                                <TextBlock Text="{l:Localize Setting_StrokeStyle}" Foreground="{DynamicResource Brush.Dialog.LabelText}" VerticalAlignment="Center"/>
+                                <ComboBox x:Name="StrokeStyleCombo" Width="120" Height="30" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                    <ComboBoxItem Content="{l:Localize Enum_DrawingStrokeStyle_Solid}"/>
+                                    <ComboBoxItem Content="{l:Localize Enum_DrawingStrokeStyle_Dash}"/>
+                                    <ComboBoxItem Content="{l:Localize Enum_DrawingStrokeStyle_Dot}"/>
+                                </ComboBox>
+                            </Grid>
+                        </Border>
+                    </StackPanel>
+
+                    <!-- Opacity / Alpha -->
+                    <StackPanel x:Name="GenericOpacityPanel" IsVisible="False">
+                        <Border Classes="SettingsCard">
+                            <Grid ColumnDefinitions="*, Auto" MinHeight="32">
+                                <TextBlock Text="{l:Localize Param_Opacity}" Foreground="{DynamicResource Brush.Dialog.LabelText}" VerticalAlignment="Center"/>
+                                <NumericUpDown x:Name="GenericOpacitySpin" Minimum="1" Maximum="100" Value="100" FormatString="0" Width="120" Height="30" HorizontalAlignment="Right" VerticalAlignment="Center"/>
                             </Grid>
                         </Border>
                     </StackPanel>
@@ -2111,7 +2135,10 @@
                 BorderBrush="{DynamicResource Brush.Border.Primary}"
                 BorderThickness="0,1,0,0">
             <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center" Margin="24,0">
-                <Button x:Name="DeleteButton" Grid.Column="0" Content="Delete" Click="OnDeleteClick" Classes="FooterBtn"/>
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="12">
+                    <Button x:Name="DeleteButton" Content="Delete" Click="OnDeleteClick" Classes="FooterBtn"/>
+                    <Button x:Name="ResetButton" Content="Reset" Click="OnResetClick" Classes="FooterBtn"/>
+                </StackPanel>
                 <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="12">
                     <Button x:Name="OkButton" Content="OK" Click="OnOkClick" Classes="FooterBtn"/>
                     <Button x:Name="CancelButton" Content="Cancel" Click="OnCancelClick" Classes="FooterBtn"/>

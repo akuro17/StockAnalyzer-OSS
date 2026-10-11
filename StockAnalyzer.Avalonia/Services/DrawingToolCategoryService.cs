@@ -16,7 +16,7 @@ public static class DrawingToolCategoryService
     {
         return new[]
         {
-            // 1. Cursors — sorted: インフォメーション, 消しゴム, ポインター, ルーラー
+            // 1. Cursors — sorted: インフォメーション, 消しゴム, スポイト, ポインター, ルーラー
             new DrawingToolCategoryDefinition(
                 NameKey: "DrawCat_Cursors",
                 Icon: "\U0001F446", // 👆
@@ -24,12 +24,13 @@ public static class DrawingToolCategoryService
                 {
                     new DrawingToolInfo(DrawingTool.Information, "\u2139\uFE0F", "DrawTool_Information"),
                     new DrawingToolInfo(DrawingTool.Eraser, "\U0001F9F9", "DrawTool_Eraser"),
+                    new DrawingToolInfo(DrawingTool.Eyedropper, "\U0001F4A7", "DrawTool_Eyedropper"),
                     new DrawingToolInfo(DrawingTool.Pointer, "\U0001F446", "DrawTool_Pointer"),
                     new DrawingToolInfo(DrawingTool.Ruler, "\U0001F4CF", "DrawTool_Ruler"),
                 }),
 
             // 2. Lines & Trend — sorted: 角度, 矢印, カーブトレンド, カテナリー曲線, 水平線, トレンドライン,
-            //   NURBS円錐曲線(弧), NURBS双曲線, NURBS放物線, NURBS曲線, ポリライン, レイ, 垂直線
+            //   NURBS円錐曲線(弧), NURBS双曲線, NURBS放物線, NURBS曲線, フリーハンド, 蛍光ペン, ポリライン, レイ, 垂直線
             new DrawingToolCategoryDefinition(
                 NameKey: "DrawCat_Lines",
                 Icon: "\uFF0F", // ／
@@ -47,12 +48,13 @@ public static class DrawingToolCategoryService
                     new DrawingToolInfo(DrawingTool.NurbsParabola, "\u222A", "DrawTool_NurbsParabola"),
                     new DrawingToolInfo(DrawingTool.NurbsTrendCurve, "\u223F", "DrawTool_NurbsTrendCurve"),
                     new DrawingToolInfo(DrawingTool.Freehand, "\u270D", "DrawTool_Freehand"),
+                    new DrawingToolInfo(DrawingTool.Highlighter, "\U0001F58C", "DrawTool_Highlighter"),
                     new DrawingToolInfo(DrawingTool.Polyline, "\u29E2", "DrawTool_Polyline"),
                     new DrawingToolInfo(DrawingTool.Ray, "\u2198", "DrawTool_Ray"),
                     new DrawingToolInfo(DrawingTool.VerticalLine, "\u2502", "DrawTool_VerticalLine"),
                 }),
 
-            // 3. Shapes — sorted: アルキメデスの螺旋, 円・楕円, 黄金螺旋, 三角形, 対数螺旋, 長方形, NURBS円, NURBS楕円
+            // 3. Shapes — sorted: アルキメデスの螺旋, 円・楕円, 黄金螺旋, 角丸四角形, 三角形, 対数螺旋, 長方形, NURBS円, NURBS楕円
             new DrawingToolCategoryDefinition(
                 NameKey: "DrawCat_Shapes",
                 Icon: "\u2B1C", // ⬜
@@ -68,7 +70,7 @@ public static class DrawingToolCategoryService
                     new DrawingToolInfo(DrawingTool.NurbsEllipse, "\u2B2D", "DrawTool_NurbsEllipse"),
                 }),
 
-            // 4. Text — sorted: 吹き出し, 価格ラベル, 曲線ラインテキスト, ラインテキスト, テキスト
+            // 4. Text — sorted: 吹き出し, 価格ラベル, 曲線ラインテキスト, ラインテキスト, テキスト, 連番スタンプ
             new DrawingToolCategoryDefinition(
                 NameKey: "DrawCat_Text",
                 Icon: "\U0001F4DD", // 📝
@@ -79,6 +81,7 @@ public static class DrawingToolCategoryService
                     new DrawingToolInfo(DrawingTool.CurveLineText, "\U0001F30A", "DrawTool_CurveLineText"),
                     new DrawingToolInfo(DrawingTool.LineText, "\U0001F524", "DrawTool_LineText"),
                     new DrawingToolInfo(DrawingTool.Text, "\U0001F4DD", "DrawTool_Text"),
+                    new DrawingToolInfo(DrawingTool.StepBadge, "\u2460", "DrawTool_StepBadge"),
                 }),
 
             // 5. Channels & Regression — sorted: カーブチャネル, 回帰トレンド, 範囲スプライン, ピッチフォーク, 平行チャネル

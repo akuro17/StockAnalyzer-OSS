@@ -234,12 +234,18 @@ public class PredictionModelMetadataTests
 
     [Fact]
     public void Validate_WindowSizeMismatch_Throws()
-        => Assert.Throws<InvalidOperationException>(() =>
+    {
+        // A typed InvalidOperationException (existing catch sites keep working) that names both windows.
+        var error = Assert.Throws<PredictionWindowMismatchException>(() =>
             Validate(new Dictionary<string, string>
             {
                 [PredictionModelMetadata.FeatureModeKey] = "ohlcv_minmax",
                 [PredictionModelMetadata.WindowSizeKey] = "40",
             }));
+        Assert.IsAssignableFrom<InvalidOperationException>(error);
+        Assert.Equal(40, error.ModelWindow);
+        Assert.Contains("trained with window size 40", error.Message);
+    }
 
     [Fact]
     public void Validate_WindowSizeNotAnInteger_Throws()
@@ -301,7 +307,7 @@ public class PredictionModelMetadataTests
                 [PredictionModelMetadata.TargetTypeKey] = PredictionModelMetadata.TargetTypeRegression,
             }));
 
-        Assert.Throws<InvalidOperationException>(() =>
+        Assert.Throws<PredictionWindowMismatchException>(() => // a typed InvalidOperationException
             Validate(new Dictionary<string, string>
             {
                 [PredictionModelMetadata.FeatureModeKey] = "ohlcv_minmax",

@@ -12,4 +12,9 @@ public interface IClipboardService
     /// </summary>
     /// <param name="text">The text to copy to the clipboard.</param>
     Task SetTextAsync(string text);
+
+    /// <summary>
+    /// Gets the text contents of the clipboard asynchronously.
+    /// </summary>
+    Task<string?> GetTextAsync();
 }

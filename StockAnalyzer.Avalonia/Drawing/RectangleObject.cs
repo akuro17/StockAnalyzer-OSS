@@ -80,6 +80,7 @@ public class RectangleObject : RelativeGeometricRenderer, IFillableChartObject
 
         _cachedPaint.Color = SkiaColor;
         _cachedPaint.StrokeWidth = (float)Thickness;
+        _cachedPaint.PathEffect = StrokeStyle.ToSkPathEffect();
         _cachedPath.Reset();
 
         DrawGeometry(canvas, transform);
@@ -157,7 +158,16 @@ public class RectangleObject : RelativeGeometricRenderer, IFillableChartObject
         {
             _cachedPaint.Style = SKPaintStyle.Stroke;
             _cachedPaint.BlendMode = SKBlendMode.SrcOver;
-            canvas.DrawRect(rect, _cachedPaint);
+            if (_cachedPaint.PathEffect != null)
+            {
+                _cachedPath.Reset();
+                _cachedPath.AddRect(rect);
+                canvas.DrawPath(_cachedPath, _cachedPaint);
+            }
+            else
+            {
+                canvas.DrawRect(rect, _cachedPaint);
+            }
         }
     }
 

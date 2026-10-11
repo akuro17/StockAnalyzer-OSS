@@ -48,9 +48,7 @@ public class ClothoidArrowObject : RelativeGeometricRenderer, IDrawingCalculated
     [Category("Style")]
     [DisplayName("Stroke Style")]
     [ParameterTag(DrawingParameterTags.Analysis)]
-    public DrawingStrokeStyle StrokeStyle { get; set; } = DrawingStrokeStyle.Solid;
-
-    [Browsable(false)]
+    public new DrawingStrokeStyle StrokeStyle { get; set; } = DrawingStrokeStyle.Solid;
     [JsonIgnore]
     public DrawingStrokeStyle Style
     {
@@ -66,8 +64,6 @@ public class ClothoidArrowObject : RelativeGeometricRenderer, IDrawingCalculated
     private const float DotIntervalOff = 3.0f;
 
     private readonly SKPaint _fillPaint;
-    private readonly SKPathEffect _dashEffect;
-    private readonly SKPathEffect _dotEffect;
 
     public ClothoidArrowObject() : base()
     {
@@ -76,9 +72,6 @@ public class ClothoidArrowObject : RelativeGeometricRenderer, IDrawingCalculated
             Style = SKPaintStyle.Fill,
             IsAntialias = true
         };
-
-        _dashEffect = SKPathEffect.CreateDash(new float[] { DashIntervalOn, DashIntervalOff }, 0f);
-        _dotEffect = SKPathEffect.CreateDash(new float[] { DotIntervalOn, DotIntervalOff }, 0f);
     }
 
     public ClothoidArrowObject(ChartPoint tail, ChartPoint head) : this()
@@ -149,12 +142,7 @@ public class ClothoidArrowObject : RelativeGeometricRenderer, IDrawingCalculated
 
         if (!hasDrawnAny) return;
 
-        _cachedPaint.PathEffect = StrokeStyle switch
-        {
-            DrawingStrokeStyle.Dash => _dashEffect,
-            DrawingStrokeStyle.Dot => _dotEffect,
-            _ => null
-        };
+        _cachedPaint.PathEffect = StrokeStyle.ToSkPathEffect();
 
         canvas.DrawPath(_cachedPath, _cachedPaint);
 
@@ -259,8 +247,6 @@ public class ClothoidArrowObject : RelativeGeometricRenderer, IDrawingCalculated
     public override void Dispose()
     {
         _fillPaint.Dispose();
-        _dashEffect.Dispose();
-        _dotEffect.Dispose();
         base.Dispose();
     }
 

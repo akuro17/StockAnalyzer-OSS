@@ -129,6 +129,15 @@ public class TickerDataRefreshedMessage : CommunityToolkit.Mvvm.Messaging.Messag
 }
 
 /// <summary>
+/// Published when the model, the ensemble or the window the predictions use has changed (activate / deactivate / restore, ensemble save,
+/// window size saved, a model deployed from the training wizard). The charts predict again for the data they already hold, so the owner sees the
+/// change at once instead of after the next symbol or timeframe change.
+/// </summary>
+public class PredictionConfigurationChangedMessage
+{
+}
+
+/// <summary>
 /// Published when indicator calculations are completed in ChartViewModel.
 /// </summary>
 public class IndicatorResultsUpdatedMessage

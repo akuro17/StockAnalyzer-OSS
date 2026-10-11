@@ -458,7 +458,7 @@ public static class DrawingDocumentCodec
         return state;
     }
 
-    private static Dictionary<string, object?> ExtractParameters(IChartObject obj)
+    internal static Dictionary<string, object?> ExtractParameters(IChartObject obj)
     {
         var result = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
         var type = obj.GetType();
@@ -506,7 +506,7 @@ public static class DrawingDocumentCodec
         return result;
     }
 
-    private static void ApplyParameters(IChartObject instance, Type concreteType, IReadOnlyDictionary<string, object?> parameters)
+    internal static void ApplyParameters(IChartObject instance, Type concreteType, IReadOnlyDictionary<string, object?> parameters)
     {
         var properties = concreteType.GetProperties(BindingFlags.Public | BindingFlags.Instance)
             .Where(p => p.GetIndexParameters().Length == 0 &&

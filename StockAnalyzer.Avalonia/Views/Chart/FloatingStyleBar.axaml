@@ -1,0 +1,110 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:StockAnalyzer.Avalonia.ViewModels.Chart"
+             xmlns:drawing="using:StockAnalyzer.Avalonia.Drawing"
+             xmlns:l="clr-namespace:StockAnalyzer.Avalonia.Markup;assembly=StockAnalyzer.Avalonia"
+             x:Class="StockAnalyzer.Avalonia.Views.Chart.FloatingStyleBar"
+             x:DataType="vm:FloatingStyleBarViewModel">
+
+    <UserControl.Styles>
+        <Style Selector="Button.style-tool-btn">
+            <Setter Property="Height" Value="28"/>
+            <Setter Property="MinWidth" Value="28"/>
+            <Setter Property="Padding" Value="4,2"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border}"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+
+        <Style Selector="Button.color-swatch-btn">
+            <Setter Property="Width" Value="18"/>
+            <Setter Property="Height" Value="18"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="CornerRadius" Value="9"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border}"/>
+        </Style>
+    </UserControl.Styles>
+
+    <Border Background="{DynamicResource Brush.Background.Secondary}"
+            BorderBrush="{DynamicResource Brush.Border}"
+            BorderThickness="1"
+            CornerRadius="8"
+            Padding="6,4"
+            BoxShadow="0 4 12 0 #40000000"
+            IsVisible="{Binding IsVisible}">
+        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+            <!-- Color Swatches -->
+            <StackPanel Orientation="Horizontal" Spacing="3" VerticalAlignment="Center">
+                <Button Classes="color-swatch-btn" Background="#FF1744" Command="{Binding SetColorCommand}" CommandParameter="#FF1744" ToolTip.Tip="Red"/>
+                <Button Classes="color-swatch-btn" Background="#2979FF" Command="{Binding SetColorCommand}" CommandParameter="#2979FF" ToolTip.Tip="Blue"/>
+                <Button Classes="color-swatch-btn" Background="#00E676" Command="{Binding SetColorCommand}" CommandParameter="#00E676" ToolTip.Tip="Green"/>
+                <Button Classes="color-swatch-btn" Background="#FFEA00" Command="{Binding SetColorCommand}" CommandParameter="#FFEA00" ToolTip.Tip="Yellow"/>
+                <Button Classes="color-swatch-btn" Background="#FF9100" Command="{Binding SetColorCommand}" CommandParameter="#FF9100" ToolTip.Tip="Orange"/>
+                <Button Classes="color-swatch-btn" Background="#D500F9" Command="{Binding SetColorCommand}" CommandParameter="#D500F9" ToolTip.Tip="Purple"/>
+                <Button Classes="color-swatch-btn" Background="#FFFFFF" Command="{Binding SetColorCommand}" CommandParameter="#FFFFFF" ToolTip.Tip="White"/>
+                <Button Classes="color-swatch-btn" Background="#37474F" Command="{Binding SetColorCommand}" CommandParameter="#37474F" ToolTip.Tip="Dark Slate"/>
+                <Button Classes="style-tool-btn" Content="💧" Command="{Binding ActivateEyedropperCommand}" ToolTip.Tip="Eyedropper" Margin="2,0,0,0"/>
+            </StackPanel>
+
+            <Separator Width="1" Margin="2,4" Background="{DynamicResource Brush.Border}"/>
+
+            <!-- Thickness Selector -->
+            <StackPanel Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
+                <Button Classes="style-tool-btn" Content="1px" Command="{Binding SetThicknessCommand}">
+                    <Button.CommandParameter><x:Double>1.0</x:Double></Button.CommandParameter>
+                </Button>
+                <Button Classes="style-tool-btn" Content="2px" Command="{Binding SetThicknessCommand}">
+                    <Button.CommandParameter><x:Double>2.0</x:Double></Button.CommandParameter>
+                </Button>
+                <Button Classes="style-tool-btn" Content="4px" Command="{Binding SetThicknessCommand}">
+                    <Button.CommandParameter><x:Double>4.0</x:Double></Button.CommandParameter>
+                </Button>
+                <Button Classes="style-tool-btn" Content="8px" Command="{Binding SetThicknessCommand}">
+                    <Button.CommandParameter><x:Double>8.0</x:Double></Button.CommandParameter>
+                </Button>
+            </StackPanel>
+
+            <Separator Width="1" Margin="2,4" Background="{DynamicResource Brush.Border}"/>
+
+            <!-- Opacity Selector -->
+            <StackPanel Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
+                <Button Classes="style-tool-btn" Content="25%" Command="{Binding SetOpacityCommand}">
+                    <Button.CommandParameter><x:Double>0.25</x:Double></Button.CommandParameter>
+                </Button>
+                <Button Classes="style-tool-btn" Content="50%" Command="{Binding SetOpacityCommand}">
+                    <Button.CommandParameter><x:Double>0.50</x:Double></Button.CommandParameter>
+                </Button>
+                <Button Classes="style-tool-btn" Content="75%" Command="{Binding SetOpacityCommand}">
+                    <Button.CommandParameter><x:Double>0.75</x:Double></Button.CommandParameter>
+                </Button>
+                <Button Classes="style-tool-btn" Content="100%" Command="{Binding SetOpacityCommand}">
+                    <Button.CommandParameter><x:Double>1.00</x:Double></Button.CommandParameter>
+                </Button>
+            </StackPanel>
+
+            <Separator Width="1" Margin="2,4" Background="{DynamicResource Brush.Border}"/>
+
+            <!-- Stroke Style -->
+            <StackPanel Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
+                <Button Classes="style-tool-btn" Content="―" Command="{Binding SetStrokeStyleCommand}" CommandParameter="{x:Static drawing:DrawingStrokeStyle.Solid}" ToolTip.Tip="Solid"/>
+                <Button Classes="style-tool-btn" Content="---" Command="{Binding SetStrokeStyleCommand}" CommandParameter="{x:Static drawing:DrawingStrokeStyle.Dash}" ToolTip.Tip="Dashed"/>
+                <Button Classes="style-tool-btn" Content="···" Command="{Binding SetStrokeStyleCommand}" CommandParameter="{x:Static drawing:DrawingStrokeStyle.Dot}" ToolTip.Tip="Dotted"/>
+            </StackPanel>
+
+            <Separator Width="1" Margin="2,4" Background="{DynamicResource Brush.Border}"/>
+
+            <!-- Actions (Z-Order, Lock, Delete) -->
+            <StackPanel Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
+                <Button Classes="style-tool-btn" Content="⤒" Command="{Binding BringToFrontCommand}" ToolTip.Tip="Bring to Front"/>
+                <Button Classes="style-tool-btn" Content="⤓" Command="{Binding SendToBackCommand}" ToolTip.Tip="Send to Back"/>
+                <Button Classes="style-tool-btn" Content="🔒" Command="{Binding ToggleLockCommand}" ToolTip.Tip="Toggle Lock"/>
+                <Button Classes="style-tool-btn" Content="🗑" Command="{Binding DeleteCommand}" ToolTip.Tip="Delete"/>
+            </StackPanel>
+        </StackPanel>
+    </Border>
+</UserControl>

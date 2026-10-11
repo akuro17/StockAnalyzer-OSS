@@ -22,6 +22,7 @@ public sealed class RulerRenderer : IDisposable
     public bool IsActive { get; set; }
     public global::Avalonia.Point StartPoint { get; set; }
     public global::Avalonia.Point EndPoint { get; set; }
+    public Action<SKCanvas>? RubberBandAction { get; set; }
 
     public RulerRenderer()
     {

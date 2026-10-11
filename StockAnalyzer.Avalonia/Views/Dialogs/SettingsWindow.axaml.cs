@@ -25,7 +25,17 @@ public partial class SettingsWindow : Window
 
         Closing += (s, e) =>
         {
-            if (!e.Cancel && DataContext is SettingsViewModel vm && !vm.OnClosing())
+            if (e.Cancel || DataContext is not SettingsViewModel vm) return;
+            if (vm.NeedsDiscardConfirmation)
+            {
+                // Unsaved changes (SA_UI_SUBWINDOW_STANDARD 5.2): keep the window, ask, and close again only when the owner agrees.
+                // The Cancel button, Esc and the close button all arrive here.
+                e.Cancel = true;
+                _ = vm.DiscardAndCloseCommand.ExecuteAsync(null);
+                return;
+            }
+
+            if (!vm.OnClosing())
                 e.Cancel = true;
         };
         Closed += (s, e) => (DataContext as IDisposable)?.Dispose();

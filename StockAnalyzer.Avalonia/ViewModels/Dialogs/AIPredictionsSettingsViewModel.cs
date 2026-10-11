@@ -8,10 +8,15 @@ using System.Linq;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using CommunityToolkit.Mvvm.Messaging;
 using Microsoft.Extensions.Logging;
+using PredictionConfigurationChangedMessage = StockAnalyzer.Avalonia.Common.PredictionConfigurationChangedMessage;
 using Microsoft.Extensions.Logging.Abstractions;
 using StockAnalyzer.Avalonia.Services;
+using StockAnalyzer.Core.Models.Training;
+using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Services;
+using StockAnalyzer.Core.Theme;
 
 namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
 {
@@ -22,6 +27,14 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
         private readonly IToastNotificationService _toastNotificationService;
         private readonly IPythonService? _pythonService;
         private readonly IModelGenerationRegistry? _modelRegistry;
+        private readonly IMessenger _messenger = WeakReferenceMessenger.Default;
+        private readonly IDialogService? _dialogService;
+        private readonly IThemeManager? _themeManager;
+        private IndicatorColor _snapshotAttentionHeat;
+        private bool _syncingAttentionHeat;
+
+        /// <summary>Tells the charts that the model, ensemble or window the predictions use changed, so they predict again at once.</summary>
+        private void NotifyPredictionConfigurationChanged() => _messenger.Send(new PredictionConfigurationChangedMessage());
         private readonly IEnsembleSettingsManager? _ensembleSettings;
         private readonly ILogger<AIPredictionsSettingsViewModel> _logger;
 
@@ -50,6 +63,34 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
         [NotifyPropertyChangedFor(nameof(IsModified))]
         private int _selectedWindowSize = PredictionSettingsManager.DefaultWindowSize;
 
+        /// <summary>
+        /// The colour of the prediction bands drawn on the chart while a model is active (the theme's <see cref="ThemeColorKey.AttentionHeat"/>: the alpha is the opacity of
+        /// the most attended bar). Changing it previews on the charts at once; it is saved with the page.
+        /// </summary>
+        [ObservableProperty]
+        [NotifyPropertyChangedFor(nameof(IsModified))]
+        private IndicatorColor _attentionHeatColor;
+
+        /// <summary>False without a theme manager (design time): the colour row is then hidden.</summary>
+        public bool HasAttentionHeatColor => _themeManager is not null;
+
+        partial void OnAttentionHeatColorChanged(IndicatorColor value)
+        {
+            if (_isDisposed || _syncingAttentionHeat) return;
+            _themeManager?.UpdateSingleColor(ThemeColorKey.AttentionHeat, value);
+        }
+
+        /// <summary>The Theme page (reset, preset change) can replace the colour behind this page's back: follow it.</summary>
+        private void OnThemeManagerChanged(object? sender, PropertyChangedEventArgs e)
+        {
+            if (_isDisposed || _themeManager is null || e.PropertyName != nameof(IThemeManager.CurrentTheme)) return;
+            var current = _themeManager.CurrentTheme.AttentionHeat;
+            if (current == AttentionHeatColor) return;
+            _syncingAttentionHeat = true;
+            try { AttentionHeatColor = current; }
+            finally { _syncingAttentionHeat = false; }
+        }
+
         [ObservableProperty]
         [NotifyPropertyChangedFor(nameof(AutoButtonText))]
         private bool _isOnnxInstalled;
@@ -76,15 +117,25 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
         [ObservableProperty]
         private string? _activationWarning;
 
-        private sealed record PendingActivation(string ModelId, string? ExpectedActiveId, bool IsRollback);
+        /// <param name="IsReplacement">The candidate cannot be compared with the active generation: confirming deactivates the active one and activates the candidate.</param>
+        private sealed record PendingActivation(string ModelId, string? ExpectedActiveId, bool IsRollback, bool IsReplacement = false);
         private PendingActivation? _pendingActivation;
         private long _generationSelectionRevision;
 
+        /// <summary>True when the selected row is the active generation: the activation button then deactivates it.</summary>
+        public bool IsSelectedGenerationActive => SelectedGeneration?.IsActive == true;
+
+        public string GenerationActivationText => LocalizationManager.Instance[IsSelectedGenerationActive
+            ? "Settings_ModelGenerations_Deactivate" : "Settings_ModelGenerations_Activate"];
+
         partial void OnSelectedGenerationChanged(ModelGenerationSummary? value)
         {
+            OnPropertyChanged(nameof(IsSelectedGenerationActive));
+            OnPropertyChanged(nameof(GenerationActivationText));
             _generationSelectionRevision++;
             _pendingActivation = null;
             ActivationWarning = null;
+            SyncRowSelection();
             SelectAnalysis(value, _generationSelectionRevision);
             Explainability.Select(value?.ModelId);
             MonitoringRefreshTask = RefreshMonitoringAsync();
@@ -101,8 +152,13 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
             IModelAnalysisService? modelAnalysisService = null, IDispatcherService? analysisDispatcher = null,
             IPredictionLogService? predictionLog = null, IRetrainingScheduler? retrainingScheduler = null,
             ICurrentPredictionHealthService? currentHealth = null, IAttestedEvidenceDiagnostics? evidenceDiagnostics = null,
-            IModelExplainabilityService? explainabilityService = null)
+            IModelExplainabilityService? explainabilityService = null, IMessenger? messenger = null,
+            IDialogService? dialogService = null, IThemeManager? themeManager = null)
         {
+            _messenger = messenger ?? WeakReferenceMessenger.Default;
+            _dialogService = dialogService;
+            _themeManager = themeManager;
+            if (_themeManager is not null) _themeManager.PropertyChanged += OnThemeManagerChanged;
             Explainability = new ModelExplainabilityViewModel(explainabilityService, analysisDispatcher, logger);
             _predictionSettingsManager = predictionSettingsManager;
             _clipboardService = clipboardService;
@@ -160,12 +216,13 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
         {
             _generationSelectionRevision++;
             Generations.Clear();
-            if (_modelRegistry is null) return;
+            if (_modelRegistry is null) { RebuildGenerationRows(); return; }
             foreach (var item in _modelRegistry.List()) Generations.Add(item);
             SelectedGeneration = null;
             _pendingActivation = null;
             ActivationWarning = null;
             OnPropertyChanged(nameof(LegacyModelStatus));
+            RebuildGenerationRows();
         }
 
         private async Task LoadEnsembleAsync()
@@ -197,6 +254,7 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
             foreach (var row in EnsembleMembers)
                 if (_observedEnsembleRows.Add(row)) row.PropertyChanged += OnEnsembleRowChanged;
             AdvanceEnsembleRevision();
+            UpdateAddEnsembleMemberAvailability();
         }
 
         private void OnEnsembleRowChanged(object? sender, PropertyChangedEventArgs e)
@@ -210,7 +268,7 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
             return ++_ensembleEditRevision;
         }
 
-        [RelayCommand]
+        [RelayCommand(CanExecute = nameof(CanAddEnsembleMember))]
         private void AddEnsembleMember()
         {
             if (SelectedGeneration is null || EnsembleMembers.Count >= EnsembleSpec.MaximumMembers
@@ -278,6 +336,7 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
                 var spec = new EnsembleSpec(Array.AsReadOnly(EnsembleMembers.Select(row =>
                     new EnsembleMember(row.ModelId, (double)(row.Percent / 100m))).ToArray()));
                 await _ensembleSettings.SaveAsync(spec);
+                NotifyPredictionConfigurationChanged();
                 if (!_isDisposed && revision == _ensembleEditRevision)
                     EnsembleStatus = LocalizationManager.Instance["Settings_Ensemble_Saved"];
             }
@@ -292,11 +351,122 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
             try
             {
                 await _ensembleSettings.SaveAsync(null);
+                NotifyPredictionConfigurationChanged();
                 if (_isDisposed || revision != _ensembleEditRevision) return;
                 EnsembleMembers.Clear();
                 EnsembleStatus = LocalizationManager.Instance["Settings_Ensemble_Cleared"];
             }
             catch (Exception ex) { ReportEnsembleFailure(ex, "clear", revision); }
+        }
+
+        /// <summary>
+        /// "Add model from file": the owner picks an <c>.onnx</c> (its <c>.onnx.metrics.json</c> must sit beside it), the registry verifies and registers it
+        /// as an immutable generation, and the same manual activation path as the Activate button then makes it the active model (a lower score asks
+        /// for the usual confirmation, a window that differs from Window Size is reported). Registering a file that is already known just selects it.
+        /// </summary>
+        [RelayCommand]
+        private async Task AddGenerationFromFileAsync()
+        {
+            if (_modelRegistry is null || _dialogService is null || IsBusy) return;
+            var path = await _dialogService.ShowOpenFileDialogAsync(
+                LocalizationManager.Instance["Settings_ModelGenerations_AddFile_Title"],
+                new[] { TrainingEnsembleArtifactLayout.ModelExtension });
+            if (string.IsNullOrEmpty(path)) return;
+
+            IsBusy = true;
+            GenerationStatusMessage = null;
+            ActivationWarning = null;
+            _pendingActivation = null;
+            string? registeredId = null;
+            try
+            {
+                registeredId = (await _modelRegistry.RegisterAsync(path)).ModelId;
+                RefreshGenerations();
+                SelectedGeneration = Generations.FirstOrDefault(g => g.ModelId == registeredId);
+            }
+            catch (Exception ex) { ReportGenerationFailure(ex, "register from file"); }
+            finally { IsBusy = false; }
+
+            if (registeredId is null || SelectedGeneration is null) return;
+            await ActivateGenerationAsync();
+
+            // Registration and activation are separate steps: when the second one did not happen (a window that differs from Window Size, a refused
+            // or still unconfirmed switch) the owner must still learn that the model itself is in the list.
+            if (_modelRegistry.ActiveId != registeredId)
+                GenerationStatusMessage = string.IsNullOrEmpty(GenerationStatusMessage)
+                    ? LocalizationManager.Instance["Settings_ModelGenerations_AddedNotActivated"]
+                    : LocalizationManager.Instance["Settings_ModelGenerations_AddedNotActivated"] + " " + GenerationStatusMessage;
+        }
+
+        /// <summary>
+        /// "Remove from list": the selected generation is removed from the registry (its registered copy is deleted; the file it was added from is never
+        /// touched, so it can be added again). Not the active generation, not a member of the saved ensemble, not one that is in use.
+        /// </summary>
+        [RelayCommand]
+        private async Task RemoveGenerationAsync()
+        {
+            if (_modelRegistry is null || _dialogService is null || SelectedGeneration is null || IsBusy) return;
+            var modelId = SelectedGeneration.ModelId;
+            GenerationStatusMessage = null;
+            ActivationWarning = null;
+            _pendingActivation = null;
+            if (SelectedGeneration.IsActive)
+            {
+                GenerationStatusMessage = LocalizationManager.Instance["Settings_ModelGenerations_Error_RemoveActive"];
+                return;
+            }
+
+            if (_ensembleSettings?.Current?.Members.Any(member => member.ModelId == modelId) == true)
+            {
+                GenerationStatusMessage = LocalizationManager.Instance["Settings_ModelGenerations_Error_RemoveEnsemble"];
+                return;
+            }
+
+            if (!await _dialogService.ShowConfirmationAsync(LocalizationManager.Instance["Settings_ModelGenerations_RemoveConfirm_Title"],
+                    LocalizationManager.Instance["Settings_ModelGenerations_RemoveConfirm_Message"])) return;
+
+            IsBusy = true;
+            try
+            {
+                var removed = await _modelRegistry.RemoveAsync(modelId);
+                // a row of the ensemble being edited (not saved yet) would name a model that no longer exists
+                foreach (var row in EnsembleMembers.Where(r => r.ModelId == modelId).ToArray()) EnsembleMembers.Remove(row);
+                GenerationStatusMessage = LocalizationManager.Instance[removed
+                    ? "Settings_ModelGenerations_Removed" : "Settings_ModelGenerations_Error_Missing"];
+                RefreshGenerations();
+            }
+            catch (ModelRemovalRefusedException ex)
+            {
+                GenerationStatusMessage = LocalizationManager.Instance[ex.Reason == ModelRemovalRefusal.Active
+                    ? "Settings_ModelGenerations_Error_RemoveActive" : "Settings_ModelGenerations_Error_RemoveInUse"];
+            }
+            catch (Exception ex) { ReportGenerationFailure(ex, "remove"); }
+            finally { IsBusy = false; }
+        }
+
+        /// <summary>Used by the row check box (<c>ToggleGenerationRowActivationCommand</c>): deactivates the selected generation when it is the active one, otherwise activates it.</summary>
+        [RelayCommand]
+        private Task ToggleGenerationActivationAsync() => IsSelectedGenerationActive ? DeactivateGenerationAsync() : ActivateGenerationAsync();
+
+        /// <summary>Clears the active generation; predictions then use the configured legacy model, and "restore previous" brings the generation back.</summary>
+        [RelayCommand]
+        private async Task DeactivateGenerationAsync()
+        {
+            if (_modelRegistry is null || IsBusy) return;
+            IsBusy = true;
+            GenerationStatusMessage = null;
+            ActivationWarning = null;
+            _pendingActivation = null;
+            try
+            {
+                var changed = await _modelRegistry.DeactivateAsync();
+                if (changed) NotifyPredictionConfigurationChanged();
+                GenerationStatusMessage = LocalizationManager.Instance[changed
+                    ? "Settings_ModelGenerations_Deactivated" : "Settings_ModelGenerations_AlreadyInactive"];
+                RefreshGenerations();
+            }
+            catch (Exception ex) { ReportGenerationFailure(ex, "deactivate"); }
+            finally { IsBusy = false; }
         }
 
         [RelayCommand]
@@ -313,6 +483,7 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
             try
             {
                 var changed = await _modelRegistry.ActivateAsync(candidateId, manual: true);
+                if (changed) NotifyPredictionConfigurationChanged();
                 GenerationStatusMessage = changed
                     ? LocalizationManager.Instance["Settings_ModelGenerations_Activated"]
                     : LocalizationManager.Instance["Settings_ModelGenerations_AlreadyActive"];
@@ -324,6 +495,12 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
                 _pendingActivation = new PendingActivation(ex.CandidateId ?? candidateId,
                     ex.CandidateId is null ? expectedActiveId : ex.ExpectedActiveId, false);
                 ActivationWarning = LocalizationManager.Instance["Settings_ModelGenerations_DowngradeWarning"];
+            }
+            catch (ModelActivationIncompatibleException)
+            {
+                if (selectionRevision != _generationSelectionRevision) return;
+                _pendingActivation = new PendingActivation(candidateId, expectedActiveId, false, IsReplacement: true);
+                ActivationWarning = LocalizationManager.Instance["Settings_ModelGenerations_ReplaceWarning"];
             }
             catch (Exception ex) { ReportGenerationFailure(ex, "activate"); }
             finally { IsBusy = false; }
@@ -337,7 +514,10 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
             GenerationStatusMessage = null;
             try
             {
-                var changed = await _modelRegistry.ConfirmActivationAsync(pending.ModelId, pending.ExpectedActiveId);
+                var changed = pending.IsReplacement
+                    ? await _modelRegistry.ReplaceActiveAsync(pending.ModelId, pending.ExpectedActiveId)
+                    : await _modelRegistry.ConfirmActivationAsync(pending.ModelId, pending.ExpectedActiveId);
+                if (changed) NotifyPredictionConfigurationChanged();
                 GenerationStatusMessage = LocalizationManager.Instance[changed
                     ? pending.IsRollback ? "Settings_ModelGenerations_Restored" : "Settings_ModelGenerations_Activated"
                     : "Settings_ModelGenerations_AlreadyActive"];
@@ -367,6 +547,7 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
             try
             {
                 var changed = await _modelRegistry.RollbackAsync();
+                if (changed) NotifyPredictionConfigurationChanged();
                 GenerationStatusMessage = changed
                     ? LocalizationManager.Instance["Settings_ModelGenerations_Restored"]
                     : LocalizationManager.Instance["Settings_ModelGenerations_NoHistory"];
@@ -380,6 +561,12 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
                 _pendingActivation = new PendingActivation(candidateId,
                     ex.CandidateId is null ? fallbackActiveId : ex.ExpectedActiveId, true);
                 ActivationWarning = LocalizationManager.Instance["Settings_ModelGenerations_RestoreWarning"];
+            }
+            catch (ModelActivationIncompatibleException)
+            {
+                if (selectionRevision != _generationSelectionRevision || fallbackCandidateId is null) return;
+                _pendingActivation = new PendingActivation(fallbackCandidateId, fallbackActiveId, true, IsReplacement: true);
+                ActivationWarning = LocalizationManager.Instance["Settings_ModelGenerations_ReplaceWarning"];
             }
             catch (Exception ex) { ReportGenerationFailure(ex, "restore previous"); }
             finally { IsBusy = false; }
@@ -413,10 +600,21 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
         private void ReportGenerationFailure(Exception exception, string operation)
         {
             _logger.LogError(exception, "Failed to {Operation} model generation", operation);
+            if (exception.Data[IModelGenerationRegistry.ReplaceRestoreFailureKey] is Exception restoreFailure)
+                _logger.LogError(restoreFailure, "Could not put the previous model generation back");
+            if (exception is StockAnalyzer.Core.Models.PredictionWindowMismatchException mismatch)
+            {
+                GenerationStatusMessage = string.Format(System.Globalization.CultureInfo.CurrentCulture,
+                    LocalizationManager.Instance["Settings_ModelGenerations_Error_WindowMismatch"],
+                    mismatch.ModelWindow, mismatch.ConfiguredWindow);
+                return;
+            }
+
             string key = exception switch
             {
                 ModelActivationContextChangedException => "Settings_ModelGenerations_Error_ContextChanged",
                 KeyNotFoundException => "Settings_ModelGenerations_Error_Missing",
+                FileNotFoundException => "Settings_ModelGenerations_Error_FileMissing",
                 InvalidDataException => "Settings_ModelGenerations_Error_Corrupt",
                 UnauthorizedAccessException or System.IO.IOException => "Settings_ModelGenerations_Error_Storage",
                 InvalidOperationException => "Settings_ModelGenerations_Error_Incompatible",
@@ -437,6 +635,7 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
         private class DesignClipboardService : IClipboardService
         {
             public Task SetTextAsync(string text) => Task.CompletedTask;
+            public Task<string?> GetTextAsync() => Task.FromResult<string?>(null);
         }
 
         private class DesignToastNotificationService : IToastNotificationService
@@ -452,15 +651,17 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
             _snapshotWindowSize = _predictionSettingsManager.WindowSize > 0 
                 ? _predictionSettingsManager.WindowSize 
                 : PredictionSettingsManager.DefaultWindowSize;
+            if (_themeManager is not null) _snapshotAttentionHeat = _themeManager.CurrentTheme.AttentionHeat;
         }
 
         private void InitializeFromSnapshot()
         {
             SelectedWindowSize = _snapshotWindowSize;
+            if (_themeManager is not null) AttentionHeatColor = _snapshotAttentionHeat;
             OnPropertyChanged(nameof(IsModified));
         }
 
-        public bool IsModified => SelectedWindowSize != _snapshotWindowSize;
+        public bool IsModified => SelectedWindowSize != _snapshotWindowSize || (_themeManager is not null && AttentionHeatColor != _snapshotAttentionHeat);
 
         partial void OnSelectedWindowSizeChanged(int value)
         {
@@ -543,28 +744,35 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
             {
                 _predictionSettingsManager.SetWindowSize(SelectedWindowSize);
             }
+            var windowChanged = SelectedWindowSize != _snapshotWindowSize;
+            var colorChanged = _themeManager is not null && AttentionHeatColor != _snapshotAttentionHeat;
             await _predictionSettingsManager.SaveAsync();
+            if (colorChanged) await _themeManager!.SaveAsync(); // the colour lives in the theme file; written only when it changed
             TakeSnapshot();
             OnPropertyChanged(nameof(IsModified));
+            if (windowChanged) NotifyPredictionConfigurationChanged();
         }
 
         public void RevertChanges()
         {
             if (_isDisposed) return;
             _predictionSettingsManager.SetWindowSize(_snapshotWindowSize);
-            InitializeFromSnapshot();
+            InitializeFromSnapshot(); // also puts the snapshot colour back on the charts
         }
 
         public void ResetToDefault()
         {
             if (_isDisposed) return;
             SelectedWindowSize = PredictionSettingsManager.DefaultWindowSize;
+            if (_themeManager is not null)
+                AttentionHeatColor = (_themeManager.CurrentTheme.IsDark ? ThemeColors.Dark : ThemeColors.Light).AttentionHeat;
         }
 
         public void Dispose()
         {
             if (_isDisposed) return;
             _isDisposed = true;
+            if (_themeManager is not null) _themeManager.PropertyChanged -= OnThemeManagerChanged;
             Explainability.Dispose();
             DisposeMonitoring();
             EnsembleMembers.CollectionChanged -= OnEnsembleMembersChanged;

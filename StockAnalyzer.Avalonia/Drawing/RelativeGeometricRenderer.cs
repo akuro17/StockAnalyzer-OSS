@@ -60,6 +60,10 @@ public abstract class RelativeGeometricRenderer : IChartObject, IDisposable
     [ParameterTag(DrawingParameterTags.Common)]
     public int ZIndex { get; set; } = 0;
 
+    [Category("Style")]
+    [DisplayName("Stroke Style")]
+    [ParameterTag(DrawingParameterTags.Common)]
+    public DrawingStrokeStyle StrokeStyle { get; set; } = DrawingStrokeStyle.Solid;
     public int AnchorPointIndex { get; set; } = 0;
 
     [Category("Coordinates")]
@@ -126,6 +130,7 @@ public abstract class RelativeGeometricRenderer : IChartObject, IDisposable
         // Update paint properties
         paint.Color = SkiaColor;
         paint.StrokeWidth = (float)Thickness;
+        paint.PathEffect = StrokeStyle.ToSkPathEffect();
 
         path.Reset();
 

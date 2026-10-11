@@ -5,9 +5,14 @@
              xmlns:vm="using:StockAnalyzer.Avalonia.ViewModels.Dialogs"
              xmlns:l="using:StockAnalyzer.Avalonia.Markup"
              xmlns:views="using:StockAnalyzer.Avalonia.Views.Dialogs"
+             xmlns:conv="using:StockAnalyzer.Avalonia.Converters"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="600"
              x:Class="StockAnalyzer.Avalonia.Views.Dialogs.AIPredictionsSettingsView"
              x:DataType="vm:AIPredictionsSettingsViewModel">
+
+    <UserControl.Resources>
+        <conv:IndicatorColorToAvaloniaColorConverter x:Key="ColorConverter"/>
+    </UserControl.Resources>
 
     <Design.DataContext>
         <vm:AIPredictionsSettingsViewModel/>
@@ -69,11 +74,11 @@
                     <TextBlock Text="{Binding ScheduleConfiguration}" TextWrapping="Wrap"/>
                     <TextBlock Text="{Binding ScheduleStatus}" TextWrapping="Wrap"/>
                     <StackPanel Orientation="Horizontal" Spacing="8">
-                        <Button Content="{l:Localize Monitoring_Enable}" Command="{Binding EnableRetrainingCommand}"
+                        <Button Classes="accent" Content="{l:Localize Monitoring_Enable}" Command="{Binding EnableRetrainingCommand}"
                                 IsEnabled="{Binding HasScheduleConfiguration}" IsVisible="{Binding !IsScheduleEnabled}"/>
-                        <Button Content="{l:Localize Monitoring_Disable}" Command="{Binding DisableRetrainingCommand}"
+                        <Button Classes="accent" Content="{l:Localize Monitoring_Disable}" Command="{Binding DisableRetrainingCommand}"
                                 IsVisible="{Binding IsScheduleEnabled}"/>
-                        <Button Content="{l:Localize Monitoring_Cancel}" Command="{Binding CancelRetrainingCommand}"/>
+                        <Button Classes="accent" Content="{l:Localize Monitoring_Cancel}" Command="{Binding CancelRetrainingCommand}"/>
                     </StackPanel>
                 </StackPanel>
             </Border>
@@ -110,6 +115,22 @@
                                    Foreground="{DynamicResource Brush.Text.Secondary}"
                                    TextWrapping="Wrap"/>
                     </StackPanel>
+
+                    <StackPanel Spacing="8" IsVisible="{Binding HasAttentionHeatColor}">
+                        <Grid ColumnDefinitions="*, Auto">
+                            <TextBlock Text="{l:Localize Settings_AIPredictions_Item_PredictionColor}"
+                                       FontWeight="SemiBold"
+                                       VerticalAlignment="Center"/>
+                            <ColorPicker Grid.Column="1"
+                                         Color="{Binding AttentionHeatColor, Mode=TwoWay, Converter={StaticResource ColorConverter}}"
+                                         Width="50" Height="28"/>
+                        </Grid>
+                        <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                        <TextBlock Text="{l:Localize Settings_AIPredictions_Desc_PredictionColor}"
+                                   FontSize="{DynamicResource HelperFontSize}"
+                                   Foreground="{DynamicResource Brush.Text.Secondary}"
+                                   TextWrapping="Wrap"/>
+                    </StackPanel>
                 </StackPanel>
             </Border>
 
@@ -121,26 +142,49 @@
                     <TextBlock Text="{l:Localize Settings_ModelGenerations_Description}"
                                TextWrapping="Wrap"/>
                     <TextBlock Text="{Binding LegacyModelStatus}" TextWrapping="Wrap"/>
-                    <ListBox ItemsSource="{Binding Generations}" SelectedItem="{Binding SelectedGeneration}"
+                    <ListBox ItemsSource="{Binding GenerationRows}" SelectedItem="{Binding SelectedGenerationRow}"
                              MaxHeight="190">
+                        <ListBox.Styles>
+                            <!-- Rows fill the whole item frame (so the active highlight does too); group headers cannot be selected. -->
+                            <Style Selector="ListBoxItem" x:DataType="vm:GenerationRow">
+                                <Setter Property="Padding" Value="0"/>
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                <Setter Property="IsEnabled" Value="{Binding IsSelectable}"/>
+                            </Style>
+                        </ListBox.Styles>
                         <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <TextBlock Text="{Binding ModelFile}"/>
-                                    <TextBlock Text="{Binding TargetType}"/>
-                                    <TextBlock Text="{Binding Timeframe}"/>
-                                    <TextBlock Text="{Binding Horizon}"/>
-                                    <TextBlock Text="{Binding MetricName}"/>
-                                    <TextBlock Text="{Binding Score}"/>
-                                    <TextBlock Text="{Binding ActiveMarker}"/>
-                                </StackPanel>
+                            <DataTemplate x:DataType="vm:GenerationRow">
+                                <!-- The check box at the start of a row is ticked for the active generation, so it is recognisable however long the file name is;
+                                     clicking it activates / deactivates that generation (there is no separate Activate / Deactivate button). The whole row is read in the hover tip.
+                                     A header row names the group of models that can form one ensemble. -->
+                                <Panel>
+                                <TextBlock Text="{Binding HeaderText}" IsVisible="{Binding IsHeader}" FontWeight="Bold"
+                                           Foreground="{DynamicResource Brush.Accent.Primary}" Margin="6,6,6,2" TextWrapping="Wrap"/>
+                                <Border Padding="6,3" IsVisible="{Binding IsItem}" HorizontalAlignment="Stretch" ToolTip.Tip="{Binding Tooltip}">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <CheckBox IsChecked="{Binding IsActive, Mode=OneWay}" VerticalAlignment="Center" MinWidth="0" MinHeight="0" Padding="0" Margin="0"
+                                                  Command="{Binding $parent[ListBox].((vm:AIPredictionsSettingsViewModel)DataContext).ToggleGenerationRowActivationCommand}"
+                                                  CommandParameter="{Binding}"
+                                                  AutomationProperties.Name="{l:Localize Settings_ModelGenerations_ActiveBadge}"/>
+                                        <TextBlock Text="{Binding ModelFile}"/>
+                                        <TextBlock Text="{Binding TargetType}"/>
+                                        <TextBlock Text="{Binding Timeframe}"/>
+                                        <TextBlock Text="{Binding Horizon}"/>
+                                        <TextBlock Text="{Binding MetricName}"/>
+                                        <TextBlock Text="{Binding Score}"/>
+                                    </StackPanel>
+                                </Border>
+                                </Panel>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
                     <StackPanel Orientation="Horizontal" Spacing="8">
-                        <Button Content="{l:Localize Settings_ModelGenerations_Refresh}" Command="{Binding RefreshGenerationsCommand}"/>
-                        <Button Content="{l:Localize Settings_ModelGenerations_Activate}" Command="{Binding ActivateGenerationCommand}"/>
-                        <Button Content="{l:Localize Settings_ModelGenerations_Restore}" Command="{Binding RollbackGenerationCommand}"/>
+                        <Button Classes="accent" Content="{l:Localize Settings_ModelGenerations_Refresh}" Command="{Binding RefreshGenerationsCommand}"/>
+                        <Button Classes="accent" Content="{l:Localize Settings_ModelGenerations_Restore}" Command="{Binding RollbackGenerationCommand}"/>
+                        <Button Classes="accent" Content="{l:Localize Settings_ModelGenerations_AddFile}" Command="{Binding AddGenerationFromFileCommand}"
+                                IsEnabled="{Binding !IsBusy}"/>
+                        <Button Classes="accent" Content="{l:Localize Settings_ModelGenerations_Remove}" Command="{Binding RemoveGenerationCommand}"
+                                IsEnabled="{Binding !IsBusy}"/>
                     </StackPanel>
                     <TextBlock Text="{Binding GenerationStatusMessage}"
                                IsVisible="{Binding GenerationStatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
@@ -148,8 +192,44 @@
                                Foreground="{DynamicResource Brush.Accent.Primary}"
                                TextWrapping="Wrap"/>
                     <TextBlock Text="{Binding ActivationWarning}" TextWrapping="Wrap"/>
-                    <Button Content="{l:Localize Settings_ModelGenerations_Confirm}" Command="{Binding ConfirmActivationCommand}"
+                    <Button Classes="accent" Content="{l:Localize Settings_ModelGenerations_Confirm}" Command="{Binding ConfirmActivationCommand}"
                             IsVisible="{Binding ActivationWarning, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                </StackPanel>
+            </Border>
+
+            <Border Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="1" CornerRadius="8" Padding="16">
+                <StackPanel Spacing="10">
+                    <TextBlock Text="{l:Localize Settings_Ensemble_Title}" FontWeight="Bold"/>
+                    <TextBlock Text="{l:Localize Settings_Ensemble_Description}" TextWrapping="Wrap"/>
+                    <ListBox ItemsSource="{Binding EnsembleMembers}" SelectedItem="{Binding SelectedEnsembleMember}" MaxHeight="200">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                                    <TextBlock Text="{Binding ModelId}" VerticalAlignment="Center"/>
+                                    <NumericUpDown Grid.Column="1" Value="{Binding Percent}" Minimum="0" Maximum="100"
+                                                   Increment="1" FormatString="0.####" Width="105"/>
+                                    <TextBlock Grid.Column="2" Text="%" VerticalAlignment="Center"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button Classes="accent" Content="{l:Localize Settings_Ensemble_Add}" Command="{Binding AddEnsembleMemberCommand}"
+                                ToolTip.Tip="{Binding AddEnsembleMemberHint}"/>
+                        <Button Classes="accent" Content="{l:Localize Settings_Ensemble_Remove}" Command="{Binding RemoveEnsembleMemberCommand}"/>
+                        <Button Classes="accent" Content="{l:Localize Settings_Ensemble_Equal}" Command="{Binding EqualEnsembleWeightsCommand}"/>
+                        <Button Classes="accent" Content="{l:Localize Settings_Ensemble_Accuracy}" Command="{Binding AccuracyEnsembleWeightsCommand}"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button Classes="accent" Content="{l:Localize Settings_Ensemble_Save}" Command="{Binding SaveEnsembleCommand}"/>
+                        <Button Classes="accent" Content="{l:Localize Settings_Ensemble_Clear}" Command="{Binding ClearEnsembleCommand}"/>
+                    </StackPanel>
+                    <TextBlock Text="{Binding AddEnsembleMemberHint}" FontSize="{DynamicResource HelperFontSize}"
+                               Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"
+                               IsVisible="{Binding AddEnsembleMemberHint, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                    <TextBlock Text="{Binding EnsembleStatus}" TextWrapping="Wrap"/>
                 </StackPanel>
             </Border>
 
@@ -187,38 +267,6 @@
             </Border>
 
             <views:ModelExplainabilityView DataContext="{Binding Explainability}"/>
-
-            <Border Background="{DynamicResource Brush.Background.Secondary}"
-                    BorderBrush="{DynamicResource Brush.Border.Primary}"
-                    BorderThickness="1" CornerRadius="8" Padding="16">
-                <StackPanel Spacing="10">
-                    <TextBlock Text="{l:Localize Settings_Ensemble_Title}" FontWeight="Bold"/>
-                    <TextBlock Text="{l:Localize Settings_Ensemble_Description}" TextWrapping="Wrap"/>
-                    <ListBox ItemsSource="{Binding EnsembleMembers}" SelectedItem="{Binding SelectedEnsembleMember}" MaxHeight="200">
-                        <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
-                                    <TextBlock Text="{Binding ModelId}" VerticalAlignment="Center"/>
-                                    <NumericUpDown Grid.Column="1" Value="{Binding Percent}" Minimum="0" Maximum="100"
-                                                   Increment="1" FormatString="0.####" Width="105"/>
-                                    <TextBlock Grid.Column="2" Text="%" VerticalAlignment="Center"/>
-                                </Grid>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <Button Content="{l:Localize Settings_Ensemble_Add}" Command="{Binding AddEnsembleMemberCommand}"/>
-                        <Button Content="{l:Localize Settings_Ensemble_Remove}" Command="{Binding RemoveEnsembleMemberCommand}"/>
-                        <Button Content="{l:Localize Settings_Ensemble_Equal}" Command="{Binding EqualEnsembleWeightsCommand}"/>
-                        <Button Content="{l:Localize Settings_Ensemble_Accuracy}" Command="{Binding AccuracyEnsembleWeightsCommand}"/>
-                    </StackPanel>
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <Button Content="{l:Localize Settings_Ensemble_Save}" Command="{Binding SaveEnsembleCommand}"/>
-                        <Button Content="{l:Localize Settings_Ensemble_Clear}" Command="{Binding ClearEnsembleCommand}"/>
-                    </StackPanel>
-                    <TextBlock Text="{Binding EnsembleStatus}" TextWrapping="Wrap"/>
-                </StackPanel>
-            </Border>
 
         </StackPanel>
     </ScrollViewer>

@@ -75,6 +75,7 @@ public class ThemeManager : IThemeManager
         _colorsCache[ThemeColorKey.TrainingPeriodTrain] = _currentTheme.TrainingPeriodTrain;
         _colorsCache[ThemeColorKey.TrainingPeriodValidation] = _currentTheme.TrainingPeriodValidation;
         _colorsCache[ThemeColorKey.TrainingPeriodOos] = _currentTheme.TrainingPeriodOos;
+        _colorsCache[ThemeColorKey.AttentionHeat] = _currentTheme.AttentionHeat;
         _colorsCache[ThemeColorKey.Background]  = _currentTheme.ChartBackground;
         _colorsCache[ThemeColorKey.Grid]        = _currentTheme.GridLine;
         _colorsCache[ThemeColorKey.Axis]        = _currentTheme.AxisText;
@@ -113,6 +114,7 @@ public class ThemeManager : IThemeManager
             ThemeColorKey.TrainingPeriodTrain => CurrentTheme with { TrainingPeriodTrain = color },
             ThemeColorKey.TrainingPeriodValidation => CurrentTheme with { TrainingPeriodValidation = color },
             ThemeColorKey.TrainingPeriodOos => CurrentTheme with { TrainingPeriodOos = color },
+            ThemeColorKey.AttentionHeat => CurrentTheme with { AttentionHeat = color },
             ThemeColorKey.Background  => CurrentTheme with { ChartBackground = color },
             ThemeColorKey.Grid        => CurrentTheme with { GridLine = color },
             ThemeColorKey.Axis        => CurrentTheme with { AxisText = color },

@@ -25,7 +25,7 @@ public sealed class ChildProcessCollectionGuardTests
     // The calls that start a real child process, directly or through the trainers' pump, the Python test runner or the portfolio script helper. The opt-in
     // facts of the portfolio tests (SmokeFact, AblationFact) are the tests that run the real portfolio worker through the training runner.
     private static readonly Regex ProcessStarters = new(
-        @"Process\.Start\(|new\s+Process\b|RlWorkerProcess\.(?:RunAsync|PumpAsync)|TrainingPythonTestRunner\.RunAsync|\bRunWorkerAsync\b|RlPortfolioPythonScript\.Run\w*Async|\[(?:\w+\.)?(?:SmokeFact|AblationFact)\]",
+        @"Process\.Start\(|new\s+Process\b|RlWorkerProcess\.(?:RunAsync|PumpAsync)|TrainingPythonTestRunner\.RunAsync|\bRunWorkerAsync\b|RlPortfolioPythonScript\.Run\w*Async|\[(?:\w+\.)?(?:SmokeFact|AblationFact)\]|\bnew\s+TrainingOrchestrator\s*\(",
         RegexOptions.Compiled);
     private static readonly Regex ClassDeclaration = new(@"\bclass\s+([A-Za-z_]\w*)", RegexOptions.Compiled);
 

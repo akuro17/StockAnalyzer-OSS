@@ -296,6 +296,8 @@ public sealed class EnsemblePredictionTests
                 new CandleData(new DateTime(2024, 1, 1).AddDays(i), 100m, 105m, 95m, 100m + i, 1000)).ToArray();
             var combined = await ensemble.PredictAsync(candles);
             Assert.False(combined.IsFallback);
+            Assert.Same(manager.Current, combined.Ensemble);   // the result records the very ensemble that produced it
+            Assert.Null(combined.ModelId);
             Assert.Equal(3, combined.Scores.Count);
             Assert.InRange(combined.Scores.Sum(s => s.Score), .9999f, 1.0001f);
             foreach (var reversed in new[] { false, true })
@@ -303,7 +305,9 @@ public sealed class EnsemblePredictionTests
                 var invalid = candles.ToArray();
                 if (reversed) (invalid[8], invalid[9]) = (invalid[9], invalid[8]);
                 else invalid[8] = invalid[8] with { Timestamp = invalid[7].Timestamp };
-                Assert.True((await ensemble.PredictAsync(invalid)).IsFallback);
+                var fallback = await ensemble.PredictAsync(invalid);
+                Assert.True(fallback.IsFallback);
+                Assert.Null(fallback.Ensemble);
             }
             processor.Arm();
             var stablePrediction = Task.Run(() => ensemble.PredictAsync(candles));
@@ -335,7 +339,9 @@ public sealed class EnsemblePredictionTests
             File.WriteAllText(sidecar, original);
             Assert.False((await ensemble.PredictAsync(candles)).IsFallback);
             await manager.SaveAsync(null);
-            Assert.False((await ensemble.PredictAsync(candles)).IsFallback);
+            var singleResult = await ensemble.PredictAsync(candles);
+            Assert.False(singleResult.IsFallback);
+            Assert.Null(singleResult.Ensemble);   // a single-model result carries no ensemble
             for (int i = 0; i < 100; i++) await ensemble.PredictAsync(candles);
             allocatedBefore = GC.GetTotalAllocatedBytes(precise: true);
             for (int i = 0; i < 1000; i++) await ensemble.PredictAsync(candles);

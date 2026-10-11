@@ -37,7 +37,8 @@ public enum DrawingCoordinateKind
 {
     UtcTime,
     LogicalIndex,
-    VolumePosition
+    VolumePosition,
+    ViewportNormalized
 }
 
 /// <summary>
@@ -88,6 +89,7 @@ public readonly record struct DrawingStoredPoint
 
             case DrawingCoordinateKind.LogicalIndex:
             case DrawingCoordinateKind.VolumePosition:
+            case DrawingCoordinateKind.ViewportNormalized:
                 if (!xValue.HasValue)
                 {
                     throw new ArgumentException($"XValue must not be null when Kind is {kind}.", nameof(xValue));
@@ -119,6 +121,11 @@ public readonly record struct DrawingStoredPoint
     public static DrawingStoredPoint CreateVolume(decimal volume, decimal yValue)
     {
         return new DrawingStoredPoint(DrawingCoordinateKind.VolumePosition, null, volume, yValue);
+    }
+
+    public static DrawingStoredPoint CreateViewportNormalized(decimal ux, decimal uy)
+    {
+        return new DrawingStoredPoint(DrawingCoordinateKind.ViewportNormalized, null, Math.Clamp(ux, 0.0m, 1.0m), Math.Clamp(uy, 0.0m, 1.0m));
     }
 }
 
@@ -208,6 +215,9 @@ public readonly record struct DrawingLayerRecord
     [JsonPropertyName("objectIds")]
     public IReadOnlyList<Guid> ObjectIds { get; }
 
+    [JsonPropertyName("isScreenSpace")]
+    public bool IsScreenSpace { get; }
+
     [JsonConstructor]
     public DrawingLayerRecord(
         Guid layerId,
@@ -215,7 +225,8 @@ public readonly record struct DrawingLayerRecord
         PanelKey panel,
         bool isVisible,
         bool isEditLocked,
-        IReadOnlyList<Guid>? objectIds)
+        IReadOnlyList<Guid>? objectIds,
+        bool isScreenSpace = false)
     {
         LayerId = layerId;
         Name = name ?? throw new ArgumentNullException(nameof(name));
@@ -223,6 +234,7 @@ public readonly record struct DrawingLayerRecord
         IsVisible = isVisible;
         IsEditLocked = isEditLocked;
         ObjectIds = objectIds != null ? Array.AsReadOnly(objectIds.ToArray()) : Array.Empty<Guid>();
+        IsScreenSpace = isScreenSpace;
     }
 }
 

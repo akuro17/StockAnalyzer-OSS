@@ -1,10 +1,12 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using Avalonia;
 using Avalonia.Media;
 using SkiaSharp;
 using StockAnalyzer.Avalonia.Common;
 using StockAnalyzer.Avalonia.Views.Chart;
+using StockAnalyzer.Core.Constants;
 using StockAnalyzer.Core.Models;
 
 namespace StockAnalyzer.Avalonia.Drawing;
@@ -25,6 +27,11 @@ public class GannBoxObject : IChartObject, IDrawingCalculatedValuesProvider
     public List<ChartPoint> Points { get; private set; }
     public Color Color { get; set; } = DrawingThemeContext.DefaultColor;
     public double Thickness { get; set; } = DrawingThemeContext.DefaultStrokeThickness;
+
+    [Category("Style")]
+    [DisplayName("Stroke Style")]
+    [ParameterTag(DrawingParameterTags.Common)]
+    public DrawingStrokeStyle StrokeStyle { get; set; } = DrawingStrokeStyle.Solid;
     public bool IsSelected { get; set; }
     public bool IsVisible { get; set; } = true;
     public bool IsLocked { get; set; } = false;
@@ -61,7 +68,8 @@ public class GannBoxObject : IChartObject, IDrawingCalculatedValuesProvider
             Color = SkiaColor,
             StrokeWidth = (float)Thickness,
             IsAntialias = true,
-            Style = SKPaintStyle.Stroke
+            Style = SKPaintStyle.Stroke,
+            PathEffect = StrokeStyle.ToSkPathEffect()
         };
         
         using var gridPaint = new SKPaint
@@ -74,7 +82,16 @@ public class GannBoxObject : IChartObject, IDrawingCalculatedValuesProvider
         };
 
         // Draw Outer Box
-        canvas.DrawRect(x, y, w, h, borderPaint);
+        if (borderPaint.PathEffect != null)
+        {
+            using var boxPath = new SKPath();
+            boxPath.AddRect(new SKRect(x, y, x + w, y + h));
+            canvas.DrawPath(boxPath, borderPaint);
+        }
+        else
+        {
+            canvas.DrawRect(x, y, w, h, borderPaint);
+        }
 
         // Draw Internal Grid
         foreach (var ratio in _gridRatios)

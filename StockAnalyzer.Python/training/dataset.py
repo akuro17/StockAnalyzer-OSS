@@ -1629,7 +1629,10 @@ def independent_fold_data(
         folds = {number: (train, test) for number, train, test in
                  walk_forward_split_indexed(len(x), n_splits, resolved_gap)}
         if fold_index not in folds:
-            raise ValueError(f"selected symbol {sym!r} has no usable original fold {fold_index}")
+            raise ValueError(
+                f"selected symbol {sym!r} has no usable original fold {fold_index}: it has {len(x)} windows for "
+                f"{n_splits} splits with a purge gap of {resolved_gap}; use a longer history or a finer timeframe, "
+                "or a shorter window / horizon / gap, or fewer splits")
         train, test = folds[fold_index]
         outer_starts.append(d[feature_start(int(anchors[test[0]]))])
         selected[sym] = (x, y, anchors, train, test, d)
@@ -1670,7 +1673,10 @@ def _carve_tail(items, sym_dates, feature_start, horizon: int, n_splits: int, ga
     for sym, (x, y, anchors, train) in items.items():
         folds = walk_forward_split_indexed(len(train), n_splits, gap)
         if not folds:
-            raise ValueError(f"selected symbol {sym!r} has no usable {kind} fold")
+            raise ValueError(
+                f"selected symbol {sym!r} has no usable {kind} fold: its train side has {len(train)} windows for "
+                f"{n_splits} splits with a purge gap of {gap}; use a longer history or a finer timeframe, or a shorter "
+                "window / horizon / gap, or fewer splits")
         _, head_index, tail_index = folds[-1]
         head, tail = train[head_index], train[tail_index]
         starts.append(sym_dates[sym][feature_start(int(anchors[tail[0]]))])

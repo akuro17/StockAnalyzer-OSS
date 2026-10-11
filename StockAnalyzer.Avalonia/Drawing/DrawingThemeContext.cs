@@ -39,6 +39,8 @@ public static class DrawingThemeContext
     public static global::Avalonia.Media.Color AnchorPointAvaloniaColor { get; private set; } = global::Avalonia.Media.Color.Parse(StockAnalyzer.Core.Models.Settings.ChartSettingsConstants.DefaultAnchorPointColor);
     public static float DrawingFontSize { get; private set; } = StockAnalyzer.Core.Models.Settings.ChartSettingsConstants.DefaultDrawingFontSize;
     public static float DrawingIconFontSize { get; private set; } = StockAnalyzer.Core.Models.Settings.ChartSettingsConstants.DefaultDrawingIconFontSize;
+    private static SKTypeface? _defaultTextTypeface;
+    public static SKTypeface DefaultTextTypeface => _defaultTextTypeface ??= (SKFontManager.Default.MatchCharacter('あ') ?? SKTypeface.Default);
     public static double DefaultStrokeThickness { get; private set; } = 1.0;
     public static bool SmartGuidesEnabled { get; private set; } = StockAnalyzer.Core.Models.Settings.ChartSettingsConstants.DefaultSmartGuidesEnabled;
     public static double SmartGuideSnapDistance { get; private set; } = StockAnalyzer.Core.Models.Settings.ChartSettingsConstants.DefaultSmartGuideSnapDistance;
@@ -58,6 +60,35 @@ public static class DrawingThemeContext
     /// <summary>Testability seam: sets the control-point hide timeout directly, bypassing the once-only Initialize() guard.</summary>
     internal static void SetControlPointHideTimeoutMsForTesting(int ms) => ControlPointHideTimeoutMs = ms;
 
+    private static StockAnalyzer.Core.Services.IChartSettingsManager? _chartSettingsManager;
+
+    /// <summary>
+    /// Sets the default active drawing color (used by Eyedropper and palette selectors).
+    /// </summary>
+    public static void SetDefaultColor(SKColor color)
+    {
+        DefaultSkColor = color;
+        DefaultColor = global::Avalonia.Media.Color.FromArgb(color.Alpha, color.Red, color.Green, color.Blue);
+    }
+
+    /// <summary>
+    /// Resets the active drawing color back to the settings/theme appearance default.
+    /// Used by the Reset button in DrawingSettingsDialog.
+    /// </summary>
+    public static void ResetDefaultColor()
+    {
+        var settings = _chartSettingsManager?.Current;
+        var defColorStr = !string.IsNullOrWhiteSpace(settings?.DrawingDefaultColor)
+            ? settings.DrawingDefaultColor
+            : StockAnalyzer.Core.Models.Settings.ChartSettingsConstants.DefaultDrawingColor;
+
+        if (SKColor.TryParse(defColorStr, out var defSk))
+        {
+            DefaultSkColor = defSk;
+            DefaultColor = global::Avalonia.Media.Color.FromArgb(defSk.Alpha, defSk.Red, defSk.Green, defSk.Blue);
+        }
+    }
+
     public static void Initialize(
         IThemeManager themeManager, 
         IFontSettingsManager fontSettingsManager, 
@@ -67,6 +98,10 @@ public static class DrawingThemeContext
         if (iconDrawingService != null)
         {
             IconDrawingService = iconDrawingService;
+        }
+        if (chartSettingsManager != null)
+        {
+            _chartSettingsManager = chartSettingsManager;
         }
 
         if (_initialized) return;

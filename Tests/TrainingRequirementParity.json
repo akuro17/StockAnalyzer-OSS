@@ -1,0 +1,140 @@
+{
+  "schema": 1,
+  "cases": [
+    {
+      "window": 5,
+      "horizon": 1,
+      "splits": 5,
+      "gap": null,
+      "max_lag": 0,
+      "calibration": false,
+      "minimum_raw_bars": 191
+    },
+    {
+      "window": 5,
+      "horizon": 5,
+      "splits": 5,
+      "gap": null,
+      "max_lag": 0,
+      "calibration": false,
+      "minimum_raw_bars": 339
+    },
+    {
+      "window": 10,
+      "horizon": 3,
+      "splits": 3,
+      "gap": null,
+      "max_lag": 0,
+      "calibration": false,
+      "minimum_raw_bars": 208
+    },
+    {
+      "window": 10,
+      "horizon": 3,
+      "splits": 3,
+      "gap": null,
+      "max_lag": 0,
+      "calibration": true,
+      "minimum_raw_bars": 208
+    },
+    {
+      "window": 20,
+      "horizon": 5,
+      "splits": 5,
+      "gap": null,
+      "max_lag": 0,
+      "calibration": false,
+      "minimum_raw_bars": 894
+    },
+    {
+      "window": 20,
+      "horizon": 5,
+      "splits": 5,
+      "gap": null,
+      "max_lag": 0,
+      "calibration": true,
+      "minimum_raw_bars": 894
+    },
+    {
+      "window": 20,
+      "horizon": 5,
+      "splits": 5,
+      "gap": 0,
+      "max_lag": 0,
+      "calibration": false,
+      "minimum_raw_bars": 348
+    },
+    {
+      "window": 20,
+      "horizon": 5,
+      "splits": 5,
+      "gap": 40,
+      "max_lag": 0,
+      "calibration": false,
+      "minimum_raw_bars": 1470
+    },
+    {
+      "window": 20,
+      "horizon": 5,
+      "splits": 5,
+      "gap": null,
+      "max_lag": 8,
+      "calibration": false,
+      "minimum_raw_bars": 950
+    },
+    {
+      "window": 20,
+      "horizon": 5,
+      "splits": 5,
+      "gap": null,
+      "max_lag": 8,
+      "calibration": true,
+      "minimum_raw_bars": 950
+    },
+    {
+      "window": 30,
+      "horizon": 10,
+      "splits": 2,
+      "gap": null,
+      "max_lag": 0,
+      "calibration": false,
+      "minimum_raw_bars": 393
+    },
+    {
+      "window": 30,
+      "horizon": 10,
+      "splits": 6,
+      "gap": null,
+      "max_lag": 0,
+      "calibration": false,
+      "minimum_raw_bars": 1957
+    },
+    {
+      "window": 1,
+      "horizon": 1,
+      "splits": 5,
+      "gap": null,
+      "max_lag": 0,
+      "calibration": false,
+      "minimum_raw_bars": 43
+    },
+    {
+      "window": 75,
+      "horizon": 5,
+      "splits": 5,
+      "gap": null,
+      "max_lag": 0,
+      "calibration": false,
+      "minimum_raw_bars": 2929
+    },
+    {
+      "window": 75,
+      "horizon": 5,
+      "splits": 5,
+      "gap": null,
+      "max_lag": 0,
+      "calibration": true,
+      "minimum_raw_bars": 2929
+    }
+  ]
+}

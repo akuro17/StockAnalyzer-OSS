@@ -497,6 +497,7 @@ public partial class App : Application, IDisposable, IThemeVariantDispatcher
         SetOrUpdateBrush("Brush.TrainingPeriod.Train", ToAvColor(colors.TrainingPeriodTrain));
         SetOrUpdateBrush("Brush.TrainingPeriod.Validation", ToAvColor(colors.TrainingPeriodValidation));
         SetOrUpdateBrush("Brush.TrainingPeriod.Oos", ToAvColor(colors.TrainingPeriodOos));
+        SetOrUpdateBrush("Brush.Attention.Heat", ToAvColor(colors.AttentionHeat));
         var bg = ToAvColor(colors.ShellBackground);
         Resources["Color.Background.Primary"] = bg;
         Resources["Color.Background.Secondary"] = bg;

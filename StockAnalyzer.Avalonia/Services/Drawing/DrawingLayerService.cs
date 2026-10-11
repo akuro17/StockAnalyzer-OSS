@@ -20,10 +20,11 @@ public sealed class DrawingLayerService : IDrawingLayerService
         public PanelKey Panel { get; set; }
         public bool IsVisible { get; set; } = true;
         public bool IsEditLocked { get; set; } = false;
+        public bool IsScreenSpace { get; set; } = false;
         public List<Guid> ObjectIds { get; } = new();
 
         public DrawingLayerRecord ToRecord() =>
-            new(LayerId, Name, Panel, IsVisible, IsEditLocked, ObjectIds);
+            new(LayerId, Name, Panel, IsVisible, IsEditLocked, ObjectIds, IsScreenSpace);
     }
 
     private readonly object _syncLock = new();
@@ -42,7 +43,7 @@ public sealed class DrawingLayerService : IDrawingLayerService
         EnsureDefaultLayer(PanelKey.Main);
     }
 
-    public DrawingCommandResult CreateLayer(PanelKey panel, string name)
+    public DrawingCommandResult CreateLayer(PanelKey panel, string name, bool isScreenSpace = false)
     {
         if (string.IsNullOrWhiteSpace(name))
         {
@@ -58,7 +59,8 @@ public sealed class DrawingLayerService : IDrawingLayerService
                 Name = name.Trim(),
                 Panel = panel,
                 IsVisible = true,
-                IsEditLocked = false
+                IsEditLocked = false,
+                IsScreenSpace = isScreenSpace
             };
 
             _layersById[layerId] = entry;
@@ -210,6 +212,26 @@ public sealed class DrawingLayerService : IDrawingLayerService
 
             // Unlocking or locking is always permitted on the layer itself
             layer.IsEditLocked = locked;
+            NotifyChanged();
+            return DrawingCommandResult.Success(layerId);
+        }
+    }
+
+    public DrawingCommandResult SetLayerScreenSpace(Guid layerId, bool isScreenSpace)
+    {
+        lock (_syncLock)
+        {
+            if (!_layersById.TryGetValue(layerId, out var layer))
+            {
+                return DrawingCommandResult.Fail(DrawingCommandStatus.NotFound, $"Layer {layerId} not found.");
+            }
+
+            if (layer.IsScreenSpace == isScreenSpace)
+            {
+                return DrawingCommandResult.NoChange();
+            }
+
+            layer.IsScreenSpace = isScreenSpace;
             NotifyChanged();
             return DrawingCommandResult.Success(layerId);
         }
@@ -569,7 +591,8 @@ public sealed class DrawingLayerService : IDrawingLayerService
                         Name = record.Name ?? "Layer",
                         Panel = record.Panel,
                         IsVisible = record.IsVisible,
-                        IsEditLocked = record.IsEditLocked
+                        IsEditLocked = record.IsEditLocked,
+                        IsScreenSpace = record.IsScreenSpace
                     };
 
                     if (record.ObjectIds != null)

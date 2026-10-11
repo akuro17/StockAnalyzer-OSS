@@ -87,7 +87,7 @@ public class TrainingWizardViewModelTests : IDisposable
         // Horizon defaults to 0 (invalid); the min-bars clause needs both Window/Horizon > 0.
         var vm = new TrainingWizardViewModel();
 
-        Assert.DoesNotContain("534", vm.WindowUnitNote); // WalkForwardDataRequirement.MinimumRawBars(75, 5)
+        Assert.DoesNotContain("534", vm.WindowUnitNote); // WalkForwardDataRequirement.MinimumRawBarsForTraining(75, 5)
     }
 
     [Fact]
@@ -95,19 +95,34 @@ public class TrainingWizardViewModelTests : IDisposable
     {
         var vm = new TrainingWizardViewModel { WindowSize = 25, Horizon = 5 };
 
-        Assert.Contains(WalkForwardDataRequirement.MinimumRawBars(25, 5).ToString(), vm.WindowUnitNote);
+        Assert.Contains(WalkForwardDataRequirement.MinimumRawBarsForTraining(25, 5).ToString(), vm.WindowUnitNote);
+    }
+
+    [Fact]
+    public void WindowUnitNote_ShowsTheWholeRunRequirement_NotOnlyTheLastFold()
+    {
+        // The default 75-bar window needs far more history than the last fold alone: the monthly AAPL history (551 bars)
+        // failed in the trainer although the earlier hint (534) said it was enough.
+        var vm = new TrainingWizardViewModel { WindowSize = 75, Horizon = 5 };
+        var whole = WalkForwardDataRequirement.MinimumRawBarsForTraining(75, 5);
+        Assert.True(whole > 551 && whole > WalkForwardDataRequirement.MinimumRawBars(75, 5));
+        Assert.Contains(whole.ToString(), vm.WindowUnitNote);
+
+        // the release fold's extra calibration carve is part of the requirement (it never needs less than the plain run)
+        vm.UseCalibration = true;
+        Assert.Contains(WalkForwardDataRequirement.MinimumRawBarsForTraining(75, 5, calibrationSegment: true).ToString(), vm.WindowUnitNote);
     }
 
     [Fact]
     public void WindowUnitNote_RecomputesWhenHorizonChanges()
     {
         var vm = new TrainingWizardViewModel { WindowSize = 25, Horizon = 5 };
-        var before = WalkForwardDataRequirement.MinimumRawBars(25, 5);
+        var before = WalkForwardDataRequirement.MinimumRawBarsForTraining(25, 5);
         Assert.Contains(before.ToString(), vm.WindowUnitNote);
 
         vm.Horizon = 30;
 
-        var after = WalkForwardDataRequirement.MinimumRawBars(25, 30);
+        var after = WalkForwardDataRequirement.MinimumRawBarsForTraining(25, 30);
         Assert.NotEqual(before, after);
         Assert.Contains(after.ToString(), vm.WindowUnitNote);
     }
@@ -117,11 +132,11 @@ public class TrainingWizardViewModelTests : IDisposable
     {
         var vm = new TrainingWizardViewModel { WindowSize = 25, Horizon = 5 };
         var noteAtDefaultGap = vm.WindowUnitNote;
-        Assert.Contains(WalkForwardDataRequirement.MinimumRawBars(25, 5).ToString(), noteAtDefaultGap);
+        Assert.Contains(WalkForwardDataRequirement.MinimumRawBarsForTraining(25, 5).ToString(), noteAtDefaultGap);
 
         vm.Gap = 0;
 
-        var expected = WalkForwardDataRequirement.MinimumRawBars(
+        var expected = WalkForwardDataRequirement.MinimumRawBarsForTraining(
             25, 5, WalkForwardDataRequirement.DefaultSplitCount, gap: 0);
         Assert.NotEqual(noteAtDefaultGap, vm.WindowUnitNote);
         Assert.Contains(expected.ToString(), vm.WindowUnitNote);
@@ -134,7 +149,7 @@ public class TrainingWizardViewModelTests : IDisposable
 
         vm.Gap = -5; // transient invalid input; Start stays disabled, but the note must still render.
 
-        Assert.Contains(WalkForwardDataRequirement.MinimumRawBars(25, 5).ToString(), vm.WindowUnitNote);
+        Assert.Contains(WalkForwardDataRequirement.MinimumRawBarsForTraining(25, 5).ToString(), vm.WindowUnitNote);
     }
 
     [Fact]
@@ -164,12 +179,13 @@ public class TrainingWizardViewModelTests : IDisposable
         {
             WindowSize = 25, Horizon = 5, UseFixedZScore = true, LagsText = "20,1"
         };
-        int baseline = WalkForwardDataRequirement.MinimumRawBars(25, 5);
-        Assert.Contains((baseline + 20).ToString(), vm.WindowUnitNote);
+        var withLag20 = WalkForwardDataRequirement.MinimumRawBarsForTraining(25, 5, maxLag: 20);
+        Assert.True(withLag20 > WalkForwardDataRequirement.MinimumRawBarsForTraining(25, 5));
+        Assert.Contains(withLag20.ToString(), vm.WindowUnitNote);
         var raised = new List<string?>();
         vm.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
         vm.LagsText = "1,5";
-        Assert.Contains((baseline + 5).ToString(), vm.WindowUnitNote);
+        Assert.Contains(WalkForwardDataRequirement.MinimumRawBarsForTraining(25, 5, maxLag: 5).ToString(), vm.WindowUnitNote);
         Assert.Contains(nameof(TrainingWizardViewModel.WindowUnitNote), raised);
     }
 
@@ -260,6 +276,191 @@ public class TrainingWizardViewModelTests : IDisposable
         await vm.StartTrainingCommand.ExecuteAsync(null);
 
         Assert.Equal(new[] { "AAPL", "GOOGL", "MSFT" }, orchestrator.CapturedConfig!.Symbols.OrderBy(s => s).ToArray());
+    }
+
+    [Fact]
+    public async Task TickingAnotherList_UntickAllTickers_ButOtherChangesLeaveItAlone()
+    {
+        var (store, _, _) = TreeStore();
+        using var vm = new TrainingWizardViewModel(watchlistManager: new DummyWatchlistManager(Array.Empty<WatchlistProfile>()),
+            marketDataProvider: new DummyMarketDataProvider("AAPL", "MSFT", "GOOGL", "AMZN"), tickerStore: store);
+        await WaitForInitializationAsync(vm);
+        var all = vm.SourceTree[0];
+        Assert.True(all.IsSelected);
+
+        vm.SourceTree[1].Children[0].IsSelected = true;                  // Tech Watch
+        Assert.False(all.IsSelected);                                     // All tickers is off now: the run trains on the list only
+        Assert.Contains("2", vm.SelectedSymbolSummary);                   // AAPL, MSFT
+
+        vm.SourceTree[1].Children[0].IsSelected = false;                  // unticking a list changes nothing else
+        Assert.False(all.IsSelected);
+        all.IsSelected = true;                                            // ticking All tickers again is respected (the owner asked for everything)
+        Assert.True(all.IsSelected);
+        vm.SourceTree[2].IsSelected = true;                               // the Portfolios category counts as another list
+        Assert.False(all.IsSelected);
+    }
+
+    [Fact]
+    public async Task TheAllTickersUntickNotice_AppearsOnlyRightAfterAnAutomaticUntick()
+    {
+        var (store, _, _) = TreeStore();
+        using var vm = new TrainingWizardViewModel(watchlistManager: new DummyWatchlistManager(Array.Empty<WatchlistProfile>()),
+            marketDataProvider: new DummyMarketDataProvider("AAPL", "MSFT", "GOOGL", "AMZN"), tickerStore: store);
+        await WaitForInitializationAsync(vm);
+        Assert.Null(vm.SourceTreeNotice);
+
+        vm.SourceTree[1].Children[0].IsSelected = true;                  // a list while All tickers is ticked: unticked by itself
+        Assert.Equal(LocalizationManager.Instance["TrainingWizard_AllTickersUntickedNotice"], vm.SourceTreeNotice);
+
+        vm.SourceTree[2].Children[0].IsSelected = true;                  // the next tick unticks nothing: the notice is gone
+        Assert.Null(vm.SourceTreeNotice);
+    }
+
+    private async Task<(TrainingWizardViewModel Vm, FakeTrainingOrchestrator Orchestrator)> StartableWizardAsync()
+    {
+        var orchestrator = new FakeTrainingOrchestrator();
+        var vm = new TrainingWizardViewModel(orchestrator: orchestrator, marketDataProvider: new DummyMarketDataProvider("X"));
+        await WaitForInitializationAsync(vm);
+        vm.Horizon = 1;
+        Assert.True(vm.StartTrainingCommand.CanExecute(null));
+        return (vm, orchestrator);
+    }
+
+    [Fact]
+    public async Task AHyperparameterOutsideItsDomain_ShowsAMessage_AndBlocksStartUntilCorrected()
+    {
+        var (vm, _) = await StartableWizardAsync();
+        using var _ = vm;
+        var row = new TrainingHyperparameterEntry { Key = "dropout" };
+        vm.Hyperparameters.Add(row);
+        Assert.Null(row.ValidationMessage);                                 // the key's own default is valid
+        Assert.True(vm.StartTrainingCommand.CanExecute(null));
+
+        row.Value = "2.0";
+        Assert.False(string.IsNullOrEmpty(row.ValidationMessage));
+        Assert.Contains("dropout", row.ValidationMessage);
+        Assert.False(vm.StartTrainingCommand.CanExecute(null));
+
+        row.Value = "0.3";
+        Assert.Null(row.ValidationMessage);
+        Assert.True(vm.StartTrainingCommand.CanExecute(null));
+
+        row.Value = "abc";                                                  // a real-valued key refuses text
+        Assert.NotNull(row.ValidationMessage);
+        Assert.False(vm.StartTrainingCommand.CanExecute(null));
+    }
+
+    [Theory]
+    [InlineData("epochs", "99999999999999999999", "9223372036854775807")]    // no maximum: the end of the 64-bit range is named
+    [InlineData("hidden", "99999999999999999999", "9223372036854775807")]
+    [InlineData("heads", "99999999999999999999", "16")]                        // its own maximum
+    [InlineData("seed", "-99999999999999999999", "0")]                         // beyond the 64-bit range below: the minimum of the domain
+    public async Task AnIntegerBeyondTheSixtyFourBitRange_ShowsAMessageNamingTheBound_AndBlocksStart(string key, string value, string bound)
+    {
+        var (vm, _) = await StartableWizardAsync();
+        using var _ = vm;
+        var row = new TrainingHyperparameterEntry { Key = key };
+        vm.Hyperparameters.Add(row);
+
+        var thrown = Record.Exception(() => row.Value = value);
+
+        Assert.Null(thrown);
+        Assert.Contains(bound, row.ValidationMessage);
+        Assert.False(vm.StartTrainingCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public async Task ARowRemovedByClear_NoLongerRevalidatesTheList()
+    {
+        var (vm, _) = await StartableWizardAsync();
+        using var _ = vm;
+        var row = new TrainingHyperparameterEntry { Key = "epochs", Value = "5" };
+        vm.Hyperparameters.Add(row);
+        vm.Hyperparameters.Clear();
+        int raised = 0;
+        vm.StartTrainingCommand.CanExecuteChanged += (_, _) => raised++;
+
+        row.Value = "6";
+
+        Assert.Equal(0, raised);
+    }
+
+    [Fact]
+    public async Task AnUnknownKey_IsNamedInANotice_ButDoesNotBlockStart()
+    {
+        var (vm, _) = await StartableWizardAsync();
+        using var _ = vm;
+        Assert.Null(vm.UnknownKeyNotice);
+
+        vm.Hyperparameters.Add(new TrainingHyperparameterEntry { Key = "my-own-flag", Value = "1" });
+
+        Assert.Contains("my-own-flag", vm.UnknownKeyNotice);
+        Assert.True(vm.StartTrainingCommand.CanExecute(null));
+        vm.Hyperparameters.Clear();
+        Assert.Null(vm.UnknownKeyNotice);
+    }
+
+    [Fact]
+    public async Task TheSameFlagEnteredTwice_BlocksStart_InsteadOfFailingWhenTheRunIsBuilt()
+    {
+        var (vm, _) = await StartableWizardAsync();
+        using var _ = vm;
+        var first = new TrainingHyperparameterEntry { Key = "epochs", Value = "5" };
+        var second = new TrainingHyperparameterEntry { Key = "--epochs", Value = "6" };
+        vm.Hyperparameters.Add(first);
+        vm.Hyperparameters.Add(second);
+
+        Assert.NotNull(first.ValidationMessage);
+        Assert.NotNull(second.ValidationMessage);
+        Assert.False(vm.StartTrainingCommand.CanExecute(null));
+
+        vm.Hyperparameters.Remove(second);
+        Assert.Null(first.ValidationMessage);
+        Assert.True(vm.StartTrainingCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public async Task TheAttentionArchitecture_RequiresHiddenToBeAMultipleOfHeads()
+    {
+        var (vm, _) = await StartableWizardAsync();
+        using var _ = vm;
+        vm.SelectedFramework = TrainingFramework.PyTorch;
+        vm.SelectedArchitecture = AttentionContract.Architecture;
+        Assert.True(vm.StartTrainingCommand.CanExecute(null));
+
+        var hidden = new TrainingHyperparameterEntry { Key = "hidden", Value = "6" };   // default heads 4
+        vm.Hyperparameters.Add(hidden);
+        Assert.NotNull(vm.HyperparameterDependencyMessage);
+        Assert.False(vm.StartTrainingCommand.CanExecute(null));
+
+        hidden.Value = "64";
+        Assert.Null(vm.HyperparameterDependencyMessage);
+        Assert.True(vm.StartTrainingCommand.CanExecute(null));
+
+        vm.SelectedArchitecture = "lstm";                                              // another architecture is not judged
+        hidden.Value = "6";
+        Assert.Null(vm.HyperparameterDependencyMessage);
+    }
+
+    [Fact]
+    public async Task SelectedSymbolSummary_CountsTheUnionOfTheTickedRows_AndFollowsEveryChange()
+    {
+        var (store, _, _) = TreeStore();
+        using var vm = new TrainingWizardViewModel(watchlistManager: new DummyWatchlistManager(Array.Empty<WatchlistProfile>()),
+            marketDataProvider: new DummyMarketDataProvider("AAPL", "MSFT", "GOOGL", "AMZN"), tickerStore: store);
+        await WaitForInitializationAsync(vm);
+        var changed = new List<string?>();
+        vm.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
+        string Expected(int count) => string.Format(System.Globalization.CultureInfo.CurrentCulture,
+            StockAnalyzer.Avalonia.Services.LocalizationManager.Instance["TrainingWizard_SelectedTickers"], count);
+
+        Assert.NotEqual(Expected(4), Expected(2));                        // the text really carries the count
+        Assert.Equal(Expected(4), vm.SelectedSymbolSummary);              // "All tickers" is ticked first: the whole market list, not only the owner's list
+        vm.SourceTree[1].Children[0].IsSelected = true;                  // Tech Watch is ticked: All tickers goes off by itself, only the list remains
+        Assert.Equal(Expected(2), vm.SelectedSymbolSummary);
+        vm.SourceTree[0].IsSelected = true;                              // ticking All tickers again is respected: the union is everything
+        Assert.Equal(Expected(4), vm.SelectedSymbolSummary);
+        Assert.Contains(nameof(TrainingWizardViewModel.SelectedSymbolSummary), changed);
     }
 
     [Fact]

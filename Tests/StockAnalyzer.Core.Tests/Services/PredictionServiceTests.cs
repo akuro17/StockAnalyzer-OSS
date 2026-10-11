@@ -22,8 +22,8 @@ public class PredictionServiceTests
     internal class TestSettings : IStockAnalyzerSettings
     {
         private readonly string _predictionModelPath;
-        private readonly int _predictionWindowSize;
-        private readonly PredictionFeatureMode _predictionFeatureMode;
+        private int _predictionWindowSize;
+        private PredictionFeatureMode _predictionFeatureMode;
         private readonly StockAnalyzer.Core.Models.Training.FeatureSpec? _predictionFeatureSpec;
         private readonly TargetType _predictionTargetType;
 
@@ -75,6 +75,12 @@ public class PredictionServiceTests
         public int CircuitBreakerSamplingDurationMs => 60000;
         public string PredictionModelPath => _predictionModelPath;
         public int PredictionWindowSize => _predictionWindowSize;
+
+        /// <summary>Lets a test correct the configured window after construction (the owner editing Window Size).</summary>
+        internal void SetPredictionWindowSize(int value) => _predictionWindowSize = value;
+
+        /// <summary>Lets a test change the configured feature mode after construction (the owner editing the feature mode).</summary>
+        internal void SetPredictionFeatureMode(PredictionFeatureMode value) => _predictionFeatureMode = value;
         public PredictionFeatureMode PredictionFeatureMode => _predictionFeatureMode;
         public StockAnalyzer.Core.Models.Training.FeatureSpec? PredictionFeatureSpec => _predictionFeatureSpec;
         public TargetType PredictionTargetType => _predictionTargetType;
@@ -522,7 +528,8 @@ public class PredictionServiceTests
     [MemberData(nameof(ContractViolationShapes))]
     public void ValidateModelContract_ShapeMismatch_ThrowsInvalidOperation(int[] inputDims, int[] outputDims)
     {
-        Assert.Throws<InvalidOperationException>(() => PredictionService.ValidateModelContract(
+        // ThrowsAny: a wrong sequence length throws the typed PredictionWindowMismatchException (an InvalidOperationException).
+        Assert.ThrowsAny<InvalidOperationException>(() => PredictionService.ValidateModelContract(
             inputIsTensor: true, inputDimensions: inputDims,
             outputIsTensor: true, outputDimensions: outputDims,
             expectedWindowSize: 3, expectedFeaturesPerBar: 5, expectedClassCount: 3,
@@ -617,7 +624,8 @@ public class PredictionServiceTests
             using (var incompatible = new ModelGenerationRegistry(Path.Combine(root, "registry"),
                 predictionSettings: new TestSettings("does_not_exist.onnx", predictionWindowSize: 3)))
             {
-                await Assert.ThrowsAsync<InvalidOperationException>(() => incompatible.ActivateAsync(first));
+                // window 3 against a window-10 model: the typed PredictionWindowMismatchException (an InvalidOperationException)
+                await Assert.ThrowsAsync<PredictionWindowMismatchException>(() => incompatible.ActivateAsync(first));
                 Assert.Null(incompatible.ActiveId);
             }
             await registry.ActivateAsync(first);

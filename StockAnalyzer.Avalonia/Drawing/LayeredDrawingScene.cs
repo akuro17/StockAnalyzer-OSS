@@ -20,19 +20,22 @@ public sealed class LayeredDrawingScene
         public readonly Guid LayerId;
         public readonly bool IsLayerVisible;
         public readonly bool IsLayerEditLocked;
+        public readonly bool IsScreenSpace;
 
         public PanelSceneEntry(
             IChartObject obj,
             Guid persistentObjectId,
             Guid layerId,
             bool isLayerVisible,
-            bool isLayerEditLocked)
+            bool isLayerEditLocked,
+            bool isScreenSpace = false)
         {
             Object = obj;
             PersistentObjectId = persistentObjectId;
             LayerId = layerId;
             IsLayerVisible = isLayerVisible;
             IsLayerEditLocked = isLayerEditLocked;
+            IsScreenSpace = isScreenSpace;
         }
     }
 
@@ -173,7 +176,8 @@ public sealed class LayeredDrawingScene
                                 persistentId,
                                 layer.LayerId,
                                 layer.IsVisible,
-                                layer.IsEditLocked));
+                                layer.IsEditLocked,
+                                layer.IsScreenSpace));
                         }
                     }
                 }
@@ -193,7 +197,7 @@ public sealed class LayeredDrawingScene
     /// Renders all visible objects belonging to the specified panel in ascending order (forward scan).
     /// Zero-allocation on warm paths.
     /// </summary>
-    public void RenderPanel(SKCanvas canvas, PanelKey panel, ICoordinateTransform transform)
+    public void RenderPanel(SKCanvas canvas, PanelKey panel, ICoordinateTransform transform, ICoordinateTransform? screenSpaceTransform = null)
     {
         if (canvas == null || transform == null) return;
 
@@ -208,7 +212,8 @@ public sealed class LayeredDrawingScene
             ref readonly var entry = ref entries[i];
             if (entry.IsLayerVisible && entry.Object.IsVisible)
             {
-                entry.Object.Render(canvas, transform);
+                var effectiveTransform = (entry.IsScreenSpace && screenSpaceTransform != null) ? screenSpaceTransform : transform;
+                entry.Object.Render(canvas, effectiveTransform);
             }
         }
     }
@@ -221,7 +226,8 @@ public sealed class LayeredDrawingScene
         PanelKey panel,
         global::Avalonia.Point localPoint,
         ICoordinateTransform transform,
-        double tolerance = ChartConstants.DefaultHitTestTolerance)
+        double tolerance = ChartConstants.DefaultHitTestTolerance,
+        ICoordinateTransform? screenSpaceTransform = null)
     {
         if (transform == null) return null;
 
@@ -236,7 +242,8 @@ public sealed class LayeredDrawingScene
             ref readonly var entry = ref entries[i];
             if (entry.IsLayerVisible && entry.Object.IsVisible)
             {
-                if (entry.Object.HitTest(localPoint, transform, tolerance))
+                var effectiveTransform = (entry.IsScreenSpace && screenSpaceTransform != null) ? screenSpaceTransform : transform;
+                if (entry.Object.HitTest(localPoint, effectiveTransform, tolerance))
                 {
                     return entry.PersistentObjectId;
                 }
@@ -257,7 +264,8 @@ public sealed class LayeredDrawingScene
         ICoordinateTransform transform,
         out Guid? targetPersistentObjectId,
         out bool isProtectedBlocked,
-        double tolerance = ChartConstants.DefaultHitTestTolerance)
+        double tolerance = ChartConstants.DefaultHitTestTolerance,
+        ICoordinateTransform? screenSpaceTransform = null)
     {
         targetPersistentObjectId = null;
         isProtectedBlocked = false;
@@ -275,7 +283,8 @@ public sealed class LayeredDrawingScene
             ref readonly var entry = ref entries[i];
             if (entry.IsLayerVisible && entry.Object.IsVisible)
             {
-                if (entry.Object.HitTest(localPoint, transform, tolerance))
+                var effectiveTransform = (entry.IsScreenSpace && screenSpaceTransform != null) ? screenSpaceTransform : transform;
+                if (entry.Object.HitTest(localPoint, effectiveTransform, tolerance))
                 {
                     // Top-most hit object reached
                     if (entry.Object.IsLocked || entry.IsLayerEditLocked)

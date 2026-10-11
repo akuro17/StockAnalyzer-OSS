@@ -37,9 +37,7 @@ public class ClothoidZoneObject : RelativeGeometricRenderer, IFillableChartObjec
     [Category("Style")]
     [DisplayName("Stroke Style")]
     [ParameterTag(DrawingParameterTags.Analysis)]
-    public DrawingStrokeStyle StrokeStyle { get; set; } = DrawingStrokeStyle.Solid;
-
-    [Category("Fill Style")]
+    public new DrawingStrokeStyle StrokeStyle { get; set; } = DrawingStrokeStyle.Solid;
     [DisplayName("Is Filled")]
     [ParameterTag(DrawingParameterTags.Fill)]
     public bool IsFilled { get; set; } = true;
@@ -72,8 +70,6 @@ public class ClothoidZoneObject : RelativeGeometricRenderer, IFillableChartObjec
     public byte GradientEndAlpha { get; set; } = 30;
 
     private readonly SKPaint _fillPaint;
-    private readonly SKPathEffect _dashEffect;
-    private readonly SKPathEffect _dotEffect;
 
     public ClothoidZoneObject() : base()
     {
@@ -82,9 +78,6 @@ public class ClothoidZoneObject : RelativeGeometricRenderer, IFillableChartObjec
             Style = SKPaintStyle.Fill,
             IsAntialias = true
         };
-
-        _dashEffect = SKPathEffect.CreateDash(new float[] { 6f, 4f }, 0f);
-        _dotEffect = SKPathEffect.CreateDash(new float[] { 2f, 3f }, 0f);
     }
 
     public ClothoidZoneObject(ChartPoint p1, ChartPoint p2) : this()
@@ -196,12 +189,7 @@ public class ClothoidZoneObject : RelativeGeometricRenderer, IFillableChartObjec
         {
             _cachedPaint.Style = SKPaintStyle.Stroke;
             _cachedPaint.StrokeCap = IsClosedZone ? SKStrokeCap.Butt : SKStrokeCap.Round;
-            _cachedPaint.PathEffect = StrokeStyle switch
-            {
-                DrawingStrokeStyle.Dash => _dashEffect,
-                DrawingStrokeStyle.Dot => _dotEffect,
-                _ => null
-            };
+            _cachedPaint.PathEffect = StrokeStyle.ToSkPathEffect();
 
             canvas.DrawPath(_cachedPath, _cachedPaint);
             _cachedPaint.PathEffect = null;
@@ -340,8 +328,6 @@ public class ClothoidZoneObject : RelativeGeometricRenderer, IFillableChartObjec
     public override void Dispose()
     {
         _fillPaint.Dispose();
-        _dashEffect.Dispose();
-        _dotEffect.Dispose();
         base.Dispose();
     }
 

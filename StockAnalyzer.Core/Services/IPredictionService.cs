@@ -42,6 +42,13 @@ public sealed record PredictionResult(
     /// <summary>Immutable generation that produced this result, when registered.</summary>
     public string? ModelId { get; init; }
 
+    /// <summary>
+    /// The saved ensemble that produced this result: non-null if and only if <c>EnsemblePredictionService</c> mixed it, and then the very instance
+    /// it used for this prediction. Null for a single-model result, a fallback result and a regression result. The attention of an ensemble
+    /// prediction is requested for this ensemble, not for whichever ensemble is saved at request time.
+    /// </summary>
+    public EnsembleSpec? Ensemble { get; init; }
+
     /// <summary>Forward log-return prediction (<c>y = ln(C[a+H]/C[a])</c>). <see cref="double.NaN"/> for a classification result.</summary>
     public double PredictedLogReturn { get; init; } = double.NaN;
 
@@ -71,6 +78,12 @@ public interface IPredictionService
 {
     /// <summary>Currently active immutable generation, when model registration is enabled.</summary>
     string? ActiveModelId => null;
+
+    /// <summary>
+    /// Why the active model could not be loaded, when the cause is a window mismatch the owner can correct; null otherwise
+    /// (loaded, not yet tried, or another cause). A fallback result carries no reason of its own.
+    /// </summary>
+    PredictionWindowMismatchException? LoadIssue => null;
 
     /// <summary>
     /// Initializes the prediction service (e.g., loading models).

@@ -120,6 +120,8 @@ public static class DrawingToolBehaviorRegistry
         [DrawingTool.HoughMagneticLine] = new HoughMagneticLineBehavior(),
         [DrawingTool.Freehand] = new FreehandBehavior(),
         [DrawingTool.ClassicPivotPoints] = new ClassicPivotPointsBehavior(),
+        [DrawingTool.Highlighter] = new HighlighterBehavior(),
+        [DrawingTool.StepBadge] = new StepBadgeBehavior(),
     };
 
     /// <summary>

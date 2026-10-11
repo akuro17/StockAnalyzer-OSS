@@ -129,8 +129,8 @@ public sealed record ModelExplanation(int SchemaVersion, string ModelSha256, str
 
     private static readonly string[] TargetContractKeys =
     {
-        "class_order", "com.stockanalyzer.output.target_formula", "neutral_threshold",
-        "prediction_horizon", "target_type",
+        PredictionModelMetadata.ClassOrderKey, PredictionModelMetadata.TargetFormulaKey, PredictionModelMetadata.NeutralThresholdKey,
+        PredictionModelMetadata.HorizonKey, PredictionModelMetadata.TargetTypeKey,
     };
 
     public static string SidecarPath(string modelPath) => modelPath + ModelExplanationContract.SidecarSuffix;

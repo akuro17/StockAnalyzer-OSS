@@ -562,6 +562,7 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
 
         viewModel.PeriodLegendLeft = layout.ChartArea.Left + Core.Models.Training.ModelAnalysisContract.LegendInset;
         viewModel.PeriodLegendTop = layout.ChartArea.Top + Core.Models.Training.ModelAnalysisContract.LegendInset;
+        viewModel.AttentionHeatmap.SetLegendPosition(viewModel.PeriodLegendLeft, viewModel.PeriodLegendTop + Core.Models.Training.AttentionContract.LegendRowOffset);
 
         // Propagate to ViewModel for UI access (DataWindow, Tooltip)
         // Now renderers will get the Snapshot and have a Transform already synced with its range
@@ -954,6 +955,7 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
         }
 
         if (propertyName == nameof(ChartViewModel.ModelAnalysis)) return ChartUpdateAction.FullRefresh;
+        if (propertyName == nameof(ChartViewModel.AttentionSnapshot)) return ChartUpdateAction.FullRefresh;
 
         if (propertyName == nameof(ChartViewModel.IndicatorResults))
         {
@@ -1145,7 +1147,7 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
                     allCandles: _standardCandleBuffer, // FIX: Use correct parameter name for IReadOnlyList ctor
                     priceRangeCalculator: ChartTypeProfileRegistry.Get(viewModel.ChartType).PriceRangeCalculator,
                     confluence: GetConfluenceForIndex(_convertedCandleCount - 1, indicatorResults, viewModel.Indicators),
-                    priceScale: viewModel.PriceScale, modelAnalysis: viewModel.ModelAnalysis);
+                    priceScale: viewModel.PriceScale, modelAnalysis: viewModel.ModelAnalysis, attention: viewModel.AttentionSnapshot);
         }
     }
 
@@ -1178,7 +1180,7 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
             allCandles: _heikinAshiBuffer, // FIX: Use correct parameter name for IReadOnlyList ctor
             priceRangeCalculator: ChartTypeProfileRegistry.Get(ChartType.HeikinAshi).PriceRangeCalculator,
             confluence: GetConfluenceForIndex(_convertedCandleCount - 1, indicatorResults, viewModel.Indicators),
-            priceScale: viewModel.PriceScale, modelAnalysis: viewModel.ModelAnalysis);
+            priceScale: viewModel.PriceScale, modelAnalysis: viewModel.ModelAnalysis, attention: viewModel.AttentionSnapshot);
     }
     
     private void AdaptViewToTimeRange(ChartViewModel viewModel, IReadOnlyList<CoreCandleData> transformedCandles, DateTime endTime)
@@ -1450,7 +1452,7 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
             chartType: ChartType.Renko,
             priceRangeCalculator: ChartTypeProfileRegistry.Get(ChartType.Renko).PriceRangeCalculator,
             confluence: GetConfluenceForIndex(_convertedCandleCount - 1, indicatorResults, viewModel.Indicators),
-            priceScale: viewModel.PriceScale, modelAnalysis: viewModel.ModelAnalysis);
+            priceScale: viewModel.PriceScale, modelAnalysis: viewModel.ModelAnalysis, attention: viewModel.AttentionSnapshot);
     }
 
 
@@ -1542,7 +1544,7 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
             // FR-PNF-02: ボックスサイズに基づくマージン込み価格範囲（最高値+1ボックス、最安値はスナップ切り捨て）
             priceRangeCalculator: PnfProfile.GetPriceRangeCalculator(viewModel.EffectivePnfBoxSize),
             confluence: GetConfluenceForIndex(_convertedCandleCount - 1, indicatorResults, viewModel.Indicators),
-            priceScale: viewModel.PriceScale, modelAnalysis: viewModel.ModelAnalysis);
+            priceScale: viewModel.PriceScale, modelAnalysis: viewModel.ModelAnalysis, attention: viewModel.AttentionSnapshot);
     }
 
     private ChartDataSnapshot CreateKagiSnapshot(
@@ -1722,7 +1724,7 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
             overrideMaxPrice: null,
             visibleCandleCount: effectiveVisibleCount,
             kagiColumnMap: _kagiColumnMapBuffer.ToArray(),
-            priceScale: viewModel.PriceScale, modelAnalysis: viewModel.ModelAnalysis);
+            priceScale: viewModel.PriceScale, modelAnalysis: viewModel.ModelAnalysis, attention: viewModel.AttentionSnapshot);
     }
 
     private ChartDataSnapshot CreateRelativePerformanceSnapshot(
@@ -1861,7 +1863,7 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
                     comparisonSeries: comparisonSeries,
                     overrideMinPrice: globalMin != decimal.MaxValue ? globalMin : null,
                     overrideMaxPrice: globalMax != decimal.MinValue ? globalMax : null,
-                    priceScale: viewModel.PriceScale, modelAnalysis: viewModel.ModelAnalysis);
+                    priceScale: viewModel.PriceScale, modelAnalysis: viewModel.ModelAnalysis, attention: viewModel.AttentionSnapshot);
             }
         }
         catch (Exception ex)
@@ -1887,7 +1889,7 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
             allCandles: _standardCandleBuffer,
             priceRangeCalculator: StandardPriceRangeCalculator.Instance,
             confluence: GetConfluenceForIndex(_convertedCandleCount - 1, indicatorResults, viewModel.Indicators),
-            priceScale: viewModel.PriceScale, modelAnalysis: viewModel.ModelAnalysis);
+            priceScale: viewModel.PriceScale, modelAnalysis: viewModel.ModelAnalysis, attention: viewModel.AttentionSnapshot);
     }
 
     private ChartDataSnapshot CreateThreeLineBreakSnapshot(
@@ -1961,7 +1963,7 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
             chartType: ChartType.ThreeLineBreak,
             priceRangeCalculator: ChartTypeProfileRegistry.Get(ChartType.ThreeLineBreak).PriceRangeCalculator,
             confluence: GetConfluenceForIndex(_convertedCandleCount - 1, indicatorResults, viewModel.Indicators),
-            priceScale: viewModel.PriceScale, modelAnalysis: viewModel.ModelAnalysis);
+            priceScale: viewModel.PriceScale, modelAnalysis: viewModel.ModelAnalysis, attention: viewModel.AttentionSnapshot);
     }
 
     private int[] CalculateIndexMapping(IReadOnlyList<CoreCandleData> targetBlocks, IReadOnlyList<CoreCandleData> originalCandles)
@@ -2194,7 +2196,7 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
             confluence: GetConfluenceForIndex(viewModel.Candles.Count - 1, indicatorResults, viewModel.Indicators),
             overrideMinPrice: _reverseWatchData?.Bounds.MinPrice,
             overrideMaxPrice: _reverseWatchData?.Bounds.MaxPrice,
-            priceScale: viewModel.PriceScale, modelAnalysis: viewModel.ModelAnalysis)
+            priceScale: viewModel.PriceScale, modelAnalysis: viewModel.ModelAnalysis, attention: viewModel.AttentionSnapshot)
         {
              // Populate ReverseWatch specific data in Snapshot (Requires Snapshot update or RenderContext update)
              // The Snapshot doesn't strictly have a RWData field, but ChartRenderContext DOES.

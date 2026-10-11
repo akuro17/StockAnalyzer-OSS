@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using Avalonia;
 using Avalonia.Media;
 using SkiaSharp;
 using StockAnalyzer.Avalonia.Common;
+using StockAnalyzer.Core.Constants;
 using StockAnalyzer.Core.Models;
 
 namespace StockAnalyzer.Avalonia.Drawing;
@@ -18,6 +20,11 @@ public class VerticalLineObject : IChartObject, IDrawingCalculatedValuesProvider
     public List<ChartPoint> Points { get; } = new List<ChartPoint>();
     public Color Color { get; set; } = DrawingThemeContext.DefaultColor;
     public double Thickness { get; set; } = DrawingThemeContext.DefaultStrokeThickness;
+
+    [Category("Style")]
+    [DisplayName("Stroke Style")]
+    [ParameterTag(DrawingParameterTags.Common)]
+    public DrawingStrokeStyle StrokeStyle { get; set; } = DrawingStrokeStyle.Solid;
     public bool IsSelected { get; set; }
     public bool IsVisible { get; set; } = true;
     public bool IsLocked { get; set; } = false;
@@ -51,7 +58,8 @@ public class VerticalLineObject : IChartObject, IDrawingCalculatedValuesProvider
             Color = SkiaColor,
             StrokeWidth = (float)Thickness,
             Style = SKPaintStyle.Stroke,
-            IsAntialias = false // Sharp line for vertical
+            PathEffect = StrokeStyle.ToSkPathEffect(),
+            IsAntialias = StrokeStyle != DrawingStrokeStyle.Solid // Smooth dashes/dots
         };
 
         canvas.DrawLine(x, clip.Top, x, clip.Bottom, paint);

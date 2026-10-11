@@ -9,6 +9,26 @@ using Microsoft.Extensions.Logging;
 namespace StockAnalyzer.Core.Models;
 
 /// <summary>
+/// The model was trained with another window than the one configured for prediction. A typed
+/// <see cref="InvalidOperationException"/> so the screens can name both values instead of a generic failure.
+/// </summary>
+public sealed class PredictionWindowMismatchException : InvalidOperationException
+{
+    public PredictionWindowMismatchException(int modelWindow, int configuredWindow)
+        : base($"ONNX model was trained with window size {modelWindow} but the configured PredictionWindowSize is {configuredWindow}.")
+    {
+        ModelWindow = modelWindow;
+        ConfiguredWindow = configuredWindow;
+    }
+
+    /// <summary>Bars the model was trained with (metadata <c>window_size</c>).</summary>
+    public int ModelWindow { get; }
+
+    /// <summary>The configured prediction window (bars).</summary>
+    public int ConfiguredWindow { get; }
+}
+
+/// <summary>
 /// Cross-checks the model-contract <c>metadata_props</c> embedded by the training tooling
 /// (<c>StockAnalyzer.Python/training/onnx_meta.py</c>) against the running inference
 /// configuration. Tensor-shape validation alone cannot distinguish an
@@ -44,8 +64,12 @@ public static class PredictionModelMetadata
     public const string FeatureSpecKey = "feature_spec";
     /// <summary>Relative required fixed-scaler sidecar for a generation.</summary>
     public const string ScalerReferenceKey = "scaler_ref";
-    private const string NormalizationKey = "normalization";
-    private const string FixedNormalization = "fixed_zscore";
+    /// <summary>Metadata key: how the input channels are normalized (<see cref="FixedNormalization"/> for a fixed-scaler generation).</summary>
+    public const string NormalizationKey = "normalization";
+    /// <summary>Wire value of <see cref="NormalizationKey"/> for a fixed z-score scaler.</summary>
+    public const string FixedNormalization = "fixed_zscore";
+    /// <summary>Metadata key: comma-separated channel names in input order (mirrors <c>onnx_meta.CONTRACT_KEYS</c>'s <c>channel_order</c>).</summary>
+    public const string ChannelOrderKey = "channel_order";
     /// <summary>Metadata key: bar count the model's window was trained with.</summary>
     public const string WindowSizeKey = "window_size";
     /// <summary>Metadata key: comma-separated class labels in output-index order.</summary>
@@ -76,6 +100,12 @@ public static class PredictionModelMetadata
     /// runtime "expected horizon" setting currently exists to compare it to.
     /// </summary>
     public const string HorizonKey = "prediction_horizon";
+    /// <summary>
+    /// Metadata key: the class-label threshold of the target (mirrors <c>onnx_meta.CONTRACT_KEYS</c>'s <c>neutral_threshold</c>). Ensemble members must agree on it.
+    /// </summary>
+    public const string NeutralThresholdKey = "neutral_threshold";
+    /// <summary>Metadata key: the price basis of the target (mirrors <c>onnx_meta.CONTRACT_KEYS</c>'s <c>price_adjustment</c>). Ensemble members must agree on it.</summary>
+    public const string PriceAdjustmentKey = "price_adjustment";
     /// <summary>Effective chronological purge gap in bars, recorded by contract version 2.</summary>
     public const string PurgeGapKey = "com.stockanalyzer.training.purge_gap";
     public const string OutputSemanticKey = "com.stockanalyzer.output.semantic";
@@ -230,6 +260,28 @@ public static class PredictionModelMetadata
         };
     }
 
+    /// <summary>
+    /// The feature mode, window and (for composed features) feature spec a model carries in its own metadata — what an ensemble member is preprocessed
+    /// with, independent of the single-model settings. Throws <see cref="System.IO.InvalidDataException"/> when a key is missing or unusable.
+    /// </summary>
+    public static (PredictionFeatureMode Mode, int Window, FeatureSpec? Spec) ReadOwnFeatureContract(IReadOnlyDictionary<string, string> metadata)
+    {
+        ArgumentNullException.ThrowIfNull(metadata);
+        if (!metadata.TryGetValue(FeatureModeKey, out var modeText)) throw new System.IO.InvalidDataException("The model has no feature mode.");
+        var mode = ParseFeatureMode(modeText) ?? throw new System.IO.InvalidDataException("Unknown feature mode.");
+        if (!metadata.TryGetValue(WindowSizeKey, out var windowText)
+            || !int.TryParse(windowText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int window) || window <= 0)
+            throw new System.IO.InvalidDataException("Invalid model window.");
+        FeatureSpec? spec = null;
+        if (mode == PredictionFeatureMode.ComposedFeatures)
+        {
+            if (!metadata.TryGetValue(FeatureSpecKey, out var specText)) throw new System.IO.InvalidDataException("The model has no feature spec.");
+            spec = JsonSerializer.Deserialize<FeatureSpec>(specText, TrainingConfigJson.Options);
+        }
+
+        return (mode, window, spec);
+    }
+
     /// <summary>Reject partial fixed-preprocessing markers before any loader selects a preprocessing path.</summary>
     public static bool RequiresFixedScaler(IReadOnlyDictionary<string, string> metadata)
     {
@@ -353,9 +405,7 @@ public static class PredictionModelMetadata
 
             if (modelWindow != expectedWindowSize)
             {
-                throw new InvalidOperationException(
-                    $"ONNX model was trained with window size {modelWindow} " +
-                    $"but the configured PredictionWindowSize is {expectedWindowSize}.");
+                throw new PredictionWindowMismatchException(modelWindow, expectedWindowSize);
             }
         }
 

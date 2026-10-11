@@ -161,6 +161,62 @@ public sealed class ModelGenerationRegistryTests : IDisposable
     }
 
     [Fact]
+    public async Task Deactivation_ClearsTheActiveGeneration_KeepsItAsThePreviousOne_AndSurvivesAReopen()
+    {
+        var registryRoot = Path.Combine(_root, "registry_deactivate");
+        using var registry = new ModelGenerationRegistry(registryRoot);
+        var older = await registry.RegisterAsync(Source("same.onnx", 0.4));
+        var newer = await registry.RegisterAsync(Source("same.onnx", 0.6));
+        Assert.False(await registry.DeactivateAsync()); // nothing is active yet
+        Assert.True(await registry.ActivateAsync(older.ModelId));
+        Assert.True(await registry.ActivateAsync(newer.ModelId));
+        using var lease = registry.AcquireActive(); // a prediction in flight keeps its files
+
+        Assert.True(await registry.DeactivateAsync());
+
+        Assert.Null(registry.ActiveId);
+        Assert.Null(registry.AcquireActive()); // predictions fall back to the configured legacy model
+        Assert.True(File.Exists(lease!.ModelPath));
+        Assert.Equal(newer.ModelId, registry.PreviousId);
+        Assert.All(registry.List(), item => Assert.False(item.IsActive));
+        Assert.Equal(2, registry.List().Count); // nothing was deleted
+        Assert.False(await registry.DeactivateAsync()); // idempotent
+
+        using (var reopened = new ModelGenerationRegistry(registryRoot))
+        {
+            Assert.Null(reopened.ActiveId);
+            Assert.Equal(newer.ModelId, reopened.PreviousId);
+        }
+
+        // "Restore previous" brings the deactivated generation back, and a generation can simply be activated again.
+        Assert.True(await registry.RollbackAsync());
+        Assert.Equal(newer.ModelId, registry.ActiveId);
+        Assert.True(await registry.DeactivateAsync());
+        Assert.True(await registry.ActivateAsync(older.ModelId, manual: true)); // nothing active: no score comparison
+        Assert.Equal(older.ModelId, registry.ActiveId);
+        Assert.Equal(newer.ModelId, registry.PreviousId);
+    }
+
+    [Fact]
+    public async Task Deactivation_BoundsTheHistory_AndNeverListsTheActiveGenerationInIt()
+    {
+        using var registry = new ModelGenerationRegistry(Path.Combine(_root, "registry_deactivate_history"));
+        var ids = new List<string>();
+        for (var i = 0; i < ModelGenerationRegistry.PriorGenerationLimit + 2; i++)
+        {
+            ids.Add((await registry.RegisterAsync(Source("same.onnx", 0.4 + 0.01 * i))).ModelId);
+            Assert.True(await registry.ActivateAsync(ids[i]));
+        }
+
+        Assert.True(await registry.DeactivateAsync());
+        Assert.Equal(ids[^1], registry.PreviousId);
+
+        using var reopened = new ModelGenerationRegistry(Path.Combine(_root, "registry_deactivate_history"));
+        Assert.Null(reopened.ActiveId); // a pointer with no active id and a full history is a valid store
+        Assert.Equal(ids[^1], reopened.PreviousId);
+    }
+
+    [Fact]
     public async Task Confirmation_RejectsChangedBaselineWithoutChangingPointerOrHistory()
     {
         var registryRoot = Path.Combine(_root, "registry");
@@ -236,7 +292,7 @@ public sealed class ModelGenerationRegistryTests : IDisposable
         Assert.True(await registry.ActivateAsync(first.ModelId));
         var otherRevision = await registry.RegisterAsync(Source("other.onnx", 0.8,
             "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"));
-        await Assert.ThrowsAsync<InvalidOperationException>(() => registry.ActivateAsync(otherRevision.ModelId));
+        await Assert.ThrowsAsync<ModelActivationIncompatibleException>(() => registry.ActivateAsync(otherRevision.ModelId));
         Assert.Equal(first.ModelId, registry.ActiveId);
 
         var candidate = await registry.RegisterAsync(Source("candidate.onnx", 0.7));
@@ -596,6 +652,269 @@ public sealed class ModelGenerationRegistryTests : IDisposable
         var manifest = Path.Combine(registryPath, modelId, "manifest.json");
         File.WriteAllText(manifest, File.ReadAllText(manifest).Replace("model.onnx", "../model.onnx"));
         Assert.Throws<InvalidDataException>(() => new ModelGenerationRegistry(registryPath));
+    }
+
+    [Fact]
+    public async Task RemoveAsync_DeletesOnlyTheRegisteredCopy_AndTheSameFileCanBeAddedAgain()
+    {
+        using var registry = new ModelGenerationRegistry(Path.Combine(_root, "registry"));
+        var activeSource = Source("active.onnx", 0.4);
+        var active = await registry.RegisterAsync(activeSource);
+        await registry.ActivateAsync(active.ModelId);
+        var otherSource = Source("other.onnx", 0.3);
+        var other = await registry.RegisterAsync(otherSource);
+        var storedCopy = Path.Combine(_root, "registry", other.ModelId);
+        Assert.True(Directory.Exists(storedCopy));
+
+        Assert.True(await registry.RemoveAsync(other.ModelId));
+
+        Assert.DoesNotContain(registry.List(), g => g.ModelId == other.ModelId);
+        Assert.False(Directory.Exists(storedCopy));
+        Assert.True(File.Exists(otherSource), "the file it was added from is never touched");
+        Assert.True(File.Exists(otherSource + ".metrics.json"));
+        Assert.Equal(active.ModelId, registry.ActiveId);
+        Assert.False(await registry.RemoveAsync(other.ModelId), "removing an unknown generation reports false");
+        Assert.DoesNotContain(Directory.EnumerateDirectories(Path.Combine(_root, "registry")), d => Path.GetFileName(d).StartsWith(".removed_"));
+
+        var again = await registry.RegisterAsync(otherSource);
+        Assert.Equal(other.ModelId, again.ModelId);
+        Assert.Contains(registry.List(), g => g.ModelId == other.ModelId);
+        using var reopened = new ModelGenerationRegistry(Path.Combine(_root, "registry"));
+        Assert.Equal(2, reopened.List().Count);
+    }
+
+    [Fact]
+    public async Task RemoveAsync_RefusesTheActiveGeneration_AndAGenerationThatIsInUse()
+    {
+        using var registry = new ModelGenerationRegistry(Path.Combine(_root, "registry"));
+        var active = await registry.RegisterAsync(Source("active.onnx", 0.4));
+        await registry.ActivateAsync(active.ModelId);
+        var other = await registry.RegisterAsync(Source("other.onnx", 0.3));
+
+        var refusedActive = await Assert.ThrowsAsync<ModelRemovalRefusedException>(() => registry.RemoveAsync(active.ModelId));
+        Assert.Equal(ModelRemovalRefusal.Active, refusedActive.Reason);
+
+        using (registry.Acquire(other.ModelId))
+        {
+            var refusedInUse = await Assert.ThrowsAsync<ModelRemovalRefusedException>(() => registry.RemoveAsync(other.ModelId));
+            Assert.Equal(ModelRemovalRefusal.InUse, refusedInUse.Reason);
+            Assert.Contains(registry.List(), g => g.ModelId == other.ModelId);
+        }
+
+        Assert.True(await registry.RemoveAsync(other.ModelId)); // the lease is released
+        Assert.Equal(active.ModelId, registry.ActiveId);
+        Assert.True(Directory.Exists(Path.Combine(_root, "registry", active.ModelId)));
+    }
+
+    [Fact]
+    public async Task RemoveAsync_OfAPreviousGeneration_TakesItOutOfTheRestoreHistory()
+    {
+        using var registry = new ModelGenerationRegistry(Path.Combine(_root, "registry"));
+        var first = await registry.RegisterAsync(Source("first.onnx", 0.4));
+        await registry.ActivateAsync(first.ModelId);
+        var second = await registry.RegisterAsync(Source("second.onnx", 0.7));
+        await registry.ActivateAsync(second.ModelId);
+        Assert.Equal(first.ModelId, registry.PreviousId);
+
+        Assert.True(await registry.RemoveAsync(first.ModelId));
+
+        Assert.Null(registry.PreviousId);
+        Assert.False(await registry.RollbackAsync(), "nothing left to restore");
+        Assert.Equal(second.ModelId, registry.ActiveId);
+        using var reopened = new ModelGenerationRegistry(Path.Combine(_root, "registry"));
+        Assert.Equal(second.ModelId, reopened.ActiveId);
+        Assert.Null(reopened.PreviousId);
+    }
+
+    // --- ReplaceActiveAsync: one pointer write -----------------------------------------------------------------------------------------------
+
+    private const string OtherRevision = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    private static readonly JsonSerializerOptions PointerJson = new(JsonSerializerDefaults.Web);
+
+    /// <summary>A registry whose pointer writes are counted (and can be made to fail) but still reach the disk exactly like the default write.</summary>
+    private sealed class CountingPointerStore
+    {
+        public int Writes { get; private set; }
+        public Exception? Failure { get; set; }
+
+        public Task Save(string path, object pointer)
+        {
+            Writes++;
+            if (Failure is { } failure) return Task.FromException(failure);
+            return File.WriteAllTextAsync(path, JsonSerializer.Serialize(pointer, PointerJson));
+        }
+    }
+
+    private ModelGenerationRegistry CountingRegistry(string name, CountingPointerStore store, IStockAnalyzerSettings? settings = null) =>
+        new(Path.Combine(_root, name), (path, pointer) => store.Save(path, pointer), settings);
+
+    /// <summary>Registers and activates <paramref name="count"/> comparable generations in ascending score order, so the last one is active.</summary>
+    private async Task<List<ModelGenerationManifest>> ActivateChain(ModelGenerationRegistry registry, int count)
+    {
+        var chain = new List<ModelGenerationManifest>();
+        for (var step = 1; step <= count; step++)
+        {
+            var generation = await registry.RegisterAsync(Source("chain.onnx", step / 10.0));
+            Assert.True(await registry.ActivateAsync(generation.ModelId));
+            chain.Add(generation);
+        }
+        return chain;
+    }
+
+    [Fact]
+    public async Task ReplaceActiveAsync_WritesThePointerOnce_AndKeepsTheOldGenerationAsThePreviousOne()
+    {
+        var store = new CountingPointerStore();
+        using var registry = CountingRegistry("registry", store);
+        var chain = await ActivateChain(registry, 6);   // active g6, history [g5, g4, g3, g2, g1]
+        var replacement = await registry.RegisterAsync(Source("replacement.onnx", 0.05, OtherRevision));
+        var writesBefore = store.Writes;
+
+        Assert.True(await registry.ReplaceActiveAsync(replacement.ModelId, chain[5].ModelId));
+
+        Assert.Equal(1, store.Writes - writesBefore);
+        Assert.Equal(replacement.ModelId, registry.ActiveId);
+        Assert.Equal(chain[5].ModelId, registry.PreviousId);
+        using var pointer = JsonDocument.Parse(File.ReadAllText(Path.Combine(_root, "registry", "active.json")));
+        var history = pointer.RootElement.GetProperty("history").EnumerateArray().Select(e => e.GetString()).ToArray();
+        Assert.Equal(new[] { chain[5], chain[4], chain[3], chain[2], chain[1] }.Select(m => m.ModelId), history);   // limit 5: g1 drops out
+    }
+
+    [Fact]
+    public async Task ReplaceActiveAsync_WhenTheSingleWriteFails_ChangesNothing_AndNoActivelessStateIsEverPersisted()
+    {
+        var store = new CountingPointerStore();
+        using var registry = CountingRegistry("registry", store);
+        var chain = await ActivateChain(registry, 2);
+        var replacement = await registry.RegisterAsync(Source("replacement.onnx", 0.05, OtherRevision));
+        store.Failure = new IOException("disk full");
+
+        await Assert.ThrowsAsync<IOException>(() => registry.ReplaceActiveAsync(replacement.ModelId, chain[1].ModelId));
+
+        Assert.Equal(chain[1].ModelId, registry.ActiveId);
+        Assert.Equal(chain[0].ModelId, registry.PreviousId);
+        using var reopened = new ModelGenerationRegistry(Path.Combine(_root, "registry"));
+        Assert.Equal(chain[1].ModelId, reopened.ActiveId);   // what a restart sees: still the old generation
+    }
+
+    [Fact]
+    public async Task ReplaceActiveAsync_AcceptsAGenerationThatActivateAsyncRefusesAsIncomparable()
+    {
+        var store = new CountingPointerStore();
+        using var registry = CountingRegistry("registry", store);
+        var chain = await ActivateChain(registry, 1);
+        var otherRevision = await registry.RegisterAsync(Source("other.onnx", 0.8, OtherRevision));
+
+        await Assert.ThrowsAsync<ModelActivationIncompatibleException>(() => registry.ActivateAsync(otherRevision.ModelId, manual: true));
+        Assert.True(await registry.ReplaceActiveAsync(otherRevision.ModelId, chain[0].ModelId));
+
+        Assert.Equal(otherRevision.ModelId, registry.ActiveId);
+        Assert.Equal(chain[0].ModelId, registry.PreviousId);
+    }
+
+    [Fact]
+    public async Task ReplaceActiveAsync_WhenTheActiveGenerationChanged_IsRefusedWithoutAWrite()
+    {
+        var store = new CountingPointerStore();
+        using var registry = CountingRegistry("registry", store);
+        var chain = await ActivateChain(registry, 2);
+        var replacement = await registry.RegisterAsync(Source("replacement.onnx", 0.05, OtherRevision));
+        var writesBefore = store.Writes;
+
+        await Assert.ThrowsAsync<ModelActivationContextChangedException>(() => registry.ReplaceActiveAsync(replacement.ModelId, chain[0].ModelId));
+        await Assert.ThrowsAsync<ModelActivationContextChangedException>(() => registry.ReplaceActiveAsync(replacement.ModelId, null));
+
+        Assert.Equal(writesBefore, store.Writes);
+        Assert.Equal(chain[1].ModelId, registry.ActiveId);
+    }
+
+    [Fact]
+    public async Task ReplaceActiveAsync_WithAWindowMismatch_IsRefusedWithoutAWrite()
+    {
+        var setup = new CountingPointerStore();
+        string activeId, candidateId;
+        using (var registry = CountingRegistry("registry", setup))
+        {
+            var chain = await ActivateChain(registry, 1);
+            activeId = chain[0].ModelId;
+            candidateId = (await registry.RegisterAsync(Source("replacement.onnx", 0.05, OtherRevision))).ModelId;
+        }
+        var store = new CountingPointerStore();
+        using var mismatching = CountingRegistry("registry", store, new PredictionServiceTests.TestSettings("does_not_exist.onnx", predictionWindowSize: 3));
+
+        await Assert.ThrowsAsync<PredictionWindowMismatchException>(() => mismatching.ReplaceActiveAsync(candidateId, activeId));
+
+        Assert.Equal(0, store.Writes);
+        Assert.Equal(activeId, mismatching.ActiveId);
+    }
+
+    [Fact]
+    public async Task ReplaceActiveAsync_OfTheActiveGeneration_ReportsFalseWithoutAWrite_AndAnUnknownIdIsRefused()
+    {
+        var store = new CountingPointerStore();
+        using var registry = CountingRegistry("registry", store);
+        var chain = await ActivateChain(registry, 1);
+        var writesBefore = store.Writes;
+
+        Assert.False(await registry.ReplaceActiveAsync(chain[0].ModelId, chain[0].ModelId));
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => registry.ReplaceActiveAsync(new string('c', 64), chain[0].ModelId));
+
+        Assert.Equal(writesBefore, store.Writes);
+    }
+
+    [Fact]
+    public async Task ReplaceActiveAsync_WithNoActiveGeneration_ActivatesTheCandidate()
+    {
+        var store = new CountingPointerStore();
+        using var registry = CountingRegistry("registry", store);
+        var generation = await registry.RegisterAsync(Source("only.onnx", 0.4));
+
+        Assert.True(await registry.ReplaceActiveAsync(generation.ModelId, null));
+
+        Assert.Equal(generation.ModelId, registry.ActiveId);
+    }
+
+    // --- Retired folders ---------------------------------------------------------------------------------------------------------------------
+
+    [Fact]
+    public async Task Construction_DeletesRetiredFolders_ButNeverAGenerationFolder()
+    {
+        var registryRoot = Path.Combine(_root, "registry");
+        string kept;
+        using (var registry = new ModelGenerationRegistry(registryRoot))
+            kept = (await registry.RegisterAsync(Source("kept.onnx", 0.4))).ModelId;
+        var retired = Path.Combine(registryRoot, ".removed_abc");
+        Directory.CreateDirectory(retired);
+        File.WriteAllText(Path.Combine(retired, "file.bin"), "x");
+
+        using var reopened = new ModelGenerationRegistry(registryRoot);
+
+        Assert.False(Directory.Exists(retired));
+        Assert.True(Directory.Exists(Path.Combine(registryRoot, kept)));
+        Assert.NotNull(reopened.GetManifest(kept));
+    }
+
+    [Fact]
+    public void Construction_WithALockedRetiredFolder_DoesNotThrow_AndDeletesItOnTheNextStart()
+    {
+        var registryRoot = Path.Combine(_root, "registry");
+        var retired = Path.Combine(registryRoot, ".removed_def");
+        Directory.CreateDirectory(retired);
+        var locked = Path.Combine(retired, "locked.bin");
+        File.WriteAllText(locked, "x");
+        using (new FileStream(locked, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+        {
+            using var registry = new ModelGenerationRegistry(registryRoot);   // must not throw
+            Assert.True(Directory.Exists(retired));                            // stays for the next start
+            var evidence = Directory.GetFiles(Path.Combine(registryRoot, ModelGenerationRegistry.Coordination.Folder),
+                ModelGenerationRegistry.Coordination.FailureEvidencePattern);
+            var record = Assert.Single(evidence);                              // the failed delete is recorded, not swallowed
+            Assert.Contains("purge_retired", File.ReadAllText(record));
+        }
+
+        using var again = new ModelGenerationRegistry(registryRoot);
+
+        Assert.False(Directory.Exists(retired));
     }
 
     public void Dispose() => TestDirectory.Delete(_root);

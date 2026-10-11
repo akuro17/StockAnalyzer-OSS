@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using Avalonia;
 using Avalonia.Media;
 using SkiaSharp;
 using StockAnalyzer.Avalonia.Common;
+using StockAnalyzer.Core.Constants;
 using StockAnalyzer.Core.Models;
 
 namespace StockAnalyzer.Avalonia.Drawing;
@@ -21,6 +23,11 @@ public class ParallelChannelObject : IChartObject, IDrawingCalculatedValuesProvi
 
     public Color Color { get; set; } = DrawingThemeContext.DefaultColor;
     public double Thickness { get; set; } = DrawingThemeContext.DefaultStrokeThickness;
+
+    [Category("Style")]
+    [DisplayName("Stroke Style")]
+    [ParameterTag(DrawingParameterTags.Common)]
+    public DrawingStrokeStyle StrokeStyle { get; set; } = DrawingStrokeStyle.Solid;
     public bool IsSelected { get; set; }
     public bool IsVisible { get; set; } = true;
     public bool IsLocked { get; set; } = false;
@@ -103,6 +110,7 @@ public class ParallelChannelObject : IChartObject, IDrawingCalculatedValuesProvi
             Color = SkiaColor,
             StrokeWidth = (float)Thickness,
             Style = SKPaintStyle.Stroke,
+            PathEffect = StrokeStyle.ToSkPathEffect(),
             IsAntialias = true
         };
         canvas.DrawPath(path, strokePaint);

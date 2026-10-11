@@ -37,7 +37,7 @@ using Microsoft.Extensions.Logging;
 
 namespace StockAnalyzer.Avalonia.ViewModels;
 
-public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IRecipient<TickerSelectedMessage>, IRecipient<TickerDataRefreshedMessage>, IRecipient<ChartPeriodChangedMessage>, IRecipient<ChartTimeframeChangedMessage>, IDisposable
+public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IRecipient<TickerSelectedMessage>, IRecipient<TickerDataRefreshedMessage>, IRecipient<ChartPeriodChangedMessage>, IRecipient<ChartTimeframeChangedMessage>, IRecipient<PredictionConfigurationChangedMessage>, IDisposable
 {
     private static int _dtwRequestIdCounter = 0;
     private readonly Microsoft.Extensions.Logging.ILogger<ChartViewModel>? _logger;
@@ -209,6 +209,39 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
 
     partial void OnPredictionDisplayChanged(string? value) => OnPropertyChanged(nameof(HasPredictionDisplay));
 
+    /// <summary>Why no prediction is shown when the owner can correct it (the model's window differs from the configured one); null otherwise.</summary>
+    [ObservableProperty]
+    private string? _predictionNotice;
+
+    public bool HasPredictionNotice => !string.IsNullOrEmpty(PredictionNotice);
+
+    partial void OnPredictionNoticeChanged(string? value) => OnPropertyChanged(nameof(HasPredictionNotice));
+
+    /// <summary>
+    /// The model, ensemble or window the predictions use changed: predict again for the candles already held (no data reload), so the change is
+    /// visible at once. A chart that shows a reinforcement-learning replay, holds no candles or is disposed ignores it.
+    /// </summary>
+    public void Receive(PredictionConfigurationChangedMessage message) => _dispatcherService.Post(RefreshPrediction);
+
+    private void RefreshPrediction()
+    {
+        if (_isDisposed || _predictionService is null || Candles.Count == 0 || RlPresentation is not null) return;
+        var candles = Candles.ToArray();
+        var symbol = Symbol;
+        var timeframe = SelectedTimeFrame;
+        var revision = DataRevision;
+        var requestId = ++_predictionRequestId; // an older request can no longer publish
+        var token = _loadCts?.Token ?? CancellationToken.None;
+        PredictionUpdateTask = Task.Run(() => UpdatePredictionAsync(candles, symbol, timeframe, revision, requestId, token), token);
+    }
+
+    /// <summary>The localized window-mismatch text of a failed model load, or null when the fallback has no such cause.</summary>
+    private string? BuildPredictionNotice(PredictionResult result) =>
+        result.IsFallback && _predictionService?.LoadIssue is { } issue
+            ? string.Format(System.Globalization.CultureInfo.CurrentCulture,
+                LocalizationManager.Instance.Get("Prediction_Notice_WindowMismatch"), issue.ModelWindow, issue.ConfiguredWindow)
+            : null;
+
     private async Task UpdatePredictionAsync(CoreCandleData[] candles, string symbol,
         TimeframeType timeframe, long revision, int requestId, CancellationToken token)
     {
@@ -230,13 +263,19 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
                 analysis = null;
             var regime = analysis is not null ? _modelAnalysisService!.Assign(analysis, history, timeframe) : null;
             if (token.IsCancellationRequested) return;
+            var attention = BeginAttention(result, symbol, timeframe, history[^1], revision);
+            var notice = BuildPredictionNotice(result);
             _dispatcherService.Post(() =>
             {
                 if (_isDisposed || token.IsCancellationRequested || requestId != _predictionRequestId
                     || Symbol != symbol || SelectedTimeFrame != timeframe || DataRevision != revision
-                    || Candles.Count == 0 || Candles[^1].Timestamp != candles[^1].Timestamp
-                    || result.ModelId != _predictionService.ActiveModelId)
+                    || Candles.Count == 0 || Candles[^1].Timestamp != candles[^1].Timestamp)
                     return;
+
+                // A fallback carries no model id, so the generation check below would drop it and the previous prediction text would stay:
+                // a fallback is applied (it formats to nothing) together with the explanation of why there is no prediction.
+                PredictionNotice = notice;
+                if (!result.IsFallback && result.ModelId != _predictionService.ActiveModelId) return;
 
                 var display = PredictionDisplayFormatter.Format(result, timeframe,
                     System.Globalization.CultureInfo.CurrentCulture, LocalizationManager.Instance.Get);
@@ -248,6 +287,8 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
                 RegimeDisplay = regime is null ? null : string.Format(System.Globalization.CultureInfo.CurrentCulture,
                     LocalizationManager.Instance.Get("ModelAnalysis_Regime"), regime.Id);
             });
+            if (attention is not null && requestId == _predictionRequestId && !_isDisposed)
+                await PublishAttentionAsync(attention, history, token).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -651,6 +692,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
 
         _isDisposed = true;
         _predictionRequestId++;
+        _attentionHeatmap?.Dispose();
 
         _messenger?.UnregisterAll(this);
 
@@ -1518,6 +1560,16 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
     /// </summary>
     public Services.Drawing.IDrawingLayerService LayerService { get; } = new Services.Drawing.DrawingLayerService();
 
+    /// <summary>
+    /// Floating contextual style bar for quick modification of selected drawing objects.
+    /// </summary>
+    public Chart.FloatingStyleBarViewModel FloatingStyleBar { get; }
+
+    /// <summary>
+    /// Direct in-place text editor for TextObject annotations.
+    /// </summary>
+    public Chart.InPlaceTextEditViewModel InPlaceTextEdit { get; } = new();
+
     private Services.Drawing.DrawingEditCoordinator? _drawingEditCoordinator;
 
     /// <summary>
@@ -1729,8 +1781,11 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
 
 
 
-    public ChartViewModel(IDataService dataService, IDialogService dialogService, IChartStrategyFactory strategyFactory, IStockAnalyzerSettings settings, ITimeFrameManager timeFrameManager, Core.Services.MarketStructureService marketStructureService, Core.Theme.IThemeManager themeManager, Core.Services.IChartSettingsManager chartSettingsManager, Core.Services.IDispatcherService dispatcherService, Core.Services.IPredictionService? predictionService, Core.Services.Analysis.IAnalysisPipelineService analysisPipelineService, Core.Services.IMarketDataProvider? marketDataProvider = null, Core.Services.IPythonService? pythonService = null, Core.Services.IComparisonDataAligner? comparisonDataAligner = null, IMessenger? messenger = null, Services.Drawing.IChartDrawingRepository? drawingRepository = null, Microsoft.Extensions.Logging.ILogger<ChartViewModel>? logger = null, ISpiralAnalysisDataSource? spiralAnalysisDataSource = null, ISeasonalityChartDataSource? seasonalityChartDataSource = null, Services.Drawing.DrawingDocumentSessionStore? sessionStore = null, Core.Services.IModelAnalysisService? modelAnalysisService = null, Core.Services.IPredictionLogService? predictionLog = null, TimeProvider? timeProvider = null, Services.IMonitoringWorkOwner? monitoringWork = null, Services.IAttestedMonitoringRefresher? attestedMonitoring = null)
+    public ChartViewModel(IDataService dataService, IDialogService dialogService, IChartStrategyFactory strategyFactory, IStockAnalyzerSettings settings, ITimeFrameManager timeFrameManager, Core.Services.MarketStructureService marketStructureService, Core.Theme.IThemeManager themeManager, Core.Services.IChartSettingsManager chartSettingsManager, Core.Services.IDispatcherService dispatcherService, Core.Services.IPredictionService? predictionService, Core.Services.Analysis.IAnalysisPipelineService analysisPipelineService, Core.Services.IMarketDataProvider? marketDataProvider = null, Core.Services.IPythonService? pythonService = null, Core.Services.IComparisonDataAligner? comparisonDataAligner = null, IMessenger? messenger = null, Services.Drawing.IChartDrawingRepository? drawingRepository = null, Microsoft.Extensions.Logging.ILogger<ChartViewModel>? logger = null, ISpiralAnalysisDataSource? spiralAnalysisDataSource = null, ISeasonalityChartDataSource? seasonalityChartDataSource = null, Services.Drawing.DrawingDocumentSessionStore? sessionStore = null, Core.Services.IModelAnalysisService? modelAnalysisService = null, Core.Services.IPredictionLogService? predictionLog = null, TimeProvider? timeProvider = null, Services.IMonitoringWorkOwner? monitoringWork = null, Services.IAttestedMonitoringRefresher? attestedMonitoring = null, Core.Services.IAttentionService? attentionService = null, Core.Services.IEnsembleAttentionService? ensembleAttentionService = null, Core.Services.IEnsembleSettingsManager? ensembleSettings = null)
     {
+        _attentionService = attentionService;
+        _ensembleAttentionService = ensembleAttentionService;
+        _ensembleSettings = ensembleSettings;
         _timeProvider = timeProvider ?? TimeProvider.System;
         _monitoringWork = monitoringWork;
         _attestedMonitoring = attestedMonitoring;
@@ -1783,6 +1838,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
 
         UpdateColorsFromTheme();
         UpdateColorsFromSettings(); // Settings override theme defaults
+        FloatingStyleBar = new Chart.FloatingStyleBarViewModel(this);
         UpdateParametersFromSettings();
         OnChartTypeChanged(ChartType); // Initial capability sync
 
@@ -2070,6 +2126,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
         ComparisonTargets.CollectionChanged += OnComparisonTargetsChanged;
         _themeManager.PropertyChanged += OnThemeManagerPropertyChanged;
         _chartSettingsManager.SettingsChanged += OnGlobalSettingsChanged;
+        FloatingStyleBar = new Chart.FloatingStyleBarViewModel(this);
         OnChartTypeChanged(ChartType);
     }
 
@@ -2475,6 +2532,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
 
     partial void OnChartTypeChanged(ChartType value)
     {
+        if (_dispatcherService is not null) AttentionHeatmap.SetChartType(value);
         var caps = Core.Models.ChartTypeCapabilitiesRegistry.Get(value);
         CanToggleIndicators = caps.CanToggleIndicators;
 

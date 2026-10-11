@@ -25,6 +25,9 @@ public sealed class ChartDataSnapshot
 {
     public ModelAnalysisSnapshot? ModelAnalysis { get; }
 
+    /// <summary>The attention of the newest prediction (T24), or null; immutable, never computed while rendering.</summary>
+    public StockAnalyzer.Core.Models.Training.AttentionSnapshot? Attention { get; }
+
     /// <summary>
     /// Read-only list of candle data.
     /// </summary>
@@ -216,13 +219,14 @@ public sealed class ChartDataSnapshot
         decimal? overrideMaxPrice = null,
         int visibleCandleCount = 100,
         IReadOnlyList<int>? kagiColumnMap = null,
-        PriceScaleType priceScale = PriceScaleType.Linear, ModelAnalysisSnapshot? modelAnalysis = null)
+        PriceScaleType priceScale = PriceScaleType.Linear, ModelAnalysisSnapshot? modelAnalysis = null,
+        StockAnalyzer.Core.Models.Training.AttentionSnapshot? attention = null)
         : this(candles.Select(c => new CoreCandleData(c.Date, c.Open, c.High, c.Low, c.Close, c.Volume)),
                symbol, timeframe, indicatorResults, indicatorSettings, drawings, startIndex, count,
                paddingTopPx, paddingBottomPx, chartHeightPx, minBrickSize, maxBrickSize, pnfAnalysis,
                multiWaveSignals, allPnfCandles, chartType, threeLineBreakCount, priceRangeCalculator,
                confluence, renderingMetadata, comparisonSeries, overrideMinPrice, overrideMaxPrice,
-               visibleCandleCount, kagiColumnMap, priceScale, modelAnalysis)
+               visibleCandleCount, kagiColumnMap, priceScale, modelAnalysis, attention)
     {
     }
 
@@ -253,10 +257,12 @@ public sealed class ChartDataSnapshot
         decimal? overrideMaxPrice = null,
         int visibleCandleCount = 100,
         IReadOnlyList<int>? kagiColumnMap = null,
-        PriceScaleType priceScale = PriceScaleType.Linear, ModelAnalysisSnapshot? modelAnalysis = null)
+        PriceScaleType priceScale = PriceScaleType.Linear, ModelAnalysisSnapshot? modelAnalysis = null,
+        StockAnalyzer.Core.Models.Training.AttentionSnapshot? attention = null)
     {
         PriceScale = priceScale;
         ModelAnalysis = modelAnalysis;
+        Attention = attention;
         VisibleCandleCount = visibleCandleCount;
         KagiColumnMap = kagiColumnMap;
         var priceCalc = priceRangeCalculator ?? StandardPriceRangeCalculator.Instance;
@@ -577,10 +583,12 @@ public sealed class ChartDataSnapshot
         IReadOnlyDictionary<string, decimal?[]>? comparisonSeries = null,
         decimal? overrideMinPrice = null,
         decimal? overrideMaxPrice = null,
-        PriceScaleType priceScale = PriceScaleType.Linear, ModelAnalysisSnapshot? modelAnalysis = null)
+        PriceScaleType priceScale = PriceScaleType.Linear, ModelAnalysisSnapshot? modelAnalysis = null,
+        StockAnalyzer.Core.Models.Training.AttentionSnapshot? attention = null)
     {
         PriceScale = priceScale;
         ModelAnalysis = modelAnalysis;
+        Attention = attention;
         var priceCalc = priceRangeCalculator ?? StandardPriceRangeCalculator.Instance;
         ChartType = chartType;
         PaddingTopPx = paddingTopPx;

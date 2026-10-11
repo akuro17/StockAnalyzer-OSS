@@ -12,7 +12,7 @@
             <StackPanel Orientation="Horizontal" Spacing="16">
                 <PathIcon Data="{DynamicResource SettingsAdvIcon}" Width="32" Height="32" Foreground="{DynamicResource Brush.Accent.Primary}"/>
                 <TextBlock Text="{Binding TitleKey, Converter={StaticResource LocalizeConverter}}" 
-                           FontSize="24" FontWeight="SemiBold"/>
+                           FontSize="{DynamicResource TitleFontSize}" FontWeight="SemiBold"/>
             </StackPanel>
             <Separator Background="{DynamicResource Brush.Border.Primary}"/>
         </StackPanel>
@@ -20,7 +20,7 @@
         <StackPanel Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="24">
             <PathIcon Data="{DynamicResource SettingsChartIcon}" Width="64" Height="64" Opacity="0.2"/>
             <StackPanel Spacing="8">
-                <TextBlock Text="Feature Coming Soon" FontSize="18" FontWeight="SemiBold" HorizontalAlignment="Center" Opacity="0.6"/>
+                <TextBlock Text="Feature Coming Soon" FontSize="{DynamicResource BaseFontSize}" FontWeight="SemiBold" HorizontalAlignment="Center" Opacity="0.6"/>
                 <TextBlock Text="This settings page is currently under migration." HorizontalAlignment="Center" Opacity="0.4"/>
             </StackPanel>
         </StackPanel>

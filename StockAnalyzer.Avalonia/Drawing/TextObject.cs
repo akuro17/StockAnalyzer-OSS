@@ -84,6 +84,9 @@ public class TextObject : IChartObject, IDisposable, ITextAnnotatedObject
     [System.Text.Json.Serialization.JsonIgnore]
     public bool IsSelected { get; set; }
 
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool IsEditing { get; set; }
+
     [Category("Style")]
     [DisplayName("Visible")]
     [ParameterTag(DrawingParameterTags.Common)]
@@ -205,7 +208,7 @@ public class TextObject : IChartObject, IDisposable, ITextAnnotatedObject
             Color = DrawingThemeContext.MainTextSkColor,
             IsAntialias = true,
             TextSize = (float)_fontSize,
-            Typeface = SKTypeface.Default
+            Typeface = DrawingThemeContext.DefaultTextTypeface
         };
 
         _bgPaint = new SKPaint
@@ -235,7 +238,7 @@ public class TextObject : IChartObject, IDisposable, ITextAnnotatedObject
 
     public void Render(SKCanvas canvas, ICoordinateTransform transform)
     {
-        if (canvas == null || transform == null || Points.Count == 0 || _disposed) return;
+        if (canvas == null || transform == null || Points.Count == 0 || _disposed || IsEditing) return;
 
         var pt = transform.ChartToScreen(Points[0]);
         var lines = GetLines();

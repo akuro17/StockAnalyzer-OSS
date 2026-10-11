@@ -24,6 +24,7 @@ public sealed class ChartRenderPipeline : IDisposable
 {
     private readonly BackgroundRenderer _backgroundRenderer;
     private readonly TrainingPeriodRenderer _trainingPeriodRenderer = new();
+    private readonly AttentionHeatmapRenderer _attentionHeatmapRenderer = new();
     private readonly RlQRenderer _rlRenderer = new();
     public void PrepareRlHud(ViewModels.RlPresentation? presentation, float fontSize) => _rlRenderer.PrepareHud(presentation, fontSize);
     private readonly GridRenderer _gridRenderer;
@@ -104,6 +105,7 @@ public sealed class ChartRenderPipeline : IDisposable
         _rlRenderer.Dispose();
         _backgroundRenderer.Dispose();
         _trainingPeriodRenderer.Dispose();
+        _attentionHeatmapRenderer.Dispose();
         _gridRenderer.Dispose();
         _axisRenderer.Dispose();
         _indicatorRenderer.Dispose();
@@ -147,6 +149,7 @@ public sealed class ChartRenderPipeline : IDisposable
         bool showVolume = volumeArea.Height > 0;
 
         _trainingPeriodRenderer.Render(canvas, chartArea, snapshot, coordinateTransform, theme);
+        _attentionHeatmapRenderer.Render(canvas, chartArea, snapshot, coordinateTransform, theme);
 
         // 2. Prepare and Render Grid & Axis (Behind data, now with occlusion)
         PrepareAxisLabels(layout, snapshot, objectManager, renderConfig, mainRenderer);
@@ -204,6 +207,7 @@ public sealed class ChartRenderPipeline : IDisposable
         // Preview the in-progress shape here only when it belongs to the main chart; a sub-panel
         // shape is previewed by its own panel pass (Step 7.5), never on the main chart.
         _feedbackRenderer.Render(canvas, snapPoint, currentDrawingObject, coordinateTransform, ChartLayoutExtensions.MainChartPanelIndex);
+        rulerRenderer.RubberBandAction?.Invoke(canvas);
         canvas.Restore();
 
         // 7.5 Render Drawing Objects in sub-window panels (PanelIndex >= 0).

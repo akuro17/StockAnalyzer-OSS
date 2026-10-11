@@ -47,9 +47,30 @@ public class PredictionService : IPredictionService, IDisposable
     private readonly IModelGenerationRegistry? _modelRegistry;
     private volatile RuntimeBundle? _runtime;
     private string? _failedModelId;
+    // The prediction contract (window, feature mode, feature spec, class labels) the permanent failure was recorded under, and the window mismatch
+    // behind it (when that was the cause). A failure caused by the configuration is not permanent once the owner corrects the setting.
+    private string? _failedContract;
+    private volatile PredictionWindowMismatchException? _failedWindowMismatch;
     private string? _resolvedModelPath;
     private volatile bool _permanentInitializationFailure;
     private readonly IIndicatorFactory _indicatorFactory;
+
+    /// <summary>True while the recorded permanent failure still applies: same active generation and the same prediction contract settings.</summary>
+    private bool IsPermanentFailure(string? activeId) =>
+        _permanentInitializationFailure && _failedModelId == activeId && _failedContract == PredictionContractFingerprint.Compute(_settings);
+
+    // Reads the registry's active id only after a failure was recorded: a store that cannot be read must keep failing where it did before.
+    private bool IsPermanentFailure() => _permanentInitializationFailure && IsPermanentFailure(_modelRegistry?.ActiveId);
+
+    public PredictionWindowMismatchException? LoadIssue => IsPermanentFailure() ? _failedWindowMismatch : null;
+
+    private void RecordPermanentFailure(string? modelId, Exception? cause)
+    {
+        _failedContract = PredictionContractFingerprint.Compute(_settings);
+        _failedWindowMismatch = cause as PredictionWindowMismatchException;
+        _failedModelId = modelId;
+        _permanentInitializationFailure = true;
+    }
 
     private sealed class RuntimeBundle : IDisposable
     {
@@ -226,7 +247,7 @@ public class PredictionService : IPredictionService, IDisposable
     {
         var activeId = _modelRegistry?.ActiveId;
         if ((_runtime != null && _runtime.ModelId == activeId)
-            || (_permanentInitializationFailure && _failedModelId == activeId)) return;
+            || IsPermanentFailure(activeId)) return;
 
         // _initLock is never disposed (see Dispose), so neither this wait nor the Release below can throw ObjectDisposedException; a call that
         // queued before Dispose acquires the lock in turn, sees _disposed and returns.
@@ -236,7 +257,7 @@ public class PredictionService : IPredictionService, IDisposable
         {
             activeId = _modelRegistry?.ActiveId;
             if (_disposed || (_runtime != null && _runtime.ModelId == activeId)
-                || (_permanentInitializationFailure && _failedModelId == activeId)) return;
+                || IsPermanentFailure(activeId)) return;
             // Load model asynchronously to prevent UI thread blocking
             await Task.Run(() => EnsureModelLoaded());
             _logger.LogInformation("ONNX model loaded successfully from {Path}.", _resolvedModelPath);
@@ -261,8 +282,7 @@ public class PredictionService : IPredictionService, IDisposable
         {
             // The model file's absence cannot self-heal without an app restart or config change,
             // so further InitializeAsync calls skip the redundant File.Exists + InferenceSession attempt.
-            _permanentInitializationFailure = true;
-            _failedModelId = candidateId;
+            RecordPermanentFailure(candidateId, null);
             lease?.Dispose();
             throw new System.IO.FileNotFoundException("ONNX model file not found.", modelPath);
         }
@@ -280,8 +300,7 @@ public class PredictionService : IPredictionService, IDisposable
         catch
         {
             lease?.Dispose();
-            _permanentInitializationFailure = true;
-            _failedModelId = candidateId;
+            RecordPermanentFailure(candidateId, null);
             throw;
         }
         try
@@ -381,16 +400,18 @@ public class PredictionService : IPredictionService, IDisposable
                 Retire(previous);
                 _permanentInitializationFailure = false;
                 _failedModelId = null;
+                _failedContract = null;
+                _failedWindowMismatch = null;
             }
         }
-        catch
+        catch (Exception error)
         {
             // A shape/contract mismatch cannot self-heal without a model or config change, so mirror
             // the FileNotFound path: dispose the session and stop retrying on every PredictAsync call.
+            // The failure is recorded under the configured window, so correcting the window retries.
             session.Dispose();
             lease?.Dispose();
-            _permanentInitializationFailure = true;
-            _failedModelId = candidateId;
+            RecordPermanentFailure(candidateId, error);
             throw;
         }
     }
@@ -445,8 +466,8 @@ public class PredictionService : IPredictionService, IDisposable
 
             if (inputDimensions[1] > 0 && inputDimensions[1] != expectedWindowSize)
             {
-                throw new InvalidOperationException(
-                    $"ONNX input node '{inputNodeName}' sequence dimension {inputDimensions[1]} != configured WindowSize {expectedWindowSize}.");
+                // Typed so the screens can name both windows; the exported sequence length is the window the model was trained with.
+                throw new PredictionWindowMismatchException(inputDimensions[1], expectedWindowSize);
             }
 
             if (inputDimensions[2] > 0 && inputDimensions[2] != expectedFeaturesPerBar)
@@ -814,7 +835,7 @@ public class PredictionService : IPredictionService, IDisposable
         // mismatch that cannot self-heal), every attempt would extract features, rent a buffer,
         // run the full retry/backoff pipeline and still end at PredictionResult.Empty. Short-circuit
         // to the same result without the wasted work and the repeated warning logs.
-        if (_permanentInitializationFailure && _failedModelId == _modelRegistry?.ActiveId)
+        if (IsPermanentFailure())
             return PredictionResult.Empty;
         if (candles == null) return PredictionResult.Empty;
 
@@ -842,7 +863,7 @@ public class PredictionService : IPredictionService, IDisposable
         {
             await InitializeAsync();
 
-            if (_permanentInitializationFailure && _failedModelId == _modelRegistry?.ActiveId)
+            if (IsPermanentFailure())
             {
                 throw new InvalidOperationException("Prediction engine is not initialized.");
             }

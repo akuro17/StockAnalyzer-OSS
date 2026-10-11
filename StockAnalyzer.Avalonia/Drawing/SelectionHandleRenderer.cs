@@ -45,4 +45,52 @@ public static class SelectionHandleRenderer
         StrokePaint.StrokeWidth = strokeWidth;
         canvas.DrawCircle((float)screenPoint.X, (float)screenPoint.Y, radius, StrokePaint);
     }
+
+    [ThreadStatic] private static SKPaint? _aabbFramePaint;
+    private static SKPaint AabbFramePaint => _aabbFramePaint ??= new SKPaint
+    {
+        Style = SKPaintStyle.Stroke,
+        IsAntialias = true,
+        PathEffect = SKPathEffect.CreateDash(new float[] { 4f, 4f }, 0f)
+    };
+
+    /// <summary>
+    /// Draws an 8-point AABB deformation handle frame over the specified screen rectangle.
+    /// Handles are placed at the 4 corners and 4 edge midpoints:
+    /// 0=TopLeft, 1=TopCenter, 2=TopRight, 3=RightCenter,
+    /// 4=BottomRight, 5=BottomCenter, 6=BottomLeft, 7=LeftCenter.
+    /// </summary>
+    public static void DrawAabbHandles(
+        SKCanvas canvas,
+        global::Avalonia.Rect screenRect,
+        SKColor? handleColor = null,
+        SKColor? anchorColor = null,
+        SKColor? frameColor = null,
+        int anchorHandleIndex = 0,
+        float radius = ChartConstants.DefaultHandleRadius)
+    {
+        float left = (float)screenRect.Left;
+        float right = (float)screenRect.Right;
+        float top = (float)screenRect.Top;
+        float bottom = (float)screenRect.Bottom;
+        float midX = (left + right) * 0.5f;
+        float midY = (top + bottom) * 0.5f;
+
+        var framePaint = AabbFramePaint;
+        framePaint.Color = frameColor ?? DrawingThemeContext.DefaultSkColor;
+        framePaint.StrokeWidth = 1f;
+        canvas.DrawRect(left, top, right - left, bottom - top, framePaint);
+
+        SKColor hColor = handleColor ?? DrawingThemeContext.HandleColor;
+        SKColor aColor = anchorColor ?? DrawingThemeContext.AnchorPointColor;
+
+        Draw(canvas, new global::Avalonia.Point(left, top), anchorHandleIndex == 0 ? aColor : hColor, radius);
+        Draw(canvas, new global::Avalonia.Point(midX, top), anchorHandleIndex == 1 ? aColor : hColor, radius);
+        Draw(canvas, new global::Avalonia.Point(right, top), anchorHandleIndex == 2 ? aColor : hColor, radius);
+        Draw(canvas, new global::Avalonia.Point(right, midY), anchorHandleIndex == 3 ? aColor : hColor, radius);
+        Draw(canvas, new global::Avalonia.Point(right, bottom), anchorHandleIndex == 4 ? aColor : hColor, radius);
+        Draw(canvas, new global::Avalonia.Point(midX, bottom), anchorHandleIndex == 5 ? aColor : hColor, radius);
+        Draw(canvas, new global::Avalonia.Point(left, bottom), anchorHandleIndex == 6 ? aColor : hColor, radius);
+        Draw(canvas, new global::Avalonia.Point(left, midY), anchorHandleIndex == 7 ? aColor : hColor, radius);
+    }
 }

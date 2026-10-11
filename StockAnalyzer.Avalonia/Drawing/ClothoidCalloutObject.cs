@@ -131,13 +131,11 @@ public class ClothoidCalloutObject : RelativeGeometricRenderer, ITextAnnotatedOb
         set => _cornerRadius = value;
     }
 
-    // Pre-allocated cached paints and path effects
+    // Pre-allocated cached paints
     private readonly SKPaint _leaderPaint;
     private readonly SKPaint _textPaint;
     private readonly SKPaint _bgPaint;
     private readonly SKPaint _borderPaint;
-    private readonly SKPathEffect _dashEffect;
-    private readonly SKPathEffect _dotEffect;
 
     // Layout cache
     private string[]? _cachedLines;
@@ -145,14 +143,12 @@ public class ClothoidCalloutObject : RelativeGeometricRenderer, ITextAnnotatedOb
 
     public ClothoidCalloutObject() : base()
     {
-        _dashEffect = SKPathEffect.CreateDash(new float[] { 5f, 5f }, 0f);
-        _dotEffect = SKPathEffect.CreateDash(new float[] { 2f, 3f }, 0f);
 
         _leaderPaint = new SKPaint
         {
             Style = SKPaintStyle.Stroke,
             IsAntialias = true,
-            PathEffect = _dashEffect
+            PathEffect = LeaderStrokeStyle.ToSkPathEffect()
         };
 
         _textPaint = new SKPaint
@@ -160,7 +156,7 @@ public class ClothoidCalloutObject : RelativeGeometricRenderer, ITextAnnotatedOb
             Color = DrawingThemeContext.MainTextSkColor,
             IsAntialias = true,
             TextSize = (float)_fontSize,
-            Typeface = SKTypeface.Default
+            Typeface = DrawingThemeContext.DefaultTextTypeface
         };
 
         _bgPaint = new SKPaint
@@ -258,12 +254,7 @@ public class ClothoidCalloutObject : RelativeGeometricRenderer, ITextAnnotatedOb
 
                 _leaderPaint.Color = SkiaColor;
                 _leaderPaint.StrokeWidth = (float)Thickness;
-                _leaderPaint.PathEffect = LeaderStrokeStyle switch
-                {
-                    DrawingStrokeStyle.Dash => _dashEffect,
-                    DrawingStrokeStyle.Dot => _dotEffect,
-                    _ => null
-                };
+                _leaderPaint.PathEffect = LeaderStrokeStyle.ToSkPathEffect();
 
                 canvas.DrawPath(_cachedPath, _leaderPaint);
             }
@@ -379,8 +370,6 @@ public class ClothoidCalloutObject : RelativeGeometricRenderer, ITextAnnotatedOb
         _textPaint.Dispose();
         _bgPaint.Dispose();
         _borderPaint.Dispose();
-        _dashEffect.Dispose();
-        _dotEffect.Dispose();
         base.Dispose();
     }
 }

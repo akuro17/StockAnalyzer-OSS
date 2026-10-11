@@ -12,7 +12,7 @@ namespace StockAnalyzer.Avalonia.Tests.Drawing;
 public class FreehandObjectTests
 {
     [Fact]
-    public void Selection_DoesNotDrawOrHitInvisibleFrame()
+    public void Selection_DrawsAabbFrameAndHandles()
     {
         var transform = CreateTransform();
         using var obj = new FreehandObject(new[]
@@ -33,7 +33,7 @@ public class FreehandObjectTests
             canvas.Clear(SKColors.Transparent);
             obj.Render(canvas, transform);
         }
-        Assert.Equal(normal.Pixels, selected.Pixels);
+        Assert.NotEqual(normal.Pixels, selected.Pixels);
         Assert.True(obj.HitTest(new Point(50, 50), transform));
         Assert.False(obj.HitTest(new Point(16, 84), transform));
         Assert.False(obj.HitTest(new Point(50, 16), transform));
@@ -168,7 +168,7 @@ public class FreehandObjectTests
     }
 
     [Fact]
-    public void Translate_DoesNotModifyPoints_PositionIsFixed()
+    public void Translate_ModifiesPoints_RigidTranslation()
     {
         var t0 = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
         var p1 = new ChartPoint(t0, 100m);
@@ -177,10 +177,10 @@ public class FreehandObjectTests
 
         obj.Translate(TimeSpan.FromDays(2), 10m);
 
-        Assert.Equal(p1.Time, obj.Points[0].Time);
-        Assert.Equal(p1.Price, obj.Points[0].Price);
-        Assert.Equal(p2.Time, obj.Points[1].Time);
-        Assert.Equal(p2.Price, obj.Points[1].Price);
+        Assert.Equal(p1.Time.AddDays(2), obj.Points[0].Time);
+        Assert.Equal(p1.Price + 10m, obj.Points[0].Price);
+        Assert.Equal(p2.Time.AddDays(2), obj.Points[1].Time);
+        Assert.Equal(p2.Price + 10m, obj.Points[1].Price);
     }
 
     [Fact]

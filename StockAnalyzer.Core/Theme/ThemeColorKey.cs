@@ -36,5 +36,6 @@ public enum ThemeColorKey
     ButtonPressed,
     TrainingPeriodTrain,
     TrainingPeriodValidation,
-    TrainingPeriodOos
+    TrainingPeriodOos,
+    AttentionHeat
 }

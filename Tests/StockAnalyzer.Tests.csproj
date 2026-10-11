@@ -36,16 +36,10 @@
     <None Remove="E2E\**" />
     <Compile Remove="Analysis\ReverseWatchAnalysisTests.cs" />
     <Compile Remove="Batch17Tests.cs" />
-    <Compile Remove="Indicators\Batch15IndicatorTests.cs" />
     <Compile Remove="NonTimeSeries\RenkoImplementationTests.cs" />
-    <Compile Remove="Performance\IndicatorPerformanceBenchmark.cs" />
     <Compile Remove="Serialization\IndicatorSettingsSerializationTests.cs" />
     <Compile Remove="Services\ConfigurationMigratorTests.cs" />
-    <Compile Remove="Services\IndicatorInfrastructureTests.cs" />
-    <Compile Remove="Services\NonTimeSeriesRegistryTest.cs" />
     <Compile Remove="Strategies\StrategyTests.cs" />
-    <Compile Remove="VerificationTests.cs" />
-    <Compile Remove="ViewModels\ChartStateViewModelTests.cs" />
     <Compile Remove="ViewModels\ChartViewModelTests.cs" />
     <Compile Remove="ViewModels\IndicatorSettingsHistoryTests.cs" />
     <Compile Remove="Models\TimeIntervalTests.cs" />

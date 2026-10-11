@@ -546,7 +546,15 @@ def _resolve_training_dir(cfg: JobConfig, raw_data_dir: Path, tmp_root: Path) ->
         p.stem for p in raw_data_dir.glob("*.parquet") if p.stem not in staged_stems
     )
     if dropped:
-        raise ValueError(f"selected symbols lack training rows at the common boundary: {dropped}")
+        tail = cfg.oos_tail_days or 0
+        cutoff = ds.resolve_oos_cutoff(common_end, tail) if tail > 0 else common_end
+        firsts = {s: str(np.asarray(dates[s]).astype("datetime64[D]")[0]) for s in dropped if s in dates}
+        raise ValueError(
+            f"selected symbols lack training rows at the common boundary: {dropped} "
+            f"(first row of each: {firsts}; training rows must be dated on or before {cutoff} = "
+            f"the earliest last date among the selected symbols, {common_end}, minus the out-of-sample tail of {tail} day(s)). "
+            "Remove these symbols from the ticker lists, or shorten the tail."
+        )
     if not staged_stems:
         raise SystemExit(
             "out-of-sample tail exclusion left no parquet files; oos_tail_days is too "
@@ -938,11 +946,30 @@ def _file_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _attention_module():
+    """``attention_export`` imports torch at module level: an environment without it (LightGBM only) has no attention sidecar to publish or retire."""
+    try:
+        import attention_export
+    except ImportError:
+        return None
+    return attention_export
+
+
+def _release_attention_sidecar(cfg: "JobConfig", release_path: Path) -> Path | None:
+    """The T24 attention sidecar the PyTorch trainer wrote beside the selected release model, or None (it is an optional derived file)."""
+    module = _attention_module() if cfg.framework == "pytorch" else None
+    if module is None:
+        return None
+    sidecar = module.sidecar_path(release_path)
+    return sidecar if sidecar.is_file() else None
+
+
 def _publish_release_bundle(release_path: Path, staged_metrics: Path,
                             release_scaler: Path | None, out_path: Path,
                             expected_report: dict, release_analysis: Path | None = None,
                             release_calibration: Path | None = None,
-                            release_explain: Path | None = None) -> None:
+                            release_explain: Path | None = None,
+                            release_attention: Path | None = None) -> None:
     """Copy a scored bundle beside its destination, then commit with local recovery copies."""
     out_path.parent.mkdir(parents=True, exist_ok=True)
     metrics_path = out_path.with_name(out_path.name + ".metrics.json")
@@ -950,6 +977,8 @@ def _publish_release_bundle(release_path: Path, staged_metrics: Path,
     analysis_path = out_path.with_name(out_path.name + ".analysis.json")
     calibration_path = out_path.with_name(out_path.name + ".calibration.json")
     explain_path = out_path.with_name(out_path.name + ".explain.json")
+    attention_module = _attention_module()
+    attention_path = None if attention_module is None else attention_module.sidecar_path(out_path)
     stage = Path(tempfile.mkdtemp(prefix=f".{out_path.stem}_publish_", dir=out_path.parent))
     preserve_recovery = False
     try:
@@ -977,6 +1006,12 @@ def _publish_release_bundle(release_path: Path, staged_metrics: Path,
         if release_explain is not None:
             explain_copy = incoming / explain_path.name
             shutil.copy2(release_explain, explain_copy)
+        attention_copy = None
+        if release_attention is not None:
+            if attention_module is None:
+                raise ValueError("an attention sidecar was selected but attention_export is unavailable")
+            attention_copy = incoming / attention_path.name
+            shutil.copy2(release_attention, attention_copy)
 
         model_hash = _file_sha256(model_copy)
         if (model_copy.stat().st_size == 0 or model_hash != _file_sha256(release_path)
@@ -1011,7 +1046,14 @@ def _publish_release_bundle(release_path: Path, staged_metrics: Path,
             if (explain_document.get("model_sha256") != model_hash
                     or _file_sha256(explain_copy) != _file_sha256(release_explain)):
                 raise ValueError("staged explanation disagrees with the selected model")
+        if attention_copy is not None:
+            # the sidecar is named <model>.attention.onnx and carries the SHA-256 of exactly this model file (T24 binding)
+            attention_module.check_binding(attention_copy, model_copy)
+            if _file_sha256(attention_copy) != _file_sha256(release_attention):
+                raise ValueError("staged attention sidecar differs from the selected one")
         finals = (out_path, metrics_path, scaler_path, analysis_path, calibration_path, explain_path)
+        if attention_path is not None:
+            finals += (attention_path,)
         backups = {path: previous / path.name for path in finals if path.exists()}
         for path, backup in backups.items():
             shutil.copy2(path, backup)
@@ -1029,6 +1071,8 @@ def _publish_release_bundle(release_path: Path, staged_metrics: Path,
                 operations.append((calibration_copy, calibration_path))
             if explain_copy is not None:
                 operations.append((explain_copy, explain_path))
+            if attention_copy is not None:
+                operations.append((attention_copy, attention_path))
             operations.append((model_copy, out_path))
             for source, destination in operations:
                 attempted.append(destination)
@@ -1045,6 +1089,9 @@ def _publish_release_bundle(release_path: Path, staged_metrics: Path,
             if explain_copy is None and explain_path.exists():
                 attempted.append(explain_path)
                 checkpoints.replace_with_retry(explain_path, stage / "retired.explain.json")
+            if attention_copy is None and attention_path is not None and attention_path.exists():
+                attempted.append(attention_path)
+                checkpoints.replace_with_retry(attention_path, stage / "retired.attention.onnx")
         except OSError as publish_error:
             restoration_errors = []
             for destination in reversed(attempted):
@@ -1588,10 +1635,11 @@ def _train_one(cfg: JobConfig, *, started: datetime.datetime, run_limits: dict, 
         if time.monotonic() >= deadline:
             raise TimeoutError("model explanation exceeded the training run budget")
         staged_metrics = Path(metrics.write_report(release_report, release_path))
+        release_attention = _release_attention_sidecar(cfg, release_path)
         _publish_release_bundle(release_path, staged_metrics,
                                 release_scaler if cfg.fixed_zscore else None,
                                 out_path, release_report, release_analysis,
-                                release_calibration, release_explain)
+                                release_calibration, release_explain, release_attention)
         scaler_path = out_path.with_name(out_path.name + ".scaler.json")
         if standalone:
             _stage("export")
@@ -1603,6 +1651,8 @@ def _train_one(cfg: JobConfig, *, started: datetime.datetime, run_limits: dict, 
                 _artifact("calibration", out_path.with_name(out_path.name + ".calibration.json"))
             if release_explain is not None:
                 _artifact("explain", out_path.with_name(out_path.name + ".explain.json"))
+            if release_attention is not None:
+                _artifact("attention", _attention_module().sidecar_path(out_path))
             if cfg.fixed_zscore:
                 _artifact("scaler", scaler_path)
             _metric({**{key: value for key, value in release_report.items()
@@ -2187,6 +2237,7 @@ def _run_selfcheck() -> None:
             )
         except ValueError as exc:
             assert "common boundary" in str(exc)
+            assert "SHORT" in str(exc) and "2019-06-01" in str(exc) and "out-of-sample tail of 60" in str(exc)
         else:
             raise AssertionError("a selected symbol with no main rows must fail")
 
@@ -2348,6 +2399,60 @@ def _run_selfcheck() -> None:
                     pass
                 else:
                     raise AssertionError(f"invalid calibration request accepted: {bad_calibration}")
+
+            # T24: the attention sidecar the PyTorch trainer wrote beside the release model is published beside it and bound to
+            # it (parent SHA-256); a later run without one retires a stale sidecar; a sidecar of another model is refused.
+            import attention_export as _attention_mod
+            import train_pytorch as _pytorch_mod
+            attention_model = _attention_mod.AttentionLstmClassifier(3, 8, 1, 0.0, 3, 2).eval()
+            sidecar_for = {"mode": "own"}
+
+            def attention_dispatch(_cfg, argv):
+                code = fake_dispatch(_cfg, argv)
+                if "--preflight" in argv or _cfg.architecture != _attention_mod.ARCH:
+                    return code
+                staged = Path(argv[argv.index("--out") + 1])
+                parent = staged
+                if sidecar_for["mode"] == "other":  # a sidecar that belongs to different model bytes
+                    parent = staged.with_name("other_model.onnx")
+                    parent.write_bytes(b"another model")
+                written = _attention_mod.export_sidecar(attention_model, parent, window=4, channels=3,
+                                                        opset=_pytorch_mod.DEFAULT_OPSET, feature_contract_hash="0" * 64)
+                if parent != staged:
+                    written.replace(_attention_mod.sidecar_path(staged))
+                return code
+            globals()["_dispatch"] = attention_dispatch
+            attention_job = {"symbols": ["A", "B"], "architecture": _attention_mod.ARCH, "window_size": 30, "horizon": 5,
+                             "n_splits": 3, "gap": 0, "run_id": "selfcheck_attention", "output_name": "selfcheck_attention_model"}
+            config_file.write_text(json.dumps(attention_job), encoding="utf-8")
+            protocol = io.StringIO()
+            with contextlib.redirect_stdout(protocol):
+                assert main(["--config", str(config_file)]) == 0
+            attention_onnx = root / "artifacts" / "selfcheck_attention_model.onnx"
+            attention_side = _attention_mod.sidecar_path(attention_onnx)
+            assert attention_onnx.read_bytes() == b"model-2" and attention_side.is_file()
+            assert _attention_mod.check_binding(attention_side, attention_onnx)[_attention_mod.KEY_HEADS] == "2"
+            assert f"ARTIFACT:attention:{attention_side}" in protocol.getvalue()
+            assert not list((root / "artifacts").glob("*.incoming")) and len(list((root / "artifacts").glob("*.attention.onnx"))) == 1
+            # the same output without a sidecar (another architecture) retires the stale one and announces none
+            config_file.write_text(json.dumps({**attention_job, "architecture": "lstm", "run_id": "selfcheck_attention_retire"}),
+                                   encoding="utf-8")
+            protocol = io.StringIO()
+            with contextlib.redirect_stdout(protocol):
+                assert main(["--config", str(config_file)]) == 0
+            assert attention_onnx.is_file() and not attention_side.exists() and "ARTIFACT:attention:" not in protocol.getvalue()
+            # a sidecar bound to other bytes never reaches the artifacts folder and the published model stays as it was
+            sidecar_for["mode"] = "other"
+            config_file.write_text(json.dumps({**attention_job, "run_id": "selfcheck_attention_other"}), encoding="utf-8")
+            try:
+                with contextlib.redirect_stdout(io.StringIO()):
+                    main(["--config", str(config_file)])
+            except ValueError as exc:
+                assert "another generation" in str(exc), exc
+            else:
+                raise AssertionError("a sidecar of another model must be refused")
+            assert not attention_side.exists() and attention_onnx.read_bytes() == b"model-2"
+            globals()["_dispatch"] = fake_dispatch
 
             # T13: bagging trains M independent members (own bootstrap + seed per member), mixes them with
             # equal weights and describes the group in <stem>.ensemble.json; artifact lines name every member.

@@ -18,6 +18,7 @@ public partial class SettingsViewModel : ViewModelBase, IDisposable
     private readonly ILogger<SettingsViewModel> _logger;
     private readonly Dictionary<string, ISettingsPageViewModel> _pageCache = new();
     private bool _isSaved;
+    private bool _discardAccepted;
     private bool _isSaving;
     private bool _isDisposed;
 
@@ -134,6 +135,7 @@ public partial class SettingsViewModel : ViewModelBase, IDisposable
         }
     }
 
+    /// <summary>Apply is always enabled (owner decision; it deliberately departs from SA_UI_SUBWINDOW_STANDARD 5.2) and saves only the modified pages.</summary>
     [RelayCommand]
     private async Task SaveAllChanges()
     {
@@ -185,12 +187,30 @@ public partial class SettingsViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(IsAnyModified));
     }
 
+    /// <summary>True while closing would silently lose changes: the window then asks first (Cancel button, Esc and the close button share this path).</summary>
+    public bool NeedsDiscardConfirmation => !_discardAccepted && !_isSaving && IsAnyModified;
+
+    /// <summary>
+    /// Cancel: with unsaved changes the owner confirms first (SA_UI_SUBWINDOW_STANDARD 5.2); a "no" keeps the window open and the changes.
+    /// A confirmed or unnecessary discard reverts every page and closes.
+    /// </summary>
     [RelayCommand]
-    private void DiscardAndClose()
+    private async Task DiscardAndClose()
     {
         if (_isSaving) return;
+        if (NeedsDiscardConfirmation && !await ConfirmDiscardAsync()) return;
+        _discardAccepted = true;
         RevertAllChanges();
         RequestClose?.Invoke();
+    }
+
+    private async Task<bool> ConfirmDiscardAsync()
+    {
+        var dialogs = _serviceProvider.GetService<StockAnalyzer.Avalonia.Services.IDialogService>();
+        if (dialogs is null) return true; // no dialog service (design time): nothing to ask with
+        return await dialogs.ShowConfirmationAsync(
+            StockAnalyzer.Avalonia.Services.LocalizationManager.Instance["Settings_DiscardConfirm_Title"],
+            StockAnalyzer.Avalonia.Services.LocalizationManager.Instance["Settings_DiscardConfirm_Message"]);
     }
 
     [RelayCommand]
@@ -207,8 +227,9 @@ public partial class SettingsViewModel : ViewModelBase, IDisposable
             return false;
         foreach (var page in _pageCache.Values.OfType<ITransactionalSettingsPage>())
             page.RestoreSavedPreviewOnClose();
-        if (!_isSaved)
+        if (!_isSaved || IsAnyModified)
         {
+            // Also after an Apply: what was edited since then is not saved either.
             RevertAllChanges();
         }
         return true;

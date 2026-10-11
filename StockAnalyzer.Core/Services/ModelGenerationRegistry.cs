@@ -52,6 +52,31 @@ public sealed class ModelActivationConfirmationRequiredException : InvalidOperat
     public string? ExpectedActiveId { get; }
 }
 
+/// <summary>
+/// The candidate cannot be activated while another generation is active: target, horizon, timeframe, class labels or evaluation revision differ, so their
+/// scores are not comparable. Nothing is wrong with the candidate itself: with no active generation it can be activated (see <c>DeactivateAsync</c>).
+/// </summary>
+public sealed class ModelActivationIncompatibleException : InvalidOperationException
+{
+    public ModelActivationIncompatibleException()
+        : base("Generations require compatible target, horizon, timeframe, labels and evaluation revision.") { }
+}
+
+public enum ModelRemovalRefusal { Active, InUse }
+
+/// <summary>A generation cannot be removed right now: it is the active one, or a prediction (this or another process) holds it.</summary>
+public sealed class ModelRemovalRefusedException : InvalidOperationException
+{
+    public ModelRemovalRefusedException(ModelRemovalRefusal reason)
+        : base(reason == ModelRemovalRefusal.Active ? "The active model generation cannot be removed; deactivate it first."
+                                                    : "The model generation is in use and cannot be removed now.")
+    {
+        Reason = reason;
+    }
+
+    public ModelRemovalRefusal Reason { get; }
+}
+
 public sealed class ModelActivationContextChangedException : InvalidOperationException
 {
     public ModelActivationContextChangedException()
@@ -67,6 +92,51 @@ public interface IModelGenerationRegistry
     Task<bool> ActivateAsync(string modelId, bool manual = false, bool confirmLowerScore = false, CancellationToken ct = default);
     Task<bool> ConfirmActivationAsync(string modelId, string? expectedActiveId, CancellationToken ct = default);
     Task<bool> RollbackAsync(bool confirmLowerScore = false, CancellationToken ct = default);
+
+    /// <summary>Key in <see cref="Exception.Data"/> of the exception thrown by <see cref="ReplaceActiveAsync"/> that holds the failure of putting the expected generation back.</summary>
+    public const string ReplaceRestoreFailureKey = "ReplaceActive.RestoreFailure";
+
+    /// <summary>
+    /// Replaces the active generation by a generation the owner has confirmed to replace it, even when the two cannot be compared (another evaluation
+    /// revision, horizon, class order); the comparison and the score check of <see cref="ActivateAsync"/> are NOT applied. Use it only after such a
+    /// confirmation. Throws <see cref="ModelActivationContextChangedException"/> when the active generation is no longer <paramref name="expectedActiveId"/>.
+    /// The default implementation deactivates and then activates (and puts the expected generation back when the activation fails); a registry that can
+    /// do it in one pointer write overrides it. Returns false when <paramref name="modelId"/> is already active. When the activation fails and the expected
+    /// generation cannot be put back either, the activation failure is the one thrown and the restore failure travels in its <c>Data</c> under
+    /// <see cref="ReplaceRestoreFailureKey"/>, because an interface has no logger.
+    /// </summary>
+    async Task<bool> ReplaceActiveAsync(string modelId, string? expectedActiveId, CancellationToken ct = default)
+    {
+        if (ActiveId != expectedActiveId) throw new ModelActivationContextChangedException();
+        await DeactivateAsync(ct).ConfigureAwait(false);
+        try
+        {
+            return await ActivateAsync(modelId, manual: true, ct: ct).ConfigureAwait(false);
+        }
+        catch (Exception error) when (expectedActiveId is not null)
+        {
+            try { await ActivateAsync(expectedActiveId, manual: true, ct: CancellationToken.None).ConfigureAwait(false); }
+            catch (Exception restoreFailure) { error.Data[ReplaceRestoreFailureKey] = restoreFailure; }
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Clears the active generation (nothing is deleted); predictions then use the configured legacy model, as before any generation was
+    /// registered. The deactivated generation becomes the previous one, so <see cref="RollbackAsync"/> brings it back. Returns false when
+    /// no generation was active.
+    /// </summary>
+    Task<bool> DeactivateAsync(CancellationToken ct = default) =>
+        Task.FromException<bool>(new NotSupportedException("This model generation registry cannot deactivate a generation."));
+
+    /// <summary>
+    /// Removes a registered generation from the registry: its registered copy (the model and the sidecars it carries) is deleted, the file it was
+    /// registered from is never touched, and it can be registered again from that file. The active generation and a generation another process or
+    /// the ensemble predictor currently holds cannot be removed (<see cref="ModelRemovalRefusedException"/>). Returns false when it is not registered.
+    /// </summary>
+    Task<bool> RemoveAsync(string modelId, CancellationToken ct = default) =>
+        Task.FromException<bool>(new NotSupportedException("This model generation registry cannot remove a generation."));
+
     ModelGenerationLease? AcquireActive();
     ModelGenerationLease? Acquire(string modelId) => null;
     ModelGenerationManifest? GetManifest(string modelId) => null;
@@ -106,6 +176,8 @@ public sealed partial class ModelGenerationRegistry : IModelGenerationRegistry, 
     private const int MaxRequiredSidecars = 4;
     private const string ManifestName = "manifest.json";
     private const string PointerName = "active.json";
+    /// <summary>Name prefix of a generation folder that <see cref="RemoveAsync"/> renamed before deleting it.</summary>
+    private const string RetiredFolderPrefix = ".removed_";
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly string _root;
     private readonly object _gate = new();
@@ -141,6 +213,21 @@ public sealed partial class ModelGenerationRegistry : IModelGenerationRegistry, 
         RequireStorePath(_root);
         Directory.CreateDirectory(_root);
         using var transaction = EnterStore();
+        PurgeRetiredFolders();
+    }
+
+    /// <summary>
+    /// Deletes, best effort, the <c>.removed_*</c> folders that a delete which failed in <see cref="RemoveAsync"/> left behind. Called with the store lock
+    /// of all processes held, and <see cref="RemoveAsync"/> holds that lock for its whole rename and delete, so no other process is inside a removal; a
+    /// retired folder is unreachable by every other code path, so no age threshold is needed. A folder that still cannot be deleted stays for the next start, and the failure is recorded as store failure evidence.
+    /// </summary>
+    private void PurgeRetiredFolders()
+    {
+        foreach (var directory in Directory.EnumerateDirectories(_root, RetiredFolderPrefix + "*", SearchOption.TopDirectoryOnly))
+        {
+            try { RequireStoreTree(directory); DeleteDirectory(directory); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { RecordStoreFailure("purge_retired", error); }
+        }
     }
 
     /// <summary>
@@ -278,6 +365,11 @@ public sealed partial class ModelGenerationRegistry : IModelGenerationRegistry, 
             if (File.Exists(explainSource))
                 await CopyAsync(explainSource, Path.Combine(stage, modelName + ModelExplanationContract.SidecarSuffix), ct)
                     .ConfigureAwait(false);
+            // The attention sidecar (T24) is carried the same way: optional, neither required nor part of the identity, and validated by its consumer.
+            var attentionSource = onnxPath + AttentionContract.SidecarSuffix;
+            if (File.Exists(attentionSource))
+                await CopyAsync(attentionSource, Path.Combine(stage, modelName + AttentionContract.SidecarSuffix), ct)
+                    .ConfigureAwait(false);
             sidecars.Sort((a, b) => StringComparer.Ordinal.Compare(a.File, b.File));
             var contractHash = ComputeContractHash(metadata, windowSize, target, horizon, timeframe, classOrder, SchemaVersion);
             var id = ComputeModelId(stagedModel, sidecars, contractHash);
@@ -303,6 +395,10 @@ public sealed partial class ModelGenerationRegistry : IModelGenerationRegistry, 
                     var storedExplanation = Path.Combine(destination, modelName + ModelExplanationContract.SidecarSuffix);
                     if (File.Exists(stagedExplanation) && !File.Exists(storedExplanation))
                         CopyIntoPlace(stagedExplanation, storedExplanation);
+                    var stagedAttention = Path.Combine(stage, modelName + AttentionContract.SidecarSuffix);
+                    var storedAttention = Path.Combine(destination, modelName + AttentionContract.SidecarSuffix);
+                    if (File.Exists(stagedAttention) && !File.Exists(storedAttention))
+                        CopyIntoPlace(stagedAttention, storedAttention);
                     RequireStoreTree(stage); DeleteDirectory(stage);
                 }
                 _known[id] = manifest;
@@ -334,6 +430,53 @@ public sealed partial class ModelGenerationRegistry : IModelGenerationRegistry, 
         => ActivateCoreAsync(modelId, manual: true, confirmLowerScore: true, expectedActiveId,
             checkExpectedActiveId: true, ct);
 
+    /// <inheritdoc />
+    /// <remarks>
+    /// One pointer write: the old generation moves to the head of the history and the candidate becomes active in the same <c>active.json</c>
+    /// replacement, so no state without an active generation exists between the two. The pointer in memory changes only after the write succeeded.
+    /// </remarks>
+    public async Task<bool> ReplaceActiveAsync(string modelId, string? expectedActiveId, CancellationToken ct = default)
+    {
+        await EnterMutationAsync(ct).ConfigureAwait(false);
+        try
+        {
+            using var transaction = EnterStore(ct);
+            Pointer next;
+            lock (_gate)
+            {
+                ObjectDisposedException.ThrowIf(_disposed, this);
+                if (_pointer.ActiveId != expectedActiveId) throw new ModelActivationContextChangedException();
+                if (!_known.TryGetValue(modelId, out var candidate))
+                {
+                    if (IsHash(modelId) && Directory.Exists(Path.Combine(_root, modelId))) throw new InvalidDataException("Candidate generation is corrupt.");
+                    throw new KeyNotFoundException("Unknown model generation.");
+                }
+                if (_pointer.ActiveId == modelId) return false;
+                if (!Verify(candidate)) throw new InvalidDataException("Candidate generation is corrupt.");
+                ValidateConfiguredPredictionContract(candidate);
+                if (_pointer.ActiveId is { } activeId && !Verify(_known[activeId])) throw new InvalidDataException("Active generation is corrupt.");
+
+                // The owner confirmed the replacement: no revision / target / timeframe / horizon / class-order comparison and no score check.
+                var history = new List<string>(_pointer.History ?? Array.Empty<string>());
+                if (_pointer.ActiveId is { } previous)
+                {
+                    history.Remove(previous);
+                    history.Insert(0, previous);
+                }
+                history.Remove(modelId);
+                next = new Pointer(modelId, history.Take(PriorGenerationLimit).ToArray());
+            }
+            lock (_gate) ObjectDisposedException.ThrowIf(_disposed, this);
+            ct.ThrowIfCancellationRequested();
+            RequirePointerWritePaths(Path.Combine(_root, PointerName));
+            await _savePointer(Path.Combine(_root, PointerName), next).ConfigureAwait(false);
+            lock (_gate) _pointer = next;
+            return true;
+        }
+        catch (Exception error) { RecordStoreFailure("replace", error); throw; }
+        finally { _mutation.Release(); }
+    }
+
     private async Task<bool> ActivateCoreAsync(string modelId, bool manual, bool confirmLowerScore,
         string? expectedActiveId, bool checkExpectedActiveId, CancellationToken ct)
     {
@@ -363,7 +506,7 @@ public sealed partial class ModelGenerationRegistry : IModelGenerationRegistry, 
                     if (candidate.EvaluationRevision != current.EvaluationRevision
                         || candidate.TargetType != current.TargetType || candidate.Timeframe != current.Timeframe
                         || candidate.Horizon != current.Horizon || candidate.ClassOrder != current.ClassOrder)
-                        throw new InvalidOperationException("Generations require compatible target, horizon, timeframe, labels and evaluation revision.");
+                        throw new ModelActivationIncompatibleException();
                     bool improves = candidate.TargetType == PredictionModelMetadata.TargetTypeRegression
                         ? candidate.Score < current.Score : candidate.Score > current.Score;
                     if (!manual && !improves) return false;
@@ -390,6 +533,78 @@ public sealed partial class ModelGenerationRegistry : IModelGenerationRegistry, 
             return true;
         }
         catch (Exception error) { RecordStoreFailure("activate", error); throw; }
+        finally { _mutation.Release(); }
+    }
+
+    public async Task<bool> DeactivateAsync(CancellationToken ct = default)
+    {
+        await EnterMutationAsync(ct).ConfigureAwait(false);
+        try
+        {
+            using var transaction = EnterStore(ct);
+            Pointer next;
+            lock (_gate)
+            {
+                ObjectDisposedException.ThrowIf(_disposed, this);
+                if (_pointer.ActiveId is not { } activeId) return false;
+                var history = new List<string>(_pointer.History ?? Array.Empty<string>());
+                history.Remove(activeId);
+                history.Insert(0, activeId);
+                next = new Pointer(null, history.Take(PriorGenerationLimit).ToArray());
+            }
+            ct.ThrowIfCancellationRequested();
+            RequirePointerWritePaths(Path.Combine(_root, PointerName));
+            await _savePointer(Path.Combine(_root, PointerName), next).ConfigureAwait(false);
+            lock (_gate)
+            {
+                _pointer = next;
+            }
+            return true;
+        }
+        catch (Exception error) { RecordStoreFailure("deactivate", error); throw; }
+        finally { _mutation.Release(); }
+    }
+
+    public async Task<bool> RemoveAsync(string modelId, CancellationToken ct = default)
+    {
+        await EnterMutationAsync(ct).ConfigureAwait(false);
+        try
+        {
+            using var transaction = EnterStore(ct);
+            Pointer? next = null;
+            string directory;
+            lock (_gate)
+            {
+                ObjectDisposedException.ThrowIf(_disposed, this);
+                if (!_known.ContainsKey(modelId)) return false;
+                if (_pointer.ActiveId == modelId) throw new ModelRemovalRefusedException(ModelRemovalRefusal.Active);
+                if (_leases.GetValueOrDefault(modelId) > 0 || HasStoreLease(Coordination.PredictionLease, modelId))
+                    throw new ModelRemovalRefusedException(ModelRemovalRefusal.InUse);
+                var history = (_pointer.History ?? Array.Empty<string>()).ToList();
+                if (history.Remove(modelId)) next = new Pointer(_pointer.ActiveId, history.ToArray());
+                directory = Path.Combine(_root, modelId);
+            }
+
+            // The pointer stops naming the generation first: a crash afterwards leaves a valid but unused generation, never a dangling pointer.
+            if (next is not null)
+            {
+                ct.ThrowIfCancellationRequested();
+                RequirePointerWritePaths(Path.Combine(_root, PointerName));
+                await _savePointer(Path.Combine(_root, PointerName), next).ConfigureAwait(false);
+                lock (_gate) _pointer = next;
+            }
+
+            // Retire by a same-volume rename (not a hash name, so a snapshot never sees it), then delete; a delete that fails now leaves only a hidden folder.
+            var retiring = Path.Combine(_root, RetiredFolderPrefix + Guid.NewGuid().ToString("N"));
+            RequireStoreTree(directory); RequireStorePath(retiring);
+            TransientFileLockRetry.Run(() => MoveDirectory(directory, retiring), _replaceRetry,
+                canRetry: () => Directory.Exists(directory) && !Directory.Exists(retiring));
+            lock (_gate) _known.Remove(modelId);
+            try { RequireStoreTree(retiring); DeleteDirectory(retiring); }
+            catch (Exception cleanupError) when (cleanupError is IOException or UnauthorizedAccessException) { }
+            return true;
+        }
+        catch (Exception error) when (error is not ModelRemovalRefusedException) { RecordStoreFailure("remove", error); throw; }
         finally { _mutation.Release(); }
     }
 
@@ -629,11 +844,11 @@ public sealed partial class ModelGenerationRegistry : IModelGenerationRegistry, 
             featureMode = metadata[PredictionModelMetadata.FeatureModeKey],
             windowSize,
             channels = metadata.GetValueOrDefault("channels") ?? "",
-            channelOrder = metadata.GetValueOrDefault("channel_order") ?? "",
+            channelOrder = metadata.GetValueOrDefault(PredictionModelMetadata.ChannelOrderKey) ?? "",
             featureSpec = metadata.GetValueOrDefault(PredictionModelMetadata.FeatureSpecKey) ?? "",
-            neutralThreshold = metadata.GetValueOrDefault("neutral_threshold") ?? "",
-            normalization = metadata.GetValueOrDefault("normalization") ?? "",
-            priceAdjustment = metadata.GetValueOrDefault("price_adjustment") ?? "",
+            neutralThreshold = metadata.GetValueOrDefault(PredictionModelMetadata.NeutralThresholdKey) ?? "",
+            normalization = metadata.GetValueOrDefault(PredictionModelMetadata.NormalizationKey) ?? "",
+            priceAdjustment = metadata.GetValueOrDefault(PredictionModelMetadata.PriceAdjustmentKey) ?? "",
             scalerRef = metadata.GetValueOrDefault(PredictionModelMetadata.ScalerReferenceKey) ?? "",
             target, horizon, timeframe, classOrder,
         });
@@ -666,7 +881,7 @@ public sealed partial class ModelGenerationRegistry : IModelGenerationRegistry, 
             metadata.GetValueOrDefault(PredictionModelMetadata.FeatureModeKey));
         if (mode is null) return false;
 
-        bool fixedScaler = metadata.GetValueOrDefault("normalization") == "fixed_zscore";
+        bool fixedScaler = metadata.GetValueOrDefault(PredictionModelMetadata.NormalizationKey) == PredictionModelMetadata.FixedNormalization;
         if (fixedScaler && mode is not (PredictionFeatureMode.OhlcvMinMax or PredictionFeatureMode.ComposedFeatures))
             return false;
 

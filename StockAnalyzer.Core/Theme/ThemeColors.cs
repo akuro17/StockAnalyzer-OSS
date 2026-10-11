@@ -100,6 +100,9 @@ public record ThemeColors
     public IndicatorColor TrainingPeriodValidation { get; init; } = IndicatorColor.FromUInt(0x26E3AF50);
     public IndicatorColor TrainingPeriodOos { get; init; } = IndicatorColor.FromUInt(0x267E8CE0);
 
+    /// <summary>Attention heat overlay (T24): the alpha is the opacity of the most attended bar (planning value); every other bar scales it by w / max(w).</summary>
+    public IndicatorColor AttentionHeat { get; init; } = IndicatorColor.FromUInt(0x73B455D6);
+
     // Grid & Axes
     public IndicatorColor GridLine { get; init; } = IndicatorColor.FromUInt(0xFFE0E3EB);
     public IndicatorColor AxisText { get; init; } = IndicatorColor.FromUInt(0xFF9598A1);

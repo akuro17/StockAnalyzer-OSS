@@ -105,6 +105,48 @@ public partial class DrawingSettingsDialog : Window
             {
                 colorPicker.Color = _drawing.Color;
             }
+
+            // Initialize Stroke Style
+            var strokeProp = _drawing.GetType().GetProperty("StrokeStyle", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+            var strokeStylePanel = this.FindControl<StackPanel>("StrokeStylePanel");
+            var strokeStyleCombo = this.FindControl<ComboBox>("StrokeStyleCombo");
+            if (strokeStylePanel != null)
+            {
+                strokeStylePanel.IsVisible = strokeProp != null;
+            }
+            if (strokeProp != null && strokeStyleCombo != null)
+            {
+                var currentStyle = (DrawingStrokeStyle)strokeProp.GetValue(_drawing)!;
+                strokeStyleCombo.SelectedIndex = currentStyle switch
+                {
+                    DrawingStrokeStyle.Solid => 0,
+                    DrawingStrokeStyle.Dash => 1,
+                    DrawingStrokeStyle.Dot => 2,
+                    _ => 0
+                };
+            }
+
+            // Initialize Opacity / Alpha
+            var opacityPanel = this.FindControl<StackPanel>("GenericOpacityPanel");
+            var opacitySpin = this.FindControl<NumericUpDown>("GenericOpacitySpin");
+            var alphaProp = _drawing.GetType().GetProperty("Alpha", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+            bool supportsOpacity = alphaProp != null || _drawing is RelativeGeometricRenderer;
+            if (opacityPanel != null)
+            {
+                opacityPanel.IsVisible = supportsOpacity;
+            }
+            if (opacitySpin != null && supportsOpacity)
+            {
+                if (alphaProp != null)
+                {
+                    var rawAlpha = Convert.ToDouble(alphaProp.GetValue(_drawing));
+                    opacitySpin.Value = (decimal)Math.Clamp(Math.Round(rawAlpha / 2.55), 1.0, 100.0);
+                }
+                else
+                {
+                    opacitySpin.Value = (decimal)Math.Clamp(Math.Round((double)_drawing.Color.A / 2.55), 1.0, 100.0);
+                }
+            }
         }
 
         var settingsContentPanel = this.FindControl<StackPanel>("SettingsContentPanel");
@@ -260,17 +302,61 @@ public partial class DrawingSettingsDialog : Window
     {
         if (_drawing == null) return;
 
-        // Apply generic color
+        // Apply generic color & opacity
         var colorPicker = this.FindControl<ColorPicker>("ColorPickerControl");
+        var opacitySpin = this.FindControl<NumericUpDown>("GenericOpacitySpin");
+        byte? appliedAlpha = null;
+        if (opacitySpin?.Value != null)
+        {
+            double pct = (double)opacitySpin.Value;
+            appliedAlpha = (byte)Math.Clamp((int)Math.Round(pct * 2.55), 1, 255);
+
+            var alphaProp = _drawing.GetType().GetProperty("Alpha", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+            if (alphaProp != null && alphaProp.CanWrite)
+            {
+                if (alphaProp.PropertyType == typeof(byte))
+                {
+                    alphaProp.SetValue(_drawing, (byte)Math.Clamp((int)appliedAlpha.Value, 20, 200));
+                }
+                else if (alphaProp.PropertyType == typeof(int))
+                {
+                    alphaProp.SetValue(_drawing, (int)Math.Clamp((int)appliedAlpha.Value, 20, 200));
+                }
+            }
+        }
+
         if (colorPicker != null && (_panelDefinition?.SupportsStrokeColor ?? true))
         {
-            _drawing.Color = colorPicker.Color;
+            var col = colorPicker.Color;
+            if (appliedAlpha.HasValue)
+            {
+                _drawing.Color = global::Avalonia.Media.Color.FromArgb(appliedAlpha.Value, col.R, col.G, col.B);
+            }
+            else
+            {
+                _drawing.Color = col;
+            }
         }
 
         var thicknessSpin = this.FindControl<NumericUpDown>("ThicknessSpin");
         if (thicknessSpin?.Value != null && (_panelDefinition?.SupportsStrokeThickness ?? true))
         {
             _drawing.Thickness = (double)thicknessSpin.Value;
+        }
+
+        // Apply Stroke Style
+        var strokeProp = _drawing.GetType().GetProperty("StrokeStyle", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+        var strokeStyleCombo = this.FindControl<ComboBox>("StrokeStyleCombo");
+        if (strokeProp != null && strokeStyleCombo != null && strokeStyleCombo.SelectedIndex >= 0)
+        {
+            DrawingStrokeStyle selectedStyle = strokeStyleCombo.SelectedIndex switch
+            {
+                0 => DrawingStrokeStyle.Solid,
+                1 => DrawingStrokeStyle.Dash,
+                2 => DrawingStrokeStyle.Dot,
+                _ => DrawingStrokeStyle.Solid
+            };
+            strokeProp.SetValue(_drawing, selectedStyle);
         }
 
         if (_panelDefinition != null)
@@ -362,6 +448,65 @@ public partial class DrawingSettingsDialog : Window
             _activeToken = null;
         }
         Close((DrawingSettingsResult?)DrawingSettingsResult.Deleted);
+    }
+
+    private void OnResetClick(object sender, RoutedEventArgs e)
+    {
+        DrawingThemeContext.ResetDefaultColor();
+        var defaultColor = DrawingThemeContext.DefaultColor;
+
+        var colorPicker = this.FindControl<ColorPicker>("ColorPickerControl");
+        if (colorPicker != null)
+        {
+            colorPicker.Color = defaultColor;
+        }
+
+        var thicknessSpin = this.FindControl<NumericUpDown>("ThicknessSpin");
+        if (thicknessSpin != null)
+        {
+            thicknessSpin.Value = (decimal)DrawingThemeContext.DefaultStrokeThickness;
+        }
+
+        var strokeProp = _drawing?.GetType().GetProperty("StrokeStyle", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+        var strokeStyleCombo = this.FindControl<ComboBox>("StrokeStyleCombo");
+        if (strokeStyleCombo != null)
+        {
+            strokeStyleCombo.SelectedIndex = 0; // Solid
+        }
+
+        var opacitySpin = this.FindControl<NumericUpDown>("GenericOpacitySpin");
+        var alphaProp = _drawing?.GetType().GetProperty("Alpha", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+
+        if (_drawing != null)
+        {
+            _drawing.Color = defaultColor;
+            _drawing.Thickness = DrawingThemeContext.DefaultStrokeThickness;
+            if (strokeProp != null && strokeProp.CanWrite)
+            {
+                strokeProp.SetValue(_drawing, DrawingStrokeStyle.Solid);
+            }
+
+            if (alphaProp != null && alphaProp.CanWrite)
+            {
+                if (alphaProp.PropertyType == typeof(byte)) alphaProp.SetValue(_drawing, (byte)100);
+                else if (alphaProp.PropertyType == typeof(int)) alphaProp.SetValue(_drawing, 100);
+
+                if (opacitySpin != null)
+                {
+                    opacitySpin.Value = (decimal)Math.Clamp(Math.Round(100.0 / 2.55), 1.0, 100.0);
+                }
+            }
+            else if (opacitySpin != null)
+            {
+                opacitySpin.Value = 100m;
+            }
+
+            _onApply?.Invoke(_drawing);
+        }
+        else if (opacitySpin != null)
+        {
+            opacitySpin.Value = 100m;
+        }
     }
 
     /// <summary>

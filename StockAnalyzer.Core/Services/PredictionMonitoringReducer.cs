@@ -111,7 +111,7 @@ internal static class PredictionMonitoringReducer
             using var session = new InferenceSession(lease.ModelPath);
             var metadata = session.ModelMetadata.CustomMetadataMap;
             if (PredictionModelMetadata.ReadOutputContract(metadata) != output
-                || !decimal.TryParse(metadata.GetValueOrDefault("neutral_threshold"), NumberStyles.Float,
+                || !decimal.TryParse(metadata.GetValueOrDefault(PredictionModelMetadata.NeutralThresholdKey), NumberStyles.Float,
                     CultureInfo.InvariantCulture, out var threshold) || threshold < 0
                 || result.Label is not ("Up" or "Down" or "Neutral"))
                 throw new InvalidDataException("Prediction monitoring target contract is invalid.");

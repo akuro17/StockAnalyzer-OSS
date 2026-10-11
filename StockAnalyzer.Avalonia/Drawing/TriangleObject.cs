@@ -75,6 +75,11 @@ public class TriangleObject : IChartObject, IDisposable
     public List<ChartPoint> Points { get; } = new List<ChartPoint>();
     public Color Color { get; set; } = DrawingThemeContext.DefaultColor;
     public double Thickness { get; set; } = DrawingThemeContext.DefaultStrokeThickness;
+
+    [Category("Style")]
+    [DisplayName("Stroke Style")]
+    [ParameterTag(DrawingParameterTags.Common)]
+    public DrawingStrokeStyle StrokeStyle { get; set; } = DrawingStrokeStyle.Solid;
     public bool IsSelected { get; set; }
     public bool IsVisible { get; set; } = true;
     public bool IsLocked { get; set; } = false;
@@ -159,6 +164,7 @@ public class TriangleObject : IChartObject, IDisposable
 
         _strokePaint.Color = SkiaColor;
         _strokePaint.StrokeWidth = (float)Thickness;
+        _strokePaint.PathEffect = StrokeStyle.ToSkPathEffect();
         _trianglePath.Rewind();
         _trianglePath.MoveTo((float)p1.X, (float)p1.Y);
         _trianglePath.LineTo((float)p2.X, (float)p2.Y);

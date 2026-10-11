@@ -22,6 +22,9 @@ LINEAGE_KEY = "com.stockanalyzer.training.lineage"
 # directory under the training artifacts that holds every run's native checkpoints (mirror of C# TrainingCheckpointContract.DirectoryName)
 DIRECTORY_NAME = "checkpoints"
 MODES = ("fresh", "fine_tune", "resume")
+# Architecture options that exist for ONE architecture only (T24a attn_lstm heads). Set (not None) they join the checkpoint contract and the training config;
+# unset they are absent, so every contract and training config written before they existed compares byte-identically.
+OPTIONAL_ARCH_KEYS = ("heads",)
 _HASH = re.compile(r"[0-9a-f]{64}\Z")
 _RUN = re.compile(r"[A-Za-z0-9_-]+\Z")
 _MODULE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*(?:\.(?:[A-Za-z_][A-Za-z0-9_]*|[0-9]+))*\Z")
@@ -231,6 +234,7 @@ class Session:
         contract.update(framework=framework, feature_spec=feature_spec, lags=list(lags),
                         ordered_channels=identities,
                         class_order=list(ds.CLASS_LABELS) if contract["target_type"] == "classification" else None)
+        contract.update({key: getattr(args, key) for key in OPTIONAL_ARCH_KEYS if getattr(args, key, None) is not None})
         ignored = {"epochs", "out", "data_dir", "init_from", "checkpoint_dir", "run_id",
                    "parent_model_id", "parent_model_hash", "freeze_paths", "initialization_mode",
                    "no_verify", "smoke", "indicator_channel_export_paths", "feature_spec",
@@ -238,7 +242,7 @@ class Session:
         ignored.add("preflight")
         ignored.update(semi_supervised.ARGUMENT_KEYS)  # T19 options never change the checkpoint contract of an existing run
         config = {key: value for key, value in vars(args).items() if key not in ignored
-                  and not key.startswith("_")}
+                  and not key.startswith("_") and not (key in OPTIONAL_ARCH_KEYS and value is None)}
         config = json.loads(canonical(config))
         run_id = args.run_id
         if not run_id and self.mode == "resume":

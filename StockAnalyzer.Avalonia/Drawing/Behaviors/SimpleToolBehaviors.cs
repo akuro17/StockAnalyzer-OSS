@@ -153,3 +153,30 @@ public sealed class ClassicPivotPointsBehavior : ClickToPlaceBehavior<ClassicPiv
         return obj;
     }
 }
+
+public sealed class HighlighterBehavior : IDrawingToolBehavior
+{
+    public int RequiredSteps => 0;
+    public bool FinishesOnRelease => true;
+
+    public IChartObject CreateObject(ChartPoint chartPoint, IEnumerable<CoreCandleData>? candles = null)
+    {
+        var obj = new HighlighterObject();
+        obj.Points.Add(chartPoint);
+        return obj;
+    }
+
+    public void UpdatePoint(IChartObject obj, int drawingStep, ChartPoint chartPoint, IEnumerable<CoreCandleData>? candles = null)
+    {
+        if (obj is HighlighterObject highlighter)
+        {
+            highlighter.Points.Add(chartPoint);
+        }
+    }
+}
+
+public sealed class StepBadgeBehavior : ClickToPlaceBehavior<StepBadgeObject>
+{
+    protected override StepBadgeObject CreateInstance(ChartPoint p, IEnumerable<CoreCandleData>? _)
+        => new StepBadgeObject(p);
+}

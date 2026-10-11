@@ -180,6 +180,7 @@ public static class ServiceCollectionExtensions
           services.AddSingleton<Core.Services.PredictionService>();
           services.AddSingleton<Core.Services.IEnsembleSettingsManager, Core.Services.EnsembleSettingsManager>();
           services.AddSingleton<Core.Services.IPredictionService, Core.Services.EnsemblePredictionService>();
+        services.AddSingleton<Core.Services.IGraphPredictionService, Core.Services.GraphPredictionService>(); // T25: multi-symbol graph consumer, independent of the single-symbol prediction services
         services.AddSingleton<Core.Services.ReinforcementLearning.RlArtifactSettings>();
         services.AddSingleton<Core.Services.ModelGenerationRegistry>(sp =>
         {
@@ -216,6 +217,8 @@ public static class ServiceCollectionExtensions
             sp.GetRequiredService<Services.ITickerStateStore>()));
         services.AddSingleton<Core.Services.ReinforcementLearning.IQValueService>(sp => sp.GetRequiredService<Core.Services.ReinforcementLearning.QValueService>());
         services.AddSingleton<Core.Services.IModelAnalysisService, Core.Services.ModelAnalysisService>();
+        services.AddSingleton<Core.Services.IAttentionService, Core.Services.AttentionService>(); // T24b: attention overlay of the newest prediction
+        services.AddSingleton<Core.Services.IEnsembleAttentionService, Core.Services.EnsembleAttentionService>(); // the same overlay for a saved ensemble
         services.AddSingleton<Core.Services.IModelExplainabilityService, Core.Services.ModelExplainabilityService>();
         services.AddSingleton<Core.Services.IMLDataProcessor, Core.Services.MLDataProcessor>();
         services.AddSingleton<Core.Services.IndicatorChannelExporter>(); // TrainingOrchestrator dependency

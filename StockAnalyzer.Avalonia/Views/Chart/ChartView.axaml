@@ -92,6 +92,10 @@
                 <TextBlock Text="{Binding PredictionDisplay}" IsVisible="{Binding HasPredictionDisplay}"
                            VerticalAlignment="Center" FontSize="{DynamicResource BaseFontSize}"
                            Foreground="{DynamicResource Brush.Foreground.Secondary}"/>
+                <TextBlock Text="{Binding PredictionNotice}" IsVisible="{Binding HasPredictionNotice}"
+                           ToolTip.Tip="{Binding PredictionNotice}" VerticalAlignment="Center"
+                           FontSize="{DynamicResource HelperFontSize}"
+                           Foreground="{DynamicResource Brush.Semantic.Error}"/>
                 <TextBlock Text="{Binding RegimeDisplay}" FontSize="{DynamicResource HelperFontSize}"/>
 
                 <Button Margin="2,0" Padding="4" Height="30" VerticalAlignment="Center"
@@ -167,6 +171,52 @@
                         <TextBlock Text="{l:Localize ModelAnalysis_Oos}" FontSize="{DynamicResource HelperFontSize}"/>
                     </StackPanel>
                 </StackPanel>
+            </Canvas>
+
+            <Canvas>
+                <StackPanel Canvas.Left="{Binding AttentionHeatmap.LegendLeft}" Canvas.Top="{Binding AttentionHeatmap.LegendTop}"
+                            Orientation="Horizontal" Spacing="{x:Static training:AttentionContract.LegendGap}"
+                            IsVisible="{Binding AttentionHeatmap.HasLegend}">
+                    <ToolTip.Tip><TextBlock Text="{Binding AttentionHeatmap.Tooltip}" FontSize="{DynamicResource TooltipFontSize}"/></ToolTip.Tip>
+                    <Border Width="{x:Static training:AttentionContract.LegendSwatchSize}"
+                            Height="{x:Static training:AttentionContract.LegendSwatchSize}"
+                            Background="{DynamicResource Brush.Attention.Heat}"/>
+                    <TextBlock Text="{Binding AttentionHeatmap.LegendText}" FontSize="{DynamicResource HelperFontSize}"/>
+                </StackPanel>
+                <TextBlock Canvas.Left="{Binding AttentionHeatmap.LegendLeft}" Canvas.Top="{Binding AttentionHeatmap.LegendTop}"
+                           Text="{Binding AttentionHeatmap.StatusText}" FontSize="{DynamicResource HelperFontSize}"
+                           IsVisible="{Binding AttentionHeatmap.HasStatus}"/>
+            </Canvas>
+
+            <!-- Drawing Overlays: Floating Style Bar & In-Place Text Editing (Deprecated/Disabled) -->
+            <Canvas ZIndex="900">
+                <!-- Floating Style Bar Palette (Deprecated/Disabled) -->
+                <chart:FloatingStyleBar
+                    DataContext="{Binding FloatingStyleBar}"
+                    Canvas.Left="{Binding PositionX}"
+                    Canvas.Top="{Binding PositionY}"
+                    IsVisible="False"/>
+
+                <!-- In-Place Inline Text Direct Editor (Deprecated/Disabled) -->
+                <TextBox
+                    Name="InPlaceTextBox"
+                    DataContext="{Binding InPlaceTextEdit}"
+                    IsVisible="False"
+                    Canvas.Left="{Binding PositionX}"
+                    Canvas.Top="{Binding PositionY}"
+                    Width="{Binding Width}"
+                    Height="{Binding Height}"
+                    Text="{Binding Text, Mode=TwoWay}"
+                    FontSize="{Binding FontSize}"
+                    Foreground="{DynamicResource Brush.Foreground.Primary}"
+                    Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border}"
+                    BorderThickness="1"
+                    CornerRadius="4"
+                    Padding="4,2"
+                    AcceptsReturn="True"
+                    KeyDown="InPlaceTextBox_KeyDown"
+                    LostFocus="InPlaceTextBox_LostFocus"/>
             </Canvas>
 
             <!-- Price Scale Overlay -->

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.Messaging;
 using Avalonia;
 using Avalonia.Media;
@@ -118,6 +119,39 @@ public class ChartInteractionController
     /// </summary>
     public DrawingMoveAxisMode MoveAxisMode { get; set; } = DrawingMoveAxisMode.XY;
 
+    /// <summary>
+    /// Whether rubber-band rectangular multi-selection is actively in progress.
+    /// </summary>
+    public bool IsRubberBandSelecting { get; private set; }
+
+    /// <summary>
+    /// Screen-relative starting point of the rubber-band selection rectangle.
+    /// </summary>
+    public global::Avalonia.Point RubberBandStartPoint { get; private set; }
+
+    /// <summary>
+    /// Screen-relative current point of the rubber-band selection rectangle.
+    /// </summary>
+    public global::Avalonia.Point RubberBandCurrentPoint { get; private set; }
+
+    private KeyModifiers _rubberBandModifiers;
+
+    // Freehand/Highlighter AABB handle drag anchor bounds
+    private DateTime _freehandAnchorMinTime;
+    private DateTime _freehandAnchorMaxTime;
+    private decimal _freehandAnchorMinPrice;
+    private decimal _freehandAnchorMaxPrice;
+
+    /// <summary>
+    /// Tracks the sequential numbering index for StepBadge stamps placed on the chart.
+    /// Auto-increments with each placement (1..999).
+    /// </summary>
+    public int ActiveStepIndex { get; set; } = 1;
+
+    // Multi-selection drag state
+    private IChartObject[]? _multiSelectMoveMembers;
+    private List<ChartPoint>[]? _multiSelectMoveAnchorPoints;
+
     #endregion
 
     private DateTime _lastInfoHoverTime;
@@ -145,6 +179,13 @@ public class ChartInteractionController
     private decimal _linkedAppliedPriceDelta;
     private StockAnalyzer.Avalonia.Services.Drawing.IDrawingEditCoordinator? _activeCoordinator;
     private StockAnalyzer.Core.Models.Drawing.DrawingEditToken? _activeDragToken;
+    private ICoordinateTransform? _lastCoordinateTransform;
+    private global::Avalonia.Point? _lastChartPosition;
+
+    /// <summary>
+    /// Delegate providing pixel color sampling from the chart surface for the Eyedropper tool.
+    /// </summary>
+    public Func<global::Avalonia.Point, SkiaSharp.SKColor?>? PixelColorSampler { get; set; }
 
     private bool StartDragTransaction(ChartViewModel? viewModel, bool isHandleDrag)
     {
@@ -166,11 +207,6 @@ public class ChartInteractionController
 
     private bool BeginHandleDrag(IChartObject obj, int handleIndex, global::Avalonia.Point point, ChartViewModel? viewModel)
     {
-        if (obj is StockAnalyzer.Avalonia.Drawing.FreehandObject)
-        {
-            return false;
-        }
-
         if (!StartDragTransaction(viewModel, isHandleDrag: true))
         {
             return false;
@@ -178,7 +214,12 @@ public class ChartInteractionController
         DraggedObject = obj;
         DraggedHandleIndex = handleIndex;
         LastDragPoint = point;
-        if ((obj is FixedRangeVolumeProfileObject frvp && frvp.LockRange) || (obj is TimeAtPriceObject tap && tap.LockRange))
+
+        if (obj is StockAnalyzer.Avalonia.Drawing.IAabbDeformableObject aabbObj)
+        {
+            aabbObj.GetDataBounds(out _freehandAnchorMinTime, out _freehandAnchorMaxTime, out _freehandAnchorMinPrice, out _freehandAnchorMaxPrice);
+        }
+        else if ((obj is FixedRangeVolumeProfileObject frvp && frvp.LockRange) || (obj is TimeAtPriceObject tap && tap.LockRange))
         {
             _moveDragAnchorPoints = new List<ChartPoint>(obj.Points);
         }
@@ -202,9 +243,18 @@ public class ChartInteractionController
 
         var selectedObject = viewModel.ObjectManager.SelectedObject;
 
-        // Freehand objects do not support vertex handle dragging; positions are fixed in chart coordinates.
-        if (selectedObject is StockAnalyzer.Avalonia.Drawing.FreehandObject)
+        // IAabbDeformableObject objects (Freehand, Highlighter) support 8-point AABB deformation handle dragging.
+        if (selectedObject is StockAnalyzer.Avalonia.Drawing.IAabbDeformableObject aabbSelected)
         {
+            var handles = aabbSelected.GetAabbHandlePositions(coordinateTransform);
+            for (int i = 0; i < handles.Length; i++)
+            {
+                if (Math.Abs(handles[i].X - chartPosition.X) <= ChartConstants.HandleClickToleranceScreenPx &&
+                    Math.Abs(handles[i].Y - chartPosition.Y) <= ChartConstants.HandleClickToleranceScreenPx)
+                {
+                    return BeginHandleDrag(selectedObject, i, point, viewModel);
+                }
+            }
             return false;
         }
 
@@ -421,6 +471,7 @@ public class ChartInteractionController
         _dialogService = dialogService;
         _smartGuideService = smartGuideService ?? new Services.Drawing.SmartGuideService();
         _crosshairMessage = new Common.CrosshairPositionChangedMessage(_crosshairData);
+        RulerRenderer.RubberBandAction = RenderRubberBand;
     }
 
     /// <summary>
@@ -505,6 +556,8 @@ public class ChartInteractionController
         int activePanelIndex = -1)
     {
         _activePanelIndex = activePanelIndex;
+        _lastCoordinateTransform = coordinateTransform;
+        _lastChartPosition = chartPosition;
         if (viewModel == null) return false;
         ArmOrResetSelectionIdleTimer(viewModel.ObjectManager);
 
@@ -626,7 +679,7 @@ public class ChartInteractionController
                 bool justFinishedMultiStep = (behavior.RequiredSteps >= 2 || behavior.RequiredSteps == 0) && wasDrawing && !IsDrawingNewShape;
                 bool justPlacedSingleStep = behavior.RequiredSteps == 1 && !wasDrawing && !IsDrawingNewShape;
 
-                if ((justFinishedMultiStep || justPlacedSingleStep) && ShouldReturnToPointerAfterFinish())
+                if ((justFinishedMultiStep || justPlacedSingleStep) && effectiveTool != DrawingTool.StepBadge && ShouldReturnToPointerAfterFinish())
                 {
                     viewModel.CurrentTool = DrawingTool.Pointer;
                 }
@@ -680,8 +733,12 @@ public class ChartInteractionController
                 }
                 return true;
 
+            case DrawingTool.Eyedropper:
+                HandleEyedropper(point, viewModel);
+                return true;
+
             case DrawingTool.Text:
-                HandleTextTool(chartPoint, viewModel);
+                HandleTextTool(chartPoint, point, viewModel);
                 return true;
 
             case DrawingTool.Eraser:
@@ -689,7 +746,7 @@ public class ChartInteractionController
                 return true;
 
             case DrawingTool.Pointer:
-                return HandlePointerTool(point, chartPosition, viewModel, coordinateTransform);
+                return HandlePointerTool(point, chartPosition, viewModel, coordinateTransform, modifiers);
         }
 
         return false;
@@ -701,7 +758,7 @@ public class ChartInteractionController
     /// </summary>
     /// <param name="viewModel">The chart view model.</param>
     /// <returns>True if the event was handled and requires a visual update.</returns>
-    public bool HandlePointerReleased(ChartViewModel? viewModel)
+    public bool HandlePointerReleased(ChartViewModel? viewModel, ICoordinateTransform? coordinateTransform = null)
     {
         bool handled = false;
 
@@ -711,6 +768,43 @@ public class ChartInteractionController
         {
             IsDrawingRuler = false;
             handled = true;
+        }
+
+        if (IsRubberBandSelecting)
+        {
+            IsRubberBandSelecting = false;
+            handled = true;
+
+            var transform = coordinateTransform ?? _lastCoordinateTransform;
+            if (viewModel?.ObjectManager != null && transform != null)
+            {
+                double minX = Math.Min(RubberBandStartPoint.X, RubberBandCurrentPoint.X);
+                double maxX = Math.Max(RubberBandStartPoint.X, RubberBandCurrentPoint.X);
+                double minY = Math.Min(RubberBandStartPoint.Y, RubberBandCurrentPoint.Y);
+                double maxY = Math.Max(RubberBandStartPoint.Y, RubberBandCurrentPoint.Y);
+
+                if ((maxX - minX) > 4.0 || (maxY - minY) > 4.0)
+                {
+                    var rect = new global::Avalonia.Rect(minX, minY, Math.Max(1.0, maxX - minX), Math.Max(1.0, maxY - minY));
+                    var intersectingIds = new List<Guid>();
+
+                    var objects = viewModel.ObjectManager.Objects;
+                    for (int i = 0; i < objects.Count; i++)
+                    {
+                        var obj = objects[i];
+                        if (!viewModel.ObjectManager.IsVisible(obj.Id)) continue;
+                        if (_activePanelIndex >= 0 && obj.PanelIndex != _activePanelIndex) continue;
+
+                        if (IsObjectIntersectingRect(obj, rect, transform))
+                        {
+                            intersectingIds.Add(obj.Id);
+                        }
+                    }
+
+                    bool clearExisting = !_rubberBandModifiers.HasFlag(KeyModifiers.Control);
+                    viewModel.ObjectManager.SelectObjects(intersectingIds, clearExisting: clearExisting);
+                }
+            }
         }
 
         if (DraggedObject != null)
@@ -732,6 +826,15 @@ public class ChartInteractionController
                 }
             }
             ClearLinkedMoveState();
+
+            if (_multiSelectMoveMembers != null)
+            {
+                for (int i = 0; i < _multiSelectMoveMembers.Length; i++)
+                {
+                    DrawingRecalculation.AfterMoveCompleted(_multiSelectMoveMembers[i], releaseContext);
+                }
+            }
+            ClearMultiSelectMoveState();
 
             DraggedObject = null;
             DraggedHandleIndex = -1;
@@ -775,10 +878,15 @@ public class ChartInteractionController
             }
         }
 
+        if (viewModel != null)
+        {
+            viewModel.FloatingStyleBar.IsVisible = false;
+        }
+
         return handled;
     }
 
-    private void HandleEditObject(IChartObject hitObject, ChartViewModel viewModel)
+    private void HandleEditObject(IChartObject hitObject, ChartViewModel viewModel, ICoordinateTransform? transform = null)
     {
         var existingSnapshot = (hitObject as StockAnalyzer.Avalonia.Drawing.Objects.InformationObject)?.Snapshot
             ?? viewModel.ObjectManager.InformationObject?.Snapshot;
@@ -789,6 +897,7 @@ public class ChartInteractionController
         _activeSmartGuideLines.Clear();
         _moveDragAnchorPoints = null;
         ClearLinkedMoveState();
+        ClearMultiSelectMoveState();
 
         _ = global::Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(async () =>
         {
@@ -931,46 +1040,65 @@ public class ChartInteractionController
         });
     }
 
-    private void HandleTextTool(ChartPoint chartPoint, ChartViewModel viewModel)
+    private void HandleEyedropper(global::Avalonia.Point screenPoint, ChartViewModel viewModel)
     {
-        int panelIndex = _activePanelIndex;
-        _ = global::Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(async () =>
+        var sampled = PixelColorSampler?.Invoke(screenPoint);
+        if (sampled.HasValue)
         {
-            var textObj = new TextObject(chartPoint, "Text") { PanelIndex = panelIndex };
-            var result = await _dialogService.ShowDrawingSettingsDialogAsync(textObj, coordinator: null);
-            
-            if (result == DrawingSettingsResult.Changed)
+            var color = sampled.Value;
+            DrawingThemeContext.SetDefaultColor(color);
+
+            if (viewModel.ObjectManager.SelectedObjects.Count > 0)
             {
+                var avaloniaColor = global::Avalonia.Media.Color.FromArgb(color.Alpha, color.Red, color.Green, color.Blue);
                 if (viewModel.DrawingEditCoordinator != null)
                 {
-                    viewModel.DrawingEditCoordinator.ExecuteEdit(StockAnalyzer.Core.Models.Drawing.DrawingOperationKind.Add, () =>
+                    viewModel.DrawingEditCoordinator.ExecuteEdit(StockAnalyzer.Core.Models.Drawing.DrawingOperationKind.StyleChange, () =>
                     {
-                        viewModel.ObjectManager.AddObject(textObj);
-                        if (viewModel.LayerService != null)
+                        foreach (var obj in viewModel.ObjectManager.SelectedObjects)
                         {
-                            var targetPanel = panelIndex >= 0
-                                ? StockAnalyzer.Core.Models.Drawing.PanelKey.OverlayGroup(panelIndex)
-                                : StockAnalyzer.Core.Models.Drawing.PanelKey.Main;
-                            viewModel.LayerService.AddObjectToLayer(textObj.Id, targetPanel);
+                            obj.Color = avaloniaColor;
                         }
-                        viewModel.ObjectManager.SelectObject(textObj.Id);
                     });
                 }
                 else
                 {
-                    viewModel.ObjectManager.AddObject(textObj);
-                    if (viewModel.LayerService != null)
+                    foreach (var obj in viewModel.ObjectManager.SelectedObjects)
                     {
-                        var targetPanel = panelIndex >= 0
-                            ? StockAnalyzer.Core.Models.Drawing.PanelKey.OverlayGroup(panelIndex)
-                            : StockAnalyzer.Core.Models.Drawing.PanelKey.Main;
-                        viewModel.LayerService.AddObjectToLayer(textObj.Id, targetPanel);
+                        obj.Color = avaloniaColor;
                     }
-                    viewModel.ObjectManager.SelectObject(textObj.Id);
                 }
-                if (ShouldReturnToPointerAfterFinish()) viewModel.CurrentTool = DrawingTool.Pointer;
+                viewModel.RequestRender(RenderReason.DataChanged);
             }
-        });
+        }
+
+        if (ShouldReturnToPointerAfterFinish()) viewModel.CurrentTool = DrawingTool.Pointer;
+    }
+
+    private void HandleTextTool(ChartPoint chartPoint, global::Avalonia.Point screenPoint, ChartViewModel viewModel)
+    {
+        int panelIndex = _activePanelIndex;
+        var textObj = new TextObject(chartPoint, "Text") { PanelIndex = panelIndex };
+
+        void AddAction()
+        {
+            viewModel.ObjectManager.AddObject(textObj);
+            var panelKey = panelIndex >= 0 ? StockAnalyzer.Core.Models.Drawing.PanelKey.OverlayGroup(panelIndex) : StockAnalyzer.Core.Models.Drawing.PanelKey.Main;
+            viewModel.LayerService?.AddObjectToLayer(textObj.Id, panelKey);
+            viewModel.ObjectManager.SelectObject(textObj.Id);
+        }
+
+        if (viewModel.DrawingEditCoordinator != null)
+        {
+            viewModel.DrawingEditCoordinator.ExecuteEdit(StockAnalyzer.Core.Models.Drawing.DrawingOperationKind.Add, AddAction);
+        }
+        else
+        {
+            AddAction();
+        }
+
+        viewModel.RequestRender(RenderReason.DataChanged);
+        if (ShouldReturnToPointerAfterFinish()) viewModel.CurrentTool = DrawingTool.Pointer;
     }
 
     private IChartObject? GetObjectAt(global::Avalonia.Point chartPosition, ICoordinateTransform transform, ChartViewModel viewModel)
@@ -1020,6 +1148,7 @@ public class ChartInteractionController
         if (targetIdToRemove.HasValue)
         {
             var id = targetIdToRemove.Value;
+
             if (viewModel.DrawingEditCoordinator != null)
             {
                 viewModel.DrawingEditCoordinator.ExecuteEdit(StockAnalyzer.Core.Models.Drawing.DrawingOperationKind.Delete, () =>
@@ -1052,11 +1181,6 @@ public class ChartInteractionController
     /// </summary>
     private bool BeginMoveDragAnchor(IChartObject obj, ChartViewModel? viewModel = null)
     {
-        if (obj is StockAnalyzer.Avalonia.Drawing.FreehandObject)
-        {
-            return false;
-        }
-
         if (!StartDragTransaction(viewModel, isHandleDrag: false))
         {
             return false;
@@ -1064,8 +1188,63 @@ public class ChartInteractionController
         _moveDragAnchorPoints = new List<ChartPoint>(obj.Points);
         _moveDragAppliedTimeDelta = TimeSpan.Zero;
         _moveDragAppliedPriceDelta = 0m;
-        BeginLinkedMove(obj, viewModel?.ObjectManager ?? _activeObjectManager);
+        var manager = viewModel?.ObjectManager ?? _activeObjectManager;
+        BeginLinkedMove(obj, manager);
+        BeginMultiSelectMove(obj, manager);
         return true;
+    }
+
+    private void ClearMultiSelectMoveState()
+    {
+        _multiSelectMoveMembers = null;
+        _multiSelectMoveAnchorPoints = null;
+    }
+
+    private void BeginMultiSelectMove(IChartObject dragged, ChartObjectManager? manager)
+    {
+        ClearMultiSelectMoveState();
+        if (manager == null || manager.SelectedIds.Count <= 1) return;
+
+        var selected = manager.SelectedObjects;
+        var members = new List<IChartObject>(selected.Count);
+        for (int i = 0; i < selected.Count; i++)
+        {
+            var item = selected[i];
+            if (item.Id == dragged.Id) continue;
+            if (_linkedMoveMembers != null && Array.IndexOf(_linkedMoveMembers, item) >= 0) continue;
+            members.Add(item);
+        }
+
+        if (members.Count == 0) return;
+
+        _multiSelectMoveMembers = members.ToArray();
+        _multiSelectMoveAnchorPoints = new List<ChartPoint>[members.Count];
+        for (int i = 0; i < members.Count; i++)
+        {
+            _multiSelectMoveAnchorPoints[i] = new List<ChartPoint>(members[i].Points);
+        }
+    }
+
+    private void ApplyMultiSelectMoveStep(TimeSpan totalTimeDelta, decimal totalPriceDelta)
+    {
+        var members = _multiSelectMoveMembers;
+        var anchors = _multiSelectMoveAnchorPoints;
+        if (members == null || anchors == null) return;
+
+        for (int i = 0; i < members.Length; i++)
+        {
+            var member = members[i];
+            var anchorPoints = anchors[i];
+            for (int ptIdx = 0; ptIdx < member.Points.Count && ptIdx < anchorPoints.Count; ptIdx++)
+            {
+                var anchorPt = anchorPoints[ptIdx];
+                member.Points[ptIdx] = new ChartPoint(anchorPt.Time.Add(totalTimeDelta), anchorPt.Price + totalPriceDelta);
+            }
+            if (member is StockAnalyzer.Avalonia.Drawing.RelativeGeometricRenderer geomR)
+            {
+                geomR.Translate(TimeSpan.Zero, 0m); // Invalidate cached bounds
+            }
+        }
     }
 
     private void ClearLinkedMoveState()
@@ -1155,15 +1334,22 @@ public class ChartInteractionController
         _linkedAppliedPriceDelta = memberPriceDelta;
     }
 
-    private bool HandlePointerTool(global::Avalonia.Point point, global::Avalonia.Point chartPosition, ChartViewModel viewModel, ICoordinateTransform transform)
+    private bool HandlePointerTool(global::Avalonia.Point point, global::Avalonia.Point chartPosition, ChartViewModel viewModel, ICoordinateTransform transform, KeyModifiers modifiers = KeyModifiers.None)
     {
         var selectedObject = viewModel.ObjectManager.SelectedObject;
         if (selectedObject != null)
         {
-            // Freehand objects do not support individual vertex handle dragging; positions are fixed in chart coordinates.
-            if (selectedObject is StockAnalyzer.Avalonia.Drawing.FreehandObject)
+            if (selectedObject is StockAnalyzer.Avalonia.Drawing.IAabbDeformableObject aabbSelected)
             {
-                // Bypass handle hit testing so object selection or deselection works without initiating drag
+                var handles = aabbSelected.GetAabbHandlePositions(transform);
+                for (int i = 0; i < handles.Length; i++)
+                {
+                    if (Math.Abs(handles[i].X - chartPosition.X) <= ChartConstants.HandleClickToleranceScreenPx &&
+                        Math.Abs(handles[i].Y - chartPosition.Y) <= ChartConstants.HandleClickToleranceScreenPx)
+                    {
+                        return BeginHandleDrag(selectedObject, i, point, viewModel);
+                    }
+                }
             }
             // 1. Check Handle Hit Test on Selected Object
             else if (selectedObject is StockAnalyzer.Avalonia.Drawing.RectangleObject)
@@ -1269,26 +1455,26 @@ public class ChartInteractionController
                 }
             }
 
-            // 2. Check if we hit an object to Select it
+            // 2. Check if we hit an object to Select or Drag it
             var hitObject = GetObjectAt(chartPosition, transform, viewModel);
             if (hitObject != null)
             {
-                if (hitObject is StockAnalyzer.Avalonia.Drawing.FreehandObject)
+                bool isCtrl = modifiers.HasFlag(KeyModifiers.Control);
+                if (isCtrl)
                 {
-                    if (hitObject.Id != selectedObject.Id)
-                    {
-                        viewModel.ObjectManager.SelectObject(hitObject.Id);
-                    }
+                    viewModel.ObjectManager.ToggleSelectObject(hitObject.Id);
                     return true;
+                }
+
+                bool isAlreadySelected = viewModel.ObjectManager.SelectedIds.Contains(hitObject.Id);
+                if (!isAlreadySelected)
+                {
+                    viewModel.ObjectManager.SelectObject(hitObject.Id);
                 }
 
                 if (!BeginMoveDragAnchor(hitObject, viewModel))
                 {
                     return false;
-                }
-                if (hitObject.Id != selectedObject.Id)
-                {
-                    viewModel.ObjectManager.SelectObject(hitObject.Id);
                 }
                 DraggedObject = hitObject;
                 LastDragPoint = point;
@@ -1298,21 +1484,22 @@ public class ChartInteractionController
         }
         else
         {
-             // No selection, try to select
+            // No selection: check if we hit an object to select or drag
             var hitObject = GetObjectAt(chartPosition, transform, viewModel);
             if (hitObject != null)
             {
-                if (hitObject is StockAnalyzer.Avalonia.Drawing.FreehandObject)
+                bool isCtrl = modifiers.HasFlag(KeyModifiers.Control);
+                if (isCtrl)
                 {
-                    viewModel.ObjectManager.SelectObject(hitObject.Id);
+                    viewModel.ObjectManager.ToggleSelectObject(hitObject.Id);
                     return true;
                 }
 
+                viewModel.ObjectManager.SelectObject(hitObject.Id);
                 if (!BeginMoveDragAnchor(hitObject, viewModel))
                 {
                     return false;
                 }
-                viewModel.ObjectManager.SelectObject(hitObject.Id);
                 DraggedObject = hitObject;
                 LastDragPoint = point;
                 DraggedHandleIndex = -1;
@@ -1320,6 +1507,22 @@ public class ChartInteractionController
             }
         }
 
+        // Empty space clicked:
+        if (modifiers.HasFlag(KeyModifiers.Control))
+        {
+            // Ctrl pressed on empty space: start Rubber-Band rectangular multi-selection
+            IsRubberBandSelecting = true;
+            RubberBandStartPoint = chartPosition;
+            RubberBandCurrentPoint = chartPosition;
+            _rubberBandModifiers = modifiers;
+            return true;
+        }
+
+        // Plain click on empty space: clear selection if present and allow chart Pan (horizontal scroll)
+        if (viewModel.ObjectManager.HasSelection)
+        {
+            viewModel.ObjectManager.DeselectAll();
+        }
         return false; // Allow Pan
     }
 
@@ -1384,8 +1587,9 @@ public class ChartInteractionController
         var chartRelativePos = new global::Avalonia.Point(mousePos.X - chartMarginHorizontal, mousePos.Y - chartMarginTop);
 
         bool isHandleDrag = DraggedHandleIndex >= 0 && 
-                            (DraggedHandleIndex < dragged.Points.Count || 
-                             (dragged is StockAnalyzer.Avalonia.Drawing.RectangleObject && DraggedHandleIndex < 4));
+                            ((dragged is StockAnalyzer.Avalonia.Drawing.IAabbDeformableObject && DraggedHandleIndex < 8) ||
+                             DraggedHandleIndex < dragged.Points.Count || 
+                             ((dragged is StockAnalyzer.Avalonia.Drawing.RectangleObject) && DraggedHandleIndex < 4));
 
         var activeMoveMode = (_activeObjectManager != null && _activeObjectManager.HasExplicitMoveAxisMode(dragged.Id))
             ? _activeObjectManager.GetMoveAxisMode(dragged.Id)
@@ -1444,7 +1648,56 @@ public class ChartInteractionController
                     : new ChartPoint(origPoint.Time, rawPoint.Price);
             }
 
-            if (DraggedObject is LongShortPositionObject ls && ls.Points.Count >= 3)
+            if (DraggedObject is StockAnalyzer.Avalonia.Drawing.IAabbDeformableObject aabbDeformable)
+            {
+                // 8-point AABB deformation:
+                // 0=TopLeft, 1=TopCenter, 2=TopRight, 3=RightCenter,
+                // 4=BottomRight, 5=BottomCenter, 6=BottomLeft, 7=LeftCenter.
+                DateTime newMinT = _freehandAnchorMinTime;
+                DateTime newMaxT = _freehandAnchorMaxTime;
+                decimal newMinP = _freehandAnchorMinPrice;
+                decimal newMaxP = _freehandAnchorMaxPrice;
+
+                switch (DraggedHandleIndex)
+                {
+                    case 0: // TopLeft
+                        newMinT = chartPoint.Time;
+                        newMaxP = chartPoint.Price;
+                        break;
+                    case 1: // TopCenter
+                        newMaxP = chartPoint.Price;
+                        break;
+                    case 2: // TopRight
+                        newMaxT = chartPoint.Time;
+                        newMaxP = chartPoint.Price;
+                        break;
+                    case 3: // RightCenter
+                        newMaxT = chartPoint.Time;
+                        break;
+                    case 4: // BottomRight
+                        newMaxT = chartPoint.Time;
+                        newMinP = chartPoint.Price;
+                        break;
+                    case 5: // BottomCenter
+                        newMinP = chartPoint.Price;
+                        break;
+                    case 6: // BottomLeft
+                        newMinT = chartPoint.Time;
+                        newMinP = chartPoint.Price;
+                        break;
+                    case 7: // LeftCenter
+                        newMinT = chartPoint.Time;
+                        break;
+                }
+
+                DateTime finalMinT = newMinT <= newMaxT ? newMinT : newMaxT;
+                DateTime finalMaxT = newMinT <= newMaxT ? newMaxT : newMinT;
+                decimal finalMinP = Math.Min(newMinP, newMaxP);
+                decimal finalMaxP = Math.Max(newMinP, newMaxP);
+
+                aabbDeformable.TransformAabb(finalMinT, finalMaxT, finalMinP, finalMaxP);
+            }
+            else if (DraggedObject is LongShortPositionObject ls && ls.Points.Count >= 3)
             {
                 decimal entryP = (DraggedHandleIndex == 0) ? chartPoint.Price : ls.Points[0].Price;
                 if (DraggedHandleIndex == 0) // Entry
@@ -2013,6 +2266,11 @@ public class ChartInteractionController
                 ApplyLinkedMoveStep(draggedMovedByBars, totalTimeDelta, totalPriceDelta, anchorChart.Time, targetChart.Time, fullHistoryCandles, snapshot);
             }
 
+            if (_multiSelectMoveMembers != null)
+            {
+                ApplyMultiSelectMoveStep(totalTimeDelta, totalPriceDelta);
+            }
+
             DrawingRecalculation.AfterMoveFrame(dragged, snapshot.Candles);
 
             // GeometricPatternObject / Harmonic pattern recalculation is deferred to
@@ -2111,6 +2369,8 @@ public class ChartInteractionController
         int activePanelIndex = -1)
     {
         _activePanelIndex = activePanelIndex;
+        _lastCoordinateTransform = transform;
+        _lastChartPosition = chartPosition;
         needsUpdate = false;
         if (viewModel == null) return false;
         _activeObjectManager = viewModel.ObjectManager;
@@ -2121,6 +2381,14 @@ public class ChartInteractionController
         if (IsDrawingRuler)
         {
             RulerRenderer.EndPoint = point;
+            needsUpdate = true;
+            return true;
+        }
+
+        // Rubber-Band Selection Update
+        if (IsRubberBandSelecting)
+        {
+            RubberBandCurrentPoint = chartPosition;
             needsUpdate = true;
             return true;
         }
@@ -2277,7 +2545,7 @@ public class ChartInteractionController
                  var layer = viewModel.LayerService.GetLayerForObject(hitObject.Id);
                  if (layer == null || !layer.Value.IsEditLocked)
                  {
-                     HandleEditObject(hitObject, viewModel);
+                     HandleEditObject(hitObject, viewModel, transform);
                      return true;
                  }
                  return true;
@@ -2299,7 +2567,7 @@ public class ChartInteractionController
                      {
                          if (Math.Abs(h.X - chartPosition.X) <= ChartConstants.HandleClickToleranceScreenPx && Math.Abs(h.Y - chartPosition.Y) <= ChartConstants.HandleClickToleranceScreenPx)
                          {
-                             HandleEditObject(selectedObject, viewModel);
+                             HandleEditObject(selectedObject, viewModel, transform);
                              return true;
                          }
                      }
@@ -2311,7 +2579,7 @@ public class ChartInteractionController
                          var handleScreenPoint = transform.ChartToScreen(pt);
                          if (Math.Abs(handleScreenPoint.X - chartPosition.X) <= ChartConstants.HandleClickToleranceScreenPx && Math.Abs(handleScreenPoint.Y - chartPosition.Y) <= ChartConstants.HandleClickToleranceScreenPx)
                          {
-                             HandleEditObject(selectedObject, viewModel);
+                             HandleEditObject(selectedObject, viewModel, transform);
                              return true;
                          }
                      }
@@ -2590,6 +2858,11 @@ public class ChartInteractionController
         if (behavior.RequiredSteps == 1)
         {
             var obj = behavior.CreateObject(chartPoint, candles);
+            if (obj is StockAnalyzer.Avalonia.Drawing.StepBadgeObject badge)
+            {
+                badge.StepNumber = ActiveStepIndex;
+                ActiveStepIndex = Math.Clamp(ActiveStepIndex + 1, 1, 999);
+            }
 
             // Enforce single instance for macro tools like Geometric Pattern
             if (behavior is StockAnalyzer.Avalonia.Drawing.Behaviors.GeometricPatternBehavior)
@@ -2854,10 +3127,15 @@ public class ChartInteractionController
     }
 
     /// <summary>
-    /// Handles key down events for Undo (Ctrl+Z) and Redo (Ctrl+Y / Ctrl+Shift+Z),
+    /// Handles key down events for Undo (Ctrl+Z), Redo (Ctrl+Y / Ctrl+Shift+Z), Group (Ctrl+G), Ungroup (Ctrl+Shift+G),
+    /// Copy (Ctrl+C), Paste (Ctrl+V), Cut (Ctrl+X), Duplicate (Ctrl+D),
     /// while preserving native editing inside text input controls.
     /// </summary>
-    public bool HandleKeyDown(global::Avalonia.Input.KeyEventArgs e, ChartViewModel? viewModel, IDrawingEditCoordinator? coordinator = null)
+    public bool HandleKeyDown(
+        global::Avalonia.Input.KeyEventArgs e,
+        ChartViewModel? viewModel,
+        IDrawingEditCoordinator? coordinator = null,
+        ICoordinateTransform? coordinateTransform = null)
     {
         if (e.KeyModifiers.HasFlag(global::Avalonia.Input.KeyModifiers.Control) && !e.KeyModifiers.HasFlag(global::Avalonia.Input.KeyModifiers.Alt))
         {
@@ -2911,9 +3189,117 @@ public class ChartInteractionController
                         }
                     }
                 }
+                else if (e.Key == global::Avalonia.Input.Key.G)
+                {
+                    if (e.KeyModifiers.HasFlag(global::Avalonia.Input.KeyModifiers.Shift))
+                    {
+                        // Ctrl+Shift+G = Ungroup
+                        if (viewModel?.ObjectManager != null)
+                        {
+                            if (DrawingAlignHelper.UngroupSelected(viewModel.ObjectManager, activeCoord))
+                            {
+                                viewModel.RequestRender(RenderReason.DataChanged);
+                                e.Handled = true;
+                                return true;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        // Ctrl+G = Group
+                        if (viewModel?.ObjectManager != null)
+                        {
+                            if (DrawingAlignHelper.GroupSelected(viewModel.ObjectManager, activeCoord))
+                            {
+                                viewModel.RequestRender(RenderReason.DataChanged);
+                                e.Handled = true;
+                                return true;
+                            }
+                        }
+                    }
+                }
+                else if (e.Key == global::Avalonia.Input.Key.C)
+                {
+                    // Ctrl+C = Copy
+                    if (viewModel?.ObjectManager != null)
+                    {
+                        var selected = viewModel.ObjectManager.SelectedObjects.ToList();
+                        if (selected.Count > 0)
+                        {
+                            _ = DrawingClipboardService.CopyAsync(
+                                selected,
+                                viewModel.ObjectManager.CurrentContext,
+                                viewModel.Symbol,
+                                viewModel.SelectedTimeFrame,
+                                viewModel.ObjectManager);
+                            e.Handled = true;
+                            return true;
+                        }
+                    }
+                }
+                else if (e.Key == global::Avalonia.Input.Key.V)
+                {
+                    // Ctrl+V = Paste
+                    var activeTransform = coordinateTransform ?? _lastCoordinateTransform;
+                    if (viewModel != null && activeTransform != null)
+                    {
+                        _ = ProcessPasteAsync(viewModel, activeTransform);
+                        e.Handled = true;
+                        return true;
+                    }
+                }
+                else if (e.Key == global::Avalonia.Input.Key.X)
+                {
+                    // Ctrl+X = Cut
+                    var activeTransform = coordinateTransform ?? _lastCoordinateTransform;
+                    if (viewModel != null)
+                    {
+                        var selected = viewModel.ObjectManager?.SelectedObjects.ToList();
+                        if (selected != null && selected.Count > 0)
+                        {
+                            _ = ProcessCutAsync(viewModel, activeTransform);
+                            e.Handled = true;
+                            return true;
+                        }
+                    }
+                }
+                else if (e.Key == global::Avalonia.Input.Key.D)
+                {
+                    // Ctrl+D = Duplicate (in-place +20px offset, bypasses OS clipboard)
+                    var activeTransform = coordinateTransform ?? _lastCoordinateTransform;
+                    if (viewModel != null)
+                    {
+                        var selected = viewModel.ObjectManager?.SelectedObjects.ToList();
+                        if (selected != null && selected.Count > 0)
+                        {
+                            DrawingClipboardService.DuplicateSelected(viewModel, activeTransform);
+                            viewModel.RequestRender(RenderReason.DataChanged);
+                            e.Handled = true;
+                            return true;
+                        }
+                    }
+                }
             }
         }
         return false;
+    }
+
+    private async Task ProcessPasteAsync(ChartViewModel viewModel, ICoordinateTransform transform)
+    {
+        bool pasted = await DrawingClipboardService.TryPasteAsync(
+            viewModel,
+            _lastChartPosition,
+            transform);
+        if (pasted)
+        {
+            viewModel.RequestRender(RenderReason.DataChanged);
+        }
+    }
+
+    private async Task ProcessCutAsync(ChartViewModel viewModel, ICoordinateTransform? transform)
+    {
+        await DrawingClipboardService.CutAsync(viewModel, transform);
+        viewModel.RequestRender(RenderReason.DataChanged);
     }
 
     /// <summary>
@@ -2995,6 +3381,99 @@ public class ChartInteractionController
                 tap.Recalculate(coreCandles);
             }
         }
+    }
+
+    #endregion
+
+    #region Rubber-Band Selection & AABB Hit-Testing
+
+    [ThreadStatic] private static SKPaint? _rubberBandStrokePaint;
+    [ThreadStatic] private static SKPaint? _rubberBandFillPaint;
+
+    private static SKPaint RubberBandStrokePaint => _rubberBandStrokePaint ??= new SKPaint
+    {
+        Style = SKPaintStyle.Stroke,
+        IsAntialias = true,
+        StrokeWidth = 1f,
+        PathEffect = SKPathEffect.CreateDash(new float[] { 4f, 4f }, 0f)
+    };
+
+    private static SKPaint RubberBandFillPaint => _rubberBandFillPaint ??= new SKPaint
+    {
+        Style = SKPaintStyle.Fill,
+        IsAntialias = true
+    };
+
+    /// <summary>
+    /// Renders the rubber-band selection dashed bounding box and semi-transparent fill onto the Skia canvas.
+    /// </summary>
+    public void RenderRubberBand(SKCanvas canvas)
+    {
+        if (!IsRubberBandSelecting) return;
+
+        float minX = (float)Math.Min(RubberBandStartPoint.X, RubberBandCurrentPoint.X);
+        float maxX = (float)Math.Max(RubberBandStartPoint.X, RubberBandCurrentPoint.X);
+        float minY = (float)Math.Min(RubberBandStartPoint.Y, RubberBandCurrentPoint.Y);
+        float maxY = (float)Math.Max(RubberBandStartPoint.Y, RubberBandCurrentPoint.Y);
+        float width = maxX - minX;
+        float height = maxY - minY;
+
+        if (width <= 0f || height <= 0f) return;
+
+        var defColor = StockAnalyzer.Avalonia.Drawing.DrawingThemeContext.DefaultSkColor;
+        var fillPaint = RubberBandFillPaint;
+        fillPaint.Color = new SKColor(defColor.Red, defColor.Green, defColor.Blue, 0x28); // 16% opacity theme fill
+        canvas.DrawRect(minX, minY, width, height, fillPaint);
+
+        var strokePaint = RubberBandStrokePaint;
+        strokePaint.Color = new SKColor(defColor.Red, defColor.Green, defColor.Blue, 0xD0); // Theme dashed outline
+        canvas.DrawRect(minX, minY, width, height, strokePaint);
+    }
+
+    /// <summary>
+    /// Determines whether the specified drawing object's screen-space bounding box intersects the selection rectangle.
+    /// Implements Section 1.2.4 Rubber-Band Selection Intersection.
+    /// </summary>
+    private static bool IsObjectIntersectingRect(IChartObject obj, global::Avalonia.Rect selectionRect, ICoordinateTransform transform)
+    {
+        if (obj == null || transform == null) return false;
+
+        if (obj is StockAnalyzer.Avalonia.Drawing.IAabbDeformableObject aabbObj)
+        {
+            aabbObj.GetDataBounds(out var minTime, out var maxTime, out var minPrice, out var maxPrice);
+            var pMin = transform.ChartToScreen(new ChartPoint(minTime, maxPrice));
+            var pMax = transform.ChartToScreen(new ChartPoint(maxTime, minPrice));
+            double bLeft = Math.Min(pMin.X, pMax.X);
+            double bRight = Math.Max(pMin.X, pMax.X);
+            double bTop = Math.Min(pMin.Y, pMax.Y);
+            double bBottom = Math.Max(pMin.Y, pMax.Y);
+            var objRect = new global::Avalonia.Rect(bLeft, bTop, Math.Max(1.0, bRight - bLeft), Math.Max(1.0, bBottom - bTop));
+            return selectionRect.Intersects(objRect);
+        }
+
+        if (obj.Points.Count == 0) return false;
+
+        if (obj.Points.Count == 1)
+        {
+            var pt = transform.ChartToScreen(obj.Points[0]);
+            return selectionRect.Contains(pt);
+        }
+
+        double minX = double.MaxValue, maxX = double.MinValue, minY = double.MaxValue, maxY = double.MinValue;
+        for (int i = 0; i < obj.Points.Count; i++)
+        {
+            var pt = transform.ChartToScreen(obj.Points[i]);
+            if (double.IsNaN(pt.X) || double.IsInfinity(pt.X) || double.IsNaN(pt.Y) || double.IsInfinity(pt.Y)) continue;
+            if (pt.X < minX) minX = pt.X;
+            if (pt.X > maxX) maxX = pt.X;
+            if (pt.Y < minY) minY = pt.Y;
+            if (pt.Y > maxY) maxY = pt.Y;
+        }
+
+        if (minX == double.MaxValue) return false;
+
+        var bounds = new global::Avalonia.Rect(minX, minY, Math.Max(1.0, maxX - minX), Math.Max(1.0, maxY - minY));
+        return selectionRect.Intersects(bounds);
     }
 
     #endregion

@@ -26,6 +26,40 @@ public class ServiceCollectionExtensionsTests
     }
 
     [Fact]
+    public void AddCommonServices_RegistersTheGraphConsumerSeparatelyFromTheSingleSymbolPrediction()
+    {
+        var services = new ServiceCollection();
+        services.AddCommonServices(new ConfigurationBuilder().Build());
+        using var provider = services.BuildServiceProvider();
+
+        var graph = provider.GetRequiredService<StockAnalyzer.Core.Services.IGraphPredictionService>();
+        var prediction = provider.GetRequiredService<StockAnalyzer.Core.Services.IPredictionService>();
+
+        Assert.IsType<StockAnalyzer.Core.Services.GraphPredictionService>(graph);
+        Assert.Same(graph, provider.GetRequiredService<StockAnalyzer.Core.Services.IGraphPredictionService>());
+        Assert.IsType<StockAnalyzer.Core.Services.EnsemblePredictionService>(prediction); // the existing registration is unchanged
+        Assert.NotSame(graph, prediction);
+        Assert.Null(graph.Model); // nothing is loaded until a run folder is given explicitly
+    }
+
+    [Fact]
+    public void AddCommonServices_RegistersTheAttentionService_AsASingleton()
+    {
+        var services = new ServiceCollection();
+        services.AddCommonServices(new ConfigurationBuilder().Build());
+        using var provider = services.BuildServiceProvider();
+
+        var attention = provider.GetRequiredService<StockAnalyzer.Core.Services.IAttentionService>();
+
+        Assert.IsType<StockAnalyzer.Core.Services.AttentionService>(attention);
+        Assert.Same(attention, provider.GetRequiredService<StockAnalyzer.Core.Services.IAttentionService>());
+
+        var ensemble = provider.GetRequiredService<StockAnalyzer.Core.Services.IEnsembleAttentionService>();
+        Assert.IsType<StockAnalyzer.Core.Services.EnsembleAttentionService>(ensemble);
+        Assert.Same(ensemble, provider.GetRequiredService<StockAnalyzer.Core.Services.IEnsembleAttentionService>());
+    }
+
+    [Fact]
     public void AddCommonServices_RegistersTheCurrentHealthService_AsTheSameSingletonAsThePredictionLog()
     {
         var services = new ServiceCollection();

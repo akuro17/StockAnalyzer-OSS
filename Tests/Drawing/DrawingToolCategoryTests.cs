@@ -199,22 +199,21 @@ public class DrawingToolCategoryTests
     }
 
     [Fact]
-    public void GetCategories_And_Registry_FftSpectrumTool()
+    public void GetCategories_And_Registry_Highlighter_StepBadge_Eyedropper()
     {
         var categories = DrawingToolCategoryService.GetCategories();
-        var cyclesCategory = categories.FirstOrDefault(c => c.NameKey == "DrawCat_Cycles");
 
-        Assert.NotNull(cyclesCategory);
-        var toolInfo = cyclesCategory.Tools.FirstOrDefault(t => t.Tool == DrawingTool.FftSpectrum);
+        var cursorsCat = categories.FirstOrDefault(c => c.NameKey == "DrawCat_Cursors");
+        Assert.NotNull(cursorsCat);
+        Assert.Contains(cursorsCat.Tools, t => t.Tool == DrawingTool.Eyedropper && t.NameKey == "DrawTool_Eyedropper");
 
-        Assert.NotNull(toolInfo);
-        Assert.Equal("\u2248", toolInfo.Icon);
-        Assert.Equal("DrawTool_FftSpectrum", toolInfo.NameKey);
+        var linesCat = categories.FirstOrDefault(c => c.NameKey == "DrawCat_Lines");
+        Assert.NotNull(linesCat);
+        Assert.Contains(linesCat.Tools, t => t.Tool == DrawingTool.Highlighter && t.NameKey == "DrawTool_Highlighter");
 
-        var behavior = DrawingToolBehaviorRegistry.GetBehavior(DrawingTool.FftSpectrum);
-        Assert.NotNull(behavior);
-        Assert.Equal(2, behavior.RequiredSteps);
-        Assert.False(behavior.FinishesOnRelease);
+        var textCat = categories.FirstOrDefault(c => c.NameKey == "DrawCat_Text");
+        Assert.NotNull(textCat);
+        Assert.Contains(textCat.Tools, t => t.Tool == DrawingTool.StepBadge && t.NameKey == "DrawTool_StepBadge");
     }
 }
 

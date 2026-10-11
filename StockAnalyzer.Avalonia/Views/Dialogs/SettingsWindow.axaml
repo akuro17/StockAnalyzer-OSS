@@ -21,6 +21,22 @@
         <!-- Mock data for designer -->
     </Design.DataContext>
 
+    <!-- SA_UI_SUBWINDOW_STANDARD 5.1: Enter = OK (Escape is bound in the code-behind with SubWindowKeys.CloseOnEscape). -->
+    <Window.KeyBindings>
+        <KeyBinding Gesture="Enter" Command="{Binding SaveAndCloseCommand}"/>
+    </Window.KeyBindings>
+
+    <!-- SA_UI_SUBWINDOW_STANDARD 2.3: one definition for every settings page - scrollbars stay visible and take their own space (no overlay / auto-hide). -->
+    <Window.Styles>
+        <Style Selector="ScrollViewer">
+            <Setter Property="ScrollViewer.AllowAutoHide" Value="False"/>
+        </Style>
+        <!-- The scroll viewer inside a list / tree / combo template binds to the control's own attached value, which beats the style above. -->
+        <Style Selector=":is(ItemsControl), :is(TextBox)">
+            <Setter Property="ScrollViewer.AllowAutoHide" Value="False"/>
+        </Style>
+    </Window.Styles>
+
     <Grid ColumnDefinitions="240, *" RowDefinitions="56, *, 64">
         
         <!-- Sidebar (Integrated Header + TreeView) -->
@@ -82,11 +98,11 @@
                        FontSize="{DynamicResource TitleFontSize}" 
                        FontWeight="SemiBold" 
                        VerticalAlignment="Center"
-                       Margin="40,0"/>
+                       Margin="24,0"/>
         </Border>
 
         <!-- Main Content Page -->
-        <Border Grid.Row="1" Grid.Column="1" Padding="40">
+        <Border Grid.Row="1" Grid.Column="1" Padding="24">
             <TransitioningContentControl Content="{Binding CurrentPage}">
                 <TransitioningContentControl.PageTransition>
                     <CrossFade Duration="0:0:0.25" />

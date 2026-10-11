@@ -92,6 +92,9 @@ internal sealed class ScriptableBacktestEngine : IBacktestEngine
 
     public int RunCallCount => _runCallCount;
 
+    /// <summary>Set as soon as <see cref="Run"/> has been entered, so a test can wait for the engine call to start (the ViewModel may still be on its way to it) before it cancels.</summary>
+    public ManualResetEventSlim Entered { get; } = new(initialState: false);
+
     /// <summary>When non-null, <see cref="Run"/> blocks on this until the test calls <c>Set()</c>.</summary>
     public ManualResetEventSlim? Gate { get; set; }
 
@@ -109,6 +112,7 @@ internal sealed class ScriptableBacktestEngine : IBacktestEngine
         Interlocked.Increment(ref _runCallCount);
         LastInput = input;
         LastStrategy = strategy;
+        Entered.Set();
         // P3 Hardening Task 5: waiting with the token (instead of the parameterless overload) lets a test
         // simulate the real engine's cooperative cancellation - cancelling the token while a run is blocked
         // on Gate throws OperationCanceledException here, exactly like a real mid-run BacktestEngine.Run abort.

@@ -58,11 +58,12 @@ import metrics  # noqa: E402  (sibling module)
 import onnx_meta  # noqa: E402  (sibling module)
 import checkpoints  # noqa: E402
 import semi_supervised  # noqa: E402  (T19 pseudo-label training; inert unless --semi-supervised)
+import attention_export  # noqa: E402  (T24a attn_lstm architecture and its attention sidecar; inert unless --arch attn_lstm)
 
 # --- Defaults (named; no magic numbers) -------------------------------------
 
 DEFAULT_ARCH: str = "lstm"
-ARCHES: Tuple[str, str] = ("lstm", "cnn")
+ARCHES: Tuple[str, ...] = ("lstm", "cnn", attention_export.ARCH)
 DEFAULT_HIDDEN: int = 64
 DEFAULT_LAYERS: int = 2
 DEFAULT_DROPOUT: float = 0.2
@@ -145,11 +146,14 @@ class SoftmaxExport(nn.Module):
         return torch.softmax(self.base(x), dim=-1)
 
 
-def build_model(arch: str, channels: int, hidden: int, layers: int, dropout: float, out_dim: int) -> nn.Module:
+def build_model(arch: str, channels: int, hidden: int, layers: int, dropout: float, out_dim: int, heads: int | None = None) -> nn.Module:
     if arch == "lstm":
         return LstmClassifier(channels, hidden, layers, dropout, out_dim)
     if arch == "cnn":
         return CnnClassifier(channels, hidden, dropout, out_dim)
+    if arch == attention_export.ARCH:  # T24a: ``heads`` is read by this architecture only; every other caller is unaffected
+        return attention_export.AttentionLstmClassifier(
+            channels, hidden, layers, dropout, out_dim, attention_export.DEFAULT_HEADS if heads is None else heads)
     raise ValueError(f"Unknown arch {arch!r}; expected one of {ARCHES}")
 
 
@@ -198,7 +202,7 @@ def validate_checkpoint(path):
     contract = context["contract"]
     model = build_model(contract["arch"], len(contract["ordered_channels"]), contract["hidden"],
                         contract["layers"], contract["dropout"],
-                        1 if contract["target_type"] == "regression" else NUM_CLASSES)
+                        1 if contract["target_type"] == "regression" else NUM_CLASSES, heads=contract.get("heads"))
     for key in ("best_state", "model"):
         if any(not isinstance(v, torch.Tensor) or not torch.isfinite(v).all() for v in restored[key].values()):
             raise ValueError("nonfinite or invalid checkpoint weights")
@@ -315,7 +319,7 @@ def train_model(args: argparse.Namespace) -> Tuple[nn.Module, int, dict, dict]:
     x_va = torch.from_numpy(x_va_np)
     y_va = torch.from_numpy(y_va_np)
 
-    model = build_model(args.arch, channels, args.hidden, args.layers, args.dropout, out_dim)
+    model = build_model(args.arch, channels, args.hidden, args.layers, args.dropout, out_dim, heads=args.heads)
     restored = None
     if session.source is not None:
         restored = validate_checkpoint(args.init_from)
@@ -575,6 +579,9 @@ def _parse_args(argv) -> argparse.Namespace:
     p.add_argument("--threshold", type=float, default=ds.DEFAULT_THRESHOLD)
     p.add_argument("--hidden", type=int, default=DEFAULT_HIDDEN)
     p.add_argument("--layers", type=int, default=DEFAULT_LAYERS)
+    p.add_argument("--heads", type=int, default=None,
+                   help=f"Attention heads of --arch {attention_export.ARCH} (default {attention_export.DEFAULT_HEADS}, 1..{attention_export.MAX_HEADS}, "
+                        "must divide --hidden); not accepted for another architecture.")
     p.add_argument("--dropout", type=float, default=DEFAULT_DROPOUT)
     p.add_argument("--epochs", type=int, default=DEFAULT_EPOCHS)
     p.add_argument("--batch", type=int, default=DEFAULT_BATCH)
@@ -620,6 +627,17 @@ def _parse_args(argv) -> argparse.Namespace:
     if cpcv_spec is not None and (args.outer_fold_index is not None or ds.holdout_segment_requested(args)
                                   or args.bag_index is not None):
         raise SystemExit("CPCV combinations are evaluation-only fits: no outer fold, calibration or bagging")
+    if args.arch == attention_export.ARCH:
+        if args.heads is None:
+            args.heads = attention_export.DEFAULT_HEADS
+        try:
+            attention_export.validate_heads(args.hidden, args.heads)
+        except ValueError as exc:
+            raise SystemExit(f"--heads: {exc}") from exc
+        if args.pretrain != PRETRAIN_NONE:
+            raise SystemExit(f"--pretrain is not supported for --arch {attention_export.ARCH}")
+    elif args.heads is not None:
+        raise SystemExit(f"--heads requires --arch {attention_export.ARCH}")
     if args.pretrain != PRETRAIN_NONE:
         if args.initialization_mode == "fine_tune":
             raise SystemExit("--pretrain cannot be combined with FineTune initialization")
@@ -716,6 +734,11 @@ def main(argv) -> int:
     if not args.no_verify:
         verify_onnx(args.out, model, channels, args.window, target_type=args.target_type)
         args._checkpoint_session.exported(args.out)
+    if args.arch == attention_export.ARCH:  # T24a: the optional attention sidecar beside the final production file
+        sidecar = attention_export.export_sidecar(model, args.out, window=args.window, channels=channels, opset=args.opset,
+                                                  feature_contract_hash=fixed_scaler.contract_hash(contract))
+        delta = attention_export.verify_sidecar(sidecar, model, args.out, window=args.window, channels=channels)
+        print(f"wrote {sidecar} (attention [batch, {model.heads}, {args.window}, {args.window}], torch-vs-ort max delta {delta:.2e})")
     return 0
 
 
@@ -845,6 +868,24 @@ def _run_selfcheck() -> None:
         raise AssertionError("expected SystemExit for malformed --indicator-channel-export-paths JSON")
     except SystemExit:
         pass
+
+    # (i) T24a: attn_lstm is an opt-in architecture: accepted with a default / explicit head count, validated, and never leaks into another arch
+    attn_args = _parse_args(["--arch", attention_export.ARCH])
+    assert attn_args.heads == attention_export.DEFAULT_HEADS and _parse_args([]).heads is None
+    assert _parse_args(["--arch", attention_export.ARCH, "--heads", "2", "--hidden", "8"]).heads == 2
+    for bad_attention_args in (["--heads", "2"], ["--arch", "cnn", "--heads", "2"], ["--arch", attention_export.ARCH, "--hidden", "6"],
+                               ["--arch", attention_export.ARCH, "--heads", "0"], ["--arch", attention_export.ARCH, "--heads", "17"],
+                               ["--arch", attention_export.ARCH, "--pretrain", "masked_reconstruction"]):
+        try:
+            _parse_args(bad_attention_args)
+        except SystemExit:
+            pass
+        else:  # pragma: no cover
+            raise AssertionError(f"{bad_attention_args} must be rejected")
+    attn_model = build_model(attention_export.ARCH, channels=3, hidden=8, layers=1, dropout=0.0, out_dim=NUM_CLASSES, heads=2)
+    assert attn_model(torch.randn(2, 5, 3)).shape == (2, NUM_CLASSES) and attn_model.heads == 2
+    assert build_model(attention_export.ARCH, 3, 8, 1, 0.0, 1)(torch.randn(2, 5, 3)).shape == (2, 1)
+    assert isinstance(build_model("lstm", 3, 8, 1, 0.0, NUM_CLASSES, heads=2), LstmClassifier), "heads is ignored by the other architectures"
 
     print("train_pytorch.py selfcheck: OK")
 

@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
@@ -34,6 +36,13 @@ internal static class EnsembleValidationErrors
     }
 }
 
+/// <summary>
+/// What decides whether classification generations can be members of one ensemble: the time frame, the horizon, the class label SET and the two target
+/// definition values stored in the ONNX metadata. Generations with an equal <see cref="Key"/> can be mixed; the window, the architecture and the
+/// evaluation revision are not part of the rule (every member is preprocessed under its own contract).
+/// </summary>
+public sealed record EnsembleCompatibility(string Key, string Timeframe, int Horizon, string Labels, string NeutralThreshold, string PriceAdjustment);
+
 public sealed record EnsembleMember(string ModelId, double Weight);
 
 public sealed record EnsembleSpec(IReadOnlyList<EnsembleMember> Members)
@@ -52,6 +61,19 @@ public sealed record EnsembleSpec(IReadOnlyList<EnsembleMember> Members)
         double sum = Members.Sum(m => m.Weight);
         if (!double.IsFinite(sum) || sum <= 0 || Math.Abs(sum - 1) > SumTolerance)
             throw new InvalidOperationException("Ensemble weights must sum to one within tolerance.");
+    }
+
+    /// <summary>Prefix of <see cref="Fingerprint"/>, so an ensemble identity can never be mistaken for a single generation id.</summary>
+    public const string FingerprintPrefix = "ensemble:";
+
+    /// <summary>
+    /// The identity of this ensemble: SHA-256 over the ordered (generation id, weight) list. Two specs with the same members, weights and order have
+    /// the same fingerprint; any change of a member or a weight changes it.
+    /// </summary>
+    public string Fingerprint()
+    {
+        var text = string.Join("|", Members.Select(m => m.ModelId + "=" + m.Weight.ToString("R", CultureInfo.InvariantCulture)));
+        return FingerprintPrefix + Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(text))).ToLowerInvariant();
     }
 
     public static EnsembleSpec Equal(IEnumerable<string> modelIds)
@@ -99,6 +121,68 @@ public sealed class EnsembleSettingsManager : IEnsembleSettingsManager
 {
     public static EnsembleValidationFailure? GetValidationFailure(Exception exception) =>
         EnsembleValidationErrors.GetReason(exception);
+
+    // A registered generation is immutable and content-addressed, so what its ONNX metadata says never changes: read it once per process (least recently used out).
+    private static readonly BoundedLruCache<string, EnsembleCompatibility> CompatibilityCache = new(EnsembleLimits.MaxCachedCompatibilities, StringComparer.Ordinal);
+
+    /// <summary>Entries currently held by the compatibility cache (for the test of its bound).</summary>
+    internal static int CompatibilityCacheCount => CompatibilityCache.Count;
+
+    /// <summary>
+    /// The compatibility of <paramref name="manifest"/> for ensembles, or null when it can never be an ensemble member (not a classification model,
+    /// invalid class labels) or cannot be read right now (the generation is unavailable). This is the single definition
+    /// <see cref="ValidateGenerations"/> compares too, so "same group" and "can be saved together" cannot drift apart.
+    /// </summary>
+    public static EnsembleCompatibility? Describe(ModelGenerationManifest manifest, IModelGenerationRegistry registry)
+    {
+        if (manifest.TargetType != PredictionModelMetadata.TargetTypeClassification
+            || !PredictionModelMetadata.HasValidClassOrder(manifest.ClassOrder)) return null;
+        if (CompatibilityCache.TryGet(manifest.ModelId, out var cached)) return cached;
+        try
+        {
+            var compatibility = ReadCompatibility(manifest, registry);
+            CompatibilityCache.TryAdd(manifest.ModelId, compatibility);
+            return compatibility;
+        }
+        catch (Exception error) when (error is InvalidOperationException or InvalidDataException or IOException or OnnxRuntimeException)
+        {
+            return null;
+        }
+    }
+
+    private static EnsembleCompatibility ReadCompatibility(ModelGenerationManifest manifest, IModelGenerationRegistry registry)
+    {
+        using var lease = registry.Acquire(manifest.ModelId)
+            ?? throw EnsembleValidationErrors.Create($"Generation '{manifest.ModelId}' is unavailable.",
+                EnsembleValidationFailure.MissingGeneration);
+        using var session = new InferenceSession(lease.ModelPath);
+        return BuildCompatibility(manifest, session.ModelMetadata.CustomMetadataMap);
+    }
+
+    /// <summary>
+    /// The pure part of <see cref="ReadCompatibility"/>. A generation whose metadata lacks <see cref="PredictionModelMetadata.NeutralThresholdKey"/> or
+    /// <see cref="PredictionModelMetadata.PriceAdjustmentKey"/> cannot be shown to share the label rule and the price basis of the other members, so it is
+    /// not an ensemble candidate (the Python trainers always write both).
+    /// </summary>
+    internal static EnsembleCompatibility BuildCompatibility(ModelGenerationManifest manifest, IReadOnlyDictionary<string, string> metadata)
+    {
+        if (manifest.TargetType != PredictionModelMetadata.TargetTypeClassification)
+            throw EnsembleValidationErrors.Create("Only classification generations can be ensembled.",
+                EnsembleValidationFailure.IncompatibleContract);
+        if (!PredictionModelMetadata.HasValidClassOrder(manifest.ClassOrder))
+            throw EnsembleValidationErrors.Create("Generation class labels are invalid.",
+                EnsembleValidationFailure.IncompatibleContract);
+        string neutral = RequiredMetadata(manifest, metadata, PredictionModelMetadata.NeutralThresholdKey);
+        string price = RequiredMetadata(manifest, metadata, PredictionModelMetadata.PriceAdjustmentKey);
+        string labels = string.Join(",", manifest.ClassOrder.Split(',').OrderBy(label => label, StringComparer.Ordinal));
+        string key = string.Join("\n", manifest.Timeframe, manifest.Horizon.ToString(CultureInfo.InvariantCulture), labels, neutral, price);
+        return new EnsembleCompatibility(key, manifest.Timeframe, manifest.Horizon, labels, neutral, price);
+    }
+
+    private static string RequiredMetadata(ModelGenerationManifest manifest, IReadOnlyDictionary<string, string> metadata, string key) =>
+        metadata.GetValueOrDefault(key) is { } value && !string.IsNullOrWhiteSpace(value)
+            ? value
+            : throw EnsembleValidationErrors.Create($"Generation '{manifest.ModelId}' has no '{key}' metadata.", EnsembleValidationFailure.IncompatibleContract);
 
     private readonly string _path;
     private readonly IModelGenerationRegistry _registry;
@@ -148,33 +232,15 @@ public sealed class EnsembleSettingsManager : IEnsembleSettingsManager
     public static void ValidateGenerations(EnsembleSpec spec, IModelGenerationRegistry registry)
     {
         spec.Validate();
-        ModelGenerationManifest? first = null;
-        HashSet<string>? labels = null;
-        string? targetDefinition = null;
+        EnsembleCompatibility? first = null;
         foreach (var member in spec.Members)
         {
             var manifest = registry.GetManifest(member.ModelId)
                 ?? throw EnsembleValidationErrors.Create($"Generation '{member.ModelId}' is unavailable.",
                     EnsembleValidationFailure.MissingGeneration);
-            using var lease = registry.Acquire(member.ModelId)
-                ?? throw EnsembleValidationErrors.Create($"Generation '{member.ModelId}' is unavailable.",
-                    EnsembleValidationFailure.MissingGeneration);
-            using var session = new InferenceSession(lease.ModelPath);
-            var metadata = session.ModelMetadata.CustomMetadataMap;
-            string definition = (metadata.GetValueOrDefault("neutral_threshold") ?? "") + "\n"
-                + (metadata.GetValueOrDefault("price_adjustment") ?? "");
-            if (manifest.TargetType != PredictionModelMetadata.TargetTypeClassification)
-                throw EnsembleValidationErrors.Create("Only classification generations can be ensembled.",
-                    EnsembleValidationFailure.IncompatibleContract);
-            var row = manifest.ClassOrder.Split(',');
-            var set = new HashSet<string>(row, StringComparer.Ordinal);
-            if (!PredictionModelMetadata.HasValidClassOrder(manifest.ClassOrder))
-                throw EnsembleValidationErrors.Create("Generation class labels are invalid.",
-                    EnsembleValidationFailure.IncompatibleContract);
-            if (first is null) { first = manifest; labels = set; targetDefinition = definition; }
-            else if (manifest.Timeframe != first.Timeframe || manifest.Horizon != first.Horizon
-                || manifest.TargetType != first.TargetType || !labels!.SetEquals(set)
-                || definition != targetDefinition)
+            var compatibility = ReadCompatibility(manifest, registry);
+            if (first is null) first = compatibility;
+            else if (compatibility.Key != first.Key)
                 throw EnsembleValidationErrors.Create("Ensemble generations have incompatible target, timeframe, horizon, or class labels.",
                     EnsembleValidationFailure.IncompatibleContract);
         }

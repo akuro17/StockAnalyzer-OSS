@@ -25,6 +25,12 @@ namespace StockAnalyzer.Core.Tests.Services
     /// are covered by <see cref="TrainingProtocolLineTests"/> and were exercised end-to-end
     /// manually against real data during Task 3 (see the feature's step log).
     /// </summary>
+    /// <remarks>
+    /// Runs in the <c>ChildProcess</c> collection (alone): the orchestrator starts the fake interpreter as a real child process, which inherits the
+    /// open ONNX model handles of any test running beside it and keeps their temp folders locked while it lives (R2-5). The guard test cannot see
+    /// this because the process is started by production code, not by a starter this file calls.
+    /// </remarks>
+    [Collection("ChildProcess")]
     public class TrainingOrchestratorTests : IDisposable
     {
         // None of these tests configure PredictionFeatureMode.ComposedFeatures with an Indicator

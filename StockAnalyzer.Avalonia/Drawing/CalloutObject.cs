@@ -165,7 +165,7 @@ public class CalloutObject : IChartObject, IDisposable, ITextAnnotatedObject
             Color = DrawingThemeContext.MainTextSkColor,
             IsAntialias = true,
             TextSize = (float)_fontSize,
-            Typeface = SKTypeface.Default
+            Typeface = DrawingThemeContext.DefaultTextTypeface
         };
 
         _bgPaint = new SKPaint

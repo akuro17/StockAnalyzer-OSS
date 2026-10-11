@@ -362,13 +362,17 @@ public class TickerBacktestMetricsTests
         var engine = new StockAnalyzer.Core.Services.Backtest.Engine.BacktestEngine(new IndicatorFactory());
         var reportGen = new StockAnalyzer.Core.Services.Backtest.Reporting.BacktestReportGenerator();
 
-        var today = DateTime.UtcNow.Date;
+        // A fixed evaluation window: with a window that moves with the clock the profit factor changes
+        // (0.0520 for a start on or before 2025-10-10, 0.0510 from 2025-10-11), so the expectation below
+        // would silently expire.
+        var windowStart = new DateTime(2025, 10, 9, 0, 0, 0, DateTimeKind.Utc);
+        var windowEnd = new DateTime(2026, 10, 9, 0, 0, 0, DateTimeKind.Utc);
         var prepService = new StockAnalyzer.Avalonia.Services.BacktestRunPreparationService(dataService);
         var snapshot = new StockAnalyzer.Avalonia.Services.BacktestRunSnapshot(
             "AAPL",
             TimeFrame.D1,
-            today.AddYears(-1),
-            today,
+            windowStart,
+            windowEnd,
             new BacktestConfiguration
             {
                 ExecutionModel = ExecutionModel.Legacy,
@@ -552,7 +556,7 @@ public class TickerBacktestMetricsTests
         Assert.Equal(symbols.Length, evaluatedCount);
     }
 
-    [Fact]
+    [AvaloniaFact]
     public void MetricValueBrushConverter_NeutralMetricsAndNull_ReturnUnsetValue()
     {
         var neutralDefs = BacktestMetricCatalog.Definitions.Where(d => d.Rule == BacktestMetricSemanticRule.Neutral).ToList();

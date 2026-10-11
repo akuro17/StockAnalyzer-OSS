@@ -1,0 +1,200 @@
+{
+  "config": {
+    "batch": 8,
+    "common_end": "2022-11-28",
+    "corr_window": 10,
+    "data_revision": "b9665397921b9699f1beaacbd20ca80afc6d238489849f0c5ad17839eb2af72e",
+    "dropout": 0.1,
+    "edge_threshold": 0.5,
+    "encoder_layers": 1,
+    "epochs": 8,
+    "feature_mode": "ohlcv_minmax",
+    "gap": 12,
+    "hidden": 4,
+    "horizon": 2,
+    "lr": 0.01,
+    "min_nodes": 2,
+    "node_order": [
+      "AAA",
+      "BBB",
+      "CCC"
+    ],
+    "oos_tail_days": 30,
+    "seed": 11,
+    "threshold": 0.005,
+    "weight_decay": 0.0001,
+    "window": 6
+  },
+  "config_sha256": "bb917157af04e41ace83906b8be103101463f2811eb135deb01a1da52500324d",
+  "contract": {
+    "com.stockanalyzer.graph.channels": "5",
+    "com.stockanalyzer.graph.class_order": "Up,Down,Neutral",
+    "com.stockanalyzer.graph.contract_version": "1",
+    "com.stockanalyzer.graph.corr_window": "10",
+    "com.stockanalyzer.graph.edge_threshold": "0.5",
+    "com.stockanalyzer.graph.feature_mode": "ohlcv_minmax",
+    "com.stockanalyzer.graph.horizon": "2",
+    "com.stockanalyzer.graph.min_nodes": "2",
+    "com.stockanalyzer.graph.node_order": "[\"AAA\",\"BBB\",\"CCC\"]",
+    "com.stockanalyzer.graph.timeframe": "daily",
+    "com.stockanalyzer.graph.window": "6"
+  },
+  "created_utc": "2026-10-10T20:29:33.258939+00:00",
+  "data": {
+    "common_end": "2022-11-28",
+    "data_revision": "b9665397921b9699f1beaacbd20ca80afc6d238489849f0c5ad17839eb2af72e",
+    "oos_consumed": false,
+    "oos_tail_days": 30,
+    "symbols": [
+      "AAA",
+      "BBB",
+      "CCC"
+    ],
+    "timeframe": "daily"
+  },
+  "elapsed_seconds": 2.406,
+  "fixture_note": "test fixture: the published run format with a seeded random model (not a trained one)",
+  "kind": "Graph",
+  "model": {
+    "file": "graph.onnx",
+    "parameter_count": 246,
+    "sha256": "f5ce2aa1d2b0b0865f2be42b3e411ce7af386bdabb3066d5c90a45f2d18a834c"
+  },
+  "node_order": [
+    "AAA",
+    "BBB",
+    "CCC"
+  ],
+  "notices": [
+    "descriptive_validation_report_not_advice",
+    "no_empirical_basis_for_default_hyperparameters",
+    "real_world_validation_unverified",
+    "purge_gap_covers_the_correlation_lookback",
+    "symbols_are_contemporaneous_cross_symbol_time_overlap_is_not_purged"
+  ],
+  "rng_policy": "per_epoch_seed_sequence",
+  "runtime": {
+    "device": "cpu",
+    "numpy": "2.5.2",
+    "torch": "2.13.0+cpu"
+  },
+  "samples": {
+    "gap": 12,
+    "gap_basis": "dataset.resolve_purge_gap(max(window, corr_window + 1) = 11, horizon)",
+    "sample_dates": 293,
+    "train_dates": 240,
+    "validation_dates": 41
+  },
+  "schema_version": 1,
+  "status": "available",
+  "thresholds_basis": "user_supplied",
+  "tool": "train_gnn.py",
+  "tool_version": "1",
+  "training": {
+    "curve": [
+      {
+        "epoch": 1,
+        "train_loss": 1.103417686621348,
+        "validation_loss": 1.1002259739046174
+      },
+      {
+        "epoch": 2,
+        "train_loss": 1.1018585999806723,
+        "validation_loss": 1.1059621834173434
+      },
+      {
+        "epoch": 3,
+        "train_loss": 1.0987127502759297,
+        "validation_loss": 1.1008170814048954
+      },
+      {
+        "epoch": 4,
+        "train_loss": 1.0976998170216878,
+        "validation_loss": 1.0998344983511823
+      },
+      {
+        "epoch": 5,
+        "train_loss": 1.099990928173065,
+        "validation_loss": 1.1030550681478608
+      },
+      {
+        "epoch": 6,
+        "train_loss": 1.0982850193977356,
+        "validation_loss": 1.1011822281814203
+      },
+      {
+        "epoch": 7,
+        "train_loss": 1.0992881099383036,
+        "validation_loss": 1.1008508418633687
+      },
+      {
+        "epoch": 8,
+        "train_loss": 1.0988831281661988,
+        "validation_loss": 1.100392783560404
+      }
+    ],
+    "epochs": 8
+  },
+  "validation": {
+    "labeled_nodes": 123,
+    "loss": 1.100392783560404,
+    "majority_class_accuracy": 0.37398373983739835,
+    "report": {
+      "accuracy": 0.3252032520325203,
+      "accuracy_over_baseline": -0.04878048780487804,
+      "auc_ovr": 0.5,
+      "brier": 0.6678555307343483,
+      "class_labels": [
+        "Up",
+        "Down",
+        "Neutral"
+      ],
+      "confusion_matrix": [
+        [
+          0,
+          37,
+          0
+        ],
+        [
+          0,
+          40,
+          0
+        ],
+        [
+          0,
+          46,
+          0
+        ]
+      ],
+      "macro_f1": 0.16359918200409,
+      "majority_baseline_accuracy": 0.37398373983739835,
+      "multi_logloss": 1.1003927247319063,
+      "n_samples": 123,
+      "per_class": {
+        "Down": {
+          "f1": 0.49079754601226994,
+          "precision": 0.3252032520325203,
+          "recall": 1.0,
+          "support": 40
+        },
+        "Neutral": {
+          "f1": 0.0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "support": 46
+        },
+        "Up": {
+          "f1": 0.0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "support": 37
+        }
+      }
+    },
+    "status": "available"
+  },
+  "verification": {
+    "onnx_torch_max_delta": 2.9802322387695312e-08,
+    "real_world_validation": "unverified"
+  }
+}

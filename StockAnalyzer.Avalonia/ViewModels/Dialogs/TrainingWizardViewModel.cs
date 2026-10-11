@@ -9,7 +9,9 @@ using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using CommunityToolkit.Mvvm.Messaging;
 using Microsoft.Extensions.Logging;
+using PredictionConfigurationChangedMessage = StockAnalyzer.Avalonia.Common.PredictionConfigurationChangedMessage;
 using Microsoft.Extensions.Logging.Abstractions;
 using StockAnalyzer.Avalonia.Services;
 using StockAnalyzer.Avalonia.ViewModels.TickerList;
@@ -47,10 +49,54 @@ public sealed partial class TrainingSourceTreeItem : ObservableObject
 public partial class TrainingHyperparameterEntry : ObservableObject
 {
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SelectedOption))]
+    [NotifyPropertyChangedFor(nameof(KeyDescription))]
     private string _key = string.Empty;
 
     [ObservableProperty]
     private string _value = string.Empty;
+
+    /// <summary>Why this row cannot be passed to the trainer (value outside its domain, or a key entered twice); null = acceptable. Set by the wizard.</summary>
+    [ObservableProperty]
+    private string? _validationMessage;
+
+    /// <summary>
+    /// What the key list binds to. The list clears its selection while its items are replaced (a framework change); a null it writes back must not erase
+    /// the key, so the wizard raises this property again afterwards. Options are value records, so the list finds this one among its items.
+    /// </summary>
+    public TrainingHyperparameterOption? SelectedOption
+    {
+        get => TrainingHyperparameterCatalog.Find(Key) is { } definition ? TrainingHyperparameterOption.From(definition) : null;
+        set
+        {
+            if (value is not null) Key = value.Key;
+        }
+    }
+
+    internal void RefreshSelectedOption() => OnPropertyChanged(nameof(SelectedOption));
+
+    /// <summary>The tooltip of the chosen key (null for an empty or unknown key).</summary>
+    public string? KeyDescription => TrainingHyperparameterOption.DescriptionOf(Key);
+
+    /// <summary>Choosing a key brings the trainer's default value, unless the owner already typed another value.</summary>
+    partial void OnKeyChanged(string? oldValue, string newValue)
+    {
+        if (TrainingHyperparameterCatalog.Find(newValue) is not { } definition) return;
+        var previousDefault = TrainingHyperparameterCatalog.Find(oldValue)?.DefaultValue;
+        if (string.IsNullOrWhiteSpace(Value) || Value == previousDefault) Value = definition.DefaultValue;
+    }
+}
+
+/// <summary>One entry of the wizard's hyperparameter key list: the key, the trainer's default and the short explanation shown as a tooltip.</summary>
+public sealed record TrainingHyperparameterOption(string Key, string DefaultValue, string Description)
+{
+    public static string LocalizationKey(TrainingHyperparameterDefinition definition) => "TrainingWizard_Hp_" + definition.LocalizationId;
+
+    public static TrainingHyperparameterOption From(TrainingHyperparameterDefinition definition) =>
+        new(definition.Key, definition.DefaultValue, LocalizationManager.Instance[LocalizationKey(definition)]);
+
+    internal static string? DescriptionOf(string? key) =>
+        TrainingHyperparameterCatalog.Find(key) is { } definition ? LocalizationManager.Instance[LocalizationKey(definition)] : null;
 }
 
 /// <summary>
@@ -79,11 +125,12 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
     private static readonly IReadOnlyDictionary<TrainingFramework, string[]> ArchitecturesByFramework =
         new Dictionary<TrainingFramework, string[]>
         {
-            [TrainingFramework.PyTorch] = new[] { "lstm", "cnn" },
+            [TrainingFramework.PyTorch] = new[] { "lstm", "cnn", AttentionContract.Architecture },
             [TrainingFramework.LightGBM] = new[] { TrainingEnsembleContract.LightGbmArchitecture },
             [TrainingFramework.TensorFlow] = new[] { "lstm", "gru", "cnn" },
         };
 
+    private readonly IMessenger _messenger = WeakReferenceMessenger.Default;
     private readonly ITrainingOrchestrator? _orchestrator;
     private readonly IModelDeploymentService? _modelDeploymentService;
     private readonly IEnsembleSettingsManager? _ensembleSettings;
@@ -154,9 +201,13 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
             // default purge gap rather than throwing out of this getter, matching splitCount above.
             try
             {
-                var minBars = WalkForwardDataRequirement.MinimumRawBars(
+                // The whole run, not only the last fold: every outer fold plus its inner validation split (and the calibration /
+                // stacking meta segment of the release fold) must exist, otherwise the trainer stops before it starts.
+                var minBars = WalkForwardDataRequirement.MinimumRawBarsForTraining(
                     WindowSize, Horizon, splitCount, Gap is >= 0 ? Gap : null,
-                    maxLag: UseFixedZScore && TryParseLags(out var lags) ? lags.DefaultIfEmpty().Max() : 0);
+                    maxLag: UseFixedZScore && TryParseLags(out var lags) ? lags.DefaultIfEmpty().Max() : 0,
+                    calibrationSegment: UseCalibration
+                        || (IsStackingSelected && SelectedStackingWeightSource == StackingWeightSource.ReleaseMetaSegment));
                 return string.Format(minBarsTemplate, minBars);
             }
             catch (OverflowException)
@@ -312,6 +363,7 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(StartTrainingCommand))]
     [NotifyPropertyChangedFor(nameof(CalibrationValidationMessage))]
+    [NotifyPropertyChangedFor(nameof(WindowUnitNote))]
     private bool _useCalibration;
 
     /// <summary>Calibration is defined for classification models whose source is not manifest-prepared.</summary>
@@ -327,6 +379,7 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsBaggingSelected))]
     [NotifyPropertyChangedFor(nameof(IsStackingSelected))]
+    [NotifyPropertyChangedFor(nameof(WindowUnitNote))]
     private TrainingEnsembleMethod _selectedEnsembleMethod = TrainingEnsembleMethod.None;
 
     public bool IsBaggingSelected => SelectedEnsembleMethod == TrainingEnsembleMethod.Bagging;
@@ -343,6 +396,7 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
     public static IReadOnlyList<StackingWeightSource> AvailableStackingWeightSources { get; } = Enum.GetValues<StackingWeightSource>();
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(WindowUnitNote))]
     private StackingWeightSource _selectedStackingWeightSource = StackingWeightSource.PastOutOfFold;
 
     /// <summary>The source of the run whose ensemble may be registered next; the weight-transfer note applies to past out-of-fold weights only.</summary>
@@ -414,6 +468,8 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
                         TrainingCpcvContract.MaxGroups, TrainingCpcvContract.MaxCombinations);
             }
 
+            if (UsePretraining && AttentionContract.IsAttentionArchitecture(SelectedArchitecture))
+                return string.Format(Text("TrainingWizard_Validation_PretrainingAttention"), AttentionContract.Architecture);
             return UsePretraining && (SelectedFramework != TrainingFramework.PyTorch
                     || SelectedInitializationMode == TrainingInitializationMode.FineTune)
                 ? Text("TrainingWizard_Validation_Pretraining") : null;
@@ -423,7 +479,12 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
     protected override void OnPropertyChanged(System.ComponentModel.PropertyChangedEventArgs e)
     {
         base.OnPropertyChanged(e);
-        if (e.PropertyName is nameof(SelectedTargetType) or nameof(SelectedFramework) or nameof(SelectedInitializationMode)
+        if (e.PropertyName is nameof(SelectedFramework) or nameof(SelectedArchitecture))
+        {
+            RefreshHyperparameterOptions();
+            RefreshHyperparameterValidation();
+        }
+        if (e.PropertyName is nameof(SelectedTargetType) or nameof(SelectedFramework) or nameof(SelectedArchitecture) or nameof(SelectedInitializationMode)
             or nameof(UseCalibration) or nameof(SelectedEnsembleMethod) or nameof(EnsembleMembers)
             or nameof(StackingBasesText) or nameof(UsePretraining) or nameof(UseCpcv) or nameof(CpcvGroups)
             or nameof(CpcvTestGroups))
@@ -600,8 +661,9 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
         ITemplateService? templateService = null,
         Services.IToastNotificationService? toastService = null, IRetrainingScheduler? retrainingScheduler = null,
         IEnsembleSettingsManager? ensembleSettings = null,
-        ITickerStateStore? tickerStore = null)
+        ITickerStateStore? tickerStore = null, IMessenger? messenger = null)
     {
+        _messenger = messenger ?? WeakReferenceMessenger.Default;
         _tickerStore = tickerStore;
         _orchestrator = orchestrator;
         _ensembleSettings = ensembleSettings;
@@ -626,6 +688,7 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
         };
 
         CpcvResults.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasCpcvResults));
+        Hyperparameters.CollectionChanged += OnHyperparametersChanged;
 
         FoldResults.CollectionChanged += (_, _) =>
         {
@@ -650,7 +713,9 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
     private void OnLocaleChanged(object? sender, EventArgs e)
     {
         OnPropertyChanged(nameof(CurrentStageDisplay));
+        OnPropertyChanged(nameof(SelectedSymbolSummary));
         RefreshClipSigmaValidation();
+        RefreshHyperparameterValidation();
     }
 
     private async Task InitializeAsync()
@@ -705,6 +770,7 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
         _sourceTreeBuilt = true;
         _resolvedSymbols = null;
         OnPropertyChanged(nameof(HasSourceTree));
+        OnPropertyChanged(nameof(SelectedSymbolSummary));
         StartTrainingCommand.NotifyCanExecuteChanged();
     }
 
@@ -770,10 +836,26 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
     {
         if (e.PropertyName == nameof(TrainingSourceTreeItem.IsSelected))
         {
+            // "All tickers" is ticked at first; ticking any other list means the owner wants that list, not everything, so it is unticked
+            // (ticking "All tickers" itself, or unticking a list, changes nothing else).
+            // The notice shows only right after an automatic untick: every selection change clears it first (the nested change of the untick included).
+            SourceTreeNotice = null;
+            if (sender is TrainingSourceTreeItem { IsSelected: true, Node: not AllTickersNode })
+            {
+                var unticked = Flatten(SourceTree).Where(i => i.Node is AllTickersNode && i.IsSelected).ToArray();
+                foreach (var all in unticked) all.IsSelected = false;
+                if (unticked.Length > 0) SourceTreeNotice = LocalizationManager.Instance["TrainingWizard_AllTickersUntickedNotice"];
+            }
+
             _resolvedSymbols = null;
+            OnPropertyChanged(nameof(SelectedSymbolSummary));
             StartTrainingCommand.NotifyCanExecuteChanged();
         }
     }
+
+    /// <summary>How many tickers the ticked rows add up to (the union the run trains on), so a row ticked by default is not overlooked.</summary>
+    public string SelectedSymbolSummary => string.Format(System.Globalization.CultureInfo.CurrentCulture,
+        LocalizationManager.Instance["TrainingWizard_SelectedTickers"], ResolveSymbols().Length);
 
     partial void OnSelectedFrameworkChanged(TrainingFramework value)
     {
@@ -798,15 +880,139 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
     }
 
     [RelayCommand]
-    private void AddHyperparameter() => Hyperparameters.Add(new TrainingHyperparameterEntry());
+    private void AddHyperparameter()
+    {
+        HyperparameterNotice = null;
+        Hyperparameters.Add(new TrainingHyperparameterEntry());
+    }
 
     [RelayCommand]
     private void RemoveHyperparameter(TrainingHyperparameterEntry? entry)
     {
+        HyperparameterNotice = null;
         if (entry is not null)
         {
             Hyperparameters.Remove(entry);
         }
+    }
+
+    private IReadOnlyList<TrainingHyperparameterOption>? _hyperparameterOptions;
+
+    /// <summary>The keys the trainer of the chosen framework / architecture accepts, with their defaults and tooltips.</summary>
+    public IReadOnlyList<TrainingHyperparameterOption> HyperparameterOptions =>
+        _hyperparameterOptions ??= TrainingHyperparameterCatalog.For(SelectedFramework, SelectedArchitecture)
+            .Select(TrainingHyperparameterOption.From).ToArray();
+
+    /// <summary>Which rows were removed because the chosen framework / architecture does not accept their key (null = none).</summary>
+    [ObservableProperty]
+    private string? _hyperparameterNotice;
+
+    /// <summary>The keys of the rows that are not in the key list (null = none). Informational: the trainer rejects an unknown flag, but Start stays possible.</summary>
+    [ObservableProperty]
+    private string? _unknownKeyNotice;
+
+    /// <summary>Set when "All tickers" was unticked automatically because a list was ticked (null otherwise). Informational.</summary>
+    [ObservableProperty]
+    private string? _sourceTreeNotice;
+
+    /// <summary>The attention architecture needs <c>hidden</c> to be a multiple of <c>heads</c>; this names the violating pair (null = fine). Blocks Start.</summary>
+    [ObservableProperty]
+    private string? _hyperparameterDependencyMessage;
+
+    /// <summary>The rows whose edits are observed. <c>Clear()</c> raises a reset without the removed rows, so the removed ones are found by this list.</summary>
+    private readonly List<TrainingHyperparameterEntry> _observedHyperparameters = new();
+
+    private void OnHyperparametersChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+    {
+        foreach (var entry in _observedHyperparameters.Where(observed => !Hyperparameters.Contains(observed)).ToArray())
+        {
+            entry.PropertyChanged -= OnHyperparameterEntryChanged;
+            _observedHyperparameters.Remove(entry);
+        }
+        foreach (var entry in Hyperparameters.Where(row => !_observedHyperparameters.Contains(row)))
+        {
+            entry.PropertyChanged += OnHyperparameterEntryChanged;
+            _observedHyperparameters.Add(entry);
+        }
+        RefreshHyperparameterValidation();
+    }
+
+    private void OnHyperparameterEntryChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(TrainingHyperparameterEntry.Key) or nameof(TrainingHyperparameterEntry.Value)) RefreshHyperparameterValidation();
+    }
+
+    /// <summary>
+    /// Recomputes the row messages, the unknown-key notice and the heads / hidden dependency. Rows with an empty key are ignored, as they are when the run
+    /// starts. A key entered twice (also as <c>epochs</c> and <c>--epochs</c>) is one trainer flag and blocks Start, which also keeps the dictionary of the run
+    /// configuration from receiving two equal keys.
+    /// </summary>
+    private void RefreshHyperparameterValidation()
+    {
+        var localization = LocalizationManager.Instance;
+        var culture = System.Globalization.CultureInfo.CurrentCulture;
+        var filled = Hyperparameters.Where(h => !string.IsNullOrWhiteSpace(h.Key)).ToArray();
+        var duplicates = TrainingHyperparameterCatalog.FindDuplicates(filled.Select(h => h.Key)).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var row in Hyperparameters)
+        {
+            if (string.IsNullOrWhiteSpace(row.Key)) row.ValidationMessage = null;
+            else if (duplicates.Contains(TrainingHyperparameterCatalog.Normalize(row.Key)))
+                row.ValidationMessage = string.Format(culture, localization["TrainingWizard_Hp_Error_DuplicateKey"], TrainingHyperparameterCatalog.Normalize(row.Key));
+            else row.ValidationMessage = DomainMessage(row.Key, row.Value);
+        }
+
+        var unknown = filled.Where(h => TrainingHyperparameterCatalog.Find(h.Key) is null).Select(h => h.Key.Trim()).ToArray();
+        UnknownKeyNotice = unknown.Length == 0 ? null : string.Format(culture, localization["TrainingWizard_Hp_UnknownKey"], string.Join(", ", unknown));
+
+        var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var row in filled) values.TryAdd(row.Key.Trim(), row.Value);
+        HyperparameterDependencyMessage = TrainingHyperparameterCatalog.ValidateAttentionHeads(SelectedArchitecture, values) == HyperparameterProblem.None
+            ? null
+            : FormatHeadsDependency(TrainingHyperparameterCatalog.ResolveHiddenAndHeads(values));
+        StartTrainingCommand.NotifyCanExecuteChanged();
+    }
+
+    private static string FormatHeadsDependency((long Hidden, long Heads) pair) => string.Format(System.Globalization.CultureInfo.CurrentCulture,
+        LocalizationManager.Instance["TrainingWizard_Hp_Error_HeadsDoNotDivideHidden"], pair.Hidden, pair.Heads);
+
+    /// <summary>The localized reason a value is outside the domain of its key, or null when it is acceptable (or the key is not judged).</summary>
+    private static string? DomainMessage(string key, string value)
+    {
+        var problem = TrainingHyperparameterCatalog.Validate(key, value);
+        if (problem == HyperparameterProblem.None || TrainingHyperparameterCatalog.Find(key) is not { Domain: { } domain } definition) return null;
+        var localization = LocalizationManager.Instance;
+        var culture = System.Globalization.CultureInfo.CurrentCulture;
+        string Bound(bool upper, string textKey) => string.Format(culture, localization[textKey], TrainingHyperparameterCatalog.LimitText(domain, upper));
+        return problem switch
+        {
+            HyperparameterProblem.NotInteger => string.Format(culture, localization["TrainingWizard_Hp_Error_NotInteger"], definition.Key),
+            HyperparameterProblem.NotNumber => string.Format(culture, localization["TrainingWizard_Hp_Error_NotNumber"], definition.Key),
+            HyperparameterProblem.NotFinite => string.Format(culture, localization["TrainingWizard_Hp_Error_NotFinite"], definition.Key),
+            HyperparameterProblem.BelowMinimum => string.Format(culture, localization["TrainingWizard_Hp_Error_BelowMinimum"], definition.Key,
+                Bound(upper: false, domain.MinimumInclusive ? "TrainingWizard_Hp_Bound_AtLeast" : "TrainingWizard_Hp_Bound_GreaterThan")),
+            HyperparameterProblem.AboveMaximum => string.Format(culture, localization["TrainingWizard_Hp_Error_AboveMaximum"], definition.Key,
+                Bound(upper: true, domain.MaximumInclusive ? "TrainingWizard_Hp_Bound_AtMost" : "TrainingWizard_Hp_Bound_LessThan")),
+            _ => null,
+        };
+    }
+
+    /// <summary>
+    /// A framework or architecture change replaces the key list. A row whose key the new trainer would reject is removed and named in
+    /// <see cref="HyperparameterNotice"/>, never dropped silently and never left to fail at launch.
+    /// </summary>
+    private void RefreshHyperparameterOptions()
+    {
+        _hyperparameterOptions = null;
+        OnPropertyChanged(nameof(HyperparameterOptions));
+        foreach (var row in Hyperparameters) row.RefreshSelectedOption();
+        var accepted = HyperparameterOptions.Select(o => o.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var rejected = Hyperparameters
+            .Where(h => TrainingHyperparameterCatalog.Find(h.Key) is { } definition && !accepted.Contains(definition.Key))
+            .ToArray();
+        if (rejected.Length == 0) return;
+        foreach (var entry in rejected) Hyperparameters.Remove(entry);
+        HyperparameterNotice = string.Format(System.Globalization.CultureInfo.CurrentCulture, LocalizationManager.Instance["TrainingWizard_Hyperparameters_Removed"],
+            string.Join(", ", rejected.Select(h => h.Key)));
     }
 
     /// <summary>
@@ -854,6 +1060,8 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
         && !string.IsNullOrWhiteSpace(SelectedArchitecture)
         && (!UseComposedFeatures || FeaturePicker.BuildFeatureSpec() is not null)
         && !IsManifestMissing
+        && Hyperparameters.All(h => h.ValidationMessage is null)
+        && HyperparameterDependencyMessage is null
         && ResolveSymbols().Length > 0;
 
     private TrainingJobConfig? CreateCurrentTrainingConfig()
@@ -1158,6 +1366,7 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
             }
 
             var generation = await _modelDeploymentService.RegisterGenerationAsync(onnxPath, result.MetricsArtifactPath).ConfigureAwait(true);
+            _messenger.Send(new PredictionConfigurationChangedMessage()); // the registration activates the generation when it may
             StatusMessage = string.Format(
                 LocalizationManager.Instance["TrainingWizard_Status_Registered"] ?? "Registered model generation {0}.",
                 generation.ModelId);
@@ -1186,6 +1395,7 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
         try
         {
             await _ensembleSettings.SaveAsync(registration.Spec).ConfigureAwait(true);
+            _messenger.Send(new PredictionConfigurationChangedMessage());
             StatusMessage = string.Format(
                 LocalizationManager.Instance["TrainingWizard_Status_EnsembleApplied"] ?? "The active ensemble now has {0} members.",
                 registration.Spec.Members.Count);

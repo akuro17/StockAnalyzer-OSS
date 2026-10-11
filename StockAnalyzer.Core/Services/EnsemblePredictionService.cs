@@ -20,6 +20,9 @@ public sealed class EnsemblePredictionService : IPredictionService, IDisposable
 {
     public string? ActiveModelId => _registry.ActiveId;
 
+    /// <summary>The single-model load issue; an active ensemble predicts with its own members, so it reports none.</summary>
+    public PredictionWindowMismatchException? LoadIssue => _ensembles.Current is null ? _single.LoadIssue : null;
+
     private readonly PredictionService _single;
     private readonly IEnsembleSettingsManager _ensembles;
     private readonly IModelGenerationRegistry _registry;
@@ -129,7 +132,7 @@ public sealed class EnsemblePredictionService : IPredictionService, IDisposable
             var raw = InferMember(member, history);
             rows[i] = member.CanonicalIndices.Select(index => raw[index]).ToArray();
         }
-        return Combine(spec, bundle.Canonical, rows, _settings.PredictionConfidenceThreshold, _processor);
+        return Combine(spec, bundle.Canonical, rows, _settings.PredictionConfidenceThreshold, _processor) with { Ensemble = spec };
     }
 
     private RuntimeBundle BuildRuntime(EnsembleSpec spec)
@@ -164,14 +167,7 @@ public sealed class EnsemblePredictionService : IPredictionService, IDisposable
             var metadata = session.ModelMetadata.CustomMetadataMap;
             var scaler = PredictionModelMetadata.RequiresFixedScaler(metadata)
                 ? FixedScaler.Load(lease.ModelPath, metadata) : null;
-            var mode = PredictionModelMetadata.ParseFeatureMode(metadata[PredictionModelMetadata.FeatureModeKey])
-                ?? throw new InvalidDataException("Unknown feature mode.");
-            int window = int.Parse(metadata[PredictionModelMetadata.WindowSizeKey], System.Globalization.CultureInfo.InvariantCulture);
-            if (window <= 0) throw new InvalidDataException("Invalid model window.");
-            FeatureSpec? featureSpec = null;
-            if (mode == PredictionFeatureMode.ComposedFeatures)
-                featureSpec = JsonSerializer.Deserialize<FeatureSpec>(metadata[PredictionModelMetadata.FeatureSpecKey],
-                    TrainingConfigJson.Options);
+            var (mode, window, featureSpec) = PredictionModelMetadata.ReadOwnFeatureContract(metadata);
             var labels = manifest.ClassOrder.Split(',');
             PredictionModelMetadata.Validate(metadata, mode, window, labels, _logger,
                 featureSpec is null ? null : JsonSerializer.Serialize(featureSpec, TrainingConfigJson.Options));

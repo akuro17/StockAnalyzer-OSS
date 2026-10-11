@@ -27,7 +27,7 @@ public sealed class TrainingWizardExtendedLearningTests : IDisposable
 
     private static string Text(string key) => LocalizationManager.Instance[key];
 
-    private static Harness Create(TrainingRunResult? result = null)
+    private static Harness Create(TrainingRunResult? result = null, CommunityToolkit.Mvvm.Messaging.IMessenger? messenger = null)
     {
         var started = new List<TrainingJobConfig>();
         var orchestrator = new Mock<ITrainingOrchestrator>();
@@ -47,7 +47,7 @@ public sealed class TrainingWizardExtendedLearningTests : IDisposable
         var settings = new Mock<IEnsembleSettingsManager>();
         settings.Setup(s => s.SaveAsync(It.IsAny<EnsembleSpec?>())).Returns(Task.CompletedTask);
         var wizard = new TrainingWizardViewModel(orchestrator: orchestrator.Object, modelDeploymentService: deployment.Object,
-            experimentLogService: log.Object, marketDataProvider: market.Object, ensembleSettings: settings.Object);
+            experimentLogService: log.Object, marketDataProvider: market.Object, ensembleSettings: settings.Object, messenger: messenger);
         wizard.Horizon = 1;
         return new Harness(wizard, started, deployment, settings);
     }
@@ -227,6 +227,84 @@ public sealed class TrainingWizardExtendedLearningTests : IDisposable
     }
 
     [Fact]
+    public async Task DeployingAModelAndUsingAnEnsemble_TellTheCharts_ButRegisteringEnsembleMembersDoesNot()
+    {
+        var messenger = new CommunityToolkit.Mvvm.Messaging.StrongReferenceMessenger();
+        var count = 0;
+        var recipient = new object();
+        CommunityToolkit.Mvvm.Messaging.IMessengerExtensions.Register<StockAnalyzer.Avalonia.Common.PredictionConfigurationChangedMessage>(
+            messenger, recipient, (_, _) => count++);
+
+        // a single model: the registration activates it when it may, so the charts must predict again
+        var single = Create(new TrainingRunResult
+        {
+            RunId = "run", Success = true, OnnxArtifactPath = @"C:\a\m.onnx", MetricsArtifactPath = @"C:\a\m.onnx.metrics.json",
+        }, messenger);
+        single.Deployment.Setup(d => d.RegisterGenerationAsync(@"C:\a\m.onnx", @"C:\a\m.onnx.metrics.json", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ModelGenerationManifest(ModelGenerationRegistry.SchemaVersion, new string('1', 64), "m.onnx", new string('a', 64),
+                Array.Empty<ModelSidecar>(), new string('c', 64), new string('d', 64), "classification", "daily", 5, "Up,Down,Neutral", 0.5));
+        using (single.Wizard)
+        {
+            await single.Wizard.StartTrainingCommand.ExecuteAsync(null);
+            await single.Wizard.DeployToModelsCommand.ExecuteAsync(null);
+        }
+        Assert.Equal(1, count);
+
+        // an ensemble: registering the members activates nothing; "use as ensemble" does
+        var spec = new EnsembleSpec(new[] { new EnsembleMember("model-a", 0.5), new EnsembleMember("model-b", 0.5) });
+        var generations = spec.Members.Select((m, i) => new ModelGenerationManifest(
+            ModelGenerationRegistry.SchemaVersion, m.ModelId, $"m{i}.onnx", new string('a', 64),
+            Array.Empty<ModelSidecar>(), new string('c', 64), new string('d', 64), "classification", "daily", 5, "Up,Down,Neutral", 0.5)).ToArray();
+        var ensemble = Create(new TrainingRunResult
+        {
+            RunId = "run", Success = true, OnnxArtifactPath = @"C:\a\m01.onnx", MetricsArtifactPath = @"C:\a\m01.onnx.metrics.json",
+            EnsembleManifestPath = @"C:\a\group.ensemble.json",
+        }, messenger);
+        ensemble.Deployment.Setup(d => d.RegisterEnsembleAsync(@"C:\a\group.ensemble.json", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EnsembleRegistration(TrainingEnsembleMethod.Bagging, spec, generations));
+        using (ensemble.Wizard)
+        {
+            await ensemble.Wizard.StartTrainingCommand.ExecuteAsync(null);
+            await ensemble.Wizard.DeployToModelsCommand.ExecuteAsync(null);
+            Assert.Equal(1, count);
+            await ensemble.Wizard.UseAsEnsembleCommand.ExecuteAsync(null);
+            Assert.Equal(2, count);
+        }
+        GC.KeepAlive(recipient);
+    }
+
+    [Fact]
+    public async Task AttentionArchitecture_IsOfferedForPyTorchOnly_ReachesTheJobConfig_AndExcludesPretraining()
+    {
+        var h = Create();
+        using (h.Wizard)
+        {
+            Assert.Contains(AttentionContract.Architecture, h.Wizard.AvailableArchitectures);
+            h.Wizard.SelectedFramework = TrainingFramework.TensorFlow;
+            Assert.DoesNotContain(AttentionContract.Architecture, h.Wizard.AvailableArchitectures);
+            h.Wizard.SelectedFramework = TrainingFramework.PyTorch;
+
+            h.Wizard.SelectedArchitecture = AttentionContract.Architecture;
+            Assert.Null(h.Wizard.ExtendedLearningValidationMessage);
+            h.Wizard.Hyperparameters.Add(new TrainingHyperparameterEntry { Key = "heads", Value = "2" });
+            await h.Wizard.StartTrainingCommand.ExecuteAsync(null);
+            var started = Assert.Single(h.Started);
+            Assert.Equal(AttentionContract.Architecture, started.Architecture);
+            Assert.Equal("2", started.Hyperparameters["heads"]);
+            started.Validate();
+
+            // the trainer refuses --pretrain for this architecture: Start is disabled with a message instead of a launch failure
+            h.Wizard.UsePretraining = true;
+            Assert.Equal(string.Format(Text("TrainingWizard_Validation_PretrainingAttention"), AttentionContract.Architecture),
+                h.Wizard.ExtendedLearningValidationMessage);
+            Assert.False(h.Wizard.StartTrainingCommand.CanExecute(null));
+            h.Wizard.SelectedArchitecture = "lstm";
+            Assert.Null(h.Wizard.ExtendedLearningValidationMessage);
+            Assert.True(h.Wizard.StartTrainingCommand.CanExecute(null));
+        }
+    }
+
+    [Fact]
     public async Task DeployingAnEnsembleRun_RegistersTheMembers_AndNeverChangesTheActiveEnsembleUntilAsked()
     {
         var spec = new EnsembleSpec(new[] { new EnsembleMember("model-a", 0.5), new EnsembleMember("model-b", 0.5) });
@@ -348,7 +426,7 @@ public sealed class TrainingWizardExtendedLearningTests : IDisposable
             "TrainingWizard_Ensemble_Note", "TrainingWizard_Pretraining", "TrainingWizard_Pretraining_Note",
             "TrainingWizard_Validation_EnsembleTarget", "TrainingWizard_Validation_EnsembleExclusive",
             "TrainingWizard_Validation_EnsembleMembers", "TrainingWizard_Validation_EnsembleBases",
-            "TrainingWizard_Validation_Pretraining", "TrainingWizard_Status_EnsembleRegistered",
+            "TrainingWizard_Validation_Pretraining", "TrainingWizard_Validation_PretrainingAttention", "TrainingWizard_Status_EnsembleRegistered",
             "TrainingWizard_Status_EnsembleWeightTransfer", "TrainingWizard_Status_EnsembleApplied", "TrainingWizard_Status_EnsembleError", "TrainingWizard_UseAsEnsembleButton",
         };
         foreach (var language in new[] { "en", "ja" })

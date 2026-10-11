@@ -104,5 +104,7 @@ public enum ChartObjectType
     Icon,
     General, // Fallback
     Freehand,
-    ClassicPivotPoints
+    ClassicPivotPoints,
+    Highlighter,
+    StepBadge
 }

@@ -1,4 +1,6 @@
 using System;
+using System.IO;
+using System.Text.Json;
 using StockAnalyzer.Core.Models.Training;
 using Xunit;
 
@@ -32,6 +34,71 @@ public class WalkForwardDataRequirementTests
     public void MinimumRawBars_MatchesRealWalkForwardSplitBruteForce(int windowSize, int horizon, int expected)
     {
         Assert.Equal(expected, WalkForwardDataRequirement.MinimumRawBars(windowSize, horizon));
+    }
+
+    private static JsonDocument RequirementParity()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "StockAnalyzer.sln")))
+            directory = directory.Parent;
+        Assert.NotNull(directory);
+        return JsonDocument.Parse(File.ReadAllText(Path.Combine(directory!.FullName, "Tests", "TrainingRequirementParity.json")));
+    }
+
+    [Fact]
+    public void MinimumRawBarsForTraining_MatchesTheRealPythonFoldValidation()
+    {
+        // Tests/TrainingRequirementParity.json is written by generate_training_requirement_parity.py, which calls the real
+        // dataset.independent_fold_data for every outer fold (inner split, optional calibration carve) and every bar count.
+        using var parity = RequirementParity();
+        var cases = parity.RootElement.GetProperty("cases");
+        Assert.True(cases.GetArrayLength() >= 10);
+        foreach (var item in cases.EnumerateArray())
+        {
+            int? gap = item.GetProperty("gap").ValueKind == JsonValueKind.Null ? null : item.GetProperty("gap").GetInt32();
+            var actual = WalkForwardDataRequirement.MinimumRawBarsForTraining(
+                item.GetProperty("window").GetInt32(), item.GetProperty("horizon").GetInt32(), item.GetProperty("splits").GetInt32(),
+                gap, item.GetProperty("max_lag").GetInt32(), item.GetProperty("calibration").GetBoolean());
+            Assert.True(item.GetProperty("minimum_raw_bars").GetInt32() == actual, $"{item}: C# {actual}");
+        }
+    }
+
+    [Theory]
+    [InlineData(75, 5)]
+    [InlineData(20, 5)]
+    [InlineData(1, 1)]
+    public void MinimumRawBarsForTraining_IsNeverBelowTheLastFoldRequirement_AndGrowsWithCalibration(int window, int horizon)
+    {
+        var lastFold = WalkForwardDataRequirement.MinimumRawBars(window, horizon);
+        var whole = WalkForwardDataRequirement.MinimumRawBarsForTraining(window, horizon);
+        Assert.True(whole >= lastFold, $"{whole} < {lastFold}");
+        Assert.True(WalkForwardDataRequirement.MinimumRawBarsForTraining(window, horizon, calibrationSegment: true) >= whole);
+    }
+
+    [Fact]
+    public void MinimumRawBarsForTraining_TheDefaultMonthlyCaseTheWizardReported_NeedsMoreThan551Bars()
+    {
+        // AAPL monthly history = 551 bars; window 75, horizon 5, 5 splits stopped with "no usable inner validation fold".
+        Assert.True(WalkForwardDataRequirement.MinimumRawBarsForTraining(75, 5) > 551);
+        Assert.True(WalkForwardDataRequirement.MinimumRawBars(75, 5) < 551); // the earlier hint (534) understated it
+    }
+
+    [Theory]
+    [InlineData(0, 5, 5, 0)]
+    [InlineData(5, 0, 5, 0)]
+    [InlineData(5, 5, 0, 0)]
+    [InlineData(5, 5, 11, 0)] // above TrainingResourceOverrides.MaximumEvaluationFolds
+    [InlineData(5, 5, 5, -1)]
+    public void MinimumRawBarsForTraining_InvalidInput_Throws(int window, int horizon, int splits, int lag)
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => WalkForwardDataRequirement.MinimumRawBarsForTraining(window, horizon, splits, null, lag));
+    }
+
+    [Fact]
+    public void MinimumRawBarsForTraining_OverLimitInput_ThrowsOverflowQuicklyInsteadOfSearching()
+    {
+        Assert.Throws<OverflowException>(() => WalkForwardDataRequirement.MinimumRawBarsForTraining(25, 5, gap: int.MaxValue));
+        Assert.Throws<OverflowException>(() => WalkForwardDataRequirement.MinimumRawBarsForTraining(int.MaxValue, int.MaxValue));
     }
 
     [Theory]

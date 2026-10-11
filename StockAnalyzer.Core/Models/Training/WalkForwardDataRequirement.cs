@@ -100,4 +100,120 @@ public static class WalkForwardDataRequirement
             throw new OverflowException("Required raw-bar history exceeds the supported count.");
         return checked((int)rawBars);
     }
+
+    /// <summary>
+    /// Raw bars one symbol needs for a whole training run, as <c>run_training.py</c> checks it before it starts a trainer:
+    /// EVERY outer fold <c>0 .. splitCount - 1</c> must exist with a purged train side, and each outer train side must be
+    /// carved again into a fit part and an inner validation part with the same split rule
+    /// (<c>dataset.independent_fold_data(..., inner=True)</c>). The release fold carves one more segment (calibration, or the
+    /// stacking meta segment) when <paramref name="calibrationSegment"/> is set. <see cref="MinimumRawBars"/> only guarantees
+    /// that the last outer fold is not empty, which is far less than this (a trainer then stops with "no usable inner
+    /// validation fold").
+    /// </summary>
+    /// <remarks>
+    /// The result is the smallest count that succeeds together with every larger count (the feasibility is not monotone
+    /// near the boundary because of integer division). It is a lower bound for ONE symbol with an unbroken history:
+    /// several symbols are purged against the earliest start of any of them, and a True High/Low channel reads one more
+    /// bar. Verified against the real Python function by <c>Tests/TrainingRequirementParity.json</c>.
+    /// </remarks>
+    /// <exception cref="OverflowException">The requirement exceeds <see cref="int.MaxValue"/> bars.</exception>
+    public static int MinimumRawBarsForTraining(int windowSize, int horizon, int splitCount = DefaultSplitCount,
+        int? gap = null, int maxLag = 0, bool calibrationSegment = false)
+    {
+        if (windowSize <= 0)
+            throw new ArgumentOutOfRangeException(nameof(windowSize), windowSize, "windowSize must be positive.");
+        if (horizon <= 0)
+            throw new ArgumentOutOfRangeException(nameof(horizon), horizon, "horizon must be positive.");
+        if (splitCount <= 0 || splitCount > TrainingResourceOverrides.MaximumEvaluationFolds)
+            throw new ArgumentOutOfRangeException(nameof(splitCount), splitCount,
+                $"splitCount must be in 1..{TrainingResourceOverrides.MaximumEvaluationFolds}.");
+        if (maxLag < 0)
+            throw new ArgumentOutOfRangeException(nameof(maxLag), maxLag, "maxLag cannot be negative.");
+
+        // The whole-run requirement is never smaller than the last-fold one, so an over-limit input is rejected here
+        // before the search below (which walks down from a far larger count) is entered.
+        _ = MinimumRawBars(windowSize, horizon, splitCount, gap, maxLag);
+
+        long windowOffset = checked((long)windowSize + horizon - 1);
+        long purgeGap = gap ?? windowOffset;
+        // A sample whose label ends before the first feature bar of a later block may be fitted: the purge depth in samples.
+        long depth = checked(windowOffset + maxLag);
+        long blocks = splitCount + 1L;
+
+        // From this sample count on every count succeeds (sufficient conditions, monotone in the count): each carve needs
+        // a block size above the gap and a non-empty purged head; the outer train side is the first block minus the excess
+        // of the purge depth over the gap; a second carve (calibration) needs the first carve's head to be large enough.
+        long excess = Math.Max(0, depth - purgeGap);
+        long carveBlock = Math.Max(purgeGap + 1, excess / splitCount + 1);
+        long outerNeeded = checked(blocks * carveBlock);
+        if (calibrationSegment)
+        {
+            long headNeeded = checked((outerNeeded + excess + splitCount - 1) / splitCount);
+            outerNeeded = checked(blocks * Math.Max(carveBlock, headNeeded));
+        }
+        long guaranteed = checked(blocks * checked(outerNeeded + excess));
+
+        // Scan down from the guaranteed count to the first count that fails; skip a whole block of counts when it
+        // is feasible and the block size exceeds the gap (the remainder then cannot matter).
+        // Feasible(s) depends on s only through block = floor(s/(K+1)) and, for the last outer fold, through testEnd = s.
+        // When block > purgeGap, testStart = block*K + purgeGap < block*(K+1) <= s, so the last-fold test is non-empty for
+        // every remainder and Feasible is constant on the whole block; the jump to block*(K+1) - 1 is therefore exact.
+        long samples = guaranteed;
+        while (samples > 0)
+        {
+            bool feasible = TrainingRunFeasible(samples, splitCount, purgeGap, depth, calibrationSegment);
+            if (!feasible)
+                break;
+            long block = samples / blocks;
+            samples = block > purgeGap ? block * blocks - 1 : samples - 1;
+        }
+
+        // samples is the largest infeasible count; samples + 1 is the smallest count from which every larger count is feasible;
+        // windowOffset = W + H - 1 converts samples to raw bars; maxLag raw bars precede the first usable window.
+        long rawBars = checked(samples + 1 + windowOffset + maxLag);
+        if (rawBars > int.MaxValue)
+            throw new OverflowException("Required raw-bar history exceeds the supported count.");
+        return (int)rawBars;
+    }
+
+    /// <summary>Mirror of the per-symbol part of <c>dataset.independent_fold_data(inner=True)</c> for every outer fold.</summary>
+    internal static bool TrainingRunFeasible(long samples, int splitCount, long gap, long depth, bool calibrationSegment)
+    {
+        long block = samples / (splitCount + 1L);
+        if (block == 0)
+            return false;
+        for (int fold = 0; fold < splitCount; fold++)
+        {
+            long testStart = block * (fold + 1) + gap;
+            long testEnd = fold == splitCount - 1 ? samples : block * (fold + 2);
+            if (testStart >= testEnd)
+                return false;
+            long length = Math.Min(block * (fold + 1), Math.Max(0, testStart - depth));
+            int carves = calibrationSegment && fold == splitCount - 1 ? 2 : 1;
+            for (int carve = 0; carve < carves && length > 0; carve++)
+                length = CarvedHead(length, splitCount, gap, depth);
+            if (length <= 0)
+                return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>Length of the purged head left when a train side is split by its last existing walk-forward fold; 0 when there is none.</summary>
+    private static long CarvedHead(long length, int splitCount, long gap, long depth)
+    {
+        long block = length / (splitCount + 1L);
+        if (block == 0)
+            return 0;
+        long testStart = -1;
+        for (int fold = 0; fold < splitCount; fold++)
+        {
+            long start = block * (fold + 1) + gap;
+            long end = fold == splitCount - 1 ? length : block * (fold + 2);
+            if (start < end)
+                testStart = start;
+        }
+
+        return testStart < 0 ? 0 : Math.Min(testStart - gap, Math.Max(0, testStart - depth));
+    }
 }
