@@ -8,7 +8,7 @@ using Xunit;
 namespace StockAnalyzer.Core.Tests.Backtest.Reporting;
 
 /// <summary>
-/// Right-censoring visibility of the two drawdown durations (Y:\Temp\sa_implementation_plan_BacktestDrawdownCensoringVisibility.md, T8):
+/// Right-censoring visibility of the two drawdown durations (docs/sa_implementation_plan_BacktestDrawdownCensoringVisibility, T8):
 /// the flags say whether a duration is complete or only a lower bound, and never change any metric value.
 /// </summary>
 public class DrawdownRightCensoringTests

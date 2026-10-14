@@ -8,7 +8,7 @@ public enum ExitWinner { None, PendingOrder, MarginLiquidation }
 public enum SlTpWinner { None, StopLoss, TakeProfit }
 
 /// <summary>
-/// User-confirmed rule (Y:\Temp\sa_ai_context_BacktestEngine_P1.md section 1.5.6): when a pending
+/// User-confirmed rule (docs/sa_ai_context_BacktestEngine_P1 section 1.5.6): when a pending
 /// exit order (Limit/Stop/StopLimit) and the maintenance-margin liquidation threshold both apply to the same
 /// open position on the same bar, whichever ACTUALLY HAPPENS first (the order's fill, not its activation) along the fixed
 /// Open-&gt;High-&gt;Low-&gt;Close path wins; the loser is superseded/cancelled for that bar rather than

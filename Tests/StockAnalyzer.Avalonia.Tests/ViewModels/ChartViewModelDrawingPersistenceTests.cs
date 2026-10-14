@@ -254,7 +254,7 @@ public class ChartViewModelDrawingPersistenceTests : IDisposable
     /// <summary>
     /// Reported (2026-08-11): "Angle Tool isn't saved" - then, on further testing, "several other
     /// tools aren't restored either, while others are" (i.e. not tool-specific). Real-app
-    /// diagnostic logging (Y:\Temp\sa_angle_debug.log) showed the actual cause: a second
+    /// diagnostic logging (docs/sa_angle_debug) showed the actual cause: a second
     /// ChartViewModel instance (e.g. a synced panel chart - IsSyncEnabled defaults to true, so a
     /// ticker selection is broadcast to and independently reloaded by every synced chart) can load
     /// the same ticker+timeframe before the instance holding the real drawing has saved it,

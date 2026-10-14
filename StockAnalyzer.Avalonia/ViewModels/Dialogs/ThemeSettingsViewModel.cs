@@ -36,6 +36,7 @@ public partial class ThemeSettingsViewModel : ViewModelBase, ISettingsPageViewMo
     private IndicatorColor _snapShellBackgroundColor;
     private IndicatorColor _snapShellTextColor;
     private IndicatorColor _snapShellSecondaryTextColor;
+    private IndicatorColor _snapShellWarningTextColor;
     private IndicatorColor _snapShellAccentColor;
     private IndicatorColor _snapShellBorderColor;
     private IndicatorColor _snapSemanticPlusColor;
@@ -85,6 +86,7 @@ public partial class ThemeSettingsViewModel : ViewModelBase, ISettingsPageViewMo
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private IndicatorColor _shellBackgroundColor;
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private IndicatorColor _shellTextColor;
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private IndicatorColor _shellSecondaryTextColor;
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private IndicatorColor _shellWarningTextColor;
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private IndicatorColor _shellAccentColor;
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private IndicatorColor _shellBorderColor;
 
@@ -147,6 +149,7 @@ public partial class ThemeSettingsViewModel : ViewModelBase, ISettingsPageViewMo
             _snapShellBackgroundColor = _snapshot[ThemeColorKey.ShellBackground];
             _snapShellTextColor       = _snapshot[ThemeColorKey.ShellText];
             _snapShellSecondaryTextColor = _snapshot.TryGetValue(ThemeColorKey.ShellSecondaryText, out var secVal) ? secVal : _snapshot[ThemeColorKey.ShellText];
+            _snapShellWarningTextColor = _snapshot[ThemeColorKey.ShellWarningText];
             _snapShellAccentColor     = _snapshot[ThemeColorKey.ShellAccent];
             _snapShellBorderColor     = _snapshot[ThemeColorKey.ShellBorder];
             _snapSemanticPlusColor    = _snapshot[ThemeColorKey.SemanticPlus];
@@ -186,6 +189,7 @@ public partial class ThemeSettingsViewModel : ViewModelBase, ISettingsPageViewMo
                    _shellBackgroundColor != _snapShellBackgroundColor ||
                    _shellTextColor       != _snapShellTextColor       ||
                    _shellSecondaryTextColor != _snapShellSecondaryTextColor ||
+                   _shellWarningTextColor != _snapShellWarningTextColor ||
                    _shellAccentColor     != _snapShellAccentColor     ||
                    _shellBorderColor     != _snapShellBorderColor     ||
                    _semanticPlusColor    != _snapSemanticPlusColor    ||
@@ -247,6 +251,7 @@ public partial class ThemeSettingsViewModel : ViewModelBase, ISettingsPageViewMo
     partial void OnShellBackgroundColorChanged(IndicatorColor value) => ApplyColorChange(ThemeColorKey.ShellBackground, value);
     partial void OnShellTextColorChanged(IndicatorColor value) => ApplyColorChange(ThemeColorKey.ShellText, value);
     partial void OnShellSecondaryTextColorChanged(IndicatorColor value) => ApplyColorChange(ThemeColorKey.ShellSecondaryText, value);
+    partial void OnShellWarningTextColorChanged(IndicatorColor value) => ApplyColorChange(ThemeColorKey.ShellWarningText, value);
     partial void OnShellAccentColorChanged(IndicatorColor value) => ApplyColorChange(ThemeColorKey.ShellAccent, value);
     partial void OnShellBorderColorChanged(IndicatorColor value) => ApplyColorChange(ThemeColorKey.ShellBorder, value);
     partial void OnSemanticPlusColorChanged(IndicatorColor value) => ApplyColorChange(ThemeColorKey.SemanticPlus, value);
@@ -438,6 +443,7 @@ public partial class ThemeSettingsViewModel : ViewModelBase, ISettingsPageViewMo
             ShellBackground = ShellBackgroundColor,
             ShellText = ShellTextColor,
             ShellSecondaryText = ShellSecondaryTextColor,
+            ShellWarningText = ShellWarningTextColor,
             ShellAccent = ShellAccentColor,
             ShellBorder = ShellBorderColor,
             SemanticPlus = SemanticPlusColor,
@@ -466,6 +472,7 @@ public partial class ThemeSettingsViewModel : ViewModelBase, ISettingsPageViewMo
         _shellBackgroundColor = map[ThemeColorKey.ShellBackground];
         _shellTextColor       = map[ThemeColorKey.ShellText];
         _shellSecondaryTextColor = map.TryGetValue(ThemeColorKey.ShellSecondaryText, out var secCol) ? secCol : map[ThemeColorKey.ShellText];
+        _shellWarningTextColor = map[ThemeColorKey.ShellWarningText];
         _shellAccentColor     = map[ThemeColorKey.ShellAccent];
         _shellBorderColor     = map[ThemeColorKey.ShellBorder];
         _semanticPlusColor    = map[ThemeColorKey.SemanticPlus];
@@ -487,6 +494,7 @@ public partial class ThemeSettingsViewModel : ViewModelBase, ISettingsPageViewMo
         OnPropertyChanged(nameof(ShellBackgroundColor));
         OnPropertyChanged(nameof(ShellTextColor));
         OnPropertyChanged(nameof(ShellSecondaryTextColor));
+        OnPropertyChanged(nameof(ShellWarningTextColor));
         OnPropertyChanged(nameof(ShellAccentColor));
         OnPropertyChanged(nameof(ShellBorderColor));
         OnPropertyChanged(nameof(SemanticPlusColor));

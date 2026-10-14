@@ -11,7 +11,7 @@ using static StockAnalyzer.Tests.Backtest.BacktestReportTestFactory;
 
 namespace StockAnalyzer.Tests.Backtest;
 
-/// <summary>Color rules of the Results-tab metrics (Y:\Temp\sa_implementation_plan_BacktestMetricSemanticColors.md, option A): colored by meaning, not by the sign of every value.</summary>
+/// <summary>Color rules of the Results-tab metrics (docs/sa_implementation_plan_BacktestMetricSemanticColors, option A): colored by meaning, not by the sign of every value.</summary>
 public class BacktestMetricSemanticTests
 {
     private enum Rule { Sign, Gain, Loss, Neutral }

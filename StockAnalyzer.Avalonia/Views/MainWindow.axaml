@@ -118,6 +118,9 @@
                                     <MenuItem Header="{l:Localize Tab_Notes}"
                                               Command="{Binding $parent[Window].DataContext.AddTabCommand}"
                                               CommandParameter="{Binding Tag, RelativeSource={RelativeSource TemplatedParent}, Converter={x:Static conv:StringConverters.Append}, ConverterParameter=':NoteTimeline'}"/>
+                                    <MenuItem Header="{l:Localize Tab_ScatterAnalysis}"
+                                              Command="{Binding $parent[Window].DataContext.AddTabCommand}"
+                                              CommandParameter="{Binding Tag, RelativeSource={RelativeSource TemplatedParent}, Converter={x:Static conv:StringConverters.Append}, ConverterParameter=':ScatterPlot'}"/>
                                 </MenuItem>
                             </ContextMenu>
                         </DockPanel.ContextMenu>
@@ -180,6 +183,12 @@
         </Style>
         <Style Selector="TabControl.PanelTabs TabItem[Tag=DrawingObjects] PathIcon">
             <Setter Property="Data" Value="M12,16L19.36,10.27L21,9L12,2L3,9L4.63,10.27M12,22L19.36,16.27L21,15L12,8L3,15L4.63,16.27"/>
+        </Style>
+        <Style Selector="TabControl.PanelTabs TabItem[Tag=ScatterPlot] PathIcon">
+            <Setter Property="Data" Value="M4 4h2v16H4V4zm16 16H6v-2h14v2zm-3-11a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm-5 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm7-2a2 2 0 1 1-4 0 2 2 0 0 1 4 0z"/>
+        </Style>
+        <Style Selector="TabControl.PanelTabs TabItem[Tag=ScatterAnalysis] PathIcon">
+            <Setter Property="Data" Value="M4 4h2v16H4V4zm16 16H6v-2h14v2zm-3-11a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm-5 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm7-2a2 2 0 1 1-4 0 2 2 0 0 1 4 0z"/>
         </Style>
 
     </Window.Styles>

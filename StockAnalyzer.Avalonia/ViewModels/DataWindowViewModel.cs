@@ -10,6 +10,7 @@ using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
 using StockAnalyzer.Core.Models;
+using StockAnalyzer.Core.Utilities;
 using StockAnalyzer.Core.Models.Indicators;
 using StockAnalyzer.Core.Models.Confluence;
 using StockAnalyzer.Core.Theme;
@@ -196,6 +197,18 @@ public partial class DataWindowViewModel : ViewModelBase,
     [ObservableProperty]
     private string _pointAndFigureCountText = string.Empty;
 
+    /// <summary>Date the current trend was confirmed (Renko, Point and Figure, Kagi, Three Line Break); empty when there is none.</summary>
+    [ObservableProperty]
+    private string _trendReversalDateText = string.Empty;
+
+    /// <summary>Date of the last update of the described element (same charts).</summary>
+    [ObservableProperty]
+    private string _trendUpdateDateText = string.Empty;
+
+    /// <summary>Calendar days from the reversal date to the update date (same charts).</summary>
+    [ObservableProperty]
+    private string _trendDaysText = string.Empty;
+
     [ObservableProperty]
     private string _reverseWatchValueText = string.Empty;
 
@@ -378,9 +391,11 @@ public partial class DataWindowViewModel : ViewModelBase,
         // Preferred: Use the last crosshair candle if it's still in the current collection
         CoreCandleData? candle = _lastCrosshairCandle;
         int index = _lastCrosshairCandleIndex;
+        bool isHovering = candle != null && index >= 0 && index < candles.Count;
+        int hoveredPosition = index;   // position inside the visible window, as sent by the crosshair
         
         // Fallback: If no crosshair or collection changed, use latest candle
-        if (candle == null || index < 0 || index >= candles.Count)
+        if (!isHovering)
         {
             if (candles.Count > 0)
             {
@@ -394,8 +409,9 @@ public partial class DataWindowViewModel : ViewModelBase,
             }
         }
             
-        UpdateBasicProperties(candle);
-        UpdateSpecializedProperties(index, candle);
+        UpdateBasicProperties(isHovering ? candle : null, isHovering, hoveredPosition);
+        UpdateTrendDates(isHovering, hoveredPosition);
+        UpdateSpecializedProperties(ResolveConvertedIndex(isHovering, hoveredPosition), isHovering ? candle : null);
         UpdateIndicatorItems(_chartViewModel.Indicators, _chartViewModel.IndicatorResults ?? new Dictionary<string, IIndicatorResult>());
         UpdateDrawingItems(candle);
         OnPropertyChanged(nameof(HasItems));
@@ -675,7 +691,8 @@ public partial class DataWindowViewModel : ViewModelBase,
                 vm._lastRwPoint = null;
             }
             
-            vm.UpdateBasicProperties(data.HoveredCandle);
+            vm.UpdateBasicProperties(data.HoveredCandle, data.HoveredCandle != null, data.CandleIndex);
+            vm.UpdateTrendDates(data.HoveredCandle != null, data.CandleIndex);
 
             if (vm._chartViewModel.ChartType == ChartType.RelativePerformance)
             {
@@ -695,9 +712,9 @@ public partial class DataWindowViewModel : ViewModelBase,
             {
                 if (data.ReverseWatchPoint != null)
                 {
-                    vm.DateText = data.ReverseWatchPoint.Date.ToString("yyyy/MM/dd");
-                    vm.ReverseWatchValueText = data.ReverseWatchPoint.PriceAverage.ToString("0.00");
-                    vm.ReverseWatchVolumeText = data.ReverseWatchPoint.VolumeAverage.ToString("N0");
+                    vm.DateText = DisplayFormat.Date(data.ReverseWatchPoint.Date);
+                    vm.ReverseWatchValueText = DisplayFormat.Price(data.ReverseWatchPoint.PriceAverage);
+                    vm.ReverseWatchVolumeText = DisplayFormat.Volume(data.ReverseWatchPoint.VolumeAverage);
                 }
                 else
                 {
@@ -733,7 +750,7 @@ public partial class DataWindowViewModel : ViewModelBase,
             // and it's not ReverseWatch or RelativePerformance.
             // Basic properties are already set by UpdateBasicProperties.
 
-            int globalIndex = vm._chartViewModel.VisibleStartIndex + data.CandleIndex;
+            int globalIndex = vm.ResolveConvertedIndex(data.HoveredCandle != null, data.CandleIndex);
             vm.UpdateSpecializedProperties(globalIndex, data.HoveredCandle);
 
             vm.UpdateIndicatorItems(vm._chartViewModel.Indicators, vm._chartViewModel.IndicatorResults ?? new Dictionary<string, IIndicatorResult>());
@@ -743,12 +760,34 @@ public partial class DataWindowViewModel : ViewModelBase,
     }
 
 
-    private void UpdateBasicProperties(CoreCandleData? candle)
+    private void UpdateBasicProperties(CoreCandleData? candle, bool isHovering, int hoveredPosition)
     {
         var candles = _chartViewModel.Candles;
+        var drawn = GetDrawnSeries();
         int globalIndex = -1;
+        decimal? previousClose = null;
+        decimal? changeClose = null;
         
-        if (candle == null)
+        if (drawn != null)
+        {
+            // A chart that is not a time series draws a converted series: the rows describe its hovered element (start of the visible window + hovered
+            // position) or, without a hover, its newest element, and the change is taken from the element before it. The loaded candles are another series.
+            int drawnIndex = ResolveIndexIn(drawn.Count, isHovering, hoveredPosition);
+            candle = drawn[drawnIndex];
+
+            if (_chartViewModel.ChartType == ChartType.Kagi)
+            {
+                // The unit of a Kagi chart is the column, not the segment: the change is the signed move of the column, as the Move row is its absolute value.
+                var (columnStart, columnEnd) = StockAnalyzer.Core.Utilities.KagiColumns.ColumnBounds(drawn, drawnIndex);
+                previousClose = drawn[columnStart].Open;
+                changeClose = drawn[columnEnd].Close;
+            }
+            else if (drawnIndex > 0)
+            {
+                previousClose = drawn[drawnIndex - 1].Close;
+            }
+        }
+        else if (candle == null)
         {
             // Feature: Use latest candle if not hovering
             if (candles != null && candles.Count > 0)
@@ -794,28 +833,26 @@ public partial class DataWindowViewModel : ViewModelBase,
         IsCloseVisible = true;
         IsVolumeVisible = true;
         
-        if (candle.Timestamp.Hour == 0 && candle.Timestamp.Minute == 0)
+        DateText = DisplayFormat.Timestamp(candle.Timestamp);
+
+        OpenText = DisplayFormat.Price(candle.Open);
+        HighText = DisplayFormat.Price(candle.High);
+        LowText = DisplayFormat.Price(candle.Low);
+        CloseText = DisplayFormat.Price(candle.Close);
+        VolumeText = DisplayFormat.Volume(candle.Volume);
+
+        if (drawn == null && candles != null && globalIndex > 0 && globalIndex < candles.Count)
         {
-             DateText = candle.Timestamp.ToString("yyyy/MM/dd");
-        }
-        else
-        {
-             DateText = candle.Timestamp.ToString("yyyy/MM/dd HH:mm");
+             previousClose = candles[globalIndex - 1].Close;
         }
 
-        OpenText = candle.Open.ToString("0.000");
-        HighText = candle.High.ToString("0.000");
-        LowText = candle.Low.ToString("0.000");
-        CloseText = candle.Close.ToString("0.000");
-        VolumeText = candle.Volume.ToString("N0");
-
-        if (candles != null && globalIndex > 0 && globalIndex < candles.Count)
+        if (previousClose.HasValue)
         {
-             var prevCandle = candles[globalIndex - 1];
-             var diff = candle.Close - prevCandle.Close;
-             var ratio = prevCandle.Close > 0 ? (diff / prevCandle.Close) * 100m : 0m;
-             YesterdayChangeText = (diff > 0 ? "+" : "") + diff.ToString("0.000");
-             YesterdayChangeRatioText = (ratio > 0 ? "+" : "") + ratio.ToString("0.00") + "%";
+             var change = PriceChange.FromCloses(changeClose ?? candle.Close, previousClose.Value);
+             var diff = change.Amount;
+             var ratio = change.Percent;
+             YesterdayChangeText = DisplayFormat.ChangeAmount(diff);
+             YesterdayChangeRatioText = DisplayFormat.ChangeRatio(ratio);
              var theme = _chartViewModel.ThemeManager.CurrentTheme;
              YesterdayChangeColor = diff > 0 ? theme.SemanticPlus : (diff < 0 ? theme.SemanticMinus : theme.SemanticNeutral);
              YesterdayChangeRatioColor = YesterdayChangeColor;
@@ -829,16 +866,16 @@ public partial class DataWindowViewModel : ViewModelBase,
         // WebAI: Use the latest/hovered point for Reverse Watch texts
         if (_lastRwPoint != null)
         {
-            ReverseWatchValueText = _lastRwPoint.PriceAverage.ToString("0.000");
-            ReverseWatchVolumeText = _lastRwPoint.VolumeAverage.ToString("N0");
+            ReverseWatchValueText = DisplayFormat.Price(_lastRwPoint.PriceAverage);
+            ReverseWatchVolumeText = DisplayFormat.Volume(_lastRwPoint.VolumeAverage);
             
             // If in Reverse Watch mode, the OHLCV relative to the point should be shown
-            DateText = _lastRwPoint.Date.ToString("yyyy/MM/dd");
-            OpenText = _lastRwPoint.Open.ToString("0.000");
-            HighText = _lastRwPoint.High.ToString("0.000");
-            LowText = _lastRwPoint.Low.ToString("0.000");
-            CloseText = _lastRwPoint.Close.ToString("0.000");
-            VolumeText = _lastRwPoint.Volume.ToString("N0");
+            DateText = DisplayFormat.Date(_lastRwPoint.Date);
+            OpenText = DisplayFormat.Price(_lastRwPoint.Open);
+            HighText = DisplayFormat.Price(_lastRwPoint.High);
+            LowText = DisplayFormat.Price(_lastRwPoint.Low);
+            CloseText = DisplayFormat.Price(_lastRwPoint.Close);
+            VolumeText = DisplayFormat.Volume(_lastRwPoint.Volume);
             YesterdayChangeText = string.Empty;
             YesterdayChangeRatioText = string.Empty;
         }
@@ -987,7 +1024,7 @@ public partial class DataWindowViewModel : ViewModelBase,
                 }
 
                 var c = Settings.Color;
-                var item = vm.UpdateOrAddItem(itemIndex++, indicatorName, val.HasValue ? val.Value.ToString("0.000") : "N/A", c, false, false);
+                var item = vm.UpdateOrAddItem(itemIndex++, indicatorName, val.HasValue ? DisplayFormat.Price(val.Value) : "N/A", c, false, false);
                 item.OpenSettingsCommand = vm.OpenSettingsCommand;
 
                 item.IsEnabled = Settings.IsEnabled;
@@ -1230,7 +1267,7 @@ public partial class DataWindowViewModel : ViewModelBase,
 
     private DataWindowItemViewModel UpdateOrAddChildItem(DataWindowItemViewModel parent, int index, string displayName, decimal? val, IndicatorColor color, bool useCustomColor = false)
     {
-        string valStr = val.HasValue ? val.Value.ToString("0.000") : "N/A";
+        string valStr = val.HasValue ? DisplayFormat.Price(val.Value) : "N/A";
         DataWindowItemViewModel item;
         if (index < parent.Children.Count)
         {
@@ -1331,14 +1368,7 @@ public partial class DataWindowViewModel : ViewModelBase,
                 
                 if (val.HasValue)
                 {
-                    valStr = mode switch
-                    {
-                        ComparisonMode.Performance => val.Value.ToString(ChartConstants.DefaultRelativePerformanceFormat) + ChartConstants.DefaultRelativePerformanceSuffix,
-                        ComparisonMode.Ratio => val.Value.ToString(ChartConstants.DefaultRatioFormat),
-                        ComparisonMode.ZScore => $"{ChartConstants.ZScorePrefix}{val.Value.ToString(ChartConstants.DefaultZScoreFormat)}",
-                        ComparisonMode.Spread => val.Value.ToString(ChartConstants.DefaultSpreadFormat),
-                        _ => val.Value.ToString("F2")
-                    };
+                    valStr = DisplayFormat.ComparisonValue(mode, val.Value);
                 }
                 else
                 {
@@ -1382,7 +1412,7 @@ public partial class DataWindowViewModel : ViewModelBase,
 
     private void UpdateOrAddItem(int index, string displayName, decimal? val, CoreIndicatorSettings indicator)
     {
-        string valStr = val.HasValue ? val.Value.ToString("0.000") : "N/A";
+        string valStr = val.HasValue ? DisplayFormat.Price(val.Value) : "N/A";
         var c = indicator.Color;
         var color = c;
         UpdateOrAddItem(index, displayName, valStr, color, false, false, true); // useCustomColor = false
@@ -1426,7 +1456,7 @@ public partial class DataWindowViewModel : ViewModelBase,
         }
 
         IsComparisonTooltipVisible = true;
-        TooltipDateText = comparisonData.Timestamps[globalIndex].ToString("yyyy/MM/dd HH:mm");
+        TooltipDateText = DisplayFormat.DateAndTime(comparisonData.Timestamps[globalIndex]);
 
         // Ensure colors are correct for current theme
         UpdateComparisonColors(_chartViewModel.ThemeManager.CurrentTheme.IsDark);
@@ -1448,18 +1478,11 @@ public partial class DataWindowViewModel : ViewModelBase,
                 if (comparisonData.Series.TryGetValue(symbol, out var candleSeries) && globalIndex < candleSeries.Length)
                 {
                     var candle = candleSeries[globalIndex];
-                    if (candle.HasValue) actStr = candle.Value.Close.ToString("N3");
+                    if (candle.HasValue) actStr = DisplayFormat.ComparisonPrice(candle.Value.Close);
                 }
 
                 // Relative value (Mode-specific)
-                string relStr = mode switch
-                {
-                    ComparisonMode.Performance => val.Value.ToString(ChartConstants.DefaultRelativePerformanceFormat) + ChartConstants.DefaultRelativePerformanceSuffix,
-                    ComparisonMode.Ratio => val.Value.ToString(ChartConstants.DefaultRatioFormat),
-                    ComparisonMode.ZScore => $"{ChartConstants.ZScorePrefix}{val.Value.ToString(ChartConstants.DefaultZScoreFormat)}",
-                    ComparisonMode.Spread => val.Value.ToString(ChartConstants.DefaultSpreadFormat),
-                    _ => val.Value.ToString("F2")
-                };
+                string relStr = DisplayFormat.ComparisonValue(mode, val.Value);
 
                 int colorIndex = _chartViewModel.SeriesColorIndex.GetOrAdd(symbol);
                 var color = _comparisonColors[colorIndex % _comparisonColors.Length];
@@ -1500,6 +1523,80 @@ public partial class DataWindowViewModel : ViewModelBase,
         }
     }
 
+    /// <summary>
+    /// Number of columns of the converted series (Kagi segments, Renko bricks, Point and Figure columns) that the Data tab describes, or -1 for a chart
+    /// type without such a series. The series is shorter than the loaded candle list, so candle indexes cannot address it.
+    /// </summary>
+    private int ConvertedColumnCount() => _chartViewModel.ChartType switch
+    {
+        ChartType.Kagi => _chartViewModel.ConvertedKagiCandles?.Count ?? 0,
+        ChartType.Renko => _chartViewModel.RenkoDataAdapter?.Count ?? 0,
+        ChartType.PointAndFigure => _chartViewModel.PnfDataAdapter?.Count ?? 0,
+        _ => -1,
+    };
+
+    /// <summary>
+    /// Index into the converted series of the column the Data tab describes: the hovered column (start of the visible window + hovered position) while a
+    /// column is hovered and still inside the series, otherwise the newest column (the same rule as the candle rows, which show the newest candle when
+    /// nothing is hovered). -1 when there is no such column.
+    /// </summary>
+    private int ResolveConvertedIndex(bool isHovering, int hoveredPosition) => ResolveIndexIn(ConvertedColumnCount(), isHovering, hoveredPosition);
+
+    /// <summary>
+    /// The same rule for a series of <paramref name="count"/> elements (a negative count means the length is unknown, so a hovered index is not bounded).
+    /// </summary>
+    private int ResolveIndexIn(int count, bool isHovering, int hoveredPosition)
+    {
+        if (isHovering && hoveredPosition >= 0)
+        {
+            int hovered = _chartViewModel.VisibleStartIndex + hoveredPosition;
+            if (count < 0 || hovered < count) return hovered;
+        }
+
+        return count > 0 ? count - 1 : -1;
+    }
+
+    /// <summary>
+    /// The series the chart draws when it is not a time series (Kagi segments, Renko bricks, Point and Figure columns, Three Line Break blocks), or null for a
+    /// chart type that draws the loaded candles, or while the snapshot does not belong to the current chart type yet.
+    /// </summary>
+    private IReadOnlyList<CoreCandleData>? GetDrawnSeries() => GetDrawnElements()?.Series;
+
+    /// <summary>
+    /// The one definition of "the series the chart draws" (the conditions of <see cref="GetDrawnSeries"/>) together with the creation and last-update dates of
+    /// its elements, which travel with the snapshot (null for a chart without them). Null when <see cref="GetDrawnSeries"/> is null.
+    /// </summary>
+    private (IReadOnlyList<CoreCandleData> Series, IReadOnlyList<ElementDates>? Dates)? GetDrawnElements()
+    {
+        var snapshot = _chartViewModel.CurrentSnapshot;
+        if (snapshot == null || !_chartViewModel.ChartType.IsIndexBased() || snapshot.ChartType != _chartViewModel.ChartType)
+        {
+            return null;
+        }
+
+        var series = snapshot.AllCandles;
+        return series is { Count: > 0 } ? (series, snapshot.ElementDates) : null;
+    }
+
+    /// <summary>
+    /// The reversal date, update date and days of the hovered element (the newest one when nothing is hovered) of a Renko, Point and Figure, Kagi or
+    /// Three Line Break chart (see <see cref="TrendDates"/>). Every other chart type leaves the three texts empty. Each text is assigned once, so a
+    /// refresh that shows the same dates raises no change notification.
+    /// </summary>
+    private void UpdateTrendDates(bool isHovering, int hoveredPosition)
+    {
+        var span = TrendDateSpan.None;
+        if (GetDrawnElements() is { } drawn)
+        {
+            int index = ResolveIndexIn(drawn.Series.Count, isHovering, hoveredPosition);
+            span = TrendDates.Describe(drawn.Series, drawn.Dates, index, _chartViewModel.ChartType);
+        }
+
+        TrendReversalDateText = span.ReversalDate is { } reversal ? DisplayFormat.Date(reversal) : string.Empty;
+        TrendUpdateDateText = span.UpdateDate is { } update ? DisplayFormat.Date(update) : string.Empty;
+        TrendDaysText = span.Days is { } days ? DisplayFormat.Days(days) : string.Empty;
+    }
+
     private void UpdateSpecializedProperties(int globalIndex, CoreCandleData? hoveredCandle)
     {
         KagiReversalText = string.Empty;
@@ -1517,19 +1614,10 @@ public partial class DataWindowViewModel : ViewModelBase,
             var candles = _chartViewModel.ConvertedKagiCandles;
             if (globalIndex >= 0 && globalIndex < candles.Count)
             {
-                bool isUp = candles[globalIndex].Close >= candles[globalIndex].Open;
-                
-                int colStart = globalIndex;
-                while (colStart > 0 && (candles[colStart - 1].Close >= candles[colStart - 1].Open) == isUp)
-                    colStart--;
-
-                int colEnd = globalIndex;
-                while (colEnd < (candles.Count - 1) && (candles[colEnd + 1].Close >= candles[colEnd + 1].Open) == isUp)
-                    colEnd++;
-
+                var (colStart, colEnd) = StockAnalyzer.Core.Utilities.KagiColumns.ColumnBounds(candles, globalIndex);
                 decimal startPrice = candles[colStart].Open;
                 decimal endPrice = candles[colEnd].Close;
-                KagiReversalText = System.Math.Abs(endPrice - startPrice).ToString("0.000");
+                KagiReversalText = DisplayFormat.Price(System.Math.Abs(endPrice - startPrice));
             }
             IsHighVisible = false;
             IsLowVisible = false;
@@ -1552,7 +1640,7 @@ public partial class DataWindowViewModel : ViewModelBase,
                 }
                 
                 int count = globalIndex - currentSequenceStart + 1;
-                RenkoCountText = count.ToString();
+                RenkoCountText = DisplayFormat.Count(count);
                 
                 decimal brickHigh = System.Math.Max(opens[globalIndex], closes[globalIndex]);
                 decimal brickLow = System.Math.Min(opens[globalIndex], closes[globalIndex]);
@@ -1562,8 +1650,8 @@ public partial class DataWindowViewModel : ViewModelBase,
                 decimal reversalPrice = isUp ? brickLow - (reversalRequirement * brickSize) : brickHigh + (reversalRequirement * brickSize);
                 decimal nextBrickPrice = isUp ? brickHigh + brickSize : brickLow - brickSize;
                 
-                RenkoReversalText = reversalPrice.ToString("0.000");
-                RenkoUpdateText = nextBrickPrice.ToString("0.000");
+                RenkoReversalText = DisplayFormat.Price(reversalPrice);
+                RenkoUpdateText = DisplayFormat.Price(nextBrickPrice);
             }
             IsHighVisible = false;
             IsLowVisible = false;
@@ -1581,7 +1669,7 @@ public partial class DataWindowViewModel : ViewModelBase,
                 if (boxSize > 0)
                 {
                     int trendCount = System.Math.Max(1, (int)System.Math.Round((double)((highs[globalIndex] - lows[globalIndex]) / boxSize)) + 1);
-                    PointAndFigureCountText = trendCount.ToString();
+                    PointAndFigureCountText = DisplayFormat.Count(trendCount);
                 }
             }
             IsVolumeVisible = false;
@@ -1589,7 +1677,7 @@ public partial class DataWindowViewModel : ViewModelBase,
         else if (_chartViewModel.ChartType == ChartType.ThreeLineBreak && _chartViewModel.Candles != null)
         {
             var candles = _chartViewModel.Candles;
-            if (globalIndex >= 0 && hoveredCandle != null)
+            if (hoveredCandle != null ? globalIndex >= 0 : candles.Count > 0)
             {
                 int lineCount = _chartViewModel.ThreeLineBreakLineCount;
                 if (!ReferenceEquals(candles, _cachedCandlesRef) || lineCount != _cachedLineCount || _cachedBlocks.IsDefault)
@@ -1600,8 +1688,9 @@ public partial class DataWindowViewModel : ViewModelBase,
                 }
                 
                 var blocks = _cachedBlocks;
-                int targetBlockIndex = -1;
-                for (int i = 0; i < blocks.Length; i++)
+                // Nothing hovered: the newest block (it may end before the newest candle when that candle added no block).
+                int targetBlockIndex = hoveredCandle == null ? blocks.Length - 1 : -1;
+                for (int i = 0; hoveredCandle != null && i < blocks.Length; i++)
                 {
                     if (blocks[i].EndDate == hoveredCandle.Timestamp)
                     {
@@ -1620,7 +1709,7 @@ public partial class DataWindowViewModel : ViewModelBase,
                     {
                         if (blocks[i].IsUp == currentIsUp) count++; else break;
                     }
-                    ThreeLineBreakCountText = count.ToString();
+                    ThreeLineBreakCountText = DisplayFormat.Count(count);
                     
                     decimal reversalPrice = 0;
                     if (targetBlockIndex >= lineCount)
@@ -1648,7 +1737,7 @@ public partial class DataWindowViewModel : ViewModelBase,
                         reversalPrice = currentIsUp ? targetBlock.Low : targetBlock.High;
                     }
                     
-                    ThreeLineBreakReversalText = reversalPrice.ToString("F2");
+                    ThreeLineBreakReversalText = DisplayFormat.Price(reversalPrice);
                 }
             }
             IsHighVisible = false;

@@ -225,14 +225,14 @@ public sealed class PortfolioRlDialogViewModelTests : IDisposable
     private static TimeProvider NoonUtc(DateOnly day) => new ManualTimeProvider(new DateTimeOffset(day.ToDateTime(new TimeOnly(12, 0)), TimeSpan.Zero), TimeZoneInfo.Utc);
 
     private (PortfolioRlDialogViewModel Vm, FakeService Service, FakeResolver Resolver, FakeTickerStateStore Store) Create(string language = "en", Func<DateOnly, DateOnly, PanelPreflight>? preflight = null, TimeProvider? clock = null,
-        RlPortfolioSettings? settings = null, FakeTransfer? transfer = null)
+        RlPortfolioSettings? settings = null, FakeTransfer? transfer = null, StockAnalyzer.Core.Services.StoredPeriod.IStoredPeriodAdvisor? periodAdvisor = null)
     {
         var service = new FakeService();
         if (settings is not null) service.Settings = settings;
         service.Preflight = (_, start, end, _, _, _) => Task.FromResult((preflight ?? ((s, e) => Pre(true, s, e, Ready(4))))(start, end));
         var resolver = new FakeResolver();
         var store = new FakeTickerStateStore();
-        var vm = new PortfolioRlDialogViewModel(service, resolver, store, new FakeBacktestDefaultSettingsManager(), new JsonLocalization(language), clock, transfer);
+        var vm = new PortfolioRlDialogViewModel(service, resolver, store, new FakeBacktestDefaultSettingsManager(), new JsonLocalization(language), clock, transfer, periodAdvisor);
         _viewModels.Add(vm);
         return (vm, service, resolver, store);
     }
@@ -456,7 +456,7 @@ public sealed class PortfolioRlDialogViewModelTests : IDisposable
         vm.InitialCapitalText = "0";
         Assert.False(vm.CostsValid);
         Assert.False(vm.CanStart);
-        Assert.Equal("Enter valid costs: initial equity above zero, the other values zero or more.", vm.CostsMessage);
+        Assert.Equal("Enter valid costs: initial equity above zero, the other values zero or more; slippage and liquidation penalty below 1.", vm.CostsMessage);
         vm.InitialCapitalText = "abc";
         Assert.False(vm.CostsValid);
         vm.InitialCapitalText = "10000"; vm.SlippageRatioText = "-0.1";
@@ -489,6 +489,89 @@ public sealed class PortfolioRlDialogViewModelTests : IDisposable
         Assert.Equal("", vm.StartMessage);
         Assert.False(vm.CanRecalculateStart);
         Assert.Empty(service.PreflightCalls); Assert.Empty(service.SuggestCalls); Assert.Empty(resolver.Calls);
+    }
+
+    private async Task<(PortfolioRlDialogViewModel Vm, FakeService Service, FakeStoredPeriodAdvisor Advisor)> DatedWithAdvisor(DateOnly? latest)
+    {
+        var advisor = new FakeStoredPeriodAdvisor { Latest = _ => Task.FromResult(latest) };
+        var created = Create(clock: NoonUtc(Today), periodAdvisor: advisor);
+        created.Service.Suggest = (_, _, mode, _) => Task.FromResult<RlStartSuggestion?>(Found(new DateOnly(2006, 8, 1), mode == RlPanelEvaluationMode.Standard ? 5118 : 1278));
+        created.Store.Groups.Add(new AllTickersNode("All"));
+        await created.Vm.InitializeAsync();
+        return (created.Vm, created.Service, advisor);
+    }
+
+    [Fact]
+    public async Task ThePortfolioEndDateFollowsTheLatestStoredDayOfTheTickedLists_AndTheStartIsSuggestedFromTheNewEnd()
+    {
+        var (vm, service, advisor) = await DatedWithAdvisor(new DateOnly(2026, 10, 5));
+        Assert.Equal("2026-10-07", vm.EndDateExclusive);                          // the fallback until a list is ticked
+        Assert.Empty(advisor.LatestCalls);
+        All(vm).IsSelected = true;
+        await Until(() => vm.PreflightState == RlDialogLoadState.Loaded, "the check");
+        Assert.Equal("2026-10-06", vm.EndDateExclusive);                          // the exclusive end: the day after the latest stored bar
+        Assert.Equal(new DateOnly(2026, 10, 6), Assert.Single(service.SuggestCalls).End);   // the start is suggested from the NEW end
+        Assert.Equal(new DateOnly(2026, 10, 6), Assert.Single(service.PreflightCalls).End);
+        Assert.Single(advisor.LatestCalls);
+    }
+
+    [Fact]
+    public async Task ThePortfolioEndDateIsNeverLaterThanToday_AndWithoutStoredDataTheLastConfirmedDayStays()
+    {
+        var (vm, service, _) = await DatedWithAdvisor(new DateOnly(2026, 10, 8));        // the latest bar is today's: the end would be tomorrow
+        All(vm).IsSelected = true;
+        await Until(() => vm.PreflightState == RlDialogLoadState.Loaded, "the check");
+        Assert.Equal("2026-10-08", vm.EndDateExclusive);                          // the picker allows today at most
+        var (none, _, _) = await DatedWithAdvisor(null);
+        All(none).IsSelected = true;
+        await Task.Delay(100);
+        Assert.Equal("2026-10-07", none.EndDateExclusive);                        // no stored data: the existing fallback
+    }
+
+    [Fact]
+    public async Task ATypedPortfolioEndSurvives_AndATypedStartSurvivesWhileTheEndFollows()
+    {
+        var (typedEnd, _, advisor) = await DatedWithAdvisor(new DateOnly(2026, 10, 5));
+        typedEnd.EndDateExclusive = "2026-10-01";
+        All(typedEnd).IsSelected = true;
+        await Until(() => typedEnd.PreflightState == RlDialogLoadState.Loaded, "the check");
+        Assert.Equal("2026-10-01", typedEnd.EndDateExclusive);
+        Assert.Empty(advisor.LatestCalls);                                        // a typed end is not asked about at all
+
+        var (typedStart, service, _) = await DatedWithAdvisor(new DateOnly(2026, 10, 5));
+        typedStart.StartDate = "2020-01-01";
+        All(typedStart).IsSelected = true;
+        await Until(() => typedStart.PreflightState == RlDialogLoadState.Loaded, "the check");
+        Assert.Equal(("2020-01-01", "2026-10-06"), (typedStart.StartDate, typedStart.EndDateExclusive));
+        Assert.Empty(service.SuggestCalls);
+    }
+
+    [Fact]
+    public async Task ThePortfolioEndReturnsToTheFallbackWhenTheNewSelectionHasNoStoredData()
+    {
+        var (vm, _, advisor) = await DatedWithAdvisor(new DateOnly(2026, 10, 5));
+        All(vm).IsSelected = true;
+        await Until(() => vm.PreflightState == RlDialogLoadState.Loaded && vm.EndDateExclusive == "2026-10-06", "the first end");
+        advisor.Latest = _ => Task.FromResult<DateOnly?>(null);
+        All(vm).IsSelected = false; All(vm).IsSelected = true;
+        await Until(() => vm.EndDateExclusive == "2026-10-07", "the fallback end");
+        Assert.True(vm.PeriodValid || vm.StartDate.Length == 0);
+    }
+
+    [Fact]
+    public async Task ALateOlderLatestDateNeverOverwritesANewerSelection()
+    {
+        var (vm, _, advisor) = await DatedWithAdvisor(null);
+        var first = new TaskCompletionSource<DateOnly?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        int call = 0;
+        advisor.Latest = _ => ++call == 1 ? first.Task : Task.FromResult<DateOnly?>(new DateOnly(2026, 10, 2));
+        All(vm).IsSelected = true;
+        await Until(() => advisor.LatestCalls.Count == 1, "the first request");
+        All(vm).IsSelected = false; All(vm).IsSelected = true;                    // a newer selection supersedes it
+        await Until(() => vm.EndDateExclusive == "2026-10-03", "the newer end");
+        first.SetResult(new DateOnly(2026, 9, 1));
+        await Task.Delay(100);
+        Assert.Equal("2026-10-03", vm.EndDateExclusive);
     }
 
     [Fact]
@@ -1047,20 +1130,6 @@ public sealed class PortfolioRlDialogViewModelTests : IDisposable
     }
 
     [Fact]
-    public async Task TheMethodHelpShowsTheSmallestCalendarOfEachMethodFoundByTheCoreFunction()
-    {
-        var (vm, _, _, store) = Create();
-        await Loaded(vm, store);
-        await Until(() => vm.BlockCountHelp.Contains("704"), "the minimum lengths");
-        Assert.Equal("The calendar is split 3:1:1 into train, validation and test; needs at least 1,278 bars.", vm.RatioHelp);
-        Assert.Equal("Each partition takes the stated number of whole blocks, counted back from the latest date; needs at least 704 bars.", vm.BlockCountHelp);
-        vm.MinimumTrainBarsText = "576";                                          // 3 train blocks: 192 * 5 + 128
-        await Until(() => vm.BlockCountHelp.Contains("1,088"), "the lengths for three train blocks");
-        Assert.Equal(RlPanelCatalogBuilder.MinimumCalendarLength(RlPanelEvaluationMode.ShortHistory, new RlPanelPartitionPlan(RlPortfolioPartitionMode.Ratio, new RlPanelBlockRequirement(3, 1, 1)))
-            .ToString("N0", CultureInfo.CurrentCulture), vm.RatioHelp.Split(' ')[^2]);
-    }
-
-    [Fact]
     public async Task TheSymbolTableShowsTheRoleOfEveryReadySymbolAndTheLegend()
     {
         var roles = new[] { RlPanelSymbolRole.Trains, RlPanelSymbolRole.EvaluatedOnly, RlPanelSymbolRole.Trains, RlPanelSymbolRole.None };
@@ -1075,7 +1144,6 @@ public sealed class PortfolioRlDialogViewModelTests : IDisposable
         var ja = new JsonLocalization("ja");
         Assert.Equal(("学習する", "評価のみ", "完全なブロックなし"),
             (PortfolioRlPresentation.Role(RlPanelSymbolRole.Trains, ja), PortfolioRlPresentation.Role(RlPanelSymbolRole.EvaluatedOnly, ja), PortfolioRlPresentation.Role(RlPanelSymbolRole.None, ja)));
-        Assert.Equal("An evaluated-only symbol is traded by the policy in validation and test, but the policy is never trained on it.", new JsonLocalization("en").GetString("Prl.Role.Legend"));
     }
 
     [Fact]
@@ -1098,15 +1166,14 @@ public sealed class PortfolioRlDialogViewModelTests : IDisposable
     }
 
     [Fact]
-    public async Task TheJapanesePartitionWordingComesFromTheSameState()
+    public void TheJapanesePartitionWordingComesFromTheSameState()
     {
         var (vm, _, _, _) = Create("ja");
         vm.UseShortHistory = true; vm.IsBlockCountPartition = true; vm.MinimumTrainBarsText = "250";
-        await Until(() => vm.BlockCountHelp.Contains("896"), "the minimum lengths");      // 2 train blocks: 192 * 4 + 128
         // Deliberate Japanese literals: they pin the wording a Japanese user reads.
         Assert.Equal("250 本 = 2 ブロック = 384 本", vm.TrainBarsEffective);
         Assert.Equal("学習ブロックは 1 シードあたり約 40 回繰り返し使われます（同じ相場経路の繰り返しで、新しいデータではありません）。", vm.PartitionNotices[0]);
-        Assert.DoesNotContain("[Prl.", vm.RatioHelp + vm.BlockCountHelp + string.Join("", vm.PartitionNotices));
+        Assert.DoesNotContain("[Prl.", string.Join("", vm.PartitionNotices));
     }
 
     // ----- stored base model (transfer) -----
@@ -1689,8 +1756,8 @@ public sealed class PortfolioRlDialogViewModelTests : IDisposable
             var rows = Find<ItemsControl>(window, PrlUiConstants.SymbolTable).GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text).ToArray();
             Assert.Contains("S2", rows);
             Assert.Contains("Local price or metadata file is missing", rows);
-            Assert.Contains("Role", Texts(window));                                                      // the role column and its legend belong to the table
-            Assert.Contains(Texts(window), t => t.StartsWith("An evaluated-only symbol is traded by the policy"));
+            Assert.Contains("Role", Texts(window));                                                      // the role column belongs to the table; its legend text was removed (S5)
+            Assert.DoesNotContain(Texts(window), t => t.StartsWith("An evaluated-only symbol is traded by the policy"));
             var exclude = Find<CheckBox>(window, PrlUiConstants.Exclude);
             Assert.True(exclude.IsVisible);
             Assert.False(Find<Button>(window, PrlUiConstants.Start).IsEffectivelyEnabled);      // one symbol is not usable and the exclusion is not confirmed
@@ -1729,6 +1796,361 @@ public sealed class PortfolioRlDialogViewModelTests : IDisposable
     private static Point Origin(Visual visual, Visual relativeTo) => visual.TranslatePoint(new Point(0, 0), relativeTo)!.Value;
 
     private static double Top(Visual visual, Visual relativeTo) => Origin(visual, relativeTo).Y;
+
+    [AvaloniaFact]
+    public async Task TheRunStatusStripIsAboveTheFooterOutsideTheScrollAndCarriesTheMessageTheDetailsAndTheBusyBar()
+    {
+        var (window, vm, service, _) = await Shown(store => { store.Groups.Add(new AllTickersNode("All")); return Task.CompletedTask; });
+        var gate = new TaskCompletionSource<RlPortfolioTrainingResult>();
+        service.Run = (_, _) => gate.Task;
+        try
+        {
+            var strip = window.GetVisualDescendants().OfType<StockAnalyzer.Avalonia.Views.Controls.RunStatusStrip>().Single();
+            var start = Find<Button>(window, PrlUiConstants.Start);
+            StockAnalyzer.Avalonia.Tests.Views.RunStatusStripTests.AssertPlacedBetweenBodyAndFooter(window, strip, start);   // also while collapsed
+            Assert.Equal(0d, strip.Bounds.Height);
+            Assert.DoesNotContain("Progress", Texts(window));                                       // the former "Run" section heading is gone
+
+            vm.TechnicalDetails = "the stored list is unavailable";                                // a failure detail with no run: not lost
+            Pump();
+            Assert.Contains("the stored list is unavailable", Texts(window));
+            vm.TechnicalDetails = "";
+
+            vm.StartDate = "2000-01-03"; vm.EndDateExclusive = "2006-01-03";
+            All(vm).IsSelected = true;
+            await Until(() => vm.PreflightState == RlDialogLoadState.Loaded && vm.CanStart, "the gate");
+            var run = vm.StartCommand.ExecuteAsync(null);
+            Pump();
+            var bar = strip.GetVisualDescendants().OfType<ProgressBar>().Single();
+            Assert.True(bar.IsEffectivelyVisible);
+            Assert.True(bar.IsIndeterminate, "no percentage is reported");
+            vm.Message = "Preparing the panel";
+            Pump();
+            var message = Find<TextBlock>(window, PrlUiConstants.Message);
+            Assert.Equal("Preparing the panel", message.Text);
+            Assert.Same(strip, message.GetVisualAncestors().OfType<StockAnalyzer.Avalonia.Views.Controls.RunStatusStrip>().Single());
+            StockAnalyzer.Avalonia.Tests.Views.RunStatusStripTests.AssertPlacedBetweenBodyAndFooter(window, strip, start);
+            gate.SetResult(Result());
+            await run;
+        }
+        finally { window.Close(); }
+    }
+
+    [AvaloniaFact]
+    public async Task TheFooterKeepsTheFourStateLabelsInsideTheWindowLeftOfTheButtons_AndTheBlockingReasonStaysVisible_AtEveryWidth()
+    {
+        foreach (string language in new[] { "en", "ja" })
+        foreach (double width in new[] { StockAnalyzer.Avalonia.Common.RlUiLayout.WindowWidth, StockAnalyzer.Avalonia.Common.RlUiLayout.MinimumWidth })
+        {
+            var (window, vm, _, _) = await Shown(store => { store.Groups.Add(new AllTickersNode("All")); return Task.CompletedTask; }, language: language, transfer: new FakeTransfer());
+            try
+            {
+                window.Width = width;
+                vm.RunKind = PortfolioRunKind.FineTune; vm.SmokeOnly = true; vm.UseShortHistory = true; vm.SymbolHoldout = false;      // the most labels at once
+                Pump(); Pump();
+                string where = $"{language}, width {width}";
+                Assert.Equal(4, vm.ModeBadges.Count);
+                Assert.True(vm.HasStartBlocker, where + ": a blocking reason is shown together with the labels");
+                var badges = Find<ItemsControl>(window, PrlUiConstants.ModeBadges);
+                var reason = Find<TextBlock>(window, PrlUiConstants.StartBlocker);
+                var start = Find<Button>(window, PrlUiConstants.Start);
+                Assert.True(badges.IsEffectivelyVisible && reason.IsEffectivelyVisible);
+                double right = Origin(badges, window).X + badges.Bounds.Width;
+                Assert.True(right <= window.Bounds.Width + LayoutTolerance, $"{where}: the labels end at {right}, inside the window");
+                Assert.True(right <= Origin(start, window).X + LayoutTolerance, $"{where}: the labels end at {right}, left of the Start button at {Origin(start, window).X}");
+                Assert.True(Origin(start, window).X + start.Bounds.Width <= window.Bounds.Width + LayoutTolerance, $"{where}: the buttons stay inside the window");
+                FooterLayoutAssert.ReasonIsShownInFull(reason, where);
+                var footer = Find<Control>(window, PrlUiConstants.Start).GetVisualAncestors().OfType<Border>().First(x => Grid.GetRow(x) == 3);
+                foreach (var label in badges.GetVisualDescendants().OfType<Border>().Where(x => x.Child is TextBlock))
+                {
+                    var origin = Origin(label, window);
+                    Assert.True(origin.X + label.Bounds.Width <= right + LayoutTolerance, $"{where}: every label is fully inside the label area");
+                    Assert.True(Origin(label, footer).Y + label.Bounds.Height <= footer.Bounds.Height + LayoutTolerance, $"{where}: every label is inside the footer height");
+                }
+                Assert.True(Origin(reason, footer).Y + reason.Bounds.Height <= footer.Bounds.Height + LayoutTolerance, $"{where}: the reason is inside the footer height");
+            }
+            finally { window.Close(); }
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task TheSettingsAreInBasicAdvancedAndResultsGroups_DocumentOrderEqualsVisualOrder()
+    {
+        // with a stored-model service, so the comparison card (the last item of the Results group) is on screen
+        var (window, vm, _, _) = await Shown(store => { store.Groups.Add(new AllTickersNode("All")); return Task.CompletedTask; }, transfer: new FakeTransfer());
+        try
+        {
+            Pump();
+            StockAnalyzer.Avalonia.Tests.Views.TrainingGroupHeaderTests.AssertSharedHeaderValues(window, "Basic Settings", "Advanced Settings", "Results and management");
+            string[] ids =
+            {
+                PrlUiConstants.Sources, PrlUiConstants.StartDate, PrlUiConstants.EndDate,
+                PrlUiConstants.Capital, PrlUiConstants.FlatCommission, PrlUiConstants.UnitCommission, PrlUiConstants.Slippage, PrlUiConstants.Liquidation,
+                PrlUiConstants.PreflightSummary,
+                PrlUiConstants.Smoke, PrlUiConstants.ShortHistory, PrlUiConstants.SymbolHoldout, PrlUiConstants.HoldoutPercent, PrlUiConstants.MaxWeight,
+                PrlUiConstants.MinimumTrain, PrlUiConstants.Start,
+            };
+            var all = window.GetVisualDescendants().OfType<Control>().ToList();
+            var controls = ids.Select(id => Find<Control>(window, id)).ToArray();
+            Assert.Equal(controls.Select(c => all.IndexOf(c)).OrderBy(i => i), controls.Select(c => all.IndexOf(c)));                 // document order
+            double Bottom(Control c) => c.TranslatePoint(new Point(0, c.Bounds.Height), window)!.Value.Y;
+            double Left(Control c) => c.TranslatePoint(new Point(0, 0), window)!.Value.X;
+            for (int i = 2; i < controls.Length - 1; i++)          // from the end date to the partition (the list and the period are two columns; the footer is outside the body)
+            {
+                bool nextRow = Bottom(controls[i]) > Bottom(controls[i - 1]) + LayoutTolerance;
+                bool sameRowToTheRight = Math.Abs(Bottom(controls[i]) - Bottom(controls[i - 1])) <= LayoutTolerance && Left(controls[i]) > Left(controls[i - 1]);
+                Assert.True(nextRow || sameRowToTheRight, $"{ids[i]} must follow {ids[i - 1]} visually");
+            }
+            // the group headers sit where the group changes
+            var headers = window.GetVisualDescendants().OfType<TextBlock>().Where(t => t.Classes.Contains("groupHeader")).ToArray();
+            Assert.True(Top(headers[0], window) < Top(controls[0], window));
+            Assert.True(Bottom(controls[8]) <= Top(headers[1], window) + LayoutTolerance && Top(headers[1], window) < Top(controls[9], window));   // the data check closes Basic
+            Assert.True(Top(controls[14], window) < Top(headers[2], window));                                                                     // the partition is above the Results group
+            Assert.True(Top(headers[2], window) < Top(Find<Button>(window, PrlUiConstants.Compare), window));                                    // the comparison is a Results item
+            Assert.Equal(vm.LiquidationPenaltyText, Find<TextBox>(window, PrlUiConstants.Liquidation).Text);
+        }
+        finally { window.Close(); }
+    }
+
+    [Fact]
+    public async Task LiquidationPenaltyIsLoadedFromTheSavedDefaultShownAndCarriedByTheRunRequest()
+    {
+        var defaults = new FakeBacktestDefaultSettingsManager();
+        var builtIn = BacktestDefaultSettings.BuiltIn;
+        await defaults.SaveAsync(new BacktestDefaultSettings
+        {
+            SchemaVersion = builtIn.SchemaVersion, DefaultTimeFrame = builtIn.DefaultTimeFrame, EndDateMode = builtIn.EndDateMode, FixedEndDateUtc = builtIn.FixedEndDateUtc,
+            StartDateMode = builtIn.StartDateMode, StartDateRelativeYears = builtIn.StartDateRelativeYears, FixedStartDateUtc = builtIn.FixedStartDateUtc,
+            InitialCapital = builtIn.InitialCapital, CommissionFlat = builtIn.CommissionFlat, CommissionPerUnit = builtIn.CommissionPerUnit, SlippageRatio = builtIn.SlippageRatio,
+            SizingModel = builtIn.SizingModel, SizingParameter = builtIn.SizingParameter, InitialMarginRatio = builtIn.InitialMarginRatio,
+            MaintenanceMarginRatio = builtIn.MaintenanceMarginRatio, LiquidationPenaltyRatio = 0.02m, AnnualRiskFreeRate = builtIn.AnnualRiskFreeRate,
+            AnnualMAR = builtIn.AnnualMAR, AnnualPeriodsByFrame = builtIn.AnnualPeriodsByFrame, BootstrapSeed = builtIn.BootstrapSeed, BootstrapIterations = builtIn.BootstrapIterations,
+        });
+        var service = new FakeService { Run = (_, _) => Task.FromResult(Result()) };
+        service.Preflight = (_, start, end, _, _, _) => Task.FromResult(Pre(true, start, end, Ready(4)));
+        var store = new FakeTickerStateStore();
+        var vm = new PortfolioRlDialogViewModel(service, new FakeResolver(), store, defaults, new JsonLocalization("en"), null, null);
+        _viewModels.Add(vm);
+        await Loaded(vm, store);
+        Assert.Equal(0.02m.ToString(CultureInfo.CurrentCulture), vm.LiquidationPenaltyText);        // the saved default fills the field
+        await Until(() => vm.CanStart, "the gate");
+        await vm.StartCommand.ExecuteAsync(null);
+        Assert.Equal(0.02m, Assert.Single(service.Runs).Costs.LiquidationPenaltyRatio);              // unedited: the saved default, as before
+        vm.LiquidationPenaltyText = 0.01m.ToString(CultureInfo.CurrentCulture);
+        await Until(() => vm.CanStart, "the gate again");
+        await vm.StartCommand.ExecuteAsync(null);
+        Assert.Equal(0.01m, service.Runs[1].Costs.LiquidationPenaltyRatio);                          // the edited value is what the run uses
+        Assert.Equal(0.02m, defaults.Settings.LiquidationPenaltyRatio);                              // and nothing is written back to the global defaults
+    }
+
+    [Theory]
+    [InlineData("0", true)]
+    [InlineData("0.005", true)]
+    [InlineData("0.999", true)]
+    [InlineData("1", false)]
+    [InlineData("-0.1", false)]
+    [InlineData("abc", false)]
+    [InlineData("", false)]
+    public async Task LiquidationPenaltyFollowsTheRlBounds_ZeroInclusiveToOneExclusive_AndTheCostsMessageNamesAnInvalidValue(string text, bool valid)
+    {
+        var (vm, _, _, store) = Create();
+        await Loaded(vm, store);
+        await Until(() => vm.CanStart, "the gate");
+        Assert.Equal(BacktestDefaults.LiquidationPenaltyRatio.ToString(CultureInfo.CurrentCulture), vm.LiquidationPenaltyText);     // the built-in default is valid and loaded
+        vm.LiquidationPenaltyText = text;
+        Assert.Equal(valid, vm.CostsValid);
+        Assert.Equal(valid, vm.CanStart);
+        Assert.Equal(valid ? "" : "Enter valid costs: initial equity above zero, the other values zero or more; slippage and liquidation penalty below 1.", vm.CostsMessage);
+    }
+
+    [AvaloniaFact]
+    public async Task TheTabOrderAndTheStartGateIncludeTheLiquidationField()
+    {
+        var (window, vm, _, _) = await Shown(store => { store.Groups.Add(new AllTickersNode("All")); return Task.CompletedTask; });
+        try
+        {
+            vm.StartDate = "2000-01-03"; vm.EndDateExclusive = "2006-01-03";
+            All(vm).IsSelected = true;
+            await Until(() => vm.PreflightState == RlDialogLoadState.Loaded && vm.CanStart, "the gate");
+            var liquidation = Find<TextBox>(window, PrlUiConstants.Liquidation);
+            Assert.Equal(vm.LiquidationPenaltyText, liquidation.Text);
+            liquidation.Text = "2";
+            Pump();
+            Assert.False(Find<Button>(window, PrlUiConstants.Start).IsEffectivelyEnabled);
+            Assert.Contains(Texts(window), t => t.StartsWith("Enter valid costs"));
+            liquidation.Text = "0.01";
+            Pump();
+            Assert.True(Find<Button>(window, PrlUiConstants.Start).IsEffectivelyEnabled);
+        }
+        finally { window.Close(); }
+    }
+
+    [Fact]
+    public async Task StartBlockerDisplay_NamesOneExistingReasonAtATime_AndIsEmptyWhenAStartIsPossibleOrARunIsActive()
+    {
+        var (vm, service, _, store) = Create();
+        await Loaded(vm, store);
+        await Until(() => vm.CanStart, "the gate");
+        Assert.Equal("", vm.StartBlockerDisplay); Assert.False(vm.HasStartBlocker);
+
+        All(vm).IsSelected = false;                                                               // nothing ticked: the existing check text
+        await Until(() => !vm.CanStart, "the cleared check");
+        Assert.Equal("Select a source and enter a period.", vm.StartBlockerDisplay);
+        Assert.True(vm.HasStartBlocker);
+        All(vm).IsSelected = true;
+        await Until(() => vm.CanStart, "the gate again, ticked");
+
+        vm.CommissionFlatText = "x";                                                              // costs: the existing message
+        Assert.Equal(vm.CostsMessage, vm.StartBlockerDisplay); Assert.NotEqual("", vm.StartBlockerDisplay);
+        vm.CommissionFlatText = "0";
+        Assert.Equal("", vm.StartBlockerDisplay);
+
+        vm.LiquidationPenaltyText = "1";                                                          // the new field is a costs reason too
+        Assert.Equal(vm.CostsMessage, vm.StartBlockerDisplay);
+        vm.LiquidationPenaltyText = "0.005";
+
+        vm.HoldoutPercentText = "99";                                                             // percent: the existing message
+        Assert.Equal(vm.PercentMessage, vm.StartBlockerDisplay); Assert.NotEqual("", vm.StartBlockerDisplay);
+        vm.HoldoutPercentText = "25";
+        await Until(() => vm.CanStart, "the gate again");
+
+        vm.EndDateExclusive = "2999-01-01";                                                       // the end date lies after today: the period message
+        Assert.Equal(vm.PeriodMessage, vm.StartBlockerDisplay); Assert.NotEqual("", vm.StartBlockerDisplay);
+        vm.EndDateExclusive = "2006-01-03";
+        await Until(() => vm.CanStart, "the gate once more");
+        Assert.Equal("", vm.StartBlockerDisplay);
+
+        var gate = new TaskCompletionSource<RlPortfolioTrainingResult>();
+        service.Run = (_, _) => gate.Task;
+        var run = vm.StartCommand.ExecuteAsync(null);
+        vm.CommissionFlatText = "x";
+        Assert.True(vm.IsBusy);
+        Assert.Equal("", vm.StartBlockerDisplay);                                                 // the run-status strip speaks while a run is active
+        gate.SetResult(Result());
+        await run;
+    }
+
+    [Fact]
+    public async Task StartBlockerDisplay_ShowsTheDataCheckReasonOfTheStartGate()
+    {
+        var statuses = new[] { RlPanelSymbolStatus.Ready, RlPanelSymbolStatus.Ready, RlPanelSymbolStatus.MissingFile };
+        var (vm, _, _, store) = Create(preflight: (s, e) => Pre(true, s, e, statuses));
+        await Loaded(vm, store);
+        await Until(() => vm.BlockerText.Length > 0, "the gate decision");
+        Assert.False(vm.CanStart);
+        Assert.Equal(vm.BlockerText, vm.StartBlockerDisplay);                                     // the data-check card keeps its text; the footer repeats it
+        Assert.Equal("Some symbols cannot be used. Tick the box to continue without them.", vm.StartBlockerDisplay);
+        vm.ExcludeUnavailable = true;
+        await Until(() => vm.CanStart, "the exclusion");
+        Assert.Equal("", vm.StartBlockerDisplay);
+    }
+
+    [Fact]
+    public async Task StartBlockerDisplay_NamesTheMissingBaseRun_AndTheModeBadgesFollowTheOptions()
+    {
+        var (vm, _, _, store) = Create(transfer: new FakeTransfer());
+        await Loaded(vm, store);
+        await Until(() => vm.CanStart, "the gate");
+        Assert.Empty(vm.ModeBadges); Assert.False(vm.HasModeBadges);                              // default state: nothing
+        vm.RunKind = PortfolioRunKind.FineTune;
+        Assert.Equal(new[] { "Fine-tune" }, vm.ModeBadges);
+        Assert.Equal("Choose a base run.", vm.StartBlockerDisplay);                               // the existing admission wording
+        vm.RunKind = PortfolioRunKind.EvaluateBase;
+        Assert.Equal(new[] { "Base evaluation" }, vm.ModeBadges);
+        vm.RunKind = PortfolioRunKind.Scratch;
+        vm.SmokeOnly = true; vm.UseShortHistory = true;
+        Assert.Equal(new[] { "Trial run", "Short history" }, vm.ModeBadges);
+        vm.SmokeOnly = false; vm.UseShortHistory = false;
+        Assert.Empty(vm.ModeBadges);
+        Assert.True(vm.SymbolHoldout);                                                            // an option that is ON by default gets no label
+    }
+
+    [Fact]
+    public async Task DefaultValueInventory_EveryOptionStartsAtItsInventoryDefault()
+    {
+        var (vm, service, _, store) = Create(transfer: new FakeTransfer());
+        store.Groups.Add(new AllTickersNode("All"));
+        await vm.InitializeAsync();
+        Assert.True(vm.SymbolHoldout);                                                            // ON by default, so it is never labelled
+        Assert.Equal(("25", "100"), (vm.HoldoutPercentText, vm.MaxWeightPercentText));            // 25 % of the symbols held out, 100 % = no weight cap
+        Assert.Equal((25, 100), (service.Settings.HoldoutPercent, service.Settings.MaxWeightPercent));
+        Assert.False(vm.UseShortHistory); Assert.False(vm.SmokeOnly);
+        Assert.Equal(PortfolioRunKind.Scratch, vm.RunKind);
+        Assert.True(vm.FreezeEncoder);
+        Assert.False(vm.UseStoredPanel);                                                          // capture a new panel
+        Assert.Equal((1_000_000m.ToString(CultureInfo.CurrentCulture), "0", "0", "0", 0.005m.ToString(CultureInfo.CurrentCulture)),
+            (vm.InitialCapitalText, vm.CommissionFlatText, vm.CommissionPerUnitText, vm.SlippageRatioText, vm.LiquidationPenaltyText));
+        Assert.Empty(vm.ModeBadges);
+    }
+
+    [Fact]
+    public async Task ModeBadges_ShowTheSymbolHoldoutOnlyWhenItIsSwitchedOff()
+    {
+        var (vm, _, _, store) = Create();
+        await Loaded(vm, store);
+        var seen = new List<string?>();
+        vm.PropertyChanged += (_, e) => seen.Add(e.PropertyName);
+        Assert.Empty(vm.ModeBadges);                                                              // ON is the default: no label
+        vm.SymbolHoldout = false;
+        Assert.Equal(new[] { "No symbol holdout" }, vm.ModeBadges);
+        Assert.True(vm.HasModeBadges);
+        Assert.Contains(nameof(vm.ModeBadges), seen);
+        vm.SmokeOnly = true; vm.UseShortHistory = true;
+        Assert.Equal(new[] { "Trial run", "Short history", "No symbol holdout" }, vm.ModeBadges);
+        vm.SmokeOnly = false; vm.UseShortHistory = false; vm.SymbolHoldout = true;
+        Assert.Empty(vm.ModeBadges); Assert.False(vm.HasModeBadges);
+    }
+
+    [AvaloniaFact]
+    public async Task TheFooterHoldsTheReasonAndTheModeLabelsNextToTheStatus()
+    {
+        var (window, vm, _, _) = await Shown(store => { store.Groups.Add(new AllTickersNode("All")); return Task.CompletedTask; });
+        try
+        {
+            Pump();
+            var reason = Find<TextBlock>(window, PrlUiConstants.StartBlocker);
+            var status = Find<TextBlock>(window, PrlUiConstants.Status);
+            var start = Find<Button>(window, PrlUiConstants.Start);
+            var badges = Find<ItemsControl>(window, PrlUiConstants.ModeBadges);
+            Assert.True(reason.IsEffectivelyVisible);
+            Assert.Equal("Select a source and enter a period.", reason.Text);
+            var footer = reason.GetVisualAncestors().OfType<Border>().First(b => Grid.GetRow(b) == 3);
+            Assert.Contains(start, footer.GetVisualDescendants());
+            Assert.True(Origin(status, window).X < Origin(reason, window).X && Origin(reason, window).X < Origin(start, window).X);
+            Assert.False(badges.IsEffectivelyVisible);
+            Find<CheckBox>(window, PrlUiConstants.Smoke).IsChecked = true;
+            Pump();
+            Assert.True(badges.IsEffectivelyVisible);
+            Assert.Equal(new[] { "Trial run" }, badges.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text));
+            vm.StartDate = "2000-01-03"; vm.EndDateExclusive = "2006-01-03";
+            All(vm).IsSelected = true;
+            await Until(() => vm.CanStart, "the gate");
+            Pump();
+            Assert.False(reason.IsEffectivelyVisible);
+        }
+        finally { window.Close(); }
+    }
+
+    [AvaloniaFact]
+    public async Task TheFooterFollowsTheSubWindowStandard_StartIsPrimaryAndLeftOfCancelWhileBusy()
+    {
+        var (window, vm, service, _) = await Shown(store => { store.Groups.Add(new AllTickersNode("All")); return Task.CompletedTask; });
+        var gate = new TaskCompletionSource<RlPortfolioTrainingResult>();
+        service.Run = (_, _) => gate.Task;
+        try
+        {
+            vm.StartDate = "2000-01-03"; vm.EndDateExclusive = "2006-01-03";
+            All(vm).IsSelected = true;
+            await Until(() => vm.PreflightState == RlDialogLoadState.Loaded && vm.CanStart, "the gate");
+            var run = vm.StartCommand.ExecuteAsync(null);
+            Pump();
+            Assert.True(vm.IsBusy);
+            StockAnalyzer.Avalonia.Tests.Views.FooterOrderStandardTests.AssertPrimaryFirst(window, Find<Button>(window, PrlUiConstants.Start), Find<Button>(window, PrlUiConstants.Cancel));
+            gate.SetResult(Result());
+            await run;
+        }
+        finally { window.Close(); }
+    }
 
     [AvaloniaFact]
     public async Task TheTransferCardIsThereOnlyWithAStoredModelServiceAndFollowsTheRunKindAndTheAdmission()
@@ -1849,7 +2271,7 @@ public sealed class PortfolioRlDialogViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
-    public async Task TheListsAreOnTheLeftAndThePeriodOverTheEvaluationOnTheRight()
+    public async Task TheListsAreOnTheLeftAndThePeriodOnTheRight_TheEvaluationIsAnAdvancedCardBelow()
     {
         var (window, _, _, _) = await Shown(store => { store.Groups.Add(new AllTickersNode("All")); return Task.CompletedTask; });
         try
@@ -1860,17 +2282,20 @@ public sealed class PortfolioRlDialogViewModelTests : IDisposable
             var start = Find<CalendarDatePicker>(window, PrlUiConstants.StartDate); var end = Find<CalendarDatePicker>(window, PrlUiConstants.EndDate);
             var shortHistory = Find<CheckBox>(window, PrlUiConstants.ShortHistory); var smoke = Find<CheckBox>(window, PrlUiConstants.Smoke);
             Assert.Equal(0, ColumnOf(grid, tree));
-            Assert.All(new Control[] { start, end, shortHistory, smoke }, c => Assert.Equal(1, ColumnOf(grid, c)));
+            Assert.All(new Control[] { start, end }, c => Assert.Equal(1, ColumnOf(grid, c)));
+            Assert.DoesNotContain(shortHistory, grid.GetVisualDescendants());                          // the evaluation options left the period column (S3b)
+            Assert.DoesNotContain(smoke, grid.GetVisualDescendants());
             Assert.True(Top(start, window) < Top(end, window));
-            Assert.True(Top(end, window) < Top(shortHistory, window));
-            Assert.True(Top(shortHistory, window) < Top(smoke, window));
+            double gridBottom = grid.TranslatePoint(new Point(0, grid.Bounds.Height), window)!.Value.Y;
+            Assert.True(Top(smoke, window) >= gridBottom - LayoutTolerance && Top(shortHistory, window) >= gridBottom - LayoutTolerance);
             var right = grid.Children.Single(c => Grid.GetColumn(c) == 1);
             var headings = right.GetVisualDescendants().OfType<TextBlock>().Where(t => t.Classes.Contains("heading")).Select(t => t.Text).ToArray();
-            Assert.Equal(new[] { "Period", "Evaluation" }, headings);
-            // The partition card is outside the two columns: below the grid, above the stored-base-model card.
+            Assert.Equal(new[] { "Period" }, headings);
+            // The partition card is outside the two columns: below the grid and below the evaluation card, above the stored-base-model card.
             var partitionHeading = window.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Classes.Contains("heading") && t.Text == "Partition of the short-history evaluation");
             Assert.DoesNotContain(partitionHeading, grid.GetVisualDescendants());
-            Assert.True(Top(partitionHeading, window) >= grid.TranslatePoint(new Point(0, grid.Bounds.Height), window)!.Value.Y - LayoutTolerance);
+            Assert.True(Top(partitionHeading, window) >= gridBottom - LayoutTolerance);
+            Assert.True(Top(partitionHeading, window) > Top(Find<TextBox>(window, PrlUiConstants.MaxWeight), window));
             Assert.Equal("Ticker lists", grid.Children.Single(c => Grid.GetColumn(c) == 0).GetVisualDescendants().OfType<TextBlock>().First(t => t.Classes.Contains("heading")).Text);
             Assert.Equal("2026-10-07", end.SelectedDate!.Value.ToString("yyyy-MM-dd"));      // the last confirmed day
             Assert.Equal(new DateTime(2026, 10, 8), end.DisplayDateEnd);
@@ -1915,22 +2340,28 @@ public sealed class PortfolioRlDialogViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
-    public async Task TheTrialRunBoxSitsUnderTheSymbolHoldoutAndTheBarsAndBlocksOfOneItemShareARow()
+    public async Task TheEvaluationCardIsTrialRunAndShortHistoryThenHoldoutAndShareThenMaxWeight_AndTheBarsAndBlocksOfOneItemShareARow()
     {
         var (window, _, _, _) = await Shown(store => { store.Groups.Add(new AllTickersNode("All")); return Task.CompletedTask; });
         try
         {
             Pump();
             var holdout = Find<CheckBox>(window, PrlUiConstants.SymbolHoldout); var trial = Find<CheckBox>(window, PrlUiConstants.Smoke);
-            var share = Find<TextBox>(window, PrlUiConstants.HoldoutPercent);
-            double holdoutTop = Origin(holdout, window).Y, trialTop = Origin(trial, window).Y, shareTop = Origin(share, window).Y;
-            Assert.True(holdoutTop < trialTop && trialTop < shareTop);                                     // holdout, then the trial run, then the share box
-            Assert.True(trialTop >= holdoutTop + holdout.Bounds.Height - LayoutTolerance);                              // directly below, not overlapping
-            Assert.Equal(Origin(holdout, window).X, Origin(trial, window).X, LayoutTolerance);                          // same column
+            var shortHistory = Find<CheckBox>(window, PrlUiConstants.ShortHistory);
+            var share = Find<TextBox>(window, PrlUiConstants.HoldoutPercent); var weight = Find<TextBox>(window, PrlUiConstants.MaxWeight);
+            // row 0: Trial run | Short history (the order of the RL window)
+            Assert.Equal(Origin(trial, window).Y, Origin(shortHistory, window).Y, LayoutTolerance);
+            Assert.True(Origin(trial, window).X < Origin(shortHistory, window).X);
+            // row 1: Symbol holdout | Holdout share, bottom aligned; row 2: Max weight under the left column
+            Assert.True(Origin(holdout, window).X < Origin(share, window).X);
+            Assert.Equal(holdout.TranslatePoint(new Point(0, holdout.Bounds.Height), window)!.Value.Y, share.TranslatePoint(new Point(0, share.Bounds.Height), window)!.Value.Y, LayoutTolerance);
+            Assert.True(Origin(share, window).Y > Origin(trial, window).Y);
+            Assert.True(Origin(weight, window).Y > Origin(share, window).Y + share.Bounds.Height - LayoutTolerance);
+            Assert.True(Origin(weight, window).X < Origin(share, window).X);                                            // under the left column
             // The partition card lies outside the two columns: left of the period column, below the whole evaluation card.
             var partition = Origin(Find<TextBox>(window, PrlUiConstants.MinimumTrain), window);
             Assert.True(partition.X < Origin(Find<CalendarDatePicker>(window, PrlUiConstants.StartDate), window).X);
-            Assert.True(partition.Y > shareTop);
+            Assert.True(partition.Y > Origin(weight, window).Y);
             foreach (var (bars, blocks) in new[] { (PrlUiConstants.MinimumTrain, PrlUiConstants.TrainBlocks), (PrlUiConstants.MinimumValidation, PrlUiConstants.ValidationBlocks),
                                                    (PrlUiConstants.MinimumTest, PrlUiConstants.TestBlocks) })
             {
@@ -1983,8 +2414,8 @@ public sealed class PortfolioRlDialogViewModelTests : IDisposable
         var (window, _, _, _) = await Shown(store => { store.Groups.Add(new AllTickersNode("All")); return Task.CompletedTask; });
         try
         {
-            // No explicit TabIndex: the focus order is the document order, which must read lists, period, evaluation options, then the footer actions.
-            string[] ids = { PrlUiConstants.Sources, PrlUiConstants.StartDate, PrlUiConstants.EndDate, PrlUiConstants.ShortHistory, PrlUiConstants.Smoke, PrlUiConstants.Start };
+            // No explicit TabIndex: the focus order is the document order, which must read lists, period, evaluation options (Trial run, then Short history), then the footer actions.
+            string[] ids = { PrlUiConstants.Sources, PrlUiConstants.StartDate, PrlUiConstants.EndDate, PrlUiConstants.Smoke, PrlUiConstants.ShortHistory, PrlUiConstants.Start };
             var order = window.GetVisualDescendants().OfType<Control>().ToList();
             var positions = ids.Select(id => order.IndexOf(Find<Control>(window, id))).ToArray();
             Assert.All(positions, position => Assert.True(position >= 0));
@@ -2070,14 +2501,16 @@ public sealed class PortfolioRlDialogViewModelTests : IDisposable
         try
         {
             Assert.True(window.ExtendClientAreaToDecorationsHint);
-            var root = window.GetVisualDescendants().OfType<Grid>().First(g => g.RowDefinitions.Count == 3);
+            // header / body / run-status strip (S2, Auto: collapsed while idle) / footer
+            var root = window.GetVisualDescendants().OfType<Grid>().First(g => g.RowDefinitions.Count == 4);
             Assert.Equal(PrlUiLayout.HeaderHeight, root.RowDefinitions[0].Height.Value);
-            Assert.Equal(PrlUiLayout.FooterHeight, root.RowDefinitions[2].Height.Value);
+            Assert.True(root.RowDefinitions[2].Height.IsAuto);
+            Assert.Equal(PrlUiLayout.FooterHeight, root.RowDefinitions[3].Height.Value);
             var body = root.Children.OfType<ScrollViewer>().Single();
             Assert.False(body.AllowAutoHide);
             Assert.Equal(ScrollBarVisibility.Auto, body.VerticalScrollBarVisibility);
             Assert.Equal(PrlUiLayout.HeaderHeight, root.Children.OfType<Border>().First(b => Grid.GetRow(b) == 0).Bounds.Height);
-            Assert.Equal(PrlUiLayout.FooterHeight, root.Children.OfType<Border>().First(b => Grid.GetRow(b) == 2).Bounds.Height);
+            Assert.Equal(PrlUiLayout.FooterHeight, root.Children.OfType<Border>().First(b => Grid.GetRow(b) == 3).Bounds.Height);
             var start = Find<Button>(window, PrlUiConstants.Start); var cancel = Find<Button>(window, PrlUiConstants.Cancel);
             Assert.False(cancel.IsVisible);                                  // nothing runs
             vm.IsBusy = true; Pump();
@@ -2113,7 +2546,7 @@ public sealed class PortfolioRlDialogViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
-    public async Task TheListCardEndsWhereTheEvaluationCardEndsAndTheTagInputIsGone()
+    public async Task TheListCardEndsWhereThePeriodCardEndsAndTheTagInputIsGone()
     {
         var (window, _, _, _) = await Shown(store => { store.Groups.Add(new AllTickersNode("All")); return Task.CompletedTask; });
         try
@@ -2121,10 +2554,10 @@ public sealed class PortfolioRlDialogViewModelTests : IDisposable
             var tree = Find<TreeView>(window, PrlUiConstants.Sources);
             var grid = tree.GetVisualAncestors().OfType<Grid>().First(g => g.ColumnDefinitions.Count == 2);
             var left = grid.Children.Single(c => Grid.GetColumn(c) == 0); var right = grid.Children.Single(c => Grid.GetColumn(c) == 1);
-            // The evaluation card is the last card of the right column; the list card ends where it ends.
-            var evaluation = Find<CheckBox>(window, PrlUiConstants.ShortHistory).GetVisualAncestors().OfType<Border>().First(b => b.Classes.Contains("section"));
-            Assert.Equal(evaluation.TranslatePoint(new Point(0, evaluation.Bounds.Height), window)!.Value.Y, left.TranslatePoint(new Point(0, left.Bounds.Height), window)!.Value.Y, LayoutTolerance);
+            // The period card is the only card of the right column (S3b): the list card ends where it ends, so both cards have the same height.
+            Assert.Equal(right.TranslatePoint(new Point(0, right.Bounds.Height), window)!.Value.Y, left.TranslatePoint(new Point(0, left.Bounds.Height), window)!.Value.Y, LayoutTolerance);
             Assert.Equal(right.Bounds.Bottom, left.Bounds.Bottom, LayoutTolerance);
+            Assert.Equal("Period", right.GetVisualDescendants().OfType<TextBlock>().First(t => t.Classes.Contains("heading")).Text);
             Assert.DoesNotContain(window.GetVisualDescendants().OfType<TextBox>(), t => global::Avalonia.Automation.AutomationProperties.GetAutomationId(t) == "Prl_TagInput");
             Assert.DoesNotContain(window.GetVisualDescendants().OfType<TextBlock>(), t => t.Text == "Tick the lists to include. Symbols are combined; duplicates are removed.");
         }
@@ -2150,6 +2583,26 @@ public sealed class PortfolioRlDialogViewModelTests : IDisposable
         Assert.Equal(("Reinforcement Learning", "Portfolio Reinforcement Learning"), (en["Rl.Title"], en["Prl.Title"]));
         // Deliberate Japanese literals: the menu names must not change.
                 Assert.Equal(("強化学習", "ポートフォリオ強化学習"), (ja["Rl.Title"], ja["Prl.Title"]));
+    }
+
+    [Fact]
+    public async Task PortfolioWeightsVisualizer_PopulatesAndAdaptsToMaxWeightChange()
+    {
+        var (vm, _, _, store) = Create();
+        await Loaded(vm, store);
+
+        Assert.True(vm.HasPortfolioWeights);
+        Assert.NotEmpty(vm.PortfolioWeights);
+        Assert.NotEmpty(vm.PortfolioAllocationSummary);
+
+        var first = vm.PortfolioWeights[0];
+        Assert.Equal("Anchor (Base)", first.CorrelationLabel);
+        Assert.True(first.TargetWeightPercent > 0);
+
+        // When changing MaxWeightPercentText
+        vm.MaxWeightPercentText = "10";
+        Assert.All(vm.PortfolioWeights, w => Assert.True(w.TargetWeightPercent <= 10.0));
+        Assert.Contains("10%", vm.PortfolioAllocationSummary);
     }
 
     // ----- locale parity -----

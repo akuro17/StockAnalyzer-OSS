@@ -1,8 +1,10 @@
 using System;
 using Avalonia;
 using SkiaSharp;
+using StockAnalyzer.Avalonia.Drawing;
 using StockAnalyzer.Avalonia.ViewModels;
 using StockAnalyzer.Core.Models.ReinforcementLearning;
+using StockAnalyzer.Core.Theme;
 
 namespace StockAnalyzer.Avalonia.Views.Chart.Renderers;
 
@@ -91,6 +93,111 @@ public sealed class RlQRenderer : IDisposable
         DrawBar(canvas, left, slot, zero, Y(p.Hold), hold, _hold, bottom + baseSize, foreground, p.SelectedAction == RlAction.Hold);
         DrawBar(canvas, left + slot, slot, zero, Y(p.Buy), buy, _buy!, bottom + baseSize, foreground, p.SelectedAction == RlAction.Buy);
         DrawBar(canvas, left + slot * 2, slot, zero, Y(p.Sell), sell, _sell!, bottom + baseSize, foreground, p.SelectedAction == RlAction.Sell);
+        canvas.Restore();
+    }
+    public void DrawOverlay(SKCanvas canvas, Rect area, RlPresentation? p, ICoordinateTransform transform, ThemeColors theme)
+    { lock (_gate) { if (!_disposed) DrawOverlayCore(canvas, area, p, transform, theme); } }
+    private void DrawOverlayCore(SKCanvas canvas, Rect area, RlPresentation? p, ICoordinateTransform transform, ThemeColors theme)
+    {
+        if (p is null || !p.AnchorDate.HasValue || area.Width <= 0 || area.Height <= 0) return;
+        double anchorX;
+        try { anchorX = transform.GetXFromTime(p.AnchorDate.Value) + area.Left; }
+        catch { return; }
+        if (!double.IsFinite(anchorX) || anchorX < area.Left - 100 || anchorX > area.Right + 100) return;
+
+        canvas.Save();
+        canvas.ClipRect(new SKRect((float)area.Left, (float)area.Top, (float)area.Right, (float)area.Bottom));
+
+        float x = (float)anchorX;
+
+        // 1. Draw Entry Price horizontal guide line if active
+        if (p.EntryPrice.HasValue && p.PositionQuantity > 0)
+        {
+            float entryY = (float)transform.GetYFromPrice(p.EntryPrice.Value) + (float)area.Top;
+            if (entryY >= area.Top && entryY <= area.Bottom)
+            {
+                using var dash = SKPathEffect.CreateDash([4.0f, 4.0f], 0);
+                _paint.Color = new SKColor(33, 150, 243, 160);
+                _paint.Style = SKPaintStyle.Stroke;
+                _paint.StrokeWidth = 1.5f;
+                _paint.PathEffect = dash;
+                canvas.DrawLine((float)area.Left, entryY, (float)area.Right, entryY, _paint);
+                _paint.PathEffect = null;
+                _paint.Style = SKPaintStyle.Fill;
+                _font.Size = 10f;
+                _paint.TextSize = 10f;
+                canvas.DrawText($"Entry {p.EntryPrice.Value:F2}", (float)area.Left + 8, entryY - 4, _font, _paint);
+            }
+        }
+
+        // 2. Draw Stop Price horizontal guide line if active
+        if (p.StopPrice.HasValue)
+        {
+            float stopY = (float)transform.GetYFromPrice(p.StopPrice.Value) + (float)area.Top;
+            if (stopY >= area.Top && stopY <= area.Bottom)
+            {
+                using var dash = SKPathEffect.CreateDash([3.0f, 3.0f], 0);
+                _paint.Color = new SKColor(239, 83, 80, 180);
+                _paint.Style = SKPaintStyle.Stroke;
+                _paint.StrokeWidth = 1.5f;
+                _paint.PathEffect = dash;
+                canvas.DrawLine((float)area.Left, stopY, (float)area.Right, stopY, _paint);
+                _paint.PathEffect = null;
+                _paint.Style = SKPaintStyle.Fill;
+                _font.Size = 10f;
+                _paint.TextSize = 10f;
+                canvas.DrawText($"Stop {p.StopPrice.Value:F2}", (float)area.Left + 8, stopY - 4, _font, _paint);
+            }
+        }
+
+        // 3. Draw Anchor Marker & Action Badge at decision candle
+        float targetY = p.CurrentPrice.HasValue
+            ? (float)transform.GetYFromPrice(p.CurrentPrice.Value) + (float)area.Top
+            : (float)(area.Top + area.Height * 0.5);
+
+        // Vertical anchor line
+        using (var anchorDash = SKPathEffect.CreateDash([2.0f, 2.0f], 0))
+        {
+            _paint.Color = new SKColor(255, 255, 255, 60);
+            _paint.Style = SKPaintStyle.Stroke;
+            _paint.StrokeWidth = 1f;
+            _paint.PathEffect = anchorDash;
+            canvas.DrawLine(x, (float)area.Top, x, (float)area.Bottom, _paint);
+            _paint.PathEffect = null;
+        }
+
+        // Action badge
+        SKColor actionColor = p.SelectedAction switch
+        {
+            RlAction.Buy => new SKColor(38, 166, 154),
+            RlAction.Sell => new SKColor(239, 83, 80),
+            _ => new SKColor(255, 179, 0)
+        };
+
+        float badgeWidth = 46f;
+        float badgeHeight = 20f;
+        float badgeY = p.SelectedAction == RlAction.Buy ? targetY + 14f : targetY - 14f - badgeHeight;
+        if (badgeY < area.Top + 4) badgeY = targetY + 14f;
+        if (badgeY + badgeHeight > area.Bottom - 4) badgeY = targetY - 14f - badgeHeight;
+
+        var badgeRect = new SKRoundRect(new SKRect(x - badgeWidth / 2, badgeY, x + badgeWidth / 2, badgeY + badgeHeight), 4f, 4f);
+        _paint.Style = SKPaintStyle.Fill;
+        _paint.Color = actionColor;
+        canvas.DrawRoundRect(badgeRect, _paint);
+
+        _paint.Style = SKPaintStyle.Stroke;
+        _paint.Color = SKColors.White;
+        _paint.StrokeWidth = 1f;
+        canvas.DrawRoundRect(badgeRect, _paint);
+
+        _paint.Style = SKPaintStyle.Fill;
+        _paint.Color = SKColors.White;
+        _font.Size = 11f;
+        _paint.TextSize = 11f;
+        string label = !string.IsNullOrEmpty(p.ActionLabel) ? p.ActionLabel : p.SelectedAction.ToString();
+        float textWidth = _paint.MeasureText(label);
+        canvas.DrawText(label, x - textWidth / 2, badgeY + 14f, _font, _paint);
+
         canvas.Restore();
     }
     private void DrawBar(SKCanvas canvas, float x, float slot, float zero, float qY, SKColor color, CachedText label, float labelY, SKColor foreground, bool selected)

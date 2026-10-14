@@ -18,8 +18,8 @@ Please be respectful and supportive to other contributors. We strive to maintain
 ### 1. Fork and Clone the Repository
 
 ```bash
-git clone https://github.com/akuro17/StockAnalyzer.git
-cd StockAnalyzer
+git clone https://github.com/akuro17/StockAnalyzer-OSS.git
+cd StockAnalyzer-OSS
 ```
 
 ### 2. Install .NET SDK
@@ -43,7 +43,7 @@ cp StockAnalyzer.Avalonia/appsettings.example.json StockAnalyzer.Avalonia/appset
 
 ### 4. Set Up the Python Backend
 
-The backend data processing relies on Python 3.8 to 3.11.
+The backend data processing relies on Python 3.10 to 3.12 (verified on 3.12).
 
 #### Option A: Windows (Automatic)
 
@@ -66,7 +66,7 @@ Then update `StockAnalyzer.Avalonia/appsettings.json` with the absolute path to 
 
 ```json
 "Python": {
-  "PythonPath": "/absolute/path/to/your/StockAnalyzer/.venv/bin/python3"
+  "PythonPath": "/absolute/path/to/your/StockAnalyzer-OSS/.venv/bin/python3"
 }
 ```
 
@@ -81,7 +81,7 @@ dotnet run --project StockAnalyzer.Avalonia/StockAnalyzer.Avalonia.csproj
 
 ## Development Guidelines
 
-Follow the architectural standards documented in [`docs/SA_ARCHITECTURE_RULES.md`](docs/SA_ARCHITECTURE_RULES.md). Key principles:
+Key architecture principles and development standards:
 
 - **MVVM Architecture**: Strictly follow the MVVM pattern. ViewModels must be platform-agnostic — prohibit Avalonia-specific types (`Brush`, `GridLength`, `Dispatcher`, etc.) inside ViewModels.
 - **Dependency Injection**: All services must be injected via constructor. Prohibit `new XxxService()` inside ViewModels.
@@ -89,9 +89,7 @@ Follow the architectural standards documented in [`docs/SA_ARCHITECTURE_RULES.md
 - **Zero Allocations**: High-performance rendering code (e.g., Chart views) must follow zero-allocation practices. Avoid creating heap-allocated buffers inside hot paths.
 - **No Hardcoding**: Prohibit magic numbers and string literals in logic. Externalize configuration via `appsettings.json` (C#) or `.env` (Python).
 - **Localization**: All user-visible strings must be externalized to `en.json`. Use `{l:Localize Key}` in XAML and `LocalizationManager.Instance["Key"]` in ViewModels. English-only code — prohibit Japanese characters in source code, comments, or strings.
-- **StyleCop Compliance**: Code formatting must comply with the StyleCop configuration (`stylecop.json`). Run the format command locally before submitting.
-
-For complete technical standards, see the documentation hub: [`DEVELOPMENT_MAP.md`](DEVELOPMENT_MAP.md).
+- **Code Style Compliance**: Code formatting must follow clean C# 12 conventions (.editorconfig). Run `dotnet format` before submitting.
 
 ---
 
@@ -105,12 +103,12 @@ For complete technical standards, see the documentation hub: [`DEVELOPMENT_MAP.m
    # Build the solution
    dotnet build StockAnalyzer.sln
 
-   # Run C# unit and integration tests (excludes UI tests)
-   dotnet test Tests/StockAnalyzer.Tests.csproj --filter "FullyQualifiedName!~UITests"
+   # Run cross-platform C# unit and integration tests (excludes UI tests)
+   dotnet test Tests/StockAnalyzer.Core.Tests/StockAnalyzer.Core.Tests.csproj
 
    # Run Python tests (if Python code was modified)
-   cd StockAnalyzer.Python
-   pytest
+   pip install -r StockAnalyzer.Python/requirements-dev.txt
+   pytest Tests/test_*.py
    ```
 
 4. **Submit the PR**: Fill out the pull request template carefully and check off the validation requirements list.

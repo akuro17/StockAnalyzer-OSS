@@ -17,7 +17,7 @@ using Xunit;
 
 namespace StockAnalyzer.Avalonia.Tests.ViewModels;
 
-/// <summary>sa_implement (Ticker Auto Play, Y:\Temp\sa_implementation_plan_TickerAutoPlay.md Phase 2):
+/// <summary>sa_implement (Ticker Auto Play, docs/sa_implementation_plan_TickerAutoPlay Phase 2):
 /// TickerListViewModel's Auto Play integration - checkbox state, visible-order source, refused start, list
 /// transition. The timing itself is covered by TickerAutoPlayControllerTests; the production timer is
 /// never awaited here (every test disposes the ViewModel).</summary>

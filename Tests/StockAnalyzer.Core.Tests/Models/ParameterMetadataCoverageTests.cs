@@ -150,7 +150,8 @@ public class ParameterMetadataCoverageTests
             var summary = string.Join(Environment.NewLine, missingList);
             try
             {
-                System.IO.File.WriteAllText(@"Y:\Temp\parameter_metadata_gaps.txt", summary);
+                var gapsPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "parameter_metadata_gaps.txt");
+                System.IO.File.WriteAllText(gapsPath, summary);
             }
             catch { }
             Assert.True(false, $"Found {missingList.Count} metadata gaps:{Environment.NewLine}{summary}");

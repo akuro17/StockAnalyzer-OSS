@@ -7,8 +7,8 @@ namespace StockAnalyzer.Core.Services.Backtest.Reporting;
 /// <summary>
 /// Report-time inputs that <see cref="Models.Backtest.Engine.BacktestResult"/> does not itself carry
 /// (Frame, per-Frame annualization periods, annual risk-free/MAR rates, the warmup-bar cutoff, and the
-/// evaluation-period boundary). DERIVED CONVENTION, confirmed with the user 2026-09-17 (Y:\Temp\
-/// sa_implementation_plan_BacktestReportCalculator.md Gate A/B): the source spec's illustrative
+/// evaluation-period boundary). DERIVED CONVENTION, confirmed with the user 2026-09-17
+/// (docs/sa_implementation_plan_BacktestReportCalculator Gate A/B): the source spec's illustrative
 /// "Generate(BacktestResult)" call cannot literally work because none of these fields exist anywhere on
 /// the P1 result/configuration schema. Rather than extending the P1 sealed <c>BacktestResult</c> type
 /// (larger blast radius, outside the P2 new-files-only scope), the caller supplies them here — they
@@ -90,8 +90,8 @@ public sealed class BacktestReportOptions
 
     /// <summary>
     /// Seed for the <see cref="System.Random"/> driving <see cref="RiskAdjustedMetricsCalculator.ComputeAnnualizedSortinoAutocorrelationAdjusted"/>'s
-    /// circular block bootstrap. Default 42 (user-confirmed, see Y:\Temp\
-    /// sa_implementation_plan_SortinoAutocorrelationAdjustedBootstrap.md): any value is a valid seed, so no
+    /// circular block bootstrap. Default 42 (user-confirmed, see
+    /// docs/sa_implementation_plan_SortinoAutocorrelationAdjustedBootstrap): any value is a valid seed, so no
     /// validation is applied. A seeded <see cref="System.Random"/> is documented by .NET to produce an
     /// identical sequence for an identical seed, making this metric deterministic/reproducible like every
     /// other field in this report.

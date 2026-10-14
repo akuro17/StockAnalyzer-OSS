@@ -5,7 +5,7 @@ namespace StockAnalyzer.Core.Services.Backtest.Engine;
 
 /// <summary>
 /// Shared slippage/fee arithmetic for order fills and forced margin liquidations, per
-/// Y:\0915 Backtesting\01_P1_SimulationEngine.md section 5.6. Kept as a single small static class
+/// docs/01_P1_SimulationEngine section 5.6. Kept as a single small static class
 /// (rather than duplicated inline in each evaluator) because both <see cref="OrderFillEvaluator"/>
 /// and <see cref="MarginLiquidationCalculator"/> need the identical Commission formula and the
 /// identical directional-slippage formula.

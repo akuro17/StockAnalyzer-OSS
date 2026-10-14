@@ -61,6 +61,59 @@ def read_some(pipe, cursor, size):
         raise IOError("Connection closed by peer.")
     return data
 
+
+def read_line_uds(conn, cursor):
+    """Read one LF-terminated frame from a Unix domain socket using chunk buffering."""
+    while True:
+        newline_index = cursor.find(b'\n')
+        if newline_index >= 0:
+            line = bytes(cursor[:newline_index])
+            del cursor[:newline_index + 1]
+            if line.endswith(b'\r'):
+                line = line[:-1]
+            return line
+        try:
+            chunk = conn.recv(PIPE_READ_CHUNK_SIZE)
+        except Exception as e:
+            if cursor:
+                raise IOError(f"Socket read error with incomplete frame: {e}")
+            return None
+        if not chunk:
+            if cursor:
+                raise IOError("Incomplete frame received before end of stream.")
+            return None
+        cursor.extend(chunk)
+
+
+def read_some_uds(conn, cursor, size):
+    """Return up to size bytes, consuming bytes already held in cursor before reading socket."""
+    if cursor:
+        data = bytes(cursor[:size])
+        del cursor[:size]
+        return data
+    data = conn.recv(size)
+    if not data:
+        raise IOError("Connection closed by peer.")
+    return data
+
+
+def get_uds_socket_path(pipe_name):
+    """Resolve Unix domain socket path matching .NET NamedPipe discovery."""
+    dotnet_pipe_env = os.environ.get('DOTNET_PIPE_PATH')
+    if dotnet_pipe_env and os.path.exists(dotnet_pipe_env):
+        return os.path.join(dotnet_pipe_env, pipe_name)
+
+    net8_default_dir = "/tmp/.dotnet/pipes"
+    if os.path.isdir(net8_default_dir) or os.path.isdir("/tmp"):
+        try:
+            os.makedirs(net8_default_dir, exist_ok=True)
+            return os.path.join(net8_default_dir, pipe_name)
+        except Exception:
+            pass
+
+    return f"/tmp/CoreFX-NamedPipe-{pipe_name}"
+
+
 # Sakoe-Chiba radius meaning "unconstrained"; must match C# DtwMath.UnconstrainedRadius.
 DTW_UNCONSTRAINED_RADIUS = -1
 
@@ -164,7 +217,7 @@ def run_server(pipe_name):
     parent_pid = os.getppid()
     socket_path = None
     if not IS_WINDOWS:
-        socket_path = f"/tmp/CoreFX-NamedPipe-{pipe_name}"
+        socket_path = get_uds_socket_path(pipe_name)
     monitor_thread = threading.Thread(target=parent_monitor_loop, args=(parent_pid, socket_path), daemon=True)
     monitor_thread.start()
 
@@ -197,8 +250,7 @@ def run_server(pipe_name):
             return
     else:
         # Unix Named Pipe mapping via Unix Domain Socket
-        # .NET NamedPipeServer/Client on Unix maps to a Unix Domain Socket at /tmp/CoreFX-NamedPipe-{pipe_name}
-        socket_path = f"/tmp/CoreFX-NamedPipe-{pipe_name}"
+        socket_path = get_uds_socket_path(pipe_name)
         
         # Clean up any stale socket file
         if os.path.exists(socket_path):
@@ -213,13 +265,11 @@ def run_server(pipe_name):
             server_socket.bind(socket_path)
             server_socket.listen(1)
             conn, addr = server_socket.accept()
+            read_cursor = bytearray()
             print("Connected via UDS!")
             
             def read_pipe(size):
-                data = conn.recv(size)
-                if not data:
-                    raise IOError("Connection closed by peer.")
-                return data
+                return read_some_uds(conn, read_cursor, size)
                 
             def write_pipe(data):
                 conn.sendall(data)
@@ -253,23 +303,15 @@ def run_server(pipe_name):
                     break
                 decoded_msg = line.decode('utf-8').strip()
             else:
-                # Read line from socket
-                buffer = bytearray()
-                while True:
-                    try:
-                        char = conn.recv(1)
-                    except Exception as e:
-                        print(f"Socket read error: {e}")
-                        char = b""
-                    if not char:
-                        break
-                    if char == b'\n':
-                        break
-                    buffer.extend(char)
-                if len(buffer) == 0:
+                try:
+                    line = read_line_uds(conn, read_cursor)
+                except Exception as e:
+                    print(f"Exception reading socket: {e}")
+                    break
+                if line is None:
                     print("Connection closed (EOF).")
                     break
-                decoded_msg = buffer.decode('utf-8').strip()
+                decoded_msg = line.decode('utf-8').strip()
 
             if not decoded_msg:
                 continue

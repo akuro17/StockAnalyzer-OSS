@@ -37,7 +37,7 @@ public partial class AnnualPeriodEntry : ObservableObject
 }
 
 /// <summary>
-/// BacktestWindow's run-lifecycle state (spec §5.4, see Y:\Temp\sa_ai_context_BacktestUiWindow_P3.md
+/// BacktestWindow's run-lifecycle state (spec §5.4, see docs/sa_ai_context_BacktestUiWindow_P3
 /// section 6 for the transition table this enum and <see cref="BacktestWindowViewModel"/> implement).
 /// </summary>
 public enum BacktestRunState

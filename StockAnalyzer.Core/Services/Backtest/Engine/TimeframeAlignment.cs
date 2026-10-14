@@ -7,7 +7,7 @@ namespace StockAnalyzer.Core.Services.Backtest.Engine;
 /// <summary>
 /// Causal forward-fill alignment of a higher-timeframe indicator series onto the run's own bar
 /// indices (plan section 3.2.3 of
-/// Y:\Temp\sa_implementation_plan_BacktestComparisonSignals.md). On-disk Weekly/Monthly Parquet data
+/// docs/sa_implementation_plan_BacktestComparisonSignals). On-disk Weekly/Monthly Parquet data
 /// is period-START stamped (empirically confirmed against real data), so naively taking "the latest
 /// higher-timeframe row whose Timestamp &lt;= T" would leak a still-forming period's own value
 /// backward in time. The safe rule used here needs no calendar arithmetic for either Weekly or

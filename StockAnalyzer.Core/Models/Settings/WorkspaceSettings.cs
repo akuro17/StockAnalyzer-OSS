@@ -136,9 +136,15 @@ public class WorkspaceSettings
     public decimal SyncDelayMaxSeconds { get; set; } = 5.0m;
 
     /// <summary>
+    /// Default lookback period (years) for synchronization when full history is disabled.
+    /// SSoT for every layer that needs a fallback (view models, settings restore).
+    /// </summary>
+    public const int DefaultStartSyncPeriodYears = 10;
+
+    /// <summary>
     /// Number of years to synchronize when full history is disabled.
     /// </summary>
-    public int StartSyncPeriodYears { get; set; } = 5;
+    public int StartSyncPeriodYears { get; set; } = DefaultStartSyncPeriodYears;
 
     /// <summary>
     /// Sidebar width in the TickerList (Watchlist) panel.

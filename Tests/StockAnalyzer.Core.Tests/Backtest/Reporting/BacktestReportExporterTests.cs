@@ -69,7 +69,7 @@ public class BacktestReportExporterTests
         await Assert.ThrowsAsync<ArgumentException>(() => exporter.ExportAsync(report, fileName));
     }
 
-    /// <summary>Plan Y:\Temp\sa_improvement_plan_BacktestResultsUiPolish.md (Task 1): the user-chosen-
+    /// <summary>Plan docs/sa_improvement_plan_BacktestResultsUiPolish (Task 1): the user-chosen-
     /// folder overload writes verbatim to that folder - never through <see cref="PathDiscovery"/>'s fixed
     /// Data/Backtest/Reports/ resolution - and creates the folder if it does not exist yet.</summary>
     [Fact]

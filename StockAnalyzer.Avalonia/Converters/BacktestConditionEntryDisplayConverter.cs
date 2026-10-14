@@ -12,7 +12,7 @@ using StockAnalyzer.Core.Services.Backtest.Engine;
 namespace StockAnalyzer.Avalonia.Converters;
 
 /// <summary>
-/// Task 6 (Y:\Temp\sa_implementation_plan_BacktestComparisonSignals.md section 4.4): formats a
+/// Task 6 (docs/sa_implementation_plan_BacktestComparisonSignals section 4.4): formats a
 /// <see cref="BacktestConditionEntry"/> as "{Left} {OperatorSymbol} {Right or RightNumericValue}", the
 /// same display shape <c>ScreenerIndicatorEntry.DisplayName</c> uses for the Screener's own condition
 /// list. Kept as an Avalonia-layer converter rather than a property on the Core model itself, since
@@ -130,7 +130,7 @@ public static class BacktestConditionFormatter
 
     private static string DescribeSide(BacktestConditionSide side)
     {
-        // Plan Y:\Temp\sa_improvement_plan_BacktestPriceSourceConditionFix.md: a "Price" side's
+        // Plan docs/sa_improvement_plan_BacktestPriceSourceConditionFix: a "Price" side's
         // meaningful name IS its PriceSource ("High"/"Low"/...), not the generic "Price" indicator-type
         // description - showing both ("Price(High)") would be redundant, and the OutputName (which for a
         // Price side is just the same PriceType name again, plumbed through for dedupe purposes) would

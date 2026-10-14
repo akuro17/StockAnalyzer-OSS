@@ -25,7 +25,7 @@ namespace StockAnalyzer.Avalonia.Tests.Views.Notes;
 
 /// <summary>
 /// Real-UI regression coverage for the "click a hashtag inside a posted Note's body" fix request
-/// (Y:\Temp\sa_implementation_plan_note_hashtag_click.md Task 2): mounts the actual NoteCardView.axaml
+/// (docs/sa_implementation_plan_note_hashtag_click Task 2): mounts the actual NoteCardView.axaml
 /// so the real code-behind-built TextBlock.Inlines (BodyTextBlock) and the inline hashtag Button's
 /// MenuFlyout are exercised end to end, not just NoteTimelineItemViewModel.BodySegments in isolation.
 /// </summary>
@@ -479,7 +479,7 @@ public class NoteCardViewTests
         }
     }
 
-    /// <summary>sa_implement (Note tab UI polish Task 2, Y:\Temp\sa_implementation_plan_note_ui_polish.md):
+    /// <summary>sa_implement (Note tab UI polish Task 2, docs/sa_implementation_plan_note_ui_polish):
     /// View Chart must stay always-visible but icon-only (a PathIcon child, no text Content), while
     /// Edit/Pin/Delete move into the "…" overflow Button's MenuFlyout as three MenuItems bound to
     /// the existing EditCommand/TogglePinnedCommand/DeleteCommand unchanged.</summary>
@@ -899,7 +899,7 @@ public class NoteCardViewTests
         }
     }
 
-    /// <summary>sa_implement (individual Note detail page, Y:\Temp\sa_implementation_plan.md Task
+    /// <summary>sa_implement (individual Note detail page, docs/sa_implementation_plan Task
     /// A2): the card's posted-time timestamp is rendered as a Button bound to OpenDetailCommand
     /// (found here by Command reference-equality against the real mounted visual tree, rather than
     /// via a simulated Button.ClickEvent raise - unlike the code-behind-built inline
@@ -930,7 +930,7 @@ public class NoteCardViewTests
         }
     }
 
-    /// <summary>sa_implement (Note body URL inline linking, Y:\Temp\sa_implementation_plan_note_url_inline.md
+    /// <summary>sa_implement (Note body URL inline linking, docs/sa_implementation_plan_note_url_inline
     /// Task 3): a URL actually in Note.LinkUrls renders as a Flyout-less inline Button showing the
     /// scheme-stripped display text, and clicking it invokes OpenUrlCommand with the full original
     /// URL - replacing the old separate LinkUrls button row entirely (only 2 buttons - View Chart

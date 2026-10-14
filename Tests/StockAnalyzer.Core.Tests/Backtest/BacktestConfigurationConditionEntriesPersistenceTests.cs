@@ -17,7 +17,7 @@ namespace StockAnalyzer.Core.Tests.Backtest;
 
 /// <summary>
 /// Task 4 persistence proof (plan section 3.3/Task 4 of
-/// Y:\Temp\sa_implementation_plan_BacktestComparisonSignals.md): a pre-existing saved
+/// docs/sa_implementation_plan_BacktestComparisonSignals): a pre-existing saved
 /// backtest_configuration.json with no "conditionEntries" property still loads unchanged (the safe-
 /// extension guarantee), and a file that DOES carry condition entries round-trips every field exactly.
 /// Uses a temp file + <see cref="AtomicJsonFile"/> directly (mirroring the exact
@@ -158,7 +158,7 @@ public class BacktestConfigurationConditionEntriesPersistenceTests : IDisposable
     [Fact]
     public async Task OldConditionEntryWithNoPriceSourceProperty_StillLoads_WithNullPriceSource()
     {
-        // Plan Y:\Temp\sa_improvement_plan_BacktestPriceSourceConditionFix.md: a pre-existing saved
+        // Plan docs/sa_improvement_plan_BacktestPriceSourceConditionFix: a pre-existing saved
         // condition entry with no "priceSource" property on its Left/Right side (the exact pre-fix shape)
         // must still load unchanged - the safe-extension guarantee. Built by serializing a real DTO and
         // then stripping the "priceSource" property textually, rather than hand-writing a full JSON

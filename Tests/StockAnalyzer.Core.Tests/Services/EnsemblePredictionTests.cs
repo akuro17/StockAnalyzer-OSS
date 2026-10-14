@@ -75,6 +75,57 @@ public sealed class EnsemblePredictionTests
         Assert.Equal("Up", result.Label);
     }
 
+    private static PredictionOutputContract ClassContract(int horizon = 5, TimeframeType timeframe = TimeframeType.Daily,
+        ConfidenceType confidence = ConfidenceType.CalibratedProbability) => new(
+        PredictionOutputSemantic.ClassProbabilities, PredictionOutputUnit.Probability, horizon, timeframe, confidence,
+        PredictionTargetFormula.ThresholdedSimpleReturn);
+
+    [Fact]
+    public void Combine_WithAContract_CarriesItWithAClassProbabilityConfidence_AndWithoutOneIsUnchanged()
+    {
+        var rows = new[] { new[] { .6f, .4f } };
+        var labels = new[] { "Up", "Down" };
+        var contract = ClassContract(confidence: ConfidenceType.ClassProbability);
+
+        var with = EnsemblePredictionService.Combine(Spec(1), labels, rows, 0, new MLDataProcessor(), contract);
+        Assert.Equal(contract, with.OutputContract);
+        Assert.Equal(ConfidenceType.ClassProbability, with.ConfidenceType);
+        Assert.Equal(.6f, with.ConfidenceValue!.Value, 5);
+        Assert.False(with.IsRegression);
+
+        var without = EnsemblePredictionService.Combine(Spec(1), labels, rows, 0, new MLDataProcessor());
+        Assert.Null(without.OutputContract);
+        Assert.Equal(ConfidenceType.None, without.ConfidenceType);
+        Assert.Null(without.ConfidenceValue);
+    }
+
+    [Fact]
+    public void MergeOutputContract_AgreeingMembers_GiveOneContractWhoseConfidenceIsAPlainClassProbability()
+    {
+        var merged = EnsemblePredictionService.MergeOutputContract(new[]
+        {
+            ClassContract(confidence: ConfidenceType.CalibratedProbability),
+            ClassContract(confidence: ConfidenceType.ClassProbability),
+        });
+
+        Assert.Equal(ClassContract(confidence: ConfidenceType.ClassProbability), merged);
+    }
+
+    [Fact]
+    public void MergeOutputContract_RejectsDisagreeingOrNonClassificationMembers()
+    {
+        Assert.Throws<InvalidDataException>(() => EnsemblePredictionService.MergeOutputContract(
+            new[] { ClassContract(horizon: 5), ClassContract(horizon: 10) }));
+        Assert.Throws<InvalidDataException>(() => EnsemblePredictionService.MergeOutputContract(
+            new[] { ClassContract(), ClassContract(timeframe: TimeframeType.Weekly) }));
+        Assert.Throws<InvalidDataException>(() => EnsemblePredictionService.MergeOutputContract(
+            new[] { ClassContract() with { TargetFormula = PredictionTargetFormula.LogFutureCloseOverAnchorClose }, ClassContract() }));
+        Assert.Throws<InvalidDataException>(() => EnsemblePredictionService.MergeOutputContract(
+            new[] { ClassContract() with { Semantic = PredictionOutputSemantic.LogReturn, Unit = PredictionOutputUnit.Dimensionless } }));
+        Assert.Throws<InvalidDataException>(() => EnsemblePredictionService.MergeOutputContract(
+            Array.Empty<PredictionOutputContract>()));
+    }
+
     [Fact]
     public async Task DisposeDuringSettingsLoad_RejectsPendingPrediction()
     {
@@ -298,6 +349,12 @@ public sealed class EnsemblePredictionTests
             Assert.False(combined.IsFallback);
             Assert.Same(manager.Current, combined.Ensemble);   // the result records the very ensemble that produced it
             Assert.Null(combined.ModelId);
+            // The chart text of an ensemble needs the contract the members agree on, with a plain class-probability confidence.
+            Assert.NotNull(combined.OutputContract);
+            Assert.Equal(PredictionOutputSemantic.ClassProbabilities, combined.OutputContract!.Semantic);
+            Assert.Equal(ConfidenceType.ClassProbability, combined.OutputContract.ConfidenceType);
+            Assert.Equal(ConfidenceType.ClassProbability, combined.ConfidenceType);
+            Assert.Equal(combined.Confidence, combined.ConfidenceValue!.Value);
             Assert.Equal(3, combined.Scores.Count);
             Assert.InRange(combined.Scores.Sum(s => s.Score), .9999f, 1.0001f);
             foreach (var reversed in new[] { false, true })

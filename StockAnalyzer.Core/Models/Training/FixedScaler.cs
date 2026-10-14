@@ -32,7 +32,9 @@ public sealed record FixedScaler(
             || reference != expectedName)
             throw new InvalidDataException("ONNX scaler_ref must name its own generation sidecar.");
         var path = modelPath + ".scaler.json";
-        var scaler = JsonSerializer.Deserialize<FixedScaler>(File.ReadAllText(path), JsonOptions)
+        // The sidecar may come from an imported model: read it with a byte ceiling instead of whole into a string.
+        using var sidecar = new MemoryStream(BoundedFileReader.ReadAllBytes(path, ModelSidecarLimits.MaxFixedScalerBytes));
+        var scaler = JsonSerializer.Deserialize<FixedScaler>(sidecar, JsonOptions)
             ?? throw new InvalidDataException("Scaler sidecar is empty.");
         scaler.Validate(metadata);
         return scaler;

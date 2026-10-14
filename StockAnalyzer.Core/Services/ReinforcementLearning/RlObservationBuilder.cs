@@ -49,17 +49,7 @@ public static class RlObservationBuilder
         ArgumentNullException.ThrowIfNull(scaler);
         if (account.MarketWindow.Length != RlContract.WindowLength || account.AccountFields.Length != RlContract.AccountFieldCount)
             throw new InvalidDataException("RL account/market observation dimensions are invalid.");
-        var raw = new double[RlContract.WindowLength * RlContract.MarketChannelCount];
-        for (int i = 0; i < account.MarketWindow.Length; i++)
-        {
-            var bar = account.MarketWindow[i];
-            int offset = i * RlContract.MarketChannelCount;
-            raw[offset] = (double)bar.Open;
-            raw[offset + 1] = (double)bar.High;
-            raw[offset + 2] = (double)bar.Low;
-            raw[offset + 3] = (double)bar.Close;
-            raw[offset + 4] = bar.Volume;
-        }
+        var raw = RawWindow(account);
         var observation = new float[RlContract.ObservationLength];
         scaler.Transform(raw, observation.AsSpan(0, raw.Length));
         for (int i = 0; i < account.AccountFields.Length; i++)
@@ -69,5 +59,34 @@ public static class RlObservationBuilder
             observation[raw.Length + i] = value;
         }
         return observation;
+    }
+
+    /// <summary>
+    /// The 64-bar market window of an account as raw (unscaled) double rows of Open, High, Low, Close, Volume. Single owner of the
+    /// decimal-to-double conversion used by <see cref="Build"/> and by the trained-range check of an external replay.
+    /// </summary>
+    internal static double[] RawWindow(RlSessionSnapshot account)
+    {
+        ArgumentNullException.ThrowIfNull(account);
+        if (account.MarketWindow.Length != RlContract.WindowLength)
+            throw new InvalidDataException("RL account/market observation dimensions are invalid.");
+        return RawRows(account.MarketWindow.AsSpan());
+    }
+
+    /// <summary>Raw (unscaled) double rows of Open, High, Low, Close, Volume for any run of bars; the window of an account is one such run.</summary>
+    internal static double[] RawRows(ReadOnlySpan<CandleData> bars)
+    {
+        var raw = new double[bars.Length * RlContract.MarketChannelCount];
+        for (int i = 0; i < bars.Length; i++)
+        {
+            var bar = bars[i];
+            int offset = i * RlContract.MarketChannelCount;
+            raw[offset] = (double)bar.Open;
+            raw[offset + 1] = (double)bar.High;
+            raw[offset + 2] = (double)bar.Low;
+            raw[offset + 3] = (double)bar.Close;
+            raw[offset + 4] = bar.Volume;
+        }
+        return raw;
     }
 }

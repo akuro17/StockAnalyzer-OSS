@@ -64,6 +64,22 @@ public class ClothoidCalloutObject : RelativeGeometricRenderer, ITextAnnotatedOb
         }
     }
 
+    private string? _fontFamily;
+    [Category("Text")]
+    [DisplayName("Font Family")]
+    [ParameterTag(DrawingParameterTags.Typography)]
+    public string? FontFamily
+    {
+        get => _fontFamily;
+        set
+        {
+            if (_fontFamily == value) return;
+            _fontFamily = value;
+            _textPaint.Typeface = DrawingFontHelper.ResolveTypeface(value);
+            InvalidateCache();
+        }
+    }
+
     private TextHorizontalAlignment _alignment = TextHorizontalAlignment.Left;
     [Category("Text")]
     [DisplayName("Text Alignment")]

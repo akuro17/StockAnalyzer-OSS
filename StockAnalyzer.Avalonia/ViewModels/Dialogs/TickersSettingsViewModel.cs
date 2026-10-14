@@ -9,7 +9,7 @@ using StockAnalyzer.Core.Services.Tickers;
 
 namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
 {
-    /// <summary>Settings &gt; Tickers page (Y:\Temp\sa_implementation_plan_TickersSettingsCategory.md). Mirrors
+    /// <summary>Settings &gt; Tickers page (docs/sa_implementation_plan_TickersSettingsCategory). Mirrors
     /// <see cref="NotesSettingsViewModel"/>: edits are applied to the manager live (page live-preview contract),
     /// the snapshot taken at construction/save is what Discard restores.</summary>
     public partial class TickersSettingsViewModel : ViewModelBase, ISettingsPageViewModel

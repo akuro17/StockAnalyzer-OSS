@@ -7,7 +7,7 @@ using StockAnalyzer.Core.Models.Training;
 namespace StockAnalyzer.Core.Services;
 
 /// <summary>
-/// Promotes a trained ONNX artifact from <c>&lt;DataRoot&gt;/TrainingArtifacts/</c> to the canonical
+/// Promotes a trained ONNX artifact from <c>&lt;DataRoot&gt;/TrainingArtifacts/TW/</c> to the canonical
 /// <c>&lt;DataRoot&gt;/Models/</c> store so it becomes loadable by <see cref="IPredictionService"/>.
 /// </summary>
 public interface IModelDeploymentService

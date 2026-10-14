@@ -1,0 +1,49 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="using:StockAnalyzer.Avalonia.Views.Controls"
+             xmlns:ui="using:StockAnalyzer.Avalonia.Common"
+             x:Class="StockAnalyzer.Avalonia.Views.Controls.RunStatusStrip"
+             x:Name="Host"
+             x:DataType="controls:RunStatusStrip">
+
+    <!-- Single definition of the run-status strip shared by the Training Wizard, RL and Portfolio RL windows: it sits between the scrolled body and
+         the footer, so the progress and the reason a start was refused stay visible next to the Start button. Hosts bind the styled properties; the
+         strip hides itself while there is no progress, no phase and no message (RunStatusStrip.axaml.cs). The class names value / diagnostic are the
+         semantic text classes of the RL window; every value they would set is also set here, so the strip looks the same in the other two windows. -->
+    <Border x:Name="StripRoot"
+            IsVisible="False"
+            Padding="{x:Static ui:RunStatusStripLayout.StripPadding}"
+            Background="{DynamicResource Brush.Background.Tertiary}"
+            BorderBrush="{DynamicResource Brush.Border.Primary}"
+            BorderThickness="{x:Static ui:RunStatusStripLayout.StripBorder}">
+        <StackPanel Spacing="{x:Static ui:RunStatusStripLayout.RowSpacing}">
+            <Grid x:Name="ProgressRow" ColumnDefinitions="*,Auto" IsVisible="False">
+                <ProgressBar Minimum="0" Maximum="100"
+                             Value="{Binding #Host.Percent}"
+                             IsIndeterminate="{Binding #Host.IsIndeterminate}"
+                             Height="{x:Static ui:RunStatusStripLayout.BarHeight}"
+                             VerticalAlignment="Center"
+                             Foreground="{DynamicResource Brush.Accent.Primary}"/>
+                <TextBlock x:Name="PercentLabel" Grid.Column="1" Classes="value"
+                           FontSize="{DynamicResource DetailFontSize}"
+                           Foreground="{DynamicResource Brush.Text.Primary}"
+                           MinWidth="{x:Static ui:RunStatusStripLayout.PercentMinimumWidth}"
+                           Margin="{x:Static ui:RunStatusStripLayout.PercentMargin}"
+                           TextAlignment="Right"
+                           VerticalAlignment="Center"/>
+            </Grid>
+            <TextBlock x:Name="PhaseLabel" Classes="diagnostic"
+                       FontSize="{DynamicResource HelperFontSize}"
+                       Foreground="{DynamicResource Brush.Text.Secondary}"
+                       TextTrimming="CharacterEllipsis"
+                       IsVisible="False"/>
+            <TextBlock x:Name="MessageLabel" Classes="value"
+                       FontSize="{DynamicResource DetailFontSize}"
+                       Foreground="{DynamicResource Brush.Text.Primary}"
+                       TextWrapping="Wrap"
+                       TextTrimming="CharacterEllipsis"
+                       MaxLines="{x:Static ui:RunStatusStripLayout.MessageMaxLines}"
+                       IsVisible="False"/>
+        </StackPanel>
+    </Border>
+</UserControl>

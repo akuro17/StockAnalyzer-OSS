@@ -977,7 +977,7 @@ public sealed class BacktestEvaluationServiceTests
         Assert.NotEqual(extended.Sha256, legacyIdentity.Sha256);
     }
 
-    // ---- TradingStartIndex reaches the Exposure denominator (Y:\Temp\sa_implementation_plan_BacktestExposureSemantics.md, T5) ----
+    // ---- TradingStartIndex reaches the Exposure denominator (docs/sa_implementation_plan_BacktestExposureSemantics, T5) ----
 
     private static BacktestInput InputWithTradingStart(int count, int historyStart, int tradingStart)
     {
@@ -1354,7 +1354,7 @@ public sealed class BacktestEvaluationServiceTests
         SamplingQualification s = artifact.Sampling;
         BootstrapDiagnostics b = artifact.BootstrapDiagnostics;
         // Independent of production code: canonical extended-metric order authored here from the approved plan
-        // (Y:\Temp\sa_implementation_plan_BacktestReportExtendedMetrics.md); absent (null) metrics are skipped.
+        // (docs/sa_implementation_plan_BacktestReportExtendedMetrics); absent (null) metrics are skipped.
         var extended = new List<(string Name, MetricValue? Metric)>();
         if (r is not null)
         {

@@ -20,6 +20,7 @@ using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Indicators;
 using StockAnalyzer.Core.Models.Training;
 using StockAnalyzer.Core.Services;
+using StockAnalyzer.Core.Services.StoredPeriod;
 
 namespace StockAnalyzer.Avalonia.ViewModels.Dialogs;
 
@@ -130,9 +131,19 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
             [TrainingFramework.TensorFlow] = new[] { "lstm", "gru", "cnn" },
         };
 
+    /// <summary>The architecture each framework starts with. Explicit on purpose: re-ordering <see cref="ArchitecturesByFramework"/> must not change the default.</summary>
+    private static readonly IReadOnlyDictionary<TrainingFramework, string> DefaultArchitectureByFramework =
+        new Dictionary<TrainingFramework, string>
+        {
+            [TrainingFramework.PyTorch] = "lstm",
+            [TrainingFramework.LightGBM] = TrainingEnsembleContract.LightGbmArchitecture,
+            [TrainingFramework.TensorFlow] = "lstm",
+        };
+
     private readonly IMessenger _messenger = WeakReferenceMessenger.Default;
     private readonly ITrainingOrchestrator? _orchestrator;
     private readonly IModelDeploymentService? _modelDeploymentService;
+    private readonly IModelGenerationRegistry? _modelRegistry;
     private readonly IEnsembleSettingsManager? _ensembleSettings;
     private readonly IExperimentLogService? _experimentLogService;
     private readonly IWatchlistManager? _watchlistManager;
@@ -189,34 +200,56 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
     {
         get
         {
-            if (WindowSize <= 0 || Horizon <= 0)
+            switch (CalculateMinimumRawBars(out var minBars))
             {
-                return string.Empty;
-            }
-
-            var minBarsTemplate = LocalizationManager.Instance["TrainingWizard_WindowUnitNote_MinBars"]
-                ?? "Minimum bars required: {0}";
-            var splitCount = NSplits >= 2 ? NSplits : WalkForwardDataRequirement.DefaultSplitCount;
-            // A negative Gap (transient invalid input; Start stays disabled) falls back to the
-            // default purge gap rather than throwing out of this getter, matching splitCount above.
-            try
-            {
-                // The whole run, not only the last fold: every outer fold plus its inner validation split (and the calibration /
-                // stacking meta segment of the release fold) must exist, otherwise the trainer stops before it starts.
-                var minBars = WalkForwardDataRequirement.MinimumRawBarsForTraining(
-                    WindowSize, Horizon, splitCount, Gap is >= 0 ? Gap : null,
-                    maxLag: UseFixedZScore && TryParseLags(out var lags) ? lags.DefaultIfEmpty().Max() : 0,
-                    calibrationSegment: UseCalibration
-                        || (IsStackingSelected && SelectedStackingWeightSource == StackingWeightSource.ReleaseMetaSegment));
-                return string.Format(minBarsTemplate, minBars);
-            }
-            catch (OverflowException)
-            {
-                return LocalizationManager.Instance["TrainingWizard_WindowUnitNote_OverLimit"]
-                    ?? "Required history exceeds the supported bar count. Reduce the window, horizon, gap or splits.";
+                case MinimumBarsState.Invalid:
+                    return string.Empty;
+                case MinimumBarsState.OverLimit:
+                    return LocalizationManager.Instance["TrainingWizard_WindowUnitNote_OverLimit"]
+                        ?? "Required history exceeds the supported bar count. Reduce the window, horizon, gap or splits.";
+                default:
+                    var minBarsTemplate = LocalizationManager.Instance["TrainingWizard_WindowUnitNote_MinBars"]
+                        ?? "Minimum bars required: {0}";
+                    return string.Format(minBarsTemplate, minBars);
             }
         }
     }
+
+    private enum MinimumBarsState { Invalid, OverLimit, Ok }
+
+    /// <summary>
+    /// The minimum raw bar count of the CURRENT inputs (the one expression behind <see cref="WindowUnitNote"/> and the pre-filled start date).
+    /// Invalid while the window or the horizon is not positive; OverLimit when the requirement overflows.
+    /// </summary>
+    private MinimumBarsState CalculateMinimumRawBars(out int minimumBars)
+    {
+        minimumBars = 0;
+        if (WindowSize <= 0 || Horizon <= 0)
+        {
+            return MinimumBarsState.Invalid;
+        }
+
+        var splitCount = NSplits >= 2 ? NSplits : WalkForwardDataRequirement.DefaultSplitCount;
+        // A negative Gap (transient invalid input; Start stays disabled) falls back to the
+        // default purge gap rather than throwing out of this getter, matching splitCount above.
+        try
+        {
+            // The whole run, not only the last fold: every outer fold plus its inner validation split (and the calibration /
+            // stacking meta segment of the release fold) must exist, otherwise the trainer stops before it starts.
+            minimumBars = WalkForwardDataRequirement.MinimumRawBarsForTraining(
+                WindowSize, Horizon, splitCount, Gap is >= 0 ? Gap : null,
+                maxLag: UseFixedZScore && TryParseLags(out var lags) ? lags.DefaultIfEmpty().Max() : 0,
+                calibrationSegment: UseCalibration
+                    || (IsStackingSelected && SelectedStackingWeightSource == StackingWeightSource.ReleaseMetaSegment));
+            return MinimumBarsState.Ok;
+        }
+        catch (OverflowException)
+        {
+            return MinimumBarsState.OverLimit;
+        }
+    }
+
+    private bool TryMinimumRawBars(out int minimumBars) => CalculateMinimumRawBars(out minimumBars) == MinimumBarsState.Ok;
 
     // DateTime?, not DateTimeOffset?: matches Avalonia's CalendarDatePicker.SelectedDate type
     // exactly (see EditTransactionDialogViewModel.ExecutedAt for the same established
@@ -250,7 +283,7 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(StartTrainingCommand))]
-    private string _selectedArchitecture = ArchitecturesByFramework[TrainingFramework.PyTorch][0];
+    private string _selectedArchitecture = DefaultArchitectureByFramework[TrainingFramework.PyTorch];
 
     public IReadOnlyList<string> AvailableArchitectures => ArchitecturesByFramework[SelectedFramework];
 
@@ -280,6 +313,8 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
     [NotifyPropertyChangedFor(nameof(IsTransferMode))]
     [NotifyPropertyChangedFor(nameof(IsFineTuneMode))]
     [NotifyPropertyChangedFor(nameof(CanFreezeModules))]
+    [NotifyPropertyChangedFor(nameof(ModeBadges))]
+    [NotifyPropertyChangedFor(nameof(HasModeBadges))]
     [NotifyCanExecuteChangedFor(nameof(StartTrainingCommand))]
     private TrainingInitializationMode _selectedInitializationMode;
     public bool IsTransferMode => SelectedInitializationMode != TrainingInitializationMode.Fresh;
@@ -302,10 +337,7 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
         : Array.Empty<string>();
 
     private bool TransferControlsValid() => AvailableInitializationModes.Contains(SelectedInitializationMode)
-        && (!IsTransferMode || !string.IsNullOrWhiteSpace(CheckpointPath))
-        && (!IsFineTuneMode || TrainingCheckpointContract.IsHash(ParentModelId.Trim()))
-        && SelectedFreezePaths().All(TrainingCheckpointContract.IsModulePath)
-        && SelectedFreezePaths().Distinct(StringComparer.Ordinal).Count() == SelectedFreezePaths().Length;
+        && CheckpointPathValid() && ParentModelValid() && FreezePathsValid();
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(StartTrainingCommand))]
@@ -313,15 +345,13 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
     private int _windowSize = PredictionSettingsManager.DefaultWindowSize;
 
     /// <summary>
-    /// Forward label horizon in bars. Deliberately left at 0 (invalid; Start stays disabled)
-    /// rather than seeded with a guessed default: unlike <see cref="WindowSize"/>, there is no
-    /// existing C#-side SSoT constant for it (only the training-side <c>dataset.DEFAULT_HORIZON</c>,
-    /// which this layer cannot read without invoking Python). The user must set it explicitly.
+    /// Forward label horizon in bars. Seeded from <see cref="WalkForwardDataRequirement.DefaultHorizon"/>
+    /// (the C# SSoT mirror of the trainer's <c>dataset.DEFAULT_HORIZON</c>).
     /// </summary>
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(StartTrainingCommand))]
     [NotifyPropertyChangedFor(nameof(WindowUnitNote))]
-    private int _horizon;
+    private int _horizon = WalkForwardDataRequirement.DefaultHorizon;
 
     /// <summary>
     /// Walk-forward validation split count (must be &gt;= 2). Mirrors
@@ -380,6 +410,8 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
     [NotifyPropertyChangedFor(nameof(IsBaggingSelected))]
     [NotifyPropertyChangedFor(nameof(IsStackingSelected))]
     [NotifyPropertyChangedFor(nameof(WindowUnitNote))]
+    [NotifyPropertyChangedFor(nameof(ModeBadges))]
+    [NotifyPropertyChangedFor(nameof(HasModeBadges))]
     private TrainingEnsembleMethod _selectedEnsembleMethod = TrainingEnsembleMethod.None;
 
     public bool IsBaggingSelected => SelectedEnsembleMethod == TrainingEnsembleMethod.Bagging;
@@ -403,10 +435,14 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
     private StackingWeightSource _runStackingWeightSource = StackingWeightSource.PastOutOfFold;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ModeBadges))]
+    [NotifyPropertyChangedFor(nameof(HasModeBadges))]
     private bool _usePretraining;
 
     /// <summary>Evaluation-only CPCV (T14): C(groups, test groups) extra fits whose scores are reported, nothing is published.</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ModeBadges))]
+    [NotifyPropertyChangedFor(nameof(HasModeBadges))]
     private bool _useCpcv;
 
     [ObservableProperty]
@@ -479,6 +515,7 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
     protected override void OnPropertyChanged(System.ComponentModel.PropertyChangedEventArgs e)
     {
         base.OnPropertyChanged(e);
+        PeriodInputChanged(e.PropertyName);
         if (e.PropertyName is nameof(SelectedFramework) or nameof(SelectedArchitecture))
         {
             RefreshHyperparameterOptions();
@@ -661,21 +698,26 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
         ITemplateService? templateService = null,
         Services.IToastNotificationService? toastService = null, IRetrainingScheduler? retrainingScheduler = null,
         IEnsembleSettingsManager? ensembleSettings = null,
-        ITickerStateStore? tickerStore = null, IMessenger? messenger = null)
+        ITickerStateStore? tickerStore = null, IMessenger? messenger = null,
+        IModelGenerationRegistry? modelRegistry = null,
+        IStoredPeriodAdvisor? periodAdvisor = null, TimeProvider? clock = null)
     {
+        ConfigurePeriod(periodAdvisor, clock);
         _messenger = messenger ?? WeakReferenceMessenger.Default;
         _tickerStore = tickerStore;
         _orchestrator = orchestrator;
         _ensembleSettings = ensembleSettings;
         _retrainingScheduler = retrainingScheduler;
         _modelDeploymentService = modelDeploymentService;
+        _modelRegistry = modelRegistry;
         _experimentLogService = experimentLogService;
         _watchlistManager = watchlistManager;
         _marketDataProvider = marketDataProvider;
         _logger = logger ?? NullLogger<TrainingWizardViewModel>.Instance;
         LocalizationManager.Instance.LocaleChanged += OnLocaleChanged;
+        StartTrainingCommand.CanExecuteChanged += (_, _) => NotifyStartBlocker();       // every input the gate reads already notifies the command
 
-        FeaturePicker = new FeatureChannelPickerViewModel(indicatorFactory ?? IndicatorFactory.Default, templateService, toastService)
+        FeaturePicker =new FeatureChannelPickerViewModel(indicatorFactory ?? IndicatorFactory.Default, templateService, toastService)
         {
             ShowColorSettings = false,
             ShowSetAsDefault = false,
@@ -714,6 +756,7 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
     {
         OnPropertyChanged(nameof(CurrentStageDisplay));
         OnPropertyChanged(nameof(SelectedSymbolSummary));
+        NotifyStartBlocker(); OnPropertyChanged(nameof(ModeBadges)); NotifyPeriodStatus();
         RefreshClipSigmaValidation();
         RefreshHyperparameterValidation();
     }
@@ -728,6 +771,7 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
             }
 
             RefreshSourceTree();
+            SchedulePeriod(immediate: true);
         }
         catch (Exception ex)
         {
@@ -772,6 +816,7 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
         OnPropertyChanged(nameof(HasSourceTree));
         OnPropertyChanged(nameof(SelectedSymbolSummary));
         StartTrainingCommand.NotifyCanExecuteChanged();
+        SchedulePeriod(immediate: false);
     }
 
     private bool _sourceTreeBuilt;
@@ -850,6 +895,7 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
             _resolvedSymbols = null;
             OnPropertyChanged(nameof(SelectedSymbolSummary));
             StartTrainingCommand.NotifyCanExecuteChanged();
+            SchedulePeriod(immediate: false);
         }
     }
 
@@ -866,7 +912,7 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
         OnPropertyChanged(nameof(CanFreezeModules));
         if (!AvailableInitializationModes.Contains(SelectedInitializationMode))
             SelectedInitializationMode = TrainingInitializationMode.Fresh;
-        SelectedArchitecture = ArchitecturesByFramework[value][0];
+        SelectedArchitecture = DefaultArchitectureByFramework[value];
     }
 
     partial void OnSelectedTargetTypeChanged(TargetType value)
@@ -1041,13 +1087,24 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
         return _resolvedSymbols = symbols.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
     }
 
+    // The conditions of CanStartTraining that have no message beside their field. Each one is a named predicate so that the footer reason
+    // (StartBlockerDisplay) and the start gate read the same definition; the gate itself is unchanged (TrainingWizardStartBlockerAuditTests pins the table).
+    private bool CheckpointPathValid() => !IsTransferMode || !string.IsNullOrWhiteSpace(CheckpointPath);
+    private bool ParentModelValid() => !IsFineTuneMode || TrainingCheckpointContract.IsHash(ParentModelId.Trim());
+    private bool FreezePathsValid() => SelectedFreezePaths().All(TrainingCheckpointContract.IsModulePath)
+        && SelectedFreezePaths().Distinct(StringComparer.Ordinal).Count() == SelectedFreezePaths().Length;
+    private bool SplitsValid() => NSplits is >= 2 and <= TrainingResourceOverrides.MaximumEvaluationFolds;
+    private bool ZScoreNormalizationValid() => !UseFixedZScore || !UseComposedFeatures ||
+        FeaturePicker.BuildFeatureSpec()?.Channels.All(c => c.Normalization == ChannelNormalization.None) == true;
+    private bool ComposedSpecValid() => !UseComposedFeatures || FeaturePicker.BuildFeatureSpec() is not null;
+
     private bool CanStartTraining() =>
         !IsTraining && !IsDeploying
         && TransferControlsValid()
         && _orchestrator is not null
         && (SelectedTargetType != TargetType.Regression || SelectedFramework == TrainingFramework.PyTorch)
         && WindowSize > 0 && Horizon > 0
-        && NSplits is >= 2 and <= TrainingResourceOverrides.MaximumEvaluationFolds
+        && SplitsValid()
         && Gap is not (< 0)
         && OosTailDays is not (< 0)
         && !CalibrationUnavailable()
@@ -1055,14 +1112,48 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
         && TryParseLags(out var lags)
         && (!UseClipSigma || (UseFixedZScore && TryGetClipSigma(out _)))
         && (UseFixedZScore || lags.Length == 0)
-        && (!UseFixedZScore || !UseComposedFeatures ||
-            FeaturePicker.BuildFeatureSpec()?.Channels.All(c => c.Normalization == ChannelNormalization.None) == true)
+        && ZScoreNormalizationValid()
         && !string.IsNullOrWhiteSpace(SelectedArchitecture)
-        && (!UseComposedFeatures || FeaturePicker.BuildFeatureSpec() is not null)
+        && ComposedSpecValid()
         && !IsManifestMissing
         && Hyperparameters.All(h => h.ValidationMessage is null)
         && HyperparameterDependencyMessage is null
         && ResolveSymbols().Length > 0;
+
+    /// <summary>
+    /// The reason Start is disabled for a condition that shows no message beside its field, in the order of <see cref="CanStartTraining"/>; empty when
+    /// a start is possible, while a run or a deployment is active, and for the conditions that already have a message (calibration, extended learning, clip sigma,
+    /// manifest, hyperparameters) or that the controls cannot produce. One line, blocking reasons only.
+    /// </summary>
+    public string StartBlockerDisplay
+    {
+        get
+        {
+            if (IsTraining || IsDeploying) return "";
+            var text = LocalizationManager.Instance;
+            if (!CheckpointPathValid()) return text["TrainingWizard_Start_CheckpointPath"];
+            if (!ParentModelValid()) return text["TrainingWizard_Start_ParentModel"];
+            if (!FreezePathsValid()) return text["TrainingWizard_Start_FreezePaths"];
+            if (WindowSize <= 0) return text["TrainingWizard_Start_WindowSize"];
+            if (Horizon <= 0) return text["TrainingWizard_Start_Horizon"];
+            if (!SplitsValid()) return string.Format(CultureInfo.CurrentCulture, text["TrainingWizard_Start_Splits"], TrainingResourceOverrides.MaximumEvaluationFolds);
+            if (!TryParseLags(out _)) return text["TrainingWizard_Start_Lags"];
+            if (!ZScoreNormalizationValid()) return text["TrainingWizard_Start_ZScoreNormalization"];
+            if (!ComposedSpecValid()) return text["TrainingWizard_Start_Features"];
+            if (ResolveSymbols().Length == 0) return text["TrainingWizard_Start_NoTickers"];
+            return "";
+        }
+    }
+    public bool HasStartBlocker => StartBlockerDisplay.Length > 0;
+    private void NotifyStartBlocker() { OnPropertyChanged(nameof(StartBlockerDisplay)); OnPropertyChanged(nameof(HasStartBlocker)); }
+
+    /// <summary>The options that are not at their default and change what the result means: the start mode ("Continue from model", "Resume training"), CPCV, encoder pretraining and an ensemble method. Empty by default.</summary>
+    public IReadOnlyList<string> ModeBadges => RunModeBadges.Build(key => LocalizationManager.Instance[key],
+        (SelectedInitializationMode != TrainingInitializationMode.Fresh, "Enum_TrainingInitializationMode_" + SelectedInitializationMode),
+        (UseCpcv, "TrainingWizard_Badge_Cpcv"),
+        (UsePretraining, "TrainingWizard_Badge_Pretraining"),
+        (SelectedEnsembleMethod != TrainingEnsembleMethod.None, "Enum_TrainingEnsembleMethod_" + SelectedEnsembleMethod));
+    public bool HasModeBadges => ModeBadges.Count > 0;
 
     private TrainingJobConfig? CreateCurrentTrainingConfig()
     {
@@ -1138,8 +1229,8 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
             return;
         }
 
+        _runTerminal = false;           // before IsTraining: its change re-evaluates Cancel, which must not still see the previous run as finished
         IsTraining = true;
-        _runTerminal = false;
         ProgressPercent = 0;
         CurrentStage = null;
         LogLines.Clear();
@@ -1367,6 +1458,17 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
 
             var generation = await _modelDeploymentService.RegisterGenerationAsync(onnxPath, result.MetricsArtifactPath).ConfigureAwait(true);
             _messenger.Send(new PredictionConfigurationChangedMessage()); // the registration activates the generation when it may
+            if (_modelRegistry is not null)
+            {
+                if (!string.Equals(_modelRegistry.ActiveId, generation.ModelId, StringComparison.Ordinal))
+                {
+                    StatusMessage = string.Format(
+                        LocalizationManager.Instance["TrainingWizard_Status_RegisteredNotActivated"]
+                        ?? "Model generation {0} is registered but not active. To use it, open Settings > AI Predictions, tick the model and, if asked, press Confirm activation. If it still does not become active, the message shown there names the reason.",
+                        generation.ModelId);
+                    return;
+                }
+            }
             StatusMessage = string.Format(
                 LocalizationManager.Instance["TrainingWizard_Status_Registered"] ?? "Registered model generation {0}.",
                 generation.ModelId);
@@ -1427,11 +1529,12 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
     /// <c>finally</c> block's <c>Dispose()</c> and its <c>= null</c>), so <see cref="ObjectDisposedException"/>
     /// is not expected in practice. The catch costs nothing and removes any doubt if that
     /// threading assumption ever changes (multiple independent reviews of this design flagged
-    /// the theoretical race; see Y:\Temp\sa_analysis_report_WebaiReviewOnnxTrainingBatch.md).
+    /// the theoretical race; see docs/sa_analysis_report_WebaiReviewOnnxTrainingBatch).
     /// Safe to call more than once (e.g. a duplicate window-close notification).
     /// </remarks>
     public void Dispose()
     {
+        DisposePeriod();
         LocalizationManager.Instance.LocaleChanged -= OnLocaleChanged;
         if (_watchlistManager is not null)
         {

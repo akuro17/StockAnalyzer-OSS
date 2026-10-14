@@ -441,7 +441,7 @@ public class NoteTimelineViewModelTests
         }
     }
 
-    /// <summary>sa_implement (Notes-only Settings & Thread Collapsing Task 5, Y:\Temp\sa_implementation_plan.md);
+    /// <summary>sa_implement (Notes-only Settings & Thread Collapsing Task 5, docs/sa_implementation_plan);
     /// updated by sa_minimal_fix (bug-list item #2): a 5-post reply chain (root + 4 nested replies)
     /// exceeds the production-default ThreadCollapseThreshold(3) and 1+TailVisibleCount(3), so only
     /// the thread-starting root plus the last 2 posts are shown - B and C are omitted and the root
@@ -2102,7 +2102,7 @@ public class NoteTimelineViewModelTests
         }
     }
 
-    /// <summary>sa_implement (Note tab UI polish Task 3, Y:\Temp\sa_implementation_plan_note_ui_polish.md):
+    /// <summary>sa_implement (Note tab UI polish Task 3, docs/sa_implementation_plan_note_ui_polish):
     /// RefreshAsync must populate DeletedNotesCount from a fresh CountDeletedAsync read and
     /// OrphanedFilesCount from the injected OrphanedAttachmentScanResultHolder's latest report,
     /// independent of the active FilterCriteria (deleted Notes are never part of DisplayedNotes).</summary>
@@ -2670,7 +2670,7 @@ public class NoteTimelineViewModelTests
         Assert.Equal(400, item.DisplayBody.Length);
     }
 
-    /// <summary>sa_implement (Notes-only Settings & Thread Collapsing Task 2, Y:\Temp\sa_implementation_plan.md):
+    /// <summary>sa_implement (Notes-only Settings & Thread Collapsing Task 2, docs/sa_implementation_plan):
     /// the "Read more" character-count threshold must be driven by the caller-supplied
     /// readMoreMaxCharacters/readMoreMaxLines constructor values (sourced from
     /// INotesSettingsManager in production) rather than a fixed 300, so Settings &gt; Notes changes
@@ -2812,7 +2812,7 @@ public class NoteTimelineViewModelTests
         }
     }
 
-    /// <summary>sa_implement (Notes専用「外観」設定, Y:\Temp\sa_implementation_plan_notes_appearance.md
+    /// <summary>sa_implement (Notes専用「外観」設定, docs/sa_implementation_plan_notes_appearance
     /// Task 3): when Settings &gt; Notes has a custom BodyFontSize/BodyTextColor/BodyBackgroundColor
     /// configured, cards produced by RefreshAsync must carry the matching values so NoteCardView
     /// renders independently of Settings &gt; Theme/Fonts.</summary>
@@ -2847,7 +2847,7 @@ public class NoteTimelineViewModelTests
         }
     }
 
-    /// <summary>sa_minimal_fix (Notes専用「外観」設定の再構成, Y:\Temp\sa_fix_plan_notes_appearance_restructure.md):
+    /// <summary>sa_minimal_fix (Notes専用「外観」設定の再構成, docs/sa_fix_plan_notes_appearance_restructure):
     /// when Settings &gt; Notes has a custom UrlColor/HashtagColor configured, cards produced by
     /// RefreshAsync must carry the matching Color on UrlColor/HashtagColor so NoteCardView's
     /// code-behind can turn it into a Brush when actually rendering (on the UI thread) - the default
@@ -2887,7 +2887,7 @@ public class NoteTimelineViewModelTests
     }
 
     /// <summary>sa_implement (Notes メインタイムライン インフィニットスクロール Task 4,
-    /// Y:\Temp\sa_implementation_plan.md): with 5 unrelated root Notes and Settings &gt; Notes'
+    /// docs/sa_implementation_plan): with 5 unrelated root Notes and Settings &gt; Notes'
     /// TimelinePageSize set to 2, RefreshAsync must only materialize the first 2 (pinned-first/CreatedAt-
     /// descending, same order as before pagination existed) into DisplayedNotes and report that more
     /// remain via HasMoreVisibleNotes.</summary>

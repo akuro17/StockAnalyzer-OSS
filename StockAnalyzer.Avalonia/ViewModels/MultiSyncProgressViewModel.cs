@@ -7,6 +7,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using StockAnalyzer.Avalonia.Services;
 using StockAnalyzer.Core.Models;
+using StockAnalyzer.Core.Models.Settings;
 
 namespace StockAnalyzer.Avalonia.ViewModels;
 
@@ -219,7 +220,7 @@ public partial class MultiSyncProgressViewModel : ViewModelBase
         }
     }
 
-    private int _startSyncPeriodYears = 5;
+    private int _startSyncPeriodYears = WorkspaceSettings.DefaultStartSyncPeriodYears;
     public int StartSyncPeriodYears
     {
         get => _startSyncPeriodYears;

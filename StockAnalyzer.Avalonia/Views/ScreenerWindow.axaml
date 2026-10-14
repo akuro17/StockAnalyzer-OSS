@@ -26,11 +26,11 @@
         <KeyBinding Gesture="Enter" Command="{Binding ScanCommand}"/>
     </Window.KeyBindings>
 
-    <!-- Filters condition tree (Y:\Temp\sa_implementation_plan_ScreenerFilterConditionTree.md Task 5): mirrors
+    <!-- Filters condition tree (docs/sa_implementation_plan_ScreenerFilterConditionTree Task 5): mirrors
          BacktestResultsView.axaml's "Registered Conditions" tree - a group row with a right-click context menu
          (Add/Edit Group, Delete) and an AND/OR indicator, and a leaf row showing one comparison. Single root
          (no Entry/Exit/Reverse x Long/Short sections - Screener has no trade-side concept). Drag-and-drop reordering
-         (added by Y:\Temp\sa_implementation_plan_ScreenerFilterConditionDragMove.md) is wired in ScreenerWindow.axaml.cs;
+         (added by docs/sa_implementation_plan_ScreenerFilterConditionDragMove) is wired in ScreenerWindow.axaml.cs;
          the "ConditionRow" class below is also the hook the drop-indicator styles (further down this file) target. -->
     <Window.DataTemplates>
         <TreeDataTemplate DataType="svm:ScreenerConditionGroupViewModel" ItemsSource="{Binding Children}">
@@ -184,7 +184,7 @@
             <Setter Property="IsVisible" Value="False"/>
         </Style>
 
-        <!-- Drop indicator while a Filters condition is dragged (Y:\Temp\sa_implementation_plan_ScreenerFilterConditionDragMove.md
+        <!-- Drop indicator while a Filters condition is dragged (docs/sa_implementation_plan_ScreenerFilterConditionDragMove
              Task 5), mirroring BacktestResultsView.axaml's Border.ConditionRow.DropBefore/DropAfter/DropInside: a line
              above / below the row, or an outline for "append to this group". Padding is reduced by what the line adds,
              so the row never changes size and the hit areas stay put. Theme color only. -->

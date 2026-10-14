@@ -10,7 +10,7 @@ namespace StockAnalyzer.Core.Tests.Backtest.Reporting;
 
 /// <summary>
 /// Near-ties and cross-checks of the drawdown durations against the evaluation artifact's episode
-/// (Y:\Temp\sa_implementation_plan_BacktestReportVerificationOracle.md, T9). Both use the same double-precision ratio series and the
+/// (docs/sa_implementation_plan_BacktestReportVerificationOracle, T9). Both use the same double-precision ratio series and the
 /// spec §5.4 tie rules, so they must always agree on WHICH episode is the deepest, including when the depths differ by less than a double can resolve.
 /// </summary>
 public class DrawdownDurationConsistencyTests

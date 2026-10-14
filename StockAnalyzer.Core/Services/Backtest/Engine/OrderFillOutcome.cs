@@ -5,7 +5,7 @@ namespace StockAnalyzer.Core.Services.Backtest.Engine;
 /// <see cref="StopActivated"/> still communicates whether a StopLimit order's Stop leg triggered
 /// on this bar (the caller must persist this onto the order's <c>StopActivated</c> field so a later
 /// bar's evaluation skips the Stop re-check and scans only for the Limit leg, per
-/// Y:\0915 Backtesting\01_P1_SimulationEngine.md section 5.6: bar extremes seen before the trigger
+/// docs/01_P1_SimulationEngine section 5.6: bar extremes seen before the trigger
 /// point must never be reused for the StopLimit fill).
 /// </summary>
 public readonly record struct OrderFillOutcome(

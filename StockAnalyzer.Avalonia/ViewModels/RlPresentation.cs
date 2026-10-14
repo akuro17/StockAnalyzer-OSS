@@ -18,6 +18,16 @@ public sealed record RlPresentation(string ModelId, string RequestKey, string Le
     public bool HasPolicyControlReadout => PolicyControlReadout.Length > 0;
     public string EvaluationReadout { get; init; } = "";
     public bool HasEvaluationReadout => EvaluationReadout.Length > 0;
+    /// <summary>How the window relates to the agent's training data and which inputs leave the trained range; empty for a replay of the agent's own training source.</summary>
+    public string ScopeReadout { get; init; } = "";
+    public bool HasScopeReadout => ScopeReadout.Length > 0;
+    public DateTime? AnchorDate { get; init; }
+    public decimal? CurrentPrice { get; init; }
+    public decimal? EntryPrice { get; init; }
+    public decimal? StopPrice { get; init; }
+    public decimal PositionQuantity { get; init; }
+    public string ActionLabel { get; init; } = "";
+    public bool HasDecisionOverlay => AnchorDate.HasValue;
     public static RlPresentation From(RlQSnapshot snapshot, StockAnalyzer.Core.Interfaces.ILocalizationService localization)
     {
         if (snapshot.QValues.Length != RlContract.ActionCount || snapshot.QValues.Any(v => !float.IsFinite(v)))
@@ -31,15 +41,66 @@ public sealed record RlPresentation(string ModelId, string RequestKey, string Le
         string legend = localization.GetString("Rl.Maximum") + " " + Action(snapshot.SelectedAction) + " · " + snapshot.Account.MarketAnchor.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
         string hud = string.Join("  ", Action(RlAction.Hold) + " " + Number(snapshot.QValues[0]), Action(RlAction.Buy) + " " + Number(snapshot.QValues[1]),
             Action(RlAction.Sell) + " " + Number(snapshot.QValues[2]), localization.GetString("Rl.Maximum") + " " + Action(snapshot.SelectedAction));
+        DateTime? anchorDate = snapshot.Account.MarketAnchor != default ? snapshot.Account.MarketAnchor : (snapshot.Anchor != default ? snapshot.Anchor : null);
+        decimal? currentPrice = snapshot.Account.MarketWindow.Length > 0 ? snapshot.Account.MarketWindow[^1].Close : null;
+        decimal? entryPrice = snapshot.Account.Quantity > 0 && snapshot.Account.EntryPrice > 0 ? snapshot.Account.EntryPrice : null;
+        decimal? stopPrice = snapshot.Continuous?.ActualStopPrice ?? snapshot.Continuous?.EstimatedStopPrice ?? snapshot.Account.ActiveStopPrice;
         return new(snapshot.ModelId, snapshot.RequestKey, legend, hud, string.Format(CultureInfo.CurrentCulture, localization.GetString("Rl.QUnit"), RlContract.Gamma),
             Number(min), Number(max), min, max, snapshot.QValues[0], snapshot.QValues[1], snapshot.QValues[2],
             Action(RlAction.Hold) + " " + Number(snapshot.QValues[0]), Action(RlAction.Buy) + " " + Number(snapshot.QValues[1]),
             Action(RlAction.Sell) + " " + Number(snapshot.QValues[2]), snapshot.SelectedAction)
             { PolicyId = snapshot.PolicyId, ContinuousReadout = FormatContinuous(snapshot, localization),
                 PolicyControlReadout = FormatPolicyControl(snapshot, localization),
+                ScopeReadout = FormatScope(snapshot, localization),
                 EvaluationReadout = (snapshot.AllBlockEvaluation is { } expanded ? FormatAllBlocks(expanded, localization) + Environment.NewLine : "")
-                    + (snapshot.EvaluationConstraints is { } report ? FormatEvaluation(report, localization) : "") };
+                    + (snapshot.EvaluationConstraints is { } report ? FormatEvaluation(report, localization) : ""),
+                AnchorDate = anchorDate, CurrentPrice = currentPrice, EntryPrice = entryPrice, StopPrice = stopPrice,
+                PositionQuantity = snapshot.Account.Quantity, ActionLabel = Action(snapshot.SelectedAction) };
     }
+    /// <summary>The scope line is omitted for <see cref="RlReplayScope.TrainingSource"/> so every existing display stays unchanged.</summary>
+    private static string FormatScope(RlQSnapshot snapshot, StockAnalyzer.Core.Interfaces.ILocalizationService localization)
+    {
+        var lines = new System.Collections.Generic.List<string>();
+        string? scopeKey = snapshot.ReplayScope switch
+        {
+            RlReplayScope.SameInstrumentOverlapsTraining => "Rl.Scope.SameOverlaps",
+            RlReplayScope.SameInstrumentAfterTraining => "Rl.Scope.SameAfter",
+            RlReplayScope.SameInstrumentBeforeTraining => "Rl.Scope.SameBefore",
+            RlReplayScope.OtherInstrument => "Rl.Scope.Other",
+            _ => null,
+        };
+        if (snapshot.ReplayScope == RlReplayScope.SameInstrumentOverlapsTraining && snapshot.OverlappingParts != RlSourceParts.None)
+            lines.Add(string.Format(CultureInfo.CurrentCulture, localization.GetString("Rl.Scope.SameOverlapsParts"), string.Join(", ", PartLabels(snapshot.OverlappingParts, localization))));
+        else if (scopeKey is not null) lines.Add(localization.GetString(scopeKey));
+        if (!snapshot.ScalerFindings.IsDefaultOrEmpty)
+            lines.Add(string.Format(CultureInfo.CurrentCulture, localization.GetString("Rl.Scope.OutOfRange"),
+                string.Join(", ", snapshot.ScalerFindings.Select(f => ChannelLabel(f.Channel)))));
+        foreach (var finding in snapshot.ContinuityFindings.IsDefault ? ImmutableArray<RlContinuityFinding>.Empty : snapshot.ContinuityFindings)
+            lines.Add(finding.Kind == RlContinuityKind.CalendarGap
+                ? string.Format(CultureInfo.CurrentCulture, localization.GetString("Rl.Scope.ContinuityGap"),
+                    finding.Observed.ToString("0", CultureInfo.CurrentCulture), Day(finding.Date), finding.TrainedMaximum.ToString("0", CultureInfo.CurrentCulture))
+                : string.Format(CultureInfo.CurrentCulture, localization.GetString("Rl.Scope.ContinuityChange"),
+                    finding.Observed.ToString("P1", CultureInfo.CurrentCulture), Day(finding.Date), finding.TrainedMaximum.ToString("P1", CultureInfo.CurrentCulture)));
+        return string.Join(Environment.NewLine, lines);
+    }
+
+    private static string Day(DateOnly date) => date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+
+    /// <summary>The names of the source parts a window overlaps, in chronological order (training, validation, final evaluation).</summary>
+    private static System.Collections.Generic.IEnumerable<string> PartLabels(RlSourceParts parts, StockAnalyzer.Core.Interfaces.ILocalizationService localization)
+    {
+        if (parts.HasFlag(RlSourceParts.Train)) yield return localization.GetString("Rl.Scope.Part.Train");
+        if (parts.HasFlag(RlSourceParts.Validation)) yield return localization.GetString("Rl.Scope.Part.Validation");
+        if (parts.HasFlag(RlSourceParts.FinalEvaluation)) yield return localization.GetString("Rl.Scope.Part.Final");
+    }
+
+    /// <summary>Scaler channel identities look like "lag0:0:price:Open"; the user sees the last part ("Open").</summary>
+    private static string ChannelLabel(string identity)
+    {
+        int separator = identity.LastIndexOf(':');
+        return separator >= 0 && separator < identity.Length - 1 ? identity[(separator + 1)..] : identity;
+    }
+
     private static string FormatContinuous(RlQSnapshot snapshot, StockAnalyzer.Core.Interfaces.ILocalizationService localization)
     {
         if (snapshot.Continuous is not { } readout) return "";

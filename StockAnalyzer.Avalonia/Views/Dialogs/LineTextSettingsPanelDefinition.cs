@@ -43,6 +43,7 @@ public sealed class LineTextSettingsPanelDefinition : IDrawingSettingsPanelDefin
         var transparentCheck = dialogWindow.FindControl<CheckBox>("LineTextTransparentCheck")
             ?? dialogWindow.FindControl<CheckBox>("LineTextMatchBackgroundCheck");
         var topTextBox = dialogWindow.FindControl<TextBox>("LineTextTopTextBox");
+        var topFontFamilyCombo = dialogWindow.FindControl<ComboBox>("LineTextTopFontFamilyCombo");
         var topFontSizeSpin = dialogWindow.FindControl<NumericUpDown>("LineTextTopFontSizeSpin");
         var topAlignmentCombo = dialogWindow.FindControl<ComboBox>("LineTextTopAlignmentCombo");
         var topOffsetSpin = dialogWindow.FindControl<NumericUpDown>("LineTextTopOffsetSpin");
@@ -54,6 +55,7 @@ public sealed class LineTextSettingsPanelDefinition : IDrawingSettingsPanelDefin
         var topPositionLockedCheck = dialogWindow.FindControl<CheckBox>("LineTextTopPositionLockedCheck");
         var topExtendBeyondLineCheck = dialogWindow.FindControl<CheckBox>("LineTextTopExtendBeyondLineCheck");
         var bottomTextBox = dialogWindow.FindControl<TextBox>("LineTextBottomTextBox");
+        var bottomFontFamilyCombo = dialogWindow.FindControl<ComboBox>("LineTextBottomFontFamilyCombo");
         var bottomFontSizeSpin = dialogWindow.FindControl<NumericUpDown>("LineTextBottomFontSizeSpin");
         var bottomAlignmentCombo = dialogWindow.FindControl<ComboBox>("LineTextBottomAlignmentCombo");
         var bottomOffsetSpin = dialogWindow.FindControl<NumericUpDown>("LineTextBottomOffsetSpin");
@@ -68,6 +70,13 @@ public sealed class LineTextSettingsPanelDefinition : IDrawingSettingsPanelDefin
         if (transparentCheck != null) transparentCheck.IsChecked = lineTextObj.IsTransparent;
 
         if (topTextBox != null) topTextBox.Text = lineTextObj.TopText;
+        if (topFontFamilyCombo != null)
+        {
+            topFontFamilyCombo.ItemsSource = DrawingFontHelper.AvailableFontFamilies;
+            topFontFamilyCombo.SelectedItem = !string.IsNullOrWhiteSpace(lineTextObj.TopFontFamily)
+                ? lineTextObj.TopFontFamily
+                : DrawingFontHelper.DefaultFontDisplayName;
+        }
         if (topFontSizeSpin != null) topFontSizeSpin.Value = (decimal)lineTextObj.TopFontSize;
         if (topAlignmentCombo != null) topAlignmentCombo.SelectedIndex = (int)lineTextObj.TopAlignment;
         if (topOffsetSpin != null) topOffsetSpin.Value = (decimal)lineTextObj.TopOffsetPx;
@@ -80,6 +89,13 @@ public sealed class LineTextSettingsPanelDefinition : IDrawingSettingsPanelDefin
         if (topExtendBeyondLineCheck != null) topExtendBeyondLineCheck.IsChecked = lineTextObj.TopExtendBeyondLine;
 
         if (bottomTextBox != null) bottomTextBox.Text = lineTextObj.BottomText;
+        if (bottomFontFamilyCombo != null)
+        {
+            bottomFontFamilyCombo.ItemsSource = DrawingFontHelper.AvailableFontFamilies;
+            bottomFontFamilyCombo.SelectedItem = !string.IsNullOrWhiteSpace(lineTextObj.BottomFontFamily)
+                ? lineTextObj.BottomFontFamily
+                : DrawingFontHelper.DefaultFontDisplayName;
+        }
         if (bottomFontSizeSpin != null) bottomFontSizeSpin.Value = (decimal)lineTextObj.BottomFontSize;
         if (bottomAlignmentCombo != null) bottomAlignmentCombo.SelectedIndex = (int)lineTextObj.BottomAlignment;
         if (bottomOffsetSpin != null) bottomOffsetSpin.Value = (decimal)lineTextObj.BottomOffsetPx;
@@ -99,6 +115,7 @@ public sealed class LineTextSettingsPanelDefinition : IDrawingSettingsPanelDefin
         var transparentCheck = dialogWindow.FindControl<CheckBox>("LineTextTransparentCheck")
             ?? dialogWindow.FindControl<CheckBox>("LineTextMatchBackgroundCheck");
         var topTextBox = dialogWindow.FindControl<TextBox>("LineTextTopTextBox");
+        var topFontFamilyCombo = dialogWindow.FindControl<ComboBox>("LineTextTopFontFamilyCombo");
         var topFontSizeSpin = dialogWindow.FindControl<NumericUpDown>("LineTextTopFontSizeSpin");
         var topAlignmentCombo = dialogWindow.FindControl<ComboBox>("LineTextTopAlignmentCombo");
         var topOffsetSpin = dialogWindow.FindControl<NumericUpDown>("LineTextTopOffsetSpin");
@@ -110,6 +127,7 @@ public sealed class LineTextSettingsPanelDefinition : IDrawingSettingsPanelDefin
         var topPositionLockedCheck = dialogWindow.FindControl<CheckBox>("LineTextTopPositionLockedCheck");
         var topExtendBeyondLineCheck = dialogWindow.FindControl<CheckBox>("LineTextTopExtendBeyondLineCheck");
         var bottomTextBox = dialogWindow.FindControl<TextBox>("LineTextBottomTextBox");
+        var bottomFontFamilyCombo = dialogWindow.FindControl<ComboBox>("LineTextBottomFontFamilyCombo");
         var bottomFontSizeSpin = dialogWindow.FindControl<NumericUpDown>("LineTextBottomFontSizeSpin");
         var bottomAlignmentCombo = dialogWindow.FindControl<ComboBox>("LineTextBottomAlignmentCombo");
         var bottomOffsetSpin = dialogWindow.FindControl<NumericUpDown>("LineTextBottomOffsetSpin");
@@ -124,6 +142,13 @@ public sealed class LineTextSettingsPanelDefinition : IDrawingSettingsPanelDefin
         if (transparentCheck?.IsChecked != null) lineTextObj.IsTransparent = transparentCheck.IsChecked.Value;
 
         if (topTextBox != null) lineTextObj.TopText = topTextBox.Text ?? "";
+        if (topFontFamilyCombo != null)
+        {
+            var selectedFont = topFontFamilyCombo.SelectedItem as string;
+            lineTextObj.TopFontFamily = (string.IsNullOrWhiteSpace(selectedFont) || selectedFont == DrawingFontHelper.DefaultFontDisplayName)
+                ? null
+                : selectedFont;
+        }
         if (topFontSizeSpin?.Value != null) lineTextObj.TopFontSize = (double)topFontSizeSpin.Value;
         if (topAlignmentCombo != null && topAlignmentCombo.SelectedIndex >= 0) lineTextObj.TopAlignment = (TextHorizontalAlignment)topAlignmentCombo.SelectedIndex;
         if (topOffsetSpin?.Value != null) lineTextObj.TopOffsetPx = (float)topOffsetSpin.Value;
@@ -136,6 +161,13 @@ public sealed class LineTextSettingsPanelDefinition : IDrawingSettingsPanelDefin
         if (topExtendBeyondLineCheck?.IsChecked != null) lineTextObj.TopExtendBeyondLine = topExtendBeyondLineCheck.IsChecked.Value;
 
         if (bottomTextBox != null) lineTextObj.BottomText = bottomTextBox.Text ?? "";
+        if (bottomFontFamilyCombo != null)
+        {
+            var selectedFont = bottomFontFamilyCombo.SelectedItem as string;
+            lineTextObj.BottomFontFamily = (string.IsNullOrWhiteSpace(selectedFont) || selectedFont == DrawingFontHelper.DefaultFontDisplayName)
+                ? null
+                : selectedFont;
+        }
         if (bottomFontSizeSpin?.Value != null) lineTextObj.BottomFontSize = (double)bottomFontSizeSpin.Value;
         if (bottomAlignmentCombo != null && bottomAlignmentCombo.SelectedIndex >= 0) lineTextObj.BottomAlignment = (TextHorizontalAlignment)bottomAlignmentCombo.SelectedIndex;
         if (bottomOffsetSpin?.Value != null) lineTextObj.BottomOffsetPx = (float)bottomOffsetSpin.Value;

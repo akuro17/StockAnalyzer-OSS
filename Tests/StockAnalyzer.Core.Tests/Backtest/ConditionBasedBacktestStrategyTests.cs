@@ -13,7 +13,7 @@ using Xunit;
 namespace StockAnalyzer.Core.Tests.Backtest;
 
 /// <summary>
-/// Task 3 proof (plan section 4.3 of Y:\Temp\sa_implementation_plan_BacktestComparisonSignals.md):
+/// Task 3 proof (plan section 4.3 of docs/sa_implementation_plan_BacktestComparisonSignals):
 /// <see cref="ConditionBasedBacktestStrategy"/> correctly sequences entry/exit signals per
 /// <see cref="BacktestConditionRole"/>, dedupes indicator requests by content, and produces the
 /// expected delayed-visibility signal timing for a cross-timeframe (Task 2b) condition — all through
@@ -192,7 +192,7 @@ public class ConditionBasedBacktestStrategyTests
     [Fact]
     public void ReversalRole_TwoOppositeConditions_ProduceARealSameBarReversal_ThroughTheRealEngine()
     {
-        // End-to-end proof (Task 3, Y:\Temp\sa_implementation_plan_BacktestPositionDirectionReversal.md)
+        // End-to-end proof (Task 3, docs/sa_implementation_plan_BacktestPositionDirectionReversal)
         // that ConditionBasedBacktestStrategy's Reversal-role chains and BacktestEngine's dual pending-order
         // slots work together through the real, public BacktestEngine.Run entry point - not a hand-scripted
         // strategy double. Two Reversal entries, opposite Position: "Close>10"/Position=Long opens/holds
@@ -243,7 +243,7 @@ public class ConditionBasedBacktestStrategyTests
         Assert.Equal(3, result.Fills.Length); // LongEntry@bar2, then (Exit-before-Entry) LongExit@bar4, ShortEntry@bar4
     }
 
-    // ===== Task 8b: entry-price-relative Stop-Loss/Take-Profit (Y:\Temp\sa_implementation_plan_
+    // ===== Task 8b: entry-price-relative Stop-Loss/Take-Profit (docs/sa_implementation_plan_
     // BacktestComparisonSignals.md sections 3.4/4.5) =====
 
     /// <summary>Single EntryOnly/Long condition shared by every risk-management test below - opens a Long
@@ -597,7 +597,7 @@ public class ConditionBasedBacktestStrategyTests
     [Fact]
     public void GetRequiredIndicators_DifferentOutputName_ProducesSeparateRequests()
     {
-        // Task 6a (Y:\Temp\sa_implementation_plan_BacktestOutputNameSupport.md): two sides sharing
+        // Task 6a (docs/sa_implementation_plan_BacktestOutputNameSupport): two sides sharing
         // (IndicatorType, Parameters, Frame) but differing only by OutputName must NOT collapse into one
         // request - this is the corrected dedupe key restoring plan section 4.3's original spec.
         var mainSeries = new BacktestConditionEntry { Left = CloseSide(outputName: "Main"), RightNumericValue = 1m };
@@ -642,7 +642,7 @@ public class ConditionBasedBacktestStrategyTests
         Assert.Equal(IndicatorResult.MainSeriesName, Assert.Single(strategy.Entries).Left.OutputName);
     }
 
-    // ===== Bug fix (Y:\Temp\sa_improvement_plan_BacktestPriceSourceConditionFix.md): a "Price"
+    // ===== Bug fix (docs/sa_improvement_plan_BacktestPriceSourceConditionFix): a "Price"
     // catalog condition (one row per PriceType - Open/High/Low/...) previously had no way to carry which
     // PriceType was selected all the way to the engine, so every Price condition silently evaluated
     // against Close regardless of the row picked ("High > Low" was actually always "Close > Close"). =====
@@ -694,7 +694,7 @@ public class ConditionBasedBacktestStrategyTests
     /// <summary>Builds a strategy for a single true-valued condition and a matching StrategyContext, direct
     /// unit-testing <see cref="ConditionBasedBacktestStrategy.Evaluate"/>/<c>EvaluateExit</c> without going
     /// through <see cref="BacktestEngine"/> (Task 2 of
-    /// Y:\Temp\sa_implementation_plan_BacktestPositionDirectionReversal.md; the engine does not call the new
+    /// docs/sa_implementation_plan_BacktestPositionDirectionReversal; the engine does not call the new
     /// <c>EvaluateExit</c> member yet — that wiring is Task 3's scope).</summary>
     private static (ConditionBasedBacktestStrategy Strategy, StrategyContext Context) MakeTrueConditionContext(
         BacktestConditionEntry entry, TradeSide? positionSide)

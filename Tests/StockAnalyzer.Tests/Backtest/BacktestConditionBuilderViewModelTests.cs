@@ -23,7 +23,7 @@ public class BacktestConditionBuilderViewModelTests
     private static ScreenerCatalogItem MacdItem => new() { CategoryType = ScreenerItemCategoryType.Indicator, GroupName = "Momentum", ShortName = "MACD", DisplayName = "MACD", IndicatorType = IndicatorType.MACD };
 
     /// <summary>Mirrors the real <c>ScreenerCatalogProvider</c>'s "Price" group shape exactly
-    /// (Y:\Temp\sa_improvement_plan_BacktestPriceSourceConditionFix.md): one row per <see cref="PriceType"/>,
+    /// (docs/sa_improvement_plan_BacktestPriceSourceConditionFix): one row per <see cref="PriceType"/>,
     /// all sharing <see cref="IndicatorType.Price"/>, distinguished only by <see cref="ScreenerCatalogItem.ShortName"/>.</summary>
     private static ScreenerCatalogItem PriceHighItem => new() { CategoryType = ScreenerItemCategoryType.Indicator, GroupName = "Price", ShortName = "High", DisplayName = "High", IndicatorType = IndicatorType.Price };
     private static ScreenerCatalogItem PriceLowItem => new() { CategoryType = ScreenerItemCategoryType.Indicator, GroupName = "Price", ShortName = "Low", DisplayName = "Low", IndicatorType = IndicatorType.Price };
@@ -103,7 +103,7 @@ public class BacktestConditionBuilderViewModelTests
         Assert.Equal(LogicalOperator.And, entry.LogicalOperator);
     }
 
-    /// <summary>Round 2 (Y:\Temp\sa_improvement_plan_BacktestUiCleanupRound2.md Task 3): adding a
+    /// <summary>Round 2 (docs/sa_improvement_plan_BacktestUiCleanupRound2 Task 3): adding a
     /// condition must confirm itself via the same toast-notification mechanism Indicator Manager/Library's
     /// "Active" toggle already uses, not a bespoke one - proves the exact "{display} {Msg_Added}" shape
     /// and that ToastService is the one actually wired into the ViewModel (not a no-op stub).</summary>
@@ -349,7 +349,7 @@ public class BacktestConditionBuilderViewModelTests
     [Fact]
     public void AddCondition_PriceSourceRows_CaptureDistinctPriceSourcePerSide()
     {
-        // Bug fix (Y:\Temp\sa_improvement_plan_BacktestPriceSourceConditionFix.md): before this
+        // Bug fix (docs/sa_improvement_plan_BacktestPriceSourceConditionFix): before this
         // fix, selecting "High" vs "Low" from the catalog's Price group made no difference at all - both
         // silently bound to the same generic default settings (PriceSource always Close). This proves the
         // two rows now correctly capture their own distinct PriceType.

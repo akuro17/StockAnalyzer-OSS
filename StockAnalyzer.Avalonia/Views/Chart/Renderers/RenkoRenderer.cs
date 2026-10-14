@@ -18,19 +18,12 @@ public sealed class RenkoRenderer : IChartRenderer, IDisposable
     private readonly SKPaint _upPaint;
     private readonly SKPaint _downPaint;
     private readonly SKPaint _borderPaint;
-    private readonly SKPaint _textPaint;
 
     public RenkoRenderer()
     {
         _upPaint = new SKPaint { Style = SKPaintStyle.StrokeAndFill }; 
         _downPaint = new SKPaint { Style = SKPaintStyle.StrokeAndFill };
         _borderPaint = new SKPaint { Color = SKColors.Black, Style = SKPaintStyle.Stroke, StrokeWidth = LayoutConstants.DefaultStrokeWidth };
-        _textPaint = new SKPaint 
-        { 
-            IsAntialias = true, 
-            TextSize = LayoutConstants.LabelFontSize, 
-            Typeface = SKTypeface.FromFamilyName("Arial", SKFontStyle.Bold) 
-        };
     }
 
     public void Render(SKCanvas canvas, Rect chartArea, ChartDataSnapshot snapshot, IChartRenderConfig baseConfig)
@@ -41,21 +34,17 @@ public sealed class RenkoRenderer : IChartRenderer, IDisposable
         if (config.Transform == null) return;
         var t = config.Transform;
 
-        double brickSize = config.RenkoBrickSize;
-
         double x0 = t.ChartToScreen(new ChartPoint(new DateTime(0), 0)).X;
         double x1 = t.ChartToScreen(new ChartPoint(new DateTime(1), 0)).X;
         float columnWidth = (float)(x1 - x0);
         float bodyWidth = Math.Max(1f, columnWidth * 0.9f); 
 
-        var theme = config.ThemeManager.CurrentTheme;
         // Update paints with context colors
         _upPaint.Color = config.RenkoBullishColor.ToSkColor();
         _downPaint.Color = config.RenkoBearishColor.ToSkColor();
 
         bool drawBorders = columnWidth >= 4f;
         bool drawAsLines = columnWidth <= 2f;
-        bool drawTrendCount = columnWidth >= 15f;
 
         if (drawAsLines)
         {
@@ -122,7 +111,6 @@ public sealed class RenkoRenderer : IChartRenderer, IDisposable
         _upPaint.Dispose();
         _downPaint.Dispose();
         _borderPaint.Dispose();
-        _textPaint.Dispose();
     }
 }
 

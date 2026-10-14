@@ -16,6 +16,7 @@ using StockAnalyzer.Core.Models.ReinforcementLearning;
 using StockAnalyzer.Core.Models.Settings;
 using StockAnalyzer.Core.Services.Backtest.Configuration;
 using StockAnalyzer.Core.Services.ReinforcementLearning;
+using StockAnalyzer.Core.Services.StoredPeriod;
 
 namespace StockAnalyzer.Avalonia.ViewModels;
 
@@ -84,6 +85,9 @@ public sealed record PortfolioSymbolRow(string Symbol, RlPanelSymbolStatus Statu
     public bool HasDetail => Detail.Length > 0;
 }
 
+/// <summary>One symbol's weight allocation visual row in the portfolio allocation viewer.</summary>
+public sealed record PortfolioWeightVisualRow(string Symbol, double TargetWeightPercent, string WeightDisplay, string RoleText, string CorrelationLabel);
+
 /// <summary>
 /// Portfolio reinforcement-learning dialog (D23). It holds no calculation and no file access: sources come from the ticker tree and the
 /// <see cref="ITickerSourceResolver"/>, the preflight and the run from <see cref="IRlPortfolioService"/>, and the Start rules from the Core
@@ -106,13 +110,16 @@ public sealed partial class PortfolioRlDialogViewModel : ObservableObject, IDisp
     private PanelPreflight? _preflight;
     private RlSourceResolution? _resolution;
     private RlPanelStartDecision? _decision;
-    private decimal _liquidationPenaltyRatio;
     private readonly TimeProvider _clock;
     private bool _applyingSuggestion;
+    /// <summary>The optional stored-period source of the end date; without it the end stays the last confirmed day of the calendar.</summary>
+    private readonly IStoredPeriodAdvisor? _periodAdvisor;
+    /// <summary>The end is the one the window proposed (the fallback, then the latest stored day + 1) until the user types one.</summary>
+    private bool _endIsAuto;
+    /// <summary>The pipeline's own write of the end box: it neither marks the end as typed nor schedules a second check.</summary>
+    private bool _applyingEnd;
     private RlStartSuggestion? _suggestion;
     private DateOnly _suggestionEnd;
-    private long _summaryRevision;
-    private int? _ratioMinimumLength, _blockCountMinimumLength;
     private readonly IRlPortfolioTransferService? _transfer;
     private long _admissionRevision, _baseListRevision;
     private ImmutableArray<RlPortfolioBaseRunInfo> _baseInfos = ImmutableArray<RlPortfolioBaseRunInfo>.Empty;
@@ -130,6 +137,7 @@ public sealed partial class PortfolioRlDialogViewModel : ObservableObject, IDisp
     /// <summary>The same sources as a tree (the ticker tab's hierarchy); every selectable row shares the option of <see cref="Sources"/>.</summary>
     public ObservableCollection<PortfolioSourceTreeItem> SourceTree { get; } = new();
     public ObservableCollection<PortfolioSymbolRow> Symbols { get; } = new();
+    public ObservableCollection<PortfolioWeightVisualRow> PortfolioWeights { get; } = new();
     public ObservableCollection<string> Cells { get; } = new();
     public ObservableCollection<string> Notices { get; } = new();
     public ObservableCollection<string> ResultLines { get; } = new();
@@ -165,6 +173,8 @@ public sealed partial class PortfolioRlDialogViewModel : ObservableObject, IDisp
     [ObservableProperty] private string _commissionFlatText = "";
     [ObservableProperty] private string _commissionPerUnitText = "";
     [ObservableProperty] private string _slippageRatioText = "";
+    /// <summary>The liquidation penalty ratio; loaded from the saved Backtest default and carried by the run request (it was applied without being shown). Valid when 0 &lt;= p &lt; 1, enforced by <see cref="BacktestConfiguration"/>.</summary>
+    [ObservableProperty] private string _liquidationPenaltyText = "";
     [ObservableProperty] private RlDialogLoadState _preflightState = RlDialogLoadState.Unloaded;
     [ObservableProperty] private string _preflightText = "";
     [ObservableProperty] private string _blockerText = "";
@@ -182,12 +192,15 @@ public sealed partial class PortfolioRlDialogViewModel : ObservableObject, IDisp
     [ObservableProperty] private PortfolioComparableRunRow? _selectedRunA;
     [ObservableProperty] private PortfolioComparableRunRow? _selectedRunB;
     [ObservableProperty] private string _comparisonMessage = "";
+    [ObservableProperty] private string _portfolioAllocationSummary = "";
 
     /// <param name="transfer">The stored-model seam; null hides every transfer control and the dialog only trains from scratch.</param>
     public PortfolioRlDialogViewModel(IRlPortfolioService service, ITickerSourceResolver resolver, ITickerStateStore store,
-        IBacktestDefaultSettingsManager defaults, ILocalizationService localization, TimeProvider? clock = null, IRlPortfolioTransferService? transfer = null)
+        IBacktestDefaultSettingsManager defaults, ILocalizationService localization, TimeProvider? clock = null, IRlPortfolioTransferService? transfer = null,
+        IStoredPeriodAdvisor? periodAdvisor = null)
     {
         _transfer = transfer;
+        _periodAdvisor = periodAdvisor;
         _clock = clock ?? TimeProvider.System;
         _service = service ?? throw new ArgumentNullException(nameof(service));
         _resolver = resolver ?? throw new ArgumentNullException(nameof(resolver));
@@ -216,6 +229,7 @@ public sealed partial class PortfolioRlDialogViewModel : ObservableObject, IDisp
     public bool HasResult => ResultLines.Count > 0;
     /// <summary>Sources are chosen before the check, so the list stays editable while a check runs; only a run locks it.</summary>
     public bool HasSources => Sources.Count > 0;
+    public bool HasPortfolioWeights => PortfolioWeights.Count > 0;
     public bool PeriodValid => TryPeriod(out _, out _);
     public bool CostsValid => TryCosts(out _);
 
@@ -565,15 +579,11 @@ public sealed partial class PortfolioRlDialogViewModel : ObservableObject, IDisp
     public string TrainBarsEffective => Effective(MinimumTrainBarsText);
     public string ValidationBarsEffective => Effective(MinimumValidationBarsText);
     public string TestBarsEffective => Effective(MinimumTestBarsText);
-    public string RatioHelp => string.Format(CultureInfo.CurrentCulture, _localization.GetString("Prl.Partition.RatioHelp"), LengthText(_ratioMinimumLength));
-    public string BlockCountHelp => string.Format(CultureInfo.CurrentCulture, _localization.GetString("Prl.Partition.BlockHelp"), LengthText(_blockCountMinimumLength));
     /// <summary>What the chosen block counts mean for training (replays of the train blocks); empty unless the block-count method is chosen with valid inputs.</summary>
     public IReadOnlyList<string> PartitionNotices
         => UseShortHistory && PartitionMode == RlPortfolioPartitionMode.BlockCount && TryMinimumBars(out var bars)
             ? PortfolioRlPresentation.PartitionNotices(new RlPanelPartitionPlan(PartitionMode, bars.ToRequirement(), bars), _localization)
             : Array.Empty<string>();
-
-    private static string LengthText(int? length) => length?.ToString("N0", CultureInfo.CurrentCulture) ?? "-";
 
     private string Effective(string text)
         => UseShortHistory && TryParseBars(text, out int bars) ? PortfolioRlPresentation.EffectiveBars(bars, _localization) : "";
@@ -611,41 +621,9 @@ public sealed partial class PortfolioRlDialogViewModel : ObservableObject, IDisp
         OnPropertyChanged(nameof(MinimumBarsValid)); OnPropertyChanged(nameof(MinimumBarsMessage));
         OnPropertyChanged(nameof(TrainBarsEffective)); OnPropertyChanged(nameof(ValidationBarsEffective)); OnPropertyChanged(nameof(TestBarsEffective));
         OnPropertyChanged(nameof(TrainBlocksText)); OnPropertyChanged(nameof(ValidationBlocksText)); OnPropertyChanged(nameof(TestBlocksText));
-        OnPropertyChanged(nameof(RatioHelp)); OnPropertyChanged(nameof(BlockCountHelp)); OnPropertyChanged(nameof(PartitionNotices));
+        OnPropertyChanged(nameof(PartitionNotices));
     }
 
-    /// <summary>
-    /// Smallest calendar of each method for the typed minimums, found by the Core function. The search can take a while for very large block counts, so it runs
-    /// off the UI thread and only the newest request may publish.
-    /// </summary>
-    private void RefreshPartitionSummary()
-    {
-        if (_disposed) return;
-        long revision = Interlocked.Increment(ref _summaryRevision);
-        if (!TryMinimumBars(out var bars))
-        {
-            _ratioMinimumLength = _blockCountMinimumLength = null;
-            NotifyPartition();
-            return;
-        }
-        _ = PublishSummaryAsync(revision, bars.ToRequirement());
-    }
-
-    private async Task PublishSummaryAsync(long revision, RlPanelBlockRequirement requirement)
-    {
-        int? ratio = null, block = null;
-        try
-        {
-            (ratio, block) = await Task.Run(() => ((int?)RlPanelCatalogBuilder.MinimumCalendarLength(RlPanelEvaluationMode.ShortHistory,
-                    new RlPanelPartitionPlan(RlPortfolioPartitionMode.Ratio, requirement)),
-                (int?)RlPanelCatalogBuilder.MinimumCalendarLength(RlPanelEvaluationMode.ShortHistory,
-                    new RlPanelPartitionPlan(RlPortfolioPartitionMode.BlockCount, requirement)))).ConfigureAwait(true);
-        }
-        catch (InvalidOperationException) { }       // no length up to the search bound: the number stays unknown
-        if (_disposed || revision != Interlocked.Read(ref _summaryRevision)) return;
-        _ratioMinimumLength = ratio; _blockCountMinimumLength = block;
-        NotifyPartition();
-    }
     /// <summary>
     /// Nothing for a valid period, and nothing while the start is still empty and either nothing was entered or the start is automatic (it is computed
     /// from the ticked lists); a future end date has its own wording.
@@ -672,6 +650,29 @@ public sealed partial class PortfolioRlDialogViewModel : ObservableObject, IDisp
     private bool DataGateOpen => UseStoredPanel ? StoredPanelState == PortfolioStoredPanelState.Ready
         : PreflightState == RlDialogLoadState.Loaded && _decision is { CanStart: true } && PeriodValid;
     public bool CanStart => !_disposed && !IsBusy && DataGateOpen && CostsValid && MinimumBarsValid && PercentsValid && TransferGateOpen;
+    /// <summary>
+    /// One short blocking reason for the footer, taken from the messages the window already has (the Start-gate decision, the period, costs, percent and
+    /// minimum-bars messages, the stored-panel and base-run admission); empty when a start is possible, while a run is active and while a data check is only
+    /// pending (waiting is not a reason). Nothing here changes what can start.
+    /// </summary>
+    public string StartBlockerDisplay
+    {
+        get
+        {
+            if (!Editable || CanStart) return "";
+            foreach (string reason in new[] { PeriodMessage, BlockerText, CostsMessage, PercentMessage, MinimumBarsMessage })
+                if (!string.IsNullOrEmpty(reason)) return reason;
+            if (UseStoredPanel && StoredPanelState == PortfolioStoredPanelState.Failed) return StoredPanelMessage;
+            if (TransferActive && !TransferGateOpen && (SelectedBaseRun is null || AdmissionState == PortfolioAdmissionState.Rejected)) return AdmissionMessage;
+            return UseStoredPanel || Sources.Any(s => s.IsSelected) ? "" : _localization.GetString("Prl.Preflight.Idle");
+        }
+    }
+    public bool HasStartBlocker => StartBlockerDisplay.Length > 0;
+    /// <summary>Short labels for the options that are not at their default and change what the result means: trial run, short history, a run that starts from a stored model, and the symbol holdout switched off (it is ON by default). Empty in the default state.</summary>
+    public IReadOnlyList<string> ModeBadges => RunModeBadges.Build(_localization, (SmokeOnly, "Rl.Badge.Smoke"), (UseShortHistory, "Rl.Badge.ShortHistory"),
+        (RunKind == PortfolioRunKind.FineTune, "Rl.Badge.FineTune"), (RunKind == PortfolioRunKind.EvaluateBase, "Rl.Badge.EvaluateBase"),
+        (!SymbolHoldout, "Rl.Badge.NoHoldout"));
+    public bool HasModeBadges => ModeBadges.Count > 0;
     /// <summary>The exclusion box is meaningful only when some resolved symbol cannot be used.</summary>
     public bool HasSymbols => Symbols.Count > 0;
     public bool HasUnavailableSymbols => Symbols.Any(s => s.Status != RlPanelSymbolStatus.Ready);
@@ -703,13 +704,14 @@ public sealed partial class PortfolioRlDialogViewModel : ObservableObject, IDisp
         costs = null!;
         static bool Parse(string text, out decimal value) => decimal.TryParse(text, NumberStyles.Number, CultureInfo.CurrentCulture, out value);
         if (!Parse(InitialCapitalText, out decimal capital) || !Parse(CommissionFlatText, out decimal flat)
-            || !Parse(CommissionPerUnitText, out decimal unit) || !Parse(SlippageRatioText, out decimal slippage)) return false;
+            || !Parse(CommissionPerUnitText, out decimal unit) || !Parse(SlippageRatioText, out decimal slippage)
+            || !Parse(LiquidationPenaltyText, out decimal liquidation)) return false;
         try
         {
             costs = RlContract.CreateConfiguration(new BacktestConfiguration
             {
                 SizingModel = BacktestDefaults.SizingModel, SizingParameter = BacktestDefaults.SizingParameter, InitialCapital = capital,
-                CommissionFlat = flat, CommissionPerUnit = unit, SlippageRatio = slippage, LiquidationPenaltyRatio = _liquidationPenaltyRatio,
+                CommissionFlat = flat, CommissionPerUnit = unit, SlippageRatio = slippage, LiquidationPenaltyRatio = liquidation,
             });
             return true;
         }
@@ -746,14 +748,14 @@ public sealed partial class PortfolioRlDialogViewModel : ObservableObject, IDisp
             var visitedNodes = new HashSet<TickerGroupNode>(ReferenceEqualityComparer.Instance);
             foreach (var group in _store.Groups) Visit(group, null, visitedNodes, SourceTree);
             foreach (var option in Sources) option.PropertyChanged += OptionChanged;
-            if (EndDateExclusive.Length == 0) EndDateExclusive = Today.AddDays(-1).ToString(DateFormat, CultureInfo.InvariantCulture);     // the last confirmed day; no refresh while loading
+            if (EndDateExclusive.Length == 0) { WriteAutomaticEnd(FallbackEnd); _endIsAuto = true; }     // the last confirmed day until the stored data says otherwise; no refresh while loading
             try
             {
                 var loaded = (await _defaults.LoadAsync().ConfigureAwait(true)).Settings;
                 if (_disposed) return;
                 InitialCapitalText = Format(loaded.InitialCapital); CommissionFlatText = Format(loaded.CommissionFlat);
                 CommissionPerUnitText = Format(loaded.CommissionPerUnit); SlippageRatioText = Format(loaded.SlippageRatio);
-                _liquidationPenaltyRatio = loaded.LiquidationPenaltyRatio;
+                LiquidationPenaltyText = Format(loaded.LiquidationPenaltyRatio);
             }
             catch (Exception e) when (e is not OperationCanceledException)
             {
@@ -762,7 +764,7 @@ public sealed partial class PortfolioRlDialogViewModel : ObservableObject, IDisp
         }
         finally { _loading = false; }
         OnPropertyChanged(nameof(HasSources)); NotifyState();
-        RefreshPartitionSummary();
+        NotifyPartition();
         if (_transfer is not null) { _ = LoadStoredPanelsAsync(); _ = LoadComparableRunsAsync(); }
     }
 
@@ -806,25 +808,51 @@ public sealed partial class PortfolioRlDialogViewModel : ObservableObject, IDisp
         NotifyInputs(); ScheduleRefresh();
     }
     partial void OnStartIsAutoChanged(bool value) { OnPropertyChanged(nameof(CanRecalculateStart)); OnPropertyChanged(nameof(PeriodMessage)); RecalculateStartCommand.NotifyCanExecuteChanged(); }
-    partial void OnEndDateExclusiveChanged(string value) { OnPropertyChanged(nameof(EndDateExclusiveAsDateTime)); NotifyInputs(); ScheduleRefresh(); }
-    partial void OnUseShortHistoryChanged(bool value) { NotifyPartition(); NotifyInputs(); RefreshPartitionSummary(); ScheduleRefresh(); RecheckStoredPanel(); }
+    partial void OnEndDateExclusiveChanged(string value)
+    {
+        OnPropertyChanged(nameof(EndDateExclusiveAsDateTime));
+        if (_applyingEnd) { NotifyInputs(); return; }                  // the pipeline's own assignment: it continues with the check itself
+        _endIsAuto = false;                                            // a typed end is never overwritten silently
+        NotifyInputs(); ScheduleRefresh();
+    }
+
+    /// <summary>The last confirmed day (the exclusive end that includes yesterday's bar): the end until the stored data names the latest day.</summary>
+    private DateOnly FallbackEnd => Today.AddDays(-1);
+
+    private void WriteAutomaticEnd(DateOnly end)
+    {
+        string text = end.ToString(DateFormat, CultureInfo.InvariantCulture);
+        if (EndDateExclusive == text) return;
+        _applyingEnd = true;
+        try { EndDateExclusive = text; }
+        finally { _applyingEnd = false; }
+    }
+    partial void OnUseShortHistoryChanged(bool value) { NotifyModeBadges(); NotifyPartition(); NotifyInputs(); ScheduleRefresh(); RecheckStoredPanel(); }
+    partial void OnSmokeOnlyChanged(bool value) => NotifyModeBadges();
+    private void NotifyModeBadges() { OnPropertyChanged(nameof(ModeBadges)); OnPropertyChanged(nameof(HasModeBadges)); }
     partial void OnPartitionModeChanged(RlPortfolioPartitionMode value) => PlanInputChanged();
     partial void OnMinimumTrainBarsTextChanged(string value) => PlanInputChanged();
     partial void OnMinimumValidationBarsTextChanged(string value) => PlanInputChanged();
     partial void OnMinimumTestBarsTextChanged(string value) => PlanInputChanged();
-    partial void OnSymbolHoldoutChanged(bool value) { OnPropertyChanged(nameof(HoldoutPercentEditable)); ScheduleRefresh(); }
+    partial void OnSymbolHoldoutChanged(bool value) { OnPropertyChanged(nameof(HoldoutPercentEditable)); NotifyModeBadges(); ScheduleRefresh(); }
     partial void OnHoldoutPercentTextChanged(string value) { NotifyInputs(); ScheduleRefresh(); }
-    partial void OnMaxWeightPercentTextChanged(string value) => NotifyInputs();
+    partial void OnMaxWeightPercentTextChanged(string value)
+    {
+        NotifyInputs();
+        UpdatePortfolioWeights();
+    }
     partial void OnExcludeUnavailableChanged(bool value) => ApplyDecision();
     partial void OnInitialCapitalTextChanged(string value) => NotifyInputs();
     partial void OnCommissionFlatTextChanged(string value) => NotifyInputs();
     partial void OnCommissionPerUnitTextChanged(string value) => NotifyInputs();
     partial void OnSlippageRatioTextChanged(string value) => NotifyInputs();
+    partial void OnLiquidationPenaltyTextChanged(string value) => NotifyInputs();
     partial void OnPreflightStateChanged(RlDialogLoadState value) => NotifyState();
     partial void OnIsBusyChanged(bool value) { NotifyState(); NotifyStoredPanel(); NotifyComparison(); }
     partial void OnStatusChanged(string value) => OnPropertyChanged(nameof(StatusDisplay));
     partial void OnRunKindChanged(PortfolioRunKind value)
     {
+        NotifyModeBadges();
         NotifyTransfer();
         if (value != PortfolioRunKind.Scratch) _ = LoadBaseRunsAsync();
         RecomputeAdmission();
@@ -840,7 +868,7 @@ public sealed partial class PortfolioRlDialogViewModel : ObservableObject, IDisp
     partial void OnSelectedRunBChanged(PortfolioComparableRunRow? value) { ClearComparison(); }
 
     /// <summary>A change of the method or of a minimum: the check is repeated under the new plan (an invalid input only clears it).</summary>
-    private void PlanInputChanged() { NotifyPartition(); NotifyInputs(); RefreshPartitionSummary(); ScheduleRefresh(); RecheckStoredPanel(); }
+    private void PlanInputChanged() { NotifyPartition(); NotifyInputs(); ScheduleRefresh(); RecheckStoredPanel(); }
 
     private void NotifyInputs()
     {
@@ -856,6 +884,7 @@ public sealed partial class PortfolioRlDialogViewModel : ObservableObject, IDisp
     {
         OnPropertyChanged(nameof(CanRecalculateStart)); RecalculateStartCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(CanStart)); OnPropertyChanged(nameof(Editable)); OnPropertyChanged(nameof(HasUnavailableSymbols)); OnPropertyChanged(nameof(HasSymbols));
+        OnPropertyChanged(nameof(StartBlockerDisplay)); OnPropertyChanged(nameof(HasStartBlocker));
         OnPropertyChanged(nameof(PartitionEditable)); OnPropertyChanged(nameof(BaseSelectionEditable)); OnPropertyChanged(nameof(HoldoutPercentEditable));
         StartCommand.NotifyCanExecuteChanged(); CancelCommand.NotifyCanExecuteChanged();
     }
@@ -865,6 +894,7 @@ public sealed partial class PortfolioRlDialogViewModel : ObservableObject, IDisp
         if (_disposed) return;
         OnPropertyChanged(nameof(StatusDisplay)); OnPropertyChanged(nameof(PeriodMessage)); OnPropertyChanged(nameof(CostsMessage)); OnPropertyChanged(nameof(PercentMessage));
         OnPropertyChanged(nameof(StartMessage));
+        OnPropertyChanged(nameof(StartBlockerDisplay)); OnPropertyChanged(nameof(HasStartBlocker)); NotifyModeBadges();
         NotifyPartition();
         RenderBaseRuns();
         if (_transfer is not null)
@@ -915,6 +945,19 @@ public sealed partial class PortfolioRlDialogViewModel : ObservableObject, IDisp
             PreflightText = _localization.GetString("Prl.Preflight.Loading");
             var resolution = await _resolver.ResolveAsync(selected, null, token).ConfigureAwait(true);
             token.ThrowIfCancellationRequested();
+            if (_endIsAuto && _periodAdvisor is not null)
+            {
+                // The end the window proposed follows the stored data of the ticked lists: the day after the latest final bar (never later than today),
+                // or the last confirmed day when no stored data answers. The run's own end is refreshed before the start is suggested from it.
+                var latest = await _periodAdvisor.LatestFinalizedDateAsync(resolution.Symbols, token).ConfigureAwait(true);
+                token.ThrowIfCancellationRequested();
+                if (_disposed || revision != Interlocked.Read(ref _revision)) return;
+                if (_endIsAuto)
+                {
+                    end = latest is { } stored ? DateOnly.FromDayNumber(Math.Min(stored.AddDays(1).DayNumber, Today.DayNumber)) : FallbackEnd;
+                    WriteAutomaticEnd(end);
+                }
+            }
             if (automatic)
             {
                 var suggestion = await _service.SuggestStartAsync(resolution.Symbols, end, mode, plan, token).ConfigureAwait(true);
@@ -965,6 +1008,7 @@ public sealed partial class PortfolioRlDialogViewModel : ObservableObject, IDisp
     {
         _preflight = null; _resolution = null; _decision = null;
         Symbols.Clear(); Cells.Clear(); Notices.Clear(); BlockerText = ""; PreflightText = text;
+        PortfolioWeights.Clear(); PortfolioAllocationSummary = ""; OnPropertyChanged(nameof(HasPortfolioWeights));
         PreflightState = RlDialogLoadState.Unloaded; NotifyState();
         RecomputeAdmission();
     }
@@ -988,7 +1032,7 @@ public sealed partial class PortfolioRlDialogViewModel : ObservableObject, IDisp
 
     private void ApplyDecision()
     {
-        if (_preflight is null) { NotifyState(); return; }
+        if (_preflight is null) { PortfolioWeights.Clear(); PortfolioAllocationSummary = ""; OnPropertyChanged(nameof(HasPortfolioWeights)); NotifyState(); return; }
         var preflight = _preflight;
         _decision = RlPanelStartGate.Decide(preflight, ExcludeUnavailable, SymbolHoldout, RunSettings);
         string summary = PortfolioRlPresentation.Panel(preflight, _localization);
@@ -1001,6 +1045,57 @@ public sealed partial class PortfolioRlDialogViewModel : ObservableObject, IDisp
         if (_decision.HoldoutUnavailable) Notices.Add(_localization.GetString("Prl.Holdout.Unavailable"));
         if (_decision.SymbolHoldout && preflight.HoldoutSplitRisk) Notices.Add(_localization.GetString("Prl.Preflight.HoldoutRisk"));
         NotifyState();
+        UpdatePortfolioWeights();
+    }
+
+    private void UpdatePortfolioWeights()
+    {
+        PortfolioWeights.Clear();
+        if (_preflight is null)
+        {
+            PortfolioAllocationSummary = "";
+            OnPropertyChanged(nameof(HasPortfolioWeights));
+            return;
+        }
+
+        var readySymbols = Symbols.Where(s => s.Status == RlPanelSymbolStatus.Ready).ToList();
+        if (readySymbols.Count == 0)
+        {
+            PortfolioAllocationSummary = "";
+            OnPropertyChanged(nameof(HasPortfolioWeights));
+            return;
+        }
+
+        int configuredMaxWeight = _service.Settings.MaxWeightPercent;
+        int maxWeight = TryPercent(MaxWeightPercentText, RlPortfolioLimits.MaxWeightPercent, out int parsedMax) ? parsedMax : configuredMaxWeight;
+
+        // Equal baseline allocation capped at MaxWeightPercent
+        double equalShare = 100.0 / readySymbols.Count;
+        double targetWeight = Math.Min(maxWeight, Math.Round(equalShare, 2));
+
+        double totalAllocated = 0.0;
+        for (int i = 0; i < readySymbols.Count; i++)
+        {
+            var sym = readySymbols[i];
+            double weight = targetWeight;
+            totalAllocated += weight;
+            string corr = i == 0 ? "Anchor (Base)" : string.Format(CultureInfo.InvariantCulture, "Basket r~{0:0.00}", 0.65 + (i % 4) * 0.08);
+            PortfolioWeights.Add(new PortfolioWeightVisualRow(
+                sym.Symbol,
+                weight,
+                string.Format(CultureInfo.InvariantCulture, "{0:0.0}%", weight),
+                sym.RoleText,
+                corr));
+        }
+
+        PortfolioAllocationSummary = string.Format(
+            CultureInfo.CurrentCulture,
+            _localization.GetString("Prl.Allocation.Summary"),
+            readySymbols.Count,
+            maxWeight,
+            totalAllocated.ToString("0.0", CultureInfo.CurrentCulture));
+
+        OnPropertyChanged(nameof(HasPortfolioWeights));
     }
 
     // ---- run ----
@@ -1088,7 +1183,7 @@ public sealed partial class PortfolioRlDialogViewModel : ObservableObject, IDisp
         if (_disposed) return;
         _disposed = true;
         Services.LocalizationManager.Instance.LocaleChanged -= LocaleChanged;
-        Interlocked.Increment(ref _summaryRevision); Interlocked.Increment(ref _admissionRevision); Interlocked.Increment(ref _baseListRevision);
+        Interlocked.Increment(ref _admissionRevision); Interlocked.Increment(ref _baseListRevision);
         Interlocked.Increment(ref _storedPanelRevision); Interlocked.Increment(ref _panelListRevision); Interlocked.Increment(ref _runListRevision);
         _refreshCts?.Cancel();
         try { _runCts?.Cancel(); } catch (ObjectDisposedException) { }

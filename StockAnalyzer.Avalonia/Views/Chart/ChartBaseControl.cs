@@ -1110,21 +1110,8 @@ public class ChartBaseControl : Control, ICustomHitTest
             CoreCandleData? hoveredCandle = null;
             if (index >= 0 && index < _currentSnapshot.Candles.Count)
             {
+                // The column under the pointer is chosen by the horizontal position alone, on every chart type.
                 hoveredCandle = _currentSnapshot.Candles[index];
-                
-                if (ViewModel?.ChartType == ChartType.PointAndFigure && _dataCoordinator.Transform != null)
-                {
-                    float yTop = (float)_dataCoordinator.Transform.ChartToScreen(new ChartPoint(System.DateTime.MinValue, hoveredCandle.High + _currentSnapshot.MinBrickSize)).Y;
-                    float yBottom = (float)_dataCoordinator.Transform.ChartToScreen(new ChartPoint(System.DateTime.MinValue, hoveredCandle.Low)).Y;
-                    
-                    float topEdge = System.Math.Min(yTop, yBottom) + renderMarginTop;
-                    float bottomEdge = System.Math.Max(yTop, yBottom) + renderMarginTop;
-                    
-                    if (position.Y < topEdge || position.Y > bottomEdge)
-                    {
-                        hoveredCandle = null; // Mouse is outside the P&F column bounds vertically
-                    }
-                }
             }
 
             HoveredCandle = hoveredCandle;

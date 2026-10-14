@@ -9,7 +9,7 @@ namespace StockAnalyzer.Tests.Screener;
 
 /// <summary>
 /// Moving one comparison inside the Filters tree's single fixed root (drag and drop,
-/// Y:\Temp\sa_implementation_plan_ScreenerFilterConditionDragMove.md Task 3): where it lands, what is removed, what is
+/// docs/sa_implementation_plan_ScreenerFilterConditionDragMove Task 3): where it lands, what is removed, what is
 /// rejected, and that a move that changes nothing or is not allowed leaves the tree and its edit counter untouched.
 /// Mirrors the coverage of Tests\StockAnalyzer.Tests\Backtest\BacktestConditionTreeMoveTests.cs, minus the
 /// cross-root-rejection scenarios that do not apply here (Screener has only one root - decision B of

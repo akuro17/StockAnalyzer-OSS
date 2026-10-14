@@ -6,6 +6,12 @@ namespace StockAnalyzer.Avalonia.Common;
 /// </summary>
 public static class ChartConstants
 {
+    /// <summary>
+    /// Half the width of one slot of the logical index axis of the charts that are not time series: a column drawn around the centre of slot k covers
+    /// [k - this, k + this), and the visible range of the axis is padded by it on both sides.
+    /// </summary>
+    public const double IndexSlotHalfWidth = 0.5;
+
     #region Chart Margins
 
     /// <summary>
@@ -391,6 +397,37 @@ public static class ChartConstants
 
     /// <summary>Maximum iterations allowed for axis rendering to prevent hangs.</summary>
     public const int MaxRenderIterationLimit = 500;
+
+    #endregion
+
+    #region Data Tab Text Formats (used only through DisplayFormat)
+
+    /// <summary>Open, High, Low, Close, indicator values and the reversal / update prices of the Data tab.</summary>
+    public const string DataPriceFormat = "0.000";
+
+    /// <summary>Volume of the Data tab (thousands separators, no decimals).</summary>
+    public const string DataVolumeFormat = "N0";
+
+    /// <summary>Date of a daily (or longer) element of the Data tab.</summary>
+    public const string DataDateFormat = IsoDatePickerFormat.Format;
+
+    /// <summary>Date and time of an intraday element of the Data tab.</summary>
+    public const string DataDateTimeFormat = IsoDatePickerFormat.Format + " HH:mm";
+
+    /// <summary>Percent change against the previous close in the Data tab (the percent sign is added by the caller).</summary>
+    public const string DataChangeRatioFormat = "0.00";
+
+    /// <summary>Absolute close of a comparison symbol in the Data tab tooltip.</summary>
+    public const string DataComparisonPriceFormat = "N3";
+
+    /// <summary>Fixed two decimals: the comparison value of an unknown mode in the Data tab.</summary>
+    public const string DataFixedTwoDecimalsFormat = "F2";
+
+    /// <summary>Sign shown in front of a positive change in the Data tab.</summary>
+    public const string DataPositiveSign = "+";
+
+    /// <summary>Suffix of the percent change in the Data tab.</summary>
+    public const string DataPercentSuffix = "%";
 
     #endregion
 

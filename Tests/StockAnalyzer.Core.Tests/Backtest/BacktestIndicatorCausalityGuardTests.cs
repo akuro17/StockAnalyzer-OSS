@@ -17,7 +17,7 @@ using Xunit;
 namespace StockAnalyzer.Core.Tests.Backtest;
 
 /// <summary>
-/// Y:\Temp\sa_implementation_plan_BacktestIndicatorCausalityGuard.md: the backtest refuses non-causal indicator outputs (TimeAtPrice, VolumeProfile,
+/// docs/sa_implementation_plan_BacktestIndicatorCausalityGuard: the backtest refuses non-causal indicator outputs (TimeAtPrice, VolumeProfile,
 /// ZigZag, Ichimoku's ChikouSpan), indicators without a synchronous calculation path, and negative Offsets - in the engine, in saved-configuration
 /// validation and (see the ViewModel tests) in the selection UI - from ONE definition, <see cref="BacktestIndicatorEligibility"/>.
 /// </summary>

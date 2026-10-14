@@ -74,7 +74,7 @@ public record ThemeColors
         // Shell Colors
         ShellBackground = IndicatorColor.FromUInt(0xFF181A20),
         ShellText = IndicatorColor.FromUInt(0xFFE0E0E0),
-        ShellSecondaryText = IndicatorColor.FromUInt(0xFF8B949E),
+        ShellSecondaryText = IndicatorColor.FromUInt(0xFFBAC2CE),
         ShellAccent = IndicatorColor.FromUInt(0xFF648CFF),
         ShellBorder = IndicatorColor.FromUInt(0xFF363A45),
 
@@ -160,7 +160,26 @@ public record ThemeColors
     // Shell UI Colors
     public IndicatorColor ShellBackground { get; init; } = IndicatorColor.FromUInt(0xFF181A20);
     public IndicatorColor ShellText { get; init; } = IndicatorColor.FromUInt(0xFFE0E0E0);
-    public IndicatorColor ShellSecondaryText { get; init; } = IndicatorColor.FromUInt(0xFF8B949E);
+    public IndicatorColor ShellSecondaryText { get; init; } = IndicatorColor.FromUInt(0xFFBAC2CE);
+
+    /// <summary>Default warning text color on a dark shell (matches the Dark warning semantic color).</summary>
+    public static readonly IndicatorColor DefaultWarningTextDark = IndicatorColor.FromUInt(0xFFFFC107);
+
+    /// <summary>Default warning text color on a light shell (matches the Light warning semantic color).</summary>
+    public static readonly IndicatorColor DefaultWarningTextLight = IndicatorColor.FromUInt(0xFF9A6700);
+
+    private readonly IndicatorColor? _shellWarningText;
+
+    /// <summary>
+    /// Text color of warning and caution messages. When no value is stored (a theme file written before this item existed)
+    /// the default of the theme's own mode applies, so a stored Light theme never falls back to the Dark amber.
+    /// </summary>
+    public IndicatorColor ShellWarningText
+    {
+        get => _shellWarningText ?? (IsDark ? DefaultWarningTextDark : DefaultWarningTextLight);
+        init => _shellWarningText = value;
+    }
+
     public IndicatorColor ShellAccent { get; init; } = IndicatorColor.FromUInt(0xFF007ACC);
     public IndicatorColor ShellBorder { get; init; } = IndicatorColor.FromUInt(0xFF363A45);
 

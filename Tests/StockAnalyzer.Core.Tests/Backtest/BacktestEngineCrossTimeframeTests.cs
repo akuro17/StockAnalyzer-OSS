@@ -13,7 +13,7 @@ namespace StockAnalyzer.Core.Tests.Backtest;
 /// <summary>
 /// Integration-level proof (through the real, public <see cref="BacktestEngine.Run"/> entry point,
 /// not by reaching into the private PrepareIndicators method) for Task 2b of
-/// Y:\Temp\sa_implementation_plan_BacktestComparisonSignals.md: same-Frame requests must produce
+/// docs/sa_implementation_plan_BacktestComparisonSignals: same-Frame requests must produce
 /// byte-for-byte identical output to the pre-existing behavior (regression guard), a request naming a
 /// Frame missing from <see cref="BacktestInput.AdditionalTimeframeBars"/> must fail loudly with a named
 /// exception rather than silently returning nulls, and a genuine cross-timeframe request must expose

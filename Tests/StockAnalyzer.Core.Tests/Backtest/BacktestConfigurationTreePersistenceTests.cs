@@ -20,7 +20,7 @@ using Xunit;
 
 namespace StockAnalyzer.Core.Tests.Backtest;
 
-/// <summary>Condition-tree persistence, schema version 2 and legacy migration (MP-1 Phase 4). See Y:\Temp\sa_analysis_BacktestConditionTree.md B6.</summary>
+/// <summary>Condition-tree persistence, schema version 2 and legacy migration (MP-1 Phase 4). See docs/sa_analysis_BacktestConditionTree B6.</summary>
 public class BacktestConfigurationTreePersistenceTests : IDisposable
 {
     private readonly string _tempFilePath = Path.Combine(Path.GetTempPath(), $"backtest_tree_configuration_test_{Guid.NewGuid():N}.json");

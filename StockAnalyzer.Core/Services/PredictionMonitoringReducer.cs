@@ -22,6 +22,12 @@ namespace StockAnalyzer.Core.Services;
 /// </summary>
 internal static class PredictionMonitoringReducer
 {
+    /// <summary>
+    /// True for the three class labels that a monitored forecast and an observed outcome can carry (the labels <see cref="PredictionLogService.ActualLabel"/>
+    /// produces). <see cref="PredictionResult.UnknownLabel"/> is not one of them: no class decision was made, so there is nothing to monitor.
+    /// </summary>
+    internal static bool IsMonitorableLabel(string? label) => label is "Up" or "Down" or "Neutral";
+
     public static string Hash(string text) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text))).ToLowerInvariant();
     public static bool ValidHash(string? value) => ContentHash.IsLowerHex64(value);
 
@@ -52,7 +58,7 @@ internal static class PredictionMonitoringReducer
             || !ValidHash(record.Prediction.TargetContractHash) || !ValidHash(record.Prediction.FeatureContractHash)
             || !ValidHash(record.Prediction.ModelHash) || record.Prediction.HorizonBars <= 0
             || !Enum.IsDefined(record.Prediction.Timeframe) || record.Prediction.NeutralThreshold < 0
-            || record.Prediction.PredictedLabel is not ("Up" or "Down" or "Neutral")
+            || !IsMonitorableLabel(record.Prediction.PredictedLabel)
             || record.Prediction.AnchorUtc.Offset != TimeSpan.Zero || record.Prediction.RecordedUtc.Offset != TimeSpan.Zero
             || predictionId != record.Prediction.PredictionId || record.Outcomes.IsDefaultOrEmpty)
             throw new InvalidDataException("Prediction audit contract is invalid.");
@@ -61,7 +67,7 @@ internal static class PredictionMonitoringReducer
             var o = record.Outcomes[i];
             if (o is null || o.Revision != i || !ValidHash(o.SourceRevision) || !Enum.IsDefined(o.State)
                 || o.ObservedUtc.Offset != TimeSpan.Zero || o.ObservedUtc == default
-                || o.State == PredictionOutcomeState.Matured && (o.ActualLabel is not ("Up" or "Down" or "Neutral")
+                || o.State == PredictionOutcomeState.Matured && (!IsMonitorableLabel(o.ActualLabel)
                     || o.LabelEndUtc is not { } end || end <= record.Prediction.AnchorUtc || end.Offset != TimeSpan.Zero)
                 || o.State == PredictionOutcomeState.Unavailable && string.IsNullOrWhiteSpace(o.Error)
                 || o.PendingReason is not null && (o.State != PredictionOutcomeState.Pending || !PendingReasons.IsDefined(o.PendingReason)))
@@ -97,12 +103,10 @@ internal static class PredictionMonitoringReducer
     {
         if (result.IsFallback || result.IsRegression || result.ModelId is not { } modelId || inputs.Count == 0
             || result.OutputContract is not { Semantic: PredictionOutputSemantic.ClassProbabilities } output
-            || output.Timeframe != timeframe) return null;
+            || output.Timeframe != timeframe
+            || result.Label == PredictionResult.UnknownLabel) return null;
         var captured = inputs.ToArray();
-        ValidateChronology(captured);
-        if (PredictionLogService.Utc(captured[^1].Timestamp) > clock.GetUtcNow())
-            throw new InvalidDataException("Prediction anchor is in the future.");
-        if (string.IsNullOrWhiteSpace(symbol)) throw new ArgumentException("Symbol is required.", nameof(symbol));
+        ValidateRecordInput(clock, captured, symbol);
         return await Task.Run(() =>
         {
             ct.ThrowIfCancellationRequested();
@@ -111,19 +115,41 @@ internal static class PredictionMonitoringReducer
             using var session = new InferenceSession(lease.ModelPath);
             var metadata = session.ModelMetadata.CustomMetadataMap;
             if (PredictionModelMetadata.ReadOutputContract(metadata) != output
-                || !decimal.TryParse(metadata.GetValueOrDefault(PredictionModelMetadata.NeutralThresholdKey), NumberStyles.Float,
-                    CultureInfo.InvariantCulture, out var threshold) || threshold < 0
-                || result.Label is not ("Up" or "Down" or "Neutral"))
+                || !TryReadNeutralThreshold(metadata, out var threshold)
+                || !IsMonitorableLabel(result.Label))
                 throw new InvalidDataException("Prediction monitoring target contract is invalid.");
             var feature = FixedScaler.ComputeContractHash(metadata);
-            var target = Hash(FormattableString.Invariant($"{output.Semantic}|{output.TargetFormula}|{output.Timeframe}|{output.HorizonBars}|{threshold}"));
+            var target = TargetContractHash(output, threshold);
             var anchor = PredictionLogService.Utc(captured[^1].Timestamp);
             // A corrected source at the same anchor does not invent another forecast vote.
-            var id = Hash(FormattableString.Invariant($"{modelId}|{symbol}|{timeframe}|{anchor:O}|{feature}|{target}"));
+            var id = ForecastId(modelId, symbol, timeframe, anchor, feature, target);
             return (MonitoredPrediction?)new MonitoredPrediction(id, modelId, manifest.ModelHash, symbol, timeframe, anchor,
                 output.HorizonBars, threshold, result.Label, target, feature, PredictionLogService.SourceRevision(captured), clock.GetUtcNow());
         }, ct).ConfigureAwait(false);
     }
+
+    /// <summary>The input checks that precede the recording of any forecast: chronological UTC candles, an anchor that is not in the future, a symbol.</summary>
+    internal static void ValidateRecordInput(TimeProvider clock, IReadOnlyList<CandleData> captured, string symbol)
+    {
+        ValidateChronology(captured);
+        if (PredictionLogService.Utc(captured[^1].Timestamp) > clock.GetUtcNow())
+            throw new InvalidDataException("Prediction anchor is in the future.");
+        if (string.IsNullOrWhiteSpace(symbol)) throw new ArgumentException("Symbol is required.", nameof(symbol));
+    }
+
+    /// <summary>The target-contract hash binds output semantic, target formula, timeframe, horizon and the neutral threshold.</summary>
+    internal static string TargetContractHash(PredictionOutputContract output, decimal threshold) =>
+        Hash(FormattableString.Invariant($"{output.Semantic}|{output.TargetFormula}|{output.Timeframe}|{output.HorizonBars}|{threshold}"));
+
+    /// <summary>The forecast identity: one vote per (subject, symbol, timeframe, anchor, feature contract, target contract).</summary>
+    internal static string ForecastId(string modelId, string symbol, TimeframeType timeframe, DateTimeOffset anchor,
+        string feature, string target) =>
+        Hash(FormattableString.Invariant($"{modelId}|{symbol}|{timeframe}|{anchor:O}|{feature}|{target}"));
+
+    /// <summary>The model's neutral threshold: invariant-culture decimal, present and not negative.</summary>
+    internal static bool TryReadNeutralThreshold(IReadOnlyDictionary<string, string> metadata, out decimal threshold) =>
+        decimal.TryParse(metadata.GetValueOrDefault(PredictionModelMetadata.NeutralThresholdKey), NumberStyles.Float,
+            CultureInfo.InvariantCulture, out threshold) && threshold >= 0;
 
     public static PredictionOutcomeRevision InitialOutcome(MonitoredPrediction prediction) =>
         new(0, prediction.InputRevision, PredictionOutcomeState.Pending, prediction.RecordedUtc);

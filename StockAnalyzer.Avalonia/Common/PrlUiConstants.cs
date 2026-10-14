@@ -41,7 +41,12 @@ public static class PrlUiConstants
     public const string FlatCommission = "Prl_CommissionFlat";
     public const string UnitCommission = "Prl_CommissionPerUnit";
     public const string Slippage = "Prl_SlippageRatio";
+    public const string Liquidation = "Prl_LiquidationPenaltyRatio";
+    public const string StartBlocker = "Prl_StartBlocker";
+    public const string ModeBadges = "Prl_ModeBadges";
     public const string SymbolTable = "Prl_SymbolTable";
+    public const string AllocationSummary = "Prl_AllocationSummary";
+    public const string WeightTable = "Prl_WeightTable";
     public const string PreflightSummary = "Prl_PreflightSummary";
     public const string Notices = "Prl_Notices";
     public const string Start = "Prl_Start";

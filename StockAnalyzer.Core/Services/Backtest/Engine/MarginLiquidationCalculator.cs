@@ -6,7 +6,7 @@ namespace StockAnalyzer.Core.Services.Backtest.Engine;
 
 /// <summary>
 /// Maintenance-margin intrabar forced-liquidation ("loss-cut") math, per
-/// Y:\Temp\sa_ai_context_BacktestEngine_P1.md section 1.5.6. Derived algebraically from the
+/// docs/sa_ai_context_BacktestEngine_P1 section 1.5.6. Derived algebraically from the
 /// mark-to-market Equity formula (section 1.5.5) <c>Equity(P) = Cash + HeldMargin + q*(P-EntryPrice)</c>
 /// and the maintenance requirement <c>MaintenanceReq(P) = |q|*P*MaintenanceMarginRatio</c>, solving
 /// <c>Equity(P) = MaintenanceReq(P)</c> for P. Whether a breach this bar should terminate the whole

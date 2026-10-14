@@ -13,6 +13,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using StockAnalyzer.Core.Models.Backtest.Engine;
 using StockAnalyzer.Core.Models.Indicators;
 using StockAnalyzer.Core.Models.ReinforcementLearning;
+using StockAnalyzer.Core.Models.Training;
 using StockAnalyzer.Core.Services.Backtest.Engine;
 
 namespace StockAnalyzer.Core.Services.ReinforcementLearning;
@@ -22,11 +23,14 @@ public sealed class QValueService : IQValueService
 {
     private readonly IRlModelGenerationRegistry _registry;
     private readonly ILogger<QValueService> _logger;
+    private readonly string? _dataRoot;
 
-    public QValueService(IRlModelGenerationRegistry registry, ILogger<QValueService>? logger = null)
+    /// <param name="dataRoot">The <c>Data</c> folder that receives the temporary external-replay workspaces; null resolves the application data folder.</param>
+    public QValueService(IRlModelGenerationRegistry registry, ILogger<QValueService>? logger = null, string? dataRoot = null)
     {
         _registry = registry ?? throw new ArgumentNullException(nameof(registry));
         _logger = logger ?? NullLogger<QValueService>.Instance;
+        _dataRoot = dataRoot;
     }
 
     /// <summary>Compare exported native Q fixtures to real C# CPU ONNX execution and exact greedy actions.</summary>
@@ -128,26 +132,24 @@ public sealed class QValueService : IQValueService
             if (sma.Length != RlContract.EpisodeHorizon || sma.Any(a => a < 0 || a >= RlContract.ActionCount))
                 throw new InvalidDataException("Unavailable: saved baseline action support is invalid.");
         }
-        for (int i = 0; i < request.DecisionCount; i++)
+        RlAction Choose(RlSessionSnapshot current, int i) => request.PolicyId == generation.Target || request.PolicyId == RlContinuousContract.PairedBaselineId
+            ? RlContract.SelectAction(model.Infer(RlObservationBuilder.Build(current, model.Scaler)))
+            : sma is not null ? (RlAction)sma[i]
+            : RlBaselinePolicies.GetAction(request.PolicyId, source, block, i,
+                RlContract.CandidateSeeds[0]);
+        if (!continuous) account = RunDiscreteSteps(session, account, request.DecisionCount, Choose, cancellationToken);
+        else for (int i = 0; i < request.DecisionCount; i++)
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (account.Terminated) throw new InvalidOperationException("Unavailable: replay cursor follows a naturally terminated episode.");
-            RlAction action = request.PolicyId == generation.Target || request.PolicyId == RlContinuousContract.PairedBaselineId
-                ? RlContract.SelectAction(model.Infer(RlObservationBuilder.Build(account, model.Scaler)))
-                : sma is not null ? (RlAction)sma[i]
-                : RlBaselinePolicies.GetAction(request.PolicyId, source, block, i,
-                    RlContract.CandidateSeeds[0]);
-            if (continuous)
+            RlAction action = Choose(account, i);
+            var trading = (IRlContinuousTradingSession)session;
+            if (request.PolicyId == generation.Target)
             {
-                var trading = (IRlContinuousTradingSession)session;
-                if (request.PolicyId == generation.Target)
-                {
-                    var raw = actor!.Infer(RlObservationBuilder.Build(account, model.Scaler));
-                    account = trading.Step(action, raw[0], raw[1], cancellationToken).Snapshot;
-                }
-                else account = trading.StepFixedControl(action, cancellationToken).Snapshot;
+                var raw = actor!.Infer(RlObservationBuilder.Build(account, model.Scaler));
+                account = trading.Step(action, raw[0], raw[1], cancellationToken).Snapshot;
             }
-            else account = session.Step(action, cancellationToken).Snapshot;
+            else account = trading.StepFixedControl(action, cancellationToken).Snapshot;
         }
         if (account.Terminated) throw new InvalidOperationException("Unavailable: Q is not an executable action at an ended cursor.");
         ValidateAccount(account, costs, continuous);
@@ -185,6 +187,115 @@ public sealed class QValueService : IQValueService
                 + (continuous && temporalEvidence is null ? " " + RlTemporalContract.LegacyDisclosure : ""), request.PolicyId)
                 { Continuous = readout, TemporalSpecificationId = generation.TemporalSpecificationId,
                     TemporalStatus = temporalEvidence?.Status ?? generation.TemporalStatus, EvaluationConstraints = constraints, AllBlockEvaluation = expanded };
+    }
+
+    /// <summary>
+    /// Steps a discrete session from <paramref name="account"/> for <paramref name="count"/> decisions, each action chosen by
+    /// <paramref name="choose"/> from the account before the step and the decision index. Shared by the segment replay and the external replay.
+    /// </summary>
+    private static RlSessionSnapshot RunDiscreteSteps(IRlTradingSession session, RlSessionSnapshot account, int count,
+        Func<RlSessionSnapshot, int, RlAction> choose, CancellationToken cancellationToken)
+    {
+        for (int i = 0; i < count; i++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (account.Terminated) throw new InvalidOperationException("Unavailable: replay cursor follows a naturally terminated episode.");
+            account = session.Step(choose(account, i), cancellationToken).Snapshot;
+        }
+        return account;
+    }
+
+    /// <summary>
+    /// Replays a generation on the stored daily bars of any ticker: a 192-bar episode whose 64th bar is the (resolved) anchor date, stepped from a flat
+    /// account for <see cref="RlExternalReplayRequest.DecisionCount"/> decisions exactly like a training episode. Discrete generations only.
+    /// </summary>
+    public Task<RlExternalReplayResult> ReplayExternalAsync(RlExternalReplayRequest request, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return Task.Run(() => ReplayExternalCoreAsync(request, cancellationToken), cancellationToken);
+    }
+
+    private async Task<RlExternalReplayResult> ReplayExternalCoreAsync(RlExternalReplayRequest request, CancellationToken cancellationToken)
+    {
+        if (request.DecisionCount < 0 || request.DecisionCount >= RlContract.EpisodeHorizon)
+            throw new ArgumentOutOfRangeException(nameof(request), "A Q replay cursor must identify a nonterminal decision from 0 to 127.");
+        using var lease = _registry.AcquireRl(request.ModelId) ?? throw new InvalidOperationException("Unavailable: RL generation does not exist.");
+        var generation = _registry.GetRlGeneration(request.ModelId) ?? throw new InvalidOperationException("Unavailable: RL generation is missing.");
+        if (generation.Target == RlContinuousContract.Target)
+            throw new RlExternalReplayException(RlExternalReplayRejection.ContinuousNotSupported, "A continuous agent cannot be replayed on another ticker or date.");
+        if (generation.ContractHash != RlContract.ContractHash)
+            throw new InvalidDataException("Unavailable: the generation was made under a different RL contract.");
+        if (!RlReplayPolicies.For(generation).Contains(request.PolicyId, StringComparer.Ordinal))
+            throw new RlExternalReplayException(RlExternalReplayRejection.PolicyNotAvailable, "The policy is not available for this generation.");
+        string directory = Path.GetDirectoryName(lease.ModelPath)!;
+        var limits = LoadLimits(directory);
+        var costs = LoadCosts(directory);
+        var trained = RlSourceSnapshot.ValidateSourceFiles(directory, limits, cancellationToken);
+        if (trained.Revision != generation.SourceRevision || trained.Manifest.Symbol != generation.Symbol)
+            throw new InvalidDataException("Unavailable: the generation's source files do not match its immutable dataset.");
+        long replayStart = RlReplayTimings.Start();
+        var timings = new RlReplayTimings();
+        using var workspace = RlReplayWorkspace.Create(_dataRoot, _logger);
+        var episode = await RlExternalEpisodeFactory.PrepareAsync(request.Symbol, request.AnchorDate, limits, workspace, cancellationToken,
+            timings: timings).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        long modelStart = RlReplayTimings.Start();
+        using var model = new RlQModel(lease.ModelPath);
+        using var session = new BacktestEngine(new IndicatorFactory()).CreateRlSession(episode.CreateInput(), costs);
+        RlSessionSnapshot account = session.Reset(cancellationToken);
+        var sma = request.PolicyId == RlContract.SmaBaselineId ? RlBaselinePolicies.CreateSmaSignals(episode.Bars) : default;
+        timings.ModelLoadMs = RlReplayTimings.Since(modelStart);
+        RlAction Choose(RlSessionSnapshot current, int i) => request.PolicyId == generation.Target
+            ? RlContract.SelectAction(model.Infer(RlObservationBuilder.Build(current, model.Scaler)))
+            : RlBaselinePolicies.GetAction(request.PolicyId, sma, RlContract.WindowLength - 1, i, RlContract.CandidateSeeds[0]);
+        long steppingStart = RlReplayTimings.Start();
+        account = RunDiscreteSteps(session, account, request.DecisionCount, Choose, cancellationToken);
+        timings.SteppingMs = RlReplayTimings.Since(steppingStart);
+        timings.Steps = request.DecisionCount;
+        if (account.Terminated) throw new InvalidOperationException("Unavailable: Q is not an executable action at an ended cursor.");
+        ValidateAccount(account, costs);
+        long inferenceStart = RlReplayTimings.Start();
+        float[] observation = RlObservationBuilder.Build(account, model.Scaler);
+        float[] q = model.Infer(observation);
+        timings.InferenceMs = RlReplayTimings.Since(inferenceStart);
+        // The agent's own account path (cash, position) depends on every window it observed from decision 0 to the shown one, so all of those bars
+        // are range-checked; the account path of a baseline does not depend on the model, so only the shown window is.
+        var findings = RlScalerRangeCheck.Find(model.Scaler, request.PolicyId == generation.Target
+            ? RlObservationBuilder.RawRows(episode.Bars.AsSpan().Slice(0, request.DecisionCount + RlContract.WindowLength))
+            : RlObservationBuilder.RawWindow(account));
+        var scope = RlReplayScopeClassifier.Classify(trained.Manifest.Symbol, trained.Manifest.PeriodStartInclusive, trained.Manifest.PeriodEndExclusive,
+            request.Symbol, episode.FirstBar, episode.LastBar);
+        var (validationCut, finalCut) = RlPartitionCuts.Ratio(trained.Bars.Length);
+        var parts = RlReplayScopeClassifier.OverlappingParts(trained.Manifest.Symbol, trained.Manifest.PeriodStartInclusive,
+            DateOnly.FromDateTime(trained.Bars[validationCut].Timestamp), DateOnly.FromDateTime(trained.Bars[finalCut].Timestamp),
+            trained.Manifest.PeriodEndExclusive, request.Symbol, episode.FirstBar, episode.LastBar);
+        // The bars the replay has shown: everything the account has seen up to the shown decision (never a later bar of the episode).
+        var continuity = RlDataContinuity.Find(RlDataContinuity.Measure(trained.Bars.AsSpan(0, validationCut)),
+            RlDataContinuity.Measure(episode.Bars.AsSpan(0, request.DecisionCount + RlContract.WindowLength)));
+        string accountRevision = Common.ContentHash.OfText(JsonSerializer.Serialize(account, RlFiles.Json));
+        string identity = string.Join("\n", request.ModelId, episode.Manifest.Symbol, request.AnchorDate.ToString("O", CultureInfo.InvariantCulture),
+            episode.ResolvedAnchorDate.ToString("O", CultureInfo.InvariantCulture), request.PolicyId,
+            request.DecisionCount.ToString(CultureInfo.InvariantCulture), episode.SourceRevision, accountRevision, ObservationHash(observation));
+        string key = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(identity))).ToLowerInvariant();
+        cancellationToken.ThrowIfCancellationRequested();
+        var snapshot = new RlQSnapshot(key, request.ModelId, episode.Manifest.Symbol, account.MarketAnchor, q.ToImmutableArray(),
+            RlContract.SelectAction(q), account, RlFiles.Disclosure +
+                $" Acquisition={episode.Manifest.AcquisitionProvenanceStatus}; ingestion={episode.Manifest.IngestionImputationStatus}; precision={episode.Manifest.SourceStorageDtype}."
+                + ExternalWindowDisclosure, request.PolicyId)
+            { TemporalSpecificationId = generation.TemporalSpecificationId, TemporalStatus = generation.TemporalStatus,
+                ReplayScope = scope, OverlappingParts = parts, ScalerFindings = findings, ContinuityFindings = continuity };
+        timings.Log(_logger, replayStart, scope.ToString(), findings.Length);
+        return new RlExternalReplayResult(snapshot, request.AnchorDate, episode.ResolvedAnchorDate);
+    }
+
+    /// <summary>Marks a snapshot whose bars were cut from a ticker and date chosen by the user, not from the generation's own source.</summary>
+    internal const string ExternalWindowDisclosure = " ExternalWindow=true.";
+
+    internal static TrainingResourceLimits LoadLimits(string directory)
+    {
+        using var job = JsonDocument.Parse(File.ReadAllText(Path.Combine(directory, RlFiles.Job)));
+        return job.RootElement.GetProperty("resource_limits").Deserialize<TrainingResourceLimits>(RlFiles.Json)
+            ?? throw new InvalidDataException("Unavailable: saved resource limits are missing.");
     }
 
     private static string ObservationHash(float[] observation)

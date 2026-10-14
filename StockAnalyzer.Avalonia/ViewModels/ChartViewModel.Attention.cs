@@ -92,7 +92,7 @@ public partial class ChartViewModel
         if (token.IsCancellationRequested || _isDisposed) return;
         // Same rule as the prediction display: a result of a generation (or of an ensemble) that is no longer the active one is not shown.
         bool stillActive = pending.Ensemble is not null
-            ? _ensembleSettings?.Current is { } current && current.Fingerprint() == key.ModelId
+            ? IsSavedEnsemble(key.ModelId)
             : _predictionService?.ActiveModelId == key.ModelId;
         if (!stillActive) ClearAttention();
         else AttentionHeatmap.Publish(key, outcome);

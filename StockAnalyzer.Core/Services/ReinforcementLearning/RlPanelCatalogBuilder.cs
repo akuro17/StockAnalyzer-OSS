@@ -117,11 +117,6 @@ public static class RlPanelCatalogBuilder
         return result;
     }
 
-    /// <summary>The cuts between train and validation and between validation and test of the 3:1:1 ratio split (integer division).</summary>
-    private static (int Cut1, int Cut2) RatioCuts(int calendarLength)
-        => (checked((int)((long)RlContract.TrainPartitionNumerator * calendarLength / RlContract.PartitionDenominator)),
-            checked((int)((long)RlContract.ValidationPartitionNumerator * calendarLength / RlContract.PartitionDenominator)));
-
     /// <summary>The cuts of the end-aligned block-count split: <c>cut2 = L - W - S*O</c>, <c>cut1 = cut2 - W - S*V</c> (negative when the calendar is too short).</summary>
     private static (int Cut1, int Cut2) BlockCountCuts(int calendarLength, RlPanelBlockRequirement need)
     {
@@ -133,7 +128,7 @@ public static class RlPanelCatalogBuilder
     public static (int TrainCut, int ValidationCut) PlanCuts(int calendarLength, RlPanelPartitionPlan plan)
     {
         ArgumentNullException.ThrowIfNull(plan);
-        var (cut1, cut2) = plan.Mode == RlPortfolioPartitionMode.Ratio ? RatioCuts(calendarLength) : BlockCountCuts(calendarLength, plan.Requirement);
+        var (cut1, cut2) = plan.Mode == RlPortfolioPartitionMode.Ratio ? RlPartitionCuts.Ratio(calendarLength) : BlockCountCuts(calendarLength, plan.Requirement);
         return (Math.Max(cut1, 0), Math.Max(cut2, 0));
     }
 
@@ -143,7 +138,7 @@ public static class RlPanelCatalogBuilder
         out ImmutableArray<RlPanelCellCount> shortCells)
     {
         ValidateInput(calendarLength, presencePrefix, isHoldout);
-        var (cut1, cut2) = RatioCuts(calendarLength);
+        var (cut1, cut2) = RlPartitionCuts.Ratio(calendarLength);
         var excluded = ImmutableArray.CreateBuilder<string>();
         ImmutableArray<RlPanelBlock> Blocks(string name, int start, int end)
         {

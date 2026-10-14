@@ -29,6 +29,7 @@ public sealed class TextSettingsPanelDefinition : IDrawingSettingsPanelDefinitio
         if (drawing is not ITextAnnotatedObject textObj) return;
 
         var contentBox = dialogWindow.FindControl<TextBox>("TextContentBox");
+        var fontFamilyCombo = dialogWindow.FindControl<ComboBox>("TextFontFamilyCombo");
         var fontSizeSpin = dialogWindow.FindControl<NumericUpDown>("TextFontSizeSpin");
         var alignmentCombo = dialogWindow.FindControl<ComboBox>("TextAlignmentCombo");
         var showBgCheck = dialogWindow.FindControl<CheckBox>("TextShowBackgroundCheck");
@@ -37,6 +38,13 @@ public sealed class TextSettingsPanelDefinition : IDrawingSettingsPanelDefinitio
         var cornerRadiusSpin = dialogWindow.FindControl<NumericUpDown>("TextCornerRadiusSpin");
 
         if (contentBox != null) contentBox.Text = textObj.Text;
+        if (fontFamilyCombo != null)
+        {
+            fontFamilyCombo.ItemsSource = DrawingFontHelper.AvailableFontFamilies;
+            fontFamilyCombo.SelectedItem = !string.IsNullOrWhiteSpace(textObj.FontFamily)
+                ? textObj.FontFamily
+                : DrawingFontHelper.DefaultFontDisplayName;
+        }
         if (fontSizeSpin != null) fontSizeSpin.Value = (decimal)textObj.FontSize;
         if (alignmentCombo != null) alignmentCombo.SelectedIndex = (int)textObj.Alignment;
         if (showBgCheck != null) showBgCheck.IsChecked = textObj.ShowBackgroundBox;
@@ -50,6 +58,7 @@ public sealed class TextSettingsPanelDefinition : IDrawingSettingsPanelDefinitio
         if (drawing is not ITextAnnotatedObject textObj) return;
 
         var contentBox = dialogWindow.FindControl<TextBox>("TextContentBox");
+        var fontFamilyCombo = dialogWindow.FindControl<ComboBox>("TextFontFamilyCombo");
         var fontSizeSpin = dialogWindow.FindControl<NumericUpDown>("TextFontSizeSpin");
         var alignmentCombo = dialogWindow.FindControl<ComboBox>("TextAlignmentCombo");
         var showBgCheck = dialogWindow.FindControl<CheckBox>("TextShowBackgroundCheck");
@@ -58,6 +67,13 @@ public sealed class TextSettingsPanelDefinition : IDrawingSettingsPanelDefinitio
         var cornerRadiusSpin = dialogWindow.FindControl<NumericUpDown>("TextCornerRadiusSpin");
 
         if (contentBox != null) textObj.Text = contentBox.Text ?? "";
+        if (fontFamilyCombo != null)
+        {
+            var selectedFont = fontFamilyCombo.SelectedItem as string;
+            textObj.FontFamily = (string.IsNullOrWhiteSpace(selectedFont) || selectedFont == DrawingFontHelper.DefaultFontDisplayName)
+                ? null
+                : selectedFont;
+        }
         if (fontSizeSpin?.Value != null) textObj.FontSize = (double)fontSizeSpin.Value;
         if (alignmentCombo != null && alignmentCombo.SelectedIndex >= 0) textObj.Alignment = (TextHorizontalAlignment)alignmentCombo.SelectedIndex;
         if (showBgCheck?.IsChecked != null) textObj.ShowBackgroundBox = showBgCheck.IsChecked.Value;

@@ -342,7 +342,7 @@ public partial class App : Application, IDisposable, IThemeVariantDispatcher
                     Height = 600,
                     Content = new ScrollViewer {
                         Content = new TextBlock {
-                            Text = $"Error during application startup:\n\n{ex}\n\nStack Trace:\n{ex.StackTrace}",
+                            Text = StockAnalyzer.Core.Common.ExceptionSanitizer.FormatStartupException(ex),
                             Margin = new Thickness(20),
                             TextWrapping = global::Avalonia.Media.TextWrapping.Wrap,
                             FontFamily = new global::Avalonia.Media.FontFamily("Consolas")
@@ -511,6 +511,7 @@ public partial class App : Application, IDisposable, IThemeVariantDispatcher
         Resources["Color.Text.Secondary"] = secText;
         Resources["Color.Foreground.Secondary"] = secText;
         SetOrUpdateBrush("Brush.Text.Secondary", secText);
+        SetOrUpdateBrush("Brush.Text.Warning", ToAvColor(colors.ShellWarningText));
 
         // Update Accents
         var accent = ToAvColor(colors.ShellAccent);

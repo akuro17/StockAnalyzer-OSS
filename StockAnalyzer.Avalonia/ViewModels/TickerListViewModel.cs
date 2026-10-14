@@ -14,6 +14,7 @@ using StockAnalyzer.Avalonia.Common;
 using StockAnalyzer.Avalonia.Services;
 using StockAnalyzer.Core.Interfaces;
 using StockAnalyzer.Core.Models;
+using StockAnalyzer.Core.Models.Settings;
 using StockAnalyzer.Core.Models.Watchlist;
 using StockAnalyzer.Core.Models.Portfolio;
 using StockAnalyzer.Core.Services;
@@ -30,6 +31,7 @@ using StockAnalyzer.Core.Services.Backtest.Evaluation;
 using StockAnalyzer.Core.Services.Backtest.Reporting;
 using StockAnalyzer.Avalonia.ViewModels.Backtest;
 using StockAnalyzer.Core.Services.Backtest.Configuration;
+using StockAnalyzer.Core.Utilities;
 using System.Collections.Immutable;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -84,7 +86,7 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
     // synchronously per keystroke without re-reading metadata each time.
     private readonly Dictionary<string, List<string>> _tickerTags = new(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>Ticker/Tag filter (Y:\Temp\sa_implementation_plan_TickerTagFilter_Redo.md Phase 2):
+    /// <summary>Ticker/Tag filter (docs/sa_implementation_plan_TickerTagFilter_Redo Phase 2):
     /// free-form substring match against ticker symbols and registered tags, combined (AND) with the
     /// Screener Templates filter.</summary>
     public TickerList.TickerTagFilterViewModel TickerTagFilter { get; }
@@ -473,7 +475,7 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
     }
 
     [ObservableProperty]
-    private int _startSyncPeriodYears = 5;
+    private int _startSyncPeriodYears = WorkspaceSettings.DefaultStartSyncPeriodYears;
 
     partial void OnStartSyncPeriodYearsChanged(int value)
     {
@@ -600,7 +602,7 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
         _ = ColumnTemplateSelector.ReloadEntriesAsync();
     }
 
-    /// <summary>Column Customization dropdown (Y:\Temp\sa_implementation_plan_TickerColumnTemplateDropdown.md):
+    /// <summary>Column Customization dropdown (docs/sa_implementation_plan_TickerColumnTemplateDropdown):
     /// the entry currently selected in the dropdown receives the user's column edit.</summary>
     public TickerColumnTemplateSelectorViewModel ColumnTemplateSelector { get; }
 
@@ -623,7 +625,7 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
 
     private readonly StockAnalyzer.Core.Services.Tickers.ITickersSettingsManager? _tickersSettingsManager;
 
-    // ---- Auto Play (Y:\Temp\sa_implementation_plan_TickerAutoPlay.md). The state machine lives in
+    // ---- Auto Play (docs/sa_implementation_plan_TickerAutoPlay). The state machine lives in
     // TickerAutoPlayController; this class only supplies its delegates and mirrors IsRunning to the checkbox.
     private TickerAutoPlayController? _autoPlay;
     private bool _isSyncingAutoPlay;
@@ -1202,7 +1204,7 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
     /// <summary>
     /// Shown only when row-selection silently fell back from "checked rows" to "every row currently
     /// in scope" (nothing was checked) - the single most consistently flagged risk across the
-    /// Y:\Temp\webai.txt review: falling back without any signal can export far more than intended.
+    /// docs/webai review: falling back without any signal can export far more than intended.
     /// The underlying fallback rule itself is unchanged (user-confirmed design); this only adds a
     /// heads-up naming the row count before the save dialog opens. Not shown when the user explicitly
     /// checked rows - that is already an unambiguous choice.
@@ -3481,6 +3483,8 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
                 item.ClearMetricValues();
             }
         }
+
+        PublishActiveTickerGroup();
     }
 
     /// <inheritdoc/>
@@ -3666,10 +3670,26 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
         if (e.PropertyName == nameof(WatchlistItemViewModel.IsChecked))
         {
             OnPropertyChanged(nameof(SelectAll));
+            PublishActiveTickerGroup();
         }
         else if (e.PropertyName == nameof(WatchlistItemViewModel.Tag) && sender is WatchlistItemViewModel item)
         {
             _ = SaveItemTagAsync(item);
+        }
+    }
+
+    private void PublishActiveTickerGroup()
+    {
+        var checkedItems = DisplayItems.Where(x => x.IsChecked).Select(x => x.Symbol).ToList();
+        string groupName = SelectedNode?.DisplayName ?? "All Tickers";
+        if (checkedItems.Count > 0)
+        {
+            _messenger.Send(new ActiveTickerGroupChangedMessage(groupName, checkedItems, true));
+        }
+        else
+        {
+            var all = AvailableTickers.ToList();
+            _messenger.Send(new ActiveTickerGroupChangedMessage(groupName, all, false));
         }
     }
 
@@ -4292,25 +4312,10 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
         item.Close = latest.Close;
         item.Volume = latest.Volume;
 
-        // Change = Close - Open (Candle / Intraday price move) when Open is present, else Close - PrevClose
-        if (latest.Open != 0)
-        {
-            item.Change = latest.Close - latest.Open;
-            item.ChangePercent = (double)((latest.Close - latest.Open) / latest.Open * 100m);
-        }
-        else if (sortedCandles.Count >= 2)
-        {
-            var prev = sortedCandles[sortedCandles.Count - 2];
-            item.Change = latest.Close - prev.Close;
-            item.ChangePercent = prev.Close != 0 
-                ? (double)((latest.Close - prev.Close) / prev.Close * 100m) 
-                : 0;
-        }
-        else
-        {
-            item.Change = 0;
-            item.ChangePercent = 0;
-        }
+        // Change = Close - previous bar's Close (the single definition is PriceChange); zero without a previous bar.
+        var priceChange = PriceChange.FromPreviousClose(sortedCandles, sortedCandles.Count - 1);
+        item.Change = priceChange.Amount;
+        item.ChangePercent = (double)priceChange.Percent;
 
         // Calculate Daily Turnovers
         if (item.SharesOutstanding.HasValue && item.SharesOutstanding.Value != 0)

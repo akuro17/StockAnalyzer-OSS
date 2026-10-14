@@ -31,7 +31,7 @@ public sealed class BacktestSelectedIndicatorDto
 /// <see cref="Engine.BacktestConditionSide"/>'s shape verbatim, kept as a separate DTO type (same reason
 /// <see cref="BacktestSelectedIndicatorDto"/> is separate from <see cref="Engine.StrategyIndicatorRequest"/>)
 /// so a future runtime-contract change to <see cref="Engine.BacktestConditionSide"/> does not silently
-/// change this persisted JSON shape. See Y:\Temp\sa_implementation_plan_BacktestComparisonSignals.md
+/// change this persisted JSON shape. See docs/sa_implementation_plan_BacktestComparisonSignals
 /// section 4.1/Task 4.
 /// </summary>
 public sealed class BacktestConditionSideDto
@@ -49,7 +49,7 @@ public sealed class BacktestConditionSideDto
 
     /// <summary>Mirrors <see cref="Engine.BacktestConditionSide.PriceSource"/> verbatim (same separate-DTO
     /// reasoning as this type's other fields). See
-    /// Y:\Temp\sa_improvement_plan_BacktestPriceSourceConditionFix.md.</summary>
+    /// docs/sa_improvement_plan_BacktestPriceSourceConditionFix.md.</summary>
     public PriceType? PriceSource { get; init; }
 }
 
@@ -78,7 +78,7 @@ public sealed class BacktestConditionEntryDto
 
     /// <summary>Mirrors <see cref="Engine.BacktestConditionEntry.Position"/> verbatim (same separate-DTO
     /// reasoning as this type's other fields). See
-    /// Y:\Temp\sa_implementation_plan_BacktestPositionDirectionReversal.md section 2.1.</summary>
+    /// docs/sa_implementation_plan_BacktestPositionDirectionReversal section 2.1.</summary>
     public TradeSide Position { get; init; } = TradeSide.Long;
 }
 
@@ -124,7 +124,7 @@ public sealed class BacktestConditionTreeDto
 
 /// <summary>
 /// Mirrors <see cref="Engine.BacktestRiskManagementSettings"/> verbatim (same separate-DTO reasoning as
-/// <see cref="BacktestConditionSideDto"/>). See Y:\Temp\sa_implementation_plan_BacktestComparisonSignals.md
+/// <see cref="BacktestConditionSideDto"/>). See docs/sa_implementation_plan_BacktestComparisonSignals
 /// section 4.5/Task 8b.
 /// </summary>
 public sealed class BacktestRiskManagementSettingsDto

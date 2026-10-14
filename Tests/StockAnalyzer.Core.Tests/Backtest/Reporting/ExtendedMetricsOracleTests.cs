@@ -9,7 +9,7 @@ using Xunit;
 namespace StockAnalyzer.Core.Tests.Backtest.Reporting;
 
 /// <summary>
-/// Independent evidence for the 15 extended metrics (Y:\Temp\sa_implementation_plan_BacktestReportVerificationOracle.md, T4): the production
+/// Independent evidence for the 15 extended metrics (docs/sa_implementation_plan_BacktestReportVerificationOracle, T4): the production
 /// report is compared exactly with <see cref="ExtendedMetricsReference"/> on seeded random data, general laws are asserted on every case, and
 /// hand-derived literals pin the reference itself so that a shared misunderstanding cannot hide in both implementations.
 /// </summary>

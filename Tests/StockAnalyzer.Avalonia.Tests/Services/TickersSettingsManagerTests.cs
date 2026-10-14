@@ -12,7 +12,7 @@ using Xunit;
 
 namespace StockAnalyzer.Avalonia.Tests.Services;
 
-/// <summary>sa_implement (Tickers settings category, Y:\Temp\sa_implementation_plan_TickersSettingsCategory.md
+/// <summary>sa_implement (Tickers settings category, docs/sa_implementation_plan_TickersSettingsCategory
 /// Phases 1 and 3): configuration defaults/validation and the TickersSettingsManager contract, using a
 /// per-test temp file through the manager's optional file path.</summary>
 public class TickersSettingsManagerTests : IDisposable

@@ -11,7 +11,7 @@ using Xunit;
 namespace StockAnalyzer.Tests.Backtest;
 
 /// <summary>
-/// Y:\Temp\sa_implementation_plan_BacktestIndicatorCausalityGuard.md phase 4: the backtest indicator picker must not offer non-causal indicators or
+/// docs/sa_implementation_plan_BacktestIndicatorCausalityGuard phase 4: the backtest indicator picker must not offer non-causal indicators or
 /// Ichimoku's ChikouSpan output (single definition: BacktestIndicatorEligibility). The shared Screener catalog itself stays untouched.
 /// </summary>
 public class BacktestIndicatorCausalityGuardViewModelTests

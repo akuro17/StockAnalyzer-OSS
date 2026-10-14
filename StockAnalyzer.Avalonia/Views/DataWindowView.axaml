@@ -133,7 +133,7 @@
             <!-- 1. Market Data Panel -->
             <Border Classes="PremiumCard" Margin="0,0,0,0" IsVisible="{Binding IsMarketDataSelected}">
                 <ScrollViewer HorizontalScrollBarVisibility="Disabled">
-                    <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto">
+                    <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto">
                         <TextBlock Grid.Row="0" Grid.Column="0" Text="{l:Localize Col_Open}" Foreground="{DynamicResource Brush.Foreground.Secondary}" Margin="0,0,8,4" IsVisible="{Binding IsOpenVisible}"/>
                         <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding OpenText}" Foreground="{DynamicResource Brush.Foreground.Primary}" HorizontalAlignment="Right" Margin="0,0,8,4" IsVisible="{Binding IsOpenVisible}"/>
                         
@@ -155,50 +155,65 @@
                         <TextBlock Grid.Row="6" Grid.Column="0" Text="{l:Localize Col_Volume}" Foreground="{DynamicResource Brush.Foreground.Secondary}" Margin="0,0,8,4" IsVisible="{Binding IsVolumeVisible}"/>
                         <TextBlock Grid.Row="6" Grid.Column="1" Text="{Binding VolumeText}" Foreground="{DynamicResource Brush.Foreground.Primary}" HorizontalAlignment="Right" Margin="0,0,8,4" IsVisible="{Binding IsVolumeVisible}"/>
                         
-                        <TextBlock Grid.Row="7" Grid.Column="0" Text="Count:" Foreground="{DynamicResource Brush.Foreground.Secondary}" Margin="0,0,8,4"
+                        <TextBlock Grid.Row="7" Grid.Column="0" Text="{l:Localize DataWindow_Row_Count}" Foreground="{DynamicResource Brush.Foreground.Secondary}" Margin="0,0,8,4"
                                     IsVisible="{Binding ThreeLineBreakCountText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                         <TextBlock Grid.Row="7" Grid.Column="1" Text="{Binding ThreeLineBreakCountText}" Foreground="{DynamicResource Brush.Foreground.Primary}" HorizontalAlignment="Right" Margin="0,0,8,4"
                                     IsVisible="{Binding ThreeLineBreakCountText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                         
-                        <TextBlock Grid.Row="8" Grid.Column="0" Text="Move:" Foreground="{DynamicResource Brush.Foreground.Secondary}" Margin="0,0,8,4"
+                        <TextBlock Grid.Row="8" Grid.Column="0" Text="{l:Localize DataWindow_Row_Move}" Foreground="{DynamicResource Brush.Foreground.Secondary}" Margin="0,0,8,4"
                                     IsVisible="{Binding KagiReversalText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                         <TextBlock Grid.Row="8" Grid.Column="1" Text="{Binding KagiReversalText}" Foreground="{DynamicResource Brush.Foreground.Primary}" HorizontalAlignment="Right" Margin="0,0,8,4"
                                     IsVisible="{Binding KagiReversalText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
 
-                        <TextBlock Grid.Row="9" Grid.Column="0" Text="Reversal:" Foreground="{DynamicResource Brush.Foreground.Secondary}" Margin="0,0,8,4"
+                        <TextBlock Grid.Row="9" Grid.Column="0" Text="{l:Localize DataWindow_Row_Reversal}" Foreground="{DynamicResource Brush.Foreground.Secondary}" Margin="0,0,8,4"
                                     IsVisible="{Binding ThreeLineBreakReversalText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                         <TextBlock Grid.Row="9" Grid.Column="1" Text="{Binding ThreeLineBreakReversalText}" Foreground="{DynamicResource Brush.Foreground.Primary}" HorizontalAlignment="Right" Margin="0,0,8,4"
                                     IsVisible="{Binding ThreeLineBreakReversalText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
 
-                        <TextBlock Grid.Row="10" Grid.Column="0" Text="Count:" Foreground="{DynamicResource Brush.Foreground.Secondary}" Margin="0,0,8,4"
+                        <TextBlock Grid.Row="10" Grid.Column="0" Text="{l:Localize DataWindow_Row_Count}" Foreground="{DynamicResource Brush.Foreground.Secondary}" Margin="0,0,8,4"
                                     IsVisible="{Binding RenkoCountText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                         <TextBlock Grid.Row="10" Grid.Column="1" Text="{Binding RenkoCountText}" Foreground="{DynamicResource Brush.Foreground.Primary}" HorizontalAlignment="Right" Margin="0,0,8,4"
                                     IsVisible="{Binding RenkoCountText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
 
-                        <TextBlock Grid.Row="11" Grid.Column="0" Text="Reversal:" Foreground="{DynamicResource Brush.Foreground.Secondary}" Margin="0,0,8,4"
+                        <TextBlock Grid.Row="11" Grid.Column="0" Text="{l:Localize DataWindow_Row_Reversal}" Foreground="{DynamicResource Brush.Foreground.Secondary}" Margin="0,0,8,4"
                                     IsVisible="{Binding RenkoReversalText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                         <TextBlock Grid.Row="11" Grid.Column="1" Text="{Binding RenkoReversalText}" Foreground="{DynamicResource Brush.Foreground.Primary}" HorizontalAlignment="Right" Margin="0,0,8,4"
                                     IsVisible="{Binding RenkoReversalText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
 
-                        <TextBlock Grid.Row="12" Grid.Column="0" Text="Update:" Foreground="{DynamicResource Brush.Foreground.Secondary}" Margin="0,0,8,4"
+                        <TextBlock Grid.Row="12" Grid.Column="0" Text="{l:Localize DataWindow_Row_Update}" Foreground="{DynamicResource Brush.Foreground.Secondary}" Margin="0,0,8,4"
                                     IsVisible="{Binding RenkoUpdateText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                         <TextBlock Grid.Row="12" Grid.Column="1" Text="{Binding RenkoUpdateText}" Foreground="{DynamicResource Brush.Foreground.Primary}" HorizontalAlignment="Right" Margin="0,0,8,4"
                                     IsVisible="{Binding RenkoUpdateText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
 
-                        <TextBlock Grid.Row="13" Grid.Column="0" Text="Count:" Foreground="{DynamicResource Brush.Foreground.Secondary}" Margin="0,0,8,4"
+                        <TextBlock Grid.Row="13" Grid.Column="0" Text="{l:Localize DataWindow_Row_BoxCount}" Foreground="{DynamicResource Brush.Foreground.Secondary}" Margin="0,0,8,4"
                                     IsVisible="{Binding PointAndFigureCountText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                         <TextBlock Grid.Row="13" Grid.Column="1" Text="{Binding PointAndFigureCountText}" Foreground="{DynamicResource Brush.Foreground.Primary}" HorizontalAlignment="Right" Margin="0,0,8,4"
                                     IsVisible="{Binding PointAndFigureCountText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
 
-                        <TextBlock Grid.Row="14" Grid.Column="0" Text="Value:" Foreground="{DynamicResource Brush.Foreground.Secondary}" Margin="0,0,8,4"
+                        <TextBlock Grid.Row="14" Grid.Column="0" Text="{l:Localize DataWindow_Row_Value}" Foreground="{DynamicResource Brush.Foreground.Secondary}" Margin="0,0,8,4"
                                     IsVisible="{Binding ReverseWatchValueText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                         <TextBlock Grid.Row="14" Grid.Column="1" Text="{Binding ReverseWatchValueText}" Foreground="{DynamicResource Brush.Foreground.Primary}" HorizontalAlignment="Right" Margin="0,0,8,4"
                                     IsVisible="{Binding ReverseWatchValueText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
 
-                        <TextBlock Grid.Row="15" Grid.Column="0" Text="VolAvg:" Foreground="{DynamicResource Brush.Foreground.Secondary}" Margin="0,0,8,4"
+                        <TextBlock Grid.Row="15" Grid.Column="0" Text="{l:Localize DataWindow_Row_VolumeAverage}" Foreground="{DynamicResource Brush.Foreground.Secondary}" Margin="0,0,8,4"
                                     IsVisible="{Binding ReverseWatchVolumeText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                         <TextBlock Grid.Row="15" Grid.Column="1" Text="{Binding ReverseWatchVolumeText}" Foreground="{DynamicResource Brush.Foreground.Primary}" HorizontalAlignment="Right" Margin="0,0,8,4"
                                     IsVisible="{Binding ReverseWatchVolumeText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+
+                        <TextBlock Grid.Row="16" Grid.Column="0" Text="{l:Localize DataWindow_Row_ReversalDate}" Foreground="{DynamicResource Brush.Foreground.Secondary}" Margin="0,0,8,4"
+                                    IsVisible="{Binding TrendReversalDateText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                        <TextBlock Grid.Row="16" Grid.Column="1" Text="{Binding TrendReversalDateText}" Foreground="{DynamicResource Brush.Foreground.Primary}" HorizontalAlignment="Right" Margin="0,0,8,4"
+                                    IsVisible="{Binding TrendReversalDateText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+
+                        <TextBlock Grid.Row="17" Grid.Column="0" Text="{l:Localize DataWindow_Row_UpdateDate}" Foreground="{DynamicResource Brush.Foreground.Secondary}" Margin="0,0,8,4"
+                                    IsVisible="{Binding TrendUpdateDateText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                        <TextBlock Grid.Row="17" Grid.Column="1" Text="{Binding TrendUpdateDateText}" Foreground="{DynamicResource Brush.Foreground.Primary}" HorizontalAlignment="Right" Margin="0,0,8,4"
+                                    IsVisible="{Binding TrendUpdateDateText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+
+                        <TextBlock Grid.Row="18" Grid.Column="0" Text="{l:Localize DataWindow_Row_TrendDays}" Foreground="{DynamicResource Brush.Foreground.Secondary}" Margin="0,0,8,4"
+                                    IsVisible="{Binding TrendDaysText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                        <TextBlock Grid.Row="18" Grid.Column="1" Text="{Binding TrendDaysText}" Foreground="{DynamicResource Brush.Foreground.Primary}" HorizontalAlignment="Right" Margin="0,0,8,4"
+                                    IsVisible="{Binding TrendDaysText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                     </Grid>
                 </ScrollViewer>
             </Border>

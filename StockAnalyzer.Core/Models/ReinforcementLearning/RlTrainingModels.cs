@@ -114,6 +114,14 @@ public sealed record RlQSnapshot(string RequestKey, string ModelId, string Symbo
     public RlTemporalBoundStatus TemporalStatus { get; init; }
     public RlConstraintReport? EvaluationConstraints { get; init; }
     public RlAllBlockEvaluationReport? AllBlockEvaluation { get; init; }
+    /// <summary>How the replay window relates to the training source; <see cref="RlReplayScope.TrainingSource"/> for every segment replay.</summary>
+    public RlReplayScope ReplayScope { get; init; } = RlReplayScope.TrainingSource;
+    /// <summary>For an external replay of the agent's own ticker: which parts of its source period the window overlaps; <see cref="RlSourceParts.None"/> otherwise.</summary>
+    public RlSourceParts OverlappingParts { get; init; }
+    /// <summary>Gaps or price changes in the bars shown by an external replay that exceed the agent's own training bars; empty for every segment replay.</summary>
+    public ImmutableArray<RlContinuityFinding> ContinuityFindings { get; init; } = ImmutableArray<RlContinuityFinding>.Empty;
+    /// <summary>Channels whose window values leave the trained range; empty for every segment replay.</summary>
+    public ImmutableArray<RlScalerRangeFinding> ScalerFindings { get; init; } = ImmutableArray<RlScalerRangeFinding>.Empty;
 }
 
 public sealed record RlGeneration(string ModelId, string Symbol, string SourceRevision,

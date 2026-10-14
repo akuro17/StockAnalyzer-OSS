@@ -253,7 +253,8 @@ public sealed class ChartRenderPipeline : IDisposable
         // 8. Render Axis Labels (Y-Axis)
         DrawAxisLabels(canvas, chartArea);
 
-        // 9. Render Crosshair
+        // 9. Render Crosshair & Overlays
+        _rlRenderer.DrawOverlay(canvas, chartArea, rlPresentation, coordinateTransform, theme);
         _rlRenderer.DrawHud(canvas, chartArea, rlPresentation, rlFontSize, rlForeground);
         if (isCrosshairVisible)
         {

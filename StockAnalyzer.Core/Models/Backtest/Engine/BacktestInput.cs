@@ -9,7 +9,7 @@ namespace StockAnalyzer.Core.Models.Backtest.Engine;
 
 /// <summary>
 /// Immutable, validated backtest run input. Validation runs in the exact order specified by
-/// Y:\0915 Backtesting\01_P1_SimulationEngine.md section 5.2 (steps 1,2,4,6 below — step 3's
+/// docs/01_P1_SimulationEngine section 5.2 (steps 1,2,4,6 below — step 3's
 /// config-value bounds live on BacktestConfiguration itself, step 5 is a "do not silently repair"
 /// design rule with nothing to execute). A constructor (not independent init-properties) is used
 /// deliberately so validation order cannot depend on the caller's property-initializer order.
@@ -33,7 +33,7 @@ public sealed class BacktestInput
 
     /// <summary>
     /// Trailing, optional safe-extension (added 2026-09-18, see
-    /// Y:\Temp\sa_implementation_plan_BacktestComparisonSignals.md section 3.2.4): each entry is a
+    /// docs/sa_implementation_plan_BacktestComparisonSignals section 3.2.4): each entry is a
     /// fully separate, independently-loaded bar series for one other Frame a condition's
     /// <c>BacktestConditionSide.Frame</c> references. Null (the default) is today's exact existing
     /// behavior — no cross-timeframe indicator request can be resolved without it, but a run with no

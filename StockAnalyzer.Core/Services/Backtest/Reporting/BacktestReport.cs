@@ -8,8 +8,8 @@ namespace StockAnalyzer.Core.Services.Backtest.Reporting;
 /// <summary>
 /// Per spec §5.5, verbatim field set, plus two user-approved supplemental additions
 /// (<see cref="AnnualizedSharpeAutocorrelationAdjusted"/> and <see cref="AnnualizedSortinoAutocorrelationAdjusted"/>,
-/// each confirmed via AskUserQuestion — see Y:\Temp\sa_implementation_plan_BacktestReportAutocorrelationAdjustedSharpe.md
-/// and Y:\Temp\sa_implementation_plan_SortinoAutocorrelationAdjustedBootstrap.md). Populated only by
+/// each confirmed via AskUserQuestion — see docs/sa_implementation_plan_BacktestReportAutocorrelationAdjustedSharpe
+/// and docs/sa_implementation_plan_SortinoAutocorrelationAdjustedBootstrap). Populated only by
 /// <see cref="BacktestReportGenerator"/>.
 /// </summary>
 public sealed class BacktestReport
@@ -47,7 +47,7 @@ public sealed class BacktestReport
     /// Supplemental addition (not in spec §5.5): bias-corrected annualized Sortino via a Politis-White
     /// automatic-block-length circular block bootstrap (Candidate B in the comparison doc), since Sortino's
     /// nonlinear min(y,0)^2 downside truncation has no closed-form HAC correction the way Sharpe's does. See
-    /// Y:\Temp\sa_implementation_plan_SortinoAutocorrelationAdjustedBootstrap.md.
+    /// docs/sa_implementation_plan_SortinoAutocorrelationAdjustedBootstrap.md.
     /// </summary>
     public MetricValue AnnualizedSortinoAutocorrelationAdjusted { get; init; }
 
@@ -65,7 +65,7 @@ public sealed class BacktestReport
 
     // Supplemental extended trade metrics (not in spec §5.5). Nullable so reports persisted before they existed still load and validate;
     // a report produced by BacktestReportGenerator always carries them. Trade-PnL values use ClosedNet; loss-side values are non-negative
-    // magnitudes. See Y:\Temp\sa_implementation_plan_BacktestReportExtendedMetrics.md.
+    // magnitudes. See docs/sa_implementation_plan_BacktestReportExtendedMetrics.md.
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public MetricValue? GrossProfit { get; init; }
 

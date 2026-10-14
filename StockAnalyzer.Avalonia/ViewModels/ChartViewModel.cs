@@ -242,6 +242,24 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
                 LocalizationManager.Instance.Get("Prediction_Notice_WindowMismatch"), issue.ModelWindow, issue.ConfiguredWindow)
             : null;
 
+    /// <summary>
+    /// Whether the result was produced by what is active now: the saved ensemble (compared by fingerprint, as the attention of an ensemble is)
+    /// for an ensemble result, otherwise the active generation. A result of something that was replaced meanwhile is not shown.
+    /// </summary>
+    private bool IsFromActivePredictionSource(PredictionResult result) =>
+        result.Ensemble is { } ensemble
+            ? IsSavedEnsemble(ensemble.Fingerprint())
+            : result.ModelId == _predictionService?.ActiveModelId;
+
+    /// <summary>True while the ensemble saved in Settings has this fingerprint: the rule that keeps an ensemble result or its attention current.</summary>
+    /// <summary>
+    /// The template of a key, or null when the key is unknown. <see cref="LocalizationManager.Get"/> cannot be used for this: it answers an unknown key with
+    /// the bracketed text, which the formatter would take for a template and show as prediction text.
+    /// </summary>
+    private static string? LocalizeOrNull(string key) => LocalizationManager.Instance.TryGet(key, out var template) ? template : null;
+
+    private bool IsSavedEnsemble(string fingerprint) => _ensembleSettings?.Current is { } current && current.Fingerprint() == fingerprint;
+
     private async Task UpdatePredictionAsync(CoreCandleData[] candles, string symbol,
         TimeframeType timeframe, long revision, int requestId, CancellationToken token)
     {
@@ -275,10 +293,10 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
                 // A fallback carries no model id, so the generation check below would drop it and the previous prediction text would stay:
                 // a fallback is applied (it formats to nothing) together with the explanation of why there is no prediction.
                 PredictionNotice = notice;
-                if (!result.IsFallback && result.ModelId != _predictionService.ActiveModelId) return;
+                if (!result.IsFallback && !IsFromActivePredictionSource(result)) return;
 
                 var display = PredictionDisplayFormatter.Format(result, timeframe,
-                    System.Globalization.CultureInfo.CurrentCulture, LocalizationManager.Instance.Get);
+                    System.Globalization.CultureInfo.CurrentCulture, LocalizeOrNull);
                 CurrentPrediction = display is null ? null : result;
                 PredictionDisplay = display;
                 if (display is not null)
@@ -2273,7 +2291,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
             // --- LIFECYCLE MANAGEMENT: PERSIST DRAWINGS PER SYMBOL+TIMEFRAME ON LOAD ---
             // When loading new data (symbol/timeframe change or refresh), the drawings belonging to
             // the previously-displayed symbol+timeframe are saved (Day/Week/Monthly are independent
-            // sets, per Y:\Temp\sa_analysis_report.md), all in-memory contexts are cleared, and any
+            // sets, per docs/sa_analysis_report), all in-memory contexts are cleared, and any
             // drawings previously saved for the new symbol+timeframe are restored.
             if (_drawingRepository != null && _drawingsOwnerSymbol != null)
             {

@@ -5,7 +5,7 @@ using Xunit;
 
 namespace StockAnalyzer.Avalonia.Tests.ViewModels;
 
-/// <summary>sa_implement (Notes専用「外観」設定, Y:\Temp\sa_implementation_plan_notes_appearance.md Task 2):
+/// <summary>sa_implement (Notes専用「外観」設定, docs/sa_implementation_plan_notes_appearance Task 2):
 /// covers NotesSettingsViewModel's new BodyFontSize/BodyTextColor properties - IsModified tracking,
 /// persistence via the injected INotesSettingsManager, RevertChanges, and ResetToDefault - mirroring
 /// the existing coverage pattern for sibling Notes settings (e.g. ThreadCollapseThreshold).</summary>
@@ -82,7 +82,7 @@ public class NotesSettingsViewModelTests
         Assert.Equal(IndicatorColor.FromUInt(0xFFE0E0E0), vm.SelectedBodyTextColor);
     }
 
-    /// <summary>sa_minimal_fix (Notes専用「外観」設定の再構成, Y:\Temp\sa_fix_plan_notes_appearance_restructure.md):
+    /// <summary>sa_minimal_fix (Notes専用「外観」設定の再構成, docs/sa_fix_plan_notes_appearance_restructure):
     /// covers the new BodyBackgroundColor property, added alongside BodyFontSize/BodyTextColor in the
     /// "Appearance" section.</summary>
     [Fact]
@@ -98,7 +98,7 @@ public class NotesSettingsViewModelTests
         Assert.Equal(newColor, manager.BodyBackgroundColor);
     }
 
-    /// <summary>sa_minimal_fix (URL/ハッシュタグ色トグル廃止, Y:\Temp\sa_fix_plan_notes_url_hashtag_toggle_removal.md):
+    /// <summary>sa_minimal_fix (URL/ハッシュタグ色トグル廃止, docs/sa_fix_plan_notes_url_hashtag_toggle_removal):
     /// there is no on/off toggle - changing SelectedUrlColor/SelectedHashtagColor must always apply
     /// directly to the manager (fix request: "チェックボックスのON/OFFが不要...トグル設定は不要").</summary>
     [Fact]

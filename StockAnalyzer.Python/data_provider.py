@@ -275,7 +275,7 @@ class StockDataProvider:
             res["totalRevenue"] = info.get("totalRevenue")
             res["marketCap"] = info.get("marketCap")
             
-            # New fields from Y:\Temp\webai.txt
+            # New fields from docs/webai
             res["pegRatio"] = info.get("pegRatio")
             res["priceToSalesTrailing12Months"] = info.get("priceToSalesTrailing12Months")
             res["enterpriseToRevenue"] = info.get("enterpriseToRevenue")

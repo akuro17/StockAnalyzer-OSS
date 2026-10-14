@@ -81,13 +81,49 @@ public sealed partial class RlUiTests(ITestOutputHelper output)
         await vm.InitializeAsync(); vm.Symbol="SPY"; vm.StartDate="2000-01-01";vm.EndDateExclusive="2026-01-01";
         Assert.Equal(defaults.Settings.InitialCapital, vm.InitialCapital);
         vm.CommissionFlat=1.25m; vm.SmokeOnly=true;
+        var savedBefore = defaults.Settings;
         var run = vm.TrainCommand.ExecuteAsync(null); await training.Started.Task;
         vm.CommissionFlat=99m; vm.CancelCommand.Execute(null);
         Assert.Equal(1.25m, training.Job!.Costs.CommissionFlat); Assert.True(training.Job.SmokeOnly);
         training.Result.SetResult(new(Guid.NewGuid(),"dir","model","eval",null,true,"revision")); await run;
         Assert.Equal("Cancelled",vm.Status); Assert.False(vm.IsBusy); Assert.Empty(vm.Generations);
-        vm.CommissionFlat=2.5m; await vm.SaveCostsCommand.ExecuteAsync(null);
-        Assert.Equal(2.5m,defaults.Settings.CommissionFlat); Assert.Equal(BacktestDefaultSettings.BuiltIn.BootstrapIterations, defaults.Settings.BootstrapIterations);
+        // The edited costs belong to this one training: the Settings > Backtest defaults (read by the Backtest window and the tickers tab too) are not written back.
+        Assert.Same(savedBefore, defaults.Settings); Assert.NotEqual(1.25m, defaults.Settings.CommissionFlat);
+    }
+    [Fact] public async Task Dialog_StartingAndFinishingATrainingNeverWritesTheCostsOrOtherDefaultsBack()
+    {
+        using var chart = Chart(new ImmediateData()); var training = new DelayedTraining(); var defaults = new FakeBacktestDefaultSettingsManager();
+        using var vm = new RlTrainingDialogViewModel(training, new EmptyRegistry(), new UnavailableQ(), defaults, chart, StockAnalyzer.Core.Interfaces.NullLocalizationService.Instance);
+        await vm.InitializeAsync(); vm.Symbol = "SPY"; vm.StartDate = "2000-01-01"; vm.EndDateExclusive = "2026-01-01";
+        var savedBefore = defaults.Settings;
+        vm.InitialCapital = 2_000_000m; vm.CommissionFlat = 3m; vm.CommissionPerUnit = 0.5m; vm.SlippageRatio = 0.002m; vm.LiquidationPenaltyRatio = 0.01m;
+        var run = vm.TrainCommand.ExecuteAsync(null); await training.Started.Task;
+        Assert.Equal((2_000_000m, 3m, 0.5m, 0.002m, 0.01m), (training.Job!.Costs.InitialCapital, training.Job.Costs.CommissionFlat, training.Job.Costs.CommissionPerUnit,
+            training.Job.Costs.SlippageRatio, training.Job.Costs.LiquidationPenaltyRatio));          // the run uses the edited values
+        vm.CancelCommand.Execute(null);
+        training.Result.SetResult(new(Guid.NewGuid(), "dir", "model", "eval", null, true, "revision")); await run;
+        Assert.Same(savedBefore, defaults.Settings);                                                // and nothing was saved
+    }
+    [Fact] public async Task DefaultValueInventory_TheOptionsStartOffAndTheCostsComeFromTheBacktestDefaultsOrTheBuiltInFallback()
+    {
+        using var chart = Chart(new ImmediateData());
+        // The settings file is missing or invalid: the built-in values apply silently (inventory: 1,000,000 / 0 / 0 / 0 / 0.005).
+        using (var vm = new RlTrainingDialogViewModel(new DelayedTraining(), new EmptyRegistry(), new UnavailableQ(),
+                   new FakeBacktestDefaultSettingsManager(BacktestDefaultSettingsLoadStatus.BuiltInFallback), chart, StockAnalyzer.Core.Interfaces.NullLocalizationService.Instance))
+        {
+            await vm.InitializeAsync();
+            Assert.False(vm.UseContinuousPolicy); Assert.False(vm.UseAllCompleteBlocks); Assert.False(vm.SmokeOnly); Assert.False(vm.UseShortHistory);
+            Assert.Equal((1_000_000m, 0m, 0m, 0m, 0.005m), (vm.InitialCapital, vm.CommissionFlat, vm.CommissionPerUnit, vm.SlippageRatio, vm.LiquidationPenaltyRatio));
+            Assert.Empty(vm.ModeBadges);                                    // nothing is labelled at the defaults
+        }
+        // A saved Settings > Backtest file wins.
+        var saved = new BacktestDefaultSettings { SchemaVersion = BacktestDefaultSettings.CurrentSchemaVersion, InitialCapital = 250_000m, CommissionFlat = 1m, CommissionPerUnit = 0.1m, SlippageRatio = 0.001m, LiquidationPenaltyRatio = 0.02m };
+        using (var vm = new RlTrainingDialogViewModel(new DelayedTraining(), new EmptyRegistry(), new UnavailableQ(),
+                   new FakeBacktestDefaultSettingsManager(settings: saved), chart, StockAnalyzer.Core.Interfaces.NullLocalizationService.Instance))
+        {
+            await vm.InitializeAsync();
+            Assert.Equal((250_000m, 1m, 0.1m, 0.001m, 0.02m), (vm.InitialCapital, vm.CommissionFlat, vm.CommissionPerUnit, vm.SlippageRatio, vm.LiquidationPenaltyRatio));
+        }
     }
     [Fact] public async Task ClosingDialogPreservesPublishedReplayWhileChartChangesInvalidateIt()
     {
@@ -369,6 +405,46 @@ public sealed partial class RlUiTests(ITestOutputHelper output)
         output.WriteLine($"{RlContract.InferenceWarmupCalls} warmup/{windowReadings.Length} windows of {RlContract.InferenceMeasuredCalls} cached panel+HUD draws: managed per window={string.Join(", ", windowReadings)} B; process private memory proxy before={beforeNative}, after={afterNative}, delta={afterNative-beforeNative} B (process-wide, not isolated native allocator accounting).");
         Assert.True(windowReadings.Min() == 0, $"The smallest of {windowReadings.Length} windows of {RlContract.InferenceMeasuredCalls} draws still read {windowReadings.Min()} B; readings: {string.Join(", ", windowReadings)}");
     }
+
+    [Fact]
+    public void RlPresentation_ExtractsOverlayPropertiesAndCoordinatesSuccessfully()
+    {
+        var snapshot = Snapshot(0, 1, -1);
+        var p = RlPresentation.From(snapshot, StockAnalyzer.Core.Interfaces.NullLocalizationService.Instance);
+        Assert.NotNull(p.AnchorDate);
+        Assert.True(p.HasDecisionOverlay);
+        Assert.NotNull(p.CurrentPrice);
+        Assert.Equal(RlAction.Buy, p.SelectedAction);
+
+        using var renderer = new RlQRenderer();
+        using var bitmap = new SKBitmap(1200, 600);
+        using var canvas = new SKCanvas(bitmap);
+        var transform = new StockAnalyzer.Avalonia.Drawing.LinearCoordinateTransform(
+            snapshot.Anchor.AddDays(-30), snapshot.Anchor.AddDays(5),
+            50m, 150m, 1200, 600);
+        var area = new global::Avalonia.Rect(0, 0, 1200, 600);
+
+        renderer.DrawOverlay(canvas, area, p, transform, StockAnalyzer.Core.Theme.ThemeColors.Light);
+    }
+
+    [Fact]
+    public void RlTrainingDialog_ProgressTrackingProperties_UpdateCorrectly()
+    {
+        using var chart = Chart(new ImmediateData());
+        using var vm = new RlTrainingDialogViewModel(new DelayedTraining(), new EmptyRegistry(), new UnavailableQ(), new FakeBacktestDefaultSettingsManager(), chart, StockAnalyzer.Core.Interfaces.NullLocalizationService.Instance);
+
+        Assert.False(vm.ShowProgressBar);
+        Assert.False(vm.IsTrainingInProgress);
+        Assert.Equal(0, vm.TotalStepsTarget);
+        Assert.Equal(0.0, vm.ProgressPercent);
+
+        vm.TotalStepsTarget = 10000;
+        vm.CompletedSteps = 2500;
+        vm.ProgressPercent = 25.0;
+        Assert.True(vm.ShowProgressBar);
+        Assert.Equal("25.0%", vm.ProgressPercentDisplay);
+        Assert.Contains("2,500 / 10,000 (25.0%)", vm.ProcessingStepsDisplay);
+    }
     private sealed class DelayedData : IDataService
     {
         public TaskCompletionSource Started { get; }=new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -431,7 +507,9 @@ public sealed partial class RlUiTests(ITestOutputHelper output)
         { LastRecovered = reviewed; RecoveryStarted.TrySetResult(); return RecoveryCompletion?.Task ?? Task.FromException<bool>(new InvalidOperationException("No recovery configured.")); }
         public IReadOnlyList<RlGeneration> Generations { get; init; } = Array.Empty<RlGeneration>();
         public string? RlActiveId => null;
-        public IReadOnlyList<RlGeneration> ListRl() => Generations;
+        /// <summary>When set, <see cref="ListRl"/> throws it (a registry that cannot be read).</summary>
+        public Exception? ListError { get; init; }
+        public IReadOnlyList<RlGeneration> ListRl() => ListError is { } error ? throw error : Generations;
         public ModelGenerationLease? AcquireRl(string id) => null;
         public ModelGenerationLease? AcquireRlActive() => null;
         public RlGeneration? GetRlGeneration(string id) => null;

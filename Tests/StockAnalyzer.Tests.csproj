@@ -34,6 +34,10 @@
     <Compile Remove="E2E\**" />
     <EmbeddedResource Remove="E2E\**" />
     <None Remove="E2E\**" />
+    <!-- The Benchmarks sources stay part of this project; only the output of building that project in place must not be compiled a second time. -->
+    <Compile Remove="StockAnalyzer.Benchmarks\obj\**;StockAnalyzer.Benchmarks\bin\**" />
+    <EmbeddedResource Remove="StockAnalyzer.Benchmarks\obj\**;StockAnalyzer.Benchmarks\bin\**" />
+    <None Remove="StockAnalyzer.Benchmarks\obj\**;StockAnalyzer.Benchmarks\bin\**" />
     <Compile Remove="Analysis\ReverseWatchAnalysisTests.cs" />
     <Compile Remove="Batch17Tests.cs" />
     <Compile Remove="NonTimeSeries\RenkoImplementationTests.cs" />

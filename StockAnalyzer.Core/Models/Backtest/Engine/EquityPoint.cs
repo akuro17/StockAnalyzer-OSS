@@ -3,7 +3,7 @@ using System;
 namespace StockAnalyzer.Core.Models.Backtest.Engine;
 
 /// <summary>
-/// HeldMargin is the margin-account amendment field (see Y:\Temp\sa_ai_context_BacktestEngine_P1.md
+/// HeldMargin is the margin-account amendment field (see docs/sa_ai_context_BacktestEngine_P1
 /// section 1.5.2): Equity = Cash + HeldMargin + UnrealizedPnL. Without this field the accounting
 /// identity cannot be reconciled from the output schema alone.
 /// </summary>

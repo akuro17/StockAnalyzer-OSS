@@ -11,7 +11,7 @@ using Xunit;
 namespace StockAnalyzer.Core.Tests.Services.Screener;
 
 /// <summary>
-/// Objective verification of <see cref="ScreenerConditionTreeEvaluator"/> (Y:\Temp\sa_implementation_plan_ScreenerFilterConditionTree.md
+/// Objective verification of <see cref="ScreenerConditionTreeEvaluator"/> (docs/sa_implementation_plan_ScreenerFilterConditionTree
 /// Task 3, decision A: the previous per-entry sequential AND/OR fold in ScreenerViewModel.ScanAsync is replaced by this recursive tree
 /// evaluation). Each leaf uses SMA(period=1) against a single candle, which is mathematically the candle's own Close - a deterministic,
 /// real (non-mocked) IScreeningCondition result, per CLAUDE.md's "Mocking ScreenerIndicatorEntry PROHIBITED" invariant.

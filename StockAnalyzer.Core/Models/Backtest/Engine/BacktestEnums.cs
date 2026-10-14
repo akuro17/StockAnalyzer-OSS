@@ -8,7 +8,7 @@ public enum OrderStatus { Submitted, Filled, Cancelled, Expired, Rejected }
 
 /// <summary>
 /// Long and Short are both executable in the margin-account model (StockAnalyzer.Core/Models/Backtest/Engine).
-/// See Y:\Temp\sa_ai_context_BacktestEngine_P1.md section 1.5 for the accounting model.
+/// See docs/sa_ai_context_BacktestEngine_P1 section 1.5 for the accounting model.
 /// </summary>
 public enum TradeSide { Long, Short }
 
@@ -25,7 +25,7 @@ public enum ExecutionModel { Legacy = 0, StrictEvidence = 1, YFinanceApproximate
 
 /// <summary>
 /// Insolvent covers both the original end-of-bar Equity&lt;=0 condition and a maintenance-margin
-/// forced liquidation (see Y:\Temp\sa_ai_context_BacktestEngine_P1.md section 1.5.6) — both stop the run.
+/// forced liquidation (see docs/sa_ai_context_BacktestEngine_P1 section 1.5.6) — both stop the run.
 /// Persisted as an integer in JSON and in the evaluation identity hash: never renumber or reuse a value; append only.
 /// </summary>
 public enum RunStatus { Completed = 0, Cancelled = 1, Failed = 2, Insolvent = 3 }

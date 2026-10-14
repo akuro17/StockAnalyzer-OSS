@@ -118,6 +118,11 @@ public partial class DetachedWindowViewModel : ViewModelBase, IDetachedWindowCon
     {
         if (_isDisposed || string.IsNullOrEmpty(tabId)) return;
 
+        if (tabId.Equals("ScatterAnalysis", StringComparison.OrdinalIgnoreCase))
+        {
+            tabId = "ScatterPlot";
+        }
+
         if (Items.Count >= _maxPanelTabs)
         {
             _logger.LogWarning("Maximum number of tabs reached in detached window.");

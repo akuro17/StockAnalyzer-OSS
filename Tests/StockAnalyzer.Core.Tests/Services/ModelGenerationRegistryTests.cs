@@ -363,6 +363,24 @@ public sealed class ModelGenerationRegistryTests : IDisposable
     }
 
     [Theory]
+    [InlineData("rl_portfolio")]
+    [InlineData("reinforcement_learning_q")]
+    public async Task RegistrationRejectsReinforcementLearningAndPortfolioTargets(string rlTarget)
+    {
+        using var registry = new ModelGenerationRegistry(Path.Combine(_root, "registry"));
+        var source = Source("model.onnx", 0.4);
+        var metricPath = source + ".metrics.json";
+        var report = JsonNode.Parse(File.ReadAllText(metricPath))!;
+        report["target_type"] = rlTarget;
+        File.WriteAllText(metricPath, report.ToJsonString());
+
+        var ex = await Assert.ThrowsAsync<InvalidDataException>(() => registry.RegisterAsync(source));
+        Assert.Contains("target", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Null(registry.ActiveId);
+        Assert.Empty(registry.List());
+    }
+
+    [Theory]
     [InlineData("trend_predictor_unknown_feature_mode.onnx")]
     [InlineData("trend_predictor_invalid_composed_spec.onnx")]
     [InlineData("trend_predictor_duplicate_classes.onnx")]

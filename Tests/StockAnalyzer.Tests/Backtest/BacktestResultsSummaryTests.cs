@@ -9,7 +9,7 @@ using static StockAnalyzer.Tests.Backtest.BacktestReportTestFactory;
 
 namespace StockAnalyzer.Tests.Backtest;
 
-/// <summary>Result summary at the top of the Results tab (Y:\Temp\sa_implementation_plan_BacktestResultsSummaryStrip.md): real generated reports, no mocks.</summary>
+/// <summary>Result summary at the top of the Results tab (docs/sa_implementation_plan_BacktestResultsSummaryStrip): real generated reports, no mocks.</summary>
 public class BacktestResultsSummaryTests
 {
     private static readonly string[] ExpectedSummaryLabelKeys =

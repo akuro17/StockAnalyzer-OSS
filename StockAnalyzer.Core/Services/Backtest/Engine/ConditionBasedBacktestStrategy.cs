@@ -11,7 +11,7 @@ namespace StockAnalyzer.Core.Services.Backtest.Engine;
 
 /// <summary>
 /// Real signal-generating strategy driven by a user-defined list of comparison conditions (see
-/// Y:\Temp\sa_implementation_plan_BacktestComparisonSignals.md section 4.3), reversing the P3 Gate G7
+/// docs/sa_implementation_plan_BacktestComparisonSignals section 4.3), reversing the P3 Gate G7
 /// deferral that shipped as <see cref="NoOpBacktestStrategy"/> — that class is left completely
 /// untouched; this is a new, separate strategy selected instead of it once at least one condition
 /// entry exists (Task 5).
@@ -24,7 +24,7 @@ namespace StockAnalyzer.Core.Services.Backtest.Engine;
 /// <see cref="IBacktestStrategy.Evaluate"/>'s single-nullable-return contract.
 ///
 /// <see cref="BacktestConditionSide.OutputName"/> support (Task 6a, 2026-09-18, see
-/// Y:\Temp\sa_implementation_plan_BacktestOutputNameSupport.md): a side naming a non-Main series of a
+/// docs/sa_implementation_plan_BacktestOutputNameSupport): a side naming a non-Main series of a
 /// multi-series indicator (e.g. MACD's "Signal" line) is honored end to end — <see cref="RegisterSide"/>
 /// includes <see cref="BacktestConditionSide.OutputName"/> in its dedupe key and passes it through to the
 /// <see cref="StrategyIndicatorRequest"/> it builds, and <c>BacktestEngine.PrepareIndicators</c> extracts
@@ -34,7 +34,7 @@ namespace StockAnalyzer.Core.Services.Backtest.Engine;
 ///
 /// <see cref="BacktestConditionEntry.Position"/> / same-bar reversal support (Task 2, 2026-09-19, corrected
 /// 2026-09-19 per user direction, see
-/// Y:\Temp\sa_implementation_plan_BacktestPositionDirectionReversal.md sections 2.2/3.3): v1's long-only
+/// docs/sa_implementation_plan_BacktestPositionDirectionReversal sections 2.2/3.3): v1's long-only
 /// entry resolution (always LongEntry) is retired in favor of resolving LongEntry/ShortEntry from each
 /// EntryOnly/Both entry's own <see cref="BacktestConditionEntry.Position"/> — this is the "small, additive
 /// follow-up" the class's original comment already anticipated. The reversal capability itself (Entry in
@@ -55,7 +55,7 @@ namespace StockAnalyzer.Core.Services.Backtest.Engine;
 /// Exit=opposite" behavior the user originally requested (the UI's Both button now emits this role).
 ///
 /// Entry-price-relative Stop-Loss/Take-Profit (Task 8b, 2026-09-19, see
-/// Y:\Temp\sa_implementation_plan_BacktestComparisonSignals.md sections 3.4/4.5): an optional
+/// docs/sa_implementation_plan_BacktestComparisonSignals sections 3.4/4.5): an optional
 /// <see cref="BacktestRiskManagementSettings"/> constructor parameter, `null`/fully-disabled by default
 /// (existing-behavior-preservation for every caller built before this feature). While holding a position,
 /// <see cref="Evaluate"/> checks this bar's High/Low against the entry-relative threshold BEFORE the
@@ -215,7 +215,7 @@ public sealed class ConditionBasedBacktestStrategy : IBacktestStrategy
     /// own exit contribution — stays entirely in <see cref="Evaluate"/>). Called every bar from
     /// <c>BacktestEngine</c>'s bar loop immediately after <see cref="Evaluate"/>, independently filling the
     /// engine's separate Exit-type pending-order slot (dual pending-order slots, see
-    /// Y:\Temp\sa_implementation_plan_BacktestPositionDirectionReversal.md section 2.3).
+    /// docs/sa_implementation_plan_BacktestPositionDirectionReversal section 2.3).
     /// </summary>
     public StrategyOrderRequest? EvaluateExit(StrategyContext context)
     {
@@ -377,7 +377,7 @@ public sealed class ConditionBasedBacktestStrategy : IBacktestStrategy
     /// <see cref="BacktestConditionSide"/> object instances. <c>OutputName</c> is part of the key (Task
     /// 6a) so two sides differing only by which named series they read (e.g. MACD's "Main" vs "Signal")
     /// are never collapsed onto the same request. <c>PriceSource</c> is part of the key too
-    /// (Y:\Temp\sa_improvement_plan_BacktestPriceSourceConditionFix.md) so two "Price" catalog rows
+    /// (docs/sa_improvement_plan_BacktestPriceSourceConditionFix) so two "Price" catalog rows
     /// (e.g. "High" and "Low", both sharing <see cref="IndicatorType.Price"/>) never collapse onto the
     /// same request - without this they would silently compare a value against itself.</summary>
     private static (IReadOnlyList<StrategyIndicatorRequest>, IReadOnlyDictionary<BacktestConditionSide, string>) BuildIndicatorRequests(

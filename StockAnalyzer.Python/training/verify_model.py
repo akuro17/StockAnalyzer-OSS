@@ -38,7 +38,7 @@ Q21=A Q22=A, C01/C03..C08=A C09=A C10=A C11=A C12=A.
 
 Usage
 -----
-    python verify_model.py                         # verify <DataRoot>/TrainingArtifacts/trend_predictor.onnx
+    python verify_model.py                         # verify <DataRoot>/TrainingArtifacts/TW/trend_predictor.onnx
     python verify_model.py --model path/to.onnx --feature-mode zscore --max-symbols 12
     python verify_model.py --quantize --model path/to.onnx --max-symbols 12
     python verify_model.py --selfcheck
@@ -80,9 +80,9 @@ SOFTMAX_SUM_TOL: float = ds.SOFTMAX_SUM_TOLERANCE  # mirrors IMLDataProcessor.So
 ENTROPY_ATOL: float = 1e-5
 EPSILON: float = ds.EPSILON        # mirrors IMLDataProcessor.Epsilon (1e-7f)
 NUM_CLASSES: int = len(ds.CLASS_LABELS)
-# <DataRoot>/TrainingArtifacts, matching run_training.py's ARTIFACTS_DIR (not a path relative
+# <DataRoot>/TrainingArtifacts/TW, matching run_training.py's ARTIFACTS_DIR (not a path relative
 # to this script -- see that module's comment for why).
-DEFAULT_MODEL: Path = ds.DATA_ROOT / "TrainingArtifacts" / "trend_predictor.onnx"
+DEFAULT_MODEL: Path = ds.TRAINING_WIZARD_ARTIFACTS_DIR / "trend_predictor.onnx"
 DEFAULT_MAX_SYMBOLS: int = 12
 
 # --- Dynamic quantization (T17) -- named values; tolerances are CLI-overridable --------------------------------

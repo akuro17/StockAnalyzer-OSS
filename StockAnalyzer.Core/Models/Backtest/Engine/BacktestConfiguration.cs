@@ -40,7 +40,7 @@ public static class BacktestConfigurationBounds
 /// <summary>
 /// Immutable backtest run configuration. Margin fields (InitialMarginRatio, MaintenanceMarginRatio,
 /// LiquidationPenaltyRatio) implement the in-session amendment recorded in
-/// Y:\Temp\sa_ai_context_BacktestEngine_P1.md section 1.5.1 — they replace the original spec's
+/// docs/sa_ai_context_BacktestEngine_P1 section 1.5.1 — they replace the original spec's
 /// full-cash-outlay accounting with a shared Long/Short margin-account model.
 /// Single-property bounds are enforced immediately in each init accessor. Cross-property bounds
 /// (margin ratio ordering, sizing-parameter-vs-model consistency) cannot be safely checked in an
@@ -129,7 +129,7 @@ public sealed class BacktestConfiguration
     /// Default of 0.005 (0.5%) reflects that a forced liquidation always executes as a market
     /// order under adverse (liquidity-exhaustion) conditions, so a 0 default would silently model
     /// an unrealistically frictionless margin call. User-confirmed amendment recorded in
-    /// Y:\Temp\sa_ai_context_BacktestEngine_P1.md section 1.5.1.
+    /// docs/sa_ai_context_BacktestEngine_P1 section 1.5.1.
     /// </summary>
     private readonly decimal _liquidationPenaltyRatio = BacktestDefaults.LiquidationPenaltyRatio;
     public decimal LiquidationPenaltyRatio

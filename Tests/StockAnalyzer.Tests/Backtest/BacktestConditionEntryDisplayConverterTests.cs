@@ -9,7 +9,7 @@ using Xunit;
 namespace StockAnalyzer.Tests.Backtest;
 
 /// <summary>
-/// Bug fix (Y:\Temp\sa_improvement_plan_BacktestPriceSourceConditionFix.md): before this fix, a
+/// Bug fix (docs/sa_improvement_plan_BacktestPriceSourceConditionFix): before this fix, a
 /// "Price" condition (one catalog row per PriceType - Open/High/Low/...) always displayed as
 /// "Price(Price) &gt; Price(Price)" regardless of which PriceType rows were actually selected, since
 /// <see cref="BacktestConditionSide"/> had no field to carry the selection through and the converter never

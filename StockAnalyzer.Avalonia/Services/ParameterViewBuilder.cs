@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
+using System.Globalization;
 using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
@@ -215,8 +216,8 @@ public class ParameterViewBuilder
             if (rangeAttribute != null)
             {
                 ToolTip.SetTip(nud, $"Range: {rangeAttribute.Minimum} - {rangeAttribute.Maximum}");
-                if (decimal.TryParse(rangeAttribute.Minimum.ToString(), out var min)) nud.Minimum = min;
-                if (decimal.TryParse(rangeAttribute.Maximum.ToString(), out var max)) nud.Maximum = max;
+                if (decimal.TryParse(Convert.ToString(rangeAttribute.Minimum, CultureInfo.InvariantCulture), NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out var min)) nud.Minimum = min;
+                if (decimal.TryParse(Convert.ToString(rangeAttribute.Maximum, CultureInfo.InvariantCulture), NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out var max)) nud.Maximum = max;
             }
             else if (coreRangeAttribute != null)
             {
@@ -492,8 +493,8 @@ public class ParameterViewBuilder
             if (rangeAttribute != null)
             {
                 ToolTip.SetTip(nud, $"Range: {rangeAttribute.Minimum} - {rangeAttribute.Maximum}");
-                if (decimal.TryParse(rangeAttribute.Minimum.ToString(), out var min)) nud.Minimum = min;
-                if (decimal.TryParse(rangeAttribute.Maximum.ToString(), out var max)) nud.Maximum = max;
+                if (decimal.TryParse(Convert.ToString(rangeAttribute.Minimum, CultureInfo.InvariantCulture), NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out var min)) nud.Minimum = min;
+                if (decimal.TryParse(Convert.ToString(rangeAttribute.Maximum, CultureInfo.InvariantCulture), NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out var max)) nud.Maximum = max;
             }
             else if (coreRangeAttribute != null)
             {

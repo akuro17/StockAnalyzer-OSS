@@ -48,4 +48,101 @@ public class PredictionDisplayFormatterTests
         Assert.Null(PredictionDisplayFormatter.Format(Result(double.PositiveInfinity), TimeframeType.Weekly,
             CultureInfo.InvariantCulture, _ => "{0} bars ahead: {1}%"));
     }
+
+    private const string ClassTemplate = "{0} bars ahead: {1}";
+    private const string ClassWithProbabilityTemplate = "{0} bars ahead: {1} ({2}%)";
+
+    private static readonly PredictionOutputContract WeeklyClass = new(
+        PredictionOutputSemantic.ClassProbabilities, PredictionOutputUnit.Probability, 5,
+        TimeframeType.Weekly, ConfidenceType.ClassProbability,
+        PredictionTargetFormula.ThresholdedSimpleReturn);
+
+    private static PredictionResult ClassResult(string label = "Up", float? probability = 0.6234f,
+        ConfidenceType type = ConfidenceType.ClassProbability) => new(
+        label, probability ?? float.NaN, Array.Empty<ClassScore>(), IsFallback: false)
+    {
+        OutputContract = WeeklyClass,
+        ConfidenceType = type,
+        ConfidenceValue = probability,
+    };
+
+    private static string? FormatClass(PredictionResult result, TimeframeType timeframe = TimeframeType.Weekly) =>
+        PredictionDisplayFormatter.Format(result, timeframe, CultureInfo.InvariantCulture, key => key switch
+        {
+            PredictionDisplayFormatter.ClassLabelKey => ClassTemplate,
+            PredictionDisplayFormatter.ClassLabelWithProbabilityKey => ClassWithProbabilityTemplate,
+            _ => null,
+        });
+
+    [Fact]
+    public void Format_Class_ShowsLabelWithTheRealProbabilityAtOneDecimal()
+    {
+        Assert.Equal("5 bars ahead: Up (62.3%)", FormatClass(ClassResult()));
+        Assert.Equal("5 bars ahead: Up (62.3%)",
+            FormatClass(ClassResult(type: ConfidenceType.CalibratedProbability)));
+    }
+
+    [Fact]
+    public void Format_Class_UsesTheCultureDecimalSeparator()
+    {
+        var value = PredictionDisplayFormatter.Format(ClassResult(), TimeframeType.Weekly,
+            new CultureInfo("de-DE"), key => key == PredictionDisplayFormatter.ClassLabelWithProbabilityKey
+                ? ClassWithProbabilityTemplate : ClassTemplate);
+
+        Assert.Equal("5 bars ahead: Up (62,3%)", value);
+    }
+
+    [Fact]
+    public void Format_Class_WithoutARealProbability_KeepsTheLabelOnlyText()
+    {
+        Assert.Equal("5 bars ahead: Up", FormatClass(ClassResult(probability: null)));
+        Assert.Equal("5 bars ahead: Up", FormatClass(ClassResult(probability: float.NaN)));
+        Assert.Equal("5 bars ahead: Up", FormatClass(ClassResult(probability: 1.2f)));
+        Assert.Equal("5 bars ahead: Up", FormatClass(ClassResult(probability: -0.1f)));
+        // A confidence of another meaning (e.g. a standard deviation) is never shown as a percentage.
+        Assert.Equal("5 bars ahead: Up",
+            FormatClass(ClassResult(type: ConfidenceType.PredictionStdDev)));
+        Assert.Equal("5 bars ahead: Up", FormatClass(ClassResult(type: ConfidenceType.None)));
+    }
+
+    [Fact]
+    public void Format_Class_ProbabilityBoundsAreShownExactly()
+    {
+        Assert.Equal("5 bars ahead: Up (0.0%)", FormatClass(ClassResult(probability: 0f)));
+        Assert.Equal("5 bars ahead: Up (100.0%)", FormatClass(ClassResult(probability: 1f)));
+    }
+
+    [Fact]
+    public void Format_Class_UnavailableResults_AreNull()
+    {
+        Assert.Null(FormatClass(ClassResult(), TimeframeType.Daily)); // another chart timeframe
+        Assert.Null(FormatClass(ClassResult(label: " "))); // no label
+        Assert.Null(FormatClass(PredictionResult.Empty)); // fallback
+        Assert.Null(FormatClass(ClassResult() with { IsRegression = true })); // class semantic but a regression flag
+        Assert.Null(FormatClass(ClassResult() with { OutputContract = null }));
+    }
+
+    [Fact]
+    public void Format_Class_MissingTemplate_IsNull()
+    {
+        Assert.Null(PredictionDisplayFormatter.Format(ClassResult(), TimeframeType.Weekly,
+            CultureInfo.InvariantCulture, _ => null));
+        Assert.Null(PredictionDisplayFormatter.Format(ClassResult(probability: null), TimeframeType.Weekly,
+            CultureInfo.InvariantCulture, _ => " "));
+    }
+
+    [Fact]
+    public void Format_LogReturn_RejectsAWrongUnitOrAClassificationFlag()
+    {
+        var wrongUnit = Result(0.04) with
+        {
+            OutputContract = WeeklyLogReturn with { Unit = PredictionOutputUnit.Probability },
+        };
+        Assert.Null(PredictionDisplayFormatter.Format(wrongUnit, TimeframeType.Weekly,
+            CultureInfo.InvariantCulture, _ => "{0} bars ahead: {1}%"));
+        Assert.Null(PredictionDisplayFormatter.Format(Result(0.04) with { IsRegression = false },
+            TimeframeType.Weekly, CultureInfo.InvariantCulture, _ => "{0} bars ahead: {1}%"));
+        Assert.Null(PredictionDisplayFormatter.Format(Result(0.04), TimeframeType.Weekly,
+            CultureInfo.InvariantCulture, _ => ""));
+    }
 }

@@ -18,7 +18,7 @@ namespace StockAnalyzer.Core.Tests.Models.Training;
 /// <c>run_training.py --config</c> and written into <c>Data/Experiments/&lt;run-id&gt;/</c> by
 /// <see cref="StockAnalyzer.Core.Services.ExperimentLogService"/>. Deferred since Task 1 of the
 /// ONNX training UI foundation sprint (see the round-trip serialization note in
-/// Y:\Temp\sa_step_log_OnnxTrainingFoundation.md) and added here in Task 10.
+/// docs/sa_step_log_OnnxTrainingFoundation) and added here in Task 10.
 /// </summary>
 [Collection("ChildProcess")]
 public class TrainingConfigJsonTests
@@ -281,8 +281,8 @@ public class TrainingConfigJsonTests
             RunId = "20260829-153000",
             Success = true,
             ExitCode = 0,
-            OnnxArtifactPath = @"I:\stock\StockAnalyzer.Python\training\artifacts\multi-2_weekly.onnx",
-            MetricsArtifactPath = @"I:\stock\StockAnalyzer.Python\training\artifacts\multi-2_weekly.onnx.metrics.json",
+            OnnxArtifactPath = "artifacts/multi-2_weekly.onnx",
+            MetricsArtifactPath = "artifacts/multi-2_weekly.onnx.metrics.json",
             Metrics = new Dictionary<string, double> { ["accuracy"] = 0.62, ["macro_f1"] = 0.58 },
             Message = "completed",
             StartedUtc = new DateTimeOffset(2026, 8, 29, 15, 30, 0, TimeSpan.Zero),
@@ -309,14 +309,14 @@ public class TrainingConfigJsonTests
     {
         var original = new TrainingJobConfig
         {
-            Symbols = new[] { "7203-T", "9984-T" },
+            Symbols = new[] { "TEST-A", "TEST-B" },
             Architecture = "lstm",
             WindowSize = 60,
             Horizon = 5,
             IndicatorChannelExportPaths = new Dictionary<string, string>
             {
-                ["7203-T"] = @"C:\Temp\sa_indicator_channels_run1_7203-T.parquet",
-                ["9984-T"] = @"C:\Temp\sa_indicator_channels_run1_9984-T.parquet",
+                ["TEST-A"] = Path.Combine(Path.GetTempPath(), "sa_indicator_channels_test_a.parquet"),
+                ["TEST-B"] = Path.Combine(Path.GetTempPath(), "sa_indicator_channels_test_b.parquet"),
             },
         };
 

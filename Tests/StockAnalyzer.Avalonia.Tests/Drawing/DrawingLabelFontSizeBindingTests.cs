@@ -8,7 +8,7 @@ namespace StockAnalyzer.Avalonia.Tests.Drawing;
 /// <summary>
 /// Regression coverage for wiring 11 drawing tools' label TextSize to the shared
 /// DrawingThemeContext.FontSize (color intentionally left unchanged per user decision — see
-/// Y:\Temp\sa_implementation_plan_drawinglabel_fontsize_extension.md). The underlying
+/// docs/sa_implementation_plan_drawinglabel_fontsize_extension). The underlying
 /// live-update behavior of DrawingThemeContext.FontSize itself is already covered by
 /// DrawingThemeContextTests; these tests instead prove each object's Render() actually consumes
 /// that value at runtime (a plain diff review/build wouldn't catch a wrong-property typo that

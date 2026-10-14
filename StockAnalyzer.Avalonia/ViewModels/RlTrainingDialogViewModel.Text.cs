@@ -14,7 +14,7 @@ public sealed partial class RlTrainingDialogViewModel
     private RlArtifactCleanupResult? _lastCleanupResult;
     private static readonly string[] NoticeKeys =
     {
-        "Rl.CostsSaved", "Rl.SmokeCompleted", "Rl.State.Succeeded", "Rl.Checkpoint.Paused",
+        "Rl.SmokeCompleted", "Rl.State.Succeeded", "Rl.Checkpoint.Paused",
         "Rl.Checkpoint.PausePending", "Rl.Checkpoint.Abandoned"
     };
     partial void OnMessageChanged(string value)

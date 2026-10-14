@@ -7,7 +7,7 @@ namespace StockAnalyzer.Core.Tests.Backtest.Reporting;
 
 /// <summary>
 /// Timing / allocation LOG for report generation (T10). It asserts nothing about time: it prints numbers so a later refactor
-/// (Y:\Temp\sa_implementation_plan_BacktestTradeStatisticsSinglePass.md) has a measured baseline instead of an estimate.
+/// (docs/sa_implementation_plan_BacktestTradeStatisticsSinglePass) has a measured baseline instead of an estimate.
 /// The default run measures small sizes only; set <c>SA_PERF_LARGE=1</c> for the large ones (up to a million trades / bars) and read the output with
 /// <c>dotnet test --filter "Category=Perf" --logger "console;verbosity=detailed"</c>.
 /// </summary>

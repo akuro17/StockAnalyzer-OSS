@@ -12,7 +12,7 @@ namespace StockAnalyzer.Avalonia.Tests.Services.Drawing;
 
 /// <summary>
 /// Regression tests for two bugs reported against the chart-drawing-persistence feature
-/// (see Y:\Temp\sa_step_log_ChartDrawingPersistence.md):
+/// (see docs/sa_step_log_ChartDrawingPersistence):
 /// 1) An empty (never-drawn-on) ticker/timeframe should not create a JSON file (previously
 ///    happened for the app's default startup symbol on every launch).
 /// 2) SaveAsync must fully complete the write before returning, so a Load() immediately

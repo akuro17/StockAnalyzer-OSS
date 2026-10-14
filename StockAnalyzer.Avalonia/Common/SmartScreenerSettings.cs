@@ -2,7 +2,7 @@ namespace StockAnalyzer.Avalonia.Common;
 
 public class SmartScreenerSettings
 {
-    public string ScreeningDataPath { get; set; } = "Web/Site/root/data/screening/latest_screening_data.json";
+    public string ScreeningDataPath { get; set; } = "Data/Screening/latest_screening_data.json";
 
     public void Validate()
     {

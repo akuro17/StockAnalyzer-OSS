@@ -119,6 +119,7 @@
     <SolidColorBrush x:Key="Brush.Text.Tertiary" Color="{DynamicResource Color.Text.Tertiary}" />
     <SolidColorBrush x:Key="Brush.Text.Disabled" Color="{DynamicResource Color.Text.Disabled}" />
     <SolidColorBrush x:Key="Brush.Text.Inverse" Color="{DynamicResource Color.Text.Inverse}" />
+    <SolidColorBrush x:Key="Brush.Text.Warning" Color="{DynamicResource Color.Semantic.Warning}" />
 
     <SolidColorBrush x:Key="Brush.Accent.Primary" Color="{DynamicResource Color.Accent.Primary}" />
     <SolidColorBrush x:Key="Brush.Accent.Secondary" Color="{DynamicResource Color.Accent.Secondary}" />

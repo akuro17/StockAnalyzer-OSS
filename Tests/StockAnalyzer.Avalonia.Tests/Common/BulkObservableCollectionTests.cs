@@ -6,7 +6,7 @@ using Xunit;
 namespace StockAnalyzer.Avalonia.Tests.Common;
 
 /// <summary>sa_implement (Notes メインタイムライン インフィニットスクロール Task 3,
-/// Y:\Temp\sa_implementation_plan.md): covers <see cref="BulkObservableCollection{T}.AddRange"/>,
+/// docs/sa_implementation_plan): covers <see cref="BulkObservableCollection{T}.AddRange"/>,
 /// the append-without-Reset counterpart to the existing <see cref="BulkObservableCollection{T}.ReplaceRange"/>.
 /// Infinite-scroll's requirement - appending a new page without disturbing a bound ItemsControl's
 /// already-rendered items/scroll position - depends specifically on AddRange never raising a Reset,

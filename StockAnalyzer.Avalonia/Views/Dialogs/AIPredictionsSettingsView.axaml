@@ -230,6 +230,8 @@
                                Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"
                                IsVisible="{Binding AddEnsembleMemberHint, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                     <TextBlock Text="{Binding EnsembleStatus}" TextWrapping="Wrap"/>
+                    <TextBlock Text="{Binding EnsembleMonitoringStatus}" TextWrapping="Wrap"
+                               IsVisible="{Binding EnsembleMonitoringStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                 </StackPanel>
             </Border>
 

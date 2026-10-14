@@ -7,7 +7,7 @@ using Xunit;
 
 namespace StockAnalyzer.Avalonia.Tests.ViewModels;
 
-/// <summary>sa_implement (Ticker Auto Play, Y:\Temp\sa_implementation_plan_TickerAutoPlay.md Phase 1): the pure
+/// <summary>sa_implement (Ticker Auto Play, docs/sa_implementation_plan_TickerAutoPlay Phase 1): the pure
 /// controller, driven deterministically through a recording scheduler (no real time).</summary>
 public class TickerAutoPlayControllerTests
 {

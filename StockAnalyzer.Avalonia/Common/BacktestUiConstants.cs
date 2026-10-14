@@ -2,7 +2,7 @@ namespace StockAnalyzer.Avalonia.Common;
 
 /// <summary>
 /// DIP dimensions and UI metrics for BacktestWindow (the window dimensions come from spec §5.7 / Gate G6:
-/// Y:\0915 Backtesting\03_P3_UIWindow.md). Physical-pixel conversion (RenderScaling) is applied at
+/// docs/03_P3_UIWindow). Physical-pixel conversion (RenderScaling) is applied at
 /// the View layer only; every value here stays in DIP so it composes with Avalonia layout as-is.
 /// The equity chart's plot margins are an owner decision (2026-10-01), not a spec value: the Y-axis labels are drawn in the RIGHT
 /// margin (wide, <see cref="PlotAxisMarginRight"/>), the left margin is only a gutter. The Equity* members below are UI gesture and

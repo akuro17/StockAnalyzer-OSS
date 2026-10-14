@@ -30,8 +30,8 @@ public sealed partial class RlStoredPriceDesktopTests
             JsonSerializer.Serialize(window.FindAllDescendants().Select(e => new { id = e.Properties.AutomationId.ValueOrDefault, name = e.Properties.Name.ValueOrDefault, offscreen = e.IsOffscreen, type = e.Properties.ControlType.ValueOrDefault.ToString(), bounds = e.BoundingRectangle.ToString() })));
         SaveScreenshot(window, "sa_RL_U01_desktop_initial.png");
         WaitUntil(() => !Element(window, RlUiConstants.Train).IsEnabled);
-        foreach (string id in new[] { RlUiConstants.Models, RlUiConstants.FrozenDirection, RlUiConstants.Blocks,
-            RlUiConstants.Policies, RlUiConstants.Cancel, RlUiConstants.Pause, RlUiConstants.Activate })
+        foreach (string id in new[] { RlUiConstants.Models, RlUiConstants.FrozenDirection,
+            RlUiConstants.Cancel, RlUiConstants.Pause, RlUiConstants.Activate })
             Assert.DoesNotContain(window.FindAllDescendants(), e => e.Properties.AutomationId.ValueOrDefault == id && !e.IsOffscreen);
         var scroll = window.FindAllDescendants().FirstOrDefault(e => e.Patterns.Scroll.IsSupported && e.Patterns.Scroll.Pattern.VerticallyScrollable);
         void ScrollOwned(bool up)

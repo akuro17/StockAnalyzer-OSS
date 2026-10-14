@@ -6,7 +6,7 @@ namespace StockAnalyzer.Core.Models.Backtest.Engine;
 /// One side (Left or Right) of a <see cref="BacktestConditionEntry"/> comparison — indicator-only
 /// (no Column/Criteria concerns, unlike Screener's <c>ScreenerIndicatorSideConfig</c>), matching
 /// <c>BacktestIndicatorSelectionViewModel</c>'s own Indicator-only restriction.
-/// See Y:\Temp\sa_implementation_plan_BacktestComparisonSignals.md section 4.1.
+/// See docs/sa_implementation_plan_BacktestComparisonSignals section 4.1.
 /// </summary>
 public sealed class BacktestConditionSide
 {
@@ -24,7 +24,7 @@ public sealed class BacktestConditionSide
     public TimeFrame? Frame { get; init; }
 
     /// <summary>
-    /// Safe extension (Y:\Temp\sa_improvement_plan_BacktestPriceSourceConditionFix.md): which raw
+    /// Safe extension (docs/sa_improvement_plan_BacktestPriceSourceConditionFix): which raw
     /// OHLC-derived series this side reads. Null by default — meaningful only when <see cref="IndicatorType"/>
     /// is <see cref="IndicatorType.Price"/> (the catalog's "Price" group has one row per <see cref="Indicators.PriceType"/>
     /// value, e.g. "High"/"Low", all sharing <see cref="IndicatorType.Price"/> but distinguished only by this

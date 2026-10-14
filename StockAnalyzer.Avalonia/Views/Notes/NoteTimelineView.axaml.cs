@@ -278,28 +278,42 @@ public partial class NoteTimelineView : UserControl
         var topLevel = TopLevel.GetTopLevel(this);
         if (topLevel is null) return;
 
-        var files = await topLevel.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        // async void: an exception leaving this handler would be raised on the UI synchronization context and end the process,
+        // so everything after the guard returns is inside try/catch (AsyncVoidHandlerGuardTests enforces this). The stream is read
+        // before the ViewModel is touched, so a failed file never leaves a placeholder without its attachment.
+        try
         {
-            Title = "Attach Image",
-            AllowMultiple = true,
-            FileTypeFilter = new[]
+            var files = await topLevel.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
             {
-                new FilePickerFileType("Images") { Patterns = new[] { "*.png", "*.jpg", "*.jpeg", "*.gif", "*.bmp", "*.webp" } }
+                Title = "Attach Image",
+                AllowMultiple = true,
+                FileTypeFilter = new[]
+                {
+                    new FilePickerFileType("Images") { Patterns = new[] { "*.png", "*.jpg", "*.jpeg", "*.gif", "*.bmp", "*.webp" } }
+                }
+            });
+
+            var composeBodyTextBox = this.FindControl<TextBox>("ComposeBodyTextBox");
+            var insertionIndex = composeBodyTextBox?.CaretIndex ?? vm.Body.Length;
+            foreach (var file in files)
+            {
+                await using var stream = await file.OpenReadAsync();
+                using var memoryStream = new MemoryStream();
+                await stream.CopyToAsync(memoryStream);
+
+                var localId = Guid.NewGuid();
+                vm.InsertImagePlaceholder(insertionIndex, localId);
+                vm.AddPendingAttachment(memoryStream.ToArray(), file.Name, localId);
+                insertionIndex += NoteImageTokenExtractor.Build(localId).Length;
             }
-        });
-
-        var composeBodyTextBox = this.FindControl<TextBox>("ComposeBodyTextBox");
-        var insertionIndex = composeBodyTextBox?.CaretIndex ?? vm.Body.Length;
-        foreach (var file in files)
+        }
+        catch (OperationCanceledException)
         {
-            await using var stream = await file.OpenReadAsync();
-            using var memoryStream = new MemoryStream();
-            await stream.CopyToAsync(memoryStream);
-
-            var localId = Guid.NewGuid();
-            vm.InsertImagePlaceholder(insertionIndex, localId);
-            vm.AddPendingAttachment(memoryStream.ToArray(), file.Name, localId);
-            insertionIndex += NoteImageTokenExtractor.Build(localId).Length;
+            // The user cancelled the picker.
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "{Handler} failed", nameof(AttachImageButton_Click));
         }
     }
 }

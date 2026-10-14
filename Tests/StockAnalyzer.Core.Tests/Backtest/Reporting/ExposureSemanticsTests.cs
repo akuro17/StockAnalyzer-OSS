@@ -9,7 +9,7 @@ using Xunit;
 namespace StockAnalyzer.Core.Tests.Backtest.Reporting;
 
 /// <summary>
-/// Exposure population and same-bar round trips (Y:\Temp\sa_implementation_plan_BacktestExposureSemantics.md, T5 + T6):
+/// Exposure population and same-bar round trips (docs/sa_implementation_plan_BacktestExposureSemantics, T5 + T6):
 /// the denominator starts at max(HistoryStartIndex, TradingStartIndex), and a trade opened and closed on the same bar counts as one
 /// in-market bar even though its Close snapshot is flat.
 /// </summary>

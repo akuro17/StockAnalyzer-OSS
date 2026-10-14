@@ -15,7 +15,7 @@ namespace StockAnalyzer.Core.Tests.Services;
 
 /// <summary>
 /// Task3 of the IndicatorChannelResolver_WebAIReviewAdoption plan (see
-/// <c>Y:\Temp\sa_implementation_plan_IndicatorChannelResolver_WebAIReviewAdoption.md</c>): proves the
+/// <c>docs/sa_implementation_plan_IndicatorChannelResolver_WebAIReviewAdoption</c>): proves the
 /// design's central claim directly -- "the same FeatureSpec computes the same values whether it goes
 /// through the offline <see cref="IndicatorChannelExporter"/> or the online
 /// <see cref="PredictionService.BuildComposedTensor"/>" -- rather than only individually testing each

@@ -14,7 +14,7 @@ namespace StockAnalyzer.Core.Services.Backtest.Engine;
 /// booleans left-to-right (each entry's <see cref="BacktestConditionEntry.LogicalOperator"/> says how
 /// to combine with the NEXT entry) instead of per-ticker set operations, since Backtest evaluates a
 /// single symbol's single current bar rather than scanning many tickers at once. See
-/// Y:\Temp\sa_implementation_plan_BacktestComparisonSignals.md section 4.2.
+/// docs/sa_implementation_plan_BacktestComparisonSignals section 4.2.
 /// </summary>
 public static class BacktestConditionEvaluator
 {

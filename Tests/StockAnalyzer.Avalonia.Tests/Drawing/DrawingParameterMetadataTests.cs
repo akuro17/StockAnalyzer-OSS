@@ -294,8 +294,8 @@ public class DrawingParameterMetadataTests
     [Fact]
     public void Localization_DrawingCategoriesAndParams_ExistInBothLocales()
     {
-        var enPath = @"i:\stock\StockAnalyzer.Avalonia\Resources\Locales\en.json";
-        var jaPath = @"i:\stock\StockAnalyzer.Avalonia\Resources\Locales\ja.json";
+        var enPath = StockAnalyzer.Core.Common.PathDiscovery.ResolveFilePath(null, System.IO.Path.Combine("StockAnalyzer.Avalonia", "Resources", "Locales", "en.json"));
+        var jaPath = StockAnalyzer.Core.Common.PathDiscovery.ResolveFilePath(null, System.IO.Path.Combine("StockAnalyzer.Avalonia", "Resources", "Locales", "ja.json"));
 
         var enJson = System.Text.Json.JsonDocument.Parse(System.IO.File.ReadAllText(enPath)).RootElement;
         var jaJson = System.Text.Json.JsonDocument.Parse(System.IO.File.ReadAllText(jaPath)).RootElement;

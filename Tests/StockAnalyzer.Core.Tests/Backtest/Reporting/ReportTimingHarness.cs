@@ -8,8 +8,8 @@ using StockAnalyzer.Core.Services.Backtest.Reporting;
 namespace StockAnalyzer.Core.Tests.Backtest.Reporting;
 
 /// <summary>
-/// Reusable timing/allocation harness for report generation (Y:\Temp\sa_implementation_plan_BacktestReportVerificationOracle.md T10 and
-/// Y:\Temp\sa_implementation_plan_BacktestTradeStatisticsSinglePass.md T11 use the SAME harness so before/after numbers are comparable).
+/// Reusable timing/allocation harness for report generation (docs/sa_implementation_plan_BacktestReportVerificationOracle T10 and
+/// docs/sa_implementation_plan_BacktestTradeStatisticsSinglePass T11 use the SAME harness so before/after numbers are comparable).
 /// It only measures; nothing here asserts a time. Data is seeded, so the workload is identical between runs.
 /// </summary>
 internal static class ReportTimingHarness

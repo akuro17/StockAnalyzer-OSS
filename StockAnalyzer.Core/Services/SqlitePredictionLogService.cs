@@ -73,7 +73,7 @@ internal sealed partial class SqlitePredictionLogService : IPredictionLogService
     public async Task<string?> RecordAsync(PredictionResult result, string symbol, TimeframeType timeframe,
         IReadOnlyList<CandleData> inputs, CancellationToken ct = default)
     {
-        var prediction = await PredictionMonitoringReducer.PrepareAsync(_registry, _clock, result, symbol, timeframe, inputs, ct).ConfigureAwait(false);
+        var prediction = await MonitoredPredictionFactory.CreateAsync(_registry, _clock, result, symbol, timeframe, inputs, ct).ConfigureAwait(false);
         if (prediction is null) return null;
         await _gate.WaitAsync(ct).ConfigureAwait(false);
         try

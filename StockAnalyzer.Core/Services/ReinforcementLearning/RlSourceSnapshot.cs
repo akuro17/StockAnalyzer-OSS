@@ -176,9 +176,13 @@ public sealed class RlSourceSnapshot
         if (block is null || !Catalog.Train.Concat(Catalog.Validation).Concat(Catalog.Oos).Contains(block))
             throw new ArgumentException("Episode must belong to the fixed source catalog.", nameof(block));
         var bars = Bars.AsSpan(block.StartIndex, RlContract.SupportLength).ToArray().ToImmutableArray();
-        return new BacktestInput(bars, Manifest.Symbol, TimeFrame.D1, BacktestInput.CurrentDataVersion,
-            bars[RlContract.WindowLength - 1].Timestamp, bars[^1].Timestamp, 0, RlContract.WindowLength - 1);
+        return CreateEpisodeInput(Manifest.Symbol, bars);
     }
+
+    /// <summary>Single owner of the engine input of one 192-bar episode: the decision anchor is the last bar of the first window.</summary>
+    internal static BacktestInput CreateEpisodeInput(string symbol, ImmutableArray<CandleData> bars)
+        => new(bars, symbol, TimeFrame.D1, BacktestInput.CurrentDataVersion,
+            bars[RlContract.WindowLength - 1].Timestamp, bars[^1].Timestamp, 0, RlContract.WindowLength - 1);
 
     /// <summary>
     /// Short-history catalog: by contract the all-block rule (one complete block per partition at minimum, every complete block kept,
@@ -192,8 +196,7 @@ public sealed class RlSourceSnapshot
     internal static RlEpisodeCatalog BuildCatalog(ImmutableArray<CandleData> bars,
         ImmutableArray<RlCorporateAction> actions, ImmutableArray<DateOnly> imputedDates, bool smoke, string? evaluationSpecification = null)
     {
-        int cut1 = checked((int)((long)RlContract.TrainPartitionNumerator * bars.Length / RlContract.PartitionDenominator));
-        int cut2 = checked((int)((long)RlContract.ValidationPartitionNumerator * bars.Length / RlContract.PartitionDenominator));
+        var (cut1, cut2) = RlPartitionCuts.Ratio(bars.Length);
         var excluded = ImmutableArray.CreateBuilder<string>();
         ImmutableArray<RlEpisodeBlock> Blocks(string name, int start, int end)
         {

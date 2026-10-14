@@ -12,7 +12,7 @@ namespace StockAnalyzer.Core.Tests.Backtest.Reporting;
 
 /// <summary>
 /// Pins the integer wire values of every enum that is persisted in report JSON or folded into the evaluation identity hash
-/// (Y:\Temp\sa_implementation_plan_BacktestReportIntegrityContracts.md, T1). The literal tables below are the contract:
+/// (docs/sa_implementation_plan_BacktestReportIntegrityContracts, T1). The literal tables below are the contract:
 /// reflection cannot tell an explicit enum value from an implicit one, so a "all members are explicit" test is not possible.
 /// Reordering, inserting, renaming or removing a member fails a table test; changing the byte layout fails a golden test.
 /// </summary>

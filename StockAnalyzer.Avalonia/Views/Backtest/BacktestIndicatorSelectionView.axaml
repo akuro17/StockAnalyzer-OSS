@@ -417,7 +417,7 @@
                                  previous joined-corner "-1,0,0,0" layout clipped label text top/bottom and
                                  rendered the Exit/Both boundary as touching while Entry/Exit looked
                                  separated). The Long/Short Position toggle (2026-09-19,
-                                 Y:\Temp\sa_implementation_plan_BacktestPositionDirectionReversal.md section
+                                 docs/sa_implementation_plan_BacktestPositionDirectionReversal section
                                  2.1/4) sits at this row's left edge, same ModeSwitch/joined-Grid convention
                                  as the "123/Ind" toggle above; it selects the direction AddEntryCondition/
                                  AddBothCondition open (AddExitCondition ignores it - ExitOnly stays
@@ -441,7 +441,7 @@
                     </Border>
 
                     <!-- Risk Management (2026-09-19, Task 8b of
-                         Y:\Temp\sa_implementation_plan_BacktestComparisonSignals.md section 4.5): optional
+                         docs/sa_implementation_plan_BacktestComparisonSignals section 4.5): optional
                          entry-price-relative Stop-Loss/Take-Profit, applied while holding a position from
                          ANY entry this strategy opens (independent of which Role/condition opened it).
                          Blank (null) means disabled - same NumericUpDown-to-decimal?-ratio convention

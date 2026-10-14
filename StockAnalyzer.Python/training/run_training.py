@@ -51,13 +51,13 @@ import metrics  # noqa: E402
 import onnx_meta  # noqa: E402  (sibling module, path inserted above)
 import checkpoints  # noqa: E402
 
-# <DataRoot>/TrainingArtifacts, not a path relative to this script: this file lives under
+# <DataRoot>/TrainingArtifacts/TW (the Training Wizard folder), not a path relative to this script: this file lives under
 # StockAnalyzer.Python/training/, which in a release build is copied beside the executable
 # (see PythonScriptLocator) rather than being the app's actual Data root. dataset.DATA_ROOT
 # already resolves the real Data root correctly in both dev and release (it is how the OHLCV
 # parquet reads work), so reuse it here instead of introducing a second, divergent resolution
 # scheme for this one output directory.
-ARTIFACTS_DIR: Path = ds.DATA_ROOT / "TrainingArtifacts"
+ARTIFACTS_DIR: Path = ds.TRAINING_WIZARD_ARTIFACTS_DIR
 MAX_EVALUATION_FOLDS = ds._env_int("SA_MAX_EVALUATION_FOLDS", 10)
 MAX_RUN_DURATION_SECONDS = ds._env_int("SA_MAX_RUN_DURATION_SECONDS", 120 * 60)
 EXPLANATION_FAILED_STATUS = "failed"  # metrics.json "explanation".status of a run whose optional explanation raised

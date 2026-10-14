@@ -90,6 +90,7 @@ public class ThemeManager : IThemeManager
         _colorsCache[ThemeColorKey.ShellBackground] = _currentTheme.ShellBackground;
         _colorsCache[ThemeColorKey.ShellText]       = _currentTheme.ShellText;
         _colorsCache[ThemeColorKey.ShellSecondaryText] = _currentTheme.ShellSecondaryText;
+        _colorsCache[ThemeColorKey.ShellWarningText] = _currentTheme.ShellWarningText;
         _colorsCache[ThemeColorKey.ShellAccent]     = _currentTheme.ShellAccent;
         _colorsCache[ThemeColorKey.ShellBorder]     = _currentTheme.ShellBorder;
         _colorsCache[ThemeColorKey.SemanticPlus]    = _currentTheme.SemanticPlus;
@@ -129,6 +130,7 @@ public class ThemeManager : IThemeManager
             ThemeColorKey.ShellBackground => CurrentTheme with { ShellBackground = color },
             ThemeColorKey.ShellText       => CurrentTheme with { ShellText = color },
             ThemeColorKey.ShellSecondaryText => CurrentTheme with { ShellSecondaryText = color },
+            ThemeColorKey.ShellWarningText => CurrentTheme with { ShellWarningText = color },
             ThemeColorKey.ShellAccent     => CurrentTheme with { ShellAccent = color },
             ThemeColorKey.ShellBorder     => CurrentTheme with { ShellBorder = color },
             ThemeColorKey.SemanticPlus    => CurrentTheme with { SemanticPlus = color },

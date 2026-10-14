@@ -113,7 +113,7 @@ public partial class BacktestIndicatorSelectionViewModel : ViewModelBase
     private int _nextKeySuffix = 1;
 
     /// <summary>
-    /// Round 2 (Y:\Temp\sa_improvement_plan_BacktestUiCleanupRound2.md Task 3): drives the same
+    /// Round 2 (docs/sa_improvement_plan_BacktestUiCleanupRound2 Task 3): drives the same
     /// toast-notification overlay <see cref="Views.IndicatorSettingsWindow"/>'s "Library -> Active" flow
     /// already uses (<see cref="ViewModels.Dialogs.IndicatorSettingsDialogViewModel.AddSelectedLibraryIndicator"/>),
     /// so adding a condition here confirms itself the exact same way - the user's explicit "no inventing a
@@ -345,7 +345,7 @@ public partial class BacktestIndicatorSelectionViewModel : ViewModelBase
     private decimal _conditionRightNumericValue;
 
     /// <summary>
-    /// Task 8b safe extension (Y:\Temp\sa_implementation_plan_BacktestComparisonSignals.md sections
+    /// Task 8b safe extension (docs/sa_implementation_plan_BacktestComparisonSignals sections
     /// 3.4/4.5): entry-price-relative Stop-Loss/Take-Profit, shown as a small "Risk Management"
     /// sub-section near the Role picker. Both null (blank) by default, meaning disabled — an untouched
     /// run is entirely unaffected by this feature, matching <see cref="BacktestRiskManagementSettings"/>'s
@@ -358,7 +358,7 @@ public partial class BacktestIndicatorSelectionViewModel : ViewModelBase
     private decimal? _riskTakeProfitPercent;
 
     /// <summary>
-    /// Safe extension (Y:\Temp\sa_implementation_plan_BacktestPositionDirectionReversal.md section 2.1/4):
+    /// Safe extension (docs/sa_implementation_plan_BacktestPositionDirectionReversal section 2.1/4):
     /// the trade direction a newly-added Entry/Both condition opens, selected via the Long/Short toggle at
     /// the Entry-button row's left edge. Defaults to Long so an untouched selector still produces the same
     /// <see cref="BacktestConditionEntry.Position"/> default the Core model itself uses.
@@ -592,7 +592,7 @@ public partial class BacktestIndicatorSelectionViewModel : ViewModelBase
     /// available Output series (<see cref="IScreenerCatalogProvider.GetOutputSeriesNames"/>, plan
     /// section 4.4's Task 6a amendment).
     ///
-    /// Bug fix (Y:\Temp\sa_improvement_plan_BacktestPriceSourceConditionFix.md): the catalog's
+    /// Bug fix (docs/sa_improvement_plan_BacktestPriceSourceConditionFix): the catalog's
     /// "Price" group has one row per <see cref="PriceType"/> (Open/High/Low/...), all sharing
     /// <see cref="IndicatorType.Price"/> and distinguished only by <see cref="ScreenerCatalogItem.ShortName"/>
     /// - exactly the same shape <c>IndicatorRegistrationViewModel.BindToSide</c> already special-cases.
@@ -665,7 +665,7 @@ public partial class BacktestIndicatorSelectionViewModel : ViewModelBase
 
     /// <summary>The "Both" button commits <see cref="BacktestConditionRole.Reversal"/>, not
     /// <see cref="BacktestConditionRole.Both"/> (corrected 2026-09-19, see
-    /// Y:\Temp\sa_implementation_plan_BacktestPositionDirectionReversal.md section 2.2): the user's
+    /// docs/sa_implementation_plan_BacktestPositionDirectionReversal section 2.2): the user's
     /// original request for this button — Position-aware Entry/Exit with same-bar reversal when the
     /// opposite side is held — is Reversal's exact definition; Both's own, older side-agnostic meaning is
     /// preserved unconditionally for entries that already carry it (e.g. restored from a pre-existing
@@ -739,7 +739,7 @@ public partial class BacktestIndicatorSelectionViewModel : ViewModelBase
             _indicatorFactory),
         Offset = offset,
         Frame = frame,
-        // Plan Y:\Temp\sa_improvement_plan_BacktestPriceSourceConditionFix.md: scoped to the Price
+        // Plan docs/sa_improvement_plan_BacktestPriceSourceConditionFix: scoped to the Price
         // catalog rows only - BindConditionSide is the only place that ever sets a meaningful, non-default
         // PriceSource on `settings`, so this stays a strictly-additive fix for the specific broken case
         // (no behavior change for any other indicator type).

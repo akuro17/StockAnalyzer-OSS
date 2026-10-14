@@ -3,7 +3,7 @@ using System.Collections.Generic;
 namespace StockAnalyzer.Core.Services.Backtest.Engine;
 
 /// <summary>
-/// P3 Gate G7 (user-confirmed 2026-09-17, see Y:\Temp\sa_ai_context_BacktestUiWindow_P3.md section 1):
+/// P3 Gate G7 (user-confirmed 2026-09-17, see docs/sa_ai_context_BacktestUiWindow_P3 section 1):
 /// the source spec never defines how BacktestWindow's indicator-selection tab turns into buy/sell
 /// signals, and inventing that convention would violate AGENTS.md's Specification Authority rule
 /// (no independent selection among unspecified conventions). This strategy only requests the

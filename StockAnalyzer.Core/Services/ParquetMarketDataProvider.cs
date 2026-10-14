@@ -476,6 +476,13 @@ public class ParquetMarketDataProvider : IMarketDataProvider
 
     public async Task<int> DeleteTickerDataFromDateAsync(string symbol, DateTime cutoffDate)
     {
+        // This method rewrites and replaces the file, so a symbol that could name a file outside the data folder is refused the same way as a missing file.
+        if (!AttestedFileNames.IsPlain(symbol))
+        {
+            _logger.LogWarning("Cannot delete time series data: the ticker name is not a plain file name");
+            return 0;
+        }
+
         var filePath = Path.Combine(_baseDataPath, $"{symbol}.parquet").Replace("\\", "/");
         if (!File.Exists(filePath))
         {
@@ -1623,6 +1630,10 @@ public class ParquetMarketDataProvider : IMarketDataProvider
     internal static string? ResolveFilePath(string basePath, string symbol)
     {
         if (string.IsNullOrWhiteSpace(symbol)) return null;
+
+        // The symbol becomes a file name below; a name that is not a plain file name (separators, "..", reserved characters, device names)
+        // could leave the data folder, so it resolves to "not found".
+        if (!AttestedFileNames.IsPlain(symbol)) return null;
 
         var candidates = new List<string> { symbol };
         if (symbol.StartsWith('^'))

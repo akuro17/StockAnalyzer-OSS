@@ -93,9 +93,9 @@
     </None>
   </ItemGroup>
 
-  <!-- Python scripts: Include all StockAnalyzer.Python files in the publish output -->
+  <!-- Python scripts: Include inference StockAnalyzer.Python files in the publish output -->
   <ItemGroup>
-    <None Include="..\StockAnalyzer.Python\**\*" Exclude="..\StockAnalyzer.Python\**\__pycache__\**;..\StockAnalyzer.Python\**\*.pyc;..\StockAnalyzer.Python\.venv\**;..\StockAnalyzer.Python\venv\**;..\StockAnalyzer.Python\**\.venv\**;..\StockAnalyzer.Python\**\venv\**">
+    <None Include="..\StockAnalyzer.Python\**\*" Exclude="..\StockAnalyzer.Python\**\__pycache__\**;..\StockAnalyzer.Python\**\*.pyc;..\StockAnalyzer.Python\.venv\**;..\StockAnalyzer.Python\venv\**;..\StockAnalyzer.Python\**\.venv\**;..\StockAnalyzer.Python\**\venv\**;..\StockAnalyzer.Python\training\**;..\StockAnalyzer.Python\tests\**">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Link>StockAnalyzer.Python\%(RecursiveDir)%(Filename)%(Extension)</Link>
     </None>

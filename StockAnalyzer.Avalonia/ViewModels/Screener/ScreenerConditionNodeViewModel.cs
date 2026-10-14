@@ -5,7 +5,7 @@ namespace StockAnalyzer.Avalonia.ViewModels.Screener;
 /// <summary>
 /// Editable view-model node of the Filters condition tree editor. Mirrors <c>BacktestConditionNodeViewModel</c>
 /// (<c>StockAnalyzer.Avalonia.ViewModels.Backtest</c>) reduced to a single root (no Section/Side dimension - see
-/// Y:\Temp\sa_implementation_plan_ScreenerFilterConditionTree.md section 1.2 for why this family is not shared with
+/// docs/sa_implementation_plan_ScreenerFilterConditionTree section 1.2 for why this family is not shared with
 /// the Backtest one). The editor never mutates Core objects: the tree of these nodes is converted to the immutable
 /// <see cref="StockAnalyzer.Core.Models.Screener.ScreenerConditionGroup"/> in one step
 /// (<see cref="ScreenerConditionTreeViewModel.Build"/>). Nodes are added, removed and re-operated only through

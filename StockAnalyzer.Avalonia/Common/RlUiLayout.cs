@@ -15,4 +15,5 @@ public static class RlUiLayout
     public static Thickness SectionPadding { get; } = new(12);
     public static Thickness SectionBorder { get; } = new(1);
     public static Thickness ChildMargin { get; } = new(0, 0, FieldGap, FieldGap);
+    public static CornerRadius SectionCornerRadius { get; } = new(8);
 }

@@ -12,6 +12,8 @@ public static class PredictionDisplayFormatter
     public const MidpointRounding DefaultRounding = MidpointRounding.ToEven;
     public const string ReturnLabelKey = "Chart_PredictedForwardReturn";
     public const string ClassLabelKey = "Chart_PredictedClass";
+    public const string ClassLabelWithProbabilityKey = "Chart_PredictedClassWithProbability";
+    public const int DefaultProbabilityDecimalPlaces = 1;
 
     /// <summary>
     /// Formats a current result. The model framework is deliberately absent from this API.
@@ -44,11 +46,32 @@ public static class PredictionDisplayFormatter
         if (contract.Semantic == PredictionOutputSemantic.ClassProbabilities
             && !result.IsRegression && !string.IsNullOrWhiteSpace(result.Label))
         {
+            if (TryFormatProbabilityPercent(result, culture) is { } probabilityPercent)
+            {
+                var withProbability = localize(ClassLabelWithProbabilityKey);
+                if (string.IsNullOrWhiteSpace(withProbability)) return null;
+                return string.Format(culture, withProbability, contract.HorizonBars, result.Label, probabilityPercent);
+            }
+
             var template = localize(ClassLabelKey);
             if (string.IsNullOrWhiteSpace(template)) return null;
             return string.Format(culture, template, contract.HorizonBars, result.Label);
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// The top-class probability as a percentage text, or null when the result carries no real probability
+    /// (an absent, non-finite or out-of-range value is never replaced by a fabricated number).
+    /// </summary>
+    private static string? TryFormatProbabilityPercent(PredictionResult result, CultureInfo culture)
+    {
+        if (result.ConfidenceType is not (ConfidenceType.ClassProbability or ConfidenceType.CalibratedProbability)
+            || result.ConfidenceValue is not { } probability
+            || !float.IsFinite(probability) || probability < 0f || probability > 1f)
+            return null;
+        double percent = Math.Round(100.0 * probability, DefaultProbabilityDecimalPlaces, DefaultRounding);
+        return percent.ToString($"F{DefaultProbabilityDecimalPlaces}", culture);
     }
 }

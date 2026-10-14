@@ -8,7 +8,7 @@ namespace StockAnalyzer.Core.Models.Backtest.Engine;
 /// — the same left-to-right chained convention <c>ScreenerIndicatorEntry</c> uses, re-expressed as
 /// boolean AND/OR by <see cref="StockAnalyzer.Core.Services.Backtest.Engine.BacktestConditionEvaluator"/>
 /// instead of per-ticker set operations. See
-/// Y:\Temp\sa_implementation_plan_BacktestComparisonSignals.md section 4.1.
+/// docs/sa_implementation_plan_BacktestComparisonSignals section 4.1.
 /// </summary>
 public sealed class BacktestConditionEntry
 {
@@ -29,7 +29,7 @@ public sealed class BacktestConditionEntry
     public BacktestConditionRole Role { get; init; } = BacktestConditionRole.Both;
 
     /// <summary>
-    /// Safe extension (Y:\Temp\sa_implementation_plan_BacktestPositionDirectionReversal.md section 2.1):
+    /// Safe extension (docs/sa_implementation_plan_BacktestPositionDirectionReversal section 2.1):
     /// the trade direction this entry's Entry-side contribution opens. Defaults to <see cref="TradeSide.Long"/>,
     /// which combined with <see cref="Role"/> Both/EntryOnly maps to <c>SignalType.LongEntry</c> - the ONLY
     /// entry signal <c>ConditionBasedBacktestStrategy</c> could ever produce before this field existed, so

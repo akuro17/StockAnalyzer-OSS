@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using DuckDB.NET.Data;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using StockAnalyzer.Core.Factories;
@@ -78,6 +79,16 @@ public sealed class UserPortfolioRepository : IUserPortfolioRepository, IDisposa
         await _ioLock.WaitAsync(ct).ConfigureAwait(false);
         try
         {
+            // A save that died in the middle of the file swap is undone first, so the four files are read as one consistent state.
+            try
+            {
+                RecoverIncompleteSwap();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to restore the portfolio files after an unfinished save.");
+            }
+
             if (File.Exists(_positionsPath) && File.Exists(_transactionsPath) && File.Exists(_cashPath))
             {
                 try
@@ -120,8 +131,155 @@ public sealed class UserPortfolioRepository : IUserPortfolioRepository, IDisposa
         }
     }
 
+    private const string SwapMarkerFileName = "portfolio.swap";
+    private const string BackupSuffix = ".bak";
+
+    private string SwapMarkerPath => Path.Combine(Path.GetDirectoryName(_positionsPath)!, SwapMarkerFileName);
+
+    /// <summary>
+    /// Replaces the four portfolio files with their freshly written temporary files so that a reader sees either all four old or all four new.
+    /// A marker file (the commit point) lists which targets existed before; each existing target is replaced with its old content kept as <c>.bak</c>.
+    /// If a replacement fails, or the process dies, <see cref="RecoverIncompleteSwap"/> puts the old content back. The marker is deleted only after the
+    /// last replacement, then the backups are removed (best effort: backups without a marker are never used).
+    /// </summary>
+    private void SwapInTemporaryFiles(IReadOnlyList<(string Temp, string Target)> pairs)
+    {
+        // A plain write is enough for the marker: it is written before the first replacement, so a marker cut off by a crash belongs to a swap that has
+        // changed nothing yet, and recovery ignores cut or unknown lines (Load_MarkerCutOffAtAnyLength_KeepsThePreviousStateAndRemovesTheMarker).
+        File.WriteAllLines(SwapMarkerPath, pairs.Select(p => (File.Exists(p.Target) ? "1|" : "0|") + Path.GetFileName(p.Target)));
+        try
+        {
+            foreach (var (temp, target) in pairs)
+            {
+                if (File.Exists(target))
+                {
+                    File.Replace(temp, target, target + BackupSuffix);
+                }
+                else
+                {
+                    File.Move(temp, target);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Swapping the portfolio files failed; restoring the previous state.");
+            try
+            {
+                RecoverIncompleteSwap();
+            }
+            catch (Exception recoveryException)
+            {
+                // The marker is still there, so the next load or save repeats the recovery.
+                _logger.LogError(recoveryException, "Restoring the previous portfolio state failed; it will be retried on the next load or save.");
+            }
+
+            throw;
+        }
+
+        File.Delete(SwapMarkerPath);
+        foreach (var (_, target) in pairs)
+        {
+            try { File.Delete(target + BackupSuffix); }
+            catch (Exception ex) { _logger.LogWarning(ex, "Could not delete the portfolio backup {BackupFile}.", Path.GetFileName(target) + BackupSuffix); }
+        }
+    }
+
+    /// <summary>
+    /// Undoes a swap that did not finish: with a marker present every listed target that existed before gets its <c>.bak</c> back, every target that did not
+    /// exist before is deleted, then the marker goes. Backups left without a marker belong to a swap that did finish and are deleted. Only the four known
+    /// file names are ever touched; a marker line naming anything else is ignored.
+    /// </summary>
+    private void RecoverIncompleteSwap()
+    {
+        string directory = Path.GetDirectoryName(_positionsPath)!;
+        if (!Directory.Exists(directory)) return;   // nothing was ever saved here
+
+        var targets = new[] { _positionsPath, _transactionsPath, _cashPath, _cashBalancesPath }
+            .ToDictionary(path => Path.GetFileName(path), path => path, StringComparer.OrdinalIgnoreCase);
+
+        if (File.Exists(SwapMarkerPath))
+        {
+            foreach (string line in File.ReadAllLines(SwapMarkerPath))
+            {
+                int separator = line.IndexOf('|');
+                if (separator != 1 || !targets.TryGetValue(line[(separator + 1)..], out string? target)) continue;
+
+                if (line[0] == '1')
+                {
+                    string backup = target + BackupSuffix;
+                    if (File.Exists(backup)) File.Move(backup, target, overwrite: true);
+                }
+                else if (line[0] == '0' && File.Exists(target))
+                {
+                    File.Delete(target);
+                }
+            }
+
+            File.Delete(SwapMarkerPath);
+            _logger.LogInformation("Restored the previous portfolio files after an unfinished save ({Directory}).", Path.GetFileName(directory));
+        }
+
+        foreach (string target in targets.Values)
+        {
+            try { File.Delete(target + BackupSuffix); }
+            catch (Exception ex) { _logger.LogWarning(ex, "Could not delete the portfolio backup {BackupFile}.", Path.GetFileName(target) + BackupSuffix); }
+        }
+    }
+
+    /// <summary>
+    /// Writes every transaction into <c>temp_transactions</c> with the DuckDB appender (column order and value mapping are those of the table definition).
+    /// One statement per row cost about 0.7 ms each (5,000 transactions: 3.5 s); the appender writes the same rows in a few milliseconds.
+    /// </summary>
+    private static void AppendTransactions(DbConnection dbConnection, IReadOnlyList<Transaction> history)
+    {
+        if (dbConnection is not DuckDBConnection duckConnection)
+        {
+            throw new InvalidOperationException("Connection must be a DuckDBConnection to append transactions.");
+        }
+
+        using var appender = duckConnection.CreateAppender("temp_transactions");
+        foreach (var tx in history)
+        {
+            var row = appender.CreateRow();
+            row.AppendValue(tx.ExecutedAt.UtcDateTime);
+            row.AppendValue((int)tx.Type);
+            AppendNullable(row, tx.Ticker);
+            row.AppendValue(Convert.ToDouble(tx.Quantity));
+            row.AppendValue(Convert.ToDouble(tx.PricePerUnit));
+            row.AppendValue(Convert.ToDouble(tx.CashAmount));
+            row.AppendValue(Convert.ToDouble(tx.Fee));
+            AppendNullable(row, tx.Notes);
+            AppendNullable(row, tx.TargetPrice);
+            AppendNullable(row, tx.StopLoss);
+            row.AppendValue(tx.Id.ToString());
+            AppendNullable(row, tx.RelatedTransactionId?.ToString());
+            row.AppendValue(Convert.ToDouble(tx.Price.Amount));
+            row.AppendValue(tx.Price.Currency.Value);
+            row.AppendValue(Convert.ToDouble(tx.Commission.Amount));
+            row.AppendValue(tx.Commission.Currency.Value);
+            AppendNullable(row, tx.AppliedRate?.Rate);
+            AppendNullable(row, tx.AppliedRate?.BaseCurrency.Value);
+            AppendNullable(row, tx.AppliedRate?.QuoteCurrency.Value);
+            row.EndRow();
+        }
+    }
+
+    private static void AppendNullable(DuckDBAppenderRow row, string? value)
+    {
+        if (value is null) row.AppendNullValue();
+        else row.AppendValue(value);
+    }
+
+    private static void AppendNullable(DuckDBAppenderRow row, decimal? value)
+    {
+        if (value.HasValue) row.AppendValue(Convert.ToDouble(value.Value));
+        else row.AppendNullValue();
+    }
+
     private async Task SavePortfolioInternalAsync(Portfolio portfolio, CancellationToken ct)
     {
+        RecoverIncompleteSwap();
         _logger.LogInformation("Saving portfolio. Positions path: {PositionsPath}, Transactions path: {TransactionsPath}, Cash path: {CashPath}, CashBalances path: {CashBalancesPath}", _positionsPath, _transactionsPath, _cashPath, _cashBalancesPath);
         var positionsDir = Path.GetDirectoryName(_positionsPath);
         if (!string.IsNullOrEmpty(positionsDir) && !Directory.Exists(positionsDir))
@@ -285,35 +443,7 @@ public sealed class UserPortfolioRepository : IUserPortfolioRepository, IDisposa
                 }
                 try
                 {
-                    foreach (var tx in portfolio.History)
-                    {
-                        using (var command = dbConnection.CreateCommand())
-                        {
-                            command.CommandText = "INSERT INTO temp_transactions VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19);";
-                            
-                            var p1 = command.CreateParameter(); p1.Value = tx.ExecutedAt.UtcDateTime; command.Parameters.Add(p1);
-                            var p2 = command.CreateParameter(); p2.Value = (int)tx.Type; command.Parameters.Add(p2);
-                            var p3 = command.CreateParameter(); p3.Value = (object?)tx.Ticker ?? DBNull.Value; command.Parameters.Add(p3);
-                            var p4 = command.CreateParameter(); p4.Value = Convert.ToDouble(tx.Quantity); command.Parameters.Add(p4);
-                            var p5 = command.CreateParameter(); p5.Value = Convert.ToDouble(tx.PricePerUnit); command.Parameters.Add(p5);
-                            var p6 = command.CreateParameter(); p6.Value = Convert.ToDouble(tx.CashAmount); command.Parameters.Add(p6);
-                            var p7 = command.CreateParameter(); p7.Value = Convert.ToDouble(tx.Fee); command.Parameters.Add(p7);
-                            var p8 = command.CreateParameter(); p8.Value = (object?)tx.Notes ?? DBNull.Value; command.Parameters.Add(p8);
-                            var p9 = command.CreateParameter(); p9.Value = tx.TargetPrice.HasValue ? Convert.ToDouble(tx.TargetPrice.Value) : DBNull.Value; command.Parameters.Add(p9);
-                            var p10 = command.CreateParameter(); p10.Value = tx.StopLoss.HasValue ? Convert.ToDouble(tx.StopLoss.Value) : DBNull.Value; command.Parameters.Add(p10);
-                            var p11 = command.CreateParameter(); p11.Value = tx.Id.ToString(); command.Parameters.Add(p11);
-                            var p12 = command.CreateParameter(); p12.Value = tx.RelatedTransactionId.HasValue ? tx.RelatedTransactionId.Value.ToString() : DBNull.Value; command.Parameters.Add(p12);
-                            var p13 = command.CreateParameter(); p13.Value = Convert.ToDouble(tx.Price.Amount); command.Parameters.Add(p13);
-                            var p14 = command.CreateParameter(); p14.Value = tx.Price.Currency.Value; command.Parameters.Add(p14);
-                            var p15 = command.CreateParameter(); p15.Value = Convert.ToDouble(tx.Commission.Amount); command.Parameters.Add(p15);
-                            var p16 = command.CreateParameter(); p16.Value = tx.Commission.Currency.Value; command.Parameters.Add(p16);
-                            var p17 = command.CreateParameter(); p17.Value = tx.AppliedRate.HasValue ? Convert.ToDouble(tx.AppliedRate.Value.Rate) : DBNull.Value; command.Parameters.Add(p17);
-                            var p18 = command.CreateParameter(); p18.Value = tx.AppliedRate.HasValue ? tx.AppliedRate.Value.BaseCurrency.Value : DBNull.Value; command.Parameters.Add(p18);
-                            var p19 = command.CreateParameter(); p19.Value = tx.AppliedRate.HasValue ? tx.AppliedRate.Value.QuoteCurrency.Value : DBNull.Value; command.Parameters.Add(p19);
-                            
-                            await command.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
-                        }
-                    }
+                    AppendTransactions(dbConnection, portfolio.History);
 
                     using (var command = dbConnection.CreateCommand())
                     {
@@ -339,10 +469,13 @@ public sealed class UserPortfolioRepository : IUserPortfolioRepository, IDisposa
                 throw new InvalidOperationException("Failed to save one or more Parquet files correctly.");
             }
 
-            File.Move(tempPositions, _positionsPath, overwrite: true);
-            File.Move(tempTransactions, _transactionsPath, overwrite: true);
-            File.Move(tempCash, _cashPath, overwrite: true);
-            File.Move(tempCashBalances, _cashBalancesPath, overwrite: true);
+            SwapInTemporaryFiles(new[]
+            {
+                (tempPositions, _positionsPath),
+                (tempTransactions, _transactionsPath),
+                (tempCash, _cashPath),
+                (tempCashBalances, _cashBalancesPath),
+            });
         }
         catch (Exception ex)
         {

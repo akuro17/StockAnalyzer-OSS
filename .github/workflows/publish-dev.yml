@@ -1,8 +1,9 @@
 name: Publish Development Release
 
+# Manual only: the private repository has no GitHub Actions minutes (billing; the owner does not pay), so push and pull request triggers
+# would only fail. Release builds run in the public StockAnalyzer-OSS repository.
 on:
-  push:
-    branches: [ "main" ]
+  workflow_dispatch:
 
 jobs:
   build:
@@ -25,10 +26,10 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
     - name: Setup .NET
-      uses: actions/setup-dotnet@v4
+      uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
       with:
         dotnet-version: '8.0.x'
 
@@ -51,7 +52,7 @@ jobs:
         Compress-Archive -Path ./publish/* -DestinationPath ./StockAnalyzer-${{ matrix.rid }}-${{ matrix.mode }}.zip
 
     - name: Upload temporary artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
       with:
         name: asset-${{ matrix.rid }}-${{ matrix.mode }}
         path: ./StockAnalyzer-${{ matrix.rid }}-${{ matrix.mode }}.zip
@@ -65,13 +66,13 @@ jobs:
 
     steps:
     - name: Download all artifacts
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
       with:
         pattern: asset-*
         merge-multiple: true
 
     - name: Create or Update Release
-      uses: softprops/action-gh-release@v2
+      uses: softprops/action-gh-release@c95fe1489396fe8a9eb872386ac8274bc27f5e0c # v2.2.1
       with:
         tag_name: latest-dev
         name: "StockAnalyzer OSS - Development Build (Latest)"

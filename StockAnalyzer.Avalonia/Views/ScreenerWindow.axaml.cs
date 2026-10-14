@@ -22,7 +22,7 @@ namespace StockAnalyzer.Avalonia.Views
             InitializeComponent();
             SubWindowKeys.CloseOnEscape(this);
 
-            // Moving a Filters condition by drag and drop (Y:\Temp\sa_implementation_plan_ScreenerFilterConditionDragMove.md
+            // Moving a Filters condition by drag and drop (docs/sa_implementation_plan_ScreenerFilterConditionDragMove
             // Task 5), mirroring BacktestResultsView.axaml.cs: the view only turns pointer input into (leaf, target row,
             // placement); the tree view-model decides. handledEventsToo: the tree view item's own gesture handling may
             // already have marked the press as handled.

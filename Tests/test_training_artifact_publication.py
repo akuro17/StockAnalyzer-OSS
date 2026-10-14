@@ -11,6 +11,8 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "StockAnalyzer.Python" / "training"))
+import checkpoints  # noqa: E402
+import dataset as ds  # noqa: E402
 import run_training as runner  # noqa: E402
 
 
@@ -246,7 +248,17 @@ def test_real_fixed_lightgbm_publication():
                    "--indicator-channel-export-paths", json.dumps(exports)])
 
 
+def test_default_artifacts_dir_is_training_wizard_folder():
+    # Read outside any patch.object: this is the production default. The C# ensemble roll-back requires the checkpoint root
+    # to be <member directory>/checkpoints, so the checkpoints must stay below the Training Wizard folder.
+    assert runner.ARTIFACTS_DIR == ds.DATA_ROOT / "TrainingArtifacts" / "TW"
+    assert runner.ARTIFACTS_DIR.parent == ds.TRAINING_ARTIFACTS_ROOT
+    assert runner.ARTIFACTS_DIR.name not in {"RL", "RLPortfolio", "job-locks", checkpoints.DIRECTORY_NAME}
+    assert (runner.ARTIFACTS_DIR / checkpoints.DIRECTORY_NAME).parent == runner.ARTIFACTS_DIR
+
+
 if __name__ == "__main__":
+    test_default_artifacts_dir_is_training_wizard_folder()
     different_drives = test_cross_volume_stage_and_success()
     test_failed_commit_restores_prior_bundle()
     test_new_bundle_failure_and_invalid_inputs_leave_no_publication()

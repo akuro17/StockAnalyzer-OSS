@@ -132,7 +132,26 @@ public sealed class EnsemblePredictionService : IPredictionService, IDisposable
             var raw = InferMember(member, history);
             rows[i] = member.CanonicalIndices.Select(index => raw[index]).ToArray();
         }
-        return Combine(spec, bundle.Canonical, rows, _settings.PredictionConfidenceThreshold, _processor) with { Ensemble = spec };
+        return Combine(spec, bundle.Canonical, rows, _settings.PredictionConfidenceThreshold, _processor, bundle.OutputContract)
+            with { Ensemble = spec };
+    }
+
+    /// <summary>
+    /// The one output contract of an ensemble: its members must agree on semantic, unit, horizon, time frame and target formula
+    /// (the generation compatibility check already requires this; it is verified again on the contracts actually read).
+    /// The mixture is a weighted average of class probabilities, so its confidence is a plain class probability even when
+    /// members are calibrated individually.
+    /// </summary>
+    internal static PredictionOutputContract MergeOutputContract(IEnumerable<PredictionOutputContract> memberContracts)
+    {
+        var contracts = memberContracts.ToArray();
+        if (contracts.Length == 0) throw new InvalidDataException("An ensemble has no member output contract.");
+        var first = contracts[0];
+        if (first.Semantic != PredictionOutputSemantic.ClassProbabilities)
+            throw new InvalidDataException("An ensemble combines class probabilities only.");
+        if (contracts.Any(contract => contract with { ConfidenceType = first.ConfidenceType } != first))
+            throw new InvalidDataException("Ensemble members disagree on the output contract.");
+        return first with { ConfidenceType = ConfidenceType.ClassProbability };
     }
 
     private RuntimeBundle BuildRuntime(EnsembleSpec spec)
@@ -154,6 +173,7 @@ public sealed class EnsemblePredictionService : IPredictionService, IDisposable
                 }
                 catch { lease.Dispose(); throw; }
             }
+            bundle.OutputContract = MergeOutputContract(bundle.Members.Select(member => member.OutputContract));
             return bundle;
         }
         catch { bundle.Dispose(); throw; }
@@ -193,13 +213,18 @@ public sealed class EnsemblePredictionService : IPredictionService, IDisposable
                     throw new InvalidDataException("Member calibration class order disagrees with its generation.");
             }
             return new MemberRuntime(lease, session, mode, window, channels, count, featureSpec, scaler,
-                input, output, map) { Calibration = calibration };
+                input, output, map)
+            {
+                Calibration = calibration,
+                OutputContract = PredictionModelMetadata.ReadOutputContract(metadata),
+            };
         }
         catch { session.Dispose(); throw; }
     }
 
     internal static PredictionResult Combine(EnsembleSpec spec, IReadOnlyList<string> canonical,
-        IReadOnlyList<float[]> rows, float threshold, IMLDataProcessor processor)
+        IReadOnlyList<float[]> rows, float threshold, IMLDataProcessor processor,
+        PredictionOutputContract? outputContract = null)
     {
         spec.Validate();
         if (rows.Count != spec.Members.Count || canonical.Count == 0
@@ -214,8 +239,14 @@ public sealed class EnsemblePredictionService : IPredictionService, IDisposable
         for (int j = 1; j < probabilities.Length; j++)
             if (probabilities[j] > probabilities[best]) best = j;
         var scores = canonical.Select((label, index) => new ClassScore(label, probabilities[index])).ToArray();
-        return new PredictionResult(confidence >= threshold ? canonical[best] : "Unknown",
+        var result = new PredictionResult(confidence >= threshold ? canonical[best] : PredictionResult.UnknownLabel,
             confidence, Array.AsReadOnly(scores), confidence, entropy);
+        return outputContract is null ? result : result with
+        {
+            OutputContract = outputContract,
+            ConfidenceType = ConfidenceType.ClassProbability,
+            ConfidenceValue = confidence,
+        };
     }
 
     /// <summary>Allocation-free inner aggregation over caller-owned scratch buffers.</summary>
@@ -313,6 +344,7 @@ public sealed class EnsemblePredictionService : IPredictionService, IDisposable
     private sealed class RuntimeBundle(string[] canonical) : IDisposable
     {
         public string[] Canonical { get; } = canonical;
+        public PredictionOutputContract? OutputContract { get; set; }
         public List<MemberRuntime> Members { get; } = new();
         public void Dispose()
         {
@@ -334,6 +366,7 @@ public sealed class EnsemblePredictionService : IPredictionService, IDisposable
         }
         public ModelGenerationLease Lease { get; }
         public ModelCalibration? Calibration { get; init; }
+        public required PredictionOutputContract OutputContract { get; init; }
         public InferenceSession Session { get; }
         public PredictionFeatureMode Mode { get; }
         public int Window { get; }

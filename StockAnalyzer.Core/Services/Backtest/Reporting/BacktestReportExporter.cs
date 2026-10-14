@@ -37,7 +37,7 @@ public sealed class BacktestReportExporter : IBacktestReportExporter
         await SaveSerializedAsync(path, report).ConfigureAwait(false);
     }
 
-    /// <summary>User-chosen destination variant (Y:\Temp\sa_improvement_plan_BacktestResultsUiPolish.md
+    /// <summary>User-chosen destination variant (docs/sa_improvement_plan_BacktestResultsUiPolish
     /// Task 1): <paramref name="directoryPath"/> comes from the caller's own folder picker, so it is used
     /// verbatim (no <see cref="PathDiscovery"/> resolution/fallback) - only its existence is ensured.</summary>
     public async Task ExportAsync(BacktestReport report, string directoryPath, string fileName)

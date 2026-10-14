@@ -1755,6 +1755,11 @@
                     </StackPanel>
 
                     <Grid ColumnDefinitions="*, Auto" MinHeight="32">
+                        <TextBlock Text="{l:Localize Label_FontFamily}" Foreground="{DynamicResource Brush.Dialog.LabelText}" VerticalAlignment="Center"/>
+                        <ComboBox x:Name="TextFontFamilyCombo" Width="160" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                    </Grid>
+
+                    <Grid ColumnDefinitions="*, Auto" MinHeight="32">
                         <TextBlock Text="Font Size" Foreground="{DynamicResource Brush.Dialog.LabelText}" VerticalAlignment="Center"/>
                         <NumericUpDown x:Name="TextFontSizeSpin" Minimum="8" Maximum="72" Value="12" FormatString="0" Width="120" Height="30" HorizontalAlignment="Right" VerticalAlignment="Center"/>
                     </Grid>
@@ -1800,6 +1805,10 @@
                                 <TextBlock Text="Text" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
                                 <TextBox x:Name="LineTextTopTextBox" Height="54" AcceptsReturn="True" TextWrapping="Wrap"/>
                             </StackPanel>
+                            <Grid ColumnDefinitions="*, Auto" MinHeight="32">
+                                <TextBlock Text="{l:Localize Label_FontFamily}" VerticalAlignment="Center" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                                <ComboBox x:Name="LineTextTopFontFamilyCombo" Width="160" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                            </Grid>
                             <Grid ColumnDefinitions="*, Auto" MinHeight="32">
                                 <TextBlock Text="Font Size" VerticalAlignment="Center" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
                                 <NumericUpDown x:Name="LineTextTopFontSizeSpin" Width="120" Height="30" HorizontalAlignment="Right" Minimum="8" Maximum="72" Value="12" FormatString="0"/>
@@ -1851,6 +1860,10 @@
                                 <TextBlock Text="Text" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
                                 <TextBox x:Name="LineTextBottomTextBox" Height="54" AcceptsReturn="True" TextWrapping="Wrap"/>
                             </StackPanel>
+                            <Grid ColumnDefinitions="*, Auto" MinHeight="32">
+                                <TextBlock Text="{l:Localize Label_FontFamily}" VerticalAlignment="Center" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                                <ComboBox x:Name="LineTextBottomFontFamilyCombo" Width="160" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                            </Grid>
                             <Grid ColumnDefinitions="*, Auto" MinHeight="32">
                                 <TextBlock Text="Font Size" VerticalAlignment="Center" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
                                 <NumericUpDown x:Name="LineTextBottomFontSizeSpin" Width="120" Height="30" HorizontalAlignment="Right" Minimum="8" Maximum="72" Value="12" FormatString="0"/>

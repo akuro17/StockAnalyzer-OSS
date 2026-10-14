@@ -408,6 +408,10 @@ DATE_RANGE_KEYS: Tuple[str, str, str, str] = (
 _REPO_ROOT: Path = Path(__file__).resolve().parents[2]
 DATA_ROOT: Path = _REPO_ROOT / "Data"
 DEFAULT_DATA_DIR: Path = DATA_ROOT / "Daily"
+# Training output root. The Training Wizard owns the "TW" sub-folder (its models, sidecars, ensemble manifests and native
+# checkpoints); RL and RLPortfolio own sibling folders. C# never builds the TW path: it consumes the ARTIFACT: protocol lines.
+TRAINING_ARTIFACTS_ROOT: Path = DATA_ROOT / "TrainingArtifacts"
+TRAINING_WIZARD_ARTIFACTS_DIR: Path = TRAINING_ARTIFACTS_ROOT / "TW"
 
 # timeframe wire string (mirrors C# StockAnalyzer.Core.Models.Training.TrainingTimeframe) ->
 # the parquet subdirectory produced by generate_timeframes.py. Single source of truth for the

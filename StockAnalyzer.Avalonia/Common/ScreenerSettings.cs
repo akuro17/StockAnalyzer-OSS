@@ -6,7 +6,7 @@ public class ScreenerSettings
 
     /// <summary>
     /// Deepest AND/OR nesting the Filters condition tree may have (root group = 1). Safe extension
-    /// (Y:\Temp\sa_implementation_plan_ScreenerFilterConditionTree.md Task 2): defaulted so existing
+    /// (docs/sa_implementation_plan_ScreenerFilterConditionTree Task 2): defaulted so existing
     /// configuration files without this key keep binding unchanged. Same rationale/default as the Backtest
     /// tree's <see cref="StockAnalyzer.Core.Models.Settings.BacktestSettings.MaxConditionTreeDepth"/>.
     /// </summary>
@@ -20,7 +20,7 @@ public class ScreenerSettings
 
     /// <summary>
     /// Distance (device-independent pixels, along either axis) a pressed pointer must travel over a Filters condition
-    /// row before the press becomes a drag that moves the condition (Y:\Temp\sa_implementation_plan_ScreenerFilterConditionDragMove.md
+    /// row before the press becomes a drag that moves the condition (docs/sa_implementation_plan_ScreenerFilterConditionDragMove
     /// Task 1). Same rationale and default as Backtest's <see cref="StockAnalyzer.Core.Models.Settings.BacktestSettings.ConditionDragStartDistance"/>,
     /// kept as its own key rather than reused so each screen's drag sensitivity stays independently tunable.
     /// </summary>

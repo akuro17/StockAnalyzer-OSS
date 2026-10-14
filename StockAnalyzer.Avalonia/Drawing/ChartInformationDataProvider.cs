@@ -5,6 +5,7 @@ using StockAnalyzer.Avalonia.ViewModels;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Indicators;
 using StockAnalyzer.Core.Theme;
+using StockAnalyzer.Core.Utilities;
 
 namespace StockAnalyzer.Avalonia.Drawing;
 
@@ -96,9 +97,9 @@ public static class ChartInformationDataProvider
 
             if (candles != null && globalIndex > 0 && globalIndex < candles.Count)
             {
-                var prev = candles[globalIndex - 1];
-                var diff = c.Close - prev.Close;
-                var ratio = prev.Close > 0 ? (diff / prev.Close) * 100m : 0m;
+                var change = PriceChange.FromPreviousClose(candles, globalIndex);
+                var diff = change.Amount;
+                var ratio = change.Percent;
                 changeText = (diff > 0 ? "+" : "") + diff.ToString("0.000");
                 changeRatioText = (ratio > 0 ? "+" : "") + ratio.ToString("0.00") + "%";
                 changeColor = diff > 0 ? effectiveTheme.SemanticPlus : (diff < 0 ? effectiveTheme.SemanticMinus : effectiveTheme.SemanticNeutral);

@@ -8,7 +8,7 @@ namespace StockAnalyzer.Core.Tests.Backtest;
 
 /// <summary>
 /// Pure-function proof of the causal forward-fill rule (plan section 3.2.3 of
-/// Y:\Temp\sa_implementation_plan_BacktestComparisonSignals.md): a still-forming higher-timeframe
+/// docs/sa_implementation_plan_BacktestComparisonSignals): a still-forming higher-timeframe
 /// period's own value must never be visible to a base bar inside that same period, only once the NEXT
 /// period has started (i.e. that period has fully closed). This is called out in the plan as "the
 /// single most important test in this entire feature."

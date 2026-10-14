@@ -6,7 +6,7 @@ namespace StockAnalyzer.Core.Models.Backtest.Engine;
 /// <summary>
 /// <see cref="IsForcedLiquidation"/> is a margin-account amendment addition (not in the original
 /// spec doc): true when this trade was closed by the maintenance-margin intrabar loss-cut
-/// (Y:\Temp\sa_ai_context_BacktestEngine_P1.md section 1.5.6) rather than a normal strategy-driven
+/// (docs/sa_ai_context_BacktestEngine_P1 section 1.5.6) rather than a normal strategy-driven
 /// exit signal. User-requested so a forced loss-cut can be distinguished in trade history even when
 /// the run continues afterward (post-liquidation Equity &gt; 0 case).
 /// </summary>

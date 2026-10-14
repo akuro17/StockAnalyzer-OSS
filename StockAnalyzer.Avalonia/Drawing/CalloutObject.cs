@@ -78,6 +78,19 @@ public class CalloutObject : IChartObject, IDisposable, ITextAnnotatedObject
         }
     }
 
+    private string? _fontFamily;
+    public string? FontFamily
+    {
+        get => _fontFamily;
+        set
+        {
+            if (_fontFamily == value) return;
+            _fontFamily = value;
+            _textPaint.Typeface = DrawingFontHelper.ResolveTypeface(value);
+            InvalidateCache();
+        }
+    }
+
     private TextHorizontalAlignment _alignment = TextHorizontalAlignment.Left;
     public TextHorizontalAlignment Alignment
     {

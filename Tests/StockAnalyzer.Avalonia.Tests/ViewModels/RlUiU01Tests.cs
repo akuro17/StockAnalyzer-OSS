@@ -32,7 +32,7 @@ public sealed partial class RlUiTests
         using var vm = new RlTrainingDialogViewModel(new DelayedTraining(), registry, new UnavailableQ(), new FakeBacktestDefaultSettingsManager(), chart, NullLocalizationService.Instance);
         await vm.InitializeAsync();
         Assert.Equal(RlDialogLoadState.Failed, vm.ModelsState); Assert.False(vm.HasModels);
-        Assert.False(vm.CanActivate); Assert.False(vm.CanReplay); Assert.DoesNotContain("private path", vm.Message);
+        Assert.False(vm.CanActivate); Assert.DoesNotContain("private path", vm.Message);
         Assert.True(vm.HasTechnicalDetails); Assert.Contains(vm.VerificationFacts, f => f.Name == "Rl.Ui.Fact.F01.Label");
         Assert.Contains(vm.VerificationFacts, f => f.Name == "Rl.Ui.Fact.F02.Label");
         Assert.Contains(vm.VerificationFacts, f => f.Name == "Rl.Ui.Fact.F03.Label");
@@ -45,17 +45,17 @@ public sealed partial class RlUiTests
         var training = new DelayedTraining(); var registry = new EmptyRegistry { Generations = new[] { generation } };
         using var vm = new RlTrainingDialogViewModel(training, registry, new UnavailableQ(), new FakeBacktestDefaultSettingsManager(), chart, NullLocalizationService.Instance);
         await vm.InitializeAsync();
-        Assert.Single(vm.ModelOptions); Assert.Null(vm.SelectedGeneration); Assert.Empty(vm.PolicyOptions);
+        Assert.Single(vm.ModelOptions); Assert.Null(vm.SelectedGeneration);
         vm.SelectedModelOption = vm.ModelOptions.Single(); Assert.Equal(generation, vm.SelectedGeneration);
-        vm.SelectedModelOption = null; Assert.Null(vm.SelectedGeneration); Assert.False(vm.CanReplay);
-        vm.CancelCommand.Execute(null); await vm.ActivateCommand.ExecuteAsync(null); await vm.ReplayCommand.ExecuteAsync(null);
+        vm.SelectedModelOption = null; Assert.Null(vm.SelectedGeneration);
+        vm.CancelCommand.Execute(null); await vm.ActivateCommand.ExecuteAsync(null);
         await vm.RecoverPointerCommand.ExecuteAsync(null); await vm.CleanupArtifactsCommand.ExecuteAsync(null);
         await vm.ResumeCheckpointCommand.ExecuteAsync(null); await vm.AbandonCheckpointCommand.ExecuteAsync(null);
         Assert.Equal("Ready", vm.Status); Assert.Equal(RlDialogOperation.Idle, vm.Operation);
         Assert.Null(training.Job); Assert.Null(registry.LastRecovered); Assert.Null(registry.LastCleanup); Assert.Null(registry.LastAbandoned);
         vm.Symbol = "SPY"; vm.StartDate = "2020-01-01"; vm.EndDateExclusive = "2020-01-01";
         Assert.False(vm.CanTrain); vm.EndDateExclusive = "2026-01-01"; Assert.True(vm.CanTrain);
-        vm.SetEditorValidity(nameof(vm.InitialCapital), false); Assert.False(vm.CanTrain); Assert.False(vm.CanSaveCosts);
+        vm.SetEditorValidity(nameof(vm.InitialCapital), false); Assert.False(vm.CanTrain);
         vm.SetEditorValidity(nameof(vm.InitialCapital), true); Assert.True(vm.CanTrain);
         vm.CommissionFlat = -1m; Assert.False(vm.CanTrain); vm.CommissionFlat = 0m;
         vm.SlippageRatio = 1m; Assert.False(vm.CanTrain); vm.SlippageRatio = 0m;
@@ -135,9 +135,10 @@ public sealed partial class RlUiTests
         using var chart = Chart(new ImmediateData());
         using var vm = new RlTrainingDialogViewModel(new DelayedTraining(), new EmptyRegistry(), new UnavailableQ(), new FakeBacktestDefaultSettingsManager(), chart, NullLocalizationService.Instance);
         await vm.InitializeAsync(); await chart.ApplyRlReplayAsync(Snapshot(0, 1, -1), NullLocalizationService.Instance);
-        typeof(RlTrainingDialogViewModel).GetField("_replayRevision", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.SetValue(vm, long.MaxValue);
-        vm.Decision = 1; Assert.Equal(RlDialogOperation.Disposed, vm.Operation); Assert.NotNull(chart.RlPresentation);
-        vm.Decision = 2; vm.UseContinuousPolicy = true; Assert.NotNull(chart.RlPresentation); Assert.False(vm.CanTrain);
+        typeof(RlTrainingDialogViewModel).GetField("_blocksRevision", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.SetValue(vm, long.MaxValue);
+        vm.SelectedGeneration = new RlGeneration(new string('a', 64), "SPY", "source", RlContract.ContractHash, "evaluation", 0m, 0m, new(), DateTimeOffset.UtcNow);
+        Assert.Equal(RlDialogOperation.Disposed, vm.Operation); Assert.NotNull(chart.RlPresentation);
+        vm.UseContinuousPolicy = true; Assert.NotNull(chart.RlPresentation); Assert.False(vm.CanTrain);
     }
     [Fact]
     public async Task U01_NullInspectionIsFailureAndProtectedRowsSurviveEmptyCandidates()
@@ -169,13 +170,10 @@ public sealed partial class RlUiTests
         try
         {
             number.Text = vm.InitialCapital.ToString(System.Globalization.CultureInfo.CurrentCulture); Assert.True(vm.CanTrain);
-            number.Text = ""; Assert.False(vm.CanTrain); Assert.False(vm.CanSaveCosts);
+            number.Text = ""; Assert.False(vm.CanTrain);
             number.Text = "999999999999999999999999999999999999"; Assert.False(vm.CanTrain);
             number.Text = "invalid"; Assert.False(vm.CanTrain);
             number.Text = vm.InitialCapital.ToString(System.Globalization.CultureInfo.CurrentCulture); Assert.True(vm.CanTrain);
-            RlInputValidation.SetField(number, nameof(vm.Decision)); number.Value = 1.5m; number.Text = "1.5";
-            Assert.False(vm.DecisionInputValid); Assert.True(vm.CanTrain);
-            number.Value = 1; number.Text = "1"; Assert.True(vm.DecisionInputValid);
         }
         finally { window.Close(); }
     }
@@ -198,11 +196,15 @@ public sealed partial class RlUiTests
         {
             var checkpointExpander = window.GetLogicalDescendants().OfType<Expander>().First(e => !e.Classes.Contains("rl-storage") && !e.Classes.Contains("rl-maintenance") && e.GetLogicalDescendants().OfType<Button>().Any(b => b.Command == vm.InspectCheckpointsCommand));
             Assert.True(checkpointExpander.IsExpanded);
-            Assert.All(window.GetLogicalDescendants().OfType<TextBlock>().Where(t => t.GetType().Name != "AccessText"), t => Assert.True(t.Classes.Contains("heading") || t.Classes.Contains("label") || t.Classes.Contains("value") || t.Classes.Contains("diagnostic"), $"Unclassed TextBlock: '{t.Text}'"));
+            Assert.All(window.GetLogicalDescendants().OfType<TextBlock>().Where(t => t.GetType().Name != "AccessText"), t => Assert.True(t.Classes.Contains("heading") || t.Classes.Contains("groupHeader") || t.Classes.Contains("label") || t.Classes.Contains("value") || t.Classes.Contains("diagnostic"), $"Unclassed TextBlock: '{t.Text}'"));
             foreach (var expander in window.GetLogicalDescendants().OfType<Expander>()) expander.IsExpanded = true;
             window.UpdateLayout(); AvaloniaHeadlessPlatform.ForceRenderTimerTick();
             var headings = window.GetLogicalDescendants().OfType<TextBlock>().Where(t => t.Classes.Contains("heading")).Select(t => t.Text).ToArray();
-            Assert.Equal(Enumerable.Range(1, 7).Select(i => LocalizationManager.Instance.Get("Rl.Ui.Section.G" + i)), headings);
+            // S3a: Basic (G1, G2) | Advanced (Run conditions, G3) | Results and management (G4, G7, G5, G6)
+            Assert.Equal(new[] { "G1", "G2", "RunConditions", "G3", "G4", "G7", "G5", "G6" }.Select(k => LocalizationManager.Instance.Get("Rl.Ui.Section." + k)), headings);
+            var groupHeaders = window.GetLogicalDescendants().OfType<TextBlock>().Where(t => t.Classes.Contains("groupHeader")).ToArray();
+            Assert.Equal(new[] { "TrainingWizard_Header_BasicSettings", "TrainingWizard_Header_AdvancedSettings", "Rl.Ui.Group.Results" }.Select(k => LocalizationManager.Instance.Get(k)), groupHeaders.Select(t => t.Text));
+            Assert.Equal(new[] { false, true, true }, groupHeaders.Select(t => t.Classes.Contains("advancedGroupHeader")));
             foreach (var combo in window.GetLogicalDescendants().OfType<ComboBox>()) Assert.False(combo.IsVisible);
             Assert.False(window.GetLogicalDescendants().OfType<Button>().Single(b => b.Command == vm.TrainCommand).IsEnabled);
             Assert.True(window.GetLogicalDescendants().OfType<Button>().Single(b => b.Command == vm.InspectArtifactsCommand).IsVisible);

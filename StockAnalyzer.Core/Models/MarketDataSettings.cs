@@ -9,6 +9,8 @@ public class MarketDataSettings
 {
     public const string DefaultDailyDataPath = "Data/Daily";
     public const string DefaultMetadataDataPath = "Data/Metadata";
+    public const string DefaultWeeklyDataPath = "Data/Weekly";
+    public const string DefaultMonthlyDataPath = "Data/Monthly";
 
     /// <summary>
     /// Base directory path for daily Parquet files.
@@ -18,12 +20,12 @@ public class MarketDataSettings
     /// <summary>
     /// Base directory path for weekly Parquet files.
     /// </summary>
-    public string? WeeklyDataPath { get; set; } = "Data/Weekly";
+    public string? WeeklyDataPath { get; set; } = DefaultWeeklyDataPath;
 
     /// <summary>
     /// Base directory path for monthly Parquet files.
     /// </summary>
-    public string? MonthlyDataPath { get; set; } = "Data/Monthly";
+    public string? MonthlyDataPath { get; set; } = DefaultMonthlyDataPath;
 
     /// <summary>
     /// Base directory path for metadata Parquet files.

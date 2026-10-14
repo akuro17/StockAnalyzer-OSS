@@ -11,7 +11,7 @@ namespace StockAnalyzer.Avalonia.ViewModels.Screener;
 
 /// <summary>
 /// Editor state of the Filters condition tree: a single fixed root group (decision B of
-/// Y:\Temp\sa_implementation_plan_ScreenerFilterConditionTree.md - no Section/Side dimension, unlike
+/// docs/sa_implementation_plan_ScreenerFilterConditionTree - no Section/Side dimension, unlike
 /// <c>BacktestConditionTreeViewModel</c>'s six fixed roots), the current selection, and the edit commands. The editor
 /// works on this tree only (never on a flat list) and converts it with <see cref="Build"/>. The depth/node bounds
 /// come from configuration; a command whose result would exceed them is disabled. An empty nested group is a
@@ -21,7 +21,7 @@ namespace StockAnalyzer.Avalonia.ViewModels.Screener;
 /// <c>BacktestConditionTreeViewModel</c> already uses - those types carry no Backtest-specific coupling, so this is a
 /// safe reuse rather than a new dialog. The same reasoning applies to <see cref="MoveLeaf"/>'s
 /// <see cref="ConditionDropPlacement"/>/<see cref="ConditionMoveResult"/> parameter/return types
-/// (Y:\Temp\sa_implementation_plan_ScreenerFilterConditionDragMove.md).
+/// (docs/sa_implementation_plan_ScreenerFilterConditionDragMove).
 /// </summary>
 public sealed partial class ScreenerConditionTreeViewModel : ObservableObject
 {
@@ -392,7 +392,7 @@ public sealed partial class ScreenerConditionTreeViewModel : ObservableObject
         }
     }
 
-    // ---- move (drag and drop; Y:\Temp\sa_implementation_plan_ScreenerFilterConditionDragMove.md Task 2) ----
+    // ---- move (drag and drop; docs/sa_implementation_plan_ScreenerFilterConditionDragMove Task 2) ----
 
     private readonly record struct MovePlan(ScreenerConditionGroupViewModel SourceParent, int SourceIndex, ScreenerConditionGroupViewModel Destination, int DestinationIndex);
 

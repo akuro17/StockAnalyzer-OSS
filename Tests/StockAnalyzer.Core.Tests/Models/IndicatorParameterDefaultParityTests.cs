@@ -11,7 +11,7 @@ namespace StockAnalyzer.Core.Tests.Models;
 /// <summary>
 /// Permanent, registry-wide replacement for the one-off reflection survey used while diagnosing the
 /// SMA/EMA <c>Period</c> default mismatch (see <c>CoreIndicatorBaseGetDefaultSettingsTests</c> and
-/// <c>Y:\Temp\sa_step_log_TrainingWizard_IndicatorChannelFeatureExporter.md</c>'s "SMA/EMA
+/// <c>docs/sa_step_log_TrainingWizard_IndicatorChannelFeatureExporter</c>'s "SMA/EMA
 /// registry-default Period mismatch" section). That survey only compared each indicator's own
 /// <c>Period</c> field against its naming-convention parameter class's <c>Period</c> field. This test
 /// generalizes the same check to every matching-named scalar property (not just <c>Period</c>) across

@@ -20,7 +20,7 @@ internal abstract class SkiaLeaseDrawOperation : ICustomDrawOperation
 
     public Rect Bounds { get; }
 
-    public void Dispose() { }
+    public virtual void Dispose() { }
 
     // Rendering depends on the snapshot captured at construction. Letting the compositor reuse a
     // previous operation can retain Skia pixels from an earlier frame, so every paint is a fresh,

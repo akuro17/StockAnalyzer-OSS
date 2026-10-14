@@ -13,7 +13,7 @@ namespace StockAnalyzer.Core.Models.Training;
 /// build a expanding-window walk-forward split over the windowed samples of each symbol and
 /// raise <c>SystemExit("Empty train or val split; ...")</c> when the last fold's test block
 /// would be empty. That happened twice during manual verification of this feature (see
-/// Y:\Temp\sa_step_log_OnnxTrainingFoundation.md, 2026-08-29, "Empty train or val split")
+/// docs/sa_step_log_OnnxTrainingFoundation, 2026-08-29, "Empty train or val split")
 /// with a selected date range that looked adequate by eye but wasn't - the fold-formation rule
 /// is not just <c>window + horizon</c>. This class reproduces that rule in closed form (derived
 /// and cross-checked against 55 direct calls to the real
@@ -30,6 +30,12 @@ public static class WalkForwardDataRequirement
     /// <c>dataset.DEFAULT_WF_SPLITS</c>; keep the two in sync if that Python constant ever changes.
     /// </summary>
     public const int DefaultSplitCount = 5;
+
+    /// <summary>
+    /// Default forward label horizon in bars. Mirrors <c>dataset.DEFAULT_HORIZON</c>;
+    /// keep in sync via <c>HyperparameterDomainParityTests.DefaultHorizon_MatchesPythonDatasetDefault</c>.
+    /// </summary>
+    public const int DefaultHorizon = 5;
 
     /// <summary>
     /// Minimum number of raw (unwindowed) bars a single symbol's filtered date range must

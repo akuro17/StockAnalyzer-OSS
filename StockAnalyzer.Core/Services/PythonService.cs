@@ -432,7 +432,7 @@ namespace StockAnalyzer.Core.Services
 
                     LogSyncActivity($"Starting process: {pythonExe} {arguments}");
                     
-                    var combinedOutput = new System.Text.StringBuilder();
+                    var combinedOutput = new RollingLogBuffer(500);
                     using var process = new System.Diagnostics.Process { StartInfo = startInfo };
                     
                     process.OutputDataReceived += (s, e) =>
@@ -636,7 +636,7 @@ namespace StockAnalyzer.Core.Services
 
                     LogSyncActivity($"Starting process (Config): {pythonExe} {arguments}");
                     
-                    var combinedOutput = new System.Text.StringBuilder();
+                    var combinedOutput = new RollingLogBuffer(500);
                     using var process = new System.Diagnostics.Process { StartInfo = startInfo };
                     
                     process.OutputDataReceived += (s, e) =>
@@ -768,7 +768,17 @@ namespace StockAnalyzer.Core.Services
                 using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, cts.Token);
                 try
                 {
+                    var stdoutTask = process.StandardOutput.ReadToEndAsync(linkedCts.Token);
+                    var stderrTask = process.StandardError.ReadToEndAsync(linkedCts.Token);
+
                     await process.WaitForExitAsync(linkedCts.Token);
+                    var output = await stdoutTask;
+                    _ = await stderrTask;
+
+                    if (process.ExitCode == 0 && output.Contains("UPDATE_AVAILABLE"))
+                    {
+                        return true;
+                    }
                 }
                 catch (OperationCanceledException)
                 {
@@ -776,14 +786,6 @@ namespace StockAnalyzer.Core.Services
                     throw;
                 }
 
-                if (process.ExitCode == 0)
-                {
-                    var output = await process.StandardOutput.ReadToEndAsync(linkedCts.Token);
-                    if (output.Contains("UPDATE_AVAILABLE"))
-                    {
-                        return true;
-                    }
-                }
                 return false;
             }
             catch (Exception ex)
@@ -839,11 +841,27 @@ namespace StockAnalyzer.Core.Services
             // Bypass build isolation because the embedded environment often fails to create
             // a clean isolated environment with all necessary build tools (like setuptools).
             string pipArgs;
+            var pinnedMap = GetPinnedPackageVersions(msg => LogSyncActivity(msg, LogLevel.Warning));
+            string? pinnedVersion = null;
+            if (pinnedMap.TryGetValue(packageName, out pinnedVersion))
+            {
+                LogSyncActivity($"Resolved pinned version for '{packageName}': {pinnedVersion}");
+            }
+            else if (packageName != "torch")
+            {
+                LogSyncActivity($"Package '{packageName}' not found in requirements.txt; proceeding without strict pin", LogLevel.Warning);
+            }
+
             if (packageName == "torch")
             {
                 pipArgs = (shouldUpdate || forceUpgrade)
                     ? "-m pip install --no-build-isolation --upgrade torch --index-url https://download.pytorch.org/whl/cpu"
                     : "-m pip install --no-build-isolation torch --index-url https://download.pytorch.org/whl/cpu";
+            }
+            else if (!string.IsNullOrEmpty(pinnedVersion))
+            {
+                // Enforce strictly pinned version from requirements.txt without unverified --upgrade
+                pipArgs = $"-m pip install --no-build-isolation {packageName}=={pinnedVersion}";
             }
             else
             {
@@ -854,6 +872,54 @@ namespace StockAnalyzer.Core.Services
 
             await RunPipCommandAsync(pipArgs, ct);
             LogSyncActivity($"InstallPackage FINISH: {packageName}");
+        }
+
+        private static System.Collections.Generic.Dictionary<string, string>? _pinnedPackageVersions;
+        private static readonly object _pinnedVersionsLock = new();
+
+        private static System.Collections.Generic.IReadOnlyDictionary<string, string> GetPinnedPackageVersions(Action<string>? warnLogger = null)
+        {
+            if (_pinnedPackageVersions != null) return _pinnedPackageVersions;
+
+            lock (_pinnedVersionsLock)
+            {
+                if (_pinnedPackageVersions != null) return _pinnedPackageVersions;
+
+                var dict = new System.Collections.Generic.Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                try
+                {
+                    var reqPath = PythonScriptLocator.Resolve("requirements.txt");
+                    if (System.IO.File.Exists(reqPath))
+                    {
+                        var lines = System.IO.File.ReadAllLines(reqPath);
+                        foreach (var rawLine in lines)
+                        {
+                            var line = rawLine.Trim();
+                            if (string.IsNullOrEmpty(line) || line.StartsWith("#")) continue;
+
+                            var eqIndex = line.IndexOf("==");
+                            if (eqIndex > 0)
+                            {
+                                var pkg = line.Substring(0, eqIndex).Trim();
+                                var ver = line.Substring(eqIndex + 2).Trim();
+                                dict[pkg] = ver;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        warnLogger?.Invoke($"requirements.txt not found at resolved path: {reqPath}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    warnLogger?.Invoke($"Failed to load requirements.txt: {ex.Message}");
+                    System.Diagnostics.Debug.WriteLine($"Failed to load requirements.txt: {ex.Message}");
+                }
+
+                _pinnedPackageVersions = dict;
+                return _pinnedPackageVersions;
+            }
         }
 
         private async Task EnsurePipReadyAsync(CancellationToken ct = default)
@@ -961,8 +1027,21 @@ namespace StockAnalyzer.Core.Services
                 
                 // Set a short timeout for this check
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-                await process.WaitForExitAsync(cts.Token);
-                return process.ExitCode == 0;
+                try
+                {
+                    var stdoutTask = process.StandardOutput.ReadToEndAsync(cts.Token);
+                    var stderrTask = process.StandardError.ReadToEndAsync(cts.Token);
+
+                    await process.WaitForExitAsync(cts.Token);
+                    _ = await stdoutTask;
+                    _ = await stderrTask;
+                    return process.ExitCode == 0;
+                }
+                catch (OperationCanceledException)
+                {
+                    try { if (!process.HasExited) process.Kill(true); } catch { }
+                    return false;
+                }
             }
             catch
             {

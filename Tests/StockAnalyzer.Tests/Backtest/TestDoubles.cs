@@ -245,7 +245,7 @@ internal sealed class BlockingCancellableReportGenerator : IBacktestReportGenera
 
 /// <summary>Minimal IDialogService test double (mirrors DrawingObjectsViewModelTests.FakeDialogService's
 /// established pattern): only ShowOpenFolderDialogAsync is exercised by
-/// BacktestResultsViewModel.ExportReportAsync (Y:\Temp\sa_improvement_plan_BacktestResultsUiPolish.md
+/// BacktestResultsViewModel.ExportReportAsync (docs/sa_improvement_plan_BacktestResultsUiPolish
 /// Task 1); every other member is unused here.</summary>
 internal sealed class FakeDialogService : IDialogService
 {
@@ -427,7 +427,7 @@ internal sealed class FakeMarketDataProvider : IMarketDataProvider
 }
 
 /// <summary>Hand-rolled IToastNotificationService double (Round 2,
-/// Y:\Temp\sa_improvement_plan_BacktestUiCleanupRound2.md Task 3) - records the last notification shown so
+/// docs/sa_improvement_plan_BacktestUiCleanupRound2 Task 3) - records the last notification shown so
 /// tests can assert on it, without needing a mocking framework.</summary>
 internal sealed class FakeToastNotificationService : IToastNotificationService
 {

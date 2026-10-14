@@ -103,4 +103,13 @@ public sealed class HyperparameterDomainParityTests
                 }
         }
     }
+
+    [Fact]
+    public void DefaultHorizon_MatchesPythonDatasetDefault()
+    {
+        var content = File.ReadAllText(TrainingFile("dataset.py"));
+        var matches = System.Text.RegularExpressions.Regex.Matches(content, @"DEFAULT_HORIZON:\s*int\s*=\s*(\d+)");
+        Assert.Single(matches);
+        Assert.Equal(WalkForwardDataRequirement.DefaultHorizon, int.Parse(matches[0].Groups[1].Value, CultureInfo.InvariantCulture));
+    }
 }

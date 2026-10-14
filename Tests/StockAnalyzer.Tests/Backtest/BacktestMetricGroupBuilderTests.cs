@@ -9,7 +9,7 @@ using static StockAnalyzer.Tests.Backtest.BacktestReportTestFactory;
 
 namespace StockAnalyzer.Tests.Backtest;
 
-/// <summary>Grouped Results-tab metrics table (Y:\Temp\sa_implementation_plan_BacktestMetricsGroupedLayout.md): real generated reports, no mocks.</summary>
+/// <summary>Grouped Results-tab metrics table (docs/sa_implementation_plan_BacktestMetricsGroupedLayout): real generated reports, no mocks.</summary>
 public class BacktestMetricGroupBuilderTests
 {
     private static readonly string[] ExpectedGroupKeys =

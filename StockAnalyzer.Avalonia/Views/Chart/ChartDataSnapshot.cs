@@ -46,6 +46,12 @@ public sealed class ChartDataSnapshot
     public IReadOnlyList<int>? KagiColumnMap { get; }
 
     /// <summary>
+    /// For Kagi and Point and Figure charts: creation and last-update dates of every element of
+    /// <see cref="AllCandles"/> (same order and count). Null for all other charts or when the source did not supply them.
+    /// </summary>
+    public IReadOnlyList<ElementDates>? ElementDates { get; }
+
+    /// <summary>
     /// Maximum price within the display range.
     /// </summary>
     public decimal MaxPrice { get; }
@@ -258,13 +264,15 @@ public sealed class ChartDataSnapshot
         int visibleCandleCount = 100,
         IReadOnlyList<int>? kagiColumnMap = null,
         PriceScaleType priceScale = PriceScaleType.Linear, ModelAnalysisSnapshot? modelAnalysis = null,
-        StockAnalyzer.Core.Models.Training.AttentionSnapshot? attention = null)
+        StockAnalyzer.Core.Models.Training.AttentionSnapshot? attention = null,
+        IReadOnlyList<ElementDates>? elementDates = null)
     {
         PriceScale = priceScale;
         ModelAnalysis = modelAnalysis;
         Attention = attention;
         VisibleCandleCount = visibleCandleCount;
         KagiColumnMap = kagiColumnMap;
+        ElementDates = elementDates != null ? elementDates.ToImmutableArray() : null;
         var priceCalc = priceRangeCalculator ?? StandardPriceRangeCalculator.Instance;
         ChartType = chartType;
         PaddingTopPx = paddingTopPx;
@@ -539,10 +547,7 @@ public sealed class ChartDataSnapshot
             int limit = Math.Min(targetIndex, Candles.Count - 1);
             for (int i = 1; i <= limit; i++)
             {
-                // Detect flat anchor at index 0 (Open == Close): always advance column at index 1
-                bool isAnchorTransition = (i == 1 && Candles[0].Open == Candles[0].Close);
-                bool isDirectionChange = (Candles[i].Close >= Candles[i].Open) != (Candles[i-1].Close >= Candles[i-1].Open);
-                if (isDirectionChange || isAnchorTransition)
+                if (KagiColumns.StartsNewColumn(Candles, i))
                 {
                     columnIdx++;
                 }
@@ -584,11 +589,13 @@ public sealed class ChartDataSnapshot
         decimal? overrideMinPrice = null,
         decimal? overrideMaxPrice = null,
         PriceScaleType priceScale = PriceScaleType.Linear, ModelAnalysisSnapshot? modelAnalysis = null,
-        StockAnalyzer.Core.Models.Training.AttentionSnapshot? attention = null)
+        StockAnalyzer.Core.Models.Training.AttentionSnapshot? attention = null,
+        IReadOnlyList<ElementDates>? elementDates = null)
     {
         PriceScale = priceScale;
         ModelAnalysis = modelAnalysis;
         Attention = attention;
+        ElementDates = elementDates != null ? elementDates.ToImmutableArray() : null;
         var priceCalc = priceRangeCalculator ?? StandardPriceRangeCalculator.Instance;
         ChartType = chartType;
         PaddingTopPx = paddingTopPx;

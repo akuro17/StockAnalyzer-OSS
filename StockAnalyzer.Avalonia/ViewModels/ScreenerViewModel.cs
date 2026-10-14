@@ -25,6 +25,7 @@ using StockAnalyzer.Avalonia.Services;
 using StockAnalyzer.Avalonia.ViewModels.Watchlist;
 using StockAnalyzer.Avalonia.ViewModels.TickerList;
 using StockAnalyzer.Core.Models.Watchlist;
+using StockAnalyzer.Core.Utilities;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -710,7 +711,7 @@ public partial class ScreenerViewModel : ViewModelBase, IDisposable
     {
         if (_isDisposed || IsScanning) return;
 
-        // Filters condition tree (Y:\Temp\sa_implementation_plan_ScreenerFilterConditionTree.md Task 3, decision A):
+        // Filters condition tree (docs/sa_implementation_plan_ScreenerFilterConditionTree Task 3, decision A):
         // the previous per-entry sequential AND/OR fold is replaced by a single recursive tree evaluation, screened
         // in one ScreenAsync call via ScreenerConditionTreeCondition. "No conditions registered" now means "the tree
         // has no active (enabled) leaf at all", which subsumes the old "activeEntries.Count == 0" check.
@@ -918,22 +919,9 @@ public partial class ScreenerViewModel : ViewModelBase, IDisposable
                             item.High = last.High;
                             item.Low = last.Low;
                             item.Volume = last.Volume;
-                            if (last.Open != 0)
-                            {
-                                item.Change = last.Close - last.Open;
-                                item.ChangePercent = (double)((last.Close - last.Open) / last.Open * 100m);
-                            }
-                            else if (candles.Count >= 2)
-                            {
-                                var prev = candles[^2];
-                                item.Change = last.Close - prev.Close;
-                                item.ChangePercent = prev.Close != 0 ? (double)((last.Close - prev.Close) / prev.Close * 100m) : 0;
-                            }
-                            else
-                            {
-                                item.Change = 0;
-                                item.ChangePercent = 0;
-                            }
+                            var priceChange = PriceChange.FromPreviousClose(candles, candles.Count - 1);
+                            item.Change = priceChange.Amount;
+                            item.ChangePercent = (double)priceChange.Percent;
 
                             if (sideConfigsForColumns != null && sideConfigsForColumns.Count > 0)
                             {

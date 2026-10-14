@@ -1,0 +1,54 @@
+name: Cross-Platform CI
+
+# Manual only: the private repository has no GitHub Actions minutes (billing; the owner does not pay), so push and pull request triggers
+# would only fail. Release builds run in the public StockAnalyzer-OSS repository.
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Build & Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest, windows-latest, macos-latest ]
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Cold Restore Dependencies
+        run: dotnet restore StockAnalyzer.sln --force
+
+      - name: Clean Release Build
+        run: dotnet build StockAnalyzer.sln -c Release --no-incremental
+
+      - name: Run Cross-Platform Core Tests
+        run: dotnet test Tests/StockAnalyzer.Core.Tests/StockAnalyzer.Core.Tests.csproj -c Release --no-build --verbosity normal
+
+      - name: Run Cross-Platform Avalonia Unit Tests
+        run: dotnet test Tests/StockAnalyzer.Avalonia.Tests/StockAnalyzer.Avalonia.Tests.csproj -c Release --no-build --verbosity normal --filter "Category!=E2E&FullyQualifiedName!~UITests"
+
+  python-audit:
+    name: Python Dependencies & Portability (Ubuntu)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Pinned Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r StockAnalyzer.Python/requirements.txt
+          pip check

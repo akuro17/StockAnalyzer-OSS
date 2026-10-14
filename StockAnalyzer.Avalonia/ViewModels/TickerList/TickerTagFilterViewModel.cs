@@ -7,13 +7,13 @@ using StockAnalyzer.Avalonia.Common;
 namespace StockAnalyzer.Avalonia.ViewModels.TickerList;
 
 /// <summary>
-/// Backs the Tickers tab's right-column "Ticker / Tag" filter (Y:\Temp\sa_implementation_plan_TickerTagFilter_Redo.md
+/// Backs the Tickers tab's right-column "Ticker / Tag" filter (docs/sa_implementation_plan_TickerTagFilter_Redo
 /// Phase 2). <see cref="FilterText"/> is applied directly as the filter condition on every change -
 /// there is no separate "commit a suggestion" step - while <see cref="AvailableSuggestions"/> (ticker
 /// symbols and registered tags combined) drives the AutoCompleteBox's suggestion popup.
 /// </summary>
 /// <remarks>
-/// sa_improve (constraint-check follow-up, Y:\Temp\sa_constraint_check_TickerTagFilter_20260923.md):
+/// sa_improve (constraint-check follow-up, docs/sa_constraint_check_TickerTagFilter_20260923):
 /// takes its data source and filter-apply callback as constructor delegates rather than holding a
 /// direct reference to the owning <c>TickerListViewModel</c>, so this type can be constructed and
 /// unit-tested without a full owner instance.

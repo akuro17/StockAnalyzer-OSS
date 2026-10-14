@@ -200,4 +200,56 @@ public class ThemeSettingsViewModelTests
         _mockTemplateService.Verify(s => s.DeleteAsync(TemplateType.Theme, template.Id), Times.Once);
         Assert.Empty(vm.SavedThemes);
     }
+
+    [Fact]
+    public void ShellWarningTextColor_ChangeUpdatesManager_AndMarksModified()
+    {
+        var vm = new ThemeSettingsViewModel(_themeManager, _mockTemplateService.Object, _mockDialogService.Object);
+        var custom = IndicatorColor.FromUInt(0xFF12AB34);
+        Assert.Equal(_themeManager.CurrentTheme.ShellWarningText, vm.ShellWarningTextColor);
+        Assert.False(vm.IsModified);
+
+        vm.ShellWarningTextColor = custom;
+
+        Assert.Equal(custom, _themeManager.CurrentTheme.ShellWarningText);
+        Assert.Equal(custom, _themeManager.GetCurrentColors()[ThemeColorKey.ShellWarningText]);
+        Assert.True(vm.IsModified);
+    }
+
+    [Fact]
+    public void ShellWarningTextColor_ResetToDefaultRestoresThePreset_AndRevertRestoresTheSnapshot()
+    {
+        var vm = new ThemeSettingsViewModel(_themeManager, _mockTemplateService.Object, _mockDialogService.Object);
+        var original = vm.ShellWarningTextColor;
+        vm.ShellWarningTextColor = IndicatorColor.FromUInt(0xFF12AB34);
+
+        vm.RevertChanges();
+        Assert.Equal(original, vm.ShellWarningTextColor);
+        Assert.Equal(original, _themeManager.CurrentTheme.ShellWarningText);
+
+        vm.ShellWarningTextColor = IndicatorColor.FromUInt(0xFF12AB34);
+        vm.ResetToDefault();
+        var preset = vm.SelectedPreset == AppThemeMode.Dark ? ThemeColors.Dark : ThemeColors.Light;
+        Assert.Equal(preset.ShellWarningText, vm.ShellWarningTextColor);
+        Assert.Equal(preset.ShellWarningText, _themeManager.CurrentTheme.ShellWarningText);
+    }
+
+    [Fact]
+    public async Task SaveCustomThemeCommand_StoresTheWarningTextColor()
+    {
+        ThemeTemplate? savedTemplate = null;
+        _mockTemplateService
+            .Setup(s => s.SaveAsync(It.IsAny<ThemeTemplate>()))
+            .Callback<ThemeTemplate>(t => savedTemplate = t)
+            .Returns(Task.CompletedTask);
+        var vm = new ThemeSettingsViewModel(_themeManager, _mockTemplateService.Object, _mockDialogService.Object);
+        var custom = IndicatorColor.FromUInt(0xFF12AB34);
+        vm.ShellWarningTextColor = custom;
+        vm.NewThemeName = "Warning Test";
+
+        await vm.SaveCustomThemeCommand.ExecuteAsync(null);
+
+        Assert.NotNull(savedTemplate);
+        Assert.Equal(custom, savedTemplate.Colors.ShellWarningText);
+    }
 }

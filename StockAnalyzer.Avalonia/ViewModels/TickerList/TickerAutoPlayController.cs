@@ -11,7 +11,7 @@ namespace StockAnalyzer.Avalonia.ViewModels.TickerList;
 public readonly record struct TickerAutoPlaySettingsSnapshot(int IntervalSeconds, bool StopAtListEnd, bool StopOnListChange);
 
 /// <summary>
-/// Timer-driven sequential ticker selection of the Tickers tab (Y:\Temp\sa_implementation_plan_TickerAutoPlay.md).
+/// Timer-driven sequential ticker selection of the Tickers tab (docs/sa_implementation_plan_TickerAutoPlay).
 /// Avalonia-free and decoupled from <c>TickerListViewModel</c> (SA_ARCHITECTURE_RULES: Composed Child ViewModel
 /// Decoupling): everything it needs arrives as constructor delegates. Every public member is called on the UI
 /// thread; the scheduled callback only posts to the dispatcher, so state is mutated on the UI thread only.

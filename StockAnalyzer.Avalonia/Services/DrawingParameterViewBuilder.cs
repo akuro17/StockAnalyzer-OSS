@@ -448,8 +448,8 @@ public class DrawingParameterViewBuilder
             if (rangeAttribute != null)
             {
                 ToolTip.SetTip(nud, $"Range: {rangeAttribute.Minimum} - {rangeAttribute.Maximum}");
-                if (decimal.TryParse(rangeAttribute.Minimum.ToString(), out var min)) nud.Minimum = min;
-                if (decimal.TryParse(rangeAttribute.Maximum.ToString(), out var max)) nud.Maximum = max;
+                if (decimal.TryParse(Convert.ToString(rangeAttribute.Minimum, CultureInfo.InvariantCulture), NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out var min)) nud.Minimum = min;
+                if (decimal.TryParse(Convert.ToString(rangeAttribute.Maximum, CultureInfo.InvariantCulture), NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out var max)) nud.Maximum = max;
             }
             else if (coreRangeAttribute != null)
             {

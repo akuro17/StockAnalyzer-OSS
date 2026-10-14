@@ -29,6 +29,12 @@ public class CurveLineTextObject : RelativeGeometricRenderer, ILineTextAnnotated
         set => _annotations.TopText = value;
     }
 
+    public string? TopFontFamily
+    {
+        get => _annotations.TopFontFamily;
+        set => _annotations.TopFontFamily = value;
+    }
+
     public double TopFontSize
     {
         get => _annotations.TopFontSize;
@@ -101,6 +107,12 @@ public class CurveLineTextObject : RelativeGeometricRenderer, ILineTextAnnotated
     {
         get => _annotations.BottomText;
         set => _annotations.BottomText = value;
+    }
+
+    public string? BottomFontFamily
+    {
+        get => _annotations.BottomFontFamily;
+        set => _annotations.BottomFontFamily = value;
     }
 
     public double BottomFontSize

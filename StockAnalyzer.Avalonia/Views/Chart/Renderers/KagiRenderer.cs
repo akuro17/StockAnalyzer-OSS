@@ -21,7 +21,6 @@ public sealed class KagiRenderer : IChartRenderer, IDisposable
     private readonly SKPaint _yangDownPaint;
     private readonly SKPaint _yinUpPaint;
     private readonly SKPaint _yinDownPaint;
-    private readonly SKPaint _textPaint;
 
     public KagiRenderer()
     {
@@ -29,13 +28,6 @@ public sealed class KagiRenderer : IChartRenderer, IDisposable
         _yangDownPaint = new SKPaint { Style = SKPaintStyle.Stroke, IsAntialias = true };
         _yinUpPaint = new SKPaint { Style = SKPaintStyle.Stroke, IsAntialias = true };
         _yinDownPaint = new SKPaint { Style = SKPaintStyle.Stroke, IsAntialias = true };
-        
-        _textPaint = new SKPaint 
-        { 
-            IsAntialias = true, 
-            TextSize = LayoutConstants.LabelFontSize, 
-            Typeface = SKTypeface.FromFamilyName("Arial", SKFontStyle.Bold) 
-        };
     }
 
     public void Render(SKCanvas canvas, Rect chartArea, ChartDataSnapshot snapshot, IChartRenderConfig baseConfig)
@@ -45,12 +37,6 @@ public sealed class KagiRenderer : IChartRenderer, IDisposable
 
         // Step 42-1-1: Dynamic Snap Logic (Removed unused PixelSnap)
 
-        // Context Unpacking
-        bool isPercentageMode = config.IsKagiPercentageMode;
-        decimal percentValue = (decimal)config.KagiReversalPercent;
-        decimal reversalAmount = (decimal)config.KagiReversalAmount;
-        
-        var theme = config.ThemeManager.CurrentTheme;
         // Update paint colors
         _yangUpPaint.Color = config.KagiBullishColor.ToSkColor();
         _yangDownPaint.Color = config.KagiBearishColor.ToSkColor();
@@ -66,16 +52,6 @@ public sealed class KagiRenderer : IChartRenderer, IDisposable
         _yinUpPaint.StrokeWidth = yinThickness;
         _yinDownPaint.StrokeWidth = yinThickness;
 
-        // Count reversals to determine number of columns needed
-        int reversalCount = 0;
-        for (int i = 1; i < snapshot.Candles.Count; i++)
-        {
-            bool loopPrevUp = snapshot.Candles[i - 1].Close >= snapshot.Candles[i - 1].Open;
-            bool currUp = snapshot.Candles[i].Close >= snapshot.Candles[i].Open;
-            if (currUp != loopPrevUp) reversalCount++;
-        }
-        int totalColumns = reversalCount + 1; // At least 1 column
-        
         if (config.Transform == null) return;
         var t = config.Transform;
         
@@ -165,31 +141,6 @@ public sealed class KagiRenderer : IChartRenderer, IDisposable
         
         // On-chart labels for Kagi reversals have been migrated to the right-side DataWindow.
         // See DataWindowViewModel for extraction logic.
-
-
-        // --- HEADER INFO & LABELS (Top-Left HUD) ---
-        float hudX = (float)chartArea.Left + 10;
-        float hudY = (float)chartArea.Top + 20;
-
-        var lastSegment = snapshot.Candles.Last();
-        bool isLastUp = lastSegment.Close >= lastSegment.Open;
-        
-        // Calculate reversal price (price at which direction would change)
-        decimal revPriceVal = isLastUp 
-            ? lastSegment.Close - reversalAmount 
-            : lastSegment.Close + reversalAmount;
-        
-        // Current Kagi value is the last Close price
-        decimal kagiValue = lastSegment.Close;
-        decimal currentClose = (decimal)config.CurrentPrice;
-
-
-        // Using pre-parsed colors from context
-        SKColor revColor = config.KagiBearishColor.ToSkColor(); 
-        SKColor prColor = config.KagiBullishColor.ToSkColor(); 
-
-
-
     }
 
     public void Dispose()
@@ -198,7 +149,6 @@ public sealed class KagiRenderer : IChartRenderer, IDisposable
         _yangDownPaint.Dispose();
         _yinUpPaint.Dispose();
         _yinDownPaint.Dispose();
-        _textPaint.Dispose();
     }
 }
 

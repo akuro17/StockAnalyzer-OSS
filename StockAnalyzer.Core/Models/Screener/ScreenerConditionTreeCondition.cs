@@ -10,7 +10,7 @@ namespace StockAnalyzer.Core.Models.Screener;
 /// existing <c>IScreenerService.ScreenAsync(symbols, condition, timeFrame, progress, ct)</c> - with its parallel
 /// per-symbol candle loading, metadata fetch and cancellation - can screen the WHOLE tree in one call, replacing the
 /// previous per-entry loop that folded results with <c>HashSet.UnionWith</c>/<c>IntersectWith</c>
-/// (Y:\Temp\sa_implementation_plan_ScreenerFilterConditionTree.md Task 3, decision A). No screening logic lives here:
+/// (docs/sa_implementation_plan_ScreenerFilterConditionTree Task 3, decision A). No screening logic lives here:
 /// evaluation is delegated to <see cref="ScreenerConditionTreeEvaluator.Evaluate"/>.
 /// </summary>
 public sealed class ScreenerConditionTreeCondition : IScreeningCondition

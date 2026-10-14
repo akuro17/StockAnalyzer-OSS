@@ -20,7 +20,7 @@ using Xunit;
 
 namespace StockAnalyzer.Avalonia.Tests.Views;
 
-/// <summary>sa_implement (Ticker Auto Play, Y:\Temp\sa_implementation_plan_TickerAutoPlay.md Phase 3): the
+/// <summary>sa_implement (Ticker Auto Play, docs/sa_implementation_plan_TickerAutoPlay Phase 3): the
 /// checkbox in the Tickers tab filter row and the View's visible-order provider (decision D1).</summary>
 [Collection("MessengerSharedState")]
 public class TickerAutoPlayCheckBoxTests

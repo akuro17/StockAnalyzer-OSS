@@ -10,7 +10,7 @@ public enum TickerTagFilterSuggestionKind
 }
 
 /// <summary>
-/// One entry in the Ticker/Tag filter's suggestion list (Y:\Temp\sa_implementation_plan_TickerTagFilter_Redo.md
+/// One entry in the Ticker/Tag filter's suggestion list (docs/sa_implementation_plan_TickerTagFilter_Redo
 /// Phase 2, sa_improve follow-up). Mirrors the icon + name + kind-label row layout of
 /// <see cref="StockAnalyzer.Avalonia.ViewModels.Notes.NoteScopeSuggestion"/> (Notes tab's unified
 /// search box) so both suggestion popups look and read the same way; reuses that same icon/label SSoT

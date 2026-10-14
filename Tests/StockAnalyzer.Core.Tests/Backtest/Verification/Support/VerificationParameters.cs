@@ -3,7 +3,7 @@ using System.Collections.Generic;
 namespace StockAnalyzer.Core.Tests.Backtest.Verification;
 
 /// <summary>
-/// Test-scale parameters shared by the L1 verification suite (Y:\Temp\sa_implementation_plan_BacktestL1Verification.md).
+/// Test-scale parameters shared by the L1 verification suite (docs/sa_implementation_plan_BacktestL1Verification).
 /// These are properties of the TEST DESIGN, not domain values - each one names the requirement it comes from so no
 /// scenario embeds an unexplained number.
 /// </summary>

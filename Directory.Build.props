@@ -1,10 +1,10 @@
 <Project>
   <!-- 
-    Centralized build output configuration
-    All intermediate (obj) and output (bin) files go to Y:\StockAnalyzer\tmp
+    Configurable build output redirection (RAMDisk)
+    Active only when SA_USE_RAMDISK is true and SA_RAMDISK_DIR exists
   -->
-  <PropertyGroup Condition="'$(GITHUB_ACTIONS)' != 'true' AND '$(SA_USE_RAMDISK)' == 'true' AND Exists('Y:\')">
-    <BaseIntermediateOutputPath>Y:\StockAnalyzer\tmp\obj\$(MSBuildProjectName)\</BaseIntermediateOutputPath>
+  <PropertyGroup Condition="'$(GITHUB_ACTIONS)' != 'true' AND '$(SA_USE_RAMDISK)' == 'true' AND '$(SA_RAMDISK_DIR)' != '' AND Exists('$(SA_RAMDISK_DIR)')">
+    <BaseIntermediateOutputPath>$(SA_RAMDISK_DIR)\obj\$(MSBuildProjectName)\</BaseIntermediateOutputPath>
   </PropertyGroup>
   <PropertyGroup>
     <EnforceCodeStyleInBuild>false</EnforceCodeStyleInBuild>
@@ -15,6 +15,12 @@
     <Deterministic>true</Deterministic>
     <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
     <PathMap Condition="'$(Configuration)' == 'Release'">$(MSBuildProjectDirectory)=/src</PathMap>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+    <CopyOutputSymbolsToPublishDirectory>false</CopyOutputSymbolsToPublishDirectory>
   </PropertyGroup>
 
   <ItemGroup>

@@ -30,6 +30,12 @@ public sealed record PredictionResult(
     /// </summary>
     public bool IsRegression { get; init; } = false;
 
+    /// <summary>
+    /// The label of a prediction whose confidence stayed below the threshold (no class decision was made) and of the fallback result.
+    /// Every producer and consumer of this label uses this constant; prediction monitoring relies on it to skip such a result.
+    /// </summary>
+    public const string UnknownLabel = "Unknown";
+
     /// <summary>Validated ONNX output meaning; null only for a fallback result.</summary>
     public PredictionOutputContract? OutputContract { get; init; }
 
@@ -63,7 +69,7 @@ public sealed record PredictionResult(
     /// A safe, non-throwing fallback result returned when prediction cannot be produced.
     /// </summary>
     public static readonly PredictionResult Empty = new(
-        Label: "Unknown",
+        Label: UnknownLabel,
         Probability: 0f,
         Scores: System.Array.Empty<ClassScore>(),
         Confidence: 0f,

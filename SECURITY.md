@@ -4,12 +4,14 @@
 
 StockAnalyzer is an open-source tool primarily developed and maintained using AI coding assistants. As noted in the README, the project does not have a traditional dedicated team of human maintainers or security staff.
 
-Consequently, we do not have a private vulnerability disclosure channel (such as a security email).
+## Reporting Security Vulnerabilities
 
-## Managing Vulnerabilities
+We take security and privacy seriously. If you discover a potential security vulnerability or sensitive information exposure:
 
-If you discover a security vulnerability, please follow these guidelines:
+1. **Private Vulnerability Reporting**: Please report security vulnerabilities confidentially via GitHub's **Private Vulnerability Reporting** feature located under the repository's `Security` > `Advisories` tab. This allows maintainers to coordinate a fix before disclosing the issue publicly.
+2. **Do Not Post Unpatched Vulnerabilities to Public Issues**: To protect other users, please **do not** open public issues or discussions containing details of unpatched exploits, leaked credentials, or proof-of-concept attacks.
+3. **Public Contributions**: Once a vulnerability is verified or if you have already developed a fix, pull requests that adhere to the project's zero-leakage policies are welcome.
 
-1. **Local Resolution**: Since the project is AI-driven, users are highly encouraged to utilize AI coding assistants (such as Gemini, Copilot, etc.) to investigate, patch, and harden the security of their local installations.
-2. **Public Contributions**: If you have developed a security patch, please feel free to submit a public Pull Request (PR) with the fix so that all users can benefit from the improvement.
-3. **No Warranty**: As stated in the license (MIT) and README warnings, this software is provided "as-is" without warranty of any kind. You are responsible for auditing the code and ensuring its safety in your own environment.
+## No Warranty
+
+As stated in the MIT License and README warnings, this software is provided "as-is" without warranty of any kind. Users are responsible for auditing the code and ensuring safety within their own trading or development environments.

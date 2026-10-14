@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -22,9 +23,11 @@ namespace StockAnalyzer.Tests.ViewModels;
 public class TrainingWizardViewModelTests : IDisposable
 {
     private readonly SynchronizationContext? _previousSyncContext;
+    private readonly string _previousLanguage;
 
     public TrainingWizardViewModelTests()
     {
+        _previousLanguage = LocalizationManager.Instance.CurrentLanguage;
         LocalizationManager.Instance.Initialize("ja");
 
         // The VM builds a Progress<TrainingProgress> that captures SynchronizationContext.Current;
@@ -36,7 +39,11 @@ public class TrainingWizardViewModelTests : IDisposable
         SynchronizationContext.SetSynchronizationContext(new SynchronousSynchronizationContext());
     }
 
-    public void Dispose() => SynchronizationContext.SetSynchronizationContext(_previousSyncContext);
+    public void Dispose()
+    {
+        LocalizationManager.Instance.Initialize(_previousLanguage);
+        SynchronizationContext.SetSynchronizationContext(_previousSyncContext);
+    }
 
     private sealed class SynchronousSynchronizationContext : SynchronizationContext
     {
@@ -74,20 +81,36 @@ public class TrainingWizardViewModelTests : IDisposable
     [Fact]
     public void StartTrainingCommand_DefaultState_CannotExecute()
     {
-        // Horizon defaults to 0 (no SSoT default exists to seed it with; see the VM's doc
-        // comment), so the command must stay disabled until the user sets it explicitly.
+        // Even though Horizon now defaults to DefaultHorizon (5), Start stays disabled
+        // until symbols and orchestrator are set.
         var vm = new TrainingWizardViewModel();
 
         Assert.False(vm.StartTrainingCommand.CanExecute(null));
     }
 
     [Fact]
-    public void WindowUnitNote_DefaultHorizonZero_OmitsMinBarsClause()
+    public void WindowUnitNote_ExplicitHorizonZero_OmitsMinBarsClause()
     {
-        // Horizon defaults to 0 (invalid); the min-bars clause needs both Window/Horizon > 0.
+        // Horizon set to 0 (invalid); the min-bars clause needs both Window/Horizon > 0.
+        var vm = new TrainingWizardViewModel { Horizon = 0 };
+
+        var expectedMinBars = WalkForwardDataRequirement.MinimumRawBarsForTraining(
+            PredictionSettingsManager.DefaultWindowSize,
+            WalkForwardDataRequirement.DefaultHorizon).ToString();
+        Assert.DoesNotContain(expectedMinBars, vm.WindowUnitNote);
+        Assert.Equal(string.Empty, vm.WindowUnitNote);
+    }
+
+    [Fact]
+    public void WindowUnitNote_DefaultState_IncludesMinBarsCount()
+    {
+        // Defaults to WindowSize = 75, Horizon = 5.
         var vm = new TrainingWizardViewModel();
 
-        Assert.DoesNotContain("534", vm.WindowUnitNote); // WalkForwardDataRequirement.MinimumRawBarsForTraining(75, 5)
+        var expectedMinBars = WalkForwardDataRequirement.MinimumRawBarsForTraining(
+            PredictionSettingsManager.DefaultWindowSize,
+            WalkForwardDataRequirement.DefaultHorizon).ToString();
+        Assert.Contains(expectedMinBars, vm.WindowUnitNote);
     }
 
     [Fact]
@@ -725,7 +748,7 @@ public class TrainingWizardViewModelTests : IDisposable
                 RunId = "20260829-000000",
                 Success = true,
                 ExitCode = 0,
-                OnnxArtifactPath = @"I:\artifacts\model.onnx",
+                OnnxArtifactPath = Path.Combine(Path.GetTempPath(), "artifacts", "model.onnx"),
             },
         };
         var experimentLog = new FakeExperimentLogService();
@@ -805,6 +828,8 @@ public class TrainingWizardViewModelTests : IDisposable
     public async Task DeployToModelsAsync_AfterSuccessfulRun_CallsModelDeploymentServiceWithArtifactPaths()
     {
         var market = new DummyMarketDataProvider("AAPL");
+        var mockOnnx = Path.Combine(Path.GetTempPath(), "artifacts", "model.onnx");
+        var mockMetrics = Path.Combine(Path.GetTempPath(), "artifacts", "model.onnx.metrics.json");
         var orchestrator = new FakeTrainingOrchestrator
         {
             ResultToReturn = new TrainingRunResult
@@ -812,8 +837,8 @@ public class TrainingWizardViewModelTests : IDisposable
                 RunId = "run-ok",
                 Success = true,
                 ExitCode = 0,
-                OnnxArtifactPath = @"I:\artifacts\model.onnx",
-                MetricsArtifactPath = @"I:\artifacts\model.onnx.metrics.json",
+                OnnxArtifactPath = mockOnnx,
+                MetricsArtifactPath = mockMetrics,
             },
         };
         var deployment = new FakeModelDeploymentService();
@@ -825,7 +850,75 @@ public class TrainingWizardViewModelTests : IDisposable
         Assert.True(vm.DeployToModelsCommand.CanExecute(null));
         await vm.DeployToModelsCommand.ExecuteAsync(null);
 
-        Assert.Equal((@"I:\artifacts\model.onnx", (string?)@"I:\artifacts\model.onnx.metrics.json"), deployment.Captured);
+        Assert.Equal((mockOnnx, (string?)mockMetrics), deployment.Captured);
+    }
+
+    [Fact]
+    public async Task DeployToModelsAsync_WhenRegistryIndicatesNotActive_ShowsNotActivatedMessage()
+    {
+        var market = new DummyMarketDataProvider("AAPL");
+        var mockOnnx = Path.Combine(Path.GetTempPath(), "artifacts", "model.onnx");
+        var mockMetrics = Path.Combine(Path.GetTempPath(), "artifacts", "model.onnx.metrics.json");
+        var orchestrator = new FakeTrainingOrchestrator
+        {
+            ResultToReturn = new TrainingRunResult
+            {
+                RunId = "run-ok",
+                Success = true,
+                ExitCode = 0,
+                OnnxArtifactPath = mockOnnx,
+                MetricsArtifactPath = mockMetrics,
+            },
+        };
+        var deployment = new FakeModelDeploymentService();
+        var registry = new FakeGenerationRegistry { ActiveId = "different-active-id" };
+        var vm = new TrainingWizardViewModel(
+            orchestrator: orchestrator,
+            modelDeploymentService: deployment,
+            marketDataProvider: market,
+            modelRegistry: registry);
+        await WaitForInitializationAsync(vm);
+        vm.Horizon = 5;
+        await vm.StartTrainingCommand.ExecuteAsync(null);
+
+        Assert.True(vm.DeployToModelsCommand.CanExecute(null));
+        await vm.DeployToModelsCommand.ExecuteAsync(null);
+
+        Assert.NotNull(vm.StatusMessage);
+        Assert.Contains("test-generation", vm.StatusMessage);
+    }
+
+    [Fact]
+    public async Task DeployToModelsAsync_NotActive_MessageNamesSettingsAiPredictionsAndConfirm()
+    {
+        var market = new DummyMarketDataProvider("AAPL");
+        var mockOnnx = Path.Combine(Path.GetTempPath(), "artifacts", "model.onnx");
+        var orchestrator = new FakeTrainingOrchestrator
+        {
+            ResultToReturn = new TrainingRunResult
+            {
+                RunId = "run-ok",
+                Success = true,
+                ExitCode = 0,
+                OnnxArtifactPath = mockOnnx,
+                MetricsArtifactPath = mockOnnx + ".metrics.json",
+            },
+        };
+        var vm = new TrainingWizardViewModel(
+            orchestrator: orchestrator,
+            modelDeploymentService: new FakeModelDeploymentService(),
+            marketDataProvider: market,
+            modelRegistry: new FakeGenerationRegistry { ActiveId = "different-active-id" });
+        await WaitForInitializationAsync(vm);
+        vm.Horizon = 5;
+        await vm.StartTrainingCommand.ExecuteAsync(null);
+        await vm.DeployToModelsCommand.ExecuteAsync(null);
+
+        // The expectation follows the resource, so the test checks the wiring (key + model id), not a literal.
+        string template = LocalizationManager.Instance["TrainingWizard_Status_RegisteredNotActivated"];
+        Assert.Equal(string.Format(System.Globalization.CultureInfo.CurrentCulture, template, "test-generation"), vm.StatusMessage);
+        Assert.Contains("{0}", template);
+        Assert.DoesNotContain("window size or score", template);
     }
 
     [Fact]
@@ -1060,8 +1153,20 @@ public class TrainingWizardViewModelTests : IDisposable
         public Task<string> DeployAsync(string onnxSourcePath, string? metricsSourcePath = null, CancellationToken ct = default)
         {
             Captured = (onnxSourcePath, metricsSourcePath);
-            return Task.FromResult(@"I:\Data\Models\model.onnx");
+            return Task.FromResult(Path.Combine(Path.GetTempPath(), "Data", "Models", "model.onnx"));
         }
+    }
+
+    private sealed class FakeGenerationRegistry : IModelGenerationRegistry
+    {
+        public string? ActiveId { get; set; }
+        public string? PreviousId => null;
+        public IReadOnlyList<ModelGenerationSummary> List() => Array.Empty<ModelGenerationSummary>();
+        public Task<ModelGenerationManifest> RegisterAsync(string onnxPath, string? metricsPath = null, CancellationToken ct = default) => throw new NotImplementedException();
+        public Task<bool> ActivateAsync(string modelId, bool manual = false, bool confirmLowerScore = false, CancellationToken ct = default) => Task.FromResult(true);
+        public Task<bool> ConfirmActivationAsync(string modelId, string? expectedActiveId, CancellationToken ct = default) => Task.FromResult(true);
+        public Task<bool> RollbackAsync(bool confirmLowerScore = false, CancellationToken ct = default) => Task.FromResult(true);
+        public ModelGenerationLease? AcquireActive() => null;
     }
 
     private sealed class FakeExperimentLogService : IExperimentLogService

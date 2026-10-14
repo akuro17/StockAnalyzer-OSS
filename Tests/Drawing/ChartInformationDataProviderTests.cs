@@ -85,6 +85,34 @@ public class ChartInformationDataProviderTests
     }
 
     [Fact]
+    public void Extract_NegativePreviousClose_ShowsTheRatioLikeEveryOtherScreen()
+    {
+        // Owner decision 2026-10-14: the ratio is Change / previous close * 100 whenever the previous close is not 0.
+        var d1 = new DateTime(2026, 4, 20);
+        var d2 = new DateTime(2026, 4, 21);
+
+        var candles = new List<CoreCandleData>
+        {
+            new CoreCandleData(d1, -45m, -35m, -45m, -40m, 1000),
+            new CoreCandleData(d2, -40m, -15m, -40m, -20m, 1500)
+        };
+
+        var snapshot = ChartInformationDataProvider.Extract(
+            candles: candles,
+            indicators: null,
+            indicatorResults: null,
+            objectManager: null,
+            targetTime: d2,
+            targetPrice: -20m,
+            theme: ThemeColors.Dark
+        );
+
+        Assert.NotNull(snapshot.Candle);
+        Assert.Equal("+20.000", snapshot.Candle.YesterdayChangeText);
+        Assert.Equal("-50.00%", snapshot.Candle.YesterdayChangeRatioText);
+    }
+
+    [Fact]
     public void Extract_WithIndicator_ReturnsFormattedIndicatorItem()
     {
         var d1 = new DateTime(2026, 1, 1);

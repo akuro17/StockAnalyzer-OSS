@@ -3,7 +3,6 @@ using System.Collections.ObjectModel;
 using System.Globalization;
 using System.IO;
 using System.Linq;
-using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -14,6 +13,8 @@ using StockAnalyzer.Core.Models.ReinforcementLearning;
 using StockAnalyzer.Core.Services.Backtest.Configuration;
 using StockAnalyzer.Core.Services;
 using StockAnalyzer.Core.Services.ReinforcementLearning;
+using StockAnalyzer.Core.Services.StoredPeriod;
+using StockAnalyzer.Avalonia.Services;
 
 namespace StockAnalyzer.Avalonia.ViewModels;
 
@@ -25,8 +26,10 @@ public sealed partial class RlTrainingDialogViewModel : ObservableObject, IDispo
     private readonly IBacktestDefaultSettingsManager _defaults;
     private readonly ChartViewModel _chart;
     private readonly StockAnalyzer.Core.Interfaces.ILocalizationService _localization;
-    private CancellationTokenSource? _jobCts, _replayCts;
-    private long _replayRevision, _directionRevision, _recoveryRevision, _blocksRevision;
+    private readonly IRlModelArchiveService _archiveService;
+    private readonly IDialogService? _dialogService;
+    private CancellationTokenSource? _jobCts;
+    private long _directionRevision, _recoveryRevision, _blocksRevision;
     private RlDialogBlocks? _blockEvidence;
     private bool _disposed;
     private BacktestDefaultSettings? _loadedDefaults;
@@ -35,12 +38,8 @@ public sealed partial class RlTrainingDialogViewModel : ObservableObject, IDispo
     public ObservableCollection<RlGeneration> DirectionGenerations { get; } = new();
     public ObservableCollection<RlEpisodeBlock> Blocks { get; } = new();
     public ObservableCollection<string> AvailableTickers => _chart?.AvailableTickers ?? s_emptyTickers;
-    public string[] Policies => SelectedGeneration is null ? Array.Empty<string>() : new[] { SelectedGeneration.Target }
-        .Concat(new[] { RlContract.HoldBaselineId, RlContract.BuyHoldBaselineId, RlContract.SmaBaselineId, RlContract.RandomBaselineId })
-        .Concat(SelectedGeneration.Target == RlContinuousContract.Target ? new[] { RlContinuousContract.PairedBaselineId } : Array.Empty<string>()).ToArray();
     public string Disclosure => _localization.GetString("Rl.Disclosure");
     public string FixedContract => _localization.GetString(UseContinuousPolicy ? "Rl.ContinuousContract" : "Rl.FixedContract");
-    public int MaximumDecision => RlContract.EpisodeHorizon - 1;
     public string? ActiveId => SelectedGeneration?.Target == RlContinuousContract.Target || (SelectedGeneration is null && UseContinuousPolicy)
         ? _continuousActive : _directionActive;
     [ObservableProperty] private bool _useContinuousPolicy;
@@ -103,22 +102,43 @@ public sealed partial class RlTrainingDialogViewModel : ObservableObject, IDispo
     private static readonly string[] KnownStates = { "Ready", "Preparing", "Training", "Evaluating", "Qualifying", "Succeeded", "Failed", "Rejected", "Unavailable", "InsufficientData", "Cancelling", "Cancelled", "Paused" };
     [ObservableProperty] private string _message = "";
     [ObservableProperty] private RlGeneration? _selectedGeneration;
-    [ObservableProperty] private RlEpisodeBlock? _selectedBlock;
-    [ObservableProperty] private string _selectedPolicy = RlFiles.Target;
-    [ObservableProperty] private int _decision;
     [ObservableProperty] private string _evaluationReport = "";
+    /// <summary>Measured result of the selected generation's saved evaluation; null until it is read (never simulated).</summary>
+    [ObservableProperty] private RlMeasuredEvaluation? _measured;
+    public bool HasRiskMetrics => Measured is not null;
+    private const string ReturnFormat = "{0:+0.00%;-0.00%;0.00%}";
+    public string CumulativeReturnDisplay => string.Format(CultureInfo.InvariantCulture, ReturnFormat, Measured?.MeanReturn ?? 0m);
+    public string MaxDrawdownDisplay => string.Format(CultureInfo.InvariantCulture, "{0:0.00%}", Measured?.WorstMaximumDrawdown ?? 0m);
+    public string RiskMetricsScopeDisplay => Measured is null ? ""
+        : string.Format(CultureInfo.CurrentCulture, _localization.GetString("Rl.RiskMetrics.Scope"),
+            _localization.GetString(Measured.Partition == RlReplayDefaults.OosPartition ? "Rl.RiskMetrics.Scope.Final" : "Rl.RiskMetrics.Scope.Validation"),
+            Measured.Episodes, Measured.PositiveEpisodes, string.Format(CultureInfo.InvariantCulture, ReturnFormat, Measured.MinReturn));
+
+    partial void OnMeasuredChanged(RlMeasuredEvaluation? value) => NotifyRiskMetrics();
+
+    public void NotifyRiskMetrics()
+    {
+        OnPropertyChanged(nameof(HasRiskMetrics));
+        OnPropertyChanged(nameof(CumulativeReturnDisplay));
+        OnPropertyChanged(nameof(MaxDrawdownDisplay));
+        OnPropertyChanged(nameof(RiskMetricsScopeDisplay));
+    }
 
     public RlTrainingDialogViewModel(IRlTrainingService training, IRlModelGenerationRegistry registry, IQValueService q,
         IBacktestDefaultSettingsManager defaults, ChartViewModel chart, StockAnalyzer.Core.Interfaces.ILocalizationService localization,
-        IDispatcherService? dispatcher = null, RlDialogDataService? data = null)
+        IDispatcherService? dispatcher = null, RlDialogDataService? data = null, IDialogService? dialogService = null,
+        IRlModelArchiveService? archiveService = null, IStoredPeriodAdvisor? periodAdvisor = null, TimeProvider? clock = null)
     {
         _localization = localization; _training = training; _registry = registry; _defaults = defaults; _chart = chart;
         _dispatcher = dispatcher; _data = data ?? new(registry, q); _capabilities = registry.Capabilities; Symbol = chart.Symbol;
+        _dialogService = dialogService;
+        _archiveService = archiveService ?? new RlModelArchiveService();
         StorageAvailable = _capabilities.Storage;
         if (!StorageAvailable) ArtifactsState = RlDialogLoadState.Unsupported;
         if (!CheckpointAvailable) CheckpointsState = RlDialogLoadState.Unsupported;
         if (!RecoveryAvailable) RecoveryState = RlDialogLoadState.Unsupported;
-        PropertyChanged += (_, _) => NotifyUi();
+        ConfigurePeriod(periodAdvisor, clock);
+        PropertyChanged += (_, e) => { NotifyUi(); PeriodInputChanged(e.PropertyName); };
         Services.LocalizationManager.Instance.LocaleChanged += LocaleChanged;
         PopulateFacts();
     }
@@ -140,6 +160,7 @@ public sealed partial class RlTrainingDialogViewModel : ObservableObject, IDispo
         await RefreshGenerationsAsync();
         await InitializeArtifactSettingsAsync();
         if (CanInspectRecovery) await InspectRecoveryAsync();
+        SchedulePeriod(immediate: true);
     }
     partial void OnUseContinuousPolicyChanged(bool value)
     {
@@ -147,6 +168,7 @@ public sealed partial class RlTrainingDialogViewModel : ObservableObject, IDispo
         NextRevision(ref _recoveryRevision); RecoveryPreview = null; RecoveryDisplay = "";
         RecoveryState = RecoveryAvailable ? RlDialogLoadState.Unloaded : RlDialogLoadState.Unsupported;
         PopulateFacts(); OnPropertyChanged(nameof(FixedContract));
+        NotifyModeBadges();
     }
     [RelayCommand(CanExecute = nameof(CanInspectRecovery))] private async Task InspectRecoveryAsync()
     {
@@ -212,7 +234,7 @@ public sealed partial class RlTrainingDialogViewModel : ObservableObject, IDispo
                 foreach (var g in snapshot.Generations) { Generations.Add(g); if (g.Target == RlFiles.Target) DirectionGenerations.Add(g); }
                 ModelsState = RlDialogLoadState.Loaded;
                 SelectedDirectionGeneration = DirectionGenerations.FirstOrDefault(g => g.ModelId == directionId);
-                SelectedGeneration = Generations.FirstOrDefault(g => g.ModelId == selectedId); RebuildChoices(); NotifyUi();
+                SelectedGeneration = Generations.FirstOrDefault(g => g.ModelId == selectedId); RebuildChoices(); PopulateGenerationScatterPoints(); NotifyUi();
             });
         }
         catch (OperationCanceledException) { }
@@ -226,21 +248,14 @@ public sealed partial class RlTrainingDialogViewModel : ObservableObject, IDispo
     private BacktestConfiguration Costs() => RlContract.CreateConfiguration(new BacktestConfiguration
     { SizingModel = BacktestDefaults.SizingModel, SizingParameter = BacktestDefaults.SizingParameter, InitialCapital = InitialCapital,
       CommissionFlat = CommissionFlat, CommissionPerUnit = CommissionPerUnit, SlippageRatio = SlippageRatio, LiquidationPenaltyRatio = LiquidationPenaltyRatio });
-    [RelayCommand(CanExecute = nameof(CanSaveCosts))] private async Task SaveCostsAsync()
-    {
-        if (!CanSaveCosts) return;
-        var node = JsonSerializer.SerializeToNode(_loadedDefaults!)!;
-        node[nameof(BacktestDefaultSettings.InitialCapital)] = InitialCapital; node[nameof(BacktestDefaultSettings.CommissionFlat)] = CommissionFlat;
-        node[nameof(BacktestDefaultSettings.CommissionPerUnit)] = CommissionPerUnit; node[nameof(BacktestDefaultSettings.SlippageRatio)] = SlippageRatio;
-        node[nameof(BacktestDefaultSettings.LiquidationPenaltyRatio)] = LiquidationPenaltyRatio;
-        var saved = node.Deserialize<BacktestDefaultSettings>()!; BeginOperation(RlDialogOperation.SavingCosts);
-        try { await _defaults.SaveAsync(saved); if (!_disposed) { _loadedDefaults = saved; Message = _localization.GetString("Rl.CostsSaved"); } }
-        catch (Exception e) { if (!_disposed) { Status = "Rejected"; SetErrorMessage(e); } }
-        finally { EndOperation(); }
-    }
     [RelayCommand(CanExecute = nameof(CanTrain))] private async Task TrainAsync()
     {
         if (!CanTrain) return;
+        // The costs of this window apply to this training only (frozen into the job below); the Settings > Backtest defaults are never written from here.
+        if (CanSaveRetention && (_savedPolicy is null || DraftPolicy() != _savedPolicy))
+        {
+            try { await SaveArtifactSettingsAsync(); } catch { }
+        }
         var start = DateOnly.ParseExact(StartDate, "yyyy-MM-dd", CultureInfo.InvariantCulture);
         var end = DateOnly.ParseExact(EndDateExclusive, "yyyy-MM-dd", CultureInfo.InvariantCulture);
         var job = RlTrainingValidation.Freeze(new RlTrainingJob(Symbol, start, end, Costs(), SmokeOnly: SmokeOnly)
@@ -249,7 +264,13 @@ public sealed partial class RlTrainingDialogViewModel : ObservableObject, IDispo
           ShortHistorySpecificationId = !UseContinuousPolicy && UseShortHistory ? RlShortHistoryEvaluationContract.SpecificationId : null });
         using var cancel = new CancellationTokenSource(); using var pause = new CancellationTokenSource();
         _jobCts = cancel; _pauseCts = pause; BeginOperation(RlDialogOperation.Training, cancel); Status = "Preparing"; CompletedSteps = null;
-        InvalidateReplay(); InvalidateArtifactReview();
+        TotalStepsTarget = job.SmokeOnly
+            ? RlContract.SmokeTrainingTransitions
+            : (UseContinuousPolicy ? RlContinuousContract.TrainingTransitionsPerSeed : RlContract.TrainingTransitionsPerSeed);
+        ProgressPercent = 0.0;
+        IsProgressIndeterminate = true;
+        ProgressPhaseDisplay = _localization.GetString("Rl.State.Preparing") ?? "Preparing";
+        InvalidateArtifactReview();
         try
         {
             cancel.Token.ThrowIfCancellationRequested();
@@ -260,6 +281,9 @@ public sealed partial class RlTrainingDialogViewModel : ObservableObject, IDispo
             cancel.Token.ThrowIfCancellationRequested();
             if (_disposed) return;
             Status = "Succeeded"; Message = _localization.GetString(result.SmokeOnly ? "Rl.SmokeCompleted" : "Rl.State.Succeeded");
+            ProgressPercent = 100.0;
+            IsProgressIndeterminate = false;
+            ProgressPhaseDisplay = Message;
             await RefreshGenerationsAsync();
         }
         catch (RlTrainingPausedException) { if (!_disposed) { Status = RlCheckpointContract.PauseState; Message = _localization.GetString("Rl.Checkpoint.Paused"); } }
@@ -276,7 +300,22 @@ public sealed partial class RlTrainingDialogViewModel : ObservableObject, IDispo
             Status = progress.State; TechnicalDetails = progress.Message;
             _invalidProgress = progress.CompletedSteps < 0;
             CompletedSteps = progress.CompletedSteps >= 0 ? progress.CompletedSteps : null;
+            if (CompletedSteps.HasValue && CompletedSteps.Value >= 0)
+            {
+                IsProgressIndeterminate = false;
+                if (TotalStepsTarget > 0)
+                {
+                    if (CompletedSteps.Value > TotalStepsTarget) TotalStepsTarget = CompletedSteps.Value;
+                    ProgressPercent = Math.Clamp(Math.Round((double)CompletedSteps.Value / TotalStepsTarget * 100.0, 1), 0.0, 100.0);
+                }
+            }
+            else
+            {
+                IsProgressIndeterminate = true;
+            }
+            ProgressPhaseDisplay = !string.IsNullOrWhiteSpace(progress.Message) ? progress.Message : progress.State;
             if (_pauseCts?.IsCancellationRequested != true) Message = "";
+            NotifyUi();
         });
     }
     [RelayCommand(CanExecute = nameof(CanCancel))] private void Cancel()
@@ -292,10 +331,50 @@ public sealed partial class RlTrainingDialogViewModel : ObservableObject, IDispo
     partial void OnSelectedGenerationChanged(RlGeneration? value)
     {
         if (_disposed) return;
-        InvalidateReplay(); NextRevision(ref _blocksRevision); _blocksCts?.Cancel(); Blocks.Clear(); _blockEvidence = null; SelectedBlock = null; EvaluationReport = ""; BlocksState = RlDialogLoadState.Unloaded; RebuildChoices();
-        SelectedPolicy = value?.Target ?? RlFiles.Target; RebuildPolicyOptions(); PopulateFacts();
-        OnPropertyChanged(nameof(Policies)); OnPropertyChanged(nameof(TemporalStatusDisplay));
+        NextRevision(ref _blocksRevision); _blocksCts?.Cancel(); Blocks.Clear(); _blockEvidence = null; EvaluationReport = ""; BlocksState = RlDialogLoadState.Unloaded; RebuildChoices();
+        PopulateFacts(); PopulateGenerationScatterPoints();
+        Measured = null;
+        OnPropertyChanged(nameof(TemporalStatusDisplay));
+        OnPropertyChanged(nameof(CanExportGeneration));
+        ExportGenerationCommand.NotifyCanExecuteChanged();
         if (value is not null && !_disposed) _ = LoadBlocksAsync(value, _blocksRevision);
+    }
+    private void PopulateGenerationScatterPoints()
+    {
+        GenerationScatterPoints.Clear();
+        if (Generations.Count == 0)
+        {
+            GenerationComparisonSummary = "";
+            OnPropertyChanged(nameof(HasGenerationScatterPoints));
+            return;
+        }
+        foreach (var g in Generations)
+        {
+            decimal val = g.ValidationReturn;
+            decimal oos = g.OosReturn;
+            decimal gap = Math.Abs(val - oos);
+            bool isSelected = g.ModelId == SelectedGeneration?.ModelId;
+            string badge = gap <= 0.05m && oos > 0 ? _localization.GetString("Rl.Ui.Badge.Robust")
+                : (val > oos && gap > 0.10m) ? _localization.GetString("Rl.Ui.Badge.Overfit")
+                : _localization.GetString("Rl.Ui.Badge.Neutral");
+            string color = gap <= 0.05m && oos > 0 ? "#26A69A"
+                : (val > oos && gap > 0.10m) ? "#EF5350"
+                : "#FFA726";
+            GenerationScatterPoints.Add(new(g.ModelId, val, oos,
+                val.ToString("P" + RlContract.DisplayDecimals, CultureInfo.CurrentCulture),
+                oos.ToString("P" + RlContract.DisplayDecimals, CultureInfo.CurrentCulture),
+                gap.ToString("P" + RlContract.DisplayDecimals, CultureInfo.CurrentCulture),
+                isSelected, badge, color));
+        }
+        // Ranked by the VALIDATION return, the partition the generation was chosen on; the final evaluation (OOS) is shown beside it as a
+        // reference only. Ranking by OOS would make the reserved final measurement a selection criterion (selection bias).
+        var best = Generations.MaxBy(g => g.ValidationReturn);
+        decimal selectedGap = Math.Abs((SelectedGeneration?.ValidationReturn ?? 0m) - (SelectedGeneration?.OosReturn ?? 0m));
+        string Percent(decimal value) => value.ToString("P" + RlContract.DisplayDecimals, CultureInfo.CurrentCulture);
+        GenerationComparisonSummary = string.Format(CultureInfo.CurrentCulture,
+            _localization.GetString("Rl.Ui.GenerationComparison.Summary"),
+            best?.ModelId ?? "—", Percent(best?.ValidationReturn ?? 0m), Percent(best?.OosReturn ?? 0m), Percent(selectedGap));
+        OnPropertyChanged(nameof(HasGenerationScatterPoints));
     }
     partial void OnSelectedDirectionGenerationChanged(RlGeneration? value)
     {
@@ -319,24 +398,8 @@ public sealed partial class RlTrainingDialogViewModel : ObservableObject, IDispo
     private string DescribeError(Exception error)
     {
         TechnicalDetails = error.ToString();
-        if (error is RlTemporalException temporal)
-        {
-            string text = _localization.GetString("Rl.Temporal.Rejection." + temporal.Reason);
-            return temporal.Reason == RlTemporalRejection.FutureInformation ? string.Format(CultureInfo.CurrentCulture, text,
-                temporal.InformationUpperExclusive?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), temporal.DecisionExchangeDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)) : text;
-        }
-        return _localization.GetString(error switch
-        {
-            ArgumentException or OverflowException => "Rl.Ui.Status.InvalidInput", FileNotFoundException => "Rl.Ui.Status.DataUnavailable",
-            UnauthorizedAccessException => "Rl.Ui.Status.AccessDenied", InvalidDataException when RlSourceContract.IsInsufficientData(error) => "Rl.Ui.Status.InsufficientData",
-            InvalidDataException or JsonException => "Rl.Ui.Status.InvalidData",
-            IOException => "Rl.Ui.Status.IOFailure", TimeoutException => "Rl.Ui.Status.Timeout", _ => "Rl.Ui.Status.OperationFailed"
-        });
+        return RlErrorText.Describe(error, _localization);
     }
-    partial void OnSelectedBlockChanged(RlEpisodeBlock? value) => InvalidateReplay();
-    partial void OnSelectedPolicyChanged(string value) { InvalidateReplay(); OnPropertyChanged(nameof(SelectedPolicyOption)); }
-    partial void OnDecisionChanged(int value) => InvalidateReplay();
-    private void InvalidateReplay() { if (_disposed) return; NextRevision(ref _replayRevision); if (_disposed) return; _replayCts?.Cancel(); _chart.ClearRlPresentation(); }
     private async Task LoadBlocksAsync(RlGeneration generation, long revision)
     {
         using var cancel = new CancellationTokenSource(); _blocksCts = cancel; BlocksState = RlDialogLoadState.Loading;
@@ -347,7 +410,7 @@ public sealed partial class RlTrainingDialogViewModel : ObservableObject, IDispo
             {
                 if (_disposed || revision != _blocksRevision || cancel.IsCancellationRequested || SelectedGeneration?.ModelId != generation.ModelId) return;
                 if (result.Blocks.IsDefault) throw new InvalidDataException("Uninitialized replay blocks.");
-                _blockEvidence = result; RefreshEvaluationText();
+                _blockEvidence = result; RefreshEvaluationText(); Measured = result.Measured;
                 foreach (var block in result.Blocks) Blocks.Add(block);
                 BlocksState = RlDialogLoadState.Loaded; RebuildChoices(); NotifyUi();
             });
@@ -356,29 +419,12 @@ public sealed partial class RlTrainingDialogViewModel : ObservableObject, IDispo
         catch (Exception e) { await PublishAsync(() => { if (!_disposed && revision == _blocksRevision) { BlocksState = RlDialogLoadState.Failed; SetErrorMessage(e); } }); }
         finally { if (ReferenceEquals(_blocksCts, cancel)) _blocksCts = null; }
     }
-    [RelayCommand(CanExecute = nameof(CanReplay))] private async Task ReplayAsync()
-    {
-        if (!CanReplay) return;
-        string modelId = SelectedGeneration!.ModelId, blockId = SelectedBlock!.Id, policyId = SelectedPolicy; int decision = Decision;
-        InvalidateReplay(); long revision = _replayRevision;
-        using var cancel = new CancellationTokenSource(); _replayCts = cancel; BeginOperation(RlDialogOperation.Replaying, cancel);
-        try
-        {
-            var result = await _data.ReplayAsync(modelId, blockId, decision, policyId, cancel.Token); cancel.Token.ThrowIfCancellationRequested();
-            if (_disposed || revision != _replayRevision) return;
-            await _chart.ApplyRlReplayAsync(result, _localization, cancel.Token);
-            if (!_disposed && revision == _replayRevision) { Status = "Ready"; Message = ""; }
-        }
-        catch (OperationCanceledException) { if (!_disposed) Status = "Cancelled"; }
-        catch (Exception e) { if (!_disposed && revision == _replayRevision) { Status = "Unavailable"; SetErrorMessage(e); } }
-        finally { if (ReferenceEquals(_replayCts, cancel)) _replayCts = null; EndOperation(); }
-    }
     public void Dispose()
     {
         if (_disposed) return;
         _disposed = true; Operation = RlDialogOperation.Disposed;
-        NextRevision(ref _checkpointRevision); NextRevision(ref _artifactRevision); NextRevision(ref _directionRevision); NextRevision(ref _recoveryRevision); NextRevision(ref _registryRevision); NextRevision(ref _replayRevision); NextRevision(ref _blocksRevision);
-        _operationCts?.Cancel(); _refreshCts?.Cancel(); _blocksCts?.Cancel(); _jobCts?.Cancel(); _replayCts?.Cancel();
+        NextRevision(ref _checkpointRevision); NextRevision(ref _artifactRevision); NextRevision(ref _directionRevision); NextRevision(ref _recoveryRevision); NextRevision(ref _registryRevision); NextRevision(ref _blocksRevision);
+        _operationCts?.Cancel(); _refreshCts?.Cancel(); _blocksCts?.Cancel(); _jobCts?.Cancel(); DisposePeriod();
         Services.LocalizationManager.Instance.LocaleChanged -= LocaleChanged; NotifyUi();
         // Already published replay remains owned by the chart.
     }

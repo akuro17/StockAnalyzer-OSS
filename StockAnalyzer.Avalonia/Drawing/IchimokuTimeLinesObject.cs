@@ -19,7 +19,7 @@ namespace StockAnalyzer.Avalonia.Drawing;
 /// </summary>
 public class IchimokuTimeLinesObject : IChartObject, IDrawingCalculatedValuesProvider
 {
-    // Canonical sequence derived by composite formulas in Y:\Temp\webai.txt:
+    // Canonical sequence derived by composite formulas in docs/webai:
     // Basic: 9 (Section 1), 17 (Section 2: 9+9-1), 26 (Period 1: 17+9)
     // Composite: 33 (17+17-1), 42 (26+17-1), 51 (26+26-1), 65 (33+33-1), 76 (26*3-2: Cycle 1 / Jun),
     // 83 (42+42-1), 97 (33*3-1), 101 (26*4-3), 129 (65+65-1), 172 (33+65+76-2), 226 (76*3-2: Ring 1 / Kan), 676 (226*3-2: Grand Cycle 1 / Jun-kan)
@@ -60,7 +60,7 @@ public class IchimokuTimeLinesObject : IChartObject, IDrawingCalculatedValuesPro
     public SKColor SkiaColor => new SKColor(Color.R, Color.G, Color.B, Color.A);
 
     /// <summary>
-    /// Generates infinite sequence of Ichimoku time numbers according to composite formula T = A + B - 1 in Y:\Temp\webai.txt.
+    /// Generates infinite sequence of Ichimoku time numbers according to composite formula T = A + B - 1 in docs/webai.txt.
     /// Consecutive Grand Cycle (676) periods overlap by 1 day (offset increment = 675).
     /// </summary>
     public static IEnumerable<int> EnumerateNumbers()

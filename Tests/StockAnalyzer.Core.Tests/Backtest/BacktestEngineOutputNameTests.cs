@@ -12,7 +12,7 @@ namespace StockAnalyzer.Core.Tests.Backtest;
 
 /// <summary>
 /// Integration-level proof (through the real, public <see cref="BacktestEngine.Run"/> entry point) for
-/// Task 6a of Y:\Temp\sa_implementation_plan_BacktestOutputNameSupport.md: <see cref="StrategyIndicatorRequest.OutputName"/>
+/// Task 6a of docs/sa_implementation_plan_BacktestOutputNameSupport: <see cref="StrategyIndicatorRequest.OutputName"/>
 /// must select the named series of a multi-series indicator's <see cref="IIndicatorResult"/>, in both the
 /// same-Frame and foreign-Frame branches of <c>BacktestEngine.PrepareIndicators</c>, and a request that
 /// omits it (or that names a series the result does not have) must fall back to the Main series exactly as

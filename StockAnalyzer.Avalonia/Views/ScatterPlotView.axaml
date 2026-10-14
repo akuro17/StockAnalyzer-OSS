@@ -1,0 +1,134 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:StockAnalyzer.Avalonia.ViewModels"
+             xmlns:controls="using:StockAnalyzer.Avalonia.Views.Controls"
+             xmlns:l="using:StockAnalyzer.Avalonia.Markup"
+             mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="600"
+             x:Class="StockAnalyzer.Avalonia.Views.ScatterPlotView"
+             x:DataType="vm:ScatterPlotViewModel"
+             Background="{DynamicResource Brush.Background.Secondary}">
+
+    <UserControl.Styles>
+        <!-- Standard scoped action button and control styling adhering to SA_UI_SUBWINDOW_STANDARD -->
+        <Style Selector="Button.toolbar-btn">
+            <Setter Property="Height" Value="32"/>
+            <Setter Property="Padding" Value="10,0"/>
+            <Setter Property="FontSize" Value="{DynamicResource BaseFontSize}"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="ComboBox.toolbar-combo">
+            <Setter Property="Height" Value="32"/>
+            <Setter Property="FontSize" Value="{DynamicResource BaseFontSize}"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="CheckBox.toolbar-check">
+            <Setter Property="FontSize" Value="{DynamicResource BaseFontSize}"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+    </UserControl.Styles>
+
+    <Grid RowDefinitions="Auto,*">
+        <!-- Toolbar -->
+        <Border Grid.Row="0" Padding="8,6" Background="{DynamicResource Brush.Background.Primary}"
+                BorderThickness="0,0,0,1" BorderBrush="{DynamicResource Brush.Border.Primary}">
+            <WrapPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <!-- Mode Switch Buttons -->
+                <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,0,16,0">
+                    <Button Classes="toolbar-btn" Content="{l:Localize Scatter_Btn_Scatter}" Command="{Binding SetScatterModeCommand}"
+                            TabIndex="1" />
+                    <Button Classes="toolbar-btn" Content="{l:Localize Scatter_Btn_Heatmap}" Command="{Binding SetHeatmapModeCommand}"
+                            TabIndex="2" />
+                </StackPanel>
+
+                <!-- Metric Selectors (Visible in Scatter Mode) -->
+                <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,16,0" IsVisible="{Binding IsScatterMode}">
+                    <TextBlock Text="X:" VerticalAlignment="Center"
+                               FontSize="{DynamicResource DetailFontSize}"
+                               Foreground="{DynamicResource Brush.Text.Secondary}" />
+                    <ComboBox Classes="toolbar-combo" ItemsSource="{Binding AvailableMetrics}"
+                              SelectedItem="{Binding SelectedXMetric}" Width="120"
+                              TabIndex="3" />
+
+                    <TextBlock Text="Y:" VerticalAlignment="Center"
+                               FontSize="{DynamicResource DetailFontSize}"
+                               Foreground="{DynamicResource Brush.Text.Secondary}" Margin="8,0,0,0" />
+                    <ComboBox Classes="toolbar-combo" ItemsSource="{Binding AvailableMetrics}"
+                              SelectedItem="{Binding SelectedYMetric}" Width="120"
+                              TabIndex="4" />
+                </StackPanel>
+
+                <!-- Scale & Display Toggles (Visible in Scatter Mode) -->
+                <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,16,0" IsVisible="{Binding IsScatterMode}">
+                    <Button Classes="toolbar-btn" Content="{l:Localize Scatter_Btn_XLog}" Command="{Binding ToggleXScaleCommand}"
+                            TabIndex="5" />
+                    <Button Classes="toolbar-btn" Content="{l:Localize Scatter_Btn_YLog}" Command="{Binding ToggleYScaleCommand}"
+                            TabIndex="6" />
+                    <CheckBox Classes="toolbar-check" Content="{l:Localize Scatter_Chk_Regression}" IsChecked="{Binding ShowRegressionLine}"
+                              TabIndex="7" />
+                    <CheckBox Classes="toolbar-check" Content="{l:Localize Scatter_Chk_ConfidenceBand}" IsChecked="{Binding ShowConfidenceBand}"
+                              TabIndex="8" />
+                    <CheckBox Classes="toolbar-check" Content="{l:Localize Scatter_Chk_PredictionBand}" IsChecked="{Binding ShowPredictionBand}"
+                              TabIndex="9" />
+                    <CheckBox Classes="toolbar-check" Content="{l:Localize Scatter_Chk_SuppressOutliers}" IsChecked="{Binding SuppressOutliers}"
+                              TabIndex="10" />
+                </StackPanel>
+
+                <!-- Heatmap Controls (Visible in Heatmap Mode) -->
+                <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,16,0" IsVisible="{Binding IsHeatmapMode}">
+                    <Button Classes="toolbar-btn" Content="{Binding ColorSchemeLabel}" Command="{Binding ToggleColorSchemeCommand}"
+                            TabIndex="11" />
+                </StackPanel>
+
+                <!-- Status & Active Group Badge -->
+                <Border Background="{DynamicResource Brush.Background.Tertiary}"
+                        BorderBrush="{DynamicResource Brush.Border.Primary}"
+                        BorderThickness="1"
+                        CornerRadius="4"
+                        Padding="8,4"
+                        Margin="0,0,8,0"
+                        ToolTip.Tip="{Binding StatusMessage}"
+                        VerticalAlignment="Center">
+                    <TextBlock Text="{Binding GroupTitle}"
+                               FontWeight="SemiBold"
+                               FontSize="{DynamicResource DetailFontSize}"
+                               Foreground="{DynamicResource Brush.Text.Primary}" />
+                </Border>
+
+                <!-- Loading Indicator -->
+                <ProgressBar IsIndeterminate="True" Width="50" Height="4" IsVisible="{Binding IsLoading}" Margin="8,0,0,0" VerticalAlignment="Center" />
+            </WrapPanel>
+        </Border>
+
+        <!-- Main Display Area -->
+        <Grid Grid.Row="1">
+            <!-- Scatter Plot View -->
+            <controls:ScatterPlotControl
+                IsVisible="{Binding IsScatterMode}"
+                Dataset="{Binding Dataset}"
+                AnalysisResult="{Binding AnalysisResult}"
+                SelectedPointIndex="{Binding SelectedPointIndex, Mode=TwoWay}"
+                ShowRegressionLine="{Binding ShowRegressionLine}"
+                ShowConfidenceBand="{Binding ShowConfidenceBand}"
+                ShowPredictionBand="{Binding ShowPredictionBand}"
+                SuppressOutliers="{Binding SuppressOutliers}"
+                XScale="{Binding XScale}"
+                YScale="{Binding YScale}" />
+
+            <!-- Uniform Heatmap View adhering to SA_UI_SUBWINDOW_STANDARD Section 2.3 -->
+            <ScrollViewer
+                IsVisible="{Binding IsHeatmapMode}"
+                AllowAutoHide="False"
+                VerticalScrollBarVisibility="Auto"
+                HorizontalScrollBarVisibility="Disabled"
+                Padding="8,8,16,8">
+                <controls:UniformHeatmapControl
+                    Items="{Binding HeatmapItems}"
+                    ColorScheme="{Binding ColorScheme}"
+                    SelectedTicker="{Binding SelectedTicker}" />
+            </ScrollViewer>
+        </Grid>
+    </Grid>
+</UserControl>

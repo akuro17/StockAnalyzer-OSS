@@ -8,7 +8,7 @@ namespace StockAnalyzer.Avalonia.ViewModels.Screener;
 /// <summary>
 /// An AND/OR group of the Filters condition tree editor. Unlike <c>BacktestConditionGroupViewModel</c>, there is no
 /// (Section, Side) pair here: <see cref="ScreenerConditionTreeViewModel"/> has exactly one fixed root (decision B of
-/// Y:\Temp\sa_implementation_plan_ScreenerFilterConditionTree.md), so <see cref="IsRoot"/> alone distinguishes it from
+/// docs/sa_implementation_plan_ScreenerFilterConditionTree), so <see cref="IsRoot"/> alone distinguishes it from
 /// a nested group. A root is fixed: it is never removed, only cleared.
 /// </summary>
 public sealed partial class ScreenerConditionGroupViewModel : ScreenerConditionNodeViewModel

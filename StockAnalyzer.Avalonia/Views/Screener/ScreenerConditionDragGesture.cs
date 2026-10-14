@@ -6,7 +6,7 @@ namespace StockAnalyzer.Avalonia.Views.Screener;
 /// <summary>
 /// Pure pointer arithmetic of dragging a Filters condition row (no control, no tree access), so it is testable without a
 /// drag loop. Mirrors <see cref="StockAnalyzer.Avalonia.Views.Backtest.ConditionDragGesture"/>
-/// (Y:\Temp\sa_implementation_plan_ScreenerFilterConditionDragMove.md Task 4): the pointer-distance check
+/// (docs/sa_implementation_plan_ScreenerFilterConditionDragMove Task 4): the pointer-distance check
 /// (<see cref="StockAnalyzer.Avalonia.Views.Backtest.ConditionDragGesture.HasMovedFarEnough"/>) is type-independent and
 /// reused directly rather than duplicated here, but <c>PlacementFor</c> is bound to <see cref="ScreenerConditionNodeViewModel"/>
 /// (a type the Backtest version does not know), so it is a new, parallel method rather than an extension of the shared one.

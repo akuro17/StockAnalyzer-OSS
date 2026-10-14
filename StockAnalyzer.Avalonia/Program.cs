@@ -20,7 +20,7 @@ sealed class Program
         System.Globalization.CultureInfo.DefaultThreadCurrentCulture = System.Globalization.CultureInfo.GetCultureInfo("en-US");
         System.Globalization.CultureInfo.DefaultThreadCurrentUICulture = System.Globalization.CultureInfo.GetCultureInfo("en-US");
 
-        // Crash loggers for Y:\Temp
+        // Global crash logger for unhandled exceptions
         AppDomain.CurrentDomain.UnhandledException += (s, e) =>
         {
             var ex = (Exception)e.ExceptionObject;
@@ -68,8 +68,23 @@ sealed class Program
         {
             Log.Fatal(ex, "Application crashed");
             var msg = $"Launcher Error: {ex.Message}\n{ex.StackTrace}";
-            Console.WriteLine(msg);
-            System.IO.File.WriteAllText(System.IO.Path.Combine(AppContext.BaseDirectory, "launcher_error.log"), msg);
+            var sanitizedMsg = StockAnalyzer.Core.Common.ExceptionSanitizer.Sanitize(msg);
+            try
+            {
+                System.IO.File.WriteAllText(System.IO.Path.Combine(AppContext.BaseDirectory, "launcher_error.log"), sanitizedMsg);
+            }
+            catch
+            {
+                try
+                {
+                    var fallbackPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "StockAnalyzer_launcher_error.log");
+                    System.IO.File.WriteAllText(fallbackPath, sanitizedMsg);
+                }
+                catch
+                {
+                    Console.Error.WriteLine(sanitizedMsg);
+                }
+            }
             throw;
         }
         finally

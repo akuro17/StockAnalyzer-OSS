@@ -82,6 +82,7 @@ public partial class SettingsViewModel : ViewModelBase, IDisposable
                 SettingsConstants.Keys.Fonts => _serviceProvider.GetRequiredService<FontsSettingsViewModel>(),
                 SettingsConstants.Keys.Python => _serviceProvider.GetRequiredService<PythonSettingsViewModel>(),
                 SettingsConstants.Keys.AIPredictions => _serviceProvider.GetRequiredService<AIPredictionsSettingsViewModel>(),
+                SettingsConstants.Keys.RlPlayback => _serviceProvider.GetRequiredService<RlPlaybackSettingsViewModel>(),
                 SettingsConstants.Keys.Backtest => _serviceProvider.GetRequiredService<BacktestSettingsViewModel>(),
                 SettingsConstants.Keys.TrainingWizard => _serviceProvider.GetRequiredService<TrainingResourceSettingsViewModel>(),
                 SettingsConstants.Keys.Tickers => _serviceProvider.GetRequiredService<TickersSettingsViewModel>(),
@@ -114,6 +115,7 @@ public partial class SettingsViewModel : ViewModelBase, IDisposable
             {
                 _pageCache[key] = cachedPage;
                 cachedPage.PropertyChanged += OnPagePropertyChanged;
+                if (cachedPage is ISettingsPageCloseRequest closer) closer.CloseRequested += OnPageCloseRequested;
             }
         }
 
@@ -126,6 +128,11 @@ public partial class SettingsViewModel : ViewModelBase, IDisposable
     // Removed SetCurrentPage(page, isTransient) as it is no longer needed.
     // All pages are now cached in _pageCache for the duration of the dialog session
     // and are disposed in the SettingsViewModel.Dispose method.
+
+    private void OnPageCloseRequested()
+    {
+        if (!_isDisposed) RequestClose?.Invoke();
+    }
 
     private void OnPagePropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
@@ -243,6 +250,7 @@ public partial class SettingsViewModel : ViewModelBase, IDisposable
         foreach (var page in _pageCache.Values)
         {
             page.PropertyChanged -= OnPagePropertyChanged;
+            if (page is ISettingsPageCloseRequest closer) closer.CloseRequested -= OnPageCloseRequested;
             if (page is IDisposable disposable)
             {
                 disposable.Dispose();

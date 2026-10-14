@@ -60,7 +60,7 @@ public sealed class BacktestResult
     /// BacktestConfiguration". DERIVED CONVENTION: RunStatus has no "InsufficientData" member (the
     /// spec's own section 5.4 enum list is the authoritative full RunStatus set) — mapped to
     /// Completed here since an empty run over zero bars is not itself an error condition. Flagged
-    /// for confirmation in Y:\Temp\sa_implementation_plan_BacktestEngineP1.md.
+    /// for confirmation in docs/sa_implementation_plan_BacktestEngineP1.md.
     /// DERIVED CONVENTION: the ReproducibilityHash content/format for a real (non-empty) run is
     /// finalized when BacktestEngine.Run is implemented (task #6); this Empty-path hash is only a
     /// stable placeholder over a fixed marker string, not a hash of any run content.

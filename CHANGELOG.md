@@ -13,10 +13,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) 
 - **Notice when a tab cannot return to a full panel**: Closing a Tab Window tab (or the window) while the target panel already holds the maximum number of tabs now shows one notice. The tabs stay in a Tab Window; tabs closed together from one window return to one window.
 
 ### Changed
+- **Change / Change % of the Tickers tab and the Screener results**: Both are now measured from the previous bar's close (`Close - Previous Close`, `(Close - Previous Close) / Previous Close * 100`), the same as the Data tab and the screening conditions. They were `Close - Open` before. A saved Tickers-tab filter rule or sort on these columns keeps its name and format but now uses the new meaning.
 - **Tab drop target**: Releasing a dragged tab over the content area of a panel or Tab Window no longer moves it to the end; only a release on the tab-strip row (outside any tab) does.
 - **Tab Window close button**: Pressing the per-tab close button no longer starts a window move or a tab drag.
 
 ### Fixed
+- **Screening conditions on Open, High, Low, Close, Volume, Change and Change %**: A condition registered in the condition dialog stores the catalog description in `CustomDisplayName` and the short name ("Change %") in `OutputName`; the value lookup read only the description, so these conditions never matched the candle value. The short name is now found in any of the names.
+- **Change % with a negative previous close**: The Data tab and the chart information object showed 0% when the previous close was negative; they now divide by it like the Tickers tab and the screening conditions (only a previous close of 0 gives 0%).
+- **Portfolio P&L % column header**: The P&L rate columns of the open and closed positions tables used the Data tab header "Change %" (ja "前日比(%)"); they now use `Portfolio_Col_PnLRate` ("PnL %" / "損益率"). The values were always the P&L rate against the entry price.
 - **Redock into a full panel**: Returning a Tab Window tab to a panel that already held the maximum number of tabs exceeded the limit and threw; the tab now stays in a Tab Window (see the notice above).
 
 ### Removed (API)

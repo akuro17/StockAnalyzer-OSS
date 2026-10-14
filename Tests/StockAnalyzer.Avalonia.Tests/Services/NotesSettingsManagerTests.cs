@@ -6,7 +6,7 @@ using Xunit;
 
 namespace StockAnalyzer.Avalonia.Tests.Services;
 
-/// <summary>sa_implement (Notes専用Settings & スレッド折りたたみ Task 4, Y:\Temp\sa_implementation_plan.md):
+/// <summary>sa_implement (Notes専用Settings & スレッド折りたたみ Task 4, docs/sa_implementation_plan):
 /// covers NotesSettingsManager's in-memory defaults and setter validation guards - the manager's
 /// SaveAsync/LoadAsync themselves are deliberately not exercised here since NotesSettingsFilePath
 /// resolves via PathDiscovery.ResolveConfigPath to the real user_notes_settings.json under the

@@ -372,3 +372,14 @@ public class CurrentTimeframeRequestMessage : RequestMessage<StockAnalyzer.Core.
 public class NotesReadMoreThresholdChangedMessage
 {
 }
+
+/// <summary>
+/// Published when the active ticker group or user-checked ticker subset changes.
+/// Subscribed by ScatterPlotViewModel to synchronously update scatter and heatmap data.
+/// </summary>
+public sealed record ActiveTickerGroupChangedMessage(
+    string GroupName,
+    IReadOnlyList<string> Tickers,
+    bool IsUserFilteredSubset
+);
+

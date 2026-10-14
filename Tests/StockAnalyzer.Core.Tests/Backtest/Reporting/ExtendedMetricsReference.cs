@@ -7,11 +7,11 @@ using StockAnalyzer.Core.Services.Backtest.Reporting;
 namespace StockAnalyzer.Core.Tests.Backtest.Reporting;
 
 /// <summary>
-/// Independent reference implementation of the 15 extended metrics (Y:\Temp\sa_implementation_plan_BacktestReportVerificationOracle.md, T4).
+/// Independent reference implementation of the 15 extended metrics (docs/sa_implementation_plan_BacktestReportVerificationOracle, T4).
 /// It shares no code and deliberately no algorithm shape with production: LINQ partitions instead of one accumulating loop, run-length
 /// strings instead of a streak counter, an O(m^2) enumeration of drawdown episodes instead of one running-peak pass, and a position rebuilt
 /// from the cumulative signed fill quantity instead of the per-bar MarketValue/HeldMargin snapshot. Obviously-correct and slow on purpose.
-/// Everything is decimal, so results are compared exactly. The spec it encodes is Y:\Temp\sa_technical_review_spec_BacktestReportExtendedMetrics.md.
+/// Everything is decimal, so results are compared exactly. The spec it encodes is docs/sa_technical_review_spec_BacktestReportExtendedMetrics.md.
 /// </summary>
 internal static class ExtendedMetricsReference
 {

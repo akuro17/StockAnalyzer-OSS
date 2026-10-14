@@ -26,7 +26,7 @@
         the property would be inert and would misleadingly imply geometry persistence is wired up.
         Spec section 5.1 only requires independent per-window run state, not position/size
         persistence, so this is intentionally left unset (see
-        Y:\Temp\sa_ai_context_BacktestUiWindow_P3.md section 4).
+        docs/sa_ai_context_BacktestUiWindow_P3 section 4).
     -->
 
     <Window.Resources>

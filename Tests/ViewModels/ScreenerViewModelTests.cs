@@ -206,7 +206,7 @@ public class ScreenerViewModelTests
         Assert.Equal("[C: 12件]", vm.CriteriaFlowItems[2].DisplayText);
 
         // Test Fix 2 & 5: CriteriaFlowItems reflects LogicalOperator (And ∩ -> Or ∪). The per-entry toggle button/command
-        // was retired when Filters became a tree (Y:\Temp\sa_implementation_plan_ScreenerFilterConditionTree.md Task 5):
+        // was retired when Filters became a tree (docs/sa_implementation_plan_ScreenerFilterConditionTree Task 5):
         // AND/OR is now set per GROUP via the tree's Edit Group dialog, not per entry, so the badge is exercised here by
         // setting the property directly instead of executing the removed command.
         entry1.LogicalOperator = LogicalOperator.Or;

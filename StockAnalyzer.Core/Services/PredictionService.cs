@@ -1067,7 +1067,7 @@ public class PredictionService : IPredictionService, IDisposable
 
         string label = confidence >= _settings.PredictionConfidenceThreshold
             ? runtime.ClassLabels[argmax]
-            : "Unknown";
+            : PredictionResult.UnknownLabel;
 
         return new PredictionResult(label, confidence, scores, confidence, entropy, IsFallback: false)
         {

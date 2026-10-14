@@ -12,7 +12,7 @@ using static StockAnalyzer.Core.Tests.Backtest.ConditionTreeTestKit;
 
 namespace StockAnalyzer.Core.Tests.Backtest;
 
-/// <summary>Condition-tree model, evaluator and legacy migration (MP-1 Phase 1). See Y:\Temp\sa_analysis_BacktestConditionTree.md B1-B3.</summary>
+/// <summary>Condition-tree model, evaluator and legacy migration (MP-1 Phase 1). See docs/sa_analysis_BacktestConditionTree B1-B3.</summary>
 public class BacktestConditionTreeTests
 {
     [Theory]

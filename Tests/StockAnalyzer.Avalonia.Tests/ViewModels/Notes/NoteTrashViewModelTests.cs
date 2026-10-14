@@ -72,8 +72,8 @@ public class NoteTrashViewModelTests
         }
     }
 
-    /// <summary>sa_implement (Notes専用「外観」設定, Y:\Temp\sa_implementation_plan_notes_appearance.md
-    /// Task 4; extended by sa_minimal_fix per Y:\Temp\sa_fix_plan_notes_appearance_restructure.md):
+    /// <summary>sa_implement (Notes専用「外観」設定, docs/sa_implementation_plan_notes_appearance
+    /// Task 4; extended by sa_minimal_fix per docs/sa_fix_plan_notes_appearance_restructure):
     /// the Trash dialog's cards (and, via the top-level BodyFontSize/BodyTextColor/BodyBackgroundColor
     /// properties, the Orphaned Files tab's ancestor-bound string list) must carry Settings > Notes'
     /// appearance values - independent of Settings > Theme/Fonts - same rationale as
@@ -112,7 +112,7 @@ public class NoteTrashViewModelTests
         }
     }
 
-    /// <summary>sa_minimal_fix (メモリリーク修正, Y:\Temp\sa_fix_plan_notetrash_memory_leak.md /
+    /// <summary>sa_minimal_fix (メモリリーク修正, docs/sa_fix_plan_notetrash_memory_leak /
     /// sa_constraint_check Phase 1): NoteTrashViewModel is DI Transient while INotesSettingsManager is
     /// DI Singleton (ServiceCollectionExtensions.cs), so the PropertyChanged subscription taken in the
     /// constructor MUST be released by Dispose() - otherwise every dialog open leaks a subscriber on

@@ -16,6 +16,10 @@ internal static class RlLocalParquetReader
 {
     internal sealed record Result(ImmutableArray<CandleData> Bars, string StorageDtype, int SourceRows);
 
+    /// <summary>The metadata columns <see cref="ReadMetadata(string)"/> returns, the quote type of an equity and the metadata file suffix (new readers use these, not literals).</summary>
+    internal const string CurrencyKey = "currency", QuoteTypeKey = "quote_type", ExchangeTimezoneKey = "exchange_timezone_name";
+    internal const string EquityQuoteType = "EQUITY", MetadataFileSuffix = ".meta.parquet";
+
     public static Result Read(string snapshotPath, DateOnly start, DateOnly endExclusive, TrainingResourceLimits limits, CancellationToken ct)
     {
         limits.Validate();
@@ -73,46 +77,26 @@ internal static class RlLocalParquetReader
     /// </summary>
     public static ImmutableArray<DateOnly> ReadDates(string snapshotPath, DateOnly endExclusive, TrainingResourceLimits limits, CancellationToken ct)
     {
-        limits.Validate();
-        using var db = new DuckDBConnection("DataSource=:memory:");
-        db.Open();
-        using var command = db.CreateCommand();
-        command.CommandText = "SET threads=" + RlContract.CpuThreads.ToString(CultureInfo.InvariantCulture);
-        command.ExecuteNonQuery();
-        command.CommandText = "SET memory_limit='" + Math.Min(RlContract.BufferByteLimit,
-            checked((long)limits.MaxTensorSizeMiB * TrainingResourceOverrides.MiB)).ToString(CultureInfo.InvariantCulture) + "B'";
-        command.ExecuteNonQuery();
-        string escaped = ParquetMarketDataProvider.EscapeDuckDbPath(snapshotPath.Replace('\\', '/'));
-        command.CommandText = $"DESCRIBE SELECT date FROM read_parquet('{escaped}')";
-        using (var schema = command.ExecuteReader())
-            if (!schema.Read() || schema.GetString(0) != "date" || !string.Equals(schema.GetString(1), "DATE", StringComparison.OrdinalIgnoreCase))
-                throw new InvalidDataException("Unsupported local source column/type: date.");
-        command.CommandText = $"SELECT date FROM read_parquet('{escaped}')";
-        var dates = ImmutableArray.CreateBuilder<DateOnly>();
-        DateOnly? previous = null;
-        using var rows = command.ExecuteReader();
-        while (rows.Read())
-        {
-            ct.ThrowIfCancellationRequested();
-            if (rows.IsDBNull(0)) throw new InvalidDataException("A local date is missing; no row may be silently removed.");
-            var date = DateOnly.FromDateTime(rows.GetDateTime(0));
-            if (previous is { } last && date <= last) throw new InvalidDataException("Local source dates must be strictly increasing in stored order.");
-            previous = date;
-            if (date < endExclusive) dates.Add(date);
-        }
-        return dates.ToImmutable();
+        using var session = new RlLocalParquetSession(limits);
+        return session.ReadDates(snapshotPath, endExclusive, ct);
     }
 
     public static IReadOnlyDictionary<string, string?> ReadMetadata(string metadataSnapshot)
     {
         using var db = new DuckDBConnection("DataSource=:memory:"); db.Open();
+        return ReadMetadata(db, metadataSnapshot);
+    }
+
+    /// <summary>Reads the metadata on an already open connection (the single definition of the metadata read, shared with <see cref="RlLocalParquetSession"/>).</summary>
+    internal static IReadOnlyDictionary<string, string?> ReadMetadata(DuckDBConnection db, string metadataSnapshot)
+    {
         using var command = db.CreateCommand();
         string escaped = ParquetMarketDataProvider.EscapeDuckDbPath(metadataSnapshot.Replace('\\', '/'));
         command.CommandText = $"SELECT * FROM read_parquet('{escaped}')";
         using var reader = command.ExecuteReader();
         if (!reader.Read()) throw new InvalidDataException("Local symbol metadata is empty.");
         var result = new Dictionary<string, string?>();
-        foreach (string name in new[] { "currency", "quote_type", "exchange_timezone_name" })
+        foreach (string name in new[] { CurrencyKey, QuoteTypeKey, ExchangeTimezoneKey })
         {
             int index = -1;
             for (int i = 0; i < reader.FieldCount; i++) if (reader.GetName(i) == name) { index = i; break; }

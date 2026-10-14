@@ -29,7 +29,7 @@ public class StrategyIndicatorRequestTests
     [Fact]
     public void OutputName_OmittedByExistingThreeOrFourArgConstruction_DefaultsToMain()
     {
-        // Task 6a (Y:\Temp\sa_implementation_plan_BacktestOutputNameSupport.md) safe-extension: every
+        // Task 6a (docs/sa_implementation_plan_BacktestOutputNameSupport) safe-extension: every
         // pre-existing call site (3-arg and 4-arg, including the Frame-only Task 2a call sites) must not
         // change behavior.
         var threeArg = new StrategyIndicatorRequest("sma", IndicatorType.SMA, null);

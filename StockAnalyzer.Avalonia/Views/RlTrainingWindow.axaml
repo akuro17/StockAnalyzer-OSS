@@ -3,6 +3,7 @@
         xmlns:vm="using:StockAnalyzer.Avalonia.ViewModels"
         xmlns:l="using:StockAnalyzer.Avalonia.Markup"
         xmlns:ui="using:StockAnalyzer.Avalonia.Common"
+        xmlns:controls="using:StockAnalyzer.Avalonia.Views.Controls"
         x:Class="StockAnalyzer.Avalonia.Views.RlTrainingWindow"
         x:DataType="vm:RlTrainingDialogViewModel"
         AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.Window}"
@@ -24,6 +25,8 @@
 
   <Window.Styles>
     <StyleInclude Source="avares://StockAnalyzer.Avalonia/Assets/CalendarDatePickerIcon.axaml" />
+    <!-- groupHeader / advancedGroupHeader: the group-header styles shared with the Training Wizard and the Portfolio RL window. -->
+    <StyleInclude Source="avares://StockAnalyzer.Avalonia/Assets/TrainingGroupHeader.axaml" />
     <!-- Clean, borderless Expander template eliminating default accordion frames and separators while preserving logical tree contracts -->
     <Style Selector="Expander">
       <Setter Property="IsExpanded" Value="True" />
@@ -169,7 +172,7 @@
   </Window.KeyBindings>
 
   <Border BorderBrush="{DynamicResource Brush.Border.Primary}" BorderThickness="1">
-    <Grid RowDefinitions="56,*,64">
+    <Grid RowDefinitions="56,*,Auto,64">
       <!-- Header (56px) per SA_UI_SUBWINDOW_STANDARD -->
       <Border Grid.Row="0"
               BorderBrush="{DynamicResource Brush.Border.Primary}"
@@ -177,17 +180,38 @@
               Padding="24,0"
               Background="{DynamicResource Brush.Background.Tertiary}"
               PointerPressed="OnHeaderPointerPressed">
-        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="12">
-          <PathIcon Data="{StaticResource RlWindowIconData}"
-                    Width="20" Height="20"
-                    Foreground="{DynamicResource Brush.Accent.Primary}" />
-          <TextBlock Text="{l:Localize Rl.Title}"
-                     Classes="label"
-                     FontSize="{DynamicResource TitleFontSize}"
-                     FontWeight="SemiBold"
-                     Foreground="{DynamicResource Brush.Text.Primary}"
-                     VerticalAlignment="Center" />
-        </StackPanel>
+        <Grid ColumnDefinitions="Auto,*,Auto">
+          <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="12">
+            <PathIcon Data="{StaticResource RlWindowIconData}"
+                      Width="20" Height="20"
+                      Foreground="{DynamicResource Brush.Accent.Primary}" />
+            <TextBlock Text="{l:Localize Rl.Title}"
+                       Classes="label"
+                       FontSize="{DynamicResource TitleFontSize}"
+                       FontWeight="SemiBold"
+                       Foreground="{DynamicResource Brush.Text.Primary}"
+                       VerticalAlignment="Center" />
+          </StackPanel>
+          <!-- Measured result of the selected generation's saved evaluation (nothing is simulated) -->
+          <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Spacing="8"
+                      IsVisible="{Binding HasRiskMetrics}"
+                      AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.RiskMetricsHeader}">
+            <Border Background="{DynamicResource Brush.Background.Secondary}" CornerRadius="4" Padding="6,2">
+              <StackPanel Orientation="Horizontal" Spacing="4">
+                <TextBlock Classes="diagnostic" Text="{l:Localize Rl.RiskMetrics.Return}" VerticalAlignment="Center" />
+                <TextBlock Classes="value" Text="{Binding CumulativeReturnDisplay}" FontWeight="Bold" VerticalAlignment="Center" />
+              </StackPanel>
+            </Border>
+            <Border Background="{DynamicResource Brush.Background.Secondary}" CornerRadius="4" Padding="6,2">
+              <StackPanel Orientation="Horizontal" Spacing="4">
+                <TextBlock Classes="diagnostic" Text="{l:Localize Rl.RiskMetrics.MaxDrawdown}" VerticalAlignment="Center" />
+                <TextBlock Classes="value" Text="{Binding MaxDrawdownDisplay}" FontWeight="Bold" VerticalAlignment="Center" />
+              </StackPanel>
+            </Border>
+            <TextBlock Classes="diagnostic" Text="{Binding RiskMetricsScopeDisplay}" VerticalAlignment="Center" />
+
+          </StackPanel>
+        </Grid>
       </Border>
 
       <!-- Body (Scrollable Workspace) -->
@@ -200,6 +224,9 @@
                     HorizontalAlignment="Center"
                     Margin="{x:Static ui:RlUiLayout.OuterMargin}"
                     Spacing="{x:Static ui:RlUiLayout.SectionGap}">
+
+          <!-- Group: Basic Settings (what a run needs: symbol, dates, initial equity and costs) -->
+          <TextBlock Classes="groupHeader" Text="{l:Localize TrainingWizard_Header_BasicSettings}" />
 
           <!-- Section 1: Training Setup & Scope -->
           <Border Classes="section">
@@ -244,14 +271,6 @@
                   </AutoCompleteBox>
                 </StackPanel>
 
-                <!-- Row 0, Col 1: Continuous Policy Option (Vertically aligned with input bottom) -->
-                <StackPanel Grid.Row="0" Grid.Column="1" VerticalAlignment="Bottom" Height="36">
-                  <CheckBox Content="{l:Localize Rl.ContinuousMode}"
-                            IsChecked="{Binding UseContinuousPolicy}"
-                            AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.ContinuousMode}"
-                            VerticalAlignment="Center" />
-                </StackPanel>
-
                 <!-- Row 1, Col 0: Start Date Field Unit -->
                 <StackPanel Grid.Row="1" Grid.Column="0" Spacing="4">
                   <TextBlock Classes="label" Text="{l:Localize Rl.StartDate}" />
@@ -272,6 +291,63 @@
                                       AutomationProperties.Name="{l:Localize Rl.EndDate}" />
                 </StackPanel>
               </Grid>
+              <TextBlock Classes="diagnostic" Foreground="{DynamicResource Brush.Semantic.Warning}" Text="{Binding DateValidationDisplay}" IsVisible="{Binding IsDateOrderInvalid}" TextWrapping="Wrap" />
+              <TextBlock Classes="diagnostic" Foreground="{DynamicResource Brush.Semantic.Warning}" Text="{Binding PeriodStatusDisplay}" IsVisible="{Binding HasPeriodStatus}" TextWrapping="Wrap"
+                         AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.PeriodStatus}" />
+
+            </StackPanel>
+          </Border>
+
+          <!-- Section 2: Trading Costs & Capital -->
+          <Border Classes="section">
+            <StackPanel Spacing="{x:Static ui:RlUiLayout.FieldGap}">
+              <TextBlock Classes="heading" Text="{l:Localize Rl.Ui.Section.G2}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.CostsSection}" />
+              <Grid RowDefinitions="Auto,Auto,Auto" ColumnDefinitions="*,*" ColumnSpacing="{x:Static ui:RlUiLayout.ColumnSpacing}" RowSpacing="{x:Static ui:RlUiLayout.RowSpacing}" IsEnabled="{Binding Editable}">
+                <!-- The concept order shared with the Portfolio RL window: Capital | Flat cost, Unit cost | Slippage, Liquidation penalty -->
+                <!-- Row 0: Capital (left) & Flat Cost (right) -->
+                <StackPanel Grid.Row="0" Grid.Column="0" Spacing="4">
+                  <TextBlock Classes="label" Text="{l:Localize Rl.Capital}" />
+                  <NumericUpDown Value="{Binding InitialCapital, Mode=TwoWay}" ui:RlInputValidation.Field="InitialCapital" AutomationProperties.Name="{l:Localize Rl.Capital}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.Capital}" />
+                </StackPanel>
+
+                <StackPanel Grid.Row="0" Grid.Column="1" Spacing="4">
+                  <TextBlock Classes="label" Text="{l:Localize Rl.FlatCost}" />
+                  <NumericUpDown Value="{Binding CommissionFlat, Mode=TwoWay}" ui:RlInputValidation.Field="CommissionFlat" AutomationProperties.Name="{l:Localize Rl.FlatCost}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.FlatCommission}" />
+                </StackPanel>
+
+                <!-- Row 1: Unit Cost (left) & Slippage (right) -->
+                <StackPanel Grid.Row="1" Grid.Column="0" Spacing="4">
+                  <TextBlock Classes="label" Text="{l:Localize Rl.UnitCost}" />
+                  <NumericUpDown Value="{Binding CommissionPerUnit, Mode=TwoWay}" ui:RlInputValidation.Field="CommissionPerUnit" AutomationProperties.Name="{l:Localize Rl.UnitCost}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.UnitCommission}" />
+                </StackPanel>
+
+                <StackPanel Grid.Row="1" Grid.Column="1" Spacing="4">
+                  <TextBlock Classes="label" Text="{l:Localize Rl.Slippage}" />
+                  <NumericUpDown Value="{Binding SlippageRatio, Mode=TwoWay}" ui:RlInputValidation.Field="SlippageRatio" AutomationProperties.Name="{l:Localize Rl.Slippage}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.Slippage}" />
+                </StackPanel>
+
+                <!-- Row 2: Liquidation penalty (left) -->
+                <StackPanel Grid.Row="2" Grid.Column="0" Spacing="4">
+                  <TextBlock Classes="label" Text="{l:Localize Rl.Liquidation}" />
+                  <NumericUpDown Value="{Binding LiquidationPenaltyRatio, Mode=TwoWay}" ui:RlInputValidation.Field="LiquidationPenaltyRatio" AutomationProperties.Name="{l:Localize Rl.Liquidation}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.Liquidation}" />
+                </StackPanel>
+              </Grid>
+              <!-- The blocking reason of an invalid cost editor sits directly under the costs (it was in the training card) -->
+              <TextBlock Classes="diagnostic" Text="{Binding InputStatusDisplay}" IsVisible="{Binding HasInputError}" />
+            </StackPanel>
+          </Border>
+
+          <!-- Group: Advanced Settings (run conditions and the training / resume controls) -->
+          <TextBlock Classes="groupHeader advancedGroupHeader" Text="{l:Localize TrainingWizard_Header_AdvancedSettings}" />
+
+          <!-- Section: Run conditions (continuous policy and its direction model, trial run, short history) -->
+          <Border Classes="section">
+            <StackPanel Spacing="{x:Static ui:RlUiLayout.FieldGap}">
+              <TextBlock Classes="heading" Text="{l:Localize Rl.Ui.Section.RunConditions}" />
+              <CheckBox Content="{l:Localize Rl.ContinuousMode}"
+                        IsChecked="{Binding UseContinuousPolicy}"
+                        IsEnabled="{Binding Editable}"
+                        AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.ContinuousMode}" />
 
               <!-- Continuous Policy Options in 2-Column Grid -->
               <Grid RowDefinitions="Auto" ColumnDefinitions="*,*" ColumnSpacing="{x:Static ui:RlUiLayout.ColumnSpacing}" IsVisible="{Binding UseContinuousPolicy}" IsEnabled="{Binding Editable}">
@@ -295,65 +371,10 @@
                 </StackPanel>
               </Grid>
 
-              <!-- Full Width Single-Column Items -->
-              <CheckBox Content="{l:Localize Rl.Smoke}" IsChecked="{Binding SmokeOnly}" IsEnabled="{Binding Editable}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.Smoke}" />
-              <StackPanel Spacing="4" IsVisible="{Binding ShowShortHistoryOption}">
-                <CheckBox Content="{l:Localize Rl.ShortHistoryOption}" IsChecked="{Binding UseShortHistory}" IsEnabled="{Binding Editable}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.ShortHistory}" />
-                <TextBlock Classes="diagnostic" Text="{l:Localize Rl.ShortHistoryHelp}" TextWrapping="Wrap" />
-              </StackPanel>
-              <ItemsControl ItemsSource="{Binding FixedConditions}">
-                <ItemsControl.ItemTemplate>
-                  <DataTemplate x:DataType="vm:RlNamedValue">
-                    <Grid Margin="0,2">
-                      <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" SharedSizeGroup="RlFieldLabel" />
-                        <ColumnDefinition Width="*" />
-                      </Grid.ColumnDefinitions>
-                      <TextBlock Classes="label" Text="{Binding Name}" />
-                      <TextBlock Grid.Column="1" Classes="value" Text="{Binding Value}" TextWrapping="Wrap" />
-                    </Grid>
-                  </DataTemplate>
-                </ItemsControl.ItemTemplate>
-              </ItemsControl>
-            </StackPanel>
-          </Border>
-
-          <!-- Section 2: Trading Costs & Capital -->
-          <Border Classes="section">
-            <StackPanel Spacing="{x:Static ui:RlUiLayout.FieldGap}">
-              <TextBlock Classes="heading" Text="{l:Localize Rl.Ui.Section.G2}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.CostsSection}" />
-              <Grid RowDefinitions="Auto,Auto,Auto" ColumnDefinitions="*,*" ColumnSpacing="{x:Static ui:RlUiLayout.ColumnSpacing}" RowSpacing="{x:Static ui:RlUiLayout.RowSpacing}" IsEnabled="{Binding Editable}">
-                <!-- Row 0: Capital (left) & Slippage (right) -->
-                <StackPanel Grid.Row="0" Grid.Column="0" Spacing="4">
-                  <TextBlock Classes="label" Text="{l:Localize Rl.Capital}" />
-                  <NumericUpDown Value="{Binding InitialCapital, Mode=TwoWay}" ui:RlInputValidation.Field="InitialCapital" AutomationProperties.Name="{l:Localize Rl.Capital}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.Capital}" />
-                </StackPanel>
-
-                <StackPanel Grid.Row="0" Grid.Column="1" Spacing="4">
-                  <TextBlock Classes="label" Text="{l:Localize Rl.Slippage}" />
-                  <NumericUpDown Value="{Binding SlippageRatio, Mode=TwoWay}" ui:RlInputValidation.Field="SlippageRatio" AutomationProperties.Name="{l:Localize Rl.Slippage}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.Slippage}" />
-                </StackPanel>
-
-                <!-- Row 1: Flat Cost (left) & Liquidation (right) -->
-                <StackPanel Grid.Row="1" Grid.Column="0" Spacing="4">
-                  <TextBlock Classes="label" Text="{l:Localize Rl.FlatCost}" />
-                  <NumericUpDown Value="{Binding CommissionFlat, Mode=TwoWay}" ui:RlInputValidation.Field="CommissionFlat" AutomationProperties.Name="{l:Localize Rl.FlatCost}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.FlatCommission}" />
-                </StackPanel>
-
-                <StackPanel Grid.Row="1" Grid.Column="1" Spacing="4">
-                  <TextBlock Classes="label" Text="{l:Localize Rl.Liquidation}" />
-                  <NumericUpDown Value="{Binding LiquidationPenaltyRatio, Mode=TwoWay}" ui:RlInputValidation.Field="LiquidationPenaltyRatio" AutomationProperties.Name="{l:Localize Rl.Liquidation}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.Liquidation}" />
-                </StackPanel>
-
-                <!-- Row 2: Unit Cost (left) & Save Button (right) -->
-                <StackPanel Grid.Row="2" Grid.Column="0" Spacing="4">
-                  <TextBlock Classes="label" Text="{l:Localize Rl.UnitCost}" />
-                  <NumericUpDown Value="{Binding CommissionPerUnit, Mode=TwoWay}" ui:RlInputValidation.Field="CommissionPerUnit" AutomationProperties.Name="{l:Localize Rl.UnitCost}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.UnitCommission}" />
-                </StackPanel>
-
-                <StackPanel Grid.Row="2" Grid.Column="1" VerticalAlignment="Bottom" Height="36">
-                  <Button Classes="action" Content="{l:Localize Rl.SaveCosts}" Command="{Binding SaveCostsCommand}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.SaveCosts}" IsEnabled="{Binding CanSaveCosts}" HorizontalAlignment="Left" />
-                </StackPanel>
+              <!-- Trial run (left) | Short history (right, only when offered) -->
+              <Grid ColumnDefinitions="*,*" ColumnSpacing="{x:Static ui:RlUiLayout.ColumnSpacing}">
+                <CheckBox Grid.Column="0" VerticalAlignment="Top" Content="{l:Localize Rl.Smoke}" IsChecked="{Binding SmokeOnly}" IsEnabled="{Binding Editable}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.Smoke}" />
+                <CheckBox Grid.Column="1" VerticalAlignment="Top" Content="{l:Localize Rl.ShortHistoryOption}" IsChecked="{Binding UseShortHistory}" IsEnabled="{Binding Editable}" IsVisible="{Binding ShowShortHistoryOption}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.ShortHistory}" />
               </Grid>
             </StackPanel>
           </Border>
@@ -370,8 +391,7 @@
                 <TextBlock Classes="label" Text="{l:Localize Rl.Ui.Field.CompletedSteps}" />
                 <TextBlock Grid.Column="1" Classes="value" Text="{Binding ProcessingStepsDisplay}" />
               </Grid>
-              <TextBlock Classes="diagnostic" Text="{Binding Message}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.Message}" IsVisible="{Binding HasMessage}" />
-              <TextBlock Classes="diagnostic" Text="{Binding InputStatusDisplay}" IsVisible="{Binding HasInputError}" />
+              <!-- The progress bar, the phase and the message are in the run-status strip above the footer; the blocking input reason is under the costs. -->
               <!-- Checkpoint section rendered as unified always-expanded subcard with non-interactive header -->
               <Expander IsVisible="{Binding CheckpointAvailable}" IsExpanded="True">
                 <Expander.Header>
@@ -379,7 +399,7 @@
                 </Expander.Header>
                 <StackPanel Spacing="{x:Static ui:RlUiLayout.FieldGap}" Margin="0,8,0,0">
                   <Grid ColumnDefinitions="Auto,*" ColumnSpacing="{x:Static ui:RlUiLayout.ColumnSpacing}">
-                    <Button Classes="action" Content="{l:Localize Rl.Checkpoint.Inspect}" Command="{Binding InspectCheckpointsCommand}" IsEnabled="{Binding CanInspectCheckpoints}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.CheckpointInspect}" HorizontalAlignment="Left" />
+                    <Button Classes="action" Content="{l:Localize Rl.Checkpoint.Inspect}" Command="{Binding InspectCheckpointsCommand}" ToolTip.Tip="{Binding InspectCheckpointsTooltip}" IsEnabled="{Binding CanInspectCheckpoints}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.CheckpointInspect}" HorizontalAlignment="Left" />
                     <ComboBox Grid.Column="1" ItemsSource="{Binding CheckpointRows}" SelectedItem="{Binding SelectedCheckpoint}" IsEnabled="{Binding Editable}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.CheckpointModels}" IsVisible="{Binding HasCheckpoints}" AutomationProperties.Name="{l:Localize Rl.Checkpoint.Title}">
                       <ComboBox.ItemTemplate>
                         <DataTemplate x:DataType="vm:RlTrainingDialogViewModel+CheckpointRow">
@@ -388,21 +408,36 @@
                       </ComboBox.ItemTemplate>
                     </ComboBox>
                   </Grid>
-                  <Grid ColumnDefinitions="*,*" ColumnSpacing="{x:Static ui:RlUiLayout.ColumnSpacing}">
+                  <!-- Checkpoint Status Badge -->
+                  <Border Background="{DynamicResource CardBackground}" CornerRadius="4" Padding="8,4" HorizontalAlignment="Stretch"
+                          AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.CheckpointStatusBadge}">
+                    <Border Background="{DynamicResource Brush.Background.Secondary}" CornerRadius="4" Padding="6,2" HorizontalAlignment="Left">
+                      <TextBlock Classes="diagnostic" FontWeight="SemiBold" Text="{Binding CheckpointStatusBadgeDisplay}" VerticalAlignment="Center" />
+                    </Border>
+                  </Border>
+                  <Grid ColumnDefinitions="*,*" ColumnSpacing="{x:Static ui:RlUiLayout.ColumnSpacing}" IsVisible="{Binding HasCheckpoints}">
                     <StackPanel Spacing="{x:Static ui:RlUiLayout.FieldGap}">
-                      <CheckBox Content="{l:Localize Rl.Checkpoint.ResumeConfirm}" IsChecked="{Binding ResumeConfirmed}" IsEnabled="{Binding Editable}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.CheckpointResumeConfirm}" IsVisible="{Binding HasResumeSelection}" />
-                      <Button Classes="action" Content="{l:Localize Rl.Checkpoint.Resume}" Command="{Binding ResumeCheckpointCommand}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.CheckpointResume}" IsVisible="{Binding HasResumeSelection}" IsEnabled="{Binding CanResumeCheckpoint}" HorizontalAlignment="Left" />
+                      <CheckBox Content="{l:Localize Rl.Checkpoint.ResumeConfirm}" IsChecked="{Binding ResumeConfirmed}" IsEnabled="{Binding CanConfirmResume}" ToolTip.Tip="{Binding ResumeConfirmTooltip}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.CheckpointResumeConfirm}" />
+                      <Button Classes="action" Content="{l:Localize Rl.Checkpoint.Resume}" Command="{Binding ResumeCheckpointCommand}" ToolTip.Tip="{Binding ResumeTooltip}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.CheckpointResume}" IsEnabled="{Binding CanResumeCheckpoint}" HorizontalAlignment="Left" />
                     </StackPanel>
                     <StackPanel Grid.Column="1" Spacing="{x:Static ui:RlUiLayout.FieldGap}">
-                      <CheckBox Content="{l:Localize Rl.Checkpoint.AbandonConfirm}" IsChecked="{Binding AbandonConfirmed}" IsEnabled="{Binding Editable}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.CheckpointAbandonConfirm}" IsVisible="{Binding HasAbandonSelection}" />
-                      <Button Classes="action" Content="{l:Localize Rl.Checkpoint.Abandon}" Command="{Binding AbandonCheckpointCommand}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.CheckpointAbandon}" IsVisible="{Binding HasAbandonSelection}" IsEnabled="{Binding CanAbandonCheckpoint}" HorizontalAlignment="Left" />
+                      <CheckBox Content="{l:Localize Rl.Checkpoint.AbandonConfirm}" IsChecked="{Binding AbandonConfirmed}" IsEnabled="{Binding CanConfirmAbandon}" ToolTip.Tip="{Binding AbandonConfirmTooltip}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.CheckpointAbandonConfirm}" />
+                      <Button Classes="action" Content="{l:Localize Rl.Checkpoint.Abandon}" Command="{Binding AbandonCheckpointCommand}" ToolTip.Tip="{Binding AbandonTooltip}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.CheckpointAbandon}" IsEnabled="{Binding CanAbandonCheckpoint}" HorizontalAlignment="Left" />
                     </StackPanel>
                   </Grid>
+                  <!-- Checkpoint Export & Import Actions -->
+                  <StackPanel Orientation="Horizontal" Spacing="{x:Static ui:RlUiLayout.FieldGap}">
+                    <Button Classes="action" Content="{l:Localize Rl.Checkpoint.Export}" Command="{Binding ExportCheckpointCommand}" ToolTip.Tip="{l:Localize Rl.Checkpoint.ExportTip}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.CheckpointExport}" IsVisible="{Binding HasSelectedCheckpoint}" IsEnabled="{Binding CanExportCheckpoint}" />
+                    <Button Classes="action" Content="{l:Localize Rl.Checkpoint.Import}" Command="{Binding ImportCheckpointCommand}" ToolTip.Tip="{l:Localize Rl.Checkpoint.ImportTip}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.CheckpointImport}" IsEnabled="{Binding CanImportCheckpoint}" />
+                  </StackPanel>
                   <TextBlock Classes="diagnostic" Text="{Binding CheckpointsDisplay}" TextWrapping="Wrap" />
                 </StackPanel>
               </Expander>
             </StackPanel>
           </Border>
+
+          <!-- Group: Results and management (models, verification, storage, maintenance) -->
+          <TextBlock Classes="groupHeader advancedGroupHeader" Text="{l:Localize Rl.Ui.Group.Results}" />
 
           <!-- Section 4: Models & Replay Evaluation -->
           <Border Classes="section">
@@ -434,11 +469,19 @@
                   <TextBlock Classes="label" Text="{l:Localize Rl.Ui.Field.ActiveModel}" />
                   <Grid ColumnDefinitions="*,Auto" Height="36">
                     <TextBlock Classes="value" Text="{Binding ActiveDisplay}" VerticalAlignment="Center" />
-                    <Button Grid.Column="1" Classes="action" Content="{l:Localize Rl.Activate}"
-                            Command="{Binding ActivateCommand}"
-                            IsEnabled="{Binding CanActivate}"
-                            AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.Activate}"
-                            IsVisible="{Binding ShowActivate}" />
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="{x:Static ui:RlUiLayout.FieldGap}">
+                      <Button Classes="action" Content="{l:Localize Rl.Generation.Export}"
+                              Command="{Binding ExportGenerationCommand}"
+                              IsEnabled="{Binding CanExportGeneration}"
+                              ToolTip.Tip="{l:Localize Rl.Generation.ExportTip}"
+                              AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.GenerationExport}"
+                              IsVisible="{Binding HasSelectedModel}" />
+                      <Button Classes="action" Content="{l:Localize Rl.Activate}"
+                              Command="{Binding ActivateCommand}"
+                              IsEnabled="{Binding CanActivate}"
+                              AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.Activate}"
+                              IsVisible="{Binding ShowActivate}" />
+                    </StackPanel>
                   </Grid>
                 </StackPanel>
               </Grid>
@@ -447,62 +490,31 @@
               <SelectableTextBlock Classes="value" IsVisible="{Binding HasActiveId}" Text="{Binding ActiveId}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.ActiveModel}" />
               <TextBlock Classes="value" Text="{Binding TemporalStatusDisplay}" TextWrapping="Wrap" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.TemporalStatus}" IsVisible="{Binding HasSelectedModel}" />
 
-              <!-- Replay controls in 2-Column Grid (visible when a model is selected) -->
-              <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,*" ColumnSpacing="{x:Static ui:RlUiLayout.ColumnSpacing}" RowSpacing="{x:Static ui:RlUiLayout.RowSpacing}"
-                    IsVisible="{Binding HasSelectedModel}" IsEnabled="{Binding Editable}">
-                <!-- Row 0, Col 0: Block Field Unit -->
-                <StackPanel Grid.Row="0" Grid.Column="0" Spacing="4">
-                  <TextBlock Classes="label" Text="{l:Localize Rl.Ui.Field.Block}" />
-                  <ComboBox ItemsSource="{Binding BlockOptions}" SelectedItem="{Binding SelectedBlockOption}"
-                            AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.Blocks}"
-                            IsVisible="{Binding HasBlocks}"
-                            AutomationProperties.Name="{l:Localize Rl.Ui.Field.Block}">
-                    <ComboBox.ItemTemplate>
-                      <DataTemplate x:DataType="{x:Null}">
-                        <TextBlock Classes="value" Text="{Binding Name}" TextWrapping="Wrap" />
+              <!-- Generation Comparison: Validation vs OOS Distribution -->
+              <Expander IsVisible="{Binding HasGenerationScatterPoints}" IsExpanded="True">
+                <Expander.Header>
+                  <TextBlock Classes="label" FontWeight="SemiBold" Text="{l:Localize Rl.Ui.GenerationComparison.Title}" />
+                </Expander.Header>
+                <StackPanel Spacing="6" Margin="0,6,0,0">
+                  <TextBlock Classes="diagnostic" Text="{Binding GenerationComparisonSummary}" TextWrapping="Wrap" />
+                  <ItemsControl ItemsSource="{Binding GenerationScatterPoints}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="vm:RlGenerationScatterPoint">
+                        <Border Background="{DynamicResource CardBackground}" CornerRadius="4" Padding="8,4" Margin="0,2">
+                          <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="12">
+                            <TextBlock Classes="value" Text="{Binding ModelId}" TextTrimming="CharacterEllipsis" FontWeight="{Binding SelectionFontWeight}" />
+                            <TextBlock Grid.Column="1" Classes="diagnostic" Text="{Binding ValidationDisplay}" />
+                            <TextBlock Grid.Column="2" Classes="value" Text="{Binding OosDisplay}" />
+                            <Border Grid.Column="3" Background="{Binding QualityBadgeColor}" CornerRadius="3" Padding="6,1">
+                              <TextBlock Classes="diagnostic" Foreground="White" Text="{Binding QualityBadge}" />
+                            </Border>
+                          </Grid>
+                        </Border>
                       </DataTemplate>
-                    </ComboBox.ItemTemplate>
-                  </ComboBox>
-                  <TextBlock Classes="diagnostic" Text="{Binding BlocksDisplay}"
-                             IsVisible="{Binding !HasBlocks}"
-                             VerticalAlignment="Center" Height="36" />
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
                 </StackPanel>
-
-                <!-- Row 0, Col 1: Policy Field Unit -->
-                <StackPanel Grid.Row="0" Grid.Column="1" Spacing="4" IsVisible="{Binding HasReplayInputs}">
-                  <TextBlock Classes="label" Text="{l:Localize Rl.Ui.Field.Policy}" />
-                  <ComboBox ItemsSource="{Binding PolicyOptions}" SelectedItem="{Binding SelectedPolicyOption}"
-                            AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.Policies}"
-                            IsVisible="{Binding HasReplayInputs}"
-                            AutomationProperties.Name="{l:Localize Rl.Ui.Field.Policy}">
-                    <ComboBox.ItemTemplate>
-                      <DataTemplate x:DataType="vm:RlPolicyOption">
-                        <TextBlock Classes="value" Text="{Binding Name}" TextWrapping="Wrap" />
-                      </DataTemplate>
-                    </ComboBox.ItemTemplate>
-                  </ComboBox>
-                </StackPanel>
-
-                <!-- Row 1, Col 0: Decision Field Unit -->
-                <StackPanel Grid.Row="1" Grid.Column="0" Spacing="4" IsVisible="{Binding HasReplayInputs}">
-                  <TextBlock Classes="label" Text="{l:Localize Rl.Ui.Field.Decision}" />
-                  <NumericUpDown Minimum="0" Maximum="{Binding MaximumDecision}" Value="{Binding Decision}"
-                                 AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.Decision}"
-                                 ClipValueToMinMax="True"
-                                 ui:RlInputValidation.Field="Decision"
-                                 AutomationProperties.Name="{l:Localize Rl.Ui.Field.Decision}" />
-                </StackPanel>
-
-                <!-- Row 1, Col 1: Replay Action Button -->
-                <StackPanel Grid.Row="1" Grid.Column="1" VerticalAlignment="Bottom" Height="36" IsVisible="{Binding HasReplayInputs}">
-                  <Button Classes="action" Content="{l:Localize Rl.Replay}"
-                          Command="{Binding ReplayCommand}"
-                          AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.Replay}"
-                          IsVisible="{Binding HasReplayInputs}"
-                          IsEnabled="{Binding CanReplay}"
-                          HorizontalAlignment="Left" />
-                </StackPanel>
-              </Grid>
+              </Expander>
 
               <TextBlock Classes="diagnostic" Text="{Binding EvaluationStateDisplay}" IsVisible="{Binding HasSelectedModel}" />
               <!-- Evaluation Details -->
@@ -511,6 +523,47 @@
                   <TextBlock Classes="label" Text="{l:Localize Rl.EvaluationDetails}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.EvaluationDetails}" />
                 </Expander.Header>
                 <TextBlock Classes="diagnostic" Text="{Binding EvaluationReport}" TextWrapping="Wrap" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.EvaluationReport}" />
+              </Expander>
+            </StackPanel>
+          </Border>
+
+          <!-- Section 7: Verification & Facts (the fixed run conditions first, then the verification facts) -->
+          <Border Classes="section">
+            <StackPanel Spacing="{x:Static ui:RlUiLayout.FieldGap}">
+              <TextBlock Classes="heading" Text="{l:Localize Rl.Ui.Section.G7}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.VerificationSection}" />
+              <ItemsControl ItemsSource="{Binding FixedConditions}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="vm:RlNamedValue">
+                    <Grid Margin="0,2">
+                      <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" SharedSizeGroup="RlFieldLabel" />
+                        <ColumnDefinition Width="*" />
+                      </Grid.ColumnDefinitions>
+                      <TextBlock Classes="label" Text="{Binding Name}" />
+                      <TextBlock Grid.Column="1" Classes="value" Text="{Binding Value}" TextWrapping="Wrap" />
+                    </Grid>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+              <ItemsControl ItemsSource="{Binding VerificationFacts}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.Disclosure}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="vm:RlNamedValue">
+                    <Grid Margin="0,2">
+                      <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" SharedSizeGroup="RlFieldLabel" />
+                        <ColumnDefinition Width="*" />
+                      </Grid.ColumnDefinitions>
+                      <TextBlock Classes="label" Text="{Binding Name}" />
+                      <TextBlock Grid.Column="1" Classes="value" Text="{Binding Value}" TextWrapping="Wrap" />
+                    </Grid>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+              <Expander IsVisible="{Binding HasTechnicalDetails}" IsExpanded="True">
+                <Expander.Header>
+                  <TextBlock Classes="diagnostic" Text="{l:Localize Rl.Ui.Field.TechnicalDetails}" />
+                </Expander.Header>
+                <TextBlock Classes="diagnostic" Text="{Binding TechnicalDetails}" TextWrapping="Wrap" />
               </Expander>
             </StackPanel>
           </Border>
@@ -557,10 +610,7 @@
                   </StackPanel>
                 </Grid>
 
-                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="{x:Static ui:RlUiLayout.ColumnSpacing}" Margin="0,4,0,0">
-                  <Button Grid.Column="0" Classes="action" Content="{l:Localize Rl.Storage.Save}" Command="{Binding SaveArtifactSettingsCommand}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.StorageSave}" IsEnabled="{Binding CanSaveRetention}" HorizontalAlignment="Left" />
-                  <TextBlock Grid.Column="1" Classes="diagnostic" Text="{Binding RetentionDisplay}" TextWrapping="Wrap" VerticalAlignment="Center" />
-                </Grid>
+                <TextBlock Classes="diagnostic" Text="{Binding RetentionDisplay}" TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,4,0,0" />
               </StackPanel>
             </Expander>
           </Border>
@@ -589,47 +639,35 @@
                   <TextBlock Classes="diagnostic" Text="{Binding ArtifactsDisplay}" />
                 </StackPanel>
                 <StackPanel IsVisible="{Binding RecoveryAvailable}" Spacing="{x:Static ui:RlUiLayout.FieldGap}">
+                  <Border Background="{DynamicResource CardBackground}" CornerRadius="4" Padding="6,2" HorizontalAlignment="Left"
+                          AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.RecoveryStatusBadge}">
+                    <TextBlock Classes="diagnostic" FontWeight="SemiBold" Text="{Binding RecoveryStatusBadgeDisplay}" />
+                  </Border>
                   <TextBlock Classes="diagnostic" Text="{Binding RecoveryDisplay}" TextWrapping="Wrap" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.RecoveryPreview}" />
                   <WrapPanel>
-                    <Button Classes="action" Content="{l:Localize Rl.InspectRecovery}" Command="{Binding InspectRecoveryCommand}" IsEnabled="{Binding CanInspectRecovery}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.InspectRecovery}" />
-                    <Button Classes="action" Content="{l:Localize Rl.RecoverPointer}" Command="{Binding RecoverPointerCommand}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.RecoverPointer}" IsVisible="{Binding HasRecoveryCandidate}" IsEnabled="{Binding CanRecover}" />
+                    <Button Classes="action" Content="{l:Localize Rl.InspectRecovery}" Command="{Binding InspectRecoveryCommand}" ToolTip.Tip="{Binding InspectRecoveryTooltip}" IsEnabled="{Binding CanInspectRecovery}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.InspectRecovery}" />
+                    <Button Classes="action" Content="{l:Localize Rl.RecoverPointer}" Command="{Binding RecoverPointerCommand}" ToolTip.Tip="{Binding RecoverPointerTooltip}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.RecoverPointer}" IsVisible="{Binding HasRecoveryCandidate}" IsEnabled="{Binding CanRecover}" />
                   </WrapPanel>
                 </StackPanel>
               </StackPanel>
             </Expander>
           </Border>
 
-          <!-- Section 7: Verification & Facts -->
-          <Border Classes="section">
-            <StackPanel Spacing="{x:Static ui:RlUiLayout.FieldGap}">
-              <TextBlock Classes="heading" Text="{l:Localize Rl.Ui.Section.G7}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.VerificationSection}" />
-              <ItemsControl ItemsSource="{Binding VerificationFacts}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.Disclosure}">
-                <ItemsControl.ItemTemplate>
-                  <DataTemplate x:DataType="vm:RlNamedValue">
-                    <Grid Margin="0,2">
-                      <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" SharedSizeGroup="RlFieldLabel" />
-                        <ColumnDefinition Width="*" />
-                      </Grid.ColumnDefinitions>
-                      <TextBlock Classes="label" Text="{Binding Name}" />
-                      <TextBlock Grid.Column="1" Classes="value" Text="{Binding Value}" TextWrapping="Wrap" />
-                    </Grid>
-                  </DataTemplate>
-                </ItemsControl.ItemTemplate>
-              </ItemsControl>
-              <Expander IsVisible="{Binding HasTechnicalDetails}" IsExpanded="True">
-                <Expander.Header>
-                  <TextBlock Classes="diagnostic" Text="{l:Localize Rl.Ui.Field.TechnicalDetails}" />
-                </Expander.Header>
-                <TextBlock Classes="diagnostic" Text="{Binding TechnicalDetails}" TextWrapping="Wrap" />
-              </Expander>
-            </StackPanel>
-          </Border>
         </StackPanel>
       </ScrollViewer>
 
+      <!-- Run status (outside the scrolled body, directly above the footer): progress, phase and the window message. -->
+      <controls:RunStatusStrip Grid.Row="2"
+                               ShowProgress="{Binding ShowProgressBar}"
+                               IsIndeterminate="{Binding IsProgressIndeterminate}"
+                               Percent="{Binding ProgressPercent}"
+                               PercentText="{Binding ProgressPercentDisplay}"
+                               Phase="{Binding ProgressPhaseDisplay}"
+                               Message="{Binding Message}"
+                               MessageAutomationId="{x:Static ui:RlUiConstants.Message}" />
+
       <!-- Footer (64px) per SA_UI_SUBWINDOW_STANDARD -->
-      <Border Grid.Row="2"
+      <Border Grid.Row="3"
               Height="64"
               Background="{DynamicResource Brush.Background.Tertiary}"
               BorderBrush="{DynamicResource Brush.Border.Primary}"
@@ -642,8 +680,36 @@
             <TextBlock Classes="value" Text="{Binding StatusDisplay}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.Status}" FontWeight="SemiBold" />
           </StackPanel>
 
+          <!-- Next to the status: the one reason Start is disabled (blocking reasons only) above the state labels of the options that change what the result means.
+               Two rows in a cell of the star column, so neither can push the other (or the buttons) out of the window: the reason keeps the cell width, the labels wrap. -->
+          <Grid Grid.Column="1" RowDefinitions="Auto,Auto" Margin="{x:Static ui:RunModeBadgeLayout.FooterMargin}" VerticalAlignment="Center">
+            <TextBlock Classes="diagnostic" Text="{Binding StartBlockerDisplay}" IsVisible="{Binding HasStartBlocker}"
+                       Foreground="{DynamicResource Brush.Semantic.Warning}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
+                       AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.StartBlocker}" />
+            <ItemsControl Grid.Row="1" ItemsSource="{Binding ModeBadges}" IsVisible="{Binding HasModeBadges}" VerticalAlignment="Center"
+                          AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.ModeBadges}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate><WrapPanel Orientation="Horizontal" ItemSpacing="{x:Static ui:RunModeBadgeLayout.Spacing}" LineSpacing="{x:Static ui:RunModeBadgeLayout.LineSpacing}" /></ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="x:String">
+                  <Border Background="{DynamicResource Brush.Background.Secondary}" CornerRadius="{x:Static ui:RunModeBadgeLayout.Corner}" Padding="{x:Static ui:RunModeBadgeLayout.Padding}">
+                    <TextBlock Classes="diagnostic" Text="{Binding}" VerticalAlignment="Center" />
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </Grid>
+
           <!-- Right: Action Buttons per SA_UI_SUBWINDOW_STANDARD Footer specifications -->
           <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Spacing="12">
+            <Button Content="{l:Localize Rl.Train}"
+                    Command="{Binding TrainCommand}"
+                    IsEnabled="{Binding CanTrain}"
+                    AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.Train}"
+                    Theme="{DynamicResource PrimaryButtonStyle}"
+                    FontWeight="Bold"
+                    Height="36" Padding="20,0" MinWidth="110" />
             <Button Content="{l:Localize Rl.Checkpoint.Pause}"
                     Command="{Binding PauseCommand}"
                     IsVisible="{Binding ShowPause}"
@@ -658,13 +724,6 @@
                     IsEnabled="{Binding CanCancel}"
                     Theme="{DynamicResource SecondaryButtonStyle}"
                     Height="36" Padding="16,0" MinWidth="90" />
-            <Button Content="{l:Localize Rl.Train}"
-                    Command="{Binding TrainCommand}"
-                    IsEnabled="{Binding CanTrain}"
-                    AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.Train}"
-                    Theme="{DynamicResource PrimaryButtonStyle}"
-                    FontWeight="Bold"
-                    Height="36" Padding="20,0" MinWidth="110" />
           </StackPanel>
         </Grid>
       </Border>

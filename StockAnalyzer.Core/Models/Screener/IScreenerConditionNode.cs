@@ -5,7 +5,7 @@ namespace StockAnalyzer.Core.Models.Screener;
 /// Marker interface only, mirroring <c>IBacktestConditionNode</c> in
 /// <c>StockAnalyzer.Core.Models.Backtest.Engine</c>; this Screener-specific family is intentionally not shared with
 /// that Backtest type (single-root Filters tree vs. Backtest's fixed Entry/Exit/Reverse x Long/Short six-root tree
-/// are different purposes, per Y:\Temp\sa_implementation_plan_ScreenerFilterConditionTree.md section 1.2).
+/// are different purposes, per docs/sa_implementation_plan_ScreenerFilterConditionTree section 1.2).
 /// </summary>
 public interface IScreenerConditionNode
 {

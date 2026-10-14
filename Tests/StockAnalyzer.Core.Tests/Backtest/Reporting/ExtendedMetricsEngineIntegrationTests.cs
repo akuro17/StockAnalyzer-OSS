@@ -17,7 +17,7 @@ using Xunit;
 namespace StockAnalyzer.Core.Tests.Backtest.Reporting;
 
 /// <summary>
-/// The 15 extended metrics on results produced by the REAL <see cref="BacktestEngine"/> (Y:\Temp\sa_implementation_plan_BacktestReportVerificationOracle.md, T10),
+/// The 15 extended metrics on results produced by the REAL <see cref="BacktestEngine"/> (docs/sa_implementation_plan_BacktestReportVerificationOracle, T10),
 /// compared exactly with the independent <see cref="ExtendedMetricsReference"/> (whose exposure is rebuilt from the fills), plus a concurrency check.
 /// Until now the metrics were only checked on hand-built results.
 /// </summary>

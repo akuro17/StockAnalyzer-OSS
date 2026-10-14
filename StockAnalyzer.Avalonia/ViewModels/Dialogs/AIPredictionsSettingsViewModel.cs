@@ -235,8 +235,11 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
                 if (_isDisposed || revision != _ensembleEditRevision) return;
                 EnsembleMembers.Clear();
                 if (_ensembleSettings.Current is { } spec)
+                {
                     foreach (var member in spec.Members)
                         EnsembleMembers.Add(new EnsembleWeightRow(member.ModelId, (decimal)(member.Weight * 100)));
+                    RequestMonitoringRefresh();   // a saved ensemble has a health line; none saved means nothing to show
+                }
             }
             catch (Exception ex) { ReportEnsembleFailure(ex, "load", revision); }
         }
@@ -337,6 +340,7 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
                     new EnsembleMember(row.ModelId, (double)(row.Percent / 100m))).ToArray()));
                 await _ensembleSettings.SaveAsync(spec);
                 NotifyPredictionConfigurationChanged();
+                RequestMonitoringRefresh();
                 if (!_isDisposed && revision == _ensembleEditRevision)
                     EnsembleStatus = LocalizationManager.Instance["Settings_Ensemble_Saved"];
             }
@@ -352,6 +356,7 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
             {
                 await _ensembleSettings.SaveAsync(null);
                 NotifyPredictionConfigurationChanged();
+                RequestMonitoringRefresh();
                 if (_isDisposed || revision != _ensembleEditRevision) return;
                 EnsembleMembers.Clear();
                 EnsembleStatus = LocalizationManager.Instance["Settings_Ensemble_Cleared"];

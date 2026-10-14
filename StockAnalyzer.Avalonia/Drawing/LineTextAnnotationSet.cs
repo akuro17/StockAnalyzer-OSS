@@ -21,6 +21,18 @@ internal sealed class LineTextAnnotationSet : IDisposable
         set => _topText = SanitizeSingleLine(value);
     }
 
+    private string? _topFontFamily;
+    public string? TopFontFamily
+    {
+        get => _topFontFamily;
+        set
+        {
+            if (_topFontFamily == value) return;
+            _topFontFamily = value;
+            _topTextPaint.Typeface = DrawingFontHelper.ResolveTypeface(value);
+        }
+    }
+
     private double _topFontSize = DrawingThemeContext.DrawingFontSize;
     public double TopFontSize
     {
@@ -106,6 +118,18 @@ internal sealed class LineTextAnnotationSet : IDisposable
         }
     }
 
+    private string? _bottomFontFamily;
+    public string? BottomFontFamily
+    {
+        get => _bottomFontFamily;
+        set
+        {
+            if (_bottomFontFamily == value) return;
+            _bottomFontFamily = value;
+            _bottomTextPaint.Typeface = DrawingFontHelper.ResolveTypeface(value);
+        }
+    }
+
     public TextHorizontalAlignment BottomAlignment { get; set; } = TextHorizontalAlignment.Left;
     public float BottomOffsetPx { get; set; } = ChartConstants.DefaultLineTextOffsetPx;
     public TextRotationMode BottomRotationMode { get; set; } = TextRotationMode.AlwaysUpright;
@@ -155,7 +179,7 @@ internal sealed class LineTextAnnotationSet : IDisposable
             Color = DrawingThemeContext.MainTextSkColor,
             IsAntialias = true,
             TextSize = (float)_topFontSize,
-            Typeface = SKTypeface.Default
+            Typeface = DrawingThemeContext.DefaultTextTypeface
         };
 
         _bottomTextPaint = new SKPaint
@@ -163,7 +187,7 @@ internal sealed class LineTextAnnotationSet : IDisposable
             Color = DrawingThemeContext.MainTextSkColor,
             IsAntialias = true,
             TextSize = (float)_bottomFontSize,
-            Typeface = SKTypeface.Default
+            Typeface = DrawingThemeContext.DefaultTextTypeface
         };
     }
 

@@ -43,7 +43,7 @@ public partial class TickerListView : UserControl
         }
     }
 
-    // ---- Auto Play (Y:\Temp\sa_implementation_plan_TickerAutoPlay.md): the sort the user applied to the grid
+    // ---- Auto Play (docs/sa_implementation_plan_TickerAutoPlay): the sort the user applied to the grid
     // exists only here (TreeDataGrid rows), so the View hands the ViewModel the current visible order and scrolls
     // the row Auto Play selected into view.
     private TickerListViewModel? _attachedViewModel;

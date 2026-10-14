@@ -586,8 +586,9 @@ public class GenericCoordinateTransform : ICoordinateTransform
     public global::Avalonia.Point NumericToScreen(double x, double y)
     {
         double screenX = GetXFromIndex(x);
-        double screenY = GetYFromPrice((decimal)y);
-        return new global::Avalonia.Point(screenX, screenY);
+
+        // A price that has no screen position yields NaN, not an exception (see NumericPriceAxis).
+        return new global::Avalonia.Point(screenX, NumericPriceAxis.GetScreenY(this, y));
     }
 
     /// <summary>Convert screen coordinate to raw numeric (X, Y)</summary>

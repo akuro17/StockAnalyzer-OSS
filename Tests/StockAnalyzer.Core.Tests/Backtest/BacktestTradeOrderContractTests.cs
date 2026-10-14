@@ -14,7 +14,7 @@ using Xunit;
 namespace StockAnalyzer.Core.Tests.Backtest;
 
 /// <summary>
-/// Trades order contract (Y:\Temp\sa_implementation_plan_BacktestReportIntegrityContracts.md, T3, Gate D6 = reject). The streak metrics read
+/// Trades order contract (docs/sa_implementation_plan_BacktestReportIntegrityContracts, T3, Gate D6 = reject). The streak metrics read
 /// <see cref="BacktestResult.Trades"/> in list order, so a result whose trades are not in close order is rejected at report generation instead of
 /// being sorted or silently mis-measured. The real engine must satisfy the contract on every path, including same-bar reversal and liquidation.
 /// </summary>

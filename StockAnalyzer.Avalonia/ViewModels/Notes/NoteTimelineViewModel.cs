@@ -279,8 +279,8 @@ public sealed partial class NoteTimelineItemViewModel : ObservableObject
                     continue;
                 }
 
-                var filePath = _attachmentRepository.GetFilePath(attachment);
-                if (!System.IO.File.Exists(filePath))
+                // A stored name that is not a plain file name has no file inside the attachments folder: skipped like a missing file.
+                if (!_attachmentRepository.TryGetFilePath(attachment, out var filePath) || !System.IO.File.Exists(filePath))
                 {
                     continue;
                 }

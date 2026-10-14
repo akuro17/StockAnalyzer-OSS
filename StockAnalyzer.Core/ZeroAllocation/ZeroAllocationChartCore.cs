@@ -155,6 +155,7 @@ namespace StockAnalyzer.ZeroAllocation
         private readonly decimal[] _closes;
         private readonly long[] _volumes;
         private readonly OriginalIndexRange[] _ranges;
+        private readonly ElementDates[] _elementDates;
 
         public ZeroAllocChartDataType DataType => _dataType;
         public int Count => _closes.Length;
@@ -167,6 +168,11 @@ namespace StockAnalyzer.ZeroAllocation
         public ReadOnlyMemory<long> Volumes => _volumes;
         public ReadOnlyMemory<OriginalIndexRange> OriginalRanges => _ranges;
 
+        /// <summary>
+        /// Per-element creation and last-update dates (Kagi, Point and Figure). Empty when the producer did not supply them.
+        /// </summary>
+        public ReadOnlyMemory<ElementDates> ElementDates => _elementDates;
+
         public ChartSegmentAdapter(
             ZeroAllocChartDataType dataType,
             DateTime[] timestamps,
@@ -175,7 +181,8 @@ namespace StockAnalyzer.ZeroAllocation
             decimal[] lows,
             decimal[] closes,
             long[] volumes,
-            OriginalIndexRange[] ranges)
+            OriginalIndexRange[] ranges,
+            ElementDates[]? elementDates = null)
         {
             if (timestamps == null) throw new ArgumentNullException(nameof(timestamps));
             if (opens == null) throw new ArgumentNullException(nameof(opens));
@@ -187,7 +194,8 @@ namespace StockAnalyzer.ZeroAllocation
 
             int n = closes.Length;
             if (timestamps.Length != n || opens.Length != n || highs.Length != n ||
-                lows.Length != n || volumes.Length != n || ranges.Length != n)
+                lows.Length != n || volumes.Length != n || ranges.Length != n ||
+                (elementDates != null && elementDates.Length != n))
                 throw new ArgumentException("All arrays must have the same length");
 
             _dataType = dataType;
@@ -198,6 +206,7 @@ namespace StockAnalyzer.ZeroAllocation
             _closes = (decimal[])closes.Clone();
             _volumes = (long[])volumes.Clone();
             _ranges = (OriginalIndexRange[])ranges.Clone();
+            _elementDates = elementDates != null ? (ElementDates[])elementDates.Clone() : Array.Empty<ElementDates>();
         }
 
         internal ChartSegmentAdapter(
@@ -209,8 +218,12 @@ namespace StockAnalyzer.ZeroAllocation
             decimal[] closes,
             long[] volumes,
             OriginalIndexRange[] ranges,
-            bool bypassClone)
+            bool bypassClone,
+            ElementDates[]? elementDates = null)
         {
+            if (elementDates != null && elementDates.Length != closes.Length)
+                throw new ArgumentException("ElementDates must have the same length as the other arrays", nameof(elementDates));
+
             _dataType = dataType;
             if (bypassClone)
             {
@@ -221,6 +234,7 @@ namespace StockAnalyzer.ZeroAllocation
                 _closes = closes;
                 _volumes = volumes;
                 _ranges = ranges;
+                _elementDates = elementDates ?? Array.Empty<ElementDates>();
             }
             else
             {
@@ -231,6 +245,7 @@ namespace StockAnalyzer.ZeroAllocation
                 _closes = (decimal[])closes.Clone();
                 _volumes = (long[])volumes.Clone();
                 _ranges = (OriginalIndexRange[])ranges.Clone();
+                _elementDates = elementDates != null ? (ElementDates[])elementDates.Clone() : Array.Empty<ElementDates>();
             }
         }
 
@@ -897,6 +912,7 @@ namespace StockAnalyzer.ZeroAllocation
             var closes = new List<decimal>();
             var volumes = new List<long>();
             var ranges = new List<OriginalIndexRange>();
+            var elementDates = new List<ElementDates>();
 
             // P&F logic:
             // 1. Determine direction (Up/Down).
@@ -919,6 +935,9 @@ namespace StockAnalyzer.ZeroAllocation
             // Current column data
             decimal columnHigh = currentLevel;
             decimal columnLow = currentLevel;
+
+            // Date of the candle that last moved the far end of the current column (End of its ElementDates).
+            DateTime columnEnd = first.Timestamp;
 
             for (int i = 0; i < span.Length; i++)
             {
@@ -950,12 +969,14 @@ namespace StockAnalyzer.ZeroAllocation
                         direction = 1; // Up
                         columnHigh = quantizedHigh;
                         columnLow = currentLevel;
+                        columnEnd = c.Timestamp;
                     }
                     else if (lowDist >= boxSize)
                     {
                         direction = -1; // Down
                         columnLow = quantizedLow;
                         columnHigh = currentLevel;
+                        columnEnd = c.Timestamp;
                     }
                 }
                 else if (direction == 1) // Up (X)
@@ -968,6 +989,7 @@ namespace StockAnalyzer.ZeroAllocation
                     {
                         // Add X's
                         columnHigh = newHigh;
+                        columnEnd = c.Timestamp;
                     }
                     
                     // Check for reversal
@@ -980,12 +1002,13 @@ namespace StockAnalyzer.ZeroAllocation
                     if (low <= reversalLevel) // Strict price check
                     {
                         // Commit current UP column
-                        AddColumn(timestamps, opens, highs, lows, closes, volumes, ranges,
-                            span[startIndex].Timestamp, columnLow, columnHigh, 1, currentVolume, startIndex, i - startIndex);
+                        AddColumn(timestamps, opens, highs, lows, closes, volumes, ranges, elementDates,
+                            span[startIndex].Timestamp, columnEnd, columnLow, columnHigh, 1, currentVolume, startIndex, i - startIndex);
                         
                         // Start new DOWN column
                         direction = -1;
                         startIndex = i;
+                        columnEnd = c.Timestamp;
                         currentVolume = c.Volume; 
                         
                         // The new column starts one box below the previous high?
@@ -1007,6 +1030,7 @@ namespace StockAnalyzer.ZeroAllocation
                     if (quantizedLow < columnLow)
                     {
                         columnLow = quantizedLow;
+                        columnEnd = c.Timestamp;
                     }
 
                     // Check for reversal
@@ -1014,12 +1038,13 @@ namespace StockAnalyzer.ZeroAllocation
                     if (high >= reversalLevel)
                     {
                         // Commit current DOWN column
-                        AddColumn(timestamps, opens, highs, lows, closes, volumes, ranges,
-                            span[startIndex].Timestamp, columnHigh, columnLow, -1, currentVolume, startIndex, i - startIndex);
+                        AddColumn(timestamps, opens, highs, lows, closes, volumes, ranges, elementDates,
+                            span[startIndex].Timestamp, columnEnd, columnHigh, columnLow, -1, currentVolume, startIndex, i - startIndex);
 
                         // Start new UP column
                         direction = 1;
                         startIndex = i;
+                        columnEnd = c.Timestamp;
                         currentVolume = c.Volume;
 
                         // New X column starts one box above the low of the previous O column
@@ -1032,8 +1057,8 @@ namespace StockAnalyzer.ZeroAllocation
             }
             
             // Commit final column
-             AddColumn(timestamps, opens, highs, lows, closes, volumes, ranges,
-                   span[startIndex].Timestamp, 
+             AddColumn(timestamps, opens, highs, lows, closes, volumes, ranges, elementDates,
+                   span[startIndex].Timestamp, columnEnd,
                    (direction == 1) ? columnLow : columnHigh, // Open (Base)
                    (direction == 1) ? columnHigh : columnLow, // Close (Tip)
                    direction, currentVolume, startIndex, span.Length - startIndex);
@@ -1047,15 +1072,17 @@ namespace StockAnalyzer.ZeroAllocation
                 lows.ToArray(),
                 closes.ToArray(),
                 volumes.ToArray(),
-                ranges.ToArray());
+                ranges.ToArray(),
+                elementDates: elementDates.ToArray());
         }
 
         private static void AddColumn(
              List<DateTime> ts, List<decimal> op, List<decimal> hi, List<decimal> lo, List<decimal> cl,
-             List<long> vol, List<OriginalIndexRange> rg,
-             DateTime t, decimal startLevel, decimal endLevel, int direction, long v, int start, int len)
+             List<long> vol, List<OriginalIndexRange> rg, List<ElementDates> ed,
+             DateTime t, DateTime lastUpdate, decimal startLevel, decimal endLevel, int direction, long v, int start, int len)
         {
             ts.Add(t);
+            ed.Add(new ElementDates(t, lastUpdate));
             // Adapter standard:
             // Up: Open < Close. Open = Low, Close = High
             // Down: Open > Close. Open = High, Close = Low
@@ -1120,6 +1147,7 @@ namespace StockAnalyzer.ZeroAllocation
             var clPool = ArrayPool<decimal>.Shared.Rent(capacity);
             var volPool = ArrayPool<long>.Shared.Rent(capacity);
             var rgPool = ArrayPool<OriginalIndexRange>.Shared.Rent(capacity);
+            var edPool = ArrayPool<ElementDates>.Shared.Rent(capacity);
 
             int segmentCount = 0;
 
@@ -1139,7 +1167,7 @@ namespace StockAnalyzer.ZeroAllocation
                 int startIndex = 0;
 
                 // Standard: Always insert the starting close price at index 0 as a horizontal anchor block
-                AddSegment(tsPool, opPool, hiPool, loPool, clPool, volPool, rgPool, ref segmentCount,
+                AddSegment(tsPool, opPool, hiPool, loPool, clPool, volPool, rgPool, edPool, ref segmentCount,
                     span[0].Timestamp, startPrice, startPrice, false, 0, 1);
 
                 for (int i = 1; i < span.Length; i++)
@@ -1155,7 +1183,7 @@ namespace StockAnalyzer.ZeroAllocation
                             state.IsYang = state.Direction == 1;
 
                             // Add the first trend segment at index 1, originating from startPrice and ending at price
-                            AddSegment(tsPool, opPool, hiPool, loPool, clPool, volPool, rgPool, ref segmentCount,
+                            AddSegment(tsPool, opPool, hiPool, loPool, clPool, volPool, rgPool, edPool, ref segmentCount,
                                 c.Timestamp, startPrice, price, state.IsYang, 0, i + 1);
 
                             state.CurrentPrice = price;
@@ -1168,7 +1196,7 @@ namespace StockAnalyzer.ZeroAllocation
                         if ((state.Direction == 1 && price > state.CurrentPrice) ||
                             (state.Direction == -1 && price < state.CurrentPrice))
                         {
-                            HandleContinuationWithPotentialSplit(tsPool, opPool, hiPool, loPool, clPool, volPool, rgPool, ref segmentCount,
+                            HandleContinuationWithPotentialSplit(tsPool, opPool, hiPool, loPool, clPool, volPool, rgPool, edPool, ref segmentCount,
                                 ref state, price, c.Timestamp, startIndex, i - startIndex + 1);
                             startIndex = i;
                         }
@@ -1190,7 +1218,7 @@ namespace StockAnalyzer.ZeroAllocation
                             // Route through the unified HandleContinuationWithPotentialSplit logic to handle the initial reversal segment.
                             // To ensure it ALWAYS starts a new segment rather than extending the prior trend, we bypass extension.
                             bool forceNewSegment = true;
-                            HandleContinuationWithPotentialSplit(tsPool, opPool, hiPool, loPool, clPool, volPool, rgPool, ref segmentCount,
+                            HandleContinuationWithPotentialSplit(tsPool, opPool, hiPool, loPool, clPool, volPool, rgPool, edPool, ref segmentCount,
                                 ref state, price, c.Timestamp, startIndex, i - startIndex + 1, forceNewSegment);
                             startIndex = i;
                         }
@@ -1205,6 +1233,7 @@ namespace StockAnalyzer.ZeroAllocation
                 var finalCloses = new decimal[segmentCount];
                 var finalVolumes = new long[segmentCount];
                 var finalRanges = new OriginalIndexRange[segmentCount];
+                var finalElementDates = new ElementDates[segmentCount];
 
                 Array.Copy(tsPool, finalTimestamps, segmentCount);
                 Array.Copy(opPool, finalOpens, segmentCount);
@@ -1213,6 +1242,7 @@ namespace StockAnalyzer.ZeroAllocation
                 Array.Copy(clPool, finalCloses, segmentCount);
                 Array.Copy(volPool, finalVolumes, segmentCount);
                 Array.Copy(rgPool, finalRanges, segmentCount);
+                Array.Copy(edPool, finalElementDates, segmentCount);
 
                 return new ChartSegmentAdapter(
                     ZeroAllocChartDataType.Kagi,
@@ -1223,7 +1253,8 @@ namespace StockAnalyzer.ZeroAllocation
                     finalCloses,
                     finalVolumes,
                     finalRanges,
-                    bypassClone: true);
+                    bypassClone: true,
+                    elementDates: finalElementDates);
             }
             finally
             {
@@ -1234,12 +1265,13 @@ namespace StockAnalyzer.ZeroAllocation
                 ArrayPool<decimal>.Shared.Return(clPool);
                 ArrayPool<long>.Shared.Return(volPool);
                 ArrayPool<OriginalIndexRange>.Shared.Return(rgPool);
+                ArrayPool<ElementDates>.Shared.Return(edPool);
             }
         }
 
         private static void HandleContinuationWithPotentialSplit(
             DateTime[] ts, decimal[] op, decimal[] hi, decimal[] lo, decimal[] cl,
-            long[] vol, OriginalIndexRange[] rg, ref int count,
+            long[] vol, OriginalIndexRange[] rg, ElementDates[] ed, ref int count,
             ref KagiState state, decimal newPrice, DateTime time, int startIdx, int len, bool forceNewSegment = false)
         {
             decimal start = state.CurrentPrice;
@@ -1253,28 +1285,28 @@ namespace StockAnalyzer.ZeroAllocation
                 decimal boundary = state.LastLow;
                 
                 // 1. Process first half: start -> boundary (with original IsYang = true)
-                AddSegmentInternal(ts, op, hi, lo, cl, vol, rg, ref count, time, start, boundary, true, startIdx, len, forceNewSegment);
+                AddSegmentInternal(ts, op, hi, lo, cl, vol, rg, ed, ref count, time, start, boundary, true, startIdx, len, forceNewSegment);
                 
                 // 2. Process second half: boundary -> end (with new IsYang = false)
                 state.IsYang = false;
                 // Force a new segment for the second half to guarantee split structure
-                AddSegmentInternal(ts, op, hi, lo, cl, vol, rg, ref count, time, boundary, end, false, startIdx, 0, true);
+                AddSegmentInternal(ts, op, hi, lo, cl, vol, rg, ed, ref count, time, boundary, end, false, startIdx, 0, true);
             }
             else if (willTurnYang)
             {
                 decimal boundary = state.LastHigh;
                 
                 // 1. Process first half: start -> boundary (with original IsYang = false)
-                AddSegmentInternal(ts, op, hi, lo, cl, vol, rg, ref count, time, start, boundary, false, startIdx, len, forceNewSegment);
+                AddSegmentInternal(ts, op, hi, lo, cl, vol, rg, ed, ref count, time, start, boundary, false, startIdx, len, forceNewSegment);
                 
                 // 2. Process second half: boundary -> end (with new IsYang = true)
                 state.IsYang = true;
                 // Force a new segment for the second half to guarantee split structure
-                AddSegmentInternal(ts, op, hi, lo, cl, vol, rg, ref count, time, boundary, end, true, startIdx, 0, true);
+                AddSegmentInternal(ts, op, hi, lo, cl, vol, rg, ed, ref count, time, boundary, end, true, startIdx, 0, true);
             }
             else
             {
-                AddSegmentInternal(ts, op, hi, lo, cl, vol, rg, ref count, time, start, end, state.IsYang, startIdx, len, forceNewSegment);
+                AddSegmentInternal(ts, op, hi, lo, cl, vol, rg, ed, ref count, time, start, end, state.IsYang, startIdx, len, forceNewSegment);
             }
 
             state.CurrentPrice = end;
@@ -1282,7 +1314,7 @@ namespace StockAnalyzer.ZeroAllocation
 
         private static void AddSegmentInternal(
             DateTime[] ts, decimal[] op, decimal[] hi, decimal[] lo, decimal[] cl,
-            long[] vol, OriginalIndexRange[] rg, ref int count,
+            long[] vol, OriginalIndexRange[] rg, ElementDates[] ed, ref int count,
             DateTime time, decimal start, decimal end, bool stateIsYang, int startIdx, int len, bool forceNewSegment)
         {
             bool isExtension = false;
@@ -1299,6 +1331,7 @@ namespace StockAnalyzer.ZeroAllocation
                     hi[lastIdx] = Math.Max(op[lastIdx], end);
                     lo[lastIdx] = Math.Min(op[lastIdx], end);
                     ts[lastIdx] = time;
+                    ed[lastIdx] = ed[lastIdx] with { End = time };
                     
                     var oldRange = rg[lastIdx];
                     rg[lastIdx] = new OriginalIndexRange(oldRange.Start, oldRange.Length + len);
@@ -1308,13 +1341,13 @@ namespace StockAnalyzer.ZeroAllocation
 
             if (!isExtension)
             {
-                AddSegment(ts, op, hi, lo, cl, vol, rg, ref count, time, start, end, stateIsYang, startIdx, len);
+                AddSegment(ts, op, hi, lo, cl, vol, rg, ed, ref count, time, start, end, stateIsYang, startIdx, len);
             }
         }
 
         private static void AddSegment(
             DateTime[] ts, decimal[] op, decimal[] hi, decimal[] lo, decimal[] cl,
-            long[] vol, OriginalIndexRange[] rg, ref int count,
+            long[] vol, OriginalIndexRange[] rg, ElementDates[] ed, ref int count,
             DateTime t, decimal o, decimal c, bool isYang, int start, int len)
         {
             int idx = count++;
@@ -1325,6 +1358,7 @@ namespace StockAnalyzer.ZeroAllocation
             cl[idx] = c;
             vol[idx] = isYang ? 1L : 0L;
             rg[idx] = new OriginalIndexRange(start, len);
+            ed[idx] = new ElementDates(t, t);
         }
     }
 }

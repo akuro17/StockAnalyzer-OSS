@@ -98,11 +98,23 @@ public sealed class RlWorkerProcessTests : IDisposable
         // The capture script does not read its input, so it finishes within the grace period; the pump reports the cancellation only after the worker is gone.
         using var cts = new CancellationTokenSource();
         var run = DriverOf(target)(RlFiles.DependenciesScript, WriteConfig(valid: true), _root, cts.Token);
-        cts.CancelAfter(TimeSpan.FromMilliseconds(100));
+        CancelFromADedicatedThread(cts, TimeSpan.FromMilliseconds(100));
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => run);
         string result = Path.Combine(_root, RlFiles.Dependencies);
         Assert.True(File.Exists(result) || !File.Exists(result + ".tmp"), "the worker left a half-written result behind");
     }
+
+    /// <summary>
+    /// Cancels after <paramref name="delay"/> without the thread pool. <c>CancelAfter</c> runs its callback on a pool thread, and a parallel run of the whole suite can keep the
+    /// pool saturated for longer than the capture script lives (about 0.4 s): the cancellation then arrives after the worker has finished and the run completes without
+    /// the exception the test expects. A dedicated thread is not queued behind other tests.
+    /// </summary>
+    private static void CancelFromADedicatedThread(CancellationTokenSource source, TimeSpan delay) =>
+        new Thread(() =>
+        {
+            Thread.Sleep(delay);
+            try { source.Cancel(); } catch (ObjectDisposedException) { }   // the test already ended and disposed the source
+        }) { IsBackground = true }.Start();
 
     // ---- the shared pump itself, driven with the managed interpreter and small inline scripts ----
 

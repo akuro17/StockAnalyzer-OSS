@@ -75,11 +75,39 @@ public sealed class ChartPredictionMonitoringTests
             Enumerable.Repeat(true, bars.Length).ToImmutableArray());
 
     private static ChartViewModel Chart(IDataService data, IPredictionLogService log, IPredictionService? prediction = null,
-        TimeProvider? clock = null, IMonitoringWorkOwner? work = null, IAttestedMonitoringRefresher? attested = null) =>
+        TimeProvider? clock = null, IMonitoringWorkOwner? work = null, IAttestedMonitoringRefresher? attested = null,
+        IEnsembleSettingsManager? ensembleSettings = null) =>
         new(data, new DialogService(), null!, new MockStockAnalyzerSettings(), new TimeFrameManager(data),
             null!, new StockAnalyzer.Core.Theme.ThemeManager(), new MockChartSettingsManager(),
             new SynchronousDispatcherService(), prediction, null!, messenger: new StrongReferenceMessenger(), predictionLog: log, timeProvider: clock,
-            monitoringWork: work, attestedMonitoring: attested);
+            monitoringWork: work, attestedMonitoring: attested, ensembleSettings: ensembleSettings);
+
+    private static readonly EnsembleSpec SavedEnsemble = FixedEnsembleSettingsManager.SampleSaved;
+
+    private static PredictionResult EnsemblePrediction(EnsembleSpec produced) => new("Up", .7f, [new("Up", .7f)], .7f, 0f, IsFallback: false)
+    {
+        Ensemble = produced, ConfidenceType = ConfidenceType.ClassProbability, ConfidenceValue = .7f, OutputContract = DailyClasses,
+    };
+
+    [Theory]
+    [InlineData(true, 1)]
+    [InlineData(false, 0)]
+    public async Task EnsemblePrediction_IsRecordedOnlyWhileItIsTheSavedEnsemble(bool stillSaved, int expectedRecords)
+    {
+        var log = new Mock<IPredictionLogService>();
+        log.Setup(l => l.RecordAsync(It.IsAny<PredictionResult>(), It.IsAny<string>(), It.IsAny<TimeframeType>(), It.IsAny<IReadOnlyList<CandleData>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync("id");
+        var prediction = new Mock<IPredictionService>();
+        prediction.Setup(p => p.PredictAsync(It.IsAny<IEnumerable<CandleData>>())).ReturnsAsync(EnsemblePrediction(SavedEnsemble));
+        var saved = stillSaved ? SavedEnsemble : EnsembleSpec.Equal(new[] { "member-a", "member-c" });
+        using var chart = Chart(new LegacyDataService(Bars()), log.Object, prediction.Object, ensembleSettings: new FixedEnsembleSettingsManager(saved));
+
+        await chart.LoadDataAsync(); await chart.PredictionUpdateTask; await chart.MonitoringUpdateTask;
+
+        Assert.Equal(stillSaved, chart.HasPredictionDisplay);
+        log.Verify(l => l.RecordAsync(It.Is<PredictionResult>(r => r.Ensemble == SavedEnsemble), It.IsAny<string>(), It.IsAny<TimeframeType>(),
+            It.IsAny<IReadOnlyList<CandleData>>(), It.IsAny<CancellationToken>()), Times.Exactly(expectedRecords));
+    }
 
     [Theory]
     [InlineData(false)]

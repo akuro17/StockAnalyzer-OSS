@@ -291,10 +291,10 @@ namespace StockAnalyzer.Tests.ViewModels
         }
 
         [Fact]
-        public void TimeSeriesCandles_NegativeDowntrend_CalculatesNegativeChangeCorrectly()
+        public void TimeSeriesCandles_GapUpThenFallBelowOpen_ChangeIsMeasuredFromPreviousClose()
         {
-            // Simulate 8035-T downtrend candle sequence:
-            // Today (2026-07-22): Open = 69570, High = 69780, Low = 67960, Close = 68640 (Downtrend from Open: Change = 68640 - 69570 = -930, Change% = -1.3368%)
+            // 8035-T: previous close 66570; today (2026-07-22) gapped up to Open = 69570 and closed at 68640, below its open.
+            // Measured from the previous close the day is +2070 (+3.1095%), although Close - Open would be -930.
             var candleOld = new StockAnalyzer.Core.Models.CandleData(new DateTime(2026, 7, 21), 64350m, 66570m, 64200m, 66570m, 1000);
             var candleNew = new StockAnalyzer.Core.Models.CandleData(new DateTime(2026, 7, 22), 69570m, 69780m, 67960m, 68640m, 1200);
 
@@ -302,16 +302,12 @@ namespace StockAnalyzer.Tests.ViewModels
             var candlesUnsorted = new List<StockAnalyzer.Core.Models.CandleData> { candleNew, candleOld };
             var sortedCandles = candlesUnsorted.OrderBy(c => c.Timestamp).ToList();
 
-            var latest = sortedCandles[sortedCandles.Count - 1];
+            Assert.Equal(new DateTime(2026, 7, 22), sortedCandles[sortedCandles.Count - 1].Timestamp);
 
-            Assert.Equal(new DateTime(2026, 7, 22), latest.Timestamp);
+            var priceChange = StockAnalyzer.Core.Utilities.PriceChange.FromPreviousClose(sortedCandles, sortedCandles.Count - 1);
 
-            var change = latest.Close - latest.Open; // 68640 - 69570 = -930
-            var changePercent = (double)((latest.Close - latest.Open) / latest.Open * 100m); // -1.3368...%
-
-            Assert.Equal(-930m, change);
-            Assert.True(changePercent < 0, $"Expected negative change percent, got {changePercent}");
-            Assert.Equal(-1.3367830961621388, changePercent, 4);
+            Assert.Equal(2070m, priceChange.Amount);
+            Assert.Equal(3.1095, (double)priceChange.Percent, 4);
         }
 
         [Fact]

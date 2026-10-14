@@ -5,6 +5,8 @@ using Microsoft.Extensions.Options;
 using Moq;
 using StockAnalyzer.Avalonia.Services;
 using StockAnalyzer.Avalonia.Tests.Services;
+using StockAnalyzer.Avalonia.Tests.TestHelpers;
+using StockAnalyzer.Avalonia.Tests.ViewModels;
 using StockAnalyzer.Avalonia.ViewModels.Dialogs;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Settings;
@@ -25,10 +27,161 @@ public sealed class PredictionMonitoringPresentationTests : IDisposable
     private static ModelGenerationSummary Generation(string id, string target = "classification") =>
         new(id, "model.onnx", target, "daily", 5, .7, new string('a', 64), false);
     private static AIPredictionsSettingsViewModel Settings(IPredictionLogService log, IRetrainingScheduler? scheduler = null,
-        ICurrentPredictionHealthService? currentHealth = null, IAttestedEvidenceDiagnostics? evidenceDiagnostics = null) =>
+        ICurrentPredictionHealthService? currentHealth = null, IAttestedEvidenceDiagnostics? evidenceDiagnostics = null,
+        IEnsembleSettingsManager? ensembleSettings = null) =>
         new(Mock.Of<IPredictionSettingsManager>(s => s.WindowSize == 75), Mock.Of<IClipboardService>(),
             Mock.Of<IToastNotificationService>(), analysisDispatcher: new SynchronousDispatcherService(),
-            predictionLog: log, retrainingScheduler: scheduler, currentHealth: currentHealth, evidenceDiagnostics: evidenceDiagnostics);
+            predictionLog: log, retrainingScheduler: scheduler, currentHealth: currentHealth, evidenceDiagnostics: evidenceDiagnostics,
+            ensembleSettings: ensembleSettings);
+
+    // ---- the saved ensemble is its own monitoring group ------------------------------------------------------------------
+
+    private static readonly EnsembleSpec SavedEnsemble = FixedEnsembleSettingsManager.SampleSaved;
+
+    private static Mock<ICurrentPredictionHealthService> Health(string id, params ModelMonitoringSnapshot[] snapshots)
+    {
+        var health = new Mock<ICurrentPredictionHealthService>();
+        health.Setup(h => h.EvaluateCurrentAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>())).ReturnsAsync(ImmutableArray<ModelMonitoringSnapshot>.Empty);
+        health.Setup(h => h.EvaluateCurrentAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync(snapshots.ToImmutableArray());
+        return health;
+    }
+
+    [Fact]
+    public async Task SavedEnsemble_ShowsItsOwnHealthLine_FromItsMonitoringId()
+    {
+        var id = SavedEnsemble.MonitoringId();
+        var health = Health(id, Snapshot(id, ModelHealthState.Healthy, 30, 16));
+        using var vm = Settings(Mock.Of<IPredictionLogService>(), currentHealth: health.Object, ensembleSettings: new FixedEnsembleSettingsManager(SavedEnsemble));
+        await vm.MonitoringRefreshTask;
+
+        Assert.StartsWith(string.Format(LocalizationManager.Instance.Get("Monitoring_EnsembleState"), "").TrimEnd(), vm.EnsembleMonitoringStatus);
+        Assert.Contains("Healthy", vm.EnsembleMonitoringStatus);
+        Assert.Contains("30", vm.EnsembleMonitoringStatus);
+        Assert.Contains(string.Format(System.Globalization.CultureInfo.CurrentCulture,
+            LocalizationManager.Instance.Get("Monitoring_Accuracy"), LocalizationManager.Instance.Get("Monitoring_Health_Healthy"),
+            (16m / 30m).ToString("P2", System.Globalization.CultureInfo.CurrentCulture), 30), vm.EnsembleMonitoringStatus);
+        Assert.Null(vm.MonitoringStatus);   // no generation is selected: the generation line is unaffected
+        health.Verify(h => h.EvaluateCurrentAsync(id, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task SavedEnsembleWithoutSnapshots_ShowsTheInsufficientDataText()
+    {
+        var health = Health(SavedEnsemble.MonitoringId());
+        using var vm = Settings(Mock.Of<IPredictionLogService>(), currentHealth: health.Object, ensembleSettings: new FixedEnsembleSettingsManager(SavedEnsemble));
+        await vm.MonitoringRefreshTask;
+
+        Assert.Equal(string.Format(LocalizationManager.Instance.Get("Monitoring_EnsembleState"),
+            LocalizationManager.Instance.Get("Monitoring_InsufficientData")), vm.EnsembleMonitoringStatus);
+    }
+
+    [Fact]
+    public async Task NoSavedEnsemble_ShowsNoEnsembleLine_AndWithoutCurrentHealthTheCachedReadIsUsed()
+    {
+        var id = SavedEnsemble.MonitoringId();
+        var health = Health(id, Snapshot(id, ModelHealthState.Healthy, 30, 16));
+        using var none = Settings(Mock.Of<IPredictionLogService>(), currentHealth: health.Object, ensembleSettings: new FixedEnsembleSettingsManager(null));
+        await none.MonitoringRefreshTask;
+        using var plain = Settings(Mock.Of<IPredictionLogService>(), currentHealth: health.Object);
+        await plain.MonitoringRefreshTask;
+        var log = new Mock<IPredictionLogService>();
+        log.Setup(l => l.GetSnapshotsAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync(
+            ImmutableArray.Create(Snapshot(id, ModelHealthState.Decayed, 30, 14)));
+        using var cached = Settings(log.Object, ensembleSettings: new FixedEnsembleSettingsManager(SavedEnsemble));
+        await cached.MonitoringRefreshTask;
+
+        Assert.Null(none.EnsembleMonitoringStatus);
+        Assert.Null(plain.EnsembleMonitoringStatus);
+        health.Verify(h => h.EvaluateCurrentAsync(id, It.IsAny<CancellationToken>()), Times.Never);
+        Assert.Contains("Decayed", cached.EnsembleMonitoringStatus);
+    }
+
+    [Fact]
+    public async Task EnsembleFailure_ShowsLoadFailedOnItsOwnLine_AndLeavesTheGenerationStatusAlone()
+    {
+        var generation = new string('b', 64);
+        var health = new Mock<ICurrentPredictionHealthService>();
+        health.Setup(h => h.EvaluateCurrentAsync(generation, It.IsAny<CancellationToken>())).ReturnsAsync(
+            ImmutableArray.Create(Snapshot(generation, ModelHealthState.Healthy, 30, 16)));
+        health.Setup(h => h.EvaluateCurrentAsync(SavedEnsemble.MonitoringId(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidDataException("corrupt ensemble state"));
+        using var vm = Settings(Mock.Of<IPredictionLogService>(), currentHealth: health.Object, ensembleSettings: new FixedEnsembleSettingsManager(SavedEnsemble));
+        vm.SelectedGeneration = Generation(generation); await vm.MonitoringRefreshTask;
+
+        Assert.Equal(string.Format(LocalizationManager.Instance.Get("Monitoring_EnsembleState"),
+            LocalizationManager.Instance.Get("Monitoring_LoadFailed")), vm.EnsembleMonitoringStatus);
+        Assert.Contains("Healthy", vm.MonitoringStatus);
+        Assert.DoesNotContain(LocalizationManager.Instance.Get("Monitoring_LoadFailed"), vm.MonitoringStatus);
+    }
+
+    [Fact]
+    public async Task OlderEnsembleCompletion_DoesNotOverwriteTheNewerOne()
+    {
+        var id = SavedEnsemble.MonitoringId();
+        var first = new TaskCompletionSource<ImmutableArray<ModelMonitoringSnapshot>>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var health = new Mock<ICurrentPredictionHealthService>();
+        health.SetupSequence(h => h.EvaluateCurrentAsync(id, It.IsAny<CancellationToken>()))
+            .Returns(first.Task)
+            .ReturnsAsync(ImmutableArray.Create(Snapshot(id, ModelHealthState.Healthy, 30, 16)));
+        health.Setup(h => h.EvaluateCurrentAsync("other", It.IsAny<CancellationToken>())).ReturnsAsync(ImmutableArray<ModelMonitoringSnapshot>.Empty);
+        using var vm = Settings(Mock.Of<IPredictionLogService>(), currentHealth: health.Object, ensembleSettings: new FixedEnsembleSettingsManager(SavedEnsemble));
+        var earlier = vm.MonitoringRefreshTask;
+
+        vm.SelectedGeneration = Generation("other"); await vm.MonitoringRefreshTask;
+        Assert.Contains("Healthy", vm.EnsembleMonitoringStatus);
+        first.SetResult(ImmutableArray.Create(Snapshot(id, ModelHealthState.Decayed, 30, 10))); await earlier;
+
+        Assert.Contains("Healthy", vm.EnsembleMonitoringStatus);
+        Assert.DoesNotContain("Decayed", vm.EnsembleMonitoringStatus);
+    }
+
+    [Fact]
+    public async Task SavingAndClearingTheEnsemble_ReadItsHealthAgain()
+    {
+        var id = SavedEnsemble.MonitoringId();
+        var health = Health(id, Snapshot(id, ModelHealthState.Healthy, 30, 16));
+        var settings = new FixedEnsembleSettingsManager(null);
+        using var vm = Settings(Mock.Of<IPredictionLogService>(), currentHealth: health.Object, ensembleSettings: settings);
+        await vm.MonitoringRefreshTask;
+        Assert.Null(vm.EnsembleMonitoringStatus);
+        foreach (var member in SavedEnsemble.Members) vm.EnsembleMembers.Add(new EnsembleWeightRow(member.ModelId, (decimal)(member.Weight * 100)));
+
+        await vm.SaveEnsembleCommand.ExecuteAsync(null); await vm.MonitoringRefreshTask;
+        Assert.Contains("Healthy", vm.EnsembleMonitoringStatus);
+
+        await vm.ClearEnsembleCommand.ExecuteAsync(null); await vm.MonitoringRefreshTask;
+        Assert.Null(vm.EnsembleMonitoringStatus);
+    }
+
+    [Fact]
+    public async Task EnsembleLoadedAfterTheFirstRefresh_TriggersAnotherRefresh()
+    {
+        var id = SavedEnsemble.MonitoringId();
+        var health = Health(id, Snapshot(id, ModelHealthState.Healthy, 30, 16));
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var settings = new FixedEnsembleSettingsManager(SavedEnsemble, release.Task);
+        using var vm = Settings(Mock.Of<IPredictionLogService>(), currentHealth: health.Object, ensembleSettings: settings);
+        await vm.MonitoringRefreshTask;
+        Assert.Null(vm.EnsembleMonitoringStatus);                  // nothing is saved as far as the first refresh could see
+
+        release.SetResult();
+        // The rows are added before the follow-up refresh is requested, so the rows (or the refresh task) are intermediate states; wait for the outcome itself.
+        await ChartViewModelTestWaits.EventuallyAsync(() => Assert.Contains("Healthy", vm.EnsembleMonitoringStatus));
+
+        Assert.Equal(SavedEnsemble.Members.Count, vm.EnsembleMembers.Count);
+    }
+
+    [Fact]
+    public async Task LoadedEnsemble_ShowsItsHealthLineWithoutAnyUserAction()
+    {
+        var id = SavedEnsemble.MonitoringId();
+        var health = Health(id, Snapshot(id, ModelHealthState.Decayed, 30, 14));
+        using var vm = Settings(Mock.Of<IPredictionLogService>(), currentHealth: health.Object, ensembleSettings: new FixedEnsembleSettingsManager(SavedEnsemble));
+        await vm.MonitoringRefreshTask;
+
+        Assert.Equal(SavedEnsemble.Members.Count, vm.EnsembleMembers.Count);
+        Assert.Contains("Decayed", vm.EnsembleMonitoringStatus);
+    }
 
     [Fact]
     public async Task OlderSelectionAndDisposedCompletions_DoNotOverwriteCurrentMonitoring()

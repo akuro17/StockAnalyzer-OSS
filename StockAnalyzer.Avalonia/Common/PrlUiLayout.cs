@@ -18,6 +18,7 @@ public static class PrlUiLayout
     public static GridLength HeaderRow { get; } = new(HeaderHeight);
     public static GridLength FooterRow { get; } = new(FooterHeight);
     public static GridLength BodyRow { get; } = new(1, GridUnitType.Star);
+    public static GridLength RunStatusRow { get; } = GridLength.Auto;
     public static Thickness BarPadding { get; } = new(24, 0);
     public static Thickness HeaderBorder { get; } = new(0, 0, 0, 1);
     public static Thickness FooterBorder { get; } = new(0, 1, 0, 0);

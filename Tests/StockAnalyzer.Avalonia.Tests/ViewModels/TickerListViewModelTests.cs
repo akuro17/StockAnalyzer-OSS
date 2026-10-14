@@ -79,6 +79,63 @@ public class TickerListViewModelTests
     }
 
     [Fact]
+    public void Receive_TickerDataRefreshedMessage_ChangeIsMeasuredFromPreviousClose_NotFromOpen()
+    {
+        // Arrange: previous close 100; the latest bar gaps up to 110 and closes at 105 (a red candle that is still above the previous close).
+        // The provider returns the bars out of order on purpose: the row must still use the chronologically previous bar.
+        var previousBar = new CandleData(new DateTime(2024, 1, 2), 99m, 101m, 98m, 100m, 1_000_000);
+        var latestBar = new CandleData(new DateTime(2024, 1, 3), 110m, 112m, 104m, 105m, 2_000_000);
+        var mockProvider = new Mock<IMarketDataProvider>();
+        mockProvider.Setup(p => p.GetTickersDataAsync("AAPL", TimeFrame.D1))
+            .ReturnsAsync(new List<CandleData> { latestBar, previousBar });
+
+        var vm = CreateViewModel(mockProvider.Object);
+        var item = new WatchlistItemViewModel("AAPL", "Apple Inc.", sector: "", industry: "", open: 10m, high: 11m, low: 9m, close: 10.5m, volume: 1000L, changePercent: 0d);
+        vm.DisplayItems.Add(item);
+
+        try
+        {
+            // Act
+            WeakReferenceMessenger.Default.Send(new TickerDataRefreshedMessage("AAPL"));
+
+            // Assert
+            Assert.Equal(105m, item.Close);
+            Assert.Equal(5m, item.Change);
+            Assert.Equal(5d, item.ChangePercent);
+        }
+        finally
+        {
+            vm.Dispose();
+        }
+    }
+
+    [Fact]
+    public void Receive_TickerDataRefreshedMessage_SingleBar_ChangeIsZero()
+    {
+        var onlyBar = new CandleData(new DateTime(2024, 1, 2), 150m, 155m, 148m, 152m, 5_000_000);
+        var mockProvider = new Mock<IMarketDataProvider>();
+        mockProvider.Setup(p => p.GetTickersDataAsync("AAPL", TimeFrame.D1))
+            .ReturnsAsync(new List<CandleData> { onlyBar });
+
+        var vm = CreateViewModel(mockProvider.Object);
+        var item = new WatchlistItemViewModel("AAPL", "Apple Inc.", sector: "", industry: "", open: 10m, high: 11m, low: 9m, close: 10.5m, volume: 1000L, changePercent: 3d, change: 7m);
+        vm.DisplayItems.Add(item);
+
+        try
+        {
+            WeakReferenceMessenger.Default.Send(new TickerDataRefreshedMessage("AAPL"));
+
+            Assert.Equal(152m, item.Close);
+            Assert.Equal(0m, item.Change);
+            Assert.Equal(0d, item.ChangePercent);
+        }
+        finally
+        {
+            vm.Dispose();
+        }
+    }
+
+    [Fact]
     public void Receive_TickerDataRefreshedMessage_ProviderReturnsEmpty_ClearsStaleRowValues()
     {
         // Arrange: simulates deleting a ticker's *entire* history from the History tab —

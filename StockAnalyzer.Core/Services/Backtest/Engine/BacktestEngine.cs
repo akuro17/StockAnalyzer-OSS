@@ -14,8 +14,8 @@ using StockAnalyzer.Core.Models.Indicators;
 namespace StockAnalyzer.Core.Services.Backtest.Engine;
 
 /// <summary>
-/// Task #6: the bar-loop orchestrator (Y:\0915 Backtesting\01_P1_SimulationEngine.md section 5.5, Steps
-/// 1-9), amended per Y:\Temp\sa_ai_context_BacktestEngine_P1.md section 1.5 for the margin-account
+/// Task #6: the bar-loop orchestrator (docs/01_P1_SimulationEngine section 5.5, Steps
+/// 1-9), amended per docs/sa_ai_context_BacktestEngine_P1 section 1.5 for the margin-account
 /// Long/Short model. Consumes the task #5 fill-evaluation primitives
 /// (<see cref="OrderFillEvaluator"/>, <see cref="MarginLiquidationCalculator"/>,
 /// <see cref="ExitPrecedenceResolver"/>) and wires indicator batch-prep (Gate G2) through
@@ -203,7 +203,7 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
             : decimal.MaxValue;
 
         // Step 1: cancellations queued from the previous bar's Close are applied first (a cancellation before expiry wins), then the GTD expiry check ("i > ExpiryBar" is strictly greater - the expiry bar itself may still fill).
-        // Dual pending-order slots (Y:\Temp\sa_implementation_plan_BacktestPositionDirectionReversal.md
+        // Dual pending-order slots (docs/sa_implementation_plan_BacktestPositionDirectionReversal
         // section 2.3): each slot expires independently, exactly mirroring the old single-slot check.
         ApplyQueuedCancellations(s);
         ExpireIfGtdElapsed(s, i, ref s.PendingEntryOrderIndex);
@@ -520,7 +520,7 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
         public decimal TotalBorrowFeeAccum;
 
         /// <summary>
-        /// Dual pending-order slots (Y:\Temp\sa_implementation_plan_BacktestPositionDirectionReversal.md
+        /// Dual pending-order slots (docs/sa_implementation_plan_BacktestPositionDirectionReversal
         /// section 2.3, amending the old single <c>PendingOrderIndex</c>/<c>PendingOrderIsEntry</c> pair):
         /// at most one Entry-type order and independently at most one Exit-type order may be pending at
         /// once (0-2 total, never two of the same type) - enabling a same-bar reversal pair while every
@@ -1239,7 +1239,7 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
     /// Frame is computed exactly as before (same-Frame path, unchanged). A request naming a different Frame is
     /// computed against that Frame's own bars (from <see cref="BacktestInput.AdditionalTimeframeBars"/>) and then
     /// causally aligned onto <paramref name="input"/>'s own bar indices via <see cref="TimeframeAlignment.Align"/> —
-    /// see Y:\Temp\sa_implementation_plan_BacktestComparisonSignals.md section 3.2.4.</summary>
+    /// see docs/sa_implementation_plan_BacktestComparisonSignals section 3.2.4.</summary>
     private IndicatorSeriesSet PrepareIndicators(BacktestInput input, IReadOnlyList<StrategyIndicatorRequest> requests, CancellationToken cancellationToken)
     {
         var series = new Dictionary<string, ImmutableArray<decimal?>>(requests.Count);
@@ -1258,7 +1258,7 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            // Causality guard (Y:\Temp\sa_implementation_plan_BacktestIndicatorCausalityGuard.md): refuse non-causal / synchronously
+            // Causality guard (docs/sa_implementation_plan_BacktestIndicatorCausalityGuard): refuse non-causal / synchronously
             // uncomputable outputs before anything is calculated - the whole-array precompute below would otherwise leak future bars.
             BacktestIndicatorViolationReason violation = BacktestIndicatorEligibility.Check(request.Type, request.OutputName);
             if (violation != BacktestIndicatorViolationReason.None)
@@ -1270,7 +1270,7 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
             ICoreIndicator indicator = _indicatorFactory.Create(request.Type, request.Parameters)
                 ?? throw new InvalidOperationException($"Indicator type '{request.Type}' is not registered in IIndicatorFactory.");
 
-            // Plan Y:\Temp\sa_improvement_plan_BacktestPriceSourceConditionFix.md: mirrors
+            // Plan docs/sa_improvement_plan_BacktestPriceSourceConditionFix: mirrors
             // AnalysisPipelineService.SyncPriceSource's existing mechanism for applying a non-Close price
             // source onto a created indicator instance. Without this, a "Price" catalog condition (one row
             // per PriceType - "Open"/"High"/"Low"/...) always evaluated against the instance's own default
@@ -1329,7 +1329,7 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
         }
     }
 
-    /// <summary>Task 6a safe-extension (Y:\Temp\sa_implementation_plan_BacktestOutputNameSupport.md):
+    /// <summary>Task 6a safe-extension (docs/sa_implementation_plan_BacktestOutputNameSupport):
     /// mirrors the exact HasSeries/GetSeries-guarded pattern <c>ScreenerValueExtractor</c> already uses,
     /// so a request naming a non-Main series of a multi-series indicator (e.g. MACD's "Signal") is
     /// honored, while a request whose OutputName is missing/not found or the default "Main" behaves

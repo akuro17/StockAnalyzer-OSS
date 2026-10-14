@@ -11,7 +11,7 @@ namespace StockAnalyzer.Core.Tests.Backtest;
 
 /// <summary>
 /// Task 2c regression/enabling proof (plan section 4.5 of
-/// Y:\Temp\sa_implementation_plan_BacktestComparisonSignals.md): <see cref="StrategyContext.EntryPrice"/>
+/// docs/sa_implementation_plan_BacktestComparisonSignals): <see cref="StrategyContext.EntryPrice"/>
 /// is a trailing, optional safe extension — null while flat, the open position's entry price while
 /// holding one — and every existing strategy that never reads it is unaffected.
 /// </summary>

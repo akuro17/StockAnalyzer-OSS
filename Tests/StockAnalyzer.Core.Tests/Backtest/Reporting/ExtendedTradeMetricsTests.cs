@@ -11,7 +11,7 @@ using Xunit;
 
 namespace StockAnalyzer.Core.Tests.Backtest.Reporting;
 
-/// <summary>Extended trade metrics (Y:\Temp\sa_implementation_plan_BacktestReportExtendedMetrics.md): calculators, report wiring, validation and persistence.</summary>
+/// <summary>Extended trade metrics (docs/sa_implementation_plan_BacktestReportExtendedMetrics): calculators, report wiring, validation and persistence.</summary>
 public class ExtendedTradeMetricsTests
 {
     private static ImmutableArray<BacktestTrade> Trades(params decimal[] closedNet) =>

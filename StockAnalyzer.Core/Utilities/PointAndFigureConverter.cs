@@ -27,9 +27,10 @@ public static class PointAndFigureConverter
         return columns;
     }
 
-    public static void Convert(IReadOnlyList<CoreCandleData> candles, decimal boxSize, int reversalAmount, List<CoreCandleData> outputBuffer, ChartRoundingMode roundingMode = ChartRoundingMode.None)
+    public static void Convert(IReadOnlyList<CoreCandleData> candles, decimal boxSize, int reversalAmount, List<CoreCandleData> outputBuffer, ChartRoundingMode roundingMode = ChartRoundingMode.None, List<ElementDates>? elementDatesBuffer = null)
     {
         outputBuffer.Clear();
+        elementDatesBuffer?.Clear();
         if (candles == null) return;
         if (boxSize <= 0) throw new ArgumentOutOfRangeException(nameof(boxSize), "Box size must be positive.");
         if (reversalAmount < 1) throw new ArgumentOutOfRangeException(nameof(reversalAmount), "Reversal amount must be >= 1.");
@@ -67,6 +68,7 @@ public static class PointAndFigureConverter
                     colBottom = baselinePrice;
                     colTimestamp = c.Timestamp;
                     outputBuffer.Add(MakeUpColumn(colTimestamp, colBottom, colTop));
+                    elementDatesBuffer?.Add(new ElementDates(colTimestamp, colTimestamp));
                 }
                 else if (low <= baselinePrice - boxSize)
                 {
@@ -76,6 +78,7 @@ public static class PointAndFigureConverter
                     colBottom = QuantizeUp(low, boxSize, roundingMode);
                     colTimestamp = c.Timestamp;
                     outputBuffer.Add(MakeDownColumn(colTimestamp, colTop, colBottom));
+                    elementDatesBuffer?.Add(new ElementDates(colTimestamp, colTimestamp));
                 }
                 continue;
             }
@@ -90,6 +93,8 @@ public static class PointAndFigureConverter
                     colTop = quantizedHigh;
                     colTimestamp = c.Timestamp;
                     outputBuffer[outputBuffer.Count - 1] = MakeUpColumn(colTimestamp, colBottom, colTop);
+                    if (elementDatesBuffer != null)
+                        elementDatesBuffer[elementDatesBuffer.Count - 1] = elementDatesBuffer[elementDatesBuffer.Count - 1] with { End = colTimestamp };
                 }
                 // 2. Check reversal to Down (only if no extension)
                 else if (low <= colTop - reversalValue)
@@ -102,6 +107,7 @@ public static class PointAndFigureConverter
                     colBottom = newBottom;
                     colTimestamp = c.Timestamp;
                     outputBuffer.Add(MakeDownColumn(colTimestamp, colTop, colBottom));
+                    elementDatesBuffer?.Add(new ElementDates(colTimestamp, colTimestamp));
                 }
             }
             else // state == -1, Current: Down column (O)
@@ -114,6 +120,8 @@ public static class PointAndFigureConverter
                     colBottom = quantizedLow;
                     colTimestamp = c.Timestamp;
                     outputBuffer[outputBuffer.Count - 1] = MakeDownColumn(colTimestamp, colTop, colBottom);
+                    if (elementDatesBuffer != null)
+                        elementDatesBuffer[elementDatesBuffer.Count - 1] = elementDatesBuffer[elementDatesBuffer.Count - 1] with { End = colTimestamp };
                 }
                 // 2. Check reversal to Up (only if no extension)
                 else if (high >= colBottom + reversalValue)
@@ -126,6 +134,7 @@ public static class PointAndFigureConverter
                     colTop = newTop;
                     colTimestamp = c.Timestamp;
                     outputBuffer.Add(MakeUpColumn(colTimestamp, colBottom, colTop));
+                    elementDatesBuffer?.Add(new ElementDates(colTimestamp, colTimestamp));
                 }
             }
         }

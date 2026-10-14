@@ -16,22 +16,14 @@ public sealed class PointAndFigureRenderer : IChartRenderer, IDisposable
 {
     private readonly SKPaint _xPaint;
     private readonly SKPaint _oPaint;
-    private readonly SKPaint _textPaint;
     private readonly SKPaint _signalPaint;
     private readonly SKPaint _dashPaint;
-    private readonly SKPaint _bgPaint;
     private readonly SKPath _markerPath;
 
     public PointAndFigureRenderer()
     {
         _xPaint = new SKPaint { Style = SKPaintStyle.Stroke, StrokeWidth = LayoutConstants.ThickStrokeWidth, IsAntialias = true, StrokeCap = SKStrokeCap.Square }; // Green X
         _oPaint = new SKPaint { Style = SKPaintStyle.Stroke, StrokeWidth = LayoutConstants.ThickStrokeWidth, IsAntialias = true }; // Red O
-        _textPaint = new SKPaint 
-        { 
-            IsAntialias = true, 
-            TextSize = LayoutConstants.LabelFontSize, 
-            Typeface = SKTypeface.FromFamilyName("Arial", SKFontStyle.Bold) 
-        };
         _signalPaint = new SKPaint
         {
             Style = SKPaintStyle.StrokeAndFill,
@@ -46,7 +38,6 @@ public sealed class PointAndFigureRenderer : IChartRenderer, IDisposable
             IsAntialias = true,
             PathEffect = SKPathEffect.CreateDash(new float[] { 4, 4 }, 0)
         };
-        _bgPaint = new SKPaint { Style = SKPaintStyle.Fill };
         _markerPath = new SKPath();
     }
 
@@ -58,7 +49,6 @@ public sealed class PointAndFigureRenderer : IChartRenderer, IDisposable
         
         // Context Unpacking
         decimal boxSize = config.PnfBoxSize;
-        int reversalAmount = config.PnfReversalAmount;
 
         // Safety check to avoid infinite loops if boxSize is messed up
         if (boxSize <= 0) boxSize = 1;
@@ -81,18 +71,11 @@ public sealed class PointAndFigureRenderer : IChartRenderer, IDisposable
         // Column width from the X-axis transform (matches the vertical grid spacing)
         float adjustedColumnWidth = (float)t.ScaleX;
 
-        // Symbol size follows column width
-        float symbolWidth = adjustedColumnWidth;
-
-        var theme = config.ThemeManager.CurrentTheme;
-        
         // Update paints with context colors
         _xPaint.Color = config.PnfBullishColor.ToSkColor();
         _oPaint.Color = config.PnfBearishColor.ToSkColor();
-        _textPaint.Color = theme.AxisText.ToSkColor();
 
         bool drawAsLines = adjustedColumnWidth <= 2f;
-        bool drawTrendCount = adjustedColumnWidth >= 15f;
         float lineStrokeWidth = Math.Max(1f, adjustedColumnWidth);
 
         if (drawAsLines)
@@ -182,80 +165,11 @@ public sealed class PointAndFigureRenderer : IChartRenderer, IDisposable
         // --- STEP 4: Advanced Pattern Engine Integration ---
         if (snapshot.PnfAnalysis.HasValue)
         {
-            var analysis = snapshot.PnfAnalysis.Value;
-            var signals = analysis.Signals;
-            var activeLines = analysis.ActiveLines;
-
             DrawBreakoutSignals(canvas, chartArea, snapshot, config, t, boxSize, boxPixelHeight);
 
              DrawActiveTrendlines(canvas, chartArea, snapshot, config, t, boxSize);
          }
 
-         if (snapshot.Candles.Count > 0 && drawTrendCount)
-         {
-             for (int i = 0; i < snapshot.Candles.Count; i++)
-             {
-                 var col = snapshot.Candles[i];
-                 bool isUp = col.Close >= col.Open;
-                 int trendCount = Math.Max(1, (int)Math.Round((double)((col.High - col.Low) / boxSize)) + 1);
-                 int absoluteIndex = snapshot.StartIndex + i;
-                 float centerX = (float)t.ChartToScreen(GenericCoordinateTransform.SafeIndexPoint(absoluteIndex)).X + (float)chartArea.Left;
-
-                 float columnWidth = (float)Math.Abs(t.ChartToScreen(new ChartPoint(DateTime.MinValue, 1)).X - t.ChartToScreen(new ChartPoint(DateTime.MinValue, 0)).X);
-                 bool skipCountLabel = columnWidth < _textPaint.TextSize * 0.8f;
-
-                 if (trendCount > 0 && !skipCountLabel)
-                 {
-                     float textY;
-                     if (isUp)
-                     {
-                         textY = (float)t.ChartToScreen(new ChartPoint(DateTime.MinValue, col.High + 0.5m * boxSize)).Y + (float)chartArea.Top;
-                         textY -= 4; 
-                     }
-                     else
-                     {
-                         textY = (float)t.ChartToScreen(new ChartPoint(DateTime.MinValue, col.Low - 0.5m * boxSize)).Y + (float)chartArea.Top;
-                         textY += _textPaint.TextSize;
-                     }
-                     
-                     _textPaint.Color = isUp ? config.PnfBullishColor.ToSkColor() : config.PnfBearishColor.ToSkColor();
-                     _textPaint.TextAlign = SKTextAlign.Center;
-                     
-                     string text = $"{trendCount}";
-                     float textWidth = _textPaint.MeasureText(text);
-                     float textHeight = _textPaint.TextSize;
-                     
-                     var bgColor = theme.ChartBackground.ToSkColor();
-                     _bgPaint.Color = new SKColor(bgColor.Red, bgColor.Green, bgColor.Blue, 200);
-                     canvas.DrawRect(centerX - textWidth / 2f - 2, textY - textHeight, textWidth + 4, textHeight + 2, _bgPaint);
-                     canvas.DrawText(text, centerX, textY, _textPaint);
-                 }
-                 _textPaint.TextAlign = SKTextAlign.Left;
-             }
-         }
-
-         // --- HEADER INFO & LABELS (Top-Left HUD) ---
-         float hudX = (float)chartArea.Left + 10;
-         float hudY = (float)chartArea.Top + 20;
-
-         if (snapshot.Candles.Count > 0)
-         {
-             var lastCol = snapshot.Candles.Last();
-             bool isLastUp = lastCol.Close >= lastCol.Open;
-             
-             decimal reversalPrice = isLastUp
-                 ? lastCol.High - (reversalAmount * boxSize) // Reversal Trigger
-                 : lastCol.Low + (reversalAmount * boxSize);
-                 
-             decimal nextBoxPrice = isLastUp
-                 ? lastCol.High + boxSize
-                 : lastCol.Low - boxSize;
-                 
-             decimal currentClose = (decimal)config.CurrentPrice; 
-
-
-         }
-         
           canvas.Restore();
       }
 
@@ -560,10 +474,8 @@ public sealed class PointAndFigureRenderer : IChartRenderer, IDisposable
     {
         _xPaint?.Dispose();
         _oPaint?.Dispose();
-        _textPaint?.Dispose();
         _signalPaint?.Dispose();
         _dashPaint?.Dispose();
-        _bgPaint?.Dispose();
         _markerPath?.Dispose();
     }
 }

@@ -12,7 +12,7 @@ using Xunit;
 namespace StockAnalyzer.Avalonia.Tests.ViewModels;
 
 /// <summary>sa_implement (Column Customization selection scope,
-/// Y:\Temp\sa_implementation_plan_TickerColumnSelectionScope.md Phase 4). A separate class on purpose: the
+/// docs/sa_implementation_plan_TickerColumnSelectionScope Phase 4). A separate class on purpose: the
 /// pre-existing selector tests stay untouched and prove the PerList default is unchanged. The harness is a copy
 /// of that class's private harness.</summary>
 public class TickerColumnSelectionScopeTests

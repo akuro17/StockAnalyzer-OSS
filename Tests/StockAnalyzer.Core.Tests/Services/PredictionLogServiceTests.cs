@@ -158,6 +158,17 @@ public sealed class PredictionLogServiceTests : IDisposable
         Assert.Equal(0, (await monitor.GetSnapshotsAsync(_result.ModelId!)).Single().MaturedCount);
     }
 
+    [Fact]
+    public async Task UnknownLabel_IsNotMonitorable_ReturnsNullWithoutThrowing_WhileAnotherInvalidLabelStillThrows()
+    {
+        // "Unknown" is the label of a prediction whose confidence stayed below the threshold: no class decision, nothing to vote on.
+        var monitor = await Setup(); var inputs = Bars().Take(195).ToArray();
+        Assert.Null(await monitor.RecordAsync(_result! with { Label = "Unknown" }, "X", TimeframeType.Daily, inputs));
+        await Assert.ThrowsAsync<InvalidDataException>(() => monitor.RecordAsync(_result! with { Label = "Sideways" }, "X", TimeframeType.Daily, inputs));
+        Assert.Empty(await monitor.EvaluateCurrentAsync());
+        Assert.False(Directory.Exists(Path.Combine(_root, "monitor", "predictions")));
+    }
+
     // ---- FP02: current-time health -------------------------------------------------------------------------------
 
     private static readonly DateTime Sept2 = new(2026, 9, 2);

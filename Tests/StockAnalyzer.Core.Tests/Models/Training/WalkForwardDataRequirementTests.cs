@@ -10,7 +10,7 @@ namespace StockAnalyzer.Core.Tests.Models.Training;
 /// Cross-checks <see cref="WalkForwardDataRequirement.MinimumRawBars"/> against values obtained
 /// by calling the real Python <c>dataset.walk_forward_split</c> directly (brute-forcing the
 /// smallest raw bar count that yields a non-empty fold) - see
-/// Y:\Temp\sa_step_log_OnnxTrainingFoundation.md, 2026-08-29, "Empty train or val split"
+/// docs/sa_step_log_OnnxTrainingFoundation, 2026-08-29, "Empty train or val split"
 /// investigations, for the verification transcript. Do not "simplify" these expected values
 /// without re-running that cross-check; the formula is a closed-form derivation of an integer
 /// floor-division loop and is easy to get subtly wrong at small window/horizon values (see the

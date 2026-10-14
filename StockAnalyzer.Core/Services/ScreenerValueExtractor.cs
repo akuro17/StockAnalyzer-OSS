@@ -14,6 +14,7 @@ using StockAnalyzer.Core.Models.Portfolio;
 using StockAnalyzer.Core.Models.Screener;
 using StockAnalyzer.Core.Models.ScreeningConditions;
 using StockAnalyzer.Core.Services.Analysis;
+using StockAnalyzer.Core.Utilities;
 
 namespace StockAnalyzer.Core.Services;
 
@@ -56,7 +57,7 @@ public class ScreenerValueExtractor : IScreenerValueExtractor
             string name = new[] { config.CustomDisplayName, config.OutputName, config.DisplayName }
                 .FirstOrDefault(s => !string.IsNullOrWhiteSpace(s) && s != "SMA" && s != "Main") ?? config.DisplayName ?? "";
 
-            if (TryGetOhlcValue(name, candle, targetIdx, candles, out decimal ohlcVal))
+            if (TryGetColumnOhlcValue(config, candle, targetIdx, candles, out decimal ohlcVal))
                 return ohlcVal;
 
             return GetMetadataValue(metadata, name);
@@ -105,7 +106,7 @@ public class ScreenerValueExtractor : IScreenerValueExtractor
             string name = new[] { config.CustomDisplayName, config.OutputName, config.DisplayName }
                 .FirstOrDefault(s => !string.IsNullOrWhiteSpace(s) && s != "SMA" && s != "Main") ?? config.DisplayName ?? "";
 
-            if (TryGetOhlcValue(name, candle, targetIdx, candles, out decimal ohlcVal))
+            if (TryGetColumnOhlcValue(config, candle, targetIdx, candles, out decimal ohlcVal))
                 return ohlcVal;
 
             // Extract fundamental metric from TickerMetadata
@@ -331,19 +332,7 @@ public class ScreenerValueExtractor : IScreenerValueExtractor
             string name = new[] { config.CustomDisplayName, config.OutputName, config.DisplayName }
                 .FirstOrDefault(s => !string.IsNullOrWhiteSpace(s) && s != "SMA" && s != "Main") ?? config.DisplayName ?? "";
 
-            decimal ohlcVal = name switch
-            {
-                "Open" => candle.Open,
-                "High" => candle.High,
-                "Low" => candle.Low,
-                "Close" => candle.Close,
-                "Volume" => candle.Volume,
-                "Change" => targetIdx > 0 ? candle.Close - candles[targetIdx - 1].Close : 0m,
-                "Change %" or "ChangePercent" or "Ratio" => targetIdx > 0 && candles[targetIdx - 1].Close != 0 ? ((candle.Close - candles[targetIdx - 1].Close) / candles[targetIdx - 1].Close) * 100m : 0m,
-                _ => -999999m
-            };
-
-            if (ohlcVal != -999999m) return ohlcVal;
+            if (TryGetColumnOhlcValue(config, candle, targetIdx, candles, out decimal ohlcVal)) return ohlcVal;
 
             return GetMetadataValue(metadata, name);
         }
@@ -648,6 +637,23 @@ public class ScreenerValueExtractor : IScreenerValueExtractor
         return null;
     }
 
+    /// <summary>
+    /// The candle value (Open, High, Low, Close, Volume, Change, Change %) a Column condition names. The registration dialog stores the short name
+    /// ("Change %") in <see cref="ScreenerIndicatorSideConfig.OutputName"/> and the catalog description in
+    /// <see cref="ScreenerIndicatorSideConfig.CustomDisplayName"/>, while tests and saved templates may carry the short name in either, so every name is tried
+    /// in the order CustomDisplayName, OutputName, DisplayName. A name that is not a candle value falls through to the metadata lookup.
+    /// </summary>
+    private static bool TryGetColumnOhlcValue(ScreenerIndicatorSideConfig config, CandleData candle, int targetIdx, IReadOnlyList<CandleData> candles, out decimal val)
+        => TryGetOhlcValue(config.CustomDisplayName, candle, targetIdx, candles, out val)
+           || TryGetOhlcValue(config.OutputName, candle, targetIdx, candles, out val)
+           || TryGetOhlcValue(config.DisplayName, candle, targetIdx, candles, out val);
+
+    /// <inheritdoc cref="TryGetColumnOhlcValue(ScreenerIndicatorSideConfig, CandleData, int, IReadOnlyList{CandleData}, out decimal)"/>
+    private static bool TryGetColumnOhlcValue(ScreenerIndicatorSideConfig config, CoreCandleData candle, int targetIdx, IReadOnlyList<CoreCandleData> candles, out decimal val)
+        => TryGetOhlcValue(config.CustomDisplayName, candle, targetIdx, candles, out val)
+           || TryGetOhlcValue(config.OutputName, candle, targetIdx, candles, out val)
+           || TryGetOhlcValue(config.DisplayName, candle, targetIdx, candles, out val);
+
     private static bool TryGetOhlcValue(string name, CandleData candle, int targetIdx, IReadOnlyList<CandleData> candles, out decimal val)
     {
         switch (name)
@@ -657,11 +663,11 @@ public class ScreenerValueExtractor : IScreenerValueExtractor
             case "Low": val = candle.Low; return true;
             case "Close": val = candle.Close; return true;
             case "Volume": val = candle.Volume; return true;
-            case "Change": val = targetIdx > 0 ? candle.Close - candles[targetIdx - 1].Close : 0m; return true;
+            case "Change": val = PriceChange.FromPreviousClose(candles, targetIdx).Amount; return true;
             case "Change %":
             case "ChangePercent":
             case "Ratio":
-                val = targetIdx > 0 && candles[targetIdx - 1].Close != 0 ? ((candle.Close - candles[targetIdx - 1].Close) / candles[targetIdx - 1].Close) * 100m : 0m;
+                val = PriceChange.FromPreviousClose(candles, targetIdx).Percent;
                 return true;
             default: val = 0m; return false;
         }
@@ -676,11 +682,11 @@ public class ScreenerValueExtractor : IScreenerValueExtractor
             case "Low": val = candle.Low; return true;
             case "Close": val = candle.Close; return true;
             case "Volume": val = candle.Volume; return true;
-            case "Change": val = targetIdx > 0 ? candle.Close - candles[targetIdx - 1].Close : 0m; return true;
+            case "Change": val = PriceChange.FromPreviousClose(candles, targetIdx).Amount; return true;
             case "Change %":
             case "ChangePercent":
             case "Ratio":
-                val = targetIdx > 0 && candles[targetIdx - 1].Close != 0 ? ((candle.Close - candles[targetIdx - 1].Close) / candles[targetIdx - 1].Close) * 100m : 0m;
+                val = PriceChange.FromPreviousClose(candles, targetIdx).Percent;
                 return true;
             default: val = 0m; return false;
         }

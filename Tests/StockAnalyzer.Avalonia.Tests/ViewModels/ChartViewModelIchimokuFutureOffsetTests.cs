@@ -7,7 +7,7 @@ using Xunit;
 namespace StockAnalyzer.Avalonia.Tests.ViewModels;
 
 /// <summary>
-/// Y:\Temp\sa_fix_plan_IchimokuFutureOffset.md / sa_improvement_plan_IchimokuFutureProjectionBars.md: the reserved right margin must cover the Senkou cloud, which extends
+/// docs/sa_fix_plan_IchimokuFutureOffset / sa_improvement_plan_IchimokuFutureProjectionBars.md: the reserved right margin must cover the Senkou cloud, which extends
 /// Displacement bars past the last candle, and the ViewModel must obtain that length from the parameter object rather than from an indicator-specific special case.
 /// </summary>
 public class ChartViewModelIchimokuFutureOffsetTests

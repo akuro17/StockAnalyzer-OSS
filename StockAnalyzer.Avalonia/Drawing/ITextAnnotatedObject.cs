@@ -17,4 +17,5 @@ public interface ITextAnnotatedObject
     Color BackgroundColor { get; set; }
     float BackgroundPadding { get; set; }
     float CornerRadius { get; set; }
+    string? FontFamily { get; set; }
 }

@@ -19,7 +19,7 @@ namespace StockAnalyzer.Core.Tests.Backtest;
 
 /// <summary>
 /// Hardening of the condition tree (MP-3 P1 and the canonical-order contract). Characterization only: every expectation here was derived from the
-/// specification tables of Y:\Temp\sa_implementation_plan_BacktestConditionTree_Hardening.md section 3 and holds on the shipped code.
+/// specification tables of docs/sa_implementation_plan_BacktestConditionTree_Hardening section 3 and holds on the shipped code.
 /// </summary>
 public class BacktestConditionTreeHardeningTests
 {

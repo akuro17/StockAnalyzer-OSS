@@ -48,6 +48,8 @@
             <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="Foreground" Value="{DynamicResource Brush.Accent.Primary}"/>
         </Style>
+        <!-- groupHeader / advancedGroupHeader: the shared group-header styles of the three training windows. -->
+        <StyleInclude Source="avares://StockAnalyzer.Avalonia/Assets/TrainingGroupHeader.axaml"/>
         <Style Selector="TextBlock.fieldLabel">
             <Setter Property="FontSize" Value="{DynamicResource DetailFontSize}"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
@@ -86,7 +88,7 @@
     </Design.DataContext>
 
     <Border BorderBrush="{DynamicResource Brush.Border.Primary}" BorderThickness="1">
-        <Grid RowDefinitions="56,*,64">
+        <Grid RowDefinitions="56,*,Auto,Auto">
             <!-- Header (56px) -->
             <Border Grid.Row="0"
                     BorderBrush="{DynamicResource Brush.Border.Primary}"
@@ -134,6 +136,9 @@
                     <!-- Tab: Scope (population + all run settings) -->
                     <TabItem Header="{l:Localize TrainingWizard_Section_Scope}">
                     <StackPanel Spacing="20" Margin="0,10,0,0">
+                        <!-- Group Header: Basic Settings -->
+                        <TextBlock Text="{l:Localize TrainingWizard_Header_BasicSettings}" Classes="groupHeader"/>
+
                         <!-- Row: ticker lists (left) | data period (right) -->
                         <Grid ColumnDefinitions="*,*" ColumnSpacing="20">
                             <Border Grid.Column="0" Classes="card">
@@ -194,6 +199,9 @@
                                                              Background="{DynamicResource Brush.Background.Tertiary}"
                                                              BorderBrush="{DynamicResource Brush.Border.Primary}"/>
                                     </StackPanel>
+                                    <TextBlock Text="{Binding PeriodStatusDisplay}" IsVisible="{Binding HasPeriodStatus}" TextWrapping="Wrap"
+                                               FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Semantic.Warning}"
+                                               AutomationProperties.AutomationId="TrainingWizard_PeriodStatus"/>
                                     <StackPanel Spacing="6">
                                         <TextBlock Text="{l:Localize TrainingWizard_Timeframe}" Classes="fieldLabel"/>
                                         <ComboBox ItemsSource="{Binding AvailableTimeframes}"
@@ -222,14 +230,12 @@
                             </Border>
                         </Grid>
 
-                        <!-- Section: Model & Initialization -->
+                        <!-- Section: Model (Basic: Target Type, Framework, Architecture) -->
                         <Border Classes="card">
                             <StackPanel Spacing="8">
                                 <TextBlock Text="{l:Localize TrainingWizard_Section_Model}" Classes="sectionHeader"/>
                                 <Grid ColumnDefinitions="*,*" ColumnSpacing="16" RowSpacing="12">
                                     <Grid.RowDefinitions>
-                                        <RowDefinition Height="Auto"/>
-                                        <RowDefinition Height="Auto"/>
                                         <RowDefinition Height="Auto"/>
                                         <RowDefinition Height="Auto"/>
                                     </Grid.RowDefinitions>
@@ -264,7 +270,7 @@
                                         </ComboBox>
                                     </StackPanel>
 
-                                    <!-- Row 1: Architecture | Training Start Mode -->
+                                    <!-- Row 1: Architecture -->
                                     <StackPanel Grid.Row="1" Grid.Column="0" Spacing="6" IsEnabled="{Binding HasArchitectureChoice}">
                                         <TextBlock Text="{l:Localize TrainingWizard_Architecture}" Classes="fieldLabel"/>
                                         <ComboBox ItemsSource="{Binding AvailableArchitectures}"
@@ -273,41 +279,11 @@
                                                   Background="{DynamicResource Brush.Background.Tertiary}"
                                                   BorderBrush="{DynamicResource Brush.Border.Primary}"/>
                                     </StackPanel>
-                                    <StackPanel Grid.Row="1" Grid.Column="1" Spacing="6" IsEnabled="{Binding HasInitializationChoice}">
-                                        <TextBlock Text="{l:Localize TrainingWizard_InitializationMode}" Classes="fieldLabel"/>
-                                        <ComboBox ItemsSource="{Binding AvailableInitializationModes}"
-                                                  SelectedItem="{Binding SelectedInitializationMode, Mode=TwoWay}"
-                                                  HorizontalAlignment="Stretch" Height="36"
-                                                  Background="{DynamicResource Brush.Background.Tertiary}"
-                                                  BorderBrush="{DynamicResource Brush.Border.Primary}">
-                                            <ComboBox.ItemTemplate>
-                                                <DataTemplate>
-                                                    <TextBlock Text="{Binding Converter={StaticResource EnumToLocalizedDisplayNameConverter}}"/>
-                                                </DataTemplate>
-                                            </ComboBox.ItemTemplate>
-                                        </ComboBox>
-                                    </StackPanel>
-
-                                    <!-- Row 2: Checkpoint Path (Resume/FineTune) | Parent Model ID (FineTune) -->
-                                    <StackPanel Grid.Row="2" Grid.Column="0" Spacing="6" IsVisible="{Binding IsTransferMode}">
-                                        <TextBlock Text="{l:Localize TrainingWizard_CheckpointPath}" Classes="fieldLabel"/>
-                                        <TextBox Text="{Binding CheckpointPath, Mode=TwoWay}" Height="36"/>
-                                    </StackPanel>
-                                    <StackPanel Grid.Row="2" Grid.Column="1" Spacing="6" IsVisible="{Binding IsFineTuneMode}">
-                                        <TextBlock Text="{l:Localize TrainingWizard_ParentModelId}" Classes="fieldLabel"/>
-                                        <TextBox Text="{Binding ParentModelId, Mode=TwoWay}" Height="36"/>
-                                    </StackPanel>
-
-                                    <!-- Row 3: Freeze Paths (FineTune on PyTorch) -->
-                                    <StackPanel Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="2" Spacing="6" IsVisible="{Binding CanFreezeModules}">
-                                        <TextBlock Text="{l:Localize TrainingWizard_FreezePaths}" Classes="fieldLabel"/>
-                                        <TextBox Text="{Binding FreezePathsText, Mode=TwoWay}" Height="36"/>
-                                    </StackPanel>
                                 </Grid>
                             </StackPanel>
                         </Border>
 
-                        <!-- Section: Input Shape -->
+                        <!-- Section: Input Shape (Basic: Window Size, Horizon) -->
                         <Border Classes="card">
                             <StackPanel Spacing="8">
                                 <TextBlock Text="{l:Localize TrainingWizard_Section_Input}" Classes="sectionHeader"/>
@@ -333,6 +309,55 @@
                                            IsVisible="{Binding WindowUnitNote, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                                            TextWrapping="Wrap" FontSize="{DynamicResource HelperFontSize}"
                                            Foreground="{DynamicResource Brush.Text.Tertiary}"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Group Header: Advanced Settings -->
+                        <TextBlock Text="{l:Localize TrainingWizard_Header_AdvancedSettings}" Classes="groupHeader advancedGroupHeader"/>
+
+                        <!-- Section: Transfer Learning & Initialization (Advanced) -->
+                        <Border Classes="card">
+                            <StackPanel Spacing="8">
+                                <TextBlock Text="{l:Localize TrainingWizard_Section_Transfer}" Classes="sectionHeader"/>
+                                <Grid ColumnDefinitions="*,*" ColumnSpacing="16" RowSpacing="12">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
+
+                                    <!-- Row 0: Training Start Mode -->
+                                    <StackPanel Grid.Row="0" Grid.Column="0" Spacing="6" IsEnabled="{Binding HasInitializationChoice}">
+                                        <TextBlock Text="{l:Localize TrainingWizard_InitializationMode}" Classes="fieldLabel"/>
+                                        <ComboBox ItemsSource="{Binding AvailableInitializationModes}"
+                                                  SelectedItem="{Binding SelectedInitializationMode, Mode=TwoWay}"
+                                                  HorizontalAlignment="Stretch" Height="36"
+                                                  Background="{DynamicResource Brush.Background.Tertiary}"
+                                                  BorderBrush="{DynamicResource Brush.Border.Primary}">
+                                            <ComboBox.ItemTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock Text="{Binding Converter={StaticResource EnumToLocalizedDisplayNameConverter}}"/>
+                                                </DataTemplate>
+                                            </ComboBox.ItemTemplate>
+                                        </ComboBox>
+                                    </StackPanel>
+
+                                    <!-- Row 1: Checkpoint Path (Resume/FineTune) | Parent Model ID (FineTune) -->
+                                    <StackPanel Grid.Row="1" Grid.Column="0" Spacing="6" IsVisible="{Binding IsTransferMode}">
+                                        <TextBlock Text="{l:Localize TrainingWizard_CheckpointPath}" Classes="fieldLabel"/>
+                                        <TextBox Text="{Binding CheckpointPath, Mode=TwoWay}" Height="36"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Row="1" Grid.Column="1" Spacing="6" IsVisible="{Binding IsFineTuneMode}">
+                                        <TextBlock Text="{l:Localize TrainingWizard_ParentModelId}" Classes="fieldLabel"/>
+                                        <TextBox Text="{Binding ParentModelId, Mode=TwoWay}" Height="36"/>
+                                    </StackPanel>
+
+                                    <!-- Row 2: Freeze Paths (FineTune on PyTorch) -->
+                                    <StackPanel Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2" Spacing="6" IsVisible="{Binding CanFreezeModules}">
+                                        <TextBlock Text="{l:Localize TrainingWizard_FreezePaths}" Classes="fieldLabel"/>
+                                        <TextBox Text="{Binding FreezePathsText, Mode=TwoWay}" Height="36"/>
+                                    </StackPanel>
+                                </Grid>
                             </StackPanel>
                         </Border>
 
@@ -618,13 +643,7 @@
                         <!-- Section: Progress & Results -->
                         <StackPanel Spacing="8" IsVisible="{Binding HasRunActivity}">
                             <TextBlock Text="{l:Localize TrainingWizard_Section_Results}" Classes="sectionHeader"/>
-                            <Grid ColumnDefinitions="*,Auto">
-                                <ProgressBar Value="{Binding ProgressPercent}" Maximum="100" Height="6" VerticalAlignment="Center"
-                                             Foreground="{DynamicResource Brush.Accent.Primary}"/>
-                                <TextBlock Grid.Column="1" Text="{Binding ProgressPercent, StringFormat='{}{0}%'}" Margin="8,0,0,0" VerticalAlignment="Center"/>
-                            </Grid>
-                            <TextBlock Text="{Binding CurrentStageDisplay}" FontWeight="SemiBold" IsVisible="{Binding CurrentStageDisplay, Converter={x:Static ObjectConverters.IsNotNull}}"/>
-                            <TextBlock Text="{Binding StatusMessage}" TextWrapping="Wrap" Foreground="{DynamicResource Brush.Text.Secondary}" IsVisible="{Binding StatusMessage, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+                            <!-- The progress bar, the stage and the status message are in the run-status strip above the footer. -->
                             <Border Classes="card" Padding="0" HorizontalAlignment="Stretch" IsVisible="{Binding HasLogLines}">
                                 <ListBox ItemsSource="{Binding LogLines}" MaxHeight="140"
                                          Background="Transparent" BorderThickness="0"
@@ -712,6 +731,12 @@
                                 <TextBlock Text="{l:Localize TrainingWizard_CheckpointResult}"/>
                                 <TextBox Text="{Binding CheckpointManifestPath, Mode=OneWay}" IsReadOnly="True"/>
                             </StackPanel>
+                            <!-- The id of the last run (it used to sit in the footer): shown under the result file once a run has finished. -->
+                            <StackPanel Spacing="6" IsVisible="{Binding LastResult, Converter={x:Static ObjectConverters.IsNotNull}}">
+                                <TextBlock Text="{l:Localize TrainingWizard_RunId}"/>
+                                <TextBox Text="{Binding LastResult.RunId, Mode=OneWay}" IsReadOnly="True"
+                                         AutomationProperties.AutomationId="TrainingWizard_RunId"/>
+                            </StackPanel>
                         </StackPanel>
                     </StackPanel>
                     </TabItem>
@@ -735,17 +760,28 @@
                 </Border>
             </ScrollViewer>
 
-            <!-- Footer (64px) -->
-            <Border Grid.Row="2"
+            <!-- Run status (outside the scrolled body, directly above the footer): progress while training, and the reason a start was refused. -->
+            <controls:RunStatusStrip Grid.Row="2"
+                                     ShowProgress="{Binding IsTraining}"
+                                     Percent="{Binding ProgressPercent}"
+                                     Phase="{Binding CurrentStageDisplay}"
+                                     Message="{Binding StatusMessage}"/>
+
+            <!-- Footer (64px; grows only when the run id, the buttons, the reason and the labels need more room) -->
+            <Border Grid.Row="3"
                     BorderBrush="{DynamicResource Brush.Border.Primary}"
                     BorderThickness="0,1,0,0"
-                    Padding="24,0"
+                    Padding="24,8"
+                    MinHeight="{x:Static c:TrainingWizardUiLayout.FooterHeight}"
                     Background="{DynamicResource Brush.Background.Tertiary}">
-                <Grid ColumnDefinitions="*,Auto">
-                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Spacing="12">
-                        <TextBlock Text="{Binding LastResult.RunId}" VerticalAlignment="Center"
-                                   Foreground="{DynamicResource Brush.Text.Tertiary}" FontSize="{DynamicResource HelperFontSize}"
-                                   IsVisible="{Binding LastResult, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <WrapPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Left" MaxWidth="{x:Static c:TrainingWizardUiLayout.FooterActionsMaximumWidth}"
+                               ItemSpacing="{x:Static c:TrainingWizardUiLayout.FooterActionsSpacing}" LineSpacing="{x:Static c:RunModeBadgeLayout.LineSpacing}">
                         <Button Content="{l:Localize TrainingWizard_DeployButton}"
                                 Theme="{DynamicResource SecondaryButtonStyle}"
                                 Padding="16,0" Height="36"
@@ -756,8 +792,29 @@
                                 Padding="16,0" Height="36"
                                 IsVisible="{Binding HasRegisteredEnsemble}"
                                 Command="{Binding UseAsEnsembleCommand}"/>
-                    </StackPanel>
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Spacing="12">
+                    </WrapPanel>
+                    <!-- The one reason Start is disabled when no field shows a message of its own, above the state labels (nothing in the default state). Two rows in a
+                         cell of the star column, so neither can reach the buttons or leave the window: the reason and the labels wrap inside the cell. -->
+                    <Grid Grid.Column="1" RowDefinitions="Auto,Auto" Margin="{x:Static c:RunModeBadgeLayout.FooterMargin}" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding StartBlockerDisplay}" IsVisible="{Binding HasStartBlocker}" VerticalAlignment="Center" HorizontalAlignment="Left"
+                                   FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Semantic.Warning}"
+                                   TextWrapping="Wrap" MaxWidth="{x:Static c:RunModeBadgeLayout.ReasonMaximumWidth}"
+                                   AutomationProperties.AutomationId="TrainingWizard_StartBlocker"/>
+                        <ItemsControl Grid.Row="1" ItemsSource="{Binding ModeBadges}" IsVisible="{Binding HasModeBadges}" VerticalAlignment="Center"
+                                      AutomationProperties.AutomationId="TrainingWizard_ModeBadges">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate><WrapPanel Orientation="Horizontal" ItemSpacing="{x:Static c:RunModeBadgeLayout.Spacing}" LineSpacing="{x:Static c:RunModeBadgeLayout.LineSpacing}"/></ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="sys:String">
+                                    <Border Background="{DynamicResource Brush.Background.Secondary}" CornerRadius="{x:Static c:RunModeBadgeLayout.Corner}" Padding="{x:Static c:RunModeBadgeLayout.Padding}">
+                                        <TextBlock Text="{Binding}" VerticalAlignment="Center" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}"/>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </Grid>
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Spacing="12">
                         <!-- Start and Cancel are two buttons, both always shown (Cancel is enabled only while a run is active); both take the
                              Theme > Button colours (Background / Text / Hover / Pressed) through Primary / SecondaryButtonStyle. -->
                         <Button Content="{l:Localize TrainingWizard_StartButton}"

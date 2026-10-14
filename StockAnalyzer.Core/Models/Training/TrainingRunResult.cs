@@ -23,7 +23,7 @@ public sealed record TrainingRunResult
     /// <summary>Process exit code of the orchestrator script (<c>0</c> on success).</summary>
     public int ExitCode { get; init; }
 
-    /// <summary>Absolute path of the produced <c>.onnx</c> file under <c>&lt;DataRoot&gt;/TrainingArtifacts/</c>, or <see langword="null"/> on failure.</summary>
+    /// <summary>Absolute path of the produced <c>.onnx</c> file under <c>&lt;DataRoot&gt;/TrainingArtifacts/TW/</c>, or <see langword="null"/> on failure.</summary>
     public string? OnnxArtifactPath { get; init; }
 
     /// <summary>Absolute path of the produced <c>.onnx.metrics.json</c> sidecar, or <see langword="null"/> when absent.</summary>

@@ -198,6 +198,10 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<Core.Services.ReinforcementLearning.IRlTrainingService, Core.Services.ReinforcementLearning.RlTrainingService>();
         services.AddSingleton<Core.Services.ReinforcementLearning.QValueService>();
         services.AddSingleton<Core.Services.ReinforcementLearning.RlDialogDataService>();
+        services.AddSingleton<Services.IRlReplayTarget, Services.MainChartRlReplayTarget>();
+        // The pre-filled start and end date of the Training Wizard, the RL window and the Portfolio RL window come from the stored bar dates.
+        services.AddSingleton<Core.Services.StoredPeriod.IStoredPeriodAdvisor>(sp => new Core.Services.StoredPeriod.StoredPeriodAdvisor(
+            sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<MarketDataSettings>>()));
         // Portfolio RL: tunables from the "RlPortfolio" section; a value outside the hard bands stops the start-up with an exception naming the key.
         var portfolioSettings = configuration.GetSection(Core.Models.Settings.RlPortfolioSettings.SectionName).Get<Core.Models.Settings.RlPortfolioSettings>()
             ?? new Core.Models.Settings.RlPortfolioSettings();
@@ -277,6 +281,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ISpiralAnalysisDataSource, SpiralAnalysisDataSource>();
         services.AddSingleton<ISeasonalityChartDataSource, SeasonalityChartDataSource>();
         services.AddTransient<SeasonalityChartViewModel>();
+        services.AddSingleton<Core.Services.Analysis.IScatterMetricProvider, Core.Services.Analysis.DuckDbScatterMetricProvider>();
+        services.AddTransient<ScatterPlotViewModel>();
         services.AddSingleton<HeatmapPanelViewModel>();
         services.AddTransient<ScreenerViewModel>();
         services.AddTransient<IndicatorRegistrationViewModel>();
@@ -362,6 +368,9 @@ public static class ServiceCollectionExtensions
         services.AddTransient<StockAnalyzer.Avalonia.ViewModels.Dialogs.FontsSettingsViewModel>();
         services.AddTransient<StockAnalyzer.Avalonia.ViewModels.Dialogs.PythonSettingsViewModel>();
         services.AddTransient<StockAnalyzer.Avalonia.ViewModels.Dialogs.AIPredictionsSettingsViewModel>();
+        services.AddTransient<StockAnalyzer.Avalonia.ViewModels.Dialogs.RlPlaybackSettingsViewModel>();
+        services.AddTransient<StockAnalyzer.Avalonia.ViewModels.Dialogs.RlFreeReplayViewModel>();
+        services.AddSingleton<Services.IRlTickerListSource, Services.TickerStateRlListSource>();
         services.AddTransient<StockAnalyzer.Avalonia.ViewModels.Dialogs.AboutSettingsViewModel>();
         services.AddTransient<StockAnalyzer.Avalonia.ViewModels.Dialogs.NotesSettingsViewModel>();
         services.AddTransient<StockAnalyzer.Avalonia.ViewModels.Dialogs.TickersSettingsViewModel>();
@@ -467,6 +476,12 @@ public static class ServiceCollectionExtensions
                     }
                     return objects;
                 });
+
+            registry.Register(new Core.Models.UI.TabMetadata("ScatterPlot", localizer.GetString("Tab_ScatterAnalysis"), AllowMultiple: true),
+                s => s.GetRequiredService<ScatterPlotViewModel>());
+
+            registry.Register(new Core.Models.UI.TabMetadata("ScatterAnalysis", localizer.GetString("Tab_ScatterAnalysis"), AllowMultiple: true),
+                s => s.GetRequiredService<ScatterPlotViewModel>());
 
             // Lock the registry to prevent runtime modifications
             registry.Lock();

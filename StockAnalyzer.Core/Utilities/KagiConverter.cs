@@ -43,9 +43,11 @@ public static class KagiConverter
         decimal atrMultiplier,
         ChartRoundingMode roundingMode,
         AutoFallbackMode fallbackMode,
-        List<KagiCandleData> outputBuffer)
+        List<KagiCandleData> outputBuffer,
+        List<ElementDates>? elementDatesBuffer = null)
     {
         outputBuffer.Clear();
+        elementDatesBuffer?.Clear();
         if (candles == null || candles.Count == 0) return;
 
         // Use the centralized AutoBoxSizeCalculator to ensure consistent rounding and fallback behavior
@@ -80,6 +82,7 @@ public static class KagiConverter
 
         // Standard: Always insert the starting close price at index 0 as a horizontal anchor block
         outputBuffer.Add(KagiCandleData.Create(candles[0].Timestamp, startPrice, startPrice, false, startPrice, 0));
+        elementDatesBuffer?.Add(new ElementDates(candles[0].Timestamp, candles[0].Timestamp));
 
         for (int i = 1; i < candles.Count; i++)
         {
@@ -95,6 +98,7 @@ public static class KagiConverter
                     
                     // Add the first trend segment at index 1, originating from startPrice and ending at price
                     outputBuffer.Add(KagiCandleData.Create(c.Timestamp, startPrice, price, state.IsYang, startPrice, state.IsYang ? 1 : 0));
+                    elementDatesBuffer?.Add(new ElementDates(c.Timestamp, c.Timestamp));
 
                     state.CurrentPrice = price;
                     state.CurrentTime = c.Timestamp;
@@ -106,7 +110,7 @@ public static class KagiConverter
                     (state.Direction == -1 && price < state.CurrentPrice))
                 {
                     // Continuation: Update active trend's unconfirmed high/low
-                    HandleContinuationWithPotentialSplit(outputBuffer, state, price, c.Timestamp, c.Volume);
+                    HandleContinuationWithPotentialSplit(outputBuffer, elementDatesBuffer, state, price, c.Timestamp, c.Volume);
                 }
                 else if ((state.Direction == 1 && price <= state.CurrentPrice - threshold) ||
                          (state.Direction == -1 && price >= state.CurrentPrice + threshold))
@@ -127,14 +131,14 @@ public static class KagiConverter
                     // This ensures any Yang/Yin transitions crossing LastHigh/LastLow bounds are correctly split at the boundary.
                     // To ensure it ALWAYS starts a new segment rather than extending the prior trend, we bypass extension.
                     bool forceNewSegment = true;
-                    HandleContinuationWithPotentialSplit(outputBuffer, state, price, c.Timestamp, c.Volume, forceNewSegment);
+                    HandleContinuationWithPotentialSplit(outputBuffer, elementDatesBuffer, state, price, c.Timestamp, c.Volume, forceNewSegment);
                 }
             }
         }
     }
 
     private static void HandleContinuationWithPotentialSplit(
-        List<KagiCandleData> result, KagiState state, decimal newPrice, DateTime time, long vol, bool forceNewSegment = false)
+        List<KagiCandleData> result, List<ElementDates>? dates, KagiState state, decimal newPrice, DateTime time, long vol, bool forceNewSegment = false)
     {
         decimal start = state.CurrentPrice;
         decimal end = newPrice;
@@ -148,12 +152,12 @@ public static class KagiConverter
             decimal boundary = state.LastLow;
             
             // 1. Process first half: start -> boundary (with original IsYang = true)
-            AddOrExtendSegment(result, start, boundary, true, time, vol, forceNewSegment);
-            
+            AddOrExtendSegment(result, dates, start, boundary, true, time, vol, forceNewSegment);
+
             // 2. Process second half: boundary -> end (with new IsYang = false)
             state.IsYang = false;
             // Force a new segment for the second half to guarantee split structure
-            AddOrExtendSegment(result, boundary, end, false, time, 0, true);
+            AddOrExtendSegment(result, dates, boundary, end, false, time, 0, true);
         }
         else if (willTurnYang)
         {
@@ -161,24 +165,24 @@ public static class KagiConverter
             decimal boundary = state.LastHigh;
             
             // 1. Process first half: start -> boundary (with original IsYang = false)
-            AddOrExtendSegment(result, start, boundary, false, time, vol, forceNewSegment);
-            
+            AddOrExtendSegment(result, dates, start, boundary, false, time, vol, forceNewSegment);
+
             // 2. Process second half: boundary -> end (with new IsYang = true)
             state.IsYang = true;
             // Force a new segment for the second half to guarantee split structure
-            AddOrExtendSegment(result, boundary, end, true, time, 0, true);
+            AddOrExtendSegment(result, dates, boundary, end, true, time, 0, true);
         }
         else
         {
             // No split: normal extension or addition
-            AddOrExtendSegment(result, start, end, state.IsYang, time, vol, forceNewSegment);
+            AddOrExtendSegment(result, dates, start, end, state.IsYang, time, vol, forceNewSegment);
         }
 
         state.CurrentPrice = end;
     }
 
     private static void AddOrExtendSegment(
-        List<KagiCandleData> result, decimal start, decimal end, bool isYang, DateTime time, long vol, bool forceNewSegment)
+        List<KagiCandleData> result, List<ElementDates>? dates, decimal start, decimal end, bool isYang, DateTime time, long vol, bool forceNewSegment)
     {
         bool isExtension = false;
         if (!forceNewSegment && result.Count > 0)
@@ -198,13 +202,16 @@ public static class KagiConverter
                     Volume = last.Volume + vol
                 };
                 result[result.Count - 1] = extended;
+                if (dates != null)
+                    dates[dates.Count - 1] = dates[dates.Count - 1] with { End = time };
                 isExtension = true;
             }
         }
-        
+
         if (!isExtension)
         {
              result.Add(KagiCandleData.Create(time, start, end, isYang, start, isYang ? 1 : 0));
+             dates?.Add(new ElementDates(time, time));
         }
     }
 }

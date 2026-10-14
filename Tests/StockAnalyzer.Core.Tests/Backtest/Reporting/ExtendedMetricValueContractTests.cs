@@ -9,7 +9,7 @@ namespace StockAnalyzer.Core.Tests.Backtest.Reporting;
 
 /// <summary>
 /// Value-domain and cross-field contracts of the extended metrics enforced by <see cref="BacktestReportValidator"/>
-/// (Y:\Temp\sa_implementation_plan_BacktestReportIntegrityContracts.md, T2). Each contract is violated in isolation on an otherwise valid report.
+/// (docs/sa_implementation_plan_BacktestReportIntegrityContracts, T2). Each contract is violated in isolation on an otherwise valid report.
 /// </summary>
 public class ExtendedMetricValueContractTests
 {

@@ -131,7 +131,7 @@ namespace StockAnalyzer.Core.Tests.MathUtils
         }
 
         /// <summary>
-        /// arch 8.0.0 references (Y:\Temp\claude\egarch_golden_multi.py) for several sample types and orders. Every scenario must reach a
+        /// arch 8.0.0 references (docs/egarch_golden_multi) for several sample types and orders. Every scenario must reach a
         /// log-likelihood at least arch's; where the likelihood is well identified the sampled σ path must also agree within the stated tolerance.
         /// </summary>
         public static IEnumerable<object[]> ArchScenarios()

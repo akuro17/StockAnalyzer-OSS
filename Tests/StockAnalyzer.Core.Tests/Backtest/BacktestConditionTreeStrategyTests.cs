@@ -15,7 +15,7 @@ using static StockAnalyzer.Core.Tests.Backtest.ConditionTreeTestKit;
 
 namespace StockAnalyzer.Core.Tests.Backtest;
 
-/// <summary>Condition-tree strategy integration + fingerprint (MP-1 Phase 3). See Y:\Temp\sa_analysis_BacktestConditionTree.md B4, B5, B7.</summary>
+/// <summary>Condition-tree strategy integration + fingerprint (MP-1 Phase 3). See docs/sa_analysis_BacktestConditionTree B4, B5, B7.</summary>
 public class BacktestConditionTreeStrategyTests
 {
     /// <summary>Fingerprint of <see cref="ListBuiltStrategy_FingerprintIsByteIdenticalToTheGoldenCapturedBeforeThisChange"/>'s run, captured from the list-built strategy BEFORE any Phase 3 production edit.</summary>

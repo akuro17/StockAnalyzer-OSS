@@ -3,7 +3,7 @@ using Xunit;
 
 namespace StockAnalyzer.Core.Tests.Backtest;
 
-/// <summary>Y:\Temp\sa_improvement_plan_BacktestOffsetRuleSSoT.md: the single definition of the condition Offset bound.</summary>
+/// <summary>docs/sa_improvement_plan_BacktestOffsetRuleSSoT: the single definition of the condition Offset bound.</summary>
 public class BacktestConditionOffsetRuleTests
 {
     [Theory]

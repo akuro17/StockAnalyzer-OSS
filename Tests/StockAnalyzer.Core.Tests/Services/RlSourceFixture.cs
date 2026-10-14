@@ -87,6 +87,36 @@ internal static class RlSourceFixture
                 $"SELECT '{currency}' AS currency,'{quoteType}' AS quote_type,'{timezone}' AS exchange_timezone_name");
     }
 
+    /// <summary>
+    /// Writes a symbol whose prices change from bar to bar (a model reacts to them, unlike the constant series of <see cref="WriteLocalSymbol"/>).
+    /// Every price (not the volume) of the bars with index <paramref name="scaleFromIndex"/> to <paramref name="scaleToIndex"/> (inclusive) are
+    /// multiplied by <paramref name="factor"/>; the default range is empty. OHLC stays valid for any positive factor.
+    /// </summary>
+    public static void WriteVaryingSymbol(string dataRoot, string symbol, DateOnly first, int count,
+        int scaleFromIndex = int.MaxValue, int scaleToIndex = int.MaxValue, decimal factor = 1.7m)
+    {
+        WriteLocalSymbol(dataRoot, symbol, first, 1);
+        string k = $"(CASE WHEN range BETWEEN {scaleFromIndex} AND {scaleToIndex} THEN {factor.ToString(CultureInfo.InvariantCulture)} ELSE 1.0 END)";
+        string level = "(100 + range % 23)";
+        CreateParquet(Path.Combine(dataRoot, "Daily", symbol + ".parquet"),
+            $"SELECT DATE '{first:yyyy-MM-dd}'+CAST(range AS INTEGER) AS date,({level}*{k})::FLOAT AS open,(({level}+5)*{k})::FLOAT AS high," +
+            $"(({level}-5)*{k})::FLOAT AS low,(({level}+(range % 5)-2)*{k})::FLOAT AS close,(1000+range % 7*10)::BIGINT AS volume FROM range({count})");
+    }
+
+    /// <summary>
+    /// Writes a symbol that trades Monday to Friday only (no bar on a Saturday or Sunday), starting on <paramref name="firstMonday"/> and covering
+    /// <paramref name="calendarDays"/> calendar days; returns its trading days in order.
+    /// </summary>
+    public static System.Collections.Generic.List<DateOnly> WriteWeekdaySymbol(string dataRoot, string symbol, DateOnly firstMonday, int calendarDays)
+    {
+        if (firstMonday.DayOfWeek != DayOfWeek.Monday) throw new ArgumentException("The first day must be a Monday.", nameof(firstMonday));
+        WriteLocalSymbol(dataRoot, symbol, firstMonday, 1);
+        CreateParquet(Path.Combine(dataRoot, "Daily", symbol + ".parquet"),
+            $"SELECT d AS date,100::FLOAT AS open,110::FLOAT AS high,90::FLOAT AS low,100::FLOAT AS close,1000::BIGINT AS volume " +
+            $"FROM (SELECT DATE '{firstMonday:yyyy-MM-dd}'+CAST(range AS INTEGER) AS d FROM range({calendarDays})) WHERE dayofweek(d) BETWEEN 1 AND 5 ORDER BY d");
+        return Enumerable.Range(0, calendarDays).Select(i => firstMonday.AddDays(i)).Where(d => d.DayOfWeek is not (DayOfWeek.Saturday or DayOfWeek.Sunday)).ToList();
+    }
+
     public static void Mutate(string directory, string file, Action<JsonNode> change)
     {
         string path = Path.Combine(directory, file);

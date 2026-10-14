@@ -164,6 +164,23 @@ public sealed class AttachmentRepository
     public string GetFilePath(Attachment attachment) => Path.Combine(_attachmentsDirectory, attachment.StoredFileName);
 
     /// <summary>
+    /// Like <see cref="GetFilePath"/>, but only for a stored name that is a plain file name. The app always stores <c>{guid}{extension}</c>; a name from a
+    /// tampered database that carries a separator, "..", or a leading root (which <see cref="Path.Combine(string, string)"/> would let replace the folder, UNC
+    /// paths included) has no path inside the attachments folder, so the result is <c>false</c> and <paramref name="path"/> is empty.
+    /// </summary>
+    public bool TryGetFilePath(Attachment attachment, out string path)
+    {
+        if (!AttestedFileNames.IsPlain(attachment.StoredFileName))
+        {
+            path = string.Empty;
+            return false;
+        }
+
+        path = GetFilePath(attachment);
+        return true;
+    }
+
+    /// <summary>
     /// Compares files on disk under Data\Notes\Attachments\ against every AttachmentId referenced
     /// by any Note - including logically-deleted ones, which still count as a valid reference per
     /// spec section 4.5 - and returns the file names referenced by none. Detection only; this

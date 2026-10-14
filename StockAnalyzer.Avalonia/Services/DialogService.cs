@@ -1950,7 +1950,7 @@ public partial class DialogService : IDialogService
                     {
                         try
                         {
-                            await desktop.MainWindow.Clipboard.SetTextAsync("pip install -r StockAnalyzer.Python/requirements.txt --upgrade");
+                            await desktop.MainWindow.Clipboard.SetTextAsync("pip install yfinance pandas polars pyarrow --upgrade");
                         }
                         catch { }
                     }
@@ -1977,7 +1977,7 @@ public partial class DialogService : IDialogService
     {
         if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            const string updateCommand = "pip install -r StockAnalyzer.Python/requirements.txt --upgrade";
+            const string updateCommand = "pip install yfinance pandas polars pyarrow --upgrade";
             if (desktop.MainWindow?.Clipboard != null)
             {
                 try

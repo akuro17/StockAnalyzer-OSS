@@ -67,7 +67,7 @@ namespace StockAnalyzer.Core.Tests.Services
         }
 
         [Theory]
-        [InlineData("ARTIFACT:onnx:I:\\stock\\artifacts\\model.onnx", "onnx", "I:\\stock\\artifacts\\model.onnx")]
+        [InlineData("ARTIFACT:onnx:artifacts/model.onnx", "onnx", "artifacts/model.onnx")]
         [InlineData("ARTIFACT:metrics:/tmp/model.onnx.metrics.json", "metrics", "/tmp/model.onnx.metrics.json")]
         public void TryParseArtifact_ValidLine_SplitsKindAndPath(string line, string expectedKind, string expectedPath)
         {

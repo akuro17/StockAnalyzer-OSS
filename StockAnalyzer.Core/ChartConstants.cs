@@ -31,6 +31,8 @@ public static class ChartConstants
 
     // Percentages
     public const decimal PercentageDivisor = 100m;
+    /// <summary>Scale from a ratio to a percentage (0.05 -> 5); <see cref="PercentageDivisor"/> is the opposite direction.</summary>
+    public const decimal PercentageMultiplier = 100m;
     public const decimal DefaultFallbackPercentage = 0.01m; // 1%
 
     // P&F / Renko Defaults

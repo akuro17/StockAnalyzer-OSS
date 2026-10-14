@@ -81,6 +81,9 @@
                                                     <MenuItem Header="{l:Localize Tab_Notes}"
                                                               Command="{Binding $parent[Window].DataContext.AddTabCommand}"
                                                               CommandParameter="NoteTimeline"/>
+                                                    <MenuItem Header="{l:Localize Tab_ScatterAnalysis}"
+                                                              Command="{Binding $parent[Window].DataContext.AddTabCommand}"
+                                                              CommandParameter="ScatterPlot"/>
                                                 </MenuFlyout>
                                             </Button.Flyout>
                                             <PathIcon Data="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z" 

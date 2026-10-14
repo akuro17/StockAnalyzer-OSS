@@ -7,6 +7,7 @@ using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Avalonia.Threading;
 using StockAnalyzer.Avalonia.Drawing;
+using StockAnalyzer.Avalonia.Tests.TestHelpers;
 using StockAnalyzer.Avalonia.ViewModels;
 using StockAnalyzer.Avalonia.Views.Chart;
 using StockAnalyzer.Core.Models;
@@ -35,6 +36,7 @@ public class FreehandChartInteractionTests
             window.Show();
             AvaloniaHeadlessPlatform.ForceRenderTimerTick();
             Dispatcher.UIThread.RunJobs();
+            HeadlessWindowInput.WaitUntilHittable(window, new Point(100, 120));
             int expectedCount = 0;
             foreach (var mode in new[] { DrawingToolContinuationMode.ContinueDrawing, DrawingToolContinuationMode.ReturnToPointer })
             {

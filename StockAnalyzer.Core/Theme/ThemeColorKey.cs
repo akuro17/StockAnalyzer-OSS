@@ -37,5 +37,8 @@ public enum ThemeColorKey
     TrainingPeriodTrain,
     TrainingPeriodValidation,
     TrainingPeriodOos,
-    AttentionHeat
+    AttentionHeat,
+
+    /// <summary>Text color of warning and caution messages (the Portfolio Reinforcement Learning window).</summary>
+    ShellWarningText
 }

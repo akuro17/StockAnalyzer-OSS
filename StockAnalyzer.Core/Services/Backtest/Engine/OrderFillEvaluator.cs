@@ -6,7 +6,7 @@ namespace StockAnalyzer.Core.Services.Backtest.Engine;
 
 /// <summary>
 /// Evaluates one pending <see cref="BacktestOrder"/> against one bar, per
-/// Y:\0915 Backtesting\01_P1_SimulationEngine.md section 5.6 (fill price table). Pure function of
+/// docs/01_P1_SimulationEngine section 5.6 (fill price table). Pure function of
 /// (order, bar, config) - no mutable state; the caller (future BacktestEngine, task #6) is
 /// responsible for sequencing this across bars, assigning FillId/OrderId/BarIndex/FillTime, and
 /// persisting <see cref="OrderFillOutcome.StopActivated"/> back onto the order between bars.
@@ -55,7 +55,7 @@ public static class OrderFillEvaluator
     /// Read-only "would this order touch the bar's path, and where" query - task #6 (BacktestEngine)
     /// amendment to task #5, needed so the engine can compare a pending exit order against a competing
     /// margin-liquidation threshold via <see cref="ExitPrecedenceResolver"/> BEFORE committing to either
-    /// one (see Y:\Temp\sa_ai_context_BacktestEngine_P1.md section 1.5.6). Performs no commission/slippage
+    /// one (see docs/sa_ai_context_BacktestEngine_P1 section 1.5.6). Performs no commission/slippage
     /// computation and does not persist StopActivated - it only reports a path position. Market always
     /// fills unconditionally at Open (position 0); MarketOnClose is evaluated in a separate bar-processing
     /// step (Step 4) and never competes with margin liquidation on the O-&gt;H-&gt;L path, so it reports null

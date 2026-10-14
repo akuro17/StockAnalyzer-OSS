@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.Runtime.InteropServices;
 using System.Linq;
 using Avalonia;
 using StockAnalyzer.Avalonia.Drawing;
@@ -54,7 +56,12 @@ public class ChartDataCoordinator
     /// </summary>
     public event Action? SnapshotUpdated;
 
-    public ChartDataCoordinator(IPythonService? pythonService = null, IMessenger? messenger = null, Microsoft.Extensions.Logging.ILogger<ChartDataCoordinator>? logger = null)
+    /// <param name="analysisService">
+    /// Optional analysis service. When omitted the coordinator builds its own <c>AnalysisPipelineService(pythonService)</c> exactly as before; it is
+    /// deliberately not the DI singleton, which also carries the source-indicator and dynamic-period services this coordinator never had.
+    /// </param>
+    public ChartDataCoordinator(IPythonService? pythonService = null, IMessenger? messenger = null, Microsoft.Extensions.Logging.ILogger<ChartDataCoordinator>? logger = null,
+        Core.Services.Analysis.IAnalysisPipelineService? analysisService = null)
     {
         _logger = logger;
         _messenger = messenger ?? WeakReferenceMessenger.Default;
@@ -63,8 +70,8 @@ public class ChartDataCoordinator
             ChartAxisMode.Time,
             1000, 500);
             
-        // Use injected service (Phase 2 Component Coupling Fix)
-        _analysisService = new Core.Services.Analysis.AnalysisPipelineService(pythonService);
+        // The injected service when one is given (tests); otherwise the coordinator's own default instance.
+        _analysisService = analysisService ?? new Core.Services.Analysis.AnalysisPipelineService(pythonService);
     }
     #region Constants (moved to ChartTheme)
 
@@ -82,8 +89,11 @@ public class ChartDataCoordinator
     // Phase 1 Zero Allocation Fix: Reusable buffers for special charts
     private readonly List<CoreCandleData> _renkoBuffer = new();
     private readonly List<CoreCandleData> _heikinAshiBuffer = new();
-    private readonly List<CoreCandleData> _kagiBuffer = new(2000);
-    private readonly List<int> _kagiColumnMapBuffer = new(2000);
+    private const int InitialKagiBufferCapacity = 2000; // segments; the Kagi buffers grow beyond it
+    private readonly List<CoreCandleData> _kagiBuffer = new(InitialKagiBufferCapacity);
+    private readonly List<int> _kagiColumnMapBuffer = new(InitialKagiBufferCapacity);
+    private readonly List<ElementDates> _kagiDatesBuffer = new(InitialKagiBufferCapacity); // parallel to _kagiBuffer
+    private ImmutableArray<ElementDates> _kagiDatesShared; // the immutable copy the last Kagi snapshot holds
     private readonly List<CoreCandleData> _tlbBuffer = new();
     
     // Phase 5 Zero Allocation: Caching for index-based conversions
@@ -97,6 +107,8 @@ public class ChartDataCoordinator
     
     // Phase 1 Zero Allocation Fix: Reusable buffers for special charts
     private readonly List<CoreCandleData> _pnfBuffer = new();
+    private readonly List<ElementDates> _pnfDatesBuffer = new(); // parallel to _pnfBuffer
+    private ImmutableArray<ElementDates> _pnfDatesShared; // the immutable copy the last Point and Figure snapshot holds
     private readonly List<CoreCandleData> _standardCandleBuffer = new(5000);
     
     // Phase 2 Zero Allocation Fix: Intermediate buffers for converters returning specialized types
@@ -698,8 +710,6 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
         // Transform is configured for the Chart Area dimensions (during UpdateCoordinateTransform)
         // relativeX should be 0..ChartWidth
         
-        var point = Transform.ScreenToChart(new global::Avalonia.Point(relativeX, 0));
-        
         // Determine mode from Transform
         bool isIndexMode = false;
         if (Transform is GenericCoordinateTransform gct)
@@ -714,49 +724,48 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
 
         if (isIndexMode)
         {
-             // Index Mode: Time.Ticks contains the absolute logical column index
-             long indexLng = point.Time.Ticks;
+             // Index Mode: the logical column index is read from the numeric axis. The chart point cannot carry it: an index chart has a time map, so its
+             // Time is the interpolated real date of the pointer, and the ticks of a date are not a column index.
+             double pointerColumn = Transform is GenericCoordinateTransform numericAxis
+                 ? numericAxis.ScreenToNumeric(new global::Avalonia.Point(relativeX, 0)).x
+                 : (double)Transform.ScreenToChart(new global::Avalonia.Point(relativeX, 0)).Time.Ticks;
              int absoluteIdx;
-             if (_currentChartType == ChartType.Renko || _currentChartType == ChartType.PointAndFigure || _currentChartType == ChartType.ThreeLineBreak)
+             if (_currentChartType == ChartType.Renko || _currentChartType == ChartType.ThreeLineBreak)
              {
-                 absoluteIdx = (int)Math.Floor((double)indexLng);
+                 // Drawn from the left edge of the slot: the column k covers [k, k + 1).
+                 absoluteIdx = (int)Math.Floor(pointerColumn);
              }
              else
              {
-                 absoluteIdx = (int)Math.Round((double)indexLng);
+                 // Point and Figure and Kagi are drawn around the centre of the slot: the column k covers [k - 0.5, k + 0.5).
+                 absoluteIdx = (int)Math.Floor(pointerColumn + ChartConstants.IndexSlotHalfWidth);
              }
-             
-             int localIdx = 0;
-             if (_currentChartType == ChartType.Kagi)
-             {
-                 // Kagi: Multiple segments can share the same column. 
-                 // We must simulate the renderer's column offset logic to find the corresponding segment.
-                 int currentColumnOffset = 0;
-                 bool lastIsUp = true;
-                 if (_currentSnapshot.Candles.Count > 0)
-                 {
-                     lastIsUp = _currentSnapshot.Candles[0].Close >= _currentSnapshot.Candles[0].Open;
-                 }
 
+             int localIdx = 0;
+             var kagiColumnMap = _currentSnapshot.KagiColumnMap;
+             if (_currentChartType == ChartType.Kagi && kagiColumnMap != null && kagiColumnMap.Count == _currentSnapshot.Candles.Count)
+             {
+                 // Kagi: the column of every segment is the one the renderer draws it in (CreateKagiSnapshot builds the map from KagiColumns, and every Kagi
+                 // snapshot carries it). The last segment at or before the target column is returned.
+                 int low = 0;
+                 int high = kagiColumnMap.Count - 1;
                  int bestMatch = 0;
-                 for (int i = 0; i < _currentSnapshot.Candles.Count; i++)
+                 while (low <= high)
                  {
-                     var seg = _currentSnapshot.Candles[i];
-                     bool isUp = seg.Close >= seg.Open;
-                     if (i > 0 && isUp != lastIsUp)
+                     int mid = low + (high - low) / 2;
+                     if (kagiColumnMap[mid] <= absoluteIdx)
                      {
-                         currentColumnOffset++;
-                         lastIsUp = isUp;
+                         bestMatch = mid;
+                         low = mid + 1;
                      }
-                     
-                     int logicalX = _currentSnapshot.StartIndex + currentColumnOffset;
-                     if (logicalX > absoluteIdx) break; // Passed the target column
-                     
-                     bestMatch = i; // Save the last segment that matched this column (or earlier)
+                     else
+                     {
+                         high = mid - 1;
+                     }
                  }
                  localIdx = bestMatch;
              }
-             else
+             else if (_currentChartType != ChartType.Kagi)
              {
                  // Renko, P&F, TLB: 1-to-1 mapping between snapshot index and column offset
                  localIdx = absoluteIdx - _currentSnapshot.StartIndex;
@@ -770,6 +779,7 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
         }
         
         // Time Mode
+        var point = Transform.ScreenToChart(new global::Avalonia.Point(relativeX, 0));
         return FindClosestIndex(_currentSnapshot.Candles, point.Time);
     }
     
@@ -1466,6 +1476,7 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
         bool isTransition)
     {
         _pnfBuffer.Clear();
+        _pnfDatesBuffer.Clear();
         
         if (viewModel.PnfDataAdapter != null)
         {
@@ -1483,11 +1494,13 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
             {
                 _pnfBuffer.Add(new CoreCandleData(times[i], opens[i], highs[i], lows[i], closes[i], vols[i]));
             }
+
+            _pnfDatesBuffer.AddRange(viewModel.PnfDataAdapter.ElementDates.Span);
         }
         else
         {
             PointAndFigureConverter.Convert(
-                viewModel.Candles, viewModel.EffectivePnfBoxSize, viewModel.PnfReversal, _pnfBuffer, (ChartRoundingMode)viewModel.PnfRoundingMode);
+                viewModel.Candles, viewModel.EffectivePnfBoxSize, viewModel.PnfReversal, _pnfBuffer, (ChartRoundingMode)viewModel.PnfRoundingMode, _pnfDatesBuffer);
         }
 
         _convertedCandleCount = _pnfBuffer.Count;
@@ -1544,7 +1557,30 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
             // FR-PNF-02: ボックスサイズに基づくマージン込み価格範囲（最高値+1ボックス、最安値はスナップ切り捨て）
             priceRangeCalculator: PnfProfile.GetPriceRangeCalculator(viewModel.EffectivePnfBoxSize),
             confluence: GetConfluenceForIndex(_convertedCandleCount - 1, indicatorResults, viewModel.Indicators),
-            priceScale: viewModel.PriceScale, modelAnalysis: viewModel.ModelAnalysis, attention: viewModel.AttentionSnapshot);
+            priceScale: viewModel.PriceScale, modelAnalysis: viewModel.ModelAnalysis, attention: viewModel.AttentionSnapshot,
+            elementDates: SharedDatesOrNull(_pnfDatesBuffer, _pnfBuffer.Count, ref _pnfDatesShared));
+    }
+
+    /// <summary>
+    /// The parallel dates as an immutable array when they match the element count; otherwise null (no wrong dates are ever shown).
+    /// The array of the previous frame is handed out again while the dates are unchanged (zoom, scroll and hover rebuild the snapshot with the same
+    /// elements), so a frame allocates the 16 bytes per element only when the elements change.
+    /// </summary>
+    private static IReadOnlyList<ElementDates>? SharedDatesOrNull(List<ElementDates> dates, int elementCount, ref ImmutableArray<ElementDates> shared)
+    {
+        if (dates.Count != elementCount)
+        {
+            shared = default;
+            return null;
+        }
+
+        var current = CollectionsMarshal.AsSpan(dates);
+        if (shared.IsDefault || !shared.AsSpan().SequenceEqual(current))
+        {
+            shared = ImmutableArray.Create(current);
+        }
+
+        return shared;
     }
 
     private ChartDataSnapshot CreateKagiSnapshot(
@@ -1555,6 +1591,7 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
         bool isTransition)
     {
         _kagiBuffer.Clear();
+        _kagiDatesBuffer.Clear();
 
         if (viewModel.KagiDataAdapter != null)
         {
@@ -1572,6 +1609,8 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
             {
                 _kagiBuffer.Add(new CoreCandleData(times[i], opens[i], highs[i], lows[i], closes[i], vols[i]));
             }
+
+            _kagiDatesBuffer.AddRange(viewModel.KagiDataAdapter.ElementDates.Span);
         }
         else
         {
@@ -1590,7 +1629,8 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
                 viewModel.KagiAtrMultiplier,
                 (ChartRoundingMode)viewModel.KagiRoundingMode,
                 (AutoFallbackMode)viewModel.KagiFallbackMode,
-                _kagiIntermediateBuffer);
+                _kagiIntermediateBuffer,
+                _kagiDatesBuffer);
 
             if (_kagiBuffer.Capacity < _kagiIntermediateBuffer.Count) _kagiBuffer.Capacity = _kagiIntermediateBuffer.Count;
             for (int i = 0; i < _kagiIntermediateBuffer.Count; i++)
@@ -1607,26 +1647,10 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
         
         // Calculate total Columns for viewport adjustment & build ColumnMap
         int totalColumns = 0;
-        _kagiColumnMapBuffer.Clear();
+        KagiColumns.BuildColumnMap(_kagiBuffer, viewModel.KagiInitialColumn, _kagiColumnMapBuffer);
         if (_kagiBuffer.Count > 0)
         {
-            totalColumns = 1;
-            int currentColumnIdx = viewModel.KagiInitialColumn;
-            _kagiColumnMapBuffer.Add(currentColumnIdx);
-
-            for (int i = 1; i < _kagiBuffer.Count; i++)
-            {
-                // Detect flat anchor at index 0 (Open == Close): always place index 1 on a new column
-                bool isAnchorTransition = (i == 1 && _kagiBuffer[0].Open == _kagiBuffer[0].Close);
-                bool isDirectionChange = (_kagiBuffer[i].Close >= _kagiBuffer[i].Open) != (_kagiBuffer[i - 1].Close >= _kagiBuffer[i - 1].Open);
-                
-                if (isDirectionChange || isAnchorTransition)
-                {
-                    totalColumns++;
-                    currentColumnIdx++;
-                }
-                _kagiColumnMapBuffer.Add(currentColumnIdx);
-            }
+            totalColumns = _kagiColumnMapBuffer[^1] - viewModel.KagiInitialColumn + 1;
         }
 
         // Kagi-specific viewport management: uses totalColumns (not segment count) for scroll bounds.
@@ -1724,7 +1748,8 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
             overrideMaxPrice: null,
             visibleCandleCount: effectiveVisibleCount,
             kagiColumnMap: _kagiColumnMapBuffer.ToArray(),
-            priceScale: viewModel.PriceScale, modelAnalysis: viewModel.ModelAnalysis, attention: viewModel.AttentionSnapshot);
+            priceScale: viewModel.PriceScale, modelAnalysis: viewModel.ModelAnalysis, attention: viewModel.AttentionSnapshot,
+            elementDates: SharedDatesOrNull(_kagiDatesBuffer, _kagiBuffer.Count, ref _kagiDatesShared));
     }
 
     private ChartDataSnapshot CreateRelativePerformanceSnapshot(
@@ -2298,8 +2323,8 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
     private void ConfigureIndexTransform(GenericCoordinateTransform gct, ChartType chartType, ChartLayoutContext layout, decimal? overrideMinPrice = null, decimal? overrideMaxPrice = null)
     {
         // Use Viewport units (Absolute Index)
-        // Add 0.5 padding to align with bar centering logic
-        gct.SetIndexRange(Viewport.VisibleStartUnit - 0.5, Viewport.VisibleEndUnit + 0.5);
+        // Pad by half a slot to align with bar centering logic
+        gct.SetIndexRange(Viewport.VisibleStartUnit - ChartConstants.IndexSlotHalfWidth, Viewport.VisibleEndUnit + ChartConstants.IndexSlotHalfWidth);
         
         // Price Range from Snapshot
         decimal min = overrideMinPrice ?? _currentSnapshot.MinPrice;
@@ -2395,8 +2420,12 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
         _renkoBuffer.Clear();
         _heikinAshiBuffer.Clear();
         _kagiBuffer.Clear();
+        _kagiDatesBuffer.Clear();
         _tlbBuffer.Clear();
         _pnfBuffer.Clear();
+        _pnfDatesBuffer.Clear();
+        _kagiDatesShared = default;
+        _pnfDatesShared = default;
         _standardCandleBuffer.Clear();
         _kagiIntermediateBuffer.Clear();
         _tlbBlockBuffer.Clear();

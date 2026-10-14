@@ -10,8 +10,8 @@ using Xunit;
 namespace StockAnalyzer.Core.Tests.Backtest;
 
 /// <summary>
-/// Task #8: the named acceptance suite required by Y:\0915 Backtesting\01_P1_SimulationEngine.md section 6
-/// and its section 1.5.9 margin/short additions (see Y:\Temp\sa_ai_context_BacktestEngine_P1.md). Each
+/// Task #8: the named acceptance suite required by docs/01_P1_SimulationEngine section 6
+/// and its section 1.5.9 margin/short additions (see docs/sa_ai_context_BacktestEngine_P1). Each
 /// [Fact] name below is the exact required method name per the spec's "do not rename" instruction.
 ///
 /// Coverage note: five required names already exist verbatim elsewhere in this folder and are NOT

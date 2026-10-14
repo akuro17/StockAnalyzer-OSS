@@ -11,7 +11,7 @@ using static StockAnalyzer.Core.Tests.Backtest.ConditionTreeTestKit;
 
 namespace StockAnalyzer.Core.Tests.Backtest;
 
-/// <summary>Condition-tree size bounds and validation (MP-1 Phase 2). See Y:\Temp\sa_analysis_BacktestConditionTree.md B9.</summary>
+/// <summary>Condition-tree size bounds and validation (MP-1 Phase 2). See docs/sa_analysis_BacktestConditionTree B9.</summary>
 public class BacktestConditionTreeValidatorTests
 {
     private static readonly int DefaultDepth = new BacktestSettings().MaxConditionTreeDepth;

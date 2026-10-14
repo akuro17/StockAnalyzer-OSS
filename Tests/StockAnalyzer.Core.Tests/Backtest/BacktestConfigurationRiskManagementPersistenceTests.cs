@@ -14,7 +14,7 @@ using Xunit;
 namespace StockAnalyzer.Core.Tests.Backtest;
 
 /// <summary>
-/// Task 8b persistence proof (plan section 4.5 of Y:\Temp\sa_implementation_plan_BacktestComparisonSignals.md):
+/// Task 8b persistence proof (plan section 4.5 of docs/sa_implementation_plan_BacktestComparisonSignals):
 /// a pre-existing saved backtest_configuration.json with no "riskManagement" property still loads
 /// unchanged (the safe-extension guarantee), and a file that DOES carry risk-management settings
 /// round-trips every field exactly. Same temp-file + <see cref="AtomicJsonFile"/> approach as

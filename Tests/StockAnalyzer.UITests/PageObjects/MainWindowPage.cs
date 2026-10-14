@@ -117,6 +117,20 @@ namespace StockAnalyzer.UITests.PageObjects
             return WaitForProcessWindow("Reinforcement Learning", "強化学習");
         }
 
+        /// <summary>Opens Settings (Theme page first) and selects the RL Playback category; the Settings window title is a fixed literal.</summary>
+        public Window OpenRlPlaybackSettings(params string[] categoryTitles)
+        {
+            InvokeToolsMenuItem("Menu_ThemeSettings");
+            var settings = WaitForProcessWindow("Settings");
+            var category = _testBase.WaitForElement(() => settings.FindAllDescendants()
+                .FirstOrDefault(e => categoryTitles.Contains(e.Properties.Name.ValueOrDefault)),
+                errorMessage: "RL Playback category did not appear in Settings.");
+            category.Click();
+            _testBase.WaitForElement(() => settings.FindFirstDescendant(cf => cf.ByAutomationId(StockAnalyzer.Avalonia.Common.RlUiConstants.PlaybackPage)),
+                errorMessage: "RL Playback page did not appear.");
+            return settings;
+        }
+
         public Window OpenPortfolioRlWindow()
         {
             InvokeToolsMenuItem(StockAnalyzer.Avalonia.Common.PrlUiConstants.Menu);

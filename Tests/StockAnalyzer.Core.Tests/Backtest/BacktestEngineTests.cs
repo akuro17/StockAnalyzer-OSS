@@ -12,7 +12,7 @@ namespace StockAnalyzer.Core.Tests.Backtest;
 
 /// <summary>
 /// Task #6 engine-level sanity tests for BacktestEngine.Run's Steps 1-9. This is not the full named
-/// acceptance suite from Y:\Temp\sa_ai_context_BacktestEngine_P1.md section 10 (that is task #8) - it
+/// acceptance suite from docs/sa_ai_context_BacktestEngine_P1 section 10 (that is task #8) - it
 /// exists to prove the orchestration itself (fills, funds checks, margin-call precedence, GTD expiry,
 /// insolvency) is wired correctly before the final acceptance pass.
 /// </summary>

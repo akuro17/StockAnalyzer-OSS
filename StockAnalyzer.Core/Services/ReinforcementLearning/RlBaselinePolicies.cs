@@ -16,9 +16,15 @@ public static class RlBaselinePolicies
         var policies = ImmutableArray.Create(RlContract.SmaBaselineId, RlContract.HoldBaselineId, RlContract.BuyHoldBaselineId, RlContract.RandomBaselineId);
         return continuous ? policies.Add(RlContinuousContract.PairedBaselineId) : policies;
     }
-    public static ImmutableArray<RlAction> CreateSmaSignals(RlSourceSnapshot source)
+    public static ImmutableArray<RlAction> CreateSmaSignals(RlSourceSnapshot source) => CreateSmaSignals(source.Bars);
+
+    /// <summary>
+    /// The registered-SMA crossover signal of every bar. The signal at bar j uses only the closes j-<see cref="RlContract.SmaSlowPeriod"/>..j, so a window
+    /// that starts at least that many bars before its first decision bar gives the same signals as the full history.
+    /// </summary>
+    public static ImmutableArray<RlAction> CreateSmaSignals(ImmutableArray<CandleData> bars)
     {
-        var closes = source.Bars.Select(bar => (decimal?)bar.Close).ToArray();
+        var closes = bars.Select(bar => (decimal?)bar.Close).ToArray();
         var fast = IndicatorFactory.Default.Create(IndicatorType.SMA, new CoreSmaParameter { Period = RlContract.SmaFastPeriod })
             ?? throw new InvalidOperationException("Registered SMA is required.");
         var slow = IndicatorFactory.Default.Create(IndicatorType.SMA, new CoreSmaParameter { Period = RlContract.SmaSlowPeriod })
@@ -45,6 +51,22 @@ public static class RlBaselinePolicies
         return policyId switch
         {
             RlContract.SmaBaselineId => CreateSmaSignals(source)[block.StartIndex + RlContract.WindowLength - 1 + decision],
+            _ => GetAction(policyId, default, 0, decision, seed),
+        };
+    }
+
+    /// <summary>
+    /// The action of a baseline policy on an episode whose bars were cut from a longer history. <paramref name="smaSignals"/> are the signals of the
+    /// episode's own bars (<see cref="CreateSmaSignals(ImmutableArray{CandleData})"/>) and <paramref name="barIndex"/> is the episode index of the
+    /// first decision bar; both are used by the SMA policy only.
+    /// </summary>
+    public static RlAction GetAction(string policyId, ImmutableArray<RlAction> smaSignals, int barIndex, int decision, int seed)
+    {
+        if (decision < 0 || decision >= RlContract.EpisodeHorizon) throw new ArgumentOutOfRangeException(nameof(decision));
+        return policyId switch
+        {
+            RlContract.SmaBaselineId => smaSignals.IsDefault ? throw new ArgumentException("SMA signals are required.", nameof(smaSignals))
+                : smaSignals[barIndex + decision],
             RlContract.HoldBaselineId => RlAction.Hold,
             RlContract.BuyHoldBaselineId => decision == 0 ? RlAction.Buy : RlAction.Hold,
             RlContract.RandomBaselineId => RandomAction(seed, decision),

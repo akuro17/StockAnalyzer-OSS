@@ -60,6 +60,18 @@ public sealed class SqliteMonitoringServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task UnknownLabel_IsNotMonitorable_ReturnsNullWithoutThrowing_WhileAnotherInvalidLabelStillThrows()
+    {
+        await _kit.EnsureRegistryAsync();
+        var service = await _kit.CreateServiceAsync();
+        var inputs = SqliteMonitoringTestKit.BarsEnding(SqliteMonitoringTestKit.Sept28).Take(195).ToArray();
+
+        Assert.Null(await service.RecordAsync(_kit.Result! with { Label = "Unknown" }, "X", TimeframeType.Daily, inputs));
+        await Assert.ThrowsAsync<InvalidDataException>(() => service.RecordAsync(_kit.Result! with { Label = "Sideways" }, "X", TimeframeType.Daily, inputs));
+        Assert.Equal(0, await _kit.CountAsync("Predictions"));
+    }
+
+    [Fact]
     public async Task RecordReplayAndCorrections_KeepOneVotePerIdentity_AndEveryRevision()
     {
         await _kit.EnsureRegistryAsync(); var log = await _kit.CreateServiceAsync();

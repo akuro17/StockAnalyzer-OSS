@@ -7,6 +7,7 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Automation;
 using Avalonia.VisualTree;
 using StockAnalyzer.Avalonia.ViewModels;
+using StockAnalyzer.Avalonia.ViewModels.Dialogs;
 
 namespace StockAnalyzer.Avalonia.Common;
 
@@ -51,13 +52,22 @@ public sealed class RlInputValidation : AvaloniaObject
     }
     private static void Validate(NumericUpDown control)
     {
-        if (GetField(control) is not { } field || control.DataContext is not RlTrainingDialogViewModel vm) return;
-        bool nullable = field is nameof(vm.StorageNonactiveDays) or nameof(vm.StorageKeepCount);
-        bool integer = field is nameof(vm.StorageFailedRetentionDays) or nameof(vm.StorageNonactiveDays)
-            or nameof(vm.StorageKeepCount) or nameof(vm.StorageCheckpointKeepCount) or nameof(vm.Decision);
+        if (GetField(control) is not { } field) return;
+        Action<string, bool>? report = control.DataContext switch
+        {
+            RlTrainingDialogViewModel training => training.SetEditorValidity,
+            RlPlaybackSettingsViewModel playback => playback.SetEditorValidity,
+            RlFreeReplayViewModel free => free.SetEditorValidity,
+            _ => null
+        };
+        if (report is null) return;
+        bool nullable = field is nameof(RlTrainingDialogViewModel.StorageNonactiveDays) or nameof(RlTrainingDialogViewModel.StorageKeepCount);
+        bool integer = field is nameof(RlTrainingDialogViewModel.StorageFailedRetentionDays) or nameof(RlTrainingDialogViewModel.StorageNonactiveDays)
+            or nameof(RlTrainingDialogViewModel.StorageKeepCount) or nameof(RlTrainingDialogViewModel.StorageCheckpointKeepCount) or nameof(RlPlaybackSettingsViewModel.Decision)
+            or nameof(RlFreeReplayViewModel.Decision);
         bool valid = nullable && string.IsNullOrWhiteSpace(control.Text) && control.Value is null;
         if (decimal.TryParse(control.Text, NumberStyles.Number, CultureInfo.CurrentCulture, out decimal value))
             valid = control.Value == value && (!integer || value == decimal.Truncate(value));
-        vm.SetEditorValidity(field, valid);
+        report(field, valid);
     }
 }

@@ -8,7 +8,7 @@ using Xunit;
 namespace StockAnalyzer.Tests.Backtest;
 
 /// <summary>
-/// Task 5 proof (plan section 4.3/Task 5 of Y:\Temp\sa_implementation_plan_BacktestComparisonSignals.md):
+/// Task 5 proof (plan section 4.3/Task 5 of docs/sa_implementation_plan_BacktestComparisonSignals):
 /// <see cref="BacktestWindowViewModel.RunBacktestCommand"/> selects
 /// <see cref="ConditionBasedBacktestStrategy"/> once at least one condition entry exists on
 /// <see cref="BacktestIndicatorSelectionViewModel.ConditionTree"/>, falls back to the untouched

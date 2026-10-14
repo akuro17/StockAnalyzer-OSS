@@ -27,7 +27,8 @@ public partial class DialogService
                     _serviceProvider.GetRequiredService<ITickerSourceResolver>(),
                     _serviceProvider.GetRequiredService<ITickerStateStore>(),
                     _serviceProvider.GetRequiredService<IBacktestDefaultSettingsManager>(), localization,
-                    transfer: _serviceProvider.GetRequiredService<IRlPortfolioTransferService>());
+                    transfer: _serviceProvider.GetRequiredService<IRlPortfolioTransferService>(),
+                    periodAdvisor: _serviceProvider.GetService<StockAnalyzer.Core.Services.StoredPeriod.IStoredPeriodAdvisor>());
                 var window = new PortfolioRlWindow { DataContext = vm, Icon = desktop.MainWindow.Icon };
                 window.Opened += async (_, _) => await vm.InitializeAsync();
                 window.Closing += (_, _) => vm.Dispose();

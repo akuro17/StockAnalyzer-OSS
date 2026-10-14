@@ -12,6 +12,7 @@ namespace StockAnalyzer.Avalonia.Drawing;
 public interface ILineTextAnnotatedObject
 {
     string TopText { get; set; }
+    string? TopFontFamily { get; set; }
     double TopFontSize { get; set; }
     TextHorizontalAlignment TopAlignment { get; set; }
     float TopOffsetPx { get; set; }
@@ -37,6 +38,7 @@ public interface ILineTextAnnotatedObject
     bool TopExtendBeyondLine { get; set; }
 
     string BottomText { get; set; }
+    string? BottomFontFamily { get; set; }
     double BottomFontSize { get; set; }
     TextHorizontalAlignment BottomAlignment { get; set; }
     float BottomOffsetPx { get; set; }

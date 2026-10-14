@@ -10,7 +10,7 @@ using Xunit;
 namespace StockAnalyzer.Core.Tests.Backtest;
 
 /// <summary>
-/// Task 3 (Y:\Temp\sa_implementation_plan_BacktestPositionDirectionReversal.md sections 2.3/2.4/3.4):
+/// Task 3 (docs/sa_implementation_plan_BacktestPositionDirectionReversal sections 2.3/2.4/3.4):
 /// engine-level proof that <see cref="BacktestEngine"/>'s dual pending-order slots and Exit-before-Entry
 /// commit sequencing work end to end, independent of any specific <see cref="IBacktestStrategy"/>
 /// implementation - a hand-scripted strategy exercises <see cref="IBacktestStrategy.Evaluate"/> and the new

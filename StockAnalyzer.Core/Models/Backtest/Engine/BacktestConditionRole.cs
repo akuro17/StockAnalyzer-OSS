@@ -6,7 +6,7 @@ namespace StockAnalyzer.Core.Models.Backtest.Engine;
 /// side-agnostically off one shared boolean (<see cref="Both"/>) — e.g. a single "Close &lt; SMA(20)"
 /// entry used as both the short-entry trigger and the long-exit trigger — or drive a same-bar
 /// directional reversal (<see cref="Reversal"/>). See
-/// Y:\Temp\sa_implementation_plan_BacktestComparisonSignals.md section 4.3 for how <see cref="EntryOnly"/>/
+/// docs/sa_implementation_plan_BacktestComparisonSignals section 4.3 for how <see cref="EntryOnly"/>/
 /// <see cref="ExitOnly"/>/<see cref="Both"/> combine per direction inside
 /// <c>ConditionBasedBacktestStrategy</c>.
 /// </summary>
@@ -17,7 +17,7 @@ public enum BacktestConditionRole
     Both,
 
     /// <summary>
-    /// New role (Y:\Temp\sa_implementation_plan_BacktestPositionDirectionReversal.md section 2.2, Task 2
+    /// New role (docs/sa_implementation_plan_BacktestPositionDirectionReversal section 2.2, Task 2
     /// correction): distinct from <see cref="Both"/> by design, rather than overloading Both's existing,
     /// already-relied-upon side-agnostic meaning with a second, runtime-conditional meaning. A Reversal
     /// entry's own <see cref="BacktestConditionEntry.Position"/> is the direction it opens: while flat or

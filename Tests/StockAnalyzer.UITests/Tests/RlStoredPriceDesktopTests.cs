@@ -308,8 +308,7 @@ public sealed partial class RlStoredPriceDesktopTests(ITestOutputHelper output) 
         File.Copy(Path.Combine(Path.GetDirectoryName(ownedJob)!, RlFiles.Model + RlFiles.EvaluationSuffix),
             Path.Combine(evidenceDirectory, "r06_desktop_smoke_report.json"), true);
         Element(window, RlUiConstants.Models).AsComboBox().Select(0); Keyboard.Press(VirtualKeyShort.ESCAPE);
-        WaitUntil(() => Element(window, RlUiConstants.Blocks).FindAllDescendants().Any(e => e.Name.StartsWith("validation:", StringComparison.Ordinal)),
-            CompletionTimeoutMs, "Expanded generation catalog not loaded");
+        WaitUntilEvaluationDetails(window, "Expanded generation catalog not loaded");
         var details = WaitForElement(() => window.FindFirstDescendant(cf => cf.ByAutomationId(RlUiConstants.EvaluationDetails))
             ?? window.FindAllDescendants().FirstOrDefault(e => Localized("Rl.EvaluationDetails").Contains(e.Properties.Name.ValueOrDefault)));
         if (details.Patterns.ExpandCollapse.IsSupported) details.Patterns.ExpandCollapse.Pattern.Expand(); else details.Click();
@@ -326,11 +325,8 @@ public sealed partial class RlStoredPriceDesktopTests(ITestOutputHelper output) 
         File.WriteAllText(Path.Combine(evidenceDirectory, "r06_desktop_full_report.txt"), reportElement.Name);
         SaveScreenshot(window, "sa_T16_R06_desktop_report.png");
         if (details.Patterns.ExpandCollapse.IsSupported) details.Patterns.ExpandCollapse.Pattern.Collapse(); else details.Click();
-        Element(window, RlUiConstants.Blocks).AsComboBox().Select(source.Catalog.Oos[^1].Id); Keyboard.Press(VirtualKeyShort.ESCAPE);
-        Invoke(window, RlUiConstants.Replay);
-        WaitUntil(() => Element(window, RlUiConstants.Message).Name.StartsWith(RlFiles.Disclosure, StringComparison.Ordinal),
-            CompletionTimeoutMs, "Latest complete OOS block replay did not publish");
         window.Close();
+        ReplayFromSettings(page, source.Catalog.Oos[^1].Id);
         var panel = WaitForElement(() => MainWindow!.FindFirstDescendant(cf => cf.ByAutomationId(RlUiConstants.QPanel)));
         Assert.False(panel.IsOffscreen); Assert.Contains(actorId, panel.Name);
         string anchor = source.Bars[source.Catalog.Oos[^1].StartIndex + RlContract.WindowLength - 1].Timestamp.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
@@ -367,8 +363,7 @@ public sealed partial class RlStoredPriceDesktopTests(ITestOutputHelper output) 
         window.Patterns.Window.Pattern.SetWindowVisualState(FlaUI.Core.Definitions.WindowVisualState.Maximized);
         Element(window, RlUiConstants.Models).AsComboBox().Select(0);
         Keyboard.Press(VirtualKeyShort.ESCAPE);
-        WaitUntil(() => Element(window, RlUiConstants.Blocks).FindAllDescendants().Any(e => e.Name.StartsWith("validation:", StringComparison.Ordinal)),
-            CompletionTimeoutMs, "R04 blocks not loaded");
+        WaitUntilEvaluationDetails(window, "R04 blocks not loaded");
         SaveScreenshot(window, "sa_T16_R04_desktop_before_report.png");
         var tree = window.FindAllDescendants().Select(e => new { AutomationId = e.Properties.AutomationId.ValueOrDefault,
             Name = e.Properties.Name.ValueOrDefault, ControlType = e.Properties.ControlType.ValueOrDefault.ToString(),
@@ -396,12 +391,10 @@ public sealed partial class RlStoredPriceDesktopTests(ITestOutputHelper output) 
         SaveScreenshot(window, "sa_T16_R04_desktop_report.png");
         if (details.Patterns.ExpandCollapse.IsSupported) details.Patterns.ExpandCollapse.Pattern.Collapse();
         else details.Click();
-        Element(window, RlUiConstants.Policies).AsComboBox().Select(RlContinuousContract.PairedBaselineId);
-        Keyboard.Press(VirtualKeyShort.ESCAPE);
-        Invoke(window, RlUiConstants.Replay);
+        window.Close();
+        ReplayFromSettings(page, policyId: RlContinuousContract.PairedBaselineId);
         WaitUntil(() => MainWindow!.FindFirstDescendant(cf => cf.ByAutomationId(RlUiConstants.PolicyControlReadout))?.Name.Contains(RlContinuousContract.PairedBaselineId) == true,
             CompletionTimeoutMs, "Fixed policy controls were not published");
-        window.Close();
         var proposal = WaitForElement(() => MainWindow!.FindFirstDescendant(cf => cf.ByAutomationId(RlUiConstants.ContinuousReadout)));
         var control = WaitForElement(() => MainWindow!.FindFirstDescendant(cf => cf.ByAutomationId(RlUiConstants.PolicyControlReadout)));
         Assert.False(proposal.IsOffscreen); Assert.False(control.IsOffscreen);
@@ -468,21 +461,12 @@ public sealed partial class RlStoredPriceDesktopTests(ITestOutputHelper output) 
             Assert.Single(Directory.EnumerateFiles(registryRoot, RlFiles.Manifest, SearchOption.AllDirectories));
 
             Element(window, RlUiConstants.Models).AsComboBox().Select(0);
-            WaitUntil(() => Element(window, RlUiConstants.Blocks).FindAllDescendants()
-                    .Any(element => element.Name.StartsWith("validation:", StringComparison.Ordinal)),
-                CompletionTimeoutMs, "Qualified episode support was not loaded");
+            WaitUntilEvaluationDetails(window, "Qualified episode support was not loaded");
             Invoke(window, RlUiConstants.Activate);
             WaitUntil(() => Element(window, RlUiConstants.ActiveModel).Name == modelId,
                 errorMessage: "Manual activation did not publish the selected model");
-            Invoke(window, RlUiConstants.Replay);
-            WaitUntil(() =>
-            {
-                string message = Element(window, RlUiConstants.Message).Name;
-                if (Localized("Rl.State.Unavailable").Contains(Element(window, RlUiConstants.Status).Name))
-                    throw new InvalidOperationException("Qualified replay failed: " + message);
-                return message.StartsWith(RlFiles.Disclosure, StringComparison.Ordinal);
-            }, CompletionTimeoutMs, "Real qualified replay did not finish");
             window.Close();
+            ReplayFromSettings(page);
             var panel = WaitForElement(() => MainWindow!.FindFirstDescendant(cf => cf.ByAutomationId(RlUiConstants.QPanel)));
             Assert.False(panel.IsOffscreen);
             Assert.Contains(modelId, panel.Name);
@@ -552,14 +536,11 @@ public sealed partial class RlStoredPriceDesktopTests(ITestOutputHelper output) 
         Assert.Equal("", Element(window, RlUiConstants.ActiveModel).Name);
         Assert.Equal(2, Directory.EnumerateFiles(registryRoot, RlFiles.Manifest, SearchOption.AllDirectories).Count());
         Element(window, RlUiConstants.Models).AsComboBox().Select(0);
-        WaitUntil(() => Element(window, RlUiConstants.Blocks).FindAllDescendants().Any(e => e.Name.StartsWith("validation:", StringComparison.Ordinal)),
-            CompletionTimeoutMs, "Continuous model block support was not loaded");
+        WaitUntilEvaluationDetails(window, "Continuous model block support was not loaded");
         Invoke(window, RlUiConstants.Activate);
         WaitUntil(() => Element(window, RlUiConstants.ActiveModel).Name == actorId, errorMessage: "Continuous manual activation failed");
-        Invoke(window, RlUiConstants.Replay);
-        WaitUntil(() => Element(window, RlUiConstants.Message).Name.StartsWith(RlFiles.Disclosure, StringComparison.Ordinal),
-            CompletionTimeoutMs, "Continuous replay did not publish");
         window.Close();
+        ReplayFromSettings(page);
         var panel = WaitForElement(() => MainWindow!.FindFirstDescendant(cf => cf.ByAutomationId(RlUiConstants.QPanel)));
         Assert.Contains(actorId, panel.Name); Assert.Contains(RlContinuousContract.Target, panel.Name);
         LogInfo("Published continuous Q panel: " + panel.Name);
@@ -595,6 +576,19 @@ public sealed partial class RlStoredPriceDesktopTests(ITestOutputHelper output) 
         editor.Text = value; editor.Focus(); Keyboard.Press(VirtualKeyShort.TAB);
     }
     private void Invoke(Window window, string id) => Element(window, id).Patterns.Invoke.Pattern.Invoke();
+    /// <summary>The RL window shows the evaluation details only once the blocks of the selected generation are loaded.</summary>
+    private void WaitUntilEvaluationDetails(Window window, string errorMessage)
+        => WaitUntil(() => window.FindFirstDescendant(cf => cf.ByAutomationId(RlUiConstants.EvaluationDetails)) is not null, CompletionTimeoutMs, errorMessage);
+    /// <summary>Replays the newest agent through Settings > RL Playback; a successful "Show on chart" closes Settings.</summary>
+    private void ReplayFromSettings(MainWindowPage page, string? blockId = null, string? policyId = null)
+    {
+        var settings = page.OpenRlPlaybackSettings(Localized("Settings_RlPlayback"));
+        WaitUntil(() => Element(settings, RlUiConstants.PlaybackShow).IsEnabled, CompletionTimeoutMs, "RL Playback was not ready to show");
+        if (blockId is not null) { Element(settings, RlUiConstants.PlaybackBlocks).AsComboBox().Select(blockId); Keyboard.Press(VirtualKeyShort.ESCAPE); }
+        if (policyId is not null) { Element(settings, RlUiConstants.PlaybackPolicies).AsComboBox().Select(policyId); Keyboard.Press(VirtualKeyShort.ESCAPE); }
+        Invoke(settings, RlUiConstants.PlaybackShow);
+        WaitUntil(() => MainWindow!.ModalWindows.Length == 0, CompletionTimeoutMs, "Replay did not finish: Settings stayed open");
+    }
     private void WaitState(Window window, string state, int timeout = CompletionTimeoutMs)
     {
         var expected = Localized("Rl.State." + state);

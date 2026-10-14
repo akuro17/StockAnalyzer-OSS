@@ -1,0 +1,284 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:StockAnalyzer.Avalonia.ViewModels"
+             xmlns:dvm="using:StockAnalyzer.Avalonia.ViewModels.Dialogs"
+             xmlns:l="using:StockAnalyzer.Avalonia.Markup"
+             xmlns:ui="using:StockAnalyzer.Avalonia.Common"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="600"
+             x:Class="StockAnalyzer.Avalonia.Views.Dialogs.RlPlaybackSettingsView"
+             x:DataType="dvm:RlPlaybackSettingsViewModel"
+             AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.PlaybackPage}">
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Spacing="{x:Static ui:RlPlaybackUiLayout.SectionSpacing}" Margin="{x:Static ui:RlPlaybackUiLayout.CardPadding}">
+
+            <!-- Card 1: stored agents -->
+            <Border Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="{x:Static ui:RlUiLayout.SectionBorder}"
+                    CornerRadius="{x:Static ui:RlUiLayout.SectionCornerRadius}"
+                    Padding="{x:Static ui:RlPlaybackUiLayout.CardPadding}">
+                <StackPanel Spacing="{x:Static ui:RlPlaybackUiLayout.SectionSpacing}">
+                    <TextBlock Text="{l:Localize Settings_RlPlayback_Title}"
+                               FontSize="{DynamicResource BaseFontSize}"
+                               FontWeight="Bold"/>
+                    <TextBlock Text="{l:Localize Settings_RlPlayback_Description}"
+                               FontSize="{DynamicResource DetailFontSize}"
+                               TextWrapping="Wrap"/>
+                    <TextBlock Text="{l:Localize Settings_RlPlayback_Scope}"
+                               FontSize="{DynamicResource HelperFontSize}"
+                               Foreground="{DynamicResource Brush.Text.Secondary}"
+                               TextWrapping="Wrap"/>
+                    <TextBlock Text="{l:Localize Settings_RlPlayback_Empty}"
+                               IsVisible="{Binding ShowEmpty}"
+                               FontSize="{DynamicResource DetailFontSize}"
+                               TextWrapping="Wrap"/>
+                    <TextBlock Text="{Binding ModelsDisplay}"
+                               IsVisible="{Binding ShowModelsCaption}"
+                               FontSize="{DynamicResource HelperFontSize}"
+                               Foreground="{DynamicResource Brush.Text.Secondary}"
+                               TextWrapping="Wrap"/>
+                    <ListBox ItemsSource="{Binding ModelOptions}" SelectedItem="{Binding SelectedModelOption}"
+                             IsVisible="{Binding HasModels}"
+                             MaxHeight="{x:Static ui:RlPlaybackUiLayout.ModelListMaxHeight}"
+                             AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.PlaybackModels}"
+                             AutomationProperties.Name="{l:Localize Settings_RlPlayback_Title}">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate x:DataType="vm:RlModelOption">
+                                <TextBlock Text="{Binding Name}" FontSize="{DynamicResource DetailFontSize}" TextWrapping="Wrap"/>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button Classes="accent" Content="{l:Localize Settings_ModelGenerations_Refresh}"
+                                Command="{Binding RefreshCommand}"
+                                AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.PlaybackRefresh}"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Card 2: replay inputs (visible when an agent is selected) -->
+            <Border Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="{x:Static ui:RlUiLayout.SectionBorder}"
+                    CornerRadius="{x:Static ui:RlUiLayout.SectionCornerRadius}"
+                    Padding="{x:Static ui:RlPlaybackUiLayout.CardPadding}"
+                    IsVisible="{Binding HasSelectedModel}">
+                <StackPanel Spacing="{x:Static ui:RlPlaybackUiLayout.SectionSpacing}">
+                    <TextBlock Text="{l:Localize Rl.Replay}"
+                               FontSize="{DynamicResource BaseFontSize}"
+                               FontWeight="Bold"/>
+                    <TextBlock Text="{Binding SelectedModelDisplay}"
+                               FontSize="{DynamicResource DetailFontSize}"
+                               TextWrapping="Wrap"/>
+                    <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,*"
+                          ColumnSpacing="{x:Static ui:RlUiLayout.ColumnSpacing}"
+                          RowSpacing="{x:Static ui:RlUiLayout.RowSpacing}">
+                        <!-- Row 0, Col 0: evaluation segment -->
+                        <StackPanel Grid.Row="0" Grid.Column="0" Spacing="4">
+                            <TextBlock Text="{l:Localize Rl.Ui.Field.Block}" FontSize="{DynamicResource DetailFontSize}" TextWrapping="Wrap"/>
+                            <ComboBox ItemsSource="{Binding BlockOptions}" SelectedItem="{Binding SelectedBlockOption}"
+                                      IsVisible="{Binding !ShowBlocksCaption}"
+                                      Height="{x:Static ui:RlPlaybackUiLayout.InputHeight}"
+                                      MinWidth="{x:Static ui:RlUiLayout.InputMinimumWidth}"
+                                      MaxWidth="{x:Static ui:RlUiLayout.InputMaximumWidth}"
+                                      HorizontalAlignment="Stretch"
+                                      AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.PlaybackBlocks}"
+                                      AutomationProperties.Name="{l:Localize Rl.Ui.Field.Block}">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:RlBlockOption">
+                                        <TextBlock Text="{Binding Name}" FontSize="{DynamicResource DetailFontSize}" TextWrapping="Wrap"/>
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                            <TextBlock Text="{Binding BlocksDisplay}" IsVisible="{Binding ShowBlocksCaption}"
+                                       FontSize="{DynamicResource HelperFontSize}"
+                                       Foreground="{DynamicResource Brush.Text.Secondary}"
+                                       VerticalAlignment="Center"
+                                       Height="{x:Static ui:RlPlaybackUiLayout.InputHeight}"/>
+                        </StackPanel>
+
+                        <!-- Row 0, Col 1: comparison strategy -->
+                        <StackPanel Grid.Row="0" Grid.Column="1" Spacing="4">
+                            <TextBlock Text="{l:Localize Rl.Ui.Field.Policy}" FontSize="{DynamicResource DetailFontSize}" TextWrapping="Wrap"/>
+                            <ComboBox ItemsSource="{Binding PolicyOptions}" SelectedItem="{Binding SelectedPolicyOption}"
+                                      Height="{x:Static ui:RlPlaybackUiLayout.InputHeight}"
+                                      MinWidth="{x:Static ui:RlUiLayout.InputMinimumWidth}"
+                                      MaxWidth="{x:Static ui:RlUiLayout.InputMaximumWidth}"
+                                      HorizontalAlignment="Stretch"
+                                      AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.PlaybackPolicies}"
+                                      AutomationProperties.Name="{l:Localize Rl.Ui.Field.Policy}">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:RlPolicyOption">
+                                        <TextBlock Text="{Binding Name}" FontSize="{DynamicResource DetailFontSize}" TextWrapping="Wrap"/>
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                        </StackPanel>
+
+                        <!-- Row 1, Col 0: decision position -->
+                        <StackPanel Grid.Row="1" Grid.Column="0" Spacing="4">
+                            <TextBlock Text="{l:Localize Rl.Ui.Field.Decision}" FontSize="{DynamicResource DetailFontSize}" TextWrapping="Wrap"/>
+                            <NumericUpDown Minimum="0" Maximum="{Binding MaximumDecision}" Value="{Binding Decision}"
+                                           ClipValueToMinMax="True"
+                                           Height="{x:Static ui:RlPlaybackUiLayout.InputHeight}"
+                                           MinWidth="{x:Static ui:RlUiLayout.InputMinimumWidth}"
+                                           MaxWidth="{x:Static ui:RlUiLayout.InputMaximumWidth}"
+                                           HorizontalAlignment="Stretch"
+                                           ui:RlInputValidation.Field="Decision"
+                                           AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.PlaybackDecision}"
+                                           AutomationProperties.Name="{l:Localize Rl.Ui.Field.Decision}"/>
+                        </StackPanel>
+                    </Grid>
+
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button Classes="accent" Content="{l:Localize Settings_RlPlayback_ShowOnChart}"
+                                Command="{Binding ShowOnChartCommand}"
+                                AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.PlaybackShow}"/>
+                        <Button Classes="accent" Content="{l:Localize Settings_RlPlayback_ClearChart}"
+                                Command="{Binding ClearChartCommand}"
+                                AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.PlaybackClear}"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Card 3: any ticker and date (visible when an agent is selected) -->
+            <Border Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="{x:Static ui:RlUiLayout.SectionBorder}"
+                    CornerRadius="{x:Static ui:RlUiLayout.SectionCornerRadius}"
+                    Padding="{x:Static ui:RlPlaybackUiLayout.CardPadding}"
+                    IsVisible="{Binding Free.HasModel, FallbackValue=False}"
+                    AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.PlaybackFreeCard}">
+                <!-- The card's controls bind to the child view model; their compiled bindings need its type, which an element cannot apply to its own DataContext binding. -->
+                <StackPanel DataContext="{Binding Free}">
+                <StackPanel x:DataType="dvm:RlFreeReplayViewModel" Spacing="{x:Static ui:RlPlaybackUiLayout.SectionSpacing}">
+                    <TextBlock Text="{l:Localize Settings_RlPlayback_Free_Title}"
+                               FontSize="{DynamicResource BaseFontSize}"
+                               FontWeight="Bold"/>
+                    <TextBlock Text="{Binding SourceNote}" IsVisible="{Binding ShowNote}"
+                               FontSize="{DynamicResource HelperFontSize}"
+                               Foreground="{DynamicResource Brush.Text.Secondary}"
+                               TextWrapping="Wrap"/>
+                    <TextBlock Text="{l:Localize Settings_RlPlayback_Free_ContinuousNotAvailable}" IsVisible="{Binding ShowContinuousNotice}"
+                               FontSize="{DynamicResource DetailFontSize}"
+                               TextWrapping="Wrap"/>
+                    <StackPanel Spacing="{x:Static ui:RlPlaybackUiLayout.SectionSpacing}" IsVisible="{Binding ShowInputs}">
+                        <Grid RowDefinitions="Auto,Auto,Auto" ColumnDefinitions="*,*"
+                              ColumnSpacing="{x:Static ui:RlUiLayout.ColumnSpacing}"
+                              RowSpacing="{x:Static ui:RlUiLayout.RowSpacing}">
+                            <!-- Row 0, Col 0: ticker -->
+                            <StackPanel Grid.Row="0" Grid.Column="0" Spacing="4">
+                                <TextBlock Text="{l:Localize Settings_RlPlayback_Free_Ticker}" FontSize="{DynamicResource DetailFontSize}" TextWrapping="Wrap"/>
+                                <AutoCompleteBox Text="{Binding TickerText, Mode=TwoWay}"
+                                                 ItemsSource="{Binding Suggestions}"
+                                                 FilterMode="StartsWith"
+                                                 Watermark="{l:Localize AddTicker_Placeholder}"
+                                                 Height="{x:Static ui:RlPlaybackUiLayout.InputHeight}"
+                                                 MinWidth="{x:Static ui:RlUiLayout.InputMinimumWidth}"
+                                                 MaxWidth="{x:Static ui:RlUiLayout.InputMaximumWidth}"
+                                                 HorizontalAlignment="Stretch"
+                                                 AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.PlaybackFreeTicker}"
+                                                 AutomationProperties.Name="{l:Localize Settings_RlPlayback_Free_Ticker}"/>
+                                <TextBlock Text="{l:Localize Settings_RlPlayback_Free_TickerUnknown}" IsVisible="{Binding ShowTickerUnknown}"
+                                           FontSize="{DynamicResource HelperFontSize}"
+                                           Foreground="{DynamicResource Brush.Accent.Primary}"
+                                           TextWrapping="Wrap"/>
+                            </StackPanel>
+
+                            <!-- Row 0, Col 1: list that supplies the suggestions -->
+                            <StackPanel Grid.Row="0" Grid.Column="1" Spacing="4">
+                                <TextBlock Text="{l:Localize Settings_RlPlayback_Free_List}" FontSize="{DynamicResource DetailFontSize}" TextWrapping="Wrap"/>
+                                <ComboBox ItemsSource="{Binding ListOptions}" SelectedItem="{Binding SelectedListOption}"
+                                          Height="{x:Static ui:RlPlaybackUiLayout.InputHeight}"
+                                          MinWidth="{x:Static ui:RlUiLayout.InputMinimumWidth}"
+                                          MaxWidth="{x:Static ui:RlUiLayout.InputMaximumWidth}"
+                                          HorizontalAlignment="Stretch"
+                                          AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.PlaybackFreeList}"
+                                          AutomationProperties.Name="{l:Localize Settings_RlPlayback_Free_List}">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate x:DataType="dvm:RlTickerListOption">
+                                            <TextBlock Text="{Binding Name}" FontSize="{DynamicResource DetailFontSize}" TextWrapping="Wrap"/>
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+                            </StackPanel>
+
+                            <!-- Row 1, Col 0: anchor date -->
+                            <StackPanel Grid.Row="1" Grid.Column="0" Spacing="4">
+                                <TextBlock Text="{l:Localize Settings_RlPlayback_Free_Date}" FontSize="{DynamicResource DetailFontSize}" TextWrapping="Wrap"/>
+                                <CalendarDatePicker Classes="isoDate isoDateHint" SelectedDate="{Binding AnchorDate, Mode=TwoWay}"
+                                                    DisplayDateStart="{Binding DisplayDateStart}"
+                                                    DisplayDateEnd="{Binding DisplayDateEnd}"
+                                                    Background="{DynamicResource Brush.Background.Tertiary}"
+                                                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                                                    AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.PlaybackFreeDate}"
+                                                    AutomationProperties.Name="{l:Localize Settings_RlPlayback_Free_Date}"/>
+                                <TextBlock Text="{Binding DateHelp}"
+                                           FontSize="{DynamicResource HelperFontSize}"
+                                           Foreground="{DynamicResource Brush.Text.Secondary}"
+                                           TextWrapping="Wrap"/>
+                                <TextBlock Text="{Binding RangeText}" IsVisible="{Binding HasRangeText}"
+                                           FontSize="{DynamicResource HelperFontSize}"
+                                           Foreground="{DynamicResource Brush.Text.Secondary}"
+                                           TextWrapping="Wrap"
+                                           AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.PlaybackFreeRange}"/>
+                            </StackPanel>
+
+                            <!-- Row 1, Col 1: comparison strategy -->
+                            <StackPanel Grid.Row="1" Grid.Column="1" Spacing="4">
+                                <TextBlock Text="{l:Localize Rl.Ui.Field.Policy}" FontSize="{DynamicResource DetailFontSize}" TextWrapping="Wrap"/>
+                                <ComboBox ItemsSource="{Binding PolicyOptions}" SelectedItem="{Binding SelectedPolicyOption}"
+                                          Height="{x:Static ui:RlPlaybackUiLayout.InputHeight}"
+                                          MinWidth="{x:Static ui:RlUiLayout.InputMinimumWidth}"
+                                          MaxWidth="{x:Static ui:RlUiLayout.InputMaximumWidth}"
+                                          HorizontalAlignment="Stretch"
+                                          AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.PlaybackFreePolicies}"
+                                          AutomationProperties.Name="{l:Localize Rl.Ui.Field.Policy}">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:RlPolicyOption">
+                                            <TextBlock Text="{Binding Name}" FontSize="{DynamicResource DetailFontSize}" TextWrapping="Wrap"/>
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+                            </StackPanel>
+
+                            <!-- Row 2, Col 0: decision position -->
+                            <StackPanel Grid.Row="2" Grid.Column="0" Spacing="4">
+                                <TextBlock Text="{l:Localize Rl.Ui.Field.Decision}" FontSize="{DynamicResource DetailFontSize}" TextWrapping="Wrap"/>
+                                <NumericUpDown Minimum="0" Maximum="{Binding MaximumDecision}" Value="{Binding Decision}"
+                                               ClipValueToMinMax="True"
+                                               Height="{x:Static ui:RlPlaybackUiLayout.InputHeight}"
+                                               MinWidth="{x:Static ui:RlUiLayout.InputMinimumWidth}"
+                                               MaxWidth="{x:Static ui:RlUiLayout.InputMaximumWidth}"
+                                               HorizontalAlignment="Stretch"
+                                               ui:RlInputValidation.Field="Decision"
+                                               AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.PlaybackFreeDecision}"
+                                               AutomationProperties.Name="{l:Localize Rl.Ui.Field.Decision}"/>
+                            </StackPanel>
+                        </Grid>
+
+                        <Button Classes="accent" Content="{l:Localize Settings_RlPlayback_Free_Show}"
+                                Command="{Binding ShowOnChartCommand}"
+                                HorizontalAlignment="Left"
+                                AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.PlaybackFreeShow}"/>
+                        <TextBlock Text="{Binding StatusMessage}" IsVisible="{Binding HasStatus}"
+                                   FontSize="{DynamicResource DetailFontSize}"
+                                   Foreground="{DynamicResource Brush.Accent.Primary}"
+                                   TextWrapping="Wrap"
+                                   AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.PlaybackFreeStatus}"/>
+                    </StackPanel>
+                </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <TextBlock Text="{Binding StatusMessage}"
+                       IsVisible="{Binding HasStatus}"
+                       FontSize="{DynamicResource DetailFontSize}"
+                       Foreground="{DynamicResource Brush.Accent.Primary}"
+                       TextWrapping="Wrap"/>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

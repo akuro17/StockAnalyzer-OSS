@@ -22,8 +22,8 @@ public readonly struct StrategyContext
     public EquityPoint Snapshot { get; init; }
 
     /// <summary>
-    /// Null when no order is currently resting/pending. Since Task 3 (Y:\Temp\
-    /// sa_implementation_plan_BacktestPositionDirectionReversal.md section 2.3/2.4), the engine's
+    /// Null when no order is currently resting/pending. Since Task 3
+    /// (docs/sa_implementation_plan_BacktestPositionDirectionReversal section 2.3/2.4), the engine's
     /// internal <c>RunState</c> can hold up to two independent pending orders at once (one Entry-type,
     /// one Exit-type - a same-bar reversal pair) - this field's shape stays a single nullable id
     /// unchanged, so when both are pending it reports the Exit-type order's id (the one closing the
@@ -44,7 +44,7 @@ public readonly struct StrategyContext
     /// <summary>
     /// Read-only entry price of the currently-open position; null while <see cref="PositionSide"/> is
     /// null (flat). An approved part of the strategy contract (user decision 2026-09-20; added
-    /// 2026-09-18, see Y:\Temp\sa_implementation_plan_BacktestComparisonSignals.md section 4.5):
+    /// 2026-09-18, see docs/sa_implementation_plan_BacktestComparisonSignals section 4.5):
     /// entry-price-relative Stop-Loss/Take-Profit/trailing stops cannot be expressed without it, and
     /// exposing it read-only is trading context, not a leak of engine internals. The single
     /// construction site (<c>BacktestEngine</c>'s bar loop) is the only place this is ever set.

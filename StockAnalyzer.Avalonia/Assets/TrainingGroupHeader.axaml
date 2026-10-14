@@ -1,0 +1,18 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:StockAnalyzer.Avalonia.Common">
+    <!-- The group headers of the three training windows (Training Wizard, RL, Portfolio RL): "Basic Settings" uses groupHeader, the headers that follow it
+         ("Advanced Settings", "Results and management") use groupHeader advancedGroupHeader, which adds the gap above. The single definition; the values are those
+         the Training Wizard had as local styles. -->
+    <Style Selector="TextBlock.groupHeader">
+        <Setter Property="FontSize" Value="{DynamicResource SubtitleFontSize}"/>
+        <Setter Property="FontWeight" Value="Bold"/>
+        <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Primary}"/>
+    </Style>
+    <Style Selector="TextBlock.advancedGroupHeader">
+        <Setter Property="FontSize" Value="{DynamicResource SubtitleFontSize}"/>
+        <Setter Property="FontWeight" Value="Bold"/>
+        <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Primary}"/>
+        <Setter Property="Margin" Value="{x:Static ui:TrainingGroupHeaderLayout.AdvancedMargin}"/>
+    </Style>
+</Styles>

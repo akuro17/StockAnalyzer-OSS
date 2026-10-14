@@ -88,7 +88,7 @@ namespace StockAnalyzer.Core.Tests.Services
         {
             // Regression for: RecordAsync originally wrote config.json/metrics.json via
             // File.WriteAllTextAsync (a direct, non-atomic overwrite) - see
-            // Y:\Temp\sa_constraint_report_OnnxTrainingFoundation.md Finding #2. Switching to
+            // docs/sa_constraint_report_OnnxTrainingFoundation Finding #2. Switching to
             // AtomicJsonFile.SaveAsync must keep both files BOM-free (JsonSerializer.SerializeAsync
             // never emits one) and must not leave its own ".tmp" swap file behind.
             var config = ValidConfig();
@@ -150,8 +150,8 @@ namespace StockAnalyzer.Core.Tests.Services
             RunId = runId,
             Success = true,
             ExitCode = 0,
-            OnnxArtifactPath = @"I:\stock\StockAnalyzer.Python\training\artifacts\test.onnx",
-            MetricsArtifactPath = @"I:\stock\StockAnalyzer.Python\training\artifacts\test.onnx.metrics.json",
+            OnnxArtifactPath = "artifacts/test.onnx",
+            MetricsArtifactPath = "artifacts/test.onnx.metrics.json",
             Metrics = new Dictionary<string, double> { ["accuracy"] = 0.5 },
             StartedUtc = DateTimeOffset.UtcNow.AddMinutes(-1),
             CompletedUtc = DateTimeOffset.UtcNow,

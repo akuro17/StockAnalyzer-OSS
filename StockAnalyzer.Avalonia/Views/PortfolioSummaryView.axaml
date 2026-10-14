@@ -270,7 +270,7 @@
                                     </DataGridTemplateColumn.CellTemplate>
                                 </DataGridTemplateColumn>
                                 
-                                <DataGridTemplateColumn Header="{l:Localize Col_Ratio}" Width="120">
+                                <DataGridTemplateColumn Header="{l:Localize Portfolio_Col_PnLRate}" Width="120">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate x:DataType="vm:PortfolioPositionViewModel">
                                             <TextBlock Text="{Binding PnLRate, StringFormat={}{0:F2}%}}"
@@ -410,7 +410,7 @@
                                     </DataGridTemplateColumn.CellTemplate>
                                 </DataGridTemplateColumn>
 
-                                <DataGridTemplateColumn Header="{l:Localize Col_Ratio}" Width="100">
+                                <DataGridTemplateColumn Header="{l:Localize Portfolio_Col_PnLRate}" Width="100">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate x:DataType="vm:ClosedPositionViewModel">
                                             <TextBlock Text="{Binding PnLRate, StringFormat={}{0:F2}%}}"

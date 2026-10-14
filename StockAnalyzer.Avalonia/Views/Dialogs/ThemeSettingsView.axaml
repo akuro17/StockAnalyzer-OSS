@@ -212,6 +212,15 @@
                             <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
                             <TextBlock Text="{l:Localize Settings_Theme_Desc_ShellBorder}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
                         </StackPanel>
+
+                        <StackPanel Margin="0,0,0,16">
+                            <Grid ColumnDefinitions="*, Auto">
+                                <TextBlock Text="{l:Localize Settings_Theme_Item_ShellWarningText}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                <ColorPicker Grid.Column="1" Color="{Binding ShellWarningTextColor, Mode=TwoWay, Converter={StaticResource ColorConverter}}" Width="50" Height="28"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize Settings_Theme_Desc_ShellWarningText}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                        </StackPanel>
                     </UniformGrid>
                 </StackPanel>
             </Border>

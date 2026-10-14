@@ -17,8 +17,8 @@ StockAnalyzer is an open-source, cross-platform desktop application for stock an
 ## Requirements
 
 - .NET SDK: 8.0 or later
-- Python: 3.8 to 3.11 (required for data retrieval and indicators)
-  - Core libraries: `yfinance`, `pandas`, `polars`, `pyarrow`, `onnxruntime`.
+- Python: 3.10 to 3.12 (verified on 3.12; Windows includes automatic embedded Python)
+  - Core libraries: `yfinance`, `pandas`, `polars`, `pyarrow`.
 
 ---
 
@@ -38,16 +38,21 @@ StockAnalyzer/
 
 ### 1. Clone the Repository
 ```bash
-git clone https://github.com/akuro17/StockAnalyzer.git
-cd StockAnalyzer
+git clone https://github.com/akuro17/StockAnalyzer-OSS.git
+cd StockAnalyzer-OSS
 ```
 
 ### 2. Configuration
 Windows users can run the app with default settings out of the box. For custom paths or non-Windows environments, you need an active configuration file:
 
+**macOS / Linux (Bash):**
 ```bash
-# Copy the example configuration
 cp StockAnalyzer.Avalonia/appsettings.example.json StockAnalyzer.Avalonia/appsettings.json
+```
+
+**Windows (PowerShell):**
+```powershell
+Copy-Item StockAnalyzer.Avalonia\appsettings.example.json StockAnalyzer.Avalonia\appsettings.json
 ```
 
 > [!IMPORTANT]
@@ -61,29 +66,47 @@ No manual setup is needed. The app automatically initializes Python and installs
 #### Option B: macOS / Linux / Custom Paths (Manual)
 You need to create a virtual environment, install dependencies, and update your configuration.
 
+**macOS / Linux (Bash):**
 ```bash
-# Create and activate a virtual environment
 python3 -m venv .venv
 source .venv/bin/activate
-
-# Install requirements
 pip install -r StockAnalyzer.Python/requirements.txt
+```
+
+**Windows (PowerShell):**
+```powershell
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -r StockAnalyzer.Python\requirements.txt
 ```
 
 Next, update `StockAnalyzer.Avalonia/appsettings.json` with the absolute path to the python executable in your virtual environment:
 
 ```json
 "Python": {
-  "PythonPath": "/absolute/path/to/your/StockAnalyzer/.venv/bin/python3"
+  "PythonPath": "/absolute/path/to/your/StockAnalyzer-OSS/.venv/bin/python3"
 }
 ```
 
 ### 4. Run the Application
 
+**macOS / Linux (Bash):**
 ```bash
 dotnet build StockAnalyzer.sln
 dotnet run --project StockAnalyzer.Avalonia/StockAnalyzer.Avalonia.csproj
 ```
+
+**Windows (PowerShell):**
+```powershell
+dotnet build StockAnalyzer.sln
+dotnet run --project StockAnalyzer.Avalonia\StockAnalyzer.Avalonia.csproj
+```
+
+### 5. Initial Smoke Verification
+Verify initial application startup:
+1. Main window launches and displays the default chart layout.
+2. The left-side Ticker List displays default symbols or allows creating a new Watchlist.
+3. Selecting a symbol displays historical candle charts (first download may take a moment).
 
 ---
 
@@ -93,13 +116,34 @@ On the first launch, the app creates a `Data/` directory to store your workspace
 
 ```text
 Data/
-├── Daily/      # Daily historical data (Parquet)
-├── Weekly/     # Weekly aggregated data
-├── Monthly/    # Monthly aggregated data
-├── Metadata/   # Symbol info and metadata
-├── Config/     # User settings and UI state
-└── Portfolios/ # Portfolio data
+├── Backtest/             # Backtest settings and exported reports
+│   └── Reports/          # Exported backtest HTML/JSON reports
+├── Config/               # User settings, themes, and UI workspace layouts
+├── Daily/                # Daily historical OHLCV data (Parquet)
+├── Drawings/             # Chart drawing objects and annotations
+│   └── Icon/             # Custom icon stamps
+├── DynamicPeriodDrivers/ # Dynamic period driver settings for adaptive indicators
+├── Experiments/          # ML model training run experiment configs and metrics
+├── IndicatorDefaults/    # Custom default parameters for indicators
+├── Metadata/             # Symbol metadata and user strategy signal definitions
+├── Models/               # ML prediction models (ONNX)
+│   └── Generations/      # Versioned model generation store
+├── Monthly/              # Monthly aggregated OHLCV data (Parquet)
+├── Notes/                # User trading notes SQLite database (notes.db)
+│   └── Attachments/      # Chart image attachments for notes
+├── Portfolios/           # Portfolio positions, cash balances, and trade records
+├── PredictionMonitoring/ # ML model prediction telemetry and health monitoring
+├── SourceIndicators/     # Custom source indicator pipeline definitions
+├── Templates/            # Centralized templates (Indicators, Screeners, Columns, etc.)
+├── TrainingArtifacts/    # Training outputs: TW/ (Training Wizard models and checkpoints), RL/, RLPortfolio/
+└── Weekly/               # Weekly aggregated OHLCV data (Parquet)
 ```
+
+> [!TIP]
+> For detailed instructions on chart drawing shortcut keys, editing controls, and configuring custom icon stamps in `Data/Drawings/Icon/`, see the [Drawing Tools Guide](https://github.com/akuro17/StockAnalyzer-OSS/blob/main/docs/DRAWING_TOOLS_GUIDE.md).
+
+> [!TIP]
+> For the settings of Training Wizard, Reinforcement Learning and Portfolio Reinforcement Learning and for how to use the files they create, see the [Training and Reinforcement Learning Guide](https://github.com/akuro17/StockAnalyzer-OSS/blob/main/docs/TRAINING_AND_REINFORCEMENT_LEARNING_GUIDE.md).
 
 ---
 
@@ -107,18 +151,25 @@ Data/
 
 StockAnalyzer uses xUnit for C# and pytest for Python.
 
-### C# Tests
+### Cross-Platform C# Tests (Ubuntu, macOS, Windows)
 ```bash
-# Run unit and integration tests (excludes UI tests)
-dotnet test Tests/StockAnalyzer.Tests.csproj --filter "FullyQualifiedName!~UITests"
+# Run cross-platform core business logic and analysis tests
+dotnet test Tests/StockAnalyzer.Core.Tests/StockAnalyzer.Core.Tests.csproj
+```
+
+### Windows-Only Tests (WPF / UI Automation)
+```bash
+# Run Windows-specific and FlaUI UI automation tests (requires active desktop session)
+dotnet test Tests/StockAnalyzer.UITests/StockAnalyzer.UITests.csproj
 ```
 > [!NOTE]
-> UI Tests are excluded by default as they require a GUI and are generally not suitable for headless CI environments.
+> UI Tests are excluded from automated CI workflows as they require an active display.
 
 ### Python Tests
+Install development dependencies and run tests from the repository root:
 ```bash
-cd StockAnalyzer.Python
-pytest
+pip install -r StockAnalyzer.Python/requirements-dev.txt
+pytest Tests/test_*.py
 ```
 
 ---

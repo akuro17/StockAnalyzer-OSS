@@ -10,7 +10,7 @@ using Xunit;
 namespace StockAnalyzer.Tests.Screener;
 
 /// <summary>
-/// Filters condition-tree editor view-model layer (Y:\Temp\sa_implementation_plan_ScreenerFilterConditionTree.md Task 2/5).
+/// Filters condition-tree editor view-model layer (docs/sa_implementation_plan_ScreenerFilterConditionTree Task 2/5).
 /// Plain view-model tests: no Avalonia control, no UI thread. Mirrors the coverage shape of
 /// StockAnalyzer.Tests.Backtest.BacktestConditionTreeViewModelTests, reduced to a single root (no Section/Side).
 /// </summary>

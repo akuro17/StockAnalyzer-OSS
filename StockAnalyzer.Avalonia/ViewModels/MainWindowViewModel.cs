@@ -684,6 +684,9 @@ public partial class MainWindowViewModel : ViewModelBase,
             tabId = "Allocation";
         else if (tabIdPart.Equals("DrawingObjects".AsSpan(), StringComparison.OrdinalIgnoreCase))
             tabId = "DrawingObjects";
+        else if (tabIdPart.Equals("ScatterPlot".AsSpan(), StringComparison.OrdinalIgnoreCase) ||
+                 tabIdPart.Equals("ScatterAnalysis".AsSpan(), StringComparison.OrdinalIgnoreCase))
+            tabId = "ScatterPlot";
         else
             tabId = tabIdPart.ToString();
 
@@ -1383,7 +1386,7 @@ public partial class MainWindowViewModel : ViewModelBase,
         }
         else
         {
-            TickerListViewModel.StartSyncPeriodYears = 5;
+            TickerListViewModel.StartSyncPeriodYears = WorkspaceSettings.DefaultStartSyncPeriodYears;
         }
 
         TickerListViewModel.DeleteLatestBarsCount = 0;

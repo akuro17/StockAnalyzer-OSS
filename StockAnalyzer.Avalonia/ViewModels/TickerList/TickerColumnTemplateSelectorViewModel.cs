@@ -15,7 +15,7 @@ namespace StockAnalyzer.Avalonia.ViewModels.TickerList;
 
 /// <summary>
 /// Backs the Tickers tab's "Column Customization" dropdown
-/// (Y:\Temp\sa_implementation_plan_TickerColumnTemplateDropdown.md).
+/// (docs/sa_implementation_plan_TickerColumnTemplateDropdown).
 /// The first entry is the sentinel <see cref="ActiveColumnsEntry"/> (the user's own working column set);
 /// the remaining entries are the saved <see cref="ColumnTemplate"/>s. Column edits made while an entry is
 /// selected are stored only in that entry's slot: the working set for Active Columns, the template
@@ -43,7 +43,7 @@ public sealed partial class TickerColumnTemplateSelectorViewModel : ObservableOb
 
     // Ticker list Id -> selected ColumnTemplate Id. A list without an entry uses Active Columns.
     private readonly Dictionary<Guid, Guid> _selectionByList = new();
-    // Selection scope (Settings > Tickers, Y:\Temp\sa_implementation_plan_TickerColumnSelectionScope.md): the
+    // Selection scope (Settings > Tickers, docs/sa_implementation_plan_TickerColumnSelectionScope): the
     // scope only chooses which of the two independent stores is active - _selectionByList (PerList, the
     // default and the pre-existing behavior) or _sharedSelection (Shared; Guid.Empty = Active Columns).
     // Nothing is ever copied between the stores.

@@ -13,7 +13,7 @@ public class MarginLiquidationCalculatorTests
     private static CandleData Bar(decimal open, decimal high, decimal low, decimal close)
         => new(Bar0, open, high, low, close, 1000);
 
-    // ---- Algebra verification (Y:\Temp\sa_ai_context_BacktestEngine_P1.md section 1.5.6 requires
+    // ---- Algebra verification (docs/sa_ai_context_BacktestEngine_P1 section 1.5.6 requires
     // this be checked with a unit test before trusting it) ----
 
     [Fact]

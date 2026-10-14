@@ -7,7 +7,7 @@ using Xunit;
 
 namespace StockAnalyzer.Core.Tests.Backtest.Reporting;
 
-/// <summary>MaxDepthDrawdownDuration / LongestDrawdownDuration / TimeInMarket / Exposure (Y:\Temp\sa_implementation_plan_BacktestReportExtendedMetrics.md, Tasks 4-5).</summary>
+/// <summary>MaxDepthDrawdownDuration / LongestDrawdownDuration / TimeInMarket / Exposure (docs/sa_implementation_plan_BacktestReportExtendedMetrics, Tasks 4-5).</summary>
 public class DrawdownDurationAndExposureMetricsTests
 {
     private static (MetricValue Depth, MetricValue Max) Durations(params decimal[] equityIncludingInitial)
