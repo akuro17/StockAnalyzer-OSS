@@ -158,27 +158,27 @@ public class CoreCointegrationSpreadIndicator : CoreIndicatorBase, ICrossTickerI
             if (_secondaryCandles != null && _secondaryCandles.Count > 0)
             {
                 // Strict Timestamp Date Alignment: match secondary candles to primary candles by calendar date
-                var secondaryByDate = new Dictionary<DateTime, CoreCandleData>();
+                // Both price series come from the series API (True High / True Low use the previous close and Heikin-Ashi sources are
+                // recursive over the whole series, as in the explicit-series branches below); the comparison value is looked up by date.
+                var primarySeries = PriceDataHelper.ExtractPriceSeries(candles, PriceSource);
+                var secondarySeries = PriceDataHelper.ExtractPriceSeries(_secondaryCandles, ComparisonPriceSource);
+                var secondaryPriceByDate = new Dictionary<DateTime, decimal?>();
                 for (int i = 0; i < _secondaryCandles.Count; i++)
                 {
                     var sc = _secondaryCandles[i];
                     if (sc != null)
                     {
-                        secondaryByDate[sc.Timestamp.Date] = sc;
+                        secondaryPriceByDate[sc.Timestamp.Date] = secondarySeries[i];
                     }
                 }
 
-                var matchedA = new List<decimal?>(candles.Count);
                 var matchedB = new List<decimal?>(candles.Count);
 
                 for (int i = 0; i < candles.Count; i++)
                 {
-                    var candleA = candles[i];
-                    matchedA.Add(PriceDataHelper.ExtractPrice(candleA, PriceSource));
-
-                    if (secondaryByDate.TryGetValue(candleA.Timestamp.Date, out var candleB))
+                    if (secondaryPriceByDate.TryGetValue(candles[i].Timestamp.Date, out var priceB))
                     {
-                        matchedB.Add(PriceDataHelper.ExtractPrice(candleB, ComparisonPriceSource));
+                        matchedB.Add(priceB);
                     }
                     else
                     {
@@ -187,7 +187,7 @@ public class CoreCointegrationSpreadIndicator : CoreIndicatorBase, ICrossTickerI
                     }
                 }
 
-                seriesA = matchedA;
+                seriesA = primarySeries;
                 seriesB = matchedB;
             }
             else if (_explicitSeriesB != null)

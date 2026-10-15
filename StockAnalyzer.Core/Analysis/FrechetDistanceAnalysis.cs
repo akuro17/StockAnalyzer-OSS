@@ -106,12 +106,20 @@ public static class FrechetDistanceAnalysis
             ? stackalloc double[length]
             : (queryNormHeapBuffer = ArrayPool<double>.Shared.Rent(length)).AsSpan(0, length);
 
+        // Prices of bars [0..queryEndIndex], filled once. Heikin-Ashi sources are recursive over the whole series, so a
+        // per-bar extraction would be wrong; True High / True Low use the previous bar's close. The candidate
+        // windows and their future bars all precede queryStartIndex, so this range covers every read below.
+        decimal[]? priceBuffer = null;
+
         try
         {
+            priceBuffer = ArrayPool<decimal>.Shared.Rent(queryEndIndex + 1);
+            PriceDataHelper.FillPrices(candles, 0, priceBuffer.AsSpan(0, queryEndIndex + 1), priceType);
+
             double querySum = 0.0;
             for (int i = 0; i < length; i++)
             {
-                double p = (double)PriceDataHelper.ExtractPrice(candles[queryStartIndex + i], priceType);
+                double p = (double)priceBuffer[queryStartIndex + i];
                 queryPrices[i] = p;
                 querySum += p;
             }
@@ -157,7 +165,7 @@ public static class FrechetDistanceAnalysis
                     double candSum = 0.0;
                     for (int i = 0; i < length; i++)
                     {
-                        double p = (double)PriceDataHelper.ExtractPrice(candles[s + i], priceType);
+                        double p = (double)priceBuffer[s + i];
                         candPrices[i] = p;
                         candSum += p;
                     }
@@ -211,14 +219,14 @@ public static class FrechetDistanceAnalysis
             double matchSum = 0.0;
             for (int i = 0; i < length; i++)
             {
-                matchSum += (double)PriceDataHelper.ExtractPrice(candles[bestStartIndex + i], priceType);
+                matchSum += (double)priceBuffer[bestStartIndex + i];
             }
             double matchMean = matchSum / length;
 
             double matchSqDiffSum = 0.0;
             for (int i = 0; i < length; i++)
             {
-                double p = (double)PriceDataHelper.ExtractPrice(candles[bestStartIndex + i], priceType);
+                double p = (double)priceBuffer[bestStartIndex + i];
                 double d = p - matchMean;
                 matchSqDiffSum += d * d;
             }
@@ -228,7 +236,7 @@ public static class FrechetDistanceAnalysis
             double residualSqSum = 0.0;
             for (int i = 0; i < length; i++)
             {
-                double p = (double)PriceDataHelper.ExtractPrice(candles[bestStartIndex + i], priceType);
+                double p = (double)priceBuffer[bestStartIndex + i];
                 double zMatch = matchStdDev <= EpsilonVariance ? 0.0 : (p - matchMean) / matchStdDev;
                 double diff = queryNorm[i] - zMatch;
                 residualSqSum += diff * diff;
@@ -253,8 +261,8 @@ public static class FrechetDistanceAnalysis
                 }
             }
 
-            decimal matchBasePrice = PriceDataHelper.ExtractPrice(candles[bestStartIndex + length - 1], priceType);
-            decimal currentPrice = PriceDataHelper.ExtractPrice(candles[queryEndIndex], priceType);
+            decimal matchBasePrice = priceBuffer[bestStartIndex + length - 1];
+            decimal currentPrice = priceBuffer[queryEndIndex];
 
             // Relative volatility scaling with absolute mean guard
             double relVol = queryStdDev / Math.Max(Math.Abs(queryMean), EpsilonDenominator);
@@ -270,7 +278,7 @@ public static class FrechetDistanceAnalysis
                     break;
                 }
 
-                decimal futurePrice = PriceDataHelper.ExtractPrice(candles[fIdx], priceType);
+                decimal futurePrice = priceBuffer[fIdx];
                 decimal rawReturn = Math.Clamp((futurePrice - matchBasePrice) / denom, MinRelativeReturn, MaxRelativeReturn);
                 decimal scaledReturn = rawReturn * (decimal)volRatio;
                 decimal predictedPrice = currentPrice * (1.0m + scaledReturn);
@@ -311,6 +319,7 @@ public static class FrechetDistanceAnalysis
         {
             if (queryHeapBuffer != null) ArrayPool<double>.Shared.Return(queryHeapBuffer);
             if (queryNormHeapBuffer != null) ArrayPool<double>.Shared.Return(queryNormHeapBuffer);
+            if (priceBuffer != null) ArrayPool<decimal>.Shared.Return(priceBuffer);
         }
     }
 }

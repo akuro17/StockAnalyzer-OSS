@@ -55,6 +55,52 @@ public class CointegrationSpreadTests
         Assert.True(IndicatorChartSuppression.IsSuppressed(IndicatorType.CointegrationSpread, CoreCointegrationSpreadIndicator.InterceptSeriesName));
     }
 
+    private static List<CoreCandleData> CreateWavyCandles(int count, decimal basePrice, int phase)
+    {
+        var candles = new List<CoreCandleData>(count);
+        for (int i = 0; i < count; i++)
+        {
+            decimal open = basePrice + ((i + phase) % 7) * 1.5m + i * 0.2m;
+            decimal close = open + (((i + phase) % 5) - 2) * 1.25m;
+            decimal high = Math.Max(open, close) + 1m + (i % 4) * 0.5m;
+            decimal low = Math.Min(open, close) - 1m - (i % 3) * 0.25m;
+            candles.Add(new CoreCandleData(new DateTime(2020, 1, 1).AddDays(i), open, high, low, close, 1000));
+        }
+
+        return candles;
+    }
+
+    [Theory]
+    [InlineData(PriceType.HeikinAshiOpen, PriceType.HeikinAshiClose)]
+    [InlineData(PriceType.HeikinAshiLow, PriceType.HeikinAshiHigh)]
+    [InlineData(PriceType.HeikinAshiClose, PriceType.Close)]
+    [InlineData(PriceType.Close, PriceType.HeikinAshiOpen)]
+    public void HeikinAshiSources_AlignedBranch_EqualsExplicitSeriesBranch(PriceType sourceA, PriceType sourceB)
+    {
+        var candlesA = CreateWavyCandles(80, 100m, 0);
+        var candlesB = CreateWavyCandles(80, 50m, 3);
+
+        // Aligned branch: comparison symbol + secondary candles (same calendar dates).
+        var aligned = new CoreCointegrationSpreadIndicator { PriceSource = sourceA };
+        aligned.Configure(new CoreCointegrationSpreadParameter
+        {
+            Period = 20,
+            ZScorePeriod = 5,
+            ComparisonSymbol = "PAIR",
+            ComparisonPriceSource = sourceB
+        });
+        aligned.SetSecondaryCandles(candlesB.Cast<CoreCandleData?>().ToList());
+        aligned.Calculate(candlesA);
+
+        // Explicit-series branch: series B resolved by the recursive series API.
+        var explicitSeries = new CoreCointegrationSpreadIndicator(20, 5, PriceDataHelper.ExtractPriceSeries(candlesB, sourceB)) { PriceSource = sourceA };
+        explicitSeries.Calculate(candlesA);
+
+        Assert.Equal(explicitSeries.Values, aligned.Values);
+        Assert.Equal(explicitSeries.HedgeRatio, aligned.HedgeRatio);
+        Assert.Contains(aligned.Values, v => v.HasValue);
+    }
+
     [Fact]
     public void Case01_EmptyCandles_ReturnsEmpty()
     {

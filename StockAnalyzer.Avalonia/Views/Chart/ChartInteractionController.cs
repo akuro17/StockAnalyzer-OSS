@@ -2075,6 +2075,12 @@ public class ChartInteractionController
             // (their isStale fallback in DrawGeometry()/Render() otherwise draws a raw
             // straight line, since it has no way to know the real shape without this
             // recalculation).
+            //
+            // The input is deliberately the visible slice, not fullHistoryCandles. Relative cost per
+            // Recalculate on 20000 bars (Debug build, 300-bar slice vs full history): Frechet 10 ms vs
+            // 2.3 s, Pearson 0.16 ms vs 17.6 ms, the other projection tools 0.1-1.6 ms vs 2.8-4.5 ms
+            // (Kalman 0.07 ms vs 0.26 ms). Consequence: a Heikin-Ashi price source recurses from the
+            // slice start while dragging (the seed difference halves per bar) and from candle 0 on release.
             if (DraggedObject is RangeSplineObject rangeSplineDragged)
             {
                 rangeSplineDragged.Recalculate(snapshot.Candles);

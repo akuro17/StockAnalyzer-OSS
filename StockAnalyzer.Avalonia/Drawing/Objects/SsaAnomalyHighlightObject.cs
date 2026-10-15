@@ -138,12 +138,17 @@ public class SsaAnomalyHighlightObject : IChartObject, IDrawingCalculatedValuesP
             return;
         }
 
+        // Heikin-Ashi sources are recursive over the whole series: fill from candles[0] (PriceDataHelper.FillPrices);
+        // True High / True Low use the previous bar's close.
+        var prices = new decimal[count];
+        PriceDataHelper.FillPrices(candles, startIndex, prices, PriceSource);
+
         var priceList = new List<double>(count);
         var timeList = new List<DateTime>(count);
 
         for (int i = startIndex; i <= endIndex; i++)
         {
-            priceList.Add((double)PriceDataHelper.ExtractPrice(candles[i], PriceSource));
+            priceList.Add((double)prices[i - startIndex]);
             timeList.Add(candles[i].Timestamp);
         }
 

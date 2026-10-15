@@ -188,20 +188,32 @@ public class AutoTimeCycleObject : IChartObject, IDrawingCalculatedValuesProvide
             double firstVal = 0.0;
             bool allSame = true;
 
-            for (int i = 0; i < n; i++)
+            // Heikin-Ashi sources are recursive over the whole series: fill from candles[0] (PriceDataHelper.FillPrices);
+            // True High / True Low use the previous bar's close.
+            decimal[] rentedPrices = ArrayPool<decimal>.Shared.Rent(n);
+            try
             {
-                double val = (double)PriceDataHelper.ExtractPrice(candles[startIndex + i], PriceSource);
-                if (double.IsNaN(val) || double.IsInfinity(val)) return; // Failsafe abort on invalid values
+                PriceDataHelper.FillPrices(candles, startIndex, rentedPrices.AsSpan(0, n), PriceSource);
 
-                rentedSamples[i] = val;
-                if (i == 0)
+                for (int i = 0; i < n; i++)
                 {
-                    firstVal = val;
+                    double val = (double)rentedPrices[i];
+                    if (double.IsNaN(val) || double.IsInfinity(val)) return; // Failsafe abort on invalid values
+
+                    rentedSamples[i] = val;
+                    if (i == 0)
+                    {
+                        firstVal = val;
+                    }
+                    else if (Math.Abs(val - firstVal) > 1e-12)
+                    {
+                        allSame = false;
+                    }
                 }
-                else if (Math.Abs(val - firstVal) > 1e-12)
-                {
-                    allSame = false;
-                }
+            }
+            finally
+            {
+                ArrayPool<decimal>.Shared.Return(rentedPrices);
             }
 
             if (allSame) return; // Failsafe abort on zero-variance constant signal

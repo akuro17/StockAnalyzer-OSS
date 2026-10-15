@@ -5,6 +5,7 @@ using StockAnalyzer.Avalonia.Drawing;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Indicators;
 using StockAnalyzer.Core.Theme;
+using StockAnalyzer.Core.Utilities;
 
 namespace StockAnalyzer.Avalonia.Views.Chart.Renderers;
 
@@ -59,6 +60,26 @@ public sealed class DotChartRenderer : IChartRenderer, IDisposable
     private const float DiamondScaleFactor = 1.2533f;
 
     /// <summary>
+    /// Bars of Heikin-Ashi history replayed before the first visible bar. The seed error of the recursion halves every bar,
+    /// so 50 bars leave about 2^-50 (below 1e-15) of the seed difference.
+    /// </summary>
+    private const int HeikinAshiWarmupBars = 50;
+
+    /// <summary>
+    /// Advances the Heikin-Ashi (Open, Close) state by <paramref name="candle"/> through the SSoT step: the seed values while no
+    /// previous state exists, otherwise <see cref="HeikinAshiConverter.NextState"/>. Allocation-free.
+    /// Internal for unit testing.
+    /// </summary>
+    internal static void AdvanceHeikinAshiState(CoreCandleData candle, ref decimal? prevHaOpen, ref decimal? prevHaClose)
+    {
+        var (haOpen, haClose) = prevHaOpen.HasValue && prevHaClose.HasValue
+            ? HeikinAshiConverter.NextState(candle, prevHaOpen.Value, prevHaClose.Value)
+            : HeikinAshiConverter.CalculateInitialValues(candle);
+        prevHaOpen = haOpen;
+        prevHaClose = haClose;
+    }
+
+    /// <summary>
     /// Computes the effective rendering radius given the base radius and candle width.
     /// Clamps between MinEffectiveRadius (0.5) and baseRadius, scaling by SpacingMarginFactor (0.45).
     /// Internal for unit testing.
@@ -89,12 +110,6 @@ public sealed class DotChartRenderer : IChartRenderer, IDisposable
         if (currentPrice < previousPrice.Value) return -1;
         return 0;
     }
-
-    /// <summary>
-    /// Checks if the price type belongs to the Heikin-Ashi family.
-    /// </summary>
-    private static bool IsHeikinAshiType(PriceType type) =>
-        type is PriceType.HeikinAshiOpen or PriceType.HeikinAshiHigh or PriceType.HeikinAshiLow or PriceType.HeikinAshiClose;
 
     public void Render(SKCanvas canvas, Rect chartArea, ChartDataSnapshot snapshot, IChartRenderConfig baseConfig)
     {
@@ -144,31 +159,29 @@ public sealed class DotChartRenderer : IChartRenderer, IDisposable
         decimal? prevHaOpen = null;
         decimal? prevHaClose = null;
 
-        bool isHeikinAshi = IsHeikinAshiType(config.DotPriceType);
+        bool isHeikinAshi = PriceDataHelper.IsHeikinAshi(config.DotPriceType);
 
         // Scrolled viewport continuity: initialize prevPrice from preceding candle if available
         if (snapshot.StartIndex > 0 && snapshot.AllCandles != null && snapshot.StartIndex - 1 < snapshot.AllCandles.Count)
         {
+            decimal? precedingHaOpen = null;
+            decimal? precedingHaClose = null;
             if (isHeikinAshi)
             {
-                // Warm up Heikin-Ashi recursive open/close state from up to 50 bars back for convergence
-                int warmupStart = Math.Max(0, snapshot.StartIndex - 50);
-                var initialCandle = snapshot.AllCandles[warmupStart];
-                decimal hOpen = (initialCandle.Open + initialCandle.Close) / 2.0m;
-                decimal hClose = (initialCandle.Open + initialCandle.High + initialCandle.Low + initialCandle.Close) / 4.0m;
-
-                for (int k = warmupStart + 1; k < snapshot.StartIndex; k++)
+                // Warm up Heikin-Ashi recursive open/close state from up to HeikinAshiWarmupBars bars back for convergence
+                int warmupStart = Math.Max(0, snapshot.StartIndex - HeikinAshiWarmupBars);
+                // One allocation-free pass: the state through the preceding bar (input of the first visible dot) and the state
+                // before it (input of the preceding bar's own price; null seeds the warm-up bar itself).
+                (prevHaOpen, prevHaClose) = HeikinAshiConverter.GetStateAt(snapshot.AllCandles, snapshot.StartIndex - 1, warmupStart, out var stateBeforePreceding);
+                if (stateBeforePreceding is { } before)
                 {
-                    var c = snapshot.AllCandles[k];
-                    hClose = (c.Open + c.High + c.Low + c.Close) / 4.0m;
-                    hOpen = (hOpen + hClose) / 2.0m;
+                    precedingHaOpen = before.haOpen;
+                    precedingHaClose = before.haClose;
                 }
-                prevHaOpen = hOpen;
-                prevHaClose = hClose;
             }
 
             var precedingCandle = snapshot.AllCandles[snapshot.StartIndex - 1];
-            prevPrice = PriceDataHelper.ExtractPrice(precedingCandle, config.DotPriceType, null, prevHaOpen, prevHaClose);
+            prevPrice = PriceDataHelper.ExtractPrice(precedingCandle, config.DotPriceType, null, precedingHaOpen, precedingHaClose);
             prevClose = precedingCandle.Close;
         }
 
@@ -185,12 +198,7 @@ public sealed class DotChartRenderer : IChartRenderer, IDisposable
                 prevClose = candle.Close;
                 if (isHeikinAshi)
                 {
-                    decimal haClose = (candle.Open + candle.High + candle.Low + candle.Close) / 4.0m;
-                    decimal haOpen = prevHaOpen.HasValue && prevHaClose.HasValue
-                        ? (prevHaOpen.Value + prevHaClose.Value) / 2.0m
-                        : (candle.Open + candle.Close) / 2.0m;
-                    prevHaOpen = haOpen;
-                    prevHaClose = haClose;
+                    AdvanceHeikinAshiState(candle, ref prevHaOpen, ref prevHaClose);
                 }
                 continue;
             }
@@ -218,12 +226,7 @@ public sealed class DotChartRenderer : IChartRenderer, IDisposable
 
             if (isHeikinAshi)
             {
-                decimal haClose = (candle.Open + candle.High + candle.Low + candle.Close) / 4.0m;
-                decimal haOpen = prevHaOpen.HasValue && prevHaClose.HasValue
-                    ? (prevHaOpen.Value + prevHaClose.Value) / 2.0m
-                    : (candle.Open + candle.Close) / 2.0m;
-                prevHaOpen = haOpen;
-                prevHaClose = haClose;
+                AdvanceHeikinAshiState(candle, ref prevHaOpen, ref prevHaClose);
             }
 
             float x;

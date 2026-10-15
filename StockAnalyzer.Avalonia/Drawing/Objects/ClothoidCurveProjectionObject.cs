@@ -205,29 +205,8 @@ public class ClothoidCurveProjectionObject : IChartObject, IDrawingCalculatedVal
 
         try
         {
-            decimal? prevClose = startIndex > 0 ? candles[startIndex - 1].Close : null;
-            decimal? prevHaOpen = null;
-            decimal? prevHaClose = null;
-
-            for (int i = 0; i < count; i++)
-            {
-                var c = candles[startIndex + i];
-                prices[i] = PriceDataHelper.ExtractPrice(c, PriceSource, prevClose, prevHaOpen, prevHaClose);
-
-                prevClose = c.Close;
-                if (prevHaOpen.HasValue && prevHaClose.HasValue)
-                {
-                    decimal haClose = (c.Open + c.High + c.Low + c.Close) / 4.0m;
-                    decimal haOpen = (prevHaOpen.Value + prevHaClose.Value) / 2.0m;
-                    prevHaOpen = haOpen;
-                    prevHaClose = haClose;
-                }
-                else
-                {
-                    prevHaOpen = (c.Open + c.Close) / 2.0m;
-                    prevHaClose = (c.Open + c.High + c.Low + c.Close) / 4.0m;
-                }
-            }
+            // Previous close for True High/Low and a Heikin-Ashi recursion from candles[0] (equal to the chart), not from the window start.
+            PriceDataHelper.FillPrices(candles, startIndex, prices, PriceSource);
 
             double cRate = (double)CurvatureRate;
             if (AutoPolarity && count >= 2)

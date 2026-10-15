@@ -503,6 +503,10 @@ public partial class App : Application, IDisposable, IThemeVariantDispatcher
         Resources["Color.Background.Secondary"] = bg;
         Resources["Color.Background.Tertiary"] = bg;
 
+        var chartBg = ToAvColor(colors.ChartBackground);
+        Resources["Color.Chart.Background"] = chartBg;
+        SetOrUpdateBrush("Brush.Chart.Background", chartBg);
+
         // Update Texts
         var text = ToAvColor(colors.ShellText);
         var secText = ToAvColor(colors.ShellSecondaryText);

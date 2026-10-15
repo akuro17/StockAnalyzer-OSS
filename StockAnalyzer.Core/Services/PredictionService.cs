@@ -569,7 +569,7 @@ public class PredictionService : IPredictionService, IDisposable
                         throw new InvalidOperationException("Composed features: a 'Price' kind channel requires a Price value.");
                     }
 
-                    if (IsHeikinAshi(channel.Price.Value))
+                    if (PriceDataHelper.IsHeikinAshi(channel.Price.Value))
                     {
                         throw new InvalidOperationException(
                             $"Composed features: price type '{channel.Price.Value}' is a Heikin-Ashi variant, " +
@@ -601,9 +601,6 @@ public class PredictionService : IPredictionService, IDisposable
 
         return spec;
     }
-
-    private static bool IsHeikinAshi(PriceType priceType) => priceType is
-        PriceType.HeikinAshiOpen or PriceType.HeikinAshiHigh or PriceType.HeikinAshiLow or PriceType.HeikinAshiClose;
 
     /// <summary>
     /// Builds the composed-features input tensor for one inference window: for each channel in

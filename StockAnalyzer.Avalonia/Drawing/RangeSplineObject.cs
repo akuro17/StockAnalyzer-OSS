@@ -226,62 +226,54 @@ public class RangeSplineObject : RelativeGeometricRenderer, IExtremaLevelSupport
         _lastRecalcStart = tMin;
         _lastRecalcEnd = tMax;
 
-        if (candles is IReadOnlyList<CoreCandleData> list)
+        // Chronological candles: the range is the contiguous block found by binary search (a plain enumerable is materialised once).
+        var list = candles as IReadOnlyList<CoreCandleData> ?? candles.ToList();
+        int count = list.Count;
+        if (count == 0) return;
+
+        // Binary search lower bound (first candle with Timestamp >= tMin)
+        int low = 0, high = count - 1;
+        int startIndex = -1;
+        while (low <= high)
         {
-            int count = list.Count;
-            if (count == 0) return;
-
-            // Binary search lower bound (first candle with Timestamp >= tMin)
-            int low = 0, high = count - 1;
-            int startIndex = -1;
-            while (low <= high)
+            int mid = low + ((high - low) >> 1);
+            if (list[mid].Timestamp >= tMin)
             {
-                int mid = low + ((high - low) >> 1);
-                if (list[mid].Timestamp >= tMin)
-                {
-                    startIndex = mid;
-                    high = mid - 1;
-                }
-                else
-                {
-                    low = mid + 1;
-                }
+                startIndex = mid;
+                high = mid - 1;
             }
-
-            // Binary search upper bound (last candle with Timestamp <= tMax)
-            low = 0; high = count - 1;
-            int endIndex = -1;
-            while (low <= high)
+            else
             {
-                int mid = low + ((high - low) >> 1);
-                if (list[mid].Timestamp <= tMax)
-                {
-                    endIndex = mid;
-                    low = mid + 1;
-                }
-                else
-                {
-                    high = mid - 1;
-                }
-            }
-
-            if (startIndex != -1 && endIndex != -1 && startIndex <= endIndex)
-            {
-                for (int i = startIndex; i <= endIndex; i++)
-                {
-                    var c = list[i];
-                    _extractedPoints.Add(new ChartPoint(c.Timestamp, ExtractPrice(c, PriceSource)));
-                }
+                low = mid + 1;
             }
         }
-        else
+
+        // Binary search upper bound (last candle with Timestamp <= tMax)
+        low = 0; high = count - 1;
+        int endIndex = -1;
+        while (low <= high)
         {
-            foreach (var c in candles)
+            int mid = low + ((high - low) >> 1);
+            if (list[mid].Timestamp <= tMax)
             {
-                if (c.Timestamp >= tMin && c.Timestamp <= tMax)
-                {
-                    _extractedPoints.Add(new ChartPoint(c.Timestamp, ExtractPrice(c, PriceSource)));
-                }
+                endIndex = mid;
+                low = mid + 1;
+            }
+            else
+            {
+                high = mid - 1;
+            }
+        }
+
+        if (startIndex != -1 && endIndex != -1 && startIndex <= endIndex)
+        {
+            // Heikin-Ashi sources are recursive over the whole series: fill from candles[0] (PriceDataHelper.FillPrices);
+            // True High / True Low use the previous bar's close.
+            var prices = new decimal[endIndex - startIndex + 1];
+            PriceDataHelper.FillPrices(list, startIndex, prices, PriceSource);
+            for (int i = startIndex; i <= endIndex; i++)
+            {
+                _extractedPoints.Add(new ChartPoint(list[i].Timestamp, prices[i - startIndex]));
             }
         }
 
@@ -309,12 +301,6 @@ public class RangeSplineObject : RelativeGeometricRenderer, IExtremaLevelSupport
             }
         }
     }
-
-    /// <summary>
-    /// Extracts price with decimal precision based on the specified PriceType (SSoT).
-    /// </summary>
-    public static decimal ExtractPrice(CoreCandleData candle, PriceType source)
-        => PriceDataHelper.ExtractPrice(candle, source);
 
     /// <summary>
     /// Extracts price with decimal precision based on the specified PriceField (FR-61-7-02 backward compatibility).

@@ -6,11 +6,13 @@ using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.Rendering.SceneGraph;
 using Avalonia.Skia;
+using Microsoft.Extensions.DependencyInjection;
 using SkiaSharp;
 using StockAnalyzer.Avalonia.Drawing;
 using StockAnalyzer.Core.Analysis;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Analysis;
+using StockAnalyzer.Core.Theme;
 using Point = Avalonia.Point;
 
 namespace StockAnalyzer.Avalonia.Views.Controls;
@@ -98,6 +100,7 @@ public sealed class ScatterPlotControl : Control, IDisposable
     private readonly SKPaint _tooltipBorderPaint = new() { Color = new SKColor(0x52, 0x52, 0x5B), Style = SKPaintStyle.Stroke, StrokeWidth = 1.0f };
     private readonly SKPaint _tooltipTextPaint = new() { Color = SKColors.White, Style = SKPaintStyle.Fill, TextSize = 11.0f, IsAntialias = true };
     private Point? _cursorPos;
+    private IThemeManager? _themeManager;
 
     static ScatterPlotControl()
     {
@@ -134,6 +137,9 @@ public sealed class ScatterPlotControl : Control, IDisposable
             StrokeWidth = 1.0f,
             PathEffect = _crosshairDashEffect
         };
+
+        var initialTheme = (Application.Current as App)?.Services?.GetService<IThemeManager>()?.CurrentTheme ?? ThemeColors.Dark;
+        UpdateThemeColors(initialTheme);
     }
 
     public ScatterDataset? Dataset
@@ -838,8 +844,28 @@ public sealed class ScatterPlotControl : Control, IDisposable
         return value.ToString("G3");
     }
 
+    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToVisualTree(e);
+        if (_themeManager is not null)
+        {
+            _themeManager.PropertyChanged -= OnThemeManagerPropertyChanged;
+        }
+        _themeManager = (Application.Current as App)?.Services?.GetService<IThemeManager>();
+        if (_themeManager is not null)
+        {
+            _themeManager.PropertyChanged += OnThemeManagerPropertyChanged;
+            UpdateThemeColors(_themeManager.CurrentTheme);
+        }
+    }
+
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
+        if (_themeManager is not null)
+        {
+            _themeManager.PropertyChanged -= OnThemeManagerPropertyChanged;
+            _themeManager = null;
+        }
         base.OnDetachedFromVisualTree(e);
         HoveredPointIndex = null;
         _cursorPos = null;
@@ -849,12 +875,48 @@ public sealed class ScatterPlotControl : Control, IDisposable
         _regressionPath.Reset();
     }
 
+    private void OnThemeManagerPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is null or nameof(IThemeManager.CurrentTheme))
+        {
+            global::Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            {
+                if (_themeManager is not null && !_isDisposed)
+                {
+                    UpdateThemeColors(_themeManager.CurrentTheme);
+                    InvalidateVisual();
+                }
+            });
+        }
+    }
+
+    private void UpdateThemeColors(ThemeColors theme)
+    {
+        SKColor bgColor = theme.ChartBackground.ToSkColor();
+        _bgPaint.Color = bgColor;
+        _plotBgPaint.Color = bgColor;
+        _gridPaint.Color = theme.GridLine.ToSkColor();
+        _axisLinePaint.Color = theme.GridLine.ToSkColor();
+        _axisTextPaint.Color = theme.AxisText.ToSkColor();
+        _axisTitlePaint.Color = theme.AxisText.ToSkColor();
+    }
+
+    internal void SetTheme(ThemeColors theme) => UpdateThemeColors(theme);
+    internal SKColor BackgroundColor => _bgPaint.Color;
+    internal SKColor PlotBackgroundColor => _plotBgPaint.Color;
+
     private bool _isDisposed;
 
     public void Dispose()
     {
         if (_isDisposed) return;
         _isDisposed = true;
+
+        if (_themeManager is not null)
+        {
+            _themeManager.PropertyChanged -= OnThemeManagerPropertyChanged;
+            _themeManager = null;
+        }
 
         _gridDashEffect.Dispose();
         _crosshairDashEffect.Dispose();

@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
 using StockAnalyzer.Core.Models;
@@ -11,6 +12,7 @@ public static class TimeAtPriceAnalysis
     /// <summary>
     /// Calculates the Time at Price (residence time profile) for a given range of candles.
     /// Distributes time duration (counted in bars) into price bins according to the selected PriceType.
+    /// Heikin-Ashi price types follow the recursion from the first supplied candle.
     /// </summary>
     public static List<VolumeBin> CalculateProfile(
         IEnumerable<CoreCandleData> candles,
@@ -71,23 +73,35 @@ public static class TimeAtPriceAnalysis
             });
         }
 
-        checked
+        // Heikin-Ashi sources are recursive over the supplied sequence (it starts at the first supplied candle);
+        // True High / True Low use the previous bar's close.
+        decimal[] prices = ArrayPool<decimal>.Shared.Rent(candleList.Count);
+        try
         {
-            for (int i = 0; i < candleList.Count; i++)
+            PriceDataHelper.FillPrices(candleList, 0, prices.AsSpan(0, candleList.Count), priceType);
+
+            checked
             {
-                var candle = candleList[i];
-                decimal price = PriceDataHelper.ExtractPrice(candle, priceType);
-                bool isBullish = candle.Close >= candle.Open;
+                for (int i = 0; i < candleList.Count; i++)
+                {
+                    var candle = candleList[i];
+                    decimal price = prices[i];
+                    bool isBullish = candle.Close >= candle.Open;
 
-                int idx = (int)((price - minPrice) / binSize);
-                if (idx < 0) idx = 0;
-                if (idx >= rowSize) idx = rowSize - 1;
+                    int idx = (int)((price - minPrice) / binSize);
+                    if (idx < 0) idx = 0;
+                    if (idx >= rowSize) idx = rowSize - 1;
 
-                var targetBin = bins[idx];
-                targetBin.TotalVolume += 1;
-                if (isBullish) targetBin.BuyVolume += 1;
-                else targetBin.SellVolume += 1;
+                    var targetBin = bins[idx];
+                    targetBin.TotalVolume += 1;
+                    if (isBullish) targetBin.BuyVolume += 1;
+                    else targetBin.SellVolume += 1;
+                }
             }
+        }
+        finally
+        {
+            ArrayPool<decimal>.Shared.Return(prices);
         }
 
         long maxTime = bins.Count > 0 ? bins.Max(b => b.TotalVolume) : 1;

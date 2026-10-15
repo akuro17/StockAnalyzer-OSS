@@ -205,5 +205,79 @@ public class ScreenerValueExtractorTests
         };
         Assert.Equal(110m, extractor.ExtractValue(configPrevClose, candles));
     }
+
+    private static List<CoreCandleData> HeikinAshiRecursionCandles() => new()
+    {
+        new(DateTime.Today.AddDays(0), 100m, 110m, 95m, 105m, 1000),
+        new(DateTime.Today.AddDays(1), 106m, 115m, 102m, 112m, 1200),
+        new(DateTime.Today.AddDays(2), 111m, 118m, 108m, 110m, 1100),
+        new(DateTime.Today.AddDays(3), 109m, 114m, 100m, 102m, 1500),
+        new(DateTime.Today.AddDays(4), 103m, 108m, 98m, 107m, 1300),
+    };
+
+    private static ScreenerIndicatorSideConfig HeikinAshiConfig(PriceType type, int offset) => new()
+    {
+        IndicatorType = IndicatorType.Price,
+        OutputName = type.ToString(),
+        CustomDisplayName = PriceDataHelper.FormatPriceTypeLabel(type),
+        Offset = offset
+    };
+
+    // Spec indicators_formulas_0466: HA_Open_t = (HA_Open_{t-1} + HA_Close_{t-1}) / 2, seeded with (O_0 + C_0) / 2.
+    // Rows: targetIdx, HA Open, HA High, HA Low, HA Close (hand computed, exact decimals).
+    [Theory]
+    [InlineData(0, 102.5, 110, 95, 102.5)]
+    [InlineData(1, 102.5, 115, 102, 108.75)]
+    [InlineData(2, 105.625, 118, 105.625, 111.75)]
+    [InlineData(3, 108.6875, 114, 100, 106.25)]
+    [InlineData(4, 107.46875, 108, 98, 104)]
+    public void ExtractValue_HeikinAshi_UsesRecursiveState(int targetIdx, double open, double high, double low, double close)
+    {
+        var extractor = ScreenerValueExtractor.Default;
+        var candles = HeikinAshiRecursionCandles();
+        int offset = candles.Count - 1 - targetIdx;
+
+        Assert.Equal((decimal)open, extractor.ExtractValue(HeikinAshiConfig(PriceType.HeikinAshiOpen, offset), candles));
+        Assert.Equal((decimal)high, extractor.ExtractValue(HeikinAshiConfig(PriceType.HeikinAshiHigh, offset), candles));
+        Assert.Equal((decimal)low, extractor.ExtractValue(HeikinAshiConfig(PriceType.HeikinAshiLow, offset), candles));
+        Assert.Equal((decimal)close, extractor.ExtractValue(HeikinAshiConfig(PriceType.HeikinAshiClose, offset), candles));
+    }
+
+    [Fact]
+    public void ExtractValue_HeikinAshi_SingleCandle_UsesSeed()
+    {
+        var extractor = ScreenerValueExtractor.Default;
+        var candles = new List<CoreCandleData> { new(DateTime.Today, 100m, 120m, 80m, 110m, 1000) };
+
+        Assert.Equal(105m, extractor.ExtractValue(HeikinAshiConfig(PriceType.HeikinAshiOpen, 0), candles));
+        Assert.Equal(102.5m, extractor.ExtractValue(HeikinAshiConfig(PriceType.HeikinAshiClose, 0), candles));
+    }
+
+    [Theory]
+    [InlineData(PriceType.HeikinAshiOpen)]
+    [InlineData(PriceType.HeikinAshiHigh)]
+    [InlineData(PriceType.HeikinAshiLow)]
+    [InlineData(PriceType.HeikinAshiClose)]
+    public void ExtractValue_HeikinAshi_MatchesRecursiveSeriesAtEveryIndex(PriceType type)
+    {
+        var extractor = ScreenerValueExtractor.Default;
+        var candles = new List<CoreCandleData>();
+        for (int i = 0; i < 40; i++)
+        {
+            decimal open = 100m + (i % 7) * 1.5m - (i % 3) * 0.75m;
+            decimal close = open + ((i % 5) - 2) * 1.25m;
+            decimal high = Math.Max(open, close) + 1m + (i % 4) * 0.5m;
+            decimal low = Math.Min(open, close) - 1m - (i % 3) * 0.25m;
+            candles.Add(new CoreCandleData(DateTime.Today.AddDays(i), open, high, low, close, 1000 + i));
+        }
+
+        var expected = PriceDataHelper.ExtractPriceSeries(candles, type);
+
+        for (int idx = 0; idx < candles.Count; idx++)
+        {
+            int offset = candles.Count - 1 - idx;
+            Assert.Equal(expected[idx]!.Value, extractor.ExtractValue(HeikinAshiConfig(type, offset), candles));
+        }
+    }
 }
 

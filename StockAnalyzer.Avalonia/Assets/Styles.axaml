@@ -145,20 +145,21 @@
         </Style>
     </ControlTheme>
 
-    <!-- Chart Toolbar Toggle Button Style (Checked = theme Button color, Unchecked = weight-matched dark gray) -->
+    <!-- Chart Toolbar Toggle Button Style (Checked = theme Button color, Unchecked = transparent background) -->
     <ControlTheme x:Key="ChartToggleButtonStyle" TargetType="ToggleButton" BasedOn="{StaticResource BaseButtonStyle}">
-        <Setter Property="Background" Value="{DynamicResource Brush.Button.InactiveBackground}"/>
+        <Setter Property="Background" Value="Transparent"/>
         <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border.Primary}"/>
         <Setter Property="BorderThickness" Value="1"/>
-        <Setter Property="Foreground" Value="{DynamicResource Brush.Button.Text}"/>
+        <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Primary}"/>
         <Style Selector="^:pointerover:not(:checked) /template/ Border#border">
-            <Setter Property="Background" Value="{DynamicResource Brush.Button.InactiveHover}"/>
+            <Setter Property="Background" Value="{DynamicResource Brush.Background.Hover}"/>
         </Style>
         <Style Selector="^:checked /template/ Border#border">
             <Setter Property="Background" Value="{DynamicResource Brush.Button.Background}"/>
         </Style>
         <Style Selector="^:checked">
             <Setter Property="BorderBrush" Value="{DynamicResource Brush.Button.Background}"/>
+            <Setter Property="Foreground" Value="{DynamicResource Brush.Button.Text}"/>
         </Style>
         <Style Selector="^:checked:pointerover /template/ Border#border">
             <Setter Property="Background" Value="{DynamicResource Brush.Button.Hover}"/>

@@ -97,11 +97,23 @@ public static class ArimaProjectionAnalysis
 
         try
         {
-            for (int i = 0; i < count; i++)
+            // Heikin-Ashi sources are recursive over the whole series, so the window is filled by PriceDataHelper.FillPrices
+            // (True High / True Low use the previous bar's close).
+            double lastPrice;
+            decimal[] rentedSource = ArrayPool<decimal>.Shared.Rent(count);
+            try
             {
-                int candleIdx = startIndex + i;
-                decimal? prevClose = (candleIdx > 0) ? candles[candleIdx - 1].Close : null;
-                prices[i] = (double)PriceDataHelper.ExtractPrice(candles[candleIdx], priceSource, prevClose);
+                PriceDataHelper.FillPrices(candles, startIndex, rentedSource.AsSpan(0, count), priceSource);
+                for (int i = 0; i < count; i++)
+                {
+                    prices[i] = (double)rentedSource[i];
+                }
+
+                lastPrice = (double)rentedSource[count - 1];
+            }
+            finally
+            {
+                ArrayPool<decimal>.Shared.Return(rentedSource);
             }
 
             Span<double> forecasted = stackalloc double[steps];
@@ -144,8 +156,6 @@ public static class ArimaProjectionAnalysis
 
             // First point (h=0) connects seamlessly from the last candle of the selection window (C0 continuity)
             var lastCandle = candles[endIndex];
-            decimal? lastPrevClose = (endIndex > 0) ? candles[endIndex - 1].Close : null;
-            double lastPrice = (double)PriceDataHelper.ExtractPrice(lastCandle, priceSource, lastPrevClose);
             var initialPoint = new Point((double)lastCandle.Timestamp.Ticks, lastPrice);
 
             projectedPoints.Add(initialPoint);

@@ -120,8 +120,21 @@ public class FftSpectrumObject : IChartObject, IDisposable, IDrawingCalculatedVa
         var start = t1 < t2 ? t1 : t2;
         var end = t1 < t2 ? t2 : t1;
 
-        var range = candles.Where(c => c.Timestamp >= start && c.Timestamp <= end).ToList();
-        if (range.Count < FftSpectrumAnalysis.MinSampleCount)
+        // Chronological candles: the selected range is the contiguous block [startIndex..endIndex].
+        var all = candles as IReadOnlyList<CoreCandleData> ?? candles.ToList();
+        int startIndex = -1;
+        int endIndex = -1;
+        for (int i = 0; i < all.Count; i++)
+        {
+            if (all[i].Timestamp >= start && all[i].Timestamp <= end)
+            {
+                if (startIndex < 0) startIndex = i;
+                endIndex = i;
+            }
+        }
+
+        int count = startIndex < 0 ? 0 : endIndex - startIndex + 1;
+        if (count < FftSpectrumAnalysis.MinSampleCount)
         {
             SpectrumBins = Array.Empty<FftSpectrumBin>();
             DominantPeriod = 0;
@@ -129,11 +142,19 @@ public class FftSpectrumObject : IChartObject, IDisposable, IDrawingCalculatedVa
             return;
         }
 
-        Func<CoreCandleData, double> selector = c => (double)PriceDataHelper.ExtractPrice(c, PriceSource);
+        // Heikin-Ashi sources are recursive over the whole series: fill from candles[0] (PriceDataHelper.FillPrices);
+        // True High / True Low use the previous bar's close.
+        var prices = new decimal[count];
+        PriceDataHelper.FillPrices(all, startIndex, prices, PriceSource);
+
+        var samples = new double[count];
+        for (int i = 0; i < count; i++)
+        {
+            samples[i] = (double)prices[i];
+        }
 
         var result = FftSpectrumAnalysis.CalculateSpectrum(
-            range,
-            selector,
+            samples,
             applyDetrend: ApplyDetrend,
             applyHanningWindow: ApplyWindow,
             minPeriod: MinPeriod,

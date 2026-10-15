@@ -255,7 +255,10 @@ public class FrechetProjectionObject : IChartObject, IDrawingCalculatedValuesPro
         Distance = result.Distance;
 
         // Base anchor point for smooth continuous trajectory line
-        var currentPrice = (double)PriceDataHelper.ExtractPrice(candles[endIndex], PriceSource);
+        // Heikin-Ashi sources are recursive over the whole series (PriceDataHelper.FillPrices).
+        var endPrice = new decimal[1];
+        PriceDataHelper.FillPrices(candles, endIndex, endPrice, PriceSource);
+        var currentPrice = (double)endPrice[0];
         var basePoint = new StockAnalyzer.Core.Models.Point(candles[endIndex].Timestamp.Ticks, currentPrice);
 
         var projected = new List<StockAnalyzer.Core.Models.Point>(result.Projections.Count + 1) { basePoint };

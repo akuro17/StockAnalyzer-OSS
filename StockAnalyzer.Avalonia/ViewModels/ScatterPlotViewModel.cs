@@ -63,8 +63,39 @@ public partial class ScatterPlotViewModel : ViewModelBase,
     [ObservableProperty] private bool _showPredictionBand = false;
     [ObservableProperty] private bool _suppressOutliers = false;
 
-    [ObservableProperty] private PriceScaleType _xScale = PriceScaleType.Linear;
-    [ObservableProperty] private PriceScaleType _yScale = PriceScaleType.Linear;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsXLog))]
+    private PriceScaleType _xScale = PriceScaleType.Linear;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsYLog))]
+    private PriceScaleType _yScale = PriceScaleType.Linear;
+
+    public bool IsXLog
+    {
+        get => XScale == PriceScaleType.Log;
+        set
+        {
+            var target = value ? PriceScaleType.Log : PriceScaleType.Linear;
+            if (XScale != target)
+            {
+                XScale = target;
+            }
+        }
+    }
+
+    public bool IsYLog
+    {
+        get => YScale == PriceScaleType.Log;
+        set
+        {
+            var target = value ? PriceScaleType.Log : PriceScaleType.Linear;
+            if (YScale != target)
+            {
+                YScale = target;
+            }
+        }
+    }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ColorSchemeLabel))]

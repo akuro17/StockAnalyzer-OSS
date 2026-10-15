@@ -18,6 +18,21 @@ public sealed partial class RlGenerationAndQValueTests
 {
     private const string WorkerVariable = "SA_R07_WORKER_CONFIG";
     private static readonly TimeSpan WorkerLimit = TimeSpan.FromSeconds(60);
+    private static readonly TimeSpan CancelDelay = TimeSpan.FromMilliseconds(50);
+    /// <summary>
+    /// Cancels after <see cref="CancelDelay"/> from a dedicated thread. A <c>CancellationTokenSource(TimeSpan)</c> timer runs on the
+    /// thread pool, so a starved pool can deliver the cancellation after a 150 ms lock timeout and the timeout wins the race.
+    /// </summary>
+    private static CancellationTokenSource CancelFromDedicatedThread()
+    {
+        var source = new CancellationTokenSource();
+        new Thread(() =>
+        {
+            Thread.Sleep(CancelDelay);
+            try { source.Cancel(); } catch (ObjectDisposedException) { }
+        }) { IsBackground = true }.Start();
+        return source;
+    }
     private static readonly TimeSpan WorkerPoll = TimeSpan.FromMilliseconds(25);
     private sealed record WorkerConfig(string Operation, string Root, string Value, string Ready, string Trigger);
     public sealed class RegistryWorkerAttribute : FactAttribute
@@ -193,6 +208,8 @@ public sealed partial class RlGenerationAndQValueTests
     [Fact] public async Task R07_TimeoutAndCancellationDoNotStealOwnershipAndLeaveEvidence()
     {
         using var registry = new ModelGenerationRegistry(RegistryRoot) { StoreLockTimeout = TimeSpan.FromMilliseconds(150) };
+        // The cancellation phase uses the default lock timeout so that only the cancellation can end the wait, never the timeout.
+        using var patientRegistry = new ModelGenerationRegistry(RegistryRoot);
         string ready = Path.Combine(_root, "ready"), trigger = Path.Combine(_root, "trigger");
         var process = StartWorker("hold-store", "", ready, trigger);
         try
@@ -200,8 +217,8 @@ public sealed partial class RlGenerationAndQValueTests
             await WaitFile(ready); Assert.Throws<TimeoutException>(() => registry.ListRl());
             using var cancelled = new CancellationTokenSource(); cancelled.Cancel();
             await Assert.ThrowsAnyAsync<OperationCanceledException>(() => registry.ActivateRlAsync(new string('a', 64), cancelled.Token));
-            using var waiting = new CancellationTokenSource(TimeSpan.FromMilliseconds(50));
-            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => registry.ActivateRlAsync(new string('a', 64), waiting.Token));
+            using var waiting = CancelFromDedicatedThread();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => patientRegistry.ActivateRlAsync(new string('a', 64), waiting.Token));
             Assert.NotEmpty(Directory.GetFiles(Path.Combine(RegistryRoot, ModelGenerationRegistry.Coordination.Folder), ModelGenerationRegistry.Coordination.FailureEvidencePattern));
             StopWorker(process); Assert.Empty(registry.ListRl());
         }
@@ -221,7 +238,7 @@ public sealed partial class RlGenerationAndQValueTests
         {
             await started.Task.WaitAsync(WorkerLimit);
             await Assert.ThrowsAsync<TimeoutException>(() => registry.ActivateRlAsync(candidate.ModelId));
-            using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(50));
+            using var cancellation = CancelFromDedicatedThread();
             await Assert.ThrowsAnyAsync<OperationCanceledException>(() => registry.ActivateRlAsync(candidate.ModelId, cancellation.Token));
             Assert.Null(registry.RlActiveId);
         }

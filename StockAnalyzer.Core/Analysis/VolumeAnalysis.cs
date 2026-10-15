@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
 using StockAnalyzer.Core.Models;
@@ -180,21 +181,36 @@ public static class VolumeAnalysis
         decimal cumulativePV = 0;
         long cumulativeVol = 0;
 
-        foreach (var candle in candles)
+        // Heikin-Ashi sources are recursive over the supplied sequence (it starts at the first supplied candle);
+        // True High / True Low use the previous bar's close.
+        var candleList = candles as IReadOnlyList<CoreCandleData> ?? candles.ToList();
+        decimal[] prices = ArrayPool<decimal>.Shared.Rent(candleList.Count);
+        try
         {
-            decimal price = PriceDataHelper.ExtractPrice(candle, priceType);
-            cumulativePV += price * candle.Volume;
-            cumulativeVol += candle.Volume;
+            PriceDataHelper.FillPrices(candleList, 0, prices.AsSpan(0, candleList.Count), priceType);
 
-            if (cumulativeVol > 0)
+            for (int i = 0; i < candleList.Count; i++)
             {
-                result.Add((candle.Timestamp, cumulativePV / cumulativeVol));
-            }
-            else
-            {
-                result.Add((candle.Timestamp, price));
+                var candle = candleList[i];
+                decimal price = prices[i];
+                cumulativePV += price * candle.Volume;
+                cumulativeVol += candle.Volume;
+
+                if (cumulativeVol > 0)
+                {
+                    result.Add((candle.Timestamp, cumulativePV / cumulativeVol));
+                }
+                else
+                {
+                    result.Add((candle.Timestamp, price));
+                }
             }
         }
+        finally
+        {
+            ArrayPool<decimal>.Shared.Return(prices);
+        }
+
         return result;
     }
 }

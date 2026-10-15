@@ -34,6 +34,7 @@
             <Color x:Key="Color.Dialog.Border">#FF333333</Color>
             <Color x:Key="Color.Dialog.LabelText">#FFE0E0E0</Color>
             <Color x:Key="Color.Selection.Background">#2A8B5CF6</Color>
+            <Color x:Key="Color.Chart.Background">#FF181A20</Color>
         </ResourceDictionary>
 
         <!-- ========================================== -->
@@ -68,6 +69,7 @@
             <Color x:Key="Color.Dialog.LabelText">#FF333333</Color>
             <Color x:Key="Color.Text.Inverse">#FFFFFFFF</Color>
             <Color x:Key="Color.Selection.Background">#207C3AED</Color>
+            <Color x:Key="Color.Chart.Background">#FFF0F0F0</Color>
         </ResourceDictionary>
 
         <!-- Fallback for Default or unknown variants -->
@@ -100,6 +102,7 @@
             <Color x:Key="Color.Dialog.LabelText">#FFE0E0E0</Color>
             <Color x:Key="Color.Text.Inverse">#FFFFFFFF</Color>
             <Color x:Key="Color.Selection.Background">#2A8B5CF6</Color>
+            <Color x:Key="Color.Chart.Background">#FF181A20</Color>
         </ResourceDictionary>
     </ResourceDictionary.ThemeDictionaries>
 
@@ -113,6 +116,7 @@
     <SolidColorBrush x:Key="Brush.Background.Secondary" Color="{DynamicResource Color.Background.Secondary}"    />
     <SolidColorBrush x:Key="Brush.Background.Tertiary" Color="{DynamicResource Color.Background.Tertiary}"      />
     <SolidColorBrush x:Key="Brush.Background.Hover" Color="{DynamicResource Color.Background.Hover}"            />
+    <SolidColorBrush x:Key="Brush.Chart.Background" Color="{DynamicResource Color.Chart.Background}"            />
 
     <SolidColorBrush x:Key="Brush.Text.Primary" Color="{DynamicResource Color.Text.Primary}"                    />
     <SolidColorBrush x:Key="Brush.Text.Secondary" Color="{DynamicResource Color.Text.Secondary}" />

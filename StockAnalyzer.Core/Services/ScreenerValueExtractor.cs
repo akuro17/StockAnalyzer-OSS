@@ -91,11 +91,9 @@ public class ScreenerValueExtractor : IScreenerValueExtractor
             decimal? prevClose = targetIdx > 0 ? candles[targetIdx - 1].Close : null;
             decimal? prevHaOpen = null;
             decimal? prevHaClose = null;
-            if (targetIdx > 0 && (pt is PriceType.HeikinAshiOpen or PriceType.HeikinAshiHigh or PriceType.HeikinAshiLow or PriceType.HeikinAshiClose))
+            if (targetIdx > 0 && PriceDataHelper.IsHeikinAshi(pt))
             {
-                var prevCandle = candles[targetIdx - 1];
-                prevHaClose = (prevCandle.Open + prevCandle.High + prevCandle.Low + prevCandle.Close) / 4.0m;
-                prevHaOpen = (prevCandle.Open + prevCandle.Close) / 2.0m;
+                (prevHaOpen, prevHaClose) = HeikinAshiConverter.GetStateAt(candles, targetIdx - 1);
             }
 
             return PriceDataHelper.ExtractPrice(candle, pt, prevClose, prevHaOpen, prevHaClose);

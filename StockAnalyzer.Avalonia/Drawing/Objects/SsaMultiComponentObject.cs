@@ -192,22 +192,15 @@ public class SsaMultiComponentObject : IChartObject, IDrawingCalculatedValuesPro
         double[] doublePrices = new double[count];
         long[] timestamps = new long[count];
 
+        // Every price type comes from PriceDataHelper (SSoT): True High / True Low use the previous bar's close and
+        // Heikin-Ashi sources are recursive over the whole series from candles[0].
+        var prices = new decimal[count];
+        PriceDataHelper.FillPrices(candles, startIndex, prices, PriceSource);
+
         for (int i = 0; i < count; i++)
         {
-            var c = candles[startIndex + i];
-            timestamps[i] = c.Timestamp.Ticks;
-            decimal price = PriceSource switch
-            {
-                PriceType.Open => c.Open,
-                PriceType.High => c.High,
-                PriceType.Low => c.Low,
-                PriceType.Close => c.Close,
-                PriceType.Median => (c.High + c.Low) * 0.5m,
-                PriceType.Typical => (c.High + c.Low + c.Close) / 3m,
-                PriceType.Weighted => (c.High + c.Low + 2m * c.Close) * 0.25m,
-                _ => c.Close
-            };
-            doublePrices[i] = (double)price;
+            timestamps[i] = candles[startIndex + i].Timestamp.Ticks;
+            doublePrices[i] = (double)prices[i];
         }
 
         int l = Math.Clamp(EmbeddingDimension, 2, Math.Max(2, count / 2));

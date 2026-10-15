@@ -250,14 +250,17 @@ public class PearsonProjectionObject : IChartObject, IDrawingCalculatedValuesPro
             return;
         }
 
-        Func<CoreCandleData, double> selector = c => (double)PriceDataHelper.ExtractPrice(c, PriceSource);
+        // Heikin-Ashi sources are recursive over the whole series: fill from candles[0] (PriceDataHelper.FillPrices);
+        // True High / True Low use the previous bar's close.
+        var prices = new decimal[candles.Count];
+        PriceDataHelper.FillPrices(candles, 0, prices, PriceSource);
 
         var samples = new List<double>(candles.Count);
         var timestamps = new List<DateTime>(candles.Count);
 
         for (int i = 0; i < candles.Count; i++)
         {
-            samples.Add(selector(candles[i]));
+            samples.Add((double)prices[i]);
             timestamps.Add(candles[i].Timestamp);
         }
 

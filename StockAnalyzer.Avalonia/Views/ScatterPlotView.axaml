@@ -12,7 +12,50 @@
 
     <UserControl.Styles>
         <!-- Standard scoped action button and control styling adhering to SA_UI_SUBWINDOW_STANDARD -->
+        <!-- Toolbar Mode and Action Buttons -->
+        <!-- Default / Inactive state: Transparent background matching toolbar background, subtle border -->
         <Style Selector="Button.toolbar-btn">
+            <Setter Property="Theme" Value="{DynamicResource InactiveModeButtonStyle}"/>
+            <Setter Property="Height" Value="32"/>
+            <Setter Property="Padding" Value="10,0"/>
+            <Setter Property="FontSize" Value="{DynamicResource BaseFontSize}"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border.Primary}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Primary}"/>
+        </Style>
+        <Style Selector="Button.toolbar-btn:pointerover /template/ Border#border">
+            <Setter Property="Background" Value="{DynamicResource Brush.Background.Hover}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border.Primary}"/>
+        </Style>
+        <Style Selector="Button.toolbar-btn:pressed /template/ Border#border">
+            <Setter Property="Background" Value="{DynamicResource Brush.Background.Tertiary}"/>
+        </Style>
+
+        <!-- Active state (e.g. active mode button): Linked to Settings/Theme -> Button 4 items -->
+        <Style Selector="Button.toolbar-btn.active">
+            <Setter Property="Background" Value="{DynamicResource Brush.Button.Background}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Button.Background}"/>
+            <Setter Property="Foreground" Value="{DynamicResource Brush.Button.Text}"/>
+        </Style>
+        <Style Selector="Button.toolbar-btn.active /template/ Border#border">
+            <Setter Property="Background" Value="{DynamicResource Brush.Button.Background}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Button.Background}"/>
+        </Style>
+        <Style Selector="Button.toolbar-btn.active:pointerover /template/ Border#border">
+            <Setter Property="Background" Value="{DynamicResource Brush.Button.Hover}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Button.Hover}"/>
+        </Style>
+        <Style Selector="Button.toolbar-btn.active:pressed /template/ Border#border">
+            <Setter Property="Background" Value="{DynamicResource Brush.Button.Pressed}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Button.Pressed}"/>
+        </Style>
+
+        <!-- ToggleButton (e.g. X Log, Y Log) toolbar dimensions adhering to ChartToggleButtonStyle -->
+        <Style Selector="ToggleButton.toolbar-btn">
+            <Setter Property="Theme" Value="{DynamicResource ChartToggleButtonStyle}"/>
             <Setter Property="Height" Value="32"/>
             <Setter Property="Padding" Value="10,0"/>
             <Setter Property="FontSize" Value="{DynamicResource BaseFontSize}"/>
@@ -37,9 +80,11 @@
             <WrapPanel Orientation="Horizontal" VerticalAlignment="Center">
                 <!-- Mode Switch Buttons -->
                 <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,0,16,0">
-                    <Button Classes="toolbar-btn" Content="{l:Localize Scatter_Btn_Scatter}" Command="{Binding SetScatterModeCommand}"
+                    <Button Classes="toolbar-btn" Classes.active="{Binding IsScatterMode}"
+                            Content="{l:Localize Scatter_Btn_Scatter}" Command="{Binding SetScatterModeCommand}"
                             TabIndex="1" />
-                    <Button Classes="toolbar-btn" Content="{l:Localize Scatter_Btn_Heatmap}" Command="{Binding SetHeatmapModeCommand}"
+                    <Button Classes="toolbar-btn" Classes.active="{Binding IsHeatmapMode}"
+                            Content="{l:Localize Scatter_Btn_Heatmap}" Command="{Binding SetHeatmapModeCommand}"
                             TabIndex="2" />
                 </StackPanel>
 
@@ -62,10 +107,12 @@
 
                 <!-- Scale & Display Toggles (Visible in Scatter Mode) -->
                 <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,16,0" IsVisible="{Binding IsScatterMode}">
-                    <Button Classes="toolbar-btn" Content="{l:Localize Scatter_Btn_XLog}" Command="{Binding ToggleXScaleCommand}"
-                            TabIndex="5" />
-                    <Button Classes="toolbar-btn" Content="{l:Localize Scatter_Btn_YLog}" Command="{Binding ToggleYScaleCommand}"
-                            TabIndex="6" />
+                    <ToggleButton Classes="toolbar-btn" Content="{l:Localize Scatter_Btn_XLog}"
+                                  IsChecked="{Binding IsXLog, Mode=TwoWay}"
+                                  TabIndex="5" />
+                    <ToggleButton Classes="toolbar-btn" Content="{l:Localize Scatter_Btn_YLog}"
+                                  IsChecked="{Binding IsYLog, Mode=TwoWay}"
+                                  TabIndex="6" />
                     <CheckBox Classes="toolbar-check" Content="{l:Localize Scatter_Chk_Regression}" IsChecked="{Binding ShowRegressionLine}"
                               TabIndex="7" />
                     <CheckBox Classes="toolbar-check" Content="{l:Localize Scatter_Chk_ConfidenceBand}" IsChecked="{Binding ShowConfidenceBand}"

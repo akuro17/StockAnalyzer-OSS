@@ -9,6 +9,7 @@ using StockAnalyzer.Avalonia.Views.Controls;
 using StockAnalyzer.Core.Analysis;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Analysis;
+using StockAnalyzer.Core.Theme;
 using Xunit;
 
 namespace StockAnalyzer.Avalonia.Tests.Views.Controls;
@@ -145,5 +146,20 @@ public sealed class ScatterPlotRenderThreadingTests
         Assert.True(double.IsFinite(control.DesiredSize.Height));
         Assert.Equal(0, control.DesiredSize.Width);
         Assert.Equal(0, control.DesiredSize.Height);
+    }
+
+    [AvaloniaFact]
+    public void ScatterPlot_ThemeChange_UpdatesBackgroundPaintColor()
+    {
+        var control = new ScatterPlotControl();
+        var customTheme = ThemeColors.Dark with
+        {
+            ChartBackground = IndicatorColor.FromUInt(0xFF223344)
+        };
+
+        control.SetTheme(customTheme);
+
+        Assert.Equal(new SKColor(0x22, 0x33, 0x44), control.BackgroundColor);
+        Assert.Equal(new SKColor(0x22, 0x33, 0x44), control.PlotBackgroundColor);
     }
 }

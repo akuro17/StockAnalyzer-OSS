@@ -138,6 +138,49 @@ public sealed class ScatterPlotViewModelTests
     }
 
     [Fact]
+    public void ScaleToggles_TwoWayBinding_AndNotifications_WorkCorrectly()
+    {
+        using var vm = CreateViewModel();
+
+        Assert.False(vm.IsXLog);
+        Assert.False(vm.IsYLog);
+        Assert.Equal(PriceScaleType.Linear, vm.XScale);
+        Assert.Equal(PriceScaleType.Linear, vm.YScale);
+
+        var changedProperties = new List<string>();
+        vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName != null) changedProperties.Add(e.PropertyName);
+        };
+
+        // Two-way setter from ToggleButton IsChecked
+        vm.IsXLog = true;
+        Assert.Equal(PriceScaleType.Log, vm.XScale);
+        Assert.True(vm.IsXLog);
+        Assert.Contains(nameof(vm.IsXLog), changedProperties);
+        Assert.Contains(nameof(vm.XScale), changedProperties);
+
+        changedProperties.Clear();
+        vm.ToggleXScaleCommand.Execute(null);
+        Assert.Equal(PriceScaleType.Linear, vm.XScale);
+        Assert.False(vm.IsXLog);
+        Assert.Contains(nameof(vm.IsXLog), changedProperties);
+
+        changedProperties.Clear();
+        vm.IsYLog = true;
+        Assert.Equal(PriceScaleType.Log, vm.YScale);
+        Assert.True(vm.IsYLog);
+        Assert.Contains(nameof(vm.IsYLog), changedProperties);
+        Assert.Contains(nameof(vm.YScale), changedProperties);
+
+        changedProperties.Clear();
+        vm.ToggleYScaleCommand.Execute(null);
+        Assert.Equal(PriceScaleType.Linear, vm.YScale);
+        Assert.False(vm.IsYLog);
+        Assert.Contains(nameof(vm.IsYLog), changedProperties);
+    }
+
+    [Fact]
     public async Task Receive_ActiveTickerGroupChangedMessage_RegeneratesDatasetAndEvaluatesAnalysis()
     {
         var messenger = new WeakReferenceMessenger();

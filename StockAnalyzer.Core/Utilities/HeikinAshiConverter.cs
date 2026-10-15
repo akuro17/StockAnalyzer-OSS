@@ -70,8 +70,7 @@ public static class HeikinAshiConverter
 
     public static CoreCandleData ConvertSingle(CoreCandleData candle, decimal prevHaOpen, decimal prevHaClose)
     {
-        decimal haClose = (candle.Open + candle.High + candle.Low + candle.Close) / 4m;
-        decimal haOpen = (prevHaOpen + prevHaClose) / 2m;
+        var (haOpen, haClose) = NextState(candle, prevHaOpen, prevHaClose);
         decimal haHigh = Math.Max(candle.High, Math.Max(haOpen, haClose));
         decimal haLow = Math.Min(candle.Low, Math.Min(haOpen, haClose));
 
@@ -83,6 +82,53 @@ public static class HeikinAshiConverter
             haClose,
             candle.Volume
         );
+    }
+
+    /// <summary>
+    /// One step of the recursion of indicators_formulas_0466: the Heikin-Ashi (Open, Close) of <paramref name="candle"/> from the
+    /// (Open, Close) of the previous bar. Allocation-free (a value tuple), so it is safe in render loops and screening;
+    /// <see cref="ConvertSingle"/>, <see cref="GetStateAt(IReadOnlyList{CoreCandleData}, int, int)"/> and the price helpers share it.
+    /// </summary>
+    public static (decimal haOpen, decimal haClose) NextState(CoreCandleData candle, decimal prevHaOpen, decimal prevHaClose)
+    {
+        decimal haClose = (candle.Open + candle.High + candle.Low + candle.Close) / 4m;
+        decimal haOpen = (prevHaOpen + prevHaClose) / 2m;
+        return (haOpen, haClose);
+    }
+
+    /// <summary>
+    /// Heikin-Ashi (Open, Close) of bar <paramref name="index"/> by the specified recursion
+    /// (indicators_formulas_0466: HA_Open_t = (HA_Open_{t-1} + HA_Close_{t-1}) / 2), treating bar <paramref name="seedIndex"/>
+    /// as the seed bar (<see cref="CalculateInitialValues"/>). <c>seedIndex = 0</c> gives the exact series value; a later seed
+    /// is a warm-up whose error halves every bar. Reads only bars up to <paramref name="index"/>; does not allocate.
+    /// </summary>
+    public static (decimal haOpen, decimal haClose) GetStateAt(IReadOnlyList<CoreCandleData> candles, int index, int seedIndex = 0)
+        => GetStateAt(candles, index, seedIndex, out _);
+
+    /// <summary>
+    /// Same as <see cref="GetStateAt(IReadOnlyList{CoreCandleData}, int, int)"/> and additionally returns the state of the bar before
+    /// <paramref name="index"/> from the same pass (<paramref name="previousState"/> is null when <paramref name="index"/> equals
+    /// <paramref name="seedIndex"/>, i.e. the seed bar has no predecessor in the warm-up).
+    /// </summary>
+    public static (decimal haOpen, decimal haClose) GetStateAt(IReadOnlyList<CoreCandleData> candles, int index, int seedIndex,
+        out (decimal haOpen, decimal haClose)? previousState)
+    {
+        ArgumentNullException.ThrowIfNull(candles);
+        if (seedIndex < 0 || seedIndex > index)
+            throw new ArgumentOutOfRangeException(nameof(seedIndex), $"Require 0 <= seedIndex ({seedIndex}) <= index ({index}).");
+        if (index >= candles.Count)
+            throw new ArgumentOutOfRangeException(nameof(index), $"Require index ({index}) < Count ({candles.Count}).");
+
+        var state = CalculateInitialValues(candles[seedIndex]);
+        (decimal haOpen, decimal haClose)? previous = null;
+        for (int i = seedIndex + 1; i <= index; i++)
+        {
+            previous = state;
+            state = NextState(candles[i], state.haOpen, state.haClose);
+        }
+
+        previousState = previous;
+        return state;
     }
 
     public static (decimal haOpen, decimal haClose) CalculateInitialValues(CoreCandleData firstCandle)

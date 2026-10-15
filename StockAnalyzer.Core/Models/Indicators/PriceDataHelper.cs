@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using StockAnalyzer.Core.Utilities;
 
 namespace StockAnalyzer.Core.Models.Indicators;
 
@@ -99,7 +100,7 @@ public static class PriceDataHelper
     /// </summary>
     public static decimal ExtractPrice(in CoreCandleData candle, PriceType priceType, decimal? previousClose = null, decimal? prevHaOpen = null, decimal? prevHaClose = null)
     {
-        if (priceType is PriceType.HeikinAshiOpen or PriceType.HeikinAshiHigh or PriceType.HeikinAshiLow or PriceType.HeikinAshiClose)
+        if (IsHeikinAshi(priceType))
         {
             decimal haOpen, haClose;
             if (prevHaOpen.HasValue && prevHaClose.HasValue)
@@ -146,7 +147,7 @@ public static class PriceDataHelper
     /// </summary>
     public static decimal ExtractPrice(in CandleData candle, PriceType priceType, decimal? previousClose = null, decimal? prevHaOpen = null, decimal? prevHaClose = null)
     {
-        if (priceType is PriceType.HeikinAshiOpen or PriceType.HeikinAshiHigh or PriceType.HeikinAshiLow or PriceType.HeikinAshiClose)
+        if (IsHeikinAshi(priceType))
         {
             decimal haOpen, haClose;
             if (prevHaOpen.HasValue && prevHaClose.HasValue)
@@ -188,6 +189,72 @@ public static class PriceDataHelper
     }
 
     /// <summary>
+    /// True for HeikinAshiOpen, HeikinAshiHigh, HeikinAshiLow and HeikinAshiClose. SSoT of the predicate: every caller uses this method.
+    /// </summary>
+    public static bool IsHeikinAshi(PriceType priceType)
+        => priceType is PriceType.HeikinAshiOpen or PriceType.HeikinAshiHigh or PriceType.HeikinAshiLow or PriceType.HeikinAshiClose;
+
+    /// <summary>
+    /// Fills <paramref name="destination"/>[k] with the price of <c>candles[startIndex + k]</c>, equal to the series value of
+    /// <see cref="ExtractPriceSeries(IReadOnlyList{CoreCandleData}?, PriceType)"/> for the same bar: True High / True Low use the
+    /// previous bar's close (also for the first bar of the window when <paramref name="startIndex"/> &gt; 0), and Heikin-Ashi types follow the recursion of indicators_formulas_0466 over the whole list from <c>candles[0]</c>
+    /// (<see cref="HeikinAshiConverter.GetStateAt"/> once, then one step per bar), so the value equals
+    /// <see cref="HeikinAshiConverter.Convert(IReadOnlyList{CoreCandleData}?)"/> for the same list. When a caller only has a
+    /// slice, the recursion starts at the slice's first candle; the difference to the full-history value halves every bar.
+    /// </summary>
+    public static void FillPrices(IReadOnlyList<CoreCandleData> candles, int startIndex, Span<decimal> destination, PriceType priceType)
+    {
+        ArgumentNullException.ThrowIfNull(candles);
+        if (startIndex < 0 || startIndex > candles.Count - destination.Length)
+        {
+            throw new ArgumentOutOfRangeException(nameof(startIndex), $"Require 0 <= startIndex ({startIndex}) <= Count ({candles.Count}) - destination.Length ({destination.Length}).");
+        }
+
+        if (destination.Length == 0)
+        {
+            return;
+        }
+
+        if (!IsHeikinAshi(priceType))
+        {
+            for (int k = 0; k < destination.Length; k++)
+            {
+                int index = startIndex + k;
+                decimal? previousClose = index > 0 ? candles[index - 1].Close : null;
+                destination[k] = ExtractPrice(candles[index], priceType, previousClose);
+            }
+
+            return;
+        }
+
+        decimal? haOpen = null;
+        decimal? haClose = null;
+        if (startIndex > 0)
+        {
+            (decimal stateOpen, decimal stateClose) = HeikinAshiConverter.GetStateAt(candles, startIndex - 1);
+            haOpen = stateOpen;
+            haClose = stateClose;
+        }
+
+        for (int k = 0; k < destination.Length; k++)
+        {
+            var candle = candles[startIndex + k];
+            destination[k] = ExtractPrice(candle, priceType, null, haOpen, haClose);
+
+            if (haOpen.HasValue && haClose.HasValue)
+            {
+                (haOpen, haClose) = HeikinAshiConverter.NextState(candle, haOpen.Value, haClose.Value);
+            }
+            else
+            {
+                (decimal seedOpen, decimal seedClose) = HeikinAshiConverter.CalculateInitialValues(candle);
+                haOpen = seedOpen;
+                haClose = seedClose;
+            }
+        }
+    }
+
+    /// <summary>
     /// Copies <c>window.Length</c> prices starting at <paramref name="start"/> into <paramref name="window"/> as double.
     /// Returns false when any price in the range is missing (a missing price must not be substituted by a value).
     /// </summary>
@@ -216,7 +283,7 @@ public static class PriceDataHelper
         }
 
         var result = new List<decimal?>(candles.Count);
-        bool isHeikinAshi = priceType is PriceType.HeikinAshiOpen or PriceType.HeikinAshiHigh or PriceType.HeikinAshiLow or PriceType.HeikinAshiClose;
+        bool isHeikinAshi = IsHeikinAshi(priceType);
 
         if (isHeikinAshi)
         {
@@ -290,7 +357,7 @@ public static class PriceDataHelper
         }
 
         var result = new List<decimal?>(candles.Count);
-        bool isHeikinAshi = priceType is PriceType.HeikinAshiOpen or PriceType.HeikinAshiHigh or PriceType.HeikinAshiLow or PriceType.HeikinAshiClose;
+        bool isHeikinAshi = IsHeikinAshi(priceType);
 
         if (isHeikinAshi)
         {
@@ -349,7 +416,7 @@ public static class PriceDataHelper
         }
 
         var result = new List<decimal>(candles.Count);
-        bool isHeikinAshi = priceType is PriceType.HeikinAshiOpen or PriceType.HeikinAshiHigh or PriceType.HeikinAshiLow or PriceType.HeikinAshiClose;
+        bool isHeikinAshi = IsHeikinAshi(priceType);
 
         if (isHeikinAshi)
         {
@@ -408,7 +475,7 @@ public static class PriceDataHelper
         }
 
         var result = new List<decimal>(candles.Count);
-        bool isHeikinAshi = priceType is PriceType.HeikinAshiOpen or PriceType.HeikinAshiHigh or PriceType.HeikinAshiLow or PriceType.HeikinAshiClose;
+        bool isHeikinAshi = IsHeikinAshi(priceType);
 
         if (isHeikinAshi)
         {

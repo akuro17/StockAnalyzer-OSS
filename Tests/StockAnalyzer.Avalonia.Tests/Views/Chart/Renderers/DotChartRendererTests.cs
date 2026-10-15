@@ -9,6 +9,7 @@ using StockAnalyzer.Avalonia.Views.Chart;
 using StockAnalyzer.Avalonia.Views.Chart.Renderers;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Theme;
+using StockAnalyzer.Core.Utilities;
 using Xunit;
 
 namespace StockAnalyzer.Avalonia.Tests.Views.Chart.Renderers;
@@ -246,5 +247,68 @@ public class DotChartRendererTests : IDisposable
 
         // Should render smoothly with Heikin-Ashi warm up and recursive state chaining without exceptions
         _renderer.Render(canvas, chartArea, snapshot, config);
+    }
+
+    private static List<CoreCandleData> HeikinAshiStepCandles(int count)
+    {
+        var candles = new List<CoreCandleData>(count);
+        for (int i = 0; i < count; i++)
+        {
+            decimal open = 100m + (i % 7) * 1.5m;
+            decimal close = open + ((i % 5) - 2) * 1.25m;
+            candles.Add(new CoreCandleData(DateTime.Today.AddDays(i), open, Math.Max(open, close) + 1m, Math.Min(open, close) - 1m, close, 1000));
+        }
+
+        return candles;
+    }
+
+    // The in-loop step must equal the SSoT series: seed on the first bar, NextState afterwards (spec indicators_formulas_0466).
+    [Fact]
+    public void AdvanceHeikinAshiState_FollowsTheConverterSeries()
+    {
+        var candles = HeikinAshiStepCandles(30);
+        var series = HeikinAshiConverter.Convert(candles);
+        decimal? haOpen = null;
+        decimal? haClose = null;
+
+        for (int i = 0; i < candles.Count; i++)
+        {
+            DotChartRenderer.AdvanceHeikinAshiState(candles[i], ref haOpen, ref haClose);
+
+            Assert.Equal(series[i].Open, haOpen);
+            Assert.Equal(series[i].Close, haClose);
+        }
+    }
+
+    [Fact]
+    public void AdvanceHeikinAshiState_ContinuesFromAWarmedUpState()
+    {
+        var candles = HeikinAshiStepCandles(30);
+        var (stateOpen, stateClose) = HeikinAshiConverter.GetStateAt(candles, 9);
+        decimal? haOpen = stateOpen;
+        decimal? haClose = stateClose;
+
+        DotChartRenderer.AdvanceHeikinAshiState(candles[10], ref haOpen, ref haClose);
+
+        Assert.Equal(HeikinAshiConverter.GetStateAt(candles, 10), (haOpen!.Value, haClose!.Value));
+    }
+
+    [Fact]
+    public void AdvanceHeikinAshiState_DoesNotAllocate()
+    {
+        var candles = HeikinAshiStepCandles(60);
+        decimal? haOpen = null;
+        decimal? haClose = null;
+        DotChartRenderer.AdvanceHeikinAshiState(candles[0], ref haOpen, ref haClose); // JIT warm-up
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 1; i < candles.Count; i++)
+        {
+            DotChartRenderer.AdvanceHeikinAshiState(candles[i], ref haOpen, ref haClose);
+        }
+
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        Assert.Equal(0, allocated);
     }
 }
