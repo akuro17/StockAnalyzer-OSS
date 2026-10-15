@@ -83,7 +83,7 @@ jobs:
         merge-multiple: true
 
     - name: Create or Update Release
-      uses: softprops/action-gh-release@c95fe1489396fe8a9eb872386ac8274bc27f5e0c # v2.2.1
+      uses: softprops/action-gh-release@c95fe1489396fe8a9eb87c0abf8aa5b2ef267fda # v2.2.1
       with:
         tag_name: latest-dev
         name: "StockAnalyzer OSS - Development Build (Latest)"
