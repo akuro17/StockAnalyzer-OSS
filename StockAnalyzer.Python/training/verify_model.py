@@ -42,6 +42,11 @@ Usage
     python verify_model.py --model path/to.onnx --feature-mode zscore --max-symbols 12
     python verify_model.py --quantize --model path/to.onnx --max-symbols 12
     python verify_model.py --selfcheck
+
+The self-check builds its scratch models in the OS temp folder (``TEMP`` / ``TMP``). ``onnx`` cannot open external-data tensors on
+every volume ("external data path could not be canonicalized: Incorrect function" with a temp folder such as ``Y:\\Temp``), so the
+LSTM group fails with such a temp folder. Run it with ``TEMP`` and ``TMP`` pointing at a normal local folder, e.g.
+``set TEMP=C:\\Temp`` and ``set TMP=C:\\Temp`` before the command. The product code does not depend on this: only the self-check does.
 """
 
 from __future__ import annotations
@@ -89,7 +94,7 @@ DEFAULT_MAX_SYMBOLS: int = 12
 QUANT_SCHEMA_VERSION: int = 1
 QUANT_TOOL: str = "verify_model.py --quantize"
 QUANT_TOOL_VERSION: str = "1"
-QUANT_OUT_DIR: Path = ds.DATA_ROOT / "TrainingArtifacts" / "Quantized"
+QUANT_OUT_DIR: Path = ds.TRAINING_ARTIFACTS_ROOT / "Quantized"
 QUANT_MODEL_SUFFIX: str = ".quant.onnx"
 QUANT_REPORT_SUFFIX: str = ".quant.onnx.quantization.json"
 QUANT_INCOMING_SUFFIX: str = ".incoming"
@@ -1035,8 +1040,7 @@ def _run_selfcheck() -> None:
     window, channels, horizon, threshold, splits = 10, ds.FEATURES_OHLCV, 5, ds.DEFAULT_THRESHOLD, ds.DEFAULT_WF_SPLITS
     names = ("AAA", "BBB", "CCC")
     skipped = []
-    ds.DATA_ROOT.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="sa_verify_model_selfcheck_", dir=str(ds.DATA_ROOT)) as tmp_name:
+    with tempfile.TemporaryDirectory(prefix="sa_verify_model_selfcheck_") as tmp_name:
         tmp = Path(tmp_name)
 
         # group 1: argument and threshold rules
@@ -1277,7 +1281,7 @@ def _run_selfcheck() -> None:
 
     v2_only = (onnx_meta.PURGE_GAP_KEY, onnx_meta.OUTPUT_SEMANTIC_KEY, onnx_meta.OUTPUT_UNIT_KEY, onnx_meta.OUTPUT_HORIZON_KEY,
                onnx_meta.OUTPUT_TIMEFRAME_KEY, onnx_meta.OUTPUT_CONFIDENCE_TYPE_KEY, onnx_meta.TARGET_FORMULA_KEY)  # absent in a real v1 file
-    with tempfile.TemporaryDirectory(prefix="sa_verify_model_vec7_", dir=str(ds.DATA_ROOT)) as vec7_dir:
+    with tempfile.TemporaryDirectory(prefix="sa_verify_model_vec7_") as vec7_dir:
         tmp = Path(vec7_dir)
 
         v2_meta = onnx_meta.build_contract(feature_mode="ohlcv_minmax", window_size=window, channels=channels, horizon=horizon,

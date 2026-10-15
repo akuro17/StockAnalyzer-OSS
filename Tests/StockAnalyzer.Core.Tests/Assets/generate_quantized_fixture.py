@@ -173,7 +173,7 @@ def build_lstm_source(path: Path, head_scale: float = 1.0, input_scale: float = 
         if head_scale != 1.0:
             net.head.weight.mul_(head_scale)
             net.head.bias.mul_(head_scale)
-    with tempfile.TemporaryDirectory(prefix="sa_lstm_fixture_", dir=str(ds.DATA_ROOT)) as tmp:
+    with tempfile.TemporaryDirectory(prefix="sa_lstm_fixture_") as tmp:
         raw = Path(tmp) / "lstm.onnx"
         torch.onnx.export(net, torch.randn(1, FIXTURE_WINDOW, CHANNELS), str(raw), input_names=["input"], output_names=["output"],
                           dynamic_axes={"input": {0: "batch"}, "output": {0: "batch"}}, opset_version=OPSET, dynamo=False)
@@ -189,9 +189,8 @@ def build_lstm_source(path: Path, head_scale: float = 1.0, input_scale: float = 
 def quantize_pair(pair: Pair, extra: dict | None = None) -> dict:
     metadata = {entry.key: entry.value for entry in onnx.load(str(pair.source)).metadata_props}
     expected, removed = vm.derived_metadata(metadata)
-    ds.DATA_ROOT.mkdir(parents=True, exist_ok=True)
     # quantize_dynamic stages the model through the temp dir; keep it on a normal disk (see verify_model._temp_dir).
-    with tempfile.TemporaryDirectory(prefix="sa_quant_fixture_", dir=str(ds.DATA_ROOT)) as tmp:
+    with tempfile.TemporaryDirectory(prefix="sa_quant_fixture_") as tmp:
         scratch = Path(tmp) / "scratch"
         out = Path(tmp) / pair.target.name
         vm.quantize_model(pair.source, out, ops=vm.QUANT_DEFAULT_OPS, weight_type=vm.QUANT_DEFAULT_WEIGHT_TYPE,

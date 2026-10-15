@@ -15,7 +15,7 @@ using StockAnalyzer.Core.Models.Training;
 namespace StockAnalyzer.Core.Services.ReinforcementLearning;
 
 /// <summary>
-/// One portfolio training run on an existing panel snapshot: fits and freezes the scaler, captures the strict execution identity, runs the
+/// One portfolio training run on an existing panel snapshot: fits and freezes the scaler, records the execution environment, runs the
 /// Python PPO worker against the Core host, validates the exported ONNX actor (strict boundary and native parity), evaluates it against the
 /// baselines (<see cref="RlPortfolioEvaluator"/>) and publishes the evidence through <see cref="RlPortfolioArtifactStore"/>. Evaluation only: no registry target, no activation, no continuation (D14).
 /// </summary>
@@ -151,7 +151,7 @@ public sealed class RlPortfolioTrainingRunner
             }
             string configPath = Path.Combine(directory, RlFiles.Job);
             await WriteAsync(configPath, wire, ct).ConfigureAwait(false);
-            progress?.Report(new(runId, 0, "Dependencies", "Capturing the strict execution identity", 0));
+            progress?.Report(new(runId, 0, "Dependencies", "Recording the execution environment", 0));
             await RunWorkerAsync(RlFiles.DependenciesScript, configPath, directory, limits, null, ct).ConfigureAwait(false);
             wire["dependencies_sha256"] = ContentHash.OfFile(Path.Combine(directory, RlFiles.Dependencies));
             await WriteAsync(configPath, wire, ct).ConfigureAwait(false);

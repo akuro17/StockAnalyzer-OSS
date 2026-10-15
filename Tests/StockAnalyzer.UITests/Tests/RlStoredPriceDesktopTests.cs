@@ -25,10 +25,16 @@ public sealed partial class RlStoredPriceDesktopTests(ITestOutputHelper output) 
     public const string ContinuousDirectoryVariable = "SA_RL_T16_ACTOR_DIRECTORY";
     private const string Symbol = "AAPL";
     private const int CompletionTimeoutMs = 180_000;
+    /// <summary>A T16 run records its whole execution environment before it starts (3 min 14 s measured, plus a second verification); waits that include that start use this bound.</summary>
+    private const int StrictRunTimeoutMs = 600_000;
+    /// <summary>Whole-test bounds (xUnit <c>Timeout</c>): a test with one local run, with one strict T16 run, and with two strict T16 runs (or one run plus a resumed one).</summary>
+    private const int LocalRunTestTimeoutMs = 600_000;
+    private const int OneStrictRunTestTimeoutMs = 1_500_000;
+    private const int TwoStrictRunsTestTimeoutMs = 2_400_000;
     private const int StableLayoutSamples = 3;
     private const int CheckpointScrollSteps = 3;
 
-    [Fact(Timeout = 600_000)]
+    [Fact(Timeout = TwoStrictRunsTestTimeoutMs)]
     public void R09_RealPpoPauseReviewAndExplicitResumeThroughOwnedDesktop()
     {
         string evidence = Environment.GetEnvironmentVariable(EvidenceDirectoryVariable)!;
@@ -40,7 +46,7 @@ public sealed partial class RlStoredPriceDesktopTests(ITestOutputHelper output) 
             string metadata = PathDiscovery.ResolveDataPath(null, MarketDataSettings.DefaultMetadataDataPath);
             File.Copy(Path.Combine(actor, RlFiles.MetadataParquet), Path.Combine(metadata, Symbol + ".meta.parquet"));
             using var registry = new ModelGenerationRegistry(); registry.ConfigureRlArtifacts(root, new RlArtifactSettings());
-            registry.SaveRlArtifactPolicyAsync(new(NonactiveRetentionDays: 0, NonactiveKeepCount: 1)).GetAwaiter().GetResult();
+            registry.SaveRlArtifactPolicyAsync(new(MinimumFreeGiB: FixtureMinimumFreeGiB, NonactiveRetentionDays: 0, NonactiveKeepCount: 1)).GetAwaiter().GetResult();
             registry.RegisterRlAsync(config.RootElement.GetProperty("LaterDirection").GetString()!).GetAwaiter().GetResult();
         });
         Window window = new MainWindowPage(MainWindow!, this).OpenRlTrainingWindow();
@@ -52,7 +58,7 @@ public sealed partial class RlStoredPriceDesktopTests(ITestOutputHelper output) 
         Text(window, RlUiConstants.EndDate, actorJob.RootElement.GetProperty("end_date_exclusive").GetString()!);
         Element(window, RlUiConstants.Smoke).AsCheckBox().IsChecked = true;
         Invoke(window, RlUiConstants.Train);
-        WaitUntil(() => Element(window, RlUiConstants.Pause).IsEnabled, CompletionTimeoutMs, "Pause was unavailable during owned PPO training");
+        WaitUntil(() => Element(window, RlUiConstants.Pause).IsEnabled, StrictRunTimeoutMs, "Pause was unavailable during owned PPO training");
         Invoke(window, RlUiConstants.Pause); WaitState(window, "Paused");
         var header = WaitForElement(() => window.FindAllDescendants().FirstOrDefault(e => Localized("Rl.Checkpoint.Title").Contains(e.Properties.Name.ValueOrDefault)),
             errorMessage: "Checkpoint panel header missing");
@@ -77,15 +83,16 @@ public sealed partial class RlStoredPriceDesktopTests(ITestOutputHelper output) 
         { id = e.Properties.AutomationId.ValueOrDefault, name = e.Properties.Name.ValueOrDefault, type = e.ControlType.ToString(), rect = e.BoundingRectangle.ToString() })));
         WaitUntil(() => Element(window, RlUiConstants.CheckpointInspect).IsEnabled, CompletionTimeoutMs, "Checkpoint review still busy");
         Invoke(window, RlUiConstants.CheckpointInspect);
-        WaitUntil(() => Element(window, RlUiConstants.CheckpointModels).IsEnabled, CompletionTimeoutMs, "Checkpoint list did not finish loading");
+        // The list is hidden while the inspection reloads it, so it is awaited by presence and enabled state, not through the 5 s element lookup.
+        WaitUntil(() => window.FindFirstDescendant(cf => cf.ByAutomationId(RlUiConstants.CheckpointModels)) is { IsEnabled: true }, CompletionTimeoutMs, "Checkpoint list did not finish loading");
         Element(window, RlUiConstants.CheckpointModels).AsComboBox().Select(0);
         Assert.False(Element(window, RlUiConstants.CheckpointResume).IsEnabled);
         Assert.False(Element(window, RlUiConstants.CheckpointAbandon).IsEnabled);
         SaveScreenshot(window, "sa_T16_R09_desktop_paused_review.png");
         Element(window, RlUiConstants.CheckpointResumeConfirm).AsCheckBox().IsChecked = true;
         WaitUntil(() => Element(window, RlUiConstants.CheckpointResume).IsEnabled, errorMessage: "Explicit verified resume not enabled");
-        Invoke(window, RlUiConstants.CheckpointResume); WaitState(window, "Succeeded");
-        Assert.Equal("", Element(window, RlUiConstants.ActiveModel).Name);
+        Invoke(window, RlUiConstants.CheckpointResume); WaitState(window, "Succeeded", StrictRunTimeoutMs);
+        Assert.Equal("", ActiveModelName(window));
         SaveScreenshot(window, "sa_T16_R09_desktop_resumed.png");
         string runRoot = Path.Combine(IsolatedDataRoot, RlFiles.TrainingFolder, RlFiles.RlFolder);
         string run = Assert.Single(Directory.EnumerateDirectories(runRoot));
@@ -98,7 +105,7 @@ public sealed partial class RlStoredPriceDesktopTests(ITestOutputHelper output) 
         window.Close();
     }
 
-    [Fact(Timeout = 600_000)]
+    [Fact(Timeout = LocalRunTestTimeoutMs)]
     public void R08_DefaultSettingsRequiredRetentionSmokeAndExplicitCleanupThroughDesktop()
     {
         string evidence=Environment.GetEnvironmentVariable(EvidenceDirectoryVariable) ?? throw new InvalidOperationException("Owned evidence output required.");
@@ -111,7 +118,7 @@ public sealed partial class RlStoredPriceDesktopTests(ITestOutputHelper output) 
             File.Copy(Path.Combine(actorDirectory,RlFiles.MetadataParquet),Path.Combine(metadata,Symbol+".meta.parquet"));
             using var registry=new ModelGenerationRegistry(); var settings=new RlArtifactSettings();
             registry.ConfigureRlArtifacts(root,settings);
-            registry.SaveRlArtifactPolicyAsync(new(NonactiveRetentionDays:0,NonactiveKeepCount:0)).GetAwaiter().GetResult();
+            registry.SaveRlArtifactPolicyAsync(new(MinimumFreeGiB:FixtureMinimumFreeGiB,NonactiveRetentionDays:0,NonactiveKeepCount:0)).GetAwaiter().GetResult(); // admits the fixture run on the small work drive; the defaults are restored below
             Guid id=Guid.NewGuid(); expiredRun=id.ToString("N");
             using(var run=registry.BeginRlArtifactRunAsync(id,root).GetAwaiter().GetResult())
             {
@@ -143,7 +150,7 @@ public sealed partial class RlStoredPriceDesktopTests(ITestOutputHelper output) 
         AutomationElement Editor(string id)
         {
             return WaitForElement(()=> {
-                var control=window.FindFirstDescendant(cf=>cf.ByAutomationId(id));
+                var control=window.FindFirstDescendant(cf=>cf.ByAutomationId(id)) ?? window.FindFirstDescendant(cf=>cf.ByAutomationId(id+RlUiConstants.NumericEditorSuffix)); // the numeric editor publishes its own id
                 if(control is not null) return control.FindFirstDescendant(cf=>cf.ByControlType(FlaUI.Core.Definitions.ControlType.Edit)) ?? control;
                 string key=id switch {
                     RlUiConstants.StorageQuota=>"Rl.Storage.Quota", RlUiConstants.StorageMinimumFree=>"Rl.Storage.MinimumFree",
@@ -168,15 +175,16 @@ public sealed partial class RlStoredPriceDesktopTests(ITestOutputHelper output) 
         if(panel.Patterns.ExpandCollapse.IsSupported) panel.Patterns.ExpandCollapse.Pattern.Collapse(); else panel.Click();
         Text(window,RlUiConstants.Symbol,Symbol); Text(window,RlUiConstants.StartDate,"2002-01-01"); Text(window,RlUiConstants.EndDate,"2026-10-04");
         Element(window,RlUiConstants.Smoke).AsCheckBox().IsChecked=true;
-        Invoke(window,RlUiConstants.Train); WaitState(window,"Unavailable",CompletionTimeoutMs);
+        // The window still offers Start with an incomplete retention policy; the run is refused at admission (no run folder is created) and the window reports a failed operation.
+        Invoke(window,RlUiConstants.Train); WaitState(window,"Failed",CompletionTimeoutMs);
         Assert.Single(Directory.EnumerateDirectories(Path.GetDirectoryName(expiredDirectory)!));
         if(panel.Patterns.ExpandCollapse.IsSupported) panel.Patterns.ExpandCollapse.Pattern.Expand(); else panel.Click();
         Number(RlUiConstants.StorageNonactiveDays,"0"); Number(RlUiConstants.StorageKeepCount,"1");
-        Invoke(window,RlUiConstants.StorageSave);
-        WaitUntil(()=>Localized("Rl.Storage.Saved").Contains(Element(window,RlUiConstants.StorageSummary).Name));
+        Number(RlUiConstants.StorageMinimumFree,FixtureMinimumFreeGiB.ToString(CultureInfo.InvariantCulture)); // the default reserve was asserted above; the small work drive cannot keep it
+        // No Save button any more: Train saves the retention values of this window first (RlTrainingDialogViewModel.TrainAsync).
         if(panel.Patterns.ExpandCollapse.IsSupported) panel.Patterns.ExpandCollapse.Pattern.Collapse(); else panel.Click();
         Invoke(window,RlUiConstants.Train); WaitState(window,"Succeeded",CompletionTimeoutMs);
-        Assert.Equal("",Element(window,RlUiConstants.ActiveModel).Name);
+        Assert.Equal("",ActiveModelName(window));
         var descriptors=Directory.EnumerateFiles(Path.GetDirectoryName(expiredDirectory)!,"owned_run.json",SearchOption.AllDirectories).ToArray();
         Assert.Equal(2,descriptors.Length);
         string completed=descriptors.Single(p=>Path.GetDirectoryName(p)!=expiredDirectory);
@@ -192,7 +200,8 @@ public sealed partial class RlStoredPriceDesktopTests(ITestOutputHelper output) 
         WaitUntil(()=>Element(window,RlUiConstants.StorageCleanup).IsEnabled);
         Invoke(window,RlUiConstants.StorageCleanup);
         WaitUntil(()=>!Directory.Exists(expiredDirectory),CompletionTimeoutMs,"Reviewed failed run was not explicitly removed");
-        WaitUntil(()=>!Element(window,RlUiConstants.StorageCleanup).IsEnabled);
+        // Once nothing is left to delete the cleanup action is no longer shown; absent counts as not enabled.
+        WaitUntil(()=>window.FindFirstDescendant(cf=>cf.ByAutomationId(RlUiConstants.StorageCleanup)) is not { IsEnabled: true });
         Assert.True(File.Exists(completed));
         File.WriteAllText(Path.Combine(evidence,"r08_desktop_evidence.json"),JsonSerializer.Serialize(new {
             defaults_quota_gib=10,defaults_minimum_free_gib=5,defaults_failed_days=7,nonactive_initially_unset=true,
@@ -201,7 +210,7 @@ public sealed partial class RlStoredPriceDesktopTests(ITestOutputHelper output) 
         SaveScreenshot(window,"sa_T16_R08_desktop_cleaned.png"); window.Close();
     }
 
-    [Fact(Timeout = 600_000)]
+    [Fact(Timeout = LocalRunTestTimeoutMs)]
     public void R07_ExplicitVerifiedBackupRecoveryThroughDesktop()
     {
         string evidence = Environment.GetEnvironmentVariable(EvidenceDirectoryVariable) ?? throw new InvalidOperationException("Explicit recovery evidence root required.");
@@ -244,7 +253,8 @@ public sealed partial class RlStoredPriceDesktopTests(ITestOutputHelper output) 
         Invoke(window, RlUiConstants.RecoverPointer); WaitState(window, "Ready", CompletionTimeoutMs);
         WaitUntil(() => Element(window, RlUiConstants.ActiveModel).Name == restoredId, CompletionTimeoutMs,
             "Explicit recovery did not publish the reviewed active identity");
-        WaitUntil(() => !Element(window, RlUiConstants.RecoverPointer).IsEnabled, errorMessage: "Healthy pointer still allows recovery");
+        // The recovery action is no longer shown once the pointer is healthy; absent counts as not enabled.
+        WaitUntil(() => window.FindFirstDescendant(cf => cf.ByAutomationId(RlUiConstants.RecoverPointer)) is not { IsEnabled: true }, errorMessage: "Healthy pointer still allows recovery");
         WaitUntil(() => Localized("Rl.RecoveryHealthy").Contains(Element(window, RlUiConstants.RecoveryPreview).Name),
             errorMessage: "Recovered pointer was not re-inspected as healthy");
         Assert.Equal(backup, File.ReadAllBytes(pointerPath + ".bak"));
@@ -264,7 +274,7 @@ public sealed partial class RlStoredPriceDesktopTests(ITestOutputHelper output) 
         window.Close();
     }
 
-    [Fact(Timeout = 600_000)]
+    [Fact(Timeout = OneStrictRunTestTimeoutMs)]
     public void R06_AllBlockOptionSmokeReportAndLatestReplayThroughDesktop()
     {
         string directionDirectory = Environment.GetEnvironmentVariable(QualifiedDirectoryVariable)
@@ -281,6 +291,7 @@ public sealed partial class RlStoredPriceDesktopTests(ITestOutputHelper output) 
             string metadata = PathDiscovery.ResolveDataPath(null, MarketDataSettings.DefaultMetadataDataPath);
             File.Copy(Path.Combine(actorDirectory, RlFiles.MetadataParquet), Path.Combine(metadata, Symbol + ".meta.parquet"));
             using var registry = new ModelGenerationRegistry();
+            SaveRetentionPolicy(registry, root);
             registry.RegisterRlAsync(directionDirectory).GetAwaiter().GetResult();
             actorId = registry.RegisterRlAsync(actorDirectory).GetAwaiter().GetResult().ModelId;
             Assert.Null(registry.RlActiveId); Assert.Null(registry.RlContinuousActiveId);
@@ -292,12 +303,12 @@ public sealed partial class RlStoredPriceDesktopTests(ITestOutputHelper output) 
         var expandedOption = Element(window, RlUiConstants.AllCompleteBlocks).AsCheckBox();
         Assert.False(expandedOption.IsChecked == true); Assert.True(Localized("Rl.AllBlockOption").Contains(expandedOption.Name));
         expandedOption.IsChecked = true;
-        Element(window, RlUiConstants.FrozenDirection).AsComboBox().Select(0); Keyboard.Press(VirtualKeyShort.ESCAPE);
+        SelectFirst(Element(window, RlUiConstants.FrozenDirection).AsComboBox());
         Text(window, RlUiConstants.Symbol, Symbol);
         Text(window, RlUiConstants.StartDate, "2002-01-01"); Text(window, RlUiConstants.EndDate, "2026-10-04");
         Element(window, RlUiConstants.Smoke).AsCheckBox().IsChecked = true;
-        Invoke(window, RlUiConstants.Train); WaitState(window, "Succeeded", CompletionTimeoutMs);
-        Assert.Equal("", Element(window, RlUiConstants.ActiveModel).Name);
+        Invoke(window, RlUiConstants.Train); WaitState(window, "Succeeded", StrictRunTimeoutMs);
+        Assert.Equal("", ActiveModelName(window));
         string ownedTraining = Path.Combine(IsolatedDataRoot, RlFiles.TrainingFolder, RlFiles.RlFolder);
         string ownedJob = Assert.Single(Directory.EnumerateFiles(ownedTraining, RlFiles.Job, SearchOption.AllDirectories));
         using var job = JsonDocument.Parse(File.ReadAllText(ownedJob));
@@ -307,10 +318,9 @@ public sealed partial class RlStoredPriceDesktopTests(ITestOutputHelper output) 
         File.Copy(ownedJob, Path.Combine(evidenceDirectory, "r06_desktop_smoke_job.json"), true);
         File.Copy(Path.Combine(Path.GetDirectoryName(ownedJob)!, RlFiles.Model + RlFiles.EvaluationSuffix),
             Path.Combine(evidenceDirectory, "r06_desktop_smoke_report.json"), true);
-        Element(window, RlUiConstants.Models).AsComboBox().Select(0); Keyboard.Press(VirtualKeyShort.ESCAPE);
+        SelectFirst(Element(window, RlUiConstants.Models).AsComboBox());
         WaitUntilEvaluationDetails(window, "Expanded generation catalog not loaded");
-        var details = WaitForElement(() => window.FindFirstDescendant(cf => cf.ByAutomationId(RlUiConstants.EvaluationDetails))
-            ?? window.FindAllDescendants().FirstOrDefault(e => Localized("Rl.EvaluationDetails").Contains(e.Properties.Name.ValueOrDefault)));
+        var details = WaitForElement(() => FindEvaluationDetails(window));
         if (details.Patterns.ExpandCollapse.IsSupported) details.Patterns.ExpandCollapse.Pattern.Expand(); else details.Click();
         var reportElement = Element(window, RlUiConstants.EvaluationReport);
         Assert.True(Localized("Rl.AllBlockMode").Any(reportElement.Name.Contains));
@@ -341,7 +351,7 @@ public sealed partial class RlStoredPriceDesktopTests(ITestOutputHelper output) 
             original_active_untouched = true }));
     }
 
-    [Fact(Timeout = 600_000)]
+    [Fact(Timeout = LocalRunTestTimeoutMs)]
     public void R04_ConstraintReportAndSeparatePolicyControlsThroughDesktop()
     {
         string directionDirectory = Environment.GetEnvironmentVariable(QualifiedDirectoryVariable)
@@ -361,8 +371,9 @@ public sealed partial class RlStoredPriceDesktopTests(ITestOutputHelper output) 
         var page = new MainWindowPage(MainWindow!, this);
         Window window = page.OpenRlTrainingWindow();
         window.Patterns.Window.Pattern.SetWindowVisualState(FlaUI.Core.Definitions.WindowVisualState.Maximized);
-        Element(window, RlUiConstants.Models).AsComboBox().Select(0);
-        Keyboard.Press(VirtualKeyShort.ESCAPE);
+        // The model list shows the models of the chosen mode only: the T16 model is listed in the continuous mode.
+        Element(window, RlUiConstants.ContinuousMode).AsCheckBox().IsChecked = true;
+        SelectFirst(Element(window, RlUiConstants.Models).AsComboBox());
         WaitUntilEvaluationDetails(window, "R04 blocks not loaded");
         SaveScreenshot(window, "sa_T16_R04_desktop_before_report.png");
         var tree = window.FindAllDescendants().Select(e => new { AutomationId = e.Properties.AutomationId.ValueOrDefault,
@@ -370,13 +381,12 @@ public sealed partial class RlStoredPriceDesktopTests(ITestOutputHelper output) 
             IsOffscreen = e.Properties.IsOffscreen.ValueOrDefault }).ToArray();
         string? evidenceDirectory = Environment.GetEnvironmentVariable(EvidenceDirectoryVariable);
         if (evidenceDirectory is not null) File.WriteAllText(Path.Combine(evidenceDirectory, "r04_dialog_automation.json"), JsonSerializer.Serialize(tree));
-        var details = WaitForElement(() => window.FindFirstDescendant(cf => cf.ByAutomationId(RlUiConstants.EvaluationDetails))
-            ?? window.FindAllDescendants().FirstOrDefault(e => Localized("Rl.EvaluationDetails").Contains(e.Properties.Name.ValueOrDefault)));
+        var details = WaitForElement(() => FindEvaluationDetails(window));
         if (details.Patterns.ExpandCollapse.IsSupported) details.Patterns.ExpandCollapse.Pattern.Expand(); else details.Click();
         var reportElement = Element(window, RlUiConstants.EvaluationReport);
         string report = reportElement.Name;
-        Assert.Contains(RlContinuousContract.PairedBaselineId, report); Assert.Contains(RlContract.HoldBaselineId, report);
-        Assert.Contains(RlConstraintContract.SelectionMetric, report);
+        // The report names the policies with their display names (the ids are not shown) and no longer prints the selection metric.
+        Assert.True(Localized("Rl.Ui.Policy.Paired").Any(report.Contains)); Assert.True(Localized("Rl.Ui.Policy.Hold").Any(report.Contains));
         Assert.True(Localized("Rl.ConstraintStatus.NotApplicable").Any(report.Contains));
         Assert.True(Localized("Rl.ConstraintDisclosure").Any(report.Contains));
         string previousLayout = ""; int stableLayout = 0;
@@ -392,8 +402,8 @@ public sealed partial class RlStoredPriceDesktopTests(ITestOutputHelper output) 
         if (details.Patterns.ExpandCollapse.IsSupported) details.Patterns.ExpandCollapse.Pattern.Collapse();
         else details.Click();
         window.Close();
-        ReplayFromSettings(page, policyId: RlContinuousContract.PairedBaselineId);
-        WaitUntil(() => MainWindow!.FindFirstDescendant(cf => cf.ByAutomationId(RlUiConstants.PolicyControlReadout))?.Name.Contains(RlContinuousContract.PairedBaselineId) == true,
+        ReplayFromSettings(page, policyNames: Localized("Rl.Ui.Policy.Paired"));
+        WaitUntil(() => MainWindow!.FindFirstDescendant(cf => cf.ByAutomationId(RlUiConstants.PolicyControlReadout))?.Name is { } readout && Localized("Rl.Ui.Policy.Paired").Any(readout.Contains),
             CompletionTimeoutMs, "Fixed policy controls were not published");
         var proposal = WaitForElement(() => MainWindow!.FindFirstDescendant(cf => cf.ByAutomationId(RlUiConstants.ContinuousReadout)));
         var control = WaitForElement(() => MainWindow!.FindFirstDescendant(cf => cf.ByAutomationId(RlUiConstants.PolicyControlReadout)));
@@ -408,7 +418,7 @@ public sealed partial class RlStoredPriceDesktopTests(ITestOutputHelper output) 
             .All(e => e.IsOffscreen), errorMessage: "Stale R04 evaluation details");
     }
 
-    [Fact(Timeout = 600_000)]
+    [Fact(Timeout = LocalRunTestTimeoutMs)]
     public void LocalStoredPrices_TrainCancelActivateReplayAndInvalidateThroughDesktop()
     {
         string directory = Environment.GetEnvironmentVariable(QualifiedDirectoryVariable)
@@ -425,6 +435,7 @@ public sealed partial class RlStoredPriceDesktopTests(ITestOutputHelper output) 
                 string metadata = PathDiscovery.ResolveDataPath(null, MarketDataSettings.DefaultMetadataDataPath);
                 File.Copy(Path.Combine(directory, RlFiles.MetadataParquet), Path.Combine(metadata, Symbol + ".meta.parquet"));
                 using var registry = new ModelGenerationRegistry();
+                SaveRetentionPolicy(registry, root);
                 registryRoot = Path.Combine(PathDiscovery.ResolveModelGenerationsDirectory(), RlFiles.RlFolder);
                 modelId = registry.RegisterRlAsync(directory).GetAwaiter().GetResult().ModelId;
                 Assert.Null(registry.RlActiveId);
@@ -433,13 +444,17 @@ public sealed partial class RlStoredPriceDesktopTests(ITestOutputHelper output) 
             Window window = page.OpenRlTrainingWindow();
             Assert.Equal(RlUiConstants.Window, window.AutomationId);
             WaitState(window, "Ready");
-            Assert.Equal("", Element(window, RlUiConstants.ActiveModel).Name);
-            Assert.True(Localized("Rl.Disclosure").Contains(Element(window, RlUiConstants.Disclosure).Name));
+            Assert.Equal("", ActiveModelName(window));
+            // The verification facts are shown as a label/value list (the first fact stands for it); the single disclosure sentence is no longer a screen element.
+            var shownFacts = Element(window, RlUiConstants.Disclosure).FindAllDescendants().Select(e => e.Properties.Name.ValueOrDefault).ToArray();
+            Assert.True(Localized("Rl.Ui.Fact.F01.Label").Any(shownFacts.Contains) && Localized("Rl.Ui.Fact.F01.Value").Any(shownFacts.Contains),
+                "The verification facts list does not show its first fact: " + string.Join(" | ", shownFacts));
             Text(window, RlUiConstants.Symbol, Symbol);
-            Text(window, RlUiConstants.StartDate, "invalid");
+            // The date pickers no longer accept free text and the window blocks an invalid input before any job exists: Start is disabled and the footer says why.
             Text(window, RlUiConstants.EndDate, DateTime.UtcNow.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
-            Invoke(window, RlUiConstants.Train);
-            WaitState(window, "Rejected");
+            Text(window, RlUiConstants.StartDate, DateTime.UtcNow.AddYears(1).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
+            WaitUntil(() => !Element(window, RlUiConstants.Train).IsEnabled, errorMessage: "Start stayed enabled for a start date after the end date");
+            Assert.True(Localized("Rl.Ui.Guide.InvalidDateOrder").Contains(Element(window, RlUiConstants.StartBlocker).Name));
             Text(window, RlUiConstants.StartDate, "2026-01-01");
             Invoke(window, RlUiConstants.Train);
             WaitState(window, "InsufficientData");
@@ -447,7 +462,7 @@ public sealed partial class RlStoredPriceDesktopTests(ITestOutputHelper output) 
             Element(window, RlUiConstants.Smoke).AsCheckBox().IsChecked = true;
             Invoke(window, RlUiConstants.Train);
             WaitState(window, "Succeeded", CompletionTimeoutMs);
-            Assert.Equal("", Element(window, RlUiConstants.ActiveModel).Name);
+            Assert.Equal("", ActiveModelName(window));
             Assert.True(Localized("Rl.SmokeCompleted").Contains(Element(window, RlUiConstants.Message).Name));
             Assert.Single(Directory.EnumerateFiles(registryRoot, RlFiles.Manifest, SearchOption.AllDirectories));
             SaveScreenshot(window, "sa_T15_RL_desktop_smoke.png");
@@ -457,21 +472,23 @@ public sealed partial class RlStoredPriceDesktopTests(ITestOutputHelper output) 
             WaitState(window, "Training", CompletionTimeoutMs);
             Invoke(window, RlUiConstants.Cancel);
             WaitState(window, "Cancelled", CompletionTimeoutMs);
-            Assert.Equal("", Element(window, RlUiConstants.ActiveModel).Name);
+            Assert.Equal("", ActiveModelName(window));
             Assert.Single(Directory.EnumerateFiles(registryRoot, RlFiles.Manifest, SearchOption.AllDirectories));
 
             Element(window, RlUiConstants.Models).AsComboBox().Select(0);
-            WaitUntilEvaluationDetails(window, "Qualified episode support was not loaded");
+            // A T15 model has no constraint report, so the evaluation-details expander is T16-only; the selection is complete once Activate is offered.
+            WaitUntil(() => Element(window, RlUiConstants.Activate).IsEnabled, CompletionTimeoutMs, "The selected model was not offered for activation");
             Invoke(window, RlUiConstants.Activate);
             WaitUntil(() => Element(window, RlUiConstants.ActiveModel).Name == modelId,
                 errorMessage: "Manual activation did not publish the selected model");
             window.Close();
-            ReplayFromSettings(page);
+            // RL Playback starts from its default block; the first validation block is chosen explicitly so the anchor date below is the one that block ends its window on.
+            ReplayFromSettings(page, source.Catalog.Validation[0].Id);
             var panel = WaitForElement(() => MainWindow!.FindFirstDescendant(cf => cf.ByAutomationId(RlUiConstants.QPanel)));
             Assert.False(panel.IsOffscreen);
             Assert.Contains(modelId, panel.Name);
             Assert.Contains(RlFiles.Target, panel.Name);
-            Assert.Contains(expectedAnchor, panel.Name);
+            Assert.True(panel.Name.Contains(expectedAnchor, StringComparison.Ordinal), $"Q panel does not show the anchor {expectedAnchor}: {panel.Name}");
             foreach (string key in new[] { "Rl.Hold", "Rl.Buy", "Rl.Sell", "Rl.Maximum" })
                 Assert.True(Localized(key).Any(value => panel.Name.Contains(value, StringComparison.Ordinal)), $"Q panel does not expose {key}");
             Assert.Contains("0.99", panel.Name);
@@ -488,7 +505,7 @@ public sealed partial class RlStoredPriceDesktopTests(ITestOutputHelper output) 
         }
     }
 
-    [Fact(Timeout = 600_000)]
+    [Fact(Timeout = TwoStrictRunsTestTimeoutMs)]
     public void ContinuousStoredPrices_SelectFrozenDirectionTrainAndPublishReadout()
     {
         string directionDirectory = Environment.GetEnvironmentVariable(QualifiedDirectoryVariable)
@@ -501,6 +518,7 @@ public sealed partial class RlStoredPriceDesktopTests(ITestOutputHelper output) 
             string metadata = PathDiscovery.ResolveDataPath(null, MarketDataSettings.DefaultMetadataDataPath);
             File.Copy(Path.Combine(actorDirectory, RlFiles.MetadataParquet), Path.Combine(metadata, Symbol + ".meta.parquet"));
             using var registry = new ModelGenerationRegistry();
+            SaveRetentionPolicy(registry, root);
             registryRoot = Path.Combine(PathDiscovery.ResolveModelGenerationsDirectory(), RlFiles.RlFolder);
             directionId = registry.RegisterRlAsync(directionDirectory).GetAwaiter().GetResult().ModelId;
             actorId = registry.RegisterRlAsync(actorDirectory).GetAwaiter().GetResult().ModelId;
@@ -513,8 +531,10 @@ public sealed partial class RlStoredPriceDesktopTests(ITestOutputHelper output) 
         Element(window, RlUiConstants.ContinuousMode).AsCheckBox().IsChecked = true;
         Text(window, RlUiConstants.Symbol, Symbol); Text(window, RlUiConstants.StartDate, "1990-01-01");
         Text(window, RlUiConstants.EndDate, DateTime.UtcNow.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
-        Invoke(window, RlUiConstants.Train); WaitState(window, "Unavailable");
-        Element(window, RlUiConstants.FrozenDirection).AsComboBox().Select(0);
+        // Without a frozen direction model the window blocks the start itself (Start disabled, the footer names the reason).
+        WaitUntil(() => !Element(window, RlUiConstants.Train).IsEnabled, errorMessage: "Start stayed enabled without a frozen direction model");
+        Assert.True(Localized("Rl.Ui.Start.DirectionModelMissing").Contains(Element(window, RlUiConstants.StartBlocker).Name));
+        SelectFirst(Element(window, RlUiConstants.FrozenDirection).AsComboBox());
         // The old overlapping input now fails before learning; it is never silently shifted.
         Invoke(window, RlUiConstants.Train); WaitState(window, "Rejected");
         Assert.True(Localized("Rl.Temporal.Rejection.FutureInformation").Any(template =>
@@ -525,17 +545,17 @@ public sealed partial class RlStoredPriceDesktopTests(ITestOutputHelper output) 
         WaitUntil(() => Localized("Rl.Temporal.ExactDerived").Any(text => Element(window, RlUiConstants.DirectionTemporal).Name.Contains(text, StringComparison.Ordinal)),
             CompletionTimeoutMs, "Frozen direction temporal evidence was not presented");
         Element(window, RlUiConstants.Smoke).AsCheckBox().IsChecked = true;
-        Invoke(window, RlUiConstants.Train); WaitState(window, "Succeeded", CompletionTimeoutMs);
-        Assert.Equal("", Element(window, RlUiConstants.ActiveModel).Name);
+        Invoke(window, RlUiConstants.Train); WaitState(window, "Succeeded", StrictRunTimeoutMs);
+        Assert.Equal("", ActiveModelName(window));
         Assert.Equal(2, Directory.EnumerateFiles(registryRoot, RlFiles.Manifest, SearchOption.AllDirectories).Count());
         // Closed/virtualized ComboBox items need not expose UIA SelectedItem. The following full
         // train must reach Training without selecting again, proving preservation through refresh.
         Element(window, RlUiConstants.Smoke).AsCheckBox().IsChecked = false;
-        Invoke(window, RlUiConstants.Train); WaitState(window, "Training", CompletionTimeoutMs);
+        Invoke(window, RlUiConstants.Train); WaitState(window, "Training", StrictRunTimeoutMs);
         Invoke(window, RlUiConstants.Cancel); WaitState(window, "Cancelled", CompletionTimeoutMs);
-        Assert.Equal("", Element(window, RlUiConstants.ActiveModel).Name);
+        Assert.Equal("", ActiveModelName(window));
         Assert.Equal(2, Directory.EnumerateFiles(registryRoot, RlFiles.Manifest, SearchOption.AllDirectories).Count());
-        Element(window, RlUiConstants.Models).AsComboBox().Select(0);
+        SelectFirst(Element(window, RlUiConstants.Models).AsComboBox());
         WaitUntilEvaluationDetails(window, "Continuous model block support was not loaded");
         Invoke(window, RlUiConstants.Activate);
         WaitUntil(() => Element(window, RlUiConstants.ActiveModel).Name == actorId, errorMessage: "Continuous manual activation failed");
@@ -569,23 +589,62 @@ public sealed partial class RlStoredPriceDesktopTests(ITestOutputHelper output) 
             errorMessage: "Timeframe change retained stale continuous readout");
     }
 
+    /// <summary>The disposable data root lives on the small work drive, which cannot keep the default free-space reserve; a run is admitted with this reserve instead.</summary>
+    private const decimal FixtureMinimumFreeGiB = 1m;
+    /// <summary>Training needs an explicit retention policy (the defaults leave the inactive-model retention unset on purpose); the fixture saves the one R09 uses.</summary>
+    private static void SaveRetentionPolicy(ModelGenerationRegistry registry, string root)
+    {
+        registry.ConfigureRlArtifacts(root, new RlArtifactSettings());
+        registry.SaveRlArtifactPolicyAsync(new(MinimumFreeGiB: FixtureMinimumFreeGiB, NonactiveRetentionDays: 0, NonactiveKeepCount: 1)).GetAwaiter().GetResult();
+    }
+    /// <summary>The active-model line is shown only while a model is active; "no active model" is the absence of that element.</summary>
+    private static string ActiveModelName(Window window) => ShownName(window, RlUiConstants.ActiveModel);
+    /// <summary>The name of an element that the window shows only while it has content (active model, message); "" while it is not shown.</summary>
+    private static string ShownName(Window window, string id) => window.FindFirstDescendant(cf => cf.ByAutomationId(id))?.Name ?? "";
     private AutomationElement Element(Window window, string id) => WaitForElement(() => window.FindFirstDescendant(cf => cf.ByAutomationId(id)), errorMessage: $"Missing RL element {id}");
     private void Text(Window window, string id, string value)
     {
-        var editor = Element(window, id).AsTextBox();
+        var editor = FieldElement(window, id).AsTextBox();
         editor.Text = value; editor.Focus(); Keyboard.Press(VirtualKeyShort.TAB);
     }
+    /// <summary>
+    /// The Symbol field (AutoCompleteBox) and the two date fields (CalendarDatePicker) are composite controls: UI Automation exposes only their inner
+    /// editor, not their automation id, so those fields are found through their label.
+    /// </summary>
+    private AutomationElement FieldElement(Window window, string id) => WaitForElement(() => window.FindFirstDescendant(cf => cf.ByAutomationId(id))
+        ?? (CompositeFieldLabels.TryGetValue(id, out string? labelKey) ? FindEditorBelowLabel(window, FlaUI.Core.Definitions.ControlType.Edit, Localized(labelKey)) : null),
+        errorMessage: "Missing RL element " + id);
+    private static readonly Dictionary<string, string> CompositeFieldLabels = new()
+    {
+        [RlUiConstants.Symbol] = "Rl.Symbol", [RlUiConstants.StartDate] = "Rl.StartDate", [RlUiConstants.EndDate] = "Rl.EndDate",
+    };
     private void Invoke(Window window, string id) => Element(window, id).Patterns.Invoke.Pattern.Invoke();
+    /// <summary>Selects the first option and closes the list through UI Automation: an Escape key would close the whole window when the list is already closed.</summary>
+    private static void SelectFirst(ComboBox combo)
+    {
+        combo.Select(0);
+        if (combo.ExpandCollapseState == FlaUI.Core.Definitions.ExpandCollapseState.Expanded) combo.Collapse();
+    }
+    /// <summary>The playback lists name an option "partition/label · id"; FlaUI's <c>Select(string)</c> needs the exact name and silently selects nothing otherwise, so the option is found by the id (or, for the policies, the display name) it contains.</summary>
+    private static void SelectContaining(ComboBox combo, params string[] anyOf)
+    {
+        int index = Array.FindIndex(combo.Items, item => anyOf.Any(text => item.Name.Contains(text, StringComparison.Ordinal)));
+        Assert.True(index >= 0, "No list option contains " + string.Join(" / ", anyOf) + ": " + string.Join(" | ", combo.Items.Select(item => item.Name)));
+        combo.Select(index);
+    }
     /// <summary>The RL window shows the evaluation details only once the blocks of the selected generation are loaded.</summary>
     private void WaitUntilEvaluationDetails(Window window, string errorMessage)
-        => WaitUntil(() => window.FindFirstDescendant(cf => cf.ByAutomationId(RlUiConstants.EvaluationDetails)) is not null, CompletionTimeoutMs, errorMessage);
+        => WaitUntil(() => FindEvaluationDetails(window) is not null, CompletionTimeoutMs, errorMessage);
+    /// <summary>The expander header publishes no automation id, so it is found by its id or, failing that, by its localized text.</summary>
+    private static AutomationElement? FindEvaluationDetails(Window window) => window.FindFirstDescendant(cf => cf.ByAutomationId(RlUiConstants.EvaluationDetails))
+        ?? window.FindAllDescendants().FirstOrDefault(e => Localized("Rl.EvaluationDetails").Contains(e.Properties.Name.ValueOrDefault));
     /// <summary>Replays the newest agent through Settings > RL Playback; a successful "Show on chart" closes Settings.</summary>
-    private void ReplayFromSettings(MainWindowPage page, string? blockId = null, string? policyId = null)
+    private void ReplayFromSettings(MainWindowPage page, string? blockId = null, string[]? policyNames = null)
     {
         var settings = page.OpenRlPlaybackSettings(Localized("Settings_RlPlayback"));
         WaitUntil(() => Element(settings, RlUiConstants.PlaybackShow).IsEnabled, CompletionTimeoutMs, "RL Playback was not ready to show");
-        if (blockId is not null) { Element(settings, RlUiConstants.PlaybackBlocks).AsComboBox().Select(blockId); Keyboard.Press(VirtualKeyShort.ESCAPE); }
-        if (policyId is not null) { Element(settings, RlUiConstants.PlaybackPolicies).AsComboBox().Select(policyId); Keyboard.Press(VirtualKeyShort.ESCAPE); }
+        if (blockId is not null) { SelectContaining(Element(settings, RlUiConstants.PlaybackBlocks).AsComboBox(), blockId); Keyboard.Press(VirtualKeyShort.ESCAPE); }
+        if (policyNames is not null) { SelectContaining(Element(settings, RlUiConstants.PlaybackPolicies).AsComboBox(), policyNames); Keyboard.Press(VirtualKeyShort.ESCAPE); }
         Invoke(settings, RlUiConstants.PlaybackShow);
         WaitUntil(() => MainWindow!.ModalWindows.Length == 0, CompletionTimeoutMs, "Replay did not finish: Settings stayed open");
     }
@@ -594,7 +653,7 @@ public sealed partial class RlStoredPriceDesktopTests(ITestOutputHelper output) 
         var expected = Localized("Rl.State." + state);
         WaitUntil(() => expected.Contains(Element(window, RlUiConstants.Status).Name), timeout,
             $"RL did not reach {state}; inspect its status/message and training artifacts");
-        LogInfo($"RL state: {state}; {Element(window, RlUiConstants.Message).Name}");
+        LogInfo($"RL state: {state}; {ShownName(window, RlUiConstants.Message)}");
     }
     private static string[] Localized(string key) => new[] { "en", "ja" }.Select(language =>
     {

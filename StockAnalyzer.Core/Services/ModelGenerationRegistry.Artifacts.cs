@@ -75,10 +75,10 @@ public sealed partial class ModelGenerationRegistry
         RlArtifactSettings.GuardPath(path);
         if (!SameArtifactVolume(root, path)) throw new InvalidDataException("Artifact path crosses volumes.");
     }
-    private (long Bytes, string Identity) InspectArtifactTree(string root, string path)
+    private (long Bytes, string Identity, DateTimeOffset NewestWriteUtc) InspectArtifactTree(string root, string path)
     {
         GuardArtifactPath(root, path);
-        var parts = new List<string>(); long bytes = 0;
+        var parts = new List<string>(); long bytes = 0; DateTimeOffset newest = DateTimeOffset.MinValue;
         void Inspect(string directory)
         {
             GuardArtifactPath(root, directory);
@@ -89,13 +89,14 @@ public sealed partial class ModelGenerationRegistry
                 else
                 {
                     var file = new FileInfo(entry); bytes = checked(bytes + file.Length);
+                    if (file.LastWriteTimeUtc > newest) newest = file.LastWriteTimeUtc;
                     parts.Add(Path.GetRelativePath(path, entry) + ":" + file.Length + ":" + file.LastWriteTimeUtc.Ticks);
                     if (Path.GetFileName(entry) is ArtifactRunFile or RlFiles.Manifest) parts.Add(ContentHash.OfFile(entry));
                 }
             }
         }
         if (Directory.Exists(path)) Inspect(path);
-        return (bytes, ContentHash.OfText(string.Join("\n", parts)));
+        return (bytes, ContentHash.OfText(string.Join("\n", parts)), newest);
     }
 
     private Dictionary<string, HashSet<string>> RlProtectedGenerations(out bool verified)
@@ -196,7 +197,13 @@ public sealed partial class ModelGenerationRegistry
             RlArtifactKind kind = RlArtifactKind.UnknownRun;
             if (run is not null)
             {
-                if (run.State == RlArtifactRunState.Running) reasons.Add(RlArtifactRetentionReason.Interrupted.ToString());
+                if (run.State == RlArtifactRunState.Running)
+                {
+                    // Ended without a terminal state (closed or crashed). A live owner (Lease) or a resumable save (Resumable) is already a reason above; otherwise the run
+                    // expires like a failed one, counted from its last change, and is deleted only through the reviewed cleanup.
+                    kind = RlArtifactKind.FailedRun;
+                    if (now - tree.NewestWriteUtc <= TimeSpan.FromDays(policy.FailedRetentionDays)) reasons.Add(RlArtifactRetentionReason.NotExpired.ToString());
+                }
                 else if (run.State is RlArtifactRunState.Failed or RlArtifactRunState.Cancelled)
                 {
                     kind = RlArtifactKind.FailedRun;
@@ -296,6 +303,152 @@ public sealed partial class ModelGenerationRegistry
         catch (Exception error) { RecordStoreFailure("rl-artifact-completion", error); throw; }
         finally { _mutation.Release(); }
     }
+    /// <summary>Reasons an explicit owner removal does not ask: the retention policy, and the references the removal itself releases from the active/previous/recovery pointers.</summary>
+    private static readonly HashSet<string> OwnerRemovalOverriddenReasons = new(StringComparer.Ordinal)
+    {
+        RlArtifactRetentionReason.Newest.ToString(), RlArtifactRetentionReason.NotExpired.ToString(), RlArtifactRetentionReason.SettingsIncomplete.ToString(),
+        RlArtifactRetentionReason.Active.ToString(), RlArtifactRetentionReason.Rollback.ToString(), RlArtifactRetentionReason.Backup.ToString(),
+    };
+
+    /// <summary>The pointer without any reference to <paramref name="modelId"/> (an active reference becomes "no active model").</summary>
+    private static Pointer WithoutRlGeneration(Pointer pointer, string modelId)
+        => new(string.Equals(pointer.ActiveId, modelId, StringComparison.Ordinal) ? null : pointer.ActiveId,
+            pointer.History.Where(id => !string.Equals(id, modelId, StringComparison.Ordinal)).ToArray());
+
+    /// <summary>
+    /// Releases every pointer reference to a generation that is about to be removed, so no pointer or recovery copy is left naming a missing generation
+    /// (which would make the store unverified). The current pointer is written first; the recovery copy is scrubbed before anything is deleted.
+    /// </summary>
+    private void ReleaseRlPointerReferences(RlGeneration generation)
+    {
+        bool continuous = generation.Target == RlContinuousContract.Target;
+        var current = continuous ? _rlContinuousPointer : _rlPointer;
+        string path = RlPointerPath(generation.Target), backup = path + Coordination.BackupSuffix;
+        RequirePointerWritePaths(path); RequirePointerWritePaths(backup);
+        if (string.Equals(current.ActiveId, generation.ModelId, StringComparison.Ordinal) || current.History.Contains(generation.ModelId, StringComparer.Ordinal))
+        {
+            var next = WithoutRlGeneration(current, generation.ModelId);
+            _savePointer(path, next).GetAwaiter().GetResult();
+            if (continuous) _rlContinuousPointer = next; else _rlPointer = next;
+        }
+        if (!File.Exists(backup)) return;
+        var saved = ReadStorePointer(backup, RlContract.RollbackGenerationCount, false);
+        if (string.Equals(saved.ActiveId, generation.ModelId, StringComparison.Ordinal) || saved.History.Contains(generation.ModelId, StringComparer.Ordinal))
+            AtomicJsonFile.SaveAsync(backup, WithoutRlGeneration(saved, generation.ModelId), JsonOptions, preserveBackup: true).GetAwaiter().GetResult();
+    }
+
+    /// <summary>
+    /// Captures the current pointer and its recovery copy of a generation's target and returns the action that puts both back, for a removal that fails
+    /// before the generation folder is moved (a refusal must change nothing). Call it before <see cref="ReleaseRlPointerReferences"/>.
+    /// </summary>
+    private Action CaptureRlPointerRestore(RlGeneration generation)
+    {
+        bool continuous = generation.Target == RlContinuousContract.Target;
+        var current = continuous ? _rlContinuousPointer : _rlPointer;
+        string path = RlPointerPath(generation.Target), backup = path + Coordination.BackupSuffix;
+        var originalBackup = File.Exists(backup) ? ReadStorePointer(backup, RlContract.RollbackGenerationCount, false) : null;
+        return () =>
+        {
+            _savePointer(path, current).GetAwaiter().GetResult();
+            if (continuous) _rlContinuousPointer = current; else _rlPointer = current;
+            if (originalBackup is not null) AtomicJsonFile.SaveAsync(backup, originalBackup, JsonOptions, preserveBackup: true).GetAwaiter().GetResult();
+            else File.Delete(backup);
+        };
+    }
+
+    /// <summary>
+    /// The registered generations whose work folder (<c>&lt;Data&gt;/TrainingArtifacts/RL/&lt;run_id&gt;</c>, the run id recorded in the generation's own job file) no longer exists.
+    /// A generation is a self-contained registered copy, so it stays usable; this only lets a list say that the folder it was trained in is gone.
+    /// Empty when the RL artifact roots are not configured or a job file cannot be read: the registry never claims a folder is missing without evidence.
+    /// </summary>
+    public IReadOnlySet<string> RlModelIdsWithoutWorkFolder()
+    {
+        lock (_gate)
+        {
+            using var transaction = EnterStore();
+            EnsureRlLoaded();
+            return _rlKnown.Keys.Where(id => HasRlWorkFolderCore(id) == false).ToHashSet(StringComparer.Ordinal);
+        }
+    }
+
+    private bool? HasRlWorkFolderCore(string modelId)
+    {
+        if (_artifactRunRoot is null || !_rlKnown.ContainsKey(modelId)) return null;
+        try
+        {
+            using var job = JsonDocument.Parse(File.ReadAllText(Path.Combine(RlRoot, modelId, RlFiles.Job)));
+            if (!job.RootElement.TryGetProperty("run_id", out var run) || run.ValueKind != JsonValueKind.String
+                || !Guid.TryParseExact(run.GetString(), "N", out var runId)) return null;
+            return Directory.Exists(Path.Combine(_artifactRunRoot, runId.ToString("N")));
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) { return null; }
+    }
+
+    /// <summary>
+    /// Removes one registered generation whose work folder is gone. Refused (nothing deleted, the reasons returned) while the generation is a referenced direction
+    /// or an in-use model, while its work folder still exists or cannot be determined (those are deleted by the retention cleanup), or while the store is unverified.
+    /// The retention period and keep count are deliberately not asked, and neither are the active/previous/recovery references: the owner removes this model
+    /// explicitly, so those pointers are released first (removing the active model leaves "no active model", the state of a store before its first activation).
+    /// </summary>
+    public async Task<RlGenerationRemoval> RemoveRlGenerationAsync(string modelId, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(modelId);
+        await EnterMutationAsync(ct).ConfigureAwait(false);
+        try
+        {
+            using var transaction = EnterStore(ct);
+            lock (_gate)
+            {
+                EnsureRlLoaded();
+                var entry = PreviewArtifactsCore()?.Entries.FirstOrDefault(e => e.Id == modelId && e.Kind == RlArtifactKind.Generation.ToString());
+                if (entry is null) return new(false, ImmutableArray.Create(RlArtifactRetentionReason.UnknownOwner.ToString()));
+                var blocked = entry.Candidate ? ImmutableArray<string>.Empty : entry.Reasons.Where(reason => !OwnerRemovalOverriddenReasons.Contains(reason)).ToImmutableArray();
+                if (blocked.Length == 0 && HasRlWorkFolderCore(modelId) != false) blocked = ImmutableArray.Create(RlArtifactRetentionReason.WorkFolderPresent.ToString());
+                if (blocked.Length > 0) return new(false, blocked);
+                Action? restorePointers = null;
+                try { restorePointers = CaptureRlPointerRestore(_rlKnown[modelId]); ReleaseRlPointerReferences(_rlKnown[modelId]); RetireAndDeleteArtifact(entry); }
+                catch (Exception error) when (error is IOException or InvalidDataException or UnauthorizedAccessException or InvalidOperationException)
+                {
+                    RecordStoreFailure("rl-generation-remove", error);
+                    // A refusal changes nothing: while the folder is still in place the owner's active/previous pointers come back. Once it has been moved the removal stands.
+                    if (restorePointers is not null && Directory.Exists(entry.Path)) restorePointers();
+                    throw;
+                }
+                return new(true, ImmutableArray<string>.Empty);
+            }
+        }
+        finally { _mutation.Release(); }
+    }
+
+    /// <summary>
+    /// Deletes one reviewed artifact entry: verifies its identity, retires it by same-volume rename behind an external deletion ticket (the ticket survives a
+    /// partial recursive delete), then deletes it. The caller holds the mutation and store locks and has already decided that the entry may be deleted.
+    /// </summary>
+    private void RetireAndDeleteArtifact(RlArtifactEntry entry)
+    {
+        bool pending = entry.Kind == RlArtifactKind.PendingDeletion.ToString();
+        string root = pending ? ArtifactTrashRoot : entry.Kind == RlArtifactKind.Generation.ToString() ? RlRoot : _artifactRunRoot!;
+        var tree = InspectArtifactTree(root, entry.Path);
+        string identity = pending ? ContentHash.OfText(tree.Identity + FileIdentity(entry.Path + DeletionTicketSuffix)) : tree.Identity;
+        if (identity != entry.Identity) throw new InvalidOperationException("Artifact changed before deletion.");
+        if (entry.Kind == RlArtifactKind.Generation.ToString() && (!_rlKnown.TryGetValue(entry.Id, out var generation) || !VerifyRlBytes(generation)))
+            throw new InvalidDataException("Generation no longer verifies.");
+        string retiring = entry.Path;
+        if (!pending)
+        {
+            // Retire by same-volume rename first. An external ticket survives a partial recursive delete.
+            RequireStorePath(ArtifactTrashRoot); Directory.CreateDirectory(ArtifactTrashRoot);
+            retiring = Path.Combine(ArtifactTrashRoot, Guid.NewGuid().ToString("N"));
+            RequireStorePath(retiring); RequirePointerWritePaths(retiring + DeletionTicketSuffix);
+            AtomicJsonFile.SaveAsync(retiring + DeletionTicketSuffix,
+                new DeletionTicket(RlArtifactSettings.SchemaVersion, entry.Id, entry.Kind, entry.Path, ArtifactClock()), RlArtifactSettings.Options).GetAwaiter().GetResult();
+            Directory.Move(entry.Path, retiring);
+            if (entry.Kind == RlArtifactKind.Generation.ToString()) _rlKnown.Remove(entry.Id);
+        }
+        RequireStoreTree(retiring); DeleteDirectory(retiring);
+        File.Delete(retiring + DeletionTicketSuffix);
+    }
+
     public async Task<RlArtifactCleanupResult> CleanupRlArtifactsAsync(RlArtifactPreview reviewed, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(reviewed);
@@ -323,27 +476,7 @@ public sealed partial class ModelGenerationRegistry
                         // Re-read protection after each partial operation. Never widen the reviewed set.
                         var now = PreviewArtifactsCore()!.Entries.FirstOrDefault(e => e.Id == entry.Id && e.Kind == entry.Kind);
                         if (now is null || !now.Candidate || now.Identity != entry.Identity) { failures.Add(entry.Id + ": changed or protected"); continue; }
-                        bool pending = entry.Kind == RlArtifactKind.PendingDeletion.ToString();
-                        string root = pending ? ArtifactTrashRoot : entry.Kind == RlArtifactKind.Generation.ToString() ? RlRoot : _artifactRunRoot!;
-                        var tree = InspectArtifactTree(root, entry.Path);
-                        string identity = pending ? ContentHash.OfText(tree.Identity + FileIdentity(entry.Path + DeletionTicketSuffix)) : tree.Identity;
-                        if (identity != entry.Identity) throw new InvalidOperationException("Artifact changed before deletion.");
-                        if (entry.Kind == RlArtifactKind.Generation.ToString() && (!_rlKnown.TryGetValue(entry.Id, out var generation) || !VerifyRlBytes(generation)))
-                            throw new InvalidDataException("Generation no longer verifies.");
-                        string retiring = entry.Path;
-                        if (!pending)
-                        {
-                            // Retire by same-volume rename first. An external ticket survives a partial recursive delete.
-                            RequireStorePath(ArtifactTrashRoot); Directory.CreateDirectory(ArtifactTrashRoot);
-                            retiring = Path.Combine(ArtifactTrashRoot, Guid.NewGuid().ToString("N"));
-                            RequireStorePath(retiring); RequirePointerWritePaths(retiring + DeletionTicketSuffix);
-                            AtomicJsonFile.SaveAsync(retiring + DeletionTicketSuffix,
-                                new DeletionTicket(RlArtifactSettings.SchemaVersion, entry.Id, entry.Kind, entry.Path, ArtifactClock()), RlArtifactSettings.Options).GetAwaiter().GetResult();
-                            Directory.Move(entry.Path, retiring);
-                            if (entry.Kind == RlArtifactKind.Generation.ToString()) _rlKnown.Remove(entry.Id);
-                        }
-                        RequireStoreTree(retiring); DeleteDirectory(retiring);
-                        File.Delete(retiring + DeletionTicketSuffix);
+                        RetireAndDeleteArtifact(entry);
                         deleted.Add(entry.Id);
                     }
                     catch (Exception error) when (error is IOException or InvalidDataException or UnauthorizedAccessException or InvalidOperationException)

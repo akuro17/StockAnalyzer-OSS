@@ -73,7 +73,7 @@ import model_analysis  # noqa: E402  (VOLATILITY_BARS and the realized-volatilit
 SCHEMA_VERSION: int = 1
 TOOL: str = "causal_analysis.py"
 TOOL_VERSION: str = "1"
-OUT_DIR: Path = ds.DATA_ROOT / "TrainingArtifacts" / "Causal"
+OUT_DIR: Path = ds.TRAINING_ARTIFACTS_ROOT / "Causal"
 REPORT_JSON: str = "report.json"
 REPORT_CSV: str = "report.csv"
 INCOMING_SUFFIX: str = ".incoming"
@@ -1100,8 +1100,7 @@ def _run_selfcheck() -> None:
           f"[{found['ci_low']:.3f}, {found['ci_high']:.3f}], naive {naive:.3f}; null {null['estimated_effect_under_assumptions']:.3f})")
 
     # group 6: end to end on synthetic OHLCV parquet
-    ds.DATA_ROOT.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="sa_causal_selfcheck_", dir=str(ds.DATA_ROOT)) as tmp_name:
+    with tempfile.TemporaryDirectory(prefix="sa_causal_selfcheck_") as tmp_name:
         tmp = Path(tmp_name)
         data = tmp / "data"
         data.mkdir()

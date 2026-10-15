@@ -104,7 +104,7 @@ public class TrainingWizardViewModelTests : IDisposable
     [Fact]
     public void WindowUnitNote_DefaultState_IncludesMinBarsCount()
     {
-        // Defaults to WindowSize = 75, Horizon = 5.
+        // Defaults to WindowSize = 60, Horizon = 5.
         var vm = new TrainingWizardViewModel();
 
         var expectedMinBars = WalkForwardDataRequirement.MinimumRawBarsForTraining(
@@ -124,7 +124,7 @@ public class TrainingWizardViewModelTests : IDisposable
     [Fact]
     public void WindowUnitNote_ShowsTheWholeRunRequirement_NotOnlyTheLastFold()
     {
-        // The default 75-bar window needs far more history than the last fold alone: the monthly AAPL history (551 bars)
+        // A 75-bar window needs far more history than the last fold alone: the monthly AAPL history (551 bars)
         // failed in the trainer although the earlier hint (534) said it was enough.
         var vm = new TrainingWizardViewModel { WindowSize = 75, Horizon = 5 };
         var whole = WalkForwardDataRequirement.MinimumRawBarsForTraining(75, 5);

@@ -20,7 +20,7 @@ public class WalkForwardDataRequirementTests
 {
     [Theory]
     [InlineData(25, 5, 184)]
-    [InlineData(75, 5, 534)] // TrainingWizardViewModel's actual default WindowSize/typical Horizon.
+    [InlineData(75, 5, 534)] // The former default WindowSize with the typical Horizon (documented example).
     [InlineData(60, 10, 464)]
     [InlineData(10, 1, 51)]
     [InlineData(1, 1, 8)] // Smallest possible window/horizon; caught an earlier derivation bug (fold_size == 0 guard).

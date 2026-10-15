@@ -726,7 +726,7 @@ def build_parser() -> argparse.ArgumentParser:
     train.add_argument("--data-start", default=None, help="Inclusive first calendar date (YYYY-MM-DD).")
     train.add_argument("--data-end", default=None, help="Inclusive last calendar date (YYYY-MM-DD).")
     train.add_argument("--timeframe", choices=tuple(ds.TIMEFRAME_DIRS), default=SUPPORTED_TIMEFRAME)
-    train.add_argument("--out-root", type=Path, default=ds.DATA_ROOT / "TrainingArtifacts")
+    train.add_argument("--out-root", type=Path, default=ds.TRAINING_ARTIFACTS_ROOT)
     train.add_argument("--max-seconds", type=_positive_int, default=MAX_SECONDS, help=f"Run-duration bound (default {MAX_SECONDS}, env {MAX_SECONDS_ENV}).")
     train.add_argument("--oos-tail-days", type=_positive_int, required=True, help="Calendar days of the out-of-sample tail that is never read (>= 1).")
     train.add_argument("--feature-mode", choices=ds.FEATURE_MODES, default=DEFAULT_FEATURE_MODE)

@@ -29,6 +29,11 @@ public interface IRlModelGenerationRegistry
     RlArtifactPreview? PreviewRlArtifacts(CancellationToken ct) { ct.ThrowIfCancellationRequested(); return PreviewRlArtifacts(); }
     Task<RlArtifactCleanupResult> CleanupRlArtifactsAsync(RlArtifactPreview reviewed, CancellationToken ct = default)
         => Task.FromException<RlArtifactCleanupResult>(new System.NotSupportedException());
+    /// <summary>Registered models whose work folder no longer exists; empty when that cannot be determined.</summary>
+    IReadOnlySet<string> RlModelIdsWithoutWorkFolder() => System.Collections.Immutable.ImmutableHashSet<string>.Empty;
+    /// <summary>Removes one registered model whose work folder is gone; refused (nothing deleted) with the reasons otherwise.</summary>
+    Task<RlGenerationRemoval> RemoveRlGenerationAsync(string modelId, CancellationToken ct = default)
+        => Task.FromException<RlGenerationRemoval>(new System.NotSupportedException());
     Task<RlArtifactRunLease?> BeginRlArtifactRunAsync(System.Guid runId, string dataRoot, CancellationToken ct = default)
         => Task.FromResult<RlArtifactRunLease?>(null);
     IReadOnlyList<RlCheckpointReview> ListRlCheckpoints() => System.Array.Empty<RlCheckpointReview>();

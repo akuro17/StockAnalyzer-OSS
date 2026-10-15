@@ -26,11 +26,7 @@ public sealed partial class RlTrainingDialogViewModel
     { Message = DescribeError(error); _messageError = error; }
     private void SetRecoveryNotice(string? modelId)
     { Message = string.Format(CultureInfo.CurrentCulture, _localization.GetString("Rl.RecoveryCompleted"), modelId); _recoveredNoticeId = modelId; }
-    private string KnownLabel(string key)
-    {
-        string label = _localization.GetString(key);
-        return label == "[" + key + "]" ? _localization.GetString("Rl.Ui.Load.Unsupported") : label;
-    }
+    private string KnownLabel(string key) => RlUiDisplay.KnownLabel(key, _localization);
     private string DirectionEvidenceText() => _directionEvidence is not { } evidence ? _localization.GetString("Rl.Temporal.Unverified")
         : string.Format(CultureInfo.CurrentCulture, _localization.GetString("Rl.Temporal.DirectionBound"),
             KnownLabel("Rl.Temporal." + evidence.Status), evidence.InformationUpperExclusive.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));

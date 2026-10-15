@@ -99,6 +99,7 @@ public sealed partial class RlTrainingDialogViewModel : ObservableObject, IDispo
     public string StatusDisplay => _pauseCts?.IsCancellationRequested == true && Status != "Paused" && Status != "Cancelled" && Status != "Cancelling"
         ? _localization.GetString("Rl.Checkpoint.PausePending")
         : _localization.GetString(KnownStates.Contains(Status, StringComparer.Ordinal) ? "Rl.State." + Status : "Rl.Ui.Status.Processing");
+    private static readonly string[] LocalizedPhases = { RlTrainingPhases.Source, RlTrainingPhases.Environment, RlTrainingPhases.Baselines };
     private static readonly string[] KnownStates = { "Ready", "Preparing", "Training", "Evaluating", "Qualifying", "Succeeded", "Failed", "Rejected", "Unavailable", "InsufficientData", "Cancelling", "Cancelled", "Paused" };
     [ObservableProperty] private string _message = "";
     [ObservableProperty] private RlGeneration? _selectedGeneration;
@@ -218,13 +219,13 @@ public sealed partial class RlTrainingDialogViewModel : ObservableObject, IDispo
         if (_disposed) { _refreshCts = null; return; }
         try
         {
-            var snapshot = await Task.Run(() => _registry.CaptureRlSnapshot(cancel.Token), cancel.Token);
+            var (snapshot, withoutWorkFolder) = await Task.Run(() => (_registry.CaptureRlSnapshot(cancel.Token), _registry.RlModelIdsWithoutWorkFolder()), cancel.Token);
             if (snapshot.Generations.IsDefault) throw new InvalidDataException("Registry returned an uninitialized collection.");
             await PublishAsync(() =>
             {
                 if (_disposed || revision != _registryRevision || cancel.IsCancellationRequested) return;
                 string? directionId = SelectedDirectionGeneration?.ModelId, selectedId = SelectedGeneration?.ModelId;
-                _capabilities = snapshot.Capabilities; StorageAvailable = _capabilities.Storage;
+                _capabilities = snapshot.Capabilities; StorageAvailable = _capabilities.Storage; _modelsWithoutWorkFolder = withoutWorkFolder;
                 if (!StorageAvailable) ArtifactsState = RlDialogLoadState.Unsupported;
                 if (!CheckpointAvailable) CheckpointsState = RlDialogLoadState.Unsupported;
                 if (!RecoveryAvailable) RecoveryState = RlDialogLoadState.Unsupported;
@@ -313,7 +314,8 @@ public sealed partial class RlTrainingDialogViewModel : ObservableObject, IDispo
             {
                 IsProgressIndeterminate = true;
             }
-            ProgressPhaseDisplay = !string.IsNullOrWhiteSpace(progress.Message) ? progress.Message : progress.State;
+            ProgressPhaseDisplay = LocalizedPhases.Contains(progress.State, StringComparer.Ordinal) ? _localization.GetString("Rl.State." + progress.State)
+                : !string.IsNullOrWhiteSpace(progress.Message) ? progress.Message : progress.State;
             if (_pauseCts?.IsCancellationRequested != true) Message = "";
             NotifyUi();
         });

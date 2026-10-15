@@ -29,8 +29,11 @@ public sealed partial class RlPlaybackSettingsViewModel : ViewModelBase, ISettin
     private readonly IRlReplayTarget _target;
     private readonly ILocalizationService _localization;
     private readonly IDispatcherService _dispatcher;
+    private readonly IDialogService? _dialogService;
     private readonly HashSet<string> _invalidEditors = new(StringComparer.Ordinal);
     private IReadOnlyList<RlGeneration> _generations = Array.Empty<RlGeneration>();
+    /// <summary>Registered models whose work folder is gone: labelled in the list, removable with <see cref="RemoveSelectedModelCommand"/>.</summary>
+    private IReadOnlySet<string> _modelsWithoutWorkFolder = new HashSet<string>();
     private ImmutableArray<RlEpisodeBlock> _blocks = ImmutableArray<RlEpisodeBlock>.Empty;
     private CancellationTokenSource? _blocksCts, _replayCts;
     private long _modelsRevision, _blocksRevision;
@@ -61,6 +64,8 @@ public sealed partial class RlPlaybackSettingsViewModel : ViewModelBase, ISettin
     public bool IsBusy => Operation == RlDialogOperation.Replaying;
     public bool HasModels => ModelsState == RlDialogLoadState.Loaded && ModelOptions.Count > 0;
     public bool HasSelectedModel => SelectedModelOption is not null;
+    public bool SelectedModelHasNoWorkFolder => SelectedModelOption is { } option && _modelsWithoutWorkFolder.Contains(option.Generation.ModelId);
+    public bool CanRemoveSelectedModel => Operation == RlDialogOperation.Idle && _dialogService is not null && SelectedModelHasNoWorkFolder;
     public bool ShowEmpty => ModelsState == RlDialogLoadState.Loaded && ModelOptions.Count == 0;
     public bool ShowModelsCaption => ModelsState is RlDialogLoadState.Loading or RlDialogLoadState.Failed;
     public bool ShowBlocksCaption => BlocksState != RlDialogLoadState.Loaded;
@@ -76,9 +81,9 @@ public sealed partial class RlPlaybackSettingsViewModel : ViewModelBase, ISettin
         && Decision >= 0 && Decision <= MaximumDecision && DecisionEditorValid && Free?.IsBusy != true;
 
     public RlPlaybackSettingsViewModel(IRlModelGenerationRegistry registry, RlDialogDataService data, IRlReplayTarget target,
-        ILocalizationService localization, IDispatcherService dispatcher, RlFreeReplayViewModel? free = null)
+        ILocalizationService localization, IDispatcherService dispatcher, RlFreeReplayViewModel? free = null, IDialogService? dialogService = null)
     {
-        _registry = registry; _data = data; _target = target; _localization = localization; _dispatcher = dispatcher;
+        _registry = registry; _data = data; _target = target; _localization = localization; _dispatcher = dispatcher; _dialogService = dialogService;
         Free = free;
         if (free is not null)
         {
@@ -110,6 +115,30 @@ public sealed partial class RlPlaybackSettingsViewModel : ViewModelBase, ISettin
         NotifyState();
     }
 
+    /// <summary>Removes the selected registered model after a confirmation; only offered while its work folder is gone (the registry refuses everything else).</summary>
+    [RelayCommand(CanExecute = nameof(CanRemoveSelectedModel))]
+    private async Task RemoveSelectedModelAsync()
+    {
+        if (!CanRemoveSelectedModel || SelectedModelOption is not { } option || _dialogService is null || _disposed) return;
+        string modelId = option.Generation.ModelId;
+        bool isActive = await Task.Run(() => _registry.RlActiveId == modelId || _registry.RlContinuousActiveId == modelId);
+        bool confirmed = await _dialogService.ShowConfirmationAsync(_localization.GetString("Rl.Ui.RemoveModel.Title"),
+            RlUiDisplay.RemoveModelQuestion(modelId, isActive, _localization));
+        if (!confirmed || _disposed) return;
+        Operation = RlDialogOperation.RemovingModel;
+        try
+        {
+            var result = await Task.Run(() => _registry.RemoveRlGenerationAsync(modelId));
+            if (_disposed) return;
+            StatusMessage = RlUiDisplay.RemoveModelResult(result, modelId, _localization);
+        }
+        catch (Exception error) { if (!_disposed) StatusMessage = RlErrorText.Describe(error, _localization); }
+        finally { if (!_disposed) Operation = RlDialogOperation.Idle; }
+        string message = StatusMessage;
+        await RefreshAsync();
+        if (!_disposed) StatusMessage = message;
+    }
+
     [RelayCommand]
     private async Task RefreshAsync()
     {
@@ -118,11 +147,12 @@ public sealed partial class RlPlaybackSettingsViewModel : ViewModelBase, ISettin
         ModelsState = RlDialogLoadState.Loading;
         try
         {
-            var generations = await Task.Run(() => _registry.ListRl());
+            var (generations, withoutWorkFolder) = await Task.Run(() => (_registry.ListRl(), _registry.RlModelIdsWithoutWorkFolder()));
             await PublishAsync(() =>
             {
                 if (_disposed || revision != _modelsRevision) return;
                 _generations = generations.OrderByDescending(g => g.CreatedUtc).ThenBy(g => g.ModelId, StringComparer.Ordinal).ToArray();
+                _modelsWithoutWorkFolder = withoutWorkFolder;
                 string? selectedId = SelectedModelOption?.Generation.ModelId;
                 bool blocksCurrent = BlocksState == RlDialogLoadState.Loaded;
                 _rebuilding = true;
@@ -299,7 +329,7 @@ public sealed partial class RlPlaybackSettingsViewModel : ViewModelBase, ISettin
     {
         ModelOptions.Clear();
         foreach (var generation in _generations)
-            ModelOptions.Add(new RlModelOption(generation, RlUiDisplay.Target(generation.Target, _localization) + " · " + generation.Symbol + " · " + generation.ModelId));
+            ModelOptions.Add(new RlModelOption(generation, RlUiDisplay.ModelLabel(generation, _modelsWithoutWorkFolder.Contains(generation.ModelId), _localization)));
     }
 
     private void RebuildBlockOptions()
@@ -353,6 +383,8 @@ public sealed partial class RlPlaybackSettingsViewModel : ViewModelBase, ISettin
         OnPropertyChanged(nameof(IsBusy));
         OnPropertyChanged(nameof(HasModels));
         OnPropertyChanged(nameof(HasSelectedModel));
+        OnPropertyChanged(nameof(SelectedModelHasNoWorkFolder));
+        OnPropertyChanged(nameof(CanRemoveSelectedModel));
         OnPropertyChanged(nameof(ShowEmpty));
         OnPropertyChanged(nameof(ShowModelsCaption));
         OnPropertyChanged(nameof(ShowBlocksCaption));
@@ -361,6 +393,7 @@ public sealed partial class RlPlaybackSettingsViewModel : ViewModelBase, ISettin
         OnPropertyChanged(nameof(SelectedModelDisplay));
         OnPropertyChanged(nameof(DecisionEditorValid));
         ShowOnChartCommand.NotifyCanExecuteChanged();
+        RemoveSelectedModelCommand.NotifyCanExecuteChanged();
     }
 
     private Task PublishAsync(Action publish)

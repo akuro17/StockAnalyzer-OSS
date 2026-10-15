@@ -674,8 +674,7 @@ def _run_selfcheck() -> None:
     print("  group 1 CSV validation OK")
 
     # 2. the store (V11-V13): immutable, hashed, refuses a changed set
-    ds.DATA_ROOT.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="sa_event_eval_selfcheck_", dir=str(ds.DATA_ROOT)) as tmp_name:
+    with tempfile.TemporaryDirectory(prefix="sa_event_eval_selfcheck_") as tmp_name:
         tmp = Path(tmp_name)
         raw = b"\xef\xbb\xbf" + _csv_text([base, _event_row("A2", "2024-04-01T00:00:00+00:00", revision="3", scope="AAA")])
         source = tmp / "events_source.csv"

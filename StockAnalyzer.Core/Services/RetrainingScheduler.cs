@@ -10,6 +10,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using StockAnalyzer.Core.Common;
+using StockAnalyzer.Core.Models.ReinforcementLearning;
 using StockAnalyzer.Core.Models.Settings;
 using StockAnalyzer.Core.Models.Training;
 
@@ -68,7 +69,7 @@ public sealed class RetrainingScheduler : IRetrainingScheduler
         _logger = logger ?? NullLogger<RetrainingScheduler>.Instance;
         _settings = monitoring?.Value ?? new PredictionMonitoringSettings();
         PredictionMonitoringSettingsValidator.ValidateIntervals(_settings);
-        _root = root ?? Path.Combine(PathDiscovery.ResolveDataPath(null, "Data"), "TrainingArtifacts", "retraining");
+        _root = root ?? Path.Combine(PathDiscovery.ResolveDataPath(null, "Data"), RlFiles.TrainingFolder, "retraining");
     }
 
     public event EventHandler? Changed;

@@ -54,8 +54,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "StockAnalyzer.Pyth
 import onnx_meta  # noqa: E402
 import fixed_scaler  # noqa: E402
 
-# Deliberately small hand-built fixture window. Unrelated to the 75-bar product
-# default (StockAnalyzer.Avalonia PredictionSettings.WindowSize /
+# Deliberately small hand-built fixture window. Unrelated to the 60-bar product
+# default (StockAnalyzer.Avalonia PredictionSettings.DefaultWindowSize /
 # PredictionSettingsManager.DefaultWindowSize / dataset.py DEFAULT_WINDOW).
 # PredictionServiceTests pass predictionWindowSize: 10 to match these fixtures.
 FIXTURE_WINDOW = 10

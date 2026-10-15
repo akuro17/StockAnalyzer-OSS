@@ -13,6 +13,7 @@ using StockAnalyzer.Core.Services.Backtest.Engine;
 using StockAnalyzer.Core.Services.Backtest.Evaluation;
 using StockAnalyzer.Core.Services.Backtest.Reporting;
 using Xunit;
+using StockAnalyzer.TestSupport;
 
 namespace StockAnalyzer.Core.Tests.Backtest.Evaluation;
 
@@ -1166,7 +1167,7 @@ public sealed class BacktestEvaluationServiceTests
     [Fact]
     public void ReasonCodesAndEnumMembers_HaveLocalizationKeysInBothLocales()
     {
-        string root = FindRepositoryRoot();
+        string root = TestRepositoryRoot.Find();
         var locales = new[] { "en", "ja" }
             .Select(name => System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(
                 Path.Combine(root, "StockAnalyzer.Avalonia", "Resources", "Locales", name + ".json")))!.AsObject())
@@ -1188,16 +1189,6 @@ public sealed class BacktestEvaluationServiceTests
             string[] missing = keys.Where(key => !locale.ContainsKey(key)).ToArray();
             Assert.True(missing.Length == 0, "Missing localization keys: " + string.Join(", ", missing));
         }
-    }
-
-    private static string FindRepositoryRoot()
-    {
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "StockAnalyzer.sln")))
-        {
-            directory = directory.Parent;
-        }
-        return directory?.FullName ?? throw new InvalidOperationException("Repository root (StockAnalyzer.sln) not found.");
     }
 
     private static Task<string> ExportValidJsonAsync()

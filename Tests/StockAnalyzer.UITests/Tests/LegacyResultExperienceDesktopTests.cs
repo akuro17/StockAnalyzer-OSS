@@ -22,9 +22,8 @@ public sealed class LegacyResultExperienceDesktopTests : UITestBase
     private const string FixtureSymbol = "3036-T";
     private const int CompletionTimeoutMs = 120_000;
     private const int ConfigurationScrollSteps = 20;
+    private const string TradeHistoryFileName = "backtest_trades_legacy_acceptance.csv";
     private const int CancellationBootstrapIterations = 1_000_000;
-    private static readonly string[] NativeFolderPickerConfirmNames =
-        ["Select Folder", "\u30d5\u30a9\u30eb\u30c0\u30fc\u306e\u9078\u629e"];
 
     public LegacyResultExperienceDesktopTests(ITestOutputHelper output) : base(output) { }
 
@@ -39,7 +38,8 @@ public sealed class LegacyResultExperienceDesktopTests : UITestBase
             Window backtest = new MainWindowPage(MainWindow!, this).OpenBacktestWindow();
             var symbol = WaitForElement(() => backtest.FindFirstDescendant(cf =>
                 cf.ByAutomationId("Backtest_Symbol"))
-                ?? FindEditorBesideLabel(backtest, ControlType.Edit, LocalizedValues("Backtest_Field_Symbol")),
+                ?? FindEditorBesideLabel(backtest, ControlType.Edit, LocalizedValues("Backtest_Field_Symbol"))
+                ?? FindEditorBelowLabel(backtest, ControlType.Edit, LocalizedValues("Backtest_Field_Symbol")),
                 errorMessage: "Backtest symbol editor is missing");
             symbol.AsTextBox().Text = FixtureSymbol;
             symbol.Focus();
@@ -52,29 +52,14 @@ public sealed class LegacyResultExperienceDesktopTests : UITestBase
 
             WaitForElement(() => backtest.FindFirstDescendant(cf =>
                 cf.ByAutomationId("Backtest_Tab_Results")), errorMessage: "Results tab is missing").Click();
-            var mode = WaitForElement(() => backtest.FindFirstDescendant(cf =>
-                cf.ByAutomationId("Backtest_Results_ModeDescription")), errorMessage: "Legacy mode description is missing");
-            Assert.Contains("OHLC", mode.Name, StringComparison.OrdinalIgnoreCase);
             // The custom-drawn equity curve and Expander headers are visible in the desktop screenshot,
             // but Avalonia does not currently expose them as separate UIA descendants.
-            var fingerprint = WaitForElement(() => backtest.FindFirstDescendant(cf =>
-                cf.ByAutomationId("Backtest_Results_Fingerprint")), errorMessage: "Run fingerprint is missing");
-            Assert.False(string.IsNullOrWhiteSpace(fingerprint.Name));
-            string firstFingerprint = fingerprint.Name;
+            // The Results tab has no mode-description or fingerprint element; the run identity is the first row of the Evaluation Audit section.
+            string firstFingerprint = WaitForRunIdentity(backtest, "Run identity is missing");
 
-            string exportedReportPath = ExportToIsolatedFolder(backtest);
-            using (var report = JsonDocument.Parse(File.ReadAllText(exportedReportPath)))
-            {
-                Assert.True(report.RootElement.TryGetProperty("TotalPnL", out _));
-                Assert.True(report.RootElement.GetProperty("TotalTrades").GetInt32() > 0,
-                    "The completed Legacy report should contain a real condition-driven trade.");
-                var exportedFingerprint = report.RootElement.GetProperty("RunFingerprint");
-                Assert.True(exportedFingerprint.GetProperty("IsAvailable").GetBoolean());
-                string exportedHash = exportedFingerprint.GetProperty("Sha256").GetString()!;
-                Assert.Matches("^[0-9A-F]{64}$", exportedHash);
-                Assert.Contains(exportedHash, firstFingerprint, StringComparison.Ordinal);
-                Assert.False(report.RootElement.TryGetProperty("ExecutionModel", out _));
-            }
+            string exportedTradesPath = ExportTradeHistoryCsv(backtest);
+            string[] csvLines = File.ReadAllLines(exportedTradesPath).Where(line => !string.IsNullOrWhiteSpace(line)).ToArray();
+            Assert.True(csvLines.Length > 1, "The completed Legacy run should export a header and at least one real condition-driven trade.");
 
             WaitForElement(() => backtest.FindFirstDescendant(cf =>
                 cf.ByAutomationId("Backtest_Tab_Configuration")), errorMessage: "Configuration tab is missing").Click();
@@ -86,6 +71,8 @@ public sealed class LegacyResultExperienceDesktopTests : UITestBase
                 ?? FindEditorBesideLabel(backtest, ControlType.Spinner,
                     LocalizedValues("Backtest_Field_BootstrapIterations"))
                 ?? FindEditorBesideLabel(backtest, ControlType.Edit,
+                    LocalizedValues("Backtest_Field_BootstrapIterations"))
+                ?? FindEditorBelowLabel(backtest, ControlType.Edit,
                     LocalizedValues("Backtest_Field_BootstrapIterations")),
                 errorMessage: "Bootstrap iteration editor is missing");
             if (iterations.ControlType == ControlType.Spinner)
@@ -102,17 +89,26 @@ public sealed class LegacyResultExperienceDesktopTests : UITestBase
             WaitForState(backtest, "Cancelled", CompletionTimeoutMs);
             WaitForElement(() => backtest.FindFirstDescendant(cf =>
                 cf.ByAutomationId("Backtest_Tab_Results")), errorMessage: "Results tab is missing after cancel").Click();
-            var retainedFingerprint = WaitForElement(() => backtest.FindFirstDescendant(cf =>
-                cf.ByAutomationId("Backtest_Results_Fingerprint")),
-                errorMessage: "Previously completed result disappeared after cancel");
-            Assert.Equal(firstFingerprint, retainedFingerprint.Name);
-            Assert.True(File.Exists(exportedReportPath));
+            Assert.Equal(firstFingerprint, WaitForRunIdentity(backtest, "Previously completed result disappeared after cancel"));
+            Assert.True(File.Exists(exportedTradesPath));
         }
         catch
         {
             CaptureScreenshotOnFailure(nameof(LegacyResult_CanCalculateInspectExportAndCancel_UsingIsolatedData));
             throw;
         }
+    }
+
+    /// <summary>The run identity (SHA-256) shown in the value cell beside the "Run identity" label of the Evaluation Audit section of the Results tab.</summary>
+    private string WaitForRunIdentity(Window backtest, string errorMessage)
+    {
+        string[] label = LocalizedValues("Backtest_Audit_RunIdentity");
+        var cell = WaitForElement(() => FindEditorBesideLabel(backtest, ControlType.Text, label)
+            ?? FindEditorBesideLabel(backtest, ControlType.Edit, label), errorMessage: errorMessage);
+        string identity = cell.Name;
+        if (string.IsNullOrWhiteSpace(identity) && cell.Patterns.Value.IsSupported) identity = cell.Patterns.Value.Pattern.Value.ValueOrDefault ?? string.Empty;
+        Assert.False(string.IsNullOrWhiteSpace(identity));
+        return identity;
     }
 
     private Button Button(Window window, string automationId) => WaitForElement(() =>
@@ -141,7 +137,7 @@ public sealed class LegacyResultExperienceDesktopTests : UITestBase
     private void AddEntryCondition(Window backtest)
     {
         WaitForElement(() => backtest.FindFirstDescendant(cf =>
-            cf.ByAutomationId("Backtest_Tab_IndicatorSelection")),
+            cf.ByAutomationId("Backtest_Tab_Indicator")),
             errorMessage: "Indicator selection tab is missing").Click();
         var search = WaitForElement(() => backtest.FindFirstDescendant(cf =>
             cf.ByAutomationId("Backtest_Condition_Search"))?.AsTextBox(),
@@ -181,37 +177,28 @@ public sealed class LegacyResultExperienceDesktopTests : UITestBase
             ?? throw new InvalidOperationException($"Locale key {key} is null in {resourceName}");
     }).ToArray();
 
-    private string ExportToIsolatedFolder(Window backtest)
+    /// <summary>The Export button writes the trade history as CSV through a Save File dialog; the file goes to the isolated Exports folder.</summary>
+    private string ExportTradeHistoryCsv(Window backtest)
     {
         string exportDirectory = Path.Combine(IsolatedDataRoot, "Exports");
         Directory.CreateDirectory(exportDirectory);
+        string targetPath = Path.Combine(exportDirectory, TradeHistoryFileName);
         var export = Button(backtest, "Backtest_Results_ExportButton");
         if (export.Patterns.Invoke.PatternOrDefault is { } invoke) invoke.Invoke();
         else export.Click();
 
-        var folderPicker = new MainWindowPage(MainWindow!, this)
-            .WaitForProcessWindow(LocalizedValues("Backtest_Export_SelectFolderTitle"));
+        var savePicker = new MainWindowPage(MainWindow!, this)
+            .WaitForProcessWindow(LocalizedValues("Backtest_Export_SaveFileTitle"));
 
-        folderPicker.Focus();
-        Keyboard.TypeSimultaneously(VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_L);
+        savePicker.Focus();
         Keyboard.TypeSimultaneously(VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_A);
-        Keyboard.Type(exportDirectory);
-        WaitUntil(() => PickerAddressMatches(folderPicker, exportDirectory),
-            5_000, "Folder picker did not display the isolated export path");
+        Keyboard.Type(targetPath);
+        WaitUntil(() => PickerAddressMatches(savePicker, targetPath),
+            5_000, "Save dialog did not display the isolated export file path");
         Keyboard.Press(VirtualKeyShort.ENTER);
 
-        // The breadcrumb must show both the unique test-run folder and Exports before confirmation.
-        string ownedFolderName = Path.GetFileName(IsolatedDataRoot);
-        WaitUntil(() => PickerBreadcrumbContains(folderPicker, ownedFolderName)
-            && PickerBreadcrumbContains(folderPicker, "Exports"),
-            10_000, "Folder picker did not navigate to the isolated Exports directory");
-        var confirm = WaitForElement(() => folderPicker.FindAllDescendants(cf => cf.ByControlType(ControlType.Button))
-            .FirstOrDefault(button => NativeFolderPickerConfirmNames.Contains(button.Name, StringComparer.Ordinal)),
-            errorMessage: "Folder picker confirmation button is missing");
-        confirm.Click();
-        WaitUntil(() => Directory.EnumerateFiles(exportDirectory, "backtest_report_*.json").Any(),
-            15_000, "Exported report was not written to the isolated folder");
-        return Assert.Single(Directory.EnumerateFiles(exportDirectory, "backtest_report_*.json"));
+        WaitUntil(() => File.Exists(targetPath), 15_000, "Exported trade history was not written to the isolated folder");
+        return targetPath;
     }
 
     private static bool PickerAddressMatches(Window picker, string expectedPath) =>
@@ -221,11 +208,4 @@ public sealed class LegacyResultExperienceDesktopTests : UITestBase
             catch (COMException) { return false; }
             catch (TimeoutException) { return false; }
         });
-
-    private static bool PickerBreadcrumbContains(Window picker, string folderName)
-    {
-        double breadcrumbBottom = picker.BoundingRectangle.Top + 100;
-        return picker.FindAllDescendants(cf => cf.ByName(folderName))
-            .Any(element => element.BoundingRectangle.Top < breadcrumbBottom);
-    }
 }

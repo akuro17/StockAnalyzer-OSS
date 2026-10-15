@@ -3,6 +3,7 @@ using System.IO;
 using System.Text.RegularExpressions;
 using StockAnalyzer.Avalonia.Common;
 using Xunit;
+using StockAnalyzer.TestSupport;
 
 namespace StockAnalyzer.Avalonia.Tests.Services;
 
@@ -15,17 +16,6 @@ public class PythonEssentialPackagesTests
 {
     private static readonly string[] RemovedPackages = { "arch", "scikit-learn", "scipy", "statsmodels", "pywin32", "pandas-ta" };
     private static readonly string[] RuntimePackages = { "polars", "pandas", "yfinance", "pyarrow" };
-
-    private static string FindRepositoryRoot()
-    {
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "StockAnalyzer.sln")))
-        {
-            directory = directory.Parent;
-        }
-
-        return directory?.FullName ?? throw new InvalidOperationException("Repository root (StockAnalyzer.sln) not found.");
-    }
 
     [Fact]
     public void DefaultEssentialPackages_ExcludeRemovedPackagesAndKeepRuntimeOnes()
@@ -41,7 +31,7 @@ public class PythonEssentialPackagesTests
     [InlineData("smart_screener.py")]
     public void ShippedScripts_DoNotImportRemovedPackages(string scriptName)
     {
-        string scripts = Path.Combine(FindRepositoryRoot(), "StockAnalyzer.Core", "Scripts", scriptName);
+        string scripts = Path.Combine(TestRepositoryRoot.Find(), "StockAnalyzer.Core", "Scripts", scriptName);
         Assert.True(File.Exists(scripts), $"Script not found: {scripts}");
 
         // Module-level imports only (no leading whitespace): they run at startup and would break every request on a default install.

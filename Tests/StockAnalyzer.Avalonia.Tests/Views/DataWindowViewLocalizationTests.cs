@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Xunit;
+using StockAnalyzer.TestSupport;
 
 namespace StockAnalyzer.Avalonia.Tests.Views;
 
@@ -18,18 +19,7 @@ public class DataWindowViewLocalizationTests
     private static readonly Regex LiteralTextBlockText = new(@"<TextBlock\b[^>]*?\bText=""(?<text>[^""{][^""]*)""", RegexOptions.Compiled | RegexOptions.Singleline);
     private static readonly Regex LocalizeKey = new(@"\{l:Localize\s+(?<key>[A-Za-z0-9_.]+)\s*\}", RegexOptions.Compiled);
 
-    private static string FindRepositoryRoot()
-    {
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "StockAnalyzer.sln")))
-        {
-            directory = directory.Parent;
-        }
-
-        return directory?.FullName ?? throw new InvalidOperationException("Repository root (StockAnalyzer.sln) not found.");
-    }
-
-    private static string AvaloniaPath(params string[] parts) => Path.Combine(new[] { FindRepositoryRoot(), "StockAnalyzer.Avalonia" }.Concat(parts).ToArray());
+    private static string AvaloniaPath(params string[] parts) => Path.Combine(new[] { TestRepositoryRoot.Find(), "StockAnalyzer.Avalonia" }.Concat(parts).ToArray());
 
     private static string ViewSource() => File.ReadAllText(AvaloniaPath("Views", "DataWindowView.axaml"));
 

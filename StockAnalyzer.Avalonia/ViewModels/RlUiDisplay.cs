@@ -1,6 +1,9 @@
 using System;
+using System.Globalization;
+using System.Linq;
 using StockAnalyzer.Core.Interfaces;
 using StockAnalyzer.Core.Models.ReinforcementLearning;
+using StockAnalyzer.Core.Services.ReinforcementLearning;
 
 namespace StockAnalyzer.Avalonia.ViewModels;
 
@@ -40,6 +43,27 @@ public static class RlUiDisplay
         + text.GetString("Rl.Ui.Field.Identifier") + ": " + g.ModelId + Environment.NewLine
         + text.GetString("Rl.Ui.Field.ValidationMeanReturn") + ": " + g.ValidationReturn.ToString("P" + RlContract.DisplayDecimals, System.Globalization.CultureInfo.CurrentCulture) + Environment.NewLine
         + text.GetString("Rl.Ui.Field.FinalMeanReturn") + ": " + g.OosReturn.ToString("P" + RlContract.DisplayDecimals, System.Globalization.CultureInfo.CurrentCulture);
+    /// <summary>List label of one stored model: target, symbol, identifier, and a marker when its work folder is gone.</summary>
+    public static string ModelLabel(RlGeneration g, bool withoutWorkFolder, ILocalizationService text)
+        => Target(g.Target, text) + " · " + g.Symbol + " · " + g.ModelId + (withoutWorkFolder ? " · " + text.GetString("Rl.Ui.NoWorkFolder") : "");
+    /// <summary>Confirmation text of the model removal; says so when the model is the active one.</summary>
+    public static string RemoveModelQuestion(string modelId, bool isActive, ILocalizationService text)
+    {
+        string question = string.Format(CultureInfo.CurrentCulture, text.GetString("Rl.Ui.RemoveModel.Confirm"), modelId);
+        return isActive ? question + " " + text.GetString("Rl.Ui.RemoveModel.ConfirmActive") : question;
+    }
+    /// <summary>Result line of the model removal: done, or the reasons the registry refused it.</summary>
+    public static string RemoveModelResult(RlGenerationRemoval result, string modelId, ILocalizationService text)
+        => result.Removed
+            ? string.Format(CultureInfo.CurrentCulture, text.GetString("Rl.Ui.RemoveModel.Done"), modelId)
+            : string.Format(CultureInfo.CurrentCulture, text.GetString("Rl.Ui.RemoveModel.Refused"),
+                string.Join(", ", result.Reasons.Select(reason => KnownLabel("Rl.Storage.Reason." + reason, text))));
+    /// <summary>The wording of a key, or the "unsupported" wording when the key has none.</summary>
+    public static string KnownLabel(string key, ILocalizationService text)
+    {
+        string label = text.GetString(key);
+        return label == "[" + key + "]" ? text.GetString("Rl.Ui.Load.Unsupported") : label;
+    }
     public static string Metric(string id, ILocalizationService text) => text.GetString(
         id == RlConstraintContract.SelectionMetric ? "Rl.Ui.Metric.MeanUndiscountedReturn" : "Rl.Ui.Load.Unsupported");
 }

@@ -47,6 +47,34 @@ public sealed class AtomicJsonFileSaveTests : IDisposable
         Assert.Equal(new Sample("kept", 7), JsonSerializer.Deserialize<Sample>(File.ReadAllText(File1)));
     }
 
+    [Theory]
+    [InlineData(typeof(IOException))]
+    [InlineData(typeof(PlatformNotSupportedException))]
+    public void CommitFallsBackToMoveWhenReplaceFails(Type failure)
+    {
+        File.WriteAllText(File1, "old");
+        string temp = File1 + AtomicJsonFile.TemporarySuffix;
+        File.WriteAllText(temp, "new");
+
+        AtomicJsonFile.Commit(temp, File1, File1 + AtomicJsonFile.BackupSuffix, (_, _, _) => throw (Exception)Activator.CreateInstance(failure)!);
+
+        Assert.Equal("new", File.ReadAllText(File1));
+        Assert.False(File.Exists(temp));
+    }
+
+    [Fact]
+    public void CommitDoesNotHideAPermissionFailure()
+    {
+        File.WriteAllText(File1, "old");
+        string temp = File1 + AtomicJsonFile.TemporarySuffix;
+        File.WriteAllText(temp, "new");
+
+        Assert.Throws<UnauthorizedAccessException>(() =>
+            AtomicJsonFile.Commit(temp, File1, null, (_, _, _) => throw new UnauthorizedAccessException()));
+
+        Assert.Equal("old", File.ReadAllText(File1));
+    }
+
     [Fact]
     public async Task SaveProducesTheSameBytesAsSaveAsync()
     {

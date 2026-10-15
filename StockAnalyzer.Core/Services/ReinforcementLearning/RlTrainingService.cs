@@ -157,7 +157,7 @@ public sealed class RlTrainingService : IRlResumableTrainingService
                 wire[RlConstraintContract.MetadataKey] = RlConstraintContract.SpecificationId;
             }
             await WriteAsync(configPath, wire, ct).ConfigureAwait(false);
-            progress?.Report(new(runId, 0, "Source", "Capturing existing local Data/Daily bytes; historical evidence unverified", 0));
+            progress?.Report(new(runId, 0, RlTrainingPhases.Source, "Capturing existing local Data/Daily bytes; historical evidence unverified", 0));
             source = await RlLocalSnapshotFactory.PrepareAsync(job, sourceDirectory, limits, ct).ConfigureAwait(false);
             // Reject the unchanged requested interval before baselines or any ML worker can consume it.
             if (continuous) RlTemporalValidator.RequireSource(directionEvidence!, source);
@@ -178,6 +178,8 @@ public sealed class RlTrainingService : IRlResumableTrainingService
             }
             wire["mapped_symbol"] = source.Manifest.MappedSymbol;
             wire["source_revision"] = source.Revision;
+            // A continuous (strict) run hashes its whole execution environment here: minutes of silence otherwise.
+            progress?.Report(new(runId, 0, RlTrainingPhases.Environment, "Recording the execution environment before the run", 0));
             await RunWorkerAsync(RlFiles.DependenciesScript, configPath, directory, limits, null, ct).ConfigureAwait(false);
             wire["dependencies_sha256"] = ContentHash.OfFile(Path.Combine(directory, RlFiles.Dependencies));
             await WriteAsync(configPath, wire, ct).ConfigureAwait(false);
@@ -226,8 +228,10 @@ public sealed class RlTrainingService : IRlResumableTrainingService
                 await WriteAsync(configPath, runtime, ct).ConfigureAwait(false);
             }
             diagnosticHost = host;
-            progress?.Report(new(runId, 0, "Baselines", "Evaluating identical-account baseline episodes", 0));
+            progress?.Report(new(runId, 0, RlTrainingPhases.Baselines, "Evaluating identical-account baseline episodes", 0));
             if (reviewed is null) host.EvaluateBaselines(ct);
+            // The owned (resumable) start verifies the recorded environment again before the worker may start.
+            if (resumable) progress?.Report(new(runId, 0, RlTrainingPhases.Environment, "Verifying the recorded execution environment", 0));
             await RunWorkerAsync(continuous ? RlContinuousContract.TrainerScript : RlFiles.TrainerScript, configPath, directory, limits, host, ct).ConfigureAwait(false);
             ct.ThrowIfCancellationRequested();
             using (var model = new RlQModel(Path.Combine(directory, RlFiles.Model), continuous)) model.ValidateParity(Path.Combine(directory, RlFiles.Parity));

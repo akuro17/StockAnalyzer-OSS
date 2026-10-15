@@ -455,10 +455,11 @@ public sealed partial class RlUiTests(ITestOutputHelper output)
     private sealed class DelayedTraining : IRlResumableTrainingService
     {
         public RlTrainingJob? Job; public CancellationToken PauseRequest, CancelRequest; public RlCheckpointReview? LastResume;
+        public IProgress<RlTrainingProgress>? Progress;
         public TaskCompletionSource Started { get; } = new(); public TaskCompletionSource ResumeStarted { get; } = new();
         public TaskCompletionSource<RlTrainingResult> Result { get; } = new(); public TaskCompletionSource<RlTrainingResult> ResumeResult { get; } = new();
         public Task<RlTrainingResult> RunAsync(RlTrainingJob job, IProgress<RlTrainingProgress>? progress = null, CancellationToken cancellationToken = default)
-        { Job = job; CancelRequest = cancellationToken; Started.SetResult(); return Result.Task; }
+        { Job = job; Progress = progress; CancelRequest = cancellationToken; Started.SetResult(); return Result.Task; }
         public Task<RlTrainingResult> RunResumableAsync(RlTrainingJob job, CancellationToken pauseRequest, IProgress<RlTrainingProgress>? progress = null, CancellationToken ct = default)
         { PauseRequest = pauseRequest; return RunAsync(job, progress, ct); }
         public Task<RlTrainingResult> ResumeAsync(RlCheckpointReview review, CancellationToken pauseRequest, IProgress<RlTrainingProgress>? progress = null, CancellationToken ct = default)
@@ -505,7 +506,19 @@ public sealed partial class RlUiTests(ITestOutputHelper output)
         public RlPointerRecovery? PreviewRlRecovery(string target) => Recovery?.Target == target ? Recovery : null;
         public Task<bool> RecoverRlPointerAsync(RlPointerRecovery reviewed, CancellationToken cancellationToken = default)
         { LastRecovered = reviewed; RecoveryStarted.TrySetResult(); return RecoveryCompletion?.Task ?? Task.FromException<bool>(new InvalidOperationException("No recovery configured.")); }
-        public IReadOnlyList<RlGeneration> Generations { get; init; } = Array.Empty<RlGeneration>();
+        public IReadOnlyList<RlGeneration> Generations { get; set; } = Array.Empty<RlGeneration>();
+        /// <summary>Models whose work folder is gone, and the removals asked of the registry (the default answer removes the model).</summary>
+        public IReadOnlySet<string> ModelsWithoutWorkFolder { get; init; } = new HashSet<string>();
+        public List<string> RemoveCalls { get; } = new();
+        public Func<string, RlGenerationRemoval> RemoveResult { get; set; } = _ => new(true, ImmutableArray<string>.Empty);
+        public IReadOnlySet<string> RlModelIdsWithoutWorkFolder() => ModelsWithoutWorkFolder;
+        public Task<RlGenerationRemoval> RemoveRlGenerationAsync(string modelId, CancellationToken ct = default)
+        {
+            RemoveCalls.Add(modelId);
+            var result = RemoveResult(modelId);
+            if (result.Removed) Generations = Generations.Where(g => g.ModelId != modelId).ToArray();
+            return Task.FromResult(result);
+        }
         public string? RlActiveId => null;
         /// <summary>When set, <see cref="ListRl"/> throws it (a registry that cannot be read).</summary>
         public Exception? ListError { get; init; }

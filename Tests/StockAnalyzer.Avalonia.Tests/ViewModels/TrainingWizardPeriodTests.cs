@@ -74,7 +74,7 @@ public sealed class TrainingWizardPeriodTests : IDisposable
         Assert.Equal(new[] { "AAA" }, call.Symbols.ToArray());
         Assert.Equal((TrainingTimeframe.Daily, (DateOnly?)null), (call.Timeframe, call.Bound));
         Assert.Equal(DefaultRequired, call.Required);                          // the requirement of the default settings, from the existing function
-        Assert.Equal(2929, call.Required);                                     // window 75, horizon 5, 5 splits: the documented example
+        Assert.Equal(2374, call.Required);                                     // window 60 (the default), horizon 5, 5 splits; window 75 needs 2929 (documented example)
         Assert.True(wizard.StartTrainingCommand.CanExecute(null));
         Assert.False(wizard.HasPeriodStatus);
     }

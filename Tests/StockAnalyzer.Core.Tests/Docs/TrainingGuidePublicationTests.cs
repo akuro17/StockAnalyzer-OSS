@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using StockAnalyzer.Core.Models.Training;
 using Xunit;
+using StockAnalyzer.TestSupport;
 
 namespace StockAnalyzer.Core.Tests.Docs;
 
@@ -43,20 +44,13 @@ public sealed class TrainingGuidePublicationTests
     private static readonly Regex AdvancedVocabulary = new(@"\b(?:hyperparameter\w*|cpcv|calibrat\w*|stacking|bagging|pretrain\w*|fine-tune\w*|z-score|lags?|clip\w*)\b",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
-    private static readonly Lazy<string> RepoRoot = new(FindRepositoryRoot);
+    private static readonly Lazy<string> RepoRoot = new(TestRepositoryRoot.Find);
     private static readonly Lazy<string> Guide = new(() => ReadRepoFile("docs", GuideName));
     private static readonly Lazy<HashSet<string>> EnglishValues = new(() =>
     {
         using var json = JsonDocument.Parse(ReadRepoFile("StockAnalyzer.Avalonia", "Resources", "Locales", "en.json"));
         return json.RootElement.EnumerateObject().Where(p => p.Value.ValueKind == JsonValueKind.String).Select(p => p.Value.GetString() ?? "").ToHashSet(StringComparer.Ordinal);
     });
-
-    private static string FindRepositoryRoot()
-    {
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "StockAnalyzer.sln"))) directory = directory.Parent;
-        return directory?.FullName ?? throw new InvalidOperationException("StockAnalyzer.sln was not found above the test output.");
-    }
 
     private static string ReadRepoFile(params string[] parts) => File.ReadAllText(Path.Combine(new[] { RepoRoot.Value }.Concat(parts).ToArray()));
 

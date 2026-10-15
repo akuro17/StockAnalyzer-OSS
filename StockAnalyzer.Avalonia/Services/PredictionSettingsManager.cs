@@ -3,13 +3,14 @@ using System.ComponentModel;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
+using StockAnalyzer.Avalonia.Common;
 
 namespace StockAnalyzer.Avalonia.Services
 {
     public class PredictionSettingsManager : IPredictionSettingsManager
     {
         private static readonly string PredictionSettingsFilePath = StockAnalyzer.Core.Common.PathDiscovery.ResolveConfigPath("user_prediction_settings.json");
-        public const int DefaultWindowSize = 75;
+        public const int DefaultWindowSize = PredictionSettings.DefaultWindowSize;
 
         private int _windowSize = DefaultWindowSize;
 

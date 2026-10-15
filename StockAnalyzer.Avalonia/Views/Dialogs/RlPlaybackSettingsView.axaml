@@ -55,6 +55,10 @@
                         <Button Classes="accent" Content="{l:Localize Settings_ModelGenerations_Refresh}"
                                 Command="{Binding RefreshCommand}"
                                 AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.PlaybackRefresh}"/>
+                        <Button Classes="accent" Content="{l:Localize Rl.Ui.RemoveModel}"
+                                Command="{Binding RemoveSelectedModelCommand}"
+                                IsVisible="{Binding SelectedModelHasNoWorkFolder}"
+                                AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.RemoveModel}"/>
                     </StackPanel>
                 </StackPanel>
             </Border>

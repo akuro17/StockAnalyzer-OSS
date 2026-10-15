@@ -82,9 +82,8 @@ public sealed partial class RlStoredPriceDesktopTests
             editor.AsTextBox().Text = text; editor.Focus(); Keyboard.Press(VirtualKeyShort.TAB);
         }
         Number(RlUiConstants.StorageNonactiveDays, "0"); Number(RlUiConstants.StorageKeepCount, "1");
-        WaitUntil(() => Element(window, RlUiConstants.StorageSave).IsEnabled);
-        Invoke(window, RlUiConstants.StorageSave);
-        WaitUntil(() => Localized("Rl.Storage.Ready").Any(t => window.FindAllDescendants().Any(e => e.Properties.Name.ValueOrDefault == t)));
+        // The window has no Save button for the retention values: they are a draft of this window, taken from Settings, and Train applies them.
+        WaitUntil(() => Localized("Rl.Storage.Unsaved").Any(t => window.FindAllDescendants().Any(e => e.Properties.Name.ValueOrDefault == t)));
         Reveal(Element(window, RlUiConstants.TrainingSetupSection));
         Text(window, RlUiConstants.Symbol, "AAPL"); Text(window, RlUiConstants.StartDate, "2000-01-01");
         Text(window, RlUiConstants.EndDate, "2026-01-01");

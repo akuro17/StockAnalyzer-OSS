@@ -818,7 +818,7 @@ def _add_common(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--data-start", default=None, help="Inclusive first calendar date (YYYY-MM-DD).")
     parser.add_argument("--data-end", default=None, help="Inclusive last calendar date (YYYY-MM-DD).")
     parser.add_argument("--timeframe", choices=tuple(ds.TIMEFRAME_DIRS), default=SUPPORTED_TIMEFRAME)
-    parser.add_argument("--out-root", type=Path, default=ds.DATA_ROOT / "TrainingArtifacts")
+    parser.add_argument("--out-root", type=Path, default=ds.TRAINING_ARTIFACTS_ROOT)
     parser.add_argument("--max-seconds", type=_positive_int, default=MAX_SECONDS, help=f"Run-duration bound (default {MAX_SECONDS}, env {MAX_SECONDS_ENV}).")
 
 

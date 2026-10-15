@@ -42,6 +42,7 @@ public static class RlUiConstants
     public const string ModeBadges = "Rl_ModeBadges";
     public const string Message = "Rl_Message";
     public const string Models = "Rl_Generations";
+    public const string RemoveModel = "Rl_RemoveModel";
     public const string Activate = "Rl_Activate";
     public const string ActiveModel = "Rl_ActiveModel";
     public const string PlaybackPage = "RlPlayback_Page";

@@ -462,6 +462,11 @@
                   <TextBlock Classes="value" Text="{Binding ModelsDisplay}"
                              IsVisible="{Binding !HasModels}"
                              VerticalAlignment="Center" Height="36" />
+                  <Button Classes="action" Content="{l:Localize Rl.Ui.RemoveModel}"
+                          Command="{Binding RemoveSelectedModelCommand}"
+                          IsVisible="{Binding SelectedModelHasNoWorkFolder}"
+                          AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.RemoveModel}"
+                          HorizontalAlignment="Left" />
                 </StackPanel>
 
                 <!-- Col 1: Active Model Field Unit -->

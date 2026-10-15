@@ -22,6 +22,14 @@ public sealed record RlTrainingJob(
 }
 
 public sealed record RlTrainingProgress(Guid RunId, long Sequence, string State, string Message, int CompletedSteps);
+
+/// <summary>Phase names of <see cref="RlTrainingProgress.State"/> that the training service reports before the worker's own states.</summary>
+public static class RlTrainingPhases
+{
+    public const string Source = "Source";
+    public const string Environment = "Environment";
+    public const string Baselines = "Baselines";
+}
 public sealed record RlTrainingResult(Guid RunId, string Directory, string ModelPath, string EvaluationPath,
     string? ModelId, bool SmokeOnly, string SourceRevision);
 

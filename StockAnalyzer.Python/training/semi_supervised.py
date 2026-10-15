@@ -516,8 +516,7 @@ def _run_selfcheck() -> None:
     assert abs(float(weighted_cross_entropy(each, cw, target, w)) - float((each * w).sum() / (w * cw[target]).sum())) < 1e-7
     print("  group 3 weighted loss OK")
 
-    ds.DATA_ROOT.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="sa_semi_selfcheck_", dir=str(ds.DATA_ROOT)) as tmp_name:
+    with tempfile.TemporaryDirectory(prefix="sa_semi_selfcheck_") as tmp_name:
         tmp = Path(tmp_name)
         data = tmp / "data"
         start = datetime.date(2020, 1, 1)

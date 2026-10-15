@@ -58,6 +58,21 @@ public class UserStrategyMetadataRepository
     /// </summary>
     public static ParquetMarketDataProvider? MarketDataProvider { get; set; }
 
+    private const string MetadataFolder = "Data/Metadata";
+
+    /// <summary>
+    /// Folder of the per-ticker signal-bundle files (<c>{ticker}.signals.json</c>). <see langword="null"/> (the app) means the
+    /// Data/Metadata folder. A test assembly sets it once to a temporary folder, like <see cref="MarketDataProvider"/> is set once
+    /// at startup: without it a test that saves signal bundles writes into the user's real Data/Metadata, replacing the real
+    /// <c>MSFT.signals.json</c> when the test uses MSFT as its ticker.
+    /// </summary>
+    public static string? SignalBundlesDirectory { get; set; }
+
+    private static string ResolveSignalBundlesDirectory()
+        => SignalBundlesDirectory ?? Common.PathDiscovery.ResolveDataPath(null, MetadataFolder);
+
+    private static readonly JsonSerializerOptions SignalBundlesJsonOptions = new() { WriteIndented = true };
+
     private readonly ConcurrentDictionary<string, UserStrategyItem> _cache = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
@@ -361,6 +376,8 @@ public class UserStrategyMetadataRepository
 
     private readonly ConcurrentDictionary<string, List<StockAnalyzer.Core.Models.Screener.BundledSignalCondition>> _signalBundlesCache = new(StringComparer.OrdinalIgnoreCase);
 
+    private readonly ConcurrentDictionary<string, object> _signalBundlesSaveGates = new(StringComparer.OrdinalIgnoreCase);
+
     public List<StockAnalyzer.Core.Models.Screener.BundledSignalCondition> GetSignalBundles(string ticker)
     {
         if (string.IsNullOrWhiteSpace(ticker)) return new List<StockAnalyzer.Core.Models.Screener.BundledSignalCondition>();
@@ -368,9 +385,9 @@ public class UserStrategyMetadataRepository
 
         try
         {
-            string dir = Common.PathDiscovery.ResolveDataPath(null, "Data/Metadata");
+            string dir = ResolveSignalBundlesDirectory();
             string path = Path.Combine(dir, $"{ticker}.signals.json");
-            if (!File.Exists(path))
+            if (!File.Exists(path) && SignalBundlesDirectory is null)
             {
                 string fallbackPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Data", "Metadata", $"{ticker}.signals.json");
                 if (File.Exists(fallbackPath)) path = fallbackPath;
@@ -442,23 +459,18 @@ public class UserStrategyMetadataRepository
         var list = bundles?.ToList() ?? new List<StockAnalyzer.Core.Models.Screener.BundledSignalCondition>();
         _signalBundlesCache[ticker] = list;
 
+        // The target is fixed on the caller's thread so a later change of SignalBundlesDirectory cannot redirect a queued save.
+        string path = Path.Combine(ResolveSignalBundlesDirectory(), $"{ticker}.signals.json");
         Task.Run(() =>
         {
             try
             {
-                string dir = Common.PathDiscovery.ResolveDataPath(null, "Data/Metadata");
-                if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
-                string path = Path.Combine(dir, $"{ticker}.signals.json");
-                string json = JsonSerializer.Serialize(list, new JsonSerializerOptions { WriteIndented = true });
-                string tempPath = path + ".tmp";
-                File.WriteAllText(tempPath, json);
-                if (File.Exists(path))
+                // Saves of one file run one at a time (they share one temporary file) and each writes the newest bundles of the
+                // ticker, so quick repeated saves can neither fail on the shared temporary file nor end with an older list.
+                lock (_signalBundlesSaveGates.GetOrAdd(path, _ => new object()))
                 {
-                    File.Replace(tempPath, path, null);
-                }
-                else
-                {
-                    File.Move(tempPath, path);
+                    var newest = _signalBundlesCache.TryGetValue(ticker, out var current) ? current : list;
+                    AtomicJsonFile.Save(path, newest, SignalBundlesJsonOptions, preserveBackup: true);
                 }
             }
             catch (Exception ex)

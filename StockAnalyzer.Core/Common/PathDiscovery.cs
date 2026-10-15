@@ -8,6 +8,9 @@ namespace StockAnalyzer.Core.Common;
 public static class PathDiscovery
 {
     private const string DataFolderName = "Data";
+
+    /// <summary>Folder below the OS temp directory that holds every StockAnalyzer temporary or lease file (never <c>Data</c>).</summary>
+    public const string TempFolderName = "StockAnalyzer";
     public const string UiTestEnabledEnvironmentVariable = "SA_UI_TESTS_ENABLED";
     public const string UiTestDataRootEnvironmentVariable = "SA_UI_TEST_DATA_ROOT";
     private const string SolutionFileName = "StockAnalyzer.sln";
@@ -81,7 +84,7 @@ public static class PathDiscovery
             // Fallback strategy: System Temp directory
             try
             {
-                var tempDir = Path.Combine(Path.GetTempPath(), "StockAnalyzer", subDirRelativePath);
+                var tempDir = Path.Combine(Path.GetTempPath(), TempFolderName, subDirRelativePath);
                 if (!Directory.Exists(tempDir))
                 {
                     Directory.CreateDirectory(tempDir);

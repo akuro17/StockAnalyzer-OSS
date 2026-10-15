@@ -17,7 +17,7 @@ public enum RlDialogLoadState { Unsupported, Unloaded, Loading, Loaded, Failed }
 /// <summary>Why Start is disabled, in the priority <see cref="RlTrainingDialogViewModel.CurrentStartBlocker"/> evaluates them.</summary>
 public enum RlStartBlocker { None, SymbolMissing, StartDateMissing, EndDateMissing, DateOrderInvalid, CostsInvalid, DirectionModelMissing, RetentionInvalid, InputInvalid }
 public enum RlDialogOperation { Idle, Training, InspectingCheckpoints, Replaying, Activating,
-    SavingRetention, InspectingArtifacts, Cleaning, InspectingRecovery, Recovering, Disposed }
+    SavingRetention, InspectingArtifacts, Cleaning, InspectingRecovery, Recovering, RemovingModel, Disposed }
 public sealed record RlNamedValue(string Name, string Value);
 public sealed record RlPolicyOption(string Id, string Name);
 public sealed record RlModelOption(RlGeneration Generation, string Name);
@@ -222,7 +222,7 @@ public sealed partial class RlTrainingDialogViewModel
             TrainCommand.NotifyCanExecuteChanged(); SaveArtifactSettingsCommand.NotifyCanExecuteChanged();
             ActivateCommand.NotifyCanExecuteChanged(); CancelCommand.NotifyCanExecuteChanged();
             InspectRecoveryCommand.NotifyCanExecuteChanged(); InspectArtifactsCommand.NotifyCanExecuteChanged(); InspectCheckpointsCommand.NotifyCanExecuteChanged();
-            NotifyCheckpointCommands(); CleanupArtifactsCommand.NotifyCanExecuteChanged(); RecoverPointerCommand.NotifyCanExecuteChanged();
+            NotifyCheckpointCommands(); CleanupArtifactsCommand.NotifyCanExecuteChanged(); RecoverPointerCommand.NotifyCanExecuteChanged(); RemoveSelectedModelCommand.NotifyCanExecuteChanged();
         }
         finally { _notifyingUi = false; }
     }
@@ -241,7 +241,7 @@ public sealed partial class RlTrainingDialogViewModel
         nameof(CanConfirmResume), nameof(CanConfirmAbandon), nameof(ResumeConfirmTooltip), nameof(AbandonConfirmTooltip),
         nameof(InspectCheckpointsTooltip), nameof(RecoveryStatusBadgeDisplay),
         nameof(InspectRecoveryTooltip), nameof(RecoverPointerTooltip),
-        nameof(HasGenerationScatterPoints), nameof(GenerationComparisonSummary)
+        nameof(HasGenerationScatterPoints), nameof(GenerationComparisonSummary), nameof(SelectedModelHasNoWorkFolder), nameof(CanRemoveSelectedModel)
     };
     // The daily frame reuses its existing localized training-timeframe name; a contract value without one is shown as its identifier.
     private string FixedTimeframeDisplay()
@@ -279,13 +279,13 @@ public sealed partial class RlTrainingDialogViewModel
             ModelOptions.Clear(); DirectionOptions.Clear();
             foreach (var generation in Generations)
             {
-                var option = new RlModelOption(generation, RlUiDisplay.Target(generation.Target, _localization) + " · " + generation.Symbol + " · " + generation.ModelId);
+                var option = new RlModelOption(generation, RlUiDisplay.ModelLabel(generation, _modelsWithoutWorkFolder.Contains(generation.ModelId), _localization));
                 ModelOptions.Add(option);
                 if (generation.Target == RlFiles.Target) DirectionOptions.Add(option);
             }
         }
         finally { _rebuildingChoices = false; }
-        OnPropertyChanged(nameof(SelectedModelOption)); OnPropertyChanged(nameof(SelectedDirectionOption));
+        OnPropertyChanged(nameof(SelectedModelOption)); OnPropertyChanged(nameof(SelectedDirectionOption)); NotifyRemoveModel();
     }
     private void LocaleChanged(object? sender, EventArgs args)
     {

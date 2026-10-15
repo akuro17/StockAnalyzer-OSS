@@ -1,3 +1,4 @@
+using System;
 using System.IO;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -14,6 +15,30 @@ public static class AtomicJsonFile
 {
     internal const string BackupSuffix = ".bak";
     internal const string TemporarySuffix = ".tmp";
+
+    /// <summary>
+    /// Publishes the finished temp file as <paramref name="filePath"/>. Normally <paramref name="replace"/> (<see cref="File.Replace(string, string, string?)"/>)
+    /// swaps it in atomically; when that is not supported or fails with an I/O error (drive roots such as <c>Y:\</c> or a volume
+    /// boundary) the temp file is moved over the target instead, so a save is not lost. The fallback keeps no <c>.bak</c> copy.
+    /// </summary>
+    internal static void Commit(string tempPath, string filePath, string? backupPath, Action<string, string, string?> replace)
+    {
+        if (!File.Exists(filePath))
+        {
+            File.Move(tempPath, filePath);
+            return;
+        }
+
+        try
+        {
+            replace(tempPath, filePath, backupPath);
+        }
+        catch (Exception error) when (error is IOException or PlatformNotSupportedException)
+        {
+            File.Move(tempPath, filePath, overwrite: true);
+        }
+    }
+
     /// <summary>
     /// Serializes <paramref name="data"/> to a temp file next to <paramref name="filePath"/>,
     /// then atomically replaces (or creates) the target. Exceptions propagate to the caller,
@@ -35,14 +60,7 @@ public static class AtomicJsonFile
                 await JsonSerializer.SerializeAsync(stream, data, options);
             }
 
-            if (File.Exists(filePath))
-            {
-                File.Replace(tempPath, filePath, preserveBackup ? null : filePath + BackupSuffix);
-            }
-            else
-            {
-                File.Move(tempPath, filePath);
-            }
+            Commit(tempPath, filePath, preserveBackup ? null : filePath + BackupSuffix, File.Replace);
         }
         finally
         {
@@ -74,14 +92,7 @@ public static class AtomicJsonFile
                 JsonSerializer.Serialize(stream, data, options);
             }
 
-            if (File.Exists(filePath))
-            {
-                File.Replace(tempPath, filePath, preserveBackup ? null : filePath + BackupSuffix);
-            }
-            else
-            {
-                File.Move(tempPath, filePath);
-            }
+            Commit(tempPath, filePath, preserveBackup ? null : filePath + BackupSuffix, File.Replace);
         }
         finally
         {

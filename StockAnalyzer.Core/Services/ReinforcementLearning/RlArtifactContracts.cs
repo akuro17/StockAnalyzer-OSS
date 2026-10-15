@@ -9,11 +9,13 @@ public enum RlArtifactRunState { Running, Completed, Failed, Cancelled }
 public enum RlArtifactKind { FailedRun, CompletedRun, Generation, PendingDeletion, UnknownRun, UnknownGeneration, Checkpoint }
 public enum RlArtifactRetentionReason { Active, Rollback, Backup, Dependency, Lease, Newest, NotExpired,
     SettingsIncomplete, UnverifiedPointers, UnknownOwner, Interrupted, UnregisteredResult, CompletedCopy, ExpiredFailure, ExpiredGeneration, RetryDeletion,
-    Resumable, SurplusCheckpoint }
+    Resumable, SurplusCheckpoint, WorkFolderPresent }
 public sealed record RlArtifactEntry(string Id, string Kind, string Path, long Bytes, DateTimeOffset CreatedUtc,
     string Identity, ImmutableArray<string> Reasons, bool Candidate);
 public sealed record RlArtifactPreview(RlArtifactPolicy Policy, string Context, long UsedBytes, long FreeBytes,
     ImmutableArray<RlArtifactEntry> Entries);
+/// <summary>Outcome of <c>RemoveRlGenerationAsync</c>: nothing is deleted unless <see cref="Removed"/>; otherwise <see cref="Reasons"/> names the retention reasons that refused it.</summary>
+public sealed record RlGenerationRemoval(bool Removed, ImmutableArray<string> Reasons);
 public sealed record RlArtifactCleanupResult(ImmutableArray<string> Deleted, ImmutableArray<string> Failures,
     long RemainingBytes);
 public sealed class RlArtifactRunLease : IDisposable

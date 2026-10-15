@@ -11,6 +11,7 @@ using StockAnalyzer.Core.Common;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Portfolio;
 using StockAnalyzer.Core.Services;
+using StockAnalyzer.TestSupport;
 using StockAnalyzer.Core.Tests.TestHelpers;
 using Xunit;
 
@@ -19,6 +20,27 @@ namespace StockAnalyzer.Core.Tests.Services;
 [Collection("UserStrategyMetadataRepository MarketDataProvider")]
 public class MetadataHydrationTests
 {
+    /// <summary>Settings whose metadata folder is a temporary one: a provider built from the default settings writes
+    /// <c>{ticker}.meta.parquet</c> into the user's real Data/Metadata (a test ticker such as TEST would stay there).</summary>
+    private sealed class ScratchMetadataFolder : IDisposable
+    {
+        private readonly string _directory = TestDataIsolationBootstrap.NewTempDirectory(TestDataIsolationBootstrap.MetadataFolderName);
+
+        public ScratchMetadataFolder() => Directory.CreateDirectory(_directory);
+
+        public IOptions<MarketDataSettings> Settings => Options.Create(new MarketDataSettings
+        {
+            DailyDataPath = PathDiscovery.ResolveDataPath(null, "Data/Daily"),
+            MetadataPath = _directory,
+        });
+
+        public void Dispose()
+        {
+            try { Directory.Delete(_directory, recursive: true); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { /* best-effort cleanup */ }
+        }
+    }
+
     // Regression test (sa_minimal_fix): ParquetMarketDataProvider used to unconditionally register
     // itself into UserStrategyMetadataRepository's persistence path via a process-wide AppDomain
     // "MarketDataProvider" slot, purely as a side effect of construction. Since xunit runs every test
@@ -35,7 +57,7 @@ public class MetadataHydrationTests
         try
         {
             var dbManager = new DuckDBConnectionManager(NullLogger<DuckDBConnectionManager>.Instance);
-            var settings = Options.Create(new MarketDataSettings { DailyDataPath = PathDiscovery.ResolveDataPath(null, "Data/Daily") });
+            using var scratch = new ScratchMetadataFolder(); var settings = scratch.Settings;
 
             var provider = new ParquetMarketDataProvider(dbManager, new Mock<IPythonService>().Object, settings);
 
@@ -53,7 +75,7 @@ public class MetadataHydrationTests
         // Arrange
         var mockPython = new Mock<IPythonService>();
         var dbManager = new DuckDBConnectionManager(NullLogger<DuckDBConnectionManager>.Instance);
-        var settings = Options.Create(new MarketDataSettings { DailyDataPath = PathDiscovery.ResolveDataPath(null, "Data/Daily") });
+        using var scratch = new ScratchMetadataFolder(); var settings = scratch.Settings;
         
         var provider = new ParquetMarketDataProvider(dbManager, mockPython.Object, settings);
 
@@ -81,7 +103,7 @@ public class MetadataHydrationTests
         // Arrange
         var mockPython = new Mock<IPythonService>();
         var dbManager = new DuckDBConnectionManager(NullLogger<DuckDBConnectionManager>.Instance);
-        var settings = Options.Create(new MarketDataSettings { DailyDataPath = PathDiscovery.ResolveDataPath(null, "Data/Daily") });
+        using var scratch = new ScratchMetadataFolder(); var settings = scratch.Settings;
         
         var provider = new ParquetMarketDataProvider(dbManager, mockPython.Object, settings);
 

@@ -3,6 +3,7 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
 using StockAnalyzer.Core.Models.ReinforcementLearning;
@@ -77,7 +78,29 @@ public sealed partial class RlGenerationAndQValueTests
         Assert.Contains("UnknownOwner", registry.PreviewRlArtifacts()!.Entries.Single().Reasons);
         using var interrupted = await registry.BeginRlArtifactRunAsync(Guid.NewGuid(), _root); string directory = interrupted!.Directory;
         interrupted.Dispose(); now += TimeSpan.FromDays(30);
-        Assert.Contains("Interrupted", registry.PreviewRlArtifacts()!.Entries.Single(e => e.Path == directory).Reasons);
+        var expired = registry.PreviewRlArtifacts()!.Entries.Single(e => e.Path == directory);
+        Assert.True(expired.Candidate); Assert.Equal(new[] { "ExpiredFailure" }, expired.Reasons.ToArray()); // owner decision A3-3: no longer protected forever
+    }
+    [Fact] public async Task R08_ARunThatEndedWithoutATerminalStateExpiresLikeAFailedRunUnlessOwnedOrResumable()
+    {
+        var now = DateTimeOffset.UtcNow;
+        using var registry = ArtifactRegistry(() => now);
+        await registry.SaveRlArtifactPolicyAsync(CompleteArtifactPolicy);
+        var live = await registry.BeginRlArtifactRunAsync(Guid.NewGuid(), _root); string liveDirectory = live!.Directory;
+        var gone = await registry.BeginRlArtifactRunAsync(Guid.NewGuid(), _root); string goneDirectory = gone!.Directory;
+        gone.Dispose();
+
+        var fresh = registry.PreviewRlArtifacts()!.Entries.Single(e => e.Path == goneDirectory);
+        Assert.False(fresh.Candidate); Assert.Contains("NotExpired", fresh.Reasons); Assert.DoesNotContain("Interrupted", fresh.Reasons);
+        now += TimeSpan.FromDays(CompleteArtifactPolicy.FailedRetentionDays + 1);
+
+        var review = registry.PreviewRlArtifacts()!;
+        Assert.True(review.Entries.Single(e => e.Path == goneDirectory).Candidate);
+        Assert.False(review.Entries.Single(e => e.Path == liveDirectory).Candidate); // a live owner keeps its run, however old
+        Assert.Contains("Lease", review.Entries.Single(e => e.Path == liveDirectory).Reasons);
+        var result = await registry.CleanupRlArtifactsAsync(review);
+        Assert.Single(result.Deleted); Assert.False(Directory.Exists(goneDirectory)); Assert.True(Directory.Exists(liveDirectory));
+        live.Dispose();
     }
     [Fact] public async Task R08_ExpiryAndLatestCountAreBothRequiredAndActivationNeverAutomaticallyPrunes()
     {
@@ -223,5 +246,139 @@ public sealed partial class RlGenerationAndQValueTests
             Assert.Equal("preserve",File.ReadAllText(sentinel)); Assert.True(Directory.Exists(run.Directory));
         }
         finally { Directory.Delete(link); }
+    }
+
+    /// <summary>A candidate whose own job file names the work folder it was trained in (the fixture job has no run id).</summary>
+    private string CandidateTrainedIn(Guid runId, decimal score, bool createWorkFolder)
+    {
+        string directory = Candidate(score).Directory;
+        string job = Path.Combine(directory, RlFiles.Job);
+        var document = JsonNode.Parse(File.ReadAllText(job))!.AsObject();
+        document["run_id"] = runId.ToString("N");
+        File.WriteAllText(job, document.ToJsonString());
+        if (createWorkFolder) Directory.CreateDirectory(Path.Combine(_root, RlFiles.TrainingFolder, RlFiles.RlFolder, runId.ToString("N")));
+        return directory;
+    }
+    private static readonly RlArtifactPolicy KeepEverythingPolicy = new(NonactiveRetentionDays: 365, NonactiveKeepCount: 50);
+
+    [Fact] public async Task R10_OnlyAGenerationWhoseWorkFolderIsGoneIsReportedAsWithoutWorkFolder()
+    {
+        using var registry = ArtifactRegistry();
+        await registry.SaveRlArtifactPolicyAsync(KeepEverythingPolicy);
+        var kept = await registry.RegisterRlAsync(CandidateTrainedIn(Guid.NewGuid(), .01m, createWorkFolder: true));
+        var gone = await registry.RegisterRlAsync(CandidateTrainedIn(Guid.NewGuid(), .02m, createWorkFolder: false));
+        var unknown = await registry.RegisterRlAsync(Candidate(.03m).Directory);
+
+        Assert.Equal(new[] { gone.ModelId }, registry.RlModelIdsWithoutWorkFolder());
+        Assert.NotNull(registry.GetRlGeneration(kept.ModelId)); Assert.NotNull(registry.GetRlGeneration(unknown.ModelId));
+        Assert.Equal(3, registry.ListRl().Count);
+        using var unconfigured = new ModelGenerationRegistry(RegistryRoot);
+        Assert.Empty(unconfigured.RlModelIdsWithoutWorkFolder());
+    }
+    [Fact] public async Task R10_RemovingAGenerationWithoutWorkFolderDeletesItEvenInsideTheRetentionPeriod()
+    {
+        using var registry = ArtifactRegistry();
+        await registry.SaveRlArtifactPolicyAsync(KeepEverythingPolicy);
+        var gone = await registry.RegisterRlAsync(CandidateTrainedIn(Guid.NewGuid(), .02m, createWorkFolder: false));
+        var other = await registry.RegisterRlAsync(CandidateTrainedIn(Guid.NewGuid(), .03m, createWorkFolder: false));
+        Assert.DoesNotContain(registry.PreviewRlArtifacts()!.Entries, e => e.Candidate);
+
+        var result = await registry.RemoveRlGenerationAsync(gone.ModelId);
+
+        Assert.True(result.Removed); Assert.Empty(result.Reasons);
+        Assert.Null(registry.GetRlGeneration(gone.ModelId));
+        Assert.False(Directory.Exists(Path.Combine(RegistryRoot, RlFiles.RlFolder, gone.ModelId)));
+        Assert.Equal(new[] { other.ModelId }, registry.ListRl().Select(g => g.ModelId));
+        using var reopened = ArtifactRegistryOnTheSameStore();
+        Assert.Equal(new[] { other.ModelId }, reopened.ListRl().Select(g => g.ModelId));
+    }
+    private ModelGenerationRegistry ArtifactRegistryOnTheSameStore() => new(RegistryRoot);
+
+    [Fact] public async Task R10_RemovalIsRefusedWhileTheWorkFolderExists_AndNothingIsDeleted()
+    {
+        using var registry = ArtifactRegistry();
+        await registry.SaveRlArtifactPolicyAsync(KeepEverythingPolicy);
+        var kept = await registry.RegisterRlAsync(CandidateTrainedIn(Guid.NewGuid(), .01m, createWorkFolder: true));
+        var unknown = await registry.RegisterRlAsync(Candidate(.03m).Directory);
+
+        foreach (string id in new[] { kept.ModelId, unknown.ModelId })
+        {
+            var result = await registry.RemoveRlGenerationAsync(id);
+            Assert.False(result.Removed); Assert.Contains("WorkFolderPresent", result.Reasons);
+            Assert.NotNull(registry.GetRlGeneration(id));
+        }
+        var missing = await registry.RemoveRlGenerationAsync(new string('a', 64));
+        Assert.False(missing.Removed); Assert.Contains("UnknownOwner", missing.Reasons);
+    }
+    [Fact] public async Task R10_RemovalIsRefusedForAnInUseGeneration()
+    {
+        using var registry = ArtifactRegistry();
+        await registry.SaveRlArtifactPolicyAsync(KeepEverythingPolicy);
+        var inUse = await registry.RegisterRlAsync(CandidateTrainedIn(Guid.NewGuid(), .02m, createWorkFolder: false));
+
+        using (var lease = registry.AcquireRl(inUse.ModelId))
+        {
+            var leased = await registry.RemoveRlGenerationAsync(inUse.ModelId);
+            Assert.False(leased.Removed); Assert.Contains("Lease", leased.Reasons);
+        }
+        Assert.NotNull(registry.GetRlGeneration(inUse.ModelId));
+        Assert.True((await registry.RemoveRlGenerationAsync(inUse.ModelId)).Removed);
+    }
+    [Fact] public async Task R10_TheOwnerCanRemoveTheActiveAndAPreviousGeneration_AndNoPointerKeepsNamingIt()
+    {
+        using var registry = ArtifactRegistry();
+        await registry.SaveRlArtifactPolicyAsync(KeepEverythingPolicy);
+        var previous = await registry.RegisterRlAsync(CandidateTrainedIn(Guid.NewGuid(), .01m, createWorkFolder: false));
+        var active = await registry.RegisterRlAsync(CandidateTrainedIn(Guid.NewGuid(), .02m, createWorkFolder: false));
+        await registry.ActivateRlAsync(previous.ModelId); await registry.ActivateRlAsync(active.ModelId);
+        string pointer = Path.Combine(RegistryRoot, RlFiles.RlFolder, RlFiles.Active);
+        Assert.Contains(previous.ModelId, File.ReadAllText(pointer + ".bak"));
+
+        var removedActive = await registry.RemoveRlGenerationAsync(active.ModelId);
+        Assert.True(removedActive.Removed); Assert.Null(registry.RlActiveId);
+        var removedPrevious = await registry.RemoveRlGenerationAsync(previous.ModelId);
+        Assert.True(removedPrevious.Removed);
+
+        Assert.Empty(registry.ListRl());
+        foreach (string file in new[] { pointer, pointer + ".bak" })
+            if (File.Exists(file)) { Assert.DoesNotContain(active.ModelId, File.ReadAllText(file)); Assert.DoesNotContain(previous.ModelId, File.ReadAllText(file)); }
+        using var reopened = ArtifactRegistryOnTheSameStore();
+        Assert.Empty(reopened.ListRl()); Assert.Null(reopened.RlActiveId);
+        Assert.False(reopened.PreviewRlRecovery(RlFiles.Target).Unavailable);
+    }
+    [Fact] public async Task R10_AFailedRemovalLeavesTheActiveAndPreviousPointersAsTheyWere()
+    {
+        using var registry = ArtifactRegistry();
+        await registry.SaveRlArtifactPolicyAsync(KeepEverythingPolicy);
+        var previous = await registry.RegisterRlAsync(CandidateTrainedIn(Guid.NewGuid(), .01m, createWorkFolder: false));
+        var active = await registry.RegisterRlAsync(CandidateTrainedIn(Guid.NewGuid(), .02m, createWorkFolder: false));
+        await registry.ActivateRlAsync(previous.ModelId); await registry.ActivateRlAsync(active.ModelId);
+        string pointer = Path.Combine(RegistryRoot, RlFiles.RlFolder, RlFiles.Active);
+        string pointerBefore = File.ReadAllText(pointer), backupBefore = File.ReadAllText(pointer + ".bak");
+        if (!OperatingSystem.IsWindows()) return; // an open file blocks the rename of its folder only on Windows
+        // Another process keeps a file of the folder open: readable (it still verifies), but the folder cannot be moved into the trash.
+        using var held = new FileStream(Path.Combine(RegistryRoot, RlFiles.RlFolder, active.ModelId, RlFiles.Model), FileMode.Open, FileAccess.Read, FileShare.Read);
+
+        var failure = await Record.ExceptionAsync(() => registry.RemoveRlGenerationAsync(active.ModelId));
+
+        Assert.True(failure is IOException or UnauthorizedAccessException, failure?.ToString() ?? "the removal did not fail");
+        Assert.Equal(active.ModelId, registry.RlActiveId);
+        Assert.Equal(pointerBefore, File.ReadAllText(pointer)); Assert.Equal(backupBefore, File.ReadAllText(pointer + ".bak"));
+        Assert.True(Directory.Exists(Path.Combine(RegistryRoot, RlFiles.RlFolder, active.ModelId)));
+        using var reopened = ArtifactRegistryOnTheSameStore();
+        Assert.Equal(active.ModelId, reopened.RlActiveId);
+    }
+    [Fact] public async Task R10_RemovingTheActiveGenerationKeepsTheStoreVerifiedForTheNextCleanupAndActivation()
+    {
+        using var registry = ArtifactRegistry();
+        await registry.SaveRlArtifactPolicyAsync(KeepEverythingPolicy);
+        var active = await registry.RegisterRlAsync(CandidateTrainedIn(Guid.NewGuid(), .01m, createWorkFolder: false));
+        var other = await registry.RegisterRlAsync(CandidateTrainedIn(Guid.NewGuid(), .02m, createWorkFolder: false));
+        await registry.ActivateRlAsync(active.ModelId);
+
+        Assert.True((await registry.RemoveRlGenerationAsync(active.ModelId)).Removed);
+
+        Assert.DoesNotContain(registry.PreviewRlArtifacts()!.Entries, e => e.Reasons.Contains("UnverifiedPointers"));
+        Assert.True(await registry.ActivateRlAsync(other.ModelId)); Assert.Equal(other.ModelId, registry.RlActiveId);
     }
 }

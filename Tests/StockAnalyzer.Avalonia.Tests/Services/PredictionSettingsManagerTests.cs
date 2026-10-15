@@ -1,3 +1,4 @@
+using StockAnalyzer.Avalonia.Common;
 using StockAnalyzer.Avalonia.Services;
 using Xunit;
 
@@ -6,11 +7,18 @@ namespace StockAnalyzer.Avalonia.Tests.Services;
 public class PredictionSettingsManagerTests
 {
     [Fact]
-    public void DefaultWindowSize_Is75()
+    public void DefaultWindowSize_Is60()
     {
         var manager = new PredictionSettingsManager();
 
-        Assert.Equal(75, manager.WindowSize);
+        Assert.Equal(60, manager.WindowSize);
+    }
+
+    [Fact]
+    public void DefaultWindowSize_HasOneDefinition_SharedByTheSettingsClassAndTheManager()
+    {
+        Assert.Equal(PredictionSettings.DefaultWindowSize, PredictionSettingsManager.DefaultWindowSize);
+        Assert.Equal(PredictionSettings.DefaultWindowSize, new PredictionSettings().WindowSize);
     }
 
     [Fact]
@@ -33,6 +41,6 @@ public class PredictionSettingsManagerTests
 
         manager.SetWindowSize(invalidValue);
 
-        Assert.Equal(75, manager.WindowSize);
+        Assert.Equal(60, manager.WindowSize);
     }
 }

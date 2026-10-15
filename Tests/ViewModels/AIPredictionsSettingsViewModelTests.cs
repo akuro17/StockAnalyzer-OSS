@@ -172,7 +172,7 @@ public class AIPredictionsSettingsViewModelTests
 
         Assert.Equal("Settings_AIPredictions", vm.TitleKey);
         Assert.Equal("SettingsAdvIcon", vm.IconKey);
-        Assert.Equal(75, vm.SelectedWindowSize);
+        Assert.Equal(60, vm.SelectedWindowSize);
         Assert.False(vm.IsModified);
     }
 
@@ -220,7 +220,7 @@ public class AIPredictionsSettingsViewModelTests
 
         vm.RevertChanges();
 
-        Assert.Equal(75, vm.SelectedWindowSize);
+        Assert.Equal(60, vm.SelectedWindowSize);
         Assert.False(vm.IsModified);
     }
 
@@ -235,7 +235,7 @@ public class AIPredictionsSettingsViewModelTests
         vm.SelectedWindowSize = 200;
         vm.ResetToDefault();
 
-        Assert.Equal(75, vm.SelectedWindowSize);
+        Assert.Equal(60, vm.SelectedWindowSize);
     }
 
     [Fact]

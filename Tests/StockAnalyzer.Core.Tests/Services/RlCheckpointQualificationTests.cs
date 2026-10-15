@@ -8,7 +8,6 @@ using System.Reflection;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using StockAnalyzer.Core.Common;
 using StockAnalyzer.Core.Models.Backtest.Engine;
 using StockAnalyzer.Core.Models.ReinforcementLearning;
 using StockAnalyzer.Core.Models.Training;
@@ -21,6 +20,8 @@ namespace StockAnalyzer.Core.Tests.Services;
 [Collection("ChildProcess")]
 public sealed class RlCheckpointQualificationTests
 {
+    private const string EvidenceRunsFolderName = "SA_R09TestRuns";
+
     public sealed class CheckpointQualificationAttribute : FactAttribute
     { public CheckpointQualificationAttribute() { if (Environment.GetEnvironmentVariable("SA_RL_R09_QUALIFICATION") != "1") Skip = "Owned actual same-environment T16 continuation opt-in."; } }
     [CheckpointQualification]
@@ -36,7 +37,7 @@ public sealed class RlCheckpointQualificationTests
         using var config = JsonDocument.Parse(File.ReadAllText(Environment.GetEnvironmentVariable("SA_RL_R07_QUALIFICATION_CONFIG")!));
         using var sourceJob = JsonDocument.Parse(File.ReadAllText(Path.Combine(config.RootElement.GetProperty("LaterActor").GetString()!, RlFiles.Job)));
         var captured = sourceJob.RootElement;
-        string root = Path.Combine(PathDiscovery.ResolveDataPath(null, "Data"), "R09TestRuns", Guid.NewGuid().ToString("N"));
+        string root = EvidenceRunRoot(output);
         using var registry = new ModelGenerationRegistry(Path.Combine(root, "Generations"));
         registry.ConfigureRlArtifacts(root, new RlArtifactSettings(Path.Combine(root, "Config", RlArtifactSettings.FileName)));
         var policy = new RlArtifactPolicy(NonactiveRetentionDays: 0, NonactiveKeepCount: 0);
@@ -150,7 +151,7 @@ public sealed class RlCheckpointQualificationTests
         string actor = config.RootElement.GetProperty("LaterActor").GetString()!;
         using var sourceJob = JsonDocument.Parse(File.ReadAllText(Path.Combine(actor, RlFiles.Job)));
         var captured = sourceJob.RootElement;
-        string root = Path.Combine(PathDiscovery.ResolveDataPath(null, "Data"), "R09TestRuns", Guid.NewGuid().ToString("N"));
+        string root = EvidenceRunRoot(output);
         using var registry = new ModelGenerationRegistry(Path.Combine(root, "Generations"));
         registry.ConfigureRlArtifacts(root, new RlArtifactSettings(Path.Combine(root, "Config", RlArtifactSettings.FileName)));
         await registry.SaveRlArtifactPolicyAsync(new(NonactiveRetentionDays: 0, NonactiveKeepCount: 0));
@@ -213,4 +214,7 @@ public sealed class RlCheckpointQualificationTests
     }
     private sealed class InlineProgress(Action<RlTrainingProgress> report) : IProgress<RlTrainingProgress>
     { public void Report(RlTrainingProgress value) => report(value); }
+
+    /// <summary>Run folder inside the owner-chosen evidence folder. It is kept: the evidence JSON records its path, so deleting it would leave evidence that points at nothing.</summary>
+    private static string EvidenceRunRoot(string output) => Path.Combine(output, EvidenceRunsFolderName, Guid.NewGuid().ToString("N"));
 }

@@ -25,6 +25,12 @@
     <Compile Include="..\StockAnalyzer.Core.Tests\Services\CapturingLogger.cs" Link="TestHelpers\CapturingLogger.cs" />
   </ItemGroup>
 
+  <!-- The test-run isolation of the signal-bundle files is one file shared by every test assembly. -->
+  <ItemGroup>
+    <Compile Include="..\TestDataIsolationBootstrap.cs" Link="TestDataIsolationBootstrap.cs" />
+    <Compile Include="..\TestRepositoryRoot.cs" Link="TestRepositoryRoot.cs" />
+  </ItemGroup>
+
   <!-- Tests for the retained Phase Space Spiral UI sources are excluded with that UI. -->
   <ItemGroup>
     <Compile Remove="ViewModels\SpiralAnalysisViewModelTests.cs" />

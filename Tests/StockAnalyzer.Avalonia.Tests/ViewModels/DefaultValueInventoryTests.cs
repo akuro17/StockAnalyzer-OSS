@@ -52,7 +52,7 @@ public sealed class DefaultValueInventoryTests
             Assert.Equal(TargetType.Classification, config.TargetType);
             Assert.Equal(TrainingFramework.PyTorch, config.Framework);
             Assert.Equal("lstm", config.Architecture);
-            Assert.Equal(75, config.WindowSize);
+            Assert.Equal(60, config.WindowSize);
             Assert.Equal(5, config.Horizon);
             Assert.Equal(5, config.NSplits);
             Assert.Null(config.Gap);                                  // empty = automatic purge (window + horizon - 1), see the meaning test

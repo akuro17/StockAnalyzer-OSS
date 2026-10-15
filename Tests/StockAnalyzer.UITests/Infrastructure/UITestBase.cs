@@ -142,9 +142,10 @@ namespace StockAnalyzer.UITests.Infrastructure
             if (parquetFiles.Length == 0)
                 throw new InvalidOperationException($"No Daily Parquet fixtures found at {sourceDaily}.");
 
-            _isolatedRunsRoot = Path.GetFullPath(Path.Combine(solution.FullName, "Data", IsolatedRunsDirectoryName));
+            // Scratch data roots are temporary files: they live in the OS temp folder, never in the Data folder.
             if ((File.GetAttributes(Path.Combine(solution.FullName, "Data")) & FileAttributes.ReparsePoint) != 0)
                 throw new InvalidOperationException("UIA fixture Data directory must not be a reparse point.");
+            _isolatedRunsRoot = Path.GetFullPath(Path.Combine(Path.GetTempPath(), PathDiscovery.TempFolderName, IsolatedRunsDirectoryName));
             Directory.CreateDirectory(_isolatedRunsRoot);
             if ((File.GetAttributes(_isolatedRunsRoot) & FileAttributes.ReparsePoint) != 0)
                 throw new InvalidOperationException("UIA test-runs directory must not be a reparse point.");
@@ -309,6 +310,28 @@ namespace StockAnalyzer.UITests.Infrastructure
             );
 
             return result.Result!;
+        }
+
+        /// <summary>
+        /// The first editor of <paramref name="editorType"/> that sits directly below the text label named <paramref name="names"/> (the label-above-field
+        /// layout of the dialogs) and overlaps it horizontally. An <c>AutoCompleteBox</c> does not publish its own automation id or name to UI Automation;
+        /// only its inner <c>PART_TextBox</c> editor is visible, so such a field is found through its label.
+        /// </summary>
+        public static AutomationElement? FindEditorBelowLabel(Window window, ControlType editorType, params string[] names)
+        {
+            var label = window.FindAllDescendants(cf => cf.ByControlType(ControlType.Text))
+                .FirstOrDefault(element => names.Contains(element.Name, StringComparer.Ordinal));
+            if (label == null) return null;
+
+            var labelBounds = label.BoundingRectangle;
+            return window.FindAllDescendants(cf => cf.ByControlType(editorType))
+                .Where(element =>
+                {
+                    var bounds = element.BoundingRectangle;
+                    return bounds.Top >= labelBounds.Bottom && bounds.Left < labelBounds.Right && bounds.Right > labelBounds.Left;
+                })
+                .OrderBy(element => element.BoundingRectangle.Top)
+                .FirstOrDefault();
         }
 
         public void WaitUntil(Func<bool> condition, int timeoutMs = -1, string? errorMessage = null)

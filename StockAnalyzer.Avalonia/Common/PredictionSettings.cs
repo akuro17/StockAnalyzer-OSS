@@ -17,7 +17,14 @@ public class PredictionSettings
     /// verbatim; a file already present next to the executable still wins for back-compat.
     /// </summary>
     public string ModelPath { get; set; } = "trend_predictor.onnx";
-    public int WindowSize { get; set; } = 75;
+
+    /// <summary>
+    /// Default model input length in bars. Single definition: <c>PredictionSettingsManager.DefaultWindowSize</c> re-exposes it, and it
+    /// must equal the "Prediction:WindowSize" of appsettings*.json and the Python <c>dataset.DEFAULT_WINDOW</c>.
+    /// </summary>
+    public const int DefaultWindowSize = 60;
+
+    public int WindowSize { get; set; } = DefaultWindowSize;
     public PredictionFeatureMode FeatureMode { get; set; } = PredictionFeatureMode.OhlcvMinMax;
 
     /// <summary>Learning objective the configured model was trained for.</summary>

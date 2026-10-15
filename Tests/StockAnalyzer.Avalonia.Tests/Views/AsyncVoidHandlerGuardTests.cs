@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
 using Xunit;
+using StockAnalyzer.TestSupport;
 
 namespace StockAnalyzer.Avalonia.Tests.Views;
 
@@ -17,17 +18,6 @@ public class AsyncVoidHandlerGuardTests
     private const string AvaloniaProjectDirectory = "StockAnalyzer.Avalonia";
     private static readonly Regex AsyncVoidMethod = new(@"\basync\s+void\s+(\w+)\s*\([^)]*\)\s*\{", RegexOptions.Compiled);
     private static readonly Regex TryBlock = new(@"\btry\s*\{", RegexOptions.Compiled);
-
-    private static string FindRepositoryRoot()
-    {
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "StockAnalyzer.sln")))
-        {
-            directory = directory.Parent;
-        }
-
-        return directory?.FullName ?? throw new InvalidOperationException("Repository root (StockAnalyzer.sln) not found.");
-    }
 
     private static bool IsBuildOutput(string relativePath)
         => relativePath.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar).Any(part => part is "bin" or "obj");
@@ -51,7 +41,7 @@ public class AsyncVoidHandlerGuardTests
     /// <summary>Every <c>async void</c> method of the project as (relative file, method name, whether its first await is inside try/catch).</summary>
     private static IReadOnlyList<(string File, string Method, bool Guarded)> ScanAsyncVoidMethods()
     {
-        string projectDirectory = Path.Combine(FindRepositoryRoot(), AvaloniaProjectDirectory);
+        string projectDirectory = Path.Combine(TestRepositoryRoot.Find(), AvaloniaProjectDirectory);
         Assert.True(Directory.Exists(projectDirectory), $"Project directory not found: {projectDirectory}");
 
         var result = new List<(string, string, bool)>();

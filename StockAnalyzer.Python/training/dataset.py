@@ -50,10 +50,10 @@ EPSILON: float = 1e-7
 # mirrors IMLDataProcessor.SoftmaxSumTolerance (1e-4f): max |1 - sum(p)| before a
 # re-softmax is forced. Single source of truth for downstream verification scripts.
 SOFTMAX_SUM_TOLERANCE: float = 1e-4
-# canonical window length: matches StockAnalyzer.Avalonia PredictionSettings.WindowSize
-# and PredictionSettingsManager.DefaultWindowSize (both 75). Single source of truth for
+# canonical window length: matches StockAnalyzer.Avalonia PredictionSettings.DefaultWindowSize
+# (re-exposed as PredictionSettingsManager.DefaultWindowSize; both 60, kept equal by a test). Single source of truth for
 # the default look-back; override per run with --window.
-DEFAULT_WINDOW: int = 75
+DEFAULT_WINDOW: int = 60
 # default number of expanding-window folds; also the SSoT for the trainers' --wf-splits.
 DEFAULT_WF_SPLITS: int = 5
 # a bar gap flags a discontinuous history (halt / delist / months missing) only when it

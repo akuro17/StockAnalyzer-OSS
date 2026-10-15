@@ -3,6 +3,8 @@ name: Publish Development Release
 # Manual only: the private repository has no GitHub Actions minutes (billing; the owner does not pay), so push and pull request triggers
 # would only fail. Release builds run in the public StockAnalyzer-OSS repository.
 on:
+  push:
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:
@@ -65,6 +67,15 @@ jobs:
       contents: write
 
     steps:
+    - name: Checkout code (for tag move)
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+    - name: Move latest-dev tag to this commit
+      shell: bash
+      run: |
+        git tag -f latest-dev "${{ github.sha }}"
+        git push -f origin refs/tags/latest-dev
+
     - name: Download all artifacts
       uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
       with:
