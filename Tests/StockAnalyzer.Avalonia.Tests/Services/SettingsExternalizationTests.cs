@@ -24,7 +24,8 @@ public class SettingsExternalizationTests
         PythonSettings? pythonOverride = null,
         ChartDefaultSettings? chartOverride = null,
         StockAnalyzer.Core.Models.Settings.BacktestSettings? backtestOverride = null,
-        StockAnalyzer.Core.Models.Settings.DrawingInteractionSettings? drawingInteractionOverride = null)
+        StockAnalyzer.Core.Models.Settings.DrawingInteractionSettings? drawingInteractionOverride = null,
+        ScreenerSettings? screenerOverride = null)
     {
         var config = BuildConfig(configValues);
 
@@ -42,7 +43,7 @@ public class SettingsExternalizationTests
             Options.Create(pythonSettings),
             Options.Create(chartSettings),
             Options.Create(new PredictionSettings()),
-            Options.Create(new ScreenerSettings()),
+            Options.Create(screenerOverride ?? new ScreenerSettings()),
             Options.Create(new SmartScreenerSettings()),
             Options.Create(new InfrastructureSettings()),
             Options.Create(new MarketStructureSettings()),
@@ -87,6 +88,99 @@ public class SettingsExternalizationTests
         Assert.Equal(pocoDefault, CreateSettings(new Dictionary<string, string?>()).BacktestMaxConditionOffset);
         Assert.Equal(pocoDefault, ((StockAnalyzer.Core.Services.IStockAnalyzerSettings)new MockStockAnalyzerSettings()).BacktestMaxConditionOffset);
         Assert.Equal(pocoDefault, bound.MaxConditionOffset);
+    }
+
+    [Fact]
+    public void ScreenerMaxConditionOffset_ReadsTheBoundSetting_AndDefaultsToThePoco()
+    {
+        var settings = CreateSettings(new Dictionary<string, string?>(), screenerOverride: new ScreenerSettings { MaxConditionOffset = 750 });
+
+        Assert.Equal(750, settings.ScreenerMaxConditionOffset);
+        Assert.Equal(new ScreenerSettings().MaxConditionOffset, CreateSettings(new Dictionary<string, string?>()).ScreenerMaxConditionOffset);
+        Assert.Equal(new ScreenerSettings().MaxConditionOffset,
+            ((StockAnalyzer.Core.Services.IStockAnalyzerSettings)new MockStockAnalyzerSettings()).ScreenerMaxConditionOffset);
+    }
+
+    [Fact]
+    public void ScreenerMaxConditionOffset_DefaultIsTheFormerLimit_IsInTheStandardBand_AndTheShippedAppsettingsAgree()
+    {
+        var config = new ConfigurationBuilder()
+            .AddJsonFile(System.IO.Path.Combine(AppContext.BaseDirectory, "appsettings.json"), optional: false)
+            .Build();
+        var bound = new ScreenerSettings { MaxConditionOffset = -12345 };
+        config.GetSection("Screener").Bind(bound);
+
+        Assert.Equal(500, new ScreenerSettings().MaxConditionOffset);
+        Assert.True(StockAnalyzer.Core.Models.Settings.ScreenerConditionOffsetLimits.MaxConditionOffset.IsWithinStandard(new ScreenerSettings().MaxConditionOffset));
+        Assert.Equal(new ScreenerSettings().MaxConditionOffset, bound.MaxConditionOffset);
+    }
+
+    // The hard band is a code contract: a configuration file cannot widen it, and the error names the key.
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(2501)]
+    [InlineData(int.MaxValue)]
+    public void ScreenerMaxConditionOffset_OutsideTheHardBand_FailsAtStartupNamingTheKey(int value)
+    {
+        var ex = Assert.Throws<ArgumentOutOfRangeException>(() =>
+            CreateSettings(new Dictionary<string, string?>(), screenerOverride: new ScreenerSettings { MaxConditionOffset = value }));
+
+        Assert.Contains("Screener:MaxConditionOffset", ex.Message);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(2500)]
+    public void ScreenerMaxConditionOffset_AtTheHardBandEdges_IsAccepted(int value)
+    {
+        var settings = CreateSettings(new Dictionary<string, string?>(), screenerOverride: new ScreenerSettings { MaxConditionOffset = value });
+
+        Assert.Equal(value, settings.ScreenerMaxConditionOffset);
+    }
+
+    [Fact]
+    public void ScreenerFilterTreeBounds_DefaultToTheContract_AndTheShippedAppsettingsAgree()
+    {
+        var config = new ConfigurationBuilder()
+            .AddJsonFile(System.IO.Path.Combine(AppContext.BaseDirectory, "appsettings.json"), optional: false)
+            .Build();
+        var bound = new ScreenerSettings { MaxFilterTreeNodes = -1, MaxFilterTreeDepth = -1 };
+        config.GetSection("Screener").Bind(bound);
+        var defaults = new ScreenerSettings();
+
+        Assert.Equal(StockAnalyzer.Core.Models.Settings.ScreenerFilterTreeLimits.DefaultMaxFilterTreeNodes, defaults.MaxFilterTreeNodes);
+        Assert.Equal(StockAnalyzer.Core.Models.Settings.ScreenerFilterTreeLimits.DefaultMaxFilterTreeDepth, defaults.MaxFilterTreeDepth);
+        Assert.Equal(defaults.MaxFilterTreeNodes, bound.MaxFilterTreeNodes);
+        Assert.Equal(defaults.MaxFilterTreeDepth, bound.MaxFilterTreeDepth);
+        var viaInterface = (StockAnalyzer.Core.Services.IStockAnalyzerSettings)new MockStockAnalyzerSettings();
+        Assert.Equal(defaults.MaxFilterTreeNodes, viaInterface.ScreenerMaxFilterTreeNodes);
+        Assert.Equal(defaults.MaxFilterTreeDepth, viaInterface.ScreenerMaxFilterTreeDepth);
+    }
+
+    // The tree bands are a code contract too: a configuration file cannot widen them, and the error names the key.
+    [Theory]
+    [InlineData(1, 1, "Screener:MaxFilterTreeNodes")]
+    [InlineData(257, 8, "Screener:MaxFilterTreeNodes")]
+    [InlineData(64, 0, "Screener:MaxFilterTreeDepth")]
+    [InlineData(64, 17, "Screener:MaxFilterTreeDepth")]
+    [InlineData(5, 6, "Screener:MaxFilterTreeNodes")]
+    public void ScreenerFilterTreeBounds_OutsideTheContract_FailAtStartupNamingTheKey(int nodes, int depth, string key)
+    {
+        var ex = Assert.Throws<ArgumentOutOfRangeException>(() =>
+            CreateSettings(new Dictionary<string, string?>(), screenerOverride: new ScreenerSettings { MaxFilterTreeNodes = nodes, MaxFilterTreeDepth = depth }));
+
+        Assert.Contains(key, ex.Message);
+    }
+
+    [Theory]
+    [InlineData(2, 1)]
+    [InlineData(256, 16)]
+    public void ScreenerFilterTreeBounds_AtTheContractEdges_AreAccepted(int nodes, int depth)
+    {
+        var settings = CreateSettings(new Dictionary<string, string?>(), screenerOverride: new ScreenerSettings { MaxFilterTreeNodes = nodes, MaxFilterTreeDepth = depth });
+
+        Assert.Equal(nodes, settings.ScreenerMaxFilterTreeNodes);
+        Assert.Equal(depth, settings.ScreenerMaxFilterTreeDepth);
     }
 
     [Fact]

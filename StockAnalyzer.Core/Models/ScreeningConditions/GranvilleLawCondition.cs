@@ -30,6 +30,17 @@ public class GranvilleLawCondition : IScreeningCondition
         return $"Granville's Law ({_targetType})";
     }
 
+    /// <summary>
+    /// The smallest number of trailing bars that gives the indicator a signal value on its last bar: the signal series is null before index
+    /// <c>MaPeriod + SlopePeriod</c>, so one more bar than that is needed.
+    /// </summary>
+    /// <param name="parameters">The parameters the condition uses. If null, default parameters are used.</param>
+    public static int RequiredCandleCount(CoreGranvilleLawParameter? parameters = null)
+    {
+        var p = parameters ?? new CoreGranvilleLawParameter();
+        return p.MaPeriod + p.SlopePeriod + 1;
+    }
+
     public bool IsMet(IReadOnlyList<CandleData> candles)
     {
         // Need minimum required candles: MaPeriod + SlopePeriod

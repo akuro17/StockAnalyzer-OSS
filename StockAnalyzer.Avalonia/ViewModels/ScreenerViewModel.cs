@@ -9,11 +9,6 @@ using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
 using StockAnalyzer.Avalonia.Common;
 using StockAnalyzer.Core.Models;
-using StockAnalyzer.Core.Models.MarketStructure;
-using StockAnalyzer.Core.Models.ScreeningConditions;
-using StockAnalyzer.Core.Models.DivergenceCross;
-using StockAnalyzer.Core.Models.ElliottWave;
-using StockAnalyzer.Core.Models.GeometricPattern;
 using StockAnalyzer.Core.Services;
 using StockAnalyzer.Core.Services.Screener;
 using StockAnalyzer.Core;
@@ -34,7 +29,6 @@ namespace StockAnalyzer.Avalonia.ViewModels;
 public partial class ScreenerViewModel : ViewModelBase, IDisposable
 {
     private readonly IScreenerService? _screenerService;
-    private readonly IPatternRecognitionService? _patternService;
     private readonly IStockAnalyzerSettings? _settings;
     private readonly IMarketDataProvider? _marketDataProvider;
     private readonly IWatchlistManager? _watchlistManager;
@@ -46,6 +40,7 @@ public partial class ScreenerViewModel : ViewModelBase, IDisposable
     private readonly ILogger<ScreenerViewModel> _logger;
     private CancellationTokenSource? _cts;
     private CancellationTokenSource? _statusResetCts;
+    private CancellationTokenSource? _targetSymbolsCts;
     private bool _isDisposed;
 
     [ObservableProperty]
@@ -56,17 +51,37 @@ public partial class ScreenerViewModel : ViewModelBase, IDisposable
 
     partial void OnSelectedTargetSourceChanged(ScreenerTargetSource? value)
     {
-        _ = UpdateTargetSymbolsAsync(value);
+        // A newer selection supersedes the load still running for the previous one, so a slow earlier load cannot overwrite the list.
+        _targetSymbolsCts?.Cancel();
+        _targetSymbolsCts?.Dispose();
+        if (_isDisposed)
+        {
+            _targetSymbolsCts = null;
+            return;
+        }
+
+        _targetSymbolsCts = new CancellationTokenSource();
+        _ = RunTargetSymbolsLoadAsync(value, _targetSymbolsCts.Token);
+    }
+
+    private async Task RunTargetSymbolsLoadAsync(ScreenerTargetSource? source, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await UpdateTargetSymbolsAsync(source, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded by a newer selection or the view-model was disposed.
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Failed to load the Screener target symbols.");
+        }
     }
 
     [ObservableProperty]
     private ObservableCollection<string> _targetSymbols = new();
-
-    [ObservableProperty]
-    private ObservableCollection<IScreeningCondition> _availableConditions = new();
-
-    [ObservableProperty]
-    private IScreeningCondition? _selectedCondition;
 
     [ObservableProperty]
     private ObservableCollection<string> _results = new();
@@ -159,7 +174,6 @@ public partial class ScreenerViewModel : ViewModelBase, IDisposable
 
     public ScreenerViewModel(
         IScreenerService? screenerService = null,
-        IPatternRecognitionService? patternService = null,
         IStockAnalyzerSettings? settings = null,
         IMarketDataProvider? marketDataProvider = null,
         IWatchlistManager? watchlistManager = null,
@@ -172,7 +186,6 @@ public partial class ScreenerViewModel : ViewModelBase, IDisposable
         ILogger<ScreenerViewModel>? logger = null)
     {
         _screenerService = screenerService;
-        _patternService = patternService;
         _settings = settings;
         _marketDataProvider = marketDataProvider;
         _watchlistManager = watchlistManager;
@@ -194,18 +207,6 @@ public partial class ScreenerViewModel : ViewModelBase, IDisposable
         InitializeFallback();
     }
 
-    /// <summary>Creates a pattern-match condition using the PatternRecognition settings (Core defaults when no settings are available).</summary>
-    private PatternMatchCondition CreatePatternCondition(IPatternRecognitionService service, string? targetPattern)
-    {
-        return new PatternMatchCondition(
-            service,
-            targetPattern,
-            _settings?.PatternRecognitionDefaultThreshold ?? StockAnalyzer.Core.ChartConstants.PatternRecognitionDefaultThreshold,
-            _settings?.PatternRecognitionMinWindow ?? StockAnalyzer.Core.ChartConstants.PatternRecognitionDefaultMinWindow,
-            _settings?.PatternRecognitionMaxWindow ?? StockAnalyzer.Core.ChartConstants.PatternRecognitionDefaultMaxWindow,
-            _settings?.PatternRecognitionWindowStep ?? StockAnalyzer.Core.ChartConstants.PatternRecognitionDefaultWindowStep);
-    }
-
     private void Initialize()
     {
         InitializeColumns();
@@ -222,67 +223,6 @@ public partial class ScreenerViewModel : ViewModelBase, IDisposable
             IndicatorRegistrationViewModel.RegisteredEntries.CollectionChanged += (s, e) => UpdateCriteriaFlowItems();
             UpdateCriteriaFlowItems();
         }
-
-        // Register Conditions
-        AvailableConditions.Add(new RsiOversoldCondition(StockAnalyzer.Core.ChartConstants.DefaultRsiPeriod, StockAnalyzer.Core.ChartConstants.DefaultRsiOversoldThreshold));
-        
-        // Register Divergence & Cross Conditions (RSI based by default for screening)
-        AvailableConditions.Add(new DivergenceCrossCondition(IndicatorType.RSI, SignalType.RegularBullishDivergence));
-        AvailableConditions.Add(new DivergenceCrossCondition(IndicatorType.RSI, SignalType.RegularBearishDivergence));
-        AvailableConditions.Add(new DivergenceCrossCondition(IndicatorType.RSI, SignalType.GoldenCross));
-        AvailableConditions.Add(new DivergenceCrossCondition(IndicatorType.RSI, SignalType.DeadCross));
-        
-        if (_patternService != null)
-        {
-            // ML-based pattern matching (HeadAndShoulders, DoubleBottom, etc.)
-            AvailableConditions.Add(CreatePatternCondition(_patternService, null)); // Any pattern
-            AvailableConditions.Add(CreatePatternCondition(_patternService, "HeadAndShoulders"));
-            AvailableConditions.Add(CreatePatternCondition(_patternService, "InverseHeadAndShoulders"));
-            AvailableConditions.Add(CreatePatternCondition(_patternService, "DoubleTop"));
-            AvailableConditions.Add(CreatePatternCondition(_patternService, "DoubleBottom"));
-        }
-
-        // Register Geometric formations
-        decimal geometricThreshold = _settings?.ZigzagThresholdPercent ?? StockAnalyzer.Core.ChartConstants.DefaultGeometricZigZagThreshold;
-        AvailableConditions.Add(new GeometricPatternCondition(GeometricFormationType.BullishFlag, geometricThreshold));
-        AvailableConditions.Add(new GeometricPatternCondition(GeometricFormationType.BearishFlag, geometricThreshold));
-
-        // Register all classical candle patterns
-        foreach (CandlePatternType patternType in Enum.GetValues(typeof(CandlePatternType)))
-        {
-            if (patternType != CandlePatternType.None)
-            {
-                AvailableConditions.Add(new CandlePatternCondition(patternType));
-            }
-        }
-
-        // Register Market Structure conditions
-        foreach (MarketStructureType msType in Enum.GetValues(typeof(MarketStructureType)))
-        {
-             // Typically we want a threshold > 0, using the default from settings or 5.0m as fallback
-             decimal zigzagThreshold = _settings?.ZigzagThresholdPercent ?? 5.0m;
-             AvailableConditions.Add(new MarketStructureCondition(msType, zigzagThreshold));
-        }
-
-        // Register Harmonic Pattern conditions
-        foreach (StockAnalyzer.Core.Models.HarmonicPattern.HarmonicPatternType hpType in Enum.GetValues(typeof(StockAnalyzer.Core.Models.HarmonicPattern.HarmonicPatternType)))
-        {
-             AvailableConditions.Add(new HarmonicPatternCondition(hpType));
-        }
-
-        // Register Granville's Laws conditions
-        foreach (GranvilleLawConditionType glType in Enum.GetValues(typeof(GranvilleLawConditionType)))
-        {
-             AvailableConditions.Add(new GranvilleLawCondition(glType));
-        }
-
-        // Register Elliott Wave conditions
-        foreach (ElliottWaveConditionType ewType in Enum.GetValues(typeof(ElliottWaveConditionType)))
-        {
-             AvailableConditions.Add(new ElliottWaveCondition(ewType));
-        }
-
-        SelectedCondition = AvailableConditions.FirstOrDefault();
     }
 
     private void OnWatchlistsChanged(object? sender, EventArgs e)
@@ -460,10 +400,13 @@ public partial class ScreenerViewModel : ViewModelBase, IDisposable
         }
     }
 
-    public async Task UpdateTargetSymbolsAsync(ScreenerTargetSource? source)
+    public async Task UpdateTargetSymbolsAsync(ScreenerTargetSource? source, CancellationToken cancellationToken = default)
     {
         TargetSymbols.Clear();
         if (source == null) return;
+
+        // The symbols are collected first and published once, so a load that is superseded (cancelled) never leaves a partial or mixed list behind.
+        var staged = new List<string>();
 
         switch (source.Type)
         {
@@ -471,16 +414,17 @@ public partial class ScreenerViewModel : ViewModelBase, IDisposable
                 if (_marketDataProvider != null)
                 {
                     var tickers = await _marketDataProvider.GetAvailableTickersAsync();
+                    cancellationToken.ThrowIfCancellationRequested();
                     foreach (var ticker in tickers)
                     {
-                        TargetSymbols.Add(ticker);
+                        staged.Add(ticker);
                     }
                 }
                 else if (_settings?.DefaultScreenerSymbols != null)
                 {
                     foreach (var symbol in _settings.DefaultScreenerSymbols)
                     {
-                        TargetSymbols.Add(symbol);
+                        staged.Add(symbol);
                     }
                 }
                 break;
@@ -497,7 +441,7 @@ public partial class ScreenerViewModel : ViewModelBase, IDisposable
                         {
                             foreach (var item in profile.Items)
                             {
-                                TargetSymbols.Add(item.Ticker);
+                                staged.Add(item.Ticker);
                             }
                         }
                     }
@@ -516,7 +460,7 @@ public partial class ScreenerViewModel : ViewModelBase, IDisposable
                         }
                         foreach (var ticker in categoryTickers)
                         {
-                            TargetSymbols.Add(ticker);
+                            staged.Add(ticker);
                         }
                     }
                 }
@@ -545,6 +489,7 @@ public partial class ScreenerViewModel : ViewModelBase, IDisposable
                     else
                     {
                         var masterTickers = await _marketDataProvider.GetAvailableTickersAsync();
+                        cancellationToken.ThrowIfCancellationRequested();
                         foreach (var t in masterTickers) candidateTickers.Add(t);
                         if (_watchlistManager != null)
                         {
@@ -569,9 +514,12 @@ public partial class ScreenerViewModel : ViewModelBase, IDisposable
                         _logger?.LogDebug(ex, "Failed to load latest prices for candidate tickers in Screener filter evaluation.");
                     }
 
+                    cancellationToken.ThrowIfCancellationRequested();
                     foreach (var ticker in candidateTickers)
                     {
+                        cancellationToken.ThrowIfCancellationRequested();
                         var meta = await _marketDataProvider.GetMetadataAsync(ticker);
+                        cancellationToken.ThrowIfCancellationRequested();
                         var existingVm = _tickerStateStore?.DisplayItems.FirstOrDefault(x => string.Equals(x.Symbol, ticker, StringComparison.OrdinalIgnoreCase));
                         var liveTag = existingVm?.Tag;
                         var finalTag = !string.IsNullOrEmpty(liveTag) ? liveTag : meta.Tag;
@@ -615,7 +563,7 @@ public partial class ScreenerViewModel : ViewModelBase, IDisposable
 
                         if (filterEngine.EvaluateSettings(itemVm, source.FilterSettings))
                         {
-                            TargetSymbols.Add(ticker);
+                            staged.Add(ticker);
                         }
                     }
                 }
@@ -627,6 +575,7 @@ public partial class ScreenerViewModel : ViewModelBase, IDisposable
                     var searchTag = source.TagName.Trim();
                     var candidateTickers = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                     var masterTickers = await _marketDataProvider.GetAvailableTickersAsync();
+                    cancellationToken.ThrowIfCancellationRequested();
                     foreach (var t in masterTickers) candidateTickers.Add(t);
                     if (_watchlistManager != null)
                     {
@@ -642,17 +591,26 @@ public partial class ScreenerViewModel : ViewModelBase, IDisposable
 
                     foreach (var ticker in candidateTickers)
                     {
+                        cancellationToken.ThrowIfCancellationRequested();
                         var meta = await _marketDataProvider.GetMetadataAsync(ticker);
+                        cancellationToken.ThrowIfCancellationRequested();
                         var liveTag = _tickerStateStore?.DisplayItems.FirstOrDefault(x => string.Equals(x.Symbol, ticker, StringComparison.OrdinalIgnoreCase))?.Tag;
                         var finalTag = !string.IsNullOrEmpty(liveTag) ? liveTag : meta.Tag;
 
                         if (!string.IsNullOrEmpty(finalTag) && WatchlistFilterEngine.ContainsTag(finalTag, searchTag))
                         {
-                            TargetSymbols.Add(ticker);
+                            staged.Add(ticker);
                         }
                     }
                 }
                 break;
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        TargetSymbols.Clear();
+        foreach (var symbol in staged)
+        {
+            TargetSymbols.Add(symbol);
         }
     }
 
@@ -666,44 +624,6 @@ public partial class ScreenerViewModel : ViewModelBase, IDisposable
 
         TargetSources.Add(new ScreenerTargetSource(TargetSourceType.AllTickers, "All Tickers"));
         SelectedTargetSource = TargetSources.FirstOrDefault();
-
-        AvailableConditions.Add(new RsiOversoldCondition(StockAnalyzer.Core.ChartConstants.DefaultRsiPeriod, StockAnalyzer.Core.ChartConstants.DefaultRsiOversoldThreshold));
-        
-        AvailableConditions.Add(new DivergenceCrossCondition(IndicatorType.RSI, SignalType.RegularBullishDivergence));
-        AvailableConditions.Add(new DivergenceCrossCondition(IndicatorType.RSI, SignalType.RegularBearishDivergence));
-        AvailableConditions.Add(new DivergenceCrossCondition(IndicatorType.RSI, SignalType.GoldenCross));
-        AvailableConditions.Add(new DivergenceCrossCondition(IndicatorType.RSI, SignalType.DeadCross));
-        
-        foreach (CandlePatternType patternType in Enum.GetValues(typeof(CandlePatternType)))
-        {
-            if (patternType != CandlePatternType.None)
-            {
-                AvailableConditions.Add(new CandlePatternCondition(patternType));
-            }
-        }
-
-        foreach (MarketStructureType msType in Enum.GetValues(typeof(MarketStructureType)))
-        {
-             AvailableConditions.Add(new MarketStructureCondition(msType, 5.0m));
-        }
-
-        foreach (StockAnalyzer.Core.Models.HarmonicPattern.HarmonicPatternType hpType in Enum.GetValues(typeof(StockAnalyzer.Core.Models.HarmonicPattern.HarmonicPatternType)))
-        {
-             AvailableConditions.Add(new HarmonicPatternCondition(hpType));
-        }
-
-        foreach (GranvilleLawConditionType glType in Enum.GetValues(typeof(GranvilleLawConditionType)))
-        {
-             AvailableConditions.Add(new GranvilleLawCondition(glType));
-        }
-
-        // Register Elliott Wave conditions (fallback)
-        foreach (ElliottWaveConditionType ewType in Enum.GetValues(typeof(ElliottWaveConditionType)))
-        {
-              AvailableConditions.Add(new ElliottWaveCondition(ewType));
-        }
-
-        SelectedCondition = AvailableConditions.FirstOrDefault();
     }
 
     [RelayCommand]
@@ -736,7 +656,8 @@ public partial class ScreenerViewModel : ViewModelBase, IDisposable
         StatusMessage = "Scanning...";
         Results.Clear();
         ResultItems.Clear();
-        _cts = new CancellationTokenSource();
+        var scanCts = new CancellationTokenSource();
+        _cts = scanCts;
 
         // A per-condition running match count during scan progress (the old UpdateProgress) has no well-defined
         // meaning for a nested AND/OR tree (a group's contribution is not a running total of any single entry), so
@@ -757,7 +678,7 @@ public partial class ScreenerViewModel : ViewModelBase, IDisposable
                 condition,
                 TimeFrame.D1,
                 progress,
-                _cts.Token
+                scanCts.Token
             );
 
             // Rebuild dynamic indicator columns on ActiveColumns
@@ -939,8 +860,7 @@ public partial class ScreenerViewModel : ViewModelBase, IDisposable
                                         }
                                         else if (category == ScreenerItemCategoryType.Column)
                                         {
-                                            string propName = new[] { config.CustomDisplayName, config.OutputName, config.DisplayName }
-                                                .FirstOrDefault(s => !string.IsNullOrWhiteSpace(s) && s != "SMA" && s != "Main") ?? config.DisplayName;
+                                            string propName = config.ResolveLookupName() ?? config.DisplayName;
 
                                             var rawVal = item.GetRawValue(propName);
                                             if (rawVal is decimal dVal) item.DynamicIndicatorValues[memberKey] = dVal;
@@ -993,9 +913,10 @@ public partial class ScreenerViewModel : ViewModelBase, IDisposable
         finally
         {
             IsScanning = false;
-            _cts.Dispose();
-            _cts = null;
-            _ = ScheduleStatusResetAsync();
+            // Dispose() may already have cancelled, disposed and cleared _cts while the scan was still running.
+            scanCts.Dispose();
+            if (ReferenceEquals(_cts, scanCts)) _cts = null;
+            if (!_isDisposed) _ = ScheduleStatusResetAsync();
         }
     }
 
@@ -1099,6 +1020,10 @@ public partial class ScreenerViewModel : ViewModelBase, IDisposable
         _statusResetCts?.Cancel();
         _statusResetCts?.Dispose();
         _statusResetCts = null;
+
+        _targetSymbolsCts?.Cancel();
+        _targetSymbolsCts?.Dispose();
+        _targetSymbolsCts = null;
 
         IndicatorRegistrationViewModel?.Dispose();
 

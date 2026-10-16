@@ -37,13 +37,20 @@ public class ScreenerViewModelTests
 
         public Task<IReadOnlyList<string>> GetAvailableTickersAsync() => Task.FromResult<IReadOnlyList<string>>(_tickers);
 
-        public ValueTask<TickerMetadata> GetMetadataAsync(string ticker)
+        /// <summary>Tickers whose metadata call waits until the given task completes (to hold a target-symbol load half way).</summary>
+        public Dictionary<string, Task> MetadataGates { get; } = new();
+
+        public async ValueTask<TickerMetadata> GetMetadataAsync(string ticker)
         {
+            if (MetadataGates.TryGetValue(ticker, out var gate))
+            {
+                await gate;
+            }
             if (_meta.TryGetValue(ticker, out var m))
             {
-                return ValueTask.FromResult(new TickerMetadata(ticker, m.Name, "US", m.Sector, m.Industry, "USD") { Tag = m.Tag });
+                return new TickerMetadata(ticker, m.Name, "US", m.Sector, m.Industry, "USD") { Tag = m.Tag };
             }
-            return ValueTask.FromResult(TickerMetadata.Unknown);
+            return TickerMetadata.Unknown;
         }
 
         public Task<IReadOnlyList<CandleData>> GetTickersDataAsync(string symbol, TimeFrame timeFrame) => Task.FromResult<IReadOnlyList<CandleData>>(Array.Empty<CandleData>());
@@ -108,7 +115,7 @@ public class ScreenerViewModelTests
 
         var mockWlManager = new DummyWatchlistManager(new[] { profile1, profile2 });
 
-        var vm = new ScreenerViewModel(null!, null!, null!, mockMarket, mockWlManager);
+        var vm = new ScreenerViewModel(null!, null!, mockMarket, mockWlManager);
 
         // Act
         await vm.LoadTargetSourcesAsync();
@@ -141,7 +148,7 @@ public class ScreenerViewModelTests
         });
 
         var mockWlManager = new DummyWatchlistManager(new[] { profile1 });
-        var vm = new ScreenerViewModel(null!, null!, null!, mockMarket, mockWlManager);
+        var vm = new ScreenerViewModel(null!, null!, mockMarket, mockWlManager);
 
         await vm.LoadTargetSourcesAsync();
 
@@ -161,17 +168,76 @@ public class ScreenerViewModelTests
         Assert.Equal(new[] { "TSLA" }, vm.TargetSymbols);
     }
 
-    [Fact]
-    public void PatternConditions_UseThresholdFromPatternRecognitionSettings()
+    // Tickers AAPL (Growth), MSFT, TSLA (Growth); the watchlist holds AAPL and MSFT.
+    private static (ScreenerViewModel Vm, DummyMarketDataProvider Market) CreateTargetSourceViewModel()
     {
-        var vm = new ScreenerViewModel(null, new StockAnalyzer.Core.Services.PatternRecognitionService(), new CustomThresholdSettings());
-
-        Assert.Contains(vm.AvailableConditions, condition => condition.ToString() == "Pattern Match (any, prob >= 70%)");
+        var market = new DummyMarketDataProvider(
+            new List<string> { "AAPL", "MSFT", "TSLA" },
+            new Dictionary<string, (string, string, string, string)>
+            {
+                { "AAPL", ("Apple", "Tech", "Hardware", "Growth") },
+                { "MSFT", ("Microsoft", "Tech", "Software", "Value") },
+                { "TSLA", ("Tesla", "Auto", "EV", "Growth") }
+            });
+        var watchlist = new WatchlistProfile(Guid.NewGuid(), "My Watchlist", IndicatorColor.Gray, isPortfolio: false, new List<WatchlistItem>
+        {
+            new WatchlistItem("AAPL", DateTimeOffset.UtcNow),
+            new WatchlistItem("MSFT", DateTimeOffset.UtcNow)
+        });
+        return (new ScreenerViewModel(null!, null!, market, new DummyWatchlistManager(new[] { watchlist })), market);
     }
 
-    private sealed class CustomThresholdSettings : MockStockAnalyzerSettings, IStockAnalyzerSettings
+    [Fact]
+    public async Task SelectingTwoSources_FastSwitch_KeepsOnlyLastSource()
     {
-        public new double PatternRecognitionDefaultThreshold => 0.7;
+        var (vm, market) = CreateTargetSourceViewModel();
+        await vm.LoadTargetSourcesAsync();
+        var tagSource = vm.TargetSources.First(s => s.Type == TargetSourceType.TagFilter && s.TagName == "Growth" && !s.IsHeader);
+        var watchlistSource = vm.TargetSources.First(s => s.Type == TargetSourceType.Watchlist && !s.IsHeader);
+
+        // The tag load stops at the metadata of its first candidate until the gate opens.
+        var gate = new TaskCompletionSource();
+        market.MetadataGates["AAPL"] = gate.Task;
+        vm.SelectedTargetSource = tagSource;
+        vm.SelectedTargetSource = watchlistSource;
+        Assert.Equal(new[] { "AAPL", "MSFT" }, vm.TargetSymbols);
+
+        gate.SetResult();
+
+        Assert.Equal(new[] { "AAPL", "MSFT" }, vm.TargetSymbols);
+    }
+
+    [Fact]
+    public async Task Dispose_CancelsPendingTargetLoad()
+    {
+        var (vm, market) = CreateTargetSourceViewModel();
+        await vm.LoadTargetSourcesAsync();
+        var tagSource = vm.TargetSources.First(s => s.Type == TargetSourceType.TagFilter && s.TagName == "Growth" && !s.IsHeader);
+
+        var gate = new TaskCompletionSource();
+        market.MetadataGates["AAPL"] = gate.Task;
+        vm.SelectedTargetSource = tagSource;
+        vm.Dispose();
+
+        gate.SetResult();
+
+        Assert.Empty(vm.TargetSymbols);
+    }
+
+    [Fact]
+    public async Task SingleSelection_ResultUnchanged()
+    {
+        var (vm, _) = CreateTargetSourceViewModel();
+        await vm.LoadTargetSourcesAsync();
+
+        vm.SelectedTargetSource = vm.TargetSources.First(s => s.Type == TargetSourceType.AllTickers);
+        Assert.Equal(new[] { "AAPL", "MSFT", "TSLA" }, vm.TargetSymbols);
+
+        vm.SelectedTargetSource = vm.TargetSources.First(s => s.Type == TargetSourceType.Watchlist && !s.IsHeader);
+        Assert.Equal(new[] { "AAPL", "MSFT" }, vm.TargetSymbols);
+
+        vm.SelectedTargetSource = vm.TargetSources.First(s => s.Type == TargetSourceType.TagFilter && s.TagName == "Growth" && !s.IsHeader);
+        Assert.Equal(new[] { "AAPL", "TSLA" }, vm.TargetSymbols);
     }
 
     [Fact]
@@ -244,7 +310,7 @@ public class ScreenerViewModelTests
     [Fact]
     public async Task ScanAsync_WhenNoConditionsRegistered_ShowsWarningAndDoesNotScan()
     {
-        var vm = new ScreenerViewModel(null!, null!, null!, null!, null!);
+        var vm = new ScreenerViewModel(null!, null!, null!, null!);
         Assert.Empty(vm.IndicatorRegistrationViewModel.RegisteredEntries);
 
         await vm.ScanCommand.ExecuteAsync(null);
@@ -257,7 +323,7 @@ public class ScreenerViewModelTests
     [Fact]
     public async Task ScanAsync_WhenAllConditionsDisabled_ShowsWarningAndDoesNotScan()
     {
-        var vm = new ScreenerViewModel(null!, null!, null!, null!, null!);
+        var vm = new ScreenerViewModel(null!, null!, null!, null!);
         vm.IndicatorRegistrationViewModel.RegisteredEntries.Add(new ScreenerIndicatorEntry
         {
             IsEnabled = false

@@ -85,6 +85,23 @@ public class ScreenerIndicatorSideConfig
     }
 
     /// <summary>
+    /// The name that selects the metric (Column) or the pattern (Criteria) this side reads: the first of <see cref="CustomDisplayName"/>,
+    /// <see cref="OutputName"/>, <see cref="DisplayName"/> that is not blank and is not the default of an unnamed side ("SMA", "Main"); null when none is.
+    /// The catalog stores the description in <see cref="CustomDisplayName"/> and the short name in <see cref="OutputName"/>, so this one order is what
+    /// the evaluation, the history sizing and the result columns all use. Allocation-free: every Column extraction of a scan runs through it.
+    /// </summary>
+    public string? ResolveLookupName()
+    {
+        if (IsLookupNameCandidate(CustomDisplayName)) return CustomDisplayName;
+        if (IsLookupNameCandidate(OutputName)) return OutputName;
+        string displayName = DisplayName;
+        return IsLookupNameCandidate(displayName) ? displayName : null;
+    }
+
+    private static bool IsLookupNameCandidate(string? name)
+        => !string.IsNullOrWhiteSpace(name) && name != nameof(Models.IndicatorType.SMA) && name != IndicatorResult.MainSeriesName;
+
+    /// <summary>
     /// Formats a complete, deduplicatable column header title including parameters and timeframe.
     /// </summary>
     public string GetColumnHeaderTitle()

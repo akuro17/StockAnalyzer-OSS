@@ -137,6 +137,8 @@
   "Msg_NoFiltersConfigured": "フィルターが登録されていません。「指標」タブを開いて条件を追加してください。",
   "Label_RegisteredConditions": "登録済み条件一覧",
   "Screener_ConditionTree_LimitTooltip": "上限に達しました：ネストは最大{0}階層、ノード数は最大{1}個までです。",
+  "Screener_Template_LeftOffsetOutOfRange": "テンプレートを適用しませんでした：条件{0}の左辺のOffset（{1}）が許容範囲（{2}〜{3}）を外れています。",
+  "Screener_Template_RightOffsetOutOfRange": "テンプレートを適用しませんでした：条件{0}の右辺のOffset（{1}）が許容範囲（{2}〜{3}）を外れています。",
   "Screener_ConditionTree_StaleEdit": "ツリーが変更されたため、編集内容は適用されませんでした。",
   "Screener_ConditionTree_AddGroup": "グループを追加",
   "Screener_ConditionTree_EditGroup": "グループを編集",

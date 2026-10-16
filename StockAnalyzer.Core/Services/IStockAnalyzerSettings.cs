@@ -81,10 +81,10 @@ public interface IStockAnalyzerSettings
     // reason for a different bound), defaulted here (default interface member) so every existing implementer keeps
     // compiling unchanged.
     /// <summary>Deepest AND/OR nesting a Filters condition tree may have (root group = 1); see <c>Screener:MaxFilterTreeDepth</c>.</summary>
-    int ScreenerMaxFilterTreeDepth => 8;
+    int ScreenerMaxFilterTreeDepth => Models.Settings.ScreenerFilterTreeLimits.DefaultMaxFilterTreeDepth;
 
     /// <summary>Most nodes (leaves and groups, root included) the Filters condition tree may contain; see <c>Screener:MaxFilterTreeNodes</c>.</summary>
-    int ScreenerMaxFilterTreeNodes => 64;
+    int ScreenerMaxFilterTreeNodes => Models.Settings.ScreenerFilterTreeLimits.DefaultMaxFilterTreeNodes;
 
     /// <summary>Longest user-entered Filters group name, in characters after trimming; see <c>Screener:MaxFilterGroupNameLength</c>.</summary>
     int ScreenerMaxFilterGroupNameLength => 32;
@@ -94,6 +94,9 @@ public interface IStockAnalyzerSettings
     // ScreenerMaxFilterTreeDepth/Nodes/GroupNameLength above. Same rationale and default as the Backtest counterpart.
     /// <summary>Pointer travel (DIP) that starts dragging a Filters condition; see <c>Screener:ConditionDragStartDistance</c>.</summary>
     int ScreenerConditionDragStartDistance => 4;
+
+    /// <summary>Largest Offset (bars before the evaluated bar) a Filters condition may use; see <c>Screener:MaxConditionOffset</c> and <see cref="Models.Settings.ScreenerConditionOffsetLimits"/>.</summary>
+    int ScreenerMaxConditionOffset => Models.Settings.ScreenerConditionOffsetLimits.DefaultMaxConditionOffset;
 
     // Drawing interaction resource bounds
     /// <summary>

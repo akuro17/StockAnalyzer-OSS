@@ -209,7 +209,7 @@ public sealed class TickerSourceResolverTests : IDisposable
         var (resolver, store) = Create(all, tags, wl, pf);
         var filter = new FilterSettings { Name = "G", ParentId = wl.Id, Rules = new() { new FilterRule { Field = "Tag", Operator = "Contains", Value = "Tech" } } };
         var market = new FakeMarketDataProvider(all, tags); var manager = new FakeWatchlistManager(new[] { wl, pf });
-        var screener = new ScreenerViewModel(null, null, null, market, manager);
+        var screener = new ScreenerViewModel(null, null, market, manager);
         var cases = new (RlSourceDescriptor Source, ScreenerTargetSource Screener)[]
         {
             (RlSourceDescriptor.AllTickers(), new(TargetSourceType.AllTickers, "all")),

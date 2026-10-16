@@ -52,6 +52,14 @@ public class StockAnalyzerSettings : IStockAnalyzerSettings
 
         _screenerSettings = screenerOptions.Value;
         _screenerSettings.Validate();
+        foreach (var warning in StockAnalyzer.Core.Models.Settings.ScreenerSettingsValidator.Validate(_screenerSettings.MaxConditionOffset))
+        {
+            _logger.LogWarning("{SettingWarning}", warning);
+        }
+        foreach (var warning in StockAnalyzer.Core.Models.Settings.ScreenerSettingsValidator.ValidateFilterTree(_screenerSettings.MaxFilterTreeNodes, _screenerSettings.MaxFilterTreeDepth))
+        {
+            _logger.LogWarning("{SettingWarning}", warning);
+        }
 
         _smartScreenerSettings = smartScreenerOptions.Value;
         _smartScreenerSettings.Validate();
@@ -166,6 +174,7 @@ public class StockAnalyzerSettings : IStockAnalyzerSettings
     public int ScreenerMaxFilterTreeNodes => _screenerSettings.MaxFilterTreeNodes;
     public int ScreenerMaxFilterGroupNameLength => _screenerSettings.MaxFilterGroupNameLength;
     public int ScreenerConditionDragStartDistance => _screenerSettings.ConditionDragStartDistance;
+    public int ScreenerMaxConditionOffset => _screenerSettings.MaxConditionOffset;
 
     public int PatternRecognitionMinWindow => _patternRecognitionSettings.MinWindow;
     public int PatternRecognitionMaxWindow => _patternRecognitionSettings.MaxWindow;

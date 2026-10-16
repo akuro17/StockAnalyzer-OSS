@@ -137,6 +137,8 @@
   "Msg_NoFiltersConfigured": "No Filters registered. Open the 'Indicators' tab to add a condition.",
   "Label_RegisteredConditions": "Registered Conditions",
   "Screener_ConditionTree_LimitTooltip": "Limit reached: at most {0} levels of nesting and {1} nodes.",
+  "Screener_Template_LeftOffsetOutOfRange": "Template not applied: the left Offset of condition {0} is {1}, outside the allowed range {2} to {3}.",
+  "Screener_Template_RightOffsetOutOfRange": "Template not applied: the right Offset of condition {0} is {1}, outside the allowed range {2} to {3}.",
   "Screener_ConditionTree_StaleEdit": "The tree changed, so the edit was not applied.",
   "Screener_ConditionTree_AddGroup": "Add Group",
   "Screener_ConditionTree_EditGroup": "Edit Group",

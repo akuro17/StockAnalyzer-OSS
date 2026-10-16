@@ -36,6 +36,13 @@ namespace StockAnalyzer.Avalonia.Views
             AddHandler(DragDrop.DropEvent, OnConditionDrop);
         }
 
+        /// <summary>Closing the window stops its running scan and releases the view-model's subscriptions (the view-model is created per window).</summary>
+        protected override void OnClosed(EventArgs e)
+        {
+            base.OnClosed(e);
+            (DataContext as IDisposable)?.Dispose();
+        }
+
         private void OnHeaderPointerPressed(object? sender, PointerPressedEventArgs e)
         {
             if (e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)

@@ -14,13 +14,15 @@ using StockAnalyzer.Core.Models.Portfolio;
 using StockAnalyzer.Core.Models.Screener;
 using StockAnalyzer.Core.Models.ScreeningConditions;
 using StockAnalyzer.Core.Services.Analysis;
+using StockAnalyzer.Core.Services.Backtest.Engine;
 using StockAnalyzer.Core.Utilities;
 
 namespace StockAnalyzer.Core.Services;
 
 /// <summary>
-/// Provides high-performance, zero-allocation indicator value extraction for screening conditions.
-/// Utilizes per-thread indicator instances to prevent allocation overhead while maintaining thread-safety.
+/// Extracts indicator, price, column and criteria values for screening conditions.
+/// Reuses one indicator instance per type and thread and the candle conversion of the previous call on the thread, to limit the allocation of a scan;
+/// the calculation itself still allocates (it is not allocation-free).
 /// </summary>
 public class ScreenerValueExtractor : IScreenerValueExtractor
 {
@@ -28,6 +30,11 @@ public class ScreenerValueExtractor : IScreenerValueExtractor
     public static ScreenerValueExtractor Default => _instance.Value;
 
     private static readonly ConcurrentDictionary<string, PropertyInfo?> _metadataPropertyCache = new(StringComparer.OrdinalIgnoreCase);
+    // One indicator instance per (type, managed thread id), kept as long as this extractor lives (the Default singleton: the process). The size is bounded
+    // by the distinct thread ids ever seen x the types used; the runtime recycles ids, which keeps the count small (observed, not guaranteed: 150 short-lived
+    // threads used 13 ids). Measured 2026-10-16 with 500 bars: about 20 KB per entry; all 167 registered types on 13 ids held about 44 MB. Estimated from
+    // that figure (not measured): a scan of 5 indicator types on 8 workers holds about 0.8 MB. A bounded cache, not a leak, so its lifecycle was left
+    // as it is (backlog B2).
     private readonly ConcurrentDictionary<(IndicatorType type, int threadId), ICoreIndicator?> _threadLocalIndicators = new();
 
     public decimal ExtractValue(ScreenerIndicatorSideConfig? config, IReadOnlyList<CoreCandleData> candles)
@@ -40,30 +47,79 @@ public class ScreenerValueExtractor : IScreenerValueExtractor
         return ExtractValueNullable(config, candles, metadata) ?? 0m;
     }
 
+    public decimal ExtractValue(ScreenerIndicatorSideConfig? config, IReadOnlyList<CoreCandleData> candles, TickerMetadata metadata)
+    {
+        return ExtractValueNullable(config, candles, metadata) ?? 0m;
+    }
+
+    public string? ExtractStringValue(ScreenerIndicatorSideConfig? config, TickerMetadata metadata)
+        => ScreenerTextFields.GetValue(metadata, ScreenerTextFields.ResolveFieldName(config));
+
+    /// <summary>
+    /// Index of the bar a side reads: <c>count - 1 - Offset</c>. False (the value is missing) when the Offset is negative (it would read a future bar)
+    /// or reaches before the first bar; the latest bar is never substituted.
+    /// </summary>
+    private static bool TryResolveBarIndex(int offset, int count, out int barIndex)
+    {
+        barIndex = count - 1 - offset;
+        return count >= 1 && BacktestConditionOffsetRule.IsValid(offset) && barIndex >= 0;
+    }
+
+    // The name that selects the metric is the one definition ScreenerIndicatorSideConfig.ResolveLookupName; a side that names nothing reads its DisplayName.
+    private static string ResolveColumnName(ScreenerIndicatorSideConfig config)
+        => config.ResolveLookupName() ?? config.DisplayName ?? "";
+
+    private static readonly CoreCandleData[] ProbeBar = { new(DateTime.MinValue, 0m, 0m, 0m, 0m, 0L) };
+
+    /// <summary>True when the Column names a value read from the bar series (Open, Close, Change, ...) rather than from the fundamentals.</summary>
+    private static bool NamesCandleValue(ScreenerIndicatorSideConfig config)
+        => TryGetColumnOhlcValue(config, ProbeBar[0], 0, ProbeBar, out _);
+
     public decimal? ExtractValueNullable(ScreenerIndicatorSideConfig? config, IReadOnlyList<CandleData> candles, TickerMetadata metadata = default)
     {
         if (config == null || candles == null || candles.Count == 0) return null;
 
+        bool hasBar = TryResolveBarIndex(config.Offset, candles.Count, out int targetIdx);
+
         // Delegate Column fundamental & OHLC metric extraction directly without heavy allocations
-        int offset = config.Offset;
-        int targetIdx = candles.Count - 1 - offset;
-        if (targetIdx < 0 || targetIdx >= candles.Count)
-            targetIdx = candles.Count - 1;
-
-        var candle = candles[targetIdx];
-
         if (config.CategoryType == ScreenerItemCategoryType.Column)
         {
-            string name = new[] { config.CustomDisplayName, config.OutputName, config.DisplayName }
-                .FirstOrDefault(s => !string.IsNullOrWhiteSpace(s) && s != "SMA" && s != "Main") ?? config.DisplayName ?? "";
-
-            if (TryGetColumnOhlcValue(config, candle, targetIdx, candles, out decimal ohlcVal))
+            // A value read from the bar series is missing when its bar does not exist; fundamentals ignore the Offset.
+            if (hasBar && TryGetColumnOhlcValue(config, candles[targetIdx], targetIdx, candles, out decimal ohlcVal))
                 return ohlcVal;
+            if (!hasBar && NamesCandleValue(config))
+                return null;
 
-            return GetMetadataValue(metadata, name);
+            return GetMetadataValue(metadata, ResolveColumnName(config));
         }
 
+        if (!hasBar) return null;
+
         // For Indicator/Criteria evaluation, convert to CoreCandleData list
+        return ExtractValueNullable(config, ToCoreCandles(candles), metadata);
+    }
+
+    // The conversion of the candle list the previous call on this thread converted. A symbol's conditions are evaluated one after another on one thread
+    // (the extraction path has no await), each side asking for the same list, so converting it once per symbol instead of once per side removes most
+    // of the allocation of a scan (measured: about 30 % of the bytes of 2,000 symbols x 5 conditions).
+    [ThreadStatic] private static IReadOnlyList<CandleData>? _convertedSource;
+    [ThreadStatic] private static List<CoreCandleData>? _convertedCandles;
+
+    /// <summary>
+    /// The <see cref="CoreCandleData"/> form of <paramref name="candles"/>. The previous conversion on this thread is reused when it is for the very same list object
+    /// with the same count and the same first and last bar; anything else is converted again. Limitation: a list changed in place in a MIDDLE bar, keeping its
+    /// count and its first and last bar, is not noticed (the candle lists of the Screener are loaded per scan and not edited afterwards). The returned list is
+    /// shared: callers must not modify it.
+    /// </summary>
+    private static List<CoreCandleData> ToCoreCandles(IReadOnlyList<CandleData> candles)
+    {
+        var cached = _convertedCandles;
+        if (cached != null && ReferenceEquals(_convertedSource, candles) && cached.Count == candles.Count
+            && IsSameBar(candles[0], cached[0]) && IsSameBar(candles[^1], cached[^1]))
+        {
+            return cached;
+        }
+
         List<CoreCandleData> coreCandles = new(candles.Count);
         for (int i = 0; i < candles.Count; i++)
         {
@@ -71,17 +127,37 @@ public class ScreenerValueExtractor : IScreenerValueExtractor
             coreCandles.Add(new CoreCandleData(c.Timestamp, c.Open, c.High, c.Low, c.Close, c.Volume));
         }
 
-        return ExtractValue(config, coreCandles, metadata);
+        _convertedSource = candles;
+        _convertedCandles = coreCandles;
+        return coreCandles;
     }
 
-    public decimal ExtractValue(ScreenerIndicatorSideConfig? config, IReadOnlyList<CoreCandleData> candles, TickerMetadata metadata)
-    {
-        if (config == null || candles == null || candles.Count == 0) return 0m;
+    private static bool IsSameBar(CandleData source, CoreCandleData converted)
+        => source.Timestamp == converted.Timestamp && source.Open == converted.Open && source.High == converted.High
+           && source.Low == converted.Low && source.Close == converted.Close && source.Volume == converted.Volume;
 
-        int offset = config.Offset;
-        int targetIdx = candles.Count - 1 - offset;
-        if (targetIdx < 0 || targetIdx >= candles.Count)
-            targetIdx = candles.Count - 1;
+    /// <summary>
+    /// The one extraction core. Returns null when the value is missing (no bar at the Offset, an indicator that has no value on that bar, or an error),
+    /// so a comparison can treat "no value" as "not met" instead of as 0.
+    /// </summary>
+    public decimal? ExtractValueNullable(ScreenerIndicatorSideConfig? config, IReadOnlyList<CoreCandleData> candles, TickerMetadata metadata)
+    {
+        if (config == null || candles == null || candles.Count == 0) return null;
+
+        bool hasBar = TryResolveBarIndex(config.Offset, candles.Count, out int targetIdx);
+
+        if (config.CategoryType == ScreenerItemCategoryType.Column)
+        {
+            if (hasBar && TryGetColumnOhlcValue(config, candles[targetIdx], targetIdx, candles, out decimal ohlcVal))
+                return ohlcVal;
+            if (!hasBar && NamesCandleValue(config))
+                return null;
+
+            // Extract fundamental metric from TickerMetadata (the Offset does not apply to it)
+            return GetMetadataValue(metadata, ResolveColumnName(config));
+        }
+
+        if (!hasBar) return null;
 
         var candle = candles[targetIdx];
 
@@ -99,29 +175,17 @@ public class ScreenerValueExtractor : IScreenerValueExtractor
             return PriceDataHelper.ExtractPrice(candle, pt, prevClose, prevHaOpen, prevHaClose);
         }
 
-        if (config.CategoryType == ScreenerItemCategoryType.Column)
-        {
-            string name = new[] { config.CustomDisplayName, config.OutputName, config.DisplayName }
-                .FirstOrDefault(s => !string.IsNullOrWhiteSpace(s) && s != "SMA" && s != "Main") ?? config.DisplayName ?? "";
-
-            if (TryGetColumnOhlcValue(config, candle, targetIdx, candles, out decimal ohlcVal))
-                return ohlcVal;
-
-            // Extract fundamental metric from TickerMetadata
-            var metaVal = GetMetadataValue(metadata, name);
-            return metaVal ?? 0m;
-        }
-
         if (config.CategoryType == ScreenerItemCategoryType.Criteria)
         {
-            string name = new[] { config.CustomDisplayName, config.OutputName, config.DisplayName }
-                .FirstOrDefault(s => !string.IsNullOrWhiteSpace(s) && s != "SMA" && s != "Main") ?? "";
+            string name = config.ResolveLookupName() ?? "";
 
-            int takeCount = Math.Min(candles.Count, 100);
-            int startIdx = candles.Count - takeCount;
+            // The pattern is evaluated on the bars up to the target bar, on the window its detector needs (the history sizing uses the same definition).
+            int maxWindow = ScreenerHistoryRequirements.GetCriteriaWindowBars(name);
+            int takeCount = Math.Min(targetIdx + 1, maxWindow);
+            int startIdx = targetIdx + 1 - takeCount;
 
             List<CandleData> portfolioCandles = new(takeCount);
-            for (int i = startIdx; i < candles.Count; i++)
+            for (int i = startIdx; i <= targetIdx; i++)
             {
                 var c = candles[i];
                 portfolioCandles.Add(new CandleData
@@ -165,8 +229,8 @@ public class ScreenerValueExtractor : IScreenerValueExtractor
                 // 3. Trading Rules (Granville's Law)
                 if (name.Contains("Granville", StringComparison.OrdinalIgnoreCase))
                 {
-                    var type = name.Contains("Sell", StringComparison.OrdinalIgnoreCase) 
-                        ? GranvilleLawConditionType.AnySell 
+                    var type = name.Contains("Sell", StringComparison.OrdinalIgnoreCase)
+                        ? GranvilleLawConditionType.AnySell
                         : GranvilleLawConditionType.AnyBuy;
                     var condition = new GranvilleLawCondition(type);
                     return condition.IsMet(portfolioCandles) ? 1m : 0m;
@@ -176,7 +240,7 @@ public class ScreenerValueExtractor : IScreenerValueExtractor
                 if (name.Contains("Elliott", StringComparison.OrdinalIgnoreCase) || name.Contains("Wave", StringComparison.OrdinalIgnoreCase))
                 {
                     var type = (name.Contains("Corrective", StringComparison.OrdinalIgnoreCase) || name.Contains("ABC", StringComparison.OrdinalIgnoreCase))
-                        ? ElliottWaveConditionType.AnyCorrective 
+                        ? ElliottWaveConditionType.AnyCorrective
                         : ElliottWaveConditionType.AnyImpulse;
                     var condition = new ElliottWaveCondition(type);
                     return condition.IsMet(portfolioCandles) ? 1m : 0m;
@@ -237,7 +301,8 @@ public class ScreenerValueExtractor : IScreenerValueExtractor
             }
             catch
             {
-                // Fallback
+                // A detector that throws gives no value for this bar.
+                return null;
             }
 
             return 0m;
@@ -246,10 +311,19 @@ public class ScreenerValueExtractor : IScreenerValueExtractor
         try
         {
             int threadId = Environment.CurrentManagedThreadId;
-            var indicator = _threadLocalIndicators.GetOrAdd(
-                (config.IndicatorType, threadId),
-                key => IndicatorFactory.CreateStatic(key.type)
-            );
+            var cacheKey = (config.IndicatorType, threadId);
+            ICoreIndicator? indicator;
+            if (config.Parameters != null && config.Parameters.Count > 0)
+            {
+                indicator = _threadLocalIndicators.GetOrAdd(cacheKey, key => IndicatorFactory.CreateStatic(key.type));
+            }
+            else
+            {
+                // No parameters to apply: start from a fresh instance (class defaults) so the settings a previous condition
+                // configured on the cached instance of this type are not inherited.
+                indicator = IndicatorFactory.CreateStatic(config.IndicatorType);
+                _threadLocalIndicators[cacheKey] = indicator;
+            }
 
             if (indicator != null)
             {
@@ -299,43 +373,19 @@ public class ScreenerValueExtractor : IScreenerValueExtractor
                         ? result.GetSeries(config.OutputName)
                         : result.MainValues;
 
-                    if (series != null && targetIdx >= 0 && targetIdx < series.Count)
+                    if (series != null && targetIdx < series.Count)
                     {
-                        var val = series[targetIdx];
-                        if (val.HasValue) return val.Value;
+                        return series[targetIdx];
                     }
                 }
             }
         }
         catch
         {
-            // Fallback
+            // An indicator that throws gives no value for this bar.
         }
 
-        return 0m;
-    }
-
-    public decimal? ExtractValueNullable(ScreenerIndicatorSideConfig? config, IReadOnlyList<CoreCandleData> candles, TickerMetadata metadata)
-    {
-        if (config == null || candles == null || candles.Count == 0) return null;
-
-        if (config.CategoryType == ScreenerItemCategoryType.Column)
-        {
-            int offset = config.Offset;
-            int targetIdx = candles.Count - 1 - offset;
-            if (targetIdx < 0 || targetIdx >= candles.Count)
-                targetIdx = candles.Count - 1;
-
-            var candle = candles[targetIdx];
-            string name = new[] { config.CustomDisplayName, config.OutputName, config.DisplayName }
-                .FirstOrDefault(s => !string.IsNullOrWhiteSpace(s) && s != "SMA" && s != "Main") ?? config.DisplayName ?? "";
-
-            if (TryGetColumnOhlcValue(config, candle, targetIdx, candles, out decimal ohlcVal)) return ohlcVal;
-
-            return GetMetadataValue(metadata, name);
-        }
-
-        return ExtractValue(config, candles, metadata);
+        return null;
     }
 
     /// <summary>
@@ -444,6 +494,9 @@ public class ScreenerValueExtractor : IScreenerValueExtractor
         return null;
     }
 
+    /// <summary>1 for a raised signal flag, 0 for a flag known to be down, null (missing) for a flag whose state is not known.</summary>
+    private static decimal? FlagValue(bool? flag) => flag.HasValue ? (flag.Value ? 1m : 0m) : null;
+
     /// <summary>
     /// Safely extracts a fundamental metric value from <see cref="TickerMetadata"/> by column name or property alias.
     /// Uses fuzzy string normalization combined with reflection fallback to support 100% of UI column metrics.
@@ -455,13 +508,13 @@ public class ScreenerValueExtractor : IScreenerValueExtractor
         // Clean name safely without removing functional words like 'Ratio' or 'Margin'
         string cleaned = new string(name.Where(char.IsLetterOrDigit).ToArray()).ToLowerInvariant();
 
-        // Signal Flags (Boolean)
-        if (cleaned == "islong") return meta.IsLong == true ? 1m : 0m;
-        if (cleaned == "istplong") return meta.IsTPLong == true ? 1m : 0m;
-        if (cleaned == "issllong") return meta.IsSLLong == true ? 1m : 0m;
-        if (cleaned == "isshort") return meta.IsShort == true ? 1m : 0m;
-        if (cleaned == "istpshort") return meta.IsTPShort == true ? 1m : 0m;
-        if (cleaned == "isslshort") return meta.IsSLShort == true ? 1m : 0m;
+        // Signal Flags (Boolean): an unknown flag (null) is a missing value like any other missing metric, not "no signal" (0).
+        if (cleaned == "islong") return FlagValue(meta.IsLong);
+        if (cleaned == "istplong") return FlagValue(meta.IsTPLong);
+        if (cleaned == "issllong") return FlagValue(meta.IsSLLong);
+        if (cleaned == "isshort") return FlagValue(meta.IsShort);
+        if (cleaned == "istpshort") return FlagValue(meta.IsTPShort);
+        if (cleaned == "isslshort") return FlagValue(meta.IsSLShort);
 
         // Strategy Price Targets
         if (cleaned.Contains("tplong") || cleaned.Contains("exitlong") || cleaned.Contains("takeprofitlong")) return meta.ExitLong;

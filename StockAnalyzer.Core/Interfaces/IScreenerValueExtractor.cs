@@ -24,4 +24,10 @@ public interface IScreenerValueExtractor
     /// Extracts the indicator value returning null if dataset is missing or unresolvable.
     /// </summary>
     decimal? ExtractValueNullable(ScreenerIndicatorSideConfig? config, IReadOnlyList<CandleData> candles, TickerMetadata metadata = default);
+
+    /// <summary>
+    /// Extracts the text a text Column (Sector, Industry, Region, Name, Tag) holds for the ticker; null when the side is not a text Column or the
+    /// metadata has no value. Existing implementers need not change: the default returns null.
+    /// </summary>
+    string? ExtractStringValue(ScreenerIndicatorSideConfig? config, TickerMetadata metadata) => null;
 }

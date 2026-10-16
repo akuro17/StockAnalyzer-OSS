@@ -13,6 +13,7 @@ using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Indicators;
 using StockAnalyzer.Core.Models.Parameters;
 using StockAnalyzer.Core.Models.Screener;
+using StockAnalyzer.Core.Services.Backtest.Engine;
 using StockAnalyzer.Core.Services;
 
 using Microsoft.Extensions.DependencyInjection;
@@ -142,10 +143,7 @@ public partial class IndicatorRegistrationViewModel : ViewModelBase, IDisposable
         }
     }
 
-    public static readonly HashSet<string> StringColumnNames = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "Symbol", "Name", "Sector", "Industry", "Region", "Tag"
-    };
+    public static readonly HashSet<string> StringColumnNames = new(ScreenerTextFields.Names, StringComparer.OrdinalIgnoreCase);
 
     // ===== Right-Hand Target Mode =====
 
@@ -341,6 +339,32 @@ public partial class IndicatorRegistrationViewModel : ViewModelBase, IDisposable
     /// <see cref="OnConditionTreeLeafDeleted"/>'s (constraint check finding, 2026-09-27).</summary>
     private void OnConditionTreeEditRejected(object? sender, string reason) => _toastService?.ShowNotification(reason);
 
+    // Whether one more Filter fits depends on the tree's size and on which group a new Filter lands in (the selection).
+    private void OnConditionTreeStructureChanged(object? sender, EventArgs e) => RegisterIndicatorCommand.NotifyCanExecuteChanged();
+
+    private void OnConditionTreePropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(Screener.ScreenerConditionTreeViewModel.SelectedNode)) RegisterIndicatorCommand.NotifyCanExecuteChanged();
+    }
+
+    /// <summary>The localized "limit reached" text of the Filters tree (also the tooltip of its disabled add buttons).</summary>
+    private string ConditionLimitText() => _localizationService.GetFormattedString(
+        "Screener_ConditionTree_LimitTooltip",
+        "Limit reached: at most {0} levels of nesting and {1} nodes.",
+        ConditionTree.MaxDepth,
+        ConditionTree.MaxNodes);
+
+    /// <summary>Adds the entries to <see cref="RegisteredEntries"/> in order until the Filters tree is full; false when some entries did not fit and were not added.</summary>
+    private bool TryAddEntriesWithinTreeLimit(IEnumerable<ScreenerIndicatorEntry> entries)
+    {
+        foreach (var entry in entries)
+        {
+            if (!ConditionTree.CanAddLeaf(ConditionTree.ResolveAddTarget())) return false;
+            RegisteredEntries.Add(entry);
+        }
+        return true;
+    }
+
     private void OnRegisteredEntriesChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
     {
         switch (e.Action)
@@ -369,13 +393,50 @@ public partial class IndicatorRegistrationViewModel : ViewModelBase, IDisposable
         }
     }
 
+    // ===== Offset input range =====
+
+    /// <summary>Lower bound of the Offset input boxes: the causality invariant (a negative Offset would read a future bar).</summary>
+    public decimal MinConditionOffset => BacktestConditionOffsetRule.MinOffset;
+
+    /// <summary>Upper bound of the Offset input boxes and of the Offset a loaded template may carry: the configured <c>Screener:MaxConditionOffset</c>.</summary>
+    public decimal MaxConditionOffset { get; }
+
+    /// <summary>
+    /// The localized error naming the first template entry whose Offset is outside the accepted range (never clamped silently), or null when every
+    /// Offset is accepted. Both sides count in every comparison mode, exactly as <c>ScreenerService</c> judges a condition and as the history sizing counts them.
+    /// </summary>
+    private string? FindTemplateOffsetViolation(ScreenerIndicatorTemplate template)
+    {
+        int max = (int)MaxConditionOffset;
+        for (int i = 0; i < template.Entries.Count; i++)
+        {
+            var entry = template.Entries[i];
+            if (!IsOffsetAccepted(entry.LeftHand?.Offset ?? 0, max))
+                return OffsetViolationText("Screener_Template_LeftOffsetOutOfRange", i + 1, entry.LeftHand!.Offset, max);
+            if (!IsOffsetAccepted(entry.RightHand?.Offset ?? 0, max))
+                return OffsetViolationText("Screener_Template_RightOffsetOutOfRange", i + 1, entry.RightHand!.Offset, max);
+        }
+        return null;
+    }
+
+    private static bool IsOffsetAccepted(int offset, int max)
+        => BacktestConditionOffsetRule.IsValid(offset) && BacktestConditionOffsetRule.IsWithinLimit(offset, max);
+
+    private string OffsetViolationText(string key, int entryNumber, int offset, int max)
+        => _localizationService.GetFormattedString(
+            key,
+            "Template not applied: condition {0} has an Offset of {1}, outside the allowed range {2} to {3}.",
+            entryNumber, offset, BacktestConditionOffsetRule.MinOffset, max);
+
     // ===== Common Available TimeFrames =====
 
+    /// <summary>
+    /// The frames a condition can be registered on. The Screener evaluates every condition on daily bars (one daily candle list per symbol), so a weekly or
+    /// monthly choice would be stored but ignored - a "[W1]" label must mean weekly data. Entries saved earlier with W1/MN1 still load unchanged.
+    /// </summary>
     public IReadOnlyList<TimeFrameItem> AvailableTimeFrames { get; } = new[]
     {
-        new TimeFrameItem { Value = TimeFrame.D1, DisplayName = "Day" },
-        new TimeFrameItem { Value = TimeFrame.W1, DisplayName = "Week" },
-        new TimeFrameItem { Value = TimeFrame.MN1, DisplayName = "Month" }
+        new TimeFrameItem { Value = TimeFrame.D1, DisplayName = "Day" }
     };
 
     // ===== Constructor =====
@@ -412,16 +473,15 @@ public partial class IndicatorRegistrationViewModel : ViewModelBase, IDisposable
             effectiveSettings?.ScreenerMaxFilterTreeDepth ?? defaultScreenerSettings.MaxFilterTreeDepth,
             effectiveSettings?.ScreenerMaxFilterTreeNodes ?? defaultScreenerSettings.MaxFilterTreeNodes,
             effectiveSettings?.ScreenerMaxFilterGroupNameLength ?? defaultScreenerSettings.MaxFilterGroupNameLength,
-            () => _localizationService.GetFormattedString(
-                "Screener_ConditionTree_LimitTooltip",
-                "Limit reached: at most {0} levels of nesting and {1} nodes.",
-                ConditionTree!.MaxDepth,
-                ConditionTree.MaxNodes),
+            ConditionLimitText,
             EditFilterConditionGroupAsync,
             () => _localizationService.GetString("Screener_ConditionTree_StaleEdit"),
             effectiveSettings?.ScreenerConditionDragStartDistance ?? defaultScreenerSettings.ConditionDragStartDistance);
+        MaxConditionOffset = effectiveSettings?.ScreenerMaxConditionOffset ?? defaultScreenerSettings.MaxConditionOffset;
         ConditionTree.EditRejected += OnConditionTreeEditRejected;
         ConditionTree.LeafDeleted += OnConditionTreeLeafDeleted;
+        ConditionTree.StructureChanged += OnConditionTreeStructureChanged;
+        ConditionTree.PropertyChanged += OnConditionTreePropertyChanged;
         RegisteredEntries.CollectionChanged += OnRegisteredEntriesChanged;
 
         _leftSelectedTimeFrameItem = AvailableTimeFrames[0];
@@ -760,6 +820,8 @@ public partial class IndicatorRegistrationViewModel : ViewModelBase, IDisposable
     private bool CanRegisterIndicator()
     {
         if (LeftSelectedIndicator == null) return false;
+        // An entry registered while the Filters tree is full would stay in RegisteredEntries without a tree leaf.
+        if (!ConditionTree.CanAddLeaf(ConditionTree.ResolveAddTarget())) return false;
         if (RightTargetMode == RightHandTargetMode.Indicator)
         {
             return RightSelectedIndicator != null;
@@ -898,11 +960,24 @@ public partial class IndicatorRegistrationViewModel : ViewModelBase, IDisposable
             onError: ex => _logger.LogError(ex, "Failed to save screener template '{Name}'", NewTemplateName));
     }
 
+    /// <summary>True (after telling the user) when the template carries an Offset outside the accepted range; the template is then not applied at all.</summary>
+    private bool RejectTemplateOffsets(ScreenerIndicatorTemplate template)
+    {
+        string? violation = FindTemplateOffsetViolation(template);
+        if (violation == null) return false;
+
+        _logger.LogWarning("Cannot apply screener template '{Name}': {Reason}", template.Name, violation);
+        _toastService?.ShowNotification(violation);
+        return true;
+    }
+
     [RelayCommand]
     private async Task LoadTemplateAsync(ScreenerIndicatorTemplate? template)
     {
         if (_isDisposed || _templateCrud == null || _templateCrud.IsBusy || template == null) return;
+        if (RejectTemplateOffsets(template)) return;
 
+        bool allFit = true;
         await _templateCrud.ApplyAsync(
             template,
             append: false,
@@ -910,37 +985,36 @@ public partial class IndicatorRegistrationViewModel : ViewModelBase, IDisposable
             {
                 var newClones = t.Entries.Select(e => e.Clone()).ToList();
                 RegisteredEntries.Clear();
-                foreach (var entry in newClones)
-                {
-                    RegisteredEntries.Add(entry);
-                }
+                allFit = TryAddEntriesWithinTreeLimit(newClones);
                 return Task.CompletedTask;
             },
             onInvalid: validation => _logger.LogWarning(
                 "Cannot apply invalid screener template '{Name}': {Errors}", template.Name, string.Join(", ", validation.Errors)),
             onError: ex => _logger.LogError(ex, "Failed to load screener template '{Name}'", template.Name));
+        // After ApplyAsync, whose own "loaded" toast would otherwise replace this one.
+        if (!allFit) _toastService?.ShowNotification(ConditionLimitText());
     }
 
     [RelayCommand]
     private async Task AppendTemplateAsync(ScreenerIndicatorTemplate? template)
     {
         if (_isDisposed || _templateCrud == null || _templateCrud.IsBusy || template == null) return;
+        if (RejectTemplateOffsets(template)) return;
 
+        bool allFit = true;
         await _templateCrud.ApplyAsync(
             template,
             append: true,
             apply: t =>
             {
                 var newClones = t.Entries.Select(e => e.Clone()).ToList();
-                foreach (var entry in newClones)
-                {
-                    RegisteredEntries.Add(entry);
-                }
+                allFit = TryAddEntriesWithinTreeLimit(newClones);
                 return Task.CompletedTask;
             },
             onInvalid: validation => _logger.LogWarning(
                 "Cannot apply invalid screener template '{Name}': {Errors}", template.Name, string.Join(", ", validation.Errors)),
             onError: ex => _logger.LogError(ex, "Failed to append screener template '{Name}'", template.Name));
+        if (!allFit) _toastService?.ShowNotification(ConditionLimitText());
     }
 
     [RelayCommand]
@@ -970,6 +1044,8 @@ public partial class IndicatorRegistrationViewModel : ViewModelBase, IDisposable
         RegisteredEntries.CollectionChanged -= OnRegisteredEntriesChanged;
         ConditionTree.LeafDeleted -= OnConditionTreeLeafDeleted;
         ConditionTree.EditRejected -= OnConditionTreeEditRejected;
+        ConditionTree.StructureChanged -= OnConditionTreeStructureChanged;
+        ConditionTree.PropertyChanged -= OnConditionTreePropertyChanged;
 
         if (_searchDebounceTokenSource != null)
         {

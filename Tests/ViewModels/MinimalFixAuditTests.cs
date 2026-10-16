@@ -165,6 +165,13 @@ public class MinimalFixAuditTests
     }
 
     [Fact]
+    public void IndicatorRegistrationViewModel_StringColumnNames_AreTheCoreTextFields()
+    {
+        Assert.Equal(ScreenerTextFields.Names.OrderBy(n => n), IndicatorRegistrationViewModel.StringColumnNames.OrderBy(n => n));
+        Assert.DoesNotContain("Symbol", IndicatorRegistrationViewModel.StringColumnNames);
+    }
+
+    [Fact]
     public void IndicatorRegistrationViewModel_AllFiltersGroup_TopPlacement_And_CriteriaFormatting()
     {
         var vm = new IndicatorRegistrationViewModel();

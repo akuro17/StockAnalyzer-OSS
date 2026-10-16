@@ -1,5 +1,7 @@
 using System.Linq;
+using System.Text.Json;
 using StockAnalyzer.Avalonia.ViewModels;
+using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Screener;
 using Xunit;
 
@@ -21,6 +23,47 @@ public class IndicatorRegistrationViewModelTests
         { "Bearish Tasuki Gap", "Bullish Tasuki Gap" },
         { "Bearish Three-Line Strike", "Bullish Three-Line Strike" },
     };
+
+    // The Screener evaluates every condition on daily bars, so the dialog must not offer a frame it would silently ignore.
+    [Fact]
+    public void TimeFrameChoices_OfferOnlyTheDailyFrame()
+    {
+        var vm = new IndicatorRegistrationViewModel();
+
+        Assert.Equal(new[] { TimeFrame.D1 }, vm.AvailableTimeFrames.Select(t => t.Value));
+        Assert.Equal(TimeFrame.D1, vm.LeftSelectedTimeFrameItem.Value);
+        Assert.Equal(TimeFrame.D1, vm.RightSelectedTimeFrameItem.Value);
+    }
+
+    [Fact]
+    public void RegisterIndicator_StoresTheDailyFrameOnBothSides()
+    {
+        var vm = new IndicatorRegistrationViewModel();
+        vm.LeftSelectedIndicator = new ScreenerCatalogItem { DisplayName = "SMA" };
+        vm.RightSelectedIndicator = new ScreenerCatalogItem { DisplayName = "EMA" };
+        vm.SetRightModeIndicatorCommand.Execute(null);
+
+        vm.RegisterIndicatorCommand.Execute(null);
+
+        var entry = vm.RegisteredEntries[^1];
+        Assert.Equal(TimeFrame.D1, entry.LeftHand.TimeFrame);
+        Assert.Equal(TimeFrame.D1, entry.RightHand.TimeFrame);
+    }
+
+    // Entries saved earlier may carry a weekly or monthly frame: they still load unchanged.
+    [Theory]
+    [InlineData(TimeFrame.W1)]
+    [InlineData(TimeFrame.MN1)]
+    public void SavedEntryWithWeeklyOrMonthlyFrame_StillLoadsAndIsKept(TimeFrame frame)
+    {
+        var saved = new ScreenerIndicatorEntry { LeftHand = new ScreenerIndicatorSideConfig { TimeFrame = frame } };
+        var loaded = JsonSerializer.Deserialize<ScreenerIndicatorSideConfig>(JsonSerializer.Serialize(saved.LeftHand))!;
+        var vm = new IndicatorRegistrationViewModel();
+
+        vm.RegisteredEntries.Add(new ScreenerIndicatorEntry { LeftHand = loaded });
+
+        Assert.Equal(frame, vm.RegisteredEntries[^1].Clone().LeftHand.TimeFrame);
+    }
 
     [Theory]
     [MemberData(nameof(BullishBearishPatternPairs))]

@@ -10,10 +10,13 @@ public class ScreenerSettings
     /// configuration files without this key keep binding unchanged. Same rationale/default as the Backtest
     /// tree's <see cref="StockAnalyzer.Core.Models.Settings.BacktestSettings.MaxConditionTreeDepth"/>.
     /// </summary>
-    public int MaxFilterTreeDepth { get; set; } = 8;
+    public int MaxFilterTreeDepth { get; set; } = StockAnalyzer.Core.Models.Settings.ScreenerFilterTreeLimits.DefaultMaxFilterTreeDepth;
 
-    /// <summary>Most nodes (leaves and groups, root included) the Filters condition tree may contain.</summary>
-    public int MaxFilterTreeNodes { get; set; } = 64;
+    /// <summary>
+    /// Most nodes (leaves and groups, root included) the Filters condition tree may contain. This value and <see cref="MaxFilterTreeDepth"/> are
+    /// compared with the code contract <see cref="StockAnalyzer.Core.Models.Settings.ScreenerFilterTreeLimits"/> at startup.
+    /// </summary>
+    public int MaxFilterTreeNodes { get; set; } = StockAnalyzer.Core.Models.Settings.ScreenerFilterTreeLimits.DefaultMaxFilterTreeNodes;
 
     /// <summary>Longest user-entered Filters group name, in characters after trimming.</summary>
     public int MaxFilterGroupNameLength { get; set; } = 32;
@@ -26,11 +29,16 @@ public class ScreenerSettings
     /// </summary>
     public int ConditionDragStartDistance { get; set; } = 4;
 
+    /// <summary>
+    /// Largest Offset (bars before the evaluated bar) a Screener condition may use: the upper bound of the registration dialog's Offset input boxes
+    /// and of the Offset a loaded template may carry. Its own key rather than Backtest's, so each screen stays independently tunable; the shipped
+    /// value is the former fixed input limit. The accepted range is the code contract <see cref="StockAnalyzer.Core.Models.Settings.ScreenerConditionOffsetLimits"/>.
+    /// </summary>
+    public int MaxConditionOffset { get; set; } = StockAnalyzer.Core.Models.Settings.ScreenerConditionOffsetLimits.DefaultMaxConditionOffset;
+
     public void Validate()
     {
         if (DefaultSymbols == null) throw new System.InvalidOperationException("ScreenerSettings: DefaultSymbols cannot be null.");
-        if (MaxFilterTreeDepth < 1) throw new System.InvalidOperationException("ScreenerSettings: MaxFilterTreeDepth must be >= 1.");
-        if (MaxFilterTreeNodes < 1) throw new System.InvalidOperationException("ScreenerSettings: MaxFilterTreeNodes must be >= 1.");
         if (MaxFilterGroupNameLength < 1) throw new System.InvalidOperationException("ScreenerSettings: MaxFilterGroupNameLength must be >= 1.");
         if (ConditionDragStartDistance < 1) throw new System.InvalidOperationException("ScreenerSettings: ConditionDragStartDistance must be >= 1.");
     }

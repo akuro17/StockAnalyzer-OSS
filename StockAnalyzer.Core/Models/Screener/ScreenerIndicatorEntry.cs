@@ -25,6 +25,16 @@ public partial class ScreenerIndicatorEntry : ObservableObject, IScreeningCondit
     {
         if (candles == null || candles.Count == 0) return false;
 
+        // Text conditions compare the metadata text of a Column with the typed text.
+        if (TargetMode == RightHandTargetMode.StringValue)
+        {
+            return ScreenerTextFields.IsMet(
+                Operator,
+                ScreenerTextFields.ResolveFieldName(LeftHand),
+                ScreenerValueExtractor.Default.ExtractStringValue(LeftHand, metadata),
+                RightStringValue);
+        }
+
         // Column fundamental metrics: If metadata is null (data missing), strictly exclude from screening results
         if (LeftHand?.CategoryType == ScreenerItemCategoryType.Column)
         {
@@ -35,9 +45,12 @@ public partial class ScreenerIndicatorEntry : ObservableObject, IScreeningCondit
             }
 
             decimal leftValue = leftValNullable.Value;
-            decimal rightValue = TargetMode == RightHandTargetMode.NumericValue
+            decimal? rightValueNullable = TargetMode == RightHandTargetMode.NumericValue
                 ? RightNumericValue
-                : ScreenerValueExtractor.Default.ExtractValue(RightHand, candles, metadata);
+                : ScreenerValueExtractor.Default.ExtractValueNullable(RightHand, candles, metadata);
+            if (!rightValueNullable.HasValue) return false;
+
+            decimal rightValue = rightValueNullable.Value;
 
             return Operator switch
             {
@@ -47,7 +60,7 @@ public partial class ScreenerIndicatorEntry : ObservableObject, IScreeningCondit
                 ComparisonOperator.LessThanOrEqual => leftValue <= rightValue,
                 ComparisonOperator.Equal => leftValue == rightValue,
                 ComparisonOperator.NotEqual => leftValue != rightValue,
-                _ => leftValue > rightValue
+                _ => false
             };
         }
 
@@ -55,9 +68,12 @@ public partial class ScreenerIndicatorEntry : ObservableObject, IScreeningCondit
         if (!extractedVal.HasValue) return false;
 
         decimal leftVal = extractedVal.Value;
-        decimal rightVal = TargetMode == RightHandTargetMode.NumericValue
+        decimal? rightValNullable = TargetMode == RightHandTargetMode.NumericValue
             ? RightNumericValue
-            : ScreenerValueExtractor.Default.ExtractValue(RightHand, candles, metadata);
+            : ScreenerValueExtractor.Default.ExtractValueNullable(RightHand, candles, metadata);
+        if (!rightValNullable.HasValue) return false;
+
+        decimal rightVal = rightValNullable.Value;
 
         return Operator switch
         {
@@ -67,7 +83,7 @@ public partial class ScreenerIndicatorEntry : ObservableObject, IScreeningCondit
             ComparisonOperator.LessThanOrEqual => leftVal <= rightVal,
             ComparisonOperator.Equal => leftVal == rightVal,
             ComparisonOperator.NotEqual => leftVal != rightVal,
-            _ => leftVal > rightVal
+            _ => false
         };
     }
 

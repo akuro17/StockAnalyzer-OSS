@@ -62,13 +62,24 @@ public class ScreenerService : IScreenerService
         IProgress<int> progress,
         CancellationToken ct)
     {
+        // The Offset contract is enforced here, once, for every caller (the Screener tab and the Tickers-tab template filter): a condition beyond the
+        // configured maximum is never evaluated and never sizes a history request.
+        int maxOffset = ScreenerHistoryRequirements.GetMaxConditionOffset(condition);
+        int allowedOffset = _settings.ScreenerMaxConditionOffset;
+        if (maxOffset > allowedOffset)
+        {
+            throw new ArgumentOutOfRangeException(nameof(condition), maxOffset,
+                $"The condition uses an Offset of {maxOffset} bars, above the configured Screener:MaxConditionOffset of {allowedOffset}.");
+        }
+
         if (symbols == null || !symbols.Any())
         {
             progress?.Report(100);
             return new List<string>();
         }
 
-        var matchedSymbols = new ConcurrentBag<string>();
+        // Each hit keeps the position of its symbol in the input, so the result order does not depend on thread scheduling.
+        var matchedSymbols = new ConcurrentBag<(int Index, string Symbol)>();
         int processedCount = 0;
 
         var parallelOptions = new ParallelOptions
@@ -81,8 +92,9 @@ public class ScreenerService : IScreenerService
 
         try
         {
-            await Parallel.ForEachAsync(symbols, parallelOptions, async (symbol, cancellationToken) =>
+            await Parallel.ForEachAsync(symbols.Select((symbol, index) => (Symbol: symbol, Index: index)), parallelOptions, async (item, cancellationToken) =>
             {
+                var (symbol, index) = (item.Symbol, item.Index);
                 // Inner cancellation check is good practice
                 cancellationToken.ThrowIfCancellationRequested();
 
@@ -109,7 +121,7 @@ public class ScreenerService : IScreenerService
 
                     if (candles != null && await condition.IsMetAsync(candles, metadata))
                     {
-                        matchedSymbols.Add(symbol);
+                        matchedSymbols.Add((index, symbol));
                     }
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
@@ -138,6 +150,6 @@ public class ScreenerService : IScreenerService
             progress?.Report(100);
         }
 
-        return matchedSymbols.ToList();
+        return matchedSymbols.OrderBy(hit => hit.Index).Select(hit => hit.Symbol).ToList();
     }
 }

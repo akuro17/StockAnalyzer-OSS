@@ -23,6 +23,26 @@ namespace StockAnalyzer.Tests.Services
             Assert.False(Evaluate("", "Semiconductor"));
         }
 
+        // One tag-match algorithm (TagMatcher in Core) serves the Watchlist filter and the Screener text conditions; these vectors pin it from both entry points.
+        [Theory]
+        [InlineData("Growth, Tech;Value", "tech", true)]
+        [InlineData("Growth, Tech;Value", "Value", true)]
+        [InlineData("Growth, Tech;Value", "  growth ", true)]
+        [InlineData("Growth, Tech;Value", "ech", false)]
+        [InlineData("Growth, Tech;Value", "Growth, Tech", false)]
+        [InlineData("Tech", "Tech", true)]
+        [InlineData("a,b;c,d", "d", true)]
+        [InlineData(";,Tech,;", "Tech", true)]
+        [InlineData("", "Tech", false)]
+        [InlineData("Tech", "", false)]
+        [InlineData("Tech", "   ", false)]
+        [InlineData("   ", "Tech", false)]
+        public void ContainsTag_WatchlistAndCoreEntryPoints_AgreeOnEveryVector(string tags, string target, bool expected)
+        {
+            Assert.Equal(expected, WatchlistFilterEngine.ContainsTag(tags, target));
+            Assert.Equal(expected, StockAnalyzer.Core.Models.Portfolio.TagMatcher.Contains(tags, target));
+        }
+
         [Fact]
         public void EvaluateRule_ROA_AliasAndNumericFiltering_WorksCorrectly()
         {

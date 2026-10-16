@@ -36,8 +36,21 @@ public class ScreenerChangeColumnTests
         new object[] { 2, -11m, -10m },   // close 99, previous close 110
         new object[] { 3, 10m, 10m },     // close 110, previous close 100
         new object[] { 4, 0m, 0m },       // first bar: no previous bar
-        new object[] { 9, 50m, 0m },      // offset beyond the series falls back to the latest bar (existing behaviour)
     };
+
+    // An Offset beyond the series has no bar: the value is missing (null), not the latest bar's value (spec S1; it used to fall back to the latest bar).
+    [Fact]
+    public void Change_OffsetBeyondSeries_IsMissing()
+    {
+        var extractor = ScreenerValueExtractor.Default;
+
+        foreach (string name in new[] { "Change", "Change %" })
+        {
+            Assert.Null(extractor.ExtractValueNullable(Column(name, 9), CoreCandles(), default(TickerMetadata)));
+            Assert.Null(extractor.ExtractValueNullable(Column(name, 9), Candles()));
+            Assert.Equal(0m, extractor.ExtractValue(Column(name, 9), Candles()));
+        }
+    }
 
     [Theory]
     [MemberData(nameof(Cases))]

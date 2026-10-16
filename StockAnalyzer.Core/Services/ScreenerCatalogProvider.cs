@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using StockAnalyzer.Core.Interfaces;
@@ -15,7 +16,8 @@ namespace StockAnalyzer.Core.Services;
 /// </summary>
 public class ScreenerCatalogProvider : IScreenerCatalogProvider
 {
-    private readonly Dictionary<IndicatorType, CoreIndicatorSettings> _defaultSettingsCache = new();
+    // The provider is shared (one instance serves every caller), so the cache must tolerate concurrent GetCatalogItems / GetDefaultSettings calls.
+    private readonly ConcurrentDictionary<IndicatorType, CoreIndicatorSettings> _defaultSettingsCache = new();
 
     public IReadOnlyList<ScreenerCatalogItem> GetCatalogItems(IIndicatorFactory? indicatorFactory = null)
     {
@@ -153,6 +155,8 @@ public class ScreenerCatalogProvider : IScreenerCatalogProvider
         foreach (var col in WatchlistColumnRegistry.AllColumns)
         {
             if (col.MemberName == "IsChecked" || col.HeaderKey == "Col_Select") continue;
+            // The ticker symbol is the key of a row, not a value a condition can test (it is neither a number nor a Screener text field).
+            if (col.MemberName == "Symbol") continue;
 
             string shortName = col.DisplayName ?? col.MemberName;
             string group = col.Category switch

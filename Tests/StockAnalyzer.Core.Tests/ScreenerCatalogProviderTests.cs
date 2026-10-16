@@ -9,6 +9,22 @@ namespace StockAnalyzer.Core.Tests;
 
 public class ScreenerCatalogProviderTests
 {
+    // Every text field of a text condition is offered as a Column; the ticker symbol is not (it can be tested neither as a number nor as a text field).
+    [Fact]
+    public void ColumnCatalog_OffersEveryTextField_ButNotTheSymbol()
+    {
+        var columns = new ScreenerCatalogProvider().GetCatalogItems()
+            .Where(i => i.CategoryType == ScreenerItemCategoryType.Column)
+            .Select(i => i.ColumnMemberName)
+            .ToList();
+
+        foreach (string field in ScreenerTextFields.Names)
+        {
+            Assert.Contains(field, columns);
+        }
+        Assert.DoesNotContain("Symbol", columns);
+    }
+
     [Fact]
     public void GetOutputSeriesNames_SMA_ReturnsSmaOnly()
     {

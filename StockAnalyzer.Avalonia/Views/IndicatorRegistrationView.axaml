@@ -450,8 +450,9 @@
                                             </Border>
                                             <NumericUpDown Grid.Column="1"
                                                            Value="{Binding LeftOffset}"
-                                                           Minimum="0"
-                                                           Maximum="500"
+                                                           Minimum="{Binding MinConditionOffset}"
+                                                           Maximum="{Binding MaxConditionOffset}"
+                                                           ClipValueToMinMax="True"
                                                            Increment="1"
                                                            Height="30"
                                                            Width="140"
@@ -793,8 +794,9 @@
                                                 </Border>
                                                 <NumericUpDown Grid.Column="1"
                                                                Value="{Binding RightOffset}"
-                                                               Minimum="0"
-                                                               Maximum="500"
+                                                               Minimum="{Binding MinConditionOffset}"
+                                                               Maximum="{Binding MaxConditionOffset}"
+                                                               ClipValueToMinMax="True"
                                                                Increment="1"
                                                                Height="30"
                                                                Width="140"

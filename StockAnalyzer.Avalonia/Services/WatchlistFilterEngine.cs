@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Reflection;
 using StockAnalyzer.Avalonia.ViewModels.Watchlist;
+using StockAnalyzer.Core.Models.Portfolio;
 using StockAnalyzer.Core.Models.Screener;
 using StockAnalyzer.Core.Models.Settings;
 
@@ -44,46 +45,8 @@ namespace StockAnalyzer.Avalonia.Services
             return prop?.GetValue(item);
         }
 
-        public static bool ContainsTag(string tags, string targetTag)
-        {
-            if (string.IsNullOrEmpty(tags) || string.IsNullOrEmpty(targetTag)) return false;
-
-            var targetSpan = targetTag.AsSpan().Trim();
-            if (targetSpan.IsEmpty) return false;
-
-            var span = tags.AsSpan();
-            while (!span.IsEmpty)
-            {
-                // Find the nearest separator (comma or semicolon)
-                int commaIndex = span.IndexOf(',');
-                int semicolonIndex = span.IndexOf(';');
-                int separatorIndex;
-                if (commaIndex >= 0 && semicolonIndex >= 0)
-                    separatorIndex = Math.Min(commaIndex, semicolonIndex);
-                else if (commaIndex >= 0)
-                    separatorIndex = commaIndex;
-                else
-                    separatorIndex = semicolonIndex;
-
-                ReadOnlySpan<char> tagSpan;
-                if (separatorIndex >= 0)
-                {
-                    tagSpan = span.Slice(0, separatorIndex).Trim();
-                    span = span.Slice(separatorIndex + 1);
-                }
-                else
-                {
-                    tagSpan = span.Trim();
-                    span = ReadOnlySpan<char>.Empty;
-                }
-
-                if (tagSpan.Equals(targetSpan, StringComparison.OrdinalIgnoreCase))
-                {
-                    return true;
-                }
-            }
-            return false;
-        }
+        /// <summary>True when <paramref name="targetTag"/> is one of the comma- or semicolon-separated tokens of <paramref name="tags"/>; the single algorithm is <see cref="TagMatcher.Contains"/> (Core), shared with the Screener's text conditions.</summary>
+        public static bool ContainsTag(string tags, string targetTag) => TagMatcher.Contains(tags, targetTag);
 
         public static bool TryGetDecimalValue(object value, out decimal result)
         {

@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging.Abstractions;
 using StockAnalyzer.Core.Models;
+using StockAnalyzer.Core.Models.Indicators;
 using StockAnalyzer.Core.Models.Portfolio;
 using StockAnalyzer.Core.Models.Screener;
 using StockAnalyzer.Core.Services;
@@ -152,6 +153,140 @@ public class ScreenerServiceTests : IDisposable
         // Assert
         Assert.Equal(symbols.Count, result.Count);
         Assert.True(symbols.All(s => result.Contains(s)));
+    }
+
+    // ---- Result order: the matches come back in the order of the input symbols, whatever the scheduling (spec S9) ----
+
+    private sealed class SynchronousProgress : IProgress<int>
+    {
+        public readonly List<int> Reports = new();
+        public void Report(int value) { lock (Reports) Reports.Add(value); }
+    }
+
+    // Symbol "S{n}" loads one candle whose close is n; a pseudo-random delay (fixed seed per run) scrambles the completion order.
+    private static MockDataService DelayingDataService(int seed, int symbolCount)
+    {
+        var random = new Random(seed);
+        int[] delaysMs = Enumerable.Range(0, symbolCount + 1).Select(_ => random.Next(0, 6)).ToArray();
+        return new MockDataService(async symbol =>
+        {
+            int n = int.Parse(symbol.Substring(1));
+            await Task.Delay(delaysMs[n % delaysMs.Length]);
+            return new List<CandleData> { new CandleData(new DateTime(2024, 1, 1), n, n, n, n, 1000) };
+        });
+    }
+
+    private static MockScreeningCondition EvenCloseCondition() => new(candles => candles[0].Close % 2 == 0);
+
+    private ScreenerService ServiceWith(IDataService dataService)
+        => new(dataService, new StubSettings { ScreenerMaxParallelism = 8 }, Enumerable.Empty<IMarketDataProvider>());
+
+    [Fact]
+    public async Task ScreenAsync_Result_FollowsTheInputOrder_ForEveryScheduling()
+    {
+        var symbols = Enumerable.Range(1, 60).Select(i => "S" + i).ToList();
+        var expected = symbols.Where(s => int.Parse(s.Substring(1)) % 2 == 0).ToList();
+
+        for (int run = 0; run < 20; run++)
+        {
+            var result = await ServiceWith(DelayingDataService(seed: run, symbols.Count))
+                .ScreenAsync(symbols, EvenCloseCondition(), TimeFrame.D1, new SynchronousProgress(), CancellationToken.None);
+
+            Assert.Equal(expected, result);
+        }
+    }
+
+    [Fact]
+    public async Task ScreenAsync_DuplicateInputSymbols_AreKeptInInputOrder()
+    {
+        var symbols = new List<string> { "S4", "S2", "S4", "S3", "S2" };
+
+        var result = await ServiceWith(DelayingDataService(seed: 7, symbolCount: 4))
+            .ScreenAsync(symbols, EvenCloseCondition(), TimeFrame.D1, new SynchronousProgress(), CancellationToken.None);
+
+        Assert.Equal(new[] { "S4", "S2", "S4", "S2" }, result);
+    }
+
+    [Fact]
+    public async Task ScreenAsync_Cancelled_ThrowsOperationCanceled()
+    {
+        var symbols = Enumerable.Range(1, 20).Select(i => "S" + i).ToList();
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => ServiceWith(DelayingDataService(seed: 1, symbols.Count))
+            .ScreenAsync(symbols, EvenCloseCondition(), TimeFrame.D1, new SynchronousProgress(), cts.Token));
+    }
+
+    [Fact]
+    public async Task ScreenAsync_EmptyInput_ReturnsEmptyAndReportsComplete()
+    {
+        var progress = new SynchronousProgress();
+
+        var result = await ServiceWith(DelayingDataService(seed: 1, symbolCount: 1))
+            .ScreenAsync(new List<string>(), EvenCloseCondition(), TimeFrame.D1, progress, CancellationToken.None);
+
+        Assert.Empty(result);
+        Assert.Equal(new[] { 100 }, progress.Reports);
+    }
+
+    // ---- Offset contract: a condition whose Offset exceeds Screener:MaxConditionOffset is never evaluated ----
+
+    private static ScreenerIndicatorEntry EntryWithOffsets(int leftOffset, int rightOffset = 0, RightHandTargetMode mode = RightHandTargetMode.Indicator) => new()
+    {
+        LeftHand = new ScreenerIndicatorSideConfig { IndicatorType = IndicatorType.SMA, Offset = leftOffset },
+        Operator = ComparisonOperator.GreaterThan,
+        TargetMode = mode,
+        RightNumericValue = 1m,
+        RightHand = new ScreenerIndicatorSideConfig { IndicatorType = IndicatorType.EMA, Offset = rightOffset }
+    };
+
+    private static readonly int ConfiguredMaxOffset = ((IStockAnalyzerSettings)new StubSettings()).ScreenerMaxConditionOffset;
+
+    [Theory]
+    [InlineData(true, false)]   // left Offset above the maximum
+    [InlineData(false, true)]   // right Offset above the maximum, indicator comparison
+    public async Task ScreenAsync_OffsetAboveTheConfiguredMaximum_ThrowsNamingTheKey(bool leftTooLarge, bool rightTooLarge)
+    {
+        var entry = EntryWithOffsets(leftTooLarge ? ConfiguredMaxOffset + 1 : 0, rightTooLarge ? ConfiguredMaxOffset + 1 : 0);
+        var service = ServiceWith(DelayingDataService(seed: 1, symbolCount: 1));
+
+        var ex = await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
+            service.ScreenAsync(new List<string> { "S2" }, entry, TimeFrame.D1, new SynchronousProgress(), CancellationToken.None));
+
+        Assert.Contains("Screener:MaxConditionOffset", ex.Message);
+    }
+
+    // The history sizing counts the right Offset whatever the comparison mode, so the contract judges it the same way.
+    [Fact]
+    public async Task ScreenAsync_RightOffsetAboveTheMaximum_IsRejectedEvenForANumericComparison()
+    {
+        var entry = EntryWithOffsets(0, ConfiguredMaxOffset + 1, RightHandTargetMode.NumericValue);
+
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => ServiceWith(DelayingDataService(seed: 1, symbolCount: 1))
+            .ScreenAsync(new List<string> { "S2" }, entry, TimeFrame.D1, new SynchronousProgress(), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task ScreenAsync_OffsetAtTheMaximum_IsEvaluated()
+    {
+        var entry = EntryWithOffsets(ConfiguredMaxOffset, ConfiguredMaxOffset);
+
+        var result = await ServiceWith(DelayingDataService(seed: 1, symbolCount: 1))
+            .ScreenAsync(new List<string> { "S2" }, entry, TimeFrame.D1, new SynchronousProgress(), CancellationToken.None);
+
+        Assert.Empty(result); // one candle: the Offsets are beyond the data, so the condition is not met - but it was evaluated, not rejected
+    }
+
+    [Fact]
+    public async Task ScreenAsync_OffsetInsideATree_IsRejected()
+    {
+        var tooLarge = new ScreenerConditionLeaf(EntryWithOffsets(ConfiguredMaxOffset + 1));
+        var tree = new ScreenerConditionTreeCondition(new ScreenerConditionGroup(LogicalOperator.And,
+            System.Collections.Immutable.ImmutableArray.Create<IScreenerConditionNode>(new ScreenerConditionLeaf(EntryWithOffsets(0)), tooLarge)));
+
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => ServiceWith(DelayingDataService(seed: 1, symbolCount: 1))
+            .ScreenAsync(new List<string> { "S2" }, tree, TimeFrame.D1, new SynchronousProgress(), CancellationToken.None));
     }
 
     [Fact]
@@ -520,7 +655,14 @@ public class ScreenerServiceTests : IDisposable
             StopLossLong = 140m,
             Short = 150m,
             ExitShort = 120m,
-            StopLossShort = 160m
+            StopLossShort = 160m,
+            // Signal flags: a flag that is not set is a missing value now (null), so the fixture states every flag to be "fully populated".
+            IsLong = true,
+            IsTPLong = false,
+            IsSLLong = false,
+            IsShort = false,
+            IsTPShort = false,
+            IsSLShort = false
         };
 
         // MSFT has NetDebt = +5,000,000 AND NetDebtToEbitda = +2.5m (positive ratio)
