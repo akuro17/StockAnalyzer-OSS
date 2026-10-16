@@ -178,9 +178,11 @@ public partial class BacktestResultsViewModel : ViewModelBase, IDisposable
     public string RiskManagementDescription => _presentation?.RiskManagementDescription ?? string.Empty;
     public BacktestEvaluationArtifact? EvaluationArtifact => _presentation?.Artifact;
     public ImmutableArray<BacktestWarning> Warnings => _presentation?.Warnings ?? ImmutableArray<BacktestWarning>.Empty;
-    public bool HasWarnings => Warnings.Length > 0;
+    // Order-dependent bars are shown as two counts in the Evaluation Audit rows, so they are not repeated as one sentence per bar here.
+    private IEnumerable<BacktestWarning> DisplayedWarnings => Warnings.Where(w => !OrderDependentBarCounts.IsOrderDependent(w.Code));
+    public bool HasWarnings => DisplayedWarnings.Any();
     public string? WarningSummaryText => HasWarnings
-        ? string.Join("; ", Warnings.Select(w => w.Message))
+        ? string.Join("; ", DisplayedWarnings.Select(w => w.Message))
         : null;
 
     [ObservableProperty]
@@ -722,7 +724,7 @@ public partial class BacktestResultsViewModel : ViewModelBase, IDisposable
             EntryConditions = entryConditions.ToImmutable(),
             ExitConditions = exitConditions.ToImmutable(),
             ReverseConditions = reverseConditions.ToImmutable(),
-            AuditRows = BuildAuditRows(artifact),
+            AuditRows = BuildAuditRows(artifact, result, evaluationStartIndex, equityPoints.Length),
             ExecutionMode = result.Configuration.ExecutionModel,
             ExecutionModeDescription = result.Configuration.ExecutionModel switch
             {
@@ -862,7 +864,7 @@ public partial class BacktestResultsViewModel : ViewModelBase, IDisposable
         }
     }
 
-    private ImmutableArray<BacktestAuditRow> BuildAuditRows(BacktestEvaluationArtifact? artifact)
+    private ImmutableArray<BacktestAuditRow> BuildAuditRows(BacktestEvaluationArtifact? artifact, BacktestResult result, int evaluationStartIndex, int evaluatedBarCount)
     {
         if (artifact is null) return ImmutableArray<BacktestAuditRow>.Empty;
         BacktestEvaluationMetadata metadata = artifact.Metadata;
@@ -899,6 +901,17 @@ public partial class BacktestResultsViewModel : ViewModelBase, IDisposable
             _localizationService.GetString($"Backtest_Audit_SamplingStatus_{sampling.Status}"))));
         rows.Add(new("Backtest_Audit_RatioDrawdown", FormatDrawdown(artifact.RatioDrawdown)));
         rows.Add(new("Backtest_Audit_AmountDrawdown", FormatDrawdown(artifact.AmountDrawdown)));
+        OrderDependentBarCounts orderDependent = OrderDependentBarCounts.Count(result.Warnings, evaluationStartIndex);
+        rows.Add(new("Backtest_Audit_OrderDependentBars", _localizationService.GetFormattedString(
+            "Backtest_Audit_OrderDependentBarsTemplate",
+            "{0} of {1} bars",
+            orderDependent.Detected.ToString(CultureInfo.CurrentCulture),
+            evaluatedBarCount.ToString(CultureInfo.CurrentCulture))));
+        rows.Add(new("Backtest_Audit_OrderDependentBarsAffecting", _localizationService.GetFormattedString(
+            "Backtest_Audit_OrderDependentBarsTemplate",
+            "{0} of {1} bars",
+            orderDependent.Affecting.ToString(CultureInfo.CurrentCulture),
+            evaluatedBarCount.ToString(CultureInfo.CurrentCulture))));
         return rows.ToImmutable();
     }
 

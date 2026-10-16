@@ -9,6 +9,15 @@ public enum WarningCode
 {
     None = 0,
     PotentialUnadjustedSplit = 1,
+
+    /// <summary>A bar whose outcome depends on the unknown intra-bar arrival order of two prices (see API_SPECIFICATION "Order-dependent bars"). Append-only.</summary>
+    AmbiguousIntrabarOrder = 2,
+
+    /// <summary>
+    /// An <see cref="AmbiguousIntrabarOrder"/> bar whose result was decided by the configured convention (the other convention would have produced a different result).
+    /// One warning per bar carries either this code or <see cref="AmbiguousIntrabarOrder"/>, never both. Append-only.
+    /// </summary>
+    AmbiguousIntrabarOrderAffectsOutcome = 3,
 }
 
 /// <summary>

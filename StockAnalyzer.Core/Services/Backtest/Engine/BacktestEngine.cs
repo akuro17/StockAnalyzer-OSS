@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Globalization;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
@@ -135,7 +136,7 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
 
         RunStatus runStatus = RunStatus.Completed;
         // Optional capability (owner decision G4): resolved once; a strategy without it runs exactly as before.
-        var environment = new BarEnvironment(input, configuration, strategy, strategy as IBacktestOrderCancellationStrategy, indicatorSeries, barBoundedIndicators);
+        var environment = new BarEnvironment(input, configuration, strategy, strategy as IBacktestOrderCancellationStrategy, indicatorSeries, barBoundedIndicators, riskTieDetector: strategy as IBacktestRiskTieDetector);
 
         // T5 (owner decision G3): each bar works on a value snapshot so an engine arithmetic failure rolls back ONLY that uncommitted bar.
         BacktestRunDiagnostic? runDiagnostic = null;
@@ -435,6 +436,21 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
                 signals.Add(new BacktestSignal(exitReq.SignalType, i, bar.Timestamp, exitReq.Reason ?? string.Empty));
                 SubmitOrderFromSignal(s, i, bar, exitReq, configuration, equity);
             }
+
+            // Order-dependent bar AB-1: recorded as a compact struct only (no string, no new collection per bar, spec L6460); the message is built in BuildResult.
+            // The detector is a pure function of the context, so it changes no order, signal or fill (and no run fingerprint).
+            if (env.RiskTieDetector is { } riskTieDetector)
+            {
+                s.InStrategyCall = true;
+                bool riskTie = riskTieDetector.TryDetectRiskTie(in context, out RiskTie tie);
+                s.InStrategyCall = false;
+                if (riskTie)
+                {
+                    // Affecting: the decision was actually submitted (no Exit order pending at this Close) and the other convention would decide differently.
+                    bool affectsOutcome = tie.OutcomeDiffersUnderOtherMode && context.PendingExitOrderId is null;
+                    s.Ambiguities.Add(new IntrabarAmbiguity(i, IntrabarAmbiguityKind.RiskTie, (byte)tie.Outcome, tie.OpenDecided, affectsOutcome));
+                }
+            }
             // A still-pending order of the SAME type is never overwritten (section 2.3's amended rule)
             // - SubmitOrderFromSignal itself no-ops when that signal's own slot is already occupied; the
             // signal is still logged above either way.
@@ -464,6 +480,7 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
         public readonly IndicatorSeriesSet Indicators;
         public readonly IndicatorSeriesSet[]? BarBoundedIndicators;
         public readonly bool StopOnForcedLiquidation;
+        public readonly IBacktestRiskTieDetector? RiskTieDetector;
 
         public BarEnvironment(
             BacktestInput input,
@@ -472,7 +489,8 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
             IBacktestOrderCancellationStrategy? cancellationStrategy,
             IndicatorSeriesSet indicators,
             IndicatorSeriesSet[]? barBoundedIndicators,
-            bool stopOnForcedLiquidation = false)
+            bool stopOnForcedLiquidation = false,
+            IBacktestRiskTieDetector? riskTieDetector = null)
         {
             Input = input;
             Configuration = configuration;
@@ -481,8 +499,18 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
             Indicators = indicators;
             BarBoundedIndicators = barBoundedIndicators;
             StopOnForcedLiquidation = stopOnForcedLiquidation;
+            RiskTieDetector = riskTieDetector;
         }
     }
+
+    /// <summary>The kinds of order-dependent bar the engine records (API_SPECIFICATION "Order-dependent bars").</summary>
+    private enum IntrabarAmbiguityKind : byte { RiskTie, ExitVersusLiquidation }
+
+    /// <summary>
+    /// One order-dependent bar, stored without any string inside the bar loop (spec L6460). <c>Outcome</c> is a <see cref="SlTpWinner"/> for
+    /// <see cref="IntrabarAmbiguityKind.RiskTie"/> and an <see cref="ExitWinner"/> for <see cref="IntrabarAmbiguityKind.ExitVersusLiquidation"/>.
+    /// </summary>
+    private readonly record struct IntrabarAmbiguity(int BarIndex, IntrabarAmbiguityKind Kind, byte Outcome, bool OpenDecided, bool AffectsOutcome);
 
     private static BacktestResult BuildResult(BacktestInput input, BacktestConfiguration configuration, IBacktestStrategy strategy,
         RunState s, RunStatus runStatus, ImmutableArray<BacktestWarning> warnings = default)
@@ -500,7 +528,35 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
             strategy.Name,
             hash,
             isInsufficientData: false,
-            warnings: warnings);
+            warnings: AppendAmbiguityWarnings(input, configuration, s.Ambiguities, warnings));
+    }
+
+    /// <summary>
+    /// Turns the recorded order-dependent bars into <see cref="WarningCode.AmbiguousIntrabarOrder"/> / <see cref="WarningCode.AmbiguousIntrabarOrderAffectsOutcome"/> warnings, after the existing warnings and in bar order.
+    /// With nothing recorded the incoming warnings are returned untouched (the exact value, including a default array), so a run without such a bar is unchanged.
+    /// Warnings are not part of the run fingerprint; the text is a pure function of hashed inputs, so two identical runs give identical warnings.
+    /// </summary>
+    private static ImmutableArray<BacktestWarning> AppendAmbiguityWarnings(
+        BacktestInput input, BacktestConfiguration configuration, List<IntrabarAmbiguity> ambiguities, ImmutableArray<BacktestWarning> warnings)
+    {
+        if (ambiguities.Count == 0) return warnings;
+
+        ImmutableArray<BacktestWarning>.Builder builder = ImmutableArray.CreateBuilder<BacktestWarning>((warnings.IsDefault ? 0 : warnings.Length) + ambiguities.Count);
+        if (!warnings.IsDefault) builder.AddRange(warnings);
+        foreach (IntrabarAmbiguity ambiguity in ambiguities)
+        {
+            DateTime timestamp = input.Bars[ambiguity.BarIndex].Timestamp;
+            string prefix = string.Create(CultureInfo.InvariantCulture, $"Intrabar order ambiguity at bar {ambiguity.BarIndex} ({timestamp:yyyy-MM-dd}): ");
+            string message = ambiguity.Kind == IntrabarAmbiguityKind.RiskTie
+                ? string.Create(CultureInfo.InvariantCulture,
+                    $"{prefix}{OrderDependentBarCounts.RiskTieSubject}; PricePathConflictMode={configuration.PricePathConflictMode} resolved to {(SlTpWinner)ambiguity.Outcome}{(ambiguity.OpenDecided ? "; Open decided the order" : string.Empty)}.")
+                : string.Create(CultureInfo.InvariantCulture,
+                    $"{prefix}{OrderDependentBarCounts.ExitVersusLiquidationSubject}; IntrabarPathMode={configuration.IntrabarPathMode} resolved to {(ExitWinner)ambiguity.Outcome}.");
+            WarningCode code = ambiguity.AffectsOutcome ? WarningCode.AmbiguousIntrabarOrderAffectsOutcome : WarningCode.AmbiguousIntrabarOrder;
+            builder.Add(new BacktestWarning(code, ambiguity.BarIndex, timestamp, message));
+        }
+
+        return builder.MoveToImmutable();
     }
 
     /// <summary>Mutable per-run account/bookkeeping state. Kept as a single object (not a long ref-parameter list) so the Step helpers below stay readable.</summary>
@@ -558,6 +614,9 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
         public List<BacktestTrade> Trades = null!;
         public List<EquityPoint> EquityPoints = null!;
         public List<BacktestSignal> Signals = null!;
+
+        /// <summary>Order-dependent bars recorded so far, in bar order (see <see cref="IntrabarAmbiguity"/>); rolled back with the bar by <see cref="BarSnapshot"/>.</summary>
+        public readonly List<IntrabarAmbiguity> Ambiguities = new();
     }
 
     /// <summary>
@@ -568,7 +627,7 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
     private readonly struct BarSnapshot
     {
         private readonly decimal _cash, _heldMargin, _q, _entryPrice, _entryFeeAccum, _positionHigh, _positionLow, _entrySlippageAccum, _totalBorrowFeeAccum;
-        private readonly int _entryBar, _pendingEntryIndex, _pendingExitIndex, _orderCount, _fillCount, _tradeCount, _equityCount, _signalCount;
+        private readonly int _entryBar, _pendingEntryIndex, _pendingExitIndex, _orderCount, _fillCount, _tradeCount, _equityCount, _signalCount, _ambiguityCount;
         private readonly DateTime _entryTime;
         private readonly string _currentEntryReason;
         private readonly TradeSide _pendingEntrySide;
@@ -604,6 +663,7 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
             _tradeCount = s.Trades.Count;
             _equityCount = s.EquityPoints.Count;
             _signalCount = s.Signals.Count;
+            _ambiguityCount = s.Ambiguities.Count;
             _pendingEntryOrder = s.PendingEntryOrderIndex != -1 ? s.Orders[s.PendingEntryOrderIndex] : default;
             _pendingExitOrder = s.PendingExitOrderIndex != -1 ? s.Orders[s.PendingExitOrderIndex] : default;
         }
@@ -617,6 +677,7 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
             s.Trades.RemoveRange(_tradeCount, s.Trades.Count - _tradeCount);
             s.EquityPoints.RemoveRange(_equityCount, s.EquityPoints.Count - _equityCount);
             s.Signals.RemoveRange(_signalCount, s.Signals.Count - _signalCount);
+            s.Ambiguities.RemoveRange(_ambiguityCount, s.Ambiguities.Count - _ambiguityCount);
             if (_pendingEntryIndex != -1) s.Orders[_pendingEntryIndex] = _pendingEntryOrder;
             if (_pendingExitIndex != -1) s.Orders[_pendingExitIndex] = _pendingExitOrder;
 
@@ -749,6 +810,11 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
             }
 
             ExitWinner winner = ExitPrecedenceResolver.Resolve(exitFillPoint?.Position, marginPosition);
+            if (exitEligible && marginPosition is not null)
+            {
+                RecordExitVersusLiquidationAmbiguity(s, i, bar, config, openSide, liquidationPrice, pathStart, winner);
+            }
+
             if (winner == ExitWinner.MarginLiquidation)
             {
                 // A forced liquidation supersedes both slots: it closes the position outright, so any pending
@@ -774,6 +840,31 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
         // do we consider the Entry slot - and only once the account is actually Flat (whether it already
         // was, or just became so above), so a same-bar reversal's Entry funds-check reads the freed Cash.
         return s.Q == 0m && EvaluatePendingEntryIfEligible(s, i, bar, config, pathStart, ref availableVolume);
+    }
+
+    /// <summary>
+    /// Order-dependent bar AB-2: on a bar that starts with a position, has an eligible pending Exit and a margin breach, re-ranks the exit order against the
+    /// liquidation on the OTHER vertex order (Open-&gt;High-&gt;Low-&gt;Close versus Open-&gt;Low-&gt;High-&gt;Close) with the same inputs and the same price-limit check,
+    /// and records the bar when the <see cref="ExitWinner"/> differs. It reads and changes no account state, order or fill; only the compact record is stored.
+    /// </summary>
+    private static void RecordExitVersusLiquidationAmbiguity(
+        RunState s, int i, CandleData bar, BacktestConfiguration config, TradeSide openSide, decimal liquidationPrice, PathPoint pathStart, ExitWinner usedWinner)
+    {
+        bool otherLowFirst = !FillPathScanner.VisitsLowFirst(bar.Open, bar.Close, config.IntrabarPathMode, openSide);
+
+        BacktestOrder exitOrder = s.Orders[s.PendingExitOrderIndex];
+        decimal? otherMarginPosition = MarginLiquidationCalculator.TryFindBreachPositionOnOrder(openSide, liquidationPrice, bar, otherLowFirst);
+        PathPoint? otherExitFillPoint = OrderFillEvaluator.EvaluateFromOnOrder(exitOrder, bar, pathStart, 0m, 0m, 0m, otherLowFirst).FillPoint;
+        if (otherExitFillPoint is { } fill && IsAtPriceLimit(exitOrder, bar, fill.Price, config.PriceLimitFillMode))
+        {
+            otherExitFillPoint = null;
+        }
+
+        ExitWinner otherWinner = ExitPrecedenceResolver.Resolve(otherExitFillPoint?.Position, otherMarginPosition);
+        if (otherWinner != usedWinner)
+        {
+            s.Ambiguities.Add(new IntrabarAmbiguity(i, IntrabarAmbiguityKind.ExitVersusLiquidation, (byte)usedWinner, false, true));
+        }
     }
 
     /// <summary>

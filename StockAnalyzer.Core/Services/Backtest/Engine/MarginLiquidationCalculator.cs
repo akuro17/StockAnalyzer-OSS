@@ -29,15 +29,23 @@ public static class MarginLiquidationCalculator
     }
 
     /// <summary>
-    /// Long breaches on the Open-&gt;High-&gt;Low-&gt;Close path's downward leg (bar Low touching P_liq
-    /// from above); Short breaches on the upward leg (bar High touching P_liq from below). Returns the
-    /// same [0,2] path-position scale as <see cref="FillPathScanner"/> so it can be compared directly
+    /// Long breaches when the bar Low touches P_liq from above; Short breaches when the bar High touches P_liq
+    /// from below. WHEN that happens on the bar depends on the vertex order <paramref name="pathMode"/> selects
+    /// (fixed Open-&gt;High-&gt;Low-&gt;Close for CanonicalOHLC; candle-shape and held side for DeterministicCandleShape).
+    /// Returns the same [0,3] path-position scale as <see cref="FillPathScanner"/> so it can be compared directly
     /// against a competing pending exit order's own touch position via <see cref="ExitPrecedenceResolver"/>.
     /// </summary>
     public static decimal? TryFindBreachPosition(TradeSide side, decimal liquidationPrice, CandleData bar, IntrabarPathMode pathMode = IntrabarPathMode.CanonicalOHLC)
     {
         TouchDirection direction = side == TradeSide.Long ? TouchDirection.Downward : TouchDirection.Upward;
         return FillPathScanner.TryFindTouchPosition(bar.Open, bar.High, bar.Low, bar.Close, liquidationPrice, direction, pathMode, side);
+    }
+
+    /// <summary><see cref="TryFindBreachPosition"/> on an explicitly chosen vertex order (<paramref name="lowFirst"/> true = Open-&gt;Low-&gt;High-&gt;Close) instead of the one <see cref="IntrabarPathMode"/> derives.</summary>
+    public static decimal? TryFindBreachPositionOnOrder(TradeSide side, decimal liquidationPrice, CandleData bar, bool lowFirst)
+    {
+        TouchDirection direction = side == TradeSide.Long ? TouchDirection.Downward : TouchDirection.Upward;
+        return FillPathScanner.TryFindTouchPositionOnOrder(bar.Open, bar.High, bar.Low, bar.Close, liquidationPrice, direction, lowFirst);
     }
 
     /// <summary>

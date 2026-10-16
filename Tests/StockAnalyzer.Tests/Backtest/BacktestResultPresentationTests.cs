@@ -207,6 +207,89 @@ public class BacktestResultPresentationTests
         Assert.Equal(result.Trades, exporter.LastTrades);
     }
 
+    [Theory]
+    [InlineData(0, "2 of 3", "1 of 3")]
+    [InlineData(1, "2 of 2", "1 of 2")]
+    [InlineData(2, "1 of 1", "1 of 1")]
+    public void AuditRows_ShowDetectedAndAffectingOrderDependentBarsOfTheEvaluatedWindow(int evaluationStartIndex, string detected, string affecting)
+    {
+        // Bars 1 (detected only) and 2 (detected and affecting) are order-dependent; the split warning at bar 0 is a different code and never counts.
+        BacktestResult result = WithWarnings(
+            BacktestTestFactory.CreateResult(equityPoints: ThreeBars()),
+            new BacktestWarning(WarningCode.PotentialUnadjustedSplit, 0, BarTime(0), "split"),
+            new BacktestWarning(WarningCode.AmbiguousIntrabarOrder, 1, BarTime(1), "first"),
+            new BacktestWarning(WarningCode.AmbiguousIntrabarOrderAffectsOutcome, 2, BarTime(2), "second"));
+
+        BacktestResultsViewModel vm = UpdateWith(result, evaluationStartIndex);
+
+        Assert.Contains(vm.AuditRows, row => row.LabelKey == "Backtest_Audit_OrderDependentBars" && row.ValueText == detected);
+        Assert.Contains(vm.AuditRows, row => row.LabelKey == "Backtest_Audit_OrderDependentBarsAffecting" && row.ValueText == affecting);
+    }
+
+    [Fact]
+    public void AuditRows_ShowZeroAsEvidenceWhenNoBarWasOrderDependent()
+    {
+        BacktestResultsViewModel vm = UpdateWith(BacktestTestFactory.CreateResult(equityPoints: ThreeBars()), 0);
+
+        Assert.Contains(vm.AuditRows, row => row.LabelKey == "Backtest_Audit_OrderDependentBars" && row.ValueText == "0 of 3");
+        Assert.Contains(vm.AuditRows, row => row.LabelKey == "Backtest_Audit_OrderDependentBarsAffecting" && row.ValueText == "0 of 3");
+    }
+
+    [Fact]
+    public void OrderDependentWarnings_AreShownAsCountsNotAsWarningText()
+    {
+        BacktestResultsViewModel onlyOrderDependent = UpdateWith(
+            WithWarnings(
+                BacktestTestFactory.CreateResult(equityPoints: ThreeBars()),
+                new BacktestWarning(WarningCode.AmbiguousIntrabarOrder, 1, BarTime(1), "ambiguity one"),
+                new BacktestWarning(WarningCode.AmbiguousIntrabarOrderAffectsOutcome, 2, BarTime(2), "ambiguity two")),
+            0);
+        Assert.False(onlyOrderDependent.HasWarnings);
+        Assert.Null(onlyOrderDependent.WarningSummaryText);
+
+        BacktestResultsViewModel mixed = UpdateWith(
+            WithWarnings(
+                BacktestTestFactory.CreateResult(equityPoints: ThreeBars()),
+                new BacktestWarning(WarningCode.PotentialUnadjustedSplit, 0, BarTime(0), "split suspected"),
+                new BacktestWarning(WarningCode.AmbiguousIntrabarOrder, 1, BarTime(1), "ambiguity one")),
+            0);
+        Assert.True(mixed.HasWarnings);
+        Assert.Equal("split suspected", mixed.WarningSummaryText);
+    }
+
+    private static DateTime BarTime(int index) => new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc).AddDays(index);
+
+    private static ImmutableArray<EquityPoint> ThreeBars()
+        => ImmutableArray.Create(
+            new EquityPoint(0, BarTime(0), 1_000_000m, 1_000_000m, 0m, 0m),
+            new EquityPoint(1, BarTime(1), 1_000_000m, 1_000_000m, 0m, 0m),
+            new EquityPoint(2, BarTime(2), 1_000_000m, 1_000_000m, 0m, 0m));
+
+    private static BacktestResult WithWarnings(BacktestResult result, params BacktestWarning[] warnings)
+        => new(
+            result.Orders, result.Fills, result.Trades, result.EquityPoints, result.Signals, result.Configuration, result.Status,
+            result.StrategyName, result.ReproducibilityHash, result.IsInsufficientData, warnings: warnings.ToImmutableArray());
+
+    private static BacktestResultsViewModel UpdateWith(BacktestResult result, int evaluationStartIndex)
+    {
+        DateTime timestamp = BarTime(0);
+        var input = new BacktestInput(ImmutableArray<CandleData>.Empty, "TEST", TimeFrame.D1, BacktestInput.CurrentDataVersion, timestamp, timestamp, 0, 0);
+        BacktestEvaluationArtifact artifact = new BacktestEvaluationService(
+                new FixedResultEngine(result), new BacktestReportGenerator(), new NoSamplingEvidenceTrustPolicy())
+            .Evaluate(
+                input,
+                result.Configuration,
+                BacktestStrategySpecification.NoOp(Array.Empty<StrategyIndicatorRequest>()),
+                new BacktestReportOptions(TimeFrame.D1, 0, timestamp, timestamp) { AnnualPeriods = 252 });
+        var localization = new MapLocalizationService(new()
+        {
+            ["Backtest_Audit_OrderDependentBarsTemplate"] = "{0} of {1}",
+        });
+        var vm = new BacktestResultsViewModel(localization, new FakeBacktestReportExporter(), new FakeDialogService());
+        vm.Update(artifact, evaluationStartIndex, ImmutableArray<BacktestConditionEntry>.Empty, true, null);
+        return vm;
+    }
+
     [Fact]
     public void ReportOnlyPresentation_HasNoAuditCard()
     {

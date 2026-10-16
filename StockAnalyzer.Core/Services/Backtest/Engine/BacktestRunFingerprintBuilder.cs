@@ -26,8 +26,12 @@ namespace StockAnalyzer.Core.Services.Backtest.Engine;
 /// </summary>
 public sealed class BacktestRunFingerprintBuilder
 {
-    /// <summary>Version of the canonical byte layout below; bump on any layout change.</summary>
-    public const int SchemaVersion = 1;
+    /// <summary>
+    /// Version of the canonical byte layout below; bump on any layout change.
+    /// 1 = the original layout (ten configuration properties). 2 = 1 plus ExecutionModel and the nine mode/limit properties added by TASK-BT-01..06,
+    /// so every <see cref="BacktestConfiguration"/> property is encoded.
+    /// </summary>
+    public const int SchemaVersion = 2;
 
     /// <summary>Version of the strategy-manifest layout of the supported strategies.</summary>
     private const int StrategyManifestVersion = 2;
@@ -214,6 +218,16 @@ public sealed class BacktestRunFingerprintBuilder
         writer.Decimal(configuration.InitialMarginRatio);
         writer.Decimal(configuration.MaintenanceMarginRatio);
         writer.Decimal(configuration.LiquidationPenaltyRatio);
+        writer.Enum(configuration.ExecutionModel);
+        writer.Decimal(configuration.ShortBorrowAnnualRate);
+        writer.Enum(configuration.BorrowFeeBasisMode);
+        writer.Enum(configuration.VolumeConstraintMode);
+        writer.NullableDecimal(configuration.MaxVolumeParticipationRatio);
+        writer.Enum(configuration.CorporateActionHandlingMode);
+        writer.Enum(configuration.PricePathConflictMode);
+        writer.Enum(configuration.MarginLiquidationDeficitMode);
+        writer.Enum(configuration.PriceLimitFillMode);
+        writer.Enum(configuration.IntrabarPathMode);
     }
 
     private static bool TryWriteStrategyManifest(CanonicalWriter writer, IBacktestStrategy strategy, out string? unavailableReason)

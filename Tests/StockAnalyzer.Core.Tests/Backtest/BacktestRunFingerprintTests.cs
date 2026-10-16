@@ -69,7 +69,7 @@ public class BacktestRunFingerprintTests
         Assert.Equal(a.Fingerprint, b.Fingerprint);
         Assert.Equal(a.Fingerprint.ToHexString(), b.Fingerprint.ToHexString());
         Assert.True(a.Preimage.AsSpan().SequenceEqual(b.Preimage));
-        Assert.Equal(1, a.Fingerprint.SchemaVersion);
+        Assert.Equal(2, a.Fingerprint.SchemaVersion);
         Assert.Equal(BacktestExecutionSemantics.Version, a.Fingerprint.ExecutionSemanticsVersion);
     }
 
@@ -140,6 +140,112 @@ public class BacktestRunFingerprintTests
         {
             AssertDiffers(baseline, Execute(Input(), config, Strategy()), what);
         }
+    }
+
+    /// <summary>
+    /// SchemaVersion 2 encodes every <see cref="BacktestConfiguration"/> property. These are the ten that SchemaVersion 1 left out
+    /// (ExecutionModel and the nine mode/limit properties added by TASK-BT-01..06); each one must change the preimage and the digest.
+    /// </summary>
+    [Fact]
+    public void EveryRemainingConfigurationProperty_IsPartOfTheIdentity()
+    {
+        Run baseline = Execute(Bars());
+
+        foreach ((string what, BacktestConfiguration config) in new (string, BacktestConfiguration)[]
+                 {
+                     ("execution model", CfgExtended(executionModel: ExecutionModel.YFinanceApproximate)),
+                     ("short borrow annual rate", CfgExtended(shortBorrowAnnualRate: 0.02m)),
+                     ("borrow fee basis mode", CfgExtended(borrowFeeBasisMode: BorrowFeeBasisMode.MarkToMarketDaily)),
+                     ("volume constraint mode", CfgExtended(volumeConstraintMode: VolumeConstraintMode.ClampAndCancelRemainder)),
+                     ("max volume participation ratio", CfgExtended(maxVolumeParticipationRatio: 0.5m)),
+                     ("corporate action handling mode", CfgExtended(corporateActionHandlingMode: CorporateActionHandlingMode.AutoAdjustHistorical)),
+                     ("price path conflict mode", CfgExtended(pricePathConflictMode: PricePathConflictMode.CanonicalOHLC)),
+                     ("margin liquidation deficit mode", CfgExtended(marginLiquidationDeficitMode: MarginLiquidationDeficitMode.AllowNegativeEquity)),
+                     ("price limit fill mode", CfgExtended(priceLimitFillMode: PriceLimitFillMode.RejectIfAtLimitPrice)),
+                     ("intrabar path mode", CfgExtended(intrabarPathMode: IntrabarPathMode.CanonicalOHLC)),
+                 })
+        {
+            AssertDiffers(baseline, Execute(Bars(), config), what);
+        }
+    }
+
+    /// <summary>
+    /// Guard against the drift that left ten properties out of SchemaVersion 1: a new <see cref="BacktestConfiguration"/> property fails
+    /// this test until the fingerprint layout (and a variant in the identity tests above) covers it.
+    /// </summary>
+    [Fact]
+    public void EveryBacktestConfigurationProperty_IsListedAsFingerprintCovered()
+    {
+        string[] covered =
+        {
+            nameof(BacktestConfiguration.ExecutionModel),
+            nameof(BacktestConfiguration.InitialCapital),
+            nameof(BacktestConfiguration.CommissionFlat),
+            nameof(BacktestConfiguration.CommissionPerUnit),
+            nameof(BacktestConfiguration.SlippageRatio),
+            nameof(BacktestConfiguration.TradingDaysPerYear),
+            nameof(BacktestConfiguration.SizingModel),
+            nameof(BacktestConfiguration.SizingParameter),
+            nameof(BacktestConfiguration.InitialMarginRatio),
+            nameof(BacktestConfiguration.MaintenanceMarginRatio),
+            nameof(BacktestConfiguration.LiquidationPenaltyRatio),
+            nameof(BacktestConfiguration.ShortBorrowAnnualRate),
+            nameof(BacktestConfiguration.BorrowFeeBasisMode),
+            nameof(BacktestConfiguration.VolumeConstraintMode),
+            nameof(BacktestConfiguration.MaxVolumeParticipationRatio),
+            nameof(BacktestConfiguration.CorporateActionHandlingMode),
+            nameof(BacktestConfiguration.PricePathConflictMode),
+            nameof(BacktestConfiguration.MarginLiquidationDeficitMode),
+            nameof(BacktestConfiguration.PriceLimitFillMode),
+            nameof(BacktestConfiguration.IntrabarPathMode),
+        };
+
+        string[] actual = typeof(BacktestConfiguration)
+            .GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance)
+            .Select(p => p.Name)
+            .OrderBy(n => n, StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.Equal(covered.OrderBy(n => n, StringComparer.Ordinal).ToArray(), actual);
+    }
+
+    /// <summary>The base <see cref="Config"/> values with the given extended properties overridden; an omitted argument keeps the library default.</summary>
+    private static BacktestConfiguration CfgExtended(
+        ExecutionModel? executionModel = null,
+        decimal? shortBorrowAnnualRate = null,
+        BorrowFeeBasisMode? borrowFeeBasisMode = null,
+        VolumeConstraintMode? volumeConstraintMode = null,
+        decimal? maxVolumeParticipationRatio = null,
+        CorporateActionHandlingMode? corporateActionHandlingMode = null,
+        PricePathConflictMode? pricePathConflictMode = null,
+        MarginLiquidationDeficitMode? marginLiquidationDeficitMode = null,
+        PriceLimitFillMode? priceLimitFillMode = null,
+        IntrabarPathMode? intrabarPathMode = null)
+    {
+        BacktestConfiguration b = Config();
+        return new BacktestConfiguration
+        {
+            InitialCapital = b.InitialCapital,
+            CommissionFlat = b.CommissionFlat,
+            CommissionPerUnit = b.CommissionPerUnit,
+            SlippageRatio = b.SlippageRatio,
+            TradingDaysPerYear = b.TradingDaysPerYear,
+            SizingModel = b.SizingModel,
+            SizingParameter = b.SizingParameter,
+            InitialMarginRatio = b.InitialMarginRatio,
+            MaintenanceMarginRatio = b.MaintenanceMarginRatio,
+            LiquidationPenaltyRatio = b.LiquidationPenaltyRatio,
+            ExecutionModel = executionModel ?? b.ExecutionModel,
+            ShortBorrowAnnualRate = shortBorrowAnnualRate ?? b.ShortBorrowAnnualRate,
+            BorrowFeeBasisMode = borrowFeeBasisMode ?? b.BorrowFeeBasisMode,
+            VolumeConstraintMode = volumeConstraintMode ?? b.VolumeConstraintMode,
+            MaxVolumeParticipationRatio = maxVolumeParticipationRatio ?? b.MaxVolumeParticipationRatio,
+            CorporateActionHandlingMode = corporateActionHandlingMode ?? b.CorporateActionHandlingMode,
+            PricePathConflictMode = pricePathConflictMode ?? b.PricePathConflictMode,
+            MarginLiquidationDeficitMode = marginLiquidationDeficitMode ?? b.MarginLiquidationDeficitMode,
+            PriceLimitFillMode = priceLimitFillMode ?? b.PriceLimitFillMode,
+            IntrabarPathMode = intrabarPathMode ?? b.IntrabarPathMode,
+        };
     }
 
     /// <summary>The configuration type is immutable (init-only), so a variant is a re-creation with one field changed.</summary>

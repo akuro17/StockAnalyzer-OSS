@@ -93,6 +93,32 @@ public sealed class RlTradingSessionTests
     }
 
     [Fact]
+    public void IncrementalSession_CarriesTheSameWarningsAsTheSharedRun_OnWideRangeBars()
+    {
+        // Order-dependent bars are recorded by the shared bar loop, so a session and a run over the same actions must report the same warnings (text and order),
+        // here on bars wide enough to reach the stop and the margin threshold. An RL session records no order-dependent bar at all: it has no Stop-Loss/Take-Profit detector
+        // (AB-1), and its exits are Market or Stop orders of a long-only account, which lie on the same downward leg as the liquidation threshold, so no vertex order can
+        // rank them differently (AB-2).
+        var bars = Bars(i => Bar(i, 100m + i / 10m, 130m + i / 10m, 70m + i / 10m, 103m + i / 10m));
+        var input = Input(bars);
+        var config = Configuration(commission: 1m, slippage: 0.002m);
+        var schedule = new Dictionary<int, RlAction> { [63] = RlAction.Buy, [100] = RlAction.Sell, [127] = RlAction.Buy };
+        var engine = Engine();
+        BacktestResult full = engine.Run(input, config, new ScriptedStrategy(schedule));
+        using var session = engine.CreateRlSession(input, config);
+        session.Reset();
+        for (int decision = 0; decision < RlContract.EpisodeHorizon; decision++)
+        {
+            int anchor = RlContract.WindowLength - 1 + decision;
+            session.Step(schedule.TryGetValue(anchor, out var action) ? action : RlAction.Hold);
+        }
+
+        BacktestResult incremental = session.GetResult();
+        Assert.Equal(full.Warnings.ToArray(), incremental.Warnings.ToArray());
+        Assert.Equal(new OrderDependentBarCounts(0, 0), OrderDependentBarCounts.Count(incremental.Warnings));
+    }
+
+    [Fact]
     public void FullHorizon_MarksResidualPositionAndDoesNotInventFinalSale()
     {
         using var session = Engine().CreateRlSession(Input(Bars()), Configuration());

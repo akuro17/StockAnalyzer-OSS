@@ -55,6 +55,28 @@ public static class FillPathScanner
     public static PathPoint? TryFindTouchFrom(
         decimal open, decimal high, decimal low, decimal close, decimal threshold, TouchDirection direction, PathPoint start,
         IntrabarPathMode pathMode = IntrabarPathMode.CanonicalOHLC, TradeSide? heldPositionSide = null)
+        => TryFindTouchCore(open, high, low, close, threshold, direction, start, IsBearishVertexPath(open, close, pathMode, heldPositionSide));
+
+    /// <summary>
+    /// <see cref="TryFindTouchPosition"/> on an explicitly chosen vertex order instead of the one <see cref="IntrabarPathMode"/> derives:
+    /// <paramref name="lowFirst"/> true = Open -&gt; Low -&gt; High -&gt; Close, false = Open -&gt; High -&gt; Low -&gt; Close. Used to compare the two orders of an
+    /// order-dependent bar; the configured mode is not consulted.
+    /// </summary>
+    public static decimal? TryFindTouchPositionOnOrder(
+        decimal open, decimal high, decimal low, decimal close, decimal threshold, TouchDirection direction, bool lowFirst)
+        => TryFindTouchFromOnOrder(open, high, low, close, threshold, direction, OpenPoint(open), lowFirst)?.Position;
+
+    /// <summary><see cref="TryFindTouchFrom"/> on an explicitly chosen vertex order (see <see cref="TryFindTouchPositionOnOrder"/>).</summary>
+    public static PathPoint? TryFindTouchFromOnOrder(
+        decimal open, decimal high, decimal low, decimal close, decimal threshold, TouchDirection direction, PathPoint start, bool lowFirst)
+        => TryFindTouchCore(open, high, low, close, threshold, direction, start, lowFirst);
+
+    /// <summary>Whether the path with the given <paramref name="pathMode"/> and held side visits Low before High for this bar (the order every scan of the bar uses).</summary>
+    public static bool VisitsLowFirst(decimal open, decimal close, IntrabarPathMode pathMode, TradeSide? heldPositionSide)
+        => IsBearishVertexPath(open, close, pathMode, heldPositionSide);
+
+    private static PathPoint? TryFindTouchCore(
+        decimal open, decimal high, decimal low, decimal close, decimal threshold, TouchDirection direction, PathPoint start, bool isBearishPath)
     {
         bool upward = direction switch
         {
@@ -64,8 +86,6 @@ public static class FillPathScanner
         };
 
         if (Holds(start.Price, threshold, upward)) return start;
-
-        bool isBearishPath = IsBearishVertexPath(open, close, pathMode, heldPositionSide);
 
         int firstLeg = (int)System.Math.Min(System.Math.Floor(start.Position), LegCount - 1);
         for (int leg = firstLeg; leg < LegCount; leg++)

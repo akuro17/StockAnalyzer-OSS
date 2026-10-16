@@ -793,6 +793,7 @@ public partial class BacktestWindowViewModel : ViewModelBase, IDisposable
 
         OnWindowClosing();
         TradingSignal.Dispose();
+        Results.Dispose();
         lock (_ctsGate)
         {
             _cts?.Dispose();

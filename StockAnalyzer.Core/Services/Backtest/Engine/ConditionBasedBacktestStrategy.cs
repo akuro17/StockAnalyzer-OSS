@@ -67,9 +67,12 @@ namespace StockAnalyzer.Core.Services.Backtest.Engine;
 /// `OrderType.Stop`/`.Limit` with the exact breached threshold price so the engine's existing gap-aware
 /// worse-of/better-of-vs-Open fill rule applies unchanged (Task 8a's finding: no engine change needed).
 /// </summary>
-public sealed class ConditionBasedBacktestStrategy : IBacktestStrategy
+public sealed class ConditionBasedBacktestStrategy : IBacktestStrategy, IBacktestRiskTieDetector
 {
     private static readonly TimeInForce Gtc = new(true, -1);
+
+    /// <summary>Every defined <see cref="PricePathConflictMode"/>, read once so the tie detector allocates nothing per bar.</summary>
+    private static readonly PricePathConflictMode[] AllPricePathConflictModes = Enum.GetValues<PricePathConflictMode>();
 
     // Signal reasons: part of the run's reproducibility hash, so the list-built and tree-built paths share these single definitions.
     public const string EntryConflictReason = "Entry conflict: Long and Short entry conditions met simultaneously";
@@ -318,21 +321,7 @@ public sealed class ConditionBasedBacktestStrategy : IBacktestStrategy
         TradeSide side = isLong ? TradeSide.Long : TradeSide.Short;
         SignalType exitSignal = isLong ? SignalType.LongExit : SignalType.ShortExit;
 
-        decimal? stopPrice = null;
-        if (_riskManagement!.StopLossPercent is { } stopLossPercent)
-        {
-            stopPrice = EnsurePositiveThreshold(
-                isLong ? checked(entryPrice * (1m - stopLossPercent)) : checked(entryPrice * (1m + stopLossPercent)),
-                "Stop-Loss");
-        }
-
-        decimal? limitPrice = null;
-        if (_riskManagement.TakeProfitPercent is { } takeProfitPercent)
-        {
-            limitPrice = EnsurePositiveThreshold(
-                isLong ? checked(entryPrice * (1m + takeProfitPercent)) : checked(entryPrice * (1m - takeProfitPercent)),
-                "Take-Profit");
-        }
+        (decimal? stopPrice, decimal? limitPrice) = ComputeRiskThresholds(entryPrice, isLong);
 
         if (stopPrice.HasValue && limitPrice.HasValue)
         {
@@ -366,6 +355,64 @@ public sealed class ConditionBasedBacktestStrategy : IBacktestStrategy
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// The entry-relative Stop-Loss and Take-Profit prices (null when that percentage is not configured). The single definition shared by
+    /// <see cref="EvaluateRiskManagementBreach"/> and <see cref="TryDetectRiskTie"/>, so the detector can never disagree with the decision.
+    /// </summary>
+    private (decimal? Stop, decimal? Limit) ComputeRiskThresholds(decimal entryPrice, bool isLong)
+    {
+        decimal? stopPrice = null;
+        if (_riskManagement!.StopLossPercent is { } stopLossPercent)
+        {
+            stopPrice = EnsurePositiveThreshold(
+                isLong ? checked(entryPrice * (1m - stopLossPercent)) : checked(entryPrice * (1m + stopLossPercent)),
+                "Stop-Loss");
+        }
+
+        decimal? limitPrice = null;
+        if (_riskManagement.TakeProfitPercent is { } takeProfitPercent)
+        {
+            limitPrice = EnsurePositiveThreshold(
+                isLong ? checked(entryPrice * (1m + takeProfitPercent)) : checked(entryPrice * (1m - takeProfitPercent)),
+                "Take-Profit");
+        }
+
+        return (stopPrice, limitPrice);
+    }
+
+    /// <summary>
+    /// Order-dependent bar AB-1 (API_SPECIFICATION "Order-dependent bars"): the held position's bar reached BOTH its Stop-Loss and its Take-Profit. Uses the
+    /// same thresholds and the same resolver as <see cref="EvaluateRiskManagementBreach"/>; a bar that reached only one threshold is not a tie.
+    /// </summary>
+    public bool TryDetectRiskTie(in StrategyContext context, out RiskTie tie)
+    {
+        tie = default;
+        if (_riskManagement is not { IsEnabled: true, StopLossPercent: not null, TakeProfitPercent: not null }) return false;
+        if (context.PositionSide is not { } side || context.EntryPrice is not { } entryPrice) return false;
+
+        bool isLong = side == TradeSide.Long;
+        (decimal? stopPrice, decimal? limitPrice) = ComputeRiskThresholds(entryPrice, isLong);
+        if (stopPrice is not { } stop || limitPrice is not { } limit) return false;
+
+        CandleData bar = context.Bar;
+        bool slBreached = isLong ? bar.Low <= stop : bar.High >= stop;
+        bool tpBreached = isLong ? bar.High >= limit : bar.Low <= limit;
+        if (!slBreached || !tpBreached) return false;
+
+        bool openDecided = isLong ? bar.Open <= stop || bar.Open >= limit : bar.Open >= stop || bar.Open <= limit;
+        PricePathConflictMode mode = context.PricePathConflictMode;
+        SlTpWinner outcome = ExitPrecedenceResolver.ResolveIntrabarSlTp(bar, side, stop, limit, mode);
+        // "Differs" means: at least one OTHER defined convention resolves the same bar to the other threshold (exhaustive over the enum, so a new member is covered).
+        bool differs = false;
+        foreach (PricePathConflictMode otherMode in AllPricePathConflictModes)
+        {
+            if (otherMode != mode && ExitPrecedenceResolver.ResolveIntrabarSlTp(bar, side, stop, limit, otherMode) != outcome) differs = true;
+        }
+
+        tie = new RiskTie(side, outcome, openDecided, differs);
+        return true;
     }
 
     private static decimal EnsurePositiveThreshold(decimal value, string name)

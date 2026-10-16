@@ -10,9 +10,10 @@ public enum SlTpWinner { None, StopLoss, TakeProfit }
 /// <summary>
 /// User-confirmed rule (docs/sa_ai_context_BacktestEngine_P1 section 1.5.6): when a pending
 /// exit order (Limit/Stop/StopLimit) and the maintenance-margin liquidation threshold both apply to the same
-/// open position on the same bar, whichever ACTUALLY HAPPENS first (the order's fill, not its activation) along the fixed
-/// Open-&gt;High-&gt;Low-&gt;Close path wins; the loser is superseded/cancelled for that bar rather than
-/// evaluated normally.
+/// open position on the same bar, whichever ACTUALLY HAPPENS first (the order's fill, not its activation) along the bar's
+/// intra-bar path wins; the loser is superseded/cancelled for that bar rather than evaluated normally. The path is the vertex order that
+/// <see cref="IntrabarPathMode"/> selects: <c>CanonicalOHLC</c> is the fixed Open-&gt;High-&gt;Low-&gt;Close, <c>DeterministicCandleShape</c> (the default)
+/// visits High first on a bullish bar, Low first on a bearish bar, and decides a doji by the held side. This class only compares the two path positions it is given.
 /// </summary>
 public static class ExitPrecedenceResolver
 {

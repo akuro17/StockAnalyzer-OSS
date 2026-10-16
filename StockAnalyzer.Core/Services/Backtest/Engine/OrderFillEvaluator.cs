@@ -126,6 +126,27 @@ public static class OrderFillEvaluator
     public static ResidualFill EvaluateFrom(
         BacktestOrder order, CandleData bar, PathPoint start, decimal slippageRatio, decimal commissionFlat, decimal commissionPerUnit,
         decimal? fillQuantity = null, IntrabarPathMode pathMode = IntrabarPathMode.CanonicalOHLC, TradeSide? heldPositionSide = null)
+        => EvaluateFromCore(order, bar, start, slippageRatio, commissionFlat, commissionPerUnit, fillQuantity, pathMode, heldPositionSide, lowFirst: null);
+
+    /// <summary>
+    /// <see cref="EvaluateFrom"/> on an explicitly chosen vertex order (<paramref name="lowFirst"/> true = Open-&gt;Low-&gt;High-&gt;Close, false = Open-&gt;High-&gt;Low-&gt;Close)
+    /// instead of the order <see cref="IntrabarPathMode"/> derives. Used to compare the two orders of an order-dependent bar.
+    /// </summary>
+    public static ResidualFill EvaluateFromOnOrder(
+        BacktestOrder order, CandleData bar, PathPoint start, decimal slippageRatio, decimal commissionFlat, decimal commissionPerUnit,
+        bool lowFirst, decimal? fillQuantity = null)
+        => EvaluateFromCore(order, bar, start, slippageRatio, commissionFlat, commissionPerUnit, fillQuantity, IntrabarPathMode.CanonicalOHLC, null, lowFirst);
+
+    /// <summary>The scan every fill rule shares: an explicit <paramref name="lowFirst"/> wins, otherwise the order is derived from the mode and the held side exactly as before.</summary>
+    private static PathPoint? Touch(
+        CandleData bar, decimal threshold, TouchDirection direction, PathPoint start, IntrabarPathMode pathMode, TradeSide? heldPositionSide, bool? lowFirst)
+        => lowFirst is { } explicitOrder
+            ? FillPathScanner.TryFindTouchFromOnOrder(bar.Open, bar.High, bar.Low, bar.Close, threshold, direction, start, explicitOrder)
+            : FillPathScanner.TryFindTouchFrom(bar.Open, bar.High, bar.Low, bar.Close, threshold, direction, start, pathMode, heldPositionSide);
+
+    private static ResidualFill EvaluateFromCore(
+        BacktestOrder order, CandleData bar, PathPoint start, decimal slippageRatio, decimal commissionFlat, decimal commissionPerUnit,
+        decimal? fillQuantity, IntrabarPathMode pathMode, TradeSide? heldPositionSide, bool? lowFirst)
     {
         switch (order.Type)
         {
@@ -136,7 +157,7 @@ public static class OrderFillEvaluator
             case OrderType.Limit:
             {
                 decimal limitPrice = order.LimitPrice ?? throw new ArgumentException("Limit orders require LimitPrice.", nameof(order));
-                PathPoint? touch = FillPathScanner.TryFindTouchFrom(bar.Open, bar.High, bar.Low, bar.Close, limitPrice, order.Side == OrderSide.Buy ? TouchDirection.Downward : TouchDirection.Upward, start, pathMode, heldPositionSide);
+                PathPoint? touch = Touch(bar, limitPrice, order.Side == OrderSide.Buy ? TouchDirection.Downward : TouchDirection.Upward, start, pathMode, heldPositionSide, lowFirst);
                 return touch is { } point
                     ? Filled(point, order, slippageRatio, commissionFlat, commissionPerUnit, clampLimit: limitPrice, stopActivated: false, fillQuantity: fillQuantity)
                     : ResidualFill.None(OrderFillOutcome.NoFill);
@@ -144,14 +165,14 @@ public static class OrderFillEvaluator
             case OrderType.Stop:
             {
                 decimal stopPrice = order.StopPrice ?? throw new ArgumentException("Stop orders require StopPrice.", nameof(order));
-                PathPoint? touch = FillPathScanner.TryFindTouchFrom(bar.Open, bar.High, bar.Low, bar.Close, stopPrice, order.Side == OrderSide.Buy ? TouchDirection.Upward : TouchDirection.Downward, start, pathMode, heldPositionSide);
+                PathPoint? touch = Touch(bar, stopPrice, order.Side == OrderSide.Buy ? TouchDirection.Upward : TouchDirection.Downward, start, pathMode, heldPositionSide, lowFirst);
                 // Once triggered, a Stop order becomes an unprotected Market fill - no clamp.
                 return touch is { } point
                     ? Filled(point, order, slippageRatio, commissionFlat, commissionPerUnit, clampLimit: null, stopActivated: false, fillQuantity: fillQuantity)
                     : ResidualFill.None(OrderFillOutcome.NoFill);
             }
             case OrderType.StopLimit:
-                return EvaluateStopLimitFrom(order, bar, start, slippageRatio, commissionFlat, commissionPerUnit, fillQuantity, pathMode, heldPositionSide);
+                return EvaluateStopLimitFrom(order, bar, start, slippageRatio, commissionFlat, commissionPerUnit, fillQuantity, pathMode, heldPositionSide, lowFirst);
             case OrderType.MarketOnClose:
                 throw new ArgumentException("MarketOnClose orders must be evaluated via EvaluateMarketOnClose (a separate bar-processing step), not EvaluateFrom.", nameof(order));
             default:
@@ -167,7 +188,7 @@ public static class OrderFillEvaluator
     /// </summary>
     private static ResidualFill EvaluateStopLimitFrom(
         BacktestOrder order, CandleData bar, PathPoint start, decimal slippageRatio, decimal commissionFlat, decimal commissionPerUnit,
-        decimal? fillQuantity, IntrabarPathMode pathMode, TradeSide? heldPositionSide)
+        decimal? fillQuantity, IntrabarPathMode pathMode, TradeSide? heldPositionSide, bool? lowFirst)
     {
         decimal limitPrice = order.LimitPrice ?? throw new ArgumentException("StopLimit orders require LimitPrice.", nameof(order));
         decimal stopPrice = order.StopPrice ?? throw new ArgumentException("StopLimit orders require StopPrice.", nameof(order));
@@ -176,12 +197,12 @@ public static class OrderFillEvaluator
         PathPoint limitScanStart = start;
         if (!order.StopActivated)
         {
-            PathPoint? trigger = FillPathScanner.TryFindTouchFrom(bar.Open, bar.High, bar.Low, bar.Close, stopPrice, buy ? TouchDirection.Upward : TouchDirection.Downward, start, pathMode, heldPositionSide);
+            PathPoint? trigger = Touch(bar, stopPrice, buy ? TouchDirection.Upward : TouchDirection.Downward, start, pathMode, heldPositionSide, lowFirst);
             if (trigger is null) return ResidualFill.None(OrderFillOutcome.NoFill);
             limitScanStart = trigger.Value; // bar extremes seen before the trigger point are never reused for the Limit leg
         }
 
-        PathPoint? limitTouch = FillPathScanner.TryFindTouchFrom(bar.Open, bar.High, bar.Low, bar.Close, limitPrice, buy ? TouchDirection.Downward : TouchDirection.Upward, limitScanStart, pathMode, heldPositionSide);
+        PathPoint? limitTouch = Touch(bar, limitPrice, buy ? TouchDirection.Downward : TouchDirection.Upward, limitScanStart, pathMode, heldPositionSide, lowFirst);
         return limitTouch is { } fillPoint
             ? Filled(fillPoint, order, slippageRatio, commissionFlat, commissionPerUnit, clampLimit: limitPrice, stopActivated: true, fillQuantity: fillQuantity)
             : ResidualFill.None(OrderFillOutcome.StopTriggeredNoLimitFill());

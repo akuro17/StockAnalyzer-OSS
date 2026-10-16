@@ -554,8 +554,11 @@ public class BacktestConditionTreeHardeningTests
     // ---- P1-7: fingerprint goldens --------------------------------------------------------------------------------------------
     // Captured from the code at MP-3 P1 (after the canonical-order consolidation): they guard future regressions of the byte layout; they do not
     // prove the pre-MP-1 layout (that proof is the golden of BacktestConditionTreeStrategyTests, captured before any production edit).
+    // All five digests below were re-pinned when the run-fingerprint SchemaVersion became 2 (configuration block extended to 20 properties, schema version field 1 -> 2).
+    // SchemaVersion 1 values: tree 697273CD752B7F32C8BFF5EBB13772A3DC7FAD9AA9A3247AD495F89DAF55D4B3 ; both role 08FA04F7850989F2520DA48E72120839AFC0279E8B21DFCEA47CC3BFBE2ECB8D ;
+    // reversal long/short DDF75E27ACF906BA5EBB0DC670F618A2FAD4B415A1E37208C55D9C96704BCBAE ; or-connected entries, short entry, mixed exit B6EB0E78C061D036132924A428A4CB0BFBC95122C8A79A6364DC62DAFF94775A.
 
-    private const string TreeLayoutGolden = "697273CD752B7F32C8BFF5EBB13772A3DC7FAD9AA9A3247AD495F89DAF55D4B3";
+    private const string TreeLayoutGolden = "A56D451500AB57ED662805D3ACABD19229DB37A7E5C21EEBCC0CEBB06269327A";
 
     private static ConditionBasedBacktestStrategy GoldenTreeStrategy()
     {
@@ -578,9 +581,9 @@ public class BacktestConditionTreeHardeningTests
     }
 
     [Theory]
-    [InlineData("both role", "08FA04F7850989F2520DA48E72120839AFC0279E8B21DFCEA47CC3BFBE2ECB8D")]
-    [InlineData("reversal long/short", "DDF75E27ACF906BA5EBB0DC670F618A2FAD4B415A1E37208C55D9C96704BCBAE")]
-    [InlineData("or-connected entries, short entry, mixed exit", "B6EB0E78C061D036132924A428A4CB0BFBC95122C8A79A6364DC62DAFF94775A")]
+    [InlineData("both role", "3208FD62D627AF87142C35670DF1B4319B44F07BAFD486F811E56B0D748C814C")]
+    [InlineData("reversal long/short", "626415F05D5C9FCCA35E5D363C4600C4A4E2A70A6DA5BAE6A7EC851002E012F5")]
+    [InlineData("or-connected entries, short entry, mixed exit", "C7A14C7CECA765E1994C0327215BD0B3E64E3E86D63B64436E1A04817B3457FE")]
     public void ListLayoutFingerprint_IsPinned(string scenario, string expected)
     {
         object?[] row = BacktestConditionTreeStrategyTests.LegacyScenarios().Single(r => (string)r[0]! == scenario);
