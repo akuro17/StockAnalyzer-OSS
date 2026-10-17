@@ -98,6 +98,20 @@ public class ScreenerIndicatorSideConfig
         return IsLookupNameCandidate(displayName) ? displayName : null;
     }
 
+    /// <summary>
+    /// The name that selects the pattern for a Criteria side: the first of <see cref="OutputName"/>,
+    /// <see cref="CustomDisplayName"/>, <see cref="DisplayName"/> that is not blank and is not "SMA" or "Main"; null when none is.
+    /// The catalog stores the short name (the pattern identifier) in <see cref="OutputName"/> and the description in
+    /// <see cref="CustomDisplayName"/>, so OutputName is consulted first for Criteria evaluation and history reach.
+    /// </summary>
+    public string? ResolveCriteriaName()
+    {
+        if (IsLookupNameCandidate(OutputName)) return OutputName;
+        if (IsLookupNameCandidate(CustomDisplayName)) return CustomDisplayName;
+        string displayName = DisplayName;
+        return IsLookupNameCandidate(displayName) ? displayName : null;
+    }
+
     private static bool IsLookupNameCandidate(string? name)
         => !string.IsNullOrWhiteSpace(name) && name != nameof(Models.IndicatorType.SMA) && name != IndicatorResult.MainSeriesName;
 

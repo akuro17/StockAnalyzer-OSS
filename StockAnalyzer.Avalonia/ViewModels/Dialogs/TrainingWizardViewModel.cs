@@ -13,6 +13,7 @@ using CommunityToolkit.Mvvm.Messaging;
 using Microsoft.Extensions.Logging;
 using PredictionConfigurationChangedMessage = StockAnalyzer.Avalonia.Common.PredictionConfigurationChangedMessage;
 using Microsoft.Extensions.Logging.Abstractions;
+using StockAnalyzer.Avalonia.Common;
 using StockAnalyzer.Avalonia.Services;
 using StockAnalyzer.Avalonia.ViewModels.TickerList;
 using StockAnalyzer.Core.Interfaces;
@@ -150,6 +151,7 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
     private readonly IMarketDataProvider? _marketDataProvider;
     private readonly ITickerStateStore? _tickerStore;
     private string[]? _resolvedSymbols;
+    private readonly IStockAnalyzerSettings? _settings;   // the confidence threshold the chart applies, for the held-out confidence line
     private readonly ILogger<TrainingWizardViewModel> _logger;
 
     private IReadOnlyList<string> _allTickers = Array.Empty<string>();
@@ -229,7 +231,7 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
             return MinimumBarsState.Invalid;
         }
 
-        var splitCount = NSplits >= 2 ? NSplits : WalkForwardDataRequirement.DefaultSplitCount;
+        var splitCount = CurrentSplitCount();
         // A negative Gap (transient invalid input; Start stays disabled) falls back to the
         // default purge gap rather than throwing out of this getter, matching splitCount above.
         try
@@ -238,7 +240,7 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
             // stacking meta segment of the release fold) must exist, otherwise the trainer stops before it starts.
             minimumBars = WalkForwardDataRequirement.MinimumRawBarsForTraining(
                 WindowSize, Horizon, splitCount, Gap is >= 0 ? Gap : null,
-                maxLag: UseFixedZScore && TryParseLags(out var lags) ? lags.DefaultIfEmpty().Max() : 0,
+                maxLag: CurrentMaxLag(),
                 calibrationSegment: UseCalibration
                     || (IsStackingSelected && SelectedStackingWeightSource == StackingWeightSource.ReleaseMetaSegment));
             return MinimumBarsState.Ok;
@@ -248,6 +250,12 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
             return MinimumBarsState.OverLimit;
         }
     }
+
+    /// <summary>The deepest explicit causal lag in bars that the current inputs use (0 without a fixed z-score or without lags); the one expression behind the minimum bar count.</summary>
+    private int CurrentMaxLag() => UseFixedZScore && TryParseLags(out var lags) ? lags.DefaultIfEmpty().Max() : 0;
+
+    /// <summary>The walk-forward split count the trainer will use: the entered count, or the default while it is not a usable count.</summary>
+    private int CurrentSplitCount() => NSplits >= 2 ? NSplits : WalkForwardDataRequirement.DefaultSplitCount;
 
     private bool TryMinimumRawBars(out int minimumBars) => CalculateMinimumRawBars(out minimumBars) == MinimumBarsState.Ok;
 
@@ -516,6 +524,7 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
     {
         base.OnPropertyChanged(e);
         PeriodInputChanged(e.PropertyName);
+        SufficiencyInputChanged(e.PropertyName);
         if (e.PropertyName is nameof(SelectedFramework) or nameof(SelectedArchitecture))
         {
             RefreshHyperparameterOptions();
@@ -700,9 +709,12 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
         IEnsembleSettingsManager? ensembleSettings = null,
         ITickerStateStore? tickerStore = null, IMessenger? messenger = null,
         IModelGenerationRegistry? modelRegistry = null,
-        IStoredPeriodAdvisor? periodAdvisor = null, TimeProvider? clock = null)
+        IStoredPeriodAdvisor? periodAdvisor = null, TimeProvider? clock = null, ITrainingResourceSettings? resourceSettings = null,
+        IStockAnalyzerSettings? settings = null)
     {
+        _settings = settings;
         ConfigurePeriod(periodAdvisor, clock);
+        ConfigureSufficiency(resourceSettings);
         _messenger = messenger ?? WeakReferenceMessenger.Default;
         _tickerStore = tickerStore;
         _orchestrator = orchestrator;
@@ -772,6 +784,7 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
 
             RefreshSourceTree();
             SchedulePeriod(immediate: true);
+            ScheduleSufficiency();
         }
         catch (Exception ex)
         {
@@ -817,6 +830,7 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
         OnPropertyChanged(nameof(SelectedSymbolSummary));
         StartTrainingCommand.NotifyCanExecuteChanged();
         SchedulePeriod(immediate: false);
+        ScheduleSufficiency();
     }
 
     private bool _sourceTreeBuilt;
@@ -896,6 +910,7 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
             OnPropertyChanged(nameof(SelectedSymbolSummary));
             StartTrainingCommand.NotifyCanExecuteChanged();
             SchedulePeriod(immediate: false);
+            ScheduleSufficiency();
         }
     }
 
@@ -1262,7 +1277,7 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
             if (config.RequiresFinalizedSource)
                 CurrentStage = result.Success ? "Completed" : "Failed";
             StatusMessage = result.Success
-                ? (LocalizationManager.Instance["TrainingWizard_Status_Completed"] ?? "Training completed.")
+                ? (LocalizationManager.Instance["TrainingWizard_Status_Completed"] ?? "Training completed.") + ReachSuffix(ReadEvaluation(result.MetricsArtifactPath))
                 : (result.Message ?? LocalizationManager.Instance["TrainingWizard_Status_Failed"] ?? "Training failed.");
 
             if (_experimentLogService is not null)
@@ -1457,21 +1472,27 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
             }
 
             var generation = await _modelDeploymentService.RegisterGenerationAsync(onnxPath, result.MetricsArtifactPath).ConfigureAwait(true);
+            var evaluation = ReadEvaluation(result.MetricsArtifactPath);   // the metrics file is read once for the lines below
             _messenger.Send(new PredictionConfigurationChangedMessage()); // the registration activates the generation when it may
+            // Without the registry the wizard cannot tell whether the generation became active, so it states no reason for a missing activation (the application always
+            // provides the registry; only a bare construction in a test lacks it).
             if (_modelRegistry is not null)
             {
                 if (!string.Equals(_modelRegistry.ActiveId, generation.ModelId, StringComparison.Ordinal))
                 {
-                    StatusMessage = string.Format(
-                        LocalizationManager.Instance["TrainingWizard_Status_RegisteredNotActivated"]
-                        ?? "Model generation {0} is registered but not active. To use it, open Settings > AI Predictions, tick the model and, if asked, press Confirm activation. If it still does not become active, the message shown there names the reason.",
-                        generation.ModelId);
+                    StatusMessage = (AutoActivationStopText(evaluation, generation) is { } stopped
+                        ? string.Format(DisplayFormat.Culture, LocalizationManager.Instance["TrainingWizard_Status_RegisteredNotAutoActivated"], generation.ModelId, stopped)
+                        : string.Format(
+                            LocalizationManager.Instance["TrainingWizard_Status_RegisteredNotActivated"]
+                            ?? "Model generation {0} is registered but not active. To use it, open Tools > Model Execution > Prediction Models and tick the model. If it still does not become active, the message shown there names the reason.",
+                            generation.ModelId))
+                        + QualityHintSuffix(evaluation, generation.ClassOrder) + ReachSuffix(evaluation);
                     return;
                 }
             }
             StatusMessage = string.Format(
                 LocalizationManager.Instance["TrainingWizard_Status_Registered"] ?? "Registered model generation {0}.",
-                generation.ModelId);
+                generation.ModelId) + QualityHintSuffix(evaluation, generation.ClassOrder) + ReachSuffix(evaluation);
         }
         catch (Exception ex)
         {
@@ -1485,6 +1506,31 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
             IsDeploying = false;
         }
     }
+
+    /// <summary>The held-out evaluation beside a model (nothing known when there is no metrics file).</summary>
+    private static ModelEvaluationSummary ReadEvaluation(string? metricsPath) =>
+        metricsPath is null ? ModelEvaluationSummary.Unknown : ModelEvaluationSummary.Read(metricsPath);
+
+    /// <summary>The reasons (joined) why <see cref="ModelAutoActivationGate"/> stopped the automatic activation of <paramref name="generation"/>, or null when it did not stop it.</summary>
+    private string? AutoActivationStopText(ModelEvaluationSummary evaluation, ModelGenerationManifest generation)
+    {
+        var threshold = _settings?.PredictionConfidenceThreshold;
+        var decision = ModelAutoActivationGate.Evaluate(evaluation, generation.ClassOrder, threshold);
+        return decision.Stopped ? ModelReachDisplay.StopReasons(decision, threshold) : null;
+    }
+
+    /// <summary>The registration status gets one more line when the evaluation says the model is no better than a uniform guess (hint only; the model is registered as before).</summary>
+    private static string QualityHintSuffix(ModelEvaluationSummary evaluation, string classOrder) =>
+        ModelQualityCheck.IsNotBetterThanUniform(evaluation, classOrder) == true
+            ? Environment.NewLine + LocalizationManager.Instance["TrainingWizard_Status_NotBetterThanGuessing"]
+            : string.Empty;
+
+    /// <summary>One more line saying how often the model reaches the chart's confidence threshold on its held-out windows (nothing when that is not known).</summary>
+    private string ReachSuffix(ModelEvaluationSummary evaluation) =>
+        _settings is not null && evaluation.Reach is { } histogram && histogram.ShareAtOrAbove(_settings.PredictionConfidenceThreshold) is { } share
+            ? Environment.NewLine + ModelReachDisplay.StatusLine(share,
+                histogram.ShareUpperBound(_settings.PredictionConfidenceThreshold) == 0.0, _settings.PredictionConfidenceThreshold)
+            : string.Empty;
 
     private bool CanUseAsEnsemble() => !IsTraining && !IsDeploying && _ensembleSettings is not null && RegisteredEnsemble is not null;
 

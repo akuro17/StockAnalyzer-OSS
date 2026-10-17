@@ -16,6 +16,8 @@ public sealed class FakeStoredPeriodAdvisor : IStoredPeriodAdvisor
     public List<(string Symbol, int Required, DateOnly? Bound)> RlCalls { get; } = new();
     public List<(IReadOnlyList<string> Symbols, TrainingTimeframe Timeframe, int Required, DateOnly? Bound)> TrainingCalls { get; } = new();
     public List<IReadOnlyList<string>> LatestCalls { get; } = new();
+    public List<(IReadOnlyList<string> Symbols, TrainingTimeframe Timeframe, int Required, DateOnly? Start, DateOnly? End)> SymbolBarCalls { get; } = new();
+    public Func<IReadOnlyList<string>, int, DateOnly?, DateOnly?, IReadOnlyList<SymbolBarInfo>> SymbolBars { get; set; } = (_, _, _, _) => Array.Empty<SymbolBarInfo>();
 
     public Func<string, int, DateOnly?, Task<StoredPeriodProposal>> Rl { get; set; } = (_, required, _) => Task.FromResult(StoredPeriodProposal.None(StoredPeriodStatus.NoData, required));
     public Func<IReadOnlyList<string>, Task<DateOnly?>> Latest { get; set; } = _ => Task.FromResult<DateOnly?>(null);
@@ -38,6 +40,13 @@ public sealed class FakeStoredPeriodAdvisor : IStoredPeriodAdvisor
     {
         lock (_gate) LatestCalls.Add(symbols);
         return Latest(symbols);
+    }
+
+    public Task<IReadOnlyList<SymbolBarInfo>> ReadSymbolBarsForTrainingAsync(IReadOnlyList<string> symbols, TrainingTimeframe timeframe, int requiredBars,
+        DateOnly? start, DateOnly? end, CancellationToken cancellationToken)
+    {
+        lock (_gate) SymbolBarCalls.Add((symbols, timeframe, requiredBars, start, end));
+        return Task.FromResult(SymbolBars(symbols, requiredBars, start, end));
     }
 
     public Task<StoredPeriodProposal> ProposeForTrainingAsync(IReadOnlyList<string> symbols, TrainingTimeframe timeframe, int requiredBars,

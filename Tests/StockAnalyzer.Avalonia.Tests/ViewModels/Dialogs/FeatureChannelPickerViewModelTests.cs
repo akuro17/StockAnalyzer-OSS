@@ -110,6 +110,42 @@ public class FeatureChannelPickerViewModelTests
         Assert.Matches(@"^RSI \(\d+\)$", row.Label);
     }
 
+    [Theory]
+    [InlineData(IndicatorType.RSI, ChannelNormalization.None)]            // bounded oscillator
+    [InlineData(IndicatorType.ROC, ChannelNormalization.None)]            // percentage
+    [InlineData(IndicatorType.SMA, ChannelNormalization.WindowMinMax)]    // price units
+    [InlineData(IndicatorType.BB, ChannelNormalization.WindowMinMax)]
+    [InlineData(IndicatorType.Volume, ChannelNormalization.WindowZScore)] // volume units
+    [InlineData(IndicatorType.MACD, ChannelNormalization.WindowZScore)]   // price difference
+    [InlineData(IndicatorType.ATR, ChannelNormalization.WindowZScore)]
+    public void PickingAnIndicator_SetsTheNormalizationItNeeds_AndTheAddedRowKeepsIt(IndicatorType type, ChannelNormalization expected)
+    {
+        var vm = NewPicker();
+
+        vm.SelectedCatalogItem = vm.FilteredCatalogItems.First(i => i.Type == type);
+
+        Assert.Equal(expected, vm.SelectedNormalization);
+        vm.AddIndicatorChannelCommand.Execute(null);
+        Assert.Equal(expected, Assert.Single(vm.Channels).Normalization);
+    }
+
+    [Fact]
+    public void ThePickedNormalization_CanStillBeChangedBeforeAdding_AndAPriceFieldStartsWithMinMax()
+    {
+        var vm = NewPicker();
+        vm.SelectedCatalogItem = vm.FilteredCatalogItems.First(i => i.Type == IndicatorType.RSI);
+        vm.SelectedNormalization = ChannelNormalization.WindowZScore;   // the owner's choice wins until another item is picked
+        vm.AddIndicatorChannelCommand.Execute(null);
+        Assert.Equal(ChannelNormalization.WindowZScore, vm.Channels[0].Normalization);
+
+        vm.SelectedNormalization = ChannelNormalization.None;
+        vm.SelectedPriceField = FeatureChannelPickerViewModel.PriceCatalogItems.First(f => f.Field == PriceType.Close);
+
+        Assert.Equal(ChannelNormalization.WindowMinMax, vm.SelectedNormalization);
+        vm.AddPriceChannelCommand.Execute(null);
+        Assert.Equal(ChannelNormalization.WindowMinMax, vm.Channels.Single(c => c.Kind == FeatureChannelKind.Price).Normalization);
+    }
+
     [Fact]
     public void BuildFeatureSpec_PreservesOrderAndPerRowNormalization()
     {

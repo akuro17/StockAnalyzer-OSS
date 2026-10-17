@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using StockAnalyzer.Avalonia.Drawing.Objects;
 using StockAnalyzer.Core.Models;
+using StockAnalyzer.Core.Models.HarmonicPattern;
 
 namespace StockAnalyzer.Avalonia.Drawing.Behaviors;
 
@@ -11,7 +12,10 @@ public sealed class HarmonicPatternBehavior : TwoClickBehavior<HarmonicPatternOb
 {
     protected override HarmonicPatternObject CreateInstance(ChartPoint chartPoint, IEnumerable<CoreCandleData>? candles)
     {
-        var obj = new HarmonicPatternObject();
+        var obj = new HarmonicPatternObject
+        {
+            PivotMode = HarmonicPivotMode.LocalExtremaAmplitude
+        };
         obj.Points.Add(chartPoint);
         obj.Points.Add(chartPoint);
 

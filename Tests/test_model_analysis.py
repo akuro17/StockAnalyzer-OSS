@@ -71,6 +71,11 @@ def numerical_cases():
             pass
         else:
             raise AssertionError("analysis exceeded its resource population bound")
+    try:
+        analysis.validate_population(selected, dict(max_samples=19, max_tensor_elements=240))
+    except ValueError as error:
+        # the owner sees this text when a selection is too large: it names the numbers and what to change
+        assert "20 samples (limit 19)" in str(error) and "fewer tickers" in str(error) and "minimum bar count" in str(error), str(error)
     # Multi-symbol split and fitting use the same globally purged anchor selector.
     rng = np.random.default_rng(124)
     syms, dts = {}, {}

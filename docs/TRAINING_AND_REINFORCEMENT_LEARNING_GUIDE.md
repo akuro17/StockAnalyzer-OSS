@@ -20,11 +20,11 @@ StockAnalyzer can create three kinds of files from your stored price data: a pre
 
 | Tool | Menu path | Creates | Stored in | Used in | Not usable in |
 |---|---|---|---|---|---|
-| Training Wizard | Tools > Training Wizard | A prediction model: an `.onnx` file with its `.onnx.metrics.json` (and scaler and analysis files where the trainer writes them) | Working files in `Data/TrainingArtifacts/TW`, registered copy in `Data/Models/Generations` | Settings > AI Predictions (the prediction shown on a chart) | Settings > RL Playback |
-| Reinforcement Learning | Tools > Reinforcement Learning | A trading agent for one ticker (daily bars), registered automatically after a non-trial run | Working files in `Data/TrainingArtifacts/RL`, registered copy in `Data/Models/Generations/RL` | Settings > RL Playback (historical replay of the agent on the chart) | Settings > AI Predictions, Backtest, Screener |
-| Portfolio Reinforcement Learning | Tools > Portfolio Reinforcement Learning | An asset-allocation policy and its evaluation report, stored as a verified run folder | `Data/TrainingArtifacts/RLPortfolio` | The same window (evaluation result, base-model transfer, comparison of two runs) | Charts, Settings > AI Predictions, Backtest, Screener |
+| Training Wizard | Tools > Model Training > Training Wizard | A prediction model: an `.onnx` file with its `.onnx.metrics.json` (and scaler and analysis files where the trainer writes them) | Working files in `Data/TrainingArtifacts/TW`, registered copy in `Data/Models/Generations` | Tools > Model Execution > Prediction Models (the prediction shown on a chart) | Tools > Model Execution > Reinforcement Learning Playback |
+| Reinforcement Learning | Tools > Model Training > Reinforcement Learning | A trading agent for one ticker (daily bars), registered automatically after a non-trial run | Working files in `Data/TrainingArtifacts/RL`, registered copy in `Data/Models/Generations/RL` | Tools > Model Execution > Reinforcement Learning Playback (historical replay of the agent on the chart) | Tools > Model Execution > Prediction Models, Backtest, Screener |
+| Portfolio Reinforcement Learning | Tools > Model Training > Portfolio Reinforcement Learning | An asset-allocation policy and its evaluation report, stored as a verified run folder | `Data/TrainingArtifacts/RLPortfolio` | The same window (evaluation result, base-model transfer, comparison of two runs) | Charts, Tools > Model Execution > Prediction Models, Backtest, Screener |
 
-The Reinforcement Learning window only creates and reviews agents. Replaying an agent on the chart is done in Settings > RL Playback.
+The Reinforcement Learning window only creates and reviews agents. Replaying an agent on the chart is done in Tools > Model Execution > Reinforcement Learning Playback.
 
 ---
 
@@ -42,31 +42,31 @@ Change only the ticker(s) and the period. Every other setting keeps its default.
 
 ### 3.1 Training Wizard: train a model and see its prediction
 
-1. Open **Tools** > **Training Wizard**.
+1. Open **Tools** > **Model Training** > **Training Wizard**.
 2. Under **Ticker lists**, keep **All tickers** ticked, or tick the list that holds your tickers.
 3. **Start Date** and **End Date** are filled in from the stored data (the start leaves the bars the default settings need); change them only to use another period, or clear **Start Date** to use all stored data.
 4. Press **Start** and wait until the status shows "Training completed.".
 5. Press **Deploy to Models**.
 6. Open a daily chart of any ticker. The prediction of the model is shown on the chart.
-7. If the status says the model is registered but not active, open **Tools** > **Settings** > **AI Predictions**, tick the model and, if asked, press **Confirm activation**.
+7. If the status says the model is registered but not active, open **Tools** > **Model Execution** > **Prediction Models** and tick the model.
 
 All other settings keep their defaults.
 
 ### 3.2 Reinforcement Learning: train an agent and replay it
 
-1. Open **Tools** > **Reinforcement Learning**.
+1. Open **Tools** > **Model Training** > **Reinforcement Learning**.
 2. Enter the ticker in **Symbol**.
 3. **Start Date** and **End Date** are filled in from the stored data of the symbol; change them only to use another period. If the window asks for more price history, move the start date earlier.
 4. Press **Start** and wait until the status shows "Completed".
-5. Close the window. Open **Tools** > **Settings** > **RL Playback**.
-6. Choose the agent in the list and press **Show on chart**. Settings closes and the chart shows the replay.
+5. Close the window. Open **Tools** > **Model Execution** > **Reinforcement Learning Playback**.
+6. Choose the agent in the list and press **Show on chart**. The chart shows the replay and the Reinforcement Learning Playback window stays open, so you can pick another block or agent and show it again; close the window with **Close** or Esc.
 7. Read the Q-Panel under the chart: it shows the value of Hold, Buy and Sell for the replayed day.
 
 All other settings keep their defaults.
 
 ### 3.3 Portfolio Reinforcement Learning: train and review
 
-1. Open **Tools** > **Portfolio Reinforcement Learning**.
+1. Open **Tools** > **Model Training** > **Portfolio Reinforcement Learning**.
 2. Under **Ticker lists**, tick the lists whose tickers form the portfolio.
 3. **End Date** is filled in from the stored data of the ticked lists and **Start Date** is suggested by the window; change either only to use another period.
 4. Read the data check below the settings. Start is possible when it says "The data is sufficient for a run.".
@@ -145,7 +145,8 @@ The Hyperparameters section lists the keys of the chosen framework and architect
 | subsample | Training Wizard > Advanced Settings > Hyperparameters (LightGBM) | 0.9 | Number greater than 0 and at most 1. | Share of rows used for each tree (0 to 1). |
 | colsample-bytree | Training Wizard > Advanced Settings > Hyperparameters (LightGBM) | 0.9 | Number greater than 0 and at most 1. | Share of features used for each tree (0 to 1). |
 | early-stopping | Training Wizard > Advanced Settings > Hyperparameters (LightGBM) | 30 | Whole number, at least 1. | Boosting rounds without validation improvement before training stops. |
-| threshold | Training Wizard > Advanced Settings > Hyperparameters (PyTorch, TensorFlow, LightGBM) | 0.005 | Number, at least 0. | Return that separates Up / Down from Neutral when labelling (0.005 = 0.5 %). |
+| threshold | Training Wizard > Advanced Settings > Hyperparameters (PyTorch, TensorFlow, LightGBM) | 0.005 | Number, at least 0. | Return that separates Up / Down from Neutral when labelling (0.005 = 0.5 %). The held-out scoring, the evaluation revision, the model analysis, the explanation and the calibration use the same value as the training. |
+| class-weight-power | Training Wizard > Advanced Settings > Hyperparameters (PyTorch, TensorFlow, LightGBM) | 1 | Number from 0 to 1 (both included). | How strongly rare classes are weighted in the training loss. 1 (default) weights each class by the inverse of its frequency; 0 weights every window equally (a model with no signal then tends to answer with the class shares instead of about one third each); in between softens the weights (0.5 = square root). Only classification uses it. |
 | seed | Training Wizard > Advanced Settings > Hyperparameters (PyTorch, TensorFlow, LightGBM) | 42 | Whole number, at least 0. | Random seed: the same seed and data give the same model. A different seed gives a different result (accuracy and attention contrast both vary). In an ensemble this is the run seed: bagging derives each member seed from it, stacking uses it for every member. |
 
 #### Features tab
@@ -168,17 +169,25 @@ The Features tab composes the input channels of a model from price fields and in
 | Maximum MiB per input window | Settings > Training Wizard | off (no override) | On or off. | Optional limits for new composed-feature training jobs. An off item has no override: the child inherits its environment, and Python uses its own fallback for missing or invalid values. Resolved limits appear in training diagnostics after launch. Running jobs and AI prediction are unaffected. |
 | Maximum MiB per input window (value) | Settings > Training Wizard | none | Whole number from 1 to 256 (enabled limits only). | Caps one float32 window: 4 x W x C bytes, where W is bars per window and C is channels. Measured in MiB; this is not total process memory (RSS). |
 | Maximum training samples | Settings > Training Wizard | off (no override) | On or off. | Optional limits for new composed-feature training jobs. An off item has no override: the child inherits its environment, and Python uses its own fallback for missing or invalid values. Resolved limits appear in training diagnostics after launch. Running jobs and AI prediction are unaffected. |
-| Maximum training samples (value) | Settings > Training Wizard | none | Whole number from 1 to 10000 (enabled limits only). | Caps each symbol's candidate windows and the cumulative retained train plus validation samples. Exceeding the cap fails training; samples are not automatically downsampled. |
+| Maximum training samples (value) | Settings > Training Wizard | none | Whole number from 1 to 10000 (enabled limits only). | Caps each symbol's candidate windows and the cumulative retained train plus validation samples. Exceeding the cap fails training; samples are not automatically downsampled. The check covers the last evaluation fold (train plus validation of all tickers together) and runs before the first fold is trained; the error names the sample count and the limit. The cap is 10000 at most, so with the pre-filled period of a 60-bar window (about 2374 daily bars per ticker) a run holds about five tickers: select fewer tickers; a shorter range helps only when the period is longer than the minimum bar count (the default period is already that minimum). 12 tickers with the default period were refused at about 23000 samples. The Training Wizard warns before Start (see "Warnings under the data period"). |
+
+**Will the model reach the chart? (confidence reach).** The chart names a class only when its probability reaches the confidence threshold (AI Predictions, 0.5 by default); otherwise it shows Unknown. After a classification run the status line of the Training Wizard (after the training, and again after Deploy to Models) and the row of the model in Prediction Models tell how often that happened on the held-out windows of the final fold: "reaches 50% in 7.5% of held-out windows". A model is marked (and the wizard adds a note) only when no held-out window can reach the threshold, so the chart shows Unknown for it; the percentage shown is a lower bound when the threshold is not a whole percent. Models trained before this feature show nothing.
+
+**Warnings under the data period (Training Wizard).** Two grey-yellow lines can appear under Start Date / End Date. They only inform; they never change a field and never disable Start.
+
+- *Too few bars.* Each ticker needs the minimum bar count shown beside Window / Horizon (from Window, Horizon, Splits, Gap, the lags of a fixed z-score, and a calibration or meta segment). The line names the tickers that have fewer bars in the chosen period (fewest first, five at most, then "+n more"), the Start date from which every ticker with enough history reaches the minimum (Start on or before it), and the tickers whose whole stored history is too short (remove them or lower the settings). It is hidden while the existing one-line period status (Start still automatic) shows the same problem.
+- *Too many samples.* The estimate is an upper bound of what the trainer counts, per ticker: S = bars - Window - Horizon + 1 - largest lag; with composed features or a fixed z-score every window counts (S), otherwise the last outer fold counts Splits x floor(S / (Splits + 1)). The line compares the sum over all tickers with the cap (Settings > Training Wizard > Maximum training samples; 10000 when unset, which is also the largest value). When the sum is strictly above the cap it says either which Start (the shortest period) fits, or the most tickers that fit even at the shortest period (cap / estimate of one ticker with exactly the minimum bars: 5 tickers for the defaults, 4 with composed features), or that one ticker alone is already above the cap.
 
 ### 4.2 Running a training
 
 Press **Start** to start and **Cancel** to stop a running training. The progress bar, the current stage and the status message (including the reason a start was refused) appear in a strip above the buttons; the log is in the results section. When an input without a message of its own keeps **Start** disabled (for example no ticker is ticked, the prediction length is below 1 or the transfer fields are incomplete), the footer names it. A label appears in the footer while **Training start mode** is not "New training", while **Evaluate with CPCV** or **Pretrain the encoder (PyTorch)** is on, or while **Ensemble method** is not "Single model". When a training completes, the result can be deployed (section 4.3).
 
-### 4.3 Using the result in Settings > AI Predictions
+### 4.3 Using the result in Tools > Model Execution > Prediction Models
 
-- **Deploy to Models** registers the model generation and tries to activate it. With the default settings the first model that fits the AI Predictions configuration becomes active. A model trained later on other data (another ticker or period) is registered but not active, because its evaluation data differs from the active model's: open Settings > AI Predictions, tick the model and press **Confirm activation** if asked. The status line says: "Model generation N is registered but not active. To use it, open Settings > AI Predictions, tick the model and, if asked, press Confirm activation. If it still does not become active, the message shown there names the reason."
+- **Deploy to Models** registers the model generation and tries to activate it. With the default settings the first model that fits the AI Predictions configuration becomes active. A model trained later on other data (another ticker or period) is registered but not active, because its evaluation data differs from the active model's: open Tools > Model Execution > Prediction Models and tick the model. The status line says: "Model generation N is registered but not active. To use it, open Tools > Model Execution > Prediction Models and tick the model. If it still does not become active, the message shown there names the reason." A model that the chart cannot use is registered but not activated automatically: when on its held-out windows it never reaches the confidence threshold (0.0% reach) or its held-out log-loss is not below that of a uniform guess. The status line then names the reason(s) ("... was not activated automatically: ..."), the model that was active stays active, and you can still tick the model in Prediction Models to use it anyway.
 - **Use as ensemble** makes the members of an ensemble result the active ensemble. Registered N ensemble member generations (none activated). Use "Use as ensemble" to make them the active ensemble.
-- A model file can also be added in Settings > AI Predictions from a file; it is added to the list and not activated.
+- A model file can also be added in Tools > Model Execution > Prediction Models from a file; it is added to the list and not activated.
+- The chart predicts by itself whenever its data or the model settings change. **Run** (next to Close) in the same window predicts again on the main chart right away with the active model or ensemble, and the line left of the buttons tells the symbol, the time frame, the model and the prediction, or why there is none (no model active, the chart has too few bars, the model is for another time frame, no data on the chart, a Reinforcement Learning replay shown). Any model in the list can be removed: an active model is deactivated first and a model of the saved ensemble is taken out of the ensemble first.
 
 A model can be activated only when it agrees with the AI Predictions configuration:
 
@@ -236,30 +245,30 @@ The agent reads 64 past daily bars and chooses Hold, Buy or Sell (or, with the p
 
 ### 5.3 Reviewing results
 
-Select a saved model under **Saved models**. The window shows its identifier, its mean validation return and its mean final-evaluation return, the generation comparison ("Generation Comparison & Overfitting (Val vs OOS)") and the evaluation results with the comparison strategies. The comparison names the generation with the best validation return and shows its final-evaluation return only as a reference: the final evaluation is kept out of the choice on purpose. The pill strip at the top shows the measured mean return and the worst-episode MaxDD of the selected model's saved evaluation (final evaluation, or validation when there is none), with a line that gives the episode count, how many episodes ended above zero and the lowest episode return. Nothing is shown during training or before a model is selected; Sharpe and Profit Factor are not shown. **Activate selected model** marks the selected model as the active reinforcement learning model; replay in Settings > RL Playback does not depend on it.
+Select a saved model under **Saved models**. The window shows its identifier, its mean validation return and its mean final-evaluation return, the generation comparison ("Generation Comparison & Overfitting (Val vs OOS)") and the evaluation results with the comparison strategies. The comparison names the generation with the best validation return and shows its final-evaluation return only as a reference: the final evaluation is kept out of the choice on purpose. The pill strip at the top shows the measured mean return and the worst-episode MaxDD of the selected model's saved evaluation (final evaluation, or validation when there is none), with a line that gives the episode count, how many episodes ended above zero and the lowest episode return. Nothing is shown during training or before a model is selected; Sharpe and Profit Factor are not shown. **Activate selected model** marks the selected model as the active reinforcement learning model; replay in Tools > Model Execution > Reinforcement Learning Playback does not depend on it.
 
-If you delete the work folder of a model (the folder under `Data/TrainingArtifacts/RL` it was trained in), the model itself stays in the lists because the registered copy is kept separately; the lists mark it "No work folder". To remove such a model, select it and press **Remove from list** (in this window and in Settings > RL Playback). You decide the removal: the confirmation says so when the model is the active one, and removing it leaves no active model until you activate another. A model that a continuous-policy model refers to, or one that is in use right now, cannot be removed; the message names the reason.
+If you delete the work folder of a model (the folder under `Data/TrainingArtifacts/RL` it was trained in), the model itself stays in the lists because the registered copy is kept separately; the lists mark it "No work folder". To remove such a model, select it and press **Remove from list** (in this window and in Tools > Model Execution > Reinforcement Learning Playback). You decide the removal: the confirmation says so when the model is the active one, and removing it leaves no active model until you activate another. A model that a continuous-policy model refers to, or one that is in use right now, cannot be removed; the message names the reason.
 
 ### 5.4 Replaying an agent on the chart
 
-Settings > RL Playback lists the saved agents, newest first. Pick a trained single-ticker reinforcement learning agent and an evaluation segment, then show on the main chart how the agent would have traded that stretch of past data.
+Tools > Model Execution > Reinforcement Learning Playback lists the saved agents, newest first. Pick a trained single-ticker reinforcement learning agent and an evaluation segment, then show on the main chart how the agent would have traded that stretch of past data.
 
 | Setting | Where | Default | Allowed values | What it does |
 |---|---|---|---|---|
-| Evaluation segment | Settings > RL Playback > Replay trading | The first final-evaluation segment, otherwise the first segment | A validation or final-evaluation segment of the selected agent. | The stretch of the agent's own past data that is replayed. |
-| Comparison strategy | Settings > RL Playback > Replay trading | The agent's own strategy | The agent's own strategy or a comparison strategy: No trading, Buy and hold, Moving-average strategy, Random strategy; the position size and stop model also offers Fixed size and stop strategy. | Which strategy is shown for the chosen segment. |
-| Decision position (bars) | Settings > RL Playback > Replay trading | 0 | Whole number from 0 to 127 (the decisions of one segment). | The decision position, in bars, within the segment at which the Q-Panel reads the agent. |
-| Ticker | Settings > RL Playback > Any ticker and date | The agent's own ticker | A ticker that has stored daily data in the application; type to search. | The ticker whose stored daily bars are replayed instead of the agent's own segment. |
-| Suggest tickers from | Settings > RL Playback > Any ticker and date | All tickers | All tickers, or one of your ticker lists (watchlists, portfolios, categories and list folders). | Only narrows the suggestions while you type; it never changes the ticker. |
-| Anchor date | Settings > RL Playback > Any ticker and date | The latest valid date of the chosen ticker | A trading day between the first and the last valid date shown under the field. A day without a bar uses the closest earlier trading day and the page tells you which day was used. | The last day the agent sees before its first decision; the 63 days before it are shown too. |
+| Evaluation segment | Tools > Model Execution > Reinforcement Learning Playback > Replay trading | The first final-evaluation segment, otherwise the first segment | A validation or final-evaluation segment of the selected agent. | The stretch of the agent's own past data that is replayed. |
+| Comparison strategy | Tools > Model Execution > Reinforcement Learning Playback > Replay trading | The agent's own strategy | The agent's own strategy or a comparison strategy: No trading, Buy and hold, Moving-average strategy, Random strategy; the position size and stop model also offers Fixed size and stop strategy. | Which strategy is shown for the chosen segment. |
+| Decision position (bars) | Tools > Model Execution > Reinforcement Learning Playback > Replay trading | 0 | Whole number from 0 to 127 (the decisions of one segment). | The decision position, in bars, within the segment at which the Q-Panel reads the agent. |
+| Ticker | Tools > Model Execution > Reinforcement Learning Playback > Any ticker and date | The agent's own ticker | A ticker that has stored daily data in the application; type to search. | The ticker whose stored daily bars are replayed instead of the agent's own segment. |
+| Suggest tickers from | Tools > Model Execution > Reinforcement Learning Playback > Any ticker and date | All tickers | All tickers, or one of your ticker lists (watchlists, portfolios, categories and list folders). | Only narrows the suggestions while you type; it never changes the ticker. |
+| Anchor date | Tools > Model Execution > Reinforcement Learning Playback > Any ticker and date | The latest valid date of the chosen ticker | A trading day between the first and the last valid date shown under the field. A day without a bar uses the closest earlier trading day and the page tells you which day was used. | The last day the agent sees before its first decision; the 63 days before it are shown too. |
 
 Replay on another ticker or date: the card "Any ticker and date" replays the selected agent on the stored daily bars of any ticker you choose, from the anchor date and the decision position (the Comparison strategy and Decision position fields are shared with the segment replay above). The replay is an episode of 192 daily bars: the agent sees 64 bars up to the anchor date and then decides on the next 128 bars from a flat account with the costs it was trained with. For that reason the first 63 stored bars of a ticker and its newest 128 completed trading days cannot be anchor dates, and the page shows the first and the last valid date after you choose a ticker. Only completed days are used. The page opens with the agent's own ticker and the latest valid date, so one click on **Show on chart** works. Under the chart a note tells you whether the shown days overlap, lie before or lie after the agent's source period (the training, validation and final-evaluation parts together), whether the ticker is a different one, and which price items (for example Open or Volume) lie outside the range the agent was trained on. For the agent itself that check covers every day it has seen from the first decision to the shown one; for a comparison strategy it covers the shown 64 days. The note also tells you when the days shown contain a longer calendar gap or a bigger day-to-day price change than anything the agent was trained on (for example a stock split or missing days in the stored prices). The stored prices are not checked for splits or missing days, so such a note means "unlike the training data", not a diagnosis. Results on other tickers or other dates are not validated, and the agent still does not predict the future. Agents that choose a position size and a stop (continuous agents) cannot be replayed this way.
 
-Press **Show on chart** to show the replay and **Remove replay from chart** to remove it from the chart. The chart switches to the daily time frame and shows the 64 bars the agent saw. The Q-Panel under the chart shows the model identifier and the policy, the unit of the values ("Action value (expected discounted cumulative initial-equity ratio); discount factor 0.99" with the discount factor of the contract), a legend ("Maximum action value <action> · <date>") and the three values: Hold, Buy, Sell.
+Press **Show on chart** to show the replay and **Remove replay from chart** to remove it from the chart; the chart then shows its normal data for the selected range again. The chart switches to the daily time frame and shows the 64 bars the agent saw. The Q-Panel under the chart shows the model identifier and the policy, the unit of the values ("Action value (expected discounted cumulative initial-equity ratio); discount factor 0.99" with the discount factor of the contract), a legend ("Maximum action value <action> · <date>") and the three values: Hold, Buy, Sell.
 
 ### 5.5 What RL files cannot do
 
-The replay uses only the agent's own saved training data (daily bars, past data). It does not predict the future and cannot be registered in Settings > AI Predictions. Agents work on one ticker's daily bars and are tied to the price scale of the data they were trained on. They are not used by Backtest or Screener.
+The replay uses only the agent's own saved training data (daily bars, past data). It does not predict the future and cannot be registered in Tools > Model Execution > Prediction Models. Agents work on one ticker's daily bars and are tied to the price scale of the data they were trained on. They are not used by Backtest or Screener.
 
 ---
 
@@ -310,7 +319,7 @@ The data check shows, for every ticker, the bars in the period and the bars need
 
 ### 6.4 What Portfolio RL files cannot do
 
-Nothing a portfolio run creates is registered or activated, and nothing is shown on a chart. Its model is not compatible with the Settings > AI Predictions price models, and its output is evaluated inside the window only.
+Nothing a portfolio run creates is registered or activated, and nothing is shown on a chart. Its model is not compatible with the Tools > Model Execution > Prediction Models price models, and its output is evaluated inside the window only.
 
 ---
 
@@ -320,7 +329,7 @@ All folders are below the `Data` folder.
 
 | File | Produced by | Folder | Safe to delete |
 |---|---|---|---|
-| `<model>.onnx` | Training Wizard | `TrainingArtifacts/TW` (working copy), `Models/Generations` (registered copy) | Registered copy: remove it with the remove action in Settings > AI Predictions. Working copy: Do not delete manually |
+| `<model>.onnx` | Training Wizard | `TrainingArtifacts/TW` (working copy), `Models/Generations` (registered copy) | Registered copy: remove it with the remove action in Tools > Model Execution > Prediction Models. Working copy: Do not delete manually |
 | `<model>.onnx.metrics.json`, `<model>.onnx.scaler.json`, `<model>.onnx.analysis.json` | Training Wizard (the scaler and analysis files where the trainer writes them) | Next to the model | Do not delete manually |
 | Experiment records | Training Wizard | `Experiments/<run id>` | Do not delete manually |
 | `policy.onnx`, `policy.onnx.metrics.json`, `policy.pt`, `parity.json`, `dependencies.json` | Reinforcement Learning (model, evaluation report, native policy, output check, dependency record) | `TrainingArtifacts/RL/...` and `Models/Generations/RL/...` | Use Storage and retention in the Reinforcement Learning window |
@@ -346,8 +355,8 @@ All folders are below the `Data` folder.
 
 | Symptom | Cause | Action |
 |---|---|---|
-| The Training Wizard says the model is registered but not active | Another model is active and this one was evaluated on different data, is not better, or has another window size | Open Settings > AI Predictions, tick the model and press **Confirm activation** if asked. The message shown there names the reason. |
-| The prediction is not shown on the chart | The model is not active, or the chart time frame differs from the model's time frame | Activate the model in Settings > AI Predictions and open a chart with the model's time frame (daily by default). |
+| The Training Wizard says the model is registered but not active | Another model is active and this one was evaluated on different data, is not better, or has another window size | Open Tools > Model Execution > Prediction Models and tick the model. The message shown there names the reason. |
+| The prediction is not shown on the chart | The model is not active, or the chart time frame differs from the model's time frame | Activate the model in Tools > Model Execution > Prediction Models and open a chart with the model's time frame (daily by default). |
 | Training stops with insufficient history | The period holds fewer bars than the window, horizon and splits need | Move the start date earlier or reduce the input length; the Training Wizard shows the bars required. Reinforcement Learning says: "Not enough price history for this symbol and period to build the required independent episodes. Use an earlier start date, or enable the trial run." |
-| Replay is unavailable for an agent | The agent's stored data cannot be read or the agent is not usable | Press **Refresh** on the RL Playback page and read the message; inspect the agent in the Reinforcement Learning window. |
+| Replay is unavailable for an agent | The agent's stored data cannot be read or the agent is not usable | Press **Refresh** on the Reinforcement Learning Playback page and read the message; inspect the agent in the Reinforcement Learning window. |
 | Python packages are missing | The training environment is not installed | Use **Automatic Setup** in Settings > AI Predictions > ONNX Environment & Dependencies, or **Configure Manually**. |

@@ -316,6 +316,44 @@ public sealed class ChartPredictionViewModelTests
         }
     }
 
+    private static ChartViewModel ChartWith(IDataService data, IPredictionService? prediction) => new(data, new DialogService(), null!,
+        new MockStockAnalyzerSettings(), new TimeFrameManager(data), null!,
+        new StockAnalyzer.Core.Theme.ThemeManager(), new MockChartSettingsManager(),
+        new SynchronousDispatcherService(), prediction, null!, messenger: new StrongReferenceMessenger());
+
+    [Fact]
+    public async Task RunPredictionNow_PredictsAgainAndReportsWhatTheChartShows()
+    {
+        var data = new DailyDataService();
+        var prediction = new SequencedPredictionService(new[] { DailyPrediction() });
+        using var chart = ChartWith(data, prediction);
+        await chart.LoadDataAsync();
+        for (var attempt = 0; attempt < 100 && chart.PredictionDisplay is null; attempt++) await Task.Delay(20);
+        int before = prediction.Calls;
+
+        var report = await chart.RunPredictionNowAsync();
+
+        Assert.Equal(PredictionRunOutcome.Completed, report.Outcome);
+        Assert.True(prediction.Calls > before, "the run asked the prediction service again");
+        Assert.False(string.IsNullOrEmpty(report.Display));
+        Assert.Equal(chart.PredictionDisplay, report.Display);
+        Assert.Equal(chart.Symbol, report.Symbol);
+        Assert.Equal(chart.SelectedTimeFrame, report.Timeframe);
+    }
+
+    [Fact]
+    public async Task RunPredictionNow_WithoutCandlesOrWithoutAPredictionService_SaysSoAndPredictsNothing()
+    {
+        var prediction = new SequencedPredictionService(new[] { DailyPrediction() });
+        using var empty = ChartWith(new DailyDataService(), prediction);
+        Assert.Equal(PredictionRunOutcome.NoData, (await empty.RunPredictionNowAsync()).Outcome);
+        Assert.Equal(0, prediction.Calls);
+
+        using var unavailable = ChartWith(new DailyDataService(), null);
+        await unavailable.LoadDataAsync();
+        Assert.Equal(PredictionRunOutcome.Unavailable, (await unavailable.RunPredictionNowAsync()).Outcome);
+    }
+
     /// <summary>Answers each call with the next result (the last one repeats) and counts the calls.</summary>
     private sealed class SequencedPredictionService(PredictionResult[] results) : IPredictionService
     {

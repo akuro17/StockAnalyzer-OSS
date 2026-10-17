@@ -888,6 +888,101 @@ public class TrainingWizardViewModelTests : IDisposable
         Assert.Contains("test-generation", vm.StatusMessage);
     }
 
+    [Theory]
+    [InlineData("1.2", true)]    // not below the uniform guess ln 3 = 1.0986
+    [InlineData("0.9", false)]
+    public async Task DeployToModelsAsync_AddsAHintOnlyWhenTheEvaluationIsNotBetterThanGuessing(string logLoss, bool hint)
+    {
+        var market = new DummyMarketDataProvider("AAPL");
+        var folder = Path.Combine(Path.GetTempPath(), "sa_wizard_quality_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        try
+        {
+            var mockOnnx = Path.Combine(folder, "model.onnx");
+            var metrics = mockOnnx + ".metrics.json";
+            File.WriteAllText(metrics, "{\"fold_multi_logloss\":" + logLoss + "}");
+            var orchestrator = new FakeTrainingOrchestrator
+            {
+                ResultToReturn = new TrainingRunResult { RunId = "run-ok", Success = true, ExitCode = 0, OnnxArtifactPath = mockOnnx, MetricsArtifactPath = metrics },
+            };
+            var vm = new TrainingWizardViewModel(orchestrator: orchestrator, modelDeploymentService: new FakeModelDeploymentService(), marketDataProvider: market);
+            await WaitForInitializationAsync(vm);
+            vm.Horizon = 5;
+            await vm.StartTrainingCommand.ExecuteAsync(null);
+
+            await vm.DeployToModelsCommand.ExecuteAsync(null);
+
+            Assert.Contains("test-generation", vm.StatusMessage);
+            Assert.Equal(hint, vm.StatusMessage!.Contains(LocalizationManager.Instance["TrainingWizard_Status_NotBetterThanGuessing"]));
+        }
+        finally { try { Directory.Delete(folder, recursive: true); } catch (IOException) { /* temp folder */ } }
+    }
+
+    [Theory]
+    [InlineData(100, 0, true)]     // never reaches the threshold: the note
+    [InlineData(90, 10, false)]    // reaches it in 10 %: the plain statement
+    public async Task TrainingAndDeploy_SayHowOftenTheModelReachesTheChartsConfidenceThreshold(int below, int reaching, bool zero)
+    {
+        var market = new DummyMarketDataProvider("AAPL");
+        var folder = Path.Combine(Path.GetTempPath(), "sa_wizard_reach_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        try
+        {
+            var mockOnnx = Path.Combine(folder, "model.onnx");
+            var metrics = mockOnnx + ".metrics.json";
+            File.WriteAllText(metrics, "{\"fold_macro_f1\":0.2}");
+            PredictionModelsViewModelTests.WithReach(mockOnnx, (36, below), (55, reaching));
+            var orchestrator = new FakeTrainingOrchestrator
+            {
+                ResultToReturn = new TrainingRunResult { RunId = "run-ok", Success = true, ExitCode = 0, OnnxArtifactPath = mockOnnx, MetricsArtifactPath = metrics },
+            };
+            var vm = new TrainingWizardViewModel(orchestrator: orchestrator, modelDeploymentService: new FakeModelDeploymentService(), marketDataProvider: market,
+                settings: PredictionModelsViewModelTests.ThresholdSettingsProxy.Create(0.5f));
+            await WaitForInitializationAsync(vm);
+            vm.Horizon = 5;
+            await vm.StartTrainingCommand.ExecuteAsync(null);
+
+            string line = ModelReachDisplay.StatusLine(reaching / 100.0, cannotReach: reaching == 0, 0.5f);
+            string zeroNote = string.Format(System.Globalization.CultureInfo.CurrentCulture, LocalizationManager.Instance["TrainingWizard_Status_ReachZero"], "50%", "0.0%");
+            Assert.Equal(zero, line == zeroNote);
+            Assert.EndsWith(line, vm.StatusMessage);                                    // right after the training
+            await vm.DeployToModelsCommand.ExecuteAsync(null);
+            Assert.EndsWith(line, vm.StatusMessage);                                    // and after registering it
+        }
+        finally { try { Directory.Delete(folder, recursive: true); } catch (IOException) { /* temp folder */ } }
+    }
+
+    [Fact]
+    public async Task TrainingWithoutTheThresholdOrTheHistogram_AddsNoReachLine()
+    {
+        var market = new DummyMarketDataProvider("AAPL");
+        var folder = Path.Combine(Path.GetTempPath(), "sa_wizard_noreach_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        try
+        {
+            var mockOnnx = Path.Combine(folder, "model.onnx");
+            File.WriteAllText(mockOnnx + ".metrics.json", "{\"fold_multi_logloss\":0.9}");
+            var orchestrator = new FakeTrainingOrchestrator
+            {
+                ResultToReturn = new TrainingRunResult { RunId = "run-ok", Success = true, ExitCode = 0, OnnxArtifactPath = mockOnnx, MetricsArtifactPath = mockOnnx + ".metrics.json" },
+            };
+            var vm = new TrainingWizardViewModel(orchestrator: orchestrator, modelDeploymentService: new FakeModelDeploymentService(), marketDataProvider: market,
+                settings: PredictionModelsViewModelTests.ThresholdSettingsProxy.Create(0.5f));
+            await WaitForInitializationAsync(vm);
+            vm.Horizon = 5;
+            await vm.StartTrainingCommand.ExecuteAsync(null);
+            Assert.Equal(LocalizationManager.Instance["TrainingWizard_Status_Completed"], vm.StatusMessage);       // no histogram in the file
+
+            File.WriteAllText(mockOnnx + ".metrics.json", "{\"confidence_reach\":{\"bins\":2,\"n\":1,\"max_probability_histogram\":[0,1]}}");
+            var withoutSettings = new TrainingWizardViewModel(orchestrator: orchestrator, modelDeploymentService: new FakeModelDeploymentService(), marketDataProvider: market);
+            await WaitForInitializationAsync(withoutSettings);
+            withoutSettings.Horizon = 5;
+            await withoutSettings.StartTrainingCommand.ExecuteAsync(null);
+            Assert.Equal(LocalizationManager.Instance["TrainingWizard_Status_Completed"], withoutSettings.StatusMessage);   // no threshold known
+        }
+        finally { try { Directory.Delete(folder, recursive: true); } catch (IOException) { /* temp folder */ } }
+    }
+
     [Fact]
     public async Task DeployToModelsAsync_NotActive_MessageNamesSettingsAiPredictionsAndConfirm()
     {
@@ -919,6 +1014,44 @@ public class TrainingWizardViewModelTests : IDisposable
         Assert.Equal(string.Format(System.Globalization.CultureInfo.CurrentCulture, template, "test-generation"), vm.StatusMessage);
         Assert.Contains("{0}", template);
         Assert.DoesNotContain("window size or score", template);
+        Assert.DoesNotContain("Confirm activation", template);   // the confirmation UI no longer exists
+    }
+
+    [Theory]
+    [InlineData("{\"fold_multi_logloss\":1.2}", false, true, "log-loss")]        // not better than a uniform guess
+    [InlineData("{\"fold_multi_logloss\":0.9}", true, true, "threshold")]        // a zero reach (histogram written below)
+    [InlineData("{\"fold_multi_logloss\":0.9}", false, false, "")]               // nothing stops it: the former text
+    public async Task DeployToModelsAsync_NotActive_NamesTheReasonWhenTheGateStoppedTheAutomaticActivation(string metricsJson, bool zeroReach, bool stopped, string reasonPart)
+    {
+        var market = new DummyMarketDataProvider("AAPL");
+        var folder = Path.Combine(Path.GetTempPath(), "sa_wizard_gate_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        try
+        {
+            var mockOnnx = Path.Combine(folder, "model.onnx");
+            var metrics = mockOnnx + ".metrics.json";
+            File.WriteAllText(metrics, metricsJson);
+            if (zeroReach) PredictionModelsViewModelTests.WithReach(mockOnnx, (36, 100));   // 100 windows, none at or above 0.5
+            var orchestrator = new FakeTrainingOrchestrator
+            {
+                ResultToReturn = new TrainingRunResult { RunId = "run-ok", Success = true, ExitCode = 0, OnnxArtifactPath = mockOnnx, MetricsArtifactPath = metrics },
+            };
+            var vm = new TrainingWizardViewModel(orchestrator: orchestrator, modelDeploymentService: new FakeModelDeploymentService(), marketDataProvider: market,
+                modelRegistry: new FakeGenerationRegistry { ActiveId = "different-active-id" }, settings: PredictionModelsViewModelTests.ThresholdSettingsProxy.Create(0.5f));
+            await WaitForInitializationAsync(vm);
+            vm.Horizon = 5;
+            await vm.StartTrainingCommand.ExecuteAsync(null);
+            await vm.DeployToModelsCommand.ExecuteAsync(null);
+
+            string former = string.Format(System.Globalization.CultureInfo.CurrentCulture, LocalizationManager.Instance["TrainingWizard_Status_RegisteredNotActivated"], "test-generation");
+            Assert.Equal(stopped, !vm.StatusMessage!.StartsWith(former, StringComparison.Ordinal));
+            if (!stopped) return;
+            string reasons = reasonPart == "log-loss"
+                ? LocalizationManager.Instance["TrainingWizard_Status_StopReasonNotBetter"]
+                : string.Format(LocalizationManager.Instance["TrainingWizard_Status_StopReasonReach"], "50%");
+            Assert.StartsWith(string.Format(LocalizationManager.Instance["TrainingWizard_Status_RegisteredNotAutoActivated"], "test-generation", reasons), vm.StatusMessage);
+        }
+        finally { try { Directory.Delete(folder, recursive: true); } catch (IOException) { /* temp folder */ } }
     }
 
     [Fact]

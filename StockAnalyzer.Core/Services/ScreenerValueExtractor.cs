@@ -29,6 +29,14 @@ public class ScreenerValueExtractor : IScreenerValueExtractor
     private static readonly Lazy<ScreenerValueExtractor> _instance = new(() => new ScreenerValueExtractor());
     public static ScreenerValueExtractor Default => _instance.Value;
 
+    public ScreenerFaultLog Faults { get; } = new();
+
+    /// <summary>
+    /// Maximum bars since confirmation for pattern detection in screening (D5 = B'', N = 5).
+    /// Default is 5.
+    /// </summary>
+    public int PatternMaxBarsSinceConfirmation { get; set; } = ChartConstants.DefaultPatternMaxBarsSinceConfirmation;
+
     private static readonly ConcurrentDictionary<string, PropertyInfo?> _metadataPropertyCache = new(StringComparer.OrdinalIgnoreCase);
     // One indicator instance per (type, managed thread id), kept as long as this extractor lives (the Default singleton: the process). The size is bounded
     // by the distinct thread ids ever seen x the types used; the runtime recycles ids, which keeps the count small (observed, not guaranteed: 150 short-lived
@@ -177,7 +185,7 @@ public class ScreenerValueExtractor : IScreenerValueExtractor
 
         if (config.CategoryType == ScreenerItemCategoryType.Criteria)
         {
-            string name = config.ResolveLookupName() ?? "";
+            string name = config.ResolveCriteriaName() ?? "";
 
             // The pattern is evaluated on the bars up to the target bar, on the window its detector needs (the history sizing uses the same definition).
             int maxWindow = ScreenerHistoryRequirements.GetCriteriaWindowBars(name);
@@ -212,17 +220,23 @@ public class ScreenerValueExtractor : IScreenerValueExtractor
                 // 2. Harmonic Patterns (Gartley, Butterfly, Bat)
                 if (name.Contains("Gartley", StringComparison.OrdinalIgnoreCase))
                 {
-                    var condition = new HarmonicPatternCondition(HarmonicPatternType.Gartley);
+                    var condition = new HarmonicPatternCondition(
+                        HarmonicPatternType.Gartley,
+                        maxBarsSinceConfirmation: PatternMaxBarsSinceConfirmation);
                     return condition.IsMet(portfolioCandles) ? 1m : 0m;
                 }
                 if (name.Contains("Butterfly", StringComparison.OrdinalIgnoreCase))
                 {
-                    var condition = new HarmonicPatternCondition(HarmonicPatternType.Butterfly);
+                    var condition = new HarmonicPatternCondition(
+                        HarmonicPatternType.Butterfly,
+                        maxBarsSinceConfirmation: PatternMaxBarsSinceConfirmation);
                     return condition.IsMet(portfolioCandles) ? 1m : 0m;
                 }
                 if (name.Contains("Bat", StringComparison.OrdinalIgnoreCase))
                 {
-                    var condition = new HarmonicPatternCondition(HarmonicPatternType.Bat);
+                    var condition = new HarmonicPatternCondition(
+                        HarmonicPatternType.Bat,
+                        maxBarsSinceConfirmation: PatternMaxBarsSinceConfirmation);
                     return condition.IsMet(portfolioCandles) ? 1m : 0m;
                 }
 
@@ -249,15 +263,31 @@ public class ScreenerValueExtractor : IScreenerValueExtractor
                 // 5. Strict Deterministic Pattern Detection (Head & Shoulders, Double Top/Bottom)
                 if (name.Contains("Head", StringComparison.OrdinalIgnoreCase) || name.Contains("Shoulder", StringComparison.OrdinalIgnoreCase))
                 {
-                    if (name.Contains("Bottom", StringComparison.OrdinalIgnoreCase) || name.Contains("Inverse", StringComparison.OrdinalIgnoreCase))
-                        return MarketStructureDetector.IsHeadAndShouldersBottom(portfolioCandles) ? 1m : 0m;
-                    return MarketStructureDetector.IsHeadAndShouldersTop(portfolioCandles) ? 1m : 0m;
+                    bool hasTop = name.Contains("Top", StringComparison.OrdinalIgnoreCase);
+                    bool hasBottom = name.Contains("Bottom", StringComparison.OrdinalIgnoreCase) || name.Contains("Inverse", StringComparison.OrdinalIgnoreCase);
+
+                    if (hasTop && !hasBottom)
+                        return MarketStructureDetector.IsHeadAndShouldersTopConfirmed(portfolioCandles) ? 1m : 0m;
+                    if (hasBottom && !hasTop)
+                        return MarketStructureDetector.IsHeadAndShouldersBottomConfirmed(portfolioCandles) ? 1m : 0m;
+
+                    // When both or neither side is specified (catalog item "Head and Shoulders" / "Top/Bottom"), evaluate Top || Bottom per D3=A
+                    return (MarketStructureDetector.IsHeadAndShouldersTopConfirmed(portfolioCandles) ||
+                            MarketStructureDetector.IsHeadAndShouldersBottomConfirmed(portfolioCandles)) ? 1m : 0m;
                 }
                 if (name.Contains("Double", StringComparison.OrdinalIgnoreCase))
                 {
-                    if (name.Contains("Bottom", StringComparison.OrdinalIgnoreCase))
-                        return MarketStructureDetector.IsDoubleBottom(portfolioCandles) ? 1m : 0m;
-                    return MarketStructureDetector.IsDoubleTop(portfolioCandles) ? 1m : 0m;
+                    bool hasTop = name.Contains("Top", StringComparison.OrdinalIgnoreCase);
+                    bool hasBottom = name.Contains("Bottom", StringComparison.OrdinalIgnoreCase);
+
+                    if (hasTop && !hasBottom)
+                        return MarketStructureDetector.IsDoubleTopConfirmed(portfolioCandles) ? 1m : 0m;
+                    if (hasBottom && !hasTop)
+                        return MarketStructureDetector.IsDoubleBottomConfirmed(portfolioCandles) ? 1m : 0m;
+
+                    // When both or neither side is specified (catalog item "Double Top / Bottom"), evaluate Top || Bottom per D3=A
+                    return (MarketStructureDetector.IsDoubleTopConfirmed(portfolioCandles) ||
+                            MarketStructureDetector.IsDoubleBottomConfirmed(portfolioCandles)) ? 1m : 0m;
                 }
 
                 // 6. Geometric Pattern (Channel, Flag, Wedge, Triangle, Pennant, Megaphone)
@@ -299,8 +329,9 @@ public class ScreenerValueExtractor : IScreenerValueExtractor
                     return 0m;
                 }
             }
-            catch
+            catch (Exception ex) when (ex is not OperationCanceledException and not OutOfMemoryException)
             {
+                Faults.Record(ScreenerFaultLog.SiteCriteria, ex);
                 // A detector that throws gives no value for this bar.
                 return null;
             }
@@ -360,8 +391,9 @@ public class ScreenerValueExtractor : IScreenerValueExtractor
                             indicator.Configure(defaultSettings.ParameterObject);
                         }
                     }
-                    catch
+                    catch (Exception ex) when (ex is not OperationCanceledException and not OutOfMemoryException)
                     {
+                        Faults.Record(ScreenerFaultLog.SiteIndicatorConfigure, ex);
                         // Best effort parameter configuration fallback
                     }
                 }
@@ -380,8 +412,9 @@ public class ScreenerValueExtractor : IScreenerValueExtractor
                 }
             }
         }
-        catch
+        catch (Exception ex) when (ex is not OperationCanceledException and not OutOfMemoryException)
         {
+            Faults.Record(ScreenerFaultLog.SiteIndicatorCalculate, ex);
             // An indicator that throws gives no value for this bar.
         }
 
@@ -392,7 +425,7 @@ public class ScreenerValueExtractor : IScreenerValueExtractor
     /// Maps a catalog display name to a <see cref="CandlePatternType"/> enum value.
     /// Returns null if the name does not correspond to a known candlestick pattern.
     /// </summary>
-    private static CandlePatternType? ResolveCandlePatternType(string name)
+    internal static CandlePatternType? ResolveCandlePatternType(string name)
     {
         if (string.IsNullOrWhiteSpace(name)) return null;
 
@@ -458,7 +491,7 @@ public class ScreenerValueExtractor : IScreenerValueExtractor
     /// Maps a catalog display name to a <see cref="GeometricFormationType"/> enum value.
     /// Returns null if the name does not correspond to a known geometric pattern.
     /// </summary>
-    private static GeometricFormationType? ResolveGeometricFormationType(string name)
+    internal static GeometricFormationType? ResolveGeometricFormationType(string name)
     {
         if (string.IsNullOrWhiteSpace(name)) return null;
 
@@ -501,7 +534,7 @@ public class ScreenerValueExtractor : IScreenerValueExtractor
     /// Safely extracts a fundamental metric value from <see cref="TickerMetadata"/> by column name or property alias.
     /// Uses fuzzy string normalization combined with reflection fallback to support 100% of UI column metrics.
     /// </summary>
-    private static decimal? GetMetadataValue(TickerMetadata meta, string name)
+    private decimal? GetMetadataValue(TickerMetadata meta, string name)
     {
         if (string.IsNullOrWhiteSpace(name)) return null;
 
@@ -683,7 +716,10 @@ public class ScreenerValueExtractor : IScreenerValueExtractor
                 if (val is int i) return (decimal)i;
             }
         }
-        catch { }
+        catch (Exception ex) when (ex is not OperationCanceledException and not OutOfMemoryException)
+        {
+            Faults.Record(ScreenerFaultLog.SiteMetadataProperty, ex);
+        }
 
         return null;
     }

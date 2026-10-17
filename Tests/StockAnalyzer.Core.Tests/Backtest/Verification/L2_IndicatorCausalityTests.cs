@@ -27,7 +27,12 @@ public class L2_IndicatorCausalityTests
     private static CoreCandleData[] ToCore(ImmutableArray<CandleData> bars)
         => bars.Select((b, index) => new CoreCandleData(b.Timestamp, b.Open, b.High, b.Low, b.Close, b.Volume + index)).ToArray();
 
-    private static (Outcome Outcome, string Detail, ISet<string> ViolatingSeries) Classify(IndicatorFactory factory, IndicatorType type, CoreCandleData[] original, CoreCandleData[] poisoned)
+    private static readonly Dictionary<IndicatorType, int[]> ExtraPoisonStartIndices = new()
+    {
+        [IndicatorType.MarketStructureShift] = new[] { 240 }
+    };
+
+    private static (Outcome Outcome, string Detail, ISet<string> ViolatingSeries) Classify(IndicatorFactory factory, IndicatorType type, CoreCandleData[] original, CoreCandleData[] poisoned, int poisonStartIndex = VerificationParameters.IndicatorPoisonStartIndex)
     {
         var violating = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
         var notEvaluable = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -50,7 +55,7 @@ public class L2_IndicatorCausalityTests
                 IReadOnlyList<decimal?> sa = ra.GetSeries(name);
                 if (!rb.HasSeries(name)) { violating.Add(name); detail.Append($"'{name}' missing after poisoning; "); continue; }
                 IReadOnlyList<decimal?> sb = rb.GetSeries(name);
-                int limit = Math.Min(VerificationParameters.IndicatorPoisonStartIndex, sa.Count);
+                int limit = Math.Min(poisonStartIndex, sa.Count);
                 if (sb.Count < limit) { violating.Add(name); detail.Append($"'{name}' shorter after poisoning; "); continue; }
                 if (limit == 0 || !sa.Take(limit).Any(value => value.HasValue) || !sb.Take(limit).Any(value => value.HasValue))
                 {
@@ -92,6 +97,22 @@ public class L2_IndicatorCausalityTests
         foreach (IndicatorType type in factory.GetRegisteredTypes().OrderBy(t => t.ToString(), StringComparer.Ordinal))
         {
             (Outcome outcome, string detail, ISet<string> violating) = Classify(factory, type, original, poisoned);
+            if (outcome != Outcome.NonCausal && ExtraPoisonStartIndices.TryGetValue(type, out int[]? extraStarts))
+            {
+                foreach (int extraStart in extraStarts)
+                {
+                    CoreCandleData[] extraPoisoned = ToCore(SyntheticBars.Poison(bars, extraStart,
+                        VerificationParameters.IndicatorPoisonUpFactor, VerificationParameters.IndicatorPoisonDownFactor));
+                    (Outcome extraOutcome, string extraDetail, ISet<string> extraViolating) = Classify(factory, type, original, extraPoisoned, extraStart);
+                    if (extraOutcome == Outcome.NonCausal)
+                    {
+                        outcome = extraOutcome;
+                        detail = extraDetail;
+                        violating = extraViolating;
+                        break;
+                    }
+                }
+            }
             bool typeBlockedAsNonCausal = BacktestIndicatorEligibility.NonCausalIndicatorTypes.Contains(type);
             bool typeBlockedAsSyncUnsupported = BacktestIndicatorEligibility.SynchronousCalculationUnsupportedTypes.Contains(type);
             var blockedSeries = BacktestIndicatorEligibility.NonCausalSeries

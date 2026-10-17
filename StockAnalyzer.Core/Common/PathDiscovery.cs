@@ -16,6 +16,7 @@ public static class PathDiscovery
     private const string SolutionFileName = "StockAnalyzer.sln";
     private const string ModelsFolderName = "Models";
     private const string ModelGenerationsFolderName = "Generations";
+    private const string TrainingWizardArtifactsFolderName = "TW";
     // Fallback only: used when the configured path has no filename component.
     // PredictionSettings.Validate() rejects an empty ModelPath, so production never hits this.
     private const string DefaultPredictionModelFileName = "trend_predictor.onnx";
@@ -435,6 +436,13 @@ public static class PathDiscovery
 
         return dataCandidate;
     }
+
+    /// <summary>
+    /// <c>&lt;DataRoot&gt;/TrainingArtifacts/TW</c>: where the Training Wizard writes its models and sidecars (same location as <c>dataset.TRAINING_WIZARD_ARTIFACTS_DIR</c>
+    /// in the trainer). The folder is not created here; it may not exist yet.
+    /// </summary>
+    public static string ResolveTrainingWizardArtifactsDirectory() =>
+        Path.Combine(ResolveDataPath(null, DataFolderName), StockAnalyzer.Core.Models.ReinforcementLearning.RlFiles.TrainingFolder, TrainingWizardArtifactsFolderName);
 
     /// <summary>Canonical immutable model generation store under the prediction Models directory.</summary>
     public static string ResolveModelGenerationsDirectory()

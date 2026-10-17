@@ -65,15 +65,25 @@ public sealed class StoredPeriodAdvisor : IStoredPeriodAdvisor
     public Task<StoredPeriodProposal> ProposeForTrainingAsync(IReadOnlyList<string> symbols, TrainingTimeframe timeframe, int requiredBars,
         DateOnly? endBoundInclusive, CancellationToken cancellationToken)
     {
-        string folder = Path.GetFullPath(timeframe switch
-        {
-            TrainingTimeframe.Daily => PathDiscovery.ResolveDataPath(_settings.DailyDataPath, MarketDataSettings.DefaultDailyDataPath),
-            TrainingTimeframe.Weekly => PathDiscovery.ResolveDataPath(_settings.WeeklyDataPath, MarketDataSettings.DefaultWeeklyDataPath),
-            TrainingTimeframe.Monthly => PathDiscovery.ResolveDataPath(_settings.MonthlyDataPath, MarketDataSettings.DefaultMonthlyDataPath),
-            _ => throw new ArgumentOutOfRangeException(nameof(timeframe), timeframe, "Unsupported training timeframe."),
-        });
+        string folder = TrainingFolder(timeframe);
         return Task.Run(() => ProposeStored(symbols, requiredBars, endBoundInclusive, folder, cancellationToken), cancellationToken);
     }
+
+    public Task<IReadOnlyList<SymbolBarInfo>> ReadSymbolBarsForTrainingAsync(IReadOnlyList<string> symbols, TrainingTimeframe timeframe, int requiredBars,
+        DateOnly? start, DateOnly? end, CancellationToken cancellationToken)
+    {
+        string folder = TrainingFolder(timeframe);
+        return Task.Run(() => ReadSymbolBars(symbols, requiredBars, start, end, folder, cancellationToken), cancellationToken);
+    }
+
+    /// <summary>The configured folder of the timeframe (the one folder rule of the Training Wizard family).</summary>
+    private string TrainingFolder(TrainingTimeframe timeframe) => Path.GetFullPath(timeframe switch
+    {
+        TrainingTimeframe.Daily => PathDiscovery.ResolveDataPath(_settings.DailyDataPath, MarketDataSettings.DefaultDailyDataPath),
+        TrainingTimeframe.Weekly => PathDiscovery.ResolveDataPath(_settings.WeeklyDataPath, MarketDataSettings.DefaultWeeklyDataPath),
+        TrainingTimeframe.Monthly => PathDiscovery.ResolveDataPath(_settings.MonthlyDataPath, MarketDataSettings.DefaultMonthlyDataPath),
+        _ => throw new ArgumentOutOfRangeException(nameof(timeframe), timeframe, "Unsupported training timeframe."),
+    });
 
     /// <summary>The Daily and Metadata folders of the RL family (the fixed Data folders, as the panel advisor and the preflight use them).</summary>
     private static (string Daily, string Metadata) LocalFolders()
@@ -148,6 +158,34 @@ public sealed class StoredPeriodAdvisor : IStoredPeriodAdvisor
         }
         finally { session?.Dispose(); }
         return StoredPeriodMath.Propose(calendars, requiredBars);
+    }
+
+    /// <summary>Training Wizard family: every stored bar counts; an unreadable symbol is left out; more symbols than the cap, or a requirement that is not positive, reads nothing.</summary>
+    internal IReadOnlyList<SymbolBarInfo> ReadSymbolBars(IReadOnlyList<string> symbols, int requiredBars, DateOnly? start, DateOnly? end, string folder,
+        CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(symbols);
+        var distinct = Distinct(symbols);
+        if (distinct.Length > _maximumSymbols || requiredBars <= 0) return Array.Empty<SymbolBarInfo>();
+        var calendars = new List<StoredPeriodCalendar>();
+        RlLocalParquetSession? session = null;
+        try
+        {
+            foreach (string symbol in distinct)
+            {
+                ct.ThrowIfCancellationRequested();
+                try
+                {
+                    string? source = ParquetMarketDataProvider.ResolveFilePath(folder, symbol);
+                    if (source is null) continue;
+                    session ??= new RlLocalParquetSession(_limits);
+                    calendars.Add(new StoredPeriodCalendar(symbol, session.ReadDates(source, DateOnly.MaxValue, ct)));
+                }
+                catch (Exception error) when (error is not OperationCanceledException) { }
+            }
+        }
+        finally { session?.Dispose(); }
+        return StoredPeriodBarCounts.Build(calendars, requiredBars, start, end);
     }
 
     /// <summary>Drops the bars on or after the exchange date (when given) and after the end bound (when given); the symbol itself stays.</summary>

@@ -23,4 +23,13 @@ public interface IStoredPeriodAdvisor
     /// <summary>The Training Wizard family: the configured folder of the timeframe, every stored bar counts (no finality rule).</summary>
     Task<StoredPeriodProposal> ProposeForTrainingAsync(IReadOnlyList<string> symbols, TrainingTimeframe timeframe, int requiredBars,
         DateOnly? endBoundInclusive, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// The Training Wizard family: how many stored bars each symbol has in the period [<paramref name="start"/>, <paramref name="end"/>] (a null bound is
+    /// unbounded) and from where <paramref name="requiredBars"/> bars are available (see <see cref="SymbolBarInfo"/>). Read-only; a symbol whose file cannot
+    /// be read is left out. The default implementation reports nothing, so implementers written before this member keep working.
+    /// </summary>
+    Task<IReadOnlyList<SymbolBarInfo>> ReadSymbolBarsForTrainingAsync(IReadOnlyList<string> symbols, TrainingTimeframe timeframe, int requiredBars,
+        DateOnly? start, DateOnly? end, CancellationToken cancellationToken)
+        => Task.FromResult<IReadOnlyList<SymbolBarInfo>>(Array.Empty<SymbolBarInfo>());
 }

@@ -22,7 +22,6 @@ public static class SettingsConstants
         public const string Fonts = "Fonts";
         public const string Python = "Python";
         public const string AIPredictions = "AIPredictions";
-        public const string RlPlayback = "RlPlayback";
         public const string Backtest = "Backtest";
         public const string TrainingWizard = "TrainingWizard";
         public const string Tickers = "Tickers";
@@ -56,7 +55,6 @@ public static class SettingsConstants
         new(Keys.Fonts, "Settings_Fonts", "SettingsFontsIcon"),
         new(Keys.Python, "Settings_Python", "SettingsPythonIcon"),
         new(Keys.AIPredictions, "Settings_AIPredictions", "SettingsAdvIcon"),
-        new(Keys.RlPlayback, "Settings_RlPlayback", "SettingsAdvIcon"),
         new(Keys.Backtest, "Settings_Backtest", "SettingsBacktestIcon"),
         new(Keys.TrainingWizard, "Settings_TrainingWizard", "SettingsAdvIcon"),
         new(Keys.Tickers, "Settings_Tickers", "SettingsTickersIcon"),

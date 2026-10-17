@@ -100,10 +100,8 @@ def build_model(arch: str, channels: int, window: int, hidden: int, dense: int, 
 # --- Training -----------------------------------------------------------------
 
 
-def _class_weight(y: np.ndarray) -> dict:
-    counts = np.array([(y == c).sum() for c in range(NUM_CLASSES)], dtype=np.float64)
-    counts[counts == 0] = 1.0
-    w = counts.sum() / (NUM_CLASSES * counts)
+def _class_weight(y: np.ndarray, power: float | None = None) -> dict:
+    w = ds.class_weight_vector(y, power)
     return {c: float(w[c]) for c in range(NUM_CLASSES)}
 
 
@@ -161,7 +159,7 @@ def train_model(
         validation_data=(x_va, y_va),
         epochs=args.epochs,
         batch_size=args.batch,
-        class_weight=_class_weight(y_tr),
+        class_weight=_class_weight(y_tr, args.class_weight_power),
         callbacks=[tf.keras.callbacks.EarlyStopping(
             monitor="val_loss", patience=args.patience, restore_best_weights=True,
         )],
@@ -268,6 +266,8 @@ def _parse_args(argv) -> argparse.Namespace:
     p.add_argument("--horizon", type=int, default=ds.DEFAULT_HORIZON)
     p.add_argument("--timeframe", choices=tuple(ds.TIMEFRAME_DIRS), default=onnx_meta.DEFAULT_TIMEFRAME)
     p.add_argument("--threshold", type=float, default=ds.DEFAULT_THRESHOLD)
+    p.add_argument("--class-weight-power", type=float, default=None,
+                   help=f"Exponent of the class weights, in [0, 1]: 1 = inverse frequency (default {ds.DEFAULT_CLASS_WEIGHT_POWER}), 0 = unweighted.")
     p.add_argument("--hidden", type=int, default=DEFAULT_HIDDEN)
     p.add_argument("--dense", type=int, default=DEFAULT_DENSE)
     p.add_argument("--dropout", type=float, default=DEFAULT_DROPOUT)
@@ -300,6 +300,7 @@ def _parse_args(argv) -> argparse.Namespace:
     try:
         ds.bagging_from_args(args)
         cpcv_spec = ds.cpcv_from_args(args)
+        ds.resolve_class_weight_power(args.class_weight_power)
     except ValueError as exc:
         raise SystemExit(str(exc)) from exc
     if cpcv_spec is not None and (args.outer_fold_index is not None or ds.holdout_segment_requested(args)

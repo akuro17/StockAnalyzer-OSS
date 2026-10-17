@@ -21,14 +21,18 @@ public static class GeometricPatternDetector
     /// <returns>A list of detected formations, ordered by start index.</returns>
     public static IReadOnlyList<DetectedFormation> Detect(
         IReadOnlyList<CandleData> candles,
-        decimal zigzagThreshold)
+        decimal zigzagThreshold,
+        bool useRobustFit = false,
+        bool promoteFlagsAndPennants = false)
     {
-        return Detect(candles, new[] { zigzagThreshold });
+        return Detect(candles, new[] { zigzagThreshold }, useRobustFit, promoteFlagsAndPennants);
     }
 
     public static IReadOnlyList<DetectedFormation> Detect(
         IReadOnlyList<CandleData> candles,
-        decimal[]? zigzagThresholds = null)
+        decimal[]? zigzagThresholds = null,
+        bool useRobustFit = false,
+        bool promoteFlagsAndPennants = false)
     {
         if (candles == null || candles.Count < ChartConstants.GeometricMinPivotCount * 2)
         {
@@ -63,7 +67,7 @@ public static class GeometricPatternDetector
 
                     if (highs.Count >= 2 && lows.Count >= 2)
                     {
-                        var formation = AnalyzeFormation(highs, lows, candles);
+                        var formation = AnalyzeFormation(highs, lows, candles, useRobustFit, promoteFlagsAndPennants);
                         if (formation != null)
                         {
                             if (formation.ConfidenceScore >= ChartConstants.GeometricMinRSquared)
@@ -148,16 +152,20 @@ public static class GeometricPatternDetector
     /// </summary>
     public static DetectedFormation? DetectLatest(
         IReadOnlyList<CandleData> candles,
-        decimal zigzagThreshold)
+        decimal zigzagThreshold,
+        bool useRobustFit = false,
+        bool promoteFlagsAndPennants = false)
     {
-        return DetectLatest(candles, new[] { zigzagThreshold });
+        return DetectLatest(candles, new[] { zigzagThreshold }, useRobustFit, promoteFlagsAndPennants);
     }
 
     public static DetectedFormation? DetectLatest(
         IReadOnlyList<CandleData> candles,
-        decimal[]? zigzagThresholds = null)
+        decimal[]? zigzagThresholds = null,
+        bool useRobustFit = false,
+        bool promoteFlagsAndPennants = false)
     {
-        var formations = Detect(candles, zigzagThresholds);
+        var formations = Detect(candles, zigzagThresholds, useRobustFit, promoteFlagsAndPennants);
         return formations.Count > 0 ? formations.Last() : null;
     }
 
@@ -167,27 +175,40 @@ public static class GeometricPatternDetector
     internal static DetectedFormation? AnalyzeFormation(
         IReadOnlyList<PivotPoint> highs,
         IReadOnlyList<PivotPoint> lows,
-        IReadOnlyList<CandleData> candles)
+        IReadOnlyList<CandleData> candles,
+        bool useRobustFit = false,
+        bool promoteFlagsAndPennants = false)
     {
         if (highs.Count < 2 || lows.Count < 2)
             return null;
-
-        // Fit robust regression (Theil-Sen) on highs and lows to ignore wicks/outliers
-        var (upperSlope, upperIntercept, upperRSquared) = CalculateTheilSen(highs);
-        var (lowerSlope, lowerIntercept, lowerRSquared) = CalculateTheilSen(lows);
-
-        // Require minimum fit quality
-        double avgRSquared = (upperRSquared + lowerRSquared) / 2.0;
-        if (avgRSquared < ChartConstants.GeometricMinRSquared)
-        {
-            return null;
-        }
 
         // Determine formation boundaries
         int startIndex = Math.Min(highs[0].Index, lows[0].Index);
         int endIndex = Math.Max(highs[highs.Count - 1].Index, lows[lows.Count - 1].Index);
 
         if (startIndex >= endIndex || startIndex < 0 || endIndex >= candles.Count)
+        {
+            return null;
+        }
+
+        // Fit robust regression on highs and lows
+        double upperSlope, upperIntercept, upperRSquared;
+        double lowerSlope, lowerIntercept, lowerRSquared;
+
+        if (useRobustFit)
+        {
+            (upperSlope, upperIntercept, upperRSquared) = CalculateRobustFit(highs, candles, startIndex, endIndex);
+            (lowerSlope, lowerIntercept, lowerRSquared) = CalculateRobustFit(lows, candles, startIndex, endIndex);
+        }
+        else
+        {
+            (upperSlope, upperIntercept, upperRSquared) = CalculateTheilSen(highs);
+            (lowerSlope, lowerIntercept, lowerRSquared) = CalculateTheilSen(lows);
+        }
+
+        // Require minimum fit quality
+        double avgRSquared = (upperRSquared + lowerRSquared) / 2.0;
+        if (avgRSquared < ChartConstants.GeometricMinRSquared)
         {
             return null;
         }
@@ -282,8 +303,8 @@ public static class GeometricPatternDetector
         }
 
         // Touch verification: discard patterns that do not genuinely touch the boundaries at least twice
-        int upperTouchCount = CountTouches(upperSlope, upperInterceptAtStart, highs, ChartConstants.GeometricTouchTolerance);
-        int lowerTouchCount = CountTouches(lowerSlope, lowerInterceptAtStart, lows, ChartConstants.GeometricTouchTolerance);
+        int upperTouchCount = CountTouches(upperSlope, upperInterceptAtStart, highs, ChartConstants.GeometricTouchTolerance, startIndex);
+        int lowerTouchCount = CountTouches(lowerSlope, lowerInterceptAtStart, lows, ChartConstants.GeometricTouchTolerance, startIndex);
         if (upperTouchCount < 2 || lowerTouchCount < 2)
         {
             return null;
@@ -297,10 +318,15 @@ public static class GeometricPatternDetector
         }
 
         // Check for pole (flag/pennant)
-        bool hasPole = DetectPole(candles, startIndex);
+        int poleDirection = DetectPoleDirection(candles, startIndex);
+        bool hasPole = poleDirection != 0;
 
         // Refine classification based on pole presence
         var finalType = RefineClassification(formationType.Value, hasPole, upperSlope, lowerSlope, avgPrice);
+        if (promoteFlagsAndPennants)
+        {
+            finalType = PromoteWithPole(finalType, poleDirection);
+        }
 
         return new DetectedFormation(
             finalType,
@@ -332,7 +358,7 @@ public static class GeometricPatternDetector
         double normLowerSlope = NormalizeSlope(lowerSlope, candles, startIndex, endIndex);
 
         // Normalized Thresholds
-        const double flatThreshold = 0.10; // Practically horizontal
+        const double flatThreshold = ChartConstants.GeometricFlatSlopeThreshold; // Practically horizontal
 
         bool upperFlat = Math.Abs(normUpperSlope) < flatThreshold;
         bool lowerFlat = Math.Abs(normLowerSlope) < flatThreshold;
@@ -447,25 +473,25 @@ public static class GeometricPatternDetector
     }
 
     /// <summary>
-    /// Detects if there is a strong directional price movement (pole) immediately preceding the formation start.
-    /// Verifies both the sheer magnitude of the move and directional consistency.
+    /// Detects if there is a strong directional price movement (pole) immediately preceding the formation start,
+    /// returning +1 for an upward pole, -1 for a downward pole, or 0 if no pole exists.
     /// </summary>
-    internal static bool DetectPole(IReadOnlyList<CandleData> candles, int startIndex)
+    internal static int DetectPoleDirection(IReadOnlyList<CandleData> candles, int startIndex)
     {
         int lookback = ChartConstants.GeometricPoleLookbackBars;
         if (startIndex < lookback)
-            return false;
+            return 0;
 
         int searchStart = startIndex - lookback;
         decimal startPrice = candles[searchStart].Close;
         decimal endPrice = candles[startIndex].Close;
 
-        if (startPrice == 0) return false;
+        if (startPrice <= 0m) return 0;
 
-        // Check if the total move meets the minimum percentage requirement
-        double movePct = (double)Math.Abs((endPrice - startPrice) / startPrice) * 100.0;
-        if (movePct < (double)ChartConstants.GeometricPoleMinPercent)
-            return false;
+        // Check if the total move meets the minimum percentage requirement (pure decimal)
+        decimal movePct = Math.Abs((endPrice - startPrice) / startPrice) * 100m;
+        if (movePct < ChartConstants.GeometricPoleMinPercent)
+            return 0;
 
         // Check for directional consistency (e.g. at least 60% of candles moved in the same direction)
         int sameDirectionCount = 0;
@@ -478,7 +504,48 @@ public static class GeometricPatternDetector
         }
 
         double consistencyRatio = (double)sameDirectionCount / lookback;
-        return consistencyRatio >= 0.6; // Assuming 60% directional consistency is required for an active pole
+        if (consistencyRatio < 0.6)
+            return 0;
+
+        return endPrice > startPrice ? 1 : -1;
+    }
+
+    /// <summary>
+    /// Detects if there is a strong directional price movement (pole) immediately preceding the formation start.
+    /// Verifies both the sheer magnitude of the move and directional consistency.
+    /// </summary>
+    internal static bool DetectPole(IReadOnlyList<CandleData> candles, int startIndex)
+    {
+        return DetectPoleDirection(candles, startIndex) != 0;
+    }
+
+    /// <summary>
+    /// Promotes channels, boxes, or triangles to Flag or Pennant formations based on preceding pole direction.
+    /// </summary>
+    internal static GeometricFormationType PromoteWithPole(GeometricFormationType baseType, int poleDirection)
+    {
+        if (poleDirection == 1) // Bullish pole
+        {
+            if (baseType == GeometricFormationType.DescendingChannel || baseType == GeometricFormationType.HorizontalBox)
+                return GeometricFormationType.BullishFlag;
+        }
+        else if (poleDirection == -1) // Bearish pole
+        {
+            if (baseType == GeometricFormationType.AscendingChannel || baseType == GeometricFormationType.HorizontalBox)
+                return GeometricFormationType.BearishFlag;
+        }
+
+        if (poleDirection != 0)
+        {
+            if (baseType == GeometricFormationType.SymmetricalTriangle ||
+                baseType == GeometricFormationType.AscendingTriangle ||
+                baseType == GeometricFormationType.DescendingTriangle)
+            {
+                return GeometricFormationType.Pennant;
+            }
+        }
+
+        return baseType;
     }
 
     /// <summary>
@@ -581,34 +648,51 @@ public static class GeometricPatternDetector
     internal static (double Slope, double InterceptAtStart, double RSquared) CalculateTheilSen(
         IReadOnlyList<PivotPoint> pivots)
     {
-        int n = pivots.Count;
+        if (pivots == null || pivots.Count < 2)
+            return (0.0, pivots != null && pivots.Count > 0 ? (double)pivots[0].Price : 0.0, 0.0);
+
+        var (slope, _, startIntercept, ssTot, ssRes) = ComputeTheilSenLine(pivots);
+        double rSquared = ssTot > 0 ? Math.Max(0.0, 1.0 - (ssRes / ssTot)) : 0.0;
+        return (slope, startIntercept, rSquared);
+    }
+
+    /// <summary>
+    /// Computes the median slope, global intercept, adjusted start intercept, total sum of squares,
+    /// and residual sum of squares for a set of pivot points using Theil-Sen regression.
+    /// </summary>
+    private static (double MedianSlope, double MedianGlobalIntercept, double StartIntercept, double SsTot, double SsRes) ComputeTheilSenLine(
+        IReadOnlyList<PivotPoint> pivots)
+    {
+        int n = pivots?.Count ?? 0;
         if (n < 2)
-            return (0.0, pivots.Count > 0 ? (double)pivots[0].Price : 0.0, 0.0);
+        {
+            double fallbackPrice = pivots != null && pivots.Count > 0 ? (double)pivots[0].Price : 0.0;
+            return (0.0, fallbackPrice, fallbackPrice, 0.0, 0.0);
+        }
 
         var slopes = new List<double>();
-
-        // Calculate slopes of all pairs
         for (int i = 0; i < n; i++)
         {
             for (int j = i + 1; j < n; j++)
             {
-                double dx = pivots[j].Index - pivots[i].Index;
-                if (Math.Abs(dx) > 0)
+                int dx = pivots[j].Index - pivots[i].Index;
+                if (dx != 0)
                 {
-                    double dy = (double)pivots[j].Price - (double)pivots[i].Price;
+                    double dy = (double)(pivots[j].Price - pivots[i].Price);
                     slopes.Add(dy / dx);
                 }
             }
         }
 
         if (slopes.Count == 0)
-            return (0.0, (double)pivots[0].Price, 0.0);
+        {
+            double fallbackPrice = (double)pivots[0].Price;
+            return (0.0, fallbackPrice, fallbackPrice, 0.0, 0.0);
+        }
 
-        // Slope is the median of all pairwise slopes
         slopes.Sort();
         double medianSlope = slopes[slopes.Count / 2];
 
-        // Intercept is the median of (y - mx)
         var intercepts = new List<double>();
         for (int i = 0; i < n; i++)
         {
@@ -616,11 +700,8 @@ public static class GeometricPatternDetector
         }
         intercepts.Sort();
         double medianGlobalIntercept = intercepts[intercepts.Count / 2];
-
-        // Adjusted intercept for startIndex
         double startIntercept = medianSlope * pivots[0].Index + medianGlobalIntercept;
 
-        // Pseudo R-squared (using median-based predictions)
         double ssTot = 0, ssRes = 0;
         double yMean = pivots.Average(p => (double)p.Price);
 
@@ -628,14 +709,12 @@ public static class GeometricPatternDetector
         {
             double predicted = medianSlope * pivots[i].Index + medianGlobalIntercept;
             double actual = (double)pivots[i].Price;
-            
+
             ssTot += (actual - yMean) * (actual - yMean);
             ssRes += (actual - predicted) * (actual - predicted);
         }
 
-        double rSquared = ssTot > 0 ? Math.Max(0.0, 1.0 - (ssRes / ssTot)) : 0.0;
-
-        return (medianSlope, startIntercept, rSquared);
+        return (medianSlope, medianGlobalIntercept, startIntercept, ssTot, ssRes);
     }
 
     /// <summary>
@@ -696,12 +775,12 @@ public static class GeometricPatternDetector
     /// Counts how many pivots genuinely touch the regression line within a given tolerance.
     /// Used to discard patterns drawn through only one extreme point.
     /// </summary>
-    internal static int CountTouches(double slope, double intercept, IReadOnlyList<PivotPoint> pivots, double touchTolerancePercent)
+    internal static int CountTouches(double slope, double intercept, IReadOnlyList<PivotPoint> pivots, double touchTolerancePercent, int originIndex = 0)
     {
         int count = 0;
         foreach (var pivot in pivots)
         {
-            double expectedPrice = slope * pivot.Index + intercept;
+            double expectedPrice = slope * (pivot.Index - originIndex) + intercept;
             if (expectedPrice == 0) continue;
             
             double diffPercent = Math.Abs((double)pivot.Price - expectedPrice) / expectedPrice;
@@ -711,6 +790,33 @@ public static class GeometricPatternDetector
             }
         }
         return count;
+    }
+
+    /// <summary>
+    /// Calculates a robust Theil-Sen fit with an ATR-normalized lower bound for R-squared.
+    /// Prevents horizontal flat lines (SS_tot ≈ 0) from collapsing R-squared to 0.
+    /// </summary>
+    internal static (double Slope, double StartIntercept, double RSquared) CalculateRobustFit(
+        IReadOnlyList<PivotPoint> pivots,
+        IReadOnlyList<CandleData> candles,
+        int startIndex,
+        int endIndex)
+    {
+        if (pivots == null || pivots.Count < 2)
+            return (0.0, pivots != null && pivots.Count > 0 ? (double)pivots[0].Price : 0.0, 0.0);
+
+        var (slope, _, startIntercept, ssTot, ssRes) = ComputeTheilSenLine(pivots);
+        if (ssRes < 1e-12)
+        {
+            return (slope, startIntercept, 1.0);
+        }
+
+        int n = pivots.Count;
+        double atr = ComputeATR(candles, startIndex, endIndex);
+        double denom = Math.Max(ssTot, n * atr * atr);
+
+        double rSquared = denom > 0 ? Math.Max(0.0, 1.0 - (ssRes / denom)) : 0.0;
+        return (slope, startIntercept, rSquared);
     }
 }
 

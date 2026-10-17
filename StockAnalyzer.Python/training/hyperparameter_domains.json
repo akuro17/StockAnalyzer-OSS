@@ -667,6 +667,54 @@
         ["-0.0001", "BelowMinimum"]
       ]
     },
+    "class-weight-power": {
+      "kind": "real",
+      "minimum": 0,
+      "minimum_inclusive": true,
+      "maximum": 1,
+      "maximum_inclusive": true,
+      "trainer_checks": [
+        {
+          "file": "dataset.py",
+          "text": "--class-weight-power must be in [0, 1]"
+        }
+      ],
+      "probes": [
+        ["", "NotNumber"],
+        ["abc", "NotNumber"],
+        [" 0.5 ", "None"],
+        ["+0.5", "None"],
+        ["99999999999999999999", "AboveMaximum"],
+        ["-99999999999999999999", "BelowMinimum"],
+        ["1.5", "AboveMaximum"],
+        ["0", "None"],
+        ["1", "None"],
+        ["2", "AboveMaximum"],
+        ["-1", "BelowMinimum"],
+        ["1e999", "NotFinite"],
+        ["-1e999", "NotFinite"],
+        ["NaN", "NotFinite"],
+        ["Infinity", "NotFinite"],
+        ["-Infinity", "NotFinite"],
+        ["+Infinity", "NotFinite"],
+        ["-NaN", "NotFinite"],
+        ["+NaN", "NotFinite"],
+        ["1e-3", "None"],
+        [".5", "None"],
+        ["5.", "AboveMaximum"],
+        ["1.0", "None"],
+        ["+.5", "None"],
+        ["1,5", "NotNumber"],
+        ["1_0", "NotNumber"],
+        ["0x10", "NotNumber"],
+        ["1e", "NotNumber"],
+        ["-0", "None"],
+        ["0.0001", "None"],
+        ["0.9999", "None"],
+        ["1.0001", "AboveMaximum"],
+        ["-0.0001", "BelowMinimum"]
+      ]
+    },
     "seed": {
       "kind": "integer",
       "minimum": 0,

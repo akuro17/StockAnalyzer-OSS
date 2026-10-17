@@ -240,4 +240,54 @@ public class IndicatorRegistrationViewModelTests
         Assert.True(vm.IsLeftActive);
         Assert.False(vm.IsRightActive);
     }
+
+    [Fact]
+    public void CriteriaLeftBinding_SetsRightNumericValueToZero_AndAllowsPatternMatchToSatisfy()
+    {
+        var vm = new IndicatorRegistrationViewModel();
+        var criteriaItem = vm.FilteredIndicators.First(i => i.CategoryType == ScreenerItemCategoryType.Criteria);
+
+        vm.SelectedIndicator = criteriaItem;
+
+        Assert.Equal(0m, vm.RightNumericValue);
+        Assert.Equal(ComparisonOperator.GreaterThan, vm.SelectedComparisonOperator);
+
+        vm.RegisterIndicatorCommand.Execute(null);
+        var entry = vm.RegisteredEntries[^1];
+
+        Assert.Equal(0m, entry.RightNumericValue);
+        Assert.Equal(ComparisonOperator.GreaterThan, entry.Operator);
+    }
+
+    [Fact]
+    public void NonCriteriaAfterCriteria_RestoresDefaultRightNumericValue()
+    {
+        var vm = new IndicatorRegistrationViewModel();
+        var criteriaItem = vm.FilteredIndicators.First(i => i.CategoryType == ScreenerItemCategoryType.Criteria);
+        var indicatorItem = vm.FilteredIndicators.First(i => i.CategoryType == ScreenerItemCategoryType.Indicator);
+
+        vm.SelectedIndicator = criteriaItem;
+        Assert.Equal(0m, vm.RightNumericValue);
+
+        vm.SelectedIndicator = indicatorItem;
+        Assert.Equal(50m, vm.RightNumericValue);
+    }
+
+    [Fact]
+    public void ManualChangeToRightNumericValue_PreservedWhenSwitchingToNonCriteria()
+    {
+        var vm = new IndicatorRegistrationViewModel();
+        var criteriaItem = vm.FilteredIndicators.First(i => i.CategoryType == ScreenerItemCategoryType.Criteria);
+        var indicatorItem = vm.FilteredIndicators.First(i => i.CategoryType == ScreenerItemCategoryType.Indicator);
+
+        vm.SelectedIndicator = criteriaItem;
+        Assert.Equal(0m, vm.RightNumericValue);
+
+        // User edits value manually
+        vm.RightNumericValue = 10m;
+
+        // Switch to non-criteria: manual value must NOT be overwritten
+        vm.SelectedIndicator = indicatorItem;
+        Assert.Equal(10m, vm.RightNumericValue);
+    }
 }

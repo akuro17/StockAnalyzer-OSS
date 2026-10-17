@@ -20,7 +20,7 @@ public interface IModelDeploymentService
     /// </summary>
     Task<string> DeployAsync(string onnxSourcePath, string? metricsSourcePath = null, CancellationToken ct = default);
 
-    /// <summary>Registers a verified immutable generation and activates it if it qualifies.</summary>
+    /// <summary>Registers a verified immutable generation and activates it if it qualifies (the registry's score rule, and not stopped by <see cref="ModelAutoActivationGate"/>).</summary>
     Task<ModelGenerationManifest> RegisterGenerationAsync(
         string onnxSourcePath, string? metricsSourcePath = null, CancellationToken ct = default);
 

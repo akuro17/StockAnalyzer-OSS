@@ -1293,7 +1293,9 @@ public partial class DialogService : IDialogService
         return activeWindow != null ? TopLevel.GetTopLevel(activeWindow) : null;
     }
 
-    public async Task<string?> ShowOpenFileDialogAsync(string title, string[]? filters = null)
+    public Task<string?> ShowOpenFileDialogAsync(string title, string[]? filters = null) => ShowOpenFileDialogAsync(title, filters, null);
+
+    public async Task<string?> ShowOpenFileDialogAsync(string title, string[]? filters, string? startDirectory)
     {
         if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop && desktop.MainWindow != null)
         {
@@ -1317,6 +1319,12 @@ public partial class DialogService : IDialogService
                             Patterns = filters.Select(f => $"*.{f.TrimStart('.')}").ToArray()
                         };
                         options.FileTypeFilter = new[] { fileType };
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(startDirectory) && System.IO.Directory.Exists(startDirectory))
+                    {
+                        try { options.SuggestedStartLocation = await topLevel.StorageProvider.TryGetFolderFromPathAsync(startDirectory); }
+                        catch { /* the picker simply opens where the system puts it */ }
                     }
 
                     var files = await topLevel.StorageProvider.OpenFilePickerAsync(options);

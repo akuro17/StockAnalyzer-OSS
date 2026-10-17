@@ -38,6 +38,11 @@ public static class WalkForwardDataRequirement
     public const int DefaultHorizon = 5;
 
     /// <summary>
+    /// The purge margin the trainer applies: <paramref name="gap"/> when given, else <c>windowSize + horizon - 1</c> (mirrors <c>dataset.resolve_purge_gap</c>).
+    /// </summary>
+    public static int ResolveGap(int windowSize, int horizon, int? gap = null) => gap ?? checked(windowSize + horizon - 1);
+
+    /// <summary>
     /// Minimum number of raw (unwindowed) bars a single symbol's filtered date range must
     /// contain before <c>walk_forward_split</c> can form at least one non-empty train/validation
     /// fold for the given <paramref name="windowSize"/> / <paramref name="horizon"/> /

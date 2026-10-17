@@ -310,8 +310,20 @@ public partial class IndicatorRegistrationViewModel : ViewModelBase, IDisposable
     [ObservableProperty]
     private int _rightOffset;
 
+    private const decimal DefaultRightNumericValue = 50m;
+    private bool _criteriaDefaultsApplied;
+    private bool _isSettingNumericDefault;
+
     [ObservableProperty]
-    private decimal _rightNumericValue = 50m;
+    private decimal _rightNumericValue = DefaultRightNumericValue;
+
+    partial void OnRightNumericValueChanged(decimal value)
+    {
+        if (!_isSettingNumericDefault)
+        {
+            _criteriaDefaultsApplied = false;
+        }
+    }
 
     // ===== Registered Entries =====
 
@@ -798,6 +810,33 @@ public partial class IndicatorRegistrationViewModel : ViewModelBase, IDisposable
                 if (RightTargetMode == RightHandTargetMode.StringValue)
                 {
                     SetRightModeNumeric();
+                }
+            }
+
+            if (catalogItem.CategoryType == ScreenerItemCategoryType.Criteria)
+            {
+                _isSettingNumericDefault = true;
+                try
+                {
+                    RightNumericValue = 0m;
+                    _criteriaDefaultsApplied = true;
+                }
+                finally
+                {
+                    _isSettingNumericDefault = false;
+                }
+            }
+            else if (_criteriaDefaultsApplied)
+            {
+                _isSettingNumericDefault = true;
+                try
+                {
+                    RightNumericValue = DefaultRightNumericValue;
+                    _criteriaDefaultsApplied = false;
+                }
+                finally
+                {
+                    _isSettingNumericDefault = false;
                 }
             }
         }

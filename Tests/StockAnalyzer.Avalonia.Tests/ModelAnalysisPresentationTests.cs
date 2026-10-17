@@ -101,12 +101,11 @@ public sealed class ModelAnalysisPresentationTests : IDisposable
         Assert.Equal(color, theme.GetCurrentColors()[ThemeColorKey.TrainingPeriodTrain]);
     }
 
-    private static AIPredictionsSettingsViewModel Settings(IModelAnalysisService service)
+    private static PredictionModelsViewModel Settings(IModelAnalysisService service)
     {
         var settings = new Mock<IPredictionSettingsManager>();
         settings.SetupGet(s => s.WindowSize).Returns(20);
-        return new AIPredictionsSettingsViewModel(settings.Object, Mock.Of<IClipboardService>(),
-            Mock.Of<IToastNotificationService>(), modelAnalysisService: service,
+        return new PredictionModelsViewModel(settings.Object, modelAnalysisService: service,
             analysisDispatcher: new SynchronousDispatcherService());
     }
     private static ModelGenerationSummary Generation(string id) => new(id, "model.onnx", "classification",

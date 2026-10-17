@@ -199,6 +199,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<Core.Services.ReinforcementLearning.QValueService>();
         services.AddSingleton<Core.Services.ReinforcementLearning.RlDialogDataService>();
         services.AddSingleton<Services.IRlReplayTarget, Services.MainChartRlReplayTarget>();
+        services.AddSingleton<Services.IPredictionRunTarget, Services.MainChartPredictionRunTarget>();
         // The pre-filled start and end date of the Training Wizard, the RL window and the Portfolio RL window come from the stored bar dates.
         services.AddSingleton<Core.Services.StoredPeriod.IStoredPeriodAdvisor>(sp => new Core.Services.StoredPeriod.StoredPeriodAdvisor(
             sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<MarketDataSettings>>()));
@@ -368,7 +369,8 @@ public static class ServiceCollectionExtensions
         services.AddTransient<StockAnalyzer.Avalonia.ViewModels.Dialogs.FontsSettingsViewModel>();
         services.AddTransient<StockAnalyzer.Avalonia.ViewModels.Dialogs.PythonSettingsViewModel>();
         services.AddTransient<StockAnalyzer.Avalonia.ViewModels.Dialogs.AIPredictionsSettingsViewModel>();
-        services.AddTransient<StockAnalyzer.Avalonia.ViewModels.Dialogs.RlPlaybackSettingsViewModel>();
+        services.AddTransient<StockAnalyzer.Avalonia.ViewModels.Dialogs.PredictionModelsViewModel>();
+        services.AddTransient<StockAnalyzer.Avalonia.ViewModels.Dialogs.RlPlaybackViewModel>();
         services.AddTransient<StockAnalyzer.Avalonia.ViewModels.Dialogs.RlFreeReplayViewModel>();
         services.AddSingleton<Services.IRlTickerListSource, Services.TickerStateRlListSource>();
         services.AddTransient<StockAnalyzer.Avalonia.ViewModels.Dialogs.AboutSettingsViewModel>();

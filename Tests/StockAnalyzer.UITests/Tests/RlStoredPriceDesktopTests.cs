@@ -336,7 +336,7 @@ public sealed partial class RlStoredPriceDesktopTests(ITestOutputHelper output) 
         SaveScreenshot(window, "sa_T16_R06_desktop_report.png");
         if (details.Patterns.ExpandCollapse.IsSupported) details.Patterns.ExpandCollapse.Pattern.Collapse(); else details.Click();
         window.Close();
-        ReplayFromSettings(page, source.Catalog.Oos[^1].Id);
+        ReplayFromPlayback(page, source.Catalog.Oos[^1].Id);
         var panel = WaitForElement(() => MainWindow!.FindFirstDescendant(cf => cf.ByAutomationId(RlUiConstants.QPanel)));
         Assert.False(panel.IsOffscreen); Assert.Contains(actorId, panel.Name);
         string anchor = source.Bars[source.Catalog.Oos[^1].StartIndex + RlContract.WindowLength - 1].Timestamp.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
@@ -402,7 +402,7 @@ public sealed partial class RlStoredPriceDesktopTests(ITestOutputHelper output) 
         if (details.Patterns.ExpandCollapse.IsSupported) details.Patterns.ExpandCollapse.Pattern.Collapse();
         else details.Click();
         window.Close();
-        ReplayFromSettings(page, policyNames: Localized("Rl.Ui.Policy.Paired"));
+        ReplayFromPlayback(page, policyNames: Localized("Rl.Ui.Policy.Paired"));
         WaitUntil(() => MainWindow!.FindFirstDescendant(cf => cf.ByAutomationId(RlUiConstants.PolicyControlReadout))?.Name is { } readout && Localized("Rl.Ui.Policy.Paired").Any(readout.Contains),
             CompletionTimeoutMs, "Fixed policy controls were not published");
         var proposal = WaitForElement(() => MainWindow!.FindFirstDescendant(cf => cf.ByAutomationId(RlUiConstants.ContinuousReadout)));
@@ -483,7 +483,7 @@ public sealed partial class RlStoredPriceDesktopTests(ITestOutputHelper output) 
                 errorMessage: "Manual activation did not publish the selected model");
             window.Close();
             // RL Playback starts from its default block; the first validation block is chosen explicitly so the anchor date below is the one that block ends its window on.
-            ReplayFromSettings(page, source.Catalog.Validation[0].Id);
+            ReplayFromPlayback(page, source.Catalog.Validation[0].Id);
             var panel = WaitForElement(() => MainWindow!.FindFirstDescendant(cf => cf.ByAutomationId(RlUiConstants.QPanel)));
             Assert.False(panel.IsOffscreen);
             Assert.Contains(modelId, panel.Name);
@@ -560,7 +560,7 @@ public sealed partial class RlStoredPriceDesktopTests(ITestOutputHelper output) 
         Invoke(window, RlUiConstants.Activate);
         WaitUntil(() => Element(window, RlUiConstants.ActiveModel).Name == actorId, errorMessage: "Continuous manual activation failed");
         window.Close();
-        ReplayFromSettings(page);
+        ReplayFromPlayback(page);
         var panel = WaitForElement(() => MainWindow!.FindFirstDescendant(cf => cf.ByAutomationId(RlUiConstants.QPanel)));
         Assert.Contains(actorId, panel.Name); Assert.Contains(RlContinuousContract.Target, panel.Name);
         LogInfo("Published continuous Q panel: " + panel.Name);
@@ -638,15 +638,21 @@ public sealed partial class RlStoredPriceDesktopTests(ITestOutputHelper output) 
     /// <summary>The expander header publishes no automation id, so it is found by its id or, failing that, by its localized text.</summary>
     private static AutomationElement? FindEvaluationDetails(Window window) => window.FindFirstDescendant(cf => cf.ByAutomationId(RlUiConstants.EvaluationDetails))
         ?? window.FindAllDescendants().FirstOrDefault(e => Localized("Rl.EvaluationDetails").Contains(e.Properties.Name.ValueOrDefault));
-    /// <summary>Replays the newest agent through Settings > RL Playback; a successful "Show on chart" closes Settings.</summary>
-    private void ReplayFromSettings(MainWindowPage page, string? blockId = null, string[]? policyNames = null)
+    /// <summary>Replays the newest agent through Tools > RL Playback. A successful "Show on chart" leaves the window open and shows the "shown" status; the helper then closes the window with its Close button.</summary>
+    private void ReplayFromPlayback(MainWindowPage page, string? blockId = null, string[]? policyNames = null)
     {
-        var settings = page.OpenRlPlaybackSettings(Localized("Settings_RlPlayback"));
-        WaitUntil(() => Element(settings, RlUiConstants.PlaybackShow).IsEnabled, CompletionTimeoutMs, "RL Playback was not ready to show");
-        if (blockId is not null) { SelectContaining(Element(settings, RlUiConstants.PlaybackBlocks).AsComboBox(), blockId); Keyboard.Press(VirtualKeyShort.ESCAPE); }
-        if (policyNames is not null) { SelectContaining(Element(settings, RlUiConstants.PlaybackPolicies).AsComboBox(), policyNames); Keyboard.Press(VirtualKeyShort.ESCAPE); }
-        Invoke(settings, RlUiConstants.PlaybackShow);
-        WaitUntil(() => MainWindow!.ModalWindows.Length == 0, CompletionTimeoutMs, "Replay did not finish: Settings stayed open");
+        var playback = page.OpenRlPlaybackWindow(Localized("Settings_RlPlayback"));
+        WaitUntil(() => Element(playback, RlUiConstants.PlaybackShow).IsEnabled, CompletionTimeoutMs, "RL Playback was not ready to show");
+        if (blockId is not null) { SelectContaining(Element(playback, RlUiConstants.PlaybackBlocks).AsComboBox(), blockId); Keyboard.Press(VirtualKeyShort.ESCAPE); }
+        if (policyNames is not null) { SelectContaining(Element(playback, RlUiConstants.PlaybackPolicies).AsComboBox(), policyNames); Keyboard.Press(VirtualKeyShort.ESCAPE); }
+        Invoke(playback, RlUiConstants.PlaybackShow);
+        var shown = Localized("Settings_RlPlayback_Status_Shown");
+        WaitUntil(() => shown.Contains(ShownName(playback, RlUiConstants.PlaybackStatus)) && ShownName(playback, RlUiConstants.PlaybackStatus).Length > 0,
+            CompletionTimeoutMs, "Replay did not finish: the RL Playback window did not report that the replay was shown");
+        playback.SetForeground(); playback.Focus();
+        Keyboard.Press(VirtualKeyShort.ESCAPE);   // the window stays open after a replay; Esc closes it (SubWindowKeys.CloseOnEscape)
+        string[] titles = Localized("Settings_RlPlayback");
+        WaitUntil(() => page.CountProcessWindows(titles) == 0, CompletionTimeoutMs, "The RL Playback window did not close on Esc");
     }
     private void WaitState(Window window, string state, int timeout = CompletionTimeoutMs)
     {
@@ -655,7 +661,7 @@ public sealed partial class RlStoredPriceDesktopTests(ITestOutputHelper output) 
             $"RL did not reach {state}; inspect its status/message and training artifacts");
         LogInfo($"RL state: {state}; {ShownName(window, RlUiConstants.Message)}");
     }
-    private static string[] Localized(string key) => new[] { "en", "ja" }.Select(language =>
+    internal static string[] Localized(string key) => new[] { "en", "ja" }.Select(language =>
     {
         string name = string.Format(CultureInfo.InvariantCulture, LocalizationManager.LocaleResourceNameFormat, language);
         using var stream = typeof(LocalizationManager).Assembly.GetManifestResourceStream(name)!;

@@ -756,11 +756,16 @@ public sealed partial class ModelGenerationRegistry : IModelGenerationRegistry, 
         if (PredictionModelMetadata.RequiresFixedScaler(session.ModelMetadata.CustomMetadataMap))
             StockAnalyzer.Core.Models.Training.FixedScaler.Load(
                 Path.Combine(_root, candidate.ModelId, candidate.ModelFile), session.ModelMetadata.CustomMetadataMap);
-        string? featureSpec = _predictionSettings.PredictionFeatureMode == PredictionFeatureMode.ComposedFeatures
-            ? JsonSerializer.Serialize(_predictionSettings.PredictionFeatureSpec,
+        // A composed-features model is preprocessed with the channel list in its own metadata (see PredictionService), so the configuration does not decide.
+        var metadata = session.ModelMetadata.CustomMetadataMap;
+        var ownComposed = PredictionModelMetadata.ParseFeatureMode(metadata.GetValueOrDefault(PredictionModelMetadata.FeatureModeKey))
+            == PredictionFeatureMode.ComposedFeatures;
+        var featureMode = ownComposed ? PredictionFeatureMode.ComposedFeatures : _predictionSettings.PredictionFeatureMode;
+        string? featureSpec = featureMode == PredictionFeatureMode.ComposedFeatures
+            ? JsonSerializer.Serialize(ownComposed ? PredictionModelMetadata.ReadOwnFeatureContract(metadata).Spec : _predictionSettings.PredictionFeatureSpec,
                 StockAnalyzer.Core.Models.Training.TrainingConfigJson.Options) : null;
-        PredictionModelMetadata.Validate(session.ModelMetadata.CustomMetadataMap,
-            _predictionSettings.PredictionFeatureMode, _predictionSettings.PredictionWindowSize,
+        PredictionModelMetadata.Validate(metadata,
+            featureMode, _predictionSettings.PredictionWindowSize,
             _predictionSettings.PredictionClassLabels, NullLogger.Instance, featureSpec);
     }
 

@@ -56,14 +56,14 @@ public sealed class RlInputValidation : AvaloniaObject
         Action<string, bool>? report = control.DataContext switch
         {
             RlTrainingDialogViewModel training => training.SetEditorValidity,
-            RlPlaybackSettingsViewModel playback => playback.SetEditorValidity,
+            RlPlaybackViewModel playback => playback.SetEditorValidity,
             RlFreeReplayViewModel free => free.SetEditorValidity,
             _ => null
         };
         if (report is null) return;
         bool nullable = field is nameof(RlTrainingDialogViewModel.StorageNonactiveDays) or nameof(RlTrainingDialogViewModel.StorageKeepCount);
         bool integer = field is nameof(RlTrainingDialogViewModel.StorageFailedRetentionDays) or nameof(RlTrainingDialogViewModel.StorageNonactiveDays)
-            or nameof(RlTrainingDialogViewModel.StorageKeepCount) or nameof(RlTrainingDialogViewModel.StorageCheckpointKeepCount) or nameof(RlPlaybackSettingsViewModel.Decision)
+            or nameof(RlTrainingDialogViewModel.StorageKeepCount) or nameof(RlTrainingDialogViewModel.StorageCheckpointKeepCount) or nameof(RlPlaybackViewModel.Decision)
             or nameof(RlFreeReplayViewModel.Decision);
         bool valid = nullable && string.IsNullOrWhiteSpace(control.Text) && control.Value is null;
         if (decimal.TryParse(control.Text, NumberStyles.Number, CultureInfo.CurrentCulture, out decimal value))

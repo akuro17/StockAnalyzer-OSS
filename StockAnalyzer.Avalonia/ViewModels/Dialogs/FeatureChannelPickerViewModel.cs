@@ -755,6 +755,13 @@ public partial class FeatureChannelPickerViewModel : ViewModelBase
             if (e.PropertyName == nameof(SelectedCatalogItem))
             {
                 AddIndicatorChannelCommand.NotifyCanExecuteChanged();
+                // The normalization a channel starts with depends on its unit; the owner can still change it before pressing Add.
+                if (SelectedCatalogItem is { } picked)
+                {
+                    SelectedNormalization = picked.Type == IndicatorType.Price
+                        ? FeatureChannelNormalizationDefaults.ForPrice()
+                        : FeatureChannelNormalizationDefaults.ForIndicator(picked.Type);
+                }
             }
         };
 
@@ -763,7 +770,12 @@ public partial class FeatureChannelPickerViewModel : ViewModelBase
             nextNormalization: () => SelectedNormalization,
             notifyHasChannels: () => OnPropertyChanged(nameof(HasChannels)),
             onFieldAdded: label => ToastService?.ShowNotification(FeaturePickerToast.Added(label)));
-        _price.PropertyChanged += (_, e) => OnPropertyChanged(e.PropertyName);
+        _price.PropertyChanged += (_, e) =>
+        {
+            OnPropertyChanged(e.PropertyName);
+            if (e.PropertyName == nameof(SelectedPriceField) && SelectedPriceField is not null)
+                SelectedNormalization = FeatureChannelNormalizationDefaults.ForPrice();
+        };
 
         Channels.CollectionChanged += (_, _) => SaveTemplateCommand.NotifyCanExecuteChanged();
 
@@ -847,7 +859,10 @@ public partial class FeatureChannelPickerViewModel : ViewModelBase
 
     // --- normalization for newly added channels ---
 
-    /// <summary>Normalization assigned to the next channel added; each row can be changed afterwards.</summary>
+    /// <summary>
+    /// Normalization assigned to the next channel added; each row can be changed afterwards. Picking an indicator or a price field sets it to the default of
+    /// that channel (<see cref="FeatureChannelNormalizationDefaults"/>); until something is picked it is <see cref="ChannelNormalization.None"/>.
+    /// </summary>
     [ObservableProperty]
     private ChannelNormalization _selectedNormalization = ChannelNormalization.None;
 

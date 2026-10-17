@@ -22,6 +22,17 @@ public partial class ChartViewModel
         RlPresentation = null;
         RequestRender(RenderReason.VisualChanged);
     }
+    /// <summary>
+    /// The user removes the replay from the chart. A replay leaves its 64-bar window as the chart's data, so dropping the overlay alone (<see cref="ClearRlPresentation"/>)
+    /// would keep the chart at 64 bars; the normal data of the current symbol, time frame and range are loaded again here. Without a replay on the chart nothing changes.
+    /// (A symbol, time frame or range change clears the overlay through <see cref="ClearRlPresentation"/> and reloads by itself.)
+    /// </summary>
+    public Task ClearRlReplayAsync()
+    {
+        bool replayShown = RlPresentation is not null;
+        ClearRlPresentation();
+        return replayShown ? LoadDataInternalAsync(true) : Task.CompletedTask;
+    }
     public async Task ApplyRlReplayAsync(RlQSnapshot snapshot, StockAnalyzer.Core.Interfaces.ILocalizationService localization, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(snapshot);

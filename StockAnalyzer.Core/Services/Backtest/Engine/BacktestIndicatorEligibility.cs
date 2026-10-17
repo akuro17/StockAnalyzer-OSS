@@ -35,6 +35,7 @@ public static class BacktestIndicatorEligibility
     /// <summary>Whole indicators that are non-causal (every series): whole-range distributions and repainting pivots.</summary>
     public static IReadOnlyCollection<IndicatorType> NonCausalIndicatorTypes { get; } = new[]
     {
+        IndicatorType.MarketStructureShift, // repainting pivot: shift lines are painted back to a pivot confirmed by later bars
         IndicatorType.TimeAtPrice,
         IndicatorType.VolumeProfile,
         IndicatorType.ZigZag,

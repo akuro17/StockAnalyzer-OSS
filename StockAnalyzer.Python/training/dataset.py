@@ -85,6 +85,9 @@ CLASS_LABELS: Tuple[str, str, str] = ("Up", "Down", "Neutral")
 DEFAULT_HORIZON: int = 5
 DEFAULT_THRESHOLD: float = 0.005
 
+# exponent p of the class weights w_c = (N / (K * N_c)) ** p; 1 = inverse frequency ("balanced"), 0 = unweighted (class_weight_vector).
+DEFAULT_CLASS_WEIGHT_POWER: float = 1.0
+
 # triple-barrier labeling (label_triple_barrier). The anchor-time volatility scale is a
 # Wilder-smoothed ATR over this many bars -- the same convention as C#
 # CoreAtrIndicator / ChartConstants.DefaultAtrPeriod (TR = max(H-L, |H-Cprev|, |L-Cprev|),
@@ -914,6 +917,29 @@ def make_label(anchor_close: float, future_close: float, threshold: float) -> in
     if r < -threshold:
         return CLASS_DOWN
     return CLASS_NEUTRAL
+
+
+def resolve_class_weight_power(value: float | None) -> float:
+    """The class-weight exponent of a run: ``None`` (flag not given) is ``DEFAULT_CLASS_WEIGHT_POWER``; otherwise a finite value in [0, 1]."""
+    if value is None:
+        return DEFAULT_CLASS_WEIGHT_POWER
+    if not math.isfinite(value) or not 0.0 <= value <= 1.0:
+        raise ValueError("--class-weight-power must be in [0, 1]")
+    return float(value)
+
+
+def class_weight_vector(y: np.ndarray, power: float | None = None) -> np.ndarray:
+    """Per-class training weights ``(N / (K * N_c)) ** power`` for the classes 0..K-1 (K = ``len(CLASS_LABELS)``).
+
+    A class that does not occur counts as 1, as it always did. With the default power 1 the result is the inverse-frequency
+    weight itself (no power is applied), so the default is bit-identical to the former per-trainer formulas.
+    """
+    classes = len(CLASS_LABELS)
+    counts = np.array([(y == c).sum() for c in range(classes)], dtype=np.float64)
+    counts[counts == 0] = 1.0
+    weights = counts.sum() / (classes * counts)
+    exponent = resolve_class_weight_power(power)
+    return weights if exponent == 1.0 else weights ** exponent
 
 
 def make_regression_target(anchor_close: float, future_close: float) -> float:
@@ -3388,7 +3414,25 @@ def _run_selfcheck() -> None:
             assert "read_parquet_metadata" in _refused(lambda: materialize_filtered_dir(_mixed, _syn_root / "m8", symbols=["REAL"], start="2021-01-06",
                                                                                          allow_synthetic=True))
         assert not is_synthetic_parquet(_mixed / "REAL.parquet") and set(load_parquet_dir(_mixed, symbols=["REAL"])) == {"REAL"}
-    print("dataset.py selfcheck: OK (37 groups passed)")
+    # 38. class weights: the default is bit-identical to the former per-trainer inverse-frequency formula; power 0 is unweighted, 0.5 the square root.
+    y_w = np.array([0] * 50 + [1] * 30 + [2] * 20 + [0] * 10)
+    old_counts = np.array([(y_w == c).sum() for c in range(3)], dtype=np.float64)
+    old_counts[old_counts == 0] = 1.0
+    old_w = old_counts.sum() / (3 * old_counts)
+    assert np.array_equal(class_weight_vector(y_w), old_w) and np.array_equal(class_weight_vector(y_w, 1.0), old_w)
+    assert np.array_equal(class_weight_vector(y_w, 0.0), np.ones(3))
+    assert np.allclose(class_weight_vector(y_w, 0.5), np.sqrt(old_w), rtol=0, atol=1e-15)
+    absent = class_weight_vector(np.array([0, 0, 1, 1]))  # class 2 does not occur: counts [2, 2, 1] -> total 5
+    assert np.allclose(absent, [5 / 6, 5 / 6, 5 / 3])
+    assert resolve_class_weight_power(None) == DEFAULT_CLASS_WEIGHT_POWER == 1.0 and resolve_class_weight_power(0) == 0.0
+    for bad in (-0.01, 1.01, float("nan"), float("inf")):
+        try:
+            resolve_class_weight_power(bad)
+        except ValueError as exc:
+            assert "--class-weight-power must be in [0, 1]" in str(exc)
+        else:
+            raise AssertionError(f"class-weight-power {bad} must be refused")
+    print("dataset.py selfcheck: OK (38 groups passed)")
 
 
 def _run_build(args: argparse.Namespace) -> None:

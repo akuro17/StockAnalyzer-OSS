@@ -9,6 +9,8 @@ using Avalonia.Skia;
 using Microsoft.Extensions.DependencyInjection;
 using SkiaSharp;
 using StockAnalyzer.Avalonia.Drawing;
+using StockAnalyzer.Avalonia.Services;
+using StockAnalyzer.Avalonia.Views.Chart.Renderers;
 using StockAnalyzer.Core.Analysis;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Analysis;
@@ -57,13 +59,23 @@ public sealed class ScatterPlotControl : Control, IDisposable
 
     public event EventHandler<ScatterPoint>? PointClicked;
 
-    // Viewport Margins
-    private const float MarginLeft = 55.0f;
-    private const float MarginRight = 20.0f;
-    private const float MarginTop = 20.0f;
-    private const float MarginBottom = 40.0f;
+    // Viewport Margins & Layout Constants
+    internal const float MarginLeft = 20.0f;
+    internal const float MarginRight = 60.0f;
+    internal const float MarginTop = 20.0f;
+    internal const float MarginBottom = 42.0f;
+    internal const double DataRangePaddingFraction = 0.06;
+    private const float TickLabelGap = 6.0f;
+    private const float XTickBaselineOffset = 16.0f;
+    private const float AxisTitleBaselineOffset = 34.0f;
+    private const float TopAxisTitleBaselineOffset = 6.0f;
+    private const float HudMargin = 8.0f;
+    private const float MinHudWidth = 175.0f;
     private const float HitRadius = 8.0f;
     private const float HitRadiusSq = HitRadius * HitRadius;
+    private const float TooltipPaddingX = 8.0f;
+    private const float TooltipPointerOffset = 8.0f;
+    private const float TooltipCornerRadius = 4.0f;
 
     // Pre-allocated Coordinate Transform
     private readonly ScatterCoordinateTransform _transform = new();
@@ -98,9 +110,10 @@ public sealed class ScatterPlotControl : Control, IDisposable
     private readonly SKPaint _hudBoldTextPaint = new() { Color = new SKColor(0x38, 0xBD, 0xF8), Style = SKPaintStyle.Fill, TextSize = 11.0f, IsAntialias = true, FakeBoldText = true };
     private readonly SKPaint _tooltipBgPaint = new() { Color = new SKColor(0x09, 0x09, 0x0B, 0xF0), Style = SKPaintStyle.Fill };
     private readonly SKPaint _tooltipBorderPaint = new() { Color = new SKColor(0x52, 0x52, 0x5B), Style = SKPaintStyle.Stroke, StrokeWidth = 1.0f };
-    private readonly SKPaint _tooltipTextPaint = new() { Color = SKColors.White, Style = SKPaintStyle.Fill, TextSize = 11.0f, IsAntialias = true };
+    private readonly SKPaint _tooltipTextPaint = new() { Color = SKColors.White, Style = SKPaintStyle.Fill, TextSize = (float)FontDefaults.Tooltip, IsAntialias = true };
     private Point? _cursorPos;
     private IThemeManager? _themeManager;
+    private IFontSettingsManager? _fontSettingsManager;
 
     static ScatterPlotControl()
     {
@@ -220,6 +233,7 @@ public sealed class ScatterPlotControl : Control, IDisposable
         int? hoveredIdx = HoveredPointIndex;
         int? selectedIdx = SelectedPointIndex;
         var cursorPos = _cursorPos;
+        float tooltipFontSize = (float)ResolveTooltipFontSize();
 
         UpdateTransform(Bounds.Width, Bounds.Height, dataset, analysis, suppressOutliers, xScale, yScale);
         var transformSnapshot = _transform.Clone();
@@ -238,6 +252,7 @@ public sealed class ScatterPlotControl : Control, IDisposable
             hoveredIdx,
             selectedIdx,
             cursorPos,
+            tooltipFontSize,
             transformSnapshot));
     }
 
@@ -257,57 +272,145 @@ public sealed class ScatterPlotControl : Control, IDisposable
         float vpW = Math.Max(0.0f, w - MarginLeft - MarginRight);
         float vpH = Math.Max(0.0f, h - MarginTop - MarginBottom);
 
-        double minX = 0.0, maxX = 1.0, minY = 0.0, maxY = 1.0;
+        var (minX, maxX, minY, maxY) = ResolveViewportDataBounds(dataset, analysis, suppressOutliers, xScale, yScale);
+
+        _transform.XScale = xScale;
+        _transform.YScale = yScale;
+        _transform.SetRanges(minX, maxX, minY, maxY, MarginLeft, MarginTop, vpW, vpH, w, h);
+    }
+
+    internal static (double MinX, double MaxX, double MinY, double MaxY) ResolveViewportDataBounds(
+        ScatterDataset? dataset,
+        ScatterAnalysisResult? analysis,
+        bool suppressOutliers,
+        PriceScaleType xScale,
+        PriceScaleType yScale)
+    {
+        double rawMinX = 0.0, rawMaxX = 1.0, rawMinY = 0.0, rawMaxY = 1.0;
+        bool hasValid = false;
 
         if (analysis != null && analysis.ValidPointCount > 0)
         {
-            if (suppressOutliers)
-            {
-                minX = analysis.SuppressedMinX;
-                maxX = analysis.SuppressedMaxX;
-                minY = analysis.SuppressedMinY;
-                maxY = analysis.SuppressedMaxY;
-            }
-            else
-            {
-                minX = analysis.MinX;
-                maxX = analysis.MaxX;
-                minY = analysis.MinY;
-                maxY = analysis.MaxY;
-            }
+            hasValid = true;
+            rawMinX = suppressOutliers ? analysis.SuppressedMinX : analysis.MinX;
+            rawMaxX = suppressOutliers ? analysis.SuppressedMaxX : analysis.MaxX;
+            rawMinY = suppressOutliers ? analysis.SuppressedMinY : analysis.MinY;
+            rawMaxY = suppressOutliers ? analysis.SuppressedMaxY : analysis.MaxY;
         }
         else if (dataset != null && dataset.Points.Count > 0)
         {
-            minX = double.PositiveInfinity;
-            maxX = double.NegativeInfinity;
-            minY = double.PositiveInfinity;
-            maxY = double.NegativeInfinity;
+            rawMinX = double.PositiveInfinity;
+            rawMaxX = double.NegativeInfinity;
+            rawMinY = double.PositiveInfinity;
+            rawMaxY = double.NegativeInfinity;
 
             for (int i = 0; i < dataset.Points.Count; i++)
             {
                 var pt = dataset.Points[i];
                 if (!pt.IsFinite) continue;
-                if (pt.X < minX) minX = pt.X;
-                if (pt.X > maxX) maxX = pt.X;
-                if (pt.Y < minY) minY = pt.Y;
-                if (pt.Y > maxY) maxY = pt.Y;
+                if (pt.X < rawMinX) rawMinX = pt.X;
+                if (pt.X > rawMaxX) rawMaxX = pt.X;
+                if (pt.Y < rawMinY) rawMinY = pt.Y;
+                if (pt.Y > rawMaxY) rawMaxY = pt.Y;
+                hasValid = true;
+            }
+
+            if (!hasValid)
+            {
+                rawMinX = 0.0;
+                rawMaxX = 1.0;
+                rawMinY = 0.0;
+                rawMaxY = 1.0;
             }
         }
 
-        if (Math.Abs(maxX - minX) <= 1e-12)
+        var (minX, maxX) = ComputeAxisBounds(rawMinX, rawMaxX, hasValid, xScale, dataset, isX: true, suppressOutliers);
+        var (minY, maxY) = ComputeAxisBounds(rawMinY, rawMaxY, hasValid, yScale, dataset, isX: false, suppressOutliers);
+
+        return (minX, maxX, minY, maxY);
+    }
+
+    private static (double Min, double Max) ComputeAxisBounds(
+        double rawMin,
+        double rawMax,
+        bool hasValid,
+        PriceScaleType scale,
+        ScatterDataset? dataset,
+        bool isX,
+        bool suppressOutliers)
+    {
+        if (scale == PriceScaleType.Linear)
         {
-            minX -= 1.0;
-            maxX += 1.0;
-        }
-        if (Math.Abs(maxY - minY) <= 1e-12)
-        {
-            minY -= 1.0;
-            maxY += 1.0;
+            if (!hasValid) return (0.0, 1.0);
+            double span = rawMax - rawMin;
+            if (!double.IsFinite(span) || Math.Abs(span) <= 1e-12)
+            {
+                double delta = Math.Max(1.0, Math.Abs(rawMin) * DataRangePaddingFraction);
+                return (rawMin - delta, rawMax + delta);
+            }
+            double pad = span * DataRangePaddingFraction;
+            return (rawMin - pad, rawMax + pad);
         }
 
-        _transform.XScale = xScale;
-        _transform.YScale = yScale;
-        _transform.SetRanges(minX, maxX, minY, maxY, MarginLeft, MarginTop, vpW, vpH, w, h);
+        // Log Scale
+        double posMin = double.PositiveInfinity;
+        double posMax = double.NegativeInfinity;
+
+        if (dataset != null && dataset.Points.Count > 0)
+        {
+            for (int i = 0; i < dataset.Points.Count; i++)
+            {
+                var pt = dataset.Points[i];
+                if (!pt.IsFinite) continue;
+                double v = isX ? pt.X : pt.Y;
+                if (v > 0.0)
+                {
+                    if (v < posMin) posMin = v;
+                    if (v > posMax) posMax = v;
+                }
+            }
+        }
+
+        if (posMin <= posMax && double.IsFinite(posMin) && double.IsFinite(posMax))
+        {
+            if (suppressOutliers && rawMin > 0.0 && rawMax > rawMin)
+            {
+                double clampedMin = Math.Max(posMin, rawMin);
+                double clampedMax = Math.Min(posMax, rawMax);
+                if (clampedMin <= clampedMax)
+                {
+                    posMin = clampedMin;
+                    posMax = clampedMax;
+                }
+            }
+
+            double logMin = Math.Log10(posMin);
+            double logMax = Math.Log10(posMax);
+            double logSpan = logMax - logMin;
+
+            if (Math.Abs(logSpan) <= 1e-12)
+            {
+                return (Math.Pow(10.0, logMin - 0.5), Math.Pow(10.0, logMax + 0.5));
+            }
+
+            double logPad = logSpan * DataRangePaddingFraction;
+            return (Math.Pow(10.0, logMin - logPad), Math.Pow(10.0, logMax + logPad));
+        }
+
+        if (rawMin > 0.0 && rawMax >= rawMin)
+        {
+            double logMin = Math.Log10(rawMin);
+            double logMax = Math.Log10(rawMax);
+            double logSpan = logMax - logMin;
+            if (Math.Abs(logSpan) <= 1e-12)
+            {
+                return (Math.Pow(10.0, logMin - 0.5), Math.Pow(10.0, logMax + 0.5));
+            }
+            double logPad = logSpan * DataRangePaddingFraction;
+            return (Math.Pow(10.0, logMin - logPad), Math.Pow(10.0, logMax + logPad));
+        }
+
+        return (1.0, 10.0);
     }
 
     protected override void OnPointerMoved(PointerEventArgs e)
@@ -394,12 +497,17 @@ public sealed class ScatterPlotControl : Control, IDisposable
         int? hoveredPointIndex,
         int? selectedPointIndex,
         Point? cursorPos,
-        ScatterCoordinateTransform transform)
+        ScatterCoordinateTransform transform,
+        float tooltipFontSize = (float)FontDefaults.Tooltip)
     {
         float w = (float)bounds.Width;
         float h = (float)bounds.Height;
 
         if (w <= 0.0f || h <= 0.0f) return;
+
+        _tooltipTextPaint.TextSize = float.IsFinite(tooltipFontSize) && tooltipFontSize > 0.0f
+            ? tooltipFontSize
+            : (float)FontDefaults.Tooltip;
 
         canvas.Save();
         try
@@ -415,32 +523,7 @@ public sealed class ScatterPlotControl : Control, IDisposable
 
             if (transform.ViewportWidth <= 0.0 || Math.Abs(transform.CanvasWidth - w) > 0.1 || Math.Abs(transform.CanvasHeight - h) > 0.1)
             {
-                double minX = 0.0, maxX = 1.0, minY = 0.0, maxY = 1.0;
-                if (analysis != null && analysis.ValidPointCount > 0)
-                {
-                    minX = suppressOutliers ? analysis.SuppressedMinX : analysis.MinX;
-                    maxX = suppressOutliers ? analysis.SuppressedMaxX : analysis.MaxX;
-                    minY = suppressOutliers ? analysis.SuppressedMinY : analysis.MinY;
-                    maxY = suppressOutliers ? analysis.SuppressedMaxY : analysis.MaxY;
-                }
-                else if (dataset != null && dataset.Points.Count > 0)
-                {
-                    minX = double.PositiveInfinity;
-                    maxX = double.NegativeInfinity;
-                    minY = double.PositiveInfinity;
-                    maxY = double.NegativeInfinity;
-                    for (int i = 0; i < dataset.Points.Count; i++)
-                    {
-                        var pt = dataset.Points[i];
-                        if (!pt.IsFinite) continue;
-                        if (pt.X < minX) minX = pt.X;
-                        if (pt.X > maxX) maxX = pt.X;
-                        if (pt.Y < minY) minY = pt.Y;
-                        if (pt.Y > maxY) maxY = pt.Y;
-                    }
-                }
-                if (Math.Abs(maxX - minX) <= 1e-12) { minX -= 1.0; maxX += 1.0; }
-                if (Math.Abs(maxY - minY) <= 1e-12) { minY -= 1.0; maxY += 1.0; }
+                var (minX, maxX, minY, maxY) = ResolveViewportDataBounds(dataset, analysis, suppressOutliers, xScale, yScale);
 
                 transform.XScale = xScale;
                 transform.YScale = yScale;
@@ -637,7 +720,7 @@ public sealed class ScatterPlotControl : Control, IDisposable
                     string? label = (dataset.Labels != null && hoveredIdx.Value < dataset.Labels.Count)
                         ? dataset.Labels[hoveredIdx.Value]
                         : null;
-                    DrawTooltip(canvas, hPt, label, bounds, transform);
+                    DrawTooltip(canvas, hPt, label, plotRect, transform);
                 }
             }
         }
@@ -652,6 +735,8 @@ public sealed class ScatterPlotControl : Control, IDisposable
         // Axes outline
         canvas.DrawRect(plotRect, _axisLinePaint);
 
+        float canvasWidth = (float)transform.CanvasWidth;
+
         // Vertical Grid & X Ticks (5 subdivisions)
         int xTicks = 5;
         for (int i = 0; i <= xTicks; i++)
@@ -664,10 +749,11 @@ public sealed class ScatterPlotControl : Control, IDisposable
 
             string tickText = FormatTickValue(valX);
             float textWidth = _axisTextPaint.MeasureText(tickText);
-            canvas.DrawText(tickText, sx - (textWidth * 0.5f), plotRect.Bottom + 16.0f, _axisTextPaint);
+            float xDraw = Math.Clamp(sx - (textWidth * 0.5f), 2.0f, Math.Max(2.0f, canvasWidth - textWidth - 2.0f));
+            canvas.DrawText(tickText, xDraw, plotRect.Bottom + XTickBaselineOffset, _axisTextPaint);
         }
 
-        // Horizontal Grid & Y Ticks (5 subdivisions)
+        // Horizontal Grid & Y Ticks (5 subdivisions) - Rendered on Right Side
         int yTicks = 5;
         for (int i = 0; i <= yTicks; i++)
         {
@@ -678,27 +764,30 @@ public sealed class ScatterPlotControl : Control, IDisposable
             canvas.DrawLine(plotRect.Left, sy, plotRect.Right, sy, _gridPaint);
 
             string tickText = FormatTickValue(valY);
-            float textWidth = _axisTextPaint.MeasureText(tickText);
-            canvas.DrawText(tickText, plotRect.Left - textWidth - 6.0f, sy + 4.0f, _axisTextPaint);
+            float xDraw = plotRect.Right + TickLabelGap;
+            float yDraw = sy + 4.0f;
+            canvas.DrawText(tickText, xDraw, yDraw, _axisTextPaint);
         }
 
-        // Axis Titles
+        // Axis Titles: Bottom-Left X Title & Horizontal Top-Right Y Title
         if (dataset is { } ds)
         {
             if (!string.IsNullOrEmpty(ds.XAxisLabel))
             {
-                float labelWidth = _axisTitlePaint.MeasureText(ds.XAxisLabel);
-                float labelX = plotRect.Left + (0.5f * (plotRect.Width - labelWidth));
-                canvas.DrawText(ds.XAxisLabel, labelX, plotRect.Bottom + 32.0f, _axisTitlePaint);
+                float maxXTitleWidth = Math.Max(0.0f, plotRect.Width);
+                string xTitle = TruncateTextWithEllipsis(_axisTitlePaint, ds.XAxisLabel, maxXTitleWidth);
+                float xTitleBaseline = plotRect.Bottom + AxisTitleBaselineOffset;
+                canvas.DrawText(xTitle, plotRect.Left, xTitleBaseline, _axisTitlePaint);
             }
 
             if (!string.IsNullOrEmpty(ds.YAxisLabel))
             {
-                canvas.Save();
-                canvas.RotateDegrees(-90, 16.0f, plotRect.Top + (0.5f * plotRect.Height));
-                float labelWidth = _axisTitlePaint.MeasureText(ds.YAxisLabel);
-                canvas.DrawText(ds.YAxisLabel, 16.0f - (labelWidth * 0.5f), plotRect.Top + (0.5f * plotRect.Height) - 8.0f, _axisTitlePaint);
-                canvas.Restore();
+                float maxYTitleWidth = Math.Max(0.0f, plotRect.Width);
+                string yTitle = TruncateTextWithEllipsis(_axisTitlePaint, ds.YAxisLabel, maxYTitleWidth);
+                float wy = _axisTitlePaint.MeasureText(yTitle);
+                float yX = Math.Max(plotRect.Left, plotRect.Right - wy);
+                float yTopTitleBaseline = plotRect.Top - TopAxisTitleBaselineOffset;
+                canvas.DrawText(yTitle, yX, yTopTitleBaseline, _axisTitlePaint);
             }
         }
     }
@@ -762,55 +851,73 @@ public sealed class ScatterPlotControl : Control, IDisposable
 
     private void DrawHud(SKCanvas canvas, ScatterAnalysisResult analysis, SKRect plotRect, int excludedCount)
     {
-        float hudWidth = 175.0f;
+        string title = "Scatter Analysis";
+        string line1 = $"N = {analysis.ValidPointCount} (Outliers: {analysis.OutlierCount})";
+        string? lineEx = excludedCount > 0 ? $"Excluded: {excludedCount} non-positive" : null;
+        string line2 = analysis.HasCorrelation
+            ? $"r = {analysis.CorrelationR:F3}  (R² = {analysis.RSquared:F3})"
+            : "r = —  (R² = —)";
+
+        string line3;
+        if (analysis.HasRegression)
+        {
+            string sign = analysis.Slope >= 0 ? "+" : "-";
+            line3 = $"y = {analysis.Intercept:F2} {sign} {Math.Abs(analysis.Slope):F2}x  [Linear]";
+        }
+        else
+        {
+            line3 = "Regression: None";
+        }
+
+        string line4 = $"s = {analysis.ResidualStdError:F3}  (Conf: {analysis.ConfidenceLevel * 100:F0}%)";
+
+        float maxTextW = _hudBoldTextPaint.MeasureText(title);
+        maxTextW = Math.Max(maxTextW, _hudTextPaint.MeasureText(line1));
+        if (lineEx != null) maxTextW = Math.Max(maxTextW, _hudTextPaint.MeasureText(lineEx));
+        maxTextW = Math.Max(maxTextW, _hudTextPaint.MeasureText(line2));
+        maxTextW = Math.Max(maxTextW, _hudTextPaint.MeasureText(line3));
+        maxTextW = Math.Max(maxTextW, _hudTextPaint.MeasureText(line4));
+
+        float reqWidth = Math.Max(MinHudWidth, maxTextW + 16.0f);
+        float hudWidth = Math.Clamp(reqWidth, 0.0f, Math.Max(0.0f, plotRect.Width - 16.0f));
         float hudHeight = excludedCount > 0 ? 102.0f : 88.0f;
-        float hudX = plotRect.Right - hudWidth - 8.0f;
-        float hudY = plotRect.Top + 8.0f;
+        float hudX = plotRect.Left + HudMargin;
+        float hudY = plotRect.Top + HudMargin;
 
         var hudRect = new SKRoundRect(new SKRect(hudX, hudY, hudX + hudWidth, hudY + hudHeight), 6.0f, 6.0f);
         canvas.DrawRoundRect(hudRect, _hudBgPaint);
         canvas.DrawRoundRect(hudRect, _hudBorderPaint);
 
+        canvas.Save();
+        canvas.ClipRect(hudRect.Rect);
+
         float textX = hudX + 8.0f;
         float textY = hudY + 16.0f;
 
-        canvas.DrawText("Scatter Analysis", textX, textY, _hudBoldTextPaint);
+        canvas.DrawText(title, textX, textY, _hudBoldTextPaint);
 
         textY += 15.0f;
-        canvas.DrawText($"N = {analysis.ValidPointCount} (Outliers: {analysis.OutlierCount})", textX, textY, _hudTextPaint);
+        canvas.DrawText(line1, textX, textY, _hudTextPaint);
 
-        if (excludedCount > 0)
+        if (lineEx != null)
         {
             textY += 14.0f;
-            canvas.DrawText($"Excluded: {excludedCount} non-positive", textX, textY, _hudTextPaint);
+            canvas.DrawText(lineEx, textX, textY, _hudTextPaint);
         }
 
         textY += 14.0f;
-        if (analysis.HasCorrelation)
-        {
-            canvas.DrawText($"r = {analysis.CorrelationR:F3}  (R² = {analysis.RSquared:F3})", textX, textY, _hudTextPaint);
-        }
-        else
-        {
-            canvas.DrawText("r = —  (R² = —)", textX, textY, _hudTextPaint);
-        }
+        canvas.DrawText(line2, textX, textY, _hudTextPaint);
 
         textY += 14.0f;
-        if (analysis.HasRegression)
-        {
-            string sign = analysis.Slope >= 0 ? "+" : "-";
-            canvas.DrawText($"y = {analysis.Intercept:F2} {sign} {Math.Abs(analysis.Slope):F2}x  [Linear]", textX, textY, _hudTextPaint);
-        }
-        else
-        {
-            canvas.DrawText("Regression: None", textX, textY, _hudTextPaint);
-        }
+        canvas.DrawText(line3, textX, textY, _hudTextPaint);
 
         textY += 14.0f;
-        canvas.DrawText($"s = {analysis.ResidualStdError:F3}  (Conf: {analysis.ConfidenceLevel * 100:F0}%)", textX, textY, _hudTextPaint);
+        canvas.DrawText(line4, textX, textY, _hudTextPaint);
+
+        canvas.Restore();
     }
 
-    private void DrawTooltip(SKCanvas canvas, ScatterPoint pt, string? label, Rect bounds, ScatterCoordinateTransform transform)
+    private void DrawTooltip(SKCanvas canvas, ScatterPoint pt, string? label, SKRect plotRect, ScatterCoordinateTransform transform)
     {
         float sx = (float)transform.XToScreen(pt.X);
         float sy = (float)transform.YToScreen(pt.Y);
@@ -818,20 +925,33 @@ public sealed class ScatterPlotControl : Control, IDisposable
         string text1 = string.IsNullOrEmpty(label) ? $"({pt.X:F2}, {pt.Y:F2})" : $"{label}: ({pt.X:F2}, {pt.Y:F2})";
 
         float tw = _tooltipTextPaint.MeasureText(text1);
-        float bw = tw + 16.0f;
-        float bh = 24.0f;
+        float bw = tw + (TooltipPaddingX * 2.0f);
 
-        float bx = sx + 8.0f;
-        float by = sy - bh - 8.0f;
+        _tooltipTextPaint.GetFontMetrics(out var metrics);
+        float textHeight = -metrics.Ascent + metrics.Descent;
+        float vPad = Math.Max(4.0f, textHeight * 0.25f);
+        float bh = textHeight + (vPad * 2.0f);
 
-        if (bx + bw > bounds.Width) bx = sx - bw - 8.0f;
-        if (by < 4.0f) by = sy + 8.0f;
+        float bx = sx + TooltipPointerOffset;
+        float by = sy - bh - TooltipPointerOffset;
 
-        var badgeRect = new SKRoundRect(new SKRect(bx, by, bx + bw, by + bh), 4.0f, 4.0f);
+        if (bx + bw > plotRect.Right - TooltipCornerRadius) bx = sx - bw - TooltipPointerOffset;
+        bx = Math.Clamp(bx, plotRect.Left + TooltipCornerRadius, Math.Max(plotRect.Left + TooltipCornerRadius, plotRect.Right - bw - TooltipCornerRadius));
+
+        if (by < plotRect.Top + TooltipCornerRadius) by = sy + TooltipPointerOffset;
+        by = Math.Clamp(by, plotRect.Top + TooltipCornerRadius, Math.Max(plotRect.Top + TooltipCornerRadius, plotRect.Bottom - bh - TooltipCornerRadius));
+
+        var badgeRect = new SKRoundRect(new SKRect(bx, by, bx + bw, by + bh), TooltipCornerRadius, TooltipCornerRadius);
         canvas.DrawRoundRect(badgeRect, _tooltipBgPaint);
         canvas.DrawRoundRect(badgeRect, _tooltipBorderPaint);
 
-        canvas.DrawText(text1, bx + 8.0f, by + 16.0f, _tooltipTextPaint);
+        float textBaseline = by + vPad - metrics.Ascent;
+        canvas.DrawText(text1, bx + TooltipPaddingX, textBaseline, _tooltipTextPaint);
+    }
+
+    private static string TruncateTextWithEllipsis(SKPaint paint, string? text, float maxWidth)
+    {
+        return InformationRenderer.TruncateWithEllipsis(text, maxWidth, paint);
     }
 
     private static string FormatTickValue(double value)
@@ -857,6 +977,16 @@ public sealed class ScatterPlotControl : Control, IDisposable
             _themeManager.PropertyChanged += OnThemeManagerPropertyChanged;
             UpdateThemeColors(_themeManager.CurrentTheme);
         }
+
+        if (_fontSettingsManager is not null)
+        {
+            _fontSettingsManager.PropertyChanged -= OnFontSettingsManagerPropertyChanged;
+        }
+        _fontSettingsManager = (Application.Current as App)?.Services?.GetService<IFontSettingsManager>();
+        if (_fontSettingsManager is not null)
+        {
+            _fontSettingsManager.PropertyChanged += OnFontSettingsManagerPropertyChanged;
+        }
     }
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
@@ -865,6 +995,11 @@ public sealed class ScatterPlotControl : Control, IDisposable
         {
             _themeManager.PropertyChanged -= OnThemeManagerPropertyChanged;
             _themeManager = null;
+        }
+        if (_fontSettingsManager is not null)
+        {
+            _fontSettingsManager.PropertyChanged -= OnFontSettingsManagerPropertyChanged;
+            _fontSettingsManager = null;
         }
         base.OnDetachedFromVisualTree(e);
         HoveredPointIndex = null;
@@ -888,6 +1023,58 @@ public sealed class ScatterPlotControl : Control, IDisposable
                 }
             });
         }
+    }
+
+    private void OnFontSettingsManagerPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is null or nameof(IFontSettingsManager.TooltipFontSize))
+        {
+            global::Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            {
+                if (!_isDisposed)
+                {
+                    InvalidateVisual();
+                }
+            });
+        }
+    }
+
+    private const string TooltipFontSizeResourceKey = "TooltipFontSize";
+
+    internal double ResolveTooltipFontSize()
+    {
+        if (_fontSettingsManager is not null)
+        {
+            double managerSize = _fontSettingsManager.TooltipFontSize;
+            if (managerSize > 0 && double.IsFinite(managerSize))
+            {
+                return managerSize;
+            }
+        }
+
+        if (this.TryFindResource(TooltipFontSizeResourceKey, ActualThemeVariant, out object? value) &&
+            value is double size && size > 0 && double.IsFinite(size))
+        {
+            return size;
+        }
+
+        return FontDefaults.Tooltip;
+    }
+
+    internal double CurrentTooltipFontSize => ResolveTooltipFontSize();
+
+    internal void SetFontSettingsManager(IFontSettingsManager? fontSettingsManager)
+    {
+        if (_fontSettingsManager is not null)
+        {
+            _fontSettingsManager.PropertyChanged -= OnFontSettingsManagerPropertyChanged;
+        }
+        _fontSettingsManager = fontSettingsManager;
+        if (_fontSettingsManager is not null)
+        {
+            _fontSettingsManager.PropertyChanged += OnFontSettingsManagerPropertyChanged;
+        }
+        InvalidateVisual();
     }
 
     private void UpdateThemeColors(ThemeColors theme)
@@ -916,6 +1103,12 @@ public sealed class ScatterPlotControl : Control, IDisposable
         {
             _themeManager.PropertyChanged -= OnThemeManagerPropertyChanged;
             _themeManager = null;
+        }
+
+        if (_fontSettingsManager is not null)
+        {
+            _fontSettingsManager.PropertyChanged -= OnFontSettingsManagerPropertyChanged;
+            _fontSettingsManager = null;
         }
 
         _gridDashEffect.Dispose();
@@ -962,6 +1155,7 @@ public sealed class ScatterPlotControl : Control, IDisposable
         private readonly int? _hoveredPointIndex;
         private readonly int? _selectedPointIndex;
         private readonly Point? _cursorPos;
+        private readonly float _tooltipFontSize;
         private readonly ScatterCoordinateTransform _transform;
 
         public ScatterPlotDrawOperation(
@@ -978,6 +1172,7 @@ public sealed class ScatterPlotControl : Control, IDisposable
             int? hoveredPointIndex,
             int? selectedPointIndex,
             Point? cursorPos,
+            float tooltipFontSize,
             ScatterCoordinateTransform transform)
             : base(bounds)
         {
@@ -993,6 +1188,7 @@ public sealed class ScatterPlotControl : Control, IDisposable
             _hoveredPointIndex = hoveredPointIndex;
             _selectedPointIndex = selectedPointIndex;
             _cursorPos = cursorPos;
+            _tooltipFontSize = tooltipFontSize;
             _transform = transform;
         }
 
@@ -1012,7 +1208,8 @@ public sealed class ScatterPlotControl : Control, IDisposable
                 _hoveredPointIndex,
                 _selectedPointIndex,
                 _cursorPos,
-                _transform);
+                _transform,
+                _tooltipFontSize);
         }
     }
 }

@@ -18,51 +18,75 @@ public static class CandlePatternDetector
     /// </summary>
     /// <param name="candles">Read-only list of historical candles, ending with the target candle.</param>
     /// <returns>The recognized <see cref="CandlePatternType"/>, or None if it doesn't match any clear pattern.</returns>
-    public static CandlePatternType DetectPattern(IReadOnlyList<CandleData> candles)
+    public static CandlePatternType DetectPattern(
+        IReadOnlyList<CandleData> candles,
+        bool excludePatternBarsFromContext = false,
+        bool requireTrendContext = false)
     {
-        if (candles == null || candles.Count == 0) return CandlePatternType.None;
+        var patterns = DetectPatternsInternal(candles, excludePatternBarsFromContext, requireTrendContext, stopOnFirst: true);
+        return patterns.Count > 0 ? patterns[0] : CandlePatternType.None;
+    }
+
+    /// <summary>
+    /// Evaluates the sequence of candles ending at the latest candle to determine all matching candlestick patterns
+    /// in standard descending window size precedence (5-candle -> 4-candle -> 3-candle -> 2-candle -> 1-candle).
+    /// </summary>
+    public static IReadOnlyList<CandlePatternType> DetectPatterns(
+        IReadOnlyList<CandleData> candles,
+        bool excludePatternBarsFromContext = false,
+        bool requireTrendContext = false)
+    {
+        return DetectPatternsInternal(candles, excludePatternBarsFromContext, requireTrendContext, stopOnFirst: false);
+    }
+
+    private static IReadOnlyList<CandlePatternType> DetectPatternsInternal(
+        IReadOnlyList<CandleData> candles,
+        bool excludePatternBarsFromContext,
+        bool requireTrendContext,
+        bool stopOnFirst)
+    {
+        if (candles == null || candles.Count == 0) return Array.Empty<CandlePatternType>();
         int n = candles.Count;
         var candle = candles[n - 1];
+        var results = new List<CandlePatternType>();
 
-        // Context: Average body & ATR calculation (up to CandlePatternAtrPeriod periods)
-        int period = Math.Min(ChartConstants.CandlePatternAtrPeriod, n);
-        decimal sumBody = 0m;
-        decimal sumTrueRange = 0m;
-        for (int i = n - period; i < n; i++)
+        // Precompute context for all lengths
+        decimal avg5, atr5, avg4, atr4, avg3, atr3, avg2, atr2, avg1, atr1;
+
+        if (!excludePatternBarsFromContext)
         {
-            sumBody += Math.Abs(candles[i].Open - candles[i].Close);
-
-            // True Range: max(H-L, |H-prevClose|, |L-prevClose|)
-            decimal tr = candles[i].High - candles[i].Low;
-            if (i > 0)
-            {
-                decimal prevClose = candles[i - 1].Close;
-                tr = Math.Max(tr, Math.Max(
-                    Math.Abs(candles[i].High - prevClose),
-                    Math.Abs(candles[i].Low - prevClose)));
-            }
-            sumTrueRange += tr;
+            int period = Math.Min(ChartConstants.CandlePatternAtrPeriod, n);
+            var (avg, atr) = ComputeContext(candles, n - period, n - 1);
+            avg5 = avg4 = avg3 = avg2 = avg1 = avg;
+            atr5 = atr4 = atr3 = atr2 = atr1 = atr;
         }
-        decimal avgBody = period > 0 ? (sumBody / period) : 0m;
-        decimal atr = period > 0 ? (sumTrueRange / period) : 0m;
+        else
+        {
+            const int p = ChartConstants.CandlePatternAtrPeriod;
+            (avg5, atr5) = ComputeContext(candles, n - 5 - p, n - 5 - 1);
+            (avg4, atr4) = ComputeContext(candles, n - 4 - p, n - 4 - 1);
+            (avg3, atr3) = ComputeContext(candles, n - 3 - p, n - 3 - 1);
+            (avg2, atr2) = ComputeContext(candles, n - 2 - p, n - 2 - 1);
+            (avg1, atr1) = ComputeContext(candles, n - 1 - p, n - 1 - 1);
+        }
 
         // --- 1. 5本足パターン走査 (5-Candle Patterns) ---
         if (n >= 5)
         {
-            if (IsMatHold(candles, avgBody, atr)) return CandlePatternType.MatHold;
-            if (IsRisingThreeMethods(candles, avgBody, atr)) return CandlePatternType.RisingThreeMethods;
-            if (IsFallingThreeMethods(candles, avgBody, atr)) return CandlePatternType.FallingThreeMethods;
-            if (IsLadderBottom(candles, avgBody, atr)) return CandlePatternType.LadderBottom;
-            if (IsBullishBreakaway(candles, avgBody, atr)) return CandlePatternType.BullishBreakaway;
-            if (IsBearishBreakaway(candles, avgBody, atr)) return CandlePatternType.BearishBreakaway;
+            if (IsMatHold(candles, avg5, atr5)) { results.Add(CandlePatternType.MatHold); if (stopOnFirst) return results; }
+            if (IsRisingThreeMethods(candles, avg5, atr5)) { results.Add(CandlePatternType.RisingThreeMethods); if (stopOnFirst) return results; }
+            if (IsFallingThreeMethods(candles, avg5, atr5)) { results.Add(CandlePatternType.FallingThreeMethods); if (stopOnFirst) return results; }
+            if (IsLadderBottom(candles, avg5, atr5)) { results.Add(CandlePatternType.LadderBottom); if (stopOnFirst) return results; }
+            if (IsBullishBreakaway(candles, avg5, atr5)) { results.Add(CandlePatternType.BullishBreakaway); if (stopOnFirst) return results; }
+            if (IsBearishBreakaway(candles, avg5, atr5)) { results.Add(CandlePatternType.BearishBreakaway); if (stopOnFirst) return results; }
         }
 
         // --- 2. 4本足パターン走査 (4-Candle Continuation/Reversal Patterns) ---
         if (n >= 4)
         {
-            if (IsConcealingBabySwallow(candles, avgBody, atr)) return CandlePatternType.ConcealingBabySwallow;
-            if (IsBullishThreeLineStrike(candles, avgBody, atr)) return CandlePatternType.BullishThreeLineStrike;
-            if (IsBearishThreeLineStrike(candles, avgBody, atr)) return CandlePatternType.BearishThreeLineStrike;
+            if (IsConcealingBabySwallow(candles, avg4, atr4)) { results.Add(CandlePatternType.ConcealingBabySwallow); if (stopOnFirst) return results; }
+            if (IsBullishThreeLineStrike(candles, avg4, atr4)) { results.Add(CandlePatternType.BullishThreeLineStrike); if (stopOnFirst) return results; }
+            if (IsBearishThreeLineStrike(candles, avg4, atr4)) { results.Add(CandlePatternType.BearishThreeLineStrike); if (stopOnFirst) return results; }
         }
 
         // --- 3. 3本足パターン走査 (3-Candle Patterns) ---
@@ -73,35 +97,41 @@ public static class CandlePatternDetector
             decimal prev2Body = Body(prev2);
             decimal prev1Body = Body(prev1);
             decimal prev1Range = Range(prev1);
-            bool prev2IsLarge = prev2Body >= (avgBody * ChartConstants.CandlePatternLargeBodyRatio);
+            bool prev2IsLarge = prev2Body >= (avg3 * ChartConstants.CandlePatternLargeBodyRatio);
             decimal prev2Mid = (prev2.Open + prev2.Close) / 2m;
             decimal curBody = Body(candle);
             decimal curRange = Range(candle);
-            bool curIsLarge = IsLarge(candle, avgBody, atr);
+            bool curIsLarge = IsLarge(candle, avg3, atr3);
 
             // 強気棄て子 / 弱気棄て子 (Bullish / Bearish Abandoned Baby)
-            if (IsBullishAbandonedBaby(prev2, prev1, candle, avgBody, atr)) return CandlePatternType.BullishAbandonedBaby;
-            if (IsBearishAbandonedBaby(prev2, prev1, candle, avgBody, atr)) return CandlePatternType.BearishAbandonedBaby;
+            if (IsBullishAbandonedBaby(prev2, prev1, candle, avg3, atr3)) { results.Add(CandlePatternType.BullishAbandonedBaby); if (stopOnFirst) return results; }
+            if (IsBearishAbandonedBaby(prev2, prev1, candle, avg3, atr3)) { results.Add(CandlePatternType.BearishAbandonedBaby); if (stopOnFirst) return results; }
 
             // 明けの明星 (Morning Star)
-            bool prev1IsSmall = prev1Body <= (avgBody * ChartConstants.CandlePatternSmallBodyRatio) && prev1Body <= (prev1Range * ChartConstants.CandlePatternSmallRangeRatio);
+            bool prev1IsSmall = prev1Body <= (avg3 * ChartConstants.CandlePatternSmallBodyRatio) && prev1Body <= (prev1Range * ChartConstants.CandlePatternSmallRangeRatio);
             bool gapDown = Math.Max(prev1.Open, prev1.Close) < prev2.Close;
             if (IsBear(prev2) && prev2IsLarge && prev1IsSmall && gapDown && IsBull(candle) && curIsLarge && candle.Close > prev2Mid)
-                return CandlePatternType.MorningStar;
+            {
+                results.Add(CandlePatternType.MorningStar);
+                if (stopOnFirst) return results;
+            }
 
             // 宵の明星 (Evening Star)
             bool gapUp = Math.Min(prev1.Open, prev1.Close) > prev2.Close;
             if (IsBull(prev2) && prev2IsLarge && prev1IsSmall && gapUp && IsBear(candle) && curIsLarge && candle.Close < prev2Mid)
-                return CandlePatternType.EveningStar;
+            {
+                results.Add(CandlePatternType.EveningStar);
+                if (stopOnFirst) return results;
+            }
 
             // 先詰まり (Advance Block)
-            if (IsAdvanceBlock(prev2, prev1, candle, avgBody)) return CandlePatternType.AdvanceBlock;
+            if (IsAdvanceBlock(prev2, prev1, candle, avg3)) { results.Add(CandlePatternType.AdvanceBlock); if (stopOnFirst) return results; }
 
             // 思案 (Deliberation)
-            if (IsDeliberation(prev2, prev1, candle, avgBody, atr)) return CandlePatternType.Deliberation;
+            if (IsDeliberation(prev2, prev1, candle, avg3, atr3)) { results.Add(CandlePatternType.Deliberation); if (stopOnFirst) return results; }
 
             // 同値三羽烏 (Identical Three Crows: 必ず黒三兵より前に評価)
-            if (IsIdenticalThreeCrows(prev2, prev1, candle, avgBody)) return CandlePatternType.IdenticalThreeCrows;
+            if (IsIdenticalThreeCrows(prev2, prev1, candle, avg3)) { results.Add(CandlePatternType.IdenticalThreeCrows); if (stopOnFirst) return results; }
 
             // 赤三兵 (Three White Soldiers)
             if (IsBull(prev2) && IsBull(prev1) && IsBull(candle))
@@ -110,10 +140,13 @@ public static class CandlePatternDetector
                 bool currOpenInside = candle.Open >= prev1.Open && candle.Open <= prev1.Close;
                 if (prev1OpenInside && currOpenInside && prev1.Close > prev2.Close && candle.Close > prev1.Close)
                 {
-                    if (prev2Body > (avgBody * ChartConstants.CandlePatternNoiseBodyMinRatio) &&
-                        prev1Body > (avgBody * ChartConstants.CandlePatternNoiseBodyMinRatio) &&
-                        curBody > (avgBody * ChartConstants.CandlePatternNoiseBodyMinRatio))
-                        return CandlePatternType.ThreeWhiteSoldiers;
+                    if (prev2Body > (avg3 * ChartConstants.CandlePatternNoiseBodyMinRatio) &&
+                        prev1Body > (avg3 * ChartConstants.CandlePatternNoiseBodyMinRatio) &&
+                        curBody > (avg3 * ChartConstants.CandlePatternNoiseBodyMinRatio))
+                    {
+                        results.Add(CandlePatternType.ThreeWhiteSoldiers);
+                        if (stopOnFirst) return results;
+                    }
                 }
             }
 
@@ -124,27 +157,30 @@ public static class CandlePatternDetector
                 bool currOpenInside = candle.Open <= prev1.Open && candle.Open >= prev1.Close;
                 if (prev1OpenInside && currOpenInside && prev1.Close < prev2.Close && candle.Close < prev1.Close)
                 {
-                    if (prev2Body > (avgBody * ChartConstants.CandlePatternNoiseBodyMinRatio) &&
-                        prev1Body > (avgBody * ChartConstants.CandlePatternNoiseBodyMinRatio) &&
-                        curBody > (avgBody * ChartConstants.CandlePatternNoiseBodyMinRatio))
-                        return CandlePatternType.ThreeBlackCrows;
+                    if (prev2Body > (avg3 * ChartConstants.CandlePatternNoiseBodyMinRatio) &&
+                        prev1Body > (avg3 * ChartConstants.CandlePatternNoiseBodyMinRatio) &&
+                        curBody > (avg3 * ChartConstants.CandlePatternNoiseBodyMinRatio))
+                    {
+                        results.Add(CandlePatternType.ThreeBlackCrows);
+                        if (stopOnFirst) return results;
+                    }
                 }
             }
 
             // スティックサンドイッチ (Stick Sandwich)
-            if (IsStickSandwich(prev2, prev1, candle, avgBody)) return CandlePatternType.StickSandwich;
+            if (IsStickSandwich(prev2, prev1, candle, avg3)) { results.Add(CandlePatternType.StickSandwich); if (stopOnFirst) return results; }
 
             // 上放れ窓埋め三法 / 下放れ窓埋め三法 (Gap Three Methods)
-            if (IsBullishGapThreeMethods(prev2, prev1, candle, avgBody)) return CandlePatternType.BullishGapThreeMethods;
-            if (IsBearishGapThreeMethods(prev2, prev1, candle, avgBody)) return CandlePatternType.BearishGapThreeMethods;
+            if (IsBullishGapThreeMethods(prev2, prev1, candle, avg3)) { results.Add(CandlePatternType.BullishGapThreeMethods); if (stopOnFirst) return results; }
+            if (IsBearishGapThreeMethods(prev2, prev1, candle, avg3)) { results.Add(CandlePatternType.BearishGapThreeMethods); if (stopOnFirst) return results; }
 
             // 上放れタスキ / 下放れタスキ (Tasuki Gap)
-            if (IsBullishTasukiGap(prev2, prev1, candle, avgBody)) return CandlePatternType.BullishTasukiGap;
-            if (IsBearishTasukiGap(prev2, prev1, candle, avgBody)) return CandlePatternType.BearishTasukiGap;
+            if (IsBullishTasukiGap(prev2, prev1, candle, avg3)) { results.Add(CandlePatternType.BullishTasukiGap); if (stopOnFirst) return results; }
+            if (IsBearishTasukiGap(prev2, prev1, candle, avg3)) { results.Add(CandlePatternType.BearishTasukiGap); if (stopOnFirst) return results; }
 
             // 上放れ並び赤 / 下放れ並び赤 (Side-by-Side White Lines)
-            if (IsBullishSideBySideWhiteLines(candles, avgBody, atr)) return CandlePatternType.BullishSideBySideWhiteLines;
-            if (IsBearishSideBySideWhiteLines(candles, avgBody, atr)) return CandlePatternType.BearishSideBySideWhiteLines;
+            if (IsBullishSideBySideWhiteLines(candles, avg3, atr3)) { results.Add(CandlePatternType.BullishSideBySideWhiteLines); if (stopOnFirst) return results; }
+            if (IsBearishSideBySideWhiteLines(candles, avg3, atr3)) { results.Add(CandlePatternType.BearishSideBySideWhiteLines); if (stopOnFirst) return results; }
         }
 
         // --- 4. 2本組パターン走査 (2-Candle Patterns) ---
@@ -152,41 +188,59 @@ public static class CandlePatternDetector
         {
             var prev1 = candles[n - 2];
             decimal prev1Body = Body(prev1);
-            bool prev1IsLarge = prev1Body >= (avgBody * ChartConstants.CandlePatternLargeBodyRatio);
+            bool prev1IsLarge = prev1Body >= (avg2 * ChartConstants.CandlePatternLargeBodyRatio);
             decimal prev1Mid = (prev1.Open + prev1.Close) / 2m;
             decimal curBody = Body(candle);
-            bool curIsSmall = IsSmall(candle, avgBody, atr);
+            bool curIsSmall = IsSmall(candle, avg2, atr2);
 
             // 強気蹴り上げ / 弱気蹴り下げ (Kicking Patterns: 2本足最上位で評価)
-            if (IsBullishKicking(prev1, candle, avgBody, atr)) return CandlePatternType.BullishKicking;
-            if (IsBearishKicking(prev1, candle, avgBody, atr)) return CandlePatternType.BearishKicking;
+            if (IsBullishKicking(prev1, candle, avg2, atr2)) { results.Add(CandlePatternType.BullishKicking); if (stopOnFirst) return results; }
+            if (IsBearishKicking(prev1, candle, avg2, atr2)) { results.Add(CandlePatternType.BearishKicking); if (stopOnFirst) return results; }
 
             // 強気包み足 (Bullish Engulfing)
             if (IsBear(prev1) && IsBull(candle) && candle.Open <= prev1.Close && candle.Close >= prev1.Open && curBody > prev1Body)
-                return CandlePatternType.BullishEngulfing;
+            {
+                results.Add(CandlePatternType.BullishEngulfing);
+                if (stopOnFirst) return results;
+            }
 
             // 弱気包み足 (Bearish Engulfing)
             if (IsBull(prev1) && IsBear(candle) && candle.Open >= prev1.Close && candle.Close <= prev1.Open && curBody > prev1Body)
-                return CandlePatternType.BearishEngulfing;
+            {
+                results.Add(CandlePatternType.BearishEngulfing);
+                if (stopOnFirst) return results;
+            }
 
             // 家路を辿る鳩 (Homing Pigeon: 陰線はらみ)
-            if (IsHomingPigeon(prev1, candle, avgBody, atr)) return CandlePatternType.HomingPigeon;
+            if (IsHomingPigeon(prev1, candle, avg2, atr2)) { results.Add(CandlePatternType.HomingPigeon); if (stopOnFirst) return results; }
 
             // 強気はらみ (Bullish Harami)
             if (IsBear(prev1) && prev1IsLarge && IsBull(candle) && curIsSmall && candle.Open >= prev1.Close && candle.Close <= prev1.Open)
-                return CandlePatternType.BullishHarami;
+            {
+                results.Add(CandlePatternType.BullishHarami);
+                if (stopOnFirst) return results;
+            }
 
             // 弱気はらみ (Bearish Harami)
             if (IsBull(prev1) && prev1IsLarge && IsBear(candle) && curIsSmall && candle.Open <= prev1.Close && candle.Close >= prev1.Open)
-                return CandlePatternType.BearishHarami;
+            {
+                results.Add(CandlePatternType.BearishHarami);
+                if (stopOnFirst) return results;
+            }
 
             // 貫き線 (Piercing Line)
             if (IsBear(prev1) && prev1IsLarge && IsBull(candle) && candle.Open < prev1.Low && candle.Close > prev1Mid && candle.Close <= prev1.Open)
-                return CandlePatternType.PiercingLine;
+            {
+                results.Add(CandlePatternType.PiercingLine);
+                if (stopOnFirst) return results;
+            }
 
             // かぶせ線 (Dark Cloud Cover)
             if (IsBull(prev1) && prev1IsLarge && IsBear(candle) && candle.Open > prev1.High && candle.Close < prev1Mid && candle.Close >= prev1.Open)
-                return CandlePatternType.DarkCloudCover;
+            {
+                results.Add(CandlePatternType.DarkCloudCover);
+                if (stopOnFirst) return results;
+            }
         }
 
         // --- 5. 1本足パターン走査 (Single Candle Patterns) ---
@@ -196,37 +250,42 @@ public static class CandlePatternDetector
         decimal lowerShadow = Math.Min(candle.Open, candle.Close) - candle.Low;
 
         // Zero tolerance for wick visibility (5% of range)
-        decimal zeroTolerance = range * 0.05m;
+        decimal zeroTolerance = range * ChartConstants.CandlePatternWickToleranceRangeRatio;
         if (range == 0) zeroTolerance = 0;
 
         bool isBullish = IsBull(candle);
         bool isBearish = IsBear(candle);
-        bool isDoji = range > 0 ? (body <= range * 0.05m) : true;
+        bool isDoji = range > 0 ? (body <= range * ChartConstants.CandlePatternDojiBodyRangeRatio) : true;
 
-        bool isLargeBody = IsLarge(candle, avgBody, atr);
-        bool isSmallBody = IsSmall(candle, avgBody, atr);
+        bool isLargeBody = IsLarge(candle, avg1, atr1);
+        bool isSmallBody = IsSmall(candle, avg1, atr1);
 
         // Fallback for short histories or zero volatility
-        if (avgBody == 0 || period < 5)
+        int availableBars1 = excludePatternBarsFromContext ? n - 1 : n;
+        int period1 = Math.Min(ChartConstants.CandlePatternAtrPeriod, availableBars1);
+        if (avg1 == 0 || period1 < 5)
         {
-            if (!isLargeBody && range > 0) isLargeBody = body >= (range * 0.8m);
-            if (!isSmallBody && range > 0) isSmallBody = body <= (range * 0.4m);
+            if (!isLargeBody && range > 0) isLargeBody = body >= (range * ChartConstants.CandlePatternFallbackLargeBodyRangeRatio);
+            if (!isSmallBody && range > 0) isSmallBody = body <= (range * ChartConstants.CandlePatternFallbackSmallBodyRangeRatio);
         }
 
         // 四値同時 (Four-Price Doji)
         if (range == 0 || (body == 0 && upperShadow == 0 && lowerShadow == 0))
-            return CandlePatternType.FourPriceDoji;
+        {
+            results.Add(CandlePatternType.FourPriceDoji);
+            if (stopOnFirst) return results;
+        }
 
         // 同時線系 (Doji Patterns)
-        if (isDoji)
+        else if (isDoji)
         {
             bool noUpper = upperShadow <= zeroTolerance;
             bool noLower = lowerShadow <= zeroTolerance;
 
-            if (noUpper && noLower) return CandlePatternType.FourPriceDoji;
-            if (noUpper) return CandlePatternType.DragonflyDoji;
-            if (noLower) return CandlePatternType.GravestoneDoji;
-            return CandlePatternType.CrossDoji;
+            if (noUpper && noLower) { results.Add(CandlePatternType.FourPriceDoji); if (stopOnFirst) return results; }
+            else if (noUpper) { results.Add(CandlePatternType.DragonflyDoji); if (stopOnFirst) return results; }
+            else if (noLower) { results.Add(CandlePatternType.GravestoneDoji); if (stopOnFirst) return results; }
+            else { results.Add(CandlePatternType.CrossDoji); if (stopOnFirst) return results; }
         }
 
         // 坊主系 (Marubozu Patterns)
@@ -237,15 +296,15 @@ public static class CandlePatternDetector
 
             if (isBullish)
             {
-                if (noUpper && noLower) return CandlePatternType.BullishMarubozu;
-                if (noUpper && !noLower) return CandlePatternType.BullishClosingMarubozu;
-                if (!noUpper && noLower) return CandlePatternType.BullishOpeningMarubozu;
+                if (noUpper && noLower) { results.Add(CandlePatternType.BullishMarubozu); if (stopOnFirst) return results; }
+                else if (noUpper && !noLower) { results.Add(CandlePatternType.BullishClosingMarubozu); if (stopOnFirst) return results; }
+                else if (!noUpper && noLower) { results.Add(CandlePatternType.BullishOpeningMarubozu); if (stopOnFirst) return results; }
             }
             else if (isBearish)
             {
-                if (noUpper && noLower) return CandlePatternType.BearishMarubozu;
-                if (!noUpper && noLower) return CandlePatternType.BearishClosingMarubozu;
-                if (noUpper && !noLower) return CandlePatternType.BearishOpeningMarubozu;
+                if (noUpper && noLower) { results.Add(CandlePatternType.BearishMarubozu); if (stopOnFirst) return results; }
+                else if (!noUpper && noLower) { results.Add(CandlePatternType.BearishClosingMarubozu); if (stopOnFirst) return results; }
+                else if (noUpper && !noLower) { results.Add(CandlePatternType.BearishOpeningMarubozu); if (stopOnFirst) return results; }
             }
         }
 
@@ -258,26 +317,129 @@ public static class CandlePatternDetector
             bool noUpper = upperShadow <= zeroTolerance || upperShadow <= (body * 0.5m);
             bool noLower = lowerShadow <= zeroTolerance || lowerShadow <= (body * 0.5m);
 
+            int priorTrend = requireTrendContext ? DeterminePriorTrend(candles, 1, atr1) : 0;
+
+            bool isUmbrellaCandidate = false;
+
             if (isBullish)
             {
-                if (hasLongLower && noUpper) return CandlePatternType.BullishUmbrella;
-                if (hasLongUpper && noLower) return CandlePatternType.BullishInvertedUmbrella;
+                // Bullish Umbrella (Hammer): requires Down trend if requireTrendContext
+                if (hasLongLower && noUpper)
+                {
+                    isUmbrellaCandidate = true;
+                    if (!requireTrendContext || priorTrend == -1)
+                    {
+                        results.Add(CandlePatternType.BullishUmbrella);
+                        if (stopOnFirst) return results;
+                    }
+                }
+                // Bullish Inverted Umbrella (Inverted Hammer): requires Down trend if requireTrendContext
+                else if (hasLongUpper && noLower)
+                {
+                    isUmbrellaCandidate = true;
+                    if (!requireTrendContext || priorTrend == -1)
+                    {
+                        results.Add(CandlePatternType.BullishInvertedUmbrella);
+                        if (stopOnFirst) return results;
+                    }
+                }
             }
             else if (isBearish)
             {
-                if (hasLongLower && noUpper) return CandlePatternType.BearishUmbrella;
-                if (hasLongUpper && noLower) return CandlePatternType.BearishInvertedUmbrella;
+                // Bearish Umbrella (Hanging Man): requires Up trend if requireTrendContext
+                if (hasLongLower && noUpper)
+                {
+                    isUmbrellaCandidate = true;
+                    if (!requireTrendContext || priorTrend == 1)
+                    {
+                        results.Add(CandlePatternType.BearishUmbrella);
+                        if (stopOnFirst) return results;
+                    }
+                }
+                // Bearish Inverted Umbrella (Shooting Star): requires Up trend if requireTrendContext
+                else if (hasLongUpper && noLower)
+                {
+                    isUmbrellaCandidate = true;
+                    if (!requireTrendContext || priorTrend == 1)
+                    {
+                        results.Add(CandlePatternType.BearishInvertedUmbrella);
+                        if (stopOnFirst) return results;
+                    }
+                }
             }
 
             // コマ (Spinning Top)
-            if (upperShadow > zeroTolerance && lowerShadow > zeroTolerance)
+            if (!isUmbrellaCandidate && upperShadow > zeroTolerance && lowerShadow > zeroTolerance)
             {
-                if (isBullish) return CandlePatternType.BullishSpinningTop;
-                if (isBearish) return CandlePatternType.BearishSpinningTop;
+                if (isBullish) { results.Add(CandlePatternType.BullishSpinningTop); if (stopOnFirst) return results; }
+                if (isBearish) { results.Add(CandlePatternType.BearishSpinningTop); if (stopOnFirst) return results; }
             }
         }
 
-        return CandlePatternType.None;
+        return results;
+    }
+
+    /// <summary>
+    /// Computes the average body size and ATR over a specific range of candles [startIndex, endIndex].
+    /// </summary>
+    internal static (decimal avgBody, decimal atr) ComputeContext(
+        IReadOnlyList<CandleData> candles,
+        int startIndex,
+        int endIndex)
+    {
+        if (candles == null || candles.Count == 0 || endIndex < startIndex || endIndex < 0)
+            return (0m, 0m);
+
+        startIndex = Math.Max(0, startIndex);
+        endIndex = Math.Min(candles.Count - 1, endIndex);
+
+        decimal sumBody = 0m;
+        decimal sumTrueRange = 0m;
+        int count = 0;
+
+        for (int i = startIndex; i <= endIndex; i++)
+        {
+            sumBody += Math.Abs(candles[i].Open - candles[i].Close);
+
+            decimal tr = candles[i].High - candles[i].Low;
+            if (i > 0)
+            {
+                decimal prevClose = candles[i - 1].Close;
+                tr = Math.Max(tr, Math.Max(
+                    Math.Abs(candles[i].High - prevClose),
+                    Math.Abs(candles[i].Low - prevClose)));
+            }
+            sumTrueRange += tr;
+            count++;
+        }
+
+        decimal avgBody = count > 0 ? (sumBody / count) : 0m;
+        decimal atr = count > 0 ? (sumTrueRange / count) : 0m;
+        return (avgBody, atr);
+    }
+
+    /// <summary>
+    /// Determines prior trend direction (+1: Up, -1: Down, 0: Flat) over lookback M = min(10, n-k-1) bars
+    /// ending immediately before pattern candles. Returns 0 if price movement is below 0.5 * ATR.
+    /// </summary>
+    internal static int DeterminePriorTrend(
+        IReadOnlyList<CandleData> candles,
+        int patternLength,
+        decimal atrContext)
+    {
+        int n = candles.Count;
+        int k = patternLength;
+        int endIdx = n - k - 1;
+        if (endIdx < 0) return 0; // Not enough context bars
+
+        int m = Math.Min(ChartConstants.CandlePatternPriorTrendLookbackBars, endIdx);
+        int startIdx = endIdx - m;
+        decimal diff = candles[endIdx].Close - candles[startIdx].Close;
+
+        if (Math.Abs(diff) < ChartConstants.CandlePatternPriorTrendAtrDeadbandRatio * atrContext)
+            return 0; // Flat
+
+        return diff > 0m ? 1 : -1;
     }
 
     #region Helper Primitives
@@ -614,7 +776,7 @@ public static class CandlePatternDetector
 
         // 2. C2: 完全孤立した十字線 (Doji) かつ C2.High < C1.Low (完全な下方窓)
         decimal c2Range = Range(c2);
-        bool c2IsDoji = c2Range > 0m ? (Body(c2) <= c2Range * 0.05m) : true;
+        bool c2IsDoji = c2Range > 0m ? (Body(c2) <= c2Range * ChartConstants.CandlePatternDojiBodyRangeRatio) : true;
         if (!c2IsDoji) return false;
         if (c2.High >= c1.Low) return false;
 
@@ -638,7 +800,7 @@ public static class CandlePatternDetector
 
         // 2. C2: 完全孤立した十字線 (Doji) かつ C2.Low > C1.High (完全な上方窓)
         decimal c2Range = Range(c2);
-        bool c2IsDoji = c2Range > 0m ? (Body(c2) <= c2Range * 0.05m) : true;
+        bool c2IsDoji = c2Range > 0m ? (Body(c2) <= c2Range * ChartConstants.CandlePatternDojiBodyRangeRatio) : true;
         if (!c2IsDoji) return false;
         if (c2.Low <= c1.High) return false;
 
@@ -705,7 +867,7 @@ public static class CandlePatternDetector
 
         // 3. C3: 陽線または十字線 (微小陰線のDojiも許容)
         decimal c3Range = Range(c3);
-        bool c3IsDoji = c3Range > 0m && (Body(c3) <= c3Range * 0.05m);
+        bool c3IsDoji = c3Range > 0m && (Body(c3) <= c3Range * ChartConstants.CandlePatternDojiBodyRangeRatio);
         if (c3.Close < c3.Open && !c3IsDoji) return false;
 
         // 4. C3: 小実体またはDoji

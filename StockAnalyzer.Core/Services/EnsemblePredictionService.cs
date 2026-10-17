@@ -69,6 +69,7 @@ public sealed class EnsemblePredictionService : IPredictionService, IDisposable
         }
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (_ensembles.Current is null) await _single.InitializeAsync().ConfigureAwait(false);
+        else _single.ReleaseInactiveRuntime();   // the ensemble predicts with its members: a single model that stopped being active must not stay leased
         ObjectDisposedException.ThrowIf(_disposed, this);
     }
 

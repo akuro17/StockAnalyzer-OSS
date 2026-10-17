@@ -163,7 +163,7 @@ public sealed class TrainingGuidePublicationTests
         int trainingWizard = CountInputs("StockAnalyzer.Avalonia/Views/Dialogs/TrainingWizardWindow.axaml", "SelectedOption", "Value")
             + CountInputs("StockAnalyzer.Avalonia/Views/Dialogs/FeatureChannelPickerView.axaml")
             + CountInputs("StockAnalyzer.Avalonia/Views/Dialogs/TrainingResourceSettingsView.axaml");
-        int reinforcement = CountInputs("StockAnalyzer.Avalonia/Views/RlTrainingWindow.axaml") + CountInputs("StockAnalyzer.Avalonia/Views/Dialogs/RlPlaybackSettingsView.axaml");
+        int reinforcement = CountInputs("StockAnalyzer.Avalonia/Views/RlTrainingWindow.axaml") + CountInputs("StockAnalyzer.Avalonia/Views/Dialogs/RlPlaybackView.axaml");
         int portfolio = CountInputs("StockAnalyzer.Avalonia/Views/PortfolioRlWindow.axaml");
 
         Assert.Equal(trainingWizard, SettingRows(Chapter("4")));

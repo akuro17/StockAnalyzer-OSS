@@ -45,7 +45,6 @@ public sealed partial class RlFreeReplayViewModel : ViewModelBase, IDisposable
     private long _modelRevision, _rangeRevision;
     private bool _settingDate, _rebuilding, _disposed, _tickersLoaded, _rangePending;
 
-    public event Action? CloseRequested;
 
     public ObservableCollection<RlTickerListOption> ListOptions { get; } = new();
     public ObservableCollection<RlPolicyOption> PolicyOptions { get; } = new();
@@ -167,7 +166,6 @@ public sealed partial class RlFreeReplayViewModel : ViewModelBase, IDisposable
                     ? string.Format(CultureInfo.CurrentCulture, _localization.GetString("Settings_RlPlayback_Free_Resolved"),
                         result.ResolvedAnchorDate.ToString(DateFormat, CultureInfo.InvariantCulture))
                     : _localization.GetString("Settings_RlPlayback_Status_Shown");
-                CloseRequested?.Invoke();
             });
         }
         catch (OperationCanceledException)
@@ -196,7 +194,6 @@ public sealed partial class RlFreeReplayViewModel : ViewModelBase, IDisposable
         ++_modelRevision; ++_rangeRevision;
         Cancel(_rangeCts); Cancel(_replayCts); Cancel(_sourceCts);
         Services.LocalizationManager.Instance.LocaleChanged -= LocaleChanged;
-        CloseRequested = null;
     }
 
     partial void OnTickerTextChanged(string value)

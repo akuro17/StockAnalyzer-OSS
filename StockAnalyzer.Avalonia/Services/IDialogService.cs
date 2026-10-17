@@ -54,6 +54,10 @@ public interface IDialogService
     Task ShowTrainingWizardDialogAsync();
     Task ShowRlTrainingDialogAsync(ChartViewModel chart) => Task.CompletedTask;
     Task ShowPortfolioRlDialogAsync() => Task.CompletedTask;
+    /// <summary>Opens the RL Playback window, or brings the open one to the front (one instance); completes when the window is shown, not when it closes.</summary>
+    Task ShowRlPlaybackWindowAsync() => Task.CompletedTask;
+    /// <summary>Opens the Prediction Models window, or brings the open one to the front (one instance); completes when the window is shown, not when it closes.</summary>
+    Task ShowPredictionModelsWindowAsync() => Task.CompletedTask;
     Task<BulkTagEditResult?> ShowBulkTagEditDialogAsync(IEnumerable<string> existingTags);
 
     /// <summary>Modal Add/Edit Group dialog of the backtest condition tree editor; null when cancelled.</summary>
@@ -75,6 +79,9 @@ public interface IDialogService
     
     // File dialogs
     Task<string?> ShowOpenFileDialogAsync(string title, string[]? filters = null);
+
+    /// <summary>The same dialog, opened in <paramref name="startDirectory"/> when that folder exists (otherwise where the system puts it).</summary>
+    Task<string?> ShowOpenFileDialogAsync(string title, string[]? filters, string? startDirectory) => ShowOpenFileDialogAsync(title, filters);
     Task<string?> ShowSaveFileDialogAsync(string title, string defaultExtension = "", string defaultFilename = "", string[]? filters = null, string? initialDirectory = null);
     Task<string?> ShowOpenFolderDialogAsync(string title, string? initialDirectory = null);
     Task<bool> ShowExportChartImageDialogAsync(ChartViewModel chartViewModel);

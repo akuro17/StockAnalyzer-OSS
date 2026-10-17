@@ -16,5 +16,5 @@ public sealed class MainChartRlReplayTarget(IServiceProvider services, ILocaliza
     public Task ApplyReplayAsync(RlQSnapshot snapshot, CancellationToken cancellationToken)
         => MainChart.ApplyRlReplayAsync(snapshot, localization, cancellationToken);
 
-    public void Clear() => MainChart.ClearRlPresentation();
+    public void Clear() => _ = MainChart.ClearRlReplayAsync();
 }

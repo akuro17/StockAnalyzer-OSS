@@ -1,0 +1,71 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:dvm="using:StockAnalyzer.Avalonia.ViewModels.Dialogs"
+        xmlns:views="using:StockAnalyzer.Avalonia.Views.Dialogs"
+        xmlns:l="using:StockAnalyzer.Avalonia.Markup"
+        xmlns:ui="using:StockAnalyzer.Avalonia.Common"
+        x:Class="StockAnalyzer.Avalonia.Views.RlPlaybackWindow"
+        x:DataType="dvm:RlPlaybackViewModel"
+        AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.PlaybackWindow}"
+        Title="{l:Localize Settings_RlPlayback}"
+        Width="{x:Static ui:RlPlaybackUiLayout.WindowWidth}"
+        Height="{x:Static ui:RlPlaybackUiLayout.WindowHeight}"
+        MinWidth="{x:Static ui:RlPlaybackUiLayout.MinimumWidth}"
+        MinHeight="{x:Static ui:RlPlaybackUiLayout.MinimumHeight}"
+        FontSize="{DynamicResource BaseFontSize}"
+        Background="{DynamicResource Brush.Background.Primary}"
+        Foreground="{DynamicResource Brush.Text.Primary}"
+        ExtendClientAreaToDecorationsHint="True"
+        ExtendClientAreaTitleBarHeightHint="-1"
+        WindowStartupLocation="CenterScreen">
+  <Window.Styles>
+    <!-- The anchor-date picker uses the shared ISO format and date icon (classes isoDate / isoDateHint), as in the training windows. -->
+    <StyleInclude Source="avares://StockAnalyzer.Avalonia/Assets/CalendarDatePickerIcon.axaml" />
+    <!-- SA_UI_SUBWINDOW_STANDARD 2.3: scrollbars stay visible and take their own space (the Settings window gave its pages this style). -->
+    <Style Selector="ScrollViewer">
+      <Setter Property="ScrollViewer.AllowAutoHide" Value="False" />
+    </Style>
+    <Style Selector=":is(ItemsControl), :is(TextBox)">
+      <Setter Property="ScrollViewer.AllowAutoHide" Value="False" />
+    </Style>
+  </Window.Styles>
+
+  <Border BorderBrush="{DynamicResource Brush.Border.Primary}" BorderThickness="{x:Static ui:RlUiLayout.SectionBorder}">
+    <Grid>
+      <Grid.RowDefinitions>
+        <RowDefinition Height="{x:Static ui:ToolWindowUiLayout.HeaderRow}" />
+        <RowDefinition Height="{x:Static ui:ToolWindowUiLayout.BodyRow}" />
+        <RowDefinition Height="{x:Static ui:ToolWindowUiLayout.FooterRow}" />
+      </Grid.RowDefinitions>
+
+      <!-- Header (SA_UI_SUBWINDOW_STANDARD 1.1) -->
+      <Border Grid.Row="0" Background="{DynamicResource Brush.Background.Tertiary}" BorderBrush="{DynamicResource Brush.Border.Primary}"
+              BorderThickness="{x:Static ui:ToolWindowUiLayout.HeaderBorder}" Padding="{x:Static ui:ToolWindowUiLayout.BarPadding}"
+              PointerPressed="OnHeaderPointerPressed">
+        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="{x:Static ui:ToolWindowUiLayout.ButtonSpacing}">
+          <PathIcon Data="{x:Static ui:SharedIconGeometries.Ticker}"
+                    Width="{x:Static ui:ToolWindowUiLayout.HeaderIconSize}" Height="{x:Static ui:ToolWindowUiLayout.HeaderIconSize}"
+                    Foreground="{DynamicResource Brush.Accent.Primary}" />
+          <TextBlock Text="{l:Localize Settings_RlPlayback}" FontSize="{DynamicResource TitleFontSize}" FontWeight="SemiBold"
+                     Foreground="{DynamicResource Brush.Text.Primary}" VerticalAlignment="Center" />
+        </StackPanel>
+      </Border>
+
+      <!-- Body: the replay page (stored agents, replay inputs, any ticker and date) -->
+      <Border Grid.Row="1" Padding="{x:Static ui:ToolWindowUiLayout.ContentMargin}">
+        <views:RlPlaybackView />
+      </Border>
+
+      <!-- Footer (SA_UI_SUBWINDOW_STANDARD 1.1, operation window): nothing is edited and saved here, so only the auxiliary reset and Close -->
+      <Border Grid.Row="2" Background="{DynamicResource Brush.Background.Tertiary}" BorderBrush="{DynamicResource Brush.Border.Primary}"
+              BorderThickness="{x:Static ui:ToolWindowUiLayout.FooterBorder}" Padding="{x:Static ui:ToolWindowUiLayout.BarPadding}">
+        <Grid ColumnDefinitions="Auto,*,Auto">
+          <Button Grid.Column="0" Classes="accent" Content="{l:Localize Btn_ResetToDefault}" Command="{Binding ResetToDefaultCommand}"
+                  HorizontalContentAlignment="Center" VerticalAlignment="Center" />
+          <Button Grid.Column="2" Classes="accent" Content="{l:Localize Btn_Close}" Click="OnCloseClick"
+                  Width="{x:Static ui:ToolWindowUiLayout.ButtonWidth}" HorizontalContentAlignment="Center" VerticalAlignment="Center" />
+        </Grid>
+      </Border>
+    </Grid>
+  </Border>
+</Window>

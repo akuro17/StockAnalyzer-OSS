@@ -45,6 +45,8 @@ public static class RlUiConstants
     public const string RemoveModel = "Rl_RemoveModel";
     public const string Activate = "Rl_Activate";
     public const string ActiveModel = "Rl_ActiveModel";
+    public const string PlaybackMenu = "Menu_RlPlayback";
+    public const string PlaybackWindow = "RlPlayback_Window";
     public const string PlaybackPage = "RlPlayback_Page";
     public const string PlaybackModels = "RlPlayback_Models";
     public const string PlaybackBlocks = "RlPlayback_Blocks";
@@ -52,6 +54,7 @@ public static class RlUiConstants
     public const string PlaybackDecision = "RlPlayback_Decision";
     public const string PlaybackShow = "RlPlayback_Show";
     public const string PlaybackClear = "RlPlayback_Clear";
+    public const string PlaybackStatus = "RlPlayback_Status";
     public const string PlaybackRefresh = "RlPlayback_Refresh";
     public const string PlaybackFreeCard = "RlPlayback_Free_Card";
     public const string PlaybackFreeTicker = "RlPlayback_Free_Ticker";

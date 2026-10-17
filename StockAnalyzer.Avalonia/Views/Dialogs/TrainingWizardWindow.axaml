@@ -202,6 +202,12 @@
                                     <TextBlock Text="{Binding PeriodStatusDisplay}" IsVisible="{Binding HasPeriodStatus}" TextWrapping="Wrap"
                                                FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Semantic.Warning}"
                                                AutomationProperties.AutomationId="TrainingWizard_PeriodStatus"/>
+                                    <TextBlock Text="{Binding RequirementWarningDisplay}" IsVisible="{Binding HasRequirementWarning}" TextWrapping="Wrap"
+                                               FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Semantic.Warning}"
+                                               AutomationProperties.AutomationId="TrainingWizard_RequirementWarning"/>
+                                    <TextBlock Text="{Binding SampleLimitWarningDisplay}" IsVisible="{Binding HasSampleLimitWarning}" TextWrapping="Wrap"
+                                               FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Semantic.Warning}"
+                                               AutomationProperties.AutomationId="TrainingWizard_SampleLimitWarning"/>
                                     <StackPanel Spacing="6">
                                         <TextBlock Text="{l:Localize TrainingWizard_Timeframe}" Classes="fieldLabel"/>
                                         <ComboBox ItemsSource="{Binding AvailableTimeframes}"

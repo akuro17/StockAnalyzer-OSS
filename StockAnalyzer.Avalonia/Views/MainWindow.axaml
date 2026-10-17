@@ -238,9 +238,15 @@
                     <MenuItem Header="{l:Localize Menu_Tools}" AutomationProperties.AutomationId="Menu_Tools">
                         <MenuItem Header="{l:Localize Menu_Screener}" AutomationProperties.AutomationId="Menu_Screener" Command="{Binding OpenScreenerCommand}"/>
                         <MenuItem Header="{l:Localize Menu_Backtest}" AutomationProperties.AutomationId="Menu_Backtest" Command="{Binding OpenBacktestWindowCommand}"/>
-                        <MenuItem Header="{l:Localize Menu_TrainingWizard}" AutomationProperties.AutomationId="Menu_TrainingWizard" Command="{Binding OpenTrainingWizardCommand}"/>
-                        <MenuItem Header="{l:Localize Rl.Title}" Command="{Binding OpenRlTrainingCommand}" AutomationProperties.AutomationId="{x:Static rlui:RlUiConstants.Menu}"/>
-                        <MenuItem Header="{l:Localize Prl.Title}" Command="{Binding OpenPortfolioRlCommand}" AutomationProperties.AutomationId="{x:Static rlui:PrlUiConstants.Menu}"/>
+                        <MenuItem Header="{l:Localize Menu_ModelTraining}" AutomationProperties.AutomationId="{x:Static rlui:ToolsMenuUiConstants.ModelTraining}">
+                            <MenuItem Header="{l:Localize Menu_TrainingWizard}" AutomationProperties.AutomationId="Menu_TrainingWizard" Command="{Binding OpenTrainingWizardCommand}"/>
+                            <MenuItem Header="{l:Localize Rl.Title}" Command="{Binding OpenRlTrainingCommand}" AutomationProperties.AutomationId="{x:Static rlui:RlUiConstants.Menu}"/>
+                            <MenuItem Header="{l:Localize Prl.Title}" Command="{Binding OpenPortfolioRlCommand}" AutomationProperties.AutomationId="{x:Static rlui:PrlUiConstants.Menu}"/>
+                        </MenuItem>
+                        <MenuItem Header="{l:Localize Menu_ModelExecution}" AutomationProperties.AutomationId="{x:Static rlui:ToolsMenuUiConstants.ModelExecution}">
+                            <MenuItem Header="{l:Localize Menu_PredictionModels}" Command="{Binding OpenPredictionModelsCommand}" AutomationProperties.AutomationId="{x:Static rlui:PredictionModelsUiConstants.Menu}"/>
+                            <MenuItem Header="{l:Localize Settings_RlPlayback}" Command="{Binding OpenRlPlaybackCommand}" AutomationProperties.AutomationId="{x:Static rlui:RlUiConstants.PlaybackMenu}"/>
+                        </MenuItem>
                         <MenuItem Header="{l:Localize Menu_AddChartPanel}" Command="{Binding AddPanelChartCommand}"/>
                         <MenuItem Header="{l:Localize TickerList_AddTicker}" AutomationProperties.AutomationId="Menu_AddTicker" Command="{Binding TickerListViewModel.AddTickerToMasterCommand}"/>
                         <Separator/>

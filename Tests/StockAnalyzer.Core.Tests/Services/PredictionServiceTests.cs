@@ -778,6 +778,15 @@ public class PredictionServiceTests
     }
 
     [Fact]
+    public async Task PredictAsync_WithAComposedModel_UsesTheChannelListOfTheModel_NotTheConfiguredFeatureMode()
+    {
+        // The configuration says OhlcvMinMax and carries no feature spec (no screen sets one); the composed model brings its own channel list.
+        using var service = new PredictionService(new TestSettings(LegacyComposedModelPath, predictionWindowSize: 10), new MLDataProcessor());
+
+        Assert.False((await service.PredictAsync(BuildCandles(20))).IsFallback);
+    }
+
+    [Fact]
     public async Task PredictAsync_WithMismatchedFeatureModeMetadata_FallsBackToEmpty()
     {
         // TestSettings.PredictionFeatureMode is OhlcvMinMax; this model's metadata declares zscore.

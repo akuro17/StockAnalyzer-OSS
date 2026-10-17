@@ -96,6 +96,7 @@ public static class TrainingHyperparameterCatalog
         new TrainingHyperparameterDefinition("early-stopping", "30", LightGbm, Domain: Count),
         // Every framework
         new TrainingHyperparameterDefinition("threshold", "0.005", AllFrameworks, Domain: NonNegativeReal),
+        new TrainingHyperparameterDefinition("class-weight-power", "1", AllFrameworks, Domain: new(HyperparameterKind.Real, Zero, Maximum: One)),
         new TrainingHyperparameterDefinition("seed", "42", AllFrameworks, Domain: new(HyperparameterKind.Integer, Zero)),
     };
 

@@ -413,7 +413,9 @@ public static class ElliottWaveDetector
         double s1 = ScoreRatio(bRatio, 0.382, 0.786);
         double s2 = ScoreRatio(cRatio, 0.618, 1.618);
 
-        if (s1 == 0 && s2 == 0)
+        // Corrective wave contract: both Wave B retracement and Wave C extension
+        // must satisfy their expected Fibonacci bands (+/- tolerance). If either ratio fails, reject.
+        if (s1 == 0 || s2 == 0)
             return 0;
 
         return s1 * 0.40 + s2 * 0.60;
@@ -485,8 +487,8 @@ public static class ElliottWaveDetector
     }
 
     /// <summary>
-    /// Checks if Wave 5 exhibits RSI divergence (price makes new extreme but RSI does not).
-    /// Uses <see cref="DivergenceCrossDetector"/> for robust detection.
+    /// Checks if Wave 5 exhibits momentum divergence (price makes new extreme but closing momentum weakens).
+    /// Uses a 5-bar close rate-of-change (ROC) momentum proxy via <see cref="CalculateLocalMomentum"/>.
     /// </summary>
     private static bool HasWave5Divergence(
         PivotPoint[] pivots, IReadOnlyList<CandleData> candles, bool isBullish)
@@ -552,12 +554,13 @@ public static class ElliottWaveDetector
     /// Prefers higher confidence and larger span patterns.
     /// Pattern inspired by <see cref="Models.HarmonicPattern.HarmonicPatternDetector"/>.
     /// </summary>
-    private static IReadOnlyList<ElliottWaveResult> FilterOverlappingPatterns(List<ElliottWaveResult> patterns)
+    internal static IReadOnlyList<ElliottWaveResult> FilterOverlappingPatterns(List<ElliottWaveResult> patterns)
     {
         if (patterns.Count <= 1)
             return patterns;
 
-        // Sort: High confidence first, then larger span, then confidence descending
+        // Sort: High confidence first, then larger span, then confidence descending.
+        // Deterministic tie-breakers: EndIndex descending, StartIndex descending, IsImpulse true first, IsBullish true first.
         patterns.Sort((a, b) =>
         {
             bool aIsHigh = a.ConfidenceScore >= 0.70;
@@ -568,7 +571,19 @@ public static class ElliottWaveDetector
             int cmp = b.Span.CompareTo(a.Span);
             if (cmp != 0) return cmp;
 
-            return b.ConfidenceScore.CompareTo(a.ConfidenceScore);
+            cmp = b.ConfidenceScore.CompareTo(a.ConfidenceScore);
+            if (cmp != 0) return cmp;
+
+            cmp = b.EndIndex.CompareTo(a.EndIndex);
+            if (cmp != 0) return cmp;
+
+            cmp = b.StartIndex.CompareTo(a.StartIndex);
+            if (cmp != 0) return cmp;
+
+            cmp = b.IsImpulse.CompareTo(a.IsImpulse);
+            if (cmp != 0) return cmp;
+
+            return b.IsBullish.CompareTo(a.IsBullish);
         });
 
         var kept = new List<ElliottWaveResult>();

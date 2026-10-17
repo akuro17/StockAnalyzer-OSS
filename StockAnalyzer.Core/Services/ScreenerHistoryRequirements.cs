@@ -179,7 +179,7 @@ public static class ScreenerHistoryRequirements
 
     private static int GetCriteriaReach(ScreenerIndicatorSideConfig? side)
         => side != null && side.CategoryType == ScreenerItemCategoryType.Criteria
-            ? side.Offset + GetCriteriaWindowBars(side.ResolveLookupName() ?? string.Empty)
+            ? side.Offset + GetCriteriaWindowBars(side.ResolveCriteriaName() ?? string.Empty)
             : 0;
 
     private static int GetMaxOffset(IScreeningCondition condition)

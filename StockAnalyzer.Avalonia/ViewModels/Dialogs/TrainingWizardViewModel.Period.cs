@@ -39,7 +39,7 @@ public partial class TrainingWizardViewModel
         : "";
     public bool HasPeriodStatus => PeriodStatusDisplay.Length > 0;
 
-    private void NotifyPeriodStatus() { OnPropertyChanged(nameof(PeriodStatusDisplay)); OnPropertyChanged(nameof(HasPeriodStatus)); }
+    private void NotifyPeriodStatus() { OnPropertyChanged(nameof(PeriodStatusDisplay)); OnPropertyChanged(nameof(HasPeriodStatus)); NotifySufficiency(); }   // the requirement warning yields to this line
 
     private void PeriodInputChanged(string? name)
     {
@@ -127,5 +127,5 @@ public partial class TrainingWizardViewModel
         catch (ObjectDisposedException) { }
     }
 
-    private void DisposePeriod() { _periodDisposed = true; CancelPeriod(); }
+    private void DisposePeriod() { _periodDisposed = true; CancelPeriod(); CancelSufficiency(); }
 }

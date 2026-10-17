@@ -21,61 +21,45 @@ using Xunit;
 
 namespace StockAnalyzer.Avalonia.Tests.ViewModels;
 
-/// <summary>Settings tree, close request and editor validation of the RL Playback page (PLAN-A 7.4 and 7.8).</summary>
+/// <summary>Window wiring, Settings tree and editor validation of RL Playback (a Tools window since the model-execution separation, T1).</summary>
 public sealed partial class RlUiTests
 {
-    private static IServiceProvider PlaybackServices(PlaybackData? data = null, RecordingReplayTarget? target = null)
-    {
-        var registry = new EmptyRegistry { Generations = new[] { PlaybackGeneration("a") } };
-        var services = new ServiceCollection();
-        services.AddSingleton<IRlModelGenerationRegistry>(registry);
-        services.AddSingleton<RlDialogDataService>(data ?? new PlaybackData(registry));
-        services.AddSingleton<IRlReplayTarget>(target ?? new RecordingReplayTarget());
-        services.AddSingleton<ILocalizationService>(NullLocalizationService.Instance);
-        services.AddSingleton<IDispatcherService>(new SynchronousDispatcherService());
-        services.AddTransient<RlPlaybackSettingsViewModel>();
-        // The settings view model opens its first category (Theme) on construction.
-        services.AddSingleton<StockAnalyzer.Core.Theme.IThemeManager>(new StockAnalyzer.Core.Theme.ThemeManager());
-        services.AddTransient<ThemeSettingsViewModel>();
-        return services.BuildServiceProvider();
-    }
-
     [Fact]
-    public void Playback_CategoryIsASiblingDirectlyAfterAiPredictionsAndBacktestStaysAboveTrainingWizard()
+    public void Playback_IsNoLongerASettingsCategoryAndBacktestStaysAboveTrainingWizard()
     {
         var keys = SettingsConstants.Categories.Select(c => c.Key).ToList();
-        Assert.Equal(keys.IndexOf(SettingsConstants.Keys.AIPredictions) + 1, keys.IndexOf(SettingsConstants.Keys.RlPlayback));
+        Assert.DoesNotContain(SettingsConstants.Categories, c => c.TitleKey == "Settings_RlPlayback");
+        Assert.Contains(SettingsConstants.Keys.AIPredictions, keys);
         Assert.Equal(keys.IndexOf(SettingsConstants.Keys.TrainingWizard) - 1, keys.IndexOf(SettingsConstants.Keys.Backtest));
-        var category = SettingsConstants.Categories.Single(c => c.Key == SettingsConstants.Keys.RlPlayback);
-        Assert.Equal("Settings_RlPlayback", category.TitleKey); Assert.True(category.IsImplemented); Assert.Empty(category.Children);
     }
 
-    [Fact]
-    public void Playback_SettingsNavigationResolvesThePlaybackPage()
+    [AvaloniaFact]
+    public async Task Playback_WindowStaysOpenAfterASuccessfulReplay_AndHasNoCloseAfterShowOption()
     {
-        using var sut = new SettingsViewModel(PlaybackServices());
-        sut.SelectedCategory = SettingsConstants.Categories.Single(c => c.Key == SettingsConstants.Keys.RlPlayback);
-        Assert.IsType<RlPlaybackSettingsViewModel>(sut.CurrentPage);
-        Assert.False(sut.IsAnyModified);
+        var f = await Playback(); var vm = f.Vm;
+        var window = new StockAnalyzer.Avalonia.Views.RlPlaybackWindow { DataContext = vm };
+        window.Show();
+        try
+        {
+            Assert.True(window.IsVisible);
+            Assert.Empty(window.GetVisualDescendants().OfType<CheckBox>());   // the footer holds only Reset and Close
+            await vm.ShowOnChartCommand.ExecuteAsync(null);
+            Assert.True(window.IsVisible);
+            Assert.NotEqual(RlDialogOperation.Disposed, vm.Operation);
+            Assert.Single(f.Target.Applied);
+        }
+        finally { window.Close(); }
     }
 
-    [Fact]
-    public async Task Playback_PageCloseRequestClosesTheSettingsWindowOnceAndNotAfterDispose()
+    [AvaloniaFact]
+    public async Task Playback_WindowDisposesTheViewModelWhenItIsClosedByTheUser()
     {
-        var registry = new EmptyRegistry { Generations = new[] { PlaybackGeneration("a") } };
-        var data = new PlaybackData(registry);
-        var sut = new SettingsViewModel(PlaybackServices(data));
-        int closes = 0; sut.RequestClose += () => closes++;
-        sut.SelectedCategory = SettingsConstants.Categories.Single(c => c.Key == SettingsConstants.Keys.RlPlayback);
-        var page = (RlPlaybackSettingsViewModel)sut.CurrentPage!;
-        await page.RefreshCommand.ExecuteAsync(null);
-        await PlaybackUntil(() => page.BlocksState == RlDialogLoadState.Loaded);
-        data.Replay = _ => Task.FromResult(Snapshot(0, 1, -1));
-        await page.ShowOnChartCommand.ExecuteAsync(null);
-        Assert.Equal(1, closes);
-        sut.Dispose();
-        await page.ShowOnChartCommand.ExecuteAsync(null);
-        Assert.Equal(1, closes);
+        var f = await Playback(); var vm = f.Vm;
+        var window = new StockAnalyzer.Avalonia.Views.RlPlaybackWindow { DataContext = vm };
+        window.Show();
+        window.Close();
+        Assert.Equal(RlDialogOperation.Disposed, vm.Operation);
+        Assert.Empty(f.Target.Applied);
     }
 
     [AvaloniaFact]
@@ -83,7 +67,7 @@ public sealed partial class RlUiTests
     {
         var f = await Playback(); using var vm = f.Vm;
         var view = new ViewLocator().Build(vm);
-        Assert.IsType<StockAnalyzer.Avalonia.Views.Dialogs.RlPlaybackSettingsView>(view);
+        Assert.IsType<StockAnalyzer.Avalonia.Views.Dialogs.RlPlaybackView>(view);
     }
 
     [AvaloniaFact]
@@ -112,10 +96,10 @@ public sealed partial class RlUiTests
         var free = new RlFreeReplayViewModel(data, target, new StockAnalyzer.Avalonia.Tests.TestHelpers.FakeMarketDataProvider(new[] { "SPY", "QQQ" }),
             new StockAnalyzer.Avalonia.Tests.TestHelpers.FakeTickerStateStore() is var store ? new TickerStateRlListSource(store) : null!,
             NullLocalizationService.Instance, new SynchronousDispatcherService());
-        using var page = new RlPlaybackSettingsViewModel(registry, data, target, NullLocalizationService.Instance, new SynchronousDispatcherService(), free);
+        using var page = new RlPlaybackViewModel(registry, data, target, NullLocalizationService.Instance, new SynchronousDispatcherService(), free);
         await page.RefreshCommand.ExecuteAsync(null);
         await PlaybackUntil(() => page.BlocksState == RlDialogLoadState.Loaded && free.HasRangeText);
-        var view = new StockAnalyzer.Avalonia.Views.Dialogs.RlPlaybackSettingsView { DataContext = page };
+        var view = new StockAnalyzer.Avalonia.Views.Dialogs.RlPlaybackView { DataContext = page };
         var window = new Window { Content = view, Width = 900, Height = 1000 }; window.Show();
         try
         {

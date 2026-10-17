@@ -73,6 +73,31 @@ public sealed partial class RlUiTests(ITestOutputHelper output)
         chart.SelectedTimeFrame = TimeframeType.Weekly;
         Assert.Null(chart.RlPresentation);
     }
+    [Fact] public async Task Chart_RemovingTheReplayRestoresTheNormalDataInsteadOfKeepingTheReplayWindow()
+    {
+        using var chart = Chart(new FixedData(300));
+        chart.Symbol = "SPY";
+        await chart.LoadDataAsync();
+        int normalBars = chart.Candles.Count;                    // what the chart's range gives for this symbol
+        Assert.True(normalBars > RlContract.WindowLength);
+
+        await chart.ApplyRlReplayAsync(Snapshot(0,1,-1), StockAnalyzer.Core.Interfaces.NullLocalizationService.Instance);
+        Assert.Equal(RlContract.WindowLength, chart.Candles.Count);
+
+        await chart.ClearRlReplayAsync();
+
+        Assert.Null(chart.RlPresentation);
+        Assert.Equal("SPY", chart.Symbol);
+        Assert.Equal(normalBars, chart.Candles.Count);          // the range's data again, not the 64-bar replay window
+    }
+    [Fact] public async Task Chart_RemovingAReplayThatIsNotShownReloadsNothing()
+    {
+        var data = new FixedData(300); using var chart = Chart(data);
+        chart.Symbol = "SPY"; await chart.LoadDataAsync();
+        int loads = data.Loads;
+        await chart.ClearRlReplayAsync();
+        Assert.Equal(loads, data.Loads);
+    }
     [Fact] public async Task Dialog_FreezesActualCostsAndLateSuccessAfterCancelDoesNotRegisterOrPresentSuccess()
     {
         using var chart = Chart(new ImmediateData()); var training = new DelayedTraining(); var defaults = new FakeBacktestDefaultSettingsManager();
@@ -450,6 +475,16 @@ public sealed partial class RlUiTests(ITestOutputHelper output)
         public TaskCompletionSource Started { get; }=new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource<IReadOnlyList<CandleData>> Result { get; }=new(TaskCreationOptions.RunContinuationsAsynchronously);
         public Task<IReadOnlyList<CandleData>> LoadCandlesAsync(string symbol,TimeFrame frame,int count=100){Started.TrySetResult();return Result.Task;}
+    }
+    private sealed class FixedData(int bars) : IDataService
+    {
+        public int Loads { get; private set; }
+        public Task<IReadOnlyList<CandleData>> LoadCandlesAsync(string symbol,TimeFrame frame,int count=100)
+        {
+            Loads++;
+            var start = new DateTime(2020,1,1);
+            return Task.FromResult<IReadOnlyList<CandleData>>(Enumerable.Range(0,bars).Select(i => new CandleData(start.AddDays(i), 100m+i,101m+i,99m+i,100m+i,1000)).ToArray());
+        }
     }
     private sealed class ImmediateData : IDataService { public Task<IReadOnlyList<CandleData>> LoadCandlesAsync(string symbol,TimeFrame frame,int count=100)=>Task.FromResult<IReadOnlyList<CandleData>>(Array.Empty<CandleData>()); }
     private sealed class DelayedTraining : IRlResumableTrainingService

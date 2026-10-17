@@ -117,11 +117,139 @@ public static class HarmonicPatternDetector
     }
 
     /// <summary>
+    /// Detects harmonic patterns using multi-scale local extrema windows {2, 3, 5, 8} (D4 = C')
+    /// and validates minimum price swing percentage across all pattern legs.
+    /// Each pattern is stamped with ConfirmedAtIndex = D.Index + w.
+    /// </summary>
+    public static IReadOnlyList<HarmonicPatternResult> DetectByLegAmplitude(
+        IReadOnlyList<CandleData> candles,
+        decimal minLegSwingPercent = ChartConstants.DefaultHarmonicMinLegSwingPercent)
+    {
+        if (candles == null || candles.Count < ChartConstants.HarmonicMinPivotCount * 2)
+            return Array.Empty<HarmonicPatternResult>();
+
+        if (minLegSwingPercent <= 0)
+            throw new ArgumentOutOfRangeException(nameof(minLegSwingPercent), "Minimum leg swing percent must be greater than zero.");
+
+        var allPatterns = new List<HarmonicPatternResult>();
+
+        foreach (int windowSize in ChartConstants.HarmonicLocalExtremaWindows)
+        {
+            var pivots = ExtractPivotsByLocalExtrema(candles, windowSize);
+            if (pivots.Count < ChartConstants.HarmonicMinPivotCount)
+                continue;
+
+            var patterns = FindPatternsFromPivots(pivots, candles, minLegSwingPercent, windowSize);
+            allPatterns.AddRange(patterns);
+
+            var abcdPatterns = FindAbcdPatterns(pivots, candles, minLegSwingPercent, windowSize);
+            allPatterns.AddRange(abcdPatterns);
+
+            var fiveZeroPatterns = FindFiveZeroPatterns(pivots, candles, minLegSwingPercent, windowSize);
+            allPatterns.AddRange(fiveZeroPatterns);
+        }
+
+        if (allPatterns.Count == 0)
+            return allPatterns;
+
+        return FilterOverlappingPatterns(allPatterns);
+    }
+
+    /// <summary>
+    /// Detects confirmed harmonic patterns whose completion point (D) was confirmed within the last
+    /// <paramref name="maxBarsSinceConfirmation"/> bars relative to the end of the series (D5 = B'').
+    /// Returns patterns ordered by confidence descending, with deterministic tie-breaking.
+    /// </summary>
+    public static IReadOnlyList<HarmonicPatternResult> DetectConfirmedWithin(
+        IReadOnlyList<CandleData> candles,
+        int maxBarsSinceConfirmation,
+        decimal minLegSwingPercent = ChartConstants.DefaultHarmonicMinLegSwingPercent)
+    {
+        if (candles == null || candles.Count < ChartConstants.HarmonicMinPivotCount * 2)
+            return Array.Empty<HarmonicPatternResult>();
+
+        if (maxBarsSinceConfirmation < 0)
+            throw new ArgumentOutOfRangeException(nameof(maxBarsSinceConfirmation), "Max bars since confirmation must be non-negative.");
+
+        if (minLegSwingPercent <= 0)
+            throw new ArgumentOutOfRangeException(nameof(minLegSwingPercent), "Minimum leg swing percent must be greater than zero.");
+
+        var candidates = new List<HarmonicPatternResult>();
+        int lastBarIndex = candles.Count - 1;
+
+        foreach (int windowSize in ChartConstants.HarmonicLocalExtremaWindows)
+        {
+            var pivots = ExtractPivotsByLocalExtrema(candles, windowSize);
+            if (pivots.Count < ChartConstants.HarmonicMinPivotCount)
+                continue;
+
+            var patterns = FindPatternsFromPivots(pivots, candles, minLegSwingPercent, windowSize);
+            FilterConfirmedCandidates(patterns, candidates, lastBarIndex, maxBarsSinceConfirmation);
+
+            var abcdPatterns = FindAbcdPatterns(pivots, candles, minLegSwingPercent, windowSize);
+            FilterConfirmedCandidates(abcdPatterns, candidates, lastBarIndex, maxBarsSinceConfirmation);
+
+            var fiveZeroPatterns = FindFiveZeroPatterns(pivots, candles, minLegSwingPercent, windowSize);
+            FilterConfirmedCandidates(fiveZeroPatterns, candidates, lastBarIndex, maxBarsSinceConfirmation);
+        }
+
+        if (candidates.Count == 0)
+            return Array.Empty<HarmonicPatternResult>();
+
+        var filtered = FilterOverlappingPatterns(candidates);
+        if (filtered.Count <= 1)
+            return filtered;
+
+        // MP-D Phase D3 & XML doc: ordered by confidence descending, ties by MP-G2 comparer
+        var sorted = new List<HarmonicPatternResult>(filtered);
+        sorted.Sort((a, b) =>
+        {
+            int cmp = b.ConfidenceScore.CompareTo(a.ConfidenceScore);
+            if (cmp != 0) return cmp;
+
+            cmp = b.D.Index.CompareTo(a.D.Index);
+            if (cmp != 0) return cmp;
+
+            cmp = b.X.Index.CompareTo(a.X.Index);
+            if (cmp != 0) return cmp;
+
+            cmp = ((int)a.PatternType).CompareTo((int)b.PatternType);
+            if (cmp != 0) return cmp;
+
+            return b.IsBullish.CompareTo(a.IsBullish);
+        });
+
+        return sorted;
+    }
+
+    private static void FilterConfirmedCandidates(
+        List<HarmonicPatternResult> source,
+        List<HarmonicPatternResult> target,
+        int lastBarIndex,
+        int maxBarsSinceConfirmation)
+    {
+        for (int i = 0; i < source.Count; i++)
+        {
+            var p = source[i];
+            if (p.ConfirmedAtIndex.HasValue)
+            {
+                int confirmedAt = p.ConfirmedAtIndex.Value;
+                if (confirmedAt <= lastBarIndex && (lastBarIndex - confirmedAt) <= maxBarsSinceConfirmation)
+                {
+                    target.Add(p);
+                }
+            }
+        }
+    }
+
+    /// <summary>
     /// Finds all valid XABCD harmonic patterns from the given pivot sequence.
     /// </summary>
     internal static List<HarmonicPatternResult> FindPatternsFromPivots(
         IReadOnlyList<PivotPoint> pivots,
-        IReadOnlyList<CandleData>? candles = null)
+        IReadOnlyList<CandleData>? candles = null,
+        decimal? minLegSwingPercent = null,
+        int? confirmationWindow = null)
     {
         var results = new List<HarmonicPatternResult>();
 
@@ -169,6 +297,20 @@ public static class HarmonicPatternDetector
             // Determine direction: bullish when X->A goes up (X is low, A is high)
             bool isBullish = a.Price > x.Price;
 
+            // Validate minimum leg swing percent if specified (D4 = C')
+            if (minLegSwingPercent.HasValue)
+            {
+                var xabcdLegs = new (PivotPoint Start, PivotPoint End)[]
+                {
+                    (x, a),
+                    (a, b),
+                    (b, c),
+                    (c, d)
+                };
+                if (!PatternFormationValidator.ValidateLegSwingPercent(xabcdLegs, minLegSwingPercent.Value))
+                    continue;
+            }
+
             // Calculate leg ratios
             decimal xa = Math.Abs(a.Price - x.Price);
             if (xa == 0) continue;
@@ -196,7 +338,19 @@ public static class HarmonicPatternDetector
                     patternType == HarmonicPatternType.FiveZero || patternType == HarmonicPatternType.SeaHorse ||
                     patternType == HarmonicPatternType.Dragon)
                     continue;
+
+                // 7a: Swan patterns are strictly directional
+                if (patternType == HarmonicPatternType.WhiteSwan && !isBullish)
+                    continue;
+                if (patternType == HarmonicPatternType.BlackSwan && isBullish)
+                    continue;
+
                 var definition = GetPatternDefinition(patternType);
+
+                // F13: Direction and structural consistency check
+                if (!IsDirectionConsistent(x, a, b, c, d, isBullish, definition))
+                    continue;
+
                 double score = EvaluatePattern(definition, abXaRatio, bcAbRatio, cdBcRatio, dXaRatio, dXcRatio);
 
                 if (score < ChartConstants.HarmonicMinConfidence)
@@ -216,14 +370,14 @@ public static class HarmonicPatternDetector
                     if (!PatternFormationValidator.ValidateMinBars(span, ChartConstants.FormationMinBarsHarmonic))
                         continue;
 
-                    var legs = new List<(int, int)>
+                    var legs = new (PivotPoint Start, PivotPoint End)[]
                     {
-                        (x.Index, a.Index),
-                        (a.Index, b.Index),
-                        (b.Index, c.Index),
-                        (c.Index, d.Index)
+                        (x, a),
+                        (a, b),
+                        (b, c),
+                        (c, d)
                     };
-                    if (!PatternFormationValidator.ValidateVolatility(
+                    if (!PatternFormationValidator.ValidateVolatilityByPivots(
                             legs, candles, ChartConstants.FormationVolatilityAtrMultiplier))
                         continue;
 
@@ -251,13 +405,44 @@ public static class HarmonicPatternDetector
                 // Calculate PRZ
                 var (przLow, przHigh) = CalculatePrz(x, a, d, patternType, isBullish);
 
+                int? confirmedAtIndex = confirmationWindow.HasValue ? d.Index + confirmationWindow.Value : (int?)null;
+
                 results.Add(new HarmonicPatternResult(
                     patternType, x, a, b, c, d,
-                    finalScore, przLow, przHigh, isBullish));
+                    finalScore, przLow, przHigh, isBullish, confirmedAtIndex));
             }
         }
 
         return results;
+    }
+
+    /// <summary>
+    /// Validates direction and structural consistency for an XABCD pattern (F13).
+    /// Ensures proper alternation of peaks/troughs and retracement D bounds.
+    /// </summary>
+    internal static bool IsDirectionConsistent(
+        PivotPoint x,
+        PivotPoint a,
+        PivotPoint b,
+        PivotPoint c,
+        PivotPoint d,
+        bool isBullish,
+        PatternDefinition def)
+    {
+        int s = isBullish ? 1 : -1;
+
+        if (s * (a.Price - b.Price) <= 0) return false;
+        if (s * (c.Price - b.Price) <= 0) return false;
+        if (s * (c.Price - d.Price) <= 0) return false;
+
+        // For retracement patterns where D does not exceed XA (DXaMax <= 1.0),
+        // D must not exceed A in the swing direction (s * (a - d) > 0)
+        if (def.DXaMax <= 1.0)
+        {
+            if (s * (a.Price - d.Price) <= 0) return false;
+        }
+
+        return true;
     }
 
     /// <summary>
@@ -378,13 +563,13 @@ public static class HarmonicPatternDetector
             && timeRatio <= ChartConstants.Navarro200TimeRatioMax;
     }
 
-    private static IReadOnlyList<HarmonicPatternResult> FilterOverlappingPatterns(List<HarmonicPatternResult> patterns)
+    internal static IReadOnlyList<HarmonicPatternResult> FilterOverlappingPatterns(List<HarmonicPatternResult> patterns)
     {
         if (patterns.Count <= 1)
             return patterns;
 
         // Sort by: High Confidence Tier first, then Span descending, then Confidence descending.
-        // This ensures large high-confidence patterns are processed first.
+        // Deterministic tie-breakers: D.Index descending, X.Index descending, PatternType ascending, IsBullish true first.
         patterns.Sort((a, b) =>
         {
             bool aIsHigh = a.ConfidenceScore >= 0.80;
@@ -395,7 +580,19 @@ public static class HarmonicPatternDetector
             int cmp = b.Span.CompareTo(a.Span);
             if (cmp != 0) return cmp;
 
-            return b.ConfidenceScore.CompareTo(a.ConfidenceScore);
+            cmp = b.ConfidenceScore.CompareTo(a.ConfidenceScore);
+            if (cmp != 0) return cmp;
+
+            cmp = b.D.Index.CompareTo(a.D.Index);
+            if (cmp != 0) return cmp;
+
+            cmp = b.X.Index.CompareTo(a.X.Index);
+            if (cmp != 0) return cmp;
+
+            cmp = ((int)a.PatternType).CompareTo((int)b.PatternType);
+            if (cmp != 0) return cmp;
+
+            return b.IsBullish.CompareTo(a.IsBullish);
         });
 
         // Greedy selection with enclosure removal:
@@ -588,7 +785,9 @@ public static class HarmonicPatternDetector
     /// </summary>
     internal static List<HarmonicPatternResult> FindAbcdPatterns(
         List<PivotPoint> pivots,
-        IReadOnlyList<CandleData>? candles = null)
+        IReadOnlyList<CandleData>? candles = null,
+        decimal? minLegSwingPercent = null,
+        int? confirmationWindow = null)
     {
         var results = new List<HarmonicPatternResult>();
 
@@ -632,6 +831,19 @@ public static class HarmonicPatternDetector
             if (a.IsHigh == b.IsHigh || b.IsHigh == c.IsHigh || c.IsHigh == d.IsHigh)
                 continue;
 
+            // Validate minimum leg swing percent if specified (D4 = C')
+            if (minLegSwingPercent.HasValue)
+            {
+                var abcdLegs = new (PivotPoint Start, PivotPoint End)[]
+                {
+                    (a, b),
+                    (b, c),
+                    (c, d)
+                };
+                if (!PatternFormationValidator.ValidateLegSwingPercent(abcdLegs, minLegSwingPercent.Value))
+                    continue;
+            }
+
             bool isBullish = b.Price < a.Price; // AB goes down = bullish (D is buy zone)
 
             decimal ab = Math.Abs(b.Price - a.Price);
@@ -642,10 +854,9 @@ public static class HarmonicPatternDetector
             double bcAbRatio = (double)(bc / ab);
             double cdAbRatio = (double)(cd / ab);
 
-            // Try all AB=CD family patterns
+            // Try AB=CD family patterns (SeaHorse excluded per D7 / 7b)
             double abcdScore = ScoreAbcd(bcAbRatio, cdAbRatio, AbcdFamily.Standard);
             double seaPonyScore = ScoreAbcd(bcAbRatio, cdAbRatio, AbcdFamily.SeaPony);
-            double seaHorseScore = ScoreAbcd(bcAbRatio, cdAbRatio, AbcdFamily.SeaHorse);
             double dragonScore = ScoreAbcd(bcAbRatio, cdAbRatio, AbcdFamily.Dragon);
 
             // Pick the best match
@@ -653,7 +864,6 @@ public static class HarmonicPatternDetector
             {
                 (HarmonicPatternType.ABCD, abcdScore),
                 (HarmonicPatternType.SeaPony, seaPonyScore),
-                (HarmonicPatternType.SeaHorse, seaHorseScore),
                 (HarmonicPatternType.Dragon, dragonScore)
             };
 
@@ -689,9 +899,11 @@ public static class HarmonicPatternDetector
             // For HarmonicPatternResult, set X = A (first point duplicated)
             var (przLow, przHigh) = CalculatePrz(a, a, d, bestType, isBullish);
 
+            int? confirmedAtIndex = confirmationWindow.HasValue ? d.Index + confirmationWindow.Value : (int?)null;
+
             results.Add(new HarmonicPatternResult(
                 bestType, a, a, b, c, d,
-                finalScore, przLow, przHigh, isBullish));
+                finalScore, przLow, przHigh, isBullish, confirmedAtIndex));
         }
 
         return results;
@@ -757,7 +969,9 @@ public static class HarmonicPatternDetector
     /// </summary>
     internal static List<HarmonicPatternResult> FindFiveZeroPatterns(
         List<PivotPoint> pivots,
-        IReadOnlyList<CandleData>? candles = null)
+        IReadOnlyList<CandleData>? candles = null,
+        decimal? minLegSwingPercent = null,
+        int? confirmationWindow = null)
     {
         var results = new List<HarmonicPatternResult>();
 
@@ -802,6 +1016,20 @@ public static class HarmonicPatternDetector
             if (p0.IsHigh == pX.IsHigh || pX.IsHigh == pA.IsHigh ||
                 pA.IsHigh == pB.IsHigh || pB.IsHigh == pC.IsHigh)
                 continue;
+
+            // Validate minimum leg swing percent if specified (D4 = C')
+            if (minLegSwingPercent.HasValue)
+            {
+                var fiveZeroLegs = new (PivotPoint Start, PivotPoint End)[]
+                {
+                    (p0, pX),
+                    (pX, pA),
+                    (pA, pB),
+                    (pB, pC)
+                };
+                if (!PatternFormationValidator.ValidateLegSwingPercent(fiveZeroLegs, minLegSwingPercent.Value))
+                    continue;
+            }
 
             decimal xa = Math.Abs(pA.Price - pX.Price);
             if (xa == 0) continue;
@@ -852,10 +1080,12 @@ public static class HarmonicPatternDetector
             if (przLow > przHigh)
                 (przLow, przHigh) = (przHigh, przLow);
 
+            int? confirmedAtIndex = confirmationWindow.HasValue ? pC.Index + confirmationWindow.Value : (int?)null;
+
             // Map to XABCD result: X=0, A=X, B=A, C=B, D=C
             results.Add(new HarmonicPatternResult(
                 HarmonicPatternType.FiveZero, p0, pX, pA, pB, pC,
-                finalScore, przLow, przHigh, isBullish));
+                finalScore, przLow, przHigh, isBullish, confirmedAtIndex));
         }
 
         return results;

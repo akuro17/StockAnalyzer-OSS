@@ -86,7 +86,7 @@ public sealed partial class RlUiTests
         public string GetString(string key) => Prefix + key;
     }
 
-    private sealed record PlaybackFixture(RlPlaybackSettingsViewModel Vm, PlaybackData Data, RecordingReplayTarget Target, EmptyRegistry Registry, int[] CloseCount);
+    private sealed record PlaybackFixture(RlPlaybackViewModel Vm, PlaybackData Data, RecordingReplayTarget Target, EmptyRegistry Registry);
 
     private static async Task<PlaybackFixture> Playback(IReadOnlyList<RlGeneration>? generations = null, Action<PlaybackData>? configure = null,
         ILocalizationService? localization = null, Exception? listError = null)
@@ -94,11 +94,10 @@ public sealed partial class RlUiTests
         var registry = new EmptyRegistry { Generations = generations ?? new[] { PlaybackGeneration("a") }, ListError = listError };
         var data = new PlaybackData(registry); configure?.Invoke(data);
         var target = new RecordingReplayTarget();
-        var vm = new RlPlaybackSettingsViewModel(registry, data, target, localization ?? NullLocalizationService.Instance, new SynchronousDispatcherService());
-        var closed = new int[1]; vm.CloseRequested += () => closed[0]++;
+        var vm = new RlPlaybackViewModel(registry, data, target, localization ?? NullLocalizationService.Instance, new SynchronousDispatcherService());
         await vm.RefreshCommand.ExecuteAsync(null);
         await PlaybackUntil(() => vm.ModelsState != RlDialogLoadState.Loading && vm.BlocksState != RlDialogLoadState.Loading);
-        return new(vm, data, target, registry, closed);
+        return new(vm, data, target, registry);
     }
 
     private static async Task PlaybackUntil(Func<bool> condition)
@@ -181,11 +180,10 @@ public sealed partial class RlUiTests
         var registry = new EmptyRegistry { Generations = new[] { PlaybackGeneration("a"), PlaybackGeneration("b", ageDays: 1) } };
         var data = new PlaybackData(registry) { Blocks = (id, _) => id == "a" ? gate.Task : Task.FromResult(DefaultPlaybackBlocks) };
         var target = new RecordingReplayTarget();
-        var vm = new RlPlaybackSettingsViewModel(registry, data, target, NullLocalizationService.Instance, new SynchronousDispatcherService());
-        var closed = new int[1]; vm.CloseRequested += () => closed[0]++;
+        var vm = new RlPlaybackViewModel(registry, data, target, NullLocalizationService.Instance, new SynchronousDispatcherService());
         await vm.RefreshCommand.ExecuteAsync(null);
         await PlaybackUntil(() => vm.ModelsState == RlDialogLoadState.Loaded);
-        return new(vm, data, target, registry, closed);
+        return new(vm, data, target, registry);
     }
 
     [Fact]
@@ -217,13 +215,13 @@ public sealed partial class RlUiTests
     }
 
     [Fact]
-    public async Task Playback_ShowOnChartAppliesTheReplayOnceThenRequestsCloseOnce()
+    public async Task Playback_ShowOnChartAppliesTheReplayOnce()
     {
         var f = await Playback(); using var vm = f.Vm;
         vm.Decision = 3; vm.SelectedPolicyOption = vm.PolicyOptions.Single(p => p.Id == RlContract.HoldBaselineId);
         await vm.ShowOnChartCommand.ExecuteAsync(null);
         Assert.Equal(new[] { ("a", "o0", 3, RlContract.HoldBaselineId) }, f.Data.Replays);
-        Assert.Single(f.Target.Applied); Assert.Equal(1, f.CloseCount[0]);
+        Assert.Single(f.Target.Applied);
         Assert.Equal("Settings_RlPlayback_Status_Shown", vm.StatusMessage); Assert.Equal(RlDialogOperation.Idle, vm.Operation);
     }
 
@@ -232,7 +230,7 @@ public sealed partial class RlUiTests
     {
         var f = await Playback(configure: d => d.Replay = _ => throw new InvalidDataException("InsufficientData: short")); using var vm = f.Vm;
         await vm.ShowOnChartCommand.ExecuteAsync(null);
-        Assert.Empty(f.Target.Applied); Assert.Equal(0, f.CloseCount[0]); Assert.Equal(0, f.Target.ClearCalls);
+        Assert.Empty(f.Target.Applied); Assert.Equal(0, f.Target.ClearCalls);
         Assert.Equal("Rl.Ui.Status.InsufficientData", vm.StatusMessage); Assert.Equal(RlDialogOperation.Idle, vm.Operation); Assert.True(vm.CanShowOnChart);
     }
 
@@ -242,7 +240,7 @@ public sealed partial class RlUiTests
         var f = await Playback(); using var vm = f.Vm;
         f.Target.ApplyError = new ArgumentException("bad snapshot");
         await vm.ShowOnChartCommand.ExecuteAsync(null);
-        Assert.Equal(0, f.CloseCount[0]); Assert.Equal("Rl.Ui.Status.InvalidInput", vm.StatusMessage);
+        Assert.Equal("Rl.Ui.Status.InvalidInput", vm.StatusMessage);
     }
 
     [Fact]
@@ -250,7 +248,7 @@ public sealed partial class RlUiTests
     {
         var f = await Playback(configure: d => d.Replay = _ => throw new OperationCanceledException()); using var vm = f.Vm;
         await vm.ShowOnChartCommand.ExecuteAsync(null);
-        Assert.Empty(f.Target.Applied); Assert.Equal(0, f.CloseCount[0]);
+        Assert.Empty(f.Target.Applied);
         Assert.Equal("Settings_RlPlayback_Status_Cancelled", vm.StatusMessage); Assert.Equal(RlDialogOperation.Idle, vm.Operation);
     }
 
@@ -271,7 +269,7 @@ public sealed partial class RlUiTests
     {
         var f = await Playback(); using var vm = f.Vm;
         vm.ClearChartCommand.Execute(null);
-        Assert.Equal(1, f.Target.ClearCalls); Assert.Equal(0, f.CloseCount[0]); Assert.Equal("Settings_RlPlayback_Status_Cleared", vm.StatusMessage);
+        Assert.Equal(1, f.Target.ClearCalls); Assert.Equal("Settings_RlPlayback_Status_Cleared", vm.StatusMessage);
     }
 
     [Fact]
@@ -283,7 +281,7 @@ public sealed partial class RlUiTests
         await PlaybackUntil(() => f.Data.Replays.Count == 1);
         vm.Dispose();
         gate.SetResult(Snapshot(0, 1, -1)); await running;
-        Assert.Empty(f.Target.Applied); Assert.Equal(0, f.CloseCount[0]); Assert.Equal(RlDialogOperation.Disposed, vm.Operation); Assert.Equal("", vm.StatusMessage);
+        Assert.Empty(f.Target.Applied); Assert.Equal(RlDialogOperation.Disposed, vm.Operation); Assert.Equal("", vm.StatusMessage);
     }
 
     [Fact]
@@ -292,7 +290,7 @@ public sealed partial class RlUiTests
         var gate = new TaskCompletionSource<ImmutableArray<RlEpisodeBlock>>(TaskCreationOptions.RunContinuationsAsynchronously);
         var f = await PlaybackWithPendingFirst(gate); var vm = f.Vm;
         vm.Dispose(); gate.SetResult(DefaultPlaybackBlocks); await Task.Delay(100);
-        Assert.Empty(vm.BlockOptions); Assert.Equal(0, f.CloseCount[0]);
+        Assert.Empty(vm.BlockOptions);
     }
 
     [Fact]
@@ -320,15 +318,46 @@ public sealed partial class RlUiTests
     }
 
     [Fact]
-    public async Task Playback_HoldsNoEditableStateAndResetSelectsTheNewestWithoutTouchingTheChart()
+    public async Task Playback_ResetSelectsTheNewestWithoutTouchingTheChart()
     {
         var f = await Playback(new[] { PlaybackGeneration("a"), PlaybackGeneration("b", ageDays: 1) }); using var vm = f.Vm;
         vm.SelectedModelOption = vm.ModelOptions.Single(o => o.Generation.ModelId == "b"); vm.Decision = 5;
-        Assert.False(vm.IsModified); await vm.SaveChangesAsync(); vm.RevertChanges(); Assert.False(vm.IsModified);
-        ((ISettingsPageViewModel)vm).ResetToDefault();
+        Assert.True(vm.ResetToDefaultCommand.CanExecute(null));
+        vm.ResetToDefaultCommand.Execute(null);
         await PlaybackUntil(() => vm.BlocksState == RlDialogLoadState.Loaded);
         Assert.Equal("a", vm.SelectedModelOption!.Generation.ModelId); Assert.Equal(0, vm.Decision);
         Assert.Equal(0, f.Target.ClearCalls); Assert.Empty(f.Target.Applied);
-        Assert.Equal("Settings_RlPlayback", vm.TitleKey);
+    }
+
+    [Fact]
+    public async Task Playback_ResetIsOfferedOnlyWhileNothingRuns()
+    {
+        var gate = new TaskCompletionSource<RlQSnapshot>();
+        var f = await Playback(configure: data => data.Replay = _ => gate.Task); using var vm = f.Vm;
+        Assert.True(vm.ResetToDefaultCommand.CanExecute(null));
+        var run = vm.ShowOnChartCommand.ExecuteAsync(null);
+        Assert.Equal(RlDialogOperation.Replaying, vm.Operation);
+        Assert.False(vm.ResetToDefaultCommand.CanExecute(null));
+        gate.SetResult(Snapshot(0, 1, -1)); await run;
+        Assert.Equal(RlDialogOperation.Idle, vm.Operation);
+        Assert.True(vm.ResetToDefaultCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public async Task Playback_ShowOnChartLeavesTheWindowUsable_ASecondReplayWorks_AndNothingRunsAfterDispose()
+    {
+        var f = await Playback(); var vm = f.Vm;
+        await vm.ShowOnChartCommand.ExecuteAsync(null);
+        Assert.Single(f.Target.Applied);
+        Assert.Equal("Settings_RlPlayback_Status_Shown", vm.StatusMessage);
+        Assert.Equal(RlDialogOperation.Idle, vm.Operation);
+        Assert.True(vm.ShowOnChartCommand.CanExecute(null));
+
+        await vm.ShowOnChartCommand.ExecuteAsync(null);   // a second replay from the same open window
+        Assert.Equal(2, f.Target.Applied.Count);
+
+        vm.Dispose();
+        await vm.ShowOnChartCommand.ExecuteAsync(null);
+        Assert.Equal(2, f.Target.Applied.Count);
     }
 }

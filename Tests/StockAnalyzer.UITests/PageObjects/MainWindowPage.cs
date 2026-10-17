@@ -113,50 +113,64 @@ namespace StockAnalyzer.UITests.PageObjects
 
         public Window OpenRlTrainingWindow()
         {
-            InvokeToolsMenuItem(StockAnalyzer.Avalonia.Common.RlUiConstants.Menu);
+            InvokeToolsMenuItem(StockAnalyzer.Avalonia.Common.RlUiConstants.Menu, StockAnalyzer.Avalonia.Common.ToolsMenuUiConstants.ModelTraining);
             return WaitForProcessWindow("Reinforcement Learning", "強化学習");
         }
 
-        /// <summary>Opens Settings (Theme page first) and selects the RL Playback category; the Settings window title is a fixed literal.</summary>
-        public Window OpenRlPlaybackSettings(params string[] categoryTitles)
+        /// <summary>Opens the RL Playback window from the Tools menu; <paramref name="windowTitles"/> are its localized titles.</summary>
+        public Window OpenRlPlaybackWindow(params string[] windowTitles)
         {
-            InvokeToolsMenuItem("Menu_ThemeSettings");
-            var settings = WaitForProcessWindow("Settings");
-            var category = _testBase.WaitForElement(() => settings.FindAllDescendants()
-                .FirstOrDefault(e => categoryTitles.Contains(e.Properties.Name.ValueOrDefault)),
-                errorMessage: "RL Playback category did not appear in Settings.");
-            category.Click();
-            _testBase.WaitForElement(() => settings.FindFirstDescendant(cf => cf.ByAutomationId(StockAnalyzer.Avalonia.Common.RlUiConstants.PlaybackPage)),
+            InvokeToolsMenuItem(StockAnalyzer.Avalonia.Common.RlUiConstants.PlaybackMenu, StockAnalyzer.Avalonia.Common.ToolsMenuUiConstants.ModelExecution);
+            var window = WaitForProcessWindow(windowTitles);
+            _testBase.WaitForElement(() => window.FindFirstDescendant(cf => cf.ByAutomationId(StockAnalyzer.Avalonia.Common.RlUiConstants.PlaybackPage)),
                 errorMessage: "RL Playback page did not appear.");
-            return settings;
+            return window;
+        }
+
+        /// <summary>Opens the Prediction Models window from the Tools menu; <paramref name="windowTitles"/> are its localized titles.</summary>
+        public Window OpenPredictionModelsWindow(params string[] windowTitles)
+        {
+            InvokeToolsMenuItem(StockAnalyzer.Avalonia.Common.PredictionModelsUiConstants.Menu, StockAnalyzer.Avalonia.Common.ToolsMenuUiConstants.ModelExecution);
+            var window = WaitForProcessWindow(windowTitles);
+            _testBase.WaitForElement(() => window.FindFirstDescendant(cf => cf.ByAutomationId(StockAnalyzer.Avalonia.Common.PredictionModelsUiConstants.Page)),
+                errorMessage: "Prediction Models page did not appear.");
+            return window;
         }
 
         public Window OpenPortfolioRlWindow()
         {
-            InvokeToolsMenuItem(StockAnalyzer.Avalonia.Common.PrlUiConstants.Menu);
+            InvokeToolsMenuItem(StockAnalyzer.Avalonia.Common.PrlUiConstants.Menu, StockAnalyzer.Avalonia.Common.ToolsMenuUiConstants.ModelTraining);
             return WaitForProcessWindow("Portfolio Reinforcement Learning", "ポートフォリオ強化学習");
         }
+
+        /// <summary>Native handles of this process's windows (other than the main window) whose title is one of <paramref name="titles"/>.</summary>
+        private List<IntPtr> FindProcessWindowHandles(string[] titles)
+        {
+            int processId = _window.Properties.ProcessId.Value;
+            var handles = new List<IntPtr>();
+            EnumWindows((handle, _) =>
+            {
+                GetWindowThreadProcessId(handle, out uint ownerId);
+                if (ownerId == (uint)processId && handle != _window.Properties.NativeWindowHandle.Value)
+                {
+                    var title = new StringBuilder(256);
+                    GetWindowText(handle, title, title.Capacity);
+                    if (titles.Contains(title.ToString(), StringComparer.Ordinal))
+                        handles.Add(handle);
+                }
+                return true;
+            }, IntPtr.Zero);
+            return handles;
+        }
+
+        /// <summary>How many windows of this process carry one of the titles (a single-instance window must give 1).</summary>
+        public int CountProcessWindows(params string[] titles) => FindProcessWindowHandles(titles).Count;
 
         public Window WaitForProcessWindow(params string[] titles)
         {
             return _testBase.WaitForElement(() =>
             {
-                int processId = _window.Properties.ProcessId.Value;
-                var handles = new List<IntPtr>();
-                EnumWindows((handle, _) =>
-                {
-                    GetWindowThreadProcessId(handle, out uint ownerId);
-                    if (ownerId == (uint)processId && handle != _window.Properties.NativeWindowHandle.Value)
-                    {
-                        var title = new StringBuilder(256);
-                        GetWindowText(handle, title, title.Capacity);
-                        if (titles.Contains(title.ToString(), StringComparer.Ordinal))
-                            handles.Add(handle);
-                    }
-                    return true;
-                }, IntPtr.Zero);
-
-                foreach (IntPtr handle in handles)
+                foreach (IntPtr handle in FindProcessWindowHandles(titles))
                 {
                     try { return _testBase.Automation!.FromHandle(handle).AsWindow(); }
                     catch (COMException) { /* A native window can disappear before UIA binds. */ }
@@ -167,7 +181,8 @@ namespace StockAnalyzer.UITests.PageObjects
             }, timeoutMs: 10000, errorMessage: $"Process window did not appear: {string.Join("/", titles)}");
         }
 
-        private void InvokeToolsMenuItem(string automationId)
+        /// <summary>Invokes a Tools menu item; <paramref name="submenuId"/> is the AutomationId of the Tools submenu (Model Training / Model Execution) that holds it, opened first.</summary>
+        private void InvokeToolsMenuItem(string automationId, string? submenuId = null)
         {
             _window.Focus();
             var toolsMenu = _testBase.WaitForElement(() => 
@@ -212,6 +227,13 @@ namespace StockAnalyzer.UITests.PageObjects
                     _testBase.LogWarn($"Tools menu pointer action {i + 1} had no clickable point: {ex.Message}");
                 }
                 
+                if (submenuId != null)
+                {
+                    var submenu = WaitForPopupMenuItemByAutomationId(submenuId, popupTimeoutMs);
+                    var expand = submenu?.Patterns.ExpandCollapse.PatternOrDefault;
+                    if (expand != null) expand.Expand(); else submenu?.Click();
+                }
+
                 targetMenu = WaitForPopupMenuItemByAutomationId(automationId, popupTimeoutMs);
                 if (targetMenu != null)
                     break;

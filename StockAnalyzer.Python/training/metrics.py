@@ -35,6 +35,9 @@ except Exception:  # noqa: BLE001 - any import failure means "use the numpy path
 CLASS_LABELS: Sequence[str] = ("Up", "Down", "Neutral")
 # probability clip for log-loss so a confident wrong prediction stays finite.
 LOGLOSS_EPS: float = 1e-15
+# resolution of the confidence histogram: the top probability of a window is counted in one of this many equal bins of [0, 1].
+# The count is written into the file (``bins``), so a reader never assumes it.
+CONFIDENCE_HISTOGRAM_BINS: int = 100
 
 
 # --- numpy fallbacks ---------------------------------------------------------
@@ -202,6 +205,29 @@ def regression_metrics(
     }
 
 
+def confidence_histogram(probs, bins: int = CONFIDENCE_HISTOGRAM_BINS) -> Dict[str, object]:
+    """How confident a classifier is on a set of windows: a histogram of each window's largest class probability.
+
+    ``probs`` has shape ``(n, classes)``. The largest probability ``p`` of a row is clipped to ``[0, 1]`` and counted in bin
+    ``min(floor(p * bins), bins - 1)``, so bin ``b`` holds ``[b / bins, (b + 1) / bins)`` and ``p = 1`` falls into the last bin. A reader that
+    wants "how many windows reach a threshold" sums the bins from ``ceil(threshold * bins)`` upwards (a lower bound when the threshold is not a
+    multiple of ``1 / bins``). A non-finite probability is an error: a histogram that silently drops rows would overstate the share.
+    """
+    if type(bins) is not int or bins < 1:
+        raise ValueError("bins must be a positive integer")
+    p = np.asarray(probs, dtype=np.float64)
+    if p.ndim != 2 or p.shape[1] < 1:
+        raise ValueError("probs must have shape (n, classes) with at least one class")
+    counts = np.zeros(bins, dtype=np.int64)
+    if p.shape[0]:
+        top = p.max(axis=1)
+        if not np.all(np.isfinite(top)):
+            raise ValueError("probabilities must be finite")
+        index = np.minimum((np.clip(top, 0.0, 1.0) * bins).astype(np.int64), bins - 1)
+        counts = np.bincount(index, minlength=bins).astype(np.int64)
+    return {"bins": bins, "n": int(p.shape[0]), "max_probability_histogram": [int(c) for c in counts]}
+
+
 def format_report(report: Dict[str, object]) -> str:
     """Compact human-readable table for stdout."""
     lines: List[str] = []
@@ -286,6 +312,21 @@ def _run_selfcheck() -> None:
         pass
     else:  # pragma: no cover
         raise AssertionError("expected ValueError on shape mismatch")
+
+    # confidence histogram: 0.5 opens bin 50, 1.0 closes the last bin, the counts add up, bad input is refused
+    hist = confidence_histogram([[0.5, 0.3, 0.2], [1.0, 0.0, 0.0], [0.34, 0.33, 0.33], [0.0, 0.0, 0.0]])
+    counts = hist["max_probability_histogram"]
+    assert hist["bins"] == CONFIDENCE_HISTOGRAM_BINS == len(counts) and hist["n"] == 4 == sum(counts)
+    assert counts[50] == 1 and counts[-1] == 1 and counts[34] == 1 and counts[0] == 1
+    assert sum(counts[50:]) == 2   # windows at or above 0.5
+    assert confidence_histogram(np.zeros((0, 3)))["n"] == 0
+    for bad in (np.array([[np.nan, 0.5, 0.5]]), np.array([0.5, 0.5])):
+        try:
+            confidence_histogram(bad)
+        except ValueError:
+            pass
+        else:  # pragma: no cover
+            raise AssertionError("expected ValueError on unusable probabilities")
 
     print(f"metrics.py selfcheck: OK (sklearn={'yes' if _HAVE_SKLEARN else 'no, numpy fallback'})")
 

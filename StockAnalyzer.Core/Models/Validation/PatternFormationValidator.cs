@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using StockAnalyzer.Core.Models.MarketStructure;
 
 namespace StockAnalyzer.Core.Models.Validation;
 
@@ -103,7 +104,7 @@ public static class PatternFormationValidator
 
     /// <summary>
     /// Computes the Average True Range (ATR) over a specific range of candles.
-    /// Uses classic Wilder ATR calculation: max(H-L, |H-Cprev|, |L-Cprev|).
+    /// Uses arithmetic mean of True Range: TR = max(H-L, |H-Cprev|, |L-Cprev|).
     /// </summary>
     internal static double ComputeLocalATR(IReadOnlyList<CandleData> candles, int startIndex, int endIndex)
     {
@@ -133,5 +134,74 @@ public static class PatternFormationValidator
         }
 
         return validCount > 0 ? totalTR / validCount : 0;
+    }
+
+    /// <summary>
+    /// Validates that each leg of a pattern meets a minimum percentage price swing relative to the leg start price (D4 = C').
+    /// </summary>
+    /// <param name="legs">List of (Start, End) pivot points defining each leg.</param>
+    /// <param name="minPercent">Minimum percentage swing required for each leg (strictly > 0).</param>
+    /// <returns>True if every leg satisfies |End.Price - Start.Price| / Start.Price * 100 >= minPercent.</returns>
+    public static bool ValidateLegSwingPercent(
+        IReadOnlyList<(PivotPoint Start, PivotPoint End)> legs,
+        decimal minPercent)
+    {
+        if (minPercent <= 0)
+            throw new ArgumentOutOfRangeException(nameof(minPercent), "Minimum swing percent must be greater than zero.");
+
+        if (legs == null || legs.Count == 0)
+            return false;
+
+        for (int i = 0; i < legs.Count; i++)
+        {
+            var (start, end) = legs[i];
+            if (start == null || end == null || start.Price <= 0)
+                return false;
+
+            decimal swingPercent = Math.Abs(end.Price - start.Price) / start.Price * 100m;
+            if (swingPercent < minPercent)
+                return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Validates that each leg of a pattern has sufficient price movement relative to local ATR based on PivotPoint prices (F30).
+    /// </summary>
+    /// <param name="legs">List of (Start, End) pivot points defining each leg.</param>
+    /// <param name="candles">The full candle data array.</param>
+    /// <param name="atrMultiplier">Minimum price movement per leg expressed as a multiple of local ATR.</param>
+    /// <returns>True if all legs meet the volatility threshold.</returns>
+    public static bool ValidateVolatilityByPivots(
+        IReadOnlyList<(PivotPoint Start, PivotPoint End)> legs,
+        IReadOnlyList<CandleData> candles,
+        double atrMultiplier)
+    {
+        if (legs == null || legs.Count == 0 || candles == null || candles.Count == 0)
+            return false;
+
+        for (int i = 0; i < legs.Count; i++)
+        {
+            var (start, end) = legs[i];
+            if (start == null || end == null)
+                return false;
+
+            int startIdx = Math.Min(start.Index, end.Index);
+            int endIdx = Math.Max(start.Index, end.Index);
+
+            if (startIdx < 0 || endIdx >= candles.Count || startIdx >= endIdx)
+                return false;
+
+            double atr = ComputeLocalATR(candles, startIdx, endIdx);
+            if (atr <= 0)
+                continue; // Degenerate case: flat prices
+
+            decimal legMove = Math.Abs(end.Price - start.Price);
+            if ((double)legMove < atr * atrMultiplier)
+                return false;
+        }
+
+        return true;
     }
 }

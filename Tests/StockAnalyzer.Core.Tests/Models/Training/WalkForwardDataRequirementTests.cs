@@ -36,6 +36,14 @@ public class WalkForwardDataRequirementTests
         Assert.Equal(expected, WalkForwardDataRequirement.MinimumRawBars(windowSize, horizon));
     }
 
+    [Theory]
+    [InlineData(60, 5, null, 64)]   // the trainer's default purge: window + horizon - 1
+    [InlineData(1, 1, null, 1)]
+    [InlineData(60, 5, 10, 10)]
+    [InlineData(60, 5, 0, 0)]       // an explicit zero gap is a gap
+    public void ResolveGap_IsTheGivenGapElseWindowPlusHorizonMinusOne(int window, int horizon, int? gap, int expected)
+        => Assert.Equal(expected, WalkForwardDataRequirement.ResolveGap(window, horizon, gap));
+
     private static JsonDocument RequirementParity()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

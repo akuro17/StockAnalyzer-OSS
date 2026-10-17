@@ -10,6 +10,6 @@ public interface IRlReplayTarget
     /// <summary>Shows the replay on the main chart.</summary>
     Task ApplyReplayAsync(RlQSnapshot snapshot, CancellationToken cancellationToken);
 
-    /// <summary>Removes the replay from the main chart.</summary>
+    /// <summary>Removes the replay from the main chart and restores the chart's normal data (symbol, time frame and range as before the replay).</summary>
     void Clear();
 }

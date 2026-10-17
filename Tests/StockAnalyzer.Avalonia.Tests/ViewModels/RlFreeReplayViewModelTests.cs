@@ -41,7 +41,7 @@ public sealed partial class RlUiTests
         public IReadOnlyList<string> GetTickers(Guid id) => Tickers.TryGetValue(id, out var tickers) ? tickers : Array.Empty<string>();
     }
 
-    private sealed record FreeFixture(RlFreeReplayViewModel Vm, PlaybackData Data, RecordingReplayTarget Target, FakeLists Lists, int[] Closed);
+    private sealed record FreeFixture(RlFreeReplayViewModel Vm, PlaybackData Data, RecordingReplayTarget Target, FakeLists Lists);
 
     private static async Task<FreeFixture> Free(RlGeneration? generation = null, string[]? tickers = null, Action<PlaybackData>? configure = null,
         ILocalizationService? localization = null, bool select = true)
@@ -51,10 +51,9 @@ public sealed partial class RlUiTests
         var target = new RecordingReplayTarget(); var lists = new FakeLists();
         var vm = new RlFreeReplayViewModel(data, target, new FakeMarketDataProvider(tickers ?? new[] { "SPY", "QQQ", "IWM" }), lists,
             localization ?? NullLocalizationService.Instance, new SynchronousDispatcherService());
-        var closed = new int[1]; vm.CloseRequested += () => closed[0]++;
         await PlaybackUntil(() => vm.Suggestions.Count > 0);
         if (select) vm.SetModel(generation ?? PlaybackGeneration("a"));
-        return new(vm, data, target, lists, closed);
+        return new(vm, data, target, lists);
     }
 
     private static Task FreeRangeLoaded(RlFreeReplayViewModel vm) => PlaybackUntil(() => vm.HasRangeText);
@@ -214,7 +213,7 @@ public sealed partial class RlUiTests
         await vm.ShowOnChartCommand.ExecuteAsync(null);
         var request = Assert.Single(f.Data.ExternalReplays);
         Assert.Equal(new RlExternalReplayRequest("a", "QQQ", FreeLatest, 7, RlContract.SmaBaselineId), request);
-        Assert.Single(f.Target.Applied); Assert.Equal(1, f.Closed[0]); Assert.False(vm.IsBusy);
+        Assert.Single(f.Target.Applied); Assert.False(vm.IsBusy);
         Assert.Equal("Settings_RlPlayback_Status_Shown", vm.StatusMessage);
     }
 
@@ -227,7 +226,7 @@ public sealed partial class RlUiTests
         await FreeRangeLoaded(vm);
         await vm.ShowOnChartCommand.ExecuteAsync(null);
         Assert.Equal($"Settings_RlPlayback_Free_Resolved|{FreeLatest.AddDays(-2):yyyy-MM-dd}", vm.StatusMessage);
-        Assert.Equal(1, f.Closed[0]);
+       
     }
 
     [Fact]
@@ -239,7 +238,7 @@ public sealed partial class RlUiTests
         await FreeRangeLoaded(vm);
         await vm.ShowOnChartCommand.ExecuteAsync(null);
         Assert.Equal($"Settings_RlPlayback_Free_Reject_NotEnoughBarsAfter|2019-06-03|{RlContract.EpisodeHorizon}", vm.StatusMessage);
-        Assert.Empty(f.Target.Applied); Assert.Equal(0, f.Closed[0]); Assert.False(vm.IsBusy); Assert.True(vm.CanShowOnChart);
+        Assert.Empty(f.Target.Applied); Assert.False(vm.IsBusy); Assert.True(vm.CanShowOnChart);
     }
 
     [Fact]
@@ -249,10 +248,10 @@ public sealed partial class RlUiTests
         using var vm = f.Vm;
         await FreeRangeLoaded(vm);
         await vm.ShowOnChartCommand.ExecuteAsync(null);
-        Assert.Equal("Rl.Ui.Status.IOFailure", vm.StatusMessage); Assert.Equal(0, f.Closed[0]); Assert.False(vm.IsBusy);
+        Assert.Equal("Rl.Ui.Status.IOFailure", vm.StatusMessage); Assert.False(vm.IsBusy);
         f.Data.External = (_, _) => Task.FromCanceled<RlExternalReplayResult>(new CancellationToken(true));
         await vm.ShowOnChartCommand.ExecuteAsync(null);
-        Assert.Equal("Settings_RlPlayback_Status_Cancelled", vm.StatusMessage); Assert.Equal(0, f.Closed[0]);
+        Assert.Equal("Settings_RlPlayback_Status_Cancelled", vm.StatusMessage);
     }
 
     [Fact]
@@ -327,9 +326,8 @@ public sealed partial class RlUiTests
         var data = new PlaybackData(registry); var target = new RecordingReplayTarget();
         var free = new RlFreeReplayViewModel(data, target, new FakeMarketDataProvider(new[] { "SPY" }), new FakeLists(),
             NullLocalizationService.Instance, new SynchronousDispatcherService());
-        var page = new RlPlaybackSettingsViewModel(registry, data, target, NullLocalizationService.Instance, new SynchronousDispatcherService(), free);
+        var page = new RlPlaybackViewModel(registry, data, target, NullLocalizationService.Instance, new SynchronousDispatcherService(), free);
         using var _ = page;
-        int closes = 0; page.CloseRequested += () => closes++;
         await page.RefreshCommand.ExecuteAsync(null);
         await PlaybackUntil(() => page.BlocksState == RlDialogLoadState.Loaded && free.HasRangeText);
         Assert.Same(free, page.Free); Assert.True(free.HasModel); Assert.Equal("SPY", free.TickerText); Assert.True(page.CanShowOnChart); Assert.True(free.CanShowOnChart);
@@ -341,7 +339,7 @@ public sealed partial class RlUiTests
         Assert.False(page.CanShowOnChart);                          // the free replay blocks the segment replay
         gate.SetResult(new RlExternalReplayResult(Snapshot(0, 1, -1), FreeLatest, FreeLatest));
         await running;
-        Assert.Equal(1, closes); Assert.True(page.CanShowOnChart);   // the card's close request is the page's close request
+        Assert.Single(target.Applied); Assert.True(page.CanShowOnChart);   // the free replay is on the chart and the page stays usable
 
         var segmentGate = new TaskCompletionSource<RlQSnapshot>(TaskCreationOptions.RunContinuationsAsynchronously);
         data.Replay = _ => segmentGate.Task;

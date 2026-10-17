@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using StockAnalyzer.Avalonia.Drawing;
 using StockAnalyzer.Avalonia.Drawing.Objects;
 using StockAnalyzer.Avalonia.Services;
+using StockAnalyzer.Core.Models.HarmonicPattern;
 
 namespace StockAnalyzer.Avalonia.Views.Dialogs;
 
@@ -35,7 +36,10 @@ public sealed class HarmonicPatternSettingsPanelDefinition : IDrawingSettingsPan
         var fillColorPicker = dialogWindow.FindControl<ColorPicker>("HarmonicFillColorPicker");
 
         if (autoThresholdCheck != null) autoThresholdCheck.IsChecked = !harmonicPattern.ZigZagThreshold.HasValue;
-        if (zigzagThresholdSpin != null) zigzagThresholdSpin.Value = harmonicPattern.ZigZagThreshold ?? StockAnalyzer.Core.ChartConstants.DefaultHarmonicZigZagThreshold;
+        decimal defaultThreshold = harmonicPattern.PivotMode == HarmonicPivotMode.LocalExtremaAmplitude
+            ? StockAnalyzer.Core.ChartConstants.DefaultHarmonicMinLegSwingPercent
+            : StockAnalyzer.Core.ChartConstants.DefaultHarmonicZigZagThreshold;
+        if (zigzagThresholdSpin != null) zigzagThresholdSpin.Value = harmonicPattern.ZigZagThreshold ?? defaultThreshold;
         if (showPrzCheck != null) showPrzCheck.IsChecked = harmonicPattern.ShowPrz;
         if (fillOpacitySpin != null) fillOpacitySpin.Value = harmonicPattern.FillOpacity;
         if (fillColorPicker != null) fillColorPicker.Color = harmonicPattern.FillColor;

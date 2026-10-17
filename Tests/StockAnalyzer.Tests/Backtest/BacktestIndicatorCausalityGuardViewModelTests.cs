@@ -34,6 +34,7 @@ public class BacktestIndicatorCausalityGuardViewModelTests
             Item(IndicatorType.ZigZag, "ZigZag"),
             Item(IndicatorType.VolumeProfile, "VolumeProfile"),
             Item(IndicatorType.TimeAtPrice, "TimeAtPrice"),
+            Item(IndicatorType.MarketStructureShift, "MarketStructureShift"),
             Item(IndicatorType.Garch11, "Garch11"),
         };
         var provider = new FakeScreenerCatalogProvider(source, type => type == IndicatorType.Ichimoku
@@ -50,7 +51,7 @@ public class BacktestIndicatorCausalityGuardViewModelTests
         string[] shown = vm.FilteredItems.Select(i => i.ShortName).OrderBy(n => n, StringComparer.Ordinal).ToArray();
 
         Assert.Equal(new[] { "Ichimoku", "SMA" }, shown);
-        Assert.Equal(6, source.Count); // the shared catalog list is not mutated
+        Assert.Equal(7, source.Count); // the shared catalog list is not mutated
     }
 
     [Fact]

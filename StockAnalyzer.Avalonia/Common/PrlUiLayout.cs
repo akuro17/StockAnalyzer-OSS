@@ -10,7 +10,7 @@ namespace StockAnalyzer.Avalonia.Common;
 /// </summary>
 public static class PrlUiLayout
 {
-    public const double HeaderHeight = 56, FooterHeight = 64, ControlHeight = 36;
+    public const double HeaderHeight = ToolWindowUiLayout.HeaderHeight, FooterHeight = ToolWindowUiLayout.FooterHeight, ControlHeight = 36;
     public const double SourceRowHeight = 28, HeaderIconSize = 20, TreeIconSize = 12, LabelGap = 4, ButtonSpacing = 12;
     public const double ButtonMinimumWidth = 110, ButtonPadding = 16;
     public const int SourceListVisibleRows = 10;

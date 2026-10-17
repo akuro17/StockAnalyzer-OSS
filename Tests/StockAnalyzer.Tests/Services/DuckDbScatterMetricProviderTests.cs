@@ -144,4 +144,20 @@ public sealed class DuckDbScatterMetricProviderTests : IDisposable
         Assert.True(double.IsNaN(result.Items[1].YValue));
         Assert.True(double.IsNaN(result.Items[1].ReturnPercentage));
     }
+
+    [Fact]
+    public async Task ComputeMetricsAsync_FundamentalMetrics_WhenMetaMissing_AssignsNaNNotZero()
+    {
+        string aaplPath = Path.Combine(_dataDaily, "AAPL.parquet");
+        if (!File.Exists(aaplPath)) return;
+
+        var tickers = new[] { "AAPL" };
+        var result = await _provider.ComputeMetricsAsync(tickers, "P/E", "MarketCap");
+
+        Assert.NotNull(result);
+        Assert.Single(result.Items);
+        var item = result.Items[0];
+        Assert.Equal("AAPL", item.Ticker);
+        Assert.True(double.IsNaN(item.XValue) || item.XValue > 0.0, $"P/E should be NaN or positive, got {item.XValue}");
+    }
 }

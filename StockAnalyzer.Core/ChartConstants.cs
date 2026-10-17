@@ -132,16 +132,22 @@ public static class ChartConstants
 
     /// <summary>
     /// Maximum slope magnitude for a trendline to be considered "flat" (horizontal).
-    /// Used for ascending/descending triangle detection.
+    /// Used for ascending/descending triangle and formation classification in geometric pattern detection.
     /// </summary>
-    public const double GeometricFlatSlopeThreshold = 0.05;
+    public const double GeometricFlatSlopeThreshold = 0.10;
 
     // Harmonic Pattern Detection (Prompt 33-9)
     /// <summary>Default ZigZag threshold percentage for harmonic pattern pivot extraction.</summary>
     public const decimal DefaultHarmonicZigZagThreshold = 3.0m;
 
-    /// <summary>Multi-scale thresholds to capture harmonic patterns at different scales.</summary>
+    /// <summary>Default minimum price swing percentage per leg for harmonic pattern detection (D4-const).</summary>
+    public const decimal DefaultHarmonicMinLegSwingPercent = 2.0m;
+
+    /// <summary>Multi-scale thresholds to capture harmonic patterns at different scales (legacy ZigZag).</summary>
     public static readonly decimal[] HarmonicMultiScaleThresholds = { 2.0m, 3.0m, 5.0m, 8.0m };
+
+    /// <summary>Multi-scale local extrema sliding window sizes for harmonic pattern pivot extraction (D4 = C').</summary>
+    public static readonly int[] HarmonicLocalExtremaWindows = { 2, 3, 5, 8 };
 
     /// <summary>Minimum number of pivot points required to form the 5-point XABCD pattern.</summary>
     public const int HarmonicMinPivotCount = 5;
@@ -257,6 +263,7 @@ public static class ChartConstants
     public const int CandlePatternAtrPeriod = 14;
 
     /// <summary>Body/ATR ratio below which a candle is classified as Doji.</summary>
+    /// <remarks>Unused in current detector; see decision D9.</remarks>
     public const decimal CandlePatternDojiAtrRatio = 0.05m;
 
     /// <summary>Body/ATR ratio above which a candle body is classified as Large.</summary>
@@ -269,13 +276,36 @@ public static class ChartConstants
     /// Minimum candle body size relative to ATR for classical candlestick patterns.
     /// Bodies smaller than ATR * this ratio are considered noise.
     /// </summary>
+    /// <remarks>Unused in current detector; see decision D9.</remarks>
     public const double CandlePatternAtrMinBodyRatio = 0.3;
 
     /// <summary>
     /// Maximum wick size relative to ATR for noise wick filtering in candlestick patterns.
     /// Wicks smaller than ATR * this ratio are ignored as noise.
     /// </summary>
+    /// <remarks>Unused in current detector; see decision D9.</remarks>
     public const double CandlePatternAtrMaxWickRatio = 0.1;
+
+    /// <summary>Ratio of body to candle range below which a candle is classified as Doji (5%).</summary>
+    public const decimal CandlePatternDojiBodyRangeRatio = 0.05m;
+
+    /// <summary>Tolerance ratio of range used to check zero/near-zero wick visibility (5%).</summary>
+    public const decimal CandlePatternWickToleranceRangeRatio = 0.05m;
+
+    /// <summary>Fallback minimum body-to-range ratio for large body classification when history is short (80%).</summary>
+    public const decimal CandlePatternFallbackLargeBodyRangeRatio = 0.8m;
+
+    /// <summary>Fallback maximum body-to-range ratio for small body classification when history is short (40%).</summary>
+    public const decimal CandlePatternFallbackSmallBodyRangeRatio = 0.4m;
+
+    /// <summary>Lookback period in bars used to establish prior trend for reversal candlestick patterns.</summary>
+    public const int CandlePatternPriorTrendLookbackBars = 10;
+
+    /// <summary>Deadband ratio multiplied by ATR to filter out sideways/noise trends in prior trend determination (0.5 ATR).</summary>
+    public const decimal CandlePatternPriorTrendAtrDeadbandRatio = 0.5m;
+
+    /// <summary>Default maximum number of bars elapsed since pattern confirmation for screener detection recency filtering.</summary>
+    public const int DefaultPatternMaxBarsSinceConfirmation = 5;
 
     /// <summary>Default minimum window length (bars) of DTW chart-pattern detection (fallback of the PatternRecognition:MinWindow setting).</summary>
     public const int PatternRecognitionDefaultMinWindow = 20;

@@ -24,15 +24,10 @@ public sealed class PredictionMonitoringPresentationTests : IDisposable
     private readonly string _language = LocalizationManager.Instance.CurrentLanguage;
     public PredictionMonitoringPresentationTests() => LocalizationManager.Instance.Initialize("en");
     public void Dispose() => LocalizationManager.Instance.Initialize(_language);
-    private static ModelGenerationSummary Generation(string id, string target = "classification") =>
-        new(id, "model.onnx", target, "daily", 5, .7, new string('a', 64), false);
-    private static AIPredictionsSettingsViewModel Settings(IPredictionLogService log, IRetrainingScheduler? scheduler = null,
-        ICurrentPredictionHealthService? currentHealth = null, IAttestedEvidenceDiagnostics? evidenceDiagnostics = null,
+    private static PredictionModelsViewModel Settings(IPredictionLogService log, ICurrentPredictionHealthService? currentHealth = null,
         IEnsembleSettingsManager? ensembleSettings = null) =>
-        new(Mock.Of<IPredictionSettingsManager>(s => s.WindowSize == 75), Mock.Of<IClipboardService>(),
-            Mock.Of<IToastNotificationService>(), analysisDispatcher: new SynchronousDispatcherService(),
-            predictionLog: log, retrainingScheduler: scheduler, currentHealth: currentHealth, evidenceDiagnostics: evidenceDiagnostics,
-            ensembleSettings: ensembleSettings);
+        new(Mock.Of<IPredictionSettingsManager>(s => s.WindowSize == 75), analysisDispatcher: new SynchronousDispatcherService(),
+            predictionLog: log, currentHealth: currentHealth, ensembleSettings: ensembleSettings);
 
     // ---- the saved ensemble is its own monitoring group ------------------------------------------------------------------
 
@@ -60,7 +55,6 @@ public sealed class PredictionMonitoringPresentationTests : IDisposable
         Assert.Contains(string.Format(System.Globalization.CultureInfo.CurrentCulture,
             LocalizationManager.Instance.Get("Monitoring_Accuracy"), LocalizationManager.Instance.Get("Monitoring_Health_Healthy"),
             (16m / 30m).ToString("P2", System.Globalization.CultureInfo.CurrentCulture), 30), vm.EnsembleMonitoringStatus);
-        Assert.Null(vm.MonitoringStatus);   // no generation is selected: the generation line is unaffected
         health.Verify(h => h.EvaluateCurrentAsync(id, It.IsAny<CancellationToken>()), Times.Once);
     }
 
@@ -97,21 +91,16 @@ public sealed class PredictionMonitoringPresentationTests : IDisposable
     }
 
     [Fact]
-    public async Task EnsembleFailure_ShowsLoadFailedOnItsOwnLine_AndLeavesTheGenerationStatusAlone()
+    public async Task EnsembleFailure_ShowsLoadFailedOnItsOwnLine()
     {
-        var generation = new string('b', 64);
         var health = new Mock<ICurrentPredictionHealthService>();
-        health.Setup(h => h.EvaluateCurrentAsync(generation, It.IsAny<CancellationToken>())).ReturnsAsync(
-            ImmutableArray.Create(Snapshot(generation, ModelHealthState.Healthy, 30, 16)));
         health.Setup(h => h.EvaluateCurrentAsync(SavedEnsemble.MonitoringId(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidDataException("corrupt ensemble state"));
         using var vm = Settings(Mock.Of<IPredictionLogService>(), currentHealth: health.Object, ensembleSettings: new FixedEnsembleSettingsManager(SavedEnsemble));
-        vm.SelectedGeneration = Generation(generation); await vm.MonitoringRefreshTask;
+        await vm.MonitoringRefreshTask;
 
         Assert.Equal(string.Format(LocalizationManager.Instance.Get("Monitoring_EnsembleState"),
             LocalizationManager.Instance.Get("Monitoring_LoadFailed")), vm.EnsembleMonitoringStatus);
-        Assert.Contains("Healthy", vm.MonitoringStatus);
-        Assert.DoesNotContain(LocalizationManager.Instance.Get("Monitoring_LoadFailed"), vm.MonitoringStatus);
     }
 
     [Fact]
@@ -123,11 +112,11 @@ public sealed class PredictionMonitoringPresentationTests : IDisposable
         health.SetupSequence(h => h.EvaluateCurrentAsync(id, It.IsAny<CancellationToken>()))
             .Returns(first.Task)
             .ReturnsAsync(ImmutableArray.Create(Snapshot(id, ModelHealthState.Healthy, 30, 16)));
-        health.Setup(h => h.EvaluateCurrentAsync("other", It.IsAny<CancellationToken>())).ReturnsAsync(ImmutableArray<ModelMonitoringSnapshot>.Empty);
-        using var vm = Settings(Mock.Of<IPredictionLogService>(), currentHealth: health.Object, ensembleSettings: new FixedEnsembleSettingsManager(SavedEnsemble));
+        var log = new Mock<IPredictionLogService>();
+        using var vm = Settings(log.Object, currentHealth: health.Object, ensembleSettings: new FixedEnsembleSettingsManager(SavedEnsemble));
         var earlier = vm.MonitoringRefreshTask;
 
-        vm.SelectedGeneration = Generation("other"); await vm.MonitoringRefreshTask;
+        log.Raise(l => l.Changed += null, EventArgs.Empty); await vm.MonitoringRefreshTask;
         Assert.Contains("Healthy", vm.EnsembleMonitoringStatus);
         first.SetResult(ImmutableArray.Create(Snapshot(id, ModelHealthState.Decayed, 30, 10))); await earlier;
 
@@ -184,42 +173,6 @@ public sealed class PredictionMonitoringPresentationTests : IDisposable
     }
 
     [Fact]
-    public async Task OlderSelectionAndDisposedCompletions_DoNotOverwriteCurrentMonitoring()
-    {
-        var first = new TaskCompletionSource<ImmutableArray<ModelMonitoringSnapshot>>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var log = new Mock<IPredictionLogService>();
-        log.Setup(l => l.GetSnapshotsAsync("first", It.IsAny<CancellationToken>())).Returns(first.Task);
-        log.Setup(l => l.GetSnapshotsAsync("second", It.IsAny<CancellationToken>())).ReturnsAsync(
-            ImmutableArray.Create(new ModelMonitoringSnapshot("second", "target", 30, 15, .5m, ModelHealthState.Healthy, DateTimeOffset.UtcNow)));
-        using var vm = Settings(log.Object);
-        vm.SelectedGeneration = Generation("first"); var earlier = vm.MonitoringRefreshTask;
-        vm.SelectedGeneration = Generation("second"); await vm.MonitoringRefreshTask;
-        Assert.Contains("Healthy", vm.MonitoringStatus); Assert.Contains("30", vm.MonitoringStatus);
-        first.SetResult(ImmutableArray<ModelMonitoringSnapshot>.Empty); await earlier;
-        Assert.Contains("Healthy", vm.MonitoringStatus);
-        vm.Dispose(); var before = vm.MonitoringStatus;
-        log.Raise(l => l.Changed += null, EventArgs.Empty);
-        Assert.Equal(before, vm.MonitoringStatus);
-    }
-
-    [Fact]
-    public async Task RegressionIsUnavailable_AndEnableDisableCancelUseScheduler()
-    {
-        var config = new TrainingJobConfig { Symbols = ["X"], Architecture = "lstm", WindowSize = 4, Horizon = 1 };
-        var scheduler = new Mock<IRetrainingScheduler>();
-        scheduler.SetupGet(s => s.Current).Returns(new RetrainingSchedule(1, "job", config, false,
-            new DateTimeOffset(2026, 9, 27, 0, 0, 0, TimeSpan.Zero), RetrainingStatus.Disabled));
-        using var vm = Settings(Mock.Of<IPredictionLogService>(), scheduler.Object);
-        vm.SelectedGeneration = Generation("regression", "regression"); await vm.MonitoringRefreshTask;
-        Assert.Contains("Regression", vm.MonitoringStatus);
-        Assert.True(vm.HasScheduleConfiguration); Assert.False(vm.IsScheduleEnabled);
-        await vm.EnableRetrainingCommand.ExecuteAsync(null); await vm.DisableRetrainingCommand.ExecuteAsync(null);
-        vm.CancelRetrainingCommand.Execute(null);
-        scheduler.Verify(s => s.SetEnabledAsync(true), Times.Once); scheduler.Verify(s => s.SetEnabledAsync(false), Times.Once);
-        scheduler.Verify(s => s.CancelCurrent(), Times.Once);
-    }
-
-    [Fact]
     public async Task WizardSavesExplicitCurrentConfigurationAndDates_WithoutStartingTraining()
     {
         var market = new Mock<IMarketDataProvider>();
@@ -258,70 +211,8 @@ public sealed class PredictionMonitoringPresentationTests : IDisposable
         scheduler.Verify(s => s.RunWithRecoveryAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
-    private static readonly string CurrentModel = new('a', 64);
     private static ModelMonitoringSnapshot Snapshot(string model, ModelHealthState state, int matured, int correct) =>
         new(model, "target", matured, correct, PredictionMonitoringPolicy.ComputeAccuracy(matured, correct), state, DateTimeOffset.UtcNow);
-
-    [Fact]
-    public async Task CurrentHealthCapability_ReplacesTheCachedRead()
-    {
-        var log = new Mock<IPredictionLogService>(); var health = new Mock<ICurrentPredictionHealthService>();
-        log.Setup(l => l.GetSnapshotsAsync(CurrentModel, It.IsAny<CancellationToken>())).ReturnsAsync(
-            ImmutableArray.Create(Snapshot(CurrentModel, ModelHealthState.Healthy, 30, 16)));
-        health.Setup(h => h.EvaluateCurrentAsync(CurrentModel, It.IsAny<CancellationToken>())).ReturnsAsync(
-            ImmutableArray.Create(Snapshot(CurrentModel, ModelHealthState.Decayed, 30, 14)));
-        using var vm = Settings(log.Object, currentHealth: health.Object);
-        vm.SelectedGeneration = Generation(CurrentModel); await vm.MonitoringRefreshTask;
-        Assert.Contains("Decayed", vm.MonitoringStatus); Assert.DoesNotContain("Healthy", vm.MonitoringStatus);
-        health.Verify(h => h.EvaluateCurrentAsync(CurrentModel, It.IsAny<CancellationToken>()), Times.Once);
-        log.Verify(l => l.GetSnapshotsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
-    }
-
-    [Fact]
-    public async Task ProducerEvidenceConflict_IsItsOwnIntegrityLine_NeverRelabelingThePerformanceState()
-    {
-        var health = new Mock<ICurrentPredictionHealthService>(); var diagnostics = new Mock<IAttestedEvidenceDiagnostics>();
-        health.Setup(h => h.EvaluateCurrentAsync(CurrentModel, It.IsAny<CancellationToken>())).ReturnsAsync(
-            ImmutableArray.Create(Snapshot(CurrentModel, ModelHealthState.Healthy, 30, 16)));
-        diagnostics.Setup(d => d.GetConflictedStreamsAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync([new AttestedStreamFault("prov", "INST", TimeframeType.Daily)]);
-        using var vm = Settings(Mock.Of<IPredictionLogService>(), currentHealth: health.Object, evidenceDiagnostics: diagnostics.Object);
-        vm.SelectedGeneration = Generation(CurrentModel); await vm.MonitoringRefreshTask;
-        Assert.Contains("Healthy", vm.MonitoringStatus);                                         // the performance state is unchanged ...
-        Assert.Contains(string.Format(LocalizationManager.Instance.Get("Monitoring_EvidenceConflict"), 1), vm.MonitoringStatus); // ... the fault is separate
-    }
-
-    [Fact]
-    public async Task FailedCurrentEvaluation_ShowsLoadFailure_NeverTheCachedHealthyCard()
-    {
-        var log = new Mock<IPredictionLogService>(); var health = new Mock<ICurrentPredictionHealthService>();
-        log.Setup(l => l.GetSnapshotsAsync(CurrentModel, It.IsAny<CancellationToken>())).ReturnsAsync(
-            ImmutableArray.Create(Snapshot(CurrentModel, ModelHealthState.Healthy, 30, 16)));
-        health.Setup(h => h.EvaluateCurrentAsync(CurrentModel, It.IsAny<CancellationToken>())).ThrowsAsync(new InvalidDataException("corrupt state"));
-        using var vm = Settings(log.Object, currentHealth: health.Object);
-        vm.SelectedGeneration = Generation(CurrentModel); await vm.MonitoringRefreshTask;
-        Assert.Equal(LocalizationManager.Instance.Get("Monitoring_LoadFailed"), vm.MonitoringStatus);
-        log.Verify(l => l.GetSnapshotsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
-    }
-
-    [Fact]
-    public async Task StaleOrDisposedCurrentEvaluations_DoNotOverwriteTheCurrentCard()
-    {
-        var first = new TaskCompletionSource<ImmutableArray<ModelMonitoringSnapshot>>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var other = new string('b', 64); var health = new Mock<ICurrentPredictionHealthService>();
-        health.Setup(h => h.EvaluateCurrentAsync(CurrentModel, It.IsAny<CancellationToken>())).Returns(first.Task);
-        health.Setup(h => h.EvaluateCurrentAsync(other, It.IsAny<CancellationToken>())).ReturnsAsync(
-            ImmutableArray.Create(Snapshot(other, ModelHealthState.Healthy, 30, 15)));
-        using var vm = Settings(Mock.Of<IPredictionLogService>(), currentHealth: health.Object);
-        vm.SelectedGeneration = Generation(CurrentModel); var earlier = vm.MonitoringRefreshTask;
-        vm.SelectedGeneration = Generation(other); await vm.MonitoringRefreshTask;
-        Assert.Contains("Healthy", vm.MonitoringStatus);
-        first.SetResult(ImmutableArray.Create(Snapshot(CurrentModel, ModelHealthState.Decayed, 30, 14))); await earlier;
-        Assert.Contains("Healthy", vm.MonitoringStatus); Assert.DoesNotContain("Decayed", vm.MonitoringStatus);
-        vm.Dispose(); var before = vm.MonitoringStatus;
-        await Task.Yield();
-        Assert.Equal(before, vm.MonitoringStatus);
-    }
 
     [Fact]
     public async Task HealthLoop_EvaluatesAtOnceThenEveryInterval_SurvivesFailures_AndStopsWithTheLifetime()

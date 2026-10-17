@@ -145,4 +145,31 @@ public class PredictionDisplayFormatterTests
         Assert.Null(PredictionDisplayFormatter.Format(Result(0.04), TimeframeType.Weekly,
             CultureInfo.InvariantCulture, _ => ""));
     }
+
+    private const string NoDecisionTemplate = "{0} bars ahead: no decision (top class {1}%, {2}% needed)";
+
+    [Fact]
+    public void Format_UnknownClass_WithAThreshold_SaysItIsUnderTheThreshold()
+    {
+        var result = ClassResult(PredictionResult.UnknownLabel, 0.3358f);
+
+        var value = PredictionDisplayFormatter.Format(result, TimeframeType.Weekly, CultureInfo.InvariantCulture,
+            key => key == PredictionDisplayFormatter.NoDecisionKey ? NoDecisionTemplate : ClassWithProbabilityTemplate, decisionThreshold: 0.5f);
+
+        Assert.Equal("5 bars ahead: no decision (top class 33.6%, 50.0% needed)", value);
+    }
+
+    [Fact]
+    public void Format_UnknownClass_WithoutAThreshold_OrOtherLabels_KeepsTheTextAsBefore()
+    {
+        string? Localize(string key) => key == PredictionDisplayFormatter.NoDecisionKey ? NoDecisionTemplate : ClassWithProbabilityTemplate;
+
+        Assert.Equal("5 bars ahead: Unknown (33.6%)", PredictionDisplayFormatter.Format(ClassResult(PredictionResult.UnknownLabel, 0.3358f),
+            TimeframeType.Weekly, CultureInfo.InvariantCulture, Localize));
+        Assert.Equal("5 bars ahead: Up (62.3%)", PredictionDisplayFormatter.Format(ClassResult("Up", 0.6234f),
+            TimeframeType.Weekly, CultureInfo.InvariantCulture, Localize, decisionThreshold: 0.5f));
+        // a template that is missing falls back to the old text
+        Assert.Equal("5 bars ahead: Unknown (33.6%)", PredictionDisplayFormatter.Format(ClassResult(PredictionResult.UnknownLabel, 0.3358f),
+            TimeframeType.Weekly, CultureInfo.InvariantCulture, key => key == PredictionDisplayFormatter.NoDecisionKey ? null : ClassWithProbabilityTemplate, decisionThreshold: 0.5f));
+    }
 }

@@ -140,6 +140,7 @@ public class ScreenerService : IScreenerService
         catch (OperationCanceledException)
         {
             _logger.LogInformation("[ScreenerService] Screening operation was canceled by the user.");
+            ScreenerValueExtractor.Default.Faults.TakeSnapshotAndReset();
             throw; // Re-throw to signal cancellation to the caller
         }
 
@@ -147,6 +148,15 @@ public class ScreenerService : IScreenerService
         // as the last report from the parallel loop might be delayed.
         if (!ct.IsCancellationRequested)
         {
+            var faults = ScreenerValueExtractor.Default.Faults.TakeSnapshotAndReset();
+            foreach (var fault in faults)
+            {
+                if (fault.Count > 0)
+                {
+                    _logger.LogWarning("[ScreenerService] {Count} evaluation fault(s) at {Site}; first: {FirstError}", fault.Count, fault.Site, fault.FirstError);
+                }
+            }
+
             progress?.Report(100);
         }
 

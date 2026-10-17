@@ -296,7 +296,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
                 if (!result.IsFallback && !IsFromActivePredictionSource(result)) return;
 
                 var display = PredictionDisplayFormatter.Format(result, timeframe,
-                    System.Globalization.CultureInfo.CurrentCulture, LocalizeOrNull);
+                    System.Globalization.CultureInfo.CurrentCulture, LocalizeOrNull, _settings?.PredictionConfidenceThreshold);
                 CurrentPrediction = display is null ? null : result;
                 PredictionDisplay = display;
                 if (display is not null)

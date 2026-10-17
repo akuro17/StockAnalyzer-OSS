@@ -7,6 +7,9 @@ public static class TrainingWizardUiLayout
     public const int SourceListVisibleRows = 10;
     public const double SourceListMaxHeight = SourceListVisibleRows * SourceRowHeight;
 
-    /// <summary>The footer is 64 px (the sub-window standard) and grows only when its content needs more; the run id and the two deploy buttons wrap inside this width so the reason and the state labels keep room.</summary>
-    public const double FooterHeight = 64, FooterActionsMaximumWidth = 380, FooterActionsSpacing = 12;
+    /// <summary>How many tickers the data-sufficiency warnings name before they say "+n more".</summary>
+    public const int SufficiencyListedSymbolsMax = 5;
+
+    /// <summary>The footer is the sub-window standard height (<see cref="ToolWindowUiLayout.FooterHeight"/>) and grows only when its content needs more; the run id and the two deploy buttons wrap inside this width so the reason and the state labels keep room.</summary>
+    public const double FooterHeight = ToolWindowUiLayout.FooterHeight, FooterActionsMaximumWidth = 380, FooterActionsSpacing = 12;
 }

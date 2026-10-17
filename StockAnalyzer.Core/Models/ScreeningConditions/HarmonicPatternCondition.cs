@@ -11,6 +11,7 @@ public class HarmonicPatternCondition : IScreeningCondition
 {
     private readonly HarmonicPatternType _targetType;
     private readonly decimal _zigzagThreshold;
+    private readonly int? _maxBarsSinceConfirmation;
 
     /// <summary>
     /// Creates a new harmonic pattern screening condition.
@@ -19,12 +20,18 @@ public class HarmonicPatternCondition : IScreeningCondition
     /// <param name="zigzagThreshold">
     /// The minimum percentage swing to constitute a pivot point (default: 3.0%).
     /// </param>
+    /// <param name="maxBarsSinceConfirmation">
+    /// When specified (D5 = B''), filters for patterns confirmed within this number of bars
+    /// using multi-scale local extrema and leg swing amplitude. Null uses legacy DetectLatest.
+    /// </param>
     public HarmonicPatternCondition(
         HarmonicPatternType targetType,
-        decimal zigzagThreshold = ChartConstants.DefaultHarmonicZigZagThreshold)
+        decimal zigzagThreshold = ChartConstants.DefaultHarmonicZigZagThreshold,
+        int? maxBarsSinceConfirmation = null)
     {
         _targetType = targetType;
         _zigzagThreshold = zigzagThreshold;
+        _maxBarsSinceConfirmation = maxBarsSinceConfirmation;
     }
 
     public override string ToString()
@@ -40,6 +47,18 @@ public class HarmonicPatternCondition : IScreeningCondition
     {
         if (candles == null || candles.Count < ChartConstants.HarmonicMinPivotCount * 2)
             return false;
+
+        if (_maxBarsSinceConfirmation.HasValue)
+        {
+            var confirmed = HarmonicPatternDetector.DetectConfirmedWithin(
+                candles,
+                _maxBarsSinceConfirmation.Value,
+                ChartConstants.DefaultHarmonicMinLegSwingPercent);
+            if (confirmed.Count == 0)
+                return false;
+
+            return confirmed[0].PatternType == _targetType;
+        }
 
         var latest = HarmonicPatternDetector.DetectLatest(candles, _zigzagThreshold);
         if (latest == null)

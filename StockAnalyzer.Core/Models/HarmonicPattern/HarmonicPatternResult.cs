@@ -48,6 +48,12 @@ public class HarmonicPatternResult
     /// <summary>The span of candles covered by this pattern (D.Index - X.Index).</summary>
     public int Span => D.Index - X.Index;
 
+    /// <summary>
+    /// The candle index at which this pattern's completion point (D) was confirmed by subsequent price movement.
+    /// In local extrema detection with window w, this is D.Index + w. Null if unconfirmed or not tracked.
+    /// </summary>
+    public int? ConfirmedAtIndex { get; }
+
     public HarmonicPatternResult(
         HarmonicPatternType patternType,
         PivotPoint x,
@@ -58,7 +64,8 @@ public class HarmonicPatternResult
         double confidenceScore,
         decimal przLow,
         decimal przHigh,
-        bool isBullish)
+        bool isBullish,
+        int? confirmedAtIndex = null)
     {
         PatternType = patternType;
         X = x;
@@ -70,6 +77,7 @@ public class HarmonicPatternResult
         PrzLow = przLow;
         PrzHigh = przHigh;
         IsBullish = isBullish;
+        ConfirmedAtIndex = confirmedAtIndex;
     }
 
     public override string ToString()

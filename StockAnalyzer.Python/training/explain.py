@@ -320,7 +320,7 @@ def build(cfg, model_path: Path, train_symbols, train_dates, full_symbols, full_
 
     selected = ds.independent_fold_data(
         train_symbols, train_dates, feature_mode=cfg.feature_mode, window=cfg.window_size,
-        horizon=cfg.horizon, threshold=ds.DEFAULT_THRESHOLD, n_splits=cfg.n_splits, gap=cfg.gap,
+        horizon=cfg.horizon, threshold=cfg.neutral_threshold, n_splits=cfg.n_splits, gap=cfg.gap,
         fold_index=cfg.n_splits - 1, feature_spec=cfg.feature_spec, target_type=cfg.target_type,
         indicator_export_paths=cfg.indicator_channel_export_paths, inner=True,
         fixed_zscore=cfg.fixed_zscore, lags=cfg.lags, calibration=calibration)

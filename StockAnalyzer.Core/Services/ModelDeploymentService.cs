@@ -23,12 +23,15 @@ public sealed class ModelDeploymentService : IModelDeploymentService
 {
     private readonly ILogger<ModelDeploymentService> _logger;
     private readonly IModelGenerationRegistry? _registry;
+    private readonly IStockAnalyzerSettings? _settings;
 
+    /// <param name="settings">Gives the chart's confidence threshold for <see cref="ModelAutoActivationGate"/>; without it only the log-loss condition of the gate applies.</param>
     public ModelDeploymentService(ILogger<ModelDeploymentService>? logger = null,
-        IModelGenerationRegistry? registry = null)
+        IModelGenerationRegistry? registry = null, IStockAnalyzerSettings? settings = null)
     {
         _logger = logger ?? NullLogger<ModelDeploymentService>.Instance;
         _registry = registry;
+        _settings = settings;
     }
 
     public async Task<ModelGenerationManifest> RegisterGenerationAsync(
@@ -36,6 +39,15 @@ public sealed class ModelDeploymentService : IModelDeploymentService
     {
         if (_registry is null) throw new InvalidOperationException("Model generation registry is unavailable.");
         var manifest = await _registry.RegisterAsync(onnxSourcePath, metricsSourcePath, ct).ConfigureAwait(false);
+        // The registry read the same metrics file (default: beside the model) when it staged the generation.
+        var decision = ModelAutoActivationGate.Evaluate(
+            metricsSourcePath ?? onnxSourcePath + ".metrics.json", manifest.ClassOrder, _settings?.PredictionConfidenceThreshold);
+        if (decision.Stopped)
+        {
+            _logger.LogInformation("Generation {ModelId} was registered without automatic activation (reach is zero: {ReachIsZero}, not better than a uniform guess: {NotBetter}).",
+                manifest.ModelId, decision.ReachIsZero, decision.NotBetterThanUniform);
+            return manifest;
+        }
         try { await _registry.ActivateAsync(manifest.ModelId, ct: ct).ConfigureAwait(false); }
         catch (InvalidOperationException ex)
         {

@@ -12,6 +12,7 @@ using Microsoft.ML.OnnxRuntime;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Settings;
 using StockAnalyzer.Core.Services;
+using StockAnalyzer.Core.Tests.TestHelpers;
 using Xunit;
 
 namespace StockAnalyzer.Core.Tests.Services;
@@ -19,44 +20,11 @@ namespace StockAnalyzer.Core.Tests.Services;
 public sealed class ModelGenerationRegistryTests : IDisposable
 {
     private readonly string _root = Path.Combine(Path.GetTempPath(), "sa_generations_" + Guid.NewGuid().ToString("N"));
-    private readonly string _fixture = Path.Combine("Assets", "trend_predictor_goodmeta.onnx");
+    private readonly string _fixture = RegistrableGeneration.DefaultFixture;
     private const string Revision = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
     private string Source(string name, double score, string revision = Revision, string? fixture = null)
-    {
-        var directory = Path.Combine(_root, "source_" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(directory);
-        var model = Path.Combine(directory, name);
-        File.Copy(fixture ?? _fixture, model);
-        if (fixture is not null && File.Exists(fixture + ".scaler.json"))
-            File.Copy(fixture + ".scaler.json", model + ".scaler.json");
-        using var session = new InferenceSession(model);
-        var metadata = session.ModelMetadata.CustomMetadataMap;
-        var hash = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(model))).ToLowerInvariant();
-        var report = new
-        {
-            evaluation_status = "independent_outer",
-            evaluation_revision = revision,
-            scored_model_sha256 = hash,
-            target_type = metadata[PredictionModelMetadata.TargetTypeKey],
-            timeframe = "daily",
-            horizon = int.Parse(metadata[PredictionModelMetadata.HorizonKey]),
-            class_order = metadata[PredictionModelMetadata.ClassOrderKey],
-            fold_macro_f1 = score,
-            fold_is_holdout = 1.0,
-            fold = 2.0,
-            fold_n = 20.0,
-            n_splits = 3.0,
-            outer_folds = new[]
-            {
-                new { fold = 0.0, evaluation_revision = revision, scored_model_sha256 = hash, fold_macro_f1 = 0.2 },
-                new { fold = 1.0, evaluation_revision = revision, scored_model_sha256 = hash, fold_macro_f1 = 0.3 },
-                new { fold = 2.0, evaluation_revision = revision, scored_model_sha256 = hash, fold_macro_f1 = score },
-            },
-        };
-        File.WriteAllText(model + ".metrics.json", JsonSerializer.Serialize(report));
-        return model;
-    }
+        => RegistrableGeneration.Create(_root, name, score, revision, fixture);
 
     [Fact]
     public async Task FailedRegistration_WhoseStagingCleanupAlsoFails_StillReleasesTheMutation()
@@ -158,6 +126,40 @@ public sealed class ModelGenerationRegistryTests : IDisposable
         Assert.Contains(registry.List(), item => item.ModelId == first.ModelId && item.IsActive);
         using var reopened = new ModelGenerationRegistry(Path.Combine(_root, "registry"));
         Assert.Equal(first.ModelId, reopened.ActiveId);
+    }
+
+    [Fact]
+    public async Task PredictionService_LetsGoOfADeactivatedGeneration_SoItCanBeRemoved_AndKeepsTheActiveOne()
+    {
+        using var registry = new ModelGenerationRegistry(Path.Combine(_root, "registry_release"));
+        var first = await registry.RegisterAsync(Source("same.onnx", 0.4));
+        Assert.True(await registry.ActivateAsync(first.ModelId));
+        using var service = new PredictionService(new PredictionServiceTests.TestSettings(_fixture, predictionWindowSize: 10), new MLDataProcessor(), modelRegistry: registry);
+        var candles = Enumerable.Range(0, 20).Select(i => new CandleData(new DateTime(2024, 1, 1).AddDays(i), 100m, 105m, 95m, 100m + i, 1000)).ToArray();
+        Assert.False((await service.PredictAsync(candles)).IsFallback);   // the generation is loaded and leased
+
+        service.ReleaseInactiveRuntime();   // still the active generation: kept
+        Assert.False((await service.PredictAsync(candles)).IsFallback);
+
+        Assert.True(await registry.DeactivateAsync());
+        var refused = await Assert.ThrowsAsync<ModelRemovalRefusedException>(() => registry.RemoveAsync(first.ModelId));
+        Assert.Equal(ModelRemovalRefusal.InUse, refused.Reason);   // the loaded predictor still holds it
+
+        service.ReleaseInactiveRuntime();
+
+        Assert.True(await registry.RemoveAsync(first.ModelId));
+    }
+
+    [Fact]
+    public async Task ActivatingAComposedModel_DoesNotNeedTheConfiguredFeatureModeToBeComposed()
+    {
+        var composed = Path.Combine("Assets", "trend_predictor_legacy_composed.onnx");
+        var settings = new PredictionServiceTests.TestSettings(composed, predictionWindowSize: 10);   // OhlcvMinMax, no feature spec
+        using var registry = new ModelGenerationRegistry(Path.Combine(_root, "registry_composed"), predictionSettings: settings);
+        var model = await registry.RegisterAsync(Source("composed.onnx", 0.4, fixture: composed));
+
+        Assert.True(await registry.ActivateAsync(model.ModelId, manual: true));
+        Assert.Equal(model.ModelId, registry.ActiveId);
     }
 
     [Fact]
@@ -933,6 +935,34 @@ public sealed class ModelGenerationRegistryTests : IDisposable
         using var again = new ModelGenerationRegistry(registryRoot);
 
         Assert.False(Directory.Exists(retired));
+    }
+
+    [Fact]
+    public async Task AMetricsFileWithTheConfidenceReachHistogram_RegistersAndCanBeReadThroughTheRegistry()
+    {
+        var source = Source("model.onnx", 0.4);
+        var report = JsonNode.Parse(File.ReadAllText(source + ".metrics.json"))!.AsObject();
+        var counts = new int[100];
+        counts[36] = 70; counts[40] = 20; counts[55] = 10;   // 100 held-out windows, 10 of them at or above 0.5
+        report[ModelConfidenceReach.Key] = new JsonObject
+        {
+            ["bins"] = 100, ["n"] = 100, ["max_probability_histogram"] = new JsonArray(counts.Select(c => (JsonNode?)JsonValue.Create(c)).ToArray()),
+        };
+        File.WriteAllText(source + ".metrics.json", report.ToJsonString());
+        var root = Path.Combine(_root, "registry_reach");
+
+        string modelId;
+        using (var registry = new ModelGenerationRegistry(root))
+        {
+            var manifest = await registry.RegisterAsync(source);
+            modelId = manifest.ModelId;
+            Assert.Equal(0.10, ModelConfidenceReach.ShareAtOrAbove(manifest, registry, 0.5f));
+        }
+
+        using var again = new ModelGenerationRegistry(root);   // the stored generation passes the integrity check of a fresh start
+        var listed = Assert.Single(again.List());
+        Assert.Equal(modelId, listed.ModelId);
+        Assert.Equal(0.10, ModelConfidenceReach.ShareAtOrAbove(again.GetManifest(modelId)!, again, 0.5f));
     }
 
     public void Dispose() => TestDirectory.Delete(_root);

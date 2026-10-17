@@ -40,6 +40,7 @@ public sealed class TrainingHyperparameterCatalogTests
         ("train_lightgbm.py", "colsample-bytree", "DEFAULT_COLSAMPLE"), ("train_lightgbm.py", "early-stopping", "DEFAULT_EARLY_STOPPING"),
         ("train_lightgbm.py", "seed", "DEFAULT_SEED"),
         ("dataset.py", "threshold", "DEFAULT_THRESHOLD"),
+        ("dataset.py", "class-weight-power", "DEFAULT_CLASS_WEIGHT_POWER"),
         ("attention_export.py", "heads", "DEFAULT_HEADS"),
     };
 

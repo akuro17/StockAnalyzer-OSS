@@ -65,6 +65,14 @@ public class HarmonicPatternObject : IChartObject, IDisposable, IDrawingCalculat
     [Category("Detection")]
     [CoreParameterRange(1.0, 10.0)]
     public decimal? ZigZagThreshold { get; set; } = null;
+
+    /// <summary>
+    /// The pivot mode used for extracting harmonic patterns.
+    /// Initializer is Legacy (0) to preserve compatibility with existing saved drawings without PivotMode.
+    /// </summary>
+    [DisplayName("Pivot Mode")]
+    [Category("Detection")]
+    public HarmonicPivotMode PivotMode { get; set; } = HarmonicPivotMode.Legacy;
     
     /// <summary>
     /// Cached detection results within the defined window.
@@ -190,15 +198,24 @@ public class HarmonicPatternObject : IChartObject, IDisposable, IDrawingCalculat
 
         // Run detection engine
         List<HarmonicPatternResult> resultsList;
-        if (ZigZagThreshold.HasValue)
+        if (PivotMode == HarmonicPivotMode.Legacy)
         {
-            // User explicitly specified a threshold. Do not use multiscale.
-            resultsList = HarmonicPatternDetector.Detect(subCandles, ZigZagThreshold.Value, new[] { ZigZagThreshold.Value }).ToList();
+            if (ZigZagThreshold.HasValue)
+            {
+                // User explicitly specified a threshold. Do not use multiscale.
+                resultsList = HarmonicPatternDetector.Detect(subCandles, ZigZagThreshold.Value, new[] { ZigZagThreshold.Value }).ToList();
+            }
+            else
+            {
+                // Auto mode. Use multiscale fallback.
+                resultsList = HarmonicPatternDetector.Detect(subCandles).ToList();
+            }
         }
         else
         {
-            // Auto mode. Use multiscale fallback.
-            resultsList = HarmonicPatternDetector.Detect(subCandles).ToList();
+            // Local extrema amplitude mode (D4 = C')
+            decimal minLegSwing = ZigZagThreshold ?? StockAnalyzer.Core.ChartConstants.DefaultHarmonicMinLegSwingPercent;
+            resultsList = HarmonicPatternDetector.DetectByLegAmplitude(subCandles, minLegSwing).ToList();
         }
 
         // Adjust indices back to global coordinates
@@ -210,8 +227,10 @@ public class HarmonicPatternObject : IChartObject, IDisposable, IDrawingCalculat
             var b = new PivotPoint(r.B.Index + startIndex, r.B.Time, r.B.Price, r.B.IsHigh);
             var c = new PivotPoint(r.C.Index + startIndex, r.C.Time, r.C.Price, r.C.IsHigh);
             var d = new PivotPoint(r.D.Index + startIndex, r.D.Time, r.D.Price, r.D.IsHigh);
+            int? confirmedAtIndex = r.ConfirmedAtIndex.HasValue ? r.ConfirmedAtIndex.Value + startIndex : (int?)null;
             
-            adjustedResults.Add(new HarmonicPatternResult(r.PatternType, x, a, b, c, d, r.ConfidenceScore, r.PrzLow, r.PrzHigh, r.IsBullish));
+            adjustedResults.Add(new HarmonicPatternResult(
+                r.PatternType, x, a, b, c, d, r.ConfidenceScore, r.PrzLow, r.PrzHigh, r.IsBullish, confirmedAtIndex));
         }
 
         CachedResults = adjustedResults;

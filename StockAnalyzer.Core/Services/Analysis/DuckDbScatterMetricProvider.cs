@@ -174,7 +174,7 @@ public sealed class DuckDbScatterMetricProvider : IScatterMetricProvider
                         var metaFilesString = string.Join(", ", existingMetaFiles.Select(f => $"'{EscapeDuckDbPath(f)}'"));
                         var metaSql = $@"
                             SELECT 
-                                replace(regexp_replace(filename, '.*[\\/]', ''), '(\\.meta)?\\.parquet', '') as symbol,
+                                regexp_replace(regexp_replace(filename, '.*[\\/]', ''), '(\\.meta)?\\.parquet$', '') as symbol,
                                 trailing_pe,
                                 market_cap
                             FROM read_parquet([{metaFilesString}], filename=true);";
@@ -202,7 +202,10 @@ public sealed class DuckDbScatterMetricProvider : IScatterMetricProvider
                 string symbol = tickers[i];
                 if (priceMetrics.TryGetValue(symbol, out var pm))
                 {
-                    fundamentalMetrics.TryGetValue(symbol, out var fm);
+                    if (!fundamentalMetrics.TryGetValue(symbol, out var fm))
+                    {
+                        fm = (double.NaN, double.NaN);
+                    }
 
                     double xVal = ResolveMetricValue(xMetric, pm, fm);
                     double yVal = ResolveMetricValue(yMetric, pm, fm);

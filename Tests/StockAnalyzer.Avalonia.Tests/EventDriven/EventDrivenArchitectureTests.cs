@@ -7,23 +7,19 @@ namespace StockAnalyzer.Avalonia.Tests.EventDriven;
 
 public class EventDrivenArchitectureTests : IDisposable
 {
-    public EventDrivenArchitectureTests()
-    {
-        // Reset messenger state for each test
-        WeakReferenceMessenger.Default.Reset();
-    }
+    // These tests exercise the messenger mechanics with the app's message types. They use their own messenger instance: the process-wide Default is shared with
+    // every view model of the tests that run in parallel (a ChartViewModel sends ChartSettingsChangedMessage for its own settings, which overwrote the received value
+    // here), and resetting Default would also drop the subscriptions of those tests.
+    private readonly WeakReferenceMessenger _messenger = new();
 
-    public void Dispose()
-    {
-        WeakReferenceMessenger.Default.Reset();
-    }
+    public void Dispose() => _messenger.Reset();
 
     [Fact]
     public void CrosshairPositionChangedMessage_ShouldNotifySubscribers()
     {
         // Arrange
         CrosshairPositionData? receivedData = null;
-        WeakReferenceMessenger.Default.Register<CrosshairPositionChangedMessage>(this, (_, msg) =>
+        _messenger.Register<CrosshairPositionChangedMessage>(this, (_, msg) =>
         {
             receivedData = msg.Value;
         });
@@ -32,7 +28,7 @@ public class EventDrivenArchitectureTests : IDisposable
         var expectedData = new CrosshairPositionData { CandleIndex = 42, HoveredCandle = candle, ChartSymbol = "AAPL" };
 
         // Act
-        WeakReferenceMessenger.Default.Send(new CrosshairPositionChangedMessage(expectedData));
+        _messenger.Send(new CrosshairPositionChangedMessage(expectedData));
 
         // Assert
         Assert.NotNull(receivedData);
@@ -46,7 +42,7 @@ public class EventDrivenArchitectureTests : IDisposable
     {
         // Arrange
         CrosshairPositionData? receivedData = null;
-        WeakReferenceMessenger.Default.Register<CrosshairPositionChangedMessage>(this, (_, msg) =>
+        _messenger.Register<CrosshairPositionChangedMessage>(this, (_, msg) =>
         {
             receivedData = msg.Value;
         });
@@ -54,7 +50,7 @@ public class EventDrivenArchitectureTests : IDisposable
         var exitData = new CrosshairPositionData { CandleIndex = -1, HoveredCandle = null, ChartSymbol = "AAPL" };
 
         // Act
-        WeakReferenceMessenger.Default.Send(new CrosshairPositionChangedMessage(exitData));
+        _messenger.Send(new CrosshairPositionChangedMessage(exitData));
 
         // Assert
         Assert.NotNull(receivedData);
@@ -67,7 +63,7 @@ public class EventDrivenArchitectureTests : IDisposable
     {
         // Arrange
         ChartSettingChange? receivedChange = null;
-        WeakReferenceMessenger.Default.Register<ChartSettingsChangedMessage>(this, (_, msg) =>
+        _messenger.Register<ChartSettingsChangedMessage>(this, (_, msg) =>
         {
             receivedChange = msg.Value;
         });
@@ -75,7 +71,7 @@ public class EventDrivenArchitectureTests : IDisposable
         var change = new ChartSettingChange("ShowHeaderInfo", true);
 
         // Act
-        WeakReferenceMessenger.Default.Send(new ChartSettingsChangedMessage(change));
+        _messenger.Send(new ChartSettingsChangedMessage(change));
 
         // Assert
         Assert.NotNull(receivedChange);
@@ -91,11 +87,11 @@ public class EventDrivenArchitectureTests : IDisposable
         var subscriber1 = new object();
         var subscriber2 = new object();
 
-        WeakReferenceMessenger.Default.Register<CrosshairPositionChangedMessage>(subscriber1, (_, _) =>
+        _messenger.Register<CrosshairPositionChangedMessage>(subscriber1, (_, _) =>
         {
             Interlocked.Increment(ref receiveCount);
         });
-        WeakReferenceMessenger.Default.Register<CrosshairPositionChangedMessage>(subscriber2, (_, _) =>
+        _messenger.Register<CrosshairPositionChangedMessage>(subscriber2, (_, _) =>
         {
             Interlocked.Increment(ref receiveCount);
         });
@@ -103,14 +99,14 @@ public class EventDrivenArchitectureTests : IDisposable
         var data = new CrosshairPositionData { CandleIndex = 10, HoveredCandle = null, ChartSymbol = "MSFT" };
 
         // Act
-        WeakReferenceMessenger.Default.Send(new CrosshairPositionChangedMessage(data));
+        _messenger.Send(new CrosshairPositionChangedMessage(data));
 
         // Assert
         Assert.Equal(2, receiveCount);
 
         // Cleanup
-        WeakReferenceMessenger.Default.Unregister<CrosshairPositionChangedMessage>(subscriber1);
-        WeakReferenceMessenger.Default.Unregister<CrosshairPositionChangedMessage>(subscriber2);
+        _messenger.Unregister<CrosshairPositionChangedMessage>(subscriber1);
+        _messenger.Unregister<CrosshairPositionChangedMessage>(subscriber2);
     }
 
     [Fact]
@@ -120,18 +116,18 @@ public class EventDrivenArchitectureTests : IDisposable
         int receiveCount = 0;
         var subscriber = new object();
 
-        WeakReferenceMessenger.Default.Register<CrosshairPositionChangedMessage>(subscriber, (_, _) =>
+        _messenger.Register<CrosshairPositionChangedMessage>(subscriber, (_, _) =>
         {
             Interlocked.Increment(ref receiveCount);
         });
 
         // Unregister before sending
-        WeakReferenceMessenger.Default.Unregister<CrosshairPositionChangedMessage>(subscriber);
+        _messenger.Unregister<CrosshairPositionChangedMessage>(subscriber);
 
         var data = new CrosshairPositionData { CandleIndex = 10, HoveredCandle = null, ChartSymbol = "GOOG" };
 
         // Act
-        WeakReferenceMessenger.Default.Send(new CrosshairPositionChangedMessage(data));
+        _messenger.Send(new CrosshairPositionChangedMessage(data));
 
         // Assert
         Assert.Equal(0, receiveCount);

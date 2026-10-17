@@ -127,6 +127,20 @@ public sealed class UniformHeatmapControl : Control, IDisposable
         return new Size(width, desiredHeight);
     }
 
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+        if (change.Property == BoundsProperty)
+        {
+            var oldRect = change.GetOldValue<Rect>();
+            var newRect = change.GetNewValue<Rect>();
+            if (Math.Abs(oldRect.Width - newRect.Width) > 0.5)
+            {
+                InvalidateMeasure();
+            }
+        }
+    }
+
     public override void Render(DrawingContext context)
     {
         base.Render(context);

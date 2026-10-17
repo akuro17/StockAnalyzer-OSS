@@ -156,7 +156,10 @@ def validate_population(selected: dict, limits: dict) -> None:
     elements = sum((len(fit) + len(validation)) * x.shape[1] * x.shape[2]
                    for x, _, _, fit, validation in selected.values())
     if samples > limits["max_samples"] or elements > limits["max_tensor_elements"]:
-        raise ValueError("selected analysis population exceeds the resolved training resource limits")
+        raise ValueError(
+            f"selected analysis population exceeds the resolved training resource limits: {samples} samples "
+            f"(limit {limits['max_samples']}), {elements} tensor elements (limit {limits['max_tensor_elements']}); "
+            "select fewer tickers (a shorter date range only helps when the range is longer than the minimum bar count the current settings need)")
 
 
 def build(cfg, model_path: Path, train_symbols, train_dates, full_symbols, full_dates,
@@ -167,7 +170,7 @@ def build(cfg, model_path: Path, train_symbols, train_dates, full_symbols, full_
     base, expanded = channel_names(metadata)
     selected = ds.independent_fold_data(
         train_symbols, train_dates, feature_mode=cfg.feature_mode, window=cfg.window_size,
-        horizon=cfg.horizon, threshold=ds.DEFAULT_THRESHOLD, n_splits=cfg.n_splits,
+        horizon=cfg.horizon, threshold=cfg.neutral_threshold, n_splits=cfg.n_splits,
         gap=cfg.gap, fold_index=cfg.n_splits - 1, feature_spec=cfg.feature_spec,
         target_type=cfg.target_type, indicator_export_paths=cfg.indicator_channel_export_paths,
         inner=True, fixed_zscore=cfg.fixed_zscore, lags=cfg.lags, calibration=calibration)
@@ -186,7 +189,7 @@ def build(cfg, model_path: Path, train_symbols, train_dates, full_symbols, full_
             _, _, tail, tail_dates = ds.oos_split(full_symbols[sym], full_dates[sym], cfg.oos_tail_days,
                                                 common_end=ds.common_end_date(full_dates))
             _, _, oos_anchors = ds.build_dataset(
-                tail, cfg.feature_mode, cfg.window_size, cfg.horizon, ds.DEFAULT_THRESHOLD,
+                tail, cfg.feature_mode, cfg.window_size, cfg.horizon, cfg.neutral_threshold,
                 feature_spec=cfg.feature_spec, target_type=cfg.target_type, return_anchor_rows=True,
                 dates=tail_dates, indicator_export_path=(cfg.indicator_channel_export_paths or {}).get(sym),
                 fixed_zscore=cfg.fixed_zscore, lags=cfg.lags)

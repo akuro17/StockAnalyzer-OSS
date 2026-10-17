@@ -10,8 +10,8 @@ namespace StockAnalyzer.Avalonia.Common;
 /// </summary>
 public static class BacktestUiConstants
 {
-    public const double HeaderHeight = 56;
-    public const double FooterHeight = 64;
+    public const double HeaderHeight = ToolWindowUiLayout.HeaderHeight;   // SA_UI_SUBWINDOW_STANDARD 1.1: one definition for every sub-window frame
+    public const double FooterHeight = ToolWindowUiLayout.FooterHeight;
     public const double OuterMargin = 16;
     public const double ControlHeight = 32;
     public const double ControlSpacing = 8;

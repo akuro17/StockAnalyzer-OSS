@@ -33,13 +33,12 @@ public sealed class ModelAnalysisViewsTests
             .ReturnsAsync(ModelAnalysisPresentationTests.Fixture());
         var settings = new Mock<IPredictionSettingsManager>();
         settings.SetupGet(s => s.WindowSize).Returns(20);
-        using var vm = new AIPredictionsSettingsViewModel(settings.Object, Mock.Of<IClipboardService>(),
-            Mock.Of<IToastNotificationService>(), modelAnalysisService: service.Object,
+        using var vm = new PredictionModelsViewModel(settings.Object, modelAnalysisService: service.Object,
             analysisDispatcher: new SynchronousDispatcherService());
         vm.SelectedGeneration = new ModelGenerationSummary("first", "analysis_fixture.onnx", "classification",
             "daily", 5, .5, new string('a', 64), false);
         await vm.AnalysisLoadTask;
-        var view = new AIPredictionsSettingsView { DataContext = vm };
+        var view = new PredictionModelsView { DataContext = vm };
         var window = new Window { Content = view, Width = 800, Height = 1000 };
         try
         {

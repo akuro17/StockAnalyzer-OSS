@@ -7,8 +7,8 @@
              xmlns:l="using:StockAnalyzer.Avalonia.Markup"
              xmlns:ui="using:StockAnalyzer.Avalonia.Common"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="600"
-             x:Class="StockAnalyzer.Avalonia.Views.Dialogs.RlPlaybackSettingsView"
-             x:DataType="dvm:RlPlaybackSettingsViewModel"
+             x:Class="StockAnalyzer.Avalonia.Views.Dialogs.RlPlaybackView"
+             x:DataType="dvm:RlPlaybackViewModel"
              AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.PlaybackPage}">
 
     <ScrollViewer VerticalScrollBarVisibility="Auto">
@@ -282,7 +282,8 @@
                        IsVisible="{Binding HasStatus}"
                        FontSize="{DynamicResource DetailFontSize}"
                        Foreground="{DynamicResource Brush.Accent.Primary}"
-                       TextWrapping="Wrap"/>
+                       TextWrapping="Wrap"
+                       AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.PlaybackStatus}"/>
         </StackPanel>
     </ScrollViewer>
 </UserControl>

@@ -295,13 +295,12 @@ public sealed class ModelExplainabilityPresentationTests : IDisposable
             new ModelCalibrationLoad(CalibrationAvailability.Active, calibration));
         var settings = new Mock<IPredictionSettingsManager>();
         settings.SetupGet(s => s.WindowSize).Returns(20);
-        using var vm = new AIPredictionsSettingsViewModel(settings.Object, Mock.Of<IClipboardService>(),
-            Mock.Of<IToastNotificationService>(), analysisDispatcher: new SynchronousDispatcherService(),
+        using var vm = new PredictionModelsViewModel(settings.Object, analysisDispatcher: new SynchronousDispatcherService(),
             explainabilityService: service.Object);
         vm.SelectedGeneration = new ModelGenerationSummary("first", "explain_calibration_fixture.onnx", "classification",
             "daily", 5, .5, new string('a', 64), false);
         await vm.Explainability.LoadTask;
-        var view = new AIPredictionsSettingsView { DataContext = vm };
+        var view = new PredictionModelsView { DataContext = vm };
         var window = new Window { Content = view, Width = 800, Height = 1400 };
         try
         {

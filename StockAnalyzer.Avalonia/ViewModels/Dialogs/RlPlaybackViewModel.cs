@@ -17,10 +17,10 @@ using StockAnalyzer.Core.Services.ReinforcementLearning;
 namespace StockAnalyzer.Avalonia.ViewModels.Dialogs;
 
 /// <summary>
-/// Settings page that replays one evaluation block of a stored single-ticker RL agent on the main chart.
-/// It holds no editable state: nothing is persisted and <see cref="IsModified"/> is always false.
+/// RL Playback window (Tools menu): replays one evaluation block of a stored single-ticker RL agent on the main chart.
+/// It persists nothing; a successful replay stays on the chart and the window stays open (the owner closes it with Close or Esc).
 /// </summary>
-public sealed partial class RlPlaybackSettingsViewModel : ViewModelBase, ISettingsPageViewModel, ISettingsPageCloseRequest, IDisposable
+public sealed partial class RlPlaybackViewModel : ViewModelBase, IDisposable
 {
     private const string DecisionField = nameof(Decision);
 
@@ -39,8 +39,6 @@ public sealed partial class RlPlaybackSettingsViewModel : ViewModelBase, ISettin
     private long _modelsRevision, _blocksRevision;
     private bool _rebuilding, _disposed;
 
-    public event Action? CloseRequested;
-
     /// <summary>The "any ticker and date" card; null only when the page is built without it (tests of the segment replay).</summary>
     public RlFreeReplayViewModel? Free { get; }
 
@@ -57,9 +55,6 @@ public sealed partial class RlPlaybackSettingsViewModel : ViewModelBase, ISettin
     [ObservableProperty] private RlDialogOperation _operation = RlDialogOperation.Idle;
     [ObservableProperty] private string _statusMessage = "";
 
-    public string TitleKey => "Settings_RlPlayback";
-    public string IconKey => "SettingsAdvIcon";
-    public bool IsModified => false;
     public int MaximumDecision => RlContract.EpisodeHorizon - 1;
     public bool IsBusy => Operation == RlDialogOperation.Replaying;
     public bool HasModels => ModelsState == RlDialogLoadState.Loaded && ModelOptions.Count > 0;
@@ -80,25 +75,23 @@ public sealed partial class RlPlaybackSettingsViewModel : ViewModelBase, ISettin
         && SelectedPolicyOption is not null && PolicyOptions.Contains(SelectedPolicyOption)
         && Decision >= 0 && Decision <= MaximumDecision && DecisionEditorValid && Free?.IsBusy != true;
 
-    public RlPlaybackSettingsViewModel(IRlModelGenerationRegistry registry, RlDialogDataService data, IRlReplayTarget target,
+    public RlPlaybackViewModel(IRlModelGenerationRegistry registry, RlDialogDataService data, IRlReplayTarget target,
         ILocalizationService localization, IDispatcherService dispatcher, RlFreeReplayViewModel? free = null, IDialogService? dialogService = null)
     {
         _registry = registry; _data = data; _target = target; _localization = localization; _dispatcher = dispatcher; _dialogService = dialogService;
         Free = free;
         if (free is not null)
         {
-            free.CloseRequested += OnFreeCloseRequested;
             free.PropertyChanged += OnFreePropertyChanged;
         }
         Services.LocalizationManager.Instance.LocaleChanged += LocaleChanged;
         _ = RefreshAsync();
     }
 
-    public Task SaveChangesAsync() => Task.CompletedTask;
+    private bool CanReset => Operation == RlDialogOperation.Idle;
 
-    public void RevertChanges() { }
-
-    /// <summary>Selects the newest agent and the default replay inputs; it never touches the chart.</summary>
+    /// <summary>Selects the newest agent and the default replay inputs; it never touches the chart. Offered only while no replay or removal runs.</summary>
+    [RelayCommand(CanExecute = nameof(CanReset))]
     public void ResetToDefault()
     {
         if (_disposed) return;
@@ -204,7 +197,6 @@ public sealed partial class RlPlaybackSettingsViewModel : ViewModelBase, ISettin
             {
                 if (_disposed) return;
                 StatusMessage = _localization.GetString("Settings_RlPlayback_Status_Shown");
-                CloseRequested?.Invoke();
             });
         }
         catch (OperationCanceledException)
@@ -239,12 +231,10 @@ public sealed partial class RlPlaybackSettingsViewModel : ViewModelBase, ISettin
         Cancel(_blocksCts); Cancel(_replayCts);
         if (Free is not null)
         {
-            Free.CloseRequested -= OnFreeCloseRequested;
             Free.PropertyChanged -= OnFreePropertyChanged;
             Free.Dispose();
         }
         Services.LocalizationManager.Instance.LocaleChanged -= LocaleChanged;
-        CloseRequested = null;
         // A replay already applied stays on the chart: the chart owns it.
     }
 
@@ -369,7 +359,6 @@ public sealed partial class RlPlaybackSettingsViewModel : ViewModelBase, ISettin
         });
     }
 
-    private void OnFreeCloseRequested() => CloseRequested?.Invoke();
 
     private void OnFreePropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
@@ -394,6 +383,7 @@ public sealed partial class RlPlaybackSettingsViewModel : ViewModelBase, ISettin
         OnPropertyChanged(nameof(DecisionEditorValid));
         ShowOnChartCommand.NotifyCanExecuteChanged();
         RemoveSelectedModelCommand.NotifyCanExecuteChanged();
+        ResetToDefaultCommand.NotifyCanExecuteChanged();
     }
 
     private Task PublishAsync(Action publish)

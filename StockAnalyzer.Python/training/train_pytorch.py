@@ -160,12 +160,9 @@ def build_model(arch: str, channels: int, hidden: int, layers: int, dropout: flo
 # --- Training -----------------------------------------------------------------
 
 
-def _class_weights(y: np.ndarray) -> torch.Tensor:
-    """Inverse-frequency weights so the minority (Neutral) class is not ignored."""
-    counts = np.array([(y == c).sum() for c in range(NUM_CLASSES)], dtype=np.float64)
-    counts[counts == 0] = 1.0
-    w = counts.sum() / (NUM_CLASSES * counts)
-    return torch.tensor(w, dtype=torch.float32)
+def _class_weights(y: np.ndarray, power: float | None = None) -> torch.Tensor:
+    """Inverse-frequency weights so the minority (Neutral) class is not ignored (``power`` < 1 softens them, 0 = unweighted; see ds.class_weight_vector)."""
+    return torch.tensor(ds.class_weight_vector(y, power), dtype=torch.float32)
 
 
 def _iterate_minibatches(x: torch.Tensor, y: torch.Tensor, batch: int, shuffle: bool, rng: np.random.Generator,
@@ -340,7 +337,7 @@ def train_model(args: argparse.Namespace) -> Tuple[nn.Module, int, dict, dict]:
     checkpoints.freeze_modules(model, session.context["freeze_paths"])
     optimizer = torch.optim.AdamW((p for p in model.parameters() if p.requires_grad),
                                   lr=args.lr, weight_decay=args.weight_decay)
-    class_weights = None if is_regression else _class_weights(y_tr_np)
+    class_weights = None if is_regression else _class_weights(y_tr_np, args.class_weight_power)
     loss_fn = nn.MSELoss() if is_regression else nn.CrossEntropyLoss(weight=class_weights)
     loss_each = nn.CrossEntropyLoss(weight=class_weights, reduction="none") if sample_weight is not None else None
 
@@ -577,6 +574,8 @@ def _parse_args(argv) -> argparse.Namespace:
     p.add_argument("--horizon", type=int, default=ds.DEFAULT_HORIZON)
     p.add_argument("--timeframe", choices=tuple(ds.TIMEFRAME_DIRS), default=onnx_meta.DEFAULT_TIMEFRAME)
     p.add_argument("--threshold", type=float, default=ds.DEFAULT_THRESHOLD)
+    p.add_argument("--class-weight-power", type=float, default=None,
+                   help=f"Exponent of the class weights, in [0, 1]: 1 = inverse frequency (default {ds.DEFAULT_CLASS_WEIGHT_POWER}), 0 = unweighted.")
     p.add_argument("--hidden", type=int, default=DEFAULT_HIDDEN)
     p.add_argument("--layers", type=int, default=DEFAULT_LAYERS)
     p.add_argument("--heads", type=int, default=None,
@@ -622,6 +621,7 @@ def _parse_args(argv) -> argparse.Namespace:
     try:
         ds.bagging_from_args(args)
         cpcv_spec = ds.cpcv_from_args(args)
+        ds.resolve_class_weight_power(args.class_weight_power)
     except ValueError as exc:
         raise SystemExit(str(exc)) from exc
     if cpcv_spec is not None and (args.outer_fold_index is not None or ds.holdout_segment_requested(args)

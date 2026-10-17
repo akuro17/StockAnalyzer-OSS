@@ -34,4 +34,6 @@ public sealed class SubWindowEscapeTests
     [AvaloniaFact] public void TheSettingsWindowClosesOnEscape() => AssertEscapeCloses(new SettingsWindow());
     [AvaloniaFact] public void TheScreenerWindowClosesOnEscapeAndKeepsEnterForTheScan() { var window = new ScreenerWindow(); Assert.Single(window.KeyBindings, k => k.Gesture.Key == Key.Enter); AssertEscapeCloses(window); }
     [AvaloniaFact] public void TheLogViewerClosesOnEscape() => AssertEscapeCloses(new LogViewerView());
+    [AvaloniaFact] public void TheRlPlaybackWindowClosesOnEscape() => AssertEscapeCloses(new RlPlaybackWindow());
+    [AvaloniaFact] public void ThePredictionModelsWindowClosesOnEscape() => AssertEscapeCloses(new PredictionModelsWindow());
 }

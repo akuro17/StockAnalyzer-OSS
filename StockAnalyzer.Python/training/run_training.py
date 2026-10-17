@@ -250,6 +250,25 @@ class JobConfig:
         cfg.validate()
         return cfg
 
+    @property
+    def neutral_threshold(self) -> float:
+        """Neutral band half-width the trainer labels with, so the evaluation labels the same way.
+
+        The ``threshold`` hyperparameter reaches the trainer unchanged (it is not a reserved flag); the default is
+        ``ds.DEFAULT_THRESHOLD``. As with a repeated CLI flag, the last spelling wins.
+        """
+        value = ds.DEFAULT_THRESHOLD
+        for key, raw in self.hyperparameters.items():
+            if _normalize_flag(key) != "threshold":
+                continue
+            try:
+                value = float(raw)
+            except (TypeError, ValueError):
+                raise ValueError(f"hyperparameter threshold must be a number, got {raw!r}") from None
+            if not math.isfinite(value) or value < 0:
+                raise ValueError(f"hyperparameter threshold must be finite and non-negative, got {raw!r}")
+        return value
+
     def validate(self) -> None:
         checkpoints.validate_controls(self.initialization_mode, self.framework, self.checkpoint_path,
                                       self.parent_model_id, self.parent_model_hash, self.freeze_paths)
@@ -301,6 +320,7 @@ class JobConfig:
             or self.clip_sigma <= 0
         ):
             raise ValueError("clip_sigma must be finite and positive")
+        self.neutral_threshold  # fail before any work when the Neutral band hyperparameter is unusable
         if self.fixed_zscore and self.feature_spec and any(
             channel.get("normalization", "none") != "none"
             for channel in self.feature_spec.get("channels", [])
@@ -721,8 +741,12 @@ def evaluate_folds(
     lags: list[int] | None = None,
     capture: Dict[str, Tuple[np.ndarray, np.ndarray, np.ndarray]] | None = None,
     cpcv: ds.CpcvSpec | None = None,
+    confidence_out: Dict[int, dict] | None = None,
 ) -> List[Dict[str, float]]:
     """One flat metric dict per walk-forward fold, pooled over every symbol.
+
+    ``confidence_out`` (classification only) receives, per fold number, the histogram of the largest class probability of the scored windows
+    (``metrics.confidence_histogram``); it adds nothing to the returned rows.
 
     ``capture`` (independent fold evaluation only) receives, per symbol, the scored rows
     ``(anchor_rows, y, probabilities)`` so an ensemble can mix members on identical rows.
@@ -823,6 +847,8 @@ def evaluate_folds(
         else:
             pp = np.concatenate(fold_prob[k])
             rep = _metrics.classification_report_dict(yt, yp, pp)
+            if confidence_out is not None:
+                confidence_out[k] = _metrics.confidence_histogram(pp)
             logloss = rep["multi_logloss"]
             rows.append({
                 "fold": float(k),
@@ -1131,7 +1157,7 @@ def _evaluation_revision(cfg: JobConfig, symbols: Dict[str, np.ndarray],
     contract = {
         "metric_definition": "outer_v2", "timeframe": cfg.timeframe,
         "target_type": cfg.target_type, "window": cfg.window_size,
-        "horizon": cfg.horizon, "threshold": ds.DEFAULT_THRESHOLD,
+        "horizon": cfg.horizon, "threshold": cfg.neutral_threshold,
         "n_splits": cfg.n_splits,
         "gap": ds.resolve_purge_gap(cfg.window_size, cfg.horizon, cfg.gap),
         "oos_tail_days": cfg.oos_tail_days, "fold": fold_index,
@@ -1139,7 +1165,7 @@ def _evaluation_revision(cfg: JobConfig, symbols: Dict[str, np.ndarray],
     digest.update(json.dumps(contract, sort_keys=True, separators=(",", ":")).encode("utf-8"))
     selected = ds.independent_fold_data(
         symbols, dates, feature_mode=cfg.feature_mode, window=cfg.window_size,
-        horizon=cfg.horizon, threshold=ds.DEFAULT_THRESHOLD, n_splits=cfg.n_splits,
+        horizon=cfg.horizon, threshold=cfg.neutral_threshold, n_splits=cfg.n_splits,
         gap=cfg.gap, fold_index=fold_index, feature_spec=cfg.feature_spec,
         target_type=cfg.target_type,
         indicator_export_paths=cfg.indicator_channel_export_paths,
@@ -1390,7 +1416,7 @@ def _train_one(cfg: JobConfig, *, started: datetime.datetime, run_limits: dict, 
                 _artifact("checkpoint", manifest_path)
         common = dict(
             feature_mode=cfg.feature_mode, window=cfg.window_size,
-            horizon=cfg.horizon, threshold=ds.DEFAULT_THRESHOLD,
+            horizon=cfg.horizon, threshold=cfg.neutral_threshold,
             feature_spec=cfg.feature_spec, target_type=cfg.target_type,
             fixed_zscore=cfg.fixed_zscore, lags=cfg.lags,
         )
@@ -1426,21 +1452,25 @@ def _train_one(cfg: JobConfig, *, started: datetime.datetime, run_limits: dict, 
             _note(f"ensemble evaluation peak estimate: {peak} bytes over {sum(fold_rows)} test windows "
                   f"(captured {ensemble.capture_bytes(member['capture_members'], fold_rows, len(ds.CLASS_LABELS))} bytes, "
                   f"limit {ensemble.MAX_EVALUATION_PEAK_BYTES})")
-        for fold_index in range(cfg.n_splits):
-            if time.monotonic() >= deadline:
-                raise TimeoutError("independent evaluation exceeded the run duration limit")
-            # Validate the original fold and the inner fit/validation boundary before
-            # invoking a framework. A missing selected symbol is a failed run.
-            selected_inner = ds.independent_fold_data(
+        def inner_fold_data(fold_index: int) -> dict:
+            return ds.independent_fold_data(
                 train_symbols, train_dates, n_splits=cfg.n_splits, gap=cfg.gap,
                 fold_index=fold_index,
                 indicator_export_paths=cfg.indicator_channel_export_paths,
                 inner=True, calibration=release_holdout and fold_index == cfg.n_splits - 1,
                 **common,
             )
-            if fold_index == cfg.n_splits - 1:
-                import model_analysis
-                model_analysis.validate_population(selected_inner, run_limits)
+        # The release fold's analysis population is bounded: a selection that exceeds the bound is refused before
+        # any fold is trained, not after the earlier folds have used their time.
+        import model_analysis
+        release_fold_data = inner_fold_data(cfg.n_splits - 1)
+        model_analysis.validate_population(release_fold_data, run_limits)
+        for fold_index in range(cfg.n_splits):
+            if time.monotonic() >= deadline:
+                raise TimeoutError("independent evaluation exceeded the run duration limit")
+            # Validate the original fold and the inner fit/validation boundary before
+            # invoking a framework. A missing selected symbol is a failed run.
+            selected_inner = release_fold_data if fold_index == cfg.n_splits - 1 else inner_fold_data(fold_index)
             staged_model = tmp_root / f"fold_{fold_index}" / out_path.name
             staged_model.parent.mkdir(parents=True, exist_ok=True)
             trainer_argv = _build_trainer_argv(cfg, train_dir, staged_model,
@@ -1486,11 +1516,12 @@ def _train_one(cfg: JobConfig, *, started: datetime.datetime, run_limits: dict, 
             fold_capture: Dict[str, Tuple[np.ndarray, np.ndarray, np.ndarray]] | None = None
             if member.get("capture") is not None:
                 fold_capture = member["capture"][fold_index] = {}
+            fold_confidence: Dict[int, dict] = {}
             rows = evaluate_folds(
                 _onnx_predict_fn(staged_model), train_symbols,
                 n_splits=cfg.n_splits, gap=cfg.gap, dates=train_dates,
                 indicator_export_paths=cfg.indicator_channel_export_paths,
-                fold_index=fold_index, capture=fold_capture, **common,
+                fold_index=fold_index, capture=fold_capture, confidence_out=fold_confidence, **common,
             )
             if meta_segment and fold_index == cfg.n_splits - 1:
                 member["meta_capture"].update(_score_meta_segment(
@@ -1529,6 +1560,9 @@ def _train_one(cfg: JobConfig, *, started: datetime.datetime, run_limits: dict, 
                 }
                 if "fold_multi_logloss" not in row and cfg.target_type == "classification":
                     release_report["optional_metric_status"] = "multi_logloss_unavailable"
+                if len(fold_confidence) == 1:
+                    # how often the model is confident on the independent hold-out; the application compares it with its own threshold
+                    release_report["confidence_reach"] = next(iter(fold_confidence.values()))
                 for key, value in row.items():
                     if key.startswith("fold_") and key not in ("fold_is_holdout",):
                         release_report[key[5:]] = value
@@ -1965,6 +1999,19 @@ def _run_selfcheck() -> None:
     ok_argv = _build_trainer_argv(ok_cfg, Path("d"), Path("o.onnx"))
     assert "--lr" in ok_argv and ok_argv[ok_argv.index("--lr") + 1] == "0.01"
 
+    # D0: the evaluation labels with the Neutral band the trainer was given (the "threshold" hyperparameter, any spelling).
+    assert ok_cfg.neutral_threshold == ds.DEFAULT_THRESHOLD
+    for spelling in ("threshold", "--threshold", " threshold "):
+        spelled = JobConfig.from_json(json.dumps({**base, "hyperparameters": {spelling: "0.02"}}))
+        assert spelled.neutral_threshold == 0.02, spelling
+    for unusable in ("abc", "nan", "inf", "-0.01"):
+        try:
+            JobConfig.from_json(json.dumps({**base, "hyperparameters": {"threshold": unusable}}))
+        except ValueError:
+            pass
+        else:  # pragma: no cover
+            raise AssertionError(f"threshold {unusable!r} must be rejected before any work")
+
     # (b4) Task8: --indicator-channel-export-paths is forwarded to the trainer argv only when
     # composed_features AND a non-empty indicator_channel_export_paths is configured; every
     # other combination (Price-only composed_features, or the field simply unset) omits the
@@ -2050,6 +2097,23 @@ def _run_selfcheck() -> None:
         # an independent holdout; every earlier fold reuses that same model's score.
         assert r["fold_is_holdout"] == (1.0 if int(r["fold"]) == 4 else 0.0)
     assert sum(r["fold_is_holdout"] for r in rows) == 1.0, "expected exactly one holdout fold"
+    # D0: the evaluation revision identifies the evaluated labels. The default spelled out keeps the revision; another
+    # Neutral band changes it (the held-out labels differ).
+    revision_base = {**base, "symbols": list(syms), "window_size": 30, "horizon": 5}
+    revisions = {}
+    for label, hyper in (("default", {}), ("explicit", {"threshold": "0.005"}), ("wide", {"threshold": "0.02"})):
+        revision_cfg = JobConfig.from_json(json.dumps({**revision_base, "hyperparameters": hyper}))
+        revisions[label] = _evaluation_revision(revision_cfg, syms, dts, 4)
+    assert revisions["default"] == revisions["explicit"] != revisions["wide"], revisions
+    # the confidence histogram sees the same windows as the fold row and adds nothing to the row
+    confidence = {}
+    rows_with_confidence = evaluate_folds(stub_predict, syms, n_splits=5, gap=None, confidence_out=confidence, **common)
+    assert rows_with_confidence == rows, "confidence_out must not change the rows"
+    assert sorted(confidence) == [int(r["fold"]) for r in rows]
+    for r in rows:
+        histogram = confidence[int(r["fold"])]
+        assert histogram["n"] == int(r["fold_n"]) == sum(histogram["max_probability_histogram"])
+        assert histogram["bins"] == len(histogram["max_probability_histogram"])
 
     # Independent evaluation selects the same original fold for every symbol,
     # then removes any train label that reaches the earliest test feature date.
@@ -2309,6 +2373,8 @@ def _run_selfcheck() -> None:
             assert report["horizon"] == 5 and report["class_order"] == ",".join(ds.CLASS_LABELS)
             assert len(report["outer_folds"]) == 3
             assert [row["fold"] for row in report["outer_folds"]] == [0.0, 1.0, 2.0]
+            reach = report["confidence_reach"]   # the release fold's hold-out confidence histogram rides in the metrics file
+            assert reach["n"] == report["n_samples"] == sum(reach["max_probability_histogram"]) and reach["bins"] == len(reach["max_probability_histogram"])
             assert report["scored_model_sha256"] == _file_sha256(published[0])
             assert report["resource_limits"] == _effective_resource_limits()
             assert 0 < report["run_budget_seconds_at_child_start"] <= MAX_RUN_DURATION_SECONDS

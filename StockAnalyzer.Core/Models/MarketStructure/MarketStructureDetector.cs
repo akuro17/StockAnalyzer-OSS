@@ -148,6 +148,90 @@ public static class MarketStructureDetector
     }
 
     /// <summary>
+    /// Extracts strictly confirmed pivot points (swing highs and swing lows) using a ZigZag algorithm.
+    /// Unlike <see cref="ExtractPivots"/>, reversals are only evaluated on subsequent bars (preventing same-bar reversals)
+    /// and the trailing unconfirmed extreme is omitted, ensuring prefix consistency and causal validity.
+    /// </summary>
+    public static IReadOnlyList<PivotPoint> ExtractConfirmedPivots(
+        IReadOnlyList<CandleData> candles,
+        decimal thresholdPercent)
+    {
+        if (candles == null || candles.Count < 3)
+        {
+            return Array.Empty<PivotPoint>();
+        }
+
+        if (thresholdPercent <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(thresholdPercent), "Threshold percentage must be greater than zero.");
+        }
+
+        var pivots = new List<PivotPoint>();
+        decimal threshold = thresholdPercent / 100m;
+
+        // Initialize with the first candle
+        decimal lastHigh = candles[0].High;
+        decimal lastLow = candles[0].Low;
+        int lastHighIdx = 0;
+        int lastLowIdx = 0;
+
+        // initial direction: unknown (0), up (1), down (-1)
+        int direction = 0;
+
+        for (int i = 1; i < candles.Count; i++)
+        {
+            decimal high = candles[i].High;
+            decimal low = candles[i].Low;
+
+            if (direction >= 0) // currently in upswing or unknown
+            {
+                if (high > lastHigh)
+                {
+                    lastHigh = high;
+                    lastHighIdx = i;
+                }
+
+                // Check for reversal down on a strictly later bar
+                if (lastHighIdx < i && lastHigh > 0 && (lastHigh - low) / lastHigh >= threshold)
+                {
+                    if (direction != 0 || pivots.Count == 0)
+                    {
+                        pivots.Add(new PivotPoint(lastHighIdx, candles[lastHighIdx].Time, lastHigh, isHigh: true, confirmedAtIndex: i));
+                    }
+                    direction = -1;
+                    lastLow = low;
+                    lastLowIdx = i;
+                    continue; // Skip checking for reversal up on the same candle
+                }
+            }
+
+            if (direction <= 0) // currently in downswing or unknown
+            {
+                if (low < lastLow)
+                {
+                    lastLow = low;
+                    lastLowIdx = i;
+                }
+
+                // Check for reversal up on a strictly later bar
+                if (lastLowIdx < i && lastLow > 0 && (high - lastLow) / lastLow >= threshold)
+                {
+                    if (direction != 0 || pivots.Count == 0)
+                    {
+                        pivots.Add(new PivotPoint(lastLowIdx, candles[lastLowIdx].Time, lastLow, isHigh: false, confirmedAtIndex: i));
+                    }
+                    direction = 1;
+                    lastHigh = high;
+                    lastHighIdx = i;
+                }
+            }
+        }
+
+        // Note: Trailing unconfirmed pivot is intentionally NOT added for confirmed pivots.
+        return pivots;
+    }
+
+    /// <summary>
     /// Analyzes a sequence of pivot points to detect BOS and CHoCH patterns.
     /// </summary>
     public static IReadOnlyList<MarketStructureShift> AnalyzePivotSequence(
@@ -297,12 +381,8 @@ public static class MarketStructureDetector
 
         return shifts;
     }
-    /// <summary>
-    /// Checks for a strict Head and Shoulders Top pattern (Head higher than shoulders, shoulders at similar level).
-    /// </summary>
-    public static bool IsHeadAndShouldersTop(IReadOnlyList<CandleData> candles, decimal zigzagThresholdPercent = 3.0m)
+    private static bool IsHeadAndShouldersTopCore(IReadOnlyList<PivotPoint> pivots)
     {
-        var pivots = ExtractPivots(candles, zigzagThresholdPercent);
         var highs = pivots.Where(p => p.IsHigh).ToList();
         if (highs.Count < 3) return false;
 
@@ -320,12 +400,8 @@ public static class MarketStructureDetector
         return (diff / maxShoulder) <= 0.15m;
     }
 
-    /// <summary>
-    /// Checks for a strict Inverse Head and Shoulders (Bottom) pattern.
-    /// </summary>
-    public static bool IsHeadAndShouldersBottom(IReadOnlyList<CandleData> candles, decimal zigzagThresholdPercent = 3.0m)
+    private static bool IsHeadAndShouldersBottomCore(IReadOnlyList<PivotPoint> pivots)
     {
-        var pivots = ExtractPivots(candles, zigzagThresholdPercent);
         var lows = pivots.Where(p => !p.IsHigh).ToList();
         if (lows.Count < 3) return false;
 
@@ -343,12 +419,8 @@ public static class MarketStructureDetector
         return (diff / maxShoulder) <= 0.15m;
     }
 
-    /// <summary>
-    /// Checks for a strict Double Top pattern (Two consecutive high peaks at approximately the same level).
-    /// </summary>
-    public static bool IsDoubleTop(IReadOnlyList<CandleData> candles, decimal zigzagThresholdPercent = 3.0m)
+    private static bool IsDoubleTopCore(IReadOnlyList<PivotPoint> pivots)
     {
-        var pivots = ExtractPivots(candles, zigzagThresholdPercent);
         var highs = pivots.Where(p => p.IsHigh).ToList();
         if (highs.Count < 2) return false;
 
@@ -361,12 +433,8 @@ public static class MarketStructureDetector
         return (diff / maxPeak) <= 0.05m;
     }
 
-    /// <summary>
-    /// Checks for a strict Double Bottom pattern (Two consecutive low troughs at approximately the same level).
-    /// </summary>
-    public static bool IsDoubleBottom(IReadOnlyList<CandleData> candles, decimal zigzagThresholdPercent = 3.0m)
+    private static bool IsDoubleBottomCore(IReadOnlyList<PivotPoint> pivots)
     {
-        var pivots = ExtractPivots(candles, zigzagThresholdPercent);
         var lows = pivots.Where(p => !p.IsHigh).ToList();
         if (lows.Count < 2) return false;
 
@@ -377,6 +445,175 @@ public static class MarketStructureDetector
         decimal diff = Math.Abs(l1.Price - l2.Price);
         decimal maxTrough = Math.Max(l1.Price, l2.Price);
         return (diff / maxTrough) <= 0.05m;
+    }
+
+    /// <summary>
+    /// Checks for a strict Head and Shoulders Top pattern (Head higher than shoulders, shoulders at similar level).
+    /// Uses unconfirmed trailing pivots for legacy compatibility.
+    /// </summary>
+    public static bool IsHeadAndShouldersTop(IReadOnlyList<CandleData> candles, decimal zigzagThresholdPercent = 3.0m)
+        => IsHeadAndShouldersTopCore(ExtractPivots(candles, zigzagThresholdPercent));
+
+    /// <summary>
+    /// Checks for a strict Inverse Head and Shoulders (Bottom) pattern.
+    /// Uses unconfirmed trailing pivots for legacy compatibility.
+    /// </summary>
+    public static bool IsHeadAndShouldersBottom(IReadOnlyList<CandleData> candles, decimal zigzagThresholdPercent = 3.0m)
+        => IsHeadAndShouldersBottomCore(ExtractPivots(candles, zigzagThresholdPercent));
+
+    /// <summary>
+    /// Checks for a strict Double Top pattern (Two consecutive high peaks at approximately the same level).
+    /// Uses unconfirmed trailing pivots for legacy compatibility.
+    /// </summary>
+    public static bool IsDoubleTop(IReadOnlyList<CandleData> candles, decimal zigzagThresholdPercent = 3.0m)
+        => IsDoubleTopCore(ExtractPivots(candles, zigzagThresholdPercent));
+
+    /// <summary>
+    /// Checks for a strict Double Bottom pattern (Two consecutive low troughs at approximately the same level).
+    /// Uses unconfirmed trailing pivots for legacy compatibility.
+    /// </summary>
+    public static bool IsDoubleBottom(IReadOnlyList<CandleData> candles, decimal zigzagThresholdPercent = 3.0m)
+        => IsDoubleBottomCore(ExtractPivots(candles, zigzagThresholdPercent));
+
+    /// <summary>
+    /// Checks for a strict Head and Shoulders Top pattern using strictly confirmed pivots (no unconfirmed tail).
+    /// </summary>
+    public static bool IsHeadAndShouldersTopConfirmed(IReadOnlyList<CandleData> candles, decimal zigzagThresholdPercent = 3.0m)
+        => IsHeadAndShouldersTopCore(ExtractConfirmedPivots(candles, zigzagThresholdPercent));
+
+    /// <summary>
+    /// Checks for a strict Inverse Head and Shoulders (Bottom) pattern using strictly confirmed pivots (no unconfirmed tail).
+    /// </summary>
+    public static bool IsHeadAndShouldersBottomConfirmed(IReadOnlyList<CandleData> candles, decimal zigzagThresholdPercent = 3.0m)
+        => IsHeadAndShouldersBottomCore(ExtractConfirmedPivots(candles, zigzagThresholdPercent));
+
+    /// <summary>
+    /// Checks for a strict Double Top pattern using strictly confirmed pivots (no unconfirmed tail).
+    /// </summary>
+    public static bool IsDoubleTopConfirmed(IReadOnlyList<CandleData> candles, decimal zigzagThresholdPercent = 3.0m)
+        => IsDoubleTopCore(ExtractConfirmedPivots(candles, zigzagThresholdPercent));
+
+    /// <summary>
+    /// Checks for a strict Double Bottom pattern using strictly confirmed pivots (no unconfirmed tail).
+    /// </summary>
+    public static bool IsDoubleBottomConfirmed(IReadOnlyList<CandleData> candles, decimal zigzagThresholdPercent = 3.0m)
+        => IsDoubleBottomCore(ExtractConfirmedPivots(candles, zigzagThresholdPercent));
+
+    /// <summary>
+    /// Detects BOS (Break of Structure) and CHoCH (Change of Character) events in a strictly causal,
+    /// prefix-invariant manner based on confirmed pivots and close breaks.
+    /// </summary>
+    public static IReadOnlyList<MarketStructureShift> DetectCausal(
+        IReadOnlyList<CandleData> candles,
+        decimal zigzagThresholdPercent = 5.0m)
+    {
+        if (candles == null || candles.Count < MinimumCandleCount)
+        {
+            return Array.Empty<MarketStructureShift>();
+        }
+
+        var pivots = ExtractConfirmedPivots(candles, zigzagThresholdPercent);
+        if (pivots.Count == 0)
+        {
+            return Array.Empty<MarketStructureShift>();
+        }
+
+        var shifts = new List<MarketStructureShift>();
+        int trend = 0; // 0 = uninitialized, 1 = bullish, -1 = bearish
+
+        PivotPoint? activeHigh = null;
+        bool highConsumed = false;
+        PivotPoint? activeLow = null;
+        bool lowConsumed = false;
+
+        PivotPoint? latestConfirmedHigh = null;
+        PivotPoint? latestConfirmedLow = null;
+
+        int pivotIdx = 0;
+
+        for (int t = 0; t < candles.Count; t++)
+        {
+            // At the start of bar t, activate pivots confirmed strictly prior to bar t (ConfirmedAtIndex < t)
+            while (pivotIdx < pivots.Count && pivots[pivotIdx].ConfirmedAtIndex.HasValue && pivots[pivotIdx].ConfirmedAtIndex.Value < t)
+            {
+                var p = pivots[pivotIdx];
+                if (p.IsHigh)
+                {
+                    activeHigh = p;
+                    highConsumed = false;
+                    latestConfirmedHigh = p;
+                }
+                else
+                {
+                    activeLow = p;
+                    lowConsumed = false;
+                    latestConfirmedLow = p;
+                }
+                pivotIdx++;
+            }
+
+            decimal close = candles[t].Close;
+            bool up = activeHigh != null && !highConsumed && close > activeHigh.Price;
+            bool down = activeLow != null && !lowConsumed && close < activeLow.Price;
+
+            // Up-break is tested first; at most one event per bar
+            if (up)
+            {
+                highConsumed = true;
+                if (trend == 0)
+                {
+                    trend = 1; // Initial break establishes trend without emitting event
+                }
+                else
+                {
+                    MarketStructureType type = (trend == 1)
+                        ? MarketStructureType.BullishBOS
+                        : MarketStructureType.BullishCHoCH;
+                    trend = 1;
+
+                    shifts.Add(new MarketStructureShift(
+                        type,
+                        t,
+                        candles[t].Time,
+                        close,
+                        activeHigh!.Price,
+                        activeHigh.Index,
+                        activeHigh.Time,
+                        latestConfirmedLow?.Price ?? 0m,
+                        latestConfirmedLow?.Index ?? 0,
+                        latestConfirmedLow?.Time ?? System.DateTime.MinValue));
+                }
+            }
+            else if (down)
+            {
+                lowConsumed = true;
+                if (trend == 0)
+                {
+                    trend = -1; // Initial break establishes trend without emitting event
+                }
+                else
+                {
+                    MarketStructureType type = (trend == -1)
+                        ? MarketStructureType.BearishBOS
+                        : MarketStructureType.BearishCHoCH;
+                    trend = -1;
+
+                    shifts.Add(new MarketStructureShift(
+                        type,
+                        t,
+                        candles[t].Time,
+                        close,
+                        latestConfirmedHigh?.Price ?? 0m,
+                        latestConfirmedHigh?.Index ?? 0,
+                        latestConfirmedHigh?.Time ?? System.DateTime.MinValue,
+                        activeLow!.Price,
+                        activeLow.Index,
+                        activeLow.Time));
+                }
+            }
+        }
+
+        return shifts;
     }
 }
 
@@ -397,14 +634,18 @@ public class PivotPoint
     /// <summary>True if this is a swing high, false if swing low.</summary>
     public bool IsHigh { get; }
 
-    public PivotPoint(int index, System.DateTime time, decimal price, bool isHigh)
+    /// <summary>The candle index at which this pivot was confirmed by subsequent price movement. Null if unconfirmed or not tracked.</summary>
+    public int? ConfirmedAtIndex { get; }
+
+    public PivotPoint(int index, System.DateTime time, decimal price, bool isHigh, int? confirmedAtIndex = null)
     {
         Index = index;
         Time = time;
         Price = price;
         IsHigh = isHigh;
+        ConfirmedAtIndex = confirmedAtIndex;
     }
 
     public override string ToString()
-        => $"{(IsHigh ? "H" : "L")}[{Index}]={Price}";
+        => $"{(IsHigh ? "H" : "L")}[{Index}]={Price}{(ConfirmedAtIndex.HasValue ? $"@{ConfirmedAtIndex.Value}" : "")}";
 }

@@ -1,0 +1,170 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:StockAnalyzer.Avalonia.ViewModels.Dialogs"
+             xmlns:l="using:StockAnalyzer.Avalonia.Markup"
+             xmlns:ui="using:StockAnalyzer.Avalonia.Common"
+             xmlns:views="using:StockAnalyzer.Avalonia.Views.Dialogs"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="600"
+             x:Class="StockAnalyzer.Avalonia.Views.Dialogs.PredictionModelsView"
+             x:DataType="vm:PredictionModelsViewModel"
+             AutomationProperties.AutomationId="{x:Static ui:PredictionModelsUiConstants.Page}">
+
+    <Design.DataContext>
+        <vm:PredictionModelsViewModel/>
+    </Design.DataContext>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Spacing="20" Margin="16">
+
+            <!-- The window size the models are checked against; it is changed in Settings > AI Predictions. -->
+            <Border Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="1" CornerRadius="8" Padding="16">
+                <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock Text="{Binding ConfiguredWindowText}" TextWrapping="Wrap" VerticalAlignment="Center"/>
+                    <Button Grid.Column="1" Classes="accent" Content="{l:Localize PredictionModels_OpenSettings}"
+                            Command="{Binding OpenSettingsCommand}" VerticalAlignment="Center" Margin="12,0,0,0"/>
+                </Grid>
+            </Border>
+
+            <Border Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="1" CornerRadius="8" Padding="16">
+                <StackPanel Spacing="10">
+                    <TextBlock Text="{l:Localize Settings_ModelGenerations_Title}" FontWeight="Bold"/>
+                    <TextBlock Text="{l:Localize Settings_ModelGenerations_Description}"
+                               TextWrapping="Wrap"/>
+                    <TextBlock Text="{Binding LegacyModelStatus}" TextWrapping="Wrap"/>
+                    <ListBox ItemsSource="{Binding GenerationRows}" SelectedItem="{Binding SelectedGenerationRow}"
+                             MaxHeight="190">
+                        <ListBox.Styles>
+                            <!-- Rows fill the whole item frame (so the active highlight does too); group headers cannot be selected. -->
+                            <Style Selector="ListBoxItem" x:DataType="vm:GenerationRow">
+                                <Setter Property="Padding" Value="0"/>
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                <Setter Property="IsEnabled" Value="{Binding IsSelectable}"/>
+                            </Style>
+                        </ListBox.Styles>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate x:DataType="vm:GenerationRow">
+                                <!-- The check box at the start of a row is ticked for the active generation, so it is recognisable however long the file name is;
+                                     clicking it activates / deactivates that generation (there is no separate Activate / Deactivate button). The whole row is read in the hover tip.
+                                     A header row names the group of models that can form one ensemble. -->
+                                <Panel>
+                                <TextBlock Text="{Binding HeaderText}" IsVisible="{Binding IsHeader}" FontWeight="Bold"
+                                           Foreground="{DynamicResource Brush.Accent.Primary}" Margin="6,6,6,2" TextWrapping="Wrap"/>
+                                <Border Padding="6,3" IsVisible="{Binding IsItem}" HorizontalAlignment="Stretch" ToolTip.Tip="{Binding Tooltip}">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <CheckBox IsChecked="{Binding IsActive, Mode=OneWay}" VerticalAlignment="Center" MinWidth="0" MinHeight="0" Padding="0" Margin="0"
+                                                  Command="{Binding $parent[ListBox].((vm:PredictionModelsViewModel)DataContext).ToggleGenerationRowActivationCommand}"
+                                                  CommandParameter="{Binding}"
+                                                  AutomationProperties.Name="{l:Localize Settings_ModelGenerations_ActiveBadge}"/>
+                                        <TextBlock Text="{Binding ModelFile}"/>
+                                        <TextBlock Text="{Binding TargetType}"/>
+                                        <TextBlock Text="{Binding Timeframe}"/>
+                                        <TextBlock Text="{Binding Horizon}"/>
+                                        <TextBlock Text="{Binding MetricName}"/>
+                                        <TextBlock Text="{Binding Score}"/>
+                                        <TextBlock Text="{Binding QualityHint}" IsVisible="{Binding NotBetterThanGuessing}"
+                                                   Foreground="{DynamicResource Brush.Semantic.Warning}"/>
+                                        <TextBlock Text="{Binding ReachText}" IsVisible="{Binding HasReachNeutral}"/>
+                                        <TextBlock Text="{Binding ReachText}" IsVisible="{Binding ReachIsZero}"
+                                                   Foreground="{DynamicResource Brush.Semantic.Warning}"/>
+                                    </StackPanel>
+                                </Border>
+                                </Panel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button Classes="accent" Content="{l:Localize Settings_ModelGenerations_AddFile}" Command="{Binding AddGenerationFromFileCommand}"
+                                IsEnabled="{Binding !IsBusy}"/>
+                        <Button Classes="accent" Content="{l:Localize Settings_ModelGenerations_Remove}" Command="{Binding RemoveGenerationCommand}"
+                                IsEnabled="{Binding !IsBusy}"/>
+                    </StackPanel>
+                    <TextBlock Text="{Binding GenerationStatusMessage}"
+                               IsVisible="{Binding GenerationStatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                               FontSize="{DynamicResource DetailFontSize}"
+                               Foreground="{DynamicResource Brush.Accent.Primary}"
+                               TextWrapping="Wrap"/>
+                </StackPanel>
+            </Border>
+
+            <Border Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="1" CornerRadius="8" Padding="16">
+                <StackPanel Spacing="10">
+                    <TextBlock Text="{l:Localize Settings_Ensemble_Title}" FontWeight="Bold"/>
+                    <TextBlock Text="{l:Localize Settings_Ensemble_Description}" TextWrapping="Wrap"/>
+                    <ListBox ItemsSource="{Binding EnsembleMembers}" SelectedItem="{Binding SelectedEnsembleMember}" MaxHeight="200">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                                    <TextBlock Text="{Binding ModelId}" VerticalAlignment="Center"/>
+                                    <NumericUpDown Grid.Column="1" Value="{Binding Percent}" Minimum="0" Maximum="100"
+                                                   Increment="1" FormatString="0.####" Width="105"/>
+                                    <TextBlock Grid.Column="2" Text="%" VerticalAlignment="Center"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button Classes="accent" Content="{l:Localize Settings_Ensemble_Add}" Command="{Binding AddEnsembleMemberCommand}"
+                                ToolTip.Tip="{Binding AddEnsembleMemberHint}"/>
+                        <Button Classes="accent" Content="{l:Localize Settings_Ensemble_Remove}" Command="{Binding RemoveEnsembleMemberCommand}"/>
+                        <Button Classes="accent" Content="{l:Localize Settings_Ensemble_Equal}" Command="{Binding EqualEnsembleWeightsCommand}"/>
+                        <Button Classes="accent" Content="{l:Localize Settings_Ensemble_Accuracy}" Command="{Binding AccuracyEnsembleWeightsCommand}"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button Classes="accent" Content="{l:Localize Settings_Ensemble_Save}" Command="{Binding SaveEnsembleCommand}"/>
+                        <Button Classes="accent" Content="{l:Localize Settings_Ensemble_Clear}" Command="{Binding ClearEnsembleCommand}"/>
+                    </StackPanel>
+                    <TextBlock Text="{Binding AddEnsembleMemberHint}" FontSize="{DynamicResource HelperFontSize}"
+                               Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"
+                               IsVisible="{Binding AddEnsembleMemberHint, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                    <TextBlock Text="{Binding EnsembleStatus}" TextWrapping="Wrap"/>
+                    <TextBlock Text="{Binding EnsembleMonitoringStatus}" TextWrapping="Wrap"
+                               IsVisible="{Binding EnsembleMonitoringStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                </StackPanel>
+            </Border>
+
+            <Border Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="1" CornerRadius="8" Padding="16">
+                <StackPanel Spacing="10">
+                    <TextBlock Text="{l:Localize ModelAnalysis_DetailsTitle}" FontWeight="Bold"/>
+                    <TextBlock Text="{Binding ImportanceTitle}" FontSize="{DynamicResource BaseFontSize}"/>
+                    <TextBlock Text="{Binding ImportanceStatus}" TextWrapping="Wrap"/>
+                    <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsAnalysisLoading}"/>
+                    <ItemsControl ItemsSource="{Binding ImportanceRows}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ImportanceDisplayRow">
+                                <StackPanel>
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <TextBlock Text="{Binding Channel}"/>
+                                        <TextBlock Grid.Column="1" Text="{Binding Display}"/>
+                                    </Grid>
+                                    <Grid ColumnDefinitions="*,*">
+                                        <ProgressBar Value="{Binding NegativeMagnitude}" Maximum="{Binding ScaleMaximum}"
+                                                     FlowDirection="RightToLeft" Height="{DynamicResource BaseFontSize}"
+                                                     Foreground="{DynamicResource Brush.Semantic.Error}"/>
+                                        <ProgressBar Grid.Column="1" Value="{Binding PositiveMagnitude}" Maximum="{Binding ScaleMaximum}"
+                                                     Height="{DynamicResource BaseFontSize}"
+                                                     Foreground="{DynamicResource Brush.Semantic.Success}"/>
+                                    </Grid>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock Text="{Binding ImportanceProvenance}" TextWrapping="Wrap"
+                               FontSize="{DynamicResource HelperFontSize}"/>
+                </StackPanel>
+            </Border>
+
+            <views:ModelExplainabilityView DataContext="{Binding Explainability}"/>
+
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

@@ -15,8 +15,8 @@ using Xunit;
 namespace StockAnalyzer.Avalonia.Tests.ViewModels;
 
 /// <summary>
-/// Every plain button of the AI Predictions page takes the theme's Button colours: the "accent" class reads Background / Text / Hover / Pressed from
-/// the Theme page. The add-model-from-file behaviour itself is covered in Tests/ViewModels/AIPredictionsSettingsViewModelTests (real registry).
+/// Every plain button of the Prediction Models page (and the one of the Settings > AI Predictions page) takes the theme's Button colours: the "accent" class reads Background / Text / Hover / Pressed from
+/// the Theme page. The add-model-from-file behaviour itself is covered in Tests/ViewModels/PredictionModelsViewModelTests (real registry).
 /// </summary>
 public sealed class AIPredictionsButtonThemeTests
 {
@@ -26,8 +26,8 @@ public sealed class AIPredictionsButtonThemeTests
         LocalizationManager.Instance.Initialize("en");
         var settings = new Mock<IPredictionSettingsManager>();
         settings.SetupGet(s => s.WindowSize).Returns(PredictionSettingsManager.DefaultWindowSize);
-        using var vm = new AIPredictionsSettingsViewModel(settings.Object, Mock.Of<IClipboardService>(), Mock.Of<IToastNotificationService>());
-        var view = new AIPredictionsSettingsView { DataContext = vm };
+        using var vm = new PredictionModelsViewModel(settings.Object);
+        var view = new PredictionModelsView { DataContext = vm };
         var window = new Window { Content = view };
         window.Show();
         Dispatcher.UIThread.RunJobs();
@@ -35,7 +35,7 @@ public sealed class AIPredictionsButtonThemeTests
         {
             // RepeatButton (the numeric spinners) derives from Button but belongs to those controls, not to the page.
             var buttons = view.GetVisualDescendants().OfType<Button>().Where(b => b.GetType() == typeof(Button)).ToArray();
-            Assert.True(buttons.Length >= 15, "the page's buttons are mounted");
+            Assert.True(buttons.Length >= 9, "the page's buttons are mounted");
             Assert.All(buttons, b => Assert.True(b.Classes.Contains("accent"),
                 $"'{b.Content}' must use the accent class (theme Button Background / Text / Hover / Pressed)"));
             Assert.Contains(buttons, b => Equals(b.Content, LocalizationManager.Instance["Settings_ModelGenerations_AddFile"]));
@@ -54,8 +54,7 @@ public sealed class AIPredictionsButtonThemeTests
         var settings = new Mock<IPredictionSettingsManager>();
         settings.SetupGet(s => s.WindowSize).Returns(PredictionSettingsManager.DefaultWindowSize);
         var theme = new ThemeManager(); // in memory only: nothing here saves
-        using var vm = new AIPredictionsSettingsViewModel(settings.Object, Mock.Of<IClipboardService>(), Mock.Of<IToastNotificationService>(),
-            themeManager: theme);
+        using var vm = new AIPredictionsSettingsViewModel(settings.Object, themeManager: theme);
         var view = new AIPredictionsSettingsView { DataContext = vm };
         var window = new Window { Content = view };
         window.Show();
@@ -79,13 +78,41 @@ public sealed class AIPredictionsButtonThemeTests
     }
 
     [AvaloniaFact]
+    public void TheSettingsPage_HasTheOnnxSetupOnTop_TheParameters_AndAThemedButtonToTheModelsWindow()
+    {
+        LocalizationManager.Instance.Initialize("en");
+        var settings = new Mock<IPredictionSettingsManager>();
+        settings.SetupGet(s => s.WindowSize).Returns(PredictionSettingsManager.DefaultWindowSize);
+        using var vm = new AIPredictionsSettingsViewModel(settings.Object);
+        var view = new AIPredictionsSettingsView { DataContext = vm };
+        var window = new Window { Content = view };
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+        try
+        {
+            var buttons = view.GetVisualDescendants().OfType<Button>().Where(b => b.GetType() == typeof(Button)).ToArray();
+            Assert.All(buttons, b => Assert.True(b.Classes.Contains("accent")));
+            var open = Assert.Single(buttons, b => Equals(b.Content, LocalizationManager.Instance["Settings_AIPredictions_ModelsPointer_Open"]));
+            Assert.Contains(buttons, b => Equals(b.Content, LocalizationManager.Instance["Settings_AIPredictions_Btn_ManualInstall"]));
+            Assert.Equal(3, buttons.Length);   // automatic setup, configure manually, open the models window
+            var titles = view.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text).ToList();
+            var onnx = titles.IndexOf(LocalizationManager.Instance["Settings_AIPredictions_OnnxTitle"]);
+            Assert.True(onnx >= 0 && onnx < titles.IndexOf(LocalizationManager.Instance["Settings_AIPredictions_ModelTitle"]), "the ONNX card is on top of the parameters");
+            Assert.Same(vm.OpenPredictionModelsCommand, open.Command);
+            Assert.Empty(view.GetVisualDescendants().OfType<ListBox>());   // no model list, no ensemble list: those are in the Prediction Models window
+            Assert.Single(view.GetVisualDescendants().OfType<NumericUpDown>(), n => n.Value == PredictionSettingsManager.DefaultWindowSize);
+        }
+        finally { window.Close(); }
+    }
+
+    [AvaloniaFact]
     public void TheEnsembleSectionComesBeforeTheModelDetails()
     {
         LocalizationManager.Instance.Initialize("en");
         var settings = new Mock<IPredictionSettingsManager>();
         settings.SetupGet(s => s.WindowSize).Returns(PredictionSettingsManager.DefaultWindowSize);
-        using var vm = new AIPredictionsSettingsViewModel(settings.Object, Mock.Of<IClipboardService>(), Mock.Of<IToastNotificationService>());
-        var view = new AIPredictionsSettingsView { DataContext = vm };
+        using var vm = new PredictionModelsViewModel(settings.Object);
+        var view = new PredictionModelsView { DataContext = vm };
         var window = new Window { Content = view };
         window.Show();
         Dispatcher.UIThread.RunJobs();
@@ -114,9 +141,9 @@ public sealed class AIPredictionsButtonThemeTests
                 "classification", "daily", 1, 0.2, "rev", false),
             new ModelGenerationSummary(new string('b', 64), "active_model.onnx", "classification", "daily", 1, 0.3, "rev", true),
         });
-        using var vm = new AIPredictionsSettingsViewModel(settings.Object, Mock.Of<IClipboardService>(), Mock.Of<IToastNotificationService>(),
+        using var vm = new PredictionModelsViewModel(settings.Object,
             modelRegistry: registry.Object);
-        var view = new AIPredictionsSettingsView { DataContext = vm };
+        var view = new PredictionModelsView { DataContext = vm };
         var window = new Window { Content = view };
         window.Show();
         Dispatcher.UIThread.RunJobs();

@@ -69,6 +69,16 @@ SMOKE_N_ESTIMATORS: int = 40
 # --- Training -----------------------------------------------------------------
 
 
+def _class_weight_argument(y: np.ndarray, power: float | None):
+    """LightGBM's ``class_weight``: ``"balanced"`` for the default exponent (unchanged), ``None`` for 0, otherwise the weights of ``ds.class_weight_vector``."""
+    exponent = ds.resolve_class_weight_power(power)
+    if exponent == ds.DEFAULT_CLASS_WEIGHT_POWER:
+        return "balanced"
+    if exponent == 0.0:
+        return None
+    return {c: float(w) for c, w in enumerate(ds.class_weight_vector(y, exponent))}
+
+
 def train_booster(args: argparse.Namespace, prepared: composed_training.PreparedComposedData | None = None):
     import lightgbm as lgb
 
@@ -130,7 +140,7 @@ def train_booster(args: argparse.Namespace, prepared: composed_training.Prepared
         subsample=args.subsample,
         subsample_freq=1,
         colsample_bytree=args.colsample_bytree,
-        class_weight="balanced",
+        class_weight=_class_weight_argument(y_tr, args.class_weight_power),
         random_state=args.seed,
         n_jobs=-1,
         verbose=-1,
@@ -309,6 +319,8 @@ def _parse_args(argv) -> argparse.Namespace:
     p.add_argument("--horizon", type=int, default=ds.DEFAULT_HORIZON)
     p.add_argument("--timeframe", choices=tuple(ds.TIMEFRAME_DIRS), default=onnx_meta.DEFAULT_TIMEFRAME)
     p.add_argument("--threshold", type=float, default=ds.DEFAULT_THRESHOLD)
+    p.add_argument("--class-weight-power", type=float, default=None,
+                   help=f"Exponent of the class weights, in [0, 1]: 1 = inverse frequency (default {ds.DEFAULT_CLASS_WEIGHT_POWER}), 0 = unweighted.")
     p.add_argument("--n-estimators", type=int, default=DEFAULT_N_ESTIMATORS)
     p.add_argument("--learning-rate", type=float, default=DEFAULT_LEARNING_RATE)
     p.add_argument("--num-leaves", type=int, default=DEFAULT_NUM_LEAVES)
@@ -342,6 +354,7 @@ def _parse_args(argv) -> argparse.Namespace:
     try:
         ds.bagging_from_args(args)
         cpcv_spec = ds.cpcv_from_args(args)
+        ds.resolve_class_weight_power(args.class_weight_power)
     except ValueError as exc:
         raise SystemExit(str(exc)) from exc
     if cpcv_spec is not None and (args.outer_fold_index is not None or ds.holdout_segment_requested(args)

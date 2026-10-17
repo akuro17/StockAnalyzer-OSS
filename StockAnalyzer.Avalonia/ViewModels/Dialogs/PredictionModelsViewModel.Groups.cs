@@ -16,15 +16,36 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
     /// </summary>
     public sealed class GenerationRow
     {
-        private GenerationRow(ModelGenerationSummary? summary, string headerText, string? groupKey)
+        private GenerationRow(ModelGenerationSummary? summary, string headerText, string? groupKey, bool notBetterThanGuessing, double? reachShare, float reachThreshold,
+            double? reachUpperBound)
         {
             Summary = summary;
             HeaderText = headerText;
             GroupKey = groupKey;
+            NotBetterThanGuessing = notBetterThanGuessing;
+            ReachShare = reachShare;
+            ReachThreshold = reachThreshold;
+            ReachUpperBound = reachUpperBound;
         }
 
-        public static GenerationRow Header(string text) => new(null, text, null);
-        public static GenerationRow Item(ModelGenerationSummary summary, string? groupKey) => new(summary, string.Empty, groupKey);
+        public static GenerationRow Header(string text) => new(null, text, null, false, null, 0f, null);
+        public static GenerationRow Item(ModelGenerationSummary summary, string? groupKey, bool notBetterThanGuessing = false, double? reachShare = null,
+            float reachThreshold = 0f, double? reachUpperBound = null) => new(summary, string.Empty, groupKey, notBetterThanGuessing, reachShare, reachThreshold, reachUpperBound);
+
+        /// <summary>The share of held-out windows whose top probability reaches <see cref="ReachThreshold"/> (see <see cref="ModelConfidenceReach"/>); null when not known.</summary>
+        public double? ReachShare { get; }
+        public float ReachThreshold { get; }
+        /// <summary>The upper bound of the same share (<see cref="ModelConfidenceReach.ShareUpperBound(string, float)"/>); null when not known.</summary>
+        public double? ReachUpperBound { get; }
+        public bool HasReach => ReachShare is not null;
+        /// <summary>Even the upper bound is zero: no held-out window can reach the threshold, so the chart shows Unknown for the model (the same certainty the activation gate needs).</summary>
+        public bool ReachIsZero => ReachUpperBound == 0;
+        public bool HasReachNeutral => HasReach && !ReachIsZero;
+        public string ReachText => ReachShare is { } share ? ModelReachDisplay.ListText(share, ReachThreshold) : string.Empty;
+
+        /// <summary>The evaluation says the model's probabilities are no better than a uniform guess (see <see cref="ModelQualityCheck"/>); false also when that is not known.</summary>
+        public bool NotBetterThanGuessing { get; }
+        public string QualityHint => NotBetterThanGuessing ? LocalizationManager.Instance["Settings_ModelGenerations_Quality_NotBetter"] : string.Empty;
 
         public ModelGenerationSummary? Summary { get; }
         public string HeaderText { get; }
@@ -52,13 +73,14 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
             Line("Settings_ModelGenerations_Tip_Horizon", Summary.Horizon),
             Line("Settings_ModelGenerations_Tip_Score", Summary.MetricName, Summary.Score),
             LocalizationManager.Instance[Summary.IsActive ? "Settings_ModelGenerations_Tip_Active" : "Settings_ModelGenerations_Tip_NotActive"],
-        });
+        }.Concat(NotBetterThanGuessing ? new[] { LocalizationManager.Instance["Settings_ModelGenerations_Tip_Quality"] } : Array.Empty<string>())
+            .Concat(HasReach ? new[] { ReachText } : Array.Empty<string>()));
 
         private static string Line(string key, params object[] arguments) =>
             string.Format(System.Globalization.CultureInfo.CurrentCulture, LocalizationManager.Instance[key], arguments);
     }
 
-    public partial class AIPredictionsSettingsViewModel
+    public partial class PredictionModelsViewModel
     {
         private long _groupingRevision;
         private bool _rebuildingRows;
@@ -77,19 +99,22 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
 
         /// <summary>
         /// The check box of a row: the same as selecting the row and pressing the activation button (activate it, or deactivate it when it is the active
-        /// one), so every rule, warning and confirmation of the button applies. The box always shows the registry state, so the rows are built again
-        /// afterwards, also when the request was refused or still waits for a confirmation.
+        /// one), so every rule of the button applies. The box always shows the registry state, so the rows are built again afterwards, also when the
+        /// request was refused.
         /// </summary>
         [RelayCommand]
         private async Task ToggleGenerationRowActivationAsync(GenerationRow? row)
         {
             if (row?.Summary is not { } summary) return;
+            var activeBefore = _modelRegistry?.ActiveId;
             try
             {
                 SelectedGeneration = summary;
                 await ToggleGenerationActivationAsync();
             }
             finally { RebuildGenerationRows(); }
+            // The owner ticked the box to change what the chart predicts with: say what the chart shows now, in the footer.
+            if (_modelRegistry?.ActiveId != activeBefore) await RunPredictionAsync();
         }
 
         partial void OnSelectedGenerationRowChanged(GenerationRow? value)
@@ -122,12 +147,21 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
             var registry = _modelRegistry;
             if (registry is null || summaries.Length == 0) { GenerationGroupingTask = Task.CompletedTask; return; }
 
-            (ModelGenerationSummary Summary, EnsembleCompatibility? Compatibility)[] Describe() => summaries.Select(s =>
-                (Summary: s, Compatibility: registry.GetManifest(s.ModelId) is { } manifest ? EnsembleSettingsManager.Describe(manifest, registry) : null)).ToArray();
-            void Publish((ModelGenerationSummary Summary, EnsembleCompatibility? Compatibility)[] described)
+            float? threshold = _settings?.PredictionConfidenceThreshold;
+            (ModelGenerationSummary Summary, EnsembleCompatibility? Compatibility, bool NotBetter, double? Reach, double? ReachUpper)[] Describe() => summaries.Select(s =>
+            {
+                if (registry.GetManifest(s.ModelId) is not { } manifest)
+                    return (Summary: s, Compatibility: (EnsembleCompatibility?)null, NotBetter: false, Reach: (double?)null, ReachUpper: (double?)null);
+                var evaluation = ModelEvaluationSummary.Read(manifest, registry);   // the metrics file is read once for the three facts below
+                return (Summary: s, Compatibility: EnsembleSettingsManager.Describe(manifest, registry),
+                    NotBetter: ModelQualityCheck.IsNotBetterThanUniform(evaluation, manifest.ClassOrder) == true,
+                    Reach: threshold is { } t ? evaluation.Reach?.ShareAtOrAbove(t) : null,
+                    ReachUpper: threshold is { } u ? evaluation.Reach?.ShareUpperBound(u) : null);
+            }).ToArray();
+            void Publish((ModelGenerationSummary Summary, EnsembleCompatibility? Compatibility, bool NotBetter, double? Reach, double? ReachUpper)[] described)
             {
                 if (_isDisposed || revision != _groupingRevision) return;
-                ReplaceRows(BuildGroupedRows(described));
+                ReplaceRows(BuildGroupedRows(described, threshold ?? 0f));
             }
 
             // With a UI dispatcher the contracts are read on a worker thread (each is an ONNX metadata read, cached per generation) and published on
@@ -162,7 +196,7 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
         }
 
         private IEnumerable<GenerationRow> BuildGroupedRows(
-            IReadOnlyList<(ModelGenerationSummary Summary, EnsembleCompatibility? Compatibility)> described)
+            IReadOnlyList<(ModelGenerationSummary Summary, EnsembleCompatibility? Compatibility, bool NotBetter, double? Reach, double? ReachUpper)> described, float reachThreshold)
         {
             var groups = described.Where(d => d.Compatibility is not null)
                 .GroupBy(d => d.Compatibility!.Key)
@@ -173,7 +207,7 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
             {
                 yield return GenerationRow.Header(GroupHeader(group.First().Compatibility!, group.Count()));
                 foreach (var member in group.OrderBy(d => d.Summary.ModelFile, StringComparer.Ordinal).ThenBy(d => d.Summary.ModelId, StringComparer.Ordinal))
-                    yield return GenerationRow.Item(member.Summary, group.Key);
+                    yield return GenerationRow.Item(member.Summary, group.Key, member.NotBetter, member.Reach, reachThreshold, member.ReachUpper);
             }
 
             var others = described.Where(d => d.Compatibility is null)
@@ -181,7 +215,7 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
             if (others.Length == 0) yield break;
             yield return GenerationRow.Header(string.Format(System.Globalization.CultureInfo.CurrentCulture,
                 LocalizationManager.Instance["Settings_ModelGenerations_Group_NotCapable"], others.Length));
-            foreach (var other in others) yield return GenerationRow.Item(other.Summary, null);
+            foreach (var other in others) yield return GenerationRow.Item(other.Summary, null, other.NotBetter, other.Reach, reachThreshold, other.ReachUpper);
         }
 
         private static string GroupHeader(EnsembleCompatibility group, int count)

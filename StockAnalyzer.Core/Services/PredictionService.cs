@@ -243,8 +243,23 @@ public class PredictionService : IPredictionService, IDisposable
             .Build();
     }
 
+    /// <summary>
+    /// Lets go of the loaded generation when it is no longer the active one. <see cref="AcquireRuntime"/> already refuses such a runtime, but its lease
+    /// would keep the generation "in use" until another one loaded, so a deactivated or replaced generation could not be removed from the registry.
+    /// </summary>
+    public void ReleaseInactiveRuntime()
+    {
+        lock (_inferenceGate)
+        {
+            if (_disposed || _runtime is not { } runtime || runtime.ModelId == _modelRegistry?.ActiveId) return;
+            _runtime = null;
+            Retire(runtime);
+        }
+    }
+
     public async Task InitializeAsync()
     {
+        ReleaseInactiveRuntime();
         var activeId = _modelRegistry?.ActiveId;
         if ((_runtime != null && _runtime.ModelId == activeId)
             || IsPermanentFailure(activeId)) return;
@@ -307,7 +322,12 @@ public class PredictionService : IPredictionService, IDisposable
         {
             var inputName = ResolveNodeName(session.InputMetadata.Keys, _settings.PredictionInputNodeName);
             var outputName = ResolveNodeName(session.OutputMetadata.Keys, _settings.PredictionOutputNodeName);
-            var mode = _settings.PredictionFeatureMode;
+            var metadata = session.ModelMetadata.CustomMetadataMap;
+            // A composed-features model carries its own channel list in its metadata and is preprocessed with that one: the configuration cannot describe
+            // it (no screen sets a feature spec), so it does not decide. Every other feature mode is still checked against the configured one below.
+            var ownComposed = PredictionModelMetadata.ParseFeatureMode(metadata.GetValueOrDefault(PredictionModelMetadata.FeatureModeKey))
+                == PredictionFeatureMode.ComposedFeatures;
+            var mode = ownComposed ? PredictionFeatureMode.ComposedFeatures : _settings.PredictionFeatureMode;
             var window = _settings.PredictionWindowSize;
             var classLabels = _settings.PredictionClassLabels.ToArray();
             var maxTensorBytes = (long)_settings.PredictionMaxComposedTensorSizeMB * 1024 * 1024;
@@ -332,12 +352,12 @@ public class PredictionService : IPredictionService, IDisposable
             if (mode == PredictionFeatureMode.ComposedFeatures)
             {
                 featureSpec = CopyFeatureSpec(ValidateComposedFeatureSpec(
-                    _settings.PredictionFeatureSpec, _settings.PredictionMaxComposedChannels, _indicatorFactory));
+                    ownComposed ? PredictionModelMetadata.ReadOwnFeatureContract(metadata).Spec : _settings.PredictionFeatureSpec,
+                    _settings.PredictionMaxComposedChannels, _indicatorFactory));
                 expectedFeatureSpecJson = System.Text.Json.JsonSerializer.Serialize(
                     featureSpec, TrainingConfigJson.Options);
             }
 
-            var metadata = session.ModelMetadata.CustomMetadataMap;
             var outputContract = PredictionModelMetadata.ReadOutputContract(metadata);
             var target = outputContract.Semantic switch
             {

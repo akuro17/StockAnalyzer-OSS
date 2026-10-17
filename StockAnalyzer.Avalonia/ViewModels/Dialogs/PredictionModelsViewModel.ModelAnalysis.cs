@@ -15,7 +15,7 @@ public sealed record ImportanceDisplayRow(string Channel, string Display, double
     public double ScaleMaximum => StockAnalyzer.Core.Models.Training.ModelAnalysisContract.PercentScale;
 }
 
-public partial class AIPredictionsSettingsViewModel
+public partial class PredictionModelsViewModel
 {
     private readonly IModelAnalysisService? _modelAnalysisService;
     private readonly IDispatcherService? _analysisDispatcher;

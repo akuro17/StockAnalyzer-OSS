@@ -25,6 +25,9 @@ MODES = ("fresh", "fine_tune", "resume")
 # Architecture options that exist for ONE architecture only (T24a attn_lstm heads). Set (not None) they join the checkpoint contract and the training config;
 # unset they are absent, so every contract and training config written before they existed compares byte-identically.
 OPTIONAL_ARCH_KEYS = ("heads",)
+# Recipe options with a default that means "as before" (class-weight exponent). Unset (None) they are absent from the training config, so every config written
+# before they existed compares byte-identically; set, they join it (a resume with another value is a different recipe).
+OPTIONAL_RECIPE_KEYS = ("class_weight_power",)
 _HASH = re.compile(r"[0-9a-f]{64}\Z")
 _RUN = re.compile(r"[A-Za-z0-9_-]+\Z")
 _MODULE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*(?:\.(?:[A-Za-z_][A-Za-z0-9_]*|[0-9]+))*\Z")
@@ -242,7 +245,7 @@ class Session:
         ignored.add("preflight")
         ignored.update(semi_supervised.ARGUMENT_KEYS)  # T19 options never change the checkpoint contract of an existing run
         config = {key: value for key, value in vars(args).items() if key not in ignored
-                  and not key.startswith("_") and not (key in OPTIONAL_ARCH_KEYS and value is None)}
+                  and not key.startswith("_") and not (key in OPTIONAL_ARCH_KEYS + OPTIONAL_RECIPE_KEYS and value is None)}
         config = json.loads(canonical(config))
         run_id = args.run_id
         if not run_id and self.mode == "resume":

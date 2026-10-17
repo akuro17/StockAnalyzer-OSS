@@ -109,10 +109,10 @@ public sealed partial class RlUiTests
         Assert.True(vm.SelectedModelHasNoWorkFolder); Assert.False(vm.CanRemoveSelectedModel);
     }
 
-    private static async Task<RlPlaybackSettingsViewModel> PlaybackPage(EmptyRegistry registry, IDialogService? dialogs)
+    private static async Task<RlPlaybackViewModel> PlaybackPage(EmptyRegistry registry, IDialogService? dialogs)
     {
         var data = new PlaybackData(registry);
-        var vm = new RlPlaybackSettingsViewModel(registry, data, new RecordingReplayTarget(), StockAnalyzer.Core.Interfaces.NullLocalizationService.Instance,
+        var vm = new RlPlaybackViewModel(registry, data, new RecordingReplayTarget(), StockAnalyzer.Core.Interfaces.NullLocalizationService.Instance,
             new SynchronousDispatcherService(), dialogService: dialogs);
         await vm.RefreshCommand.ExecuteAsync(null);
         await PlaybackUntil(() => vm.ModelsState != RlDialogLoadState.Loading && vm.BlocksState != RlDialogLoadState.Loading);
