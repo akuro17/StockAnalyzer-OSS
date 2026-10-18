@@ -19,7 +19,7 @@ public class CoreTrixParameter : CoreIndicatorParameterBase
 
     public override string GetDisplayName(string type) => $"{type} ({Period})";
 
-    public override int GetRequiredWarmupBars() => 3 * Period - 1;
+    public override int GetRequiredWarmupBars() => Period * 9 + 1;
 
     public override void Validate()
     {

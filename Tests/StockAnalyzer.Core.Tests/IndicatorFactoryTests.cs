@@ -175,5 +175,21 @@ public class IndicatorFactoryTests
         Assert.NotNull(factory.Create(IndicatorType.Highest));
         Assert.NotNull(factory.Create(IndicatorType.Lowest));
     }
+
+    [Theory]
+    [InlineData(IndicatorType.Garch11)]
+    [InlineData(IndicatorType.Entropy)]
+    [InlineData(IndicatorType.HurstExponent)]
+    public void UnimplementedStubIndicators_AreNotRegisteredInFactoryAndBlockedInCatalog(IndicatorType stubType)
+    {
+        IIndicatorFactory factory = new IndicatorFactory();
+
+        Assert.False(factory.IsRegistered(stubType));
+        Assert.Null(factory.Create(stubType));
+
+        var catalogProvider = new StockAnalyzer.Core.Services.ScreenerCatalogProvider();
+        var catalogItems = catalogProvider.GetCatalogItems(factory);
+        Assert.DoesNotContain(catalogItems, item => item.IndicatorType == stubType);
+    }
 }
 

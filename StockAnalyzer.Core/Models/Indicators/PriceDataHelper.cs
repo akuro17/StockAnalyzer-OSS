@@ -347,6 +347,85 @@ public static class PriceDataHelper
     }
 
     /// <summary>
+    /// Extracts a price series from secondary candles aligned to primary candles by calendar date without look-ahead or truncation.
+    /// Preserves chronological order and length parity with primary candles.
+    /// </summary>
+    public static List<decimal?> ExtractDateAlignedPriceSeries(
+        IReadOnlyList<CoreCandleData> primaryCandles,
+        IReadOnlyList<CoreCandleData?>? secondaryCandles,
+        PriceType priceType)
+    {
+        if (primaryCandles == null || primaryCandles.Count == 0)
+        {
+            return new List<decimal?>();
+        }
+
+        if (secondaryCandles == null || secondaryCandles.Count == 0)
+        {
+            var nulls = new List<decimal?>(primaryCandles.Count);
+            for (int i = 0; i < primaryCandles.Count; i++)
+            {
+                nulls.Add(null);
+            }
+            return nulls;
+        }
+
+        // Fast-path: Check if secondaryCandles is already 1:1 aligned with primaryCandles
+        if (secondaryCandles.Count == primaryCandles.Count)
+        {
+            bool matches = true;
+            for (int i = 0; i < primaryCandles.Count; i++)
+            {
+                var sc = secondaryCandles[i];
+                if (sc != null)
+                {
+                    var sDate = sc.Timestamp.Date;
+                    var pDate = primaryCandles[i].Timestamp.Date;
+                    if (sDate != pDate && sc.Timestamp != default && primaryCandles[i].Timestamp != default)
+                    {
+                        matches = false;
+                        break;
+                    }
+                }
+            }
+
+            if (matches)
+            {
+                return ExtractPriceSeries(secondaryCandles, priceType);
+            }
+        }
+
+        // Exact Date-Match Dictionary Lookup (O(N + M))
+        var lookup = new Dictionary<DateTime, CoreCandleData>(secondaryCandles.Count);
+        for (int i = 0; i < secondaryCandles.Count; i++)
+        {
+            var sc = secondaryCandles[i];
+            if (sc != null && sc.Timestamp != default)
+            {
+                lookup.TryAdd(sc.Timestamp.Date, sc);
+            }
+        }
+
+        var result = new List<decimal?>(primaryCandles.Count);
+        for (int i = 0; i < primaryCandles.Count; i++)
+        {
+            if (lookup.TryGetValue(primaryCandles[i].Timestamp.Date, out var matched))
+            {
+                decimal? prevClose = (i > 0 && lookup.TryGetValue(primaryCandles[i - 1].Timestamp.Date, out var prevMatched))
+                    ? prevMatched.Close
+                    : null;
+                result.Add(ExtractPrice(matched, priceType, prevClose));
+            }
+            else
+            {
+                result.Add(null);
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>
     /// Extracts a nullable price series (IReadOnlyList<decimal?>) from CandleData.
     /// </summary>
     public static List<decimal?> ExtractPriceSeries(IReadOnlyList<CandleData>? candles, PriceType priceType = PriceType.Close)

@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+using System.Linq;
 using StockAnalyzer.Core.Models.Parameters;
 
 namespace StockAnalyzer.Core.Models.Indicators.Oscillators;
@@ -8,6 +10,10 @@ public class CoreSmiIndicator : CoreIndicatorBase
     public int Period { get; set; } = 14;
     public int Smooth1 { get; set; } = 5;
     public int Smooth2 { get; set; } = 3;
+    public int SignalPeriod { get; set; } = 5;
+
+    private readonly List<decimal?> _signalLine = new();
+    public IReadOnlyList<decimal?> SignalLine => _signalLine;
 
     public override string Name => $"SMI ({Period}, {Smooth1}, {Smooth2})";
 
@@ -18,35 +24,41 @@ public class CoreSmiIndicator : CoreIndicatorBase
             Period = p.Period;
             Smooth1 = p.Smooth1;
             Smooth2 = p.Smooth2;
+            SignalPeriod = p.SignalPeriod;
         }
     }
 
     protected override IIndicatorResult CalculateCore(IReadOnlyList<CoreCandleData> candles)
     {
+        _values.Clear();
+        _signalLine.Clear();
 
-        if (candles == null) return IndicatorResult.Success(_values);
-        // A rough estimate for the minimum number of candles required.
+        if (candles == null || candles.Count == 0) return CreateAutomaticResult();
+
         int requiredCandles = Period + Smooth1 + Smooth2;
         if (candles.Count < requiredCandles)
         {
-             _values.AddRange(Enumerable.Repeat<decimal?>(null, candles.Count));
-            return IndicatorResult.Success(_values);
+            for (int i = 0; i < candles.Count; i++)
+            {
+                _values.Add(null);
+                _signalLine.Add(null);
+            }
+            return CreateAutomaticResult();
         }
 
-        // 1. Calculate Highest High (HH) and Lowest Low (LL) over the period
-        var hh = new List<decimal?>();
-        var ll = new List<decimal?>();
+        var dValues = new List<decimal?>(candles.Count);
+        var hlValues = new List<decimal?>(candles.Count);
 
         for (int i = 0; i < candles.Count; i++)
         {
             if (i < Period - 1)
             {
-                hh.Add(null);
-                ll.Add(null);
+                dValues.Add(null);
+                hlValues.Add(null);
             }
             else
             {
-                decimal maxHigh = 0;
+                decimal maxHigh = decimal.MinValue;
                 decimal minLow = decimal.MaxValue;
                 for (int j = 0; j < Period; j++)
                 {
@@ -54,40 +66,30 @@ public class CoreSmiIndicator : CoreIndicatorBase
                     if (c.High > maxHigh) maxHigh = c.High;
                     if (c.Low < minLow) minLow = c.Low;
                 }
-                hh.Add(maxHigh);
-                ll.Add(minLow);
+                decimal d = (maxHigh + minLow) / 2m;
+                dValues.Add(candles[i].Close - d);
+                hlValues.Add(maxHigh - minLow);
             }
         }
 
-        // 2. Calculate Intermediate values
-        var closeMinusD = new List<decimal?>();
-        var halfHl = new List<decimal?>();
+        var ema1D = IndicatorCalculationHelper.CalculateEmaWithNulls(dValues, Smooth1);
+        var ema2D = IndicatorCalculationHelper.CalculateEmaWithNulls(ema1D, Smooth2);
+        var ema1Hl = IndicatorCalculationHelper.CalculateEmaWithNulls(hlValues, Smooth1);
+        var ema2Hl = IndicatorCalculationHelper.CalculateEmaWithNulls(ema1Hl, Smooth2);
 
         for (int i = 0; i < candles.Count; i++)
         {
-            if (hh[i].HasValue && ll[i].HasValue)
+            if (ema2D[i].HasValue && ema2Hl[i].HasValue)
             {
-                var d = (hh[i]!.Value + ll[i]!.Value) / 2;
-                closeMinusD.Add(candles[i].Close - d);
-                halfHl.Add((hh[i]!.Value - ll[i]!.Value) / 2);
-            }
-            else
-            {
-                closeMinusD.Add(null);
-                halfHl.Add(null);
-            }
-        }
-
-        // 3. Double-smooth the results
-        var ds = Ema(Ema(closeMinusD, Smooth1), Smooth2);
-        var dhl = Ema(Ema(halfHl, Smooth1), Smooth2);
-
-        // 4. Calculate final SMI
-        for (int i = 0; i < candles.Count; i++)
-        {
-            if (dhl[i].HasValue && dhl[i] != 0 && ds[i].HasValue)
-            {
-                _values.Add(100 * (ds[i]!.Value / dhl[i]!.Value));
+                decimal halfHl = 0.5m * ema2Hl[i]!.Value;
+                if (halfHl == 0m)
+                {
+                    _values.Add(0m);
+                }
+                else
+                {
+                    _values.Add(100m * (ema2D[i]!.Value / halfHl));
+                }
             }
             else
             {
@@ -95,41 +97,100 @@ public class CoreSmiIndicator : CoreIndicatorBase
             }
         }
 
-        return IndicatorResult.Success(_values);
+        var signal = IndicatorCalculationHelper.CalculateEmaWithNulls(_values, SignalPeriod);
+        _signalLine.AddRange(signal);
+
+        return CreateAutomaticResult();
     }
 
-    private static List<decimal?> Ema(IReadOnlyList<decimal?> data, int period)
+    protected override IIndicatorResult CalculateSeriesCore(IReadOnlyList<decimal?> series, IReadOnlyList<decimal?>? dynamicPeriods = null)
     {
-        var emaValues = new List<decimal?>(new decimal?[data.Count]);
-        if (data.Count < period || period <= 0) return Enumerable.Repeat<decimal?>(null, data.Count).ToList();
+        _values.Clear();
+        _signalLine.Clear();
 
-        decimal multiplier = 2.0m / (period + 1);
-        decimal? prevEma = null;
+        if (series == null || series.Count == 0) return CreateAutomaticResult();
 
-        for (int i = 0; i < data.Count; i++)
+        int requiredCandles = Period + Smooth1 + Smooth2;
+        if (series.Count < requiredCandles)
         {
-            if (prevEma == null)
+            for (int i = 0; i < series.Count; i++)
             {
-                // Try to seed the EMA with an SMA over the first valid window
-                if (i >= period - 1)
+                _values.Add(null);
+                _signalLine.Add(null);
+            }
+            return CreateAutomaticResult();
+        }
+
+        var dValues = new List<decimal?>(series.Count);
+        var hlValues = new List<decimal?>(series.Count);
+
+        for (int i = 0; i < series.Count; i++)
+        {
+            if (i < Period - 1)
+            {
+                dValues.Add(null);
+                hlValues.Add(null);
+            }
+            else
+            {
+                decimal maxHigh = decimal.MinValue;
+                decimal minLow = decimal.MaxValue;
+                bool hasNull = false;
+
+                for (int j = 0; j < Period; j++)
                 {
-                    var window = data.Skip(i - period + 1).Take(period).ToList();
-                    if (window.All(v => v.HasValue))
+                    var val = series[i - j];
+                    if (!val.HasValue)
                     {
-                        prevEma = window.Average(v => v!.Value);
+                        hasNull = true;
+                        break;
                     }
+                    if (val.Value > maxHigh) maxHigh = val.Value;
+                    if (val.Value < minLow) minLow = val.Value;
+                }
+
+                if (hasNull || !series[i].HasValue)
+                {
+                    dValues.Add(null);
+                    hlValues.Add(null);
+                }
+                else
+                {
+                    decimal d = (maxHigh + minLow) / 2m;
+                    dValues.Add(series[i]!.Value - d);
+                    hlValues.Add(maxHigh - minLow);
+                }
+            }
+        }
+
+        var ema1D = IndicatorCalculationHelper.CalculateEmaWithNulls(dValues, Smooth1);
+        var ema2D = IndicatorCalculationHelper.CalculateEmaWithNulls(ema1D, Smooth2);
+        var ema1Hl = IndicatorCalculationHelper.CalculateEmaWithNulls(hlValues, Smooth1);
+        var ema2Hl = IndicatorCalculationHelper.CalculateEmaWithNulls(ema1Hl, Smooth2);
+
+        for (int i = 0; i < series.Count; i++)
+        {
+            if (ema2D[i].HasValue && ema2Hl[i].HasValue)
+            {
+                decimal halfHl = 0.5m * ema2Hl[i]!.Value;
+                if (halfHl == 0m)
+                {
+                    _values.Add(0m);
+                }
+                else
+                {
+                    _values.Add(100m * (ema2D[i]!.Value / halfHl));
                 }
             }
             else
             {
-                // Update EMA if we have a current value, otherwise carry over the previous EMA
-                if (data[i].HasValue)
-                {
-                    prevEma = (data[i]!.Value - prevEma!.Value) * multiplier + prevEma!.Value;
-                }
+                _values.Add(null);
             }
-            emaValues[i] = prevEma;
         }
-        return emaValues;
+
+        var signal = IndicatorCalculationHelper.CalculateEmaWithNulls(_values, SignalPeriod);
+        _signalLine.AddRange(signal);
+
+        return CreateAutomaticResult();
     }
 }

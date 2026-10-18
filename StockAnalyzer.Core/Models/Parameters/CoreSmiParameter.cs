@@ -38,14 +38,26 @@ public class CoreSmiParameter : CoreIndicatorParameterBase
         set => SetProperty(ref _smooth2, value);
     }
 
+    private int _signalPeriod = 5;
+
+    [DisplayName("Signal Period")]
+    [Description("Signal line EMA period for SMI.")]
+    [CoreParameterRange(1, 1000)]
+    public int SignalPeriod
+    {
+        get => _signalPeriod;
+        set => SetProperty(ref _signalPeriod, value);
+    }
+
     public override string GetDisplayName(string type) => $"{type} ({Period}, {Smooth1}, {Smooth2})";
 
-    public override int GetRequiredWarmupBars() => Period + Smooth1 + Smooth2 - 2;
+    public override int GetRequiredWarmupBars() => Period + (Smooth1 + Smooth2 + SignalPeriod) * 3;
 
     public override void Validate()
     {
         if (Period <= 0) throw new ArgumentOutOfRangeException(nameof(Period));
         if (Smooth1 <= 0) throw new ArgumentOutOfRangeException(nameof(Smooth1));
         if (Smooth2 <= 0) throw new ArgumentOutOfRangeException(nameof(Smooth2));
+        if (SignalPeriod <= 0) throw new ArgumentOutOfRangeException(nameof(SignalPeriod));
     }
 }

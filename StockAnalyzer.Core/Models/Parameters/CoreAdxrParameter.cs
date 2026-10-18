@@ -29,6 +29,8 @@ public class CoreAdxrParameter : CoreIndicatorParameterBase
 
     public override string GetDisplayName(string type) => $"{type} ({Period}, {AdxrPeriod})";
 
+    public override int GetRequiredWarmupBars() => Period * 5;
+
     public override void Validate()
     {
         if (Period <= 0) throw new ArgumentOutOfRangeException(nameof(Period));

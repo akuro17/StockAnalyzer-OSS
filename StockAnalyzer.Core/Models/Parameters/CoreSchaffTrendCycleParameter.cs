@@ -39,9 +39,20 @@ namespace StockAnalyzer.Core.Models.Parameters
             set => SetProperty(ref _longPeriod, value);
         }
 
+        private int _smoothPeriod = 3;
+
+        [DisplayName("Smooth Period")]
+        [Description("EMA smoothing period applied to each MACD-stochastic pass.")]
+        [CoreParameterRange(1, 50)]
+        public int SmoothPeriod
+        {
+            get => _smoothPeriod;
+            set => SetProperty(ref _smoothPeriod, value);
+        }
+
         public override string GetDisplayName(string type) => $"{type} ({CyclePeriod},{ShortPeriod},{LongPeriod})";
 
-        public override int GetRequiredWarmupBars() => Math.Max(CyclePeriod, LongPeriod);
+        public override int GetRequiredWarmupBars() => (LongPeriod + CyclePeriod) * 3;
 
         public override void Validate()
         {
@@ -49,6 +60,8 @@ namespace StockAnalyzer.Core.Models.Parameters
                  throw new ArgumentOutOfRangeException("Periods must be 2 or greater");
             if (ShortPeriod >= LongPeriod)
                  throw new ArgumentException("ShortPeriod must be less than LongPeriod");
+            if (SmoothPeriod < 1)
+                 throw new ArgumentOutOfRangeException(nameof(SmoothPeriod), "SmoothPeriod must be 1 or greater");
         }
     }
 }

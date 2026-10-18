@@ -2,7 +2,7 @@ using StockAnalyzer.Core.Models.Parameters;
 
 namespace StockAnalyzer.Core.Models.Indicators.Advanced;
 
-[StockAnalyzerIndicator(IndicatorType.Garch11)]
+// [StockAnalyzerIndicator(IndicatorType.Garch11)] // Unimplemented stub
 public class CoreGarch11Indicator : CoreIndicatorBase
 {
     public override string Name => "GARCH(1,1)";

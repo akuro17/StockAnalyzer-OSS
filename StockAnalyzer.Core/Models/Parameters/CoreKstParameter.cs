@@ -105,6 +105,8 @@ public class CoreKstParameter : CoreIndicatorParameterBase
 
     public override string GetDisplayName(string type) => $"{type}";
 
+    public override int GetRequiredWarmupBars() => Math.Max(Math.Max(Roc1 + Sma1, Roc2 + Sma2), Math.Max(Roc3 + Sma3, Roc4 + Sma4));
+
     public override void Validate()
     {
         if (Roc1 <= 0 || Roc2 <= 0 || Roc3 <= 0 || Roc4 <= 0) throw new ArgumentOutOfRangeException("Roc Periods must be positive");

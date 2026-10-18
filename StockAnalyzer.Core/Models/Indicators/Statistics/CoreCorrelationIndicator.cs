@@ -10,6 +10,7 @@ public class CoreCorrelationIndicator : CoreIndicatorBase, ICrossTickerIndicator
 {
     private int _period = IndicatorDefaultConstants.CorrelationPeriod;
     private readonly IReadOnlyList<decimal?>? _explicitSeriesB;
+    private readonly IReadOnlyList<CoreCandleData?>? _explicitCandlesB;
     private IReadOnlyList<CoreCandleData?>? _secondaryCandles;
 
     public int Period
@@ -48,6 +49,7 @@ public class CoreCorrelationIndicator : CoreIndicatorBase, ICrossTickerIndicator
     public CoreCorrelationIndicator(int period, IEnumerable<CoreCandleData> seriesB)
     {
         _period = period;
+        _explicitCandlesB = seriesB?.Select(c => (CoreCandleData?)c).ToList();
         _explicitSeriesB = seriesB?.Select(c => (decimal?)c.Close).ToList();
     }
 
@@ -98,8 +100,12 @@ public class CoreCorrelationIndicator : CoreIndicatorBase, ICrossTickerIndicator
         {
             if (_secondaryCandles != null && _secondaryCandles.Count > 0)
             {
-                // Cross-ticker comparison: Primary Price vs Secondary Price
-                seriesB = PriceDataHelper.ExtractPriceSeries(_secondaryCandles, ComparisonPriceSource);
+                // Cross-ticker comparison: Primary Price vs Secondary Price with date alignment
+                seriesB = PriceDataHelper.ExtractDateAlignedPriceSeries(candles, _secondaryCandles, ComparisonPriceSource);
+            }
+            else if (_explicitCandlesB != null && _explicitCandlesB.Count > 0)
+            {
+                seriesB = PriceDataHelper.ExtractDateAlignedPriceSeries(candles, _explicitCandlesB, ComparisonPriceSource);
             }
             else if (_explicitSeriesB != null)
             {
@@ -116,6 +122,10 @@ public class CoreCorrelationIndicator : CoreIndicatorBase, ICrossTickerIndicator
                 }
                 return IndicatorResult.Success(_values);
             }
+        }
+        else if (_explicitCandlesB != null && _explicitCandlesB.Count > 0)
+        {
+            seriesB = PriceDataHelper.ExtractDateAlignedPriceSeries(candles, _explicitCandlesB, ComparisonPriceSource);
         }
         else if (_explicitSeriesB != null)
         {

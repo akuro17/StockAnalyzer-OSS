@@ -1,7 +1,6 @@
-using StockAnalyzer.Core.Models.Parameters;
 using System;
 using System.Collections.Generic;
-using System.Linq;
+using StockAnalyzer.Core.Models.Parameters;
 
 namespace StockAnalyzer.Core.Models.Indicators.Volume
 {
@@ -23,38 +22,41 @@ namespace StockAnalyzer.Core.Models.Indicators.Volume
 
         protected override IIndicatorResult CalculateCore(IReadOnlyList<CoreCandleData> candles)
         {
+            _values.Clear();
+            if (candles == null || candles.Count == 0) return IndicatorResult.Success(_values);
+
+            int minRequired = Math.Max(FastPeriod, SlowPeriod);
+            if (candles.Count < minRequired || minRequired <= 0)
+            {
+                for (int i = 0; i < candles.Count; i++) _values.Add(null);
+                return IndicatorResult.Success(_values);
+            }
 
             // Calculate ADL first
-            var adl = new List<decimal>();
-            decimal adlValue = 0;
+            var adl = new List<decimal?>(candles.Count);
+            decimal adlValue = 0m;
             foreach (var c in candles)
             {
                 decimal range = c.High - c.Low;
-                decimal mfm = range == 0 ? 0 : ((c.Close - c.Low) - (c.High - c.Close)) / range;
+                decimal mfm = range == 0m ? 0m : ((c.Close - c.Low) - (c.High - c.Close)) / range;
                 adlValue += mfm * c.Volume;
                 adl.Add(adlValue);
             }
 
             // EMA of ADL
-            decimal fastMult = 2m / (FastPeriod + 1);
-            decimal slowMult = 2m / (SlowPeriod + 1);
-            decimal? fastEma = null, slowEma = null;
+            var fastEma = IndicatorCalculationHelper.CalculateEmaWithNulls(adl, FastPeriod);
+            var slowEma = IndicatorCalculationHelper.CalculateEmaWithNulls(adl, SlowPeriod);
 
-            for (int i = 0; i < adl.Count; i++)
+            for (int i = 0; i < candles.Count; i++)
             {
-                if (i < SlowPeriod - 1) { _values.Add(null); continue; }
-
-                if (fastEma == null)
+                if (fastEma[i].HasValue && slowEma[i].HasValue)
                 {
-                    fastEma = adl.Skip(i - FastPeriod + 1).Take(FastPeriod).Average();
-                    slowEma = adl.Skip(i - SlowPeriod + 1).Take(SlowPeriod).Average();
+                    _values.Add(fastEma[i]!.Value - slowEma[i]!.Value);
                 }
                 else
                 {
-                    fastEma = (adl[i] - fastEma!.Value) * fastMult + fastEma!.Value;
-                    slowEma = (adl[i] - slowEma!.Value) * slowMult + slowEma!.Value;
+                    _values.Add(null);
                 }
-                _values.Add(fastEma - slowEma);
             }
 
             return IndicatorResult.Success(_values);

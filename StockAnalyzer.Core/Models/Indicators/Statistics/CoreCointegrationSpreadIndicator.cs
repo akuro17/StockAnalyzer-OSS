@@ -18,6 +18,7 @@ public class CoreCointegrationSpreadIndicator : CoreIndicatorBase, ICrossTickerI
     private int _period = IndicatorDefaultConstants.CointegrationSpreadPeriod;
     private int _zScorePeriod = IndicatorDefaultConstants.CointegrationSpreadZScorePeriod;
     private readonly IReadOnlyList<decimal?>? _explicitSeriesB;
+    private readonly IReadOnlyList<CoreCandleData?>? _explicitCandlesB;
     private IReadOnlyList<CoreCandleData?>? _secondaryCandles;
 
     public int Period
@@ -84,6 +85,7 @@ public class CoreCointegrationSpreadIndicator : CoreIndicatorBase, ICrossTickerI
     {
         _period = period;
         _zScorePeriod = IndicatorDefaultConstants.CointegrationSpreadZScorePeriod;
+        _explicitCandlesB = comparisonSeries?.Select(c => (CoreCandleData?)c).ToList();
         _explicitSeriesB = comparisonSeries?.Select(c => (decimal?)c.Close).ToList();
     }
 
@@ -98,6 +100,7 @@ public class CoreCointegrationSpreadIndicator : CoreIndicatorBase, ICrossTickerI
     {
         _period = period;
         _zScorePeriod = zScorePeriod;
+        _explicitCandlesB = comparisonSeries?.Select(c => (CoreCandleData?)c).ToList();
         _explicitSeriesB = comparisonSeries?.Select(c => (decimal?)c.Close).ToList();
     }
 
@@ -157,38 +160,13 @@ public class CoreCointegrationSpreadIndicator : CoreIndicatorBase, ICrossTickerI
         {
             if (_secondaryCandles != null && _secondaryCandles.Count > 0)
             {
-                // Strict Timestamp Date Alignment: match secondary candles to primary candles by calendar date
-                // Both price series come from the series API (True High / True Low use the previous close and Heikin-Ashi sources are
-                // recursive over the whole series, as in the explicit-series branches below); the comparison value is looked up by date.
-                var primarySeries = PriceDataHelper.ExtractPriceSeries(candles, PriceSource);
-                var secondarySeries = PriceDataHelper.ExtractPriceSeries(_secondaryCandles, ComparisonPriceSource);
-                var secondaryPriceByDate = new Dictionary<DateTime, decimal?>();
-                for (int i = 0; i < _secondaryCandles.Count; i++)
-                {
-                    var sc = _secondaryCandles[i];
-                    if (sc != null)
-                    {
-                        secondaryPriceByDate[sc.Timestamp.Date] = secondarySeries[i];
-                    }
-                }
-
-                var matchedB = new List<decimal?>(candles.Count);
-
-                for (int i = 0; i < candles.Count; i++)
-                {
-                    if (secondaryPriceByDate.TryGetValue(candles[i].Timestamp.Date, out var priceB))
-                    {
-                        matchedB.Add(priceB);
-                    }
-                    else
-                    {
-                        // Holiday or trading halt in secondary symbol -> null prevents erroneous cross-date regression
-                        matchedB.Add(null);
-                    }
-                }
-
-                seriesA = primarySeries;
-                seriesB = matchedB;
+                seriesA = PriceDataHelper.ExtractPriceSeries(candles, PriceSource);
+                seriesB = PriceDataHelper.ExtractDateAlignedPriceSeries(candles, _secondaryCandles, ComparisonPriceSource);
+            }
+            else if (_explicitCandlesB != null && _explicitCandlesB.Count > 0)
+            {
+                seriesA = PriceDataHelper.ExtractPriceSeries(candles, PriceSource);
+                seriesB = PriceDataHelper.ExtractDateAlignedPriceSeries(candles, _explicitCandlesB, ComparisonPriceSource);
             }
             else if (_explicitSeriesB != null)
             {
@@ -200,6 +178,11 @@ public class CoreCointegrationSpreadIndicator : CoreIndicatorBase, ICrossTickerI
                 // Comparison symbol specified but secondary data not yet loaded
                 return FillNulls(candles.Count);
             }
+        }
+        else if (_explicitCandlesB != null && _explicitCandlesB.Count > 0 && _explicitCandlesB.Count == candles.Count)
+        {
+            seriesA = PriceDataHelper.ExtractPriceSeries(candles, PriceSource);
+            seriesB = PriceDataHelper.ExtractDateAlignedPriceSeries(candles, _explicitCandlesB, ComparisonPriceSource);
         }
         else if (_explicitSeriesB != null)
         {

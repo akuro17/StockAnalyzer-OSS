@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using StockAnalyzer.Core.Models.Parameters;
 
 namespace StockAnalyzer.Core.Models.Indicators.Advanced;
@@ -6,15 +7,10 @@ namespace StockAnalyzer.Core.Models.Indicators.Advanced;
 [StockAnalyzerIndicator(IndicatorType.SchaffTrendCycle)]
 public class CoreSchaffTrendCycleIndicator : CoreIndicatorBase
 {
-    /// <summary>
-    /// Fixed EMA smoothing length applied to each of the two MACD-stochastic passes,
-    /// per the canonical Schaff Trend Cycle definition (Web/Site/Indicator/C#/Code/SchaffTrendCycle.cs).
-    /// </summary>
-    private const int SmoothingPeriod = 3;
-
     public int CyclePeriod { get; set; } = 10;
     public int ShortPeriod { get; set; } = 23;
     public int LongPeriod { get; set; } = 50;
+    public int SmoothPeriod { get; set; } = 3;
 
     public override string Name => $"STC ({CyclePeriod},{ShortPeriod},{LongPeriod})";
 
@@ -25,11 +21,15 @@ public class CoreSchaffTrendCycleIndicator : CoreIndicatorBase
             CyclePeriod = p.CyclePeriod;
             ShortPeriod = p.ShortPeriod;
             LongPeriod = p.LongPeriod;
+            SmoothPeriod = p.SmoothPeriod;
         }
     }
 
     protected override IIndicatorResult CalculateCore(IReadOnlyList<CoreCandleData> candles)
     {
+        _values.Clear();
+        if (candles == null || candles.Count == 0) return IndicatorResult.Success(_values);
+
         int count = candles.Count;
 
         // 1. MACD line: EMA(Close, ShortPeriod) - EMA(Close, LongPeriod).
@@ -50,13 +50,15 @@ public class CoreSchaffTrendCycleIndicator : CoreIndicatorBase
                 : (decimal?)null);
         }
 
+        decimal smoothFactor = 2m / (SmoothPeriod + 1m);
+
         // 2. First stochastic of MACD over CyclePeriod (scaled 0..100), then EMA-smoothed.
         var stoch1 = StochasticOverCycle(macd);
-        var pf1 = EmaSmooth(stoch1, SmoothingPeriod);
+        var pf1 = EmaSmooth(stoch1, smoothFactor);
 
         // 3. Second stochastic of the smoothed series, then EMA-smoothed => STC.
         var stoch2 = StochasticOverCycle(pf1);
-        var stc = EmaSmooth(stoch2, SmoothingPeriod);
+        var stc = EmaSmooth(stoch2, smoothFactor);
 
         // 4. Clamp to the oscillator's 0..100 range.
         for (int i = 0; i < count; i++)
@@ -110,10 +112,9 @@ public class CoreSchaffTrendCycleIndicator : CoreIndicatorBase
     /// EMA smoothing that skips leading/interior nulls and seeds from the first valid value,
     /// matching the canonical Schaff Trend Cycle reference.
     /// </summary>
-    private static List<decimal?> EmaSmooth(IReadOnlyList<decimal?> source, int period)
+    private static List<decimal?> EmaSmooth(IReadOnlyList<decimal?> source, decimal k)
     {
         var result = new List<decimal?>(source.Count);
-        decimal k = 2m / (period + 1);
         decimal? prev = null;
 
         for (int i = 0; i < source.Count; i++)

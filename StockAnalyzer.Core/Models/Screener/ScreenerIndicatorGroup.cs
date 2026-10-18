@@ -124,10 +124,9 @@ public class ScreenerIndicatorGroup
                 IndicatorType.IFFTInstantaneousPhase, IndicatorType.IFFTInstantaneousAmplitude,
                 IndicatorType.IFFTBandPassFilter, IndicatorType.PolarAmplitudeRatio,
                 IndicatorType.PolarPhase, IndicatorType.PolarCycleAngularFrequency,
-                IndicatorType.Garch11, IndicatorType.Egarch,
+                IndicatorType.Egarch,
                 IndicatorType.EngleGrangerTest, IndicatorType.WilderSmoothing,
                 IndicatorType.Variance, IndicatorType.VaR, IndicatorType.CVaR,
-                IndicatorType.HurstExponent, IndicatorType.Entropy,
                 IndicatorType.HiddenMarkovModel, IndicatorType.ARIMA
             }, "Indicator", "ScreenerGroup_Math"),
 

@@ -51,8 +51,6 @@ public class CoreMurreyMathIndicator : CoreIndicatorBase
         _level7.Clear();
         _level8.Clear();
 
-        var candleDataList = candles.ToList();
-
         for (int i = 0; i < candles.Count; i++)
         {
             if (i < Period - 1)
@@ -62,9 +60,15 @@ public class CoreMurreyMathIndicator : CoreIndicatorBase
                 continue;
             }
 
-            var window = candles.Skip(i - Period + 1).Take(Period).ToList();
-            var highestHigh = window.Max(c => c.High);
-            var lowestLow = window.Min(c => c.Low);
+            int startIdx = i - Period + 1;
+            decimal highestHigh = candles[startIdx].High;
+            decimal lowestLow = candles[startIdx].Low;
+            for (int k = startIdx + 1; k <= i; k++)
+            {
+                var candle = candles[k];
+                if (candle.High > highestHigh) highestHigh = candle.High;
+                if (candle.Low < lowestLow) lowestLow = candle.Low;
+            }
 
             var range = highestHigh - lowestLow;
             var interval = range / 8;

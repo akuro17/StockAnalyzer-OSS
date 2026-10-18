@@ -51,7 +51,13 @@ namespace StockAnalyzer.Core.Models.Indicators.Oscillators
             for (int i = HighPeriod - 1; i < candles.Count; i++)
             {
                 var currentCandle = candles[i];
-                var highForPeriod = candles.Skip(i - HighPeriod + 1).Take(HighPeriod).Max(c => c.High);
+                int startIdx = i - HighPeriod + 1;
+                decimal highForPeriod = candles[startIdx].High;
+                for (int k = startIdx + 1; k <= i; k++)
+                {
+                    decimal h = candles[k].High;
+                    if (h > highForPeriod) highForPeriod = h;
+                }
                 decimal? signal = null;
 
                 switch (state)

@@ -1,6 +1,5 @@
 using StockAnalyzer.Core.Models.Indicators;
 using System.Collections.Generic;
-using System.Linq;
 using StockAnalyzer.Core.Models.Parameters;
 
 namespace StockAnalyzer.Core.Models.Indicators.Volatility
@@ -24,79 +23,60 @@ namespace StockAnalyzer.Core.Models.Indicators.Volatility
 
         protected override IIndicatorResult CalculateCore(IReadOnlyList<CoreCandleData> candles)
         {
-            if (candles.Count == 0) return IndicatorResult.Success(_values);
-            // EMA period for Mass Index is typically 9
-            int emaPeriod = 9;
-            decimal mult = 2m / (emaPeriod + 1);
-            decimal? singleEma = null, doubleEma = null;
-            var ratios = new List<decimal?>();
+            _values.Clear();
+            if (candles == null || candles.Count == 0) return IndicatorResult.Success(_values);
 
-            for (int i = 0; i < candles.Count; i++)
+            if (candles.Count < Period || Period <= 0 || EmaPeriod <= 0)
             {
-                decimal range = candles[i].High - candles[i].Low;
-
-                if (i < emaPeriod - 1)
-                {
-                    singleEma = null;
-                }
-                else if (singleEma == null)
-                {
-                    singleEma = candles.Take(emaPeriod).Average(c => c.High - c.Low);
-                }
-                else
-                {
-                    singleEma = (range - singleEma.Value) * mult + singleEma.Value;
-                }
-
-                if (i < 2 * emaPeriod - 2)
-                {
-                     doubleEma = null;
-                }
-                else if (doubleEma == null)
-                {
-                    var singleEmas = new List<decimal>();
-                    decimal? tempEma = null;
-                    for(int k=0; k < emaPeriod*2-1; k++)
-                    {
-                        if(k >= emaPeriod -1)
-                        {
-                            if(tempEma == null) tempEma = candles.Take(emaPeriod).Average(c=>c.High-c.Low);
-                            else tempEma = ((candles[k].High-candles[k].Low) - tempEma.Value) * mult + tempEma.Value;
-                            singleEmas.Add(tempEma.Value);
-                        }
-                    }
-                    doubleEma = singleEmas.Take(emaPeriod).Average();
-                }
-                else
-                {
-                    if (singleEma.HasValue)
-                        doubleEma = (singleEma.Value - doubleEma.Value) * mult + doubleEma.Value;
-                }
-
-                ratios.Add(doubleEma == 0 || !singleEma.HasValue || !doubleEma.HasValue ? null : singleEma.Value / doubleEma.Value);
+                for (int i = 0; i < candles.Count; i++) _values.Add(null);
+                return IndicatorResult.Success(_values);
             }
 
-            for (int i = 0; i < ratios.Count; i++)
+            var ranges = new List<decimal?>(candles.Count);
+            for (int i = 0; i < candles.Count; i++)
             {
-                if (i < (2 * emaPeriod - 2) + (Period - 1))
+                ranges.Add(candles[i].High - candles[i].Low);
+            }
+
+            var singleEma = IndicatorCalculationHelper.CalculateEmaWithNulls(ranges, EmaPeriod);
+            var doubleEma = IndicatorCalculationHelper.CalculateEmaWithNulls(singleEma, EmaPeriod);
+
+            var ratios = new List<decimal?>(candles.Count);
+            for (int i = 0; i < candles.Count; i++)
+            {
+                if (!singleEma[i].HasValue || !doubleEma[i].HasValue || doubleEma[i]!.Value == 0m)
+                {
+                    ratios.Add(null);
+                }
+                else
+                {
+                    ratios.Add(singleEma[i]!.Value / doubleEma[i]!.Value);
+                }
+            }
+
+            int minWarmup = (2 * EmaPeriod - 2) + (Period - 1);
+            for (int i = 0; i < candles.Count; i++)
+            {
+                if (i < minWarmup)
                 {
                     _values.Add(null);
                     continue;
                 }
 
-                decimal sum = 0;
-                bool hasEnoughData = true;
+                decimal sum = 0m;
+                bool hasNull = false;
                 for (int j = 0; j < Period; j++)
                 {
-                    if (!ratios[i - j].HasValue)
+                    var r = ratios[i - j];
+                    if (!r.HasValue)
                     {
-                        hasEnoughData = false;
+                        hasNull = true;
                         break;
                     }
-                    sum += ratios[i - j]!.Value;
+                    sum += r.Value;
                 }
 
-                _values.Add(hasEnoughData ? sum : null);
+                _values.Add(hasNull ? null : sum);
             }
 
             return IndicatorResult.Success(_values);

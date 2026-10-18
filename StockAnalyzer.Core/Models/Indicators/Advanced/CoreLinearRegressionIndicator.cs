@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using StockAnalyzer.Core.Models.Parameters;
 
 namespace StockAnalyzer.Core.Models.Indicators.Advanced;
@@ -18,8 +19,26 @@ public class CoreLinearRegressionIndicator : CoreIndicatorBase
 
     protected override IIndicatorResult CalculateCore(IReadOnlyList<CoreCandleData> candles)
     {
-        
+        _values.Clear();
+        if (candles == null || candles.Count == 0) return IndicatorResult.Success(_values);
+
+        if (candles.Count < Period || Period <= 1)
+        {
+            for (int i = 0; i < candles.Count; i++) _values.Add(null);
+            return IndicatorResult.Success(_values);
+        }
+
         var priceSeries = PriceDataHelper.ExtractPriceSeries(candles, PriceSource);
+
+        decimal sumX = 0m;
+        decimal sumX2 = 0m;
+        for (int j = 0; j < Period; j++)
+        {
+            sumX += j;
+            sumX2 += j * j;
+        }
+        decimal denom = Period * sumX2 - sumX * sumX;
+
         for (int i = 0; i < candles.Count; i++)
         {
             if (i < Period - 1)
@@ -28,26 +47,43 @@ public class CoreLinearRegressionIndicator : CoreIndicatorBase
                 continue;
             }
 
-            // Calculate Linear Regression for the window ending at i
-            double sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
+            bool hasNull = false;
+            decimal sumY = 0m;
+            decimal sumXY = 0m;
+            int start = i - Period + 1;
+
             for (int j = 0; j < Period; j++)
             {
-                // x = 0 to Period-1
-                double x = j;
-                double y = (double)(priceSeries[i - Period + 1 + j] ?? 0m);
-
-                sumX += x;
-                sumY += y;
-                sumXY += x * y;
-                sumX2 += x * x;
+                var y = priceSeries[start + j];
+                if (!y.HasValue)
+                {
+                    hasNull = true;
+                    break;
+                }
+                sumY += y.Value;
+                sumXY += j * y.Value;
             }
 
-            double slope = (Period * sumXY - sumX * sumY) / (Period * sumX2 - sumX * sumX);
-            double intercept = (sumY - slope * sumX) / Period;
+            if (hasNull || denom == 0m)
+            {
+                _values.Add(null);
+                continue;
+            }
 
-            // Value at the end of the window (x = Period - 1)
-            decimal result = (decimal)(slope * (Period - 1) + intercept);
-            _values.Add(result);
+            try
+            {
+                checked
+                {
+                    decimal slope = (Period * sumXY - sumX * sumY) / denom;
+                    decimal intercept = (sumY - slope * sumX) / Period;
+                    decimal result = slope * (Period - 1) + intercept;
+                    _values.Add(result);
+                }
+            }
+            catch (System.OverflowException)
+            {
+                _values.Add(null);
+            }
         }
 
         return IndicatorResult.Success(_values);

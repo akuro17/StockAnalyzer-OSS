@@ -49,7 +49,9 @@ public static class BacktestIndicatorEligibility
     public static IReadOnlyCollection<IndicatorType> SynchronousCalculationUnsupportedTypes { get; } = new[]
     {
         IndicatorType.CointegrationSpread,
+        IndicatorType.Entropy,
         IndicatorType.Garch11,
+        IndicatorType.HurstExponent,
         IndicatorType.Ratiocator,
         IndicatorType.RollingAlpha,
         IndicatorType.RollingBeta,

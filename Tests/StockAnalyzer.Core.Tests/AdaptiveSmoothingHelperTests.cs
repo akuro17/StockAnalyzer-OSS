@@ -217,4 +217,26 @@ public class AdaptiveSmoothingHelperTests
         Assert.False(AdaptiveSmoothingHelper.IsPeriodNativeDriverType(IndicatorType.RSI));
         Assert.False(AdaptiveSmoothingHelper.IsPeriodNativeDriverType(null));
     }
+
+    [Fact]
+    public void NormalizeDriverSeriesCausal_StrictNoLookAheadBias_FutureValuesDoNotAffectPastOutputs()
+    {
+        // 10 base driver values
+        var baseSeries = new List<decimal?> { 10m, 12m, 15m, 14m, 18m, 20m, 22m, 19m, 25m, 24m };
+
+        // Extended series with massive future outliers at indices 10..12
+        var extendedSeries = new List<decimal?>(baseSeries) { 10000m, 50000m, -10000m };
+
+        var baseNormalized = AdaptiveSmoothingHelper.NormalizeDriverSeriesCausal(baseSeries, lookbackWindow: 50, minPeriod: 2m, maxPeriod: 100m);
+        var extendedNormalized = AdaptiveSmoothingHelper.NormalizeDriverSeriesCausal(extendedSeries, lookbackWindow: 50, minPeriod: 2m, maxPeriod: 100m);
+
+        Assert.Equal(baseSeries.Count, baseNormalized.Count);
+        Assert.Equal(extendedSeries.Count, extendedNormalized.Count);
+
+        // Every bar in baseNormalized must match extendedNormalized exactly (strictly 0 look-ahead bias)
+        for (int i = 0; i < baseSeries.Count; i++)
+        {
+            Assert.Equal(baseNormalized[i], extendedNormalized[i]);
+        }
+    }
 }

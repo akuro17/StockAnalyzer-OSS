@@ -66,7 +66,7 @@ public class CoreIchimokuParameter : CoreIndicatorParameterBase
 
     public override string GetDisplayName(string type) => $"{type} ({TenkanSample}, {KijunSample})";
 
-    public override int GetRequiredWarmupBars() => Math.Max(TenkanSample, Math.Max(KijunSample, SenkouBSample)) - 1;
+    public override int GetRequiredWarmupBars() => Math.Max(Math.Max(TenkanSample, KijunSample), SenkouBSample) + Offset;
 
     /// <summary>The Senkou spans are stored Displacement bars past the last candle.</summary>
     public override int GetFutureProjectionBars() => Offset;

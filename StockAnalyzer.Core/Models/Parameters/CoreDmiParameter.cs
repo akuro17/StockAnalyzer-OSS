@@ -18,6 +18,8 @@ public class CoreDmiParameter : CoreIndicatorParameterBase
 
     public override string GetDisplayName(string type) => $"{type} ({Period})";
 
+    public override int GetRequiredWarmupBars() => Period * 3;
+
     public override void Validate()
     {
         if (Period <= 0) throw new ArgumentOutOfRangeException(nameof(Period));

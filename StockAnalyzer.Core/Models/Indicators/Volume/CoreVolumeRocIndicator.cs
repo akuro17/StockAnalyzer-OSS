@@ -1,6 +1,5 @@
 using StockAnalyzer.Core.Models.Parameters;
 using System.Collections.Generic;
-using System.Linq;
 
 namespace StockAnalyzer.Core.Models.Indicators.Volume
 {
@@ -20,10 +19,20 @@ namespace StockAnalyzer.Core.Models.Indicators.Volume
 
         protected override IIndicatorResult CalculateCore(IReadOnlyList<CoreCandleData> candles)
         {
+            _values.Clear();
+            if (candles == null || candles.Count == 0) return IndicatorResult.Success(_values);
+
             for (int i = 0; i < candles.Count; i++)
             {
-                if (i < Period || candles[i - Period].Volume == 0) { _values.Add(null); continue; }
-                _values.Add((candles[i].Volume - candles[i - Period].Volume) / candles[i - Period].Volume * 100);
+                if (i < Period || candles[i - Period].Volume == 0)
+                {
+                    _values.Add(null);
+                    continue;
+                }
+
+                decimal prev = candles[i - Period].Volume;
+                decimal curr = candles[i].Volume;
+                _values.Add(((curr - prev) / prev) * 100m);
             }
 
             return IndicatorResult.Success(_values);

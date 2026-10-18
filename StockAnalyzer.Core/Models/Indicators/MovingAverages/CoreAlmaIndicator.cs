@@ -26,9 +26,10 @@ public class CoreAlmaIndicator : CoreIndicatorBase
 
     protected override IIndicatorResult CalculateCore(IReadOnlyList<CoreCandleData> candles)
     {
-
+        _values.Clear();
         if (candles == null || candles.Count == 0) return IndicatorResult.Success(_values);
-        if (candles.Count < Period)
+
+        if (candles.Count < Period || Period <= 0 || Sigma <= 0)
         {
             _values.AddRange(Enumerable.Repeat<decimal?>(null, candles.Count));
             return IndicatorResult.Success(_values);
@@ -40,28 +41,46 @@ public class CoreAlmaIndicator : CoreIndicatorBase
         }
 
         var priceSeries = PriceDataHelper.ExtractPriceSeries(candles, PriceSource);
-        var m = (decimal)(Offset * (Period - 1));
-        var s = (decimal)(Period / Sigma);
+
+        decimal m = (decimal)Offset * (Period - 1);
+        decimal s = (decimal)Period / (decimal)Sigma;
+
+        decimal[] weights = new decimal[Period];
+        decimal weightSum = 0m;
+        decimal twoSS = 2m * s * s;
+
+        for (int j = 0; j < Period; j++)
+        {
+            decimal diff = j - m;
+            double exponent = (double)(-(diff * diff) / twoSS);
+            weights[j] = (decimal)Math.Exp(exponent);
+            weightSum += weights[j];
+        }
 
         for (int i = Period - 1; i < candles.Count; i++)
         {
-            decimal weightedSum = 0;
-            decimal weightSum = 0;
+            bool hasNull = false;
+            decimal weightedSum = 0m;
+            int start = i - Period + 1;
 
             for (int j = 0; j < Period; j++)
             {
-                decimal weight = (decimal)Math.Exp((double)-(((j - m) * (j - m)) / (2 * s * s)));
-                weightedSum += (priceSeries[i - Period + 1 + j] ?? 0m) * weight;
-                weightSum += weight;
+                var price = priceSeries[start + j];
+                if (!price.HasValue)
+                {
+                    hasNull = true;
+                    break;
+                }
+                weightedSum += price.Value * weights[j];
             }
 
-            if (weightSum != 0)
+            if (hasNull || weightSum == 0m)
             {
-                _values.Add(weightedSum / weightSum);
+                _values.Add(null);
             }
             else
             {
-                _values.Add(null);
+                _values.Add(weightedSum / weightSum);
             }
         }
 

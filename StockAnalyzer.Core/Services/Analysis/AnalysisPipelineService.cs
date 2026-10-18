@@ -305,7 +305,7 @@ public class AnalysisPipelineService : IAnalysisPipelineService
                     // their raw values saturate at the clamp bound and the "dynamic" period becomes effectively constant.
                     dynamicPeriods = AdaptiveSmoothingHelper.IsPeriodNativeDriverType(driverType)
                         ? rawDriver
-                        : AdaptiveSmoothingHelper.NormalizeDriverSeries(rawDriver);
+                        : AdaptiveSmoothingHelper.NormalizeDriverSeriesCausal(rawDriver);
                 }
                 else
                 {

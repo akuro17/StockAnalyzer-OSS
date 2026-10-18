@@ -21,24 +21,70 @@ public class CoreAdxrIndicator : CoreIndicatorBase
 
     protected override IIndicatorResult CalculateCore(IReadOnlyList<CoreCandleData> candles)
     {
+        _values.Clear();
 
-        if (candles == null) return IndicatorResult.Success(_values);
-        var adxValues = CalculateAdx(candles, Period);
-
-        for (int i = 0; i < adxValues.Count; i++)
+        if (candles == null || candles.Count == 0)
         {
-            if (i < AdxrPeriod)
+            return IndicatorResult.Success(_values);
+        }
+
+        int n = candles.Count;
+        int seedIndex = 2 * Period - 2;
+        int minRequired = seedIndex + AdxrPeriod + 1;
+
+        if (Period <= 0 || AdxrPeriod <= 0 || n < Period)
+        {
+            for (int i = 0; i < n; i++)
+            {
+                _values.Add(null);
+            }
+            return IndicatorResult.Success(_values);
+        }
+
+        var (_, _, dxList) = IndicatorCalculationHelper.CalculateWilderDmiSeries(candles, Period);
+
+        var adxList = new List<decimal?>(n);
+        decimal prevAdx = 0m;
+
+        for (int i = 0; i < n; i++)
+        {
+            if (i < seedIndex)
+            {
+                adxList.Add(null);
+            }
+            else if (i == seedIndex)
+            {
+                decimal sumDx = 0m;
+                for (int k = Period - 1; k <= seedIndex; k++)
+                {
+                    sumDx += dxList[k] ?? 0m;
+                }
+                prevAdx = sumDx / Period;
+                adxList.Add(prevAdx);
+            }
+            else
+            {
+                decimal dx = dxList[i] ?? 0m;
+                decimal adx = (prevAdx * (Period - 1) + dx) / Period;
+                prevAdx = adx;
+                adxList.Add(adx);
+            }
+        }
+
+        for (int i = 0; i < n; i++)
+        {
+            if (i < seedIndex + AdxrPeriod)
             {
                 _values.Add(null);
                 continue;
             }
 
-            var currentAdx = adxValues[i];
-            var prevAdx = adxValues[i - AdxrPeriod];
+            var currentAdx = adxList[i];
+            var pastAdx = adxList[i - AdxrPeriod];
 
-            if (currentAdx.HasValue && prevAdx.HasValue)
+            if (currentAdx.HasValue && pastAdx.HasValue)
             {
-                _values.Add((currentAdx.Value + prevAdx.Value) / 2);
+                _values.Add((currentAdx.Value + pastAdx.Value) / 2m);
             }
             else
             {
@@ -47,107 +93,5 @@ public class CoreAdxrIndicator : CoreIndicatorBase
         }
 
         return IndicatorResult.Success(_values);
-    }
-
-    private static List<decimal?> CalculateAdx(IReadOnlyList<CoreCandleData> candles, int period)
-    {
-        if (candles.Count < 2) return Enumerable.Repeat<decimal?>(null, candles.Count).ToList();
-
-        var trList = new List<decimal>();
-        var plusDmList = new List<decimal>();
-        var minusDmList = new List<decimal>();
-
-        for (int i = 0; i < candles.Count; i++)
-        {
-            if (i == 0)
-            {
-                trList.Add(candles[i].High - candles[i].Low);
-                plusDmList.Add(0);
-                minusDmList.Add(0);
-                continue;
-            }
-
-            var high = candles[i].High;
-            var low = candles[i].Low;
-            var prevClose = candles[i - 1].Close;
-            var prevHigh = candles[i - 1].High;
-            var prevLow = candles[i - 1].Low;
-
-            var tr = Math.Max(high - low, Math.Max(Math.Abs(high - prevClose), Math.Abs(low - prevClose)));
-            trList.Add(tr);
-
-            var upMove = high - prevHigh;
-            var downMove = prevLow - low;
-
-            plusDmList.Add(upMove > downMove && upMove > 0 ? upMove : 0);
-            minusDmList.Add(downMove > upMove && downMove > 0 ? downMove : 0);
-        }
-
-        var atrSma = Sma(trList, period);
-        var plusDmSma = Sma(plusDmList, period);
-        var minusDmSma = Sma(minusDmList, period);
-
-        var plusDi = new List<decimal?>();
-        var minusDi = new List<decimal?>();
-        for(int i = 0; i < candles.Count; i++)
-        {
-            var atr = atrSma[i];
-            if (atr.HasValue && atr != 0 && plusDmSma[i].HasValue && minusDmSma[i].HasValue)
-            {
-                plusDi.Add(plusDmSma[i]!.Value / atr!.Value * 100);
-                minusDi.Add(minusDmSma[i]!.Value / atr!.Value * 100);
-            }
-            else
-            {
-                plusDi.Add(null);
-                minusDi.Add(null);
-            }
-        }
-
-        var dx = new List<decimal?>();
-        for (int i = 0; i < plusDi.Count; i++)
-        {
-            var pdi = plusDi[i];
-            var mdi = minusDi[i];
-            if (pdi.HasValue && mdi.HasValue && (pdi + mdi) != 0)
-            {
-                dx.Add(Math.Abs(pdi.Value - mdi.Value) / (pdi.Value + mdi.Value) * 100);
-            }
-            else
-            {
-                dx.Add(null);
-            }
-        }
-
-        return SmaForNullable(dx, period);
-    }
-
-    private static List<decimal?> Sma(IReadOnlyList<decimal> data, int period)
-    {
-        var results = new List<decimal?>();
-        for (int i = 0; i < data.Count; i++)
-        {
-            if (i < period - 1) results.Add(null);
-            else results.Add(data.Skip(i - period + 1).Take(period).Average());
-        }
-        return results;
-    }
-
-    private static List<decimal?> SmaForNullable(IReadOnlyList<decimal?> data, int period)
-    {
-        var results = new List<decimal?>();
-        for (int i = 0; i < data.Count; i++)
-        {
-            var window = data.Skip(i - period + 1).Take(period).ToList();
-            if (i < period - 1 || window.Any(v => !v.HasValue))
-            {
-                results.Add(null);
-            }
-            else
-            {
-                results.Add(window.Average(v => v!.Value));
-            }
-        }
-        return results;
     }
 }

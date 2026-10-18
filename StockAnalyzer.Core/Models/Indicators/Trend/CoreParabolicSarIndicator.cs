@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using StockAnalyzer.Core.Models.Parameters;
 using Math = System.Math;
 
@@ -26,9 +27,30 @@ public class CoreParabolicSarIndicator : CoreIndicatorBase
 
     protected override IIndicatorResult CalculateCore(IReadOnlyList<CoreCandleData> candles)
     {
+        _values.Clear();
         _isUpTrendValues.Clear();
-        if (candles.Count < 2) return IndicatorResult.Success(_values);
-        bool isUpTrend = candles[1].Close > candles[0].Close;
+
+        if (candles == null || candles.Count == 0)
+        {
+            return IndicatorResult.Success(new Dictionary<string, IReadOnlyList<decimal?>>
+            {
+                { IndicatorResult.MainSeriesName, _values },
+                { "IsUpTrend", _isUpTrendValues }
+            });
+        }
+
+        if (candles.Count < 2)
+        {
+            _values.Add(null);
+            _isUpTrendValues.Add(null);
+            return IndicatorResult.Success(new Dictionary<string, IReadOnlyList<decimal?>>
+            {
+                { IndicatorResult.MainSeriesName, _values },
+                { "IsUpTrend", _isUpTrendValues }
+            });
+        }
+
+        bool isUpTrend = candles[1].Close >= candles[0].Close;
         decimal sar = isUpTrend ? candles[0].Low : candles[0].High;
         decimal ep = isUpTrend ? candles[0].High : candles[0].Low;
         decimal af = AccelerationStart;
@@ -52,8 +74,12 @@ public class CoreParabolicSarIndicator : CoreIndicatorBase
                 }
                 else
                 {
-                    if (candles[i].High > ep) { ep = candles[i].High; af = Math.Min(af + AccelerationStep, AccelerationMax); }
-                    sar = Math.Min(sar, Math.Min(candles[i - 1].Low, i > 1 ? candles[i - 2].Low : candles[i - 1].Low));
+                    if (candles[i].High > ep)
+                    {
+                        ep = candles[i].High;
+                        af = Math.Min(af + AccelerationStep, AccelerationMax);
+                    }
+                    sar = Math.Min(sar, Math.Min(candles[i - 1].Low, i >= 2 ? candles[i - 2].Low : candles[i - 1].Low));
                 }
             }
             else
@@ -67,8 +93,12 @@ public class CoreParabolicSarIndicator : CoreIndicatorBase
                 }
                 else
                 {
-                    if (candles[i].Low < ep) { ep = candles[i].Low; af = Math.Min(af + AccelerationStep, AccelerationMax); }
-                    sar = Math.Max(sar, Math.Max(candles[i - 1].High, i > 1 ? candles[i - 2].High : candles[i - 1].High));
+                    if (candles[i].Low < ep)
+                    {
+                        ep = candles[i].Low;
+                        af = Math.Min(af + AccelerationStep, AccelerationMax);
+                    }
+                    sar = Math.Max(sar, Math.Max(candles[i - 1].High, i >= 2 ? candles[i - 2].High : candles[i - 1].High));
                 }
             }
 

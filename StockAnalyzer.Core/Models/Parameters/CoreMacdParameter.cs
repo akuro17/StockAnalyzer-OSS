@@ -43,10 +43,9 @@ public class CoreMacdParameter : CoreIndicatorParameterBase
     }
 
     /// <summary>
-    /// Matches CoreMacdIndicator's firstValidSignalIndex = (LongPeriod - 1) + SignalPeriod - 1,
-    /// plus 1 bar of margin (consistent with the single-Period convention elsewhere).
+    /// Tripled lookback for exponential smoothing transient decay across the slow and signal lines.
     /// </summary>
-    public override int GetRequiredWarmupBars() => LongPeriod + SignalPeriod - 1;
+    public override int GetRequiredWarmupBars() => (LongPeriod + SignalPeriod) * 3;
 
     public override string GetDisplayName(string type) => $"{type} ({ShortPeriod}, {LongPeriod}, {SignalPeriod})";
 

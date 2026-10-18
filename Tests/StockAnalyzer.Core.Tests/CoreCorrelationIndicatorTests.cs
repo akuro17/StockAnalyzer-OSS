@@ -398,6 +398,65 @@ public class CoreCorrelationIndicatorTests
         };
         Assert.Equal("Correlation (20, AAPL)", paramDefault.GetDisplayName("Correlation"));
     }
+
+    [Fact]
+    public void Calculate_WithHolidayMismatchedDates_AlignsByDateCorrectly()
+    {
+        var baseDate = new DateTime(2023, 1, 2); // Monday
+        // Symbol A trades Mon, Tue, Wed, Thu, Fri (days 0, 1, 2, 3, 4)
+        var candlesA = new List<CoreCandleData>
+        {
+            new(baseDate.AddDays(0), 10m, 11m, 9m, 10m, 1000),
+            new(baseDate.AddDays(1), 11m, 12m, 10m, 11m, 1000),
+            new(baseDate.AddDays(2), 12m, 13m, 11m, 12m, 1000),
+            new(baseDate.AddDays(3), 13m, 14m, 12m, 13m, 1000),
+            new(baseDate.AddDays(4), 14m, 15m, 13m, 14m, 1000),
+        };
+
+        // Symbol B has holiday on Tue (day 1) and Thu (day 3) -> trades Mon, Wed, Fri (days 0, 2, 4)
+        var candlesB = new List<CoreCandleData?>
+        {
+            new(baseDate.AddDays(0), 100m, 101m, 99m, 100m, 500),
+            new(baseDate.AddDays(2), 102m, 103m, 101m, 102m, 500),
+            new(baseDate.AddDays(4), 104m, 105m, 103m, 104m, 500),
+        };
+
+        var indicator = new CoreCorrelationIndicator(3)
+        {
+            ComparisonSymbol = "SEC"
+        };
+        indicator.SetSecondaryCandles(candlesB);
+        var result = indicator.Calculate(candlesA);
+
+        Assert.True(result.IsSuccessful);
+        Assert.Equal(5, indicator.Values.Count);
+
+        // Window [0..2] contains Day 1 (missing in B) -> null
+        Assert.Null(indicator.Values[2]);
+        // Window [1..3] contains Day 1 and Day 3 (missing in B) -> null
+        Assert.Null(indicator.Values[3]);
+        // Window [2..4] contains Day 3 (missing in B) -> null
+        Assert.Null(indicator.Values[4]);
+
+        // Now test where window [0..2] has 3 consecutive aligned trading days
+        var candlesBConsecutive = new List<CoreCandleData?>
+        {
+            new(baseDate.AddDays(0), 100m, 101m, 99m, 100m, 500),
+            new(baseDate.AddDays(1), 110m, 111m, 109m, 110m, 500),
+            new(baseDate.AddDays(2), 120m, 121m, 119m, 120m, 500),
+            // Days 3 and 4 missing in B
+        };
+        indicator.SetSecondaryCandles(candlesBConsecutive);
+        indicator.Calculate(candlesA);
+
+        // Window [0..2] is fully aligned and perfectly correlated (10,11,12 vs 100,110,120)
+        Assert.NotNull(indicator.Values[2]);
+        Assert.Equal(1.0m, indicator.Values[2]!.Value, 4);
+        // Window [1..3] has day 3 missing -> null
+        Assert.Null(indicator.Values[3]);
+        // Window [2..4] has days 3 and 4 missing -> null
+        Assert.Null(indicator.Values[4]);
+    }
 }
 
 

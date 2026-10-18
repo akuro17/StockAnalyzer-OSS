@@ -6,11 +6,11 @@ namespace StockAnalyzer.Core.Tests.Models;
 public class CoreTrixParameterTests
 {
     [Fact]
-    public void GetRequiredWarmupBars_DefaultValues_ReturnsThreeTimesPeriodMinusOne()
+    public void GetRequiredWarmupBars_DefaultValues_ReturnsNineTimesPeriodPlusOne()
     {
         var param = new CoreTrixParameter();
 
-        Assert.Equal(44, param.GetRequiredWarmupBars());
+        Assert.Equal(136, param.GetRequiredWarmupBars());
     }
 
     [Fact]
@@ -18,6 +18,6 @@ public class CoreTrixParameterTests
     {
         var param = new CoreTrixParameter { Period = 10 };
 
-        Assert.Equal(29, param.GetRequiredWarmupBars());
+        Assert.Equal(91, param.GetRequiredWarmupBars());
     }
 }

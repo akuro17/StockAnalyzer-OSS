@@ -69,7 +69,15 @@ namespace StockAnalyzer.Core.Models.Indicators.Oscillators
                     denSum += denList[i - j];
                 }
 
-                decimal rvi = denSum == 0 ? 0 : numSum / denSum;
+                decimal? rvi;
+                if (denSum == 0m)
+                {
+                    rvi = numSum == 0m ? 0m : null;
+                }
+                else
+                {
+                    rvi = numSum / denSum;
+                }
                 _values.Add(rvi);
 
                 // Signal = Symmetrically weighted MA of RVI = (RVI(i) + 2*RVI(i-1) + 2*RVI(i-2) + RVI(i-3)) / 6

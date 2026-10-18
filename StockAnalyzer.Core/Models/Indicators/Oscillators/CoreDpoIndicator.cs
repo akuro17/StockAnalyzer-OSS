@@ -1,7 +1,5 @@
-using StockAnalyzer.Core.Models.Indicators;
+using System;
 using System.Collections.Generic;
-using System.Linq;
-
 using StockAnalyzer.Core.Models.Parameters;
 
 namespace StockAnalyzer.Core.Models.Indicators.Oscillators
@@ -22,31 +20,55 @@ namespace StockAnalyzer.Core.Models.Indicators.Oscillators
 
         protected override IIndicatorResult CalculateCore(IReadOnlyList<CoreCandleData> candles)
         {
-            if (candles.Count == 0) return IndicatorResult.Success(_values);
-            int shift = Period / 2 + 1;
+            _values.Clear();
+            if (candles == null || candles.Count == 0) return IndicatorResult.Success(_values);
 
-            // Calculate SMA first
             var priceSeries = PriceDataHelper.ExtractPriceSeries(candles, PriceSource);
-            var sma = new List<decimal?>();
-            for (int i = 0; i < candles.Count; i++)
+            return CalculateSeriesCore(priceSeries, null);
+        }
+
+        protected override IIndicatorResult CalculateSeriesCore(IReadOnlyList<decimal?> series, IReadOnlyList<decimal?>? dynamicPeriods = null)
+        {
+            _values.Clear();
+            if (series == null || series.Count == 0) return IndicatorResult.Success(_values);
+
+            if (dynamicPeriods != null && dynamicPeriods.Count > 0)
             {
-                if (i < Period - 1) { sma.Add(null); continue; }
-                decimal sum = 0;
-                for (int j = 0; j < Period; j++) sum += priceSeries[i - j] ?? 0m;
-                sma.Add(sum / Period);
+                var adaptiveSma = AdaptiveSmoothingHelper.CalculateAdaptiveSma(series, dynamicPeriods, Period);
+                for (int i = 0; i < series.Count; i++)
+                {
+                    int p = (int)Math.Round(dynamicPeriods[i] ?? Period, MidpointRounding.AwayFromZero);
+                    if (p <= 0) p = Period;
+                    int shift = (p / 2) + 1;
+                    int k = i - shift;
+
+                    if (k >= 0 && k < adaptiveSma.Count && series[i].HasValue && adaptiveSma[k].HasValue)
+                    {
+                        _values.Add(series[i]!.Value - adaptiveSma[k]!.Value);
+                    }
+                    else
+                    {
+                        _values.Add(null);
+                    }
+                }
+
+                return IndicatorResult.Success(_values);
             }
 
-            // DPO = Price - SMA from `shift` periods in the past
-            // DPO(i) = Price(i) - SMA(i - shift)
-            for (int i = 0; i < candles.Count; i++)
+            int staticShift = (Period / 2) + 1;
+            var sma = IndicatorCalculationHelper.CalculateSmaWithNulls(series, Period);
+
+            for (int i = 0; i < series.Count; i++)
             {
-                int smaIdx = i - shift;
-                if (smaIdx < 0 || smaIdx >= sma.Count || !sma[smaIdx].HasValue)
+                int k = i - staticShift;
+                if (k >= Period - 1 && k < sma.Count && series[i].HasValue && sma[k].HasValue)
+                {
+                    _values.Add(series[i]!.Value - sma[k]!.Value);
+                }
+                else
                 {
                     _values.Add(null);
-                    continue;
                 }
-                _values.Add((priceSeries[i] ?? 0m) - sma[smaIdx]!.Value);
             }
 
             return IndicatorResult.Success(_values);

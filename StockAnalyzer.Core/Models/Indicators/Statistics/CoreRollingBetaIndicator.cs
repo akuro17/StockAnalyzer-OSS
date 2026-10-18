@@ -16,6 +16,7 @@ public class CoreRollingBetaIndicator : CoreIndicatorBase, ICrossTickerIndicator
 {
     private int _period = IndicatorDefaultConstants.RollingBetaPeriod;
     private readonly IReadOnlyList<decimal?>? _explicitSeriesB;
+    private readonly IReadOnlyList<CoreCandleData?>? _explicitCandlesB;
     private IReadOnlyList<CoreCandleData?>? _secondaryCandles;
 
     public int Period
@@ -61,6 +62,7 @@ public class CoreRollingBetaIndicator : CoreIndicatorBase, ICrossTickerIndicator
     public CoreRollingBetaIndicator(int period, IEnumerable<CoreCandleData> benchmarkSeries)
     {
         _period = period;
+        _explicitCandlesB = benchmarkSeries?.Select(c => (CoreCandleData?)c).ToList();
         _explicitSeriesB = benchmarkSeries?.Select(c => (decimal?)c.Close).ToList();
     }
 
@@ -111,7 +113,11 @@ public class CoreRollingBetaIndicator : CoreIndicatorBase, ICrossTickerIndicator
         {
             if (_secondaryCandles != null && _secondaryCandles.Count > 0)
             {
-                seriesB = PriceDataHelper.ExtractPriceSeries(_secondaryCandles, ComparisonPriceSource);
+                seriesB = PriceDataHelper.ExtractDateAlignedPriceSeries(candles, _secondaryCandles, ComparisonPriceSource);
+            }
+            else if (_explicitCandlesB != null && _explicitCandlesB.Count > 0)
+            {
+                seriesB = PriceDataHelper.ExtractDateAlignedPriceSeries(candles, _explicitCandlesB, ComparisonPriceSource);
             }
             else if (_explicitSeriesB != null)
             {
@@ -122,6 +128,10 @@ public class CoreRollingBetaIndicator : CoreIndicatorBase, ICrossTickerIndicator
                 // Comparison symbol specified but secondary data not yet loaded
                 return FillNulls(candles.Count);
             }
+        }
+        else if (_explicitCandlesB != null && _explicitCandlesB.Count > 0 && _explicitCandlesB.Count == candles.Count)
+        {
+            seriesB = PriceDataHelper.ExtractDateAlignedPriceSeries(candles, _explicitCandlesB, ComparisonPriceSource);
         }
         else if (_explicitSeriesB != null)
         {

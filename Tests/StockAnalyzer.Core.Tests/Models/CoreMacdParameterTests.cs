@@ -6,11 +6,11 @@ namespace StockAnalyzer.Core.Tests.Models;
 public class CoreMacdParameterTests
 {
     [Fact]
-    public void GetRequiredWarmupBars_DefaultValues_ReturnsLongPlusSignalMinusOne()
+    public void GetRequiredWarmupBars_DefaultValues_ReturnsSlowPlusSignalTimesThree()
     {
         var param = new CoreMacdParameter();
 
-        Assert.Equal(34, param.GetRequiredWarmupBars());
+        Assert.Equal(105, param.GetRequiredWarmupBars());
     }
 
     [Fact]
@@ -18,6 +18,6 @@ public class CoreMacdParameterTests
     {
         var param = new CoreMacdParameter { ShortPeriod = 5, LongPeriod = 40, SignalPeriod = 5 };
 
-        Assert.Equal(44, param.GetRequiredWarmupBars());
+        Assert.Equal(135, param.GetRequiredWarmupBars());
     }
 }

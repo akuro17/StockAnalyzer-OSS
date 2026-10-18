@@ -61,7 +61,7 @@ public class ExtendedLookbackHelperTests
     }
 
     [Fact]
-    public void CalculateRequiredLookback_MacdParameter_ReturnsLongPeriodPlusSignalPeriodMinusOne()
+    public void CalculateRequiredLookback_MacdParameter_ReturnsWarmupBars()
     {
         var settings = new List<CoreIndicatorSettings>
         {
@@ -70,7 +70,7 @@ public class ExtendedLookbackHelperTests
 
         var result = ExtendedLookbackHelper.CalculateRequiredLookback(settings);
 
-        Assert.Equal(34, result);
+        Assert.Equal(105, result);
     }
 
     [Fact]
@@ -100,7 +100,7 @@ public class ExtendedLookbackHelperTests
     }
 
     [Fact]
-    public void CalculateRequiredLookback_SchaffTrendCycleParameter_ReturnsMaxOfCycleAndLongPeriod()
+    public void CalculateRequiredLookback_SchaffTrendCycleParameter_ReturnsWarmupBars()
     {
         var settings = new List<CoreIndicatorSettings>
         {
@@ -109,7 +109,7 @@ public class ExtendedLookbackHelperTests
 
         var result = ExtendedLookbackHelper.CalculateRequiredLookback(settings);
 
-        Assert.Equal(50, result);
+        Assert.Equal(180, result);
     }
 
     [Fact]
@@ -135,7 +135,7 @@ public class ExtendedLookbackHelperTests
 
         var result = ExtendedLookbackHelper.CalculateRequiredLookback(settings);
 
-        Assert.Equal(20, result);
+        Assert.Equal(53, result);
     }
 
     [Fact]
@@ -148,7 +148,7 @@ public class ExtendedLookbackHelperTests
 
         var result = ExtendedLookbackHelper.CalculateRequiredLookback(settings);
 
-        Assert.Equal(44, result);
+        Assert.Equal(136, result);
     }
 
     [Fact]
@@ -165,7 +165,7 @@ public class ExtendedLookbackHelperTests
     }
 
     [Fact]
-    public void CalculateRequiredLookback_IchimokuParameter_ReturnsMaxSampleMinusOne()
+    public void CalculateRequiredLookback_IchimokuParameter_ReturnsMaxSamplePlusDisplacement()
     {
         var settings = new List<CoreIndicatorSettings>
         {
@@ -174,7 +174,19 @@ public class ExtendedLookbackHelperTests
 
         var result = ExtendedLookbackHelper.CalculateRequiredLookback(settings);
 
-        Assert.Equal(51, result);
+        Assert.Equal(78, result);
+    }
+
+    [Fact]
+    public void CalculateRequiredLookback_RecursiveSmoothingParameters_ReturnExpectedWarmup()
+    {
+        Assert.Equal(60, ExtendedLookbackHelper.CalculateRequiredLookback(new[] { new CoreIndicatorSettings { IsEnabled = true, ParameterObject = new CoreEmaParameter { Period = 20 } } }));
+        Assert.Equal(42, ExtendedLookbackHelper.CalculateRequiredLookback(new[] { new CoreIndicatorSettings { IsEnabled = true, ParameterObject = new CoreRsiParameter { Period = 14 } } }));
+        Assert.Equal(42, ExtendedLookbackHelper.CalculateRequiredLookback(new[] { new CoreIndicatorSettings { IsEnabled = true, ParameterObject = new CoreAtrParameter { Period = 14 } } }));
+        Assert.Equal(56, ExtendedLookbackHelper.CalculateRequiredLookback(new[] { new CoreIndicatorSettings { IsEnabled = true, ParameterObject = new CoreAdxParameter { Period = 14 } } }));
+        Assert.Equal(70, ExtendedLookbackHelper.CalculateRequiredLookback(new[] { new CoreIndicatorSettings { IsEnabled = true, ParameterObject = new CoreAdxrParameter { Period = 14 } } }));
+        Assert.Equal(42, ExtendedLookbackHelper.CalculateRequiredLookback(new[] { new CoreIndicatorSettings { IsEnabled = true, ParameterObject = new CoreDmiParameter { Period = 14 } } }));
+        Assert.Equal(45, ExtendedLookbackHelper.CalculateRequiredLookback(new[] { new CoreIndicatorSettings { IsEnabled = true, ParameterObject = new CoreKstParameter() } }));
     }
 
     [Fact]

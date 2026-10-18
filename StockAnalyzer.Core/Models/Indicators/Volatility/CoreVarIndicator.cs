@@ -24,42 +24,66 @@ namespace StockAnalyzer.Core.Models.Indicators.Volatility
 
         protected override IIndicatorResult CalculateCore(IReadOnlyList<CoreCandleData> candles)
         {
+            _values.Clear();
 
-            var returns = new List<decimal>();
+            if (candles == null || candles.Count == 0) return IndicatorResult.Success(_values);
 
-            if (candles.Count < 2)
+            if (candles.Count < Period + 1 || Period <= 0)
             {
                 for (int i = 0; i < candles.Count; i++) _values.Add(null);
                 return IndicatorResult.Success(_values);
             }
 
             var priceSeries = PriceDataHelper.ExtractPriceSeries(candles, PriceSource);
+            var returns = new decimal?[candles.Count - 1];
+
             for (int i = 1; i < candles.Count; i++)
             {
-                decimal prev = priceSeries[i - 1] ?? 0m;
-                if (prev != 0)
+                var prev = priceSeries[i - 1];
+                var curr = priceSeries[i];
+                if (!prev.HasValue || !curr.HasValue || prev.Value <= 0m)
                 {
-                    returns.Add(((priceSeries[i] ?? 0m) - prev) / prev);
+                    returns[i - 1] = null;
                 }
                 else
                 {
-                    returns.Add(0);
+                    returns[i - 1] = (curr.Value - prev.Value) / prev.Value;
                 }
             }
 
-            for (int i = 0; i < candles.Count - 1; i++)
+            for (int i = 0; i < candles.Count; i++)
             {
-                if (i < Period - 1)
+                if (i < Period)
                 {
                     _values.Add(null);
                     continue;
                 }
 
-                var relevantReturns = returns.Skip(i - Period + 1).Take(Period).OrderBy(r => r).ToList();
-                int index = (int)System.Math.Floor((1 - ConfidenceLevel) * relevantReturns.Count);
-                _values.Add(relevantReturns[index]);
+                bool hasNull = false;
+                var window = new List<decimal>(Period);
+                for (int k = i - Period; k < i; k++)
+                {
+                    var r = returns[k];
+                    if (!r.HasValue)
+                    {
+                        hasNull = true;
+                        break;
+                    }
+                    window.Add(r.Value);
+                }
+
+                if (hasNull)
+                {
+                    _values.Add(null);
+                }
+                else
+                {
+                    window.Sort();
+                    int index = (int)Math.Floor((1.0 - ConfidenceLevel) * Period);
+                    index = Math.Clamp(index, 0, Period - 1);
+                    _values.Add(window[index]);
+                }
             }
-            _values.Insert(0, null); // Align with candle count
 
             return IndicatorResult.Success(_values);
         }

@@ -1,7 +1,4 @@
 using System.Collections.Generic;
-using System.Linq;
-using StockAnalyzer.Core.Models;
-
 using StockAnalyzer.Core.Models.Parameters;
 
 namespace StockAnalyzer.Core.Models.Indicators.Oscillators
@@ -23,8 +20,10 @@ namespace StockAnalyzer.Core.Models.Indicators.Oscillators
 
         protected override IIndicatorResult CalculateCore(IReadOnlyList<CoreCandleData> candles)
         {
+            _values.Clear();
+            if (candles == null || candles.Count == 0) return IndicatorResult.Success(_values);
 
-            if (candles.Count < Period)
+            if (candles.Count < Period || Period <= 0)
             {
                 for (int i = 0; i < candles.Count; i++)
                 {
@@ -36,21 +35,36 @@ namespace StockAnalyzer.Core.Models.Indicators.Oscillators
             var priceSeries = PriceDataHelper.ExtractPriceSeries(candles, PriceSource);
             for (int i = 0; i < candles.Count; i++)
             {
-                if (i < Period - 1)
+                if (i < Period)
                 {
                     _values.Add(null);
                     continue;
                 }
 
                 int upwardDays = 0;
+                bool hasNull = false;
                 for (int j = i - Period + 1; j <= i; j++)
                 {
-                    if (j > 0 && (priceSeries[j] ?? 0m) > (priceSeries[j - 1] ?? 0m))
+                    if (!priceSeries[j].HasValue || !priceSeries[j - 1].HasValue)
+                    {
+                        hasNull = true;
+                        break;
+                    }
+
+                    if (priceSeries[j]!.Value > priceSeries[j - 1]!.Value)
                     {
                         upwardDays++;
                     }
                 }
-                _values.Add(100m * upwardDays / Period);
+
+                if (hasNull)
+                {
+                    _values.Add(null);
+                }
+                else
+                {
+                    _values.Add(100m * upwardDays / Period);
+                }
             }
 
             return IndicatorResult.Success(_values);

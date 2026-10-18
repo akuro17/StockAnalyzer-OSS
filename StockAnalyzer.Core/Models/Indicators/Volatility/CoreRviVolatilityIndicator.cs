@@ -1,6 +1,4 @@
-using StockAnalyzer.Core.Models;
 using System.Collections.Generic;
-using System.Linq;
 using StockAnalyzer.Core.Models.Parameters;
 
 namespace StockAnalyzer.Core.Models.Indicators.Volatility
@@ -21,63 +19,105 @@ namespace StockAnalyzer.Core.Models.Indicators.Volatility
 
         protected override IIndicatorResult CalculateCore(IReadOnlyList<CoreCandleData> candles)
         {
+            _values.Clear();
+            if (candles == null || candles.Count == 0) return IndicatorResult.Success(_values);
+
+            if (candles.Count < 2 * Period - 1 || Period <= 0)
+            {
+                for (int i = 0; i < candles.Count; i++) _values.Add(null);
+                return IndicatorResult.Success(_values);
+            }
 
             var stdDev = new CoreStandardDeviationIndicator { Period = Period, PriceSource = PriceSource };
             stdDev.Calculate(candles);
 
-            decimal? prevUpEma = null;
-            decimal? prevDnEma = null;
-            decimal multiplier = 2m / (Period + 1);
+            var priceSeries = PriceDataHelper.ExtractPriceSeries(candles, PriceSource);
+            var upStd = new List<decimal?>(candles.Count);
+            var downStd = new List<decimal?>(candles.Count);
 
             for (int i = 0; i < candles.Count; i++)
             {
-                if (i < Period)
+                if (i < Period - 1 || !stdDev.Values[i].HasValue || i == 0 || !priceSeries[i].HasValue || !priceSeries[i - 1].HasValue)
+                {
+                    upStd.Add(null);
+                    downStd.Add(null);
+                    continue;
+                }
+
+                decimal diff = priceSeries[i]!.Value - priceSeries[i - 1]!.Value;
+                decimal s = stdDev.Values[i]!.Value;
+                if (diff > 0m)
+                {
+                    upStd.Add(s);
+                    downStd.Add(0m);
+                }
+                else if (diff < 0m)
+                {
+                    upStd.Add(0m);
+                    downStd.Add(s);
+                }
+                else
+                {
+                    upStd.Add(0m);
+                    downStd.Add(0m);
+                }
+            }
+
+            decimal? avgUp = null;
+            decimal? avgDown = null;
+            int seedIndex = 2 * Period - 2;
+
+            for (int i = 0; i < candles.Count; i++)
+            {
+                if (i < seedIndex)
                 {
                     _values.Add(null);
                     continue;
                 }
 
-                decimal upSum = 0, dnSum = 0;
-                if (stdDev.Values[i].HasValue && stdDev.Values[i-1].HasValue)
+                if (i == seedIndex)
                 {
-                    decimal diff = stdDev.Values[i]!.Value - stdDev.Values[i-1]!.Value;
-                    if (diff > 0) upSum = diff;
-                    else dnSum = -diff;
-                }
+                    decimal sumUp = 0m;
+                    decimal sumDown = 0m;
+                    bool hasNull = false;
 
-                if (prevUpEma == null) // First calculation
-                {
-                    // Need to calculate SMA for the first EMA value
-                    decimal upSma = 0, dnSma = 0;
-                    int count = 0;
-                    for(int j=i-Period+1; j<=i; j++)
+                    for (int k = Period - 1; k <= seedIndex; k++)
                     {
-                        if(stdDev.Values[j].HasValue && stdDev.Values[j-1].HasValue)
+                        if (!upStd[k].HasValue || !downStd[k].HasValue)
                         {
-                            decimal diffSma = stdDev.Values[j]!.Value - stdDev.Values[j-1]!.Value;
-                            if (diffSma > 0) upSma += diffSma;
-                            else dnSma -= diffSma;
-                            count++;
+                            hasNull = true;
+                            break;
                         }
+                        sumUp += upStd[k]!.Value;
+                        sumDown += downStd[k]!.Value;
                     }
-                    if(count == Period) // Ensure we have a full period of data for the initial SMA
+
+                    if (hasNull)
                     {
-                        prevUpEma = upSma / Period;
-                        prevDnEma = dnSma / Period;
+                        _values.Add(null);
                     }
-                }
-
-                if (prevUpEma.HasValue)
-                {
-                    prevUpEma = (upSum - prevUpEma.Value) * multiplier + prevUpEma.Value;
-                    prevDnEma = (dnSum - prevDnEma!.Value) * multiplier + prevDnEma!.Value;
-
-                    decimal total = prevUpEma.Value + prevDnEma.Value;
-                    _values.Add(total == 0 ? 50 : prevUpEma.Value / total * 100);
+                    else
+                    {
+                        avgUp = sumUp / Period;
+                        avgDown = sumDown / Period;
+                        decimal total = avgUp.Value + avgDown.Value;
+                        _values.Add(total == 0m ? 50m : 100m * (avgUp.Value / total));
+                    }
                 }
                 else
                 {
-                    _values.Add(null);
+                    if (avgUp.HasValue && avgDown.HasValue && upStd[i].HasValue && downStd[i].HasValue)
+                    {
+                        avgUp = (avgUp.Value * (Period - 1) + upStd[i]!.Value) / Period;
+                        avgDown = (avgDown.Value * (Period - 1) + downStd[i]!.Value) / Period;
+
+                        decimal total = avgUp.Value + avgDown.Value;
+                        _values.Add(total == 0m ? 50m : 100m * (avgUp.Value / total));
+                    }
+                    else
+                    {
+                        _values.Add(null);
+                    }
                 }
             }
 

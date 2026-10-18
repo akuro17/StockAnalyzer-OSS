@@ -134,6 +134,80 @@ public static class IndicatorCalculationHelper
     }
 
     /// <summary>
+    /// Calculates Simple Moving Average (SMA) from a list of nullable decimal values.
+    /// Returns null at index i if i &lt; period - 1 or if any value in the window [i - period + 1 .. i] is null.
+    /// Operates in O(N) using a running window with periodic resynchronization every 1000 bars.
+    /// </summary>
+    /// <param name="data">List of nullable prices</param>
+    /// <param name="period">SMA period</param>
+    /// <returns>List of SMA values with nulls for warmup and null-containing windows</returns>
+    public static List<decimal?> CalculateSmaWithNulls(IReadOnlyList<decimal?> data, int period)
+    {
+        if (data == null || data.Count == 0) return new List<decimal?>();
+        if (period <= 0) throw new ArgumentOutOfRangeException(nameof(period), "Period must be greater than zero.");
+
+        var result = new List<decimal?>(data.Count);
+        decimal runningSum = 0m;
+        int nullCount = 0;
+        int barsSinceResync = 0;
+
+        for (int i = 0; i < data.Count; i++)
+        {
+            var current = data[i];
+            if (current.HasValue)
+            {
+                runningSum += current.Value;
+            }
+            else
+            {
+                nullCount++;
+            }
+
+            if (i >= period)
+            {
+                var leaving = data[i - period];
+                if (leaving.HasValue)
+                {
+                    runningSum -= leaving.Value;
+                }
+                else
+                {
+                    nullCount--;
+                }
+            }
+
+            if (i < period - 1)
+            {
+                result.Add(null);
+                continue;
+            }
+
+            // Periodic resync to avoid precision issues over long series
+            barsSinceResync++;
+            if (barsSinceResync >= 1000 && nullCount == 0)
+            {
+                runningSum = 0m;
+                for (int j = i - period + 1; j <= i; j++)
+                {
+                    runningSum += data[j]!.Value;
+                }
+                barsSinceResync = 0;
+            }
+
+            if (nullCount > 0)
+            {
+                result.Add(null);
+            }
+            else
+            {
+                result.Add(runningSum / period);
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>
     /// Calculates Pearson product-moment correlation coefficient over a rolling window between two series.
     /// </summary>
     /// <param name="seriesA">Primary series (nullable decimal)</param>
@@ -1189,6 +1263,119 @@ public static class IndicatorCalculationHelper
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Calculates Directional Movement Index (+DI, -DI) and DX series using Welles Wilder's recursive smoothing (RMA).
+    /// Single Source of Truth (SSoT) for CoreDmiIndicator, CoreAdxIndicator, and CoreAdxrIndicator.
+    /// </summary>
+    /// <param name="candles">List of candle data.</param>
+    /// <param name="period">Wilder smoothing period (must be >= 1).</param>
+    /// <returns>A tuple of (+DI, -DI, DX) series aligned with candles.</returns>
+    public static (List<decimal?> PlusDi, List<decimal?> MinusDi, List<decimal?> Dx) CalculateWilderDmiSeries(
+        IReadOnlyList<CoreCandleData> candles,
+        int period)
+    {
+        if (candles == null || candles.Count == 0)
+        {
+            return (new List<decimal?>(), new List<decimal?>(), new List<decimal?>());
+        }
+
+        int n = candles.Count;
+        var plusDiList = new List<decimal?>(n);
+        var minusDiList = new List<decimal?>(n);
+        var dxList = new List<decimal?>(n);
+
+        if (period <= 0 || n < period)
+        {
+            for (int i = 0; i < n; i++)
+            {
+                plusDiList.Add(null);
+                minusDiList.Add(null);
+                dxList.Add(null);
+            }
+            return (plusDiList, minusDiList, dxList);
+        }
+
+        decimal str = 0m;
+        decimal plusSdm = 0m;
+        decimal minusSdm = 0m;
+
+        for (int i = 0; i < n; i++)
+        {
+            decimal tr;
+            decimal plusDm = 0m;
+            decimal minusDm = 0m;
+
+            if (i == 0)
+            {
+                tr = candles[0].High - candles[0].Low;
+            }
+            else
+            {
+                var cur = candles[i];
+                var prev = candles[i - 1];
+
+                tr = Math.Max(cur.High - cur.Low,
+                     Math.Max(Math.Abs(cur.High - prev.Close),
+                              Math.Abs(cur.Low - prev.Close)));
+
+                decimal upMove = cur.High - prev.High;
+                decimal downMove = prev.Low - cur.Low;
+
+                if (upMove > downMove && upMove > 0m)
+                {
+                    plusDm = upMove;
+                }
+                if (downMove > upMove && downMove > 0m)
+                {
+                    minusDm = downMove;
+                }
+            }
+
+            if (i < period - 1)
+            {
+                str += tr;
+                plusSdm += plusDm;
+                minusSdm += minusDm;
+
+                plusDiList.Add(null);
+                minusDiList.Add(null);
+                dxList.Add(null);
+            }
+            else if (i == period - 1)
+            {
+                str += tr;
+                plusSdm += plusDm;
+                minusSdm += minusDm;
+
+                decimal pdi = str > 0m ? (plusSdm / str) * 100m : 0m;
+                decimal mdi = str > 0m ? (minusSdm / str) * 100m : 0m;
+                decimal diSum = pdi + mdi;
+                decimal dx = diSum > 0m ? (Math.Abs(pdi - mdi) / diSum) * 100m : 0m;
+
+                plusDiList.Add(pdi);
+                minusDiList.Add(mdi);
+                dxList.Add(dx);
+            }
+            else
+            {
+                str = str - (str / period) + tr;
+                plusSdm = plusSdm - (plusSdm / period) + plusDm;
+                minusSdm = minusSdm - (minusSdm / period) + minusDm;
+
+                decimal pdi = str > 0m ? (plusSdm / str) * 100m : 0m;
+                decimal mdi = str > 0m ? (minusSdm / str) * 100m : 0m;
+                decimal diSum = pdi + mdi;
+                decimal dx = diSum > 0m ? (Math.Abs(pdi - mdi) / diSum) * 100m : 0m;
+
+                plusDiList.Add(pdi);
+                minusDiList.Add(mdi);
+                dxList.Add(dx);
+            }
+        }
+
+        return (plusDiList, minusDiList, dxList);
     }
 }
 

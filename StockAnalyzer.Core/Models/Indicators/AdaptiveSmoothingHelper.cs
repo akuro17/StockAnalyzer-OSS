@@ -125,6 +125,66 @@ public static class AdaptiveSmoothingHelper
     }
 
     /// <summary>
+    /// Normalizes a dynamic period/driver series into the target period range [minPeriod, maxPeriod]
+    /// strictly causally using a trailing rolling lookback window [max(0, i - lookbackWindow + 1) .. i].
+    /// Eliminates look-ahead bias inherent in full-series normalization while preserving backward compatibility.
+    /// </summary>
+    public static IReadOnlyList<decimal?> NormalizeDriverSeriesCausal(
+        IReadOnlyList<decimal?>? rawDriver,
+        int lookbackWindow = 100,
+        decimal minPeriod = IndicatorDefaultConstants.DynamicPeriodMinDefault,
+        decimal maxPeriod = IndicatorDefaultConstants.DynamicPeriodMaxDefault)
+    {
+        if (rawDriver == null || rawDriver.Count == 0)
+        {
+            return Array.Empty<decimal?>();
+        }
+
+        int window = Math.Max(1, lookbackWindow);
+        decimal minBound = Math.Min(minPeriod, maxPeriod);
+        decimal maxBound = Math.Max(minPeriod, maxPeriod);
+        decimal midPeriod = Math.Round((minBound + maxBound) / 2m, 0, MidpointRounding.AwayFromZero);
+
+        var result = new List<decimal?>(rawDriver.Count);
+
+        for (int i = 0; i < rawDriver.Count; i++)
+        {
+            var current = rawDriver[i];
+            if (!current.HasValue)
+            {
+                result.Add(null);
+                continue;
+            }
+
+            int start = Math.Max(0, i - window + 1);
+            decimal minVal = current.Value;
+            decimal maxVal = current.Value;
+
+            for (int k = start; k <= i; k++)
+            {
+                var v = rawDriver[k];
+                if (!v.HasValue) continue;
+                if (v.Value < minVal) minVal = v.Value;
+                if (v.Value > maxVal) maxVal = v.Value;
+            }
+
+            decimal range = maxVal - minVal;
+            if (range == 0m)
+            {
+                result.Add(midPeriod);
+            }
+            else
+            {
+                decimal ratio = (current.Value - minVal) / range;
+                decimal mapped = minBound + ratio * (maxBound - minBound);
+                result.Add(Math.Clamp(mapped, minBound, maxBound));
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>
     /// Smooths a dynamic period/driver series using a lightweight exponential filter to reduce per-bar jitter.
     /// </summary>
     public static List<decimal?> SmoothDriverSeries(IReadOnlyList<decimal?>? dynamicPeriods, decimal smoothingBeta = 0.2m)

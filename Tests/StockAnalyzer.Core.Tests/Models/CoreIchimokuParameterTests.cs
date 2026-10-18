@@ -7,11 +7,11 @@ namespace StockAnalyzer.Core.Tests.Models;
 public class CoreIchimokuParameterTests
 {
     [Fact]
-    public void GetRequiredWarmupBars_DefaultValues_ReturnsMaxSampleMinusOne()
+    public void GetRequiredWarmupBars_DefaultValues_ReturnsMaxSamplePlusDisplacement()
     {
         var param = new CoreIchimokuParameter();
 
-        Assert.Equal(51, param.GetRequiredWarmupBars());
+        Assert.Equal(78, param.GetRequiredWarmupBars());
     }
 
     [Fact]
@@ -19,7 +19,7 @@ public class CoreIchimokuParameterTests
     {
         var param = new CoreIchimokuParameter { TenkanSample = 60, KijunSample = 26, SenkouBSample = 52 };
 
-        Assert.Equal(59, param.GetRequiredWarmupBars());
+        Assert.Equal(86, param.GetRequiredWarmupBars());
     }
 
     [Theory]

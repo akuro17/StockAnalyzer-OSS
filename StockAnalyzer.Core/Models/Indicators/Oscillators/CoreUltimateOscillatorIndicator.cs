@@ -1,8 +1,5 @@
-using StockAnalyzer.Core.Models.Indicators;
 using System;
 using System.Collections.Generic;
-using System.Linq;
-
 using StockAnalyzer.Core.Models.Parameters;
 
 namespace StockAnalyzer.Core.Models.Indicators.Oscillators
@@ -27,9 +24,11 @@ namespace StockAnalyzer.Core.Models.Indicators.Oscillators
 
         protected override IIndicatorResult CalculateCore(IReadOnlyList<CoreCandleData> candles)
         {
-            if (candles.Count < 2) return IndicatorResult.Success(_values);
-            var bp = new List<decimal>();
-            var tr = new List<decimal>();
+            _values.Clear();
+            if (candles == null || candles.Count < 2) return IndicatorResult.Success(_values);
+
+            var bp = new List<decimal>(candles.Count - 1);
+            var tr = new List<decimal>(candles.Count - 1);
 
             for (int i = 1; i < candles.Count; i++)
             {
@@ -42,19 +41,38 @@ namespace StockAnalyzer.Core.Models.Indicators.Oscillators
             _values.Add(null); // First value is always null as it needs a prior candle
             for (int i = 0; i < bp.Count; i++)
             {
-                if (i < Period3 - 2) { _values.Add(null); continue; }
+                if (i < Period3 - 2)
+                {
+                    _values.Add(null);
+                    continue;
+                }
 
-                decimal sum1Bp = 0, sum1Tr = 0, sum2Bp = 0, sum2Tr = 0, sum3Bp = 0, sum3Tr = 0;
+                decimal sum1Bp = 0m, sum1Tr = 0m, sum2Bp = 0m, sum2Tr = 0m, sum3Bp = 0m, sum3Tr = 0m;
 
-                for (int j = 0; j < Period1; j++) { if(i-j >= 0) { sum1Bp += bp[i - j]; sum1Tr += tr[i - j]; } }
-                for (int j = 0; j < Period2; j++) { if(i-j >= 0) { sum2Bp += bp[i - j]; sum2Tr += tr[i - j]; } }
-                for (int j = 0; j < Period3; j++) { if(i-j >= 0) { sum3Bp += bp[i - j]; sum3Tr += tr[i - j]; } }
+                for (int j = 0; j < Period1; j++)
+                {
+                    if (i - j >= 0) { sum1Bp += bp[i - j]; sum1Tr += tr[i - j]; }
+                }
+                for (int j = 0; j < Period2; j++)
+                {
+                    if (i - j >= 0) { sum2Bp += bp[i - j]; sum2Tr += tr[i - j]; }
+                }
+                for (int j = 0; j < Period3; j++)
+                {
+                    if (i - j >= 0) { sum3Bp += bp[i - j]; sum3Tr += tr[i - j]; }
+                }
 
-                decimal avg1 = sum1Tr == 0 ? 0 : sum1Bp / sum1Tr;
-                decimal avg2 = sum2Tr == 0 ? 0 : sum2Bp / sum2Tr;
-                decimal avg3 = sum3Tr == 0 ? 0 : sum3Bp / sum3Tr;
+                if (sum1Tr == 0m || sum2Tr == 0m || sum3Tr == 0m)
+                {
+                    _values.Add(null);
+                    continue;
+                }
 
-                _values.Add(100 * (4 * avg1 + 2 * avg2 + avg3) / 7);
+                decimal avg1 = sum1Bp / sum1Tr;
+                decimal avg2 = sum2Bp / sum2Tr;
+                decimal avg3 = sum3Bp / sum3Tr;
+
+                _values.Add(100m * (4m * avg1 + 2m * avg2 + avg3) / 7m);
             }
 
             return IndicatorResult.Success(_values);

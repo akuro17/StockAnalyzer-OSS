@@ -1,7 +1,5 @@
+using System;
 using System.Collections.Generic;
-using System.Linq;
-using StockAnalyzer.Core.Models;
-
 using StockAnalyzer.Core.Models.Parameters;
 
 namespace StockAnalyzer.Core.Models.Indicators.Oscillators
@@ -23,17 +21,18 @@ namespace StockAnalyzer.Core.Models.Indicators.Oscillators
 
         protected override IIndicatorResult CalculateCore(IReadOnlyList<CoreCandleData> candles)
         {
+            _values.Clear();
+            if (candles == null || candles.Count == 0) return IndicatorResult.Success(_values);
 
-
-            if (candles.Count < Period)
+            if (candles.Count < Period || Period <= 0)
             {
                 for (int i = 0; i < candles.Count; i++) _values.Add(null);
                 return IndicatorResult.Success(_values);
             }
 
-            var tr = new List<decimal>();
-            var pvm = new List<decimal>();
-            var nvm = new List<decimal>();
+            var tr = new List<decimal>(candles.Count);
+            var pvm = new List<decimal>(candles.Count);
+            var nvm = new List<decimal>(candles.Count);
 
             for (int i = 1; i < candles.Count; i++)
             {
@@ -56,9 +55,9 @@ namespace StockAnalyzer.Core.Models.Indicators.Oscillators
                     continue;
                 }
 
-                decimal sumTr = 0;
-                decimal sumPvm = 0;
-                decimal sumNvm = 0;
+                decimal sumTr = 0m;
+                decimal sumPvm = 0m;
+                decimal sumNvm = 0m;
 
                 for (int j = i - Period; j < i; j++)
                 {
@@ -71,7 +70,7 @@ namespace StockAnalyzer.Core.Models.Indicators.Oscillators
                     }
                 }
 
-                if (sumTr == 0)
+                if (sumTr == 0m)
                 {
                     _values.Add(null);
                     continue;
@@ -80,7 +79,7 @@ namespace StockAnalyzer.Core.Models.Indicators.Oscillators
                 var pvi = sumPvm / sumTr;
                 var nvi = sumNvm / sumTr;
 
-                _values.Add(pvi > nvi ? 1 : -1);
+                _values.Add(pvi > nvi ? 1m : -1m);
             }
 
             return IndicatorResult.Success(_values);

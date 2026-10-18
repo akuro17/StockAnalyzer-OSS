@@ -6,18 +6,18 @@ namespace StockAnalyzer.Core.Tests.Models;
 public class CoreSmiParameterTests
 {
     [Fact]
-    public void GetRequiredWarmupBars_DefaultValues_ReturnsPeriodPlusSmooth1PlusSmooth2MinusTwo()
+    public void GetRequiredWarmupBars_DefaultValues_ReturnsPeriodPlusSmoothingFormula()
     {
         var param = new CoreSmiParameter();
 
-        Assert.Equal(20, param.GetRequiredWarmupBars());
+        Assert.Equal(53, param.GetRequiredWarmupBars());
     }
 
     [Fact]
     public void GetRequiredWarmupBars_CustomValues_MatchesFormula()
     {
-        var param = new CoreSmiParameter { Period = 20, Smooth1 = 8, Smooth2 = 6 };
+        var param = new CoreSmiParameter { Period = 20, Smooth1 = 8, Smooth2 = 6, SignalPeriod = 5 };
 
-        Assert.Equal(32, param.GetRequiredWarmupBars());
+        Assert.Equal(77, param.GetRequiredWarmupBars());
     }
 }

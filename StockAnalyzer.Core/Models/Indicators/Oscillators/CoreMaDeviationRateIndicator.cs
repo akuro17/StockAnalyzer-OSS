@@ -1,7 +1,4 @@
 using System.Collections.Generic;
-using System.Linq;
-using StockAnalyzer.Core.Models;
-
 using StockAnalyzer.Core.Models.Parameters;
 
 namespace StockAnalyzer.Core.Models.Indicators.Oscillators
@@ -23,37 +20,36 @@ namespace StockAnalyzer.Core.Models.Indicators.Oscillators
 
         protected override IIndicatorResult CalculateCore(IReadOnlyList<CoreCandleData> candles)
         {
-            if (candles.Count < Period)
+            _values.Clear();
+            if (candles == null || candles.Count == 0) return IndicatorResult.Success(_values);
+
+            var priceSeries = PriceDataHelper.ExtractPriceSeries(candles, PriceSource);
+            return CalculateSeriesCore(priceSeries, null);
+        }
+
+        protected override IIndicatorResult CalculateSeriesCore(IReadOnlyList<decimal?> series, IReadOnlyList<decimal?>? dynamicPeriods = null)
+        {
+            _values.Clear();
+            if (series == null || series.Count == 0) return IndicatorResult.Success(_values);
+
+            if (series.Count < Period || Period <= 0)
             {
-                for (int i = 0; i < candles.Count; i++)
-                {
-                    _values.Add(null);
-                }
+                for (int i = 0; i < series.Count; i++) _values.Add(null);
                 return IndicatorResult.Success(_values);
             }
 
-            var priceSeries = PriceDataHelper.ExtractPriceSeries(candles, PriceSource);
-            decimal sum = 0;
-            for (int i = 0; i < candles.Count; i++)
+            var sma = IndicatorCalculationHelper.CalculateSmaWithNulls(series, Period);
+
+            for (int i = 0; i < series.Count; i++)
             {
-                sum += priceSeries[i] ?? 0m;
-                if (i >= Period)
+                if (!sma[i].HasValue || sma[i]!.Value == 0m || !series[i].HasValue)
                 {
-                    sum -= priceSeries[i - Period] ?? 0m;
-                    var sma = sum / Period;
-                    if (sma == 0)
-                    {
-                        _values.Add(null);
-                    }
-                    else
-                    {
-                        var deviation = ((priceSeries[i] ?? 0m) - sma) / sma * 100;
-                        _values.Add(deviation);
-                    }
+                    _values.Add(null);
                 }
                 else
                 {
-                    _values.Add(null);
+                    decimal deviation = ((series[i]!.Value - sma[i]!.Value) / sma[i]!.Value) * 100m;
+                    _values.Add(deviation);
                 }
             }
 

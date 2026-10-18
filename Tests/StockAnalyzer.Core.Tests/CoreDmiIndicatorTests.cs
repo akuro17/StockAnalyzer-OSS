@@ -101,4 +101,36 @@ public class CoreDmiIndicatorTests
         var result = indicator.Calculate(null);
         Assert.False(result.IsSuccessful);
     }
+
+    [Fact]
+    public void Calculate_ProducesIdenticalDiSeries_AsCoreAdxIndicator()
+    {
+        var candles = GenerateCandleData(50, i =>
+            new CoreCandleData(DateTime.Today.AddDays(i),
+                100m + i * 1.5m,
+                103m + i * 1.5m,
+                97m + i * 1.5m,
+                101m + i * 1.5m,
+                1000));
+
+        var dmi = new CoreDmiIndicator { Period = 14 };
+        var adx = new CoreAdxIndicator { Period = 14 };
+
+        var dmiResult = dmi.Calculate(candles);
+        var adxResult = adx.Calculate(candles);
+
+        Assert.True(dmiResult.IsSuccessful);
+        Assert.True(adxResult.IsSuccessful);
+
+        Assert.Equal(candles.Count, dmi.PlusDI.Count);
+        Assert.Equal(candles.Count, adx.PlusDI.Count);
+        Assert.Equal(candles.Count, dmi.MinusDI.Count);
+        Assert.Equal(candles.Count, adx.MinusDI.Count);
+
+        for (int i = 0; i < candles.Count; i++)
+        {
+            Assert.Equal(dmi.PlusDI[i], adx.PlusDI[i]);
+            Assert.Equal(dmi.MinusDI[i], adx.MinusDI[i]);
+        }
+    }
 }
