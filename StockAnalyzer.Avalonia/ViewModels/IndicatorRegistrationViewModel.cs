@@ -934,18 +934,57 @@ public partial class IndicatorRegistrationViewModel : ViewModelBase, IDisposable
 
         if (settings?.ParameterObject != null)
         {
-            var paramObj = settings.ParameterObject;
-            var props = _propertyCache.GetOrAdd(paramObj.GetType(), t => t.GetProperties());
-            foreach (var prop in props)
+            var paramDict = BuildParameterDictionary(settings.ParameterObject);
+            foreach (var kvp in paramDict)
             {
-                var val = prop.GetValue(paramObj);
-                if (val != null)
-                {
-                    config.Parameters[prop.Name] = val;
-                }
+                config.Parameters[kvp.Key] = kvp.Value;
             }
         }
         return config;
+    }
+
+    /// <summary>
+    /// Builds a dictionary of parameter names and values from an indicator's parameter object.
+    /// Unified SSoT helper for parameter extraction across condition previews and registered entries.
+    /// </summary>
+    public static Dictionary<string, object> BuildParameterDictionary(CoreIndicatorParameterBase? parameterObject)
+    {
+        var dict = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+        if (parameterObject != null)
+        {
+            var props = _propertyCache.GetOrAdd(
+                parameterObject.GetType(),
+                static t => t.GetProperties(BindingFlags.Public | BindingFlags.Instance));
+            foreach (var prop in props)
+            {
+                if (!prop.CanRead || prop.GetIndexParameters().Length > 0)
+                {
+                    continue;
+                }
+
+                var val = prop.GetValue(parameterObject);
+                if (val != null)
+                {
+                    dict[prop.Name] = val;
+                }
+            }
+        }
+        return dict;
+    }
+
+    /// <summary>
+    /// Builds a dictionary of parameter names and values for a given IndicatorType and optional ParameterObject.
+    /// </summary>
+    public static Dictionary<string, object> BuildParameterDictionary(IndicatorType type, CoreIndicatorParameterBase? parameterObject = null)
+    {
+        if (parameterObject != null)
+        {
+            return BuildParameterDictionary(parameterObject);
+        }
+
+        var instance = IndicatorFactory.CreateStatic(type);
+        var defaultParam = instance?.GetDefaultSettings().ParameterObject;
+        return BuildParameterDictionary(defaultParam);
     }
 
     [RelayCommand]

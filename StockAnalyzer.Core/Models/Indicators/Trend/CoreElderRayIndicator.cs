@@ -37,7 +37,7 @@ namespace StockAnalyzer.Core.Models.Indicators.Trend
                 BullPower.Add(bull); BearPower.Add(bear); _values.Add(bull + bear);
             }
 
-            return IndicatorResult.Success(_values);
+            return CreateAutomaticResult();
         }
     }
 }

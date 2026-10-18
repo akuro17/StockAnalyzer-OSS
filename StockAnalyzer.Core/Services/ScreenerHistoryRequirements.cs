@@ -226,28 +226,126 @@ public static class ScreenerHistoryRequirements
         }
     }
 
-    private static int ExtractPeriodFromSide(ScreenerIndicatorSideConfig? side)
+    /// <summary>
+    /// Gets the minimum bars required for a single indicator configuration.
+    /// </summary>
+    public static int GetMinimumBars(IndicatorType type, IReadOnlyDictionary<string, object>? parameters = null, int offset = 0)
     {
-        if (side?.Parameters == null) return DefaultIndicatorPeriod;
+        int warmup = ResolveIndicatorWarmupBars(type, parameters);
+        return (warmup * IndicatorDefaultConstants.EmaConvergenceMultiplier) + offset + HistoryMarginBars;
+    }
 
-        int maxP = DefaultIndicatorPeriod;
-        foreach (var val in side.Parameters.Values)
+    /// <summary>
+    /// Resolves the warmup/lookback bars required for a given indicator type and its parameters.
+    /// Single Source of Truth (SSoT) for indicator history sizing and multi-stage warmup calculations.
+    /// </summary>
+    public static int ResolveIndicatorWarmupBars(IndicatorType? type, IReadOnlyDictionary<string, object>? parameters)
+    {
+        if (!type.HasValue) return DefaultIndicatorPeriod;
+
+        switch (type.Value)
         {
-            if (val is int iVal && iVal > maxP && iVal < PeriodParameterExclusiveUpperBound)
+            case IndicatorType.Ichimoku:
+                int senkouB = GetIntParameter(parameters, "SenkouBSample", "SenkouSpanBPeriod", 52);
+                int kijun = GetIntParameter(parameters, "KijunSample", "KijunPeriod", 26);
+                int offset = GetIntParameter(parameters, "Offset", "KijunPeriod", kijun);
+                return Math.Max(senkouB, kijun) + offset;
+
+            case IndicatorType.MassIndex:
+                int emaPeriod = GetIntParameter(parameters, "EmaPeriod", "EmaPeriod", 9);
+                int sumPeriod = GetIntParameter(parameters, "Period", "SumPeriod", 25);
+                return (emaPeriod * 2) + sumPeriod; // default 18 + 25 = 43
+
+            case IndicatorType.SchaffTrendCycle:
+                int fast = GetIntParameter(parameters, "ShortPeriod", "FastPeriod", 23);
+                int slow = GetIntParameter(parameters, "LongPeriod", "SlowPeriod", 50);
+                int cycle = GetIntParameter(parameters, "CyclePeriod", "CyclePeriod", 10);
+                return Math.Max(fast, slow) + (cycle * 2); // default 50 + 20 = 70
+
+            case IndicatorType.MACD or IndicatorType.PPO or IndicatorType.PriceOscillator:
+                int macdSlow = GetIntParameter(parameters, "LongPeriod", "SlowPeriod", 26);
+                int macdSig = GetIntParameter(parameters, "SignalPeriod", "SignalPeriod", 9);
+                return macdSlow + macdSig;
+
+            case IndicatorType.Stoch:
+                int stochK = GetIntParameter(parameters, "KPeriod", "KPeriod", 14);
+                int stochSmooth = GetIntParameter(parameters, "Smooth", "SlowKPeriod", 3);
+                int stochD = GetIntParameter(parameters, "DPeriod", "DPeriod", 3);
+                return stochK + stochSmooth + stochD;
+
+            default:
+                if (parameters == null || parameters.Count == 0)
+                {
+                    return DefaultIndicatorPeriod;
+                }
+
+                int maxParam = DefaultIndicatorPeriod;
+                foreach (var val in parameters.Values)
+                {
+                    int p = ExtractIntFromParam(val);
+                    if (p > maxParam)
+                    {
+                        maxParam = p;
+                    }
+                }
+                return maxParam;
+        }
+    }
+
+    /// <summary>
+    /// Reads an integer parameter safely from a parameter dictionary.
+    /// </summary>
+    public static int GetIntParameter(IReadOnlyDictionary<string, object>? parameters, string name, int defaultValue)
+    {
+        return GetIntParameter(parameters, name, name, defaultValue);
+    }
+
+    /// <summary>
+    /// Reads an integer parameter safely from a parameter dictionary, checking a primary name first and falling back to a secondary alias.
+    /// </summary>
+    public static int GetIntParameter(IReadOnlyDictionary<string, object>? parameters, string primaryName, string secondaryName, int defaultValue)
+    {
+        if (parameters == null) return defaultValue;
+        foreach (var kvp in parameters)
+        {
+            if (string.Equals(kvp.Key, primaryName, StringComparison.OrdinalIgnoreCase))
             {
-                maxP = iVal;
-            }
-            else if (val is long lVal && lVal > maxP && lVal < PeriodParameterExclusiveUpperBound)
-            {
-                maxP = (int)lVal;
-            }
-            else if (val is JsonElement { ValueKind: JsonValueKind.Number } jsonVal
-                     && jsonVal.TryGetInt64(out long jVal) && jVal > maxP && jVal < PeriodParameterExclusiveUpperBound)
-            {
-                // Parameters of a template loaded from disk arrive as JsonElement; same bounds as the int/long branches.
-                maxP = (int)jVal;
+                int val = ExtractIntFromParam(kvp.Value);
+                if (val > 0) return val;
             }
         }
-        return maxP;
+        if (!string.Equals(primaryName, secondaryName, StringComparison.OrdinalIgnoreCase))
+        {
+            foreach (var kvp in parameters)
+            {
+                if (string.Equals(kvp.Key, secondaryName, StringComparison.OrdinalIgnoreCase))
+                {
+                    int val = ExtractIntFromParam(kvp.Value);
+                    if (val > 0) return val;
+                }
+            }
+        }
+        return defaultValue;
+    }
+
+    private static int ExtractIntFromParam(object? val)
+    {
+        long result = 0;
+        if (val is int i) result = i;
+        else if (val is long l) result = l;
+        else if (val is short sh) result = sh;
+        else if (val is byte b) result = b;
+        else if (val is JsonElement { ValueKind: JsonValueKind.Number } jsonVal && jsonVal.TryGetInt64(out long jVal))
+        {
+            result = jVal;
+        }
+
+        return (result > 0 && result < PeriodParameterExclusiveUpperBound) ? (int)result : 0;
+    }
+
+    private static int ExtractPeriodFromSide(ScreenerIndicatorSideConfig? side)
+    {
+        if (side == null) return DefaultIndicatorPeriod;
+        return ResolveIndicatorWarmupBars(side.IndicatorType, side.Parameters);
     }
 }

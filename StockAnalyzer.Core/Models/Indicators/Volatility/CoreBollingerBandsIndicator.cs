@@ -55,11 +55,14 @@ public class CoreBollingerBandsIndicator : CoreIndicatorBase
             LowerBand.Add(l);
         }
 
-        return IndicatorResult.Success(new Dictionary<string, IReadOnlyList<decimal?>>
+        return IndicatorResult.Success(new Dictionary<string, IReadOnlyList<decimal?>>(System.StringComparer.OrdinalIgnoreCase)
         {
             { MiddleSeriesName, _values },
             { UpperSeriesName, UpperBand },
-            { LowerSeriesName, LowerBand }
+            { LowerSeriesName, LowerBand },
+            { "MiddleBand", _values },
+            { "UpperBand", UpperBand },
+            { "LowerBand", LowerBand }
         });
     }
 

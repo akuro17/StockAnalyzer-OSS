@@ -91,6 +91,15 @@ public sealed class ScreenerFaultLog
     }
 
     /// <summary>
+    /// Records a warning message at the specified site.
+    /// </summary>
+    public void Warn(string site, string message)
+    {
+        if (message == null) return;
+        Record(site, new InvalidOperationException(message));
+    }
+
+    /// <summary>
     /// Atomically snapshots all sites with non-zero fault counts and resets counters and error details.
     /// </summary>
     public IReadOnlyList<(string Site, long Count, string FirstError)> TakeSnapshotAndReset()

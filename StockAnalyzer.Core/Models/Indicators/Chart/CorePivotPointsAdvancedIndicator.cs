@@ -7,15 +7,17 @@ namespace StockAnalyzer.Core.Models.Indicators.Chart
 {
     public enum PivotPointType { Standard, Fibonacci, Woodie, Camarilla }
 
+    [StockAnalyzerIndicator(IndicatorType.PivotPointsAdvanced)]
     public class CorePivotPointsAdvancedIndicator : CoreIndicatorBase
     {
         public override string Name => "Pivot Points Advanced";
+        public override bool IsOverlay => true;
 
         public PivotPointType PivotType { get; set; } = PivotPointType.Standard;
 
         protected override IIndicatorResult CalculateCore(IReadOnlyList<CoreCandleData> candles)
         {
-
+            _values.Clear();
 
             if (candles.Count < 2)
             {

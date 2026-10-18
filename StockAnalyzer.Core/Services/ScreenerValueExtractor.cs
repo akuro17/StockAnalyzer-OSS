@@ -148,7 +148,7 @@ public class ScreenerValueExtractor : IScreenerValueExtractor
     /// The one extraction core. Returns null when the value is missing (no bar at the Offset, an indicator that has no value on that bar, or an error),
     /// so a comparison can treat "no value" as "not met" instead of as 0.
     /// </summary>
-    public decimal? ExtractValueNullable(ScreenerIndicatorSideConfig? config, IReadOnlyList<CoreCandleData> candles, TickerMetadata metadata)
+    public decimal? ExtractValueNullable(ScreenerIndicatorSideConfig? config, IReadOnlyList<CoreCandleData> candles, TickerMetadata metadata = default)
     {
         if (config == null || candles == null || candles.Count == 0) return null;
 
@@ -339,6 +339,18 @@ public class ScreenerValueExtractor : IScreenerValueExtractor
             return 0m;
         }
 
+        if (config.TimeFrame != TimeFrame.D1)
+        {
+            Faults.Warn(ScreenerFaultLog.SiteIndicatorCalculate, $"Unsupported non-D1 TimeFrame '{config.TimeFrame}' in daily screener for '{config.IndicatorType}'. Failing closed.");
+            return null;
+        }
+
+        if (!BacktestIndicatorEligibility.IsAllowed(config.IndicatorType, config.OutputName))
+        {
+            Faults.Warn(ScreenerFaultLog.SiteIndicatorCalculate, $"Blocked non-causal indicator or series in screener: {config.IndicatorType} ({config.OutputName}).");
+            return null;
+        }
+
         try
         {
             int threadId = Environment.CurrentManagedThreadId;
@@ -401,13 +413,17 @@ public class ScreenerValueExtractor : IScreenerValueExtractor
                 var result = indicator.Calculate(candles);
                 if (result != null && result.IsSuccessful)
                 {
-                    IReadOnlyList<decimal?> series = (!string.IsNullOrWhiteSpace(config.OutputName) && result.HasSeries(config.OutputName))
-                        ? result.GetSeries(config.OutputName)
-                        : result.MainValues;
-
-                    if (series != null && targetIdx < series.Count)
+                    if (!IndicatorOutputSeriesResolver.TryResolveSeries(result, config.IndicatorType, config.OutputName, (PriceType?)null, out var series))
                     {
-                        return series[targetIdx];
+                        Faults.Warn(ScreenerFaultLog.SiteIndicatorCalculate, $"Requested output series '{config.OutputName}' was not found for indicator '{config.IndicatorType}'.");
+                        return null;
+                    }
+
+                    int latestBarIndex = Math.Min(candles.Count - 1, series.Count - 1);
+                    int targetIndex = latestBarIndex - Math.Max(0, config.Offset);
+                    if (targetIndex >= 0 && targetIndex < series.Count)
+                    {
+                        return series[targetIndex];
                     }
                 }
             }

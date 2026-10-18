@@ -18,54 +18,135 @@ public class CoreYangZhangVolatilityIndicator : CoreIndicatorBase
 
     protected override IIndicatorResult CalculateCore(IReadOnlyList<CoreCandleData> candles)
     {
+        _values.Clear();
 
-        if (candles == null || candles.Count < Period)
+        if (candles == null || candles.Count == 0)
         {
-             if (candles != null) _values.AddRange(Enumerable.Repeat<decimal?>(null, candles.Count));
             return IndicatorResult.Success(_values);
         }
 
-        var k = 0.34m / (1.34m + (decimal)(Period + 1) / (Period - 1));
-
-        for (int i = 0; i < candles.Count; i++)
+        int n = candles.Count;
+        if (Period < 2 || n < Period)
         {
-            if (i < Period - 1)
+            for (int i = 0; i < n; i++)
+            {
+                _values.Add(null);
+            }
+            return IndicatorResult.Success(_values);
+        }
+
+        bool[] isValid = new bool[n];
+        double[] overnightLog = new double[n];
+        double[] openCloseLog = new double[n];
+        double[] rsTerm = new double[n];
+
+        for (int m = 0; m < n; m++)
+        {
+            var candle = candles[m];
+            if (candle.Open <= 0m || candle.High <= 0m || candle.Low <= 0m || candle.Close <= 0m)
+            {
+                isValid[m] = false;
+                continue;
+            }
+
+            if (m > 0 && candles[m - 1].Close <= 0m)
+            {
+                isValid[m] = false;
+                continue;
+            }
+
+            isValid[m] = true;
+
+            double o = (double)candle.Open;
+            double h = (double)candle.High;
+            double l = (double)candle.Low;
+            double c = (double)candle.Close;
+
+            if (m == 0)
+            {
+                overnightLog[0] = 0.0;
+            }
+            else
+            {
+                double prevC = (double)candles[m - 1].Close;
+                overnightLog[m] = Math.Log(o / prevC);
+            }
+
+            double cm = Math.Log(c / o);
+            openCloseLog[m] = cm;
+
+            double um = Math.Log(h / o);
+            double dm = Math.Log(l / o);
+            rsTerm[m] = um * (um - cm) + dm * (dm - cm);
+        }
+
+        double k = 0.34 / (1.34 + (double)(Period + 1) / (Period - 1));
+
+        for (int i = 0; i < Period - 1; i++)
+        {
+            _values.Add(null);
+        }
+
+        for (int i = Period - 1; i < n; i++)
+        {
+            int start = i - Period + 1;
+            bool windowValid = true;
+            for (int m = start; m <= i; m++)
+            {
+                if (!isValid[m])
+                {
+                    windowValid = false;
+                    break;
+                }
+            }
+
+            if (!windowValid)
             {
                 _values.Add(null);
                 continue;
             }
 
-            decimal overnightVolatilitySum = 0;
-            decimal openCloseVolatilitySum = 0;
-            decimal highLowVolatilitySum = 0;
+            double sumO = 0.0;
+            double sumC = 0.0;
+            double sumRS = 0.0;
 
-            for (int j = 0; j < Period; j++)
+            for (int m = start; m <= i; m++)
             {
-                var index = i - j;
-                var current = candles[index];
-                var prevClose = (index > 0) ? candles[index - 1].Close : current.Open;
-
-                // Overnight volatility component
-                var logPrevCloseCurrentOpen = (decimal)Math.Log((double)(current.Open != 0 ? current.Open / prevClose : 1));
-                overnightVolatilitySum += logPrevCloseCurrentOpen * logPrevCloseCurrentOpen;
-
-                // Open-to-close volatility component
-                var logCurrentCloseOpen = (decimal)Math.Log((double)(current.Open != 0 ? current.Close / current.Open : 1));
-                openCloseVolatilitySum += logCurrentCloseOpen * logCurrentCloseOpen;
-
-                // Rogers-Satchell (high/low) component
-                var logHighLow = (decimal)Math.Log((double)(current.Low != 0 ? current.High / current.Low : 1));
-                var logCloseOpen = (decimal)Math.Log((double)(current.Open != 0 ? current.Close / current.Open : 1));
-                highLowVolatilitySum += logHighLow * logHighLow - 2 * logCloseOpen * logCloseOpen;
+                sumO += overnightLog[m];
+                sumC += openCloseLog[m];
+                sumRS += rsTerm[m];
             }
 
-            var overnightVariance = overnightVolatilitySum / (Period - 1);
-            var openCloseVariance = openCloseVolatilitySum / (Period - 1);
-            var rogersSatchellVariance = highLowVolatilitySum / (Period - 1);
+            double meanO = sumO / Period;
+            double meanC = sumC / Period;
 
-            var variance = overnightVariance + k * openCloseVariance + (1 - k) * rogersSatchellVariance;
+            double varO = 0.0;
+            double varC = 0.0;
 
-            _values.Add((decimal)Math.Sqrt((double)variance) * 100);
+            for (int m = start; m <= i; m++)
+            {
+                double diffO = overnightLog[m] - meanO;
+                varO += diffO * diffO;
+
+                double diffC = openCloseLog[m] - meanC;
+                varC += diffC * diffC;
+            }
+
+            varO /= (Period - 1);
+            varC /= (Period - 1);
+            double varRS = sumRS / Period;
+
+            double yzVar = Math.Max(0.0, varO + k * varC + (1.0 - k) * varRS);
+            double yz = Math.Sqrt(yzVar) * 100.0;
+
+            if (double.IsNaN(yz) || double.IsInfinity(yz))
+            {
+                _values.Add(null);
+            }
+            else
+            {
+                _values.Add((decimal)yz);
+            }
         }
 
         return IndicatorResult.Success(_values);

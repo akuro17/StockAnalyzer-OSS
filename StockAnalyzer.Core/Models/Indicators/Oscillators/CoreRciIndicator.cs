@@ -18,10 +18,20 @@ public class CoreRciIndicator : CoreIndicatorBase
 
     protected override IIndicatorResult CalculateCore(IReadOnlyList<CoreCandleData> candles)
     {
+        _values.Clear();
 
-        if (candles == null || candles.Count < Period)
+        if (candles == null || candles.Count == 0)
         {
-            if (candles != null) _values.AddRange(Enumerable.Repeat<decimal?>(null, candles.Count));
+            return IndicatorResult.Success(_values);
+        }
+
+        int n = candles.Count;
+        if (Period < 2 || n < Period)
+        {
+            for (int i = 0; i < n; i++)
+            {
+                _values.Add(null);
+            }
             return IndicatorResult.Success(_values);
         }
 
@@ -30,34 +40,61 @@ public class CoreRciIndicator : CoreIndicatorBase
             _values.Add(null);
         }
 
-        // Time ranks are constant for a fixed period: 1, 2, 3, ..., period
-        var timeRanks = Enumerable.Range(1, Period).ToList();
-        var priceSeries = PriceDataHelper.ExtractPriceSeries(candles, PriceSource);
+        var priceSeries = PriceDataHelper.ExtractNonNullablePriceSeries(candles, PriceSource);
+        decimal denom = (decimal)Period * ((long)Period * Period - 1L);
 
-        for (int i = Period - 1; i < candles.Count; i++)
+        for (int i = Period - 1; i < n; i++)
         {
-            var window = priceSeries.Skip(i - Period + 1).Take(Period).ToList();
+            int start = i - Period + 1;
 
-            // Get price ranks
-            var priceRanks = window
-                .Select((price, index) => new { Price = price ?? 0m, OriginalIndex = index })
-                .OrderBy(x => x.Price)
-                .Select((x, rankIndex) => new { x.OriginalIndex, Rank = rankIndex + 1 })
-                .OrderBy(x => x.OriginalIndex)
-                .Select(x => x.Rank)
-                .ToList();
+            // Check if all prices in the window are identical
+            bool allEqual = true;
+            decimal firstPrice = priceSeries[start];
+            for (int j = 1; j < Period; j++)
+            {
+                if (priceSeries[start + j] != firstPrice)
+                {
+                    allEqual = false;
+                    break;
+                }
+            }
 
-            // Calculate the sum of squared differences of ranks
-            decimal dSum = 0;
+            if (allEqual)
+            {
+                _values.Add(0m);
+                continue;
+            }
+
+            // Zero-allocation mid-rank counting in O(P) per bar
+            decimal dSum = 0m;
             for (int j = 0; j < Period; j++)
             {
-                var diff = timeRanks[j] - priceRanks[j];
+                decimal v = priceSeries[start + j];
+                int less = 0;
+                int equal = 0;
+
+                for (int k = 0; k < Period; k++)
+                {
+                    decimal pk = priceSeries[start + k];
+                    if (pk < v)
+                    {
+                        less++;
+                    }
+                    else if (pk == v)
+                    {
+                        equal++;
+                    }
+                }
+
+                // Mid-rank for ties: 1 + less + (equal - 1) * 0.5
+                decimal priceRank = 1m + less + (equal - 1) * 0.5m;
+                decimal timeRank = j + 1m;
+                decimal diff = timeRank - priceRank;
                 dSum += diff * diff;
             }
 
-            // Spearman's rank correlation formula
-            decimal rci = (1m - (6m * dSum) / (Period * (Period * Period - 1m))) * 100m;
-            _values.Add(rci);
+            decimal rci = (1m - (6m * dSum) / denom) * 100m;
+            _values.Add(Math.Clamp(rci, -100m, 100m));
         }
 
         return IndicatorResult.Success(_values);

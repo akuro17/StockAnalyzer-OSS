@@ -42,6 +42,8 @@ public class CoreSSAAnomalyIndicator : CoreIndicatorBase
     public List<decimal?> EnterThresholdSeries { get; } = new();
     public List<decimal?> ExitThresholdSeries { get; } = new();
 
+    public IReadOnlyList<decimal?> AnomalyState => AnomalyStateSeries;
+
     public override void Configure(CoreIndicatorParameterBase parameters)
     {
         if (parameters is CoreSSAAnomalyParameter p)
@@ -68,7 +70,7 @@ public class CoreSSAAnomalyIndicator : CoreIndicatorBase
 
         if (candles == null || candles.Count == 0)
         {
-            return IndicatorResult.Success(_values);
+            return CreateResultDictionary();
         }
 
         int n = candles.Count;
@@ -275,13 +277,16 @@ public class CoreSSAAnomalyIndicator : CoreIndicatorBase
 
     private IIndicatorResult CreateResultDictionary()
     {
-        return IndicatorResult.Success(new Dictionary<string, IReadOnlyList<decimal?>>
+        return IndicatorResult.Success(new Dictionary<string, IReadOnlyList<decimal?>>(StringComparer.OrdinalIgnoreCase)
         {
             { ZScoreSeriesName, _values },
             { "ZScore", _values },
             { AnomalyStateSeriesName, AnomalyStateSeries },
+            { "AnomalyStateSeries", AnomalyStateSeries },
             { EnterThresholdSeriesName, EnterThresholdSeries },
-            { ExitThresholdSeriesName, ExitThresholdSeries }
+            { "EnterThresholdSeries", EnterThresholdSeries },
+            { ExitThresholdSeriesName, ExitThresholdSeries },
+            { "ExitThresholdSeries", ExitThresholdSeries }
         });
     }
 }

@@ -62,6 +62,6 @@ public class CoreKeltnerChannelIndicator : CoreIndicatorBase
             LowerBand.Add(ema - Multiplier * atr.Values[i]!.Value);
         }
 
-        return IndicatorResult.Success(_values);
+        return CreateAutomaticResult();
     }
 }

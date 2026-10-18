@@ -39,6 +39,10 @@ public class CoreSSAResidualBandIndicator : CoreIndicatorBase
     public List<decimal?> LowerBand { get; } = new();
     public List<decimal?> BandWidth { get; } = new();
 
+    public IReadOnlyList<decimal?> Upper => UpperBand;
+    public IReadOnlyList<decimal?> Lower => LowerBand;
+    public IReadOnlyList<decimal?> Center => CenterBand;
+
     public override void Configure(CoreIndicatorParameterBase parameters)
     {
         if (parameters is CoreSSAResidualBandParameter p)
@@ -60,7 +64,7 @@ public class CoreSSAResidualBandIndicator : CoreIndicatorBase
 
         if (candles == null || candles.Count == 0)
         {
-            return IndicatorResult.Success(_values);
+            return CreateAutomaticResult();
         }
 
         int n = candles.Count;
@@ -75,12 +79,7 @@ public class CoreSSAResidualBandIndicator : CoreIndicatorBase
                 BandWidth.Add(null);
             }
 
-            return IndicatorResult.Success(new Dictionary<string, IReadOnlyList<decimal?>>
-            {
-                { CenterSeriesName, _values },
-                { UpperSeriesName, UpperBand },
-                { LowerSeriesName, LowerBand }
-            });
+            return CreateAutomaticResult();
         }
 
         var priceSeries = PriceDataHelper.ExtractPriceSeries(candles, PriceSource);
@@ -197,11 +196,6 @@ public class CoreSSAResidualBandIndicator : CoreIndicatorBase
             if (pooledReconstructed != null) ArrayPool<double>.Shared.Return(pooledReconstructed);
         }
 
-        return IndicatorResult.Success(new Dictionary<string, IReadOnlyList<decimal?>>
-        {
-            { CenterSeriesName, _values },
-            { UpperSeriesName, UpperBand },
-            { LowerSeriesName, LowerBand }
-        });
+        return CreateAutomaticResult();
     }
 }

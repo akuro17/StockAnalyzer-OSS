@@ -83,7 +83,7 @@ public class CoreMurreyMathIndicator : CoreIndicatorBase
             _values.Add(l4);
         }
 
-        return IndicatorResult.Success(_values);
+        return CreateAutomaticResult();
     }
 
     private void AddNulls()

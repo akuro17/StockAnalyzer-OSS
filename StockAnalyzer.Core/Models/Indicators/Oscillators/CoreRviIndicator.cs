@@ -30,7 +30,7 @@ namespace StockAnalyzer.Core.Models.Indicators.Oscillators
             if (candles.Count < Period + 3) // Need Period values and 3 prior values for smoothing
             {
                 for (int i = 0; i < candles.Count; i++) { _values.Add(null); SignalLine.Add(null); }
-                return IndicatorResult.Success(_values);
+                return CreateAutomaticResult();
             }
 
             var numList = new List<decimal>();
@@ -91,7 +91,7 @@ namespace StockAnalyzer.Core.Models.Indicators.Oscillators
                 else SignalLine.Add(null);
             }
 
-            return IndicatorResult.Success(_values);
+            return CreateAutomaticResult();
         }
     }
 }

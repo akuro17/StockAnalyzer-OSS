@@ -27,7 +27,7 @@ namespace StockAnalyzer.Core.Models.Indicators.Oscillators
         {
  Signal.Clear();
             var candleDataList = candles.ToList();
-            if (candles.Count < Period) { for (int i = 0; i < candles.Count; i++) { _values.Add(null); Signal.Add(null); } return IndicatorResult.Success(_values); }
+            if (candles.Count < Period) { for (int i = 0; i < candles.Count; i++) { _values.Add(null); Signal.Add(null); } return CreateAutomaticResult(); }
 
             decimal prevValue = 0, prevFisher = 0;
             for (int i = 0; i < candles.Count; i++)
@@ -45,7 +45,7 @@ namespace StockAnalyzer.Core.Models.Indicators.Oscillators
                 prevValue = v; prevFisher = fisher;
             }
 
-            return IndicatorResult.Success(_values);
+            return CreateAutomaticResult();
         }
     }
 }

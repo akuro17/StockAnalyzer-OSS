@@ -43,6 +43,8 @@ public class CoreSSASNRIndicator : CoreIndicatorBase
     public List<decimal?> ThresholdHighSeries { get; } = new();
     public List<decimal?> ThresholdLowSeries { get; } = new();
 
+    public IReadOnlyList<decimal?> SNR_dB => _values;
+
     public override void Configure(CoreIndicatorParameterBase parameters)
     {
         if (parameters is CoreSSASNRParameter p)
@@ -64,7 +66,7 @@ public class CoreSSASNRIndicator : CoreIndicatorBase
 
         if (candles == null || candles.Count == 0)
         {
-            return IndicatorResult.Success(_values);
+            return CreateResultDictionary();
         }
 
         int n = candles.Count;
@@ -80,14 +82,7 @@ public class CoreSSASNRIndicator : CoreIndicatorBase
                 ThresholdLowSeries.Add(null);
             }
 
-            return IndicatorResult.Success(new Dictionary<string, IReadOnlyList<decimal?>>
-            {
-                { SnrSeriesName, _values },
-                { "SNR_dB", _values },
-                { SignalPuritySeriesName, SignalPurity },
-                { ThresholdHighScoreSeriesName, ThresholdHighSeries },
-                { ThresholdLowScoreSeriesName, ThresholdLowSeries }
-            });
+            return CreateResultDictionary();
         }
 
         var priceSeries = PriceDataHelper.ExtractPriceSeries(candles, PriceSource);
@@ -184,13 +179,21 @@ public class CoreSSASNRIndicator : CoreIndicatorBase
             }
         }
 
-        return IndicatorResult.Success(new Dictionary<string, IReadOnlyList<decimal?>>
+        return CreateResultDictionary();
+    }
+
+    private IIndicatorResult CreateResultDictionary()
+    {
+        return IndicatorResult.Success(new Dictionary<string, IReadOnlyList<decimal?>>(StringComparer.OrdinalIgnoreCase)
         {
             { SnrSeriesName, _values },
+            { "SNR", _values },
             { "SNR_dB", _values },
             { SignalPuritySeriesName, SignalPurity },
             { ThresholdHighScoreSeriesName, ThresholdHighSeries },
-            { ThresholdLowScoreSeriesName, ThresholdLowSeries }
+            { "ThresholdHighSeries", ThresholdHighSeries },
+            { ThresholdLowScoreSeriesName, ThresholdLowSeries },
+            { "ThresholdLowSeries", ThresholdLowSeries }
         });
     }
 

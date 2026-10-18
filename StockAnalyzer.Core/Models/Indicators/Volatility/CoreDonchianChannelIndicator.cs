@@ -40,6 +40,6 @@ public class CoreDonchianChannelIndicator : CoreIndicatorBase
             _values.Add(upper[i].HasValue && lower[i].HasValue ? (upper[i]!.Value + lower[i]!.Value) / 2 : null);
         }
 
-        return IndicatorResult.Success(_values);
+        return CreateAutomaticResult();
     }
 }

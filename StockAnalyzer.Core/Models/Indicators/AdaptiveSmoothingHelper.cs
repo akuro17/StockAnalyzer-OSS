@@ -1,5 +1,7 @@
 using System;
+using System.Buffers;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 
 namespace StockAnalyzer.Core.Models.Indicators;
 
@@ -479,4 +481,174 @@ public static class AdaptiveSmoothingHelper
         decimal rs = avgGain / avgLoss;
         return 100.0m - (100.0m / (1.0m + rs));
     }
+
+    /// <summary>
+    /// Applies the specified sorting-based smoothing method to a list of values.
+    /// Preserved for backward compatibility.
+    /// </summary>
+    public static decimal ApplySorting(List<decimal> slice, SmoothingMethod method)
+    {
+        if (slice == null || slice.Count == 0) return 0m;
+        return ApplySpanSmoothing(CollectionsMarshal.AsSpan(slice), method);
+    }
+
+    /// <summary>
+    /// Applies the specified sorting-based smoothing method to a read-only span of values with zero heap allocations.
+    /// Uses stackalloc for lengths <= 128 and ArrayPool<decimal>.Shared for larger windows.
+    /// </summary>
+    public static decimal ApplySpanSmoothing(ReadOnlySpan<decimal> window, SmoothingMethod method)
+    {
+        if (window.IsEmpty) return 0m;
+        if (window.Length == 1) return window[0];
+
+        int length = window.Length;
+        decimal[]? rented = null;
+        Span<decimal> buffer = length <= 128
+            ? stackalloc decimal[length]
+            : (rented = ArrayPool<decimal>.Shared.Rent(length)).AsSpan(0, length);
+
+        try
+        {
+            window.CopyTo(buffer);
+            buffer.Sort();
+
+            int mid = length / 2;
+            switch (method)
+            {
+                case SmoothingMethod.Median:
+                    return (length % 2 == 1)
+                        ? buffer[mid]
+                        : (buffer[mid - 1] + buffer[mid]) / 2.0m;
+
+                case SmoothingMethod.TrimmedMean10:
+                    int trim = (int)(length * 0.1);
+                    int count = length - 2 * trim;
+                    if (count <= 0)
+                    {
+                        return (length % 2 == 1)
+                            ? buffer[mid]
+                            : (buffer[mid - 1] + buffer[mid]) / 2.0m;
+                    }
+                    decimal sum = 0m;
+                    for (int k = trim; k < length - trim; k++)
+                    {
+                        sum += buffer[k];
+                    }
+                    return sum / count;
+
+                case SmoothingMethod.Midhinge:
+                    if (length < 4)
+                    {
+                        return (length % 2 == 1)
+                            ? buffer[mid]
+                            : (buffer[mid - 1] + buffer[mid]) / 2.0m;
+                    }
+                    decimal q1 = buffer[length / 4];
+                    decimal q3 = buffer[(length * 3) / 4];
+                    return (q1 + q3) / 2.0m;
+
+                default:
+                    return buffer[mid];
+            }
+        }
+        finally
+        {
+            if (rented != null)
+            {
+                ArrayPool<decimal>.Shared.Return(rented);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Calculates a rolling smoothed series using the specified smoothing method (Median, TrimmedMean10, Midhinge)
+    /// across fixed or dynamic periods with zero per-bar heap allocations.
+    /// </summary>
+    public static List<decimal?> CalculateAdaptiveRolling(
+        IReadOnlyList<decimal?> series,
+        int period,
+        SmoothingMethod method = SmoothingMethod.Median)
+    {
+        if (series == null || series.Count == 0)
+        {
+            return new List<decimal?>();
+        }
+
+        var results = new List<decimal?>(series.Count);
+        if (period <= 0 || series.Count < period)
+        {
+            for (int i = 0; i < series.Count; i++) results.Add(null);
+            return results;
+        }
+
+        decimal[]? rented = null;
+        Span<decimal> buffer = period <= 128
+            ? stackalloc decimal[period]
+            : (rented = ArrayPool<decimal>.Shared.Rent(period)).AsSpan(0, period);
+
+        try
+        {
+            for (int i = 0; i < series.Count; i++)
+            {
+                if (i < period - 1)
+                {
+                    results.Add(null);
+                    continue;
+                }
+
+                bool hasNull = false;
+                for (int j = 0; j < period; j++)
+                {
+                    var val = series[i - period + 1 + j];
+                    if (!val.HasValue)
+                    {
+                        hasNull = true;
+                        break;
+                    }
+                    buffer[j] = val.Value;
+                }
+
+                if (hasNull)
+                {
+                    results.Add(null);
+                }
+                else
+                {
+                    results.Add(ApplySpanSmoothing(buffer.Slice(0, period), method));
+                }
+            }
+        }
+        finally
+        {
+            if (rented != null)
+            {
+                ArrayPool<decimal>.Shared.Return(rented);
+            }
+        }
+
+        return results;
+    }
+
+    /// <summary>
+    /// Overload for CoreCandleData.
+    /// </summary>
+    public static List<decimal?> CalculateAdaptiveRolling(
+        IReadOnlyList<CoreCandleData> candles,
+        int period,
+        SmoothingMethod method = SmoothingMethod.Median,
+        PriceType priceType = PriceType.Close)
+    {
+        var series = PriceDataHelper.ExtractPriceSeries(candles, priceType);
+        return CalculateAdaptiveRolling(series, period, method);
+    }
+}
+
+/// <summary>
+/// Smoothing method for adaptive and non-linear rolling window calculations.
+/// </summary>
+public enum SmoothingMethod
+{
+    Median,
+    TrimmedMean10,
+    Midhinge
 }

@@ -93,11 +93,14 @@ public class CorePrimeNumberBandsIndicator : CoreIndicatorBase
             _lowerBand.Add(lowerBand);
         }
 
-        return IndicatorResult.Success(new Dictionary<string, IReadOnlyList<decimal?>>
+        return IndicatorResult.Success(new Dictionary<string, IReadOnlyList<decimal?>>(StringComparer.OrdinalIgnoreCase)
         {
             { MiddleSeriesName, _values },
             { UpperSeriesName, _upperBand },
-            { LowerSeriesName, _lowerBand }
+            { LowerSeriesName, _lowerBand },
+            { "MiddleBand", _values },
+            { "UpperBand", _upperBand },
+            { "LowerBand", _lowerBand }
         });
     }
 }

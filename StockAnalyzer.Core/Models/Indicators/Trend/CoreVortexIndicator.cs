@@ -23,9 +23,15 @@ namespace StockAnalyzer.Core.Models.Indicators.Trend
 
         protected override IIndicatorResult CalculateCore(IReadOnlyList<CoreCandleData> candles)
         {
- VIPlus.Clear(); VIMinus.Clear();
+            _values.Clear();
+            VIPlus.Clear();
+            VIMinus.Clear();
             var candleDataList = candles.ToList();
-            if (candles.Count < 2) return IndicatorResult.Success(_values);
+            if (candles.Count < 2)
+            {
+                for (int i = 0; i < candles.Count; i++) { _values.Add(null); VIPlus.Add(null); VIMinus.Add(null); }
+                return CreateAutomaticResult();
+            }
             var vmPlus = new List<decimal> { 0 };
             var vmMinus = new List<decimal> { 0 };
             var tr = new List<decimal> { candles[0].High - candles[0].Low };
@@ -48,7 +54,7 @@ namespace StockAnalyzer.Core.Models.Indicators.Trend
                 else { VIPlus.Add(sumVmPlus / sumTr); VIMinus.Add(sumVmMinus / sumTr); _values.Add(sumVmPlus / sumTr - sumVmMinus / sumTr); }
             }
 
-            return IndicatorResult.Success(_values);
+            return CreateAutomaticResult();
         }
     }
 }

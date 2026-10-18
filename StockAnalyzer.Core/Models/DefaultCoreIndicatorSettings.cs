@@ -338,7 +338,8 @@ public static class DefaultCoreIndicatorSettings
                 ParameterObject = new CoreSmaParameter { Period = IndicatorDefaultConstants.SmaPeriod }, 
                 Color = IndicatorDefaultConstants.SmaColor, 
                 Thickness = IndicatorDefaultConstants.DefaultOverlayThickness, 
-                Style = CoreLineStyle.Solid 
+                Style = CoreLineStyle.Solid,
+                IsOverlay = true
             },
             new CoreIndicatorSettings 
             { 
@@ -1270,6 +1271,39 @@ public static class DefaultCoreIndicatorSettings
                     new SeriesColorConfig { Name = CoreClassicPivotPointsIndicator.S2SeriesName, DisplayName = "Support 2 (S2)", Color = IndicatorDefaultConstants.ClassicPivotPointsS2Color, TargetSeries = new List<string> { CoreClassicPivotPointsIndicator.S2SeriesName } },
                     new SeriesColorConfig { Name = CoreClassicPivotPointsIndicator.S3SeriesName, DisplayName = "Support 3 (S3)", Color = IndicatorDefaultConstants.ClassicPivotPointsS3Color, TargetSeries = new List<string> { CoreClassicPivotPointsIndicator.S3SeriesName } }
                 }
+            },
+            new CoreIndicatorSettings 
+            { 
+                TypeEnum = IndicatorType.PivotPointsAdvanced, 
+                Category = CoreIndicatorCategory.Chart, 
+                IsEnabled = false, 
+                ParameterObject = null, 
+                Color = IndicatorDefaultConstants.ClassicPivotPointsPivotColor, 
+                Thickness = IndicatorDefaultConstants.DefaultBandThickness, 
+                Style = CoreLineStyle.Solid, 
+                IsOverlay = true 
+            },
+            new CoreIndicatorSettings 
+            { 
+                TypeEnum = IndicatorType.StandardDeviation, 
+                Category = CoreIndicatorCategory.Volatility, 
+                IsEnabled = false, 
+                ParameterObject = new CoreStandardDeviationParameter(), 
+                Color = IndicatorDefaultConstants.RsiColor, 
+                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness, 
+                Style = CoreLineStyle.Solid, 
+                IsOverlay = false 
+            },
+            new CoreIndicatorSettings 
+            { 
+                TypeEnum = IndicatorType.MassIndex, 
+                Category = CoreIndicatorCategory.Volatility, 
+                IsEnabled = false, 
+                ParameterObject = new CoreMassIndexParameter(), 
+                Color = IndicatorDefaultConstants.RsiColor, 
+                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness, 
+                Style = CoreLineStyle.Solid, 
+                IsOverlay = false 
             }
         };
     }

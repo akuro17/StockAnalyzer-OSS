@@ -7,6 +7,7 @@ using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Indicators;
 using StockAnalyzer.Core.Models.Screener;
 using StockAnalyzer.Core.Models.Watchlist;
+using StockAnalyzer.Core.Services.Backtest.Engine;
 
 namespace StockAnalyzer.Core.Services;
 
@@ -40,7 +41,7 @@ public class ScreenerCatalogProvider : IScreenerCatalogProvider
         var indicatorItems = new List<ScreenerCatalogItem>();
         foreach (var type in knownTypes)
         {
-            if (type == IndicatorType.Price)
+            if (type == IndicatorType.Price || BacktestIndicatorEligibility.IsTypeBlocked(type))
             {
                 continue;
             }
@@ -139,7 +140,9 @@ public class ScreenerCatalogProvider : IScreenerCatalogProvider
     }
 
     public IReadOnlyList<string> GetOutputSeriesNames(IndicatorType type, IIndicatorFactory? indicatorFactory = null)
-        => IndicatorOutputSeriesResolver.GetDisplayNames(type, indicatorFactory);
+        => IndicatorOutputSeriesResolver.GetDisplayNames(type, indicatorFactory)
+            .Where(name => !BacktestIndicatorEligibility.IsNonCausalSeries(type, name))
+            .ToArray();
 
     public string NormalizeOutputSeriesName(
         IndicatorType type,

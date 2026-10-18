@@ -22,6 +22,8 @@ namespace StockAnalyzer.Core.Models.Indicators.Oscillators
             }
         }
 
+        public IReadOnlyList<decimal?> Histogram => _values;
+
         private class TlbBlock
         {
             public decimal High { get; set; }
@@ -31,8 +33,9 @@ namespace StockAnalyzer.Core.Models.Indicators.Oscillators
 
         protected override IIndicatorResult CalculateCore(IReadOnlyList<CoreCandleData> candles)
         {
+            _values.Clear();
+            if (candles.Count == 0) return CreateAutomaticResult();
             var values = new decimal?[candles.Count];
-            if (candles.Count == 0) return IndicatorResult.Success(values);
 
             var blocks = new List<TlbBlock>();
             
@@ -63,7 +66,8 @@ namespace StockAnalyzer.Core.Models.Indicators.Oscillators
             {
                 // Never established a trend
                 for (int i = 0; i < candles.Count; i++) values[i] = 0;
-                return IndicatorResult.Success(values);
+                _values.AddRange(values);
+                return CreateAutomaticResult();
             }
 
             // Fill until startIndex with 0
@@ -132,10 +136,8 @@ namespace StockAnalyzer.Core.Models.Indicators.Oscillators
                 }
             }
 
-            return IndicatorResult.Success(new Dictionary<string, IReadOnlyList<decimal?>>
-            {
-                { "Histogram", values.ToList() }
-            });
+            _values.AddRange(values);
+            return CreateAutomaticResult();
         }
     }
 }

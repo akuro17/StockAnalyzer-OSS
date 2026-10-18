@@ -14,23 +14,7 @@ namespace StockAnalyzer.Core.Services;
 public static class IndicatorOutputSeriesResolver
 {
     private static readonly ConcurrentDictionary<Type, PropertyInfo[]> PropertyCache = new();
-    private static readonly HashSet<IndicatorType> DisplayAliasesBackedByMain = new()
-    {
-        IndicatorType.ADX,
-        IndicatorType.BB,
-        IndicatorType.Donchian,
-        IndicatorType.ElderRay,
-        IndicatorType.FisherTransform,
-        IndicatorType.Keltner,
-        IndicatorType.MurreyMath,
-        IndicatorType.PrimeNumberBands,
-        IndicatorType.RVI,
-        IndicatorType.SSAAnomaly,
-        IndicatorType.SSAResidualBand,
-        IndicatorType.SSASNR,
-        IndicatorType.ThreeLineBreakSignal,
-        IndicatorType.Vortex,
-    };
+    private static readonly HashSet<IndicatorType> DisplayAliasesBackedByMain = new();
 
     public static IReadOnlyList<string> GetDisplayNames(IndicatorType type, IIndicatorFactory? indicatorFactory = null)
     {
@@ -61,6 +45,62 @@ public static class IndicatorOutputSeriesResolver
 
         (_, HashSet<string> mainAliases) = Inspect(type, indicator);
         return mainAliases.Contains(outputName) ? IndicatorResult.MainSeriesName : outputName;
+    }
+
+    /// <summary>
+    /// Pure function that resolves a requested output series from an <see cref="IndicatorResult"/> in a fail-closed manner.
+    /// Returns true and sets <paramref name="series"/> if resolved; otherwise returns false and sets <paramref name="series"/> to empty.
+    /// </summary>
+    public static bool TryResolveSeries(
+        IIndicatorResult? result,
+        IndicatorType type,
+        string? requestedOutputName,
+        PriceType? priceSource,
+        out IReadOnlyList<decimal?> series)
+    {
+        if (result == null || !result.IsSuccessful)
+        {
+            series = Array.Empty<decimal?>();
+            return false;
+        }
+
+        string normalized = Normalize(type, requestedOutputName, priceSource);
+        if (string.Equals(normalized, IndicatorResult.MainSeriesName, StringComparison.OrdinalIgnoreCase))
+        {
+            series = result.MainValues;
+            return true;
+        }
+
+        if (result.HasSeries(normalized))
+        {
+            series = result.GetSeries(normalized);
+            return true;
+        }
+
+        if (!string.IsNullOrWhiteSpace(requestedOutputName) && result.HasSeries(requestedOutputName.Trim()))
+        {
+            series = result.GetSeries(requestedOutputName.Trim());
+            return true;
+        }
+
+        series = Array.Empty<decimal?>();
+        return false;
+    }
+
+    /// <inheritdoc cref="TryResolveSeries(IIndicatorResult?, IndicatorType, string?, PriceType?, out IReadOnlyList{decimal?})"/>
+    public static bool TryResolveSeries(
+        IIndicatorResult? result,
+        IndicatorType type,
+        string? requestedOutputName,
+        string? priceSource,
+        out IReadOnlyList<decimal?> series)
+    {
+        PriceType? pt = null;
+        if (!string.IsNullOrWhiteSpace(priceSource) && Enum.TryParse<PriceType>(priceSource, true, out var parsed))
+        {
+            pt = parsed;
+        }
+        return TryResolveSeries(result, type, requestedOutputName, pt, out series);
     }
 
     private static (List<string> Names, HashSet<string> MainAliases) Inspect(IndicatorType type, ICoreIndicator indicator)
