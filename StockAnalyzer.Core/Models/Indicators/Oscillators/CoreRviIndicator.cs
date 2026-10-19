@@ -25,8 +25,8 @@ namespace StockAnalyzer.Core.Models.Indicators.Oscillators
         protected override IIndicatorResult CalculateCore(IReadOnlyList<CoreCandleData> candles)
         {
 
+            _values.Clear();
             SignalLine.Clear();
-            var candleDataList = candles.ToList();
             if (candles.Count < Period + 3) // Need Period values and 3 prior values for smoothing
             {
                 for (int i = 0; i < candles.Count; i++) { _values.Add(null); SignalLine.Add(null); }

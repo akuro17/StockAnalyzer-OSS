@@ -283,6 +283,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ISeasonalityChartDataSource, SeasonalityChartDataSource>();
         services.AddTransient<SeasonalityChartViewModel>();
         services.AddSingleton<Core.Services.Analysis.IScatterMetricProvider, Core.Services.Analysis.DuckDbScatterMetricProvider>();
+        services.AddSingleton<Core.Services.Analysis.IHeatmapReturnProvider, Core.Services.Analysis.DuckDbHeatmapReturnProvider>();
         services.AddTransient<ScatterPlotViewModel>();
         services.AddSingleton<HeatmapPanelViewModel>();
         services.AddTransient<ScreenerViewModel>();
@@ -397,6 +398,7 @@ public static class ServiceCollectionExtensions
         services.AddTransient<StockAnalyzer.Avalonia.ViewModels.Dialogs.RelativePerformanceSettingsViewModel>();
         services.AddTransient<StockAnalyzer.Avalonia.ViewModels.Dialogs.ReverseWatchSettingsViewModel>();
         services.AddTransient<StockAnalyzer.Avalonia.ViewModels.Dialogs.SeasonalitySettingsViewModel>();
+        services.AddTransient<StockAnalyzer.Avalonia.ViewModels.Dialogs.ScatterAnalysisSettingsViewModel>();
         services.AddTransient<StockAnalyzer.Avalonia.ViewModels.Dialogs.EditTransactionDialogViewModel>();
         services.AddSingleton<Func<StockAnalyzer.Avalonia.ViewModels.Dialogs.EditTransactionDialogViewModel>>(sp => () => sp.GetRequiredService<StockAnalyzer.Avalonia.ViewModels.Dialogs.EditTransactionDialogViewModel>());
         services.AddTransient<StockAnalyzer.Avalonia.ViewModels.Dialogs.FilterSettingsViewModel>();

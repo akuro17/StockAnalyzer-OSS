@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using SkiaSharp;
 using StockAnalyzer.Avalonia.Views.Controls;
+using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Analysis;
 using Xunit;
 
@@ -12,18 +14,6 @@ public sealed class UniformHeatmapColormapTests
     private static readonly SKColor ExpectedNeutralColor = new(0x2B, 0x2F, 0x3A);
     private static readonly SKColor ExpectedBullishClassic = new(0x00, 0xC8, 0x53);
     private static readonly SKColor ExpectedBearishClassic = new(0xD5, 0x00, 0x00);
-    private static readonly SKColor ExpectedBullishColorblind = new(0x1E, 0x88, 0xE5);
-    private static readonly SKColor ExpectedBearishColorblind = new(0xFB, 0x8C, 0x00);
-
-    [Fact]
-    public void GetDivergingColor_NanReturn_ReturnsNoDataColor()
-    {
-        var color = UniformHeatmapControl.GetDivergingColor(double.NaN, 0.05, HeatmapColorScheme.Classic);
-        Assert.Equal(ExpectedNoDataColor, color);
-
-        var colorblindColor = UniformHeatmapControl.GetDivergingColor(double.NaN, 0.05, HeatmapColorScheme.ColorblindSafe);
-        Assert.Equal(ExpectedNoDataColor, colorblindColor);
-    }
 
     private static void AssertColorClose(SKColor expected, SKColor actual, int tolerance = 2)
     {
@@ -36,78 +26,178 @@ public sealed class UniformHeatmapColormapTests
     }
 
     [Fact]
-    public void GetDivergingColor_ZeroReturn_ReturnsNeutralColor()
+    public void GetPaletteColor_NanReturn_ReturnsNoDataColor()
     {
-        var classicZero = UniformHeatmapControl.GetDivergingColor(0.0, 0.05, HeatmapColorScheme.Classic);
-        AssertColorClose(ExpectedNeutralColor, classicZero);
-
-        var cbZero = UniformHeatmapControl.GetDivergingColor(0.0, 0.05, HeatmapColorScheme.ColorblindSafe);
-        AssertColorClose(ExpectedNeutralColor, cbZero);
+        var color = UniformHeatmapControl.GetPaletteColor(double.NaN, HeatmapPalette.Default);
+        Assert.Equal(ExpectedNoDataColor, color);
     }
 
     [Fact]
-    public void GetDivergingColor_ClassicScheme_ReturnsPeaksAtThresholdLimits()
+    public void GetPaletteColor_ZeroReturn_ReturnsNeutralColor()
     {
-        // Bullish limit (+5% or higher with 0.05 threshold)
-        var bullishMax = UniformHeatmapControl.GetDivergingColor(0.05, 0.05, HeatmapColorScheme.Classic);
-        AssertColorClose(ExpectedBullishClassic, bullishMax);
-
-        // Bearish limit (-5% or lower with 0.05 threshold)
-        var bearishMax = UniformHeatmapControl.GetDivergingColor(-0.05, 0.05, HeatmapColorScheme.Classic);
-        AssertColorClose(ExpectedBearishClassic, bearishMax);
+        var color = UniformHeatmapControl.GetPaletteColor(0.0, HeatmapPalette.Default);
+        AssertColorClose(ExpectedNeutralColor, color);
     }
 
     [Fact]
-    public void GetDivergingColor_ColorblindScheme_ReturnsPeaksAtThresholdLimits()
+    public void GetPaletteColor_DefaultPalette_ReturnsBaseAtLowerBound_AndPeakAtThresholdLimits()
     {
-        // Bullish limit: Sky blue
-        var bullishCb = UniformHeatmapControl.GetDivergingColor(0.05, 0.05, HeatmapColorScheme.ColorblindSafe);
-        AssertColorClose(ExpectedBullishColorblind, bullishCb);
+        // Bullish base (+0.5% return is Level 1 with default 0.05 threshold, 10 steps)
+        var bullishBase = UniformHeatmapControl.GetPaletteColor(0.005, HeatmapPalette.Default);
+        AssertColorClose(ExpectedBullishClassic, bullishBase);
 
-        // Bearish limit: Amber/Orange
-        var bearishCb = UniformHeatmapControl.GetDivergingColor(-0.05, 0.05, HeatmapColorScheme.ColorblindSafe);
-        AssertColorClose(ExpectedBearishColorblind, bearishCb);
+        // Bearish base (-0.5% return is Level 1)
+        var bearishBase = UniformHeatmapControl.GetPaletteColor(-0.005, HeatmapPalette.Default);
+        AssertColorClose(ExpectedBearishClassic, bearishBase);
+
+        // Bullish peak (+5% or higher reaches auto-derived luminous peak)
+        var expectedBullishPeak = UniformHeatmapControl.DerivePeakColor(ExpectedBullishClassic);
+        var bullishPeak = UniformHeatmapControl.GetPaletteColor(0.05, HeatmapPalette.Default);
+        AssertColorClose(expectedBullishPeak, bullishPeak);
+
+        // Bearish peak (-5% or lower reaches auto-derived luminous peak)
+        var expectedBearishPeak = UniformHeatmapControl.DerivePeakColor(ExpectedBearishClassic);
+        var bearishPeak = UniformHeatmapControl.GetPaletteColor(-0.05, HeatmapPalette.Default);
+        AssertColorClose(expectedBearishPeak, bearishPeak);
     }
 
     [Fact]
-    public void GetDivergingColor_ExtremeAndDegenerateScale_DoesNotThrow()
+    public void GetPaletteColor_ExtremeAndDegeneratePalette_DoesNotThrow()
     {
-        // Zero threshold clamped safely
-        var c1 = UniformHeatmapControl.GetDivergingColor(0.02, 0.0);
+        var zeroT = HeatmapPalette.Default with { ThresholdRatio = 0.0 };
+        var c1 = UniformHeatmapControl.GetPaletteColor(0.02, zeroT);
         Assert.NotEqual(default, c1);
 
-        // Negative threshold clamped safely
-        var c2 = UniformHeatmapControl.GetDivergingColor(-0.02, -0.05);
+        var negT = HeatmapPalette.Default with { ThresholdRatio = -0.05 };
+        var c2 = UniformHeatmapControl.GetPaletteColor(-0.02, negT);
         Assert.NotEqual(default, c2);
 
-        // NaN threshold clamped safely
-        var c3 = UniformHeatmapControl.GetDivergingColor(0.02, double.NaN);
+        var nanT = HeatmapPalette.Default with { ThresholdRatio = double.NaN };
+        var c3 = UniformHeatmapControl.GetPaletteColor(0.02, nanT);
         Assert.NotEqual(default, c3);
 
-        // Infinity return clamped safely
-        var c4 = UniformHeatmapControl.GetDivergingColor(double.PositiveInfinity, 0.05);
+        var c4 = UniformHeatmapControl.GetPaletteColor(double.PositiveInfinity, HeatmapPalette.Default);
         Assert.NotEqual(default, c4);
     }
 
     [Fact]
-    public void GetDivergingColor_OklabContinuousProgression_HasNoSuddenDiscontinuities()
+    public void GetPaletteColor_ContinuousProgression_HasNoSuddenDiscontinuities()
     {
-        // Ensure steps across -0.05 to +0.05 transition without abrupt color inversion
-        SKColor prevColor = UniformHeatmapControl.GetDivergingColor(-0.05, 0.05, HeatmapColorScheme.Classic);
+        var continuousPalette = HeatmapPalette.Default with { StepCount = 0 };
 
-        for (double r = -0.04; r <= 0.05; r += 0.01)
+        // Positive ramp continuity: smooth progression within active ramp
+        SKColor prevUpColor = UniformHeatmapControl.GetPaletteColor(0.001, continuousPalette);
+        for (double r = 0.005; r <= 0.05; r += 0.005)
         {
-            var curColor = UniformHeatmapControl.GetDivergingColor(r, 0.05, HeatmapColorScheme.Classic);
-            int deltaR = Math.Abs(curColor.Red - prevColor.Red);
-            int deltaG = Math.Abs(curColor.Green - prevColor.Green);
-            int deltaB = Math.Abs(curColor.Blue - prevColor.Blue);
+            var curColor = UniformHeatmapControl.GetPaletteColor(r, continuousPalette);
+            int deltaR = Math.Abs(curColor.Red - prevUpColor.Red);
+            int deltaG = Math.Abs(curColor.Green - prevUpColor.Green);
+            int deltaB = Math.Abs(curColor.Blue - prevUpColor.Blue);
 
-            // Perceptually uniform LUT ensures adjacent 1% steps never jump > 80 in 8-bit channel
-            Assert.True(deltaR < 80, $"Red jump too large: {deltaR} at r = {r}");
-            Assert.True(deltaG < 80, $"Green jump too large: {deltaG} at r = {r}");
-            Assert.True(deltaB < 80, $"Blue jump too large: {deltaB} at r = {r}");
-
-            prevColor = curColor;
+            Assert.True(deltaR < 40, $"Red jump too large: {deltaR} at r = {r}");
+            Assert.True(deltaG < 40, $"Green jump too large: {deltaG} at r = {r}");
+            Assert.True(deltaB < 40, $"Blue jump too large: {deltaB} at r = {r}");
+            prevUpColor = curColor;
         }
+
+        // Negative ramp continuity: smooth progression within active ramp
+        SKColor prevDownColor = UniformHeatmapControl.GetPaletteColor(-0.05, continuousPalette);
+        for (double r = -0.045; r <= -0.001; r += 0.005)
+        {
+            var curColor = UniformHeatmapControl.GetPaletteColor(r, continuousPalette);
+            int deltaR = Math.Abs(curColor.Red - prevDownColor.Red);
+            int deltaG = Math.Abs(curColor.Green - prevDownColor.Green);
+            int deltaB = Math.Abs(curColor.Blue - prevDownColor.Blue);
+
+            Assert.True(deltaR < 40, $"Red jump too large: {deltaR} at r = {r}");
+            Assert.True(deltaG < 40, $"Green jump too large: {deltaG} at r = {r}");
+            Assert.True(deltaB < 40, $"Blue jump too large: {deltaB} at r = {r}");
+            prevDownColor = curColor;
+        }
+    }
+
+    [Fact]
+    public void GetPaletteColor_SteppedOutput_HasExactly2NPlus1DistinctColors()
+    {
+        int n = 10;
+        var palette = HeatmapPalette.Default with { StepCount = n };
+        var distinctColors = new HashSet<SKColor>();
+
+        for (double r = -0.10; r <= 0.10; r += 0.0001)
+        {
+            distinctColors.Add(UniformHeatmapControl.GetPaletteColor(r, palette));
+        }
+
+        // Exactly 2N + 1 distinct colors: N up levels, N down levels, and 1 neutral
+        Assert.Equal((2 * n) + 1, distinctColors.Count);
+    }
+
+    [Fact]
+    public void GetPaletteColor_RampsAreMonotoneInDistanceFromNeutral()
+    {
+        var palette = HeatmapPalette.Default;
+        var neutral = UniformHeatmapControl.GetPaletteColor(0.0, palette);
+
+        static double Dist(SKColor c1, SKColor c2)
+        {
+            double dr = c1.Red - c2.Red;
+            double dg = c1.Green - c2.Green;
+            double db = c1.Blue - c2.Blue;
+            return Math.Sqrt((dr * dr) + (dg * dg) + (db * db));
+        }
+
+        double prevUpDist = 0.0;
+        double prevDownDist = 0.0;
+
+        for (double r = 0.001; r <= 0.06; r += 0.005)
+        {
+            var upColor = UniformHeatmapControl.GetPaletteColor(r, palette);
+            var downColor = UniformHeatmapControl.GetPaletteColor(-r, palette);
+
+            double upDist = Dist(upColor, neutral);
+            double downDist = Dist(downColor, neutral);
+
+            Assert.True(upDist >= prevUpDist - 1.0, $"Up ramp not monotone: r={r}, current={upDist}, prev={prevUpDist}");
+            Assert.True(downDist >= prevDownDist - 1.0, $"Down ramp not monotone: r={r}, current={downDist}, prev={prevDownDist}");
+
+            prevUpDist = upDist;
+            prevDownDist = downDist;
+        }
+    }
+
+    [Fact]
+    public void GetPaletteColor_CustomPaletteColorsAreHonoured()
+    {
+        var customUp = new IndicatorColor(255, 30, 144, 255);    // Dodger Blue
+        var customNeutral = new IndicatorColor(255, 50, 50, 50); // Dark Gray
+        var customDown = new IndicatorColor(255, 255, 140, 0);   // Dark Orange
+
+        var customPalette = new HeatmapPalette(customUp, customNeutral, customDown, 0.05, 10);
+
+        var neutralResult = UniformHeatmapControl.GetPaletteColor(0.0, customPalette);
+        AssertColorClose(new SKColor(customNeutral.R, customNeutral.G, customNeutral.B), neutralResult);
+
+        var upBase = UniformHeatmapControl.GetPaletteColor(0.005, customPalette);
+        AssertColorClose(new SKColor(customUp.R, customUp.G, customUp.B), upBase);
+
+        var downBase = UniformHeatmapControl.GetPaletteColor(-0.005, customPalette);
+        AssertColorClose(new SKColor(customDown.R, customDown.G, customDown.B), downBase);
+
+        var expectedUpPeak = UniformHeatmapControl.DerivePeakColor(new SKColor(customUp.R, customUp.G, customUp.B));
+        var upPeak = UniformHeatmapControl.GetPaletteColor(0.05, customPalette);
+        AssertColorClose(expectedUpPeak, upPeak);
+
+        var expectedDownPeak = UniformHeatmapControl.DerivePeakColor(new SKColor(customDown.R, customDown.G, customDown.B));
+        var downPeak = UniformHeatmapControl.GetPaletteColor(-0.05, customPalette);
+        AssertColorClose(expectedDownPeak, downPeak);
+    }
+
+    [Fact]
+    public void HeatmapPalette_Defaults_IncludeFontAndTextSettings()
+    {
+        var palette = HeatmapPalette.Default;
+        Assert.Equal(16.0, palette.FontSize);
+        Assert.Equal(StockAnalyzer.Core.Models.Analysis.HeatmapTextAlignment.Center, palette.TextAlignment);
+        Assert.Equal(new IndicatorColor(255, 0xE0, 0xE0, 0xE0), palette.TextColor);
     }
 }

@@ -143,5 +143,30 @@ public static class ChartSettingsConstants
     public const int DefaultControlPointHideTimeoutSeconds = 5;
     public const int MinControlPointHideTimeoutSeconds = 1;
     public const int MaxControlPointHideTimeoutSeconds = 60;
+
+    // --- Scatter Analysis Heatmap ---
+    public const string DefaultScatterHeatmapUpColor = "#FF00C853";
+    public const string DefaultScatterHeatmapNeutralColor = "#FF2B2F3A";
+    public const string DefaultScatterHeatmapDownColor = "#FFD50000";
+    public const double DefaultScatterHeatmapThresholdPercent = 5.0;
+    public const double MinScatterHeatmapThresholdPercent = 0.1;
+    public const double MaxScatterHeatmapThresholdPercent = 100.0;
+    public const double ScatterHeatmapThresholdPercentStep = 0.5;
+    public const double DefaultScatterHeatmapMultiplier = 1.0;
+    public const double MinScatterHeatmapMultiplier = 0.1;
+    public const double MaxScatterHeatmapMultiplier = 10.0;
+    public const double ScatterHeatmapMultiplierStep = 0.1;
+    public const uint DefaultScatterHeatmapStepCount = 10;
+    public const uint MinScatterHeatmapStepCount = 0;
+    public const uint MaxScatterHeatmapStepCount = 50;
+
+    // --- Scatter Analysis Heatmap Text & Font ---
+    public const double DefaultScatterHeatmapFontSize = 16.0;
+    public const double MinScatterHeatmapFontSize = 8.0;
+    public const double MaxScatterHeatmapFontSize = 32.0;
+    public const double ScatterHeatmapFontSizeStep = 1.0;
+    public const string DefaultScatterHeatmapTextColor = "#FFE0E0E0";
+    public const StockAnalyzer.Core.Models.Analysis.HeatmapTextAlignment DefaultScatterHeatmapTextAlignment =
+        StockAnalyzer.Core.Models.Analysis.HeatmapTextAlignment.Center;
 }
 

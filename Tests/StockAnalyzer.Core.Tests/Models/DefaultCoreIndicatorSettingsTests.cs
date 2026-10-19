@@ -14,8 +14,9 @@ public class DefaultCoreIndicatorSettingsTests
         // 67 base + 3 Polar Coordinate Transform Decomposition indicators
         // + 1 Autocorrelation + 1 EfficiencyRatio + 1 DMI + 1 FDI + 1 TimeAtPrice
         // + 1 ClothoidOscillator + 1 ClothoidMovingAverage + 1 CrossCorrelation + 1 RollingBeta + 1 RollingAlpha
-        // + 1 Ratiocator + 1 RollingRSquared + 1 CointegrationSpread + 1 ClassicPivotPoints.
-        Assert.Equal(84, defaults.Count);
+        // + 1 Ratiocator + 1 RollingRSquared + 1 CointegrationSpread + 1 ClassicPivotPoints + 1 PivotPointsAdvanced
+        // + 1 StandardDeviation + 1 MassIndex.
+        Assert.Equal(87, defaults.Count);
     }
 
     [Fact]
@@ -38,7 +39,8 @@ public class DefaultCoreIndicatorSettingsTests
             IndicatorType.VWAP,
             IndicatorType.TrueHigh, IndicatorType.TrueLow, IndicatorType.TrueRange,
             IndicatorType.Price,
-            IndicatorType.ClassicPivotPoints
+            IndicatorType.ClassicPivotPoints,
+            IndicatorType.PivotPointsAdvanced
         };
         var defaults = DefaultCoreIndicatorSettings.GetDefault()
             .Where(s => !parameterlessTypes.Contains(s.TypeEnum!.Value));

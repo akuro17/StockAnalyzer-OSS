@@ -8,7 +8,7 @@ public class CoreTrixParameter : CoreIndicatorParameterBase
     private int _period = 15;
 
     [CoreParameterRange(1, 10000)]
-    [Range(1, 1000)]
+    [Range(1, 10000)]
     [DisplayName("Period")]
     [Description("Number of periods for each of TRIX's triple-smoothed EMA stages.")]
     public int Period

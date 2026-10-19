@@ -259,6 +259,17 @@ public sealed record GlobalChartSettings
     /// <summary>Down segment (PreviousBar) / drawdown segment (Drawdown) color.</summary>
     public string BacktestEquityDownColor { get; init; } = ChartSettingsConstants.DefaultBacktestEquityDownColor;
 
+    // --- Scatter Analysis Heatmap ---
+    public string ScatterHeatmapUpColor { get; init; } = ChartSettingsConstants.DefaultScatterHeatmapUpColor;
+    public string ScatterHeatmapNeutralColor { get; init; } = ChartSettingsConstants.DefaultScatterHeatmapNeutralColor;
+    public string ScatterHeatmapDownColor { get; init; } = ChartSettingsConstants.DefaultScatterHeatmapDownColor;
+    public double ScatterHeatmapThresholdPercent { get; init; } = ChartSettingsConstants.DefaultScatterHeatmapThresholdPercent;
+    public double ScatterHeatmapMultiplier { get; init; } = ChartSettingsConstants.DefaultScatterHeatmapMultiplier;
+    public uint ScatterHeatmapStepCount { get; init; } = ChartSettingsConstants.DefaultScatterHeatmapStepCount;
+    public double ScatterHeatmapFontSize { get; init; } = ChartSettingsConstants.DefaultScatterHeatmapFontSize;
+    public string ScatterHeatmapTextColor { get; init; } = ChartSettingsConstants.DefaultScatterHeatmapTextColor;
+    public StockAnalyzer.Core.Models.Analysis.HeatmapTextAlignment ScatterHeatmapTextAlignment { get; init; } = ChartSettingsConstants.DefaultScatterHeatmapTextAlignment;
+
     /// <summary>
     /// GS-14-1: Schema version for future migration support.
     /// </summary>
@@ -388,6 +399,21 @@ public sealed record GlobalChartSettings
             BacktestEquityLineColor = IsValidHexColor(BacktestEquityLineColor) ? BacktestEquityLineColor : ChartSettingsConstants.DefaultBacktestEquityLineColor,
             BacktestEquityUpColor = IsValidHexColor(BacktestEquityUpColor) ? BacktestEquityUpColor : ChartSettingsConstants.DefaultBacktestEquityUpColor,
             BacktestEquityDownColor = IsValidHexColor(BacktestEquityDownColor) ? BacktestEquityDownColor : ChartSettingsConstants.DefaultBacktestEquityDownColor,
+            ScatterHeatmapUpColor = IsValidHexColor(ScatterHeatmapUpColor) ? ScatterHeatmapUpColor : ChartSettingsConstants.DefaultScatterHeatmapUpColor,
+            ScatterHeatmapNeutralColor = IsValidHexColor(ScatterHeatmapNeutralColor) ? ScatterHeatmapNeutralColor : ChartSettingsConstants.DefaultScatterHeatmapNeutralColor,
+            ScatterHeatmapDownColor = IsValidHexColor(ScatterHeatmapDownColor) ? ScatterHeatmapDownColor : ChartSettingsConstants.DefaultScatterHeatmapDownColor,
+            ScatterHeatmapThresholdPercent = double.IsNaN(ScatterHeatmapThresholdPercent) || double.IsInfinity(ScatterHeatmapThresholdPercent)
+                ? ChartSettingsConstants.DefaultScatterHeatmapThresholdPercent
+                : Math.Clamp(ScatterHeatmapThresholdPercent, ChartSettingsConstants.MinScatterHeatmapThresholdPercent, ChartSettingsConstants.MaxScatterHeatmapThresholdPercent),
+            ScatterHeatmapMultiplier = double.IsNaN(ScatterHeatmapMultiplier) || double.IsInfinity(ScatterHeatmapMultiplier)
+                ? ChartSettingsConstants.DefaultScatterHeatmapMultiplier
+                : Math.Clamp(ScatterHeatmapMultiplier, ChartSettingsConstants.MinScatterHeatmapMultiplier, ChartSettingsConstants.MaxScatterHeatmapMultiplier),
+            ScatterHeatmapStepCount = Math.Clamp(ScatterHeatmapStepCount, ChartSettingsConstants.MinScatterHeatmapStepCount, ChartSettingsConstants.MaxScatterHeatmapStepCount),
+            ScatterHeatmapFontSize = double.IsNaN(ScatterHeatmapFontSize) || double.IsInfinity(ScatterHeatmapFontSize)
+                ? ChartSettingsConstants.DefaultScatterHeatmapFontSize
+                : Math.Clamp(ScatterHeatmapFontSize, ChartSettingsConstants.MinScatterHeatmapFontSize, ChartSettingsConstants.MaxScatterHeatmapFontSize),
+            ScatterHeatmapTextColor = IsValidHexColor(ScatterHeatmapTextColor) ? ScatterHeatmapTextColor : ChartSettingsConstants.DefaultScatterHeatmapTextColor,
+            ScatterHeatmapTextAlignment = Enum.IsDefined(ScatterHeatmapTextAlignment) ? ScatterHeatmapTextAlignment : ChartSettingsConstants.DefaultScatterHeatmapTextAlignment,
             TopMargin = Math.Clamp(TopMargin, 0f, 200f),
             BottomMargin = Math.Clamp(BottomMargin, 0f, 200f),
             RightMargin = Math.Clamp(RightMargin, 0f, 200f)

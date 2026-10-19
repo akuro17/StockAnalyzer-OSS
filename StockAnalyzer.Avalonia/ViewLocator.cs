@@ -30,6 +30,7 @@ public class ViewLocator : IDataTemplate
         [typeof(TrainingResourceSettingsViewModel)] = typeof(TrainingResourceSettingsView),
         [typeof(FontsSettingsViewModel)] = typeof(FontsSettingsView),
         [typeof(SeasonalitySettingsViewModel)] = typeof(SeasonalitySettingsView),
+        [typeof(ScatterAnalysisSettingsViewModel)] = typeof(ScatterAnalysisSettingsView),
         [typeof(DrawingSettingsViewModel)] = typeof(Views.Dialogs.Chart.DrawingSettingsView),
         [typeof(CandlestickSettingsViewModel)] = typeof(Views.Dialogs.Chart.CandlestickSettingsView),
         [typeof(OhlcBarSettingsViewModel)] = typeof(Views.Dialogs.Chart.OhlcBarSettingsView),

@@ -33,5 +33,26 @@ namespace StockAnalyzer.Core.Tests
             indicator.Calculate(candles);
             Assert.Equal(candles.Count, indicator.Values.Count);
         }
+
+        [Fact]
+        public void Calculate_AggregatesExactPeriodTransitions_IncludingCurrentBar()
+        {
+            var indicator = new CoreVortexSignalIndicator { Period = 2 };
+            var baseDate = DateTime.Today;
+            var candles = new List<CoreCandleData>
+            {
+                new CoreCandleData(baseDate, 9m, 10m, 8m, 9m, 100),
+                new CoreCandleData(baseDate.AddDays(1), 11m, 12m, 10m, 11m, 100),
+                new CoreCandleData(baseDate.AddDays(2), 14m, 15m, 13m, 14m, 100)
+            };
+
+            var result = indicator.Calculate(candles);
+
+            Assert.True(result.IsSuccessful);
+            Assert.Equal(3, indicator.Values.Count);
+            Assert.Null(indicator.Values[0]);
+            Assert.Null(indicator.Values[1]);
+            Assert.Equal(1m, indicator.Values[2]);
+        }
     }
 }

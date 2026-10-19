@@ -27,7 +27,7 @@ namespace StockAnalyzer.Core.Models.Indicators.MovingAverages
             _values.Clear();
             if (candles == null || candles.Count == 0) return IndicatorResult.Success(_values);
 
-            if (candles.Count < Period || Period <= 0)
+            if (candles.Count < Period || Period < 2)
             {
                 for (int j = 0; j < candles.Count; j++) _values.Add(null);
                 return IndicatorResult.Success(_values);
@@ -109,7 +109,7 @@ namespace StockAnalyzer.Core.Models.Indicators.MovingAverages
             _values.Clear();
             if (series == null || series.Count == 0) return IndicatorResult.Success(_values);
 
-            if (series.Count < Period || Period <= 0)
+            if (series.Count < Period || Period < 2)
             {
                 for (int j = 0; j < series.Count; j++) _values.Add(null);
                 return IndicatorResult.Success(_values);

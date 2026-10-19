@@ -8,7 +8,7 @@ public class CoreIchimokuParameter : CoreIndicatorParameterBase
     private int _tenkanSample = 9;
 
     [CoreParameterRange(1, 10000)]
-    [Range(1, 1000)]
+    [Range(1, 10000)]
     [DisplayName("Tenkan-sen")]
     [Description("Conversion Line period.")]
     [Category("Periods")]
@@ -21,7 +21,7 @@ public class CoreIchimokuParameter : CoreIndicatorParameterBase
     private int _kijunSample = 26;
 
     [CoreParameterRange(1, 10000)]
-    [Range(1, 1000)]
+    [Range(1, 10000)]
     [DisplayName("Kijun-sen")]
     [Description("Base Line period.")]
     [Category("Periods")]
@@ -34,7 +34,7 @@ public class CoreIchimokuParameter : CoreIndicatorParameterBase
     private int _senkouBSample = 52;
 
     [CoreParameterRange(1, 10000)]
-    [Range(1, 1000)]
+    [Range(1, 10000)]
     [DisplayName("Senkou Span B")]
     [Description("Leading Span B period.")]
     [Category("Periods")]
@@ -75,5 +75,6 @@ public class CoreIchimokuParameter : CoreIndicatorParameterBase
     {
          if (TenkanSample <= 0) throw new ArgumentOutOfRangeException(nameof(TenkanSample));
          if (KijunSample <= 0) throw new ArgumentOutOfRangeException(nameof(KijunSample));
+         if (SenkouBSample <= 0) throw new ArgumentOutOfRangeException(nameof(SenkouBSample));
     }
 }

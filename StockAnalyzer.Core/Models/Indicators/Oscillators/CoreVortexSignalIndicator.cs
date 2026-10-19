@@ -61,13 +61,9 @@ namespace StockAnalyzer.Core.Models.Indicators.Oscillators
 
                 for (int j = i - Period; j < i; j++)
                 {
-                    int trIndex = j - 1;
-                    if (trIndex >= 0 && trIndex < tr.Count)
-                    {
-                        sumTr += tr[trIndex];
-                        sumPvm += pvm[trIndex];
-                        sumNvm += nvm[trIndex];
-                    }
+                    sumTr += tr[j];
+                    sumPvm += pvm[j];
+                    sumNvm += nvm[j];
                 }
 
                 if (sumTr == 0m)

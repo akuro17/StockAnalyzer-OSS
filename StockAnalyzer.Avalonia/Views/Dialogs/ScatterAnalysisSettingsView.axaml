@@ -1,0 +1,246 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:StockAnalyzer.Avalonia.ViewModels.Dialogs"
+             xmlns:conv="using:StockAnalyzer.Avalonia.Converters"
+             xmlns:l="using:StockAnalyzer.Avalonia.Markup"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="800"
+             x:Class="StockAnalyzer.Avalonia.Views.Dialogs.ScatterAnalysisSettingsView"
+             x:DataType="vm:ScatterAnalysisSettingsViewModel">
+
+    <UserControl.Resources>
+        <conv:HsvDataToAvaloniaHsvColorConverter x:Key="HsvConverter"/>
+        <conv:EnumToLocalizedDisplayNameConverter x:Key="EnumConverter"/>
+    </UserControl.Resources>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" AllowAutoHide="False">
+        <StackPanel Spacing="20" Margin="16">
+
+            <!-- Section 1: Heatmap Colours -->
+            <Border Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="{l:Localize Settings_ScatterHeatmap_ColorsGroup}"
+                               FontSize="{DynamicResource BaseFontSize}"
+                               FontWeight="Bold"
+                               Foreground="{DynamicResource Brush.Accent.Primary}"/>
+
+                    <UniformGrid Columns="2">
+                        <!-- Up Colour -->
+                        <StackPanel Margin="0,0,24,16">
+                            <Grid ColumnDefinitions="*, Auto">
+                                <TextBlock Text="{l:Localize Settings_ScatterHeatmap_UpColor}"
+                                           FontWeight="SemiBold"
+                                           VerticalAlignment="Center"/>
+                                <ColorPicker Grid.Column="1"
+                                             HsvColor="{Binding UpColor, Mode=TwoWay, Converter={StaticResource HsvConverter}}"
+                                             Width="50" Height="28"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize Settings_ScatterHeatmap_UpColor_Desc}"
+                                       FontSize="{DynamicResource HelperFontSize}"
+                                       Foreground="{DynamicResource Brush.Text.Secondary}"
+                                       TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <!-- Neutral / Unchanged Colour -->
+                        <StackPanel Margin="0,0,0,16">
+                            <Grid ColumnDefinitions="*, Auto">
+                                <TextBlock Text="{l:Localize Settings_ScatterHeatmap_NeutralColor}"
+                                           FontWeight="SemiBold"
+                                           VerticalAlignment="Center"/>
+                                <ColorPicker Grid.Column="1"
+                                             HsvColor="{Binding NeutralColor, Mode=TwoWay, Converter={StaticResource HsvConverter}}"
+                                             Width="50" Height="28"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize Settings_ScatterHeatmap_NeutralColor_Desc}"
+                                       FontSize="{DynamicResource HelperFontSize}"
+                                       Foreground="{DynamicResource Brush.Text.Secondary}"
+                                       TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <!-- Down Colour -->
+                        <StackPanel Margin="0,0,24,16">
+                            <Grid ColumnDefinitions="*, Auto">
+                                <TextBlock Text="{l:Localize Settings_ScatterHeatmap_DownColor}"
+                                           FontWeight="SemiBold"
+                                           VerticalAlignment="Center"/>
+                                <ColorPicker Grid.Column="1"
+                                             HsvColor="{Binding DownColor, Mode=TwoWay, Converter={StaticResource HsvConverter}}"
+                                             Width="50" Height="28"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize Settings_ScatterHeatmap_DownColor_Desc}"
+                                       FontSize="{DynamicResource HelperFontSize}"
+                                       Foreground="{DynamicResource Brush.Text.Secondary}"
+                                       TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </UniformGrid>
+                </StackPanel>
+            </Border>
+
+            <!-- Section 2: Colour Scale -->
+            <Border Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="{l:Localize Settings_ScatterHeatmap_ScaleGroup}"
+                               FontSize="{DynamicResource BaseFontSize}"
+                               FontWeight="Bold"
+                               Foreground="{DynamicResource Brush.Accent.Primary}"/>
+
+                    <UniformGrid Columns="2">
+                        <!-- Threshold (%) -->
+                        <StackPanel Margin="0,0,24,16">
+                            <Grid ColumnDefinitions="*, Auto">
+                                <TextBlock Text="{l:Localize Settings_ScatterHeatmap_Threshold}"
+                                           FontWeight="SemiBold"
+                                           VerticalAlignment="Center"/>
+                                <NumericUpDown Grid.Column="1"
+                                               Value="{Binding ThresholdPercent}"
+                                               Minimum="{Binding MinThresholdPercent}"
+                                               Maximum="{Binding MaxThresholdPercent}"
+                                               Increment="{Binding ThresholdPercentStep}"
+                                               FormatString="0.0"
+                                               Width="150"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize Settings_ScatterHeatmap_Threshold_Desc}"
+                                       FontSize="{DynamicResource HelperFontSize}"
+                                       Foreground="{DynamicResource Brush.Text.Secondary}"
+                                       TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <!-- Heat Multiplier -->
+                        <StackPanel Margin="0,0,0,16">
+                            <Grid ColumnDefinitions="*, Auto">
+                                <TextBlock Text="{l:Localize Settings_ScatterHeatmap_Multiplier}"
+                                           FontWeight="SemiBold"
+                                           VerticalAlignment="Center"/>
+                                <NumericUpDown Grid.Column="1"
+                                               Value="{Binding HeatMultiplier}"
+                                               Minimum="{Binding MinMultiplier}"
+                                               Maximum="{Binding MaxMultiplier}"
+                                               Increment="{Binding MultiplierStep}"
+                                               FormatString="0.0"
+                                               Width="150"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize Settings_ScatterHeatmap_Multiplier_Desc}"
+                                       FontSize="{DynamicResource HelperFontSize}"
+                                       Foreground="{DynamicResource Brush.Text.Secondary}"
+                                       TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <!-- Step Count -->
+                        <StackPanel Margin="0,0,24,16">
+                            <Grid ColumnDefinitions="*, Auto">
+                                <TextBlock Text="{l:Localize Settings_ScatterHeatmap_Steps}"
+                                           FontWeight="SemiBold"
+                                           VerticalAlignment="Center"/>
+                                <NumericUpDown Grid.Column="1"
+                                               Value="{Binding StepCount}"
+                                               Minimum="{Binding MinStepCount}"
+                                               Maximum="{Binding MaxStepCount}"
+                                               Increment="{Binding StepCountStep}"
+                                               FormatString="0"
+                                               Width="150"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize Settings_ScatterHeatmap_Steps_Desc}"
+                                       FontSize="{DynamicResource HelperFontSize}"
+                                       Foreground="{DynamicResource Brush.Text.Secondary}"
+                                       TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </UniformGrid>
+                </StackPanel>
+            </Border>
+
+            <!-- Section 3: Text & Font -->
+            <Border Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="{l:Localize Settings_ScatterHeatmap_TextGroup}"
+                               FontSize="{DynamicResource BaseFontSize}"
+                               FontWeight="Bold"
+                               Foreground="{DynamicResource Brush.Accent.Primary}"/>
+
+                    <UniformGrid Columns="2">
+                        <!-- Font Size (px) -->
+                        <StackPanel Margin="0,0,24,16">
+                            <Grid ColumnDefinitions="*, Auto">
+                                <TextBlock Text="{l:Localize Settings_ScatterHeatmap_FontSize}"
+                                           FontWeight="SemiBold"
+                                           VerticalAlignment="Center"/>
+                                <NumericUpDown Grid.Column="1"
+                                               Value="{Binding FontSize}"
+                                               Minimum="{Binding MinFontSize}"
+                                               Maximum="{Binding MaxFontSize}"
+                                               Increment="{Binding FontSizeStep}"
+                                               FormatString="0"
+                                               Width="150"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize Settings_ScatterHeatmap_FontSize_Desc}"
+                                       FontSize="{DynamicResource HelperFontSize}"
+                                       Foreground="{DynamicResource Brush.Text.Secondary}"
+                                       TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <!-- Font Colour -->
+                        <StackPanel Margin="0,0,0,16">
+                            <Grid ColumnDefinitions="*, Auto">
+                                <TextBlock Text="{l:Localize Settings_ScatterHeatmap_TextColor}"
+                                           FontWeight="SemiBold"
+                                           VerticalAlignment="Center"/>
+                                <ColorPicker Grid.Column="1"
+                                             HsvColor="{Binding TextColor, Mode=TwoWay, Converter={StaticResource HsvConverter}}"
+                                             Width="50" Height="28"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize Settings_ScatterHeatmap_TextColor_Desc}"
+                                       FontSize="{DynamicResource HelperFontSize}"
+                                       Foreground="{DynamicResource Brush.Text.Secondary}"
+                                       TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <!-- Text Alignment -->
+                        <StackPanel Margin="0,0,24,16">
+                            <Grid ColumnDefinitions="*, Auto">
+                                <TextBlock Text="{l:Localize Settings_ScatterHeatmap_TextAlignment}"
+                                           FontWeight="SemiBold"
+                                           VerticalAlignment="Center"/>
+                                <ComboBox Grid.Column="1"
+                                          ItemsSource="{Binding AvailableTextAlignments}"
+                                          SelectedItem="{Binding TextAlignment, Mode=TwoWay}"
+                                          Width="150">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding Converter={StaticResource EnumConverter}}"/>
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize Settings_ScatterHeatmap_TextAlignment_Desc}"
+                                       FontSize="{DynamicResource HelperFontSize}"
+                                       Foreground="{DynamicResource Brush.Text.Secondary}"
+                                       TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </UniformGrid>
+                </StackPanel>
+            </Border>
+
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

@@ -76,4 +76,42 @@ public class CoreMurreyMathIndicatorTests
         Assert.Empty(indicator.Values);
         Assert.Empty(indicator.Level0_8);
     }
+
+    [Fact]
+    public void Configure_WithCoreMurreyMathParameter_SetsPeriod()
+    {
+        var indicator = new CoreMurreyMathIndicator();
+        var param = new StockAnalyzer.Core.Models.Parameters.CoreMurreyMathParameter { Period = 32 };
+        indicator.Configure(param);
+
+        Assert.Equal(32, indicator.Period);
+    }
+
+    [Fact]
+    public void Configure_WithCoreSmaParameter_FallbackSetsPeriod()
+    {
+        var indicator = new CoreMurreyMathIndicator();
+        var param = new StockAnalyzer.Core.Models.Parameters.CoreSmaParameter { Period = 16 };
+        indicator.Configure(param);
+
+        Assert.Equal(16, indicator.Period);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    [InlineData(10001)]
+    public void CoreMurreyMathParameter_Validate_InvalidPeriod_Throws(int period)
+    {
+        var param = new StockAnalyzer.Core.Models.Parameters.CoreMurreyMathParameter { Period = period };
+        Assert.Throws<ArgumentOutOfRangeException>(() => param.Validate());
+    }
+
+    [Fact]
+    public void CoreMurreyMathParameter_Validate_ValidPeriod_DoesNotThrow()
+    {
+        var param = new StockAnalyzer.Core.Models.Parameters.CoreMurreyMathParameter { Period = 64 };
+        param.Validate();
+        Assert.Equal(64, param.Period);
+    }
 }

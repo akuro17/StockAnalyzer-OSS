@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -39,9 +40,13 @@ public partial class ScatterPlotViewModel : ViewModelBase,
     private readonly ILogger<ScatterPlotViewModel> _logger;
     private readonly IDispatcherService _dispatcherService;
     private readonly IScatterMetricProvider _metricProvider;
+    private readonly IHeatmapReturnProvider _heatmapProvider;
+    private readonly IChartSettingsManager? _chartSettingsManager;
 
     private long _currentRevision;
     private CancellationTokenSource? _currentCts;
+    private long _heatmapRevision;
+    private CancellationTokenSource? _heatmapCts;
     private IReadOnlyList<string>? _currentTickers;
 
     [ObservableProperty] private bool _isLoading;
@@ -98,12 +103,33 @@ public partial class ScatterPlotViewModel : ViewModelBase,
     }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ColorSchemeLabel))]
-    private HeatmapColorScheme _colorScheme = HeatmapColorScheme.Classic;
+    private HeatmapPalette _heatmapPalette = HeatmapPalette.Default;
 
-    public string ColorSchemeLabel => ColorScheme == HeatmapColorScheme.Classic
-        ? _localizationService.GetString("Scatter_ColorScheme_Classic")
-        : _localizationService.GetString("Scatter_ColorScheme_Colorblind");
+    public int HeatmapOffsetMin => HeatmapOffsetLimits.Min;
+    public int HeatmapOffsetMax => HeatmapOffsetLimits.Max;
+
+    [ObservableProperty]
+    private int _heatmapOffset;
+
+    partial void OnHeatmapOffsetChanged(int value)
+    {
+        if (value < HeatmapOffsetLimits.Min || value > HeatmapOffsetLimits.Max)
+        {
+            HeatmapOffset = HeatmapOffsetLimits.Clamp(value);
+            return;
+        }
+
+        _ = RefreshHeatmapAsync();
+    }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HeatmapTargetDateText))]
+    private DateOnly? _heatmapTargetDate;
+
+    private const string HeatmapDateFormat = "yyyy-MM-dd";
+    private const string HeatmapNoDateText = "—";
+
+    public string HeatmapTargetDateText => HeatmapTargetDate?.ToString(HeatmapDateFormat, CultureInfo.InvariantCulture) ?? HeatmapNoDateText;
 
     [ObservableProperty] private string _selectedXMetric = "Return";
     [ObservableProperty] private string _selectedYMetric = "Volatility";
@@ -128,19 +154,44 @@ public partial class ScatterPlotViewModel : ViewModelBase,
         ILocalizationService localizationService,
         ILogger<ScatterPlotViewModel> logger,
         IDispatcherService dispatcherService,
-        IScatterMetricProvider? metricProvider = null)
+        IScatterMetricProvider? metricProvider = null,
+        IHeatmapReturnProvider? heatmapProvider = null,
+        IChartSettingsManager? chartSettingsManager = null)
     {
         _messenger = messenger ?? throw new ArgumentNullException(nameof(messenger));
         _localizationService = localizationService ?? throw new ArgumentNullException(nameof(localizationService));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _dispatcherService = dispatcherService ?? throw new ArgumentNullException(nameof(dispatcherService));
         _metricProvider = metricProvider ?? SyntheticScatterMetricProvider.Instance;
+        _heatmapProvider = heatmapProvider ?? SyntheticHeatmapReturnProvider.Instance;
+        _chartSettingsManager = chartSettingsManager;
+
+        if (_chartSettingsManager != null)
+        {
+            _heatmapPalette = HeatmapPalette.FromSettings(_chartSettingsManager.Current);
+            _chartSettingsManager.SettingsChanged += OnChartSettingsChanged;
+        }
+        else
+        {
+            _heatmapPalette = HeatmapPalette.Default;
+        }
 
         _messenger.Register<ActiveTickerGroupChangedMessage>(this);
         _messenger.Register<TickerSelectedMessage>(this);
 
         // Initialize with default sample population
         PopulateDefaultDataset();
+    }
+
+    private void OnChartSettingsChanged()
+    {
+        _dispatcherService.Post(() =>
+        {
+            if (_chartSettingsManager != null)
+            {
+                HeatmapPalette = HeatmapPalette.FromSettings(_chartSettingsManager.Current);
+            }
+        });
     }
 
     [RelayCommand]
@@ -189,14 +240,6 @@ public partial class ScatterPlotViewModel : ViewModelBase,
     private void ToggleSuppressOutliers()
     {
         SuppressOutliers = !SuppressOutliers;
-    }
-
-    [RelayCommand]
-    private void ToggleColorScheme()
-    {
-        ColorScheme = ColorScheme == HeatmapColorScheme.Classic
-            ? HeatmapColorScheme.ColorblindSafe
-            : HeatmapColorScheme.Classic;
     }
 
     private bool _isHandlingExternalSelection;
@@ -286,6 +329,61 @@ public partial class ScatterPlotViewModel : ViewModelBase,
     }
 
     public Task? PendingUpdateTask { get; private set; }
+    public Task? PendingHeatmapTask { get; private set; }
+
+    public Task RefreshHeatmapAsync()
+    {
+        var tickers = _currentTickers;
+        if (tickers == null || tickers.Count == 0)
+        {
+            _heatmapCts?.Cancel();
+            _heatmapCts?.Dispose();
+            _heatmapCts = null;
+            Interlocked.Increment(ref _heatmapRevision);
+
+            HeatmapItems = Array.Empty<UniformHeatmapItem>();
+            HeatmapTargetDate = null;
+            PendingHeatmapTask = Task.CompletedTask;
+            return Task.CompletedTask;
+        }
+
+        _heatmapCts?.Cancel();
+        _heatmapCts?.Dispose();
+        _heatmapCts = new CancellationTokenSource();
+        var token = _heatmapCts.Token;
+        long revision = Interlocked.Increment(ref _heatmapRevision);
+
+        int offsetSnapshot = HeatmapOffset;
+        var tickersSnapshot = tickers;
+
+        var task = Task.Run(async () =>
+        {
+            try
+            {
+                var result = await _heatmapProvider.ComputeAsync(tickersSnapshot, offsetSnapshot, token).ConfigureAwait(false);
+                token.ThrowIfCancellationRequested();
+
+                _dispatcherService.Post(() =>
+                {
+                    if (token.IsCancellationRequested || revision != Volatile.Read(ref _heatmapRevision)) return;
+
+                    HeatmapItems = result.Items;
+                    HeatmapTargetDate = result.TargetDate;
+                });
+            }
+            catch (OperationCanceledException)
+            {
+                // Discard canceled request
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to evaluate heatmap returns asynchronously");
+            }
+        }, token);
+
+        PendingHeatmapTask = task;
+        return task;
+    }
 
     public Task UpdateFromTickersAsync(IReadOnlyList<string> tickers)
     {
@@ -299,9 +397,9 @@ public partial class ScatterPlotViewModel : ViewModelBase,
 
             Dataset = ScatterDataset.Empty;
             AnalysisResult = ScatterAnalysisResult.Empty;
-            HeatmapItems = Array.Empty<UniformHeatmapItem>();
             StatusMessage = "No active tickers";
             IsLoading = false;
+            RefreshHeatmapAsync();
             PendingUpdateTask = Task.CompletedTask;
             return Task.CompletedTask;
         }
@@ -324,13 +422,11 @@ public partial class ScatterPlotViewModel : ViewModelBase,
                 token.ThrowIfCancellationRequested();
 
                 var points = new List<ScatterPoint>(metricResult.Items.Count);
-                var heatmapList = new List<UniformHeatmapItem>(metricResult.Items.Count);
 
                 for (int i = 0; i < metricResult.Items.Count; i++)
                 {
                     var it = metricResult.Items[i];
                     points.Add(new ScatterPoint(it.XValue, it.YValue));
-                    heatmapList.Add(new UniformHeatmapItem(it.Ticker, it.ReturnPercentage));
                 }
 
                 var newDataset = new ScatterDataset(
@@ -349,7 +445,6 @@ public partial class ScatterPlotViewModel : ViewModelBase,
 
                     Dataset = newDataset;
                     AnalysisResult = newAnalysis;
-                    HeatmapItems = heatmapList;
                     StatusMessage = $"{metricResult.StatusMessage} (N = {newAnalysis.ValidPointCount})";
                     IsLoading = false;
                 });
@@ -370,8 +465,9 @@ public partial class ScatterPlotViewModel : ViewModelBase,
             }
         }, token);
 
-        PendingUpdateTask = updateTask;
-        return updateTask;
+        var heatmapTask = RefreshHeatmapAsync();
+        PendingUpdateTask = Task.WhenAll(updateTask, heatmapTask);
+        return PendingUpdateTask;
     }
 
     public void UpdateFromTickers(IReadOnlyList<string> tickers)
@@ -403,8 +499,15 @@ public partial class ScatterPlotViewModel : ViewModelBase,
 
     public void Dispose()
     {
+        if (_chartSettingsManager != null)
+        {
+            _chartSettingsManager.SettingsChanged -= OnChartSettingsChanged;
+        }
+
         _currentCts?.Cancel();
         _currentCts?.Dispose();
+        _heatmapCts?.Cancel();
+        _heatmapCts?.Dispose();
         _messenger.UnregisterAll(this);
     }
 }

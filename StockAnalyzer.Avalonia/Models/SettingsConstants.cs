@@ -27,6 +27,7 @@ public static class SettingsConstants
         public const string Tickers = "Tickers";
         public const string Notes = "Notes";
         public const string SeasonalityChart = "SeasonalityChart";
+        public const string ScatterAnalysis = "ScatterAnalysis";
         public const string Chart = "Chart";
         public const string Notifications = "Notifications";
         public const string Connectivity = "Connectivity";
@@ -60,6 +61,7 @@ public static class SettingsConstants
         new(Keys.Tickers, "Settings_Tickers", "SettingsTickersIcon"),
         new(Keys.Notes, "Settings_Notes", "SettingsNotesIcon"),
         new(Keys.SeasonalityChart, "Tab_SeasonalityChart", "SettingsChartIcon"),
+        new(Keys.ScatterAnalysis, "Tab_ScatterAnalysis", "SettingsChartIcon"),
         new(Keys.Chart, "Settings_Chart", "SettingsChartIcon", true, new List<SettingsCategory>
         {
             new(Keys.ChartDrawing, "Settings_Chart_Drawing_CategoryTitle", "SettingsChartIcon"),

@@ -64,15 +64,14 @@ public sealed class ScatterPlotViewModelTests
 
     private sealed class TestLocalizationService : ILocalizationService
     {
-        public string GetString(string key) => key switch
-        {
-            "Scatter_ColorScheme_Classic" => "Classic Colors",
-            "Scatter_ColorScheme_Colorblind" => "Colorblind Safe",
-            _ => key
-        };
+        public string GetString(string key) => key;
     }
 
-    private ScatterPlotViewModel CreateViewModel(IMessenger? messenger = null, IScatterMetricProvider? metricProvider = null)
+    private ScatterPlotViewModel CreateViewModel(
+        IMessenger? messenger = null,
+        IScatterMetricProvider? metricProvider = null,
+        IHeatmapReturnProvider? heatmapProvider = null,
+        IChartSettingsManager? chartSettingsManager = null)
     {
         messenger ??= new WeakReferenceMessenger();
         return new ScatterPlotViewModel(
@@ -81,7 +80,9 @@ public sealed class ScatterPlotViewModelTests
             new TestLocalizationService(),
             NullLogger<ScatterPlotViewModel>.Instance,
             new TestDispatcherService(),
-            metricProvider
+            metricProvider,
+            heatmapProvider,
+            chartSettingsManager
         );
     }
 
@@ -301,22 +302,152 @@ public sealed class ScatterPlotViewModelTests
     }
 
     [Fact]
-    public void ColorScheme_ToggleCommand_CyclesThemesAndUpdatesLabel()
+    public void HeatmapOffset_DefaultAndClamping_WorksCorrectly()
     {
         using var vm = CreateViewModel();
 
-        Assert.Equal(HeatmapColorScheme.Classic, vm.ColorScheme);
-        Assert.Equal("Classic Colors", vm.ColorSchemeLabel);
+        Assert.Equal(0, vm.HeatmapOffset);
+        Assert.Equal(0, vm.HeatmapOffsetMin);
+        Assert.Equal(9999, vm.HeatmapOffsetMax);
 
-        vm.ToggleColorSchemeCommand.Execute(null);
+        vm.HeatmapOffset = -5;
+        Assert.Equal(0, vm.HeatmapOffset);
 
-        Assert.Equal(HeatmapColorScheme.ColorblindSafe, vm.ColorScheme);
-        Assert.Equal("Colorblind Safe", vm.ColorSchemeLabel);
+        vm.HeatmapOffset = 10000;
+        Assert.Equal(9999, vm.HeatmapOffset);
 
-        vm.ToggleColorSchemeCommand.Execute(null);
+        vm.HeatmapOffset = 42;
+        Assert.Equal(42, vm.HeatmapOffset);
+    }
 
-        Assert.Equal(HeatmapColorScheme.Classic, vm.ColorScheme);
-        Assert.Equal("Classic Colors", vm.ColorSchemeLabel);
+    [Fact]
+    public async Task UpdateFromTickersAsync_DecoupledPipeline_ConsumesHeatmapProviderAndFormatsDate()
+    {
+        var heatmapProvider = new ConfigurableHeatmapReturnProvider();
+        using var vm = CreateViewModel(heatmapProvider: heatmapProvider);
+
+        var tickers = new[] { "AAPL", "MSFT" };
+        var task = vm.UpdateFromTickersAsync(tickers);
+        await task;
+
+        Assert.NotNull(vm.HeatmapItems);
+        Assert.Equal(2, vm.HeatmapItems!.Count);
+        Assert.Equal(0.01, vm.HeatmapItems[0].ReturnPercentage, precision: 6);
+        Assert.Equal(0.02, vm.HeatmapItems[1].ReturnPercentage, precision: 6);
+
+        Assert.Equal(new DateOnly(2026, 10, 16), vm.HeatmapTargetDate);
+        Assert.Equal("2026-10-16", vm.HeatmapTargetDateText);
+    }
+
+    [Fact]
+    public async Task HeatmapOffsetChange_InvokesHeatmapProviderOnly_DoesNotReevaluateScatter()
+    {
+        var scatterProvider = new RecordingScatterMetricProvider();
+        var heatmapProvider = new ConfigurableHeatmapReturnProvider();
+        using var vm = CreateViewModel(metricProvider: scatterProvider, heatmapProvider: heatmapProvider);
+        if (vm.PendingUpdateTask != null) await vm.PendingUpdateTask;
+
+        int initialScatterCalls = scatterProvider.CallCount;
+        int initialHeatmapCalls = heatmapProvider.Invocations.Count;
+
+        vm.HeatmapOffset = 3;
+        if (vm.PendingHeatmapTask != null) await vm.PendingHeatmapTask;
+
+        Assert.Equal(initialScatterCalls, scatterProvider.CallCount);
+        Assert.Equal(initialHeatmapCalls + 1, heatmapProvider.Invocations.Count);
+        Assert.Equal(3, heatmapProvider.Invocations.Last().Offset);
+    }
+
+    [Fact]
+    public async Task HeatmapOffsetChange_RapidSuccession_MonotonicRevisionDiscardsStaleResults()
+    {
+        var heatmapProvider = new ConfigurableHeatmapReturnProvider();
+        heatmapProvider.Handler = async (tickers, offset, ct) =>
+        {
+            if (offset == 1)
+            {
+                await Task.Delay(100, ct);
+            }
+            return new HeatmapReturnResult(
+                new[] { new UniformHeatmapItem("AAPL", offset * 0.1) },
+                new DateOnly(2026, 10, 10 + offset),
+                true,
+                "Test",
+                "Ok");
+        };
+
+        using var vm = CreateViewModel(heatmapProvider: heatmapProvider);
+
+        vm.HeatmapOffset = 1; // Delayed
+        vm.HeatmapOffset = 2; // Fast
+
+        if (vm.PendingHeatmapTask != null) await vm.PendingHeatmapTask;
+        await Task.Delay(150); // Ensure delayed task completes
+
+        // Offset 2 was requested after Offset 1, so Offset 2 must win
+        Assert.NotNull(vm.HeatmapItems);
+        Assert.Equal(0.2, vm.HeatmapItems![0].ReturnPercentage, precision: 6);
+        Assert.Equal(new DateOnly(2026, 10, 12), vm.HeatmapTargetDate);
+    }
+
+    [Fact]
+    public async Task UpdateFromTickersAsync_EmptyTickers_ClearsHeatmapItemsAndTargetDate()
+    {
+        using var vm = CreateViewModel();
+        await vm.UpdateFromTickersAsync(Array.Empty<string>());
+
+        Assert.Empty(vm.HeatmapItems!);
+        Assert.Null(vm.HeatmapTargetDate);
+        Assert.Equal("—", vm.HeatmapTargetDateText);
+    }
+
+    private sealed class ConfigurableHeatmapReturnProvider : IHeatmapReturnProvider
+    {
+        public string ProviderId => "Configurable";
+        public List<(IReadOnlyList<string> Tickers, int Offset)> Invocations { get; } = new();
+        public Func<IReadOnlyList<string>, int, CancellationToken, Task<HeatmapReturnResult>>? Handler { get; set; }
+
+        public async Task<HeatmapReturnResult> ComputeAsync(
+            IReadOnlyList<string> tickers,
+            int offset,
+            CancellationToken cancellationToken = default)
+        {
+            Invocations.Add((tickers, offset));
+            if (Handler != null)
+            {
+                return await Handler(tickers, offset, cancellationToken);
+            }
+
+            var items = new List<UniformHeatmapItem>(tickers.Count);
+            for (int i = 0; i < tickers.Count; i++)
+            {
+                items.Add(new UniformHeatmapItem(tickers[i], 0.01 * (i + 1)));
+            }
+
+            return new HeatmapReturnResult(
+                items,
+                new DateOnly(2026, 10, 16),
+                isLiveMarketData: true,
+                ProviderId,
+                "Test Heatmap");
+        }
+    }
+
+    private sealed class RecordingScatterMetricProvider : IScatterMetricProvider
+    {
+        public string ProviderId => "Recording";
+        public bool IsLiveMarketData => false;
+        public int CallCount { get; private set; }
+
+        public Task<ScatterMetricResult> ComputeMetricsAsync(
+            IReadOnlyList<string> tickers,
+            string xMetric,
+            string yMetric,
+            CancellationToken cancellationToken = default)
+        {
+            CallCount++;
+            return SyntheticScatterMetricProvider.Instance.ComputeMetricsAsync(tickers, xMetric, yMetric, cancellationToken);
+        }
     }
 
     private sealed class TestDelayMetricProvider : IScatterMetricProvider
@@ -397,5 +528,61 @@ public sealed class ScatterPlotViewModelTests
         messenger.Send(new TickerSelectedMessage(targetTicker));
         Assert.Equal(targetTicker, vm.SelectedTicker);
         Assert.Equal(0, vm.SelectedPointIndex);
+    }
+
+    [Fact]
+    public void HeatmapPalette_WithoutSettingsManager_DefaultsToHeatmapPaletteDefault()
+    {
+        using var vm = CreateViewModel();
+        Assert.Equal(HeatmapPalette.Default, vm.HeatmapPalette);
+    }
+
+    [Fact]
+    public void HeatmapPalette_WithSettingsManager_InitializesFromCurrentSettings()
+    {
+        var settingsManager = new MockChartSettingsManager();
+        var customSettings = new StockAnalyzer.Core.Models.Settings.GlobalChartSettings
+        {
+            ScatterHeatmapUpColor = "#FF112233",
+            ScatterHeatmapNeutralColor = "#FF445566",
+            ScatterHeatmapDownColor = "#FF778899",
+            ScatterHeatmapThresholdPercent = 8.0,
+            ScatterHeatmapMultiplier = 1.5,
+            ScatterHeatmapStepCount = 15
+        };
+        settingsManager.UpdatePreview(customSettings);
+
+        using var vm = CreateViewModel(chartSettingsManager: settingsManager);
+
+        Assert.Equal(15, vm.HeatmapPalette.StepCount);
+        Assert.Equal(0.12, vm.HeatmapPalette.ThresholdRatio, precision: 4);
+    }
+
+    [Fact]
+    public void HeatmapPalette_OnSettingsChanged_RebuildsPalette_AndDisposeUnsubscribes()
+    {
+        var settingsManager = new MockChartSettingsManager();
+        var vm = CreateViewModel(chartSettingsManager: settingsManager);
+        Assert.Equal(HeatmapPalette.Default, vm.HeatmapPalette);
+
+        var updatedSettings = new StockAnalyzer.Core.Models.Settings.GlobalChartSettings
+        {
+            ScatterHeatmapThresholdPercent = 10.0,
+            ScatterHeatmapMultiplier = 2.0,
+            ScatterHeatmapStepCount = 25
+        };
+        settingsManager.UpdatePreview(updatedSettings);
+
+        Assert.Equal(25, vm.HeatmapPalette.StepCount);
+        Assert.Equal(0.20, vm.HeatmapPalette.ThresholdRatio, precision: 4);
+
+        // After Dispose, settings changes should not affect vm
+        vm.Dispose();
+        var afterDisposeSettings = new StockAnalyzer.Core.Models.Settings.GlobalChartSettings
+        {
+            ScatterHeatmapStepCount = 5
+        };
+        settingsManager.UpdatePreview(afterDisposeSettings);
+        Assert.Equal(25, vm.HeatmapPalette.StepCount);
     }
 }

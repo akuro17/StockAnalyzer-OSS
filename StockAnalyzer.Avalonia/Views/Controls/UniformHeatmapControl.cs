@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -22,17 +23,14 @@ public sealed class UniformHeatmapControl : Control, IDisposable
     public static readonly StyledProperty<IReadOnlyList<UniformHeatmapItem>?> ItemsProperty =
         AvaloniaProperty.Register<UniformHeatmapControl, IReadOnlyList<UniformHeatmapItem>?>(nameof(Items));
 
-    public static readonly StyledProperty<double> ScaleThresholdProperty =
-        AvaloniaProperty.Register<UniformHeatmapControl, double>(nameof(ScaleThreshold), 0.05); // +/- 5%
-
     public static readonly StyledProperty<string?> SelectedTickerProperty =
         AvaloniaProperty.Register<UniformHeatmapControl, string?>(nameof(SelectedTicker));
 
     public static readonly StyledProperty<string?> HoveredTickerProperty =
         AvaloniaProperty.Register<UniformHeatmapControl, string?>(nameof(HoveredTicker));
 
-    public static readonly StyledProperty<HeatmapColorScheme> ColorSchemeProperty =
-        AvaloniaProperty.Register<UniformHeatmapControl, HeatmapColorScheme>(nameof(ColorScheme), HeatmapColorScheme.Classic);
+    public static readonly StyledProperty<HeatmapPalette> PaletteProperty =
+        AvaloniaProperty.Register<UniformHeatmapControl, HeatmapPalette>(nameof(Palette), HeatmapPalette.Default);
 
     public event EventHandler<UniformHeatmapItem>? TileClicked;
 
@@ -43,18 +41,10 @@ public sealed class UniformHeatmapControl : Control, IDisposable
 
     // Perceptual Colors
     private static readonly SKColor NeutralColor = new(0x2B, 0x2F, 0x3A);         // Dark Slate Gray
-    private static readonly SKColor BullishPeakClassic = new(0x00, 0xC8, 0x53);   // Vivid Emerald
-    private static readonly SKColor BearishPeakClassic = new(0xD5, 0x00, 0x00);   // Vivid Crimson
-    private static readonly SKColor BullishPeakColorblind = new(0x1E, 0x88, 0xE5);// Sky Blue
-    private static readonly SKColor BearishPeakColorblind = new(0xFB, 0x8C, 0x00);// Vivid Amber / Orange
     private static readonly SKColor NoDataColor = new(0x1E, 0x20, 0x24);          // Dark Neutral
     private static readonly SKColor TileBorderColor = new(0x37, 0x3A, 0x40);
     private static readonly SKColor HoverBorderColor = new(0xFA, 0xCC, 0x15);     // Yellow accent
     private static readonly SKColor SelectedBorderColor = new(0x38, 0xBD, 0xF8);  // Sky blue accent
-
-    // Precomputed 512-entry Oklab Diverging LUTs
-    private static readonly SKColor[] ClassicLut = GenerateOklabLut(NeutralColor, BullishPeakClassic, BearishPeakClassic, 512);
-    private static readonly SKColor[] ColorblindLut = GenerateOklabLut(NeutralColor, BullishPeakColorblind, BearishPeakColorblind, 512);
 
     // Reusable Paints
     private readonly SKPaint _tileFillPaint = new() { Style = SKPaintStyle.Fill, IsAntialias = true };
@@ -68,7 +58,7 @@ public sealed class UniformHeatmapControl : Control, IDisposable
 
     static UniformHeatmapControl()
     {
-        AffectsRender<UniformHeatmapControl>(ItemsProperty, ScaleThresholdProperty, SelectedTickerProperty, HoveredTickerProperty, ColorSchemeProperty);
+        AffectsRender<UniformHeatmapControl>(ItemsProperty, SelectedTickerProperty, HoveredTickerProperty, PaletteProperty);
         AffectsMeasure<UniformHeatmapControl>(ItemsProperty);
     }
 
@@ -83,12 +73,6 @@ public sealed class UniformHeatmapControl : Control, IDisposable
         set => SetValue(ItemsProperty, value);
     }
 
-    public double ScaleThreshold
-    {
-        get => GetValue(ScaleThresholdProperty);
-        set => SetValue(ScaleThresholdProperty, value);
-    }
-
     public string? SelectedTicker
     {
         get => GetValue(SelectedTickerProperty);
@@ -101,10 +85,10 @@ public sealed class UniformHeatmapControl : Control, IDisposable
         set => SetValue(HoveredTickerProperty, value);
     }
 
-    public HeatmapColorScheme ColorScheme
+    public HeatmapPalette Palette
     {
-        get => GetValue(ColorSchemeProperty);
-        set => SetValue(ColorSchemeProperty, value);
+        get => GetValue(PaletteProperty);
+        set => SetValue(PaletteProperty, value);
     }
 
     protected override Size MeasureOverride(Size availableSize)
@@ -149,19 +133,17 @@ public sealed class UniformHeatmapControl : Control, IDisposable
         var items = Items;
         if (items == null || items.Count == 0) return;
 
-        double scale = ScaleThreshold;
+        var palette = Palette;
         string? selected = SelectedTicker;
         string? hovered = HoveredTicker;
-        var scheme = ColorScheme;
 
         context.Custom(new UniformHeatmapDrawOperation(
             this,
             new Rect(Bounds.Size),
             items,
-            scale,
+            palette,
             selected,
-            hovered,
-            scheme));
+            hovered));
     }
 
     protected override void OnPointerMoved(PointerEventArgs e)
@@ -239,22 +221,47 @@ public sealed class UniformHeatmapControl : Control, IDisposable
         SKCanvas canvas,
         Rect bounds,
         IReadOnlyList<UniformHeatmapItem>? items,
-        double scaleThreshold,
+        HeatmapPalette palette,
         string? selectedTicker,
-        string? hoveredTicker,
-        HeatmapColorScheme colorScheme)
+        string? hoveredTicker)
     {
         if (items == null || items.Count == 0 || bounds.Width <= 0 || bounds.Height <= 0) return;
+
+        palette ??= HeatmapPalette.Default;
 
         float width = (float)bounds.Width;
         int n = items.Count;
         int columns = Math.Max(1, (int)Math.Floor((width + CellGap) / (TargetTileWidth + CellGap)));
         float actualTileWidth = (width - ((columns - 1) * CellGap)) / columns;
 
-        double scale = double.IsNaN(scaleThreshold) ? 0.05 : Math.Clamp(scaleThreshold, 0.001, 1.0);
         string? hovered = hoveredTicker;
         string? selected = selectedTicker;
-        HeatmapColorScheme scheme = colorScheme;
+
+        // Configure text paints and alignment from palette snapshot
+        float tickerFontSize = (float)palette.FontSize;
+        float returnFontSize = (float)Math.Max(8.0, Math.Round(tickerFontSize * (12.0 / 14.0)));
+
+        var textColor = new SKColor(palette.TextColor.R, palette.TextColor.G, palette.TextColor.B, palette.TextColor.A);
+        _tickerTextPaint.Color = textColor;
+        _tickerTextPaint.TextSize = tickerFontSize;
+
+        _returnTextPaint.Color = textColor;
+        _returnTextPaint.TextSize = returnFontSize;
+
+        _shadowTextPaint.TextSize = returnFontSize;
+        _noDataTextPaint.TextSize = returnFontSize;
+
+        SKTextAlign skAlignment = palette.TextAlignment switch
+        {
+            HeatmapTextAlignment.Left => SKTextAlign.Left,
+            HeatmapTextAlignment.Right => SKTextAlign.Right,
+            _ => SKTextAlign.Center
+        };
+
+        _tickerTextPaint.TextAlign = skAlignment;
+        _returnTextPaint.TextAlign = skAlignment;
+        _noDataTextPaint.TextAlign = skAlignment;
+        _shadowTextPaint.TextAlign = skAlignment;
 
         canvas.Save();
         try
@@ -287,8 +294,8 @@ public sealed class UniformHeatmapControl : Control, IDisposable
                 }
                 else
                 {
-                    // Interpolate Perceptually Uniform Oklab Diverging Color
-                    SKColor tileColor = GetDivergingColor(item.ReturnPercentage, scale, scheme);
+                    // Interpolate Perceptually Uniform Oklab Color via HeatmapPalette
+                    SKColor tileColor = GetPaletteColor(item.ReturnPercentage, palette);
                     _tileFillPaint.Color = tileColor;
                     canvas.DrawRoundRect(tileRect, _tileFillPaint);
                 }
@@ -312,13 +319,21 @@ public sealed class UniformHeatmapControl : Control, IDisposable
                     canvas.DrawRoundRect(tileRect, _tileBorderPaint);
                 }
 
+                // Text Layout Coordinates (respecting alignment and font sizes)
+                float textX = palette.TextAlignment switch
+                {
+                    HeatmapTextAlignment.Left => x + 8.0f,
+                    HeatmapTextAlignment.Right => x + actualTileWidth - 8.0f,
+                    _ => x + (actualTileWidth / 2.0f)
+                };
+
+                float textY = y + 10.0f + tickerFontSize;
+                float retY = textY + returnFontSize + 8.0f;
+
                 // Ticker Label
-                float textX = x + 8.0f;
-                float textY = y + 26.0f;
                 canvas.DrawText(item.Ticker, textX, textY, _tickerTextPaint);
 
                 // Return Percentage Label
-                float retY = y + 48.0f;
                 if (isNan)
                 {
                     canvas.DrawText(" — ", textX, retY, _noDataTextPaint);
@@ -340,47 +355,76 @@ public sealed class UniformHeatmapControl : Control, IDisposable
         }
     }
 
-    /// <summary>
-    /// Evaluates perceptually uniform diverging color in Oklab color space via precomputed LUT.
-    /// </summary>
-    public static SKColor GetDivergingColor(double ret, double scaleThreshold, HeatmapColorScheme colorScheme = HeatmapColorScheme.Classic)
+    private sealed class PaletteLuts
     {
-        if (double.IsNaN(ret)) return NoDataColor;
+        public readonly SKColor[] Up;
+        public readonly SKColor[] Down;
 
-        double scale = double.IsNaN(scaleThreshold) ? 0.05 : Math.Clamp(scaleThreshold, 0.001, 1.0);
-        double t = Math.Clamp(ret / scale, -1.0, 1.0);
-        int idx = (int)Math.Round(((t + 1.0) * 0.5) * 511.0);
-        idx = Math.Clamp(idx, 0, 511);
+        public PaletteLuts(HeatmapPalette palette)
+        {
+            Up = new SKColor[513];
+            Down = new SKColor[513];
 
-        var lut = colorScheme == HeatmapColorScheme.ColorblindSafe ? ColorblindLut : ClassicLut;
-        return lut[idx];
+            var upColor = new SKColor(palette.Up.R, palette.Up.G, palette.Up.B, palette.Up.A);
+            var downColor = new SKColor(palette.Down.R, palette.Down.G, palette.Down.B, palette.Down.A);
+
+            var baseUpLab = OklabColor.FromSrgb(upColor);
+            var baseDownLab = OklabColor.FromSrgb(downColor);
+
+            var peakUpLab = OklabColor.DerivePeakColor(baseUpLab);
+            var peakDownLab = OklabColor.DerivePeakColor(baseDownLab);
+
+            for (int i = 0; i <= 512; i++)
+            {
+                double t = (double)i / 512.0;
+                Up[i] = OklabColor.Lerp(baseUpLab, peakUpLab, t).ToSrgb();
+                Down[i] = OklabColor.Lerp(baseDownLab, peakDownLab, t).ToSrgb();
+            }
+        }
     }
 
-    private static SKColor[] GenerateOklabLut(SKColor neutral, SKColor bullish, SKColor bearish, int size)
+    /// <summary>
+    /// Computes the luminous peak highlight color in Oklab space from a base threshold color.
+    /// Used for automatic color progression towards maximum return.
+    /// </summary>
+    public static SKColor DerivePeakColor(SKColor baseColor)
     {
-        var lut = new SKColor[size];
-        var neutralLab = OklabColor.FromSrgb(neutral);
-        var bullishLab = OklabColor.FromSrgb(bullish);
-        var bearishLab = OklabColor.FromSrgb(bearish);
+        var baseLab = OklabColor.FromSrgb(baseColor);
+        var peakLab = OklabColor.DerivePeakColor(baseLab);
+        return peakLab.ToSrgb();
+    }
 
-        int half = size / 2;
-        // Negative half: bearish to neutral
-        for (int i = 0; i < half; i++)
+    private static readonly ConditionalWeakTable<HeatmapPalette, PaletteLuts> _paletteLutCache = new();
+
+    /// <summary>
+    /// Evaluates perceptually uniform color in Oklab color space via settings-driven HeatmapPalette.
+    /// </summary>
+    public static SKColor GetPaletteColor(double ret, HeatmapPalette palette)
+    {
+        palette ??= HeatmapPalette.Default;
+
+        var sample = HeatmapColorMapper.Classify(ret, palette.ThresholdRatio, palette.StepCount);
+        switch (sample.Kind)
         {
-            double t = (double)i / half;
-            var lab = OklabColor.Lerp(bearishLab, neutralLab, t);
-            lut[i] = lab.ToSrgb();
+            case HeatmapColorKind.NoData:
+                return NoDataColor;
+            case HeatmapColorKind.Neutral:
+                return new SKColor(palette.Neutral.R, palette.Neutral.G, palette.Neutral.B, palette.Neutral.A);
+            case HeatmapColorKind.Up:
+            {
+                var luts = _paletteLutCache.GetValue(palette, static p => new PaletteLuts(p));
+                int idx = Math.Clamp((int)Math.Round(sample.Factor * 512.0), 0, 512);
+                return luts.Up[idx];
+            }
+            case HeatmapColorKind.Down:
+            {
+                var luts = _paletteLutCache.GetValue(palette, static p => new PaletteLuts(p));
+                int idx = Math.Clamp((int)Math.Round(sample.Factor * 512.0), 0, 512);
+                return luts.Down[idx];
+            }
+            default:
+                return NoDataColor;
         }
-
-        // Positive half: neutral to bullish
-        for (int i = half; i < size; i++)
-        {
-            double t = (double)(i - half) / (size - 1 - half);
-            var lab = OklabColor.Lerp(neutralLab, bullishLab, t);
-            lut[i] = lab.ToSrgb();
-        }
-
-        return lut;
     }
 
     private readonly struct OklabColor
@@ -447,6 +491,16 @@ public sealed class UniformHeatmapControl : Control, IDisposable
             );
         }
 
+        public static OklabColor DerivePeakColor(OklabColor baseColor)
+        {
+            // Luminous peak derivation: boost lightness towards high visibility (35% of remaining headroom)
+            double targetL = Math.Clamp(baseColor.L + ((1.0 - baseColor.L) * 0.35), 0.0, 0.95);
+            // Slight chroma boost (10%) to enhance perceived energy without out-of-gamut distortion
+            double targetA = baseColor.A * 1.10;
+            double targetB = baseColor.B * 1.10;
+            return new OklabColor(targetL, targetA, targetB);
+        }
+
         private static double SrgbToLinear(double c) =>
             c <= 0.04045 ? c / 12.92 : Math.Pow((c + 0.055) / 1.055, 2.4);
 
@@ -481,27 +535,24 @@ public sealed class UniformHeatmapControl : Control, IDisposable
     {
         private readonly UniformHeatmapControl _owner;
         private readonly IReadOnlyList<UniformHeatmapItem> _items;
-        private readonly double _scaleThreshold;
+        private readonly HeatmapPalette _palette;
         private readonly string? _selectedTicker;
         private readonly string? _hoveredTicker;
-        private readonly HeatmapColorScheme _colorScheme;
 
         public UniformHeatmapDrawOperation(
             UniformHeatmapControl owner,
             Rect bounds,
             IReadOnlyList<UniformHeatmapItem> items,
-            double scaleThreshold,
+            HeatmapPalette palette,
             string? selectedTicker,
-            string? hoveredTicker,
-            HeatmapColorScheme colorScheme)
+            string? hoveredTicker)
             : base(bounds)
         {
             _owner = owner;
             _items = items;
-            _scaleThreshold = scaleThreshold;
+            _palette = palette;
             _selectedTicker = selectedTicker;
             _hoveredTicker = hoveredTicker;
-            _colorScheme = colorScheme;
         }
 
         protected override void RenderCore(SKCanvas canvas, Rect bounds)
@@ -510,10 +561,9 @@ public sealed class UniformHeatmapControl : Control, IDisposable
                 canvas,
                 bounds,
                 _items,
-                _scaleThreshold,
+                _palette,
                 _selectedTicker,
-                _hoveredTicker,
-                _colorScheme);
+                _hoveredTicker);
         }
     }
 }

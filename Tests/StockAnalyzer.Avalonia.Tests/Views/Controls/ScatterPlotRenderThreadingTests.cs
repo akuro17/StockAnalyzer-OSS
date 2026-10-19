@@ -107,10 +107,9 @@ public sealed class ScatterPlotRenderThreadingTests
         var control = new UniformHeatmapControl
         {
             Items = items,
-            ScaleThreshold = 0.05,
             SelectedTicker = "AAPL",
             HoveredTicker = "MSFT",
-            ColorScheme = HeatmapColorScheme.Classic
+            Palette = HeatmapPalette.Default
         };
 
         Exception? thrown = await Task.Run(() =>
@@ -123,10 +122,9 @@ public sealed class ScatterPlotRenderThreadingTests
                     canvas,
                     new Rect(0, 0, 800, 600),
                     items,
-                    scaleThreshold: 0.05,
+                    palette: HeatmapPalette.Default,
                     selectedTicker: "AAPL",
-                    hoveredTicker: "MSFT",
-                    colorScheme: HeatmapColorScheme.Classic);
+                    hoveredTicker: "MSFT");
                 return null;
             }
             catch (Exception ex)

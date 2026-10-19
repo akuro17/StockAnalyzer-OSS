@@ -12,7 +12,11 @@ public class CoreMurreyMathIndicator : CoreIndicatorBase
 
     public override void Configure(CoreIndicatorParameterBase parameters)
     {
-        if (parameters is CoreSmaParameter p)
+        if (parameters is CoreMurreyMathParameter m)
+        {
+            Period = m.Period;
+        }
+        else if (parameters is CoreSmaParameter p)
         {
             Period = p.Period;
         }

@@ -71,6 +71,15 @@
             <Setter Property="FontSize" Value="{DynamicResource BaseFontSize}"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
         </Style>
+        <Style Selector="NumericUpDown.toolbar-num">
+            <Setter Property="Height" Value="32"/>
+            <Setter Property="FontSize" Value="{DynamicResource BaseFontSize}"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="HorizontalContentAlignment" Value="Right"/>
+        </Style>
+        <Style Selector="NumericUpDown.toolbar-num /template/ TextBox#PART_TextBox">
+            <Setter Property="TextAlignment" Value="Right"/>
+        </Style>
     </UserControl.Styles>
 
     <Grid RowDefinitions="Auto,*">
@@ -124,9 +133,34 @@
                 </StackPanel>
 
                 <!-- Heatmap Controls (Visible in Heatmap Mode) -->
-                <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,16,0" IsVisible="{Binding IsHeatmapMode}">
-                    <Button Classes="toolbar-btn" Content="{Binding ColorSchemeLabel}" Command="{Binding ToggleColorSchemeCommand}"
-                            TabIndex="11" />
+                <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,16,0" IsVisible="{Binding IsHeatmapMode}" VerticalAlignment="Center">
+                    <TextBlock Text="{l:Localize Scatter_Heatmap_TargetDate}" VerticalAlignment="Center"
+                               FontSize="{DynamicResource DetailFontSize}"
+                               Foreground="{DynamicResource Brush.Text.Secondary}" />
+                    <Border Background="{DynamicResource Brush.Background.Tertiary}"
+                            BorderBrush="{DynamicResource Brush.Border.Primary}"
+                            BorderThickness="1"
+                            CornerRadius="4"
+                            Padding="8,4"
+                            VerticalAlignment="Center">
+                        <TextBlock Text="{Binding HeatmapTargetDateText}"
+                                   FontWeight="SemiBold"
+                                   FontSize="{DynamicResource DetailFontSize}"
+                                   Foreground="{DynamicResource Brush.Text.Primary}" />
+                    </Border>
+                    <TextBlock Text="{l:Localize Scatter_Heatmap_Offset}" VerticalAlignment="Center"
+                               FontSize="{DynamicResource DetailFontSize}"
+                               Foreground="{DynamicResource Brush.Text.Secondary}" Margin="8,0,0,0" />
+                    <NumericUpDown Classes="toolbar-num"
+                                   Value="{Binding HeatmapOffset, Mode=TwoWay}"
+                                   Minimum="{Binding HeatmapOffsetMin}"
+                                   Maximum="{Binding HeatmapOffsetMax}"
+                                   Increment="1"
+                                   FormatString="0"
+                                   MinWidth="96"
+                                   Height="32"
+                                   TabIndex="11"
+                                   ToolTip.Tip="{l:Localize Scatter_Heatmap_OffsetTip}" />
                 </StackPanel>
 
                 <!-- Status & Active Group Badge -->
@@ -164,17 +198,19 @@
                 XScale="{Binding XScale}"
                 YScale="{Binding YScale}" />
 
-            <!-- Uniform Heatmap View adhering to SA_UI_SUBWINDOW_STANDARD Section 2.3 -->
+            <!-- Uniform Heatmap View adhering to SA_UI_SUBWINDOW_STANDARD Section 2.3 and SA_UI_INTERACTION Section 28 -->
             <ScrollViewer
                 IsVisible="{Binding IsHeatmapMode}"
                 AllowAutoHide="False"
                 VerticalScrollBarVisibility="Auto"
                 HorizontalScrollBarVisibility="Disabled"
-                Padding="8,8,16,8">
-                <controls:UniformHeatmapControl
-                    Items="{Binding HeatmapItems}"
-                    ColorScheme="{Binding ColorScheme}"
-                    SelectedTicker="{Binding SelectedTicker}" />
+                Padding="0">
+                <Border Background="Transparent" Padding="8,8,16,16">
+                    <controls:UniformHeatmapControl
+                        Items="{Binding HeatmapItems}"
+                        Palette="{Binding HeatmapPalette}"
+                        SelectedTicker="{Binding SelectedTicker}" />
+                </Border>
             </ScrollViewer>
         </Grid>
     </Grid>

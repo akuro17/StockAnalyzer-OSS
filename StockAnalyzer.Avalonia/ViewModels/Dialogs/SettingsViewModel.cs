@@ -87,6 +87,7 @@ public partial class SettingsViewModel : ViewModelBase, IDisposable
                 SettingsConstants.Keys.Tickers => _serviceProvider.GetRequiredService<TickersSettingsViewModel>(),
                 SettingsConstants.Keys.Notes =>_serviceProvider.GetRequiredService<NotesSettingsViewModel>(),
                 SettingsConstants.Keys.SeasonalityChart => _serviceProvider.GetRequiredService<SeasonalitySettingsViewModel>(),
+                SettingsConstants.Keys.ScatterAnalysis => _serviceProvider.GetRequiredService<ScatterAnalysisSettingsViewModel>(),
                 SettingsConstants.Keys.Chart => _serviceProvider.GetRequiredService<ChartGeneralSettingsViewModel>(),
                 
                 // Chart Sub-categories

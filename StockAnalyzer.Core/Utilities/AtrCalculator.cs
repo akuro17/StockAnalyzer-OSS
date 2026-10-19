@@ -44,10 +44,7 @@ namespace StockAnalyzer.Core.Utilities
             {
                 var current = candles[i];
                 var prev = candles[i - 1];
-                decimal hl = current.High - current.Low;
-                decimal hpc = Math.Abs(current.High - prev.Close);
-                decimal lpc = Math.Abs(current.Low - prev.Close);
-                trSum += Math.Max(hl, Math.Max(hpc, lpc));
+                trSum += CalculateTrueRange(current.High, current.Low, prev.Close);
                 count++;
             }
             return count > 0 ? trSum / count : 0m;
@@ -71,13 +68,7 @@ namespace StockAnalyzer.Core.Utilities
             {
                 var current = candles[i];
                 var prev = candles[i - 1];
-
-                decimal hl = current.High - current.Low;
-                decimal hpc = Math.Abs(current.High - prev.Close);
-                decimal lpc = Math.Abs(current.Low - prev.Close);
-
-                decimal tr = Math.Max(hl, Math.Max(hpc, lpc));
-                trSum += tr;
+                trSum += CalculateTrueRange(current.High, current.Low, prev.Close);
                 count++;
             }
 
@@ -102,13 +93,7 @@ namespace StockAnalyzer.Core.Utilities
             {
                 var current = candles[i];
                 var prev = candles[i - 1];
-
-                decimal hl = current.High - current.Low;
-                decimal hpc = Math.Abs(current.High - prev.Close);
-                decimal lpc = Math.Abs(current.Low - prev.Close);
-
-                decimal tr = Math.Max(hl, Math.Max(hpc, lpc));
-                trSum += tr;
+                trSum += CalculateTrueRange(current.High, current.Low, prev.Close);
                 count++;
             }
 

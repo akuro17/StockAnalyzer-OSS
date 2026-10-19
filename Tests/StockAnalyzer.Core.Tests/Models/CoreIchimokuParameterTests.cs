@@ -58,4 +58,26 @@ public class CoreIchimokuParameterTests
     {
         Assert.Equal(0, new CoreMacdParameter().GetFutureProjectionBars());
     }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void Validate_InvalidPeriods_ThrowsArgumentOutOfRangeException(int invalidValue)
+    {
+        var paramTenkan = new CoreIchimokuParameter { TenkanSample = invalidValue };
+        Assert.Throws<System.ArgumentOutOfRangeException>(() => paramTenkan.Validate());
+
+        var paramKijun = new CoreIchimokuParameter { KijunSample = invalidValue };
+        Assert.Throws<System.ArgumentOutOfRangeException>(() => paramKijun.Validate());
+
+        var paramSenkouB = new CoreIchimokuParameter { SenkouBSample = invalidValue };
+        Assert.Throws<System.ArgumentOutOfRangeException>(() => paramSenkouB.Validate());
+    }
+
+    [Fact]
+    public void Validate_ValidPeriods_DoesNotThrow()
+    {
+        var param = new CoreIchimokuParameter { TenkanSample = 9, KijunSample = 26, SenkouBSample = 52 };
+        param.Validate();
+    }
 }
