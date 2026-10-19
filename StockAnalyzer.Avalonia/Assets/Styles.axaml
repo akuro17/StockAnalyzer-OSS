@@ -28,7 +28,7 @@
     <Thickness x:Key="ListScrollGutter">0,0,6,0</Thickness>
 
     <!-- 1c. Shared Suggestion-Popup Row Template (sa_improve, constraint-check follow-up:
-         docs/sa_constraint_check_TickerTagFilter_20260923). Icon + name + kind-label row shared
+         TickerTagFilter suggestion row consolidation). Icon + name + kind-label row shared
          by Notes' unified search suggestion box (NoteScopeSuggestion) and the Tickers tab's Ticker/Tag
          filter suggestion box (TickerTagFilterSuggestion) - both implement ISuggestionRow rather than
          each defining their own copy of this markup. -->

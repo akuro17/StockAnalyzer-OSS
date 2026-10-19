@@ -38,6 +38,7 @@ public partial class ScreenerViewModel : ViewModelBase, IDisposable
     private readonly IScreenerValueExtractor _valueExtractor;
     private readonly IReadOnlyList<WatchlistColumnMetadata> _allColumns = WatchlistColumnRegistry.AllColumns;
     private readonly ILogger<ScreenerViewModel> _logger;
+    private readonly ITickerSourceResolver? _tickerSourceResolver;
     private CancellationTokenSource? _cts;
     private CancellationTokenSource? _statusResetCts;
     private CancellationTokenSource? _targetSymbolsCts;
@@ -81,7 +82,7 @@ public partial class ScreenerViewModel : ViewModelBase, IDisposable
     }
 
     [ObservableProperty]
-    private ObservableCollection<string> _targetSymbols = new();
+    private BulkObservableCollection<string> _targetSymbols = new();
 
     [ObservableProperty]
     private ObservableCollection<string> _results = new();
@@ -183,8 +184,10 @@ public partial class ScreenerViewModel : ViewModelBase, IDisposable
         IDialogService? dialogService = null,
         IMessenger? messenger = null,
         IScreenerValueExtractor? valueExtractor = null,
-        ILogger<ScreenerViewModel>? logger = null)
+        ILogger<ScreenerViewModel>? logger = null,
+        ITickerSourceResolver? tickerSourceResolver = null)
     {
+        _tickerSourceResolver = tickerSourceResolver;
         _screenerService = screenerService;
         _settings = settings;
         _marketDataProvider = marketDataProvider;
@@ -405,6 +408,18 @@ public partial class ScreenerViewModel : ViewModelBase, IDisposable
         TargetSymbols.Clear();
         if (source == null) return;
 
+        if (_tickerSourceResolver != null)
+        {
+            var descriptor = ToDescriptor(source);
+            if (descriptor != null)
+            {
+                var resolution = await _tickerSourceResolver.ResolveAsync(new[] { descriptor }, cancellationToken: cancellationToken);
+                cancellationToken.ThrowIfCancellationRequested();
+                TargetSymbols.ReplaceRange(resolution.Symbols);
+                return;
+            }
+        }
+
         // The symbols are collected first and published once, so a load that is superseded (cancelled) never leaves a partial or mixed list behind.
         var staged = new List<string>();
 
@@ -607,12 +622,18 @@ public partial class ScreenerViewModel : ViewModelBase, IDisposable
         }
 
         cancellationToken.ThrowIfCancellationRequested();
-        TargetSymbols.Clear();
-        foreach (var symbol in staged)
-        {
-            TargetSymbols.Add(symbol);
-        }
+        TargetSymbols.ReplaceRange(staged);
     }
+
+    private static RlSourceDescriptor? ToDescriptor(ScreenerTargetSource source) => source.Type switch
+    {
+        TargetSourceType.AllTickers => RlSourceDescriptor.AllTickers(),
+        TargetSourceType.Watchlist => RlSourceDescriptor.Watchlist(source.ProfileId.HasValue && source.ProfileId.Value != Guid.Empty ? source.ProfileId.Value : null),
+        TargetSourceType.Portfolio => RlSourceDescriptor.Portfolio(source.ProfileId.HasValue && source.ProfileId.Value != Guid.Empty ? source.ProfileId.Value : null),
+        TargetSourceType.TagFilter => !string.IsNullOrWhiteSpace(source.TagName) ? RlSourceDescriptor.Tag(source.TagName) : null,
+        TargetSourceType.SavedFilter => source.FilterSettings != null ? RlSourceDescriptor.SavedFilter(source.FilterSettings.Id) : null,
+        _ => null
+    };
 
     private void InitializeFallback()
     {
@@ -631,7 +652,7 @@ public partial class ScreenerViewModel : ViewModelBase, IDisposable
     {
         if (_isDisposed || IsScanning) return;
 
-        // Filters condition tree (docs/sa_implementation_plan_ScreenerFilterConditionTree Task 3, decision A):
+        // Filters condition tree (ScreenerFilterConditionTree Task 3, decision A):
         // the previous per-entry sequential AND/OR fold is replaced by a single recursive tree evaluation, screened
         // in one ScreenAsync call via ScreenerConditionTreeCondition. "No conditions registered" now means "the tree
         // has no active (enabled) leaf at all", which subsumes the old "activeEntries.Count == 0" check.

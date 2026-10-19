@@ -36,7 +36,7 @@ namespace StockAnalyzer.Avalonia.Drawing;
 /// boundary/angle geometry with the separate ring-family <see cref="EllipseAnnulusObject"/> via
 /// <see cref="EllipseArcGeometry"/>.
 /// </summary>
-public class EllipseObject : IEllipseFamilyObject
+public class EllipseObject : IEllipseFamilyObject, IDisposable
 {
     public string? CustomName { get; set; }
     public DrawingMoveAxisMode MoveAxisMode { get; set; } = DrawingMoveAxisMode.XY;
@@ -71,6 +71,23 @@ public class EllipseObject : IEllipseFamilyObject
     public int PanelIndex { get; set; } = -1;
     public int ZIndex { get; set; } = 0;
     public int AnchorPointIndex { get; set; } = 0;
+
+    // Reused across Render() calls (ZeroAllocation Render Loop, SA_RENDERING_PERFORMANCE.md §1)
+    // instead of new SKPaint per frame. Color- and mode-dependent properties are updated before each draw.
+    private readonly SKPaint _fillPaint = new() { Style = SKPaintStyle.Fill, IsAntialias = true };
+    private readonly SKPaint _strokePaint = new() { Style = SKPaintStyle.Stroke, IsAntialias = true };
+    private readonly SKPaint _tangentPaint = new() { Style = SKPaintStyle.Stroke, IsAntialias = true };
+    private bool _disposed;
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        _fillPaint.Dispose();
+        _strokePaint.Dispose();
+        _tangentPaint.Dispose();
+        GC.SuppressFinalize(this);
+    }
 
     /// <summary>When true (the default), constrains rendering/hit-testing to a circle (equal radii)
     /// instead of an independently-scaled ellipse, without altering the stored center/corner points.
@@ -223,7 +240,7 @@ public class EllipseObject : IEllipseFamilyObject
 
     public void Render(SKCanvas canvas, ICoordinateTransform transform)
     {
-        if (canvas == null || transform == null || Points.Count < 2) return;
+        if (_disposed || canvas == null || transform == null || Points.Count < 2) return;
 
         if (IsArcEnabled)
         {
@@ -265,17 +282,15 @@ public class EllipseObject : IEllipseFamilyObject
         // [Layer 1: Fill Layer]
         if (IsFilled && hasValidGeometry)
         {
-            using var fillPaint = new SKPaint
-            {
-                Style = SKPaintStyle.Fill,
-                IsAntialias = true,
-                BlendMode = BlendMode.ToSkBlendMode()
-            };
+            _fillPaint.Style = SKPaintStyle.Fill;
+            _fillPaint.IsAntialias = true;
+            _fillPaint.BlendMode = BlendMode.ToSkBlendMode();
 
             if (GradientType == DrawingGradientType.None)
             {
-                fillPaint.Color = new SKColor(Color.R, Color.G, Color.B, FillAlpha);
-                DrawShape(canvas, localRect, ringPath, fillPaint);
+                _fillPaint.Shader = null;
+                _fillPaint.Color = new SKColor(Color.R, Color.G, Color.B, FillAlpha);
+                DrawShape(canvas, localRect, ringPath, _fillPaint);
             }
             else
             {
@@ -287,13 +302,21 @@ public class EllipseObject : IEllipseFamilyObject
                 using var shader = DrawingShaderFactory.CreateShader(this, localRect, centerScreen.X, centerScreen.Y, localCorner.X, localCorner.Y);
                 if (shader != null)
                 {
-                    fillPaint.Shader = shader;
-                    DrawShape(canvas, localRect, ringPath, fillPaint);
+                    _fillPaint.Shader = shader;
+                    try
+                    {
+                        DrawShape(canvas, localRect, ringPath, _fillPaint);
+                    }
+                    finally
+                    {
+                        _fillPaint.Shader = null;
+                    }
                 }
                 else
                 {
-                    fillPaint.Color = new SKColor(Color.R, Color.G, Color.B, FillAlpha);
-                    DrawShape(canvas, localRect, ringPath, fillPaint);
+                    _fillPaint.Shader = null;
+                    _fillPaint.Color = new SKColor(Color.R, Color.G, Color.B, FillAlpha);
+                    DrawShape(canvas, localRect, ringPath, _fillPaint);
                 }
             }
         }
@@ -301,16 +324,15 @@ public class EllipseObject : IEllipseFamilyObject
         // [Layer 2: Stroke Layer]
         if (Thickness > 0)
         {
-            using var strokePaint = new SKPaint
-            {
-                Color = SkiaColor,
-                StrokeWidth = (float)Thickness,
-                Style = SKPaintStyle.Stroke,
-                BlendMode = SKBlendMode.SrcOver,
-                PathEffect = StrokeStyle.ToSkPathEffect(),
-                IsAntialias = true
-            };
-            DrawShape(canvas, localRect, ringPath, strokePaint);
+            _strokePaint.Color = SkiaColor;
+            _strokePaint.StrokeWidth = (float)Thickness;
+            _strokePaint.Style = SKPaintStyle.Stroke;
+            _strokePaint.StrokeCap = SKStrokeCap.Butt;
+            _strokePaint.StrokeJoin = SKStrokeJoin.Miter;
+            _strokePaint.BlendMode = SKBlendMode.SrcOver;
+            _strokePaint.PathEffect = StrokeStyle.ToSkPathEffect();
+            _strokePaint.IsAntialias = true;
+            DrawShape(canvas, localRect, ringPath, _strokePaint);
         }
 
         // [Layer 2b: Tangent Lines, short-segment form] (Points[2]/[3] always exist regardless of Arc
@@ -319,14 +341,15 @@ public class EllipseObject : IEllipseFamilyObject
         // after Restore instead, since it needs true (unrotated) screen coordinates.
         if (hasTangentGeometry && !ExtendTangentLinesToChart)
         {
-            using var tangentPaint = new SKPaint
-            {
-                Color = SkiaColor,
-                StrokeWidth = (float)Thickness,
-                Style = SKPaintStyle.Stroke,
-                IsAntialias = true
-            };
-            DrawTangentLines(canvas, localRect, tangentHandle2Angle, tangentHandle3Angle, tangentPaint);
+            _tangentPaint.Color = SkiaColor;
+            _tangentPaint.StrokeWidth = (float)Thickness;
+            _tangentPaint.Style = SKPaintStyle.Stroke;
+            _tangentPaint.StrokeCap = SKStrokeCap.Butt;
+            _tangentPaint.StrokeJoin = SKStrokeJoin.Miter;
+            _tangentPaint.BlendMode = SKBlendMode.SrcOver;
+            _tangentPaint.PathEffect = null;
+            _tangentPaint.IsAntialias = true;
+            DrawTangentLines(canvas, localRect, tangentHandle2Angle, tangentHandle3Angle, _tangentPaint);
         }
 
         canvas.Restore();
@@ -336,14 +359,15 @@ public class EllipseObject : IEllipseFamilyObject
         // space rather than the ellipse's local rotated frame).
         if (hasTangentGeometry && ExtendTangentLinesToChart)
         {
-            using var tangentPaint = new SKPaint
-            {
-                Color = SkiaColor,
-                StrokeWidth = (float)Thickness,
-                Style = SKPaintStyle.Stroke,
-                IsAntialias = true
-            };
-            DrawTangentLinesFullChartWidth(canvas, localRect, centerScreen, rotationAngle, tangentHandle2Angle, tangentHandle3Angle, transform, tangentPaint);
+            _tangentPaint.Color = SkiaColor;
+            _tangentPaint.StrokeWidth = (float)Thickness;
+            _tangentPaint.Style = SKPaintStyle.Stroke;
+            _tangentPaint.StrokeCap = SKStrokeCap.Butt;
+            _tangentPaint.StrokeJoin = SKStrokeJoin.Miter;
+            _tangentPaint.BlendMode = SKBlendMode.SrcOver;
+            _tangentPaint.PathEffect = null;
+            _tangentPaint.IsAntialias = true;
+            DrawTangentLinesFullChartWidth(canvas, localRect, centerScreen, rotationAngle, tangentHandle2Angle, tangentHandle3Angle, transform, _tangentPaint);
         }
 
         // [Layer 3: Selection Handles] (drawn after Restore, in true/unrotated screen space — the
@@ -504,7 +528,7 @@ public class EllipseObject : IEllipseFamilyObject
 
     private void RenderArc(SKCanvas canvas, ICoordinateTransform transform)
     {
-        if (Points.Count < 4) return;
+        if (_disposed || Points.Count < 4) return;
         if (!TryComputeArc(transform, out var localRect, out var startAngle, out var sweep, out var centerScreen, out var rotationAngle, out var handles, out var handle2Angle, out var handle3Angle)) return;
 
         bool isRing = InnerRadiusRatio > GeometryEpsilon;
@@ -519,56 +543,53 @@ public class EllipseObject : IEllipseFamilyObject
 
         if (IsFilled && (isRing || ShowRadiusLines || ShowChordLine))
         {
-            using var fillPaint = new SKPaint
-            {
-                Style = SKPaintStyle.Fill,
-                IsAntialias = true,
-                BlendMode = BlendMode.ToSkBlendMode(),
-                Color = new SKColor(Color.R, Color.G, Color.B, FillAlpha)
-            };
-            canvas.DrawPath(path, fillPaint);
+            _fillPaint.Style = SKPaintStyle.Fill;
+            _fillPaint.IsAntialias = true;
+            _fillPaint.BlendMode = BlendMode.ToSkBlendMode();
+            _fillPaint.Color = new SKColor(Color.R, Color.G, Color.B, FillAlpha);
+            _fillPaint.Shader = null;
+            canvas.DrawPath(path, _fillPaint);
         }
 
         if (Thickness > 0)
         {
-            using var strokePaint = new SKPaint
-            {
-                Color = SkiaColor,
-                StrokeWidth = (float)Thickness,
-                Style = SKPaintStyle.Stroke,
-                StrokeCap = SKStrokeCap.Round,
-                StrokeJoin = SKStrokeJoin.Round,
-                BlendMode = SKBlendMode.SrcOver,
-                PathEffect = StrokeStyle.ToSkPathEffect(),
-                IsAntialias = true
-            };
-            canvas.DrawPath(path, strokePaint);
+            _strokePaint.Color = SkiaColor;
+            _strokePaint.StrokeWidth = (float)Thickness;
+            _strokePaint.Style = SKPaintStyle.Stroke;
+            _strokePaint.StrokeCap = SKStrokeCap.Round;
+            _strokePaint.StrokeJoin = SKStrokeJoin.Round;
+            _strokePaint.BlendMode = SKBlendMode.SrcOver;
+            _strokePaint.PathEffect = StrokeStyle.ToSkPathEffect();
+            _strokePaint.IsAntialias = true;
+            canvas.DrawPath(path, _strokePaint);
         }
 
         if (ShowTangentLines && !ExtendTangentLinesToChart)
         {
-            using var tangentPaint = new SKPaint
-            {
-                Color = SkiaColor,
-                StrokeWidth = (float)Thickness,
-                Style = SKPaintStyle.Stroke,
-                IsAntialias = true
-            };
-            DrawTangentLines(canvas, localRect, handle2Angle, handle3Angle, tangentPaint);
+            _tangentPaint.Color = SkiaColor;
+            _tangentPaint.StrokeWidth = (float)Thickness;
+            _tangentPaint.Style = SKPaintStyle.Stroke;
+            _tangentPaint.StrokeCap = SKStrokeCap.Butt;
+            _tangentPaint.StrokeJoin = SKStrokeJoin.Miter;
+            _tangentPaint.BlendMode = SKBlendMode.SrcOver;
+            _tangentPaint.PathEffect = null;
+            _tangentPaint.IsAntialias = true;
+            DrawTangentLines(canvas, localRect, handle2Angle, handle3Angle, _tangentPaint);
         }
 
         canvas.Restore();
 
         if (ShowTangentLines && ExtendTangentLinesToChart)
         {
-            using var tangentPaint = new SKPaint
-            {
-                Color = SkiaColor,
-                StrokeWidth = (float)Thickness,
-                Style = SKPaintStyle.Stroke,
-                IsAntialias = true
-            };
-            DrawTangentLinesFullChartWidth(canvas, localRect, centerScreen, rotationAngle, handle2Angle, handle3Angle, transform, tangentPaint);
+            _tangentPaint.Color = SkiaColor;
+            _tangentPaint.StrokeWidth = (float)Thickness;
+            _tangentPaint.Style = SKPaintStyle.Stroke;
+            _tangentPaint.StrokeCap = SKStrokeCap.Butt;
+            _tangentPaint.StrokeJoin = SKStrokeJoin.Miter;
+            _tangentPaint.BlendMode = SKBlendMode.SrcOver;
+            _tangentPaint.PathEffect = null;
+            _tangentPaint.IsAntialias = true;
+            DrawTangentLinesFullChartWidth(canvas, localRect, centerScreen, rotationAngle, handle2Angle, handle3Angle, transform, _tangentPaint);
         }
 
         // Handle markers (drawn after Restore, in true/unrotated screen space): TryComputeArc already

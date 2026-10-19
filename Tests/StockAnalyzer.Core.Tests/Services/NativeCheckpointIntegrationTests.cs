@@ -13,7 +13,7 @@ namespace StockAnalyzer.Core.Tests.Services;
 [Collection("ChildProcess")]
 public sealed class NativeCheckpointIntegrationTests
 {
-    [Fact]
+    [ChildProcessFact]
     public async Task RealTransferLineage_RegistersVerifiedParentAndRejectsMismatchedEvidence()
     {
         var root = new DirectoryInfo(AppContext.BaseDirectory);
@@ -61,7 +61,7 @@ public sealed class NativeCheckpointIntegrationTests
         finally { Directory.Delete(directory, recursive: true); }
     }
 
-    [Fact]
+    [ChildProcessFact]
     public async Task NativeCheckpoints_ExactResumeTransferAndIndependentFolds()
     {
         var root = new DirectoryInfo(AppContext.BaseDirectory);

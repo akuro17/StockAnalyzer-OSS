@@ -60,8 +60,9 @@ public sealed class TrainingWizardCpcvTests : IDisposable
             .Returns(Task.CompletedTask);
         var market = new Mock<IMarketDataProvider>();
         market.Setup(p => p.GetAvailableTickersAsync()).ReturnsAsync(new List<string> { "AAA" });
+        var store = StockAnalyzer.Avalonia.Tests.TestHelpers.FakeTickerStateStore.FromProfiles(Array.Empty<StockAnalyzer.Core.Models.Watchlist.WatchlistProfile>());
         var wizard = new TrainingWizardViewModel(orchestrator: orchestrator.Object, experimentLogService: log.Object,
-            marketDataProvider: market.Object);
+            marketDataProvider: market.Object, tickerStore: store);
         wizard.Horizon = 1;
         return (wizard, started);
     }

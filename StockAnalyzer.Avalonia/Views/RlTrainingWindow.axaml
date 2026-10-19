@@ -172,7 +172,13 @@
   </Window.KeyBindings>
 
   <Border BorderBrush="{DynamicResource Brush.Border.Primary}" BorderThickness="1">
-    <Grid RowDefinitions="56,*,Auto,64">
+    <Grid>
+      <Grid.RowDefinitions>
+        <RowDefinition Height="{x:Static ui:ToolWindowUiLayout.HeaderRow}" />
+        <RowDefinition Height="{x:Static ui:ToolWindowUiLayout.BodyRow}" />
+        <RowDefinition Height="Auto" />
+        <RowDefinition Height="{x:Static ui:ToolWindowUiLayout.FooterRow}" />
+      </Grid.RowDefinitions>
       <!-- Header (56px) per SA_UI_SUBWINDOW_STANDARD -->
       <Border Grid.Row="0"
               BorderBrush="{DynamicResource Brush.Border.Primary}"
@@ -671,9 +677,9 @@
                                Message="{Binding Message}"
                                MessageAutomationId="{x:Static ui:RlUiConstants.Message}" />
 
-      <!-- Footer (64px) per SA_UI_SUBWINDOW_STANDARD -->
+      <!-- Footer per SA_UI_SUBWINDOW_STANDARD -->
       <Border Grid.Row="3"
-              Height="64"
+              Height="{x:Static ui:ToolWindowUiLayout.FooterHeight}"
               Background="{DynamicResource Brush.Background.Tertiary}"
               BorderBrush="{DynamicResource Brush.Border.Primary}"
               BorderThickness="0,1,0,0"

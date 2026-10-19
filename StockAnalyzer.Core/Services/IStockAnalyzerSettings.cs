@@ -75,7 +75,7 @@ public interface IStockAnalyzerSettings
     /// <summary>Pointer travel (DIP) that starts a condition drag (see <see cref="Models.Settings.BacktestSettings.ConditionDragStartDistance"/>); defaulted from the POCO.</summary>
     int BacktestConditionDragStartDistance => new Models.Settings.BacktestSettings().ConditionDragStartDistance;
 
-    // Screener Filters condition tree (docs/sa_implementation_plan_ScreenerFilterConditionTree Task 2): a single-root
+    // Screener Filters condition tree (ScreenerFilterConditionTree Task 2): a single-root
     // AND/OR tree, distinct from the Backtest tree's six fixed roots, so its bounds are its own configuration keys rather
     // than reusing Backtest:MaxConditionTree*. Same rationale and default values as the Backtest tree limits (no stated
     // reason for a different bound), defaulted here (default interface member) so every existing implementer keeps
@@ -89,7 +89,7 @@ public interface IStockAnalyzerSettings
     /// <summary>Longest user-entered Filters group name, in characters after trimming; see <c>Screener:MaxFilterGroupNameLength</c>.</summary>
     int ScreenerMaxFilterGroupNameLength => 32;
 
-    // docs/sa_implementation_plan_ScreenerFilterConditionDragMove Task 1: a Screener-specific drag-start distance
+    // ScreenerFilterConditionDragMove Task 1: a Screener-specific drag-start distance
     // rather than reusing BacktestConditionDragStartDistance, for the same "independently tunable per screen" reason as
     // ScreenerMaxFilterTreeDepth/Nodes/GroupNameLength above. Same rationale and default as the Backtest counterpart.
     /// <summary>Pointer travel (DIP) that starts dragging a Filters condition; see <c>Screener:ConditionDragStartDistance</c>.</summary>

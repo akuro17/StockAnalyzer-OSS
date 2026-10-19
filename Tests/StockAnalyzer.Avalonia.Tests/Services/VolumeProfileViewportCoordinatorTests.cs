@@ -258,7 +258,8 @@ public class VolumeProfileViewportCoordinatorTests
         var snapshot2 = new ChartDataSnapshot(candles: candles, startIndex: 0, count: 20, overrideMinPrice: 15m, overrideMaxPrice: 80m);
         coordinator.RequestUpdate(snapshot2, settings);
 
-        Thread.Sleep(ChartConstants.IndicatorCalculationDebounceDelay + 300);
+        var settled = SpinWait.SpinUntil(() => coordinator.GetState(DefaultSettingId) == VolumeProfileCoordinatorState.Ready, DebouncedOutcomeTimeoutMs);
+        Assert.True(settled, "Coordinator should settle to Ready state after debounce evaluation.");
 
         var resultAfter = coordinator.GetResult(DefaultSettingId);
         Assert.Same(resultBefore, resultAfter);
@@ -427,9 +428,10 @@ public class VolumeProfileViewportCoordinatorTests
         param.Side = DisplaySide.Right;
         coordinator.RequestUpdate(snapshot, settings);
 
-        // Wait past the debounce delay plus a safety margin -- if Side were still part of the cache
-        // key, this would trigger a genuine recomputation (a brand-new result object).
-        Thread.Sleep(ChartConstants.IndicatorCalculationDebounceDelay + 300);
+        // Wait for debounce timer evaluation -- if Side were still part of the cache key,
+        // this would trigger a genuine recomputation (a brand-new result object).
+        var settled = SpinWait.SpinUntil(() => coordinator.GetState(DefaultSettingId) == VolumeProfileCoordinatorState.Ready, DebouncedOutcomeTimeoutMs);
+        Assert.True(settled, "Coordinator should settle to Ready state after debounce evaluation.");
 
         var resultAfter = coordinator.GetResult(DefaultSettingId);
         Assert.Same(resultBefore, resultAfter);
@@ -598,7 +600,6 @@ public class VolumeProfileViewportCoordinatorTests
         // Pointer release fires unconditionally regardless of the setting's current enabled state.
         coordinator.NotifyPointerReleased();
 
-        Thread.Sleep(200);
         Assert.Null(coordinator.GetResult(DefaultSettingId));
         Assert.Equal(VolumeProfileCoordinatorState.Suspended, coordinator.GetState(DefaultSettingId));
     }

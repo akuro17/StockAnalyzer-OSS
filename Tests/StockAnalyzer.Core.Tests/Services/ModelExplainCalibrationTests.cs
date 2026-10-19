@@ -716,7 +716,7 @@ public sealed class ModelExplainCalibrationTests : IDisposable
     }
 
     [Fact]
-    public async Task Service_RetriesAFailedOrEmptyLoad_AndDoesNotCacheIt()
+    public async Task Service_NegativeCachesFailedOrEmptyLoad_AndDoesNotReacquire()
     {
         var (registry, manifest) = await RegisterAsync(Source(".explain.json"));
         using (registry)
@@ -725,7 +725,53 @@ public sealed class ModelExplainCalibrationTests : IDisposable
             var service = new ModelExplainabilityService(counting);
             Assert.Equal(ExplanationAvailability.NotGenerated, (await service.LoadExplanationAsync("alias-n")).Availability);
             Assert.Equal(ExplanationAvailability.NotGenerated, (await service.LoadExplanationAsync("alias-n")).Availability);
-            Assert.Equal(2, counting.Acquires); // an empty result is read again, as before the cache was bounded
+            Assert.Equal(1, counting.Acquires); // Negative caching: the second request is served from cache
+        }
+    }
+
+    [Fact]
+    public async Task Service_NegativeCachesInvalidExplanation_AndDoesNotReacquire()
+    {
+        var model = Source();
+        File.WriteAllText(model + ".explain.json", "invalid json content");
+        var (registry, manifest) = await RegisterAsync(model);
+        using (registry)
+        {
+            var counting = new CountingRegistry(registry, manifest.ModelId);
+            var service = new ModelExplainabilityService(counting);
+            var first = await service.LoadExplanationAsync(manifest.ModelId);
+            Assert.Equal(ExplanationAvailability.Invalid, first.Availability);
+            var second = await service.LoadExplanationAsync(manifest.ModelId);
+            Assert.Equal(ExplanationAvailability.Invalid, second.Availability);
+            Assert.Equal(1, counting.Acquires); // Served from negative cache
+        }
+    }
+
+    [Fact]
+    public async Task Service_NegativeCachesUnavailableCalibration_AndDoesNotReacquire()
+    {
+        string Plain(string status)
+        {
+            var folder = Path.Combine(_directory, Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(folder);
+            var model = Path.Combine(folder, "analysis_fixture.onnx");
+            foreach (var suffix in new[] { "", ".metrics.json", ".analysis.json" })
+                File.Copy(Path.Combine("Assets", "analysis_fixture.onnx") + suffix, model + suffix);
+            if (status.Length > 0)
+                Edit(model + ".metrics.json", doc => doc["calibration"] = new JsonObject { ["status"] = status });
+            return model;
+        }
+
+        var (registry, manifest) = await RegisterAsync(Plain("insufficient_samples"));
+        using (registry)
+        {
+            var counting = new CountingRegistry(registry, manifest.ModelId);
+            var service = new ModelExplainabilityService(counting);
+            var first = await service.LoadCalibrationAsync(manifest.ModelId);
+            Assert.Equal(CalibrationAvailability.Unavailable, first.Availability);
+            var second = await service.LoadCalibrationAsync(manifest.ModelId);
+            Assert.Equal(CalibrationAvailability.Unavailable, second.Availability);
+            Assert.Equal(1, counting.Acquires); // Served from negative cache
         }
     }
 

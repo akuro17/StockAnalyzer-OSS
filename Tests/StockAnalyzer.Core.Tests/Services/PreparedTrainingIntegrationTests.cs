@@ -10,7 +10,7 @@ namespace StockAnalyzer.Core.Tests.Services;
 [Collection("ChildProcess")]
 public sealed class PreparedTrainingIntegrationTests
 {
-    [Fact]
+    [ChildProcessFact]
     public async Task WeeklyAndMonthlyPreparedInputs_TrainAndVerifyRealOnnx()
     {
         var root = new DirectoryInfo(AppContext.BaseDirectory);

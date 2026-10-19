@@ -46,7 +46,8 @@ public sealed class TrainingWizardCancelTests
             });
         var market = new Mock<IMarketDataProvider>();
         market.Setup(p => p.GetAvailableTickersAsync()).ReturnsAsync(new List<string> { "AAA" });
-        return (new TrainingWizardViewModel(orchestrator: orchestrator.Object, marketDataProvider: market.Object), runs);
+        var store = StockAnalyzer.Avalonia.Tests.TestHelpers.FakeTickerStateStore.FromProfiles(Array.Empty<StockAnalyzer.Core.Models.Watchlist.WatchlistProfile>());
+        return (new TrainingWizardViewModel(orchestrator: orchestrator.Object, marketDataProvider: market.Object, tickerStore: store), runs);
     }
 
     [Fact]

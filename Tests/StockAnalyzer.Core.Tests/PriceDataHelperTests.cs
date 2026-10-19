@@ -231,4 +231,118 @@ public class PriceDataHelperTests
         // Default mapping verification: Median is index 4
         Assert.Equal(4, PriceDataHelper.GetPriceTypeIndex(PriceType.Median));
     }
+
+    [Fact]
+    public void ExtractDateAlignedPriceSeries_AlignedDates_MatchesExtractPriceSeries()
+    {
+        var now = DateTime.Today;
+        var primary = new List<CoreCandleData>
+        {
+            new(now.AddDays(0), 100m, 110m, 95m, 105m, 1000),
+            new(now.AddDays(1), 106m, 115m, 102m, 112m, 1200),
+            new(now.AddDays(2), 111m, 118m, 108m, 110m, 1100),
+        };
+        var secondary = new List<CoreCandleData?>
+        {
+            new CoreCandleData(now.AddDays(0), 50m, 55m, 48m, 52m, 500),
+            new CoreCandleData(now.AddDays(1), 53m, 58m, 51m, 56m, 600),
+            new CoreCandleData(now.AddDays(2), 55m, 60m, 54m, 58m, 550),
+        };
+
+        var directClose = PriceDataHelper.ExtractPriceSeries(secondary, PriceType.Close);
+        var alignedClose = PriceDataHelper.ExtractDateAlignedPriceSeries(primary, secondary, PriceType.Close);
+
+        Assert.Equal(directClose, alignedClose);
+
+        var directHa = PriceDataHelper.ExtractPriceSeries(secondary, PriceType.HeikinAshiClose);
+        var alignedHa = PriceDataHelper.ExtractDateAlignedPriceSeries(primary, secondary, PriceType.HeikinAshiClose);
+
+        Assert.Equal(directHa, alignedHa);
+    }
+
+    [Fact]
+    public void ExtractDateAlignedPriceSeries_SecondaryHasMissingDates_FillsNullAndPreservesHeikinAshiContinuity()
+    {
+        var now = DateTime.Today;
+        // Primary has days 0, 1, 2
+        var primary = new List<CoreCandleData>
+        {
+            new(now.AddDays(0), 100m, 110m, 95m, 105m, 1000),
+            new(now.AddDays(1), 106m, 115m, 102m, 112m, 1200),
+            new(now.AddDays(2), 111m, 118m, 108m, 110m, 1100),
+        };
+        // Secondary missing day 1 (has day 0 and day 2)
+        var secondary = new List<CoreCandleData?>
+        {
+            new CoreCandleData(now.AddDays(0), 50m, 55m, 48m, 52m, 500),
+            new CoreCandleData(now.AddDays(2), 55m, 60m, 54m, 58m, 550),
+        };
+
+        var alignedClose = PriceDataHelper.ExtractDateAlignedPriceSeries(primary, secondary, PriceType.Close);
+        Assert.Equal(3, alignedClose.Count);
+        Assert.Equal(52m, alignedClose[0]);
+        Assert.Null(alignedClose[1]);
+        Assert.Equal(58m, alignedClose[2]);
+
+        var alignedHa = PriceDataHelper.ExtractDateAlignedPriceSeries(primary, secondary, PriceType.HeikinAshiClose);
+        Assert.Equal(3, alignedHa.Count);
+        // Bar 0: (50 + 55 + 48 + 52) / 4 = 51.25m
+        Assert.Equal(51.25m, alignedHa[0]);
+        Assert.Null(alignedHa[1]);
+        // Bar 2: HA_Close = (55 + 60 + 54 + 58) / 4 = 56.75m
+        Assert.Equal(56.75m, alignedHa[2]);
+    }
+
+    [Fact]
+    public void ExtractDateAlignedPriceSeries_PrimaryHasMissingDates_SecondaryAdvancesHeikinAshiState()
+    {
+        var now = DateTime.Today;
+        // Primary missing day 1 (has day 0 and day 2)
+        var primary = new List<CoreCandleData>
+        {
+            new(now.AddDays(0), 100m, 110m, 95m, 105m, 1000),
+            new(now.AddDays(2), 111m, 118m, 108m, 110m, 1100),
+        };
+        // Secondary has days 0, 1, 2
+        var secondary = new List<CoreCandleData?>
+        {
+            new CoreCandleData(now.AddDays(0), 50m, 55m, 48m, 52m, 500),
+            new CoreCandleData(now.AddDays(1), 53m, 58m, 51m, 56m, 600),
+            new CoreCandleData(now.AddDays(2), 55m, 60m, 54m, 58m, 550),
+        };
+
+        var fullSecondaryHaOpen = PriceDataHelper.ExtractPriceSeries(secondary, PriceType.HeikinAshiOpen);
+        var alignedHaOpen = PriceDataHelper.ExtractDateAlignedPriceSeries(primary, secondary, PriceType.HeikinAshiOpen);
+
+        Assert.Equal(2, alignedHaOpen.Count);
+        // Primary day 0 matches secondary day 0
+        Assert.Equal(fullSecondaryHaOpen[0], alignedHaOpen[0]);
+        // Primary day 2 matches secondary day 2, and its HA_Open reflects secondary's day 1 state
+        Assert.Equal(fullSecondaryHaOpen[2], alignedHaOpen[1]);
+    }
+
+    [Fact]
+    public void ExtractDateAlignedPriceSeries_MultiplePrimaryOnSameDate_ReusesSecondaryPrice()
+    {
+        var now = DateTime.Today;
+        // Primary has 2 intraday bars on day 0, 1 bar on day 1
+        var primary = new List<CoreCandleData>
+        {
+            new(now.AddHours(9), 100m, 110m, 95m, 105m, 1000),
+            new(now.AddHours(10), 105m, 112m, 100m, 108m, 1000),
+            new(now.AddDays(1).AddHours(9), 108m, 115m, 105m, 112m, 1000),
+        };
+        // Secondary has daily bars
+        var secondary = new List<CoreCandleData?>
+        {
+            new CoreCandleData(now, 50m, 55m, 48m, 52m, 500),
+            new CoreCandleData(now.AddDays(1), 53m, 58m, 51m, 56m, 600),
+        };
+
+        var alignedClose = PriceDataHelper.ExtractDateAlignedPriceSeries(primary, secondary, PriceType.Close);
+        Assert.Equal(3, alignedClose.Count);
+        Assert.Equal(52m, alignedClose[0]);
+        Assert.Equal(52m, alignedClose[1]); // Reused for same calendar date
+        Assert.Equal(56m, alignedClose[2]);
+    }
 }

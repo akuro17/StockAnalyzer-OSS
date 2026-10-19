@@ -1221,4 +1221,80 @@ public class EllipseObjectTests
         Assert.Contains(shapesCategory.Tools, t => t.Tool == DrawingTool.Ellipse);
         Assert.DoesNotContain(shapesCategory.Tools, t => t.Tool == DrawingTool.EllipseAnnulus);
     }
+
+    // --- IDisposable and SKPaint Cache Zero-Allocation Lifecycle ---
+
+    [Fact]
+    public void Dispose_CanBeCalledMultipleTimes_AndPostDisposeRenderIsNoOp()
+    {
+        var transform = new DummyCoordinateTransform();
+        var center = transform.ScreenToChart(new Point(200, 200));
+        var corner = transform.ScreenToChart(new Point(300, 200));
+        using var bitmap = new SKBitmap(800, 600);
+        using var canvas = new SKCanvas(bitmap);
+        bitmap.Erase(SKColors.Black);
+
+        var ellipse = new EllipseObject(center, corner)
+        {
+            IsFilled = true,
+            Thickness = 4.0,
+            Color = global::Avalonia.Media.Colors.Red
+        };
+
+        // Render once before dispose
+        ellipse.Render(canvas, transform);
+        Assert.True(bitmap.GetPixel(200, 200).Red > 0);
+
+        // Dispose multiple times (idempotency check)
+        ellipse.Dispose();
+        ellipse.Dispose();
+
+        // Render after dispose should be safe no-op
+        bitmap.Erase(SKColors.Black);
+        ellipse.Render(canvas, transform);
+        Assert.Equal(0, bitmap.GetPixel(200, 200).Red);
+    }
+
+    [Fact]
+    public void Render_ReusesCachedPaintsAcrossSuccessiveCalls_WithStateRefresh()
+    {
+        var transform = new DummyCoordinateTransform();
+        var center = transform.ScreenToChart(new Point(200, 200));
+        var corner = transform.ScreenToChart(new Point(300, 200));
+        using var bitmap = new SKBitmap(800, 600);
+        using var canvas = new SKCanvas(bitmap);
+
+        using var ellipse = new EllipseObject(center, corner)
+        {
+            IsFilled = true,
+            FillAlpha = 255,
+            Thickness = 2.0,
+            Color = global::Avalonia.Media.Colors.Red
+        };
+
+        // Render 1: Red fill
+        bitmap.Erase(SKColors.Black);
+        ellipse.Render(canvas, transform);
+        Assert.True(bitmap.GetPixel(200, 200).Red > 200);
+        Assert.True(bitmap.GetPixel(200, 200).Green < 50);
+
+        // Render 2: Blue fill, dashed stroke
+        ellipse.Color = global::Avalonia.Media.Colors.Blue;
+        ellipse.StrokeStyle = DrawingStrokeStyle.Dash;
+        bitmap.Erase(SKColors.Black);
+        ellipse.Render(canvas, transform);
+        Assert.True(bitmap.GetPixel(200, 200).Blue > 200);
+        Assert.True(bitmap.GetPixel(200, 200).Red < 50);
+
+        // Render 3: Arc mode with green fill
+        ellipse.IsArcEnabled = true;
+        ellipse.Points[2] = transform.ScreenToChart(new Point(300, 200));
+        ellipse.Points[3] = transform.ScreenToChart(new Point(200, 300));
+        ellipse.Color = global::Avalonia.Media.Color.FromRgb(0, 255, 0);
+        ellipse.ShowRadiusLines = true;
+        bitmap.Erase(SKColors.Black);
+        ellipse.Render(canvas, transform);
+        Assert.True(bitmap.GetPixel(220, 220).Green > 200);
+        Assert.True(bitmap.GetPixel(220, 220).Red < 50);
+    }
 }

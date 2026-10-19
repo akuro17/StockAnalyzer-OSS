@@ -330,7 +330,7 @@ public partial class IndicatorRegistrationViewModel : ViewModelBase, IDisposable
     public ObservableCollection<ScreenerIndicatorEntry> RegisteredEntries { get; } = new();
 
     /// <summary>
-    /// The Filters condition tree editor (docs/sa_implementation_plan_ScreenerFilterConditionTree Task 2). A bridge
+    /// The Filters condition tree editor (ScreenerFilterConditionTree Task 2). A bridge
     /// (<see cref="OnRegisteredEntriesChanged"/>) mirrors every change of <see cref="RegisteredEntries"/> into this tree,
     /// so the existing entry-creation flow (<see cref="RegisterIndicator"/>) and the Templates
     /// feature (<see cref="LoadTemplateAsync"/>/<see cref="AppendTemplateAsync"/>/<see cref="ClearAllEntries"/>) keep working

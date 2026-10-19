@@ -145,7 +145,7 @@ public sealed class ModelAnalysisTests : IDisposable
         await Assert.ThrowsAsync<FileNotFoundException>(() => registry.RegisterAsync(source));
     }
 
-    [Theory]
+    [ChildProcessTheory]
     [InlineData("pytorch", false)]
     [InlineData("pytorch", true)]
     [InlineData("lightgbm", false)]

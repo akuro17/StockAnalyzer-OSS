@@ -395,26 +395,112 @@ public static class PriceDataHelper
             }
         }
 
-        // Exact Date-Match Dictionary Lookup (O(N + M))
-        var lookup = new Dictionary<DateTime, CoreCandleData>(secondaryCandles.Count);
-        for (int i = 0; i < secondaryCandles.Count; i++)
-        {
-            var sc = secondaryCandles[i];
-            if (sc != null && sc.Timestamp != default)
-            {
-                lookup.TryAdd(sc.Timestamp.Date, sc);
-            }
-        }
-
+        // Zero-allocation two-pointer chronological scan (O(N + M))
         var result = new List<decimal?>(primaryCandles.Count);
-        for (int i = 0; i < primaryCandles.Count; i++)
+        bool isHeikinAshi = IsHeikinAshi(priceType);
+        decimal? prevHaOpen = null;
+        decimal? prevHaClose = null;
+        decimal? prevClose = null;
+        decimal? lastMatchedPrice = null;
+        DateTime lastMatchedDate = default;
+
+        int s = 0;
+        int m = secondaryCandles.Count;
+
+        for (int p = 0; p < primaryCandles.Count; p++)
         {
-            if (lookup.TryGetValue(primaryCandles[i].Timestamp.Date, out var matched))
+            var pc = primaryCandles[p];
+            if (pc.Timestamp == default)
             {
-                decimal? prevClose = (i > 0 && lookup.TryGetValue(primaryCandles[i - 1].Timestamp.Date, out var prevMatched))
-                    ? prevMatched.Close
-                    : null;
-                result.Add(ExtractPrice(matched, priceType, prevClose));
+                result.Add(null);
+                continue;
+            }
+
+            var pDate = pc.Timestamp.Date;
+
+            // Advance secondary pointer while secondary candle date is strictly before primary date
+            while (s < m)
+            {
+                var sc = secondaryCandles[s];
+                if (sc == null || sc.Timestamp == default)
+                {
+                    s++;
+                    continue;
+                }
+
+                var sDate = sc.Timestamp.Date;
+                if (sDate < pDate)
+                {
+                    // Secondary candle precedes the current primary date.
+                    // Advance recursive Heikin-Ashi state and prevClose to maintain chronological continuity.
+                    var c = sc;
+                    if (isHeikinAshi)
+                    {
+                        decimal haClose = (c.Open + c.High + c.Low + c.Close) / 4.0m;
+                        decimal haOpen = (prevHaOpen.HasValue && prevHaClose.HasValue)
+                            ? (prevHaOpen.Value + prevHaClose.Value) / 2.0m
+                            : (c.Open + c.Close) / 2.0m;
+                        prevHaOpen = haOpen;
+                        prevHaClose = haClose;
+                    }
+                    prevClose = c.Close;
+                    s++;
+                }
+                else
+                {
+                    break;
+                }
+            }
+
+            // Check if current secondary candle matches pDate
+            CoreCandleData? matched = null;
+            if (s < m)
+            {
+                var sc = secondaryCandles[s];
+                if (sc != null && sc.Timestamp != default && sc.Timestamp.Date == pDate)
+                {
+                    matched = sc;
+                    s++;
+                }
+            }
+
+            if (matched != null)
+            {
+                var c = matched;
+                decimal price;
+                if (isHeikinAshi)
+                {
+                    decimal haClose = (c.Open + c.High + c.Low + c.Close) / 4.0m;
+                    decimal haOpen = (prevHaOpen.HasValue && prevHaClose.HasValue)
+                        ? (prevHaOpen.Value + prevHaClose.Value) / 2.0m
+                        : (c.Open + c.Close) / 2.0m;
+
+                    price = priceType switch
+                    {
+                        PriceType.HeikinAshiOpen => haOpen,
+                        PriceType.HeikinAshiClose => haClose,
+                        PriceType.HeikinAshiHigh => Math.Max(c.High, Math.Max(haOpen, haClose)),
+                        PriceType.HeikinAshiLow => Math.Min(c.Low, Math.Min(haOpen, haClose)),
+                        _ => haClose
+                    };
+
+                    prevHaOpen = haOpen;
+                    prevHaClose = haClose;
+                }
+                else
+                {
+                    price = ExtractPrice(c, priceType, prevClose);
+                }
+
+                result.Add(price);
+                prevClose = c.Close;
+                lastMatchedPrice = price;
+                lastMatchedDate = pDate;
+            }
+            else if (lastMatchedPrice.HasValue && pDate == lastMatchedDate)
+            {
+                // Multiple primary candles on the same date: reuse the matched secondary price for this date
+                result.Add(lastMatchedPrice.Value);
             }
             else
             {

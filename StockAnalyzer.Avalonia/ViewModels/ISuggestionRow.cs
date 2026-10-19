@@ -5,7 +5,7 @@ namespace StockAnalyzer.Avalonia.ViewModels;
 /// <see cref="Notes.NoteScopeSuggestion"/> and <see cref="TickerList.TickerTagFilterSuggestion"/> so
 /// both suggestion popups bind through one shared DataTemplate (Assets/Styles.axaml,
 /// "SuggestionRowTemplate") instead of each defining the same StackPanel/PathIcon/TextBlock markup
-/// (sa_improve, constraint-check follow-up: docs/sa_constraint_check_TickerTagFilter_20260923).
+/// (sa_improve, constraint-check follow-up: TickerTagFilter suggestion row consolidation).
 /// </summary>
 public interface ISuggestionRow
 {

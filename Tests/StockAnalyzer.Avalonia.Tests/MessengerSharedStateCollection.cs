@@ -9,6 +9,10 @@ namespace StockAnalyzer.Avalonia.Tests;
 // other class's test, corrupting Moq call verification / assertions in whichever test happens to
 // be mid-flight. Grouping both classes into one non-parallel collection prevents that cross-class
 // message collision without affecting any other (unrelated) test class's parallelism.
+//
+// Similarly, IndicatorSettingsDialogViewModel, DynamicPeriodDriverRegistrationViewModel, and
+// SourceIndicatorRegistrationViewModel broadcast and receive SingleIndicatorSettingsChangedMessage
+// over WeakReferenceMessenger.Default. Grouping them here prevents cross-class indicator message collisions.
 [CollectionDefinition("MessengerSharedState", DisableParallelization = true)]
 public class MessengerSharedStateCollection
 {

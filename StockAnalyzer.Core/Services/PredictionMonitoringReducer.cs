@@ -14,6 +14,11 @@ using StockAnalyzer.Core.Models.Training;
 
 namespace StockAnalyzer.Core.Services;
 
+internal sealed record ModelMonitoringMetadata(
+    PredictionOutputContract OutputContract,
+    decimal NeutralThreshold,
+    string FeatureContractHash);
+
 /// <summary>
 /// The single owner of the monitoring domain rules that do not depend on where the audit is stored: forecast preparation,
 /// observation/audit/health validation, the maturity decision, and vote aggregation. Both storage backends (JSON files,
@@ -22,6 +27,28 @@ namespace StockAnalyzer.Core.Services;
 /// </summary>
 internal static class PredictionMonitoringReducer
 {
+    private static readonly BoundedLruCache<string, ModelMonitoringMetadata> s_metadataCache =
+        new(ModelExplanationLimits.MaxCachedGenerations, StringComparer.Ordinal);
+
+    internal static void ClearMetadataCacheForTesting() => s_metadataCache.Clear();
+
+    internal static ModelMonitoringMetadata GetOrReadModelMetadata(IModelGenerationRegistry registry, string modelId)
+    {
+        if (s_metadataCache.TryGet(modelId, out var cached))
+            return cached;
+
+        using var lease = registry.Acquire(modelId) ?? throw new InvalidDataException("Prediction generation is unavailable.");
+        using var session = new InferenceSession(lease.ModelPath);
+        var metadata = session.ModelMetadata.CustomMetadataMap;
+        var contract = PredictionModelMetadata.ReadOutputContract(metadata);
+        if (!TryReadNeutralThreshold(metadata, out var threshold))
+            throw new InvalidDataException("Prediction monitoring target contract is invalid.");
+        var feature = FixedScaler.ComputeContractHash(metadata);
+
+        var result = new ModelMonitoringMetadata(contract, threshold, feature);
+        s_metadataCache.TryAdd(modelId, result);
+        return result;
+    }
     /// <summary>
     /// True for the three class labels that a monitored forecast and an observed outcome can carry (the labels <see cref="PredictionLogService.ActualLabel"/>
     /// produces). <see cref="PredictionResult.UnknownLabel"/> is not one of them: no class decision was made, so there is nothing to monitor.
@@ -110,21 +137,18 @@ internal static class PredictionMonitoringReducer
         return await Task.Run(() =>
         {
             ct.ThrowIfCancellationRequested();
-            using var lease = registry.Acquire(modelId) ?? throw new InvalidDataException("Prediction generation is unavailable.");
             var manifest = registry.GetManifest(modelId) ?? throw new InvalidDataException("Prediction manifest is unavailable.");
-            using var session = new InferenceSession(lease.ModelPath);
-            var metadata = session.ModelMetadata.CustomMetadataMap;
-            if (PredictionModelMetadata.ReadOutputContract(metadata) != output
-                || !TryReadNeutralThreshold(metadata, out var threshold)
+            var meta = GetOrReadModelMetadata(registry, modelId);
+            if (meta.OutputContract != output
                 || !IsMonitorableLabel(result.Label))
                 throw new InvalidDataException("Prediction monitoring target contract is invalid.");
-            var feature = FixedScaler.ComputeContractHash(metadata);
-            var target = TargetContractHash(output, threshold);
+            var feature = meta.FeatureContractHash;
+            var target = TargetContractHash(output, meta.NeutralThreshold);
             var anchor = PredictionLogService.Utc(captured[^1].Timestamp);
             // A corrected source at the same anchor does not invent another forecast vote.
             var id = ForecastId(modelId, symbol, timeframe, anchor, feature, target);
             return (MonitoredPrediction?)new MonitoredPrediction(id, modelId, manifest.ModelHash, symbol, timeframe, anchor,
-                output.HorizonBars, threshold, result.Label, target, feature, PredictionLogService.SourceRevision(captured), clock.GetUtcNow());
+                output.HorizonBars, meta.NeutralThreshold, result.Label, target, feature, PredictionLogService.SourceRevision(captured), clock.GetUtcNow());
         }, ct).ConfigureAwait(false);
     }
 

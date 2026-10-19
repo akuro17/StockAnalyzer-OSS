@@ -104,6 +104,52 @@ public class ChartDataCoordinator
     private string? _lastTimeFrame = null;
     private IReadOnlyDictionary<string, IIndicatorResult>? _lastAlignedResults = null;
     private IReadOnlyDictionary<string, IIndicatorResult>? _lastSourceIndicatorResults = null;
+
+    // Viewport conversion caching for Renko
+    private string? _lastRenkoSymbol;
+    private string? _lastRenkoTimeFrame;
+    private int _lastRenkoSourceCandleCount = -1;
+    private decimal _lastRenkoBrickSize = -1m;
+    private int _lastRenkoRoundingMode = -1;
+    private StockAnalyzer.ZeroAllocation.ChartSegmentAdapter? _lastRenkoDataAdapter;
+    private int _lastRenkoAdapterCount = -1;
+    private bool _lastRenkoShowMultiWave;
+    private bool _lastRenkoShowGhost;
+    private IReadOnlyList<MultiWaveSignal>? _lastRenkoMwSignals;
+
+    // Viewport conversion caching for Point & Figure
+    private string? _lastPnfSymbol;
+    private string? _lastPnfTimeFrame;
+    private int _lastPnfSourceCandleCount = -1;
+    private decimal _lastPnfBoxSize = -1m;
+    private int _lastPnfReversal = -1;
+    private int _lastPnfRoundingMode = -1;
+    private StockAnalyzer.ZeroAllocation.ChartSegmentAdapter? _lastPnfDataAdapter;
+    private int _lastPnfAdapterCount = -1;
+    private IReadOnlyDictionary<string, IIndicatorResult>? _lastPnfIndicatorResults;
+    private PnfAnalysisResult? _lastPnfAnalysis;
+    private bool _lastPnfShowMultiWave;
+    private bool _lastPnfShowGhost;
+    private IReadOnlyList<MultiWaveSignal>? _lastPnfMwSignals;
+
+    // Viewport conversion caching for Kagi
+    private string? _lastKagiSymbol;
+    private string? _lastKagiTimeFrame;
+    private int _lastKagiSourceCandleCount = -1;
+    private decimal _lastKagiReversalAmount = -1m;
+    private ChartSizingMode _lastKagiReversalMode = (ChartSizingMode)(-1);
+    private int _lastKagiAtrPeriod = -1;
+    private decimal _lastKagiAtrMultiplier = -1m;
+    private int _lastKagiRoundingMode = -1;
+    private int _lastKagiFallbackMode = -1;
+    private StockAnalyzer.ZeroAllocation.ChartSegmentAdapter? _lastKagiDataAdapter;
+    private int _lastKagiAdapterCount = -1;
+    private int _lastKagiInitialColumn = -1;
+    private int _lastKagiTotalColumns;
+    private int[]? _lastKagiColumnMapArray;
+    private bool _lastKagiShowMultiWave;
+    private bool _lastKagiShowGhost;
+    private IReadOnlyList<MultiWaveSignal>? _lastKagiMwSignals;
     
     // Phase 1 Zero Allocation Fix: Reusable buffers for special charts
     private readonly List<CoreCandleData> _pnfBuffer = new();
@@ -1402,46 +1448,72 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
         ChartLayoutContext layout,
         bool isTransition)
     {
-        _renkoBuffer.Clear();
-        
-        if (viewModel.RenkoDataAdapter != null)
+        bool needsReconvert = _renkoBuffer.Count == 0 ||
+                              viewModel.Symbol != _lastRenkoSymbol ||
+                              viewModel.SelectedTimeFrame.ToString() != _lastRenkoTimeFrame ||
+                              viewModel.Candles.Count != _lastRenkoSourceCandleCount ||
+                              viewModel.EffectiveRenkoBrickSize != _lastRenkoBrickSize ||
+                              viewModel.RenkoRoundingMode != _lastRenkoRoundingMode ||
+                              !ReferenceEquals(viewModel.RenkoDataAdapter, _lastRenkoDataAdapter) ||
+                              (viewModel.RenkoDataAdapter != null && viewModel.RenkoDataAdapter.Count != _lastRenkoAdapterCount) ||
+                              viewModel.RenkoShowMultiWavePatterns != _lastRenkoShowMultiWave ||
+                              viewModel.RenkoShowGhostProjections != _lastRenkoShowGhost;
+
+        if (needsReconvert)
         {
-            int count = viewModel.RenkoDataAdapter.Count;
-            var times = viewModel.RenkoDataAdapter.Timestamps.Span;
-            var opens = viewModel.RenkoDataAdapter.Opens.Span;
-            var highs = viewModel.RenkoDataAdapter.Highs.Span;
-            var lows = viewModel.RenkoDataAdapter.Lows.Span;
-            var closes = viewModel.RenkoDataAdapter.Closes.Span;
-            var vols = viewModel.RenkoDataAdapter.Volumes.Span;
+            _renkoBuffer.Clear();
             
-            // Pre-allocate capacity if needed
-            if (_renkoBuffer.Capacity < count) _renkoBuffer.Capacity = count;
-            
-            for(int i = 0; i < count; i++)
+            if (viewModel.RenkoDataAdapter != null)
             {
-                _renkoBuffer.Add(new CoreCandleData(times[i], opens[i], highs[i], lows[i], closes[i], vols[i]));
+                int count = viewModel.RenkoDataAdapter.Count;
+                var times = viewModel.RenkoDataAdapter.Timestamps.Span;
+                var opens = viewModel.RenkoDataAdapter.Opens.Span;
+                var highs = viewModel.RenkoDataAdapter.Highs.Span;
+                var lows = viewModel.RenkoDataAdapter.Lows.Span;
+                var closes = viewModel.RenkoDataAdapter.Closes.Span;
+                var vols = viewModel.RenkoDataAdapter.Volumes.Span;
+                
+                // Pre-allocate capacity if needed
+                if (_renkoBuffer.Capacity < count) _renkoBuffer.Capacity = count;
+                
+                for(int i = 0; i < count; i++)
+                {
+                    _renkoBuffer.Add(new CoreCandleData(times[i], opens[i], highs[i], lows[i], closes[i], vols[i]));
+                }
             }
-        }
-        else
-        {
-            RenkoConverter.Convert(viewModel.Candles, viewModel.EffectiveRenkoBrickSize, _renkoBuffer, (ChartRoundingMode)viewModel.RenkoRoundingMode);
+            else
+            {
+                RenkoConverter.Convert(viewModel.Candles, viewModel.EffectiveRenkoBrickSize, _renkoBuffer, (ChartRoundingMode)viewModel.RenkoRoundingMode);
+            }
+
+            _convertedCandleCount = _renkoBuffer.Count;
+
+            // Execute Multi-Wave Pattern Engine on the whole buffer only if enabled
+            IReadOnlyList<MultiWaveSignal>? mwSignals = null;
+            if ((viewModel.RenkoShowMultiWavePatterns || viewModel.RenkoShowGhostProjections) && _renkoBuffer.Count > 0)
+            {
+                _mwEngine.Clear();
+                foreach (var b in _renkoBuffer) _mwEngine.ProcessNextBlock(b);
+                mwSignals = _mwEngine.Signals.ToArray(); // Materialize to a new array to prevent clearing
+            }
+
+            _lastRenkoSymbol = viewModel.Symbol;
+            _lastRenkoTimeFrame = viewModel.SelectedTimeFrame.ToString();
+            _lastRenkoSourceCandleCount = viewModel.Candles.Count;
+            _lastRenkoBrickSize = viewModel.EffectiveRenkoBrickSize;
+            _lastRenkoRoundingMode = viewModel.RenkoRoundingMode;
+            _lastRenkoDataAdapter = viewModel.RenkoDataAdapter;
+            _lastRenkoAdapterCount = viewModel.RenkoDataAdapter?.Count ?? -1;
+            _lastRenkoShowMultiWave = viewModel.RenkoShowMultiWavePatterns;
+            _lastRenkoShowGhost = viewModel.RenkoShowGhostProjections;
+            _lastRenkoMwSignals = mwSignals;
         }
 
         _convertedCandleCount = _renkoBuffer.Count;
-
         
         // Adapt or clamp view
         AdjustSpecialChartView(viewModel, _renkoBuffer, isTransition);
         effectiveVisibleCount = _visibleCandleCount;
-
-        // Execute Multi-Wave Pattern Engine on the whole buffer only if enabled
-        IReadOnlyList<MultiWaveSignal>? mwSignals = null;
-        if ((viewModel.RenkoShowMultiWavePatterns || viewModel.RenkoShowGhostProjections) && _renkoBuffer.Count > 0)
-        {
-            _mwEngine.Clear();
-            foreach (var b in _renkoBuffer) _mwEngine.ProcessNextBlock(b);
-            mwSignals = _mwEngine.Signals.ToArray(); // Materialize to a new array to prevent clearing
-        }
 
         return new ChartDataSnapshot(
             _renkoBuffer,
@@ -1457,7 +1529,7 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
             chartHeightPx: (decimal)layout.ChartArea.Height,
             minBrickSize: viewModel.EffectiveRenkoBrickSize,
             pnfAnalysis: null,
-            multiWaveSignals: mwSignals,
+            multiWaveSignals: _lastRenkoMwSignals,
             allCandles: _renkoBuffer,
             chartType: ChartType.Renko,
             priceRangeCalculator: ChartTypeProfileRegistry.Get(ChartType.Renko).PriceRangeCalculator,
@@ -1475,66 +1547,97 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
         ChartLayoutContext layout,
         bool isTransition)
     {
-        _pnfBuffer.Clear();
-        _pnfDatesBuffer.Clear();
-        
-        if (viewModel.PnfDataAdapter != null)
+        bool needsReconvert = _pnfBuffer.Count == 0 ||
+                              viewModel.Symbol != _lastPnfSymbol ||
+                              viewModel.SelectedTimeFrame.ToString() != _lastPnfTimeFrame ||
+                              viewModel.Candles.Count != _lastPnfSourceCandleCount ||
+                              viewModel.EffectivePnfBoxSize != _lastPnfBoxSize ||
+                              viewModel.PnfReversal != _lastPnfReversal ||
+                              viewModel.PnfRoundingMode != _lastPnfRoundingMode ||
+                              !ReferenceEquals(viewModel.PnfDataAdapter, _lastPnfDataAdapter) ||
+                              (viewModel.PnfDataAdapter != null && viewModel.PnfDataAdapter.Count != _lastPnfAdapterCount) ||
+                              !ReferenceEquals(indicatorResults, _lastPnfIndicatorResults) ||
+                              viewModel.PnfShowMultiWavePatterns != _lastPnfShowMultiWave ||
+                              viewModel.PnfShowGhostProjections != _lastPnfShowGhost;
+
+        if (needsReconvert)
         {
-            int count = viewModel.PnfDataAdapter.Count;
-            var times = viewModel.PnfDataAdapter.Timestamps.Span;
-            var opens = viewModel.PnfDataAdapter.Opens.Span;
-            var highs = viewModel.PnfDataAdapter.Highs.Span;
-            var lows = viewModel.PnfDataAdapter.Lows.Span;
-            var closes = viewModel.PnfDataAdapter.Closes.Span;
-            var vols = viewModel.PnfDataAdapter.Volumes.Span;
+            _pnfBuffer.Clear();
+            _pnfDatesBuffer.Clear();
             
-            if (_pnfBuffer.Capacity < count) _pnfBuffer.Capacity = count;
-            
-            for(int i = 0; i < count; i++)
+            if (viewModel.PnfDataAdapter != null)
             {
-                _pnfBuffer.Add(new CoreCandleData(times[i], opens[i], highs[i], lows[i], closes[i], vols[i]));
+                int count = viewModel.PnfDataAdapter.Count;
+                var times = viewModel.PnfDataAdapter.Timestamps.Span;
+                var opens = viewModel.PnfDataAdapter.Opens.Span;
+                var highs = viewModel.PnfDataAdapter.Highs.Span;
+                var lows = viewModel.PnfDataAdapter.Lows.Span;
+                var closes = viewModel.PnfDataAdapter.Closes.Span;
+                var vols = viewModel.PnfDataAdapter.Volumes.Span;
+                
+                if (_pnfBuffer.Capacity < count) _pnfBuffer.Capacity = count;
+                
+                for(int i = 0; i < count; i++)
+                {
+                    _pnfBuffer.Add(new CoreCandleData(times[i], opens[i], highs[i], lows[i], closes[i], vols[i]));
+                }
+
+                _pnfDatesBuffer.AddRange(viewModel.PnfDataAdapter.ElementDates.Span);
+            }
+            else
+            {
+                PointAndFigureConverter.Convert(
+                    viewModel.Candles, viewModel.EffectivePnfBoxSize, viewModel.PnfReversal, _pnfBuffer, (ChartRoundingMode)viewModel.PnfRoundingMode, _pnfDatesBuffer);
             }
 
-            _pnfDatesBuffer.AddRange(viewModel.PnfDataAdapter.ElementDates.Span);
-        }
-        else
-        {
-            PointAndFigureConverter.Convert(
-                viewModel.Candles, viewModel.EffectivePnfBoxSize, viewModel.PnfReversal, _pnfBuffer, (ChartRoundingMode)viewModel.PnfRoundingMode, _pnfDatesBuffer);
+            _convertedCandleCount = _pnfBuffer.Count;
+
+            // Try to retrieve pre-calculated P&F analysis from indicator CustomData
+            PnfAnalysisResult? pnfAnalysis = null;
+            if (indicatorResults != null)
+            {
+                var pnfIndicator = indicatorResults.Values.FirstOrDefault(r => r.CustomData is PnfAnalysisResult);
+                if (pnfIndicator != null)
+                {
+                    pnfAnalysis = (PnfAnalysisResult)pnfIndicator.CustomData!;
+                }
+            }
+
+            // Fallback to manual analysis only if indicator is not present
+            if (pnfAnalysis == null)
+            {
+                pnfAnalysis = PointAndFigurePatternEngine.Analyze(_pnfBuffer, viewModel.EffectivePnfBoxSize, _pnfSignalsBuffer, _pnfActiveLinesBuffer);
+            }
+
+            // Execute Multi-Wave Pattern Engine on P&F blocks
+            IReadOnlyList<MultiWaveSignal>? mwSignals = null;
+            if ((viewModel.PnfShowMultiWavePatterns || viewModel.PnfShowGhostProjections) && _pnfBuffer.Count > 0)
+            {
+                _mwEngine.Clear();
+                foreach (var b in _pnfBuffer) _mwEngine.ProcessNextBlock(b);
+                mwSignals = _mwEngine.Signals.ToArray(); // Materialize to a new array to prevent clearing
+            }
+
+            _lastPnfSymbol = viewModel.Symbol;
+            _lastPnfTimeFrame = viewModel.SelectedTimeFrame.ToString();
+            _lastPnfSourceCandleCount = viewModel.Candles.Count;
+            _lastPnfBoxSize = viewModel.EffectivePnfBoxSize;
+            _lastPnfReversal = viewModel.PnfReversal;
+            _lastPnfRoundingMode = viewModel.PnfRoundingMode;
+            _lastPnfDataAdapter = viewModel.PnfDataAdapter;
+            _lastPnfAdapterCount = viewModel.PnfDataAdapter?.Count ?? -1;
+            _lastPnfIndicatorResults = indicatorResults;
+            _lastPnfAnalysis = pnfAnalysis;
+            _lastPnfShowMultiWave = viewModel.PnfShowMultiWavePatterns;
+            _lastPnfShowGhost = viewModel.PnfShowGhostProjections;
+            _lastPnfMwSignals = mwSignals;
         }
 
         _convertedCandleCount = _pnfBuffer.Count;
 
-
         // Adapt or clamp view
         AdjustSpecialChartView(viewModel, _pnfBuffer, isTransition);
         effectiveVisibleCount = _visibleCandleCount;
-
-        // Try to retrieve pre-calculated P&F analysis from indicator CustomData
-        PnfAnalysisResult? pnfAnalysis = null;
-        if (indicatorResults != null)
-        {
-            var pnfIndicator = indicatorResults.Values.FirstOrDefault(r => r.CustomData is PnfAnalysisResult);
-            if (pnfIndicator != null)
-            {
-                pnfAnalysis = (PnfAnalysisResult)pnfIndicator.CustomData!;
-            }
-        }
-
-        // Fallback to manual analysis only if indicator is not present
-        if (pnfAnalysis == null)
-        {
-            pnfAnalysis = PointAndFigurePatternEngine.Analyze(_pnfBuffer, viewModel.EffectivePnfBoxSize, _pnfSignalsBuffer, _pnfActiveLinesBuffer);
-        }
-
-        // Execute Multi-Wave Pattern Engine on P&F blocks
-        IReadOnlyList<MultiWaveSignal>? mwSignals = null;
-        if ((viewModel.PnfShowMultiWavePatterns || viewModel.PnfShowGhostProjections) && _pnfBuffer.Count > 0)
-        {
-            _mwEngine.Clear();
-            foreach (var b in _pnfBuffer) _mwEngine.ProcessNextBlock(b);
-            mwSignals = _mwEngine.Signals.ToArray(); // Materialize to a new array to prevent clearing
-        }
 
         return new ChartDataSnapshot(
             _pnfBuffer,
@@ -1550,8 +1653,8 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
             chartHeightPx: (decimal)layout.ChartArea.Height,
             minBrickSize: viewModel.EffectivePnfBoxSize,
             maxBrickSize: viewModel.EffectivePnfBoxSize,
-            pnfAnalysis: pnfAnalysis,
-            multiWaveSignals: mwSignals,
+            pnfAnalysis: _lastPnfAnalysis,
+            multiWaveSignals: _lastPnfMwSignals,
             allCandles: _pnfBuffer,
             chartType: ChartType.PointAndFigure,
             // FR-PNF-02: ボックスサイズに基づくマージン込み価格範囲（最高値+1ボックス、最安値はスナップ切り捨て）
@@ -1590,68 +1693,117 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
         ChartLayoutContext layout,
         bool isTransition)
     {
-        _kagiBuffer.Clear();
-        _kagiDatesBuffer.Clear();
+        bool needsReconvert = _kagiBuffer.Count == 0 ||
+                              viewModel.Symbol != _lastKagiSymbol ||
+                              viewModel.SelectedTimeFrame.ToString() != _lastKagiTimeFrame ||
+                              viewModel.Candles.Count != _lastKagiSourceCandleCount ||
+                              viewModel.KagiReversalAmount != _lastKagiReversalAmount ||
+                              viewModel.KagiReversalMode != _lastKagiReversalMode ||
+                              viewModel.KagiAtrPeriod != _lastKagiAtrPeriod ||
+                              viewModel.KagiAtrMultiplier != _lastKagiAtrMultiplier ||
+                              viewModel.KagiRoundingMode != _lastKagiRoundingMode ||
+                              viewModel.KagiFallbackMode != _lastKagiFallbackMode ||
+                              !ReferenceEquals(viewModel.KagiDataAdapter, _lastKagiDataAdapter) ||
+                              (viewModel.KagiDataAdapter != null && viewModel.KagiDataAdapter.Count != _lastKagiAdapterCount) ||
+                              viewModel.KagiInitialColumn != _lastKagiInitialColumn ||
+                              viewModel.KagiShowMultiWavePatterns != _lastKagiShowMultiWave ||
+                              viewModel.KagiShowGhostProjections != _lastKagiShowGhost;
 
-        if (viewModel.KagiDataAdapter != null)
+        if (needsReconvert)
         {
-            int count = viewModel.KagiDataAdapter.Count;
-            var times = viewModel.KagiDataAdapter.Timestamps.Span;
-            var opens = viewModel.KagiDataAdapter.Opens.Span;
-            var highs = viewModel.KagiDataAdapter.Highs.Span;
-            var lows = viewModel.KagiDataAdapter.Lows.Span;
-            var closes = viewModel.KagiDataAdapter.Closes.Span;
-            var vols = viewModel.KagiDataAdapter.Volumes.Span;
-            
-            if (_kagiBuffer.Capacity < count) _kagiBuffer.Capacity = count;
-            
-            for(int i = 0; i < count; i++)
+            _kagiBuffer.Clear();
+            _kagiDatesBuffer.Clear();
+
+            if (viewModel.KagiDataAdapter != null)
             {
-                _kagiBuffer.Add(new CoreCandleData(times[i], opens[i], highs[i], lows[i], closes[i], vols[i]));
+                int count = viewModel.KagiDataAdapter.Count;
+                var times = viewModel.KagiDataAdapter.Timestamps.Span;
+                var opens = viewModel.KagiDataAdapter.Opens.Span;
+                var highs = viewModel.KagiDataAdapter.Highs.Span;
+                var lows = viewModel.KagiDataAdapter.Lows.Span;
+                var closes = viewModel.KagiDataAdapter.Closes.Span;
+                var vols = viewModel.KagiDataAdapter.Volumes.Span;
+                
+                if (_kagiBuffer.Capacity < count) _kagiBuffer.Capacity = count;
+                
+                for(int i = 0; i < count; i++)
+                {
+                    _kagiBuffer.Add(new CoreCandleData(times[i], opens[i], highs[i], lows[i], closes[i], vols[i]));
+                }
+
+                _kagiDatesBuffer.AddRange(viewModel.KagiDataAdapter.ElementDates.Span);
+            }
+            else
+            {
+                var kagiType = viewModel.KagiReversalMode switch
+                {
+                    ChartSizingMode.Percentage => KagiConverter.ReversalType.Percent,
+                    ChartSizingMode.AutoAtr => KagiConverter.ReversalType.ATR,
+                    _ => KagiConverter.ReversalType.Fixed
+                };
+
+                KagiConverter.Convert(
+                    viewModel.Candles, 
+                    viewModel.KagiReversalAmount, 
+                    kagiType, 
+                    viewModel.KagiAtrPeriod, 
+                    viewModel.KagiAtrMultiplier,
+                    (ChartRoundingMode)viewModel.KagiRoundingMode,
+                    (AutoFallbackMode)viewModel.KagiFallbackMode,
+                    _kagiIntermediateBuffer,
+                    _kagiDatesBuffer);
+
+                if (_kagiBuffer.Capacity < _kagiIntermediateBuffer.Count) _kagiBuffer.Capacity = _kagiIntermediateBuffer.Count;
+                for (int i = 0; i < _kagiIntermediateBuffer.Count; i++)
+                {
+                    var c = _kagiIntermediateBuffer[i];
+                    // IMPORTANT: MultiWavePatternEngine requires real High/Low prices to calculate targets.
+                    // We use Volume to store the IsYang (State) flag for the KagiRenderer.
+                    _kagiBuffer.Add(new CoreCandleData(c.Timestamp, c.Open, c.High, c.Low, c.Close, c.IsYang ? 1L : 0L));
+                }
             }
 
-            _kagiDatesBuffer.AddRange(viewModel.KagiDataAdapter.ElementDates.Span);
-        }
-        else
-        {
-            var kagiType = viewModel.KagiReversalMode switch
-            {
-                ChartSizingMode.Percentage => KagiConverter.ReversalType.Percent,
-                ChartSizingMode.AutoAtr => KagiConverter.ReversalType.ATR,
-                _ => KagiConverter.ReversalType.Fixed
-            };
+            _convertedCandleCount = _kagiBuffer.Count;
+            viewModel.ConvertedKagiCandles = _kagiBuffer;
+            
+            // Calculate total Columns for viewport adjustment & build ColumnMap
+            _kagiColumnMapBuffer.Clear();
+            KagiColumns.BuildColumnMap(_kagiBuffer, viewModel.KagiInitialColumn, _kagiColumnMapBuffer);
+            _lastKagiTotalColumns = _kagiBuffer.Count > 0
+                ? _kagiColumnMapBuffer[^1] - viewModel.KagiInitialColumn + 1
+                : 0;
+            _lastKagiColumnMapArray = _kagiColumnMapBuffer.ToArray();
 
-            KagiConverter.Convert(
-                viewModel.Candles, 
-                viewModel.KagiReversalAmount, 
-                kagiType, 
-                viewModel.KagiAtrPeriod, 
-                viewModel.KagiAtrMultiplier,
-                (ChartRoundingMode)viewModel.KagiRoundingMode,
-                (AutoFallbackMode)viewModel.KagiFallbackMode,
-                _kagiIntermediateBuffer,
-                _kagiDatesBuffer);
-
-            if (_kagiBuffer.Capacity < _kagiIntermediateBuffer.Count) _kagiBuffer.Capacity = _kagiIntermediateBuffer.Count;
-            for (int i = 0; i < _kagiIntermediateBuffer.Count; i++)
+            // Execute Multi-Wave Pattern Engine
+            IReadOnlyList<MultiWaveSignal>? mwSignals = null;
+            if ((viewModel.KagiShowMultiWavePatterns || viewModel.KagiShowGhostProjections) && _kagiBuffer.Count > 0)
             {
-                var c = _kagiIntermediateBuffer[i];
-                // IMPORTANT: MultiWavePatternEngine requires real High/Low prices to calculate targets.
-                // We use Volume to store the IsYang (State) flag for the KagiRenderer.
-                _kagiBuffer.Add(new CoreCandleData(c.Timestamp, c.Open, c.High, c.Low, c.Close, c.IsYang ? 1L : 0L));
+                _mwEngine.Clear();
+                foreach (var b in _kagiBuffer) _mwEngine.ProcessNextBlock(b);
+                mwSignals = _mwEngine.Signals.ToArray(); // Materialize to a new array to prevent clearing
             }
+
+            _lastKagiSymbol = viewModel.Symbol;
+            _lastKagiTimeFrame = viewModel.SelectedTimeFrame.ToString();
+            _lastKagiSourceCandleCount = viewModel.Candles.Count;
+            _lastKagiReversalAmount = viewModel.KagiReversalAmount;
+            _lastKagiReversalMode = viewModel.KagiReversalMode;
+            _lastKagiAtrPeriod = viewModel.KagiAtrPeriod;
+            _lastKagiAtrMultiplier = viewModel.KagiAtrMultiplier;
+            _lastKagiRoundingMode = viewModel.KagiRoundingMode;
+            _lastKagiFallbackMode = viewModel.KagiFallbackMode;
+            _lastKagiDataAdapter = viewModel.KagiDataAdapter;
+            _lastKagiAdapterCount = viewModel.KagiDataAdapter?.Count ?? -1;
+            _lastKagiInitialColumn = viewModel.KagiInitialColumn;
+            _lastKagiShowMultiWave = viewModel.KagiShowMultiWavePatterns;
+            _lastKagiShowGhost = viewModel.KagiShowGhostProjections;
+            _lastKagiMwSignals = mwSignals;
         }
 
         _convertedCandleCount = _kagiBuffer.Count;
         viewModel.ConvertedKagiCandles = _kagiBuffer;
-        
-        // Calculate total Columns for viewport adjustment & build ColumnMap
-        int totalColumns = 0;
-        KagiColumns.BuildColumnMap(_kagiBuffer, viewModel.KagiInitialColumn, _kagiColumnMapBuffer);
-        if (_kagiBuffer.Count > 0)
-        {
-            totalColumns = _kagiColumnMapBuffer[^1] - viewModel.KagiInitialColumn + 1;
-        }
+
+        int totalColumns = _lastKagiTotalColumns;
 
         // Kagi-specific viewport management: uses totalColumns (not segment count) for scroll bounds.
         // Cannot use AdjustSpecialChartView because it clamps against segment count, which is much 
@@ -1712,15 +1864,6 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
         }
         viewModel.KagiInitialColumn = initialColumn;
 
-        // Execute Multi-Wave Pattern Engine
-        IReadOnlyList<MultiWaveSignal>? mwSignals = null;
-        if ((viewModel.KagiShowMultiWavePatterns || viewModel.KagiShowGhostProjections) && _kagiBuffer.Count > 0)
-        {
-            _mwEngine.Clear();
-            foreach (var b in _kagiBuffer) _mwEngine.ProcessNextBlock(b);
-            mwSignals = _mwEngine.Signals.ToArray(); // Materialize to a new array to prevent clearing
-        }
-
         return new ChartDataSnapshot(
             candles: _kagiBuffer,
             symbol: viewModel.Symbol,
@@ -1736,7 +1879,7 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
             minBrickSize: viewModel.EffectiveKagiReversalAmount,
             maxBrickSize: viewModel.EffectiveKagiReversalAmount,
             pnfAnalysis: null,
-            multiWaveSignals: mwSignals,
+            multiWaveSignals: _lastKagiMwSignals,
             allPnfCandles: _kagiBuffer,
             chartType: ChartType.Kagi,
             threeLineBreakCount: null,
@@ -1747,7 +1890,7 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
             overrideMinPrice: null,
             overrideMaxPrice: null,
             visibleCandleCount: effectiveVisibleCount,
-            kagiColumnMap: _kagiColumnMapBuffer.ToArray(),
+            kagiColumnMap: _lastKagiColumnMapArray ?? _kagiColumnMapBuffer.ToArray(),
             priceScale: viewModel.PriceScale, modelAnalysis: viewModel.ModelAnalysis, attention: viewModel.AttentionSnapshot,
             elementDates: SharedDatesOrNull(_kagiDatesBuffer, _kagiBuffer.Count, ref _kagiDatesShared));
     }
@@ -2438,6 +2581,49 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
         
         _lastSymbol = null;
         _lastSourceCandleCount = -1;
+
+        _lastRenkoSymbol = null;
+        _lastRenkoTimeFrame = null;
+        _lastRenkoSourceCandleCount = -1;
+        _lastRenkoBrickSize = -1m;
+        _lastRenkoRoundingMode = -1;
+        _lastRenkoDataAdapter = null;
+        _lastRenkoAdapterCount = -1;
+        _lastRenkoShowMultiWave = false;
+        _lastRenkoShowGhost = false;
+        _lastRenkoMwSignals = null;
+
+        _lastPnfSymbol = null;
+        _lastPnfTimeFrame = null;
+        _lastPnfSourceCandleCount = -1;
+        _lastPnfBoxSize = -1m;
+        _lastPnfReversal = -1;
+        _lastPnfRoundingMode = -1;
+        _lastPnfDataAdapter = null;
+        _lastPnfAdapterCount = -1;
+        _lastPnfIndicatorResults = null;
+        _lastPnfAnalysis = null;
+        _lastPnfShowMultiWave = false;
+        _lastPnfShowGhost = false;
+        _lastPnfMwSignals = null;
+
+        _lastKagiSymbol = null;
+        _lastKagiTimeFrame = null;
+        _lastKagiSourceCandleCount = -1;
+        _lastKagiReversalAmount = -1m;
+        _lastKagiReversalMode = (ChartSizingMode)(-1);
+        _lastKagiAtrPeriod = -1;
+        _lastKagiAtrMultiplier = -1m;
+        _lastKagiRoundingMode = -1;
+        _lastKagiFallbackMode = -1;
+        _lastKagiDataAdapter = null;
+        _lastKagiAdapterCount = -1;
+        _lastKagiInitialColumn = -1;
+        _lastKagiTotalColumns = 0;
+        _lastKagiColumnMapArray = null;
+        _lastKagiShowMultiWave = false;
+        _lastKagiShowGhost = false;
+        _lastKagiMwSignals = null;
     }
 
     #endregion

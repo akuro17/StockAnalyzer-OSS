@@ -28,7 +28,7 @@ public static class VolumeProfileRangeBuilder
         // Anchor reversal (2026-09-16, user-approved quality-improvement change): Period now counts BACKWARD from the
         // END of the visible range instead of forward from its start, so the profile always reflects
         // the most recent bars currently on screen (e.g. current price) even when zoomed out to show
-        // the entire history. See docs/sa_improvement_plan_VolumeProfilePeriodAnchor.md. This
+        // the entire history (VolumeProfilePeriodAnchor design). This
         // supersedes the original "First Profile Range"/"FixedBars Mode" spec locked in
         // sa_analysis_report_VolumeProfile_ImplementationContext.md P03/P04.
         int visibleEnd = Math.Min(n, clampedStart + visibleCount);

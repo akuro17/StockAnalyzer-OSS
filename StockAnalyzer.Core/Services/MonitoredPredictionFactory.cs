@@ -50,18 +50,13 @@ internal static class MonitoredPredictionFactory
             foreach (var member in spec.Members)
             {
                 ct.ThrowIfCancellationRequested();
-                using var lease = registry.Acquire(member.ModelId)
-                    ?? throw new InvalidDataException("Ensemble member generation is unavailable.");
                 var manifest = registry.GetManifest(member.ModelId)
                     ?? throw new InvalidDataException("Ensemble member manifest is unavailable.");
-                using var session = new InferenceSession(lease.ModelPath);
-                var metadata = session.ModelMetadata.CustomMetadataMap;
-                contracts.Add(PredictionModelMetadata.ReadOutputContract(metadata));
-                if (!PredictionMonitoringReducer.TryReadNeutralThreshold(metadata, out var threshold))
-                    throw new InvalidDataException("Ensemble member neutral threshold is invalid.");
-                thresholds.Add(threshold);
+                var meta = PredictionMonitoringReducer.GetOrReadModelMetadata(registry, member.ModelId);
+                contracts.Add(meta.OutputContract);
+                thresholds.Add(meta.NeutralThreshold);
                 modelHashes.Add(manifest.ModelHash);
-                features.Add(FixedScaler.ComputeContractHash(metadata));
+                features.Add(meta.FeatureContractHash);
             }
 
             var merged = EnsemblePredictionService.MergeOutputContract(contracts);

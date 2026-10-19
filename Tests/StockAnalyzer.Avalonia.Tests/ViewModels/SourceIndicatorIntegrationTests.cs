@@ -20,6 +20,7 @@ using Xunit;
 
 namespace StockAnalyzer.Avalonia.Tests.ViewModels;
 
+[Collection("MessengerSharedState")]
 public class SourceIndicatorIntegrationTests
 {
     [Fact]

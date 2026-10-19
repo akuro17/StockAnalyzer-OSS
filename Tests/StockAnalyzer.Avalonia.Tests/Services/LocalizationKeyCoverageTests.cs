@@ -4,6 +4,8 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using StockAnalyzer.Avalonia.Services;
 using StockAnalyzer.Avalonia.Tests.TestHelpers;
+using StockAnalyzer.Core.Models.Backtest.Engine;
+using StockAnalyzer.Core.Models.Screener;
 using Xunit;
 
 namespace StockAnalyzer.Avalonia.Tests.Services;
@@ -211,6 +213,89 @@ public class LocalizationKeyCoverageTests
         Assert.Contains("TickerList_AutoPlay_Unavailable", keys);
 
         AssertKeysResolveInEveryLocale(keys, "TickerListViewModel.cs");
+    }
+
+    /// <summary>
+    /// <see cref="StockAnalyzer.Avalonia.ViewModels.IndicatorRegistrationViewModel"/> resolves header and
+    /// navigation titles by calling <c>ILocalizationService.GetString("...")</c> from code, which the XAML
+    /// scan never sees. This scans the view model source for literal keys so keys added later are covered.
+    /// </summary>
+    [Fact]
+    public void IndicatorRegistrationViewModel_CodeReferencedLocalizationKeys_ResolveInEveryLocale()
+    {
+        var source = File.ReadAllText(
+            Path.Combine(TestSolution.Root, "StockAnalyzer.Avalonia", "ViewModels", "IndicatorRegistrationViewModel.cs"));
+
+        var keys = GetStringKeyPattern.Matches(source)
+            .Select(m => m.Groups[1].Value)
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(k => k, StringComparer.Ordinal)
+            .ToList();
+
+        // Sentinel: if the regex or the source path breaks, fail loudly rather than pass vacuously.
+        Assert.True(keys.Count >= 5, $"Expected to scan >=5 GetString(\"...\") keys from IndicatorRegistrationViewModel.cs, found {keys.Count}.");
+
+        AssertKeysResolveInEveryLocale(keys, "IndicatorRegistrationViewModel.cs");
+    }
+
+    /// <summary>
+    /// <see cref="StockAnalyzer.Avalonia.ViewModels.Backtest.BacktestIndicatorSelectionViewModel"/> resolves
+    /// messages, field labels, and frame titles by calling <c>ILocalizationService.GetString("...")</c> from code.
+    /// This scans the view model source for literal keys so keys added later are covered.
+    /// </summary>
+    [Fact]
+    public void BacktestIndicatorSelectionViewModel_CodeReferencedLocalizationKeys_ResolveInEveryLocale()
+    {
+        var source = File.ReadAllText(
+            Path.Combine(TestSolution.Root, "StockAnalyzer.Avalonia", "ViewModels", "Backtest", "BacktestIndicatorSelectionViewModel.cs"));
+
+        var keys = GetStringKeyPattern.Matches(source)
+            .Select(m => m.Groups[1].Value)
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(k => k, StringComparer.Ordinal)
+            .ToList();
+
+        // Sentinel: if the regex or the source path breaks, fail loudly rather than pass vacuously.
+        Assert.True(keys.Count >= 10, $"Expected to scan >=10 GetString(\"...\") keys from BacktestIndicatorSelectionViewModel.cs, found {keys.Count}.");
+
+        AssertKeysResolveInEveryLocale(keys, "BacktestIndicatorSelectionViewModel.cs");
+    }
+
+    /// <summary>
+    /// Navigation group titles in Screener and Backtest are resolved from <see cref="ScreenerIndicatorGroup.LocalizationKey"/>;
+    /// each group's key must resolve in every locale or fall back to an unlocalized raw key.
+    /// </summary>
+    [Fact]
+    public void ScreenerIndicatorGroup_CatalogLocalizationKeys_ResolveInEveryLocale()
+    {
+        var keys = ScreenerIndicatorGroup.GetDefaultGroups()
+            .Select(g => g.LocalizationKey)
+            .Where(k => !string.IsNullOrEmpty(k))
+            .Select(k => k!)
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(k => k, StringComparer.Ordinal)
+            .ToList();
+
+        Assert.Equal(18, keys.Count);
+        AssertKeysResolveInEveryLocale(keys, "ScreenerIndicatorGroup.GetDefaultGroups()");
+    }
+
+    /// <summary>
+    /// Backtest template condition section headers are dynamically constructed as
+    /// <c>Backtest_Template_Root_{section}{side}</c> in <c>BacktestIndicatorSelectionViewModel</c>.
+    /// Every canonical root must resolve in every locale.
+    /// </summary>
+    [Fact]
+    public void BacktestTemplateRootKeys_ResolveInEveryLocale()
+    {
+        var keys = BacktestConditionTree.CanonicalRoots
+            .Select(r => $"Backtest_Template_Root_{BacktestConditionTree.RootName(r.Section, r.Side)}")
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(k => k, StringComparer.Ordinal)
+            .ToList();
+
+        Assert.Equal(6, keys.Count);
+        AssertKeysResolveInEveryLocale(keys, "BacktestConditionTree.CanonicalRoots");
     }
 
     /// <summary>

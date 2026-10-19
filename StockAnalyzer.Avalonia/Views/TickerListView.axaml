@@ -455,7 +455,7 @@
         <Grid Grid.Column="2" RowDefinitions="Auto,*" ClipToBounds="True">
             <!-- Right-column filter row: Ticker/Tag filter + Screener Templates (combined via AND,
                  see TickerListViewModel.ApplySecondaryFilters). sa_implement Phase 2
-                 (docs/sa_implementation_plan_TickerTagFilter_Redo): the "^" seen on this box
+                 (TickerTagFilter design): the "^" seen on this box
                  during earlier rounds is a universal Avalonia AutoCompleteBox behavior on this Windows
                  environment (appears on ANY AutoCompleteBox, old or new, when its right edge is
                  clicked precisely, self-dismisses after a few seconds) - confirmed present on this
@@ -534,7 +534,7 @@
                         </DataTemplate>
                     </ComboBox.ItemTemplate>
                 </ComboBox>
-                <!-- Auto Play (docs/sa_implementation_plan_TickerAutoPlay): while checked, the next ticker of the
+                <!-- Auto Play (TickerAutoPlay design): while checked, the next ticker of the
                      displayed order is selected every interval set in Settings > Tickers. Runtime-only state. -->
                 <CheckBox x:Name="AutoPlayCheckBox"
                           AutomationProperties.AutomationId="TickerAutoPlayCheckBox"

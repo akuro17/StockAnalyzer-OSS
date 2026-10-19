@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Threading.Tasks;
@@ -20,9 +21,12 @@ namespace StockAnalyzer.Avalonia.Tests.ViewModels.Dialogs;
 /// UpdateReferenceOptions() clearing AvailableDynamicPeriodDrivers transiently nulled the bound
 /// ComboBox selection back into the model.
 /// </summary>
-public class IndicatorSettingsDialogViewModelTests
+[Collection("MessengerSharedState")]
+public class IndicatorSettingsDialogViewModelTests : IDisposable
 {
-    private static IndicatorSettingsDialogViewModel CreateViewModel(IIndicatorUserDefaultService? userDefaultService = null)
+    private readonly List<IDisposable> _disposables = new();
+
+    private IndicatorSettingsDialogViewModel CreateViewModel(IIndicatorUserDefaultService? userDefaultService = null)
     {
         var mockDialogService = new Mock<IDialogService>();
         var mockToastService = new Mock<IToastNotificationService>();
@@ -33,12 +37,23 @@ public class IndicatorSettingsDialogViewModelTests
 
         var mockUserDefaultService = userDefaultService ?? new Mock<IIndicatorUserDefaultService>().Object;
 
-        return new IndicatorSettingsDialogViewModel(
+        var vm = new IndicatorSettingsDialogViewModel(
             mockDialogService.Object,
             IndicatorFactory.Default,
             mockToastService.Object,
             mockTemplateService.Object,
             mockUserDefaultService);
+        _disposables.Add(vm);
+        return vm;
+    }
+
+    public void Dispose()
+    {
+        foreach (var d in _disposables)
+        {
+            d.Dispose();
+        }
+        _disposables.Clear();
     }
 
     private static CoreIndicatorSettings CreateSmaSettings(string id, int period)

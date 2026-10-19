@@ -13,7 +13,7 @@ namespace StockAnalyzer.Core.Tests.Services;
 [Collection("ChildProcess")]
 public sealed class StrictOnnxVerifierTests
 {
-    [Fact]
+    [ChildProcessFact]
     public async Task StrictVerifier_RejectsBadContractsAndChecksRealClassificationAndRegression()
     {
         var root = new DirectoryInfo(AppContext.BaseDirectory);
@@ -45,7 +45,7 @@ public sealed class StrictOnnxVerifierTests
         Assert.Contains("strict ONNX verifier integration cases: PASS", output);
     }
 
-    [Fact]
+    [ChildProcessFact]
     public async Task PythonRunner_DrainsBothStreamsBeforeWaitingForExit()
     {
         var root = new DirectoryInfo(AppContext.BaseDirectory);
@@ -64,7 +64,7 @@ public sealed class StrictOnnxVerifierTests
         Assert.Contains("STDOUT_DONE", output);
     }
 
-    [Fact]
+    [ChildProcessFact]
     public async Task PythonRunner_TimeoutWaitsForOwnedChildExit()
     {
         var root = new DirectoryInfo(AppContext.BaseDirectory);
@@ -104,7 +104,7 @@ public sealed class StrictOnnxVerifierTests
         }
     }
 
-    [Fact]
+    [ChildProcessFact]
     public async Task PythonRunner_TimeoutAlsoBoundsDrainsAfterParentExit()
     {
         var root = new DirectoryInfo(AppContext.BaseDirectory);

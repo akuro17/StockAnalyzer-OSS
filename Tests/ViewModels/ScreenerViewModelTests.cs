@@ -13,6 +13,7 @@ using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Portfolio;
 
 using StockAnalyzer.Avalonia.Services;
+using System.Collections.Immutable;
 
 namespace StockAnalyzer.Tests.ViewModels;
 
@@ -88,6 +89,23 @@ public class ScreenerViewModelTests
         public void RemoveTickersFromProfile(Guid profileId, IEnumerable<string> tickers) { }
         public void RemoveTickersFromAllProfiles(IEnumerable<string> tickers) { }
         public void Initialize(IEnumerable<WatchlistProfile> profiles) { }
+    }
+
+    private class DummyTickerSourceResolver(Guid wlId, Guid pId) : ITickerSourceResolver
+    {
+        public Task<RlSourceResolution> ResolveAsync(IReadOnlyList<RlSourceDescriptor> sources, IReadOnlyCollection<string>? excluded = null, CancellationToken cancellationToken = default)
+        {
+            var desc = sources[0];
+            var list = desc.Kind switch
+            {
+                RlSourceKind.AllTickers => new[] { "AAPL", "MSFT", "TSLA" },
+                RlSourceKind.Watchlist when desc.Id == wlId => new[] { "AAPL", "MSFT" },
+                RlSourceKind.Portfolio when desc.Id == pId => new[] { "TSLA" },
+                RlSourceKind.Tag when desc.TagName == "Growth" => new[] { "AAPL", "TSLA" },
+                _ => Array.Empty<string>()
+            };
+            return Task.FromResult(new RlSourceResolution(list.ToImmutableArray(), ImmutableArray<RlSourceDiagnostic>.Empty));
+        }
     }
 
     [Fact]
@@ -166,6 +184,57 @@ public class ScreenerViewModelTests
         var tagSource = vm.TargetSources.First(s => s.Type == TargetSourceType.TagFilter && s.TagName == "Growth" && !s.IsHeader);
         await vm.UpdateTargetSymbolsAsync(tagSource);
         Assert.Equal(new[] { "TSLA" }, vm.TargetSymbols);
+    }
+
+    [Fact]
+    public async Task UpdateTargetSymbolsAsync_WithInjectedResolver_ProducesIdenticalSymbolsToLegacy()
+    {
+        // Arrange
+        var mockMarket = new DummyMarketDataProvider(
+            new List<string> { "AAPL", "MSFT", "TSLA" },
+            new Dictionary<string, (string, string, string, string)>
+            {
+                { "AAPL", ("Apple", "Tech", "Hardware", "Growth") },
+                { "MSFT", ("Microsoft", "Tech", "Software", "Value") },
+                { "TSLA", ("Tesla", "Auto", "EV", "Growth") }
+            }
+        );
+
+        var profile1 = new WatchlistProfile(Guid.NewGuid(), "My Watchlist", IndicatorColor.Gray, isPortfolio: false, new List<WatchlistItem>
+        {
+            new WatchlistItem("AAPL", DateTimeOffset.UtcNow),
+            new WatchlistItem("MSFT", DateTimeOffset.UtcNow)
+        });
+        var profile2 = new WatchlistProfile(Guid.NewGuid(), "My Portfolio", IndicatorColor.Gray, isPortfolio: true, new List<WatchlistItem>
+        {
+            new WatchlistItem("TSLA", DateTimeOffset.UtcNow)
+        });
+
+        var mockWlManager = new DummyWatchlistManager(new[] { profile1, profile2 });
+
+        var resolver = new DummyTickerSourceResolver(profile1.Id, profile2.Id);
+        var resolverVm = new ScreenerViewModel(null!, null!, mockMarket, mockWlManager, tickerSourceResolver: resolver);
+        await resolverVm.LoadTargetSourcesAsync();
+
+        // 1. All Tickers
+        var allSource = resolverVm.TargetSources.First(s => s.Type == TargetSourceType.AllTickers);
+        await resolverVm.UpdateTargetSymbolsAsync(allSource);
+        Assert.Equal(new[] { "AAPL", "MSFT", "TSLA" }, resolverVm.TargetSymbols);
+
+        // 2. Watchlist
+        var wlSource = resolverVm.TargetSources.First(s => s.Type == TargetSourceType.Watchlist && s.ProfileId == profile1.Id);
+        await resolverVm.UpdateTargetSymbolsAsync(wlSource);
+        Assert.Equal(new[] { "AAPL", "MSFT" }, resolverVm.TargetSymbols);
+
+        // 3. Portfolio
+        var pSource = resolverVm.TargetSources.First(s => s.Type == TargetSourceType.Portfolio && s.ProfileId == profile2.Id);
+        await resolverVm.UpdateTargetSymbolsAsync(pSource);
+        Assert.Equal(new[] { "TSLA" }, resolverVm.TargetSymbols);
+
+        // 4. Tag Filter
+        var tagSource = new ScreenerTargetSource(TargetSourceType.TagFilter, "Growth", tagName: "Growth");
+        await resolverVm.UpdateTargetSymbolsAsync(tagSource);
+        Assert.Equal(new[] { "AAPL", "TSLA" }, resolverVm.TargetSymbols);
     }
 
     // Tickers AAPL (Growth), MSFT, TSLA (Growth); the watchlist holds AAPL and MSFT.
@@ -272,7 +341,7 @@ public class ScreenerViewModelTests
         Assert.Equal("[C: 12件]", vm.CriteriaFlowItems[2].DisplayText);
 
         // Test Fix 2 & 5: CriteriaFlowItems reflects LogicalOperator (And ∩ -> Or ∪). The per-entry toggle button/command
-        // was retired when Filters became a tree (docs/sa_implementation_plan_ScreenerFilterConditionTree Task 5):
+        // was retired when Filters became a tree (ScreenerFilterConditionTree Task 5):
         // AND/OR is now set per GROUP via the tree's Edit Group dialog, not per entry, so the badge is exercised here by
         // setting the property directly instead of executing the removed command.
         entry1.LogicalOperator = LogicalOperator.Or;

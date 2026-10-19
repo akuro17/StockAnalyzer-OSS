@@ -21,6 +21,8 @@ namespace StockAnalyzer.Avalonia.Common;
 
 public static class TreeDataGridExtensions
 {
+    private static readonly Thickness DefaultCellMargin = new(WatchlistConstants.CellHorizontalMargin, 0);
+
     private class DynamicColumnsOwner { }
 
     public static readonly AttachedProperty<IEnumerable<WatchlistColumnMetadata>?> DynamicColumnsProperty =
@@ -620,7 +622,7 @@ public static class TreeDataGridExtensions
                 {
                     VerticalAlignment = global::Avalonia.Layout.VerticalAlignment.Center,
                     HorizontalAlignment = global::Avalonia.Layout.HorizontalAlignment.Right,
-                    Margin = new global::Avalonia.Thickness(4, 0)
+                    Margin = DefaultCellMargin
                 };
                 if (item != null)
                 {
@@ -688,7 +690,7 @@ public static class TreeDataGridExtensions
                 {
                     VerticalAlignment = global::Avalonia.Layout.VerticalAlignment.Center,
                     HorizontalAlignment = global::Avalonia.Layout.HorizontalAlignment.Right,
-                    Margin = new global::Avalonia.Thickness(4, 0)
+                    Margin = DefaultCellMargin
                 };
                 tb.Bind(global::Avalonia.Controls.TextBlock.TextProperty,
                     new global::Avalonia.Data.Binding(bindingPath)
@@ -1031,7 +1033,7 @@ public static class TreeDataGridExtensions
                 var tb = new global::Avalonia.Controls.TextBlock
                 {
                     VerticalAlignment = global::Avalonia.Layout.VerticalAlignment.Center,
-                    Margin = new global::Avalonia.Thickness(4, 0)
+                    Margin = DefaultCellMargin
                 };
                 tb.Bind(global::Avalonia.Controls.TextBlock.TextProperty, 
                     new global::Avalonia.Data.Binding(textProperty));
@@ -1122,7 +1124,7 @@ public static class TreeDataGridExtensions
                 var tb = new global::Avalonia.Controls.TextBlock
                 {
                     VerticalAlignment = global::Avalonia.Layout.VerticalAlignment.Center,
-                    Margin = new global::Avalonia.Thickness(4, 0)
+                    Margin = DefaultCellMargin
                 };
                 tb.Bind(global::Avalonia.Controls.TextBlock.TextProperty, 
                     new global::Avalonia.Data.Binding(textProperty));
@@ -1301,7 +1303,7 @@ public static class TreeDataGridExtensions
                 var tb = new global::Avalonia.Controls.TextBlock
                 {
                     VerticalAlignment = global::Avalonia.Layout.VerticalAlignment.Center,
-                    Margin = new global::Avalonia.Thickness(4, 0)
+                    Margin = DefaultCellMargin
                 };
                 tb.Bind(global::Avalonia.Controls.TextBlock.TextProperty, 
                     new global::Avalonia.Data.Binding(propertyName));
@@ -1389,7 +1391,7 @@ public static class TreeDataGridExtensions
                 {
                     VerticalAlignment = global::Avalonia.Layout.VerticalAlignment.Center,
                     HorizontalAlignment = global::Avalonia.Layout.HorizontalAlignment.Center,
-                    Margin = new global::Avalonia.Thickness(4, 0)
+                    Margin = DefaultCellMargin
                 };
                 tb.Bind(global::Avalonia.Controls.TextBlock.TextProperty, new global::Avalonia.Data.Binding(displayProp));
                 tb.Bind(global::Avalonia.Controls.TextBlock.ForegroundProperty, new global::Avalonia.Data.Binding(rawMemberName) { Converter = _signalColorConverter });

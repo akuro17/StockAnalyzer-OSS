@@ -330,6 +330,21 @@ public sealed class EnsembleMonitoringRecordTests : IDisposable
         Assert.Equal(model.ModelId, direct!.ModelId);
     }
 
+    [Fact]
+    public async Task MetadataCache_ReusesExtractedMetadata_WithoutRecreatingSession()
+    {
+        var registry = new ModelGenerationRegistry(Path.Combine(_kit.Root, "cached-registry"));
+        _disposables.Add(registry);
+        var model = await registry.RegisterAsync(Path.Combine("Assets", "analysis_fixture.onnx"));
+
+        PredictionMonitoringReducer.ClearMetadataCacheForTesting();
+        var meta1 = PredictionMonitoringReducer.GetOrReadModelMetadata(registry, model.ModelId);
+        var meta2 = PredictionMonitoringReducer.GetOrReadModelMetadata(registry, model.ModelId);
+
+        Assert.NotNull(meta1);
+        Assert.Same(meta1, meta2); // Exactly same instance from LRU cache
+    }
+
     // ---- lifecycle -----------------------------------------------------------------------------------------------------
 
     [Theory]

@@ -165,7 +165,7 @@ public class TrainingConfigJsonTests
         Assert.Equal(enabled, TrainingConfigJson.DeserializeConfig(json).FixedZScore);
     }
 
-    [Theory]
+    [ChildProcessTheory]
     [InlineData(false)]
     [InlineData(true)]
     public async Task TrainingJobConfig_SerializedWire_IsAcceptedByPythonRunner(bool enabled)
@@ -199,7 +199,7 @@ public class TrainingConfigJsonTests
         finally { File.Delete(file); }
     }
 
-    [Fact]
+    [ChildProcessFact]
     public async Task ResolvedResourceLimits_RoundTripAndMatchPythonEnvironment()
     {
         var root = new DirectoryInfo(AppContext.BaseDirectory);

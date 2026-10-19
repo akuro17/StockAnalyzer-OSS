@@ -46,8 +46,9 @@ public sealed class TrainingWizardExtendedLearningTests : IDisposable
         var deployment = new Mock<IModelDeploymentService>();
         var settings = new Mock<IEnsembleSettingsManager>();
         settings.Setup(s => s.SaveAsync(It.IsAny<EnsembleSpec?>())).Returns(Task.CompletedTask);
+        var store = StockAnalyzer.Avalonia.Tests.TestHelpers.FakeTickerStateStore.FromProfiles(Array.Empty<StockAnalyzer.Core.Models.Watchlist.WatchlistProfile>());
         var wizard = new TrainingWizardViewModel(orchestrator: orchestrator.Object, modelDeploymentService: deployment.Object,
-            experimentLogService: log.Object, marketDataProvider: market.Object, ensembleSettings: settings.Object, messenger: messenger);
+            experimentLogService: log.Object, marketDataProvider: market.Object, ensembleSettings: settings.Object, messenger: messenger, tickerStore: store);
         wizard.Horizon = 1;
         return new Harness(wizard, started, deployment, settings);
     }

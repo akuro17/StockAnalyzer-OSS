@@ -59,7 +59,7 @@ public class TrainingWizardViewModelTests : IDisposable
             ResultToReturn = new TrainingRunResult { RunId = "new_run", Success = true, CheckpointManifestPath = "run.json" },
         };
         using var vm = new TrainingWizardViewModel(orchestrator: orchestrator,
-            marketDataProvider: new DummyMarketDataProvider("X"));
+            marketDataProvider: new DummyMarketDataProvider("X"), tickerStore: DefaultStore());
         await WaitForInitializationAsync(vm);
         vm.Horizon = 1;
         vm.SelectedArchitecture = "cnn";
@@ -243,6 +243,8 @@ public class TrainingWizardViewModelTests : IDisposable
         return (store, watchlist, portfolio);
     }
 
+    private static FakeTickerStore DefaultStore() => TreeStore().Store;
+
     [Fact]
     public async Task Constructor_BuildsTheTickerTreeAndTicksOnlyAllTickers()
     {
@@ -342,7 +344,8 @@ public class TrainingWizardViewModelTests : IDisposable
     private async Task<(TrainingWizardViewModel Vm, FakeTrainingOrchestrator Orchestrator)> StartableWizardAsync()
     {
         var orchestrator = new FakeTrainingOrchestrator();
-        var vm = new TrainingWizardViewModel(orchestrator: orchestrator, marketDataProvider: new DummyMarketDataProvider("X"));
+        var (store, _, _) = TreeStore();
+        var vm = new TrainingWizardViewModel(orchestrator: orchestrator, marketDataProvider: new DummyMarketDataProvider("X"), tickerStore: store);
         await WaitForInitializationAsync(vm);
         vm.Horizon = 1;
         Assert.True(vm.StartTrainingCommand.CanExecute(null));
@@ -507,7 +510,7 @@ public class TrainingWizardViewModelTests : IDisposable
     {
         var market = new DummyMarketDataProvider("AAPL", "MSFT", "GOOGL");
         var orchestrator = new FakeTrainingOrchestrator();
-        var vm = new TrainingWizardViewModel(orchestrator: orchestrator, marketDataProvider: market);
+        var vm = new TrainingWizardViewModel(orchestrator: orchestrator, marketDataProvider: market, tickerStore: DefaultStore());
         await WaitForInitializationAsync(vm);
         vm.Horizon = 5;
 
@@ -525,7 +528,7 @@ public class TrainingWizardViewModelTests : IDisposable
     {
         var market = new DummyMarketDataProvider("AAPL");
         var orchestrator = new FakeTrainingOrchestrator();
-        var vm = new TrainingWizardViewModel(orchestrator: orchestrator, marketDataProvider: market);
+        var vm = new TrainingWizardViewModel(orchestrator: orchestrator, marketDataProvider: market, tickerStore: DefaultStore());
         await WaitForInitializationAsync(vm);
         vm.Horizon = 5;
 
@@ -546,7 +549,7 @@ public class TrainingWizardViewModelTests : IDisposable
     {
         var market = new DummyMarketDataProvider("AAPL");
         var orchestrator = new FakeTrainingOrchestrator();
-        var vm = new TrainingWizardViewModel(orchestrator: orchestrator, marketDataProvider: market);
+        var vm = new TrainingWizardViewModel(orchestrator: orchestrator, marketDataProvider: market, tickerStore: DefaultStore());
         await WaitForInitializationAsync(vm);
         vm.Horizon = 5;
         vm.NSplits = 8;
@@ -566,7 +569,7 @@ public class TrainingWizardViewModelTests : IDisposable
     {
         var orchestrator = new FakeTrainingOrchestrator();
         var vm = new TrainingWizardViewModel(orchestrator: orchestrator,
-            marketDataProvider: new DummyMarketDataProvider("AAPL"));
+            marketDataProvider: new DummyMarketDataProvider("AAPL"), tickerStore: DefaultStore());
         await WaitForInitializationAsync(vm);
         vm.Horizon = 5;
         vm.StartDate = new DateTime(2026, 10, 2);
@@ -611,7 +614,7 @@ public class TrainingWizardViewModelTests : IDisposable
                 new Dictionary<string, double> { ["accuracy"] = 0.59, ["macro_f1"] = 0.55 },
             },
         };
-        var vm = new TrainingWizardViewModel(orchestrator: orchestrator, marketDataProvider: market);
+        var vm = new TrainingWizardViewModel(orchestrator: orchestrator, marketDataProvider: market, tickerStore: DefaultStore());
         await WaitForInitializationAsync(vm);
         vm.Horizon = 5;
 
@@ -635,7 +638,7 @@ public class TrainingWizardViewModelTests : IDisposable
         {
             MetricLines = { FoldMetric(fold: 0, splits: 2, n: 100, accuracy: 0.5, baseline: 0.4, macroF1: 0.5, logloss: 1.0) },
         };
-        var vm = new TrainingWizardViewModel(orchestrator: orchestrator, marketDataProvider: market);
+        var vm = new TrainingWizardViewModel(orchestrator: orchestrator, marketDataProvider: market, tickerStore: DefaultStore());
         await WaitForInitializationAsync(vm);
         vm.Horizon = 5;
 
@@ -752,7 +755,7 @@ public class TrainingWizardViewModelTests : IDisposable
             },
         };
         var experimentLog = new FakeExperimentLogService();
-        var vm = new TrainingWizardViewModel(orchestrator: orchestrator, experimentLogService: experimentLog, marketDataProvider: market);
+        var vm = new TrainingWizardViewModel(orchestrator: orchestrator, experimentLogService: experimentLog, marketDataProvider: market, tickerStore: DefaultStore());
         await WaitForInitializationAsync(vm);
         vm.Horizon = 5;
 
@@ -787,7 +790,7 @@ public class TrainingWizardViewModelTests : IDisposable
                 Message = "trainer backend not available",
             },
         };
-        var vm = new TrainingWizardViewModel(orchestrator: orchestrator, marketDataProvider: market);
+        var vm = new TrainingWizardViewModel(orchestrator: orchestrator, marketDataProvider: market, tickerStore: DefaultStore());
         await WaitForInitializationAsync(vm);
         vm.Horizon = 5;
 
@@ -803,7 +806,8 @@ public class TrainingWizardViewModelTests : IDisposable
         var market = new DummyMarketDataProvider("AAPL");
         var gate = new TaskCompletionSource();
         var orchestrator = new FakeTrainingOrchestrator { Gate = gate };
-        var vm = new TrainingWizardViewModel(orchestrator: orchestrator, marketDataProvider: market);
+        var (store, _, _) = TreeStore();
+        var vm = new TrainingWizardViewModel(orchestrator: orchestrator, marketDataProvider: market, tickerStore: store);
         await WaitForInitializationAsync(vm);
         vm.Horizon = 5;
 
@@ -842,7 +846,7 @@ public class TrainingWizardViewModelTests : IDisposable
             },
         };
         var deployment = new FakeModelDeploymentService();
-        var vm = new TrainingWizardViewModel(orchestrator: orchestrator, modelDeploymentService: deployment, marketDataProvider: market);
+        var vm = new TrainingWizardViewModel(orchestrator: orchestrator, modelDeploymentService: deployment, marketDataProvider: market, tickerStore: DefaultStore());
         await WaitForInitializationAsync(vm);
         vm.Horizon = 5;
         await vm.StartTrainingCommand.ExecuteAsync(null);
@@ -876,7 +880,8 @@ public class TrainingWizardViewModelTests : IDisposable
             orchestrator: orchestrator,
             modelDeploymentService: deployment,
             marketDataProvider: market,
-            modelRegistry: registry);
+            modelRegistry: registry,
+            tickerStore: DefaultStore());
         await WaitForInitializationAsync(vm);
         vm.Horizon = 5;
         await vm.StartTrainingCommand.ExecuteAsync(null);
@@ -905,7 +910,7 @@ public class TrainingWizardViewModelTests : IDisposable
             {
                 ResultToReturn = new TrainingRunResult { RunId = "run-ok", Success = true, ExitCode = 0, OnnxArtifactPath = mockOnnx, MetricsArtifactPath = metrics },
             };
-            var vm = new TrainingWizardViewModel(orchestrator: orchestrator, modelDeploymentService: new FakeModelDeploymentService(), marketDataProvider: market);
+            var vm = new TrainingWizardViewModel(orchestrator: orchestrator, modelDeploymentService: new FakeModelDeploymentService(), marketDataProvider: market, tickerStore: DefaultStore());
             await WaitForInitializationAsync(vm);
             vm.Horizon = 5;
             await vm.StartTrainingCommand.ExecuteAsync(null);
@@ -937,7 +942,7 @@ public class TrainingWizardViewModelTests : IDisposable
                 ResultToReturn = new TrainingRunResult { RunId = "run-ok", Success = true, ExitCode = 0, OnnxArtifactPath = mockOnnx, MetricsArtifactPath = metrics },
             };
             var vm = new TrainingWizardViewModel(orchestrator: orchestrator, modelDeploymentService: new FakeModelDeploymentService(), marketDataProvider: market,
-                settings: PredictionModelsViewModelTests.ThresholdSettingsProxy.Create(0.5f));
+                settings: PredictionModelsViewModelTests.ThresholdSettingsProxy.Create(0.5f), tickerStore: DefaultStore());
             await WaitForInitializationAsync(vm);
             vm.Horizon = 5;
             await vm.StartTrainingCommand.ExecuteAsync(null);
@@ -967,14 +972,14 @@ public class TrainingWizardViewModelTests : IDisposable
                 ResultToReturn = new TrainingRunResult { RunId = "run-ok", Success = true, ExitCode = 0, OnnxArtifactPath = mockOnnx, MetricsArtifactPath = mockOnnx + ".metrics.json" },
             };
             var vm = new TrainingWizardViewModel(orchestrator: orchestrator, modelDeploymentService: new FakeModelDeploymentService(), marketDataProvider: market,
-                settings: PredictionModelsViewModelTests.ThresholdSettingsProxy.Create(0.5f));
+                settings: PredictionModelsViewModelTests.ThresholdSettingsProxy.Create(0.5f), tickerStore: DefaultStore());
             await WaitForInitializationAsync(vm);
             vm.Horizon = 5;
             await vm.StartTrainingCommand.ExecuteAsync(null);
             Assert.Equal(LocalizationManager.Instance["TrainingWizard_Status_Completed"], vm.StatusMessage);       // no histogram in the file
 
             File.WriteAllText(mockOnnx + ".metrics.json", "{\"confidence_reach\":{\"bins\":2,\"n\":1,\"max_probability_histogram\":[0,1]}}");
-            var withoutSettings = new TrainingWizardViewModel(orchestrator: orchestrator, modelDeploymentService: new FakeModelDeploymentService(), marketDataProvider: market);
+            var withoutSettings = new TrainingWizardViewModel(orchestrator: orchestrator, modelDeploymentService: new FakeModelDeploymentService(), marketDataProvider: market, tickerStore: DefaultStore());
             await WaitForInitializationAsync(withoutSettings);
             withoutSettings.Horizon = 5;
             await withoutSettings.StartTrainingCommand.ExecuteAsync(null);
@@ -1003,7 +1008,8 @@ public class TrainingWizardViewModelTests : IDisposable
             orchestrator: orchestrator,
             modelDeploymentService: new FakeModelDeploymentService(),
             marketDataProvider: market,
-            modelRegistry: new FakeGenerationRegistry { ActiveId = "different-active-id" });
+            modelRegistry: new FakeGenerationRegistry { ActiveId = "different-active-id" },
+            tickerStore: DefaultStore());
         await WaitForInitializationAsync(vm);
         vm.Horizon = 5;
         await vm.StartTrainingCommand.ExecuteAsync(null);
@@ -1037,7 +1043,8 @@ public class TrainingWizardViewModelTests : IDisposable
                 ResultToReturn = new TrainingRunResult { RunId = "run-ok", Success = true, ExitCode = 0, OnnxArtifactPath = mockOnnx, MetricsArtifactPath = metrics },
             };
             var vm = new TrainingWizardViewModel(orchestrator: orchestrator, modelDeploymentService: new FakeModelDeploymentService(), marketDataProvider: market,
-                modelRegistry: new FakeGenerationRegistry { ActiveId = "different-active-id" }, settings: PredictionModelsViewModelTests.ThresholdSettingsProxy.Create(0.5f));
+                modelRegistry: new FakeGenerationRegistry { ActiveId = "different-active-id" }, settings: PredictionModelsViewModelTests.ThresholdSettingsProxy.Create(0.5f),
+                tickerStore: DefaultStore());
             await WaitForInitializationAsync(vm);
             vm.Horizon = 5;
             await vm.StartTrainingCommand.ExecuteAsync(null);
@@ -1062,7 +1069,7 @@ public class TrainingWizardViewModelTests : IDisposable
         // channel alone is enough to route the run through PredictionFeatureMode.ComposedFeatures.
         var market = new DummyMarketDataProvider("AAPL");
         var orchestrator = new FakeTrainingOrchestrator();
-        var vm = new TrainingWizardViewModel(orchestrator: orchestrator, marketDataProvider: market);
+        var vm = new TrainingWizardViewModel(orchestrator: orchestrator, marketDataProvider: market, tickerStore: DefaultStore());
         await WaitForInitializationAsync(vm);
         vm.Horizon = 5;
 
@@ -1082,7 +1089,7 @@ public class TrainingWizardViewModelTests : IDisposable
     {
         var market = new DummyMarketDataProvider("AAPL");
         var orchestrator = new FakeTrainingOrchestrator();
-        var vm = new TrainingWizardViewModel(orchestrator: orchestrator, marketDataProvider: market);
+        var vm = new TrainingWizardViewModel(orchestrator: orchestrator, marketDataProvider: market, tickerStore: DefaultStore());
         await WaitForInitializationAsync(vm);
         vm.Horizon = 5;
 
@@ -1097,7 +1104,7 @@ public class TrainingWizardViewModelTests : IDisposable
     {
         var market = new DummyMarketDataProvider("AAPL");
         var orchestrator = new FakeTrainingOrchestrator();
-        var vm = new TrainingWizardViewModel(orchestrator: orchestrator, marketDataProvider: market);
+        var vm = new TrainingWizardViewModel(orchestrator: orchestrator, marketDataProvider: market, tickerStore: DefaultStore());
         await WaitForInitializationAsync(vm);
         vm.Horizon = 5;
         vm.SelectedTargetType = TargetType.Regression;
@@ -1113,7 +1120,7 @@ public class TrainingWizardViewModelTests : IDisposable
     {
         var market = new DummyMarketDataProvider("AAPL");
         var orchestrator = new FakeTrainingOrchestrator();
-        var vm = new TrainingWizardViewModel(orchestrator: orchestrator, marketDataProvider: market);
+        var vm = new TrainingWizardViewModel(orchestrator: orchestrator, marketDataProvider: market, tickerStore: DefaultStore());
         await WaitForInitializationAsync(vm);
         vm.Horizon = 5;
 
@@ -1131,7 +1138,7 @@ public class TrainingWizardViewModelTests : IDisposable
     {
         var orchestrator = new FakeTrainingOrchestrator();
         var vm = new TrainingWizardViewModel(orchestrator: orchestrator,
-            marketDataProvider: new DummyMarketDataProvider("AAPL"));
+            marketDataProvider: new DummyMarketDataProvider("AAPL"), tickerStore: DefaultStore());
         await WaitForInitializationAsync(vm);
         vm.Horizon = 5;
         vm.LagsText = "5,1";
@@ -1152,7 +1159,7 @@ public class TrainingWizardViewModelTests : IDisposable
     {
         var orchestrator = new FakeTrainingOrchestrator();
         var vm = new TrainingWizardViewModel(orchestrator: orchestrator,
-            marketDataProvider: new DummyMarketDataProvider("AAPL"));
+            marketDataProvider: new DummyMarketDataProvider("AAPL"), tickerStore: DefaultStore());
         await WaitForInitializationAsync(vm);
         vm.Horizon = 5;
         vm.UseFixedZScore = true;
@@ -1193,7 +1200,7 @@ public class TrainingWizardViewModelTests : IDisposable
     public async Task ClipValidationFollowsDependencyAndRepairsWithoutStaleErrors()
     {
         var vm = new TrainingWizardViewModel(orchestrator: new FakeTrainingOrchestrator(),
-            marketDataProvider: new DummyMarketDataProvider("AAPL"));
+            marketDataProvider: new DummyMarketDataProvider("AAPL"), tickerStore: DefaultStore());
         await WaitForInitializationAsync(vm);
         vm.Horizon = 5;
         var changes = new List<string?>();

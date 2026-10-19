@@ -10,7 +10,7 @@ namespace StockAnalyzer.Core.Tests.Services;
 [Collection("ChildProcess")]
 public sealed class ComposedTrainerIntegrationTests
 {
-    [Fact]
+    [ChildProcessFact]
     public async Task LightGbmAndTensorFlow_TrainConvertAndPassStrictDiagnosis()
     {
         var root = new DirectoryInfo(AppContext.BaseDirectory);

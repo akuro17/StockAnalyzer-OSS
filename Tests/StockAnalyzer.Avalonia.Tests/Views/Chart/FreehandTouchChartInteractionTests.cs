@@ -7,6 +7,7 @@ using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Avalonia.Threading;
 using StockAnalyzer.Avalonia.Drawing;
+using StockAnalyzer.Avalonia.Tests.TestHelpers;
 using StockAnalyzer.Avalonia.ViewModels;
 using StockAnalyzer.Avalonia.Views.Chart;
 using StockAnalyzer.Core.Models;
@@ -42,8 +43,7 @@ public class FreehandTouchChartInteractionTests
             _chart = new ChartBaseControl { ViewModel = ViewModel };
             _window = new Window { Width = 800, Height = 600, Content = _chart };
             _window.Show();
-            AvaloniaHeadlessPlatform.ForceRenderTimerTick();
-            Dispatcher.UIThread.RunJobs();
+            HeadlessWindowInput.WaitUntilHittable(_window, new Point(100, 120));
         }
 
         private static ulong Now => (ulong)Environment.TickCount64;

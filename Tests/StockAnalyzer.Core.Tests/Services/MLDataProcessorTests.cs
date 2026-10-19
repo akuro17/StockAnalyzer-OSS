@@ -67,6 +67,22 @@ public class MLDataProcessorTests
     }
 
     [Fact]
+    public void ComputeZScore_StandardValues_ComputesAccurateNormalizedScores()
+    {
+        Span<float> values = stackalloc float[] { 1f, 2f, 3f, 4f, 5f };
+        Span<float> destination = stackalloc float[5];
+
+        _processor.ComputeZScore(values, destination);
+
+        float expectedSqrt2 = MathF.Sqrt(2f);
+        Assert.True(MathF.Abs(destination[0] - (-expectedSqrt2)) < 1e-6f);
+        Assert.True(MathF.Abs(destination[1] - (-1f / expectedSqrt2)) < 1e-6f);
+        Assert.True(MathF.Abs(destination[2] - 0.0f) < 1e-6f);
+        Assert.True(MathF.Abs(destination[3] - (1f / expectedSqrt2)) < 1e-6f);
+        Assert.True(MathF.Abs(destination[4] - expectedSqrt2) < 1e-6f);
+    }
+
+    [Fact]
     public void ComputeLogReturns_FirstBarAndNonPositiveClose_YieldZero()
     {
         var candles = new List<CandleData>

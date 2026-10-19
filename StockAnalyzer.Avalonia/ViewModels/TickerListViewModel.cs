@@ -86,7 +86,7 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
     // synchronously per keystroke without re-reading metadata each time.
     private readonly Dictionary<string, List<string>> _tickerTags = new(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>Ticker/Tag filter (docs/sa_implementation_plan_TickerTagFilter_Redo Phase 2):
+    /// <summary>Ticker/Tag filter (TickerTagFilter Phase 2):
     /// free-form substring match against ticker symbols and registered tags, combined (AND) with the
     /// Screener Templates filter.</summary>
     public TickerList.TickerTagFilterViewModel TickerTagFilter { get; }
@@ -602,7 +602,7 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
         _ = ColumnTemplateSelector.ReloadEntriesAsync();
     }
 
-    /// <summary>Column Customization dropdown (docs/sa_implementation_plan_TickerColumnTemplateDropdown):
+    /// <summary>Column Customization dropdown (TickerColumnTemplateDropdown design):
     /// the entry currently selected in the dropdown receives the user's column edit.</summary>
     public TickerColumnTemplateSelectorViewModel ColumnTemplateSelector { get; }
 
@@ -625,7 +625,7 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
 
     private readonly StockAnalyzer.Core.Services.Tickers.ITickersSettingsManager? _tickersSettingsManager;
 
-    // ---- Auto Play (docs/sa_implementation_plan_TickerAutoPlay). The state machine lives in
+    // ---- Auto Play (TickerAutoPlay design). The state machine lives in
     // TickerAutoPlayController; this class only supplies its delegates and mirrors IsRunning to the checkbox.
     private TickerAutoPlayController? _autoPlay;
     private bool _isSyncingAutoPlay;
@@ -1204,7 +1204,7 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
     /// <summary>
     /// Shown only when row-selection silently fell back from "checked rows" to "every row currently
     /// in scope" (nothing was checked) - the single most consistently flagged risk across the
-    /// docs/webai review: falling back without any signal can export far more than intended.
+    /// code review: falling back without any signal can export far more than intended.
     /// The underlying fallback rule itself is unchanged (user-confirmed design); this only adds a
     /// heads-up naming the row count before the save dialog opens. Not shown when the user explicitly
     /// checked rows - that is already an unambiguous choice.

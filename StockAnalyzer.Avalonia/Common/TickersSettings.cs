@@ -2,7 +2,7 @@ namespace StockAnalyzer.Avalonia.Common;
 
 /// <summary>
 /// Configuration ("Tickers" section of appsettings.json) for the Tickers tab settings page
-/// (Settings &gt; Tickers, docs/sa_implementation_plan_TickersSettingsCategory). Each default and
+/// (Settings &gt; Tickers, TickersSettingsCategory design). Each default and
 /// tunable bound has exactly one definition: the property initializer below.
 /// </summary>
 public class TickersSettings

@@ -40,7 +40,7 @@ public sealed class RlCheckpointSafetyTests
         finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
     }
 
-    [Fact] public async Task DependencyIdentityRejectsChangedRealPayloadWithUnchangedDistributionMetadata()
+    [ChildProcessFact] public async Task DependencyIdentityRejectsChangedRealPayloadWithUnchangedDistributionMetadata()
     {
         string pythonRoot = Directory.GetParent(Path.GetDirectoryName(PythonScriptLocator.Resolve(RlFiles.DependenciesScript))!)!.FullName;
         var start = new ProcessStartInfo(Path.Combine(pythonRoot, RlFiles.VirtualEnvironment, OperatingSystem.IsWindows() ? "Scripts/python.exe" : "bin/python"))

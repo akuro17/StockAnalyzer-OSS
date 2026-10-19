@@ -23,9 +23,9 @@ public sealed class ChildProcessCollectionGuardTests
     private static readonly string ProjectDirectory = Path.Combine("Tests", "StockAnalyzer.Core.Tests");
 
     // The calls that start a real child process, directly or through the trainers' pump, the Python test runner or the portfolio script helper. The opt-in
-    // facts of the portfolio tests (SmokeFact, AblationFact) are the tests that run the real portfolio worker through the training runner.
+    // facts of the portfolio tests (SmokeFact, AblationFact) and heavy child process facts (ChildProcessFact, ChildProcessTheory) are the tests that run the real external workers.
     private static readonly Regex ProcessStarters = new(
-        @"Process\.Start\(|new\s+Process\b|RlWorkerProcess\.(?:RunAsync|PumpAsync)|TrainingPythonTestRunner\.RunAsync|\bRunWorkerAsync\b|RlPortfolioPythonScript\.Run\w*Async|\[(?:\w+\.)?(?:SmokeFact|AblationFact)\]|\bnew\s+TrainingOrchestrator\s*\(",
+        @"Process\.Start\(|new\s+Process\b|RlWorkerProcess\.(?:RunAsync|PumpAsync)|TrainingPythonTestRunner\.RunAsync|\bRunWorkerAsync\b|RlPortfolioPythonScript\.Run\w*Async|\[(?:\w+\.)?(?:SmokeFact|AblationFact|ChildProcessFact|ChildProcessTheory)\]|\bnew\s+TrainingOrchestrator\s*\(",
         RegexOptions.Compiled);
     private static readonly Regex ClassDeclaration = new(@"\bclass\s+([A-Za-z_]\w*)", RegexOptions.Compiled);
 

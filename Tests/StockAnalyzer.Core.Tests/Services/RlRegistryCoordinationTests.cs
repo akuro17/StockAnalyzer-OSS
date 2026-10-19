@@ -135,7 +135,7 @@ public sealed partial class RlGenerationAndQValueTests
         finally { worker.Process.Dispose(); }
     }
 
-    [Fact] public async Task R09_WorkJournalSurvivesAbruptOwnedWriterExitWithoutPerStepPhysicalFlush()
+    [ChildProcessFact] public async Task R09_WorkJournalSurvivesAbruptOwnedWriterExitWithoutPerStepPhysicalFlush()
     {
         Directory.CreateDirectory(_root);
         string directory = Path.Combine(_root, "r09-journal"), ready = Path.Combine(_root, "r09-journal-ready"),
@@ -149,7 +149,7 @@ public sealed partial class RlGenerationAndQValueTests
         Assert.Throws<InvalidDataException>(() => StockAnalyzer.Core.Services.ReinforcementLearning.RlCheckpointStore.ReadBudget(directory));
     }
 
-    [Fact] public async Task R07_ParallelRegistrationsAndStaleWriterSnapshotsKeepBothCommits()
+    [ChildProcessFact] public async Task R07_ParallelRegistrationsAndStaleWriterSnapshotsKeepBothCommits()
     {
         using var registry = new ModelGenerationRegistry(RegistryRoot);
         var first = await registry.RegisterRlAsync(Candidate(.01m).Directory); await registry.ActivateRlAsync(first.ModelId);
@@ -173,7 +173,7 @@ public sealed partial class RlGenerationAndQValueTests
         var history = pointer.RootElement.GetProperty("history").EnumerateArray().Select(v => v.GetString()).ToArray();
         Assert.Contains(first.ModelId, history); Assert.Contains(active == a ? b : a, history);
     }
-    [Theory] [InlineData(false)] [InlineData(true)]
+    [ChildProcessTheory] [InlineData(false)] [InlineData(true)]
     public async Task R07_CrossProcessLeaseSurvivesPruneAndIsReleasedNormallyOrByExit(bool kill)
     {
         using var registry = new ModelGenerationRegistry(RegistryRoot);
@@ -192,7 +192,7 @@ public sealed partial class RlGenerationAndQValueTests
         }
         catch { StopWorker(process); throw; }
     }
-    [Fact] public async Task R07_OwnerExitAfterStagingOrBeforePointerCommitPreservesTheActive()
+    [ChildProcessFact] public async Task R07_OwnerExitAfterStagingOrBeforePointerCommitPreservesTheActive()
     {
         using var registry = new ModelGenerationRegistry(RegistryRoot);
         var first = await registry.RegisterRlAsync(Candidate(.01m).Directory); await registry.ActivateRlAsync(first.ModelId);
@@ -205,7 +205,7 @@ public sealed partial class RlGenerationAndQValueTests
         await WaitFile(ready); StopWorker(process);
         Assert.Equal(first.ModelId, registry.RlActiveId); Assert.True(await registry.ActivateRlAsync(second.ModelId));
     }
-    [Fact] public async Task R07_TimeoutAndCancellationDoNotStealOwnershipAndLeaveEvidence()
+    [ChildProcessFact] public async Task R07_TimeoutAndCancellationDoNotStealOwnershipAndLeaveEvidence()
     {
         using var registry = new ModelGenerationRegistry(RegistryRoot) { StoreLockTimeout = TimeSpan.FromMilliseconds(150) };
         // The cancellation phase uses the default lock timeout so that only the cancellation can end the wait, never the timeout.

@@ -35,7 +35,8 @@ public sealed class TrainingWizardStartBlockerAuditTests : IDisposable
             .Returns(Task.FromResult(new TrainingRunResult { RunId = "run", Success = true }));
         var market = new Mock<IMarketDataProvider>();
         market.Setup(p => p.GetAvailableTickersAsync()).ReturnsAsync(tickers.ToList());
-        var wizard = new TrainingWizardViewModel(orchestrator: orchestrator.Object, marketDataProvider: market.Object) { Horizon = 1 };
+        var store = StockAnalyzer.Avalonia.Tests.TestHelpers.FakeTickerStateStore.FromProfiles(Array.Empty<StockAnalyzer.Core.Models.Watchlist.WatchlistProfile>());
+        var wizard = new TrainingWizardViewModel(orchestrator: orchestrator.Object, marketDataProvider: market.Object, tickerStore: store) { Horizon = 1 };
         return wizard;
     }
 

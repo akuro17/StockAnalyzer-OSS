@@ -189,9 +189,34 @@ public class MLDataProcessor : IMLDataProcessor
         int n = values.Length;
         if (n == 0 || destination.Length < n) return;
 
-        Span<double> widened = n <= MaxStackAllocWindowSize ? stackalloc double[n] : new double[n];
-        for (int i = 0; i < n; i++) widened[i] = values[i];
-        ZScoreInto(widened, destination);
+        ZScoreInto(values, destination);
+    }
+
+    /// <summary>
+    /// Population Z-Score of <paramref name="values"/> into <paramref name="destination"/>,
+    /// accumulating mean and standard deviation directly in double (matching the Python float64
+    /// reference) without intermediate buffer allocation and narrowing only on the final write.
+    /// A standard deviation at or below <see cref="Epsilon"/> yields <c>0.0f</c>.
+    /// </summary>
+    private static void ZScoreInto(ReadOnlySpan<float> values, Span<float> destination)
+    {
+        int n = values.Length;
+        double sum = 0.0;
+        for (int i = 0; i < n; i++) sum += values[i];
+        double mu = sum / n;
+
+        double sumSq = 0.0;
+        for (int i = 0; i < n; i++)
+        {
+            double diff = values[i] - mu;
+            sumSq += diff * diff;
+        }
+        double sigma = Math.Sqrt(sumSq / n);
+
+        for (int i = 0; i < n; i++)
+        {
+            destination[i] = sigma <= Epsilon ? 0.0f : (float)((values[i] - mu) / sigma);
+        }
     }
 
     /// <summary>

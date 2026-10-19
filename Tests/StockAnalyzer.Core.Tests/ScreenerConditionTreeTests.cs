@@ -6,7 +6,7 @@ using Xunit;
 namespace StockAnalyzer.Core.Tests;
 
 /// <summary>
-/// Objective verification of the Filters condition tree domain model (docs/sa_implementation_plan_ScreenerFilterConditionTree
+/// Objective verification of the Filters condition tree domain model (ScreenerFilterConditionTree
 /// Task 1), proving the safe-extension/no-regression requirement the user's shared-function-reuse policy demands: these types are
 /// new and additive, so this file only needs to prove the new construction/validation contract, not any existing behavior.
 /// </summary>

@@ -315,4 +315,42 @@ public class HoughTransformEngineTests
         decimal price = verticalLine.GetPriceAt(30);
         Assert.Equal(100m, price);
     }
+
+    [Fact]
+    public void DetectChannels_WithVerticalLines_SkipsVerticalLinePairs()
+    {
+        var verticalLine1 = new HoughDetectedLine(
+            Rho: 0.5,
+            Theta: 0.0,
+            Votes: 5,
+            Slope: double.PositiveInfinity,
+            NormalizedSlope: double.PositiveInfinity,
+            StartBar: 20,
+            EndBar: 20,
+            StartPrice: 100m,
+            EndPrice: 200m,
+            Strength: 80.0,
+            TouchCount: 4,
+            LineType: HoughLineType.Neutral,
+            IsVertical: true);
+
+        var verticalLine2 = new HoughDetectedLine(
+            Rho: 0.8,
+            Theta: 0.0,
+            Votes: 5,
+            Slope: double.PositiveInfinity,
+            NormalizedSlope: double.PositiveInfinity,
+            StartBar: 30,
+            EndBar: 30,
+            StartPrice: 100m,
+            EndPrice: 200m,
+            Strength: 80.0,
+            TouchCount: 4,
+            LineType: HoughLineType.Neutral,
+            IsVertical: true);
+
+        var channels = HoughTransformEngine.DetectChannels(new[] { verticalLine1, verticalLine2 }, atr: 2.0);
+        Assert.NotNull(channels);
+        Assert.Empty(channels);
+    }
 }

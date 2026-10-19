@@ -1,5 +1,7 @@
 using System;
+using System.Linq;
 using StockAnalyzer.Core.Analysis;
+using StockAnalyzer.Core.Tests.Common;
 using Xunit;
 
 namespace StockAnalyzer.Core.Tests.Analysis;
@@ -279,23 +281,32 @@ public class PolarCoordinateDecompositionEngineTests
         _ = PolarCoordinateDecompositionEngine.Decompose(hilbert);
 
         // Self-calibrate against the true size of one PolarSampleResult[n] (the struct is stored
-        // inline in the array; PolarSampleResult is a readonly record struct).
-        long beforeReference = GC.GetAllocatedBytesForCurrentThread();
-        var reference = new PolarSampleResult[hilbert.Count];
-        long arrayOnlyBytes = GC.GetAllocatedBytesForCurrentThread() - beforeReference;
-        GC.KeepAlive(reference);
-
-        long beforeDecompose = GC.GetAllocatedBytesForCurrentThread();
-        var result = PolarCoordinateDecompositionEngine.Decompose(hilbert);
-        long decomposeBytes = GC.GetAllocatedBytesForCurrentThread() - beforeDecompose;
-        GC.KeepAlive(result);
+        // inline in the array; PolarSampleResult is a readonly record struct) using minimum of samples.
+        long arrayOnlyBytes = AllocationProbe.Minimum(() =>
+        {
+            var reference = new PolarSampleResult[hilbert.Count];
+            GC.KeepAlive(reference);
+        });
 
         // The engine allocates the PolarSampleResult[n] plus the small PolarDecompositionResult
-        // record; the per-bar loop does no boxing / List / LINQ. Allow a fixed 4 KB slack for the
-        // record object and runtime noise, but nothing that scales with the 4000-bar length.
+        // record; the per-bar loop does no boxing / List / LINQ. Take the minimum reading across
+        // several short windows to isolate true algorithm allocation from parallel GC noise
+        // per CODE_REVIEW_GUIDELINES.md §3.
+        const int WindowCount = 20;
+        var windowReadings = new long[WindowCount];
+        for (int window = 0; window < WindowCount; window++)
+        {
+            long beforeDecompose = GC.GetAllocatedBytesForCurrentThread();
+            var result = PolarCoordinateDecompositionEngine.Decompose(hilbert);
+            long decomposeBytes = GC.GetAllocatedBytesForCurrentThread() - beforeDecompose;
+            GC.KeepAlive(result);
+            windowReadings[window] = decomposeBytes - arrayOnlyBytes;
+        }
+
+        long minAlloc = windowReadings.Min();
         Assert.True(
-            decomposeBytes <= arrayOnlyBytes + 4096,
-            $"per-bar allocation detected: decompose={decomposeBytes} bytes, array-only={arrayOnlyBytes} bytes");
+            minAlloc <= 4096,
+            $"per-bar allocation detected: minimum net allocation of {WindowCount} windows was {minAlloc} bytes (expected <= 4096). Readings: {string.Join(", ", windowReadings)}");
     }
 
     [Fact]

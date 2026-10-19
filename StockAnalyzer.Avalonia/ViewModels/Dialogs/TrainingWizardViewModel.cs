@@ -829,8 +829,11 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
         OnPropertyChanged(nameof(HasSourceTree));
         OnPropertyChanged(nameof(SelectedSymbolSummary));
         StartTrainingCommand.NotifyCanExecuteChanged();
-        SchedulePeriod(immediate: false);
-        ScheduleSufficiency();
+        if (!first)
+        {
+            SchedulePeriod(immediate: false);
+            ScheduleSufficiency();
+        }
     }
 
     private bool _sourceTreeBuilt;
@@ -1091,7 +1094,7 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
         IEnumerable<string> symbols;
         if (_tickerStore is null)
         {
-            symbols = _allTickers;
+            symbols = Array.Empty<string>();
         }
         else
         {

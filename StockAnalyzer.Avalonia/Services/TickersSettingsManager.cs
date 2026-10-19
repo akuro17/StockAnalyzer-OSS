@@ -14,7 +14,7 @@ using StockAnalyzer.Core.Services.Tickers;
 namespace StockAnalyzer.Avalonia.Services
 {
     /// <summary>
-    /// Settings &gt; Tickers store (docs/sa_implementation_plan_TickersSettingsCategory). Defaults and the
+    /// Settings &gt; Tickers store (TickersSettingsCategory design). Defaults and the
     /// interval upper bound come from <see cref="TickersSettings"/> (appsettings.json "Tickers"); the values the
     /// user changed persist in Data/Config/user_tickers_settings.json. State is mutated on the UI thread only.
     /// </summary>

@@ -47,7 +47,8 @@ public sealed class TrainingWizardPeriodTests : IDisposable
             });
         var market = new Mock<IMarketDataProvider>();
         market.Setup(p => p.GetAvailableTickersAsync()).ReturnsAsync((tickers ?? new[] { "AAA" }).ToList());
-        return new TrainingWizardViewModel(orchestrator: orchestrator.Object, marketDataProvider: market.Object, periodAdvisor: advisor, clock: clock);
+        var store = StockAnalyzer.Avalonia.Tests.TestHelpers.FakeTickerStateStore.FromProfiles(Array.Empty<StockAnalyzer.Core.Models.Watchlist.WatchlistProfile>());
+        return new TrainingWizardViewModel(orchestrator: orchestrator.Object, marketDataProvider: market.Object, periodAdvisor: advisor, clock: clock, tickerStore: store);
     }
 
     private static async Task Until(Func<bool> condition)

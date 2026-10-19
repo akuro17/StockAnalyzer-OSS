@@ -26,7 +26,7 @@ public sealed class AttentionContractTests
         return JsonDocument.Parse(File.ReadAllText(Path.Combine(directory!.FullName, "Tests", "AttentionParity.json")));
     }
 
-    [Fact]
+    [ChildProcessFact]
     public async Task ArchitectureName_IsTheOneTheTrainerOffers()
     {
         var root = new DirectoryInfo(AppContext.BaseDirectory);

@@ -61,8 +61,8 @@ public interface IModelExplainabilityService
 public sealed class ModelExplainabilityService : IModelExplainabilityService
 {
     private readonly IModelGenerationRegistry _registry;
-    private readonly BoundedLruCache<string, ModelExplanation> _explanations;
-    private readonly BoundedLruCache<string, ModelCalibration> _calibrations;
+    private readonly BoundedLruCache<string, ModelExplanationLoad> _explanations;
+    private readonly BoundedLruCache<string, ModelCalibrationLoad> _calibrations;
     private readonly ConcurrentDictionary<string, Lazy<Task<ModelExplanationLoad>>> _explanationLoads = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, Lazy<Task<ModelCalibrationLoad>>> _calibrationLoads = new(StringComparer.Ordinal);
 
@@ -75,15 +75,15 @@ public sealed class ModelExplainabilityService : IModelExplainabilityService
     internal ModelExplainabilityService(IModelGenerationRegistry registry, int cacheCapacity)
     {
         _registry = registry;
-        _explanations = new BoundedLruCache<string, ModelExplanation>(cacheCapacity, StringComparer.Ordinal);
-        _calibrations = new BoundedLruCache<string, ModelCalibration>(cacheCapacity, StringComparer.Ordinal);
+        _explanations = new BoundedLruCache<string, ModelExplanationLoad>(cacheCapacity, StringComparer.Ordinal);
+        _calibrations = new BoundedLruCache<string, ModelCalibrationLoad>(cacheCapacity, StringComparer.Ordinal);
     }
 
     public Task<ModelExplanationLoad> LoadExplanationAsync(string modelId, CancellationToken ct = default)
     {
         if (ct.IsCancellationRequested) return Task.FromCanceled<ModelExplanationLoad>(ct);
         if (_explanations.TryGet(modelId, out var cached))
-            return Task.FromResult(new ModelExplanationLoad(ExplanationAvailability.Available, cached));
+            return Task.FromResult(cached);
         return SharedLoad(_explanationLoads, modelId, ReadExplanation).WaitAsync(ct);
     }
 
@@ -91,13 +91,13 @@ public sealed class ModelExplainabilityService : IModelExplainabilityService
     {
         if (ct.IsCancellationRequested) return Task.FromCanceled<ModelCalibrationLoad>(ct);
         if (_calibrations.TryGet(modelId, out var cached))
-            return Task.FromResult(Loaded(cached));
+            return Task.FromResult(cached);
         return SharedLoad(_calibrationLoads, modelId, ReadCalibration).WaitAsync(ct);
     }
 
     /// <summary>
     /// One in-flight load per generation: callers that arrive while it runs await the same task. The entry is removed when the load
-    /// ends (after a successful result is cached), so a failed or empty result is retried by the next request as before.
+    /// ends (after the load result is cached in the bounded LRU cache).
     /// </summary>
     private static Task<TLoad> SharedLoad<TLoad>(ConcurrentDictionary<string, Lazy<Task<TLoad>>> inFlight, string modelId,
         Func<string, TLoad> read)
@@ -114,21 +114,36 @@ public sealed class ModelExplainabilityService : IModelExplainabilityService
     {
         using var lease = _registry.Acquire(modelId);
         var manifest = _registry.GetManifest(modelId);
-        if (lease is null || manifest is null) return new ModelExplanationLoad(ExplanationAvailability.NotGenerated, null);
+        if (lease is null || manifest is null)
+        {
+            var notGen = new ModelExplanationLoad(ExplanationAvailability.NotGenerated, null);
+            _explanations.TryAdd(modelId, notGen);
+            return notGen;
+        }
+
         if (!File.Exists(ModelExplanation.SidecarPath(lease.ModelPath)))
-            return new ModelExplanationLoad(GenerationFailed(lease.ModelPath)
+        {
+            var notGenOrFailed = new ModelExplanationLoad(GenerationFailed(lease.ModelPath)
                 ? ExplanationAvailability.Failed : ExplanationAvailability.NotGenerated, null);
+            _explanations.TryAdd(modelId, notGenOrFailed);
+            return notGenOrFailed;
+        }
+
         try
         {
             using var session = new InferenceSession(lease.ModelPath);
             var explanation = ModelExplanation.Load(lease.ModelPath, session.ModelMetadata.CustomMetadataMap, manifest.ModelHash);
-            if (explanation is null) return new ModelExplanationLoad(ExplanationAvailability.NotGenerated, null);
-            _explanations.TryAdd(modelId, explanation);
-            return new ModelExplanationLoad(ExplanationAvailability.Available, explanation);
+            var result = explanation is null
+                ? new ModelExplanationLoad(ExplanationAvailability.NotGenerated, null)
+                : new ModelExplanationLoad(ExplanationAvailability.Available, explanation);
+            _explanations.TryAdd(modelId, result);
+            return result;
         }
         catch (Exception ex) when (ex is InvalidDataException or JsonException or IOException or OnnxRuntimeException)
         {
-            return new ModelExplanationLoad(ExplanationAvailability.Invalid, null);
+            var invalid = new ModelExplanationLoad(ExplanationAvailability.Invalid, null);
+            _explanations.TryAdd(modelId, invalid);
+            return invalid;
         }
     }
 
@@ -152,22 +167,32 @@ public sealed class ModelExplainabilityService : IModelExplainabilityService
     {
         using var lease = _registry.Acquire(modelId);
         var manifest = _registry.GetManifest(modelId);
-        if (lease is null || manifest is null) return new ModelCalibrationLoad(CalibrationAvailability.None);
+        if (lease is null || manifest is null)
+        {
+            var none = new ModelCalibrationLoad(CalibrationAvailability.None);
+            _calibrations.TryAdd(modelId, none);
+            return none;
+        }
+
         using var metrics = JsonDocument.Parse(File.ReadAllText(lease.ModelPath + ".metrics.json"));
         if (!manifest.RequiredSidecars.Any(s => s.Kind == ModelCalibrationContract.SidecarKind))
         {
             // Requested at training time but not produced: the run records why, so the panel can say so.
-            return metrics.RootElement.TryGetProperty("calibration", out var requested)
+            var load = metrics.RootElement.TryGetProperty("calibration", out var requested)
                 && requested.TryGetProperty("status", out var status) && status.ValueKind == JsonValueKind.String
                 && status.GetString() is { Length: > 0 } reason && reason != ModelCalibrationContract.AvailableStatus
                 ? new ModelCalibrationLoad(CalibrationAvailability.Unavailable, null, reason)
                 : new ModelCalibrationLoad(CalibrationAvailability.None);
+            _calibrations.TryAdd(modelId, load);
+            return load;
         }
+
         using var session = new InferenceSession(lease.ModelPath);
         var calibration = ModelCalibration.Load(lease.ModelPath, session.ModelMetadata.CustomMetadataMap, manifest.ModelHash,
             metrics.RootElement.GetProperty("data_revision").GetString() ?? "");
-        _calibrations.TryAdd(modelId, calibration);
-        return Loaded(calibration);
+        var loaded = Loaded(calibration);
+        _calibrations.TryAdd(modelId, loaded);
+        return loaded;
     }
 
     private static ModelCalibrationLoad Loaded(ModelCalibration calibration) => calibration.IsEnabled

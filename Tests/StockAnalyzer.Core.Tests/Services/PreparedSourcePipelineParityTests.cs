@@ -35,7 +35,7 @@ public sealed class PreparedSourcePipelineParityTests
     private const int SmaPeriod = 4;
     private const int EmaPeriod = 6;
 
-    [Theory]
+    [ChildProcessTheory]
     [InlineData(TrainingTimeframe.Weekly, 7)]
     [InlineData(TrainingTimeframe.Monthly, 30)]
     public async Task PreparedSource_ProducesCausalPythonAndInferenceParity(

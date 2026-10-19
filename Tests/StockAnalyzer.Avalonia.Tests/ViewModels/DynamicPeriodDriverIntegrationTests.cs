@@ -18,6 +18,7 @@ using Xunit;
 
 namespace StockAnalyzer.Avalonia.Tests.ViewModels;
 
+[Collection("MessengerSharedState")]
 public class DynamicPeriodDriverIntegrationTests
 {
     [Fact]

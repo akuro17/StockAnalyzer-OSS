@@ -44,6 +44,7 @@ public static class WatchlistConstants
     public const double DefaultColumnMinWidth = 30.0;
     public const double DefaultColumnMaxWidth = 1000.0;
 
-    // Tooltip Layout
+    // Cell & Tooltip Layout
+    public const double CellHorizontalMargin = 4.0;
     public const double TooltipContentMargin = 2.0;
 }

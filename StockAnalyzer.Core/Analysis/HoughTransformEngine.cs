@@ -532,6 +532,8 @@ public static class HoughTransformEngine
                 var l1 = lines[i];
                 var l2 = lines[j];
 
+                if (l1.IsVertical || l2.IsVertical) continue;
+
                 // Check angle/slope similarity (parallelism)
                 double slopeDiff = Math.Abs(l1.Slope - l2.Slope);
                 double maxAllowedDiff = Math.Max(0.05 * atr, 0.1 * Math.Max(Math.Abs(l1.Slope), Math.Abs(l2.Slope)));

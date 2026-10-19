@@ -66,6 +66,16 @@ internal sealed class BoundedLruCache<TKey, TValue> where TKey : notnull
         }
     }
 
+    /// <summary>Removes all entries from the cache.</summary>
+    public void Clear()
+    {
+        lock (_gate)
+        {
+            _index.Clear();
+            _recency.Clear();
+        }
+    }
+
     private void Touch(LinkedListNode<KeyValuePair<TKey, TValue>> node)
     {
         if (ReferenceEquals(_recency.First, node)) return;

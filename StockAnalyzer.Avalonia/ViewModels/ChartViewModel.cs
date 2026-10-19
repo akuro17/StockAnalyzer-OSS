@@ -2291,7 +2291,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
             // --- LIFECYCLE MANAGEMENT: PERSIST DRAWINGS PER SYMBOL+TIMEFRAME ON LOAD ---
             // When loading new data (symbol/timeframe change or refresh), the drawings belonging to
             // the previously-displayed symbol+timeframe are saved (Day/Week/Monthly are independent
-            // sets, per docs/sa_analysis_report), all in-memory contexts are cleared, and any
+            // sets, per drawing persistence design), all in-memory contexts are cleared, and any
             // drawings previously saved for the new symbol+timeframe are restored.
             if (_drawingRepository != null && _drawingsOwnerSymbol != null)
             {

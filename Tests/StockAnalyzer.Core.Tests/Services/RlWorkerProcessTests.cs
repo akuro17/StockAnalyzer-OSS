@@ -66,7 +66,7 @@ public sealed class RlWorkerProcessTests : IDisposable
 
     private string StderrLog => Path.Combine(_root, "rl_dependencies.stderr.log");
 
-    [Theory, MemberData(nameof(Targets))]
+    [ChildProcessTheory, MemberData(nameof(Targets))]
     public async Task ASuccessfulWorkerWritesItsResultAndLeavesAnEmptyDiagnosticsLog(string target)
     {
         await DriverOf(target)(RlFiles.DependenciesScript, WriteConfig(valid: true), _root, default);
@@ -75,7 +75,7 @@ public sealed class RlWorkerProcessTests : IDisposable
         Assert.Equal(0, new FileInfo(StderrLog).Length);
     }
 
-    [Theory, MemberData(nameof(Targets))]
+    [ChildProcessTheory, MemberData(nameof(Targets))]
     public async Task AFailingWorkerNamesItsExitCodeAndTheDiagnosticsFileAndKeepsTheText(string target)
     {
         var error = await Assert.ThrowsAsync<InvalidOperationException>(() => DriverOf(target)(RlFiles.DependenciesScript, WriteConfig(valid: false), _root, default));
@@ -84,7 +84,7 @@ public sealed class RlWorkerProcessTests : IDisposable
         Assert.False(File.Exists(Path.Combine(_root, RlFiles.Dependencies)));
     }
 
-    [Theory, MemberData(nameof(Targets))]
+    [ChildProcessTheory, MemberData(nameof(Targets))]
     public async Task ACancelledTokenStopsBeforeAnyProcessStarts(string target)
     {
         using var cancelled = new CancellationTokenSource(); cancelled.Cancel();
@@ -92,7 +92,7 @@ public sealed class RlWorkerProcessTests : IDisposable
         Assert.False(File.Exists(Path.Combine(_root, RlFiles.Dependencies)));
     }
 
-    [Theory, MemberData(nameof(Targets))]
+    [ChildProcessTheory, MemberData(nameof(Targets))]
     public async Task CancellingWhileTheWorkerRunsClosesItsInputAndWaitsForItToLeave(string target)
     {
         // The capture script does not read its input, so it finishes within the grace period; the pump reports the cancellation only after the worker is gone.
@@ -130,7 +130,7 @@ public sealed class RlWorkerProcessTests : IDisposable
 
     private string Log => Path.Combine(_root, "pump.stderr.log");
 
-    [Fact]
+    [ChildProcessFact]
     public async Task EveryFrameIsAnsweredInOrderAndTheAnswerReachesTheWorker()
     {
         var seen = new List<int>();
@@ -141,14 +141,14 @@ public sealed class RlWorkerProcessTests : IDisposable
         Assert.Equal(new[] { "reply {\"echo\":1}", "reply {\"echo\":2}", "reply {\"echo\":3}" }, replies);
     }
 
-    [Fact]
+    [ChildProcessFact]
     public async Task ProtocolOutputWithoutAHandlerIsRejected()
     {
         var error = await Assert.ThrowsAsync<InvalidDataException>(() => RlWorkerProcess.PumpAsync(Python("print('{}',flush=True)"), Log, null, null, null, default));
         Assert.Equal("Source worker wrote unexpected protocol output.", error.Message);
     }
 
-    [Fact]
+    [ChildProcessFact]
     public async Task AnAnswerAtTheFrameBoundIsRejectedBeforeItIsSent()
     {
         var error = await Assert.ThrowsAsync<InvalidDataException>(() => RlWorkerProcess.PumpAsync(Python("print('{}',flush=True)"), Log,
@@ -156,7 +156,7 @@ public sealed class RlWorkerProcessTests : IDisposable
         Assert.Equal("RL response exceeds frame bound.", error.Message);
     }
 
-    [Fact]
+    [ChildProcessFact]
     public async Task TheHooksRunInOrderAroundTheStartAndTheProcessIdIsLive()
     {
         var order = new List<string>(); bool alive = false;
@@ -166,7 +166,7 @@ public sealed class RlWorkerProcessTests : IDisposable
         Assert.True(alive);
     }
 
-    [Fact]
+    [ChildProcessFact]
     public async Task AFailingBeforeStartHookPreventsTheProcessFromStarting()
     {
         bool started = false;
@@ -176,7 +176,7 @@ public sealed class RlWorkerProcessTests : IDisposable
         Assert.False(File.Exists(Path.Combine(_root, "ran.txt")));
     }
 
-    [Fact]
+    [ChildProcessFact]
     public async Task AWorkerThatIgnoresItsClosedInputIsKilledAfterTheGracePeriodAndIsGone()
     {
         int pid = 0; using var cts = new CancellationTokenSource();

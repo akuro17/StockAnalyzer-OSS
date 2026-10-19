@@ -69,9 +69,14 @@ public sealed class TrainingWizardManifestTests
                 logStarted = true;
                 return pendingLog.Task;
             });
+        var tickerStore = new Mock<StockAnalyzer.Avalonia.Services.ITickerStateStore>();
+        tickerStore.Setup(s => s.Groups).Returns(new System.Collections.ObjectModel.ObservableCollection<StockAnalyzer.Avalonia.ViewModels.TickerList.TickerGroupNode>
+        {
+            new StockAnalyzer.Avalonia.ViewModels.TickerList.AllTickersNode("All"),
+        });
         using var wizard = new TrainingWizardViewModel(
             orchestrator: orchestrator.Object, experimentLogService: log.Object,
-            marketDataProvider: market.Object);
+            marketDataProvider: market.Object, tickerStore: tickerStore.Object);
         wizard.Horizon = 1;
         wizard.SelectedTimeframe = TrainingTimeframe.Weekly;
         wizard.SourceManifestPath = "manifest.json";

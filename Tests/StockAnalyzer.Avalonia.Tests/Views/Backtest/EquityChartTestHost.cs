@@ -8,6 +8,7 @@ using Avalonia.Input;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using StockAnalyzer.Avalonia.Common;
+using StockAnalyzer.Avalonia.Tests.TestHelpers;
 using StockAnalyzer.Avalonia.ViewModels.Backtest;
 using StockAnalyzer.Avalonia.Views.Backtest;
 using StockAnalyzer.Core.Models.Backtest.Engine;
@@ -51,6 +52,7 @@ internal static class EquityChartTestHost
         };
         var window = new Window { Width = 500, Height = 300, Content = control };
         window.Show();
+        HeadlessWindowInput.WaitUntilHittable(window, InsidePlot);
         Settle();
         return (window, control);
     }

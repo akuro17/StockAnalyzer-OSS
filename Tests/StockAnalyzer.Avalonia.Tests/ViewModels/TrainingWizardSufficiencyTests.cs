@@ -61,8 +61,9 @@ public sealed class TrainingWizardSufficiencyTests : IDisposable
     {
         var market = new Mock<IMarketDataProvider>();
         market.Setup(p => p.GetAvailableTickersAsync()).ReturnsAsync((tickers ?? new[] { "AAA" }).ToList());
+        var store = StockAnalyzer.Avalonia.Tests.TestHelpers.FakeTickerStateStore.FromProfiles(Array.Empty<StockAnalyzer.Core.Models.Watchlist.WatchlistProfile>());
         return new TrainingWizardViewModel(orchestrator: Mock.Of<ITrainingOrchestrator>(), marketDataProvider: market.Object, periodAdvisor: advisor,
-            clock: TimeProvider.System, resourceSettings: settings);
+            clock: TimeProvider.System, resourceSettings: settings, tickerStore: store);
     }
 
     private static async Task Until(Func<bool> condition, string what = "the condition")

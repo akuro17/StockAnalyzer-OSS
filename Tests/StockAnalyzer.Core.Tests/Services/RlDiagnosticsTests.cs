@@ -14,7 +14,7 @@ namespace StockAnalyzer.Core.Tests.Services;
 [Collection("ChildProcess")]
 public sealed class RlDiagnosticsTests
 {
-    [Fact]
+    [ChildProcessFact]
     public async Task PinnedPpoGuardPreservesUpdatesAndStopsInvalidArithmetic()
     {
         var root = new DirectoryInfo(AppContext.BaseDirectory);

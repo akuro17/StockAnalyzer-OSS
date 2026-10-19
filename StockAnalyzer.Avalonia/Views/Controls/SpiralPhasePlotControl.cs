@@ -54,7 +54,6 @@ public sealed class SpiralPhasePlotControl : Control
     private readonly SKPaint _markerPaint = new() { IsAntialias = true, Style = SKPaintStyle.Fill };
     private readonly SKPaint _labelPaint = new() { IsAntialias = true, Style = SKPaintStyle.Fill, TextSize = 11f };
     private readonly SKPathEffect _dashEffect = SKPathEffect.CreateDash(new[] { 3f, 3f }, 0f);
-    private readonly SpiralPhaseDrawOperation _operation;
     private SpiralAnalysisResult? _layoutResult;
     private bool _layoutIncludesModelRange;
     private decimal? _layoutPriceStep;
@@ -73,7 +72,6 @@ public sealed class SpiralPhasePlotControl : Control
 
     public SpiralPhasePlotControl()
     {
-        _operation = new SpiralPhaseDrawOperation(this);
     }
 
     public SpiralAnalysisResult? Result
@@ -122,11 +120,22 @@ public sealed class SpiralPhasePlotControl : Control
             _layoutDisplayBaseLabel = displayBaseLabel;
         }
 
-        _operation.Update(new Rect(Bounds.Size), result, _layout, GridOpacityPercent ?? 60u, GridDashed);
-        context.Custom(_operation);
+        global::StockAnalyzer.Avalonia.App? app = global::StockAnalyzer.Avalonia.App.Current;
+        ThemeColors theme = app?.Services?.GetService<IThemeManager>()?.CurrentTheme ?? ThemeColors.Dark;
+        uint opacityPercent = GridOpacityPercent ?? 60u;
+        bool dashed = GridDashed;
+
+        context.Custom(new SpiralPhaseDrawOperation(
+            this,
+            new Rect(Bounds.Size),
+            result,
+            _layout,
+            opacityPercent,
+            dashed,
+            theme));
     }
 
-    private void RenderSkia(SKCanvas canvas, Rect bounds, SpiralAnalysisResult result, SpiralPhasePlotLayout layout, uint opacityPercent, bool dashed)
+    private void RenderSkia(SKCanvas canvas, Rect bounds, SpiralAnalysisResult result, SpiralPhasePlotLayout layout, uint opacityPercent, bool dashed, ThemeColors theme)
     {
         if (result.Samples.Count == 0 || bounds.Width <= 0d || bounds.Height <= 0d) return;
 
@@ -135,8 +144,6 @@ public sealed class SpiralPhasePlotControl : Control
         float centerX = (float)(bounds.X + (bounds.Width / 2d));
         float centerY = (float)(bounds.Y + (bounds.Height / 2d));
         double scale = (Math.Min(bounds.Width, bounds.Height) * 0.45d) / layout.RadialSpan;
-        global::StockAnalyzer.Avalonia.App? app = global::StockAnalyzer.Avalonia.App.Current;
-        ThemeColors theme = app?.Services?.GetService<IThemeManager>()?.CurrentTheme ?? ThemeColors.Dark;
         DrawReferenceFrame(canvas, layout, centerX, centerY, scale, theme, opacityPercent, dashed);
         DrawActualSeries(canvas, result, centerX, centerY, scale, layout.DisplayBaseRadius, theme);
         DrawSeries(canvas, result, centerX, centerY, scale, layout.DisplayBaseRadius, useModel: true, SKColors.Orange);
@@ -389,35 +396,36 @@ public sealed class SpiralPhasePlotControl : Control
         return true;
     }
 
-    private sealed class SpiralPhaseDrawOperation : ICustomDrawOperation
+    private sealed class SpiralPhaseDrawOperation : SkiaLeaseDrawOperation
     {
         private readonly SpiralPhasePlotControl _owner;
-        public SpiralPhaseDrawOperation(SpiralPhasePlotControl owner) => _owner = owner;
-        public Rect Bounds { get; set; }
-        private SpiralAnalysisResult? Result { get; set; }
-        private SpiralPhasePlotLayout Layout { get; set; }
-        private uint OpacityPercent { get; set; }
-        private bool Dashed { get; set; }
-        public void Update(Rect bounds, SpiralAnalysisResult result, SpiralPhasePlotLayout layout, uint opacityPercent, bool dashed)
+        private readonly SpiralAnalysisResult _result;
+        private readonly SpiralPhasePlotLayout _layout;
+        private readonly uint _opacityPercent;
+        private readonly bool _dashed;
+        private readonly ThemeColors _theme;
+
+        public SpiralPhaseDrawOperation(
+            SpiralPhasePlotControl owner,
+            Rect bounds,
+            SpiralAnalysisResult result,
+            SpiralPhasePlotLayout layout,
+            uint opacityPercent,
+            bool dashed,
+            ThemeColors theme)
+            : base(bounds)
         {
-            Bounds = bounds;
-            Result = result;
-            Layout = layout;
-            OpacityPercent = opacityPercent;
-            Dashed = dashed;
+            _owner = owner;
+            _result = result;
+            _layout = layout;
+            _opacityPercent = opacityPercent;
+            _dashed = dashed;
+            _theme = theme;
         }
-        public void Dispose() { }
-        public bool Equals(ICustomDrawOperation? other) => ReferenceEquals(this, other);
-        public override bool Equals(object? obj) => ReferenceEquals(this, obj);
-        public override int GetHashCode() => System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(this);
-        public bool HitTest(global::Avalonia.Point p) => Bounds.Contains(p);
-        public void Render(ImmediateDrawingContext context)
+
+        protected override void RenderCore(SKCanvas canvas, Rect bounds)
         {
-            if (context.TryGetFeature(typeof(ISkiaSharpApiLeaseFeature)) is not ISkiaSharpApiLeaseFeature feature) return;
-            SpiralAnalysisResult? result = Result;
-            if (result == null) return;
-            using var lease = feature.Lease();
-            _owner.RenderSkia(lease.SkCanvas, Bounds, result, Layout, OpacityPercent, Dashed);
+            _owner.RenderSkia(canvas, bounds, _result, _layout, _opacityPercent, _dashed, _theme);
         }
     }
 }
