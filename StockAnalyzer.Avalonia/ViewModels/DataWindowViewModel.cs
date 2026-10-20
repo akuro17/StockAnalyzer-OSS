@@ -131,6 +131,7 @@ public partial class DataWindowViewModel : ViewModelBase,
 
     private System.Collections.Generic.IReadOnlyList<StockAnalyzer.Core.Models.CoreCandleData>? _cachedCandlesRef = null;
     private int _cachedLineCount = -1;
+    private decimal _cachedMinMove = -1m;
     private ImmutableArray<StockAnalyzer.Core.Models.ThreeLineBreakBlock> _cachedBlocks = default;
     private readonly IndicatorColor[] _comparisonColors;
 
@@ -1680,11 +1681,13 @@ public partial class DataWindowViewModel : ViewModelBase,
             if (hoveredCandle != null ? globalIndex >= 0 : candles.Count > 0)
             {
                 int lineCount = _chartViewModel.ThreeLineBreakLineCount;
-                if (!ReferenceEquals(candles, _cachedCandlesRef) || lineCount != _cachedLineCount || _cachedBlocks.IsDefault)
+                decimal minMove = _chartViewModel.ThreeLineBreakMinMove;
+                if (!ReferenceEquals(candles, _cachedCandlesRef) || lineCount != _cachedLineCount || minMove != _cachedMinMove || _cachedBlocks.IsDefault)
                 {
-                    _cachedBlocks = StockAnalyzer.Core.Utilities.ThreeLineBreakConverter.Convert(candles, lineCount);
+                    _cachedBlocks = StockAnalyzer.Core.Utilities.ThreeLineBreakConverter.Convert(candles, lineCount, StockAnalyzer.Core.ChartConstants.ThreeLineBreakTrendThreshold, minMove);
                     _cachedCandlesRef = candles;
                     _cachedLineCount = lineCount;
+                    _cachedMinMove = minMove;
                 }
                 
                 var blocks = _cachedBlocks;

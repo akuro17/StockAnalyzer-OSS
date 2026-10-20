@@ -143,7 +143,7 @@ def run_sweep(args: argparse.Namespace) -> List[Dict[str, object]]:
             rows.append(row)
 
     if rows:
-        (out_dir / "summary.json").write_text(json.dumps(rows, indent=2), encoding="utf-8")
+        (out_dir / "summary.json").write_bytes((json.dumps(rows, indent=2) + "\n").encode("utf-8"))
         with (out_dir / "summary.csv").open("w", newline="", encoding="utf-8") as handle:
             writer = csv.DictWriter(handle, fieldnames=["feature_mode", "window", *_METRIC_COLUMNS])
             writer.writeheader()

@@ -35,6 +35,7 @@ public class FibonacciFanObject : IChartObject, IDrawingCalculatedValuesProvider
     public bool IsLocked { get; set; } = false;
     public int PanelIndex { get; set; } = -1;
     public int ZIndex { get; set; } = 0;
+    public int Priority { get; set; } = 0;
     public int AnchorPointIndex { get; set; } = 0;
 
     private readonly double[] _ratios = { 0.382, 0.5, 0.618, 1.0 }; 

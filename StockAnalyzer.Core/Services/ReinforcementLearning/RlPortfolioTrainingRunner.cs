@@ -80,7 +80,7 @@ public sealed class RlPortfolioTrainingRunner
             : JsonSerializer.Serialize(new { run_sha256 = ContentHash.OfText(runIdentity), base_model_sha256 = baseRun.ModelSha256, freeze = freezeName,
                 transfer_contract_hash = RlPortfolioTransferContract.ContractHash }, RlFiles.Json));
         using var lease = _gate.AcquireIdentity(identity);
-        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(Math.Min(limits.MaxRunDurationSeconds, RlContract.JobDeadlineMinutes * 60)));
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(Math.Min(limits.MaxRunDurationSeconds, RlContract.JobDeadlineSeconds)));
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token);
         var ct = linked.Token;
 

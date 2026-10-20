@@ -380,7 +380,7 @@ public sealed class ChartDataSnapshot
                 
                 int targetCount = (count > 0) ? count : displayCount;
                 
-                var slicedResult = new SlicedIndicatorResult(kvp.Value, startIndex, targetCount, totalCount);
+                var slicedResult = new SlicedIndicatorResult(kvp.Value, startIndex, targetCount);
                 indResults[kvp.Key] = slicedResult;
                 indValues[kvp.Key] = slicedResult.MainValues;
 
@@ -677,7 +677,7 @@ public sealed class ChartDataSnapshot
                 // Fix for Heikin Ashi path: Use VisibleCandleCount
                 int targetCount = (count > 0) ? count : displayCount;
 
-                var slicedResult = new SlicedIndicatorResult(kvp.Value, startIndex, targetCount, totalCount);
+                var slicedResult = new SlicedIndicatorResult(kvp.Value, startIndex, targetCount);
                 indResults[kvp.Key] = slicedResult;
                 indValues[kvp.Key] = slicedResult.MainValues;
 

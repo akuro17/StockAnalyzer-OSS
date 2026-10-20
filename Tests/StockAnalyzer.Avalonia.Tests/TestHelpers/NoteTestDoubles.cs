@@ -131,7 +131,7 @@ public class FakeDialogService : IDialogService
 
 /// <summary>Minimal INotesSettingsManager test double: holds the "Read more" thresholds in memory
 /// (defaulting to production's 150/5) without touching the real user_notes_settings.json file.
-/// Every setter raises PropertyChanged (sa_minimal_fix, Notes専用Settings ReadMoreThreshold fix
+/// Every setter raises PropertyChanged (sa_minimal_fix, Notes-dedicated Settings ReadMoreThreshold fix
 /// request #1) - matching NotesSettingsManager's own contract - since NoteTimelineViewModel now
 /// subscribes to this event to auto-refresh an already-displayed timeline when a Settings &gt; Notes
 /// value changes; a silent setter here would let that regression slip back in unnoticed.</summary>

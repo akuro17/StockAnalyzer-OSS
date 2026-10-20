@@ -890,6 +890,7 @@ public partial class DrawingObjectsViewModel : ViewModelBase, IDisposable
         //
         // Apply live-commits the dialog's current values without closing it, so the chart must be
         // redrawn and persisted immediately -- the same steps taken below for a "Changed" close.
+        int? oldFutureSteps = (editTarget as StockAnalyzer.Avalonia.Drawing.Objects.DtwProjectionObject)?.FutureSteps;
         var result = await dialogService.ShowDrawingSettingsDialogAsync(editTarget, onApply: obj =>
         {
             if (_chartViewModel?.Candles != null)
@@ -934,6 +935,15 @@ public partial class DrawingObjectsViewModel : ViewModelBase, IDisposable
             {
                 Drawing.DeferredComputationRecalculator.TryRecalculate(editTarget, _chartViewModel.Candles);
             }
+
+            if (editTarget is StockAnalyzer.Avalonia.Drawing.Objects.DtwProjectionObject dtwObj)
+            {
+                if (oldFutureSteps.HasValue && oldFutureSteps.Value != dtwObj.FutureSteps)
+                {
+                    _chartViewModel?.OnDrawingFinished(dtwObj);
+                }
+            }
+
             ObjectManager?.NotifyObjectChanged(editTarget.Id);
             if (_chartViewModel?.DrawingEditCoordinator == null)
             {

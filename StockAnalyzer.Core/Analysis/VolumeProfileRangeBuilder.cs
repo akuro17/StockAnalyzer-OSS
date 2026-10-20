@@ -39,15 +39,4 @@ public static class VolumeProfileRangeBuilder
         int startIndex = visibleEnd - count;
         destination.Add(new VolumeProfileRange(startIndex, count, false));
     }
-
-    public static void Build(
-        IReadOnlyList<CoreCandleData> candles,
-        int visibleStartIndex,
-        int visibleCount,
-        TimeframeType timeframe,
-        int period,
-        List<VolumeProfileRange> destination)
-    {
-        Build(candles, visibleStartIndex, visibleCount, period, destination);
-    }
 }

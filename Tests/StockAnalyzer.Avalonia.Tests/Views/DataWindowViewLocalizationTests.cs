@@ -17,6 +17,7 @@ namespace StockAnalyzer.Avalonia.Tests.Views;
 public class DataWindowViewLocalizationTests
 {
     private static readonly Regex LiteralTextBlockText = new(@"<TextBlock\b[^>]*?\bText=""(?<text>[^""{][^""]*)""", RegexOptions.Compiled | RegexOptions.Singleline);
+    private static readonly Regex LiteralMenuItemHeader = new(@"<MenuItem\b[^>]*?\bHeader=""(?<text>[^""{][^""]*)""", RegexOptions.Compiled | RegexOptions.Singleline);
     private static readonly Regex LocalizeKey = new(@"\{l:Localize\s+(?<key>[A-Za-z0-9_.]+)\s*\}", RegexOptions.Compiled);
 
     private static string AvaloniaPath(params string[] parts) => Path.Combine(new[] { TestRepositoryRoot.Find(), "StockAnalyzer.Avalonia" }.Concat(parts).ToArray());
@@ -38,6 +39,14 @@ public class DataWindowViewLocalizationTests
         var literals = LiteralTextBlockText.Matches(ViewSource()).Select(m => m.Groups["text"].Value).ToList();
 
         Assert.True(literals.Count == 0, "TextBlock elements with a literal Text: " + string.Join(", ", literals.Select(t => $"\"{t}\"")));
+    }
+
+    [Fact]
+    public void EveryMenuItemTakesItsHeaderFromABindingOrALocalizationKey()
+    {
+        var literals = LiteralMenuItemHeader.Matches(ViewSource()).Select(m => m.Groups["text"].Value).ToList();
+
+        Assert.True(literals.Count == 0, "MenuItem elements with a literal Header: " + string.Join(", ", literals.Select(t => $"\"{t}\"")));
     }
 
     [Theory]

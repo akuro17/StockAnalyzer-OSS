@@ -167,6 +167,8 @@ public class DrawingPhase1RemediationTests
         public bool IsVisible { get; set; } = true;
         public bool IsLocked { get; set; } = false;
         public int ZIndex { get; set; } = 0;
+        public int Priority { get; set; } = 0;
+        public int AnchorPointIndex { get; set; } = 0;
         public int PanelIndex { get; set; } = -1;
         public SkiaSharp.SKColor SkiaColor => SkiaSharp.SKColors.Black;
 

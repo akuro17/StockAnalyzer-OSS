@@ -297,14 +297,7 @@ public sealed class ComparisonChartRenderer : IChartRenderer, IDisposable, IAxis
 
             string labelText = config.ShowTickerInsteadOfValue
                 ? symbol
-                : config.ComparisonMode switch
-                {
-                    ComparisonMode.Performance => $"{lastValue.Value.ToString(ChartConstants.DefaultRelativePerformanceFormat)}{ChartConstants.DefaultRelativePerformanceSuffix}",
-                    ComparisonMode.Ratio => lastValue.Value.ToString(ChartConstants.DefaultRatioFormat),
-                    ComparisonMode.ZScore => $"{ChartConstants.ZScorePrefix}{lastValue.Value.ToString(ChartConstants.DefaultZScoreFormat)}",
-                    ComparisonMode.Spread => lastValue.Value.ToString(ChartConstants.DefaultSpreadFormat),
-                    _ => lastValue.Value.ToString("F2")
-                };
+                : DisplayFormat.ComparisonValue(config.ComparisonMode, lastValue.Value);
 
 
             // Step 6: Clip the Y-position value, but keep the original label text

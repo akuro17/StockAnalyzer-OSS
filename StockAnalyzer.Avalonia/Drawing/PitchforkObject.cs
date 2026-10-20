@@ -38,6 +38,7 @@ public class PitchforkObject : IChartObject, IDrawingCalculatedValuesProvider
     public bool IsLocked { get; set; } = false;
     public int PanelIndex { get; set; } = -1;
     public int ZIndex { get; set; } = 0;
+    public int Priority { get; set; } = 0;
     public int AnchorPointIndex { get; set; } = 0;
 
     // Ratios for parallel lines (Standard Pitchfork often uses 1.0, maybe 0.5, 1.5, etc.)

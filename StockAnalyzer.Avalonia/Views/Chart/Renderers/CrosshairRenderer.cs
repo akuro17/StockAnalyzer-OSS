@@ -304,14 +304,7 @@ public sealed class CrosshairRenderer : IDisposable
             {
                 _lastCompValue = price;
                 _lastCompMode = config.ComparisonMode;
-                _lastCompValueText = config.ComparisonMode switch
-                {
-                    ComparisonMode.Performance => price.ToString(ChartConstants.DefaultRelativePerformanceFormat) + ChartConstants.DefaultRelativePerformanceSuffix,
-                    ComparisonMode.Ratio => price.ToString(ChartConstants.DefaultRatioFormat),
-                    ComparisonMode.ZScore => $"{ChartConstants.ZScorePrefix}{price.ToString(ChartConstants.DefaultZScoreFormat)}",
-                    ComparisonMode.Spread => price.ToString(ChartConstants.DefaultSpreadFormat),
-                    _ => price.ToString("F2")
-                };
+                _lastCompValueText = DisplayFormat.ComparisonValue(config.ComparisonMode, price);
             }
             float labelX = (float)chartArea.Right + 2f;
             DrawLabel(canvas, _lastCompValueText, labelX, mouseY - LabelHeight / 2, true, config);

@@ -32,6 +32,7 @@ public class SsaMultiComponentObject : IChartObject, IDrawingCalculatedValuesPro
     public bool IsLocked { get; set; } = false;
     public int PanelIndex { get; set; } = -1;
     public int ZIndex { get; set; } = 0;
+    public int Priority { get; set; } = 0;
     public int AnchorPointIndex { get; set; } = 0;
 
     public int FillOpacity { get; set; } = 10;

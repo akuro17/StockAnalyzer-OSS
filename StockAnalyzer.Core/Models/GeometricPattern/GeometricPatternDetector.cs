@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
 using StockAnalyzer.Core.Models.MarketStructure;
@@ -59,23 +60,95 @@ public static class GeometricPatternDetector
                 DetectedFormation? bestFormation = null;
                 int bestEndIndex = -1;
 
-                for (int length = pivots.Count - currentIndex; length >= ChartConstants.GeometricMinPivotCount; length--)
-                {
-                    var subset = pivots.Skip(currentIndex).Take(length).ToList();
-                    var highs = subset.Where(p => p.IsHigh).ToList();
-                    var lows = subset.Where(p => !p.IsHigh).ToList();
+                int maxLen = pivots.Count - currentIndex;
+                var highs = new List<PivotPoint>(maxLen);
+                var lows = new List<PivotPoint>(maxLen);
+                var highsStats = new RegressionStats();
+                var lowsStats = new RegressionStats();
 
+                for (int i = currentIndex; i < currentIndex + maxLen; i++)
+                {
+                    var p = pivots[i];
+                    if (p.IsHigh)
+                    {
+                        highs.Add(p);
+                        highsStats.Add(p.Index, (double)p.Price);
+                    }
+                    else
+                    {
+                        lows.Add(p);
+                        lowsStats.Add(p.Index, (double)p.Price);
+                    }
+                }
+
+                (double Slope, double Intercept, double RSquared)? cachedUpperFit = null;
+                (double Slope, double Intercept, double RSquared)? cachedLowerFit = null;
+
+                for (int length = maxLen; length >= ChartConstants.GeometricMinPivotCount; length--)
+                {
                     if (highs.Count >= 2 && lows.Count >= 2)
                     {
-                        var formation = AnalyzeFormation(highs, lows, candles, useRobustFit, promoteFlagsAndPennants);
-                        if (formation != null)
+                        if (useRobustFit)
                         {
-                            if (formation.ConfidenceScore >= ChartConstants.GeometricMinRSquared)
+                            var formation = AnalyzeFormation(highs, lows, candles, useRobustFit, promoteFlagsAndPennants);
+                            if (formation != null && formation.ConfidenceScore >= ChartConstants.GeometricMinRSquared)
                             {
                                 bestFormation = formation;
                                 bestEndIndex = currentIndex + length - 1;
-                                break; 
+                                break;
                             }
+                        }
+                        else
+                        {
+                            double olsUpperRSquared = highsStats.RSquared;
+                            double olsLowerRSquared = lowsStats.RSquared;
+
+                            double effectiveLowerR2 = cachedLowerFit?.RSquared ?? olsLowerRSquared;
+
+                            // Mathematical bound (Gauss-Markov): Theil-Sen R^2 <= OLS R^2 always.
+                            // Prune if (upperBound_H + knownOrBound_L) / 2 < threshold.
+                            if ((olsUpperRSquared + effectiveLowerR2) / 2.0 >= ChartConstants.GeometricMinRSquared - 1e-4)
+                            {
+                                cachedUpperFit ??= CalculateTheilSen(highs);
+
+                                // Now upper fit is exact. Check if lower fit can possibly reach threshold.
+                                if ((cachedUpperFit.Value.RSquared + olsLowerRSquared) / 2.0 >= ChartConstants.GeometricMinRSquared - 1e-4)
+                                {
+                                    cachedLowerFit ??= CalculateTheilSen(lows);
+
+                                    double avgRSquared = (cachedUpperFit.Value.RSquared + cachedLowerFit.Value.RSquared) / 2.0;
+                                    if (avgRSquared >= ChartConstants.GeometricMinRSquared)
+                                    {
+                                        var formation = AnalyzeFormation(
+                                            highs, lows, candles, useRobustFit: false, promoteFlagsAndPennants,
+                                            cachedUpperFit, cachedLowerFit);
+
+                                        if (formation != null && formation.ConfidenceScore >= ChartConstants.GeometricMinRSquared)
+                                        {
+                                            bestFormation = formation;
+                                            bestEndIndex = currentIndex + length - 1;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if (length > ChartConstants.GeometricMinPivotCount)
+                    {
+                        var removed = pivots[currentIndex + length - 1];
+                        if (removed.IsHigh)
+                        {
+                            highs.RemoveAt(highs.Count - 1);
+                            highsStats.Remove(removed.Index, (double)removed.Price);
+                            cachedUpperFit = null;
+                        }
+                        else
+                        {
+                            lows.RemoveAt(lows.Count - 1);
+                            lowsStats.Remove(removed.Index, (double)removed.Price);
+                            cachedLowerFit = null;
                         }
                     }
                 }
@@ -177,7 +250,9 @@ public static class GeometricPatternDetector
         IReadOnlyList<PivotPoint> lows,
         IReadOnlyList<CandleData> candles,
         bool useRobustFit = false,
-        bool promoteFlagsAndPennants = false)
+        bool promoteFlagsAndPennants = false,
+        (double Slope, double Intercept, double RSquared)? precomputedUpperFit = null,
+        (double Slope, double Intercept, double RSquared)? precomputedLowerFit = null)
     {
         if (highs.Count < 2 || lows.Count < 2)
             return null;
@@ -191,32 +266,55 @@ public static class GeometricPatternDetector
             return null;
         }
 
+        // Formation Process Validation (FR-60-7-01):
+        // Skip formations that do not span enough bars to be visually meaningful before expensive regression.
+        int span = endIndex - startIndex;
+        if (!PatternFormationValidator.ValidateMinBars(span, ChartConstants.FormationMinBarsGeometric))
+        {
+            return null;
+        }
+
         // Fit robust regression on highs and lows
         double upperSlope, upperIntercept, upperRSquared;
         double lowerSlope, lowerIntercept, lowerRSquared;
 
-        if (useRobustFit)
+        if (precomputedUpperFit.HasValue && precomputedLowerFit.HasValue)
+        {
+            (upperSlope, upperIntercept, upperRSquared) = precomputedUpperFit.Value;
+            (lowerSlope, lowerIntercept, lowerRSquared) = precomputedLowerFit.Value;
+        }
+        else if (useRobustFit)
         {
             (upperSlope, upperIntercept, upperRSquared) = CalculateRobustFit(highs, candles, startIndex, endIndex);
             (lowerSlope, lowerIntercept, lowerRSquared) = CalculateRobustFit(lows, candles, startIndex, endIndex);
         }
         else
         {
+            // Mathematical bound (Gauss-Markov): OLS R^2 is the theoretical maximum R^2 of ANY linear fit.
+            // Therefore, Theil-Sen R^2 <= OLS R^2 always.
+            // If (OLS_H + OLS_L) / 2 < minRSquared, (TheilSen_H + TheilSen_L) / 2 >= minRSquared is mathematically impossible.
+            // LinearRegression is O(N) single-pass while Theil-Sen is O(N^2 log N).
+            var (_, _, olsUpperRSquared) = LinearRegression(highs);
+            var (_, _, olsLowerRSquared) = LinearRegression(lows);
+            if ((olsUpperRSquared + olsLowerRSquared) / 2.0 < ChartConstants.GeometricMinRSquared - 1e-9)
+            {
+                return null;
+            }
+
             (upperSlope, upperIntercept, upperRSquared) = CalculateTheilSen(highs);
+            // Quick reject: avgRSquared requires (upperRSquared + lowerRSquared) / 2 >= minRSquared.
+            // Since lowerRSquared <= olsLowerRSquared, upperRSquared + olsLowerRSquared must be >= 2.0 * minRSquared.
+            if ((upperRSquared + olsLowerRSquared) / 2.0 < ChartConstants.GeometricMinRSquared - 1e-9)
+            {
+                return null;
+            }
+
             (lowerSlope, lowerIntercept, lowerRSquared) = CalculateTheilSen(lows);
         }
 
         // Require minimum fit quality
         double avgRSquared = (upperRSquared + lowerRSquared) / 2.0;
         if (avgRSquared < ChartConstants.GeometricMinRSquared)
-        {
-            return null;
-        }
-
-        // Formation Process Validation (FR-60-7-01):
-        // Skip formations that do not span enough bars to be visually meaningful.
-        int span = endIndex - startIndex;
-        if (!PatternFormationValidator.ValidateMinBars(span, ChartConstants.FormationMinBarsGeometric))
         {
             return null;
         }
@@ -256,24 +354,21 @@ public static class GeometricPatternDetector
             if (candleHigh > upperLinePrice + breakoutTolerance || candleLow < lowerLinePrice - breakoutTolerance)
             {
                 wickOutliers++;
+                if ((double)wickOutliers / totalCandles > 0.10)
+                {
+                    return null;
+                }
             }
 
             // Check if close price breaks resistance or support
             if (candleClose > upperLinePrice + breakoutTolerance || candleClose < lowerLinePrice - breakoutTolerance)
             {
                 closeOutliers++;
+                if ((double)closeOutliers / totalCandles > 0.05)
+                {
+                    return null;
+                }
             }
-        }
-
-        // Invalidate if too many outliers exist
-        if ((double)wickOutliers / totalCandles > 0.10)
-        {
-            return null;
-        }
-
-        if ((double)closeOutliers / totalCandles > 0.05)
-        {
-            return null; // Reject if closes frequently break the structure
         }
 
         // Scan forward for a definitive breakout
@@ -620,25 +715,19 @@ public static class GeometricPatternDetector
             return (0.0, sumY / n, 0.0);
         }
 
-        double slope = (n * sumXY - sumX * sumY) / denominator;
+        double numerator = n * sumXY - sumX * sumY;
+        double slope = numerator / denominator;
         double intercept = (sumY - slope * sumX) / n;
 
-        // R-squared calculation
-        double ssTot = sumY2 - (sumY * sumY) / n;
-        double ssRes = 0;
-        for (int i = 0; i < n; i++)
-        {
-            double predicted = slope * pivots[i].Index + intercept;
-            double residual = (double)pivots[i].Price - predicted;
-            ssRes += residual * residual;
-        }
-
-        double rSquared = ssTot > 0 ? 1.0 - ssRes / ssTot : 0.0;
+        // R-squared calculation: Single pass algebraic identity
+        // R^2 = Sxy^2 / (Sxx * Syy) = numerator^2 / (denominator * varY)
+        double varY = n * sumY2 - sumY * sumY;
+        double rSquared = (varY > 1e-10) ? Math.Clamp((numerator * numerator) / (denominator * varY), 0.0, 1.0) : 0.0;
 
         // Adjust intercept to be relative to the first pivot's index
         double adjustedIntercept = slope * pivots[0].Index + intercept;
 
-        return (slope, adjustedIntercept, Math.Max(0.0, rSquared));
+        return (slope, adjustedIntercept, rSquared);
     }
 
     /// <summary>
@@ -670,52 +759,80 @@ public static class GeometricPatternDetector
             return (0.0, fallbackPrice, fallbackPrice, 0.0, 0.0);
         }
 
-        var slopes = new List<double>();
-        for (int i = 0; i < n; i++)
+        int maxPairs = n * (n - 1) / 2;
+        double[] rented = ArrayPool<double>.Shared.Rent(maxPairs);
+        try
         {
-            for (int j = i + 1; j < n; j++)
+            int slopeCount = 0;
+            for (int i = 0; i < n; i++)
             {
-                int dx = pivots[j].Index - pivots[i].Index;
-                if (dx != 0)
+                int x1 = pivots[i].Index;
+                decimal p1 = pivots[i].Price;
+                for (int j = i + 1; j < n; j++)
                 {
-                    double dy = (double)(pivots[j].Price - pivots[i].Price);
-                    slopes.Add(dy / dx);
+                    int dx = pivots[j].Index - x1;
+                    if (dx != 0)
+                    {
+                        double dy = (double)(pivots[j].Price - p1);
+                        rented[slopeCount++] = dy / dx;
+                    }
+                }
+            }
+
+            if (slopeCount == 0)
+            {
+                double fallbackPrice = (double)pivots[0].Price;
+                return (0.0, fallbackPrice, fallbackPrice, 0.0, 0.0);
+            }
+
+            Array.Sort(rented, 0, slopeCount);
+            double medianSlope = rented[slopeCount / 2];
+
+            double[]? rentedIntercepts = null;
+            Span<double> intercepts = n <= 256
+                ? stackalloc double[n]
+                : (rentedIntercepts = ArrayPool<double>.Shared.Rent(n)).AsSpan(0, n);
+            try
+            {
+                double sumY = 0;
+                for (int i = 0; i < n; i++)
+                {
+                    double price = (double)pivots[i].Price;
+                    sumY += price;
+                    intercepts[i] = price - medianSlope * pivots[i].Index;
+                }
+                intercepts.Sort();
+                double medianGlobalIntercept = intercepts[n / 2];
+                double startIntercept = medianSlope * pivots[0].Index + medianGlobalIntercept;
+
+                double ssTot = 0, ssRes = 0;
+                double yMean = sumY / n;
+
+                for (int i = 0; i < n; i++)
+                {
+                    double predicted = medianSlope * pivots[i].Index + medianGlobalIntercept;
+                    double actual = (double)pivots[i].Price;
+
+                    ssTot += (actual - yMean) * (actual - yMean);
+                    ssRes += (actual - predicted) * (actual - predicted);
+                }
+
+                return (medianSlope, medianGlobalIntercept, startIntercept, ssTot, ssRes);
+            }
+            finally
+            {
+                if (rentedIntercepts != null)
+                {
+                    ArrayPool<double>.Shared.Return(rentedIntercepts);
                 }
             }
         }
-
-        if (slopes.Count == 0)
+        finally
         {
-            double fallbackPrice = (double)pivots[0].Price;
-            return (0.0, fallbackPrice, fallbackPrice, 0.0, 0.0);
+            ArrayPool<double>.Shared.Return(rented);
         }
-
-        slopes.Sort();
-        double medianSlope = slopes[slopes.Count / 2];
-
-        var intercepts = new List<double>();
-        for (int i = 0; i < n; i++)
-        {
-            intercepts.Add((double)pivots[i].Price - medianSlope * pivots[i].Index);
-        }
-        intercepts.Sort();
-        double medianGlobalIntercept = intercepts[intercepts.Count / 2];
-        double startIntercept = medianSlope * pivots[0].Index + medianGlobalIntercept;
-
-        double ssTot = 0, ssRes = 0;
-        double yMean = pivots.Average(p => (double)p.Price);
-
-        for (int i = 0; i < n; i++)
-        {
-            double predicted = medianSlope * pivots[i].Index + medianGlobalIntercept;
-            double actual = (double)pivots[i].Price;
-
-            ssTot += (actual - yMean) * (actual - yMean);
-            ssRes += (actual - predicted) * (actual - predicted);
-        }
-
-        return (medianSlope, medianGlobalIntercept, startIntercept, ssTot, ssRes);
     }
+
 
     /// <summary>
     /// Calculates Average True Range (ATR) over a specific range to normalize price scales.
@@ -817,6 +934,55 @@ public static class GeometricPatternDetector
 
         double rSquared = denom > 0 ? Math.Max(0.0, 1.0 - (ssRes / denom)) : 0.0;
         return (slope, startIntercept, rSquared);
+    }
+
+    /// <summary>
+    /// Tracks online running sums for ordinary least squares regression in O(1) time.
+    /// Provides mathematical upper-bound R^2 to prune futile non-linear or robust fit computations.
+    /// </summary>
+    internal struct RegressionStats
+    {
+        public int Count;
+        public double SumX;
+        public double SumY;
+        public double SumXY;
+        public double SumX2;
+        public double SumY2;
+
+        public void Add(int x, double y)
+        {
+            Count++;
+            SumX += x;
+            SumY += y;
+            SumXY += x * y;
+            SumX2 += x * x;
+            SumY2 += y * y;
+        }
+
+        public void Remove(int x, double y)
+        {
+            Count--;
+            SumX -= x;
+            SumY -= y;
+            SumXY -= x * y;
+            SumX2 -= x * x;
+            SumY2 -= y * y;
+        }
+
+        public readonly double RSquared
+        {
+            get
+            {
+                if (Count < 2) return 0.0;
+                double denominator = Count * SumX2 - SumX * SumX;
+                if (Math.Abs(denominator) < 1e-10) return 0.0;
+                double numerator = Count * SumXY - SumX * SumY;
+                double varY = Count * SumY2 - SumY * SumY;
+                if (varY <= 1e-10) return 0.0;
+                double r2 = (numerator * numerator) / (denominator * varY);
+                return Math.Clamp(r2, 0.0, 1.0);
+            }
+        }
     }
 }
 

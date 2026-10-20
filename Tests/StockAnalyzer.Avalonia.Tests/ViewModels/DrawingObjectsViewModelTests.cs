@@ -26,6 +26,8 @@ public class DrawingObjectsViewModelTests
         public bool IsVisible { get; set; } = true;
         public bool IsLocked { get; set; } = false;
         public int ZIndex { get; set; } = 0;
+        public int Priority { get; set; } = 0;
+        public int AnchorPointIndex { get; set; } = 0;
         public SKColor SkiaColor => SKColors.Blue;
 
         public void Render(SKCanvas canvas, ICoordinateTransform transform) { }

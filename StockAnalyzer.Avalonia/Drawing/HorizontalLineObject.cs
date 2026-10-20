@@ -29,6 +29,7 @@ public class HorizontalLineObject : IChartObject, IDrawingCalculatedValuesProvid
     public bool IsVisible { get; set; } = true;
     public bool IsLocked { get; set; } = false;
     public int ZIndex { get; set; } = 0;
+    public int Priority { get; set; } = 0;
     public int AnchorPointIndex { get; set; } = 0;
     public int PanelIndex { get; set; } = -1;
 

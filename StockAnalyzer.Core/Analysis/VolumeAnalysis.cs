@@ -86,7 +86,7 @@ public static class VolumeAnalysis
                 // failure (the coordinator's existing catch-all around this call already maps any
                 // exception here to a Failed state) instead of silent data corruption. See
                 // sa_analysis_report_VolumeProfile_PostImplementation_StrictReview_20260914.md F12:
-                // "Fullによるlong加算overflow...を明示処理".
+                // Explicitly handle long addition overflow caused by Full accumulation.
                 checked
                 {
                     foreach (var bin in touchedBins)

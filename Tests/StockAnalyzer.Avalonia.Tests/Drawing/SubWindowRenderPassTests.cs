@@ -35,6 +35,8 @@ public class SubWindowRenderPassTests
         public bool IsVisible { get; set; } = true;
         public bool IsLocked { get; set; }
         public int ZIndex { get; set; }
+        public int Priority { get; set; }
+        public int AnchorPointIndex { get; set; }
         public int PanelIndex { get; set; } = -1;
         public SKColor SkiaColor => SKColors.Black;
 

@@ -64,6 +64,7 @@ public abstract class RelativeGeometricRenderer : IChartObject, IDisposable
     [DisplayName("Stroke Style")]
     [ParameterTag(DrawingParameterTags.Common)]
     public DrawingStrokeStyle StrokeStyle { get; set; } = DrawingStrokeStyle.Solid;
+    public int Priority { get; set; } = 0;
     public int AnchorPointIndex { get; set; } = 0;
 
     [Category("Coordinates")]

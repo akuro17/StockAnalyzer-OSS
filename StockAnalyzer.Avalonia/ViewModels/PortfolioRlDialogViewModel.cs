@@ -222,7 +222,7 @@ public sealed partial class PortfolioRlDialogViewModel : ObservableObject, IDisp
     // ---- derived state ----
 
     /// <summary>Phases the runner reports that have no wording of their own show as processing, as in the single-symbol dialog.</summary>
-    private static readonly string[] KnownStates = { "Ready", "Preparing", "Training", "Evaluating", "Succeeded", "Failed", "Rejected",
+    private static readonly string[] KnownStates = { "Ready", "Preparing", "Training", "Evaluating", "Scaler", "Dependencies", "Succeeded", "Failed", "Rejected",
         "Unavailable", "InsufficientData", "Cancelling", "Cancelled" };
     public string StatusDisplay => _localization.GetString(KnownStates.Contains(Status, StringComparer.Ordinal) ? "Rl.State." + Status : "Rl.Ui.Status.Processing");
     public bool Editable => !_disposed && !IsBusy;
@@ -1098,6 +1098,21 @@ public sealed partial class PortfolioRlDialogViewModel : ObservableObject, IDisp
         OnPropertyChanged(nameof(HasPortfolioWeights));
     }
 
+    private string ResolveProgressDetails(RlTrainingProgress progress)
+    {
+        if (string.IsNullOrWhiteSpace(progress.Message))
+            return string.Empty;
+
+        return progress.Message switch
+        {
+            "Fitting the fixed observation scaler on training windows" => _localization.GetString("Prl.Phase.Scaler.Fit"),
+            "Copying the scaler and the weights of the base model" => _localization.GetString("Prl.Phase.Scaler.Copy"),
+            "Recording the execution environment" => _localization.GetString("Prl.Phase.Dependencies"),
+            "Evaluating the policy and the baselines on every complete block of each cell" => _localization.GetString("Prl.Phase.Evaluating"),
+            _ => progress.Message
+        };
+    }
+
     // ---- run ----
 
     [RelayCommand(CanExecute = nameof(CanStart))]
@@ -1131,7 +1146,7 @@ public sealed partial class PortfolioRlDialogViewModel : ObservableObject, IDisp
             var progress = new Progress<RlTrainingProgress>(p =>
             {
                 if (_disposed || cancel.IsCancellationRequested) return;
-                Status = p.State; TechnicalDetails = p.Message;
+                Status = p.State; TechnicalDetails = ResolveProgressDetails(p);
             });
             RlPortfolioEvaluationReport evaluation; string directory, panelDirectory;
             if (kind == PortfolioRunKind.EvaluateBase)

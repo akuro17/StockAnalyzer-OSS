@@ -25,9 +25,8 @@ namespace StockAnalyzer.Core.Models.Training;
 public static class WalkForwardDataRequirement
 {
     /// <summary>
-    /// Walk-forward split count the trainers use when <c>run_training.py</c> doesn't override it
-    /// (it never does - <c>--wf-splits</c> is not part of the wizard's config surface). Mirrors
-    /// <c>dataset.DEFAULT_WF_SPLITS</c>; keep the two in sync if that Python constant ever changes.
+    /// Default walk-forward split count when not specified in configuration.
+    /// Mirrors <c>dataset.DEFAULT_WF_SPLITS</c>; keep the two in sync.
     /// </summary>
     public const int DefaultSplitCount = 5;
 

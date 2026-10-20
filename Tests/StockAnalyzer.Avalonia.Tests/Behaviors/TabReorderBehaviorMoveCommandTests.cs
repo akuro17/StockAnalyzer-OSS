@@ -447,4 +447,15 @@ public class TabReorderBehaviorMoveCommandTests
             harness.Window.Close();
         }
     }
+
+    [AvaloniaFact]
+    public void SetIsEnabled_False_DisablesAllowDrop()
+    {
+        var tabControl = new TabControl();
+        TabReorderBehavior.SetIsEnabled(tabControl, true);
+        Assert.True(DragDrop.GetAllowDrop(tabControl));
+
+        TabReorderBehavior.SetIsEnabled(tabControl, false);
+        Assert.False(DragDrop.GetAllowDrop(tabControl));
+    }
 }

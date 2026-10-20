@@ -932,23 +932,17 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
              if (viewModel.EffectiveRenkoBrickSize <= 0) viewModel.EffectiveRenkoBrickSize = 1m; // Safety
         }
         
-        // P&F
-        if (viewModel.PnfSizingMode == ChartSizingMode.Fixed)
-        {
-            viewModel.EffectivePnfBoxSize = viewModel.PnfBoxSize;
-        }
-        else if (viewModel.PnfSizingMode == ChartSizingMode.Percentage)
-        {
-            var lastPrice = viewModel.Candles.LastOrDefault()?.Close ?? 100m;
-            viewModel.EffectivePnfBoxSize = lastPrice * (viewModel.PnfBoxPercent / 100m);
-            if (viewModel.EffectivePnfBoxSize <= 0) viewModel.EffectivePnfBoxSize = 1m;
-        }
-        else if (viewModel.PnfSizingMode == ChartSizingMode.AutoAtr)
-        {
-             decimal atr = _analysisService.CalculateAtr(viewModel.Candles, viewModel.PnfAtrPeriod);
-             viewModel.EffectivePnfBoxSize = atr * viewModel.PnfAtrMultiplier;
-             if (viewModel.EffectivePnfBoxSize <= 0) viewModel.EffectivePnfBoxSize = 1m;
-        }
+        // P&F (SSoT AutoBoxSizeCalculator)
+        viewModel.EffectivePnfBoxSize = AutoBoxSizeCalculator.Calculate(
+            viewModel.PnfSizingMode,
+            viewModel.Candles,
+            viewModel.PnfBoxSize,
+            viewModel.PnfAtrPeriod,
+            viewModel.PnfAtrMultiplier,
+            (ChartRoundingMode)viewModel.PnfRoundingMode,
+            (AutoFallbackMode)viewModel.PnfFallbackMode,
+            viewModel.Candles.LastOrDefault()?.Close ?? 100m,
+            viewModel.PnfBoxPercent);
         
         // Kagi
         if (viewModel.KagiReversalMode == ChartSizingMode.Fixed)
@@ -1547,6 +1541,20 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
         ChartLayoutContext layout,
         bool isTransition)
     {
+        if (viewModel.EffectivePnfBoxSize <= 0 && viewModel.Candles.Count > 0)
+        {
+            viewModel.EffectivePnfBoxSize = AutoBoxSizeCalculator.Calculate(
+                viewModel.PnfSizingMode,
+                viewModel.Candles,
+                viewModel.PnfBoxSize,
+                viewModel.PnfAtrPeriod,
+                viewModel.PnfAtrMultiplier,
+                (ChartRoundingMode)viewModel.PnfRoundingMode,
+                (AutoFallbackMode)viewModel.PnfFallbackMode,
+                viewModel.Candles[^1].Close,
+                viewModel.PnfBoxPercent);
+        }
+
         bool needsReconvert = _pnfBuffer.Count == 0 ||
                               viewModel.Symbol != _lastPnfSymbol ||
                               viewModel.SelectedTimeFrame.ToString() != _lastPnfTimeFrame ||
@@ -2000,15 +2008,7 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
 
                     if (lastVisibleValue.HasValue)
                     {
-                        string trendPrefix = lastVisibleValue.Value >= 0 ? "+" : "";
-                        renderingMetadata[symbol] = viewModel.ComparisonMode switch
-                        {
-                            ComparisonMode.Performance => $"{trendPrefix}{lastVisibleValue.Value.ToString(ChartConstants.DefaultRelativePerformanceFormat)}{ChartConstants.DefaultRelativePerformanceSuffix}",
-                            ComparisonMode.Ratio => lastVisibleValue.Value.ToString(ChartConstants.DefaultRatioFormat),
-                            ComparisonMode.ZScore => $"{ChartConstants.ZScorePrefix}{lastVisibleValue.Value.ToString(ChartConstants.DefaultZScoreFormat)}",
-                            ComparisonMode.Spread => lastVisibleValue.Value.ToString(ChartConstants.DefaultSpreadFormat),
-                            _ => lastVisibleValue.Value.ToString("F2")
-                        };
+                        renderingMetadata[symbol] = DisplayFormat.ComparisonValue(viewModel.ComparisonMode, lastVisibleValue.Value);
                     }
                 }
 

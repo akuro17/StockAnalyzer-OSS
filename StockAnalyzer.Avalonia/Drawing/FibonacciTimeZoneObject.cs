@@ -34,6 +34,7 @@ public class FibonacciTimeZoneObject : IChartObject
     public bool IsLocked { get; set; } = false;
     public int PanelIndex { get; set; } = -1;
     public int ZIndex { get; set; } = 0;
+    public int Priority { get; set; } = 0;
     public int AnchorPointIndex { get; set; } = 0;
 
     private readonly int[] _fibSequence = { 0, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89 }; // Standard Time Zones

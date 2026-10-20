@@ -29,6 +29,7 @@ public class GannFanObject : IChartObject, IDrawingCalculatedValuesProvider
     public bool IsLocked { get; set; } = false;
     public int PanelIndex { get; set; } = -1;
     public int ZIndex { get; set; } = 0;
+    public int Priority { get; set; } = 0;
     public int AnchorPointIndex { get; set; } = 0;
 
     // Ratios: Price Units per Time Unit (Slope)

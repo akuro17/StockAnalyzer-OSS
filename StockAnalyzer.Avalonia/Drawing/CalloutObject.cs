@@ -51,6 +51,7 @@ public class CalloutObject : IChartObject, IDisposable, ITextAnnotatedObject
     public bool IsLocked { get; set; } = false;
     public int PanelIndex { get; set; } = -1;
     public int ZIndex { get; set; } = 0;
+    public int Priority { get; set; } = 0;
     public int AnchorPointIndex { get; set; } = 0;
 
     private string _text = "Callout";

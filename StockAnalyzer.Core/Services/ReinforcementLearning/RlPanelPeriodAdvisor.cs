@@ -67,15 +67,15 @@ public static class RlPanelPeriodAdvisor
             {
                 if (symbol.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || symbol.Contains('/') || symbol.Contains('\\')) continue;
                 string? source = ParquetMarketDataProvider.ResolveFilePath(dailyFolder, symbol);
-                string? metadataFile = source is null ? null : Path.Combine(metadataFolder, Path.GetFileNameWithoutExtension(source) + ".meta.parquet");
+                string? metadataFile = source is null ? null : Path.Combine(metadataFolder, Path.GetFileNameWithoutExtension(source) + RlLocalParquetReader.MetadataFileSuffix);
                 if (source is null || !File.Exists(metadataFile)) continue;
                 RlLocalSourceFiles.ValidatePath(dailyFolder, source);
                 RlLocalSourceFiles.ValidatePath(metadataFolder, metadataFile!);
                 var meta = RlLocalParquetReader.ReadMetadata(metadataFile!);
                 string Required(string name) => meta.TryGetValue(name, out var value) && !string.IsNullOrWhiteSpace(value)
                     ? value : throw new InvalidDataException($"The local metadata {name} is missing.");
-                string symbolCurrency = Required("currency"), type = Required("quote_type"), symbolTimezone = Required("exchange_timezone_name");
-                if (type != "EQUITY") continue;
+                string symbolCurrency = Required(RlLocalParquetReader.CurrencyKey), type = Required(RlLocalParquetReader.QuoteTypeKey), symbolTimezone = Required(RlLocalParquetReader.ExchangeTimezoneKey);
+                if (type != RlLocalParquetReader.EquityQuoteType) continue;
                 currency ??= symbolCurrency; timezone ??= symbolTimezone;
                 if (symbolCurrency != currency || symbolTimezone != timezone) continue;
                 var zone = TimeZoneInfo.FindSystemTimeZoneById(symbolTimezone);

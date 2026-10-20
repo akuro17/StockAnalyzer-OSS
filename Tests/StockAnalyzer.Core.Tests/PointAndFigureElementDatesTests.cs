@@ -11,7 +11,7 @@ namespace StockAnalyzer.Core.Tests;
 /// <summary>
 /// ElementDates of Point and Figure columns: Start = date of the candle that created the column,
 /// End = date of the candle that last moved its far end (Start when never extended).
-/// The converter and the calculator are two different algorithms, so each is checked against its own expectation.
+/// The converter and the calculator are unified to the same SSoT calculation engine, so both produce identical results.
 /// </summary>
 public class PointAndFigureElementDatesTests
 {
@@ -76,7 +76,7 @@ public class PointAndFigureElementDatesTests
     }
 
     [Fact]
-    public void Calculator_ElementDates_StartIsColumnStartAndEndIsLastFarEndMove()
+    public void Calculator_ElementDates_StartIsColumnCreationAndEndIsLastFarEndMove()
     {
         var source = Series().Select(c =>
             new ZeroAllocCandleData(c.Timestamp, c.Open, c.High, c.Low, c.Close, (long)c.Volume)).ToArray();
@@ -85,15 +85,13 @@ public class PointAndFigureElementDatesTests
         Assert.Equal(3, result.Count);
         Assert.Equal(new[]
         {
-            // The first column starts at the first source candle in this calculator (its existing Timestamp);
-            // its End is the candle that moved the far end last.
-            new ElementDates(Day(0), Day(2)),
+            new ElementDates(Day(1), Day(2)),
             new ElementDates(Day(3), Day(4)),
             new ElementDates(Day(5), Day(5)),
         }, result.ElementDates.ToArray());
         Assert.Equal(result.Count, result.ElementDates.Length);
-        Assert.Equal(Day(0), result.Timestamps.Span[0]); // existing Timestamp semantic: column start
-        Assert.Equal(Day(3), result.Timestamps.Span[1]);
+        Assert.Equal(Day(2), result.Timestamps.Span[0]); // Unified SSoT Timestamp semantic: last update (End)
+        Assert.Equal(Day(4), result.Timestamps.Span[1]);
         Assert.Equal(Day(5), result.Timestamps.Span[2]);
     }
 }

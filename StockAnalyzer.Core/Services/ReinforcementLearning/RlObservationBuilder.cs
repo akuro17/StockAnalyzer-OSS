@@ -37,10 +37,10 @@ public static class RlObservationBuilder
         ["channels"] = RlContract.MarketChannelCount.ToString(CultureInfo.InvariantCulture),
         ["feature_mode"] = RlFiles.FeatureMode,
         ["feature_spec"] = JsonSerializer.Serialize(FeatureSpec, TrainingConfigJson.Options),
-        ["normalization"] = "fixed_zscore",
-        ["lags"] = "[]",
-        ["clip_sigma"] = "",
-        ["scaler_ref"] = RlFiles.Model + RlFiles.ScalerSuffix,
+        [PredictionModelMetadata.NormalizationKey] = PredictionModelMetadata.FixedNormalization,
+        [PredictionModelMetadata.LagsKey] = "[]",
+        [PredictionModelMetadata.ClipSigmaKey] = "",
+        [PredictionModelMetadata.ScalerReferenceKey] = RlFiles.Model + RlFiles.ScalerSuffix,
     };
 
     public static float[] Build(RlSessionSnapshot account, FixedScaler scaler)

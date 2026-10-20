@@ -139,8 +139,8 @@ public class CoreIfftInstantaneousPhaseIndicator : CoreIndicatorBase
             if (i > 0 && !double.IsNaN(phase[i]) && !double.IsNaN(phase[i - 1]))
             {
                 double d = phase[i] - phase[i - 1];
-                while (d <= -Math.PI) d += 2.0 * Math.PI;
-                while (d > Math.PI) d -= 2.0 * Math.PI;
+                while (d <= -Math.PI) d += MathConstants.TwoPi;
+                while (d > Math.PI) d -= MathConstants.TwoPi;
                 deltaDeg = d * MathConstants.RadToDeg;
             }
 

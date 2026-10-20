@@ -24,7 +24,7 @@ internal static class RlLocalSourceFiles
             ?? throw new FileNotFoundException("Unavailable: no existing Data/Daily Parquet matches the requested symbol.");
         string mapped = Path.GetFileNameWithoutExtension(source);
         // Metadata is reference information, never an additional time-series input.
-        string metadataFile = Path.Combine(metadata, mapped + ".meta.parquet");
+        string metadataFile = Path.Combine(metadata, mapped + RlLocalParquetReader.MetadataFileSuffix);
         if (!File.Exists(metadataFile)) throw new FileNotFoundException("Unavailable: existing local symbol metadata is required.", metadataFile);
         Directory.CreateDirectory(destination);
         long bound = Math.Min(RlContract.BufferByteLimit, checked((long)limits.MaxTensorSizeMiB * TrainingResourceOverrides.MiB));

@@ -14,6 +14,7 @@
         <conv:EnumToLocalizedDisplayNameConverter x:Key="EnumToLocalizedDisplayNameConverter"/>
     </UserControl.Resources>
 
+
     <ScrollViewer VerticalScrollBarVisibility="Auto">
         <StackPanel Spacing="20" Margin="16">
 
@@ -143,21 +144,21 @@
                     <StackPanel Spacing="12">
                         <Grid ColumnDefinitions="*, Auto">
                             <TextBlock Text="{l:Localize Settings_Theme_Item_SemanticPlus}" VerticalAlignment="Center" FontSize="{DynamicResource BaseFontSize}"/>
-                            <ColorPicker Grid.Column="1" HsvColor="{Binding MonthlyUpColor, Mode=TwoWay, Converter={StaticResource HsvConverter}}" Width="40" Height="24"/>
+                            <ColorPicker Grid.Column="1" HsvColor="{Binding MonthlyUpColor, Mode=TwoWay, Converter={StaticResource HsvConverter}}" Classes="SettingColor"/>
                         </Grid>
 
                         <Separator Background="{DynamicResource Brush.Border.Primary}" Height="1"/>
 
                         <Grid ColumnDefinitions="*, Auto">
                             <TextBlock Text="{l:Localize Settings_Theme_Item_SemanticMinus}" VerticalAlignment="Center" FontSize="{DynamicResource BaseFontSize}"/>
-                            <ColorPicker Grid.Column="1" HsvColor="{Binding MonthlyDownColor, Mode=TwoWay, Converter={StaticResource HsvConverter}}" Width="40" Height="24"/>
+                            <ColorPicker Grid.Column="1" HsvColor="{Binding MonthlyDownColor, Mode=TwoWay, Converter={StaticResource HsvConverter}}" Classes="SettingColor"/>
                         </Grid>
 
                         <Separator Background="{DynamicResource Brush.Border.Primary}" Height="1"/>
 
                         <Grid ColumnDefinitions="*, Auto">
                             <TextBlock Text="{l:Localize Settings_Theme_Item_SemanticNeutral}" VerticalAlignment="Center" FontSize="{DynamicResource BaseFontSize}"/>
-                            <ColorPicker Grid.Column="1" HsvColor="{Binding MonthlyNeutralColor, Mode=TwoWay, Converter={StaticResource HsvConverter}}" Width="40" Height="24"/>
+                            <ColorPicker Grid.Column="1" HsvColor="{Binding MonthlyNeutralColor, Mode=TwoWay, Converter={StaticResource HsvConverter}}" Classes="SettingColor"/>
                         </Grid>
                     </StackPanel>
                 </StackPanel>
@@ -176,45 +177,45 @@
                         <StackPanel Grid.Column="0" Spacing="12">
                             <Grid ColumnDefinitions="*, Auto">
                                 <TextBlock Text="{l:Localize Settings_Seasonality_YearSlot1}" VerticalAlignment="Center" FontSize="{DynamicResource BaseFontSize}"/>
-                                <ColorPicker Grid.Column="1" HsvColor="{Binding YearColors[0], Mode=TwoWay, Converter={StaticResource HsvConverter}}" Width="40" Height="24"/>
+                                <ColorPicker Grid.Column="1" HsvColor="{Binding YearColors[0], Mode=TwoWay, Converter={StaticResource HsvConverter}}" Classes="SettingColor"/>
                             </Grid>
                             <Grid ColumnDefinitions="*, Auto">
                                 <TextBlock Text="{l:Localize Settings_Seasonality_YearSlot2}" VerticalAlignment="Center" FontSize="{DynamicResource BaseFontSize}"/>
-                                <ColorPicker Grid.Column="1" HsvColor="{Binding YearColors[1], Mode=TwoWay, Converter={StaticResource HsvConverter}}" Width="40" Height="24"/>
+                                <ColorPicker Grid.Column="1" HsvColor="{Binding YearColors[1], Mode=TwoWay, Converter={StaticResource HsvConverter}}" Classes="SettingColor"/>
                             </Grid>
                             <Grid ColumnDefinitions="*, Auto">
                                 <TextBlock Text="{l:Localize Settings_Seasonality_YearSlot3}" VerticalAlignment="Center" FontSize="{DynamicResource BaseFontSize}"/>
-                                <ColorPicker Grid.Column="1" HsvColor="{Binding YearColors[2], Mode=TwoWay, Converter={StaticResource HsvConverter}}" Width="40" Height="24"/>
+                                <ColorPicker Grid.Column="1" HsvColor="{Binding YearColors[2], Mode=TwoWay, Converter={StaticResource HsvConverter}}" Classes="SettingColor"/>
                             </Grid>
                             <Grid ColumnDefinitions="*, Auto">
                                 <TextBlock Text="{l:Localize Settings_Seasonality_YearSlot4}" VerticalAlignment="Center" FontSize="{DynamicResource BaseFontSize}"/>
-                                <ColorPicker Grid.Column="1" HsvColor="{Binding YearColors[3], Mode=TwoWay, Converter={StaticResource HsvConverter}}" Width="40" Height="24"/>
+                                <ColorPicker Grid.Column="1" HsvColor="{Binding YearColors[3], Mode=TwoWay, Converter={StaticResource HsvConverter}}" Classes="SettingColor"/>
                             </Grid>
                             <Grid ColumnDefinitions="*, Auto">
                                 <TextBlock Text="{l:Localize Settings_Seasonality_YearSlot5}" VerticalAlignment="Center" FontSize="{DynamicResource BaseFontSize}"/>
-                                <ColorPicker Grid.Column="1" HsvColor="{Binding YearColors[4], Mode=TwoWay, Converter={StaticResource HsvConverter}}" Width="40" Height="24"/>
+                                <ColorPicker Grid.Column="1" HsvColor="{Binding YearColors[4], Mode=TwoWay, Converter={StaticResource HsvConverter}}" Classes="SettingColor"/>
                             </Grid>
                         </StackPanel>
                         <StackPanel Grid.Column="1" Spacing="12">
                             <Grid ColumnDefinitions="*, Auto">
                                 <TextBlock Text="{l:Localize Settings_Seasonality_YearSlot6}" VerticalAlignment="Center" FontSize="{DynamicResource BaseFontSize}"/>
-                                <ColorPicker Grid.Column="1" HsvColor="{Binding YearColors[5], Mode=TwoWay, Converter={StaticResource HsvConverter}}" Width="40" Height="24"/>
+                                <ColorPicker Grid.Column="1" HsvColor="{Binding YearColors[5], Mode=TwoWay, Converter={StaticResource HsvConverter}}" Classes="SettingColor"/>
                             </Grid>
                             <Grid ColumnDefinitions="*, Auto">
                                 <TextBlock Text="{l:Localize Settings_Seasonality_YearSlot7}" VerticalAlignment="Center" FontSize="{DynamicResource BaseFontSize}"/>
-                                <ColorPicker Grid.Column="1" HsvColor="{Binding YearColors[6], Mode=TwoWay, Converter={StaticResource HsvConverter}}" Width="40" Height="24"/>
+                                <ColorPicker Grid.Column="1" HsvColor="{Binding YearColors[6], Mode=TwoWay, Converter={StaticResource HsvConverter}}" Classes="SettingColor"/>
                             </Grid>
                             <Grid ColumnDefinitions="*, Auto">
                                 <TextBlock Text="{l:Localize Settings_Seasonality_YearSlot8}" VerticalAlignment="Center" FontSize="{DynamicResource BaseFontSize}"/>
-                                <ColorPicker Grid.Column="1" HsvColor="{Binding YearColors[7], Mode=TwoWay, Converter={StaticResource HsvConverter}}" Width="40" Height="24"/>
+                                <ColorPicker Grid.Column="1" HsvColor="{Binding YearColors[7], Mode=TwoWay, Converter={StaticResource HsvConverter}}" Classes="SettingColor"/>
                             </Grid>
                             <Grid ColumnDefinitions="*, Auto">
                                 <TextBlock Text="{l:Localize Settings_Seasonality_YearSlot9}" VerticalAlignment="Center" FontSize="{DynamicResource BaseFontSize}"/>
-                                <ColorPicker Grid.Column="1" HsvColor="{Binding YearColors[8], Mode=TwoWay, Converter={StaticResource HsvConverter}}" Width="40" Height="24"/>
+                                <ColorPicker Grid.Column="1" HsvColor="{Binding YearColors[8], Mode=TwoWay, Converter={StaticResource HsvConverter}}" Classes="SettingColor"/>
                             </Grid>
                             <Grid ColumnDefinitions="*, Auto">
                                 <TextBlock Text="{l:Localize Settings_Seasonality_YearSlot10}" VerticalAlignment="Center" FontSize="{DynamicResource BaseFontSize}"/>
-                                <ColorPicker Grid.Column="1" HsvColor="{Binding YearColors[9], Mode=TwoWay, Converter={StaticResource HsvConverter}}" Width="40" Height="24"/>
+                                <ColorPicker Grid.Column="1" HsvColor="{Binding YearColors[9], Mode=TwoWay, Converter={StaticResource HsvConverter}}" Classes="SettingColor"/>
                             </Grid>
                         </StackPanel>
                     </Grid>

@@ -65,7 +65,7 @@ public partial class MainWindowViewModel : ViewModelBase,
     private bool _isExiting;
     private bool _isDisposed;
     private static int _chartInstanceCounter = 0;
-    private static int _isCounterInitialized = 0; // 0: 未初期化, 1: 初期化済
+    private static int _isCounterInitialized = 0; // 0: Uninitialized, 1: Initialized
     private readonly ILayoutSaveScheduler _layoutSaveScheduler;
     private readonly IWorkspaceCoordinator _workspaceCoordinator;
     private readonly IWorkspaceSerializationService _serializationService;
@@ -432,10 +432,10 @@ public partial class MainWindowViewModel : ViewModelBase,
         }
     }
 
-    // --- SSoT 直接公開用プロパティ ---
+    // --- Direct SSoT exposed properties ---
     public LayoutStateStore Layout => _stateStore;
 
-    // --- IWorkspaceLayoutTarget の明示的インターフェース実装 (全8プロパティ) ---
+    // --- Explicit interface implementation of IWorkspaceLayoutTarget (all 8 properties) ---
     double IWorkspaceLayoutTarget.LeftPanelWidth
     {
         get => _stateStore.LeftPanel.WidthOrHeight;
@@ -631,7 +631,7 @@ public partial class MainWindowViewModel : ViewModelBase,
     [RelayCommand]
     private void TogglePanel(PanelRegion region)
     {
-        if (!Enum.IsDefined(typeof(PanelRegion), region)) return; // 境界外入力の破棄
+        if (!Enum.IsDefined(typeof(PanelRegion), region)) return; // Discard out-of-bounds input
         _stateStore.TogglePanelVisibility(region);
         _layoutSaveScheduler.RequestSave(LayoutChangeReason.PanelResized);
     }
@@ -1543,7 +1543,7 @@ public partial class MainWindowViewModel : ViewModelBase,
     }
 
     /// <summary>
-    /// Handles a Note card's "チャートを見る" request (spec section 6.2): switches the main chart
+    /// Handles a Note card's "View Chart" request (spec section 6.2): switches the main chart
     /// to the Note's ticker/timeframe, waits for data to load, then centers the view on
     /// <see cref="NoteChartJumpRequestedMessage.AnchorDate"/> via
     /// <see cref="ViewModels.ChartViewModel.JumpToAnchorDate"/>.
@@ -1596,7 +1596,7 @@ public partial class MainWindowViewModel : ViewModelBase,
             {
                 // A second dispatcher hop guarantees this runs after LoadDataInternalAsync's own
                 // internal dispatcher.Post that writes the freshly-fetched Candles (spec section
-                // 6.2's "未ロード期間への対応": jump only once loading has actually finished).
+                // Section 6.2 "Handling unloaded periods": jump only once loading has actually finished).
                 _dispatcherService.Post(() => ChartViewModel.JumpToAnchorDate(message.AnchorDate, message.Timeframe));
             }, TaskScheduler.Default);
         });

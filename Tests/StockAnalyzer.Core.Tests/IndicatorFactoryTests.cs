@@ -191,5 +191,41 @@ public class IndicatorFactoryTests
         var catalogItems = catalogProvider.GetCatalogItems(factory);
         Assert.DoesNotContain(catalogItems, item => item.IndicatorType == stubType);
     }
+
+    [Fact]
+    public void Create_WithInvalidParameters_ThrowsArgumentException()
+    {
+        IIndicatorFactory factory = new IndicatorFactory();
+        var invalidParams = new CoreSmaParameter { Period = 0 };
+
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+        {
+            factory.Create(IndicatorType.SMA, invalidParams);
+        });
+    }
+
+    [Fact]
+    public void AllRegisteredIndicators_DefaultParameters_PassValidateWithoutException()
+    {
+        IIndicatorFactory factory = new IndicatorFactory();
+        var registeredTypes = factory.GetRegisteredTypes();
+
+        foreach (var type in registeredTypes)
+        {
+            var indicator = factory.Create(type);
+            Assert.NotNull(indicator);
+
+            var defaultSettings = indicator.GetDefaultSettings();
+            if (defaultSettings?.ParameterObject != null)
+            {
+                var exception = Record.Exception(() => defaultSettings.ParameterObject.Validate());
+                Assert.True(exception == null, $"IndicatorType.{type} default parameter validation threw: {exception?.Message}");
+
+                // Also ensure passing defaultSettings.ParameterObject to Create does not throw
+                var configuredIndicator = factory.Create(type, defaultSettings.ParameterObject);
+                Assert.NotNull(configuredIndicator);
+            }
+        }
+    }
 }
 

@@ -109,7 +109,7 @@ public sealed class RlSourceSnapshot
             || manifest.ProviderVersion != RlFiles.LocalProviderVersion || manifest.Adjustment != RlSourceContract.Adjustment
             || string.IsNullOrWhiteSpace(manifest.Symbol) || string.IsNullOrWhiteSpace(manifest.QuoteCurrency)
             || string.IsNullOrWhiteSpace(manifest.ExchangeTimezone)
-            || manifest.InstrumentType != "EQUITY" || string.IsNullOrWhiteSpace(manifest.SourceStorageDtype)
+            || manifest.InstrumentType != RlLocalParquetReader.EquityQuoteType || string.IsNullOrWhiteSpace(manifest.SourceStorageDtype)
             || string.IsNullOrWhiteSpace(manifest.MappedSymbol) || string.IsNullOrWhiteSpace(manifest.SourcePathIdentity)
             || !ContentHash.IsLowerHex64(manifest.SourceFileSha256) || !ContentHash.IsLowerHex64(manifest.MetadataFileSha256)
             || manifest.CurrentHistoryRevision || manifest.DateLabelSemantics != RlSourceContract.DateLabelSemantics
@@ -126,7 +126,7 @@ public sealed class RlSourceSnapshot
             throw new InvalidDataException("RL source provenance/adjustment/availability contract is unsupported.");
         if (manifest.MappedSymbol.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || manifest.MappedSymbol.Contains('/') || manifest.MappedSymbol.Contains('\\')
             || manifest.SourcePathIdentity != Path.GetFileName(MarketDataSettings.DefaultDailyDataPath) + "/" + manifest.MappedSymbol + ".parquet"
-            || manifest.MetadataPathIdentity != Path.GetFileName(MarketDataSettings.DefaultMetadataDataPath) + "/" + manifest.MappedSymbol + ".meta.parquet")
+            || manifest.MetadataPathIdentity != Path.GetFileName(MarketDataSettings.DefaultMetadataDataPath) + "/" + manifest.MappedSymbol + RlLocalParquetReader.MetadataFileSuffix)
             throw new InvalidDataException("Source path identities must describe the approved local Daily and Metadata files.");
         var zone = TimeZoneInfo.FindSystemTimeZoneById(manifest.ExchangeTimezone);
         if (manifest.CapturedExchangeDate != DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(manifest.RetrievalStartedUtc, zone).DateTime))
@@ -162,8 +162,8 @@ public sealed class RlSourceSnapshot
                 throw new InvalidDataException($"Invalid or unavailable source bar {i}; no repair is permitted.");
         }
         var storedMetadata = RlLocalParquetReader.ReadMetadata(metadataPath);
-        if (storedMetadata["currency"] != manifest.QuoteCurrency || storedMetadata["quote_type"] != manifest.InstrumentType
-            || storedMetadata["exchange_timezone_name"] != manifest.ExchangeTimezone)
+        if (storedMetadata[RlLocalParquetReader.CurrencyKey] != manifest.QuoteCurrency || storedMetadata[RlLocalParquetReader.QuoteTypeKey] != manifest.InstrumentType
+            || storedMetadata[RlLocalParquetReader.ExchangeTimezoneKey] != manifest.ExchangeTimezone)
             throw new InvalidDataException("Declared local metadata differs from the copied stored values.");
         var stored = RlLocalParquetReader.Read(rawPath, manifest.PeriodStartInclusive, manifest.PeriodEndExclusive, limits, cancellationToken);
         if (stored.SourceRows != manifest.SourceRows || stored.StorageDtype != manifest.SourceStorageDtype || !stored.Bars.SequenceEqual(bars))

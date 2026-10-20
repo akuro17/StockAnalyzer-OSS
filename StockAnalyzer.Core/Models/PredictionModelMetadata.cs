@@ -74,6 +74,10 @@ public static class PredictionModelMetadata
     public const string WindowSizeKey = "window_size";
     /// <summary>Metadata key: comma-separated class labels in output-index order.</summary>
     public const string ClassOrderKey = "class_order";
+    /// <summary>Metadata key: lag offsets applied to composite feature generation.</summary>
+    public const string LagsKey = "lags";
+    /// <summary>Metadata key: clipping sigma applied to standardized features.</summary>
+    public const string ClipSigmaKey = "clip_sigma";
 
     internal static bool HasValidClassOrder(string? classOrder)
     {

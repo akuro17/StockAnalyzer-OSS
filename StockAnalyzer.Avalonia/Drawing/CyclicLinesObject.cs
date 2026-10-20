@@ -36,6 +36,7 @@ public class CyclicLinesObject : IChartObject, IDrawingCalculatedValuesProvider
     public bool IsLocked { get; set; } = false;
     public int PanelIndex { get; set; } = -1;
     public int ZIndex { get; set; } = 0;
+    public int Priority { get; set; } = 0;
     public int AnchorPointIndex { get; set; } = 0;
     public const string DefaultCustomRangeText = "1, 4, 9, 16, 25, 36, 49, 64, 81, 100, 121, 144, 169, 196, 225, 256, 289, 324, 361, 400";
     public bool IsCustomRangeEnabled { get; set; } = false;

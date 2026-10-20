@@ -87,6 +87,7 @@ public sealed class IndicatorFactory : IIndicatorFactory
         var instance = (ICoreIndicator?)Activator.CreateInstance(indicatorClass);
         if (instance != null && parameters != null)
         {
+            parameters.Validate();
             instance.Configure(parameters);
         }
 

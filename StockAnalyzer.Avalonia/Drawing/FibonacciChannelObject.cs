@@ -24,6 +24,7 @@ public class FibonacciChannelObject : IChartObject, IDrawingCalculatedValuesProv
     public bool IsLocked { get; set; } = false;
     public int PanelIndex { get; set; } = -1;
     public int ZIndex { get; set; } = 0;
+    public int Priority { get; set; } = 0;
     public int AnchorPointIndex { get; set; } = 0;
 
     private readonly float[] _levels = { 0.0f, 0.618f, 1.0f, 1.618f, 2.618f };

@@ -60,7 +60,7 @@ public sealed class RlTrainingService : IRlResumableTrainingService
         string identity = ContentHash.OfText(JsonSerializer.Serialize(new { job, contract_hash = RlContract.ContractHash }, RlFiles.Json));
         using var lease = _gate.AcquireIdentity(identity);
         decimal previousSeconds = reviewed is null ? 0 : RlCheckpointStore.ReadBudget(reviewed.RunDirectory).ActiveSeconds;
-        double remainingSeconds = Math.Min(limits.MaxRunDurationSeconds, RlContract.JobDeadlineMinutes * 60) - (double)previousSeconds;
+        double remainingSeconds = Math.Min(limits.MaxRunDurationSeconds, RlContract.JobDeadlineSeconds) - (double)previousSeconds;
         if (remainingSeconds <= 0) throw new InvalidOperationException("Unavailable: cumulative active-time limit reached.");
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(remainingSeconds));
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token);

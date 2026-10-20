@@ -896,7 +896,13 @@ public class ParquetMarketDataProvider : IMarketDataProvider
     public async Task SaveStrategyMetadataAsync(string ticker, decimal? longVal, decimal? exitLong, decimal? stopLossLong, decimal? shortVal, decimal? exitShort, decimal? stopLossShort, string? notes,
         bool? isLong = null, bool? isTPLong = null, bool? isSLLong = null, bool? isShort = null, bool? isTPShort = null, bool? isSLShort = null, string? reminder = null)
     {
-        var existing = await GetMetadataAsync(ticker);
+        var loadResult = await TryLoadStoredMetadataAsync(ticker);
+        if (loadResult.ReadFailed)
+        {
+            _logger.LogError("Aborting SaveStrategyMetadataAsync for {Ticker}: Disk read failed and overwriting would destroy existing metadata.", ticker);
+            throw new InvalidOperationException($"Cannot save strategy metadata for {ticker} because loading existing metadata failed.");
+        }
+        var existing = loadResult.Meta;
         var updated = existing with
         {
             Long = longVal,

@@ -63,15 +63,15 @@ public static class RlPanelPreflightEvaluator
                 if (symbol.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || symbol.Contains('/') || symbol.Contains('\\'))
                 { statuses[symbol] = Status(RlPanelSymbolStatus.ReadError, detail: "The symbol is not a safe file name."); continue; }
                 string? source = ParquetMarketDataProvider.ResolveFilePath(dailyFolder, symbol);
-                string? metadataFile = source is null ? null : Path.Combine(metadataFolder, Path.GetFileNameWithoutExtension(source) + ".meta.parquet");
+                string? metadataFile = source is null ? null : Path.Combine(metadataFolder, Path.GetFileNameWithoutExtension(source) + RlLocalParquetReader.MetadataFileSuffix);
                 if (source is null || !File.Exists(metadataFile)) { statuses[symbol] = Status(RlPanelSymbolStatus.MissingFile); continue; }
                 RlLocalSourceFiles.ValidatePath(dailyFolder, source);
                 RlLocalSourceFiles.ValidatePath(metadataFolder, metadataFile!);
                 var meta = RlLocalParquetReader.ReadMetadata(metadataFile!);
                 string Required(string name) => meta.TryGetValue(name, out var value) && !string.IsNullOrWhiteSpace(value)
                     ? value : throw new InvalidDataException($"The local metadata {name} is missing.");
-                string symbolCurrency = Required("currency"), type = Required("quote_type"), symbolTimezone = Required("exchange_timezone_name");
-                if (type != "EQUITY") { statuses[symbol] = Status(RlPanelSymbolStatus.NotEquity, detail: type); continue; }
+                string symbolCurrency = Required(RlLocalParquetReader.CurrencyKey), type = Required(RlLocalParquetReader.QuoteTypeKey), symbolTimezone = Required(RlLocalParquetReader.ExchangeTimezoneKey);
+                if (type != RlLocalParquetReader.EquityQuoteType) { statuses[symbol] = Status(RlPanelSymbolStatus.NotEquity, detail: type); continue; }
                 currency ??= symbolCurrency; timezone ??= symbolTimezone;
                 if (symbolCurrency != currency) { statuses[symbol] = Status(RlPanelSymbolStatus.CurrencyMismatch, detail: symbolCurrency); continue; }
                 if (symbolTimezone != timezone) { statuses[symbol] = Status(RlPanelSymbolStatus.TimezoneMismatch, detail: symbolTimezone); continue; }

@@ -146,8 +146,8 @@ public static class HilbertDecompositionEngine
 
                 // Phase unwrap (shortest angular path accumulation)
                 double dPhi = phaseRad - prevPhaseRad;
-                if (dPhi > Math.PI) unwrappedOffset -= 2.0 * Math.PI;
-                else if (dPhi < -Math.PI) unwrappedOffset += 2.0 * Math.PI;
+                if (dPhi > Math.PI) unwrappedOffset -= MathConstants.TwoPi;
+                else if (dPhi < -Math.PI) unwrappedOffset += MathConstants.TwoPi;
 
                 double unwrappedDeg = (phaseRad + unwrappedOffset) * MathConstants.RadToDeg;
                 double phaseDeltaDeg = t == 0 ? 0.0 : unwrappedDeg - prevUnwrappedDeg;
@@ -169,7 +169,7 @@ public static class HilbertDecompositionEngine
                     double deltaPhase = Math.Atan2((double)smoothIm, (double)smoothRe);
                     if (deltaPhase > 0.001)
                     {
-                        double periodVal = (2.0 * Math.PI) / deltaPhase;
+                        double periodVal = MathConstants.TwoPi / deltaPhase;
                         rawPeriod = double.IsFinite(periodVal) ? (decimal)periodVal : prevPeriod;
                     }
                     else

@@ -1103,8 +1103,30 @@ public class ChartBaseControl : Control, ICustomHitTest
         }
         
         // Update Crosshair Data (previously throttled via Rx)
+        UpdateCrosshairAtPointer(position);
+        
+        InvalidateVisual(); // Trigger repaint for Crosshair movement
+    }
+
+    private void UpdateCrosshairAtPointer(global::Avalonia.Point position)
+    {
+        var chartX = position.X - EffectiveMarginLeft;
+        var chartWidth = Bounds.Width - EffectiveMarginLeft - EffectiveMarginRight;
+
+        if (chartX < 0 || chartX > chartWidth)
+        {
+            HoveredCandle = null;
+            _isCrosshairVisible = false;
+            _interactionController.ClearCrosshairPosition(ViewModel?.Symbol ?? string.Empty);
+            return;
+        }
+
+        _currentMousePosition = position;
+        _isCrosshairVisible = true;
+
         if (_currentSnapshot.Candles.Count > 0)
         {
+            var renderMarginTop = GetRenderMarginTop();
             int index = _dataCoordinator.GetCandleIndexAt(chartX, new Rect(Bounds.Size));
 
             CoreCandleData? hoveredCandle = null;
@@ -1128,8 +1150,6 @@ public class ChartBaseControl : Control, ICustomHitTest
             }
             _interactionController.UpdateCrosshairPosition(index, hoveredCandle, symbol, tlbCount, rwPoint, position.Y, _dataCoordinator.GetConfluenceForIndex(index, _currentSnapshot.IndicatorResults, _currentSnapshot.IndicatorSettings), position.X, position.Y);
         }
-        
-        InvalidateVisual(); // Trigger repaint for Crosshair movement
     }
 
 
@@ -1639,6 +1659,7 @@ public class ChartBaseControl : Control, ICustomHitTest
             if (_dataCoordinator.ApplyPan(panPixels, chartWidth, totalCount, ViewModel.ChartType, futureOffset))
             {
                 UpdateSnapshot();
+                UpdateCrosshairAtPointer(mousePos);
                 InvalidateVisual();
             }
             e.Handled = true;
@@ -1656,6 +1677,7 @@ public class ChartBaseControl : Control, ICustomHitTest
 
         // Update UI
         UpdateSnapshot();
+        UpdateCrosshairAtPointer(mousePos);
         InvalidateVisual();
         
         e.Handled = true;

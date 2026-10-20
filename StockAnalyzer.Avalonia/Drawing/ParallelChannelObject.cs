@@ -32,6 +32,7 @@ public class ParallelChannelObject : IChartObject, IDrawingCalculatedValuesProvi
     public bool IsVisible { get; set; } = true;
     public bool IsLocked { get; set; } = false;
     public int ZIndex { get; set; } = 0;
+    public int Priority { get; set; } = 0;
     public int AnchorPointIndex { get; set; } = 0;
     public int PanelIndex { get; set; } = -1;
     public bool IsFilled { get; set; } = true;

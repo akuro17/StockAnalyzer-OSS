@@ -32,6 +32,7 @@ public class FrechetProjectionObject : IChartObject, IDrawingCalculatedValuesPro
     public bool IsLocked { get; set; } = false;
     public int PanelIndex { get; set; } = -1;
     public int ZIndex { get; set; } = -10; // Placed behind candles
+    public int Priority { get; set; } = 0;
     public int AnchorPointIndex { get; set; } = 0;
 
     /// <summary>

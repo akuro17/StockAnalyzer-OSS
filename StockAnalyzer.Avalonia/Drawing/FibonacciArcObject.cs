@@ -30,6 +30,7 @@ public class FibonacciArcObject : IChartObject
     public bool IsLocked { get; set; } = false;
     public int PanelIndex { get; set; } = -1;
     public int ZIndex { get; set; } = 0;
+    public int Priority { get; set; } = 0;
     public int AnchorPointIndex { get; set; } = 0;
 
     private readonly double[] _fibLevels = { 0.236, 0.382, 0.5, 0.618, 0.786 };

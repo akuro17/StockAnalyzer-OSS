@@ -42,6 +42,7 @@ public class EllipseAnnulusObject : IEllipseFamilyObject
     public bool IsLocked { get; set; } = false;
     public int PanelIndex { get; set; } = -1;
     public int ZIndex { get; set; } = 0;
+    public int Priority { get; set; } = 0;
     public int AnchorPointIndex { get; set; } = 0;
 
     /// <summary>When true, constrains the outer ellipse (Points[0]/[1]) to a circle, matching

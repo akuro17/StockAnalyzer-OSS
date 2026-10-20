@@ -70,6 +70,8 @@ public static class RlContract
     public const int EnvironmentCount = 1;
     public const int IpcFrameByteLimit = 1024 * 1024;
     public const int JobDeadlineMinutes = 120;
+    /// <summary>The job deadline expressed in total seconds. Computed as a property to preserve <see cref="ContractHash"/>.</summary>
+    public static int JobDeadlineSeconds => JobDeadlineMinutes * 60;
     public const int IpcTimeoutSeconds = 5;
     public const int CancellationTimeoutSeconds = 10;
     public const int DiagnosticCheckpointLimit = 3;

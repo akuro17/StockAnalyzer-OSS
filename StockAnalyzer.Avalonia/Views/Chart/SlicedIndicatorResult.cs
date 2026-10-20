@@ -16,7 +16,7 @@ namespace StockAnalyzer.Avalonia.Views.Chart
         private readonly int _startIndex;
         private readonly int _count;
 
-        public SlicedIndicatorResult(IIndicatorResult original, int startIndex, int count, int totalCount)
+        public SlicedIndicatorResult(IIndicatorResult original, int startIndex, int count)
         {
             _original = original;
             _startIndex = startIndex;

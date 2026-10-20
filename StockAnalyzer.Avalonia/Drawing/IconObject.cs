@@ -135,6 +135,7 @@ public class IconObject : IChartObject, IDisposable
 
     public bool IsMoveAxisModeExplicit { get; set; } = false;
 
+    public int Priority { get; set; } = 0;
     public int AnchorPointIndex { get; set; } = 0;
 
     public SKColor SkiaColor => new(FontColor.R, FontColor.G, FontColor.B, (byte)Math.Clamp((int)Math.Round(FontOpacity * 2.55), 0, 255));

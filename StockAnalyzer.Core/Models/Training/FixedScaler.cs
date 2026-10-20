@@ -55,9 +55,9 @@ public sealed record FixedScaler(
             throw new InvalidDataException("Scaler schema, contract hash, shape, or lag contract is invalid.");
         if (ClipSigma is { } clip && (!double.IsFinite(clip) || clip <= 0))
             throw new InvalidDataException("Scaler clip sigma is invalid.");
-        var clipText = metadata.GetValueOrDefault("clip_sigma") ?? "";
-        if (metadata.GetValueOrDefault("normalization") != "fixed_zscore"
-            || metadata.GetValueOrDefault("lags") != JsonSerializer.Serialize(Lags)
+        var clipText = metadata.GetValueOrDefault(PredictionModelMetadata.ClipSigmaKey) ?? "";
+        if (metadata.GetValueOrDefault(PredictionModelMetadata.NormalizationKey) != PredictionModelMetadata.FixedNormalization
+            || metadata.GetValueOrDefault(PredictionModelMetadata.LagsKey) != JsonSerializer.Serialize(Lags)
             || (ClipSigma is null ? clipText.Length != 0
                 : !double.TryParse(clipText, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsedClip)
                     || parsedClip != ClipSigma.Value))
@@ -102,7 +102,7 @@ public sealed record FixedScaler(
 
     public static string ComputeContractHash(IReadOnlyDictionary<string, string> metadata)
     {
-        string[] keys = { "feature_mode", "window_size", "channels", "feature_spec", "lags", "clip_sigma" };
+        string[] keys = { PredictionModelMetadata.FeatureModeKey, PredictionModelMetadata.WindowSizeKey, "channels", PredictionModelMetadata.FeatureSpecKey, PredictionModelMetadata.LagsKey, PredictionModelMetadata.ClipSigmaKey };
         var text = string.Join("\n", keys.Select(key => metadata.GetValueOrDefault(key) ?? ""));
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text))).ToLowerInvariant();
     }
@@ -123,7 +123,7 @@ public sealed record FixedScaler(
         }
         else if (metadata.GetValueOrDefault(PredictionModelMetadata.FeatureModeKey) == "ohlcv_minmax")
             baseNames = new[] { "open", "high", "low", "close", "volume" };
-        else if (metadata.TryGetValue("channel_order", out var order) && !string.IsNullOrWhiteSpace(order))
+        else if (metadata.TryGetValue(PredictionModelMetadata.ChannelOrderKey, out var order) && !string.IsNullOrWhiteSpace(order))
             baseNames = order.Split(',');
         else throw new InvalidDataException("Feature channel order is missing.");
         return new[] { 0 }.Concat(lags).SelectMany(lag => baseNames.Select(name => $"lag{lag}:{name}")).ToArray();

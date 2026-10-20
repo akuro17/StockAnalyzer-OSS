@@ -950,24 +950,7 @@ public class ChartInteractionController
                         : null);
             }
 
-            decimal? oldThreshold = null;
-            int? oldFutureSteps = null;
-            if (editTarget is StockAnalyzer.Avalonia.Drawing.Objects.GeometricPatternObject geomBefore)
-            {
-                oldThreshold = geomBefore.ZigZagThreshold;
-            }
-            else if (editTarget is StockAnalyzer.Avalonia.Drawing.Objects.HarmonicPatternObject harmonicBefore)
-            {
-                oldThreshold = harmonicBefore.ZigZagThreshold;
-            }
-            else if (editTarget is StockAnalyzer.Avalonia.Drawing.Objects.AutoElliottWaveObject elliottBefore)
-            {
-                oldThreshold = elliottBefore.ZigZagThreshold;
-            }
-            else if (editTarget is StockAnalyzer.Avalonia.Drawing.Objects.DtwProjectionObject dtwBefore)
-            {
-                oldFutureSteps = dtwBefore.FutureSteps;
-            }
+            int? oldFutureSteps = (editTarget as StockAnalyzer.Avalonia.Drawing.Objects.DtwProjectionObject)?.FutureSteps;
 
             // Generic Apply-without-closing support: commits the just-edited Color/Thickness/panel-
             // specific settings and redraws immediately via the same NotifyObjectChanged path

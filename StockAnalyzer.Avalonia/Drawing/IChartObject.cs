@@ -72,7 +72,7 @@ public interface IChartObject
     /// Priority level for resolving rendering or signal conflicts.
     /// Higher values carry more weight. Default is 0.
     /// </summary>
-    int Priority { get => 0; set { } }
+    int Priority { get; set; }
 
     /// <summary>
     /// Movement axis constraint mode (XY, X, Y). Default is XY (free 2D movement). Must be a real
@@ -102,7 +102,7 @@ public interface IChartObject
     /// used as the pivot for future rotation and extension-line operations.
     /// Default is 0 (the start point).
     /// </summary>
-    int AnchorPointIndex { get => 0; set { } }
+    int AnchorPointIndex { get; set; }
 
     /// <summary>
     /// Index of the target sub-window panel this object belongs to.

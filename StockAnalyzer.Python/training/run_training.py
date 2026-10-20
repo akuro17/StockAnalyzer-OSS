@@ -716,7 +716,7 @@ def _onnx_predict_fn(onnx_path: Path):
 
     def predict(x: np.ndarray) -> np.ndarray:
         tensor = fixed_scaler.transform(x, scaler) if scaler is not None else np.asarray(x, dtype=np.float32)
-        (probs,) = session.run(["output"], {"input": tensor})
+        (probs,) = session.run([onnx_meta.DEFAULT_OUTPUT_NAME], {onnx_meta.DEFAULT_INPUT_NAME: tensor})
         return np.asarray(probs, dtype=np.float64)
 
     return predict

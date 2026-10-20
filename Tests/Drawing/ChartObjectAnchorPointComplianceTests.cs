@@ -30,4 +30,25 @@ public class ChartObjectAnchorPointComplianceTests
             "The following IChartObject implementers rely on the DIM no-op AnchorPointIndex default " +
             "instead of declaring their own { get; set; } auto-property: " + string.Join(", ", violations));
     }
+
+    [Fact]
+    public void AllConcreteChartObjects_DeclarePriorityExplicitly()
+    {
+        var concreteTypes = typeof(IChartObject).Assembly.GetTypes()
+            .Where(t => t.IsClass && !t.IsAbstract && typeof(IChartObject).IsAssignableFrom(t));
+
+        var violations = concreteTypes
+            .Where(t =>
+            {
+                var property = t.GetProperty(nameof(IChartObject.Priority));
+                return property is null || property.DeclaringType == typeof(IChartObject);
+            })
+            .Select(t => t.FullName)
+            .OrderBy(name => name)
+            .ToList();
+
+        Assert.True(violations.Count == 0,
+            "The following IChartObject implementers rely on the DIM no-op Priority default " +
+            "instead of declaring their own { get; set; } auto-property: " + string.Join(", ", violations));
+    }
 }

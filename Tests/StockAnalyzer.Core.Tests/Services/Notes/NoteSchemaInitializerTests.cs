@@ -275,4 +275,38 @@ public class NoteSchemaInitializerTests
             try { Directory.Delete(tempDir, true); } catch { /* best-effort cleanup */ }
         }
     }
+
+    [Fact]
+    public async Task InitializeAsync_ConcurrentCalls_RunSafelyWithoutConflict()
+    {
+        var tempDir = CreateIsolatedTempDirectory();
+        try
+        {
+            var connectionManager = new NoteDatabaseConnectionManager(NullLogger<NoteDatabaseConnectionManager>.Instance, tempDir);
+            var initializer1 = new NoteSchemaInitializer(connectionManager, NullLogger<NoteSchemaInitializer>.Instance);
+            var initializer2 = new NoteSchemaInitializer(connectionManager, NullLogger<NoteSchemaInitializer>.Instance);
+            var initializer3 = new NoteSchemaInitializer(connectionManager, NullLogger<NoteSchemaInitializer>.Instance);
+
+            // Execute concurrent initializations
+            var tasks = new[]
+            {
+                Task.Run(() => initializer1.InitializeAsync()),
+                Task.Run(() => initializer2.InitializeAsync()),
+                Task.Run(() => initializer3.InitializeAsync())
+            };
+
+            await Task.WhenAll(tasks);
+
+            var version = await GetUserVersionAsync(connectionManager);
+            Assert.Equal(3, version);
+
+            var tables = await GetTableNamesAsync(connectionManager);
+            Assert.Contains("Notes", tables);
+            Assert.Contains("Attachments", tables);
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, true); } catch { /* best-effort cleanup */ }
+        }
+    }
 }

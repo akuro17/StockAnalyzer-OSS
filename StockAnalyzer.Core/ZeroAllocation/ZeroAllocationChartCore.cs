@@ -892,226 +892,261 @@ namespace StockAnalyzer.ZeroAllocation
     /// <summary>
     /// PointAndFigure calculator implementation.
     /// </summary>
+    /// <summary>
+    /// PointAndFigure calculator implementation (SSoT).
+    /// </summary>
     public static class PointAndFigureCalculator
     {
         public static ChartSegmentAdapter Calculate(ReadOnlyMemory<ZeroAllocCandleData> source, PointAndFigureParameters parameters)
         {
             if (source.Length == 0)
-                throw new ArgumentException("Source cannot be empty", nameof(source));
+            {
+                return new ChartSegmentAdapter(
+                    ZeroAllocChartDataType.PointAndFigure,
+                    Array.Empty<DateTime>(),
+                    Array.Empty<decimal>(),
+                    Array.Empty<decimal>(),
+                    Array.Empty<decimal>(),
+                    Array.Empty<decimal>(),
+                    Array.Empty<long>(),
+                    Array.Empty<OriginalIndexRange>(),
+                    elementDates: Array.Empty<ElementDates>());
+            }
 
             var span = source.Span;
-            var boxSize = parameters.BoxSize;
-            var reversalAmount = parameters.ReversalAmount;
+            var boxSize = parameters.BoxSize <= 0 ? 1m : parameters.BoxSize;
+            var reversalAmount = parameters.ReversalAmount < 1 ? 1 : parameters.ReversalAmount;
+            decimal reversalValue = boxSize * reversalAmount;
 
-            if (boxSize <= 0) boxSize = 1;
+            int capacity = Math.Max(64, span.Length / 2);
+            var tsPool = ArrayPool<DateTime>.Shared.Rent(capacity);
+            var opPool = ArrayPool<decimal>.Shared.Rent(capacity);
+            var hiPool = ArrayPool<decimal>.Shared.Rent(capacity);
+            var loPool = ArrayPool<decimal>.Shared.Rent(capacity);
+            var clPool = ArrayPool<decimal>.Shared.Rent(capacity);
+            var volPool = ArrayPool<long>.Shared.Rent(capacity);
+            var rgPool = ArrayPool<OriginalIndexRange>.Shared.Rent(capacity);
+            var edPool = ArrayPool<ElementDates>.Shared.Rent(capacity);
 
-            var timestamps = new List<DateTime>();
-            var opens = new List<decimal>();
-            var highs = new List<decimal>();
-            var lows = new List<decimal>();
-            var closes = new List<decimal>();
-            var volumes = new List<long>();
-            var ranges = new List<OriginalIndexRange>();
-            var elementDates = new List<ElementDates>();
+            int count = 0;
 
-            // P&F logic:
-            // 1. Determine direction (Up/Down).
-            // 2. If same direction, add boxes if price moves enough (1 box).
-            // 3. If opposite direction, only reverse if price moves ReversalAmount * BoxSize.
-            
-            // Initial state
-            var first = span[0];
-            decimal currentLevel = first.Close;
-            
-            // Align to BoxSize grid using specified rounding mode
-            currentLevel = (parameters.RoundingMode == ChartRoundingMode.None)
-                ? Math.Floor(currentLevel / boxSize) * boxSize
-                : ChartMath.Quantize(currentLevel, boxSize, parameters.RoundingMode);
-
-            int direction = 0; // 1: Up (X), -1: Down (O)
-            int startIndex = 0;
-            long currentVolume = 0;
-
-            // Current column data
-            decimal columnHigh = currentLevel;
-            decimal columnLow = currentLevel;
-
-            // Date of the candle that last moved the far end of the current column (End of its ElementDates).
-            DateTime columnEnd = first.Timestamp;
-
-            for (int i = 0; i < span.Length; i++)
+            try
             {
-                var c = span[i];
-                decimal high = c.High;
-                decimal low = c.Low;
-                decimal close = c.Close; 
-                // Traditional P&F uses High/Low, but sometimes just Close.
-                // Assuming High/Low for standard P&F.
-                
-                currentVolume += c.Volume;
+                var first = span[0];
+                decimal baselinePrice = QuantizeDown(first.Close, boxSize, parameters.RoundingMode);
 
-                if (direction == 0)
+                int direction = 0; // 1: Up (X), -1: Down (O)
+                int startIndex = 0;
+                long currentVolume = span[0].Volume;
+
+                decimal columnHigh = baselinePrice;
+                decimal columnLow = baselinePrice;
+                DateTime columnEnd = first.Timestamp;
+
+                for (int i = 1; i < span.Length; i++)
                 {
-                    // Initial direction determination
-                    decimal quantizedHigh = (parameters.RoundingMode == ChartRoundingMode.None)
-                        ? Math.Floor(high / boxSize) * boxSize
-                        : ChartMath.Quantize(high, boxSize, parameters.RoundingMode);
-                    
-                    decimal quantizedLow = (parameters.RoundingMode == ChartRoundingMode.None)
-                        ? Math.Ceiling(low / boxSize) * boxSize
-                        : ChartMath.Quantize(low, boxSize, parameters.RoundingMode);
+                    var c = span[i];
+                    decimal high = c.High;
+                    decimal low = c.Low;
+                    currentVolume += c.Volume;
 
-                    decimal highDist = quantizedHigh - currentLevel;
-                    decimal lowDist = currentLevel - quantizedLow;
-
-                    if (highDist >= boxSize)
+                    if (direction == 0)
                     {
-                        direction = 1; // Up
-                        columnHigh = quantizedHigh;
-                        columnLow = currentLevel;
-                        columnEnd = c.Timestamp;
+                        if (high >= baselinePrice + boxSize)
+                        {
+                            direction = 1;
+                            startIndex = i;
+                            columnLow = baselinePrice;
+                            columnHigh = QuantizeDown(high, boxSize, parameters.RoundingMode);
+                            columnEnd = c.Timestamp;
+                        }
+                        else if (low <= baselinePrice - boxSize)
+                        {
+                            direction = -1;
+                            startIndex = i;
+                            columnHigh = baselinePrice;
+                            columnLow = QuantizeUp(low, boxSize, parameters.RoundingMode);
+                            columnEnd = c.Timestamp;
+                        }
+                        continue;
                     }
-                    else if (lowDist >= boxSize)
+
+                    if (direction == 1) // Up (X)
                     {
-                        direction = -1; // Down
-                        columnLow = quantizedLow;
-                        columnHigh = currentLevel;
-                        columnEnd = c.Timestamp;
+                        decimal quantizedHigh = QuantizeDown(high, boxSize, parameters.RoundingMode);
+                        if (quantizedHigh > columnHigh)
+                        {
+                            columnHigh = quantizedHigh;
+                            columnEnd = c.Timestamp;
+                        }
+                        else if (low <= columnHigh - reversalValue)
+                        {
+                            // Commit current Up column
+                            EnsureCapacity(ref tsPool, ref opPool, ref hiPool, ref loPool, ref clPool, ref volPool, ref rgPool, ref edPool, ref capacity, count + 1, count);
+                            AddColumn(tsPool, opPool, hiPool, loPool, clPool, volPool, rgPool, edPool, ref count,
+                                span[startIndex].Timestamp, columnEnd, columnLow, columnHigh, 1, currentVolume - c.Volume, startIndex, i - startIndex);
+
+                            // Start new Down column
+                            direction = -1;
+                            startIndex = i;
+                            columnHigh = columnHigh - boxSize;
+                            columnLow = QuantizeUp(low, boxSize, parameters.RoundingMode);
+                            columnEnd = c.Timestamp;
+                            currentVolume = c.Volume;
+                        }
+                    }
+                    else // Down (O)
+                    {
+                        decimal quantizedLow = QuantizeUp(low, boxSize, parameters.RoundingMode);
+                        if (quantizedLow < columnLow)
+                        {
+                            columnLow = quantizedLow;
+                            columnEnd = c.Timestamp;
+                        }
+                        else if (high >= columnLow + reversalValue)
+                        {
+                            // Commit current Down column
+                            EnsureCapacity(ref tsPool, ref opPool, ref hiPool, ref loPool, ref clPool, ref volPool, ref rgPool, ref edPool, ref capacity, count + 1, count);
+                            AddColumn(tsPool, opPool, hiPool, loPool, clPool, volPool, rgPool, edPool, ref count,
+                                span[startIndex].Timestamp, columnEnd, columnHigh, columnLow, -1, currentVolume - c.Volume, startIndex, i - startIndex);
+
+                            // Start new Up column
+                            direction = 1;
+                            startIndex = i;
+                            columnLow = columnLow + boxSize;
+                            columnHigh = QuantizeDown(high, boxSize, parameters.RoundingMode);
+                            columnEnd = c.Timestamp;
+                            currentVolume = c.Volume;
+                        }
                     }
                 }
-                else if (direction == 1) // Up (X)
+
+                // Commit final column if direction established
+                if (direction != 0)
                 {
-                    // Check for continuation
-                    decimal newHigh = (parameters.RoundingMode == ChartRoundingMode.None)
-                        ? Math.Floor(high / boxSize) * boxSize
-                        : ChartMath.Quantize(high, boxSize, parameters.RoundingMode);
-                    if (newHigh > columnHigh)
-                    {
-                        // Add X's
-                        columnHigh = newHigh;
-                        columnEnd = c.Timestamp;
-                    }
-                    
-                    // Check for reversal
-                    decimal reversalLevel = columnHigh - (reversalAmount * boxSize);
-                    decimal quantizedLow = (parameters.RoundingMode == ChartRoundingMode.None)
-                        ? Math.Ceiling(low / boxSize) * boxSize
-                        : ChartMath.Quantize(low, boxSize, parameters.RoundingMode);
-                    
-                    // Standard: if Low <= reversalLevel
-                    if (low <= reversalLevel) // Strict price check
-                    {
-                        // Commit current UP column
-                        AddColumn(timestamps, opens, highs, lows, closes, volumes, ranges, elementDates,
-                            span[startIndex].Timestamp, columnEnd, columnLow, columnHigh, 1, currentVolume, startIndex, i - startIndex);
-                        
-                        // Start new DOWN column
-                        direction = -1;
-                        startIndex = i;
-                        columnEnd = c.Timestamp;
-                        currentVolume = c.Volume; 
-                        
-                        // The new column starts one box below the previous high?
-                        // Standard P&F: New O column starts one box below the high of the previous X column.
-                        columnHigh = columnHigh - boxSize; 
-                        
-                        // And goes down to at least the low?
-                        // The low executed this period triggered the reversal.
-                        columnLow = quantizedLow;
-                    }
+                    EnsureCapacity(ref tsPool, ref opPool, ref hiPool, ref loPool, ref clPool, ref volPool, ref rgPool, ref edPool, ref capacity, count + 1, count);
+                    AddColumn(tsPool, opPool, hiPool, loPool, clPool, volPool, rgPool, edPool, ref count,
+                        span[startIndex].Timestamp, columnEnd,
+                        (direction == 1) ? columnLow : columnHigh,
+                        (direction == 1) ? columnHigh : columnLow,
+                        direction, currentVolume, startIndex, span.Length - startIndex);
                 }
-                else if (direction == -1) // Down (O)
-                {
-                    // Check for continuation
-                    decimal quantizedLow = (parameters.RoundingMode == ChartRoundingMode.None)
-                        ? Math.Ceiling(low / boxSize) * boxSize
-                        : ChartMath.Quantize(low, boxSize, parameters.RoundingMode);
-                    
-                    if (quantizedLow < columnLow)
-                    {
-                        columnLow = quantizedLow;
-                        columnEnd = c.Timestamp;
-                    }
 
-                    // Check for reversal
-                    decimal reversalLevel = columnLow + (reversalAmount * boxSize);
-                    if (high >= reversalLevel)
-                    {
-                        // Commit current DOWN column
-                        AddColumn(timestamps, opens, highs, lows, closes, volumes, ranges, elementDates,
-                            span[startIndex].Timestamp, columnEnd, columnHigh, columnLow, -1, currentVolume, startIndex, i - startIndex);
+                var finalTimestamps = new DateTime[count];
+                var finalOpens = new decimal[count];
+                var finalHighs = new decimal[count];
+                var finalLows = new decimal[count];
+                var finalCloses = new decimal[count];
+                var finalVolumes = new long[count];
+                var finalRanges = new OriginalIndexRange[count];
+                var finalElementDates = new ElementDates[count];
 
-                        // Start new UP column
-                        direction = 1;
-                        startIndex = i;
-                        columnEnd = c.Timestamp;
-                        currentVolume = c.Volume;
+                Array.Copy(tsPool, finalTimestamps, count);
+                Array.Copy(opPool, finalOpens, count);
+                Array.Copy(hiPool, finalHighs, count);
+                Array.Copy(loPool, finalLows, count);
+                Array.Copy(clPool, finalCloses, count);
+                Array.Copy(volPool, finalVolumes, count);
+                Array.Copy(rgPool, finalRanges, count);
+                Array.Copy(edPool, finalElementDates, count);
 
-                        // New X column starts one box above the low of the previous O column
-                        columnLow = columnLow + boxSize;
-                        columnHigh = (parameters.RoundingMode == ChartRoundingMode.None)
-                            ? Math.Floor(high / boxSize) * boxSize
-                            : ChartMath.Quantize(high, boxSize, parameters.RoundingMode);
-                    }
-                }
+                return new ChartSegmentAdapter(
+                    ZeroAllocChartDataType.PointAndFigure,
+                    finalTimestamps,
+                    finalOpens,
+                    finalHighs,
+                    finalLows,
+                    finalCloses,
+                    finalVolumes,
+                    finalRanges,
+                    elementDates: finalElementDates);
             }
-            
-            // Commit final column
-             AddColumn(timestamps, opens, highs, lows, closes, volumes, ranges, elementDates,
-                   span[startIndex].Timestamp, columnEnd,
-                   (direction == 1) ? columnLow : columnHigh, // Open (Base)
-                   (direction == 1) ? columnHigh : columnLow, // Close (Tip)
-                   direction, currentVolume, startIndex, span.Length - startIndex);
+            finally
+            {
+                ArrayPool<DateTime>.Shared.Return(tsPool);
+                ArrayPool<decimal>.Shared.Return(opPool);
+                ArrayPool<decimal>.Shared.Return(hiPool);
+                ArrayPool<decimal>.Shared.Return(loPool);
+                ArrayPool<decimal>.Shared.Return(clPool);
+                ArrayPool<long>.Shared.Return(volPool);
+                ArrayPool<OriginalIndexRange>.Shared.Return(rgPool);
+                ArrayPool<ElementDates>.Shared.Return(edPool);
+            }
+        }
 
+        private static void EnsureCapacity(
+            ref DateTime[] ts, ref decimal[] op, ref decimal[] hi, ref decimal[] lo, ref decimal[] cl,
+            ref long[] vol, ref OriginalIndexRange[] rg, ref ElementDates[] ed, ref int capacity, int needed, int count)
+        {
+            if (needed <= capacity) return;
+            int newCap = Math.Max(capacity * 2, needed);
+            Resize(ref ts, newCap, count);
+            Resize(ref op, newCap, count);
+            Resize(ref hi, newCap, count);
+            Resize(ref lo, newCap, count);
+            Resize(ref cl, newCap, count);
+            Resize(ref vol, newCap, count);
+            Resize(ref rg, newCap, count);
+            Resize(ref ed, newCap, count);
+            capacity = newCap;
+        }
 
-            return new ChartSegmentAdapter(
-                ZeroAllocChartDataType.PointAndFigure,
-                timestamps.ToArray(),
-                opens.ToArray(),
-                highs.ToArray(),
-                lows.ToArray(),
-                closes.ToArray(),
-                volumes.ToArray(),
-                ranges.ToArray(),
-                elementDates: elementDates.ToArray());
+        private static void Resize<T>(ref T[] array, int newSize, int count)
+        {
+            var newArray = ArrayPool<T>.Shared.Rent(newSize);
+            if (count > 0)
+            {
+                Array.Copy(array, newArray, count);
+            }
+            ArrayPool<T>.Shared.Return(array);
+            array = newArray;
         }
 
         private static void AddColumn(
-             List<DateTime> ts, List<decimal> op, List<decimal> hi, List<decimal> lo, List<decimal> cl,
-             List<long> vol, List<OriginalIndexRange> rg, List<ElementDates> ed,
-             DateTime t, DateTime lastUpdate, decimal startLevel, decimal endLevel, int direction, long v, int start, int len)
+            DateTime[] ts, decimal[] op, decimal[] hi, decimal[] lo, decimal[] cl,
+            long[] vol, OriginalIndexRange[] rg, ElementDates[] ed, ref int count,
+            DateTime startTimestamp, DateTime endTimestamp, decimal startLevel, decimal endLevel,
+            int direction, long v, int start, int len)
         {
-            ts.Add(t);
-            ed.Add(new ElementDates(t, lastUpdate));
-            // Adapter standard:
-            // Up: Open < Close. Open = Low, Close = High
-            // Down: Open > Close. Open = High, Close = Low
-            
-            // P&F X Column (Up): Starts at 'startLevel' (bottom), goes to 'endLevel' (top)
-            // P&F O Column (Down): Starts at 'startLevel' (top), goes to 'endLevel' (bottom)
-            
-            // Wait, my logic above for O column uses columnHigh/columnLow which are absolute.
-            // Let's normalize.
-            
-            if (direction == 1) // Up
+            int idx = count++;
+            ts[idx] = endTimestamp;
+            ed[idx] = new ElementDates(startTimestamp, endTimestamp);
+
+            if (direction == 1) // Up (X)
             {
-                // startLevel should be Low, endLevel should be High
-                op.Add(startLevel);
-                cl.Add(endLevel);
-                hi.Add(endLevel);
-                lo.Add(startLevel);
+                op[idx] = startLevel;
+                cl[idx] = endLevel;
+                hi[idx] = endLevel;
+                lo[idx] = startLevel;
             }
-            else // Down
+            else // Down (O)
             {
-                // startLevel should be High, endLevel should be Low
-                op.Add(startLevel);
-                cl.Add(endLevel);
-                hi.Add(startLevel); 
-                lo.Add(endLevel); 
+                op[idx] = startLevel;
+                cl[idx] = endLevel;
+                hi[idx] = startLevel;
+                lo[idx] = endLevel;
             }
-            
-            vol.Add(v);
-            rg.Add(new OriginalIndexRange(start, len));
+
+            vol[idx] = v;
+            rg[idx] = new OriginalIndexRange(start, len);
+        }
+
+        private static decimal QuantizeDown(decimal price, decimal boxSize, ChartRoundingMode mode)
+        {
+            if (mode == ChartRoundingMode.None)
+            {
+                return Math.Floor(price / boxSize) * boxSize;
+            }
+            return ChartMath.Quantize(price, boxSize, mode);
+        }
+
+        private static decimal QuantizeUp(decimal price, decimal boxSize, ChartRoundingMode mode)
+        {
+            if (mode == ChartRoundingMode.None)
+            {
+                return Math.Ceiling(price / boxSize) * boxSize;
+            }
+            return ChartMath.Quantize(price, boxSize, mode);
         }
     }
 

@@ -55,7 +55,7 @@ public abstract class CoreIndicatorBase : ICoreIndicator
     /// </summary>
     public virtual void Configure(CoreIndicatorParameterBase parameters)
     {
-        // Default: no configuration needed. Subclasses override as needed.
+        parameters?.Validate();
     }
 
     /// <summary>

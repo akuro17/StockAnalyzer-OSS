@@ -8,6 +8,7 @@ using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
+using StockAnalyzer.Avalonia.Services;
 using StockAnalyzer.Avalonia.ViewModels.Notes;
 using StockAnalyzer.Core.Services.Notes;
 
@@ -15,7 +16,7 @@ namespace StockAnalyzer.Avalonia.Views.Notes;
 
 public partial class NoteTimelineView : UserControl
 {
-    /// <summary>Infinite scroll (sa_implement, Notes メインタイムライン インフィニットスクロール Task 5)
+    /// <summary>Infinite scroll (sa_implement, Notes main timeline infinite scroll Task 5)
     /// fires <see cref="NoteTimelineViewModel.LoadMoreVisibleNotesAsync"/> once the unfilled space
     /// below the last currently-loaded card drops to this many pixels, so the next page is already
     /// appended just before the user would otherwise reach the bottom - rather than only after they
@@ -285,11 +286,11 @@ public partial class NoteTimelineView : UserControl
         {
             var files = await topLevel.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
             {
-                Title = "Attach Image",
+                Title = LocalizationManager.Instance.Get("Note_FilePicker_AttachImage_Title"),
                 AllowMultiple = true,
                 FileTypeFilter = new[]
                 {
-                    new FilePickerFileType("Images") { Patterns = new[] { "*.png", "*.jpg", "*.jpeg", "*.gif", "*.bmp", "*.webp" } }
+                    new FilePickerFileType(LocalizationManager.Instance.Get("Note_FilePicker_Images_TypeName")) { Patterns = new[] { "*.png", "*.jpg", "*.jpeg", "*.gif", "*.bmp", "*.webp" } }
                 }
             });
 

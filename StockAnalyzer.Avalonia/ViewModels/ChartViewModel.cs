@@ -237,9 +237,9 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
 
     /// <summary>The localized window-mismatch text of a failed model load, or null when the fallback has no such cause.</summary>
     private string? BuildPredictionNotice(PredictionResult result) =>
-        result.IsFallback && _predictionService?.LoadIssue is { } issue
+        result.IsFallback && _predictionService?.LoadIssue is { } issue && LocalizeOrNull("Prediction_Notice_WindowMismatch") is { } template
             ? string.Format(System.Globalization.CultureInfo.CurrentCulture,
-                LocalizationManager.Instance.Get("Prediction_Notice_WindowMismatch"), issue.ModelWindow, issue.ConfiguredWindow)
+                template, issue.ModelWindow, issue.ConfiguredWindow)
             : null;
 
     /// <summary>
@@ -302,8 +302,9 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
                 if (display is not null)
                     MonitoringUpdateTask = StartPersistPrediction(result, symbol, timeframe, history, token);
                 ModelAnalysis = analysis;
-                RegimeDisplay = regime is null ? null : string.Format(System.Globalization.CultureInfo.CurrentCulture,
-                    LocalizationManager.Instance.Get("ModelAnalysis_Regime"), regime.Id);
+                RegimeDisplay = regime is not null && LocalizeOrNull("ModelAnalysis_Regime") is { } regimeTemplate
+                    ? string.Format(System.Globalization.CultureInfo.CurrentCulture, regimeTemplate, regime.Id)
+                    : null;
             });
             if (attention is not null && requestId == _predictionRequestId && !_isDisposed)
                 await PublishAttentionAsync(attention, history, token).ConfigureAwait(false);
@@ -1094,7 +1095,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
                             int retainedCount = ExtendedLookbackHelper.CalculateRetainedCount(
                                 kvp.Value, snapshotCandles.Count, targetCandles.Count);
                             trimmed[kvp.Key] = new StockAnalyzer.Avalonia.Views.Chart.SlicedIndicatorResult(
-                                kvp.Value, extendedLookbackSnapshot, retainedCount, targetCandles.Count);
+                                kvp.Value, extendedLookbackSnapshot, retainedCount);
                         }
                         results = trimmed;
                     }
@@ -1543,14 +1544,14 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
     }
 
     // Phase Colors mapping to UI labels:
-    // UI "1: Bullish Reversal" (陽転) binds to Phase8Color -> Lime Green
-    // UI "2: Buy Signal" (買い) binds to Phase1Color -> Green
-    // UI "3: Buy Continuation" (買い乗せ) binds to Phase2Color -> Dark Green
-    // UI "4: Caution" (天井警戒) binds to Phase3Color -> Yellow
-    // UI "5: Bearish Reversal" (陰転) binds to Phase4Color -> Salmon
-    // UI "6: Sell Signal" (売り) binds to Phase5Color -> Red
-    // UI "7: Sell Continuation" (売り乗せ) binds to Phase6Color -> Dark Red
-    // UI "8: Bottoming Out" (底入れ) binds to Phase7Color -> Blue Gray
+    // UI "1: Bullish Reversal" binds to Phase8Color -> Lime Green
+    // UI "2: Buy Signal" binds to Phase1Color -> Green
+    // UI "3: Buy Continuation" binds to Phase2Color -> Dark Green
+    // UI "4: Caution" binds to Phase3Color -> Yellow
+    // UI "5: Bearish Reversal" binds to Phase4Color -> Salmon
+    // UI "6: Sell Signal" binds to Phase5Color -> Red
+    // UI "7: Sell Continuation" binds to Phase6Color -> Dark Red
+    // UI "8: Bottoming Out" binds to Phase7Color -> Blue Gray
     [ObservableProperty] private HsvData _reverseWatchPhase1Color = new(120, 0.8, 0.8, 1); // Green (UI label 2)
     [ObservableProperty] private HsvData _reverseWatchPhase2Color = new(120, 1, 0.4, 1);   // Dark Green (UI label 3)
     [ObservableProperty] private HsvData _reverseWatchPhase3Color = new(50, 1, 1, 1);     // Yellow (UI label 4)
@@ -2745,7 +2746,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
     /// <returns>
     /// True if a candle was resolved and <see cref="VisibleStartIndex"/> was updated; false when
     /// no candles are loaded (caller should wait for data loading to finish before calling this,
-    /// per spec section 6.2's "未ロード期間への対応").
+    /// per spec section 6.2's "Handling unloaded periods").
     /// </returns>
     public bool JumpToAnchorDate(DateTime anchorDate, TimeFrame timeframe)
     {

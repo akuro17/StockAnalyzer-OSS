@@ -73,8 +73,8 @@ internal sealed class RlQModel : IDisposable
             || Required("target_type") != (_continuous ? RlContinuousContract.Target : RlFiles.Target)
             || Required("window_size") != RlContract.WindowLength.ToString(CultureInfo.InvariantCulture)
             || Required("channels") != RlContract.MarketChannelCount.ToString(CultureInfo.InvariantCulture)
-            || Required("feature_mode") != RlFiles.FeatureMode || Required("timeframe") != nameof(TimeFrame.D1) || Required("normalization") != "fixed_zscore"
-            || Required("lags") != "[]" || Metadata.GetValueOrDefault("clip_sigma") != "")
+            || Required("feature_mode") != RlFiles.FeatureMode || Required("timeframe") != nameof(TimeFrame.D1) || Required(PredictionModelMetadata.NormalizationKey) != PredictionModelMetadata.FixedNormalization
+            || Required(PredictionModelMetadata.LagsKey) != "[]" || Metadata.GetValueOrDefault(PredictionModelMetadata.ClipSigmaKey) != "")
             throw new InvalidDataException("RL ONNX mathematical/observation contract is incompatible.");
         _ = Required("source_revision"); _ = Required("evaluation_revision"); _ = Required("symbol");
         if (Metadata.TryGetValue("temporal_specification_id", out var temporalRevision))

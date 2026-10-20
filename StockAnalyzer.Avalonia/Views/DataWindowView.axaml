@@ -228,10 +228,10 @@
                                     <Grid ColumnDefinitions="24,12,*" Background="Transparent">
                                         <Grid.ContextMenu>
                                             <ContextMenu x:DataType="vm:DataWindowItemViewModel">
-                                                <MenuItem Header="Show All in Group" 
+                                                <MenuItem Header="{l:Localize DataWindow_Menu_ShowAllInGroup}" 
                                                           Command="{Binding ToggleGroupAllOnCommand}" 
                                                           CommandParameter="{Binding}"/>
-                                                <MenuItem Header="Hide All in Group" 
+                                                <MenuItem Header="{l:Localize DataWindow_Menu_HideAllInGroup}" 
                                                           Command="{Binding ToggleGroupAllOffCommand}" 
                                                           CommandParameter="{Binding}"/>
                                             </ContextMenu>

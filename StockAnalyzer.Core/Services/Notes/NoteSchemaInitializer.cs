@@ -14,6 +14,7 @@ namespace StockAnalyzer.Core.Services.Notes;
 public sealed class NoteSchemaInitializer
 {
     private const long CurrentSchemaVersion = 3;
+    private static readonly SemaphoreSlim _initLock = new(1, 1);
 
     private readonly NoteDatabaseConnectionManager _connectionManager;
     private readonly ILogger<NoteSchemaInitializer>? _logger;
@@ -31,65 +32,85 @@ public sealed class NoteSchemaInitializer
     /// </summary>
     public async Task InitializeAsync(CancellationToken ct = default)
     {
-        using var connection = await _connectionManager.OpenConnectionAsync(ct).ConfigureAwait(false);
-
-        var currentVersion = await GetUserVersionAsync(connection, ct).ConfigureAwait(false);
-        if (currentVersion >= CurrentSchemaVersion)
-        {
-            _logger?.LogDebug("notes.db schema already at version {Version}; skipping initialization.", currentVersion);
-            return;
-        }
-
-        using var transaction = connection.BeginTransaction();
+        await _initLock.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            if (currentVersion < 1)
+            using var connection = await _connectionManager.OpenConnectionAsync(ct).ConfigureAwait(false);
+
+            var currentVersion = await GetUserVersionAsync(connection, null, ct).ConfigureAwait(false);
+            if (currentVersion >= CurrentSchemaVersion)
             {
-                await ExecuteAsync(connection, transaction, CreateNotesTableSql, ct).ConfigureAwait(false);
-                await ExecuteAsync(connection, transaction, CreateAttachmentsTableSql, ct).ConfigureAwait(false);
-                await ExecuteAsync(connection, transaction, CreateNotesRelatedTickerIndexSql, ct).ConfigureAwait(false);
-                await ExecuteAsync(connection, transaction, CreateNotesCreatedAtIndexSql, ct).ConfigureAwait(false);
+                _logger?.LogDebug("notes.db schema already at version {Version}; skipping initialization.", currentVersion);
+                return;
             }
 
-            if (currentVersion < 2)
+            using var transaction = connection.BeginTransaction();
+            try
             {
-                if (currentVersion >= 1)
+                currentVersion = await GetUserVersionAsync(connection, transaction, ct).ConfigureAwait(false);
+                if (currentVersion >= CurrentSchemaVersion)
                 {
-                    // Notes table already existed at v1 (without the thread columns); add them in place
-                    // so existing rows and their data are preserved (SQLite ALTER TABLE ADD COLUMN is non-destructive).
-                    await ExecuteAsync(connection, transaction, AddQuotedNoteIdColumnSql, ct).ConfigureAwait(false);
-                    await ExecuteAsync(connection, transaction, AddParentNoteIdColumnSql, ct).ConfigureAwait(false);
+                    _logger?.LogDebug("notes.db schema already at version {Version}; skipping initialization.", currentVersion);
+                    transaction.Commit();
+                    return;
                 }
 
-                await ExecuteAsync(connection, transaction, CreateNotesQuotedNoteIdIndexSql, ct).ConfigureAwait(false);
-                await ExecuteAsync(connection, transaction, CreateNotesParentNoteIdIndexSql, ct).ConfigureAwait(false);
-            }
-
-            if (currentVersion < 3)
-            {
-                if (currentVersion >= 1)
+                if (currentVersion < 1)
                 {
-                    await ExecuteAsync(connection, transaction, AddCatalystDateColumnSql, ct).ConfigureAwait(false);
+                    await ExecuteAsync(connection, transaction, CreateNotesTableSql, ct).ConfigureAwait(false);
+                    await ExecuteAsync(connection, transaction, CreateAttachmentsTableSql, ct).ConfigureAwait(false);
+                    await ExecuteAsync(connection, transaction, CreateNotesRelatedTickerIndexSql, ct).ConfigureAwait(false);
+                    await ExecuteAsync(connection, transaction, CreateNotesCreatedAtIndexSql, ct).ConfigureAwait(false);
                 }
 
-                await ExecuteAsync(connection, transaction, CreateNotesCatalystDateIndexSql, ct).ConfigureAwait(false);
+                if (currentVersion < 2)
+                {
+                    if (currentVersion >= 1)
+                    {
+                        // Notes table already existed at v1 (without the thread columns); add them in place
+                        // so existing rows and their data are preserved (SQLite ALTER TABLE ADD COLUMN is non-destructive).
+                        await ExecuteAsync(connection, transaction, AddQuotedNoteIdColumnSql, ct).ConfigureAwait(false);
+                        await ExecuteAsync(connection, transaction, AddParentNoteIdColumnSql, ct).ConfigureAwait(false);
+                    }
+
+                    await ExecuteAsync(connection, transaction, CreateNotesQuotedNoteIdIndexSql, ct).ConfigureAwait(false);
+                    await ExecuteAsync(connection, transaction, CreateNotesParentNoteIdIndexSql, ct).ConfigureAwait(false);
+                }
+
+                if (currentVersion < 3)
+                {
+                    if (currentVersion >= 1)
+                    {
+                        await ExecuteAsync(connection, transaction, AddCatalystDateColumnSql, ct).ConfigureAwait(false);
+                    }
+
+                    await ExecuteAsync(connection, transaction, CreateNotesCatalystDateIndexSql, ct).ConfigureAwait(false);
+                }
+
+                await SetUserVersionAsync(connection, transaction, CurrentSchemaVersion, ct).ConfigureAwait(false);
+
+                transaction.Commit();
+                _logger?.LogInformation("notes.db schema initialized to version {Version}.", CurrentSchemaVersion);
             }
-
-            await SetUserVersionAsync(connection, transaction, CurrentSchemaVersion, ct).ConfigureAwait(false);
-
-            transaction.Commit();
-            _logger?.LogInformation("notes.db schema initialized to version {Version}.", CurrentSchemaVersion);
+            catch
+            {
+                transaction.Rollback();
+                throw;
+            }
         }
-        catch
+        finally
         {
-            transaction.Rollback();
-            throw;
+            _initLock.Release();
         }
     }
 
-    private static async Task<long> GetUserVersionAsync(SqliteConnection connection, CancellationToken ct)
+    private static async Task<long> GetUserVersionAsync(SqliteConnection connection, SqliteTransaction? transaction = null, CancellationToken ct = default)
     {
         using var command = connection.CreateCommand();
+        if (transaction != null)
+        {
+            command.Transaction = transaction;
+        }
         command.CommandText = "PRAGMA user_version;";
         var result = await command.ExecuteScalarAsync(ct).ConfigureAwait(false);
         return result is long version ? version : 0;

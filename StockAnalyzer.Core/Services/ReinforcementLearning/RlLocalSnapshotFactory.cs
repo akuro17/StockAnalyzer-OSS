@@ -81,8 +81,8 @@ internal static class RlLocalSnapshotFactory
         var metadata = RlLocalParquetReader.ReadMetadata(metadataParquetPath);
         string Require(string name) => metadata.TryGetValue(name, out var value) && !string.IsNullOrWhiteSpace(value)
             ? value : throw new InvalidDataException($"Unavailable: local metadata {name} is missing; no symbol inference is permitted.");
-        string currency = Require("currency"), type = Require("quote_type"), timezone = Require("exchange_timezone_name");
-        if (type != "EQUITY") throw new InvalidDataException("Unavailable: T15 requires an existing local equity series.");
+        string currency = Require(RlLocalParquetReader.CurrencyKey), type = Require(RlLocalParquetReader.QuoteTypeKey), timezone = Require(RlLocalParquetReader.ExchangeTimezoneKey);
+        if (type != RlLocalParquetReader.EquityQuoteType) throw new InvalidDataException("Unavailable: T15 requires an existing local equity series.");
         TimeZoneInfo zone;
         try { zone = TimeZoneInfo.FindSystemTimeZoneById(timezone); }
         catch (Exception ex) when (ex is TimeZoneNotFoundException or InvalidTimeZoneException)

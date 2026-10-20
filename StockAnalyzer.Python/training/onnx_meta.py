@@ -49,6 +49,10 @@ DEFAULT_PRICE_ADJUSTMENT: str = "adjusted"
 TARGET_TYPE: str = "classification"
 TARGET_TYPES: tuple = ("classification", "regression")
 
+# Canonical default tensor node names for single-input / single-output ONNX models.
+DEFAULT_INPUT_NAME: str = "input"
+DEFAULT_OUTPUT_NAME: str = "output"
+
 # T13 self-supervised encoder pretraining wire strings (SSoT; mirror of C# TrainingPretraining).
 PRETRAINING_NONE: str = "none"
 PRETRAINING_MASKED_RECONSTRUCTION: str = "masked_reconstruction"

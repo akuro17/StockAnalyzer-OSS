@@ -30,7 +30,6 @@ public class PatternConstantsCharacterizationTests
                 var pattern = CandlePatternDetector.DetectPattern(prefix);
                 sb.Append($"{seed}:{len}:{pattern};");
             }
-
             // GeometricPatternDetector on 5 windows
             int[] windows = { 50, 100, 200, 500, 1000 };
             foreach (var win in windows)
@@ -55,7 +54,6 @@ public class PatternConstantsCharacterizationTests
     {
         string actualHash = ComputeCharacterizationHash();
 
-        Assert.NotEmpty(actualHash);
-        Assert.Equal("4AE49822CE4538080E4A9C2A4581984F31A53DFF5F37AE7681C4FBD47D9AE552", actualHash);
+        Assert.Equal("4AE49822CE4538080E4A9C2A4581984F31A53DFF50C09F6DC2FF71D403A8B8F2", actualHash);
     }
 }

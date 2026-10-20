@@ -121,6 +121,7 @@ public class TextObject : IChartObject, IDisposable, ITextAnnotatedObject
     [ParameterTag(DrawingParameterTags.Common)]
     public int ZIndex { get; set; } = 0;
 
+    public int Priority { get; set; } = 0;
     public int AnchorPointIndex { get; set; } = 0;
 
     private string _text = "Text";

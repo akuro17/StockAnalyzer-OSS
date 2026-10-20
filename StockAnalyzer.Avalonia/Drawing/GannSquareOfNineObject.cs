@@ -31,6 +31,7 @@ public class GannSquareOfNineObject : IChartObject, IDrawingCalculatedValuesProv
     public bool IsLocked { get; set; } = false;
     public int PanelIndex { get; set; } = -1;
     public int ZIndex { get; set; } = 0;
+    public int Priority { get; set; } = 0;
     public int AnchorPointIndex { get; set; } = 0;
 
     // Factors corresponding to angles: 45, 90, 135, 180, 225, 270, 315, 360

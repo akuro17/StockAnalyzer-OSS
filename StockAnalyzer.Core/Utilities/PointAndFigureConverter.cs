@@ -1,10 +1,14 @@
-using StockAnalyzer.Core.MathUtils;
+using System;
+using System.Buffers;
+using System.Collections.Generic;
 using StockAnalyzer.Core.Models;
+using StockAnalyzer.ZeroAllocation;
 
 namespace StockAnalyzer.Core.Utilities;
 
 /// <summary>
 /// Converts OHLCV candle data into Point &amp; Figure (P&amp;F) columns.
+/// Thin adapter wrapping the SSoT engine <see cref="PointAndFigureCalculator"/>.
 /// Each returned CandleData represents one P&amp;F column:
 ///   - Up column (X): Open = column bottom, Close = column top  (IsBullish = true)
 ///   - Down column (O): Open = column top, Close = column bottom (IsBullish = false)
@@ -19,183 +23,75 @@ public static class PointAndFigureConverter
     /// <param name="candles">Source OHLCV candle data.</param>
     /// <param name="boxSize">Box size (price unit per box).</param>
     /// <param name="reversalAmount">Number of boxes required for reversal (typically 3).</param>
-    /// <returns>List of CoreCandleData, each representing one P&F column.</returns>
-    public static List<CoreCandleData> Convert(IReadOnlyList<CoreCandleData> candles, decimal boxSize, int reversalAmount = ChartConstants.DefaultReversalAmount, ChartRoundingMode roundingMode = ChartRoundingMode.None)
+    /// <param name="roundingMode">Optional price quantization rounding mode.</param>
+    /// <returns>List of CoreCandleData, each representing one P&amp;F column.</returns>
+    public static List<CoreCandleData> Convert(
+        IReadOnlyList<CoreCandleData> candles,
+        decimal boxSize,
+        int reversalAmount = ChartConstants.DefaultReversalAmount,
+        ChartRoundingMode roundingMode = ChartRoundingMode.None)
     {
         var columns = new List<CoreCandleData>();
         Convert(candles, boxSize, reversalAmount, columns, roundingMode);
         return columns;
     }
 
-    public static void Convert(IReadOnlyList<CoreCandleData> candles, decimal boxSize, int reversalAmount, List<CoreCandleData> outputBuffer, ChartRoundingMode roundingMode = ChartRoundingMode.None, List<ElementDates>? elementDatesBuffer = null)
+    /// <summary>
+    /// Convert raw candle data into P&amp;F columns in-place using output buffers.
+    /// Delegates directly to <see cref="PointAndFigureCalculator"/> for unified SSoT calculation.
+    /// </summary>
+    public static void Convert(
+        IReadOnlyList<CoreCandleData> candles,
+        decimal boxSize,
+        int reversalAmount,
+        List<CoreCandleData> outputBuffer,
+        ChartRoundingMode roundingMode = ChartRoundingMode.None,
+        List<ElementDates>? elementDatesBuffer = null)
     {
         outputBuffer.Clear();
         elementDatesBuffer?.Clear();
-        if (candles == null) return;
+        if (candles == null || candles.Count == 0) return;
         if (boxSize <= 0) throw new ArgumentOutOfRangeException(nameof(boxSize), "Box size must be positive.");
         if (reversalAmount < 1) throw new ArgumentOutOfRangeException(nameof(reversalAmount), "Reversal amount must be >= 1.");
 
-        decimal reversalValue = boxSize * reversalAmount;
-
-        if (candles.Count == 0) return;
-
-        // Initialize baseline from first candle's close, quantized to box boundary
-        var first = candles[0];
-        decimal baselinePrice = QuantizeDown(first.Close, boxSize, roundingMode);
-
-        // State: 0 = waiting for first directional move, 1 = Up column, -1 = Down column
-        int state = 0;
-
-        // Current column boundaries (quantized)
-        decimal colTop = baselinePrice;
-        decimal colBottom = baselinePrice;
-        DateTime colTimestamp = first.Timestamp;
-
-        for (int i = 1; i < candles.Count; i++)
+        int count = candles.Count;
+        var zeroAlloc = ArrayPool<ZeroAllocCandleData>.Shared.Rent(count);
+        try
         {
-            var c = candles[i];
-            decimal high = c.High;
-            decimal low = c.Low;
-
-            if (state == 0)
+            for (int i = 0; i < count; i++)
             {
-                // Waiting for first directional move
-                if (high >= baselinePrice + boxSize)
-                {
-                    // First move is Up
-                    state = 1;
-                    colTop = QuantizeDown(high, boxSize, roundingMode);
-                    colBottom = baselinePrice;
-                    colTimestamp = c.Timestamp;
-                    outputBuffer.Add(MakeUpColumn(colTimestamp, colBottom, colTop));
-                    elementDatesBuffer?.Add(new ElementDates(colTimestamp, colTimestamp));
-                }
-                else if (low <= baselinePrice - boxSize)
-                {
-                    // First move is Down
-                    state = -1;
-                    colTop = baselinePrice;
-                    colBottom = QuantizeUp(low, boxSize, roundingMode);
-                    colTimestamp = c.Timestamp;
-                    outputBuffer.Add(MakeDownColumn(colTimestamp, colTop, colBottom));
-                    elementDatesBuffer?.Add(new ElementDates(colTimestamp, colTimestamp));
-                }
-                continue;
+                var c = candles[i];
+                zeroAlloc[i] = new ZeroAllocCandleData(c.Timestamp, c.Open, c.High, c.Low, c.Close, (long)c.Volume);
             }
 
-            if (state == 1) // Current: Up column (X)
+            var parameters = new PointAndFigureParameters(boxSize, reversalAmount, roundingMode);
+            var adapter = PointAndFigureCalculator.Calculate(zeroAlloc.AsMemory(0, count), parameters);
+
+            int columnCount = adapter.Count;
+            if (columnCount == 0) return;
+
+            var times = adapter.Timestamps.Span;
+            var opens = adapter.Opens.Span;
+            var highs = adapter.Highs.Span;
+            var lows = adapter.Lows.Span;
+            var closes = adapter.Closes.Span;
+            var vols = adapter.Volumes.Span;
+            var ed = adapter.ElementDates.Span;
+
+            if (outputBuffer.Capacity < columnCount) outputBuffer.Capacity = columnCount;
+            for (int i = 0; i < columnCount; i++)
             {
-                // 1. Check extension (High pushes column higher)
-                decimal quantizedHigh = QuantizeDown(high, boxSize, roundingMode);
-                if (quantizedHigh > colTop)
-                {
-                    // Extend up column
-                    colTop = quantizedHigh;
-                    colTimestamp = c.Timestamp;
-                    outputBuffer[outputBuffer.Count - 1] = MakeUpColumn(colTimestamp, colBottom, colTop);
-                    if (elementDatesBuffer != null)
-                        elementDatesBuffer[elementDatesBuffer.Count - 1] = elementDatesBuffer[elementDatesBuffer.Count - 1] with { End = colTimestamp };
-                }
-                // 2. Check reversal to Down (only if no extension)
-                else if (low <= colTop - reversalValue)
-                {
-                    // Reverse: new Down column starts 1 box below previous top
-                    decimal newTop = colTop - boxSize;
-                    decimal newBottom = QuantizeUp(low, boxSize, roundingMode);
-                    state = -1;
-                    colTop = newTop;
-                    colBottom = newBottom;
-                    colTimestamp = c.Timestamp;
-                    outputBuffer.Add(MakeDownColumn(colTimestamp, colTop, colBottom));
-                    elementDatesBuffer?.Add(new ElementDates(colTimestamp, colTimestamp));
-                }
+                outputBuffer.Add(new CoreCandleData(times[i], opens[i], highs[i], lows[i], closes[i], vols[i]));
             }
-            else // state == -1, Current: Down column (O)
+
+            if (elementDatesBuffer != null && ed.Length == columnCount)
             {
-                // 1. Check extension (Low pushes column lower)
-                decimal quantizedLow = QuantizeUp(low, boxSize, roundingMode);
-                if (quantizedLow < colBottom)
-                {
-                    // Extend down column
-                    colBottom = quantizedLow;
-                    colTimestamp = c.Timestamp;
-                    outputBuffer[outputBuffer.Count - 1] = MakeDownColumn(colTimestamp, colTop, colBottom);
-                    if (elementDatesBuffer != null)
-                        elementDatesBuffer[elementDatesBuffer.Count - 1] = elementDatesBuffer[elementDatesBuffer.Count - 1] with { End = colTimestamp };
-                }
-                // 2. Check reversal to Up (only if no extension)
-                else if (high >= colBottom + reversalValue)
-                {
-                    // Reverse: new Up column starts 1 box above previous bottom
-                    decimal newBottom = colBottom + boxSize;
-                    decimal newTop = QuantizeDown(high, boxSize, roundingMode);
-                    state = 1;
-                    colBottom = newBottom;
-                    colTop = newTop;
-                    colTimestamp = c.Timestamp;
-                    outputBuffer.Add(MakeUpColumn(colTimestamp, colBottom, colTop));
-                    elementDatesBuffer?.Add(new ElementDates(colTimestamp, colTimestamp));
-                }
+                elementDatesBuffer.AddRange(ed);
             }
         }
-
-    }
-
-    /// <summary>
-    /// Creates an Up column (X marks) CoreCandleData.
-    /// Open = bottom, Close = top → IsBullish = true
-    /// </summary>
-    private static CoreCandleData MakeUpColumn(DateTime timestamp, decimal bottom, decimal top)
-    {
-        return new CoreCandleData(
-            timestamp,
-            bottom,  // Open  = column bottom
-            top,     // High  = column top
-            bottom,  // Low   = column bottom
-            top,     // Close = column top
-            0
-        );
-    }
-
-    /// <summary>
-    /// Creates a Down column (O marks) CoreCandleData.
-    /// Open = top, Close = bottom → IsBullish = false
-    /// </summary>
-    private static CoreCandleData MakeDownColumn(DateTime timestamp, decimal top, decimal bottom)
-    {
-        return new CoreCandleData(
-            timestamp,
-            top,     // Open  = column top
-            top,     // High  = column top
-            bottom,  // Low   = column bottom
-            bottom,  // Close = column bottom
-            0
-        );
-    }
-
-    /// <summary>
-    /// Quantize price downward to the nearest box boundary.
-    /// Example: QuantizeDown(107, 5) = 105
-    /// </summary>
-    private static decimal QuantizeDown(decimal price, decimal boxSize, ChartRoundingMode mode)
-    {
-        if (mode == ChartRoundingMode.None)
+        finally
         {
-            return Math.Floor(price / boxSize) * boxSize;
+            ArrayPool<ZeroAllocCandleData>.Shared.Return(zeroAlloc, clearArray: true);
         }
-        return ChartMath.Quantize(price, boxSize, mode);
-    }
-
-    /// <summary>
-    /// Quantize price upward to the nearest box boundary.
-    /// Example: QuantizeUp(93, 5) = 95
-    /// </summary>
-    private static decimal QuantizeUp(decimal price, decimal boxSize, ChartRoundingMode mode)
-    {
-        if (mode == ChartRoundingMode.None)
-        {
-            return Math.Ceiling(price / boxSize) * boxSize;
-        }
-        return ChartMath.Quantize(price, boxSize, mode);
     }
 }

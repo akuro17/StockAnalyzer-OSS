@@ -67,6 +67,18 @@ public static class TabReorderBehavior
                 DragDrop.SetAllowDrop(s, true);
                 s.AddHandler(DragDrop.DropEvent, OnDrop);
             }
+            else
+            {
+                s.RemoveHandler(InputElement.PointerPressedEvent, OnPointerPressed);
+                s.RemoveHandler(InputElement.PointerMovedEvent, OnPointerMoved);
+                s.RemoveHandler(InputElement.PointerReleasedEvent, OnPointerReleased);
+                s.RemoveHandler(InputElement.PointerCaptureLostEvent, OnPointerCaptureLost);
+                s.TemplateApplied -= OnTemplateApplied;
+
+                DragDrop.SetAllowDrop(s, false);
+                s.RemoveHandler(DragDrop.DropEvent, OnDrop);
+                StripPresenters.Remove(s);
+            }
         });
     }
 

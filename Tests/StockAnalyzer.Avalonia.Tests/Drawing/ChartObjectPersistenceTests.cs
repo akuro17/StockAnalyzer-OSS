@@ -374,4 +374,29 @@ public class ChartObjectPersistenceTests
         Assert.True(restoredTrend.IsMoveAxisModeExplicit);
         Assert.False(restoredHLine.IsMoveAxisModeExplicit);
     }
+
+    [Fact]
+    public void PriorityAndAnchorPointIndex_RoundTrips_AcrossRelativeGeometricRendererAndStandaloneImplementers()
+    {
+        var trend = new TrendLineObject(
+            new ChartPoint(new DateTime(2024, 1, 1), 10m),
+            new ChartPoint(new DateTime(2024, 1, 2), 12m))
+        {
+            Priority = 5,
+            AnchorPointIndex = 1
+        };
+        var hline = new HorizontalLineObject(new ChartPoint(new DateTime(2024, 1, 1), 150m))
+        {
+            Priority = 8,
+            AnchorPointIndex = 0
+        };
+
+        var restoredTrend = RoundTrip(trend);
+        var restoredHLine = RoundTrip(hline);
+
+        Assert.Equal(5, restoredTrend.Priority);
+        Assert.Equal(1, restoredTrend.AnchorPointIndex);
+        Assert.Equal(8, restoredHLine.Priority);
+        Assert.Equal(0, restoredHLine.AnchorPointIndex);
+    }
 }

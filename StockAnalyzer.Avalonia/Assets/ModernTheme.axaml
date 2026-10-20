@@ -21,6 +21,12 @@
         <Setter Property="Foreground" Value="{Binding $parent[Button].Foreground}"/>
     </Style>
 
+    <!-- Standard ColorPicker swatch dimensions for settings dialogs/panels -->
+    <Style Selector="ColorPicker.SettingColor">
+        <Setter Property="Width" Value="{DynamicResource SettingColorWidth}"/>
+        <Setter Property="Height" Value="{DynamicResource SettingColorHeight}"/>
+    </Style>
+
     <Styles.Resources>
         <!-- Segmented Capsule ControlTheme for RadioButtons -->
         <ControlTheme x:Key="SegmentedCapsuleRadioButton" TargetType="RadioButton">
