@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
 using System.Runtime.CompilerServices;
@@ -39,15 +40,25 @@ namespace StockAnalyzer.Avalonia.Services
         private int _upcomingCatalystsLimit = NotesSettingsConstants.DefaultUpcomingCatalystsLimit;
         private int _upcomingCatalystsPastDaysRetention = NotesSettingsConstants.DefaultUpcomingCatalystsPastDaysRetention;
         private double _bodyFontSize = NotesSettingsConstants.DefaultBodyFontSize;
-        private IndicatorColor _bodyTextColor = IndicatorColor.FromUInt(NotesSettingsConstants.DefaultBodyTextColorArgb);
-        private IndicatorColor _bodyBackgroundColor = IndicatorColor.FromUInt(NotesSettingsConstants.DefaultBodyBackgroundColorArgb);
-        private IndicatorColor _urlColor = IndicatorColor.FromUInt(NotesSettingsConstants.DefaultUrlColorArgb);
-        private IndicatorColor _hashtagColor = IndicatorColor.FromUInt(NotesSettingsConstants.DefaultHashtagColorArgb);
+        private static readonly NotesColorKey[] ColorKeys = Enum.GetValues<NotesColorKey>();
+
+        /// <summary>The picks of every Appearance color, one entry per <see cref="NotesColorKey"/>: a color the user picked for a
+        /// Light/Dark mode belongs to that mode only; an unpicked mode shows the default of its theme.</summary>
+        private readonly Dictionary<NotesColorKey, ModeColorPicks> _colorPicks = new();
+
+        /// <summary>The effective color last announced through <see cref="PropertyChanged"/>, per key (a mode switch or a Theme
+        /// edit moves the effective color without any pick being assigned).</summary>
+        private readonly Dictionary<NotesColorKey, IndicatorColor> _announcedColors = new();
 
         public NotesSettingsManager(IThemeManager themeManager)
         {
             _themeManager = themeManager;
             _themeManager.PropertyChanged += OnThemeManagerPropertyChanged;
+            foreach (var key in ColorKeys)
+            {
+                _colorPicks[key] = default;
+                _announcedColors[key] = EffectiveColorOf(key);
+            }
         }
 
         private void OnThemeManagerPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -58,36 +69,77 @@ namespace StockAnalyzer.Avalonia.Services
             }
         }
 
-        /// <summary>
-        /// Any of the four Notes colors still sitting at "the default for the other theme" is switched
-        /// to the current theme's default; a color the user has explicitly customized away from both
-        /// known defaults is left untouched.
-        /// </summary>
-        private void SyncColorsToTheme()
-        {
-            bool isDark = _themeManager.CurrentTheme.IsDark;
-            uint targetTextArgb = NotesSettingsConstants.GetDefaultBodyTextColorArgb(isDark);
-            uint otherTextArgb = NotesSettingsConstants.GetDefaultBodyTextColorArgb(!isDark);
-            uint targetBackgroundArgb = NotesSettingsConstants.GetDefaultBodyBackgroundColorArgb(isDark);
-            uint otherBackgroundArgb = NotesSettingsConstants.GetDefaultBodyBackgroundColorArgb(!isDark);
+        /// <summary>The colour of Settings &gt; Theme &gt; "App Background" (<see cref="ThemeColors.ShellBackground"/>, owner decision
+        /// D-1) - the single place that decides which theme colour the Notes background follows.</summary>
+        private static IndicatorColor ThemeBackgroundOf(ThemeColors theme) => theme.ShellBackground;
 
-            if (BodyTextColor == IndicatorColor.FromUInt(otherTextArgb))
+        /// <summary>The Theme "App Background" of the theme in effect, including a value the user changed in Settings &gt; Theme.</summary>
+        public IndicatorColor DefaultBodyBackgroundColor => ThemeBackgroundOf(_themeManager.CurrentTheme);
+
+        private bool IsDarkTheme => _themeManager.CurrentTheme.IsDark;
+
+        /// <summary>The default of <paramref name="key"/> for the theme in effect: the Theme "App Background" for the background,
+        /// the Theme text color for the three text colors, the built-in blue for the highlight.</summary>
+        private IndicatorColor DefaultColorOf(NotesColorKey key) => key switch
+        {
+            NotesColorKey.BodyBackground => DefaultBodyBackgroundColor,
+            NotesColorKey.Highlight => DefaultHighlightColor,
+            NotesColorKey.BodyText or NotesColorKey.Url or NotesColorKey.Hashtag => DefaultBodyTextColor,
+            _ => throw new ArgumentOutOfRangeException(nameof(key), key, $"Unhandled {nameof(NotesColorKey)} value."),
+        };
+
+        /// <summary>What a color shows now: the pick made for the mode in effect, otherwise that theme's default. A pick made in the
+        /// other mode is never used, so a color chosen for one mode can never leave the other mode unreadable.</summary>
+        private IndicatorColor EffectiveColorOf(NotesColorKey key)
+        {
+            var picks = _colorPicks[key];
+            return (IsDarkTheme ? picks.Dark : picks.Light) ?? DefaultColorOf(key);
+        }
+
+        private static string PropertyNameOf(NotesColorKey key) => key switch
+        {
+            NotesColorKey.BodyText => nameof(BodyTextColor),
+            NotesColorKey.BodyBackground => nameof(BodyBackgroundColor),
+            NotesColorKey.Url => nameof(UrlColor),
+            NotesColorKey.Hashtag => nameof(HashtagColor),
+            NotesColorKey.Highlight => nameof(HighlightColor),
+            _ => throw new ArgumentOutOfRangeException(nameof(key), key, $"Unhandled {nameof(NotesColorKey)} value."),
+        };
+
+        /// <summary>Picks <paramref name="value"/> for the mode in effect. Picking the theme's own default clears the pick, so the color
+        /// keeps following the theme (including later edits in Settings &gt; Theme).</summary>
+        private void SetColor(NotesColorKey key, IndicatorColor value)
+        {
+            IndicatorColor? pick = value == DefaultColorOf(key) ? null : value;
+            var picks = _colorPicks[key];
+            _colorPicks[key] = IsDarkTheme ? picks with { Dark = pick } : picks with { Light = pick };
+            NotifyColorsIfChanged();
+        }
+
+        /// <summary>Raises <see cref="PropertyChanged"/> for every color whose effective value moved since it was last announced.</summary>
+        private void NotifyColorsIfChanged()
+        {
+            foreach (var key in ColorKeys)
             {
-                BodyTextColor = IndicatorColor.FromUInt(targetTextArgb);
-            }
-            if (BodyBackgroundColor == IndicatorColor.FromUInt(otherBackgroundArgb))
-            {
-                BodyBackgroundColor = IndicatorColor.FromUInt(targetBackgroundArgb);
-            }
-            if (UrlColor == IndicatorColor.FromUInt(otherTextArgb))
-            {
-                UrlColor = IndicatorColor.FromUInt(targetTextArgb);
-            }
-            if (HashtagColor == IndicatorColor.FromUInt(otherTextArgb))
-            {
-                HashtagColor = IndicatorColor.FromUInt(targetTextArgb);
+                var current = EffectiveColorOf(key);
+                if (current == _announcedColors[key]) continue;
+
+                _announcedColors[key] = current;
+                OnPropertyChanged(PropertyNameOf(key));
             }
         }
+
+        public ModeColorPicks GetColorPicks(NotesColorKey key) => _colorPicks[key];
+
+        public void SetColorPicks(NotesColorKey key, ModeColorPicks picks)
+        {
+            _colorPicks[key] = picks;
+            NotifyColorsIfChanged();
+        }
+
+        /// <summary>A Light/Dark switch or a Settings &gt; Theme edit changes the defaults, hence every color that has no pick for the
+        /// mode in effect; announce them.</summary>
+        private void SyncColorsToTheme() => NotifyColorsIfChanged();
 
         public double ThumbnailSizePixels
         {
@@ -354,18 +406,7 @@ namespace StockAnalyzer.Avalonia.Services
             }
         }
 
-        public IndicatorColor BodyTextColor
-        {
-            get => _bodyTextColor;
-            private set
-            {
-                if (_bodyTextColor != value)
-                {
-                    _bodyTextColor = value;
-                    OnPropertyChanged();
-                }
-            }
-        }
+        public IndicatorColor BodyTextColor => EffectiveColorOf(NotesColorKey.BodyText);
 
         public void SetBodyFontSize(double value)
         {
@@ -375,58 +416,33 @@ namespace StockAnalyzer.Avalonia.Services
             BodyFontSize = value;
         }
 
-        public void SetBodyTextColor(IndicatorColor value)
-        {
-            BodyTextColor = value;
-        }
+        public void SetBodyTextColor(IndicatorColor value) => SetColor(NotesColorKey.BodyText, value);
 
-        public IndicatorColor BodyBackgroundColor
-        {
-            get => _bodyBackgroundColor;
-            private set
-            {
-                if (_bodyBackgroundColor != value)
-                {
-                    _bodyBackgroundColor = value;
-                    OnPropertyChanged();
-                }
-            }
-        }
+        public IndicatorColor BodyBackgroundColor => EffectiveColorOf(NotesColorKey.BodyBackground);
 
-        public void SetBodyBackgroundColor(IndicatorColor value)
-        {
-            BodyBackgroundColor = value;
-        }
+        public void SetBodyBackgroundColor(IndicatorColor value) => SetColor(NotesColorKey.BodyBackground, value);
 
-        public IndicatorColor UrlColor
-        {
-            get => _urlColor;
-            private set
-            {
-                if (_urlColor != value)
-                {
-                    _urlColor = value;
-                    OnPropertyChanged();
-                }
-            }
-        }
+        public IndicatorColor UrlColor => EffectiveColorOf(NotesColorKey.Url);
 
-        public IndicatorColor HashtagColor
-        {
-            get => _hashtagColor;
-            private set
-            {
-                if (_hashtagColor != value)
-                {
-                    _hashtagColor = value;
-                    OnPropertyChanged();
-                }
-            }
-        }
+        public IndicatorColor HashtagColor => EffectiveColorOf(NotesColorKey.Hashtag);
 
-        public void SetUrlColor(IndicatorColor value) => UrlColor = value;
+        public IndicatorColor HighlightColor => EffectiveColorOf(NotesColorKey.Highlight);
 
-        public void SetHashtagColor(IndicatorColor value) => HashtagColor = value;
+        /// <summary>The built-in highlight color of the theme currently in effect (a light blue in the Light theme, a dark
+        /// blue in the Dark theme) - what a color still equal to "the other theme's default" is switched to, and what Reset restores.</summary>
+        public IndicatorColor DefaultHighlightColor =>
+            IndicatorColor.FromUInt(NotesSettingsConstants.GetDefaultHighlightColorArgb(_themeManager.CurrentTheme.IsDark));
+
+        /// <summary>The built-in body text color of the theme currently in effect (dark text in the Light theme, light text in
+        /// the Dark theme); what Reset restores for the text, URL and hashtag colors.</summary>
+        public IndicatorColor DefaultBodyTextColor =>
+            NotesSettingsConstants.GetDefaultBodyTextColor(_themeManager.CurrentTheme.IsDark);
+
+        public void SetHighlightColor(IndicatorColor value) => SetColor(NotesColorKey.Highlight, value);
+
+        public void SetUrlColor(IndicatorColor value) => SetColor(NotesColorKey.Url, value);
+
+        public void SetHashtagColor(IndicatorColor value) => SetColor(NotesColorKey.Hashtag, value);
 
         public async Task SaveAsync()
         {
@@ -447,10 +463,19 @@ namespace StockAnalyzer.Avalonia.Services
                     UpcomingCatalystsLimit = UpcomingCatalystsLimit,
                     UpcomingCatalystsPastDaysRetention = UpcomingCatalystsPastDaysRetention,
                     BodyFontSize = BodyFontSize,
-                    BodyTextColor = BodyTextColor,
-                    BodyBackgroundColor = BodyBackgroundColor,
-                    UrlColor = UrlColor,
-                    HashtagColor = HashtagColor
+                    // Every Appearance color is stored as its per-mode picks. The older single-color keys (BodyTextColor,
+                    // BodyBackgroundColor, UrlColor, HashtagColor, HighlightColor) are neither written nor read (owner decision
+                    // D-2 / D-3: no migration), so such a file shows the theme defaults until a color is picked again.
+                    BodyTextColorDark = _colorPicks[NotesColorKey.BodyText].Dark,
+                    BodyTextColorLight = _colorPicks[NotesColorKey.BodyText].Light,
+                    BodyBackgroundColorDark = _colorPicks[NotesColorKey.BodyBackground].Dark,
+                    BodyBackgroundColorLight = _colorPicks[NotesColorKey.BodyBackground].Light,
+                    UrlColorDark = _colorPicks[NotesColorKey.Url].Dark,
+                    UrlColorLight = _colorPicks[NotesColorKey.Url].Light,
+                    HashtagColorDark = _colorPicks[NotesColorKey.Hashtag].Dark,
+                    HashtagColorLight = _colorPicks[NotesColorKey.Hashtag].Light,
+                    HighlightColorDark = _colorPicks[NotesColorKey.Highlight].Dark,
+                    HighlightColorLight = _colorPicks[NotesColorKey.Highlight].Light
                 };
 
                 await StockAnalyzer.Core.Common.AtomicJsonFile.SaveAsync(NotesSettingsFilePath, data, JsonOptions);
@@ -527,22 +552,13 @@ namespace StockAnalyzer.Avalonia.Services
                     {
                         SetBodyFontSize(bodyFontSize);
                     }
-                    if (data.Value.BodyTextColor is { } bodyTextColor)
-                    {
-                        SetBodyTextColor(bodyTextColor);
-                    }
-                    if (data.Value.BodyBackgroundColor is { } bodyBackgroundColor)
-                    {
-                        SetBodyBackgroundColor(bodyBackgroundColor);
-                    }
-                    if (data.Value.UrlColor is { } urlColor)
-                    {
-                        SetUrlColor(urlColor);
-                    }
-                    if (data.Value.HashtagColor is { } hashtagColor)
-                    {
-                        SetHashtagColor(hashtagColor);
-                    }
+                    // Picks are stored per mode. A file written before that has only the single-color keys, which are ignored
+                    // on purpose (owner decision D-2 / D-3): a missing pick means "the default of that theme".
+                    _colorPicks[NotesColorKey.BodyText] = new ModeColorPicks(data.Value.BodyTextColorDark, data.Value.BodyTextColorLight);
+                    _colorPicks[NotesColorKey.BodyBackground] = new ModeColorPicks(data.Value.BodyBackgroundColorDark, data.Value.BodyBackgroundColorLight);
+                    _colorPicks[NotesColorKey.Url] = new ModeColorPicks(data.Value.UrlColorDark, data.Value.UrlColorLight);
+                    _colorPicks[NotesColorKey.Hashtag] = new ModeColorPicks(data.Value.HashtagColorDark, data.Value.HashtagColorLight);
+                    _colorPicks[NotesColorKey.Highlight] = new ModeColorPicks(data.Value.HighlightColorDark, data.Value.HighlightColorLight);
                 }
 
                 SyncColorsToTheme();
@@ -568,10 +584,16 @@ namespace StockAnalyzer.Avalonia.Services
             public int? UpcomingCatalystsLimit { get; init; }
             public int? UpcomingCatalystsPastDaysRetention { get; init; }
             public double? BodyFontSize { get; init; }
-            public IndicatorColor? BodyTextColor { get; init; }
-            public IndicatorColor? BodyBackgroundColor { get; init; }
-            public IndicatorColor? UrlColor { get; init; }
-            public IndicatorColor? HashtagColor { get; init; }
+            public IndicatorColor? BodyTextColorDark { get; init; }
+            public IndicatorColor? BodyTextColorLight { get; init; }
+            public IndicatorColor? BodyBackgroundColorDark { get; init; }
+            public IndicatorColor? BodyBackgroundColorLight { get; init; }
+            public IndicatorColor? UrlColorDark { get; init; }
+            public IndicatorColor? UrlColorLight { get; init; }
+            public IndicatorColor? HashtagColorDark { get; init; }
+            public IndicatorColor? HashtagColorLight { get; init; }
+            public IndicatorColor? HighlightColorDark { get; init; }
+            public IndicatorColor? HighlightColorLight { get; init; }
         }
 
         public event PropertyChangedEventHandler? PropertyChanged;

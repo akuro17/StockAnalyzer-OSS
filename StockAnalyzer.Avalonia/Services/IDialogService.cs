@@ -34,6 +34,12 @@ public interface IDialogService
     Task ShowIndicatorSettingsDialogAsync(IEnumerable<CoreIndicatorSettings> currentIndicators, Action<IEnumerable<CoreIndicatorSettings>>? onApply = null);
     Task ShowIndicatorPropertiesDialogAsync(CoreIndicatorSettings indicator, Action<CoreIndicatorSettings>? onApply = null, IEnumerable<CoreIndicatorSettings>? allIndicators = null);
     Task ShowSourceIndicatorRegistrationDialogAsync();
+
+    /// <summary>
+    /// Opens the scatter metric registration window as a modal dialog; completes when it closes. True when the user pressed OK and the changed list
+    /// was saved, false for Cancel or when nothing was changed.
+    /// </summary>
+    Task<bool> ShowScatterMetricRegistrationDialogAsync() => Task.FromResult(false);
     Task ShowDynamicPeriodDriverRegistrationDialogAsync();
     Task ShowThemeSettingsDialogAsync();
     Task ShowSettingsDialogAsync(string? initialCategoryKey = null);

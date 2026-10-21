@@ -18,7 +18,22 @@ namespace StockAnalyzer.Core.Tests.TestHelpers;
 public sealed class FakeMarketDataProvider : IMarketDataProvider
 {
     private readonly IReadOnlyDictionary<string, IReadOnlyList<CandleData>> _bySymbol;
-    public FakeMarketDataProvider(IReadOnlyDictionary<string, IReadOnlyList<CandleData>> bySymbol) => _bySymbol = bySymbol;
+    private readonly IReadOnlyDictionary<string, TickerMetadata>? _metadataBySymbol;
+    private int _metadataRequests;
+
+    /// <param name="bySymbol">The candles served by <see cref="GetTickersDataAsync"/>.</param>
+    /// <param name="metadataBySymbol">The metadata served by <see cref="GetMetadataAsync"/> (an unknown symbol gets <see cref="TickerMetadata.Unknown"/>);
+    /// when null, <see cref="GetMetadataAsync"/> throws like every other unused member.</param>
+    public FakeMarketDataProvider(
+        IReadOnlyDictionary<string, IReadOnlyList<CandleData>> bySymbol,
+        IReadOnlyDictionary<string, TickerMetadata>? metadataBySymbol = null)
+    {
+        _bySymbol = bySymbol;
+        _metadataBySymbol = metadataBySymbol;
+    }
+
+    /// <summary>How many times <see cref="GetMetadataAsync"/> has been called.</summary>
+    public int MetadataRequests => System.Threading.Volatile.Read(ref _metadataRequests);
 
     public Task<IReadOnlyList<CandleData>> GetTickersDataAsync(string symbol, TimeFrame timeFrame)
         => _bySymbol.TryGetValue(symbol, out var candles)
@@ -28,7 +43,16 @@ public sealed class FakeMarketDataProvider : IMarketDataProvider
     public Task<IReadOnlyList<string>> GetAvailableTickersAsync() => throw new NotSupportedException();
     public Task<IReadOnlyList<string>> ScreenAsync(ScreeningCriteria criteria) => throw new NotSupportedException();
     public Task<IReadOnlyDictionary<string, decimal>> GetLatestPricesAsync(IEnumerable<string> symbols) => throw new NotSupportedException();
-    public ValueTask<TickerMetadata> GetMetadataAsync(string ticker) => throw new NotSupportedException();
+    public ValueTask<TickerMetadata> GetMetadataAsync(string ticker)
+    {
+        if (_metadataBySymbol is null)
+        {
+            throw new NotSupportedException();
+        }
+
+        System.Threading.Interlocked.Increment(ref _metadataRequests);
+        return new ValueTask<TickerMetadata>(_metadataBySymbol.TryGetValue(ticker, out TickerMetadata metadata) ? metadata : TickerMetadata.Unknown);
+    }
     public Task<TickerMetadata> FetchMetadataFromPythonAsync(string ticker) => throw new NotSupportedException();
     public Task SaveMetadataAsync(string ticker, TickerMetadata meta) => throw new NotSupportedException();
     public Task AddTickerAsync(string symbol) => throw new NotSupportedException();

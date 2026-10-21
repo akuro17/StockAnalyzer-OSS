@@ -3,6 +3,7 @@ using StockAnalyzer.Core.Models.Indicators;
 using StockAnalyzer.Core.Models.Indicators.Chart;
 using StockAnalyzer.Core.Models.Indicators.Statistics;
 using StockAnalyzer.Core.Models.Indicators.Trend;
+using StockAnalyzer.Core.Models.Indicators.Volatility;
 using StockAnalyzer.Core.Models.Parameters;
 
 namespace StockAnalyzer.Core.Models;
@@ -62,6 +63,23 @@ public static class DefaultCoreIndicatorSettings
                 {
                     new SeriesColorConfig { Name = "Middle", DisplayName = "Middle Band", Color = IndicatorDefaultConstants.BollingerMiddleColor, TargetSeries = new List<string> { "Main" } },
                     new SeriesColorConfig { Name = "Bands", DisplayName = "Bands (Upper/Lower)", Color = IndicatorDefaultConstants.BollingerBandsColor, TargetSeries = new List<string> { "Upper", "Lower" } }
+                }
+            },
+            new CoreIndicatorSettings 
+            { 
+                TypeEnum = IndicatorType.Donchian, 
+                Category = CoreIndicatorCategory.Volatility, 
+                IsEnabled = false, 
+                ParameterObject = new CoreSmaParameter { Period = 20 }, 
+                Color = IndicatorDefaultConstants.SmaColor, 
+                Thickness = IndicatorDefaultConstants.DefaultBandThickness, 
+                Style = CoreLineStyle.Solid,
+                IsOverlay = true,
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig> 
+                {
+                    new SeriesColorConfig { Name = "Upper", DisplayName = "Upper Band", Color = IndicatorDefaultConstants.BollingerBandsColor, TargetSeries = new List<string> { nameof(CoreDonchianChannelIndicator.UpperBand) } },
+                    new SeriesColorConfig { Name = "Middle", DisplayName = "Middle Line", Color = IndicatorDefaultConstants.SmaColor, TargetSeries = new List<string> { IndicatorResult.MainSeriesName } },
+                    new SeriesColorConfig { Name = "Lower", DisplayName = "Lower Band", Color = IndicatorDefaultConstants.BollingerBandsColor, TargetSeries = new List<string> { nameof(CoreDonchianChannelIndicator.LowerBand) } }
                 }
             },
             new CoreIndicatorSettings 

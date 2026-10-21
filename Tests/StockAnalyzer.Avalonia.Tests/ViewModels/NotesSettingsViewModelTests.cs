@@ -169,4 +169,222 @@ public class NotesSettingsViewModelTests
         Assert.Equal(7, manager.UpcomingCatalystsLimit);
         Assert.Equal(-1, manager.UpcomingCatalystsPastDaysRetention);
     }
+
+    // ---- Highlight color (Settings > Notes > Appearance) ----
+
+    [Fact]
+    public void ChangingHighlightColor_UpdatesManagerAndIsModified()
+    {
+        var manager = new FakeNotesSettingsManager();
+        var vm = new NotesSettingsViewModel(manager);
+        var newColor = IndicatorColor.FromRgb(0x20, 0x60, 0xC0);
+
+        vm.SelectedHighlightColor = newColor;
+
+        Assert.True(vm.IsModified);
+        Assert.Equal(newColor, manager.HighlightColor);
+    }
+
+    [Fact]
+    public void Constructor_InitializesHighlightColorFromManager()
+    {
+        var manager = new FakeNotesSettingsManager();
+        manager.SetHighlightColor(IndicatorColor.FromRgb(0x01, 0x02, 0x03));
+
+        var vm = new NotesSettingsViewModel(manager);
+
+        Assert.Equal(IndicatorColor.FromRgb(0x01, 0x02, 0x03), vm.SelectedHighlightColor);
+        Assert.False(vm.IsModified);
+    }
+
+    [Fact]
+    public void RevertChanges_RestoresTheHighlightColor()
+    {
+        var manager = new FakeNotesSettingsManager();
+        var vm = new NotesSettingsViewModel(manager);
+        var original = vm.SelectedHighlightColor;
+        vm.SelectedHighlightColor = IndicatorColor.FromRgb(0x20, 0x60, 0xC0);
+
+        vm.RevertChanges();
+
+        Assert.Equal(original, vm.SelectedHighlightColor);
+        Assert.Equal(original, manager.HighlightColor);
+        Assert.False(vm.IsModified);
+    }
+
+    /// <summary>Reset restores the built-in highlight of the theme in effect (asked from the manager), not a fixed Dark value.</summary>
+    [Fact]
+    public void ResetToDefault_RestoresTheCurrentThemesHighlightColor()
+    {
+        var manager = new FakeNotesSettingsManager { DefaultHighlightColor = IndicatorColor.FromUInt(0xFFB3D4FF) };
+        var vm = new NotesSettingsViewModel(manager);
+        vm.SelectedHighlightColor = IndicatorColor.FromRgb(0x01, 0x02, 0x03);
+
+        vm.ResetToDefault();
+
+        Assert.Equal(IndicatorColor.FromUInt(0xFFB3D4FF), vm.SelectedHighlightColor);
+        Assert.Equal(IndicatorColor.FromUInt(0xFFB3D4FF), manager.HighlightColor);
+    }
+
+    [Fact]
+    public void ResetToDefault_WithTheRealManagerInTheLightTheme_UsesTheLightBlue()
+    {
+        var themeManager = new FakeThemeManager { CurrentTheme = StockAnalyzer.Core.Theme.ThemeColors.Light };
+        var manager = new StockAnalyzer.Avalonia.Services.NotesSettingsManager(themeManager);
+        var vm = new NotesSettingsViewModel(manager);
+        vm.SelectedHighlightColor = IndicatorColor.FromRgb(0x01, 0x02, 0x03);
+
+        vm.ResetToDefault();
+
+        Assert.Equal(IndicatorColor.FromUInt(0xFFB3D4FF), vm.SelectedHighlightColor);
+    }
+
+    /// <summary>Switching Light/Dark while the page is open: the page shows the new mode's colors straight away (it used to keep
+    /// the previous mode's colors until Reset), and that is not a pending edit.</summary>
+    [Fact]
+    public void SwitchingTheMode_WhileThePageIsOpen_ShowsTheNewModesDefaultColors_WithoutAPendingEdit()
+    {
+        var themeManager = new FakeThemeManager();
+        var manager = new StockAnalyzer.Avalonia.Services.NotesSettingsManager(themeManager);
+        var vm = new NotesSettingsViewModel(manager);
+
+        themeManager.CurrentTheme = StockAnalyzer.Core.Theme.ThemeColors.Light;
+
+        Assert.Equal(StockAnalyzer.Core.Theme.ThemeColors.Light.ShellBackground, vm.SelectedBodyBackgroundColor);
+        Assert.Equal(manager.BodyTextColor, vm.SelectedBodyTextColor);
+        Assert.Equal(manager.UrlColor, vm.SelectedUrlColor);
+        Assert.Equal(manager.HashtagColor, vm.SelectedHashtagColor);
+        Assert.Equal(manager.HighlightColor, vm.SelectedHighlightColor);
+        Assert.False(vm.IsModified);
+    }
+
+    /// <summary>Cancelling after a mode switch must not re-apply the colors of the mode the page was opened in.</summary>
+    [Fact]
+    public void RevertChanges_AfterSwitchingTheMode_KeepsTheNewModesColors()
+    {
+        var themeManager = new FakeThemeManager();
+        var manager = new StockAnalyzer.Avalonia.Services.NotesSettingsManager(themeManager);
+        var vm = new NotesSettingsViewModel(manager);
+        themeManager.CurrentTheme = StockAnalyzer.Core.Theme.ThemeColors.Light;
+
+        vm.RevertChanges();
+
+        Assert.Equal(StockAnalyzer.Core.Theme.ThemeColors.Light.ShellBackground, manager.BodyBackgroundColor);
+        Assert.Equal(StockAnalyzer.Core.Theme.ThemeColors.Light.ShellBackground, vm.SelectedBodyBackgroundColor);
+    }
+
+    /// <summary>An unsaved pick made in one mode stays a pending edit after the mode is switched inside the same Settings dialog,
+    /// and Cancel removes it (it used to survive because the baseline was replaced by the other mode's color).</summary>
+    [Fact]
+    public void RevertChanges_UndoesAnUnsavedPickMadeBeforeTheModeWasSwitched()
+    {
+        var themeManager = new FakeThemeManager();
+        var manager = new StockAnalyzer.Avalonia.Services.NotesSettingsManager(themeManager);
+        var vm = new NotesSettingsViewModel(manager);
+        var darkPick = IndicatorColor.FromRgb(0x07, 0x10, 0x20);
+        vm.SelectedBodyBackgroundColor = darkPick;
+
+        themeManager.CurrentTheme = StockAnalyzer.Core.Theme.ThemeColors.Light;
+        Assert.True(vm.IsModified);
+
+        vm.RevertChanges();
+        Assert.False(vm.IsModified);
+        themeManager.CurrentTheme = StockAnalyzer.Core.Theme.ThemeColors.Dark;
+
+        Assert.Equal(StockAnalyzer.Core.Theme.ThemeColors.Dark.ShellBackground, manager.BodyBackgroundColor);
+        Assert.Equal(StockAnalyzer.Core.Theme.ThemeColors.Dark.ShellBackground, vm.SelectedBodyBackgroundColor);
+    }
+
+    /// <summary>Reset puts both modes back on the theme background, not only the mode being shown.</summary>
+    [Fact]
+    public void ResetToDefault_ClearsThePicksOfBothModes()
+    {
+        var themeManager = new FakeThemeManager();
+        var manager = new StockAnalyzer.Avalonia.Services.NotesSettingsManager(themeManager);
+        manager.SetBodyBackgroundColor(IndicatorColor.FromRgb(0x07, 0x10, 0x20));
+        themeManager.CurrentTheme = StockAnalyzer.Core.Theme.ThemeColors.Light;
+        var vm = new NotesSettingsViewModel(manager);
+        vm.SelectedBodyBackgroundColor = IndicatorColor.FromRgb(0xFA, 0xF0, 0xE6);
+
+        vm.ResetToDefault();
+        themeManager.CurrentTheme = StockAnalyzer.Core.Theme.ThemeColors.Dark;
+
+        foreach (var key in System.Enum.GetValues<StockAnalyzer.Core.Models.Settings.NotesColorKey>())
+        {
+            Assert.Equal(default, manager.GetColorPicks(key));
+        }
+        Assert.Equal(StockAnalyzer.Core.Theme.ThemeColors.Dark.ShellBackground, manager.BodyBackgroundColor);
+    }
+
+    /// <summary>The unsaved-pick rule covers every Appearance color, not only the background (owner decision D-3).</summary>
+    [Fact]
+    public void RevertChanges_UndoesAnUnsavedTextAndHighlightPickMadeBeforeTheModeWasSwitched()
+    {
+        var themeManager = new FakeThemeManager();
+        var manager = new StockAnalyzer.Avalonia.Services.NotesSettingsManager(themeManager);
+        var vm = new NotesSettingsViewModel(manager);
+        vm.SelectedBodyTextColor = IndicatorColor.FromRgb(0x07, 0x10, 0x20);
+        vm.SelectedHighlightColor = IndicatorColor.FromRgb(0x30, 0x40, 0x50);
+
+        themeManager.CurrentTheme = StockAnalyzer.Core.Theme.ThemeColors.Light;
+        Assert.True(vm.IsModified);
+        Assert.Equal(StockAnalyzer.Core.Theme.ThemeColors.Light.ShellText, vm.SelectedBodyTextColor);
+
+        vm.RevertChanges();
+        themeManager.CurrentTheme = StockAnalyzer.Core.Theme.ThemeColors.Dark;
+
+        Assert.False(vm.IsModified);
+        Assert.Equal(StockAnalyzer.Core.Theme.ThemeColors.Dark.ShellText, manager.BodyTextColor);
+        Assert.Equal(manager.DefaultHighlightColor, manager.HighlightColor);
+    }
+
+    [Fact]
+    public void Dispose_StopsFollowingTheManager()
+    {
+        var themeManager = new FakeThemeManager();
+        var manager = new StockAnalyzer.Avalonia.Services.NotesSettingsManager(themeManager);
+        var vm = new NotesSettingsViewModel(manager);
+        var before = vm.SelectedBodyBackgroundColor;
+
+        vm.Dispose();
+        themeManager.CurrentTheme = StockAnalyzer.Core.Theme.ThemeColors.Light;
+
+        Assert.Equal(before, vm.SelectedBodyBackgroundColor);
+    }
+
+    /// <summary>Reset restores the text, URL and hashtag colors to the default of the theme in effect, not always the Dark one.</summary>
+    [Fact]
+    public void ResetToDefault_InTheLightTheme_RestoresTheLightTextUrlAndHashtagColors()
+    {
+        var themeManager = new FakeThemeManager { CurrentTheme = StockAnalyzer.Core.Theme.ThemeColors.Light };
+        var manager = new StockAnalyzer.Avalonia.Services.NotesSettingsManager(themeManager);
+        var vm = new NotesSettingsViewModel(manager);
+        var picked = IndicatorColor.FromRgb(0x01, 0x02, 0x03);
+        vm.SelectedBodyTextColor = picked;
+        vm.SelectedUrlColor = picked;
+        vm.SelectedHashtagColor = picked;
+
+        vm.ResetToDefault();
+
+        var lightText = StockAnalyzer.Core.Theme.ThemeColors.Light.ShellText;
+        Assert.Equal(lightText, vm.SelectedBodyTextColor);
+        Assert.Equal(lightText, vm.SelectedUrlColor);
+        Assert.Equal(lightText, vm.SelectedHashtagColor);
+        Assert.Equal(lightText, manager.BodyTextColor);
+    }
+
+    /// <summary>Reset restores the Notes background to the Theme "Background" of the theme in effect.</summary>
+    [Fact]
+    public void ResetToDefault_RestoresTheCurrentThemesBackground()
+    {
+        var themeManager = new FakeThemeManager { CurrentTheme = StockAnalyzer.Core.Theme.ThemeColors.Light };
+        var manager = new StockAnalyzer.Avalonia.Services.NotesSettingsManager(themeManager);
+        var vm = new NotesSettingsViewModel(manager);
+        vm.SelectedBodyBackgroundColor = IndicatorColor.FromRgb(0x01, 0x02, 0x03);
+
+        vm.ResetToDefault();
+
+        Assert.Equal(StockAnalyzer.Core.Theme.ThemeColors.Light.ShellBackground, vm.SelectedBodyBackgroundColor);
+        Assert.Equal(StockAnalyzer.Core.Theme.ThemeColors.Light.ShellBackground, manager.BodyBackgroundColor);
+    }
 }

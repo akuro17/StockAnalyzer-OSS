@@ -16,6 +16,12 @@ public sealed class ScatterDataset
     public IReadOnlyList<ScatterPoint> Points { get; init; } = Array.Empty<ScatterPoint>();
     public IReadOnlyList<string>? Labels { get; init; } // Optional ticker symbols or item labels matching Points index
 
+    /// <summary>Fixed X axis range (data units); null = the axis autoscales from the points.</summary>
+    public AxisRange? XFixedRange { get; init; }
+
+    /// <summary>Fixed Y axis range (data units); null = the axis autoscales from the points.</summary>
+    public AxisRange? YFixedRange { get; init; }
+
     public ScatterDataset()
     {
     }

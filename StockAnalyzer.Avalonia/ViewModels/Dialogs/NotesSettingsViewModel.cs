@@ -11,9 +11,10 @@ using StockAnalyzer.Core.Services.Notes;
 
 namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
 {
-    public partial class NotesSettingsViewModel : ViewModelBase, ISettingsPageViewModel
+    public partial class NotesSettingsViewModel : ViewModelBase, ISettingsPageViewModel, IDisposable
     {
         private readonly INotesSettingsManager _notesSettingsManager;
+        private bool _isDisposed;
 
         private double _snapshotThumbnailSizePixels;
         private NoteImageDisplayMode _snapshotImageDisplayMode;
@@ -28,10 +29,12 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
         private int _snapshotUpcomingCatalystsLimit;
         private int _snapshotUpcomingCatalystsPastDaysRetention;
         private double _snapshotBodyFontSize;
-        private IndicatorColor _snapshotBodyTextColor;
-        private IndicatorColor _snapshotBodyBackgroundColor;
-        private IndicatorColor _snapshotUrlColor;
-        private IndicatorColor _snapshotHashtagColor;
+
+        private static readonly NotesColorKey[] ColorKeys = Enum.GetValues<NotesColorKey>();
+
+        /// <summary>The saved-state baseline of every Appearance color: the picks of BOTH Light/Dark modes, so a pick made in the
+        /// mode just left stays a pending edit (and Cancel undoes it) after the mode is switched while this page is open.</summary>
+        private readonly Dictionary<NotesColorKey, ModeColorPicks> _snapshotColorPicks = new();
 
         public string TitleKey => "Settings_Notes";
         public string IconKey => "SettingsNotesIcon";
@@ -56,19 +59,61 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
         [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private int _selectedUpcomingCatalystsPastDaysRetention = NotesSettingsConstants.DefaultUpcomingCatalystsPastDaysRetention;
 
         [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private double _selectedBodyFontSize = NotesSettingsConstants.DefaultBodyFontSize;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private IndicatorColor _selectedBodyTextColor = IndicatorColor.FromUInt(NotesSettingsConstants.DefaultBodyTextColorArgb);
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private IndicatorColor _selectedBodyBackgroundColor = IndicatorColor.FromUInt(NotesSettingsConstants.DefaultBodyBackgroundColorArgb);
+        [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private IndicatorColor _selectedBodyTextColor = NotesSettingsConstants.FallbackBodyTextColor;
+        [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private IndicatorColor _selectedBodyBackgroundColor = NotesSettingsConstants.FallbackBodyBackgroundColor;
 
         // No on/off toggle (fix request: "チェックボックスのON/OFFが不要...トグル設定は不要") - the
         // ColorPicker is always active, defaulting to the same value as the body text color.
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private IndicatorColor _selectedUrlColor = IndicatorColor.FromUInt(NotesSettingsConstants.DefaultUrlColorArgb);
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private IndicatorColor _selectedHashtagColor = IndicatorColor.FromUInt(NotesSettingsConstants.DefaultHashtagColorArgb);
+        [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private IndicatorColor _selectedUrlColor = NotesSettingsConstants.FallbackBodyTextColor;
+        [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private IndicatorColor _selectedHashtagColor = NotesSettingsConstants.FallbackBodyTextColor;
+
+        // Background of text highlighted (mouse-selected) in a Note body; the default follows the Light/Dark theme (light blue / dark blue).
+        [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private IndicatorColor _selectedHighlightColor = IndicatorColor.FromUInt(NotesSettingsConstants.DefaultHighlightColorArgb);
 
         public NotesSettingsViewModel(INotesSettingsManager notesSettingsManager)
         {
             _notesSettingsManager = notesSettingsManager;
             TakeSnapshot();
             InitializeFromSnapshot();
+            _notesSettingsManager.PropertyChanged += OnNotesSettingsChanged;
+        }
+
+        /// <summary>Every Appearance color follows the Light/Dark theme on its own when the mode is switched while this page is open.
+        /// The page shows the new value; the baseline holds the picks of both modes, so it needs no adoption and the switch is not
+        /// a pending edit. Otherwise the page would keep showing the color of the previous mode.</summary>
+        private void OnNotesSettingsChanged(object? sender, PropertyChangedEventArgs e)
+        {
+            if (_isDisposed) return;
+
+            switch (e.PropertyName)
+            {
+                case nameof(INotesSettingsManager.BodyTextColor) when SelectedBodyTextColor != _notesSettingsManager.BodyTextColor:
+                    SelectedBodyTextColor = _notesSettingsManager.BodyTextColor;
+                    break;
+                case nameof(INotesSettingsManager.BodyBackgroundColor) when SelectedBodyBackgroundColor != _notesSettingsManager.BodyBackgroundColor:
+                    SelectedBodyBackgroundColor = _notesSettingsManager.BodyBackgroundColor;
+                    break;
+                case nameof(INotesSettingsManager.UrlColor) when SelectedUrlColor != _notesSettingsManager.UrlColor:
+                    SelectedUrlColor = _notesSettingsManager.UrlColor;
+                    break;
+                case nameof(INotesSettingsManager.HashtagColor) when SelectedHashtagColor != _notesSettingsManager.HashtagColor:
+                    SelectedHashtagColor = _notesSettingsManager.HashtagColor;
+                    break;
+                case nameof(INotesSettingsManager.HighlightColor) when SelectedHighlightColor != _notesSettingsManager.HighlightColor:
+                    SelectedHighlightColor = _notesSettingsManager.HighlightColor;
+                    break;
+                default:
+                    return;
+            }
+
+            OnPropertyChanged(nameof(IsModified));
+        }
+
+        public void Dispose()
+        {
+            if (_isDisposed) return;
+            _isDisposed = true;
+            _notesSettingsManager.PropertyChanged -= OnNotesSettingsChanged;
         }
 
         public NotesSettingsViewModel()
@@ -94,10 +139,10 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
             public int UpcomingCatalystsLimit => NotesSettingsConstants.DefaultUpcomingCatalystsLimit;
             public int UpcomingCatalystsPastDaysRetention => NotesSettingsConstants.DefaultUpcomingCatalystsPastDaysRetention;
             public double BodyFontSize => NotesSettingsConstants.DefaultBodyFontSize;
-            public IndicatorColor BodyTextColor => IndicatorColor.FromUInt(NotesSettingsConstants.DefaultBodyTextColorArgb);
-            public IndicatorColor BodyBackgroundColor => IndicatorColor.FromUInt(NotesSettingsConstants.DefaultBodyBackgroundColorArgb);
-            public IndicatorColor UrlColor => IndicatorColor.FromUInt(NotesSettingsConstants.DefaultUrlColorArgb);
-            public IndicatorColor HashtagColor => IndicatorColor.FromUInt(NotesSettingsConstants.DefaultHashtagColorArgb);
+            public IndicatorColor BodyTextColor => NotesSettingsConstants.FallbackBodyTextColor;
+            public IndicatorColor BodyBackgroundColor => NotesSettingsConstants.FallbackBodyBackgroundColor;
+            public IndicatorColor UrlColor => NotesSettingsConstants.FallbackBodyTextColor;
+            public IndicatorColor HashtagColor => NotesSettingsConstants.FallbackBodyTextColor;
             public void SetThumbnailSizePixels(double value) { }
             public void SetImageDisplayMode(NoteImageDisplayMode value) { }
             public void SetMaxRenderedThumbnails(int value) { }
@@ -135,10 +180,10 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
             _snapshotUpcomingCatalystsLimit = _notesSettingsManager.UpcomingCatalystsLimit;
             _snapshotUpcomingCatalystsPastDaysRetention = _notesSettingsManager.UpcomingCatalystsPastDaysRetention;
             _snapshotBodyFontSize = _notesSettingsManager.BodyFontSize;
-            _snapshotBodyTextColor = _notesSettingsManager.BodyTextColor;
-            _snapshotBodyBackgroundColor = _notesSettingsManager.BodyBackgroundColor;
-            _snapshotUrlColor = _notesSettingsManager.UrlColor;
-            _snapshotHashtagColor = _notesSettingsManager.HashtagColor;
+            foreach (var key in ColorKeys)
+            {
+                _snapshotColorPicks[key] = _notesSettingsManager.GetColorPicks(key);
+            }
         }
 
         private void InitializeFromSnapshot()
@@ -160,6 +205,7 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
             SelectedBodyBackgroundColor = _notesSettingsManager.BodyBackgroundColor;
             SelectedUrlColor = _notesSettingsManager.UrlColor;
             SelectedHashtagColor = _notesSettingsManager.HashtagColor;
+            SelectedHighlightColor = _notesSettingsManager.HighlightColor;
             OnPropertyChanged(nameof(IsModified));
         }
 
@@ -177,10 +223,21 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
             SelectedUpcomingCatalystsLimit != _snapshotUpcomingCatalystsLimit ||
             SelectedUpcomingCatalystsPastDaysRetention != _snapshotUpcomingCatalystsPastDaysRetention ||
             SelectedBodyFontSize != _snapshotBodyFontSize ||
-            SelectedBodyTextColor != _snapshotBodyTextColor ||
-            SelectedBodyBackgroundColor != _snapshotBodyBackgroundColor ||
-            SelectedUrlColor != _snapshotUrlColor ||
-            SelectedHashtagColor != _snapshotHashtagColor;
+            AreColorPicksModified();
+
+        /// <summary>True when the picks of any Appearance color differ from the saved state, in either mode.</summary>
+        private bool AreColorPicksModified()
+        {
+            foreach (var key in ColorKeys)
+            {
+                if (_notesSettingsManager.GetColorPicks(key) != _snapshotColorPicks[key])
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
 
         partial void OnSelectedThumbnailSizePixelsChanged(double value) => _notesSettingsManager.SetThumbnailSizePixels(value);
 
@@ -216,6 +273,8 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
 
         partial void OnSelectedHashtagColorChanged(IndicatorColor value) => _notesSettingsManager.SetHashtagColor(value);
 
+        partial void OnSelectedHighlightColorChanged(IndicatorColor value) => _notesSettingsManager.SetHighlightColor(value);
+
         public async Task SaveChangesAsync()
         {
             await _notesSettingsManager.SaveAsync();
@@ -238,10 +297,10 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
             _notesSettingsManager.SetUpcomingCatalystsLimit(_snapshotUpcomingCatalystsLimit);
             _notesSettingsManager.SetUpcomingCatalystsPastDaysRetention(_snapshotUpcomingCatalystsPastDaysRetention);
             _notesSettingsManager.SetBodyFontSize(_snapshotBodyFontSize);
-            _notesSettingsManager.SetBodyTextColor(_snapshotBodyTextColor);
-            _notesSettingsManager.SetBodyBackgroundColor(_snapshotBodyBackgroundColor);
-            _notesSettingsManager.SetUrlColor(_snapshotUrlColor);
-            _notesSettingsManager.SetHashtagColor(_snapshotHashtagColor);
+            foreach (var key in ColorKeys)
+            {
+                _notesSettingsManager.SetColorPicks(key, _snapshotColorPicks[key]);
+            }
             InitializeFromSnapshot();
         }
 
@@ -260,10 +319,17 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
             SelectedUpcomingCatalystsLimit = NotesSettingsConstants.DefaultUpcomingCatalystsLimit;
             SelectedUpcomingCatalystsPastDaysRetention = NotesSettingsConstants.DefaultUpcomingCatalystsPastDaysRetention;
             SelectedBodyFontSize = NotesSettingsConstants.DefaultBodyFontSize;
-            SelectedBodyTextColor = IndicatorColor.FromUInt(NotesSettingsConstants.DefaultBodyTextColorArgb);
-            SelectedBodyBackgroundColor = IndicatorColor.FromUInt(NotesSettingsConstants.DefaultBodyBackgroundColorArgb);
+            // Both modes of every Appearance color go back to the theme defaults, not only the mode shown.
+            foreach (var key in ColorKeys)
+            {
+                _notesSettingsManager.SetColorPicks(key, default);
+            }
+
+            SelectedBodyTextColor = _notesSettingsManager.DefaultBodyTextColor;
+            SelectedBodyBackgroundColor = _notesSettingsManager.DefaultBodyBackgroundColor;
             SelectedUrlColor = SelectedBodyTextColor;
             SelectedHashtagColor = SelectedBodyTextColor;
+            SelectedHighlightColor = _notesSettingsManager.DefaultHighlightColor;
         }
     }
 }

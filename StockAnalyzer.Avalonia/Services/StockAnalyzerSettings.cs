@@ -35,7 +35,8 @@ public class StockAnalyzerSettings : IStockAnalyzerSettings
         ILogger<StockAnalyzerSettings>? logger = null,
         IOptions<StockAnalyzer.Core.Models.Settings.BacktestSettings>? backtestOptions = null,
         IOptions<StockAnalyzer.Core.Models.Settings.DrawingInteractionSettings>? drawingInteractionOptions = null,
-        IOptions<StockAnalyzer.Core.Models.Settings.PythonIpcSettings>? pythonIpcOptions = null)
+        IOptions<StockAnalyzer.Core.Models.Settings.PythonIpcSettings>? pythonIpcOptions = null,
+        IOptions<ScatterMetricSettings>? scatterMetricOptions = null)
     {
         _logger = logger ?? NullLogger<StockAnalyzerSettings>.Instance;
         _configuration = configuration;
@@ -57,6 +58,16 @@ public class StockAnalyzerSettings : IStockAnalyzerSettings
             _logger.LogWarning("{SettingWarning}", warning);
         }
         foreach (var warning in StockAnalyzer.Core.Models.Settings.ScreenerSettingsValidator.ValidateFilterTree(_screenerSettings.MaxFilterTreeNodes, _screenerSettings.MaxFilterTreeDepth))
+        {
+            _logger.LogWarning("{SettingWarning}", warning);
+        }
+
+        _scatterMetricSettings = scatterMetricOptions?.Value ?? new ScatterMetricSettings();
+        foreach (var warning in StockAnalyzer.Core.Models.Settings.ScatterMetricSettingsValidator.Validate(
+                     _scatterMetricSettings.MaxRegisteredMetrics,
+                     _scatterMetricSettings.MaxOffset,
+                     _scatterMetricSettings.MaxParallelism,
+                     _scatterMetricSettings.InputDebounceMilliseconds))
         {
             _logger.LogWarning("{SettingWarning}", warning);
         }
@@ -90,6 +101,7 @@ public class StockAnalyzerSettings : IStockAnalyzerSettings
     }
 
     private readonly ScreenerSettings _screenerSettings;
+    private readonly ScatterMetricSettings _scatterMetricSettings;
     private readonly SmartScreenerSettings _smartScreenerSettings;
     private readonly InfrastructureSettings _infrastructureSettings;
     private readonly MarketStructureSettings _marketStructureSettings;
@@ -175,6 +187,11 @@ public class StockAnalyzerSettings : IStockAnalyzerSettings
     public int ScreenerMaxFilterGroupNameLength => _screenerSettings.MaxFilterGroupNameLength;
     public int ScreenerConditionDragStartDistance => _screenerSettings.ConditionDragStartDistance;
     public int ScreenerMaxConditionOffset => _screenerSettings.MaxConditionOffset;
+
+    public int ScatterMaxRegisteredMetrics => _scatterMetricSettings.MaxRegisteredMetrics;
+    public int ScatterMaxMetricOffset => _scatterMetricSettings.MaxOffset;
+    public int ScatterMaxParallelism => _scatterMetricSettings.MaxParallelism;
+    public int ScatterInputDebounceMilliseconds => _scatterMetricSettings.InputDebounceMilliseconds;
 
     public int PatternRecognitionMinWindow => _patternRecognitionSettings.MinWindow;
     public int PatternRecognitionMaxWindow => _patternRecognitionSettings.MaxWindow;

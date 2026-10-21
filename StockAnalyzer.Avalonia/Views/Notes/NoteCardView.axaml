@@ -99,10 +99,31 @@
                      row below, which duplicated it; everything else stays a plain Run) rather than bound
                      via Text, since Avalonia's TextBlock.Inlines has no direct binding-friendly
                      per-segment click support. -->
-                <TextBlock x:Name="BodyTextBlock"
-                           TextWrapping="Wrap"
-                           Foreground="{Binding BodyTextColor, Converter={x:Static conv:RawColorToBrushConverter.Instance}}"
-                           FontSize="{Binding BodyFontSize}"/>
+                <!-- sa_implement (Notes text selection, docs/sa_implementation_plan_NotesTextSelection P2):
+                     a SelectableTextBlock (derives from TextBlock, so FindControl<TextBlock>("BodyTextBlock") and
+                     Inlines keep working) so the body can be highlighted with the mouse. Background="Transparent" is
+                     REQUIRED: without a Background the block is not hit-testable and a drag never starts a selection
+                     (NoteCardView_SelectionProbeTests Q3). Avalonia's own SelectedText/Ctrl+C drop the text of the
+                     inline hashtag/URL buttons and skew every offset after them (probe Q2/Q3/Q8), so the selection text,
+                     Ctrl+C and Ctrl+A are handled in code-behind (SelectionOffsetMapper). The ContextFlyout replaces the
+                     built-in one with exactly three items in this order - Copy, Apply to Filter, Apply to Search -
+                     whose enabled state and disabled reason come from the NoteSelectionSnapshot taken when the
+                     flyout opens (SA_UI_INTERACTION section 29: reasons shown on disabled items).
+                     Apply to Filter / Apply to Search reuse the hashtag menu's existing labels. -->
+                <SelectableTextBlock x:Name="BodyTextBlock"
+                                     TextWrapping="Wrap"
+                                     Background="Transparent"
+                                     SelectionBrush="{Binding HighlightColor, Converter={x:Static conv:RawColorToBrushConverter.Instance}}"
+                                     Foreground="{Binding BodyTextColor, Converter={x:Static conv:RawColorToBrushConverter.Instance}}"
+                                     FontSize="{Binding BodyFontSize}">
+                    <SelectableTextBlock.ContextFlyout>
+                        <MenuFlyout>
+                            <MenuItem x:Name="BodyCopyMenuItem" Header="{l:Localize Note_Body_ContextMenu_Copy}" ToolTip.ShowOnDisabled="True"/>
+                            <MenuItem x:Name="BodyApplyToFilterMenuItem" Header="{l:Localize Note_Hashtag_ApplyToFilter}" ToolTip.ShowOnDisabled="True"/>
+                            <MenuItem x:Name="BodyApplyToSearchMenuItem" Header="{l:Localize Note_Hashtag_ApplyToSearch}" ToolTip.ShowOnDisabled="True"/>
+                        </MenuFlyout>
+                    </SelectableTextBlock.ContextFlyout>
+                </SelectableTextBlock>
 
                 <Button Theme="{DynamicResource PrimaryButtonStyle}"
                         Content="{Binding ToggleLabel}"

@@ -4,6 +4,7 @@ using StockAnalyzer.Core.Models.Indicators.Advanced;
 using StockAnalyzer.Core.Models.Indicators.MovingAverages;
 using StockAnalyzer.Core.Models.Indicators.Oscillators;
 using StockAnalyzer.Core.Models.Indicators.Statistics;
+using StockAnalyzer.Core.Models.Indicators.Volatility;
 
 namespace StockAnalyzer.Core.Models.Indicators;
 
@@ -57,6 +58,10 @@ public static class IndicatorChartSuppression
             [IndicatorType.CointegrationSpread] = new HashSet<string>(StringComparer.Ordinal)
             {
                 nameof(CoreCointegrationSpreadIndicator.Intercept),
+            },
+            [IndicatorType.Donchian] = new HashSet<string>(StringComparer.Ordinal)
+            {
+                nameof(CoreDonchianChannelIndicator.Position),
             },
         };
 

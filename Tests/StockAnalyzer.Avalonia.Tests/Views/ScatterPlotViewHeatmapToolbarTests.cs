@@ -37,7 +37,6 @@ public sealed class ScatterPlotViewHeatmapToolbarTests
             new HeadlessLocalizationService(),
             NullLogger<ScatterPlotViewModel>.Instance,
             new SynchronousDispatcherService(),
-            metricProvider: SyntheticScatterMetricProvider.Instance,
             heatmapProvider: SyntheticHeatmapReturnProvider.Instance
         );
 

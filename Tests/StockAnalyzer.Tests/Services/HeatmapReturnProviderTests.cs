@@ -96,27 +96,6 @@ public sealed class HeatmapReturnProviderTests : IDisposable
     }
 
     [Fact]
-    public async Task SyntheticProvider_Offset0_MatchesSyntheticScatterReturns()
-    {
-        var tickers = new[] { "AAPL", "MSFT", "GOOGL" };
-        var synthetic = SyntheticHeatmapReturnProvider.Instance;
-
-        var result = await synthetic.ComputeAsync(tickers, 0);
-
-        Assert.Equal(3, result.Items.Count);
-        Assert.Null(result.TargetDate);
-        Assert.False(result.IsLiveMarketData);
-        Assert.Equal("Synthetic", result.ProviderId);
-
-        var scatterResult = await SyntheticScatterMetricProvider.Instance.ComputeMetricsAsync(tickers, "Return", "Volatility");
-        for (int i = 0; i < tickers.Length; i++)
-        {
-            Assert.Equal(tickers[i], result.Items[i].Ticker);
-            Assert.Equal(scatterResult.Items[i].ReturnPercentage, result.Items[i].ReturnPercentage, precision: 6);
-        }
-    }
-
-    [Fact]
     public async Task SyntheticProvider_OffsetGreaterThan0_ReturnsNaNItems()
     {
         var tickers = new[] { "AAPL", "MSFT" };
@@ -336,7 +315,7 @@ public sealed class HeatmapReturnProviderTests : IDisposable
     }
 
     [Fact]
-    public async Task PerformanceComparison_LocalDailyData_MeasuresHeatmapVsScatter()
+    public async Task PerformanceMeasurement_LocalDailyData_MeasuresHeatmap()
     {
         string? localDaily = StockAnalyzer.Core.Common.PathDiscovery.ResolveDataPath(null, "Data/Daily", "*.parquet");
         if (string.IsNullOrEmpty(localDaily) || !Directory.Exists(localDaily)) return;
@@ -354,14 +333,11 @@ public sealed class HeatmapReturnProviderTests : IDisposable
         });
 
         var heatmapProvider = new DuckDbHeatmapReturnProvider(_dbManager, settings, NullLogger<DuckDbHeatmapReturnProvider>.Instance);
-        var scatterProvider = new DuckDbScatterMetricProvider(_dbManager, settings, NullLogger<DuckDbScatterMetricProvider>.Instance);
 
         // Warmup
         await heatmapProvider.ComputeAsync(tickers, 0);
-        await scatterProvider.ComputeMetricsAsync(tickers, "Return", "Volatility");
 
         var heatmapTimes = new List<double>(5);
-        var scatterTimes = new List<double>(5);
 
         for (int i = 0; i < 5; i++)
         {
@@ -370,23 +346,11 @@ public sealed class HeatmapReturnProviderTests : IDisposable
             sw.Stop();
             heatmapTimes.Add(sw.Elapsed.TotalMilliseconds);
             Assert.True(hmRes.IsLiveMarketData);
-
-            sw.Restart();
-            var scRes = await scatterProvider.ComputeMetricsAsync(tickers, "Return", "Volatility");
-            sw.Stop();
-            scatterTimes.Add(sw.Elapsed.TotalMilliseconds);
-            Assert.True(scRes.IsLiveMarketData);
         }
 
         heatmapTimes.Sort();
-        scatterTimes.Sort();
 
-        double medianHeatmap = heatmapTimes[2];
-        double medianScatter = scatterTimes[2];
-
-        _output.WriteLine($"[S6.5 Performance Benchmark ({tickers.Length} tickers)]");
-        _output.WriteLine($"Heatmap ComputeAsync(offset 0) 5 runs (ms): {string.Join(", ", heatmapTimes.Select(t => t.ToString("F2")))} -> Median = {medianHeatmap:F2} ms");
-        _output.WriteLine($"Scatter ComputeMetricsAsync 5 runs (ms): {string.Join(", ", scatterTimes.Select(t => t.ToString("F2")))} -> Median = {medianScatter:F2} ms");
-        _output.WriteLine($"Ratio (Heatmap / Scatter) = {(medianHeatmap / medianScatter):F2}x");
+        _output.WriteLine($"[Heatmap performance ({tickers.Length} tickers)]");
+        _output.WriteLine($"Heatmap ComputeAsync(offset 0) 5 runs (ms): {string.Join(", ", heatmapTimes.Select(t => t.ToString("F2")))} -> Median = {heatmapTimes[2]:F2} ms");
     }
 }

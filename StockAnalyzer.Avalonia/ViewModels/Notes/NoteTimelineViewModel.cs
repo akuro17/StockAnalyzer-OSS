@@ -59,6 +59,7 @@ public sealed partial class NoteTimelineItemViewModel : ObservableObject
     private readonly Action<string>? _onOpenAttachmentRequested;
     private readonly Action<NoteTimelineItemViewModel>? _onQuoteRequested;
     private readonly Action<NoteTimelineItemViewModel>? _onReplyRequested;
+    private readonly INoteSelectionTarget? _selectionTarget;
 
     /// <summary>Character/newline "Read more" collapse thresholds (Settings &gt; Notes, default 150/5),
     /// captured at construction time from <see cref="NoteTimelineViewModel"/>'s injected
@@ -115,6 +116,12 @@ public sealed partial class NoteTimelineItemViewModel : ObservableObject
     /// <summary>Foreground color for clickable hashtag segments (Settings &gt; Notes); same
     /// always-explicit contract and platform-agnostic-type rationale as <see cref="UrlColor"/>.</summary>
     public IndicatorColor HashtagColor { get; }
+
+    /// <summary>Background of text the user highlights (mouse selection) in this card's body (Settings &gt; Notes,
+    /// "Appearance"), captured at construction time like <see cref="BodyTextColor"/> and bound in XAML through
+    /// <see cref="StockAnalyzer.Avalonia.Converters.RawColorToBrushConverter"/>. A change of the setting reaches the
+    /// card through the timeline's settings-changed refresh, which rebuilds the cards.</summary>
+    public IndicatorColor HighlightColor { get; }
 
     /// <summary>Max thumbnails actually rendered on a card (spec 5.2 / UI spec FR-5 5.2 section):
     /// beyond this, ExtraAttachmentCountText reports the remainder as a "+N" count instead.
@@ -183,12 +190,16 @@ public sealed partial class NoteTimelineItemViewModel : ObservableObject
         IndicatorColor? bodyBackgroundColor = null,
         double thumbnailSizePixels = NotesSettingsConstants.DefaultThumbnailSizePixels,
         NoteImageDisplayMode imageDisplayMode = NotesSettingsConstants.DefaultImageDisplayMode,
-        int maxRenderedThumbnails = NotesSettingsConstants.DefaultMaxRenderedThumbnails)
+        int maxRenderedThumbnails = NotesSettingsConstants.DefaultMaxRenderedThumbnails,
+        INoteSelectionTarget? selectionTarget = null,
+        IndicatorColor? highlightColor = null)
     {
         Note = note;
+        HighlightColor = highlightColor ?? IndicatorColor.FromUInt(NotesSettingsConstants.DefaultHighlightColorArgb);
+        _selectionTarget = selectionTarget;
         _readMoreMaxCharacters = readMoreMaxCharacters;
         _readMoreMaxLines = readMoreMaxLines;
-        BodyTextColor = bodyTextColor ?? IndicatorColor.FromUInt(NotesSettingsConstants.DefaultBodyTextColorArgb);
+        BodyTextColor = bodyTextColor ?? NotesSettingsConstants.FallbackBodyTextColor;
         UrlColor = urlColor ?? BodyTextColor;
         HashtagColor = hashtagColor ?? BodyTextColor;
         HasCollapsedRepliesBelow = hasCollapsedRepliesBelow;
@@ -199,7 +210,7 @@ public sealed partial class NoteTimelineItemViewModel : ObservableObject
         ThumbnailSizePixels = thumbnailSizePixels;
         ImageDisplayMode = imageDisplayMode;
         MaxRenderedThumbnails = maxRenderedThumbnails;
-        BodyBackgroundColor = bodyBackgroundColor ?? IndicatorColor.FromUInt(NotesSettingsConstants.DefaultBodyBackgroundColorArgb);
+        BodyBackgroundColor = bodyBackgroundColor ?? NotesSettingsConstants.FallbackBodyBackgroundColor;
         IsTombstone = isTombstone;
         CanReply = canReply;
         _isExpanded = isExpanded;
@@ -402,6 +413,17 @@ public sealed partial class NoteTimelineItemViewModel : ObservableObject
 
     /// <summary>Relays a body-hashtag click's "Apply to Search" choice to the owning NoteTimelineViewModel.</summary>
     public void RequestHashtagSearch(string hashtag) => _onHashtagSearchRequested(hashtag);
+
+    /// <summary>Freezes the body text the user selected into a <see cref="NoteSelectionSnapshot"/> (right-click menu of the body text).
+    /// Without a selection target only Copy is available.</summary>
+    public NoteSelectionSnapshot EvaluateSelection(string? rawSelectedText) =>
+        _selectionTarget?.Evaluate(rawSelectedText) ?? NoteSelectionTextRules.EvaluateCopyOnly(rawSelectedText);
+
+    /// <summary>Relays "Apply to Filter" for a selected text to the owning timeline; no-op without a target.</summary>
+    public void ApplySelectionToFilter(NoteSelectionSnapshot snapshot) => _selectionTarget?.ApplyToFilter(snapshot);
+
+    /// <summary>Relays "Apply to Search" for a selected text to the owning timeline; no-op without a target.</summary>
+    public void ApplySelectionToSearch(NoteSelectionSnapshot snapshot) => _selectionTarget?.ApplyToSearch(snapshot);
 
     /// <summary>Empty when there are no attachments, so the View can hide the indicator via
     /// IsNotNullOrEmpty. Used as the fallback when no thumbnail could be decoded (spec 5.2).</summary>
@@ -700,7 +722,7 @@ public sealed class NoteScopeSuggestion : ISuggestionRow
 /// each card's expand/collapse state in memory only (spec section 5.3), and hosts the inline
 /// create/edit compose panel backed by <see cref="NoteEditorViewModel"/> (Step 90-1-12).
 /// </summary>
-public partial class NoteTimelineViewModel : ViewModelBase, IDisposable
+public partial class NoteTimelineViewModel : ViewModelBase, IDisposable, INoteSelectionTarget
 {
     private bool _isDisposed;
     private readonly NoteRepository _noteRepository;
@@ -1234,6 +1256,29 @@ public partial class NoteTimelineViewModel : ViewModelBase, IDisposable
     /// card chip used, so the box's content matches what the user just clicked.</summary>
     private void ApplyHashtagToSearch(string hashtag) => SearchText = $"#{hashtag}";
 
+    /// <inheritdoc />
+    NoteSelectionSnapshot INoteSelectionTarget.Evaluate(string? rawSelectedText) =>
+        NoteSelectionTextRules.Evaluate(rawSelectedText, AvailableSearchSuggestions);
+
+    /// <summary>Applies the filter candidate a selected body text resolved to through <see cref="SelectSuggestion"/> - the same path a
+    /// suggestion picked from the filter box takes (exclusivity, chips). Leaves <see cref="SearchText"/> alone.</summary>
+    void INoteSelectionTarget.ApplyToFilter(NoteSelectionSnapshot snapshot)
+    {
+        if (snapshot.CanApplyToFilter && snapshot.FilterSuggestion is { } suggestion)
+        {
+            SelectSuggestion(suggestion);
+        }
+    }
+
+    /// <summary>Replaces <see cref="SearchText"/> with the selected body text (trimmed, single-line). Leaves the filter dimensions alone.</summary>
+    void INoteSelectionTarget.ApplyToSearch(NoteSelectionSnapshot snapshot)
+    {
+        if (snapshot.CanApplyToSearch)
+        {
+            SearchText = snapshot.ApplyText;
+        }
+    }
+
     /// <summary>
     /// Resolves the unified scope menu's current selection into a ticker set (fix request #2 of the
     /// scope-menu round; fix request #1 of the unified-suggestion round): null/AllTickersNode means
@@ -1640,7 +1685,9 @@ public partial class NoteTimelineViewModel : ViewModelBase, IDisposable
             bodyBackgroundColor: _notesSettingsManager.BodyBackgroundColor,
             thumbnailSizePixels: _notesSettingsManager.ThumbnailSizePixels,
             imageDisplayMode: _notesSettingsManager.ImageDisplayMode,
-            maxRenderedThumbnails: _notesSettingsManager.MaxRenderedThumbnails);
+            maxRenderedThumbnails: _notesSettingsManager.MaxRenderedThumbnails,
+            selectionTarget: this,
+            highlightColor: _notesSettingsManager.HighlightColor);
         item.PropertyChanged += OnItemPropertyChanged;
         return item;
     }

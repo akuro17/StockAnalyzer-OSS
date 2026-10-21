@@ -1,0 +1,421 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:models="clr-namespace:StockAnalyzer.Core.Models.Screener;assembly=StockAnalyzer.Core"
+        xmlns:vm="clr-namespace:StockAnalyzer.Avalonia.ViewModels.Dialogs;assembly=StockAnalyzer.Avalonia"
+        xmlns:l="clr-namespace:StockAnalyzer.Avalonia.Markup;assembly=StockAnalyzer.Avalonia"
+        xmlns:controls="clr-namespace:StockAnalyzer.Avalonia.Views.Controls;assembly=StockAnalyzer.Avalonia"
+        xmlns:behaviors="using:StockAnalyzer.Avalonia.Behaviors"
+        xmlns:c="using:StockAnalyzer.Avalonia.Common"
+        mc:Ignorable="d" d:DesignWidth="1100" d:DesignHeight="650"
+        x:Class="StockAnalyzer.Avalonia.Views.Dialogs.ScatterMetricRegistrationWindow"
+        x:DataType="vm:ScatterMetricRegistrationViewModel"
+        Title="{l:Localize ScatterMetric_Window_Title}"
+        Icon="/Assets/avalonia-logo.ico"
+        Width="{x:Static c:ScatterMetricUiLayout.WindowWidth}"
+        Height="{x:Static c:ScatterMetricUiLayout.WindowHeight}"
+        MinWidth="{x:Static c:ScatterMetricUiLayout.WindowMinWidth}"
+        MinHeight="{x:Static c:ScatterMetricUiLayout.WindowMinHeight}"
+        WindowStartupLocation="CenterOwner"
+        ExtendClientAreaToDecorationsHint="True"
+        ExtendClientAreaTitleBarHeightHint="-1"
+        Background="{DynamicResource Brush.Background.Primary}">
+
+    <!-- Esc = Cancel, through this window's own view-model command (a binding to $parent[Window] cannot reach its window). -->
+    <Window.KeyBindings>
+        <KeyBinding Gesture="Escape" Command="{Binding CancelCommand}"/>
+    </Window.KeyBindings>
+
+    <Window.Styles>
+        <Style Selector="Border.selectedRow">
+            <Setter Property="Background" Value="{DynamicResource Brush.Background.Hover}"/>
+        </Style>
+        <Style Selector="ListBox.navList ListBoxItem">
+            <Setter Property="Padding" Value="8,5"/>
+            <Setter Property="Margin" Value="0,1"/>
+            <Setter Property="CornerRadius" Value="3"/>
+            <Setter Property="FontSize" Value="{DynamicResource DetailFontSize}"/>
+        </Style>
+        <Style Selector="ListBox.catalogList ListBoxItem">
+            <Setter Property="Padding" Value="8,6"/>
+            <Setter Property="Margin" Value="0,1"/>
+            <Setter Property="CornerRadius" Value="4"/>
+        </Style>
+        <Style Selector="TextBlock.fieldLabel">
+            <Setter Property="FontSize" Value="{DynamicResource DetailFontSize}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Secondary}"/>
+        </Style>
+    </Window.Styles>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="{x:Static c:ToolWindowUiLayout.HeaderRow}"/>
+            <RowDefinition Height="{x:Static c:ToolWindowUiLayout.BodyRow}"/>
+            <RowDefinition Height="{x:Static c:ToolWindowUiLayout.FooterRow}"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header (custom title bar, 56 px) -->
+        <Border Grid.Row="0"
+                Padding="24,0,16,0"
+                Background="{DynamicResource Brush.Background.Tertiary}"
+                BorderBrush="{DynamicResource Brush.Border.Primary}"
+                BorderThickness="{x:Static c:ToolWindowUiLayout.HeaderBorder}"
+                PointerPressed="OnHeaderPointerPressed">
+            <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center" IsHitTestVisible="False">
+                <PathIcon Data="{x:Static c:SharedIconGeometries.Settings}"
+                          Width="{x:Static c:ToolWindowUiLayout.HeaderIconSize}" Height="{x:Static c:ToolWindowUiLayout.HeaderIconSize}"
+                          Foreground="{DynamicResource Brush.Accent.Primary}"/>
+                <TextBlock Text="{l:Localize ScatterMetric_Window_Title}"
+                           FontSize="{DynamicResource TitleFontSize}"
+                           FontWeight="SemiBold"
+                           Foreground="{DynamicResource Brush.Text.Primary}"
+                           VerticalAlignment="Center"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Body: navigation | list | detail -->
+        <Grid Grid.Row="1" Margin="10,10,10,0" ColumnDefinitions="220*, Auto, 260*, Auto, 450*"
+              IsEnabled="{Binding IsIdle}">
+
+            <!-- Navigation: Active | divider | All Filters | Indicators + groups | Columns + groups -->
+            <Border Grid.Column="0"
+                    MinWidth="{x:Static c:ScatterMetricUiLayout.NavMinWidth}"
+                    Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="1"
+                    CornerRadius="4">
+                <ListBox Classes="navList"
+                         AutomationProperties.AutomationId="ScatterMetric_Nav"
+                         ItemsSource="{Binding NavItems}"
+                         SelectedItem="{Binding SelectedNavItem, Mode=TwoWay}"
+                         Background="Transparent"
+                         BorderThickness="0"
+                         Margin="4"
+                         TabIndex="1"
+                         ScrollViewer.AllowAutoHide="False"
+                         ScrollViewer.VerticalScrollBarVisibility="Auto"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate x:DataType="vm:ScatterMetricNavItem">
+                            <Panel>
+                                <TextBlock Text="{Binding Title}" IsVisible="{Binding IsActive}"
+                                           FontWeight="Bold"
+                                           Foreground="{DynamicResource Brush.Accent.Primary}"
+                                           TextTrimming="CharacterEllipsis"/>
+                                <Border IsVisible="{Binding IsDivider}" Height="1" Margin="0,4"
+                                        Background="{DynamicResource Brush.Border.Primary}"/>
+                                <StackPanel IsVisible="{Binding IsAllFilters}" Orientation="Horizontal" Spacing="8">
+                                    <PathIcon Data="{x:Static c:SharedIconGeometries.Filter}" Width="14" Height="14"
+                                              Foreground="{DynamicResource Brush.Text.Secondary}"/>
+                                    <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis"
+                                               Foreground="{DynamicResource Brush.Text.Primary}"/>
+                                </StackPanel>
+                                <Border IsVisible="{Binding IsHeader}" Background="{DynamicResource Brush.Background.Tertiary}" Padding="4,2" CornerRadius="3">
+                                    <TextBlock Text="{Binding Title}" FontWeight="Bold"
+                                               Foreground="{DynamicResource Brush.Accent.Primary}"
+                                               TextTrimming="CharacterEllipsis"/>
+                                </Border>
+                                <TextBlock Text="{Binding Title}" IsVisible="{Binding IsGroup}" Margin="8,0,0,0"
+                                           Foreground="{DynamicResource Brush.Text.Primary}"
+                                           TextTrimming="CharacterEllipsis"/>
+                            </Panel>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </Border>
+
+            <GridSplitter Grid.Column="1" Width="8" ResizeDirection="Columns" ResizeBehavior="PreviousAndNext"
+                          HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Cursor="SizeWestEast"
+                          Background="{DynamicResource Brush.Background.Primary}" Margin="2,0"/>
+
+            <!-- Center: the draft (Active) or the catalog list -->
+            <Border Grid.Column="2"
+                    MinWidth="{x:Static c:ScatterMetricUiLayout.CatalogMinWidth}"
+                    Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="1"
+                    CornerRadius="4"
+                    Padding="8,8,4,8">
+                <Grid>
+                    <!-- Active: the registered metrics, reorderable and removable -->
+                    <ScrollViewer IsVisible="{Binding IsActiveMode}"
+                                  VerticalScrollBarVisibility="Auto" AllowAutoHide="False" HorizontalScrollBarVisibility="Disabled"
+                                  Padding="{DynamicResource ListScrollGutter}">
+                        <StackPanel Spacing="6">
+                            <ItemsControl AutomationProperties.AutomationId="ScatterMetric_ActiveList" ItemsSource="{Binding Draft}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:ScatterMetricDraftItem">
+                                        <Border Classes.selectedRow="{Binding IsSelected}" CornerRadius="4" Margin="0,1">
+                                            <Grid ColumnDefinitions="*,Auto,Auto,Auto">
+                                                <Button Grid.Column="0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                                        Background="Transparent" Padding="6,4" CornerRadius="4"
+                                                        TabIndex="3"
+                                                        ToolTip.Tip="{Binding Label}"
+                                                        Command="{Binding $parent[ItemsControl].((vm:ScatterMetricRegistrationViewModel)DataContext).SelectDraftItemCommand}"
+                                                        CommandParameter="{Binding}">
+                                                    <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis"/>
+                                                </Button>
+                                                <Button Grid.Column="1" Content="▲" Margin="4,0,0,0" Padding="0"
+                                                        Width="{x:Static c:ScatterMetricUiLayout.RowButtonSize}" Height="{x:Static c:ScatterMetricUiLayout.RowButtonSize}"
+                                                        Theme="{DynamicResource SecondaryButtonStyle}"
+                                                        ToolTip.Tip="{l:Localize ScatterMetric_Btn_MoveUp}"
+                                                        Command="{Binding $parent[ItemsControl].((vm:ScatterMetricRegistrationViewModel)DataContext).MoveUpCommand}"
+                                                        CommandParameter="{Binding}"/>
+                                                <Button Grid.Column="2" Content="▼" Margin="2,0" Padding="0"
+                                                        Width="{x:Static c:ScatterMetricUiLayout.RowButtonSize}" Height="{x:Static c:ScatterMetricUiLayout.RowButtonSize}"
+                                                        Theme="{DynamicResource SecondaryButtonStyle}"
+                                                        ToolTip.Tip="{l:Localize ScatterMetric_Btn_MoveDown}"
+                                                        Command="{Binding $parent[ItemsControl].((vm:ScatterMetricRegistrationViewModel)DataContext).MoveDownCommand}"
+                                                        CommandParameter="{Binding}"/>
+                                                <Button Grid.Column="3" Padding="0"
+                                                        Width="{x:Static c:ScatterMetricUiLayout.RowButtonSize}" Height="{x:Static c:ScatterMetricUiLayout.RowButtonSize}"
+                                                        Theme="{DynamicResource SecondaryButtonStyle}"
+                                                        ToolTip.Tip="{l:Localize ScatterMetric_Btn_Delete}"
+                                                        Command="{Binding $parent[ItemsControl].((vm:ScatterMetricRegistrationViewModel)DataContext).RemoveCommand}"
+                                                        CommandParameter="{Binding}">
+                                                    <PathIcon Data="{x:Static c:SharedIconGeometries.Delete}"
+                                                              Width="{x:Static c:ScatterMetricUiLayout.RowIconSize}" Height="{x:Static c:ScatterMetricUiLayout.RowIconSize}"/>
+                                                </Button>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <TextBlock Text="{l:Localize ScatterMetric_Active_EmptyNote}"
+                                       IsVisible="{Binding !HasDraft}"
+                                       FontSize="{DynamicResource HelperFontSize}"
+                                       Foreground="{DynamicResource Brush.Text.Tertiary}"
+                                       TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </ScrollViewer>
+
+                    <!-- Catalog: All Filters or one group -->
+                    <Grid IsVisible="{Binding IsCatalogMode}" RowDefinitions="Auto,*">
+                        <TextBox Grid.Row="0"
+                                 AutomationProperties.AutomationId="ScatterMetric_Search"
+                                 Text="{Binding SearchText, Mode=TwoWay}"
+                                 Watermark="{l:Localize Indicator_SearchPlaceholder}"
+                                 Height="{x:Static c:ScatterMetricUiLayout.ControlHeight}"
+                                 Classes="clearButton"
+                                 Margin="0,0,0,8"
+                                 TabIndex="2"
+                                 FontSize="{DynamicResource BaseFontSize}"
+                                 KeyDown="OnSearchKeyDown"/>
+                        <ListBox Grid.Row="1" Classes="catalogList"
+                                 AutomationProperties.AutomationId="ScatterMetric_Catalog"
+                                 ItemsSource="{Binding CatalogItems}"
+                                 SelectedItem="{Binding SelectedCatalogItem, Mode=TwoWay}"
+                                 DoubleTapped="OnCatalogItemDoubleTapped"
+                                 Background="Transparent"
+                                 BorderThickness="0"
+                                 TabIndex="3"
+                                 Padding="{DynamicResource ListScrollGutter}"
+                                 ScrollViewer.AllowAutoHide="False"
+                                 ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate x:DataType="models:ScreenerCatalogItem">
+                                    <StackPanel Spacing="2">
+                                        <TextBlock Text="{Binding ShortName}"
+                                                   FontWeight="SemiBold"
+                                                   FontSize="{DynamicResource DetailFontSize}"
+                                                   Foreground="{DynamicResource Brush.Text.Primary}"
+                                                   TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock Text="{Binding DisplayName}"
+                                                   FontSize="{DynamicResource HelperFontSize}"
+                                                   Foreground="{DynamicResource Brush.Text.Secondary}"
+                                                   TextTrimming="CharacterEllipsis"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </Grid>
+                </Grid>
+            </Border>
+
+            <GridSplitter Grid.Column="3" Width="8" ResizeDirection="Columns" ResizeBehavior="PreviousAndNext"
+                          HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Cursor="SizeWestEast"
+                          Background="{DynamicResource Brush.Background.Primary}" Margin="2,0"/>
+
+            <!-- Detail: the metric being edited (Active) or about to be added (catalog) -->
+            <Border Grid.Column="4"
+                    MinWidth="{x:Static c:ScatterMetricUiLayout.DetailMinWidth}"
+                    Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="1"
+                    CornerRadius="4"
+                    Padding="8">
+                <Grid>
+                    <TextBlock Text="{l:Localize ScatterMetric_Active_SelectHint}" IsVisible="{Binding ShowActiveHint}"
+                               FontSize="{DynamicResource DetailFontSize}"
+                               Foreground="{DynamicResource Brush.Text.Secondary}"
+                               TextWrapping="Wrap" TextAlignment="Center"
+                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    <TextBlock Text="{l:Localize Msg_SelectIndicator}" IsVisible="{Binding ShowCatalogHint}"
+                               FontSize="{DynamicResource DetailFontSize}"
+                               Foreground="{DynamicResource Brush.Text.Secondary}"
+                               TextWrapping="Wrap" TextAlignment="Center"
+                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+
+                    <ScrollViewer IsVisible="{Binding HasEditor}"
+                                  Theme="{StaticResource SidebarScrollViewerTheme}"
+                                  AllowAutoHide="False"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled"
+                                  behaviors:WheelScrollRedirectBehavior.IsEnabled="True">
+                        <StackPanel Spacing="10" Margin="4,4,14,4">
+                            <!-- The name of the metric: wraps, never ellipsised -->
+                            <TextBlock Text="{Binding CurrentEditor.Title}"
+                                       FontSize="{DynamicResource TitleFontSize}"
+                                       FontWeight="Bold"
+                                       Foreground="{DynamicResource Brush.Text.Primary}"
+                                       TextWrapping="Wrap"/>
+                            <TextBlock Classes="fieldLabel"
+                                       Text="{l:Localize TrainingWizard_Features_Parameters}"
+                                       IsVisible="{Binding CurrentEditor.HasParameters}"/>
+
+                            <Border BorderBrush="{DynamicResource Brush.Border.Primary}"
+                                    BorderThickness="1"
+                                    CornerRadius="6"
+                                    Background="{DynamicResource Brush.Background.Primary}"
+                                    ClipToBounds="True">
+                                <StackPanel Spacing="0">
+                                    <!-- Output series (only when the indicator has several) -->
+                                    <Grid MinHeight="36" IsVisible="{Binding CurrentEditor.HasMultipleOutputs}">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="{x:Static c:ScatterMetricUiLayout.LabelColumn}"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Border Grid.Column="0" Background="{DynamicResource Brush.Background.Tertiary}"
+                                                BorderBrush="{DynamicResource Brush.Border.Primary}" BorderThickness="0,0,1,0"
+                                                Padding="12,0,8,0" VerticalAlignment="Stretch">
+                                            <TextBlock Text="{l:Localize Label_DisplayItemSelection}" FontWeight="SemiBold"
+                                                       VerticalAlignment="Center" HorizontalAlignment="Left"
+                                                       Foreground="{DynamicResource Brush.Text.Primary}"/>
+                                        </Border>
+                                        <ComboBox Grid.Column="1"
+                                                  ItemsSource="{Binding CurrentEditor.Outputs}"
+                                                  SelectedItem="{Binding CurrentEditor.SelectedOutput, Mode=TwoWay}"
+                                                  HorizontalAlignment="Left" VerticalAlignment="Center" Margin="12,0,0,0"
+                                                  Height="30" Width="{x:Static c:ScatterMetricUiLayout.EditorControlWidth}"
+                                                  TabIndex="4"/>
+                                    </Grid>
+
+                                    <!-- The indicator's own parameters -->
+                                    <controls:DynamicIndicatorSettingsView ParameterObject="{Binding CurrentEditor.ParameterObject}" Margin="0"/>
+
+                                    <!-- Time frame: Day, Week or Month. A fundamental Column stays on Day: the box is disabled and its tooltip says why (SA_UI_INTERACTION section 29). -->
+                                    <Grid MinHeight="36">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="{x:Static c:ScatterMetricUiLayout.LabelColumn}"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Border Grid.Column="0" Background="{DynamicResource Brush.Background.Tertiary}"
+                                                BorderBrush="{DynamicResource Brush.Border.Primary}" BorderThickness="0,0,1,0"
+                                                Padding="12,0,8,0" VerticalAlignment="Stretch">
+                                            <TextBlock Text="{l:Localize Label_TimeFrame}" FontWeight="SemiBold"
+                                                       VerticalAlignment="Center" HorizontalAlignment="Left"
+                                                       Foreground="{DynamicResource Brush.Text.Primary}"/>
+                                        </Border>
+                                        <ComboBox Grid.Column="1"
+                                                  AutomationProperties.AutomationId="ScatterMetric_TimeFrame"
+                                                  ItemsSource="{Binding TimeFrameOptions}"
+                                                  DisplayMemberBinding="{Binding DisplayName}"
+                                                  SelectedValueBinding="{Binding Value}"
+                                                  SelectedValue="{Binding CurrentEditor.TimeFrame, Mode=TwoWay}"
+                                                  IsEnabled="{Binding CurrentEditor.IsTimeFrameEditable}"
+                                                  ToolTip.Tip="{Binding CurrentEditor.TimeFrameToolTip}"
+                                                  ToolTip.ShowOnDisabled="True"
+                                                  HorizontalAlignment="Left" VerticalAlignment="Center" Margin="12,0,0,0"
+                                                  Height="30" Width="{x:Static c:ScatterMetricUiLayout.EditorControlWidth}"
+                                                  TabIndex="5"/>
+                                    </Grid>
+
+                                    <!-- Offset: bars before the ticker's latest bar -->
+                                    <Grid MinHeight="36">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="{x:Static c:ScatterMetricUiLayout.LabelColumn}"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Border Grid.Column="0" Background="{DynamicResource Brush.Background.Tertiary}"
+                                                BorderBrush="{DynamicResource Brush.Border.Primary}" BorderThickness="0,0,1,0"
+                                                Padding="12,0,8,0" VerticalAlignment="Stretch">
+                                            <TextBlock Text="{l:Localize Label_Offset}" FontWeight="SemiBold"
+                                                       VerticalAlignment="Center" HorizontalAlignment="Left"
+                                                       Foreground="{DynamicResource Brush.Text.Primary}"/>
+                                        </Border>
+                                        <NumericUpDown Grid.Column="1"
+                                                       AutomationProperties.AutomationId="ScatterMetric_Offset"
+                                                       Value="{Binding CurrentEditor.Offset}"
+                                                       Minimum="{Binding MinOffset}"
+                                                       Maximum="{Binding MaxOffset}"
+                                                       ClipValueToMinMax="True"
+                                                       Increment="1"
+                                                       FormatString="0"
+                                                       Height="30" Width="{x:Static c:ScatterMetricUiLayout.EditorControlWidth}"
+                                                       Padding="6,2" Margin="12,0,0,0"
+                                                       HorizontalAlignment="Left" VerticalAlignment="Center"
+                                                       TabIndex="6"/>
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Adds the catalog item to the draft (catalog modes only) -->
+                            <Button AutomationProperties.AutomationId="ScatterMetric_AddButton"
+                                    Content="{l:Localize ScatterMetric_Btn_Add}"
+                                    Command="{Binding AddCommand}"
+                                    IsVisible="{Binding IsCatalogMode}"
+                                    Theme="{DynamicResource PrimaryButtonStyle}"
+                                    Foreground="{DynamicResource Brush.Button.Text}"
+                                    Height="{x:Static c:ScatterMetricUiLayout.AddButtonHeight}"
+                                    HorizontalAlignment="Stretch"
+                                    HorizontalContentAlignment="Center"
+                                    VerticalContentAlignment="Center"
+                                    Margin="0,8,0,0"
+                                    TabIndex="7"/>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- Footer (64 px): [OK] [Cancel], right aligned -->
+        <Border Grid.Row="2"
+                Padding="{x:Static c:ToolWindowUiLayout.BarPadding}"
+                Background="{DynamicResource Brush.Background.Tertiary}"
+                BorderBrush="{DynamicResource Brush.Border.Primary}"
+                BorderThickness="{x:Static c:ToolWindowUiLayout.FooterBorder}">
+            <Grid ColumnDefinitions="Auto,*,Auto">
+                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="{x:Static c:ToolWindowUiLayout.ButtonSpacing}" VerticalAlignment="Center">
+                    <Button AutomationProperties.AutomationId="ScatterMetric_OkButton"
+                            Content="{l:Localize Btn_OK}"
+                            Command="{Binding OkCommand}"
+                            IsDefault="True"
+                            Theme="{DynamicResource PrimaryButtonStyle}"
+                            Foreground="{DynamicResource Brush.Button.Text}"
+                            Width="{x:Static c:ToolWindowUiLayout.ButtonWidth}" Height="{x:Static c:ScatterMetricUiLayout.AddButtonHeight}"
+                            HorizontalContentAlignment="Center"
+                            VerticalContentAlignment="Center"
+                            TabIndex="8"/>
+                    <Button AutomationProperties.AutomationId="ScatterMetric_CancelButton"
+                            Content="{l:Localize Btn_Cancel}"
+                            Command="{Binding CancelCommand}"
+                            Theme="{DynamicResource SecondaryButtonStyle}"
+                            Width="{x:Static c:ToolWindowUiLayout.ButtonWidth}" Height="{x:Static c:ScatterMetricUiLayout.AddButtonHeight}"
+                            HorizontalContentAlignment="Center"
+                            VerticalContentAlignment="Center"
+                            TabIndex="9"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Toast overlay (bottom centre) -->
+        <controls:ToastOverlay Grid.Row="0" Grid.RowSpan="3"
+                               Service="{Binding ToastService}" Icon="✅"
+                               VerticalAlignment="Bottom" HorizontalAlignment="Center"
+                               Margin="0,0,0,16"
+                               ZIndex="1000"/>
+    </Grid>
+</Window>

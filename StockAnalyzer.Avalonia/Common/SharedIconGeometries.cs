@@ -19,6 +19,10 @@ public static class SharedIconGeometries
     /// once <c>TickerTagFilterSuggestion</c> (Tickers tab) needed the same shape.</summary>
     public const string Ticker = "M3.5,18.49L9.5,12.48L13.5,16.48L22,6.92L20.59,5.51L13.5,13.48L9.5,9.48L2,16.99L3.5,18.49Z";
 
+    /// <summary>Three horizontal bars of decreasing length. sa_improve: the literal was copied into four views and into
+    /// <c>TickerGroupIconGeometries</c>; the scatter metric registration window and <c>TickerGroupIconGeometries</c> now use this one.</summary>
+    public const string Filter = "M10,18h4v-2h-4V18z M3,6v2h18V6H3z M6,13h12v-2H6V13z";
+
     public const string Add = "M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z";
     public const string Delete = "M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19V4Z M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z";
     public const string Save = "M15,9H5V5H15M12,19A3,3 0 0,1 9,16A3,3 0 0,1 12,13A3,3 0 0,1 15,16A3,3 0 0,1 12,19M17,3H5C3.89,3 3,3.89 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V7L17,3Z";

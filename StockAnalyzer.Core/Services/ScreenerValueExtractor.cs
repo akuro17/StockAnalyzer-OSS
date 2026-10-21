@@ -83,6 +83,12 @@ public class ScreenerValueExtractor : IScreenerValueExtractor
     private static bool NamesCandleValue(ScreenerIndicatorSideConfig config)
         => TryGetColumnOhlcValue(config, ProbeBar[0], 0, ProbeBar, out _);
 
+    /// <summary>
+    /// True when the Column <paramref name="config"/> names a value read from the bar series of its own time frame (Open, High, Low, Close, Volume,
+    /// Change, Change %); a fundamental (market cap, ...) is a property of the ticker, not of a bar, so it has no time frame.
+    /// </summary>
+    internal static bool IsCandleValueColumn(ScreenerIndicatorSideConfig config) => NamesCandleValue(config);
+
     public decimal? ExtractValueNullable(ScreenerIndicatorSideConfig? config, IReadOnlyList<CandleData> candles, TickerMetadata metadata = default)
     {
         if (config == null || candles == null || candles.Count == 0) return null;

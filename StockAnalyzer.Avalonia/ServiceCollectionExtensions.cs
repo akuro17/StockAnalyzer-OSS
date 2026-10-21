@@ -34,6 +34,7 @@ public static class ServiceCollectionExtensions
         services.Configure<Core.Models.Settings.FileReplaceRetrySettings>(configuration.GetSection(Core.Models.Settings.FileReplaceRetrySettings.SectionName));
         services.Configure<MarketDataSettings>(configuration.GetSection("MarketDataSettings"));
         services.Configure<ScreenerSettings>(configuration.GetSection("Screener"));
+        services.Configure<ScatterMetricSettings>(configuration.GetSection(Core.Models.Settings.ScatterMetricSettingsValidator.SectionName));
         services.Configure<TickersSettings>(configuration.GetSection("Tickers"));
         services.Configure<Core.Models.Settings.LayoutSettings>(configuration.GetSection("Layout"));
         services.Configure<SmartScreenerSettings>(configuration.GetSection("SmartScreener"));
@@ -282,7 +283,6 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ISpiralAnalysisDataSource, SpiralAnalysisDataSource>();
         services.AddSingleton<ISeasonalityChartDataSource, SeasonalityChartDataSource>();
         services.AddTransient<SeasonalityChartViewModel>();
-        services.AddSingleton<Core.Services.Analysis.IScatterMetricProvider, Core.Services.Analysis.DuckDbScatterMetricProvider>();
         services.AddSingleton<Core.Services.Analysis.IHeatmapReturnProvider, Core.Services.Analysis.DuckDbHeatmapReturnProvider>();
         services.AddTransient<ScatterPlotViewModel>();
         services.AddSingleton<HeatmapPanelViewModel>();
@@ -290,6 +290,9 @@ public static class ServiceCollectionExtensions
         services.AddTransient<IndicatorRegistrationViewModel>();
         services.AddSingleton<Core.Interfaces.IScreenerCatalogProvider, Core.Services.ScreenerCatalogProvider>();
         services.AddSingleton<Core.Interfaces.IScreenerValueExtractor, Core.Services.ScreenerValueExtractor>();
+        services.AddSingleton<Core.Services.Analysis.IScatterMetricRegistry, Core.Services.Analysis.ScatterMetricRegistry>();
+        services.AddSingleton<Core.Services.Analysis.IScatterMetricEvaluator, Core.Services.Analysis.ScatterMetricEvaluator>();
+        services.AddTransient<ViewModels.Dialogs.ScatterMetricRegistrationViewModel>();
 
         // Backtest (P3)
         services.AddSingleton<Core.Services.Backtest.Engine.IBacktestEngine, Core.Services.Backtest.Engine.BacktestEngine>();

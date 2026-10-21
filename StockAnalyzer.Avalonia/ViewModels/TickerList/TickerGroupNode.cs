@@ -19,7 +19,7 @@ public static class TickerGroupIconGeometries
 {
     public const string Watchlist = "M10,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V8C22,6.89 21.1,6 20,6H12L10,4Z";
     public const string Portfolio = "M10,2H14A2,2 0 0,1 16,4V6H20A2,2 0 0,1 22,8V19A2,2 0 0,1 20,21H4C2.89,21 2,20.1 2,19V8C2,6.89 2.89,6 4,6H8V4C8,2.89 8.89,2 10,2M14,6V4H10V6H14Z";
-    public const string Filter = "M10,18h4v-2h-4V18z M3,6v2h18V6H3z M6,13h12v-2H6V13z";
+    public const string Filter = StockAnalyzer.Avalonia.Common.SharedIconGeometries.Filter;
 }
 
 /// <summary>

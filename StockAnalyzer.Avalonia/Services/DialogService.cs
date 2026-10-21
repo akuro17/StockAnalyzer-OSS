@@ -814,6 +814,33 @@ public partial class DialogService : IDialogService
         }
     }
 
+    public async Task<bool> ShowScatterMetricRegistrationDialogAsync()
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime desktop || _serviceProvider is null)
+        {
+            return false;
+        }
+
+        return await global::Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(async () =>
+        {
+            var window = new Views.Dialogs.ScatterMetricRegistrationWindow();
+            var vm = _serviceProvider.GetRequiredService<ScatterMetricRegistrationViewModel>();
+            vm.RequestClose = _ => window.CloseApproved();
+            window.DataContext = vm;
+
+            var owner = desktop.Windows.LastOrDefault(w => w.IsActive && w != window) ?? desktop.MainWindow!;
+            try
+            {
+                await window.ShowDialog(owner);
+                return vm.Committed;
+            }
+            finally
+            {
+                vm.Dispose();
+            }
+        });
+    }
+
     public async Task ShowDynamicPeriodDriverRegistrationDialogAsync()
     {
         if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)

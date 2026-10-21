@@ -65,6 +65,26 @@ public sealed class ScatterPlotControl : Control, IDisposable
     internal const float MarginTop = 20.0f;
     internal const float MarginBottom = 42.0f;
     internal const double DataRangePaddingFraction = 0.06;
+
+    /// <summary>Radius (px) of a point marker that has no radius of its own.</summary>
+    internal const float DefaultMarkerRadius = 3.5f;
+
+    /// <summary>Stroke width (px) of the outline of a regular point marker.</summary>
+    internal const float PointOutlineWidth = 1.0f;
+
+    /// <summary>How much larger than a regular marker the ring of an outlier is drawn (radius, px).</summary>
+    internal const float OutlierRadiusGrowth = 1.0f;
+
+    /// <summary>Stroke width (px) of the outline of an outlier ring.</summary>
+    internal const float OutlierOutlineWidth = 1.5f;
+
+    /// <summary>
+    /// How far the data layers may draw beyond the plot rectangle on an axis with a fixed range, in pixels. A point on the boundary of a fixed axis has its
+    /// centre on the plot edge, so the plain clip cut its marker in half (measured 2026-10-21). It is the reach of the widest marker with the default radius:
+    /// the outlier ring, the default radius plus <see cref="OutlierRadiusGrowth"/> plus half <see cref="OutlierOutlineWidth"/> (5.25 px; a regular marker
+    /// reaches 4.0 px). A marker with a radius of its own can reach further.
+    /// </summary>
+    internal const float FixedAxisClipPadding = DefaultMarkerRadius + OutlierRadiusGrowth + (OutlierOutlineWidth / 2.0f);
     private const float TickLabelGap = 6.0f;
     private const float XTickBaselineOffset = 16.0f;
     private const float AxisTitleBaselineOffset = 34.0f;
@@ -99,9 +119,9 @@ public sealed class ScatterPlotControl : Control, IDisposable
     private readonly SKPaint _confidenceBandPaint = new() { Color = new SKColor(0x3B, 0x82, 0xF6, 0x26), Style = SKPaintStyle.Fill, IsAntialias = true };
     private readonly SKPaint _predictionBandPaint = new() { Color = new SKColor(0x60, 0xA5, 0xFA, 0x14), Style = SKPaintStyle.Fill, IsAntialias = true };
     private readonly SKPaint _pointFillPaint = new() { Color = new SKColor(0x38, 0xBD, 0xF8), Style = SKPaintStyle.Fill, IsAntialias = true };
-    private readonly SKPaint _pointStrokePaint = new() { Color = new SKColor(0x02, 0x84, 0xC7), Style = SKPaintStyle.Stroke, StrokeWidth = 1.0f, IsAntialias = true };
+    private readonly SKPaint _pointStrokePaint = new() { Color = new SKColor(0x02, 0x84, 0xC7), Style = SKPaintStyle.Stroke, StrokeWidth = PointOutlineWidth, IsAntialias = true };
     private readonly SKPaint _outlierFillPaint = new() { Color = new SKColor(0xEF, 0x44, 0x44), Style = SKPaintStyle.Fill, IsAntialias = true };
-    private readonly SKPaint _outlierStrokePaint = new() { Color = new SKColor(0xF8, 0x71, 0xF1), Style = SKPaintStyle.Stroke, StrokeWidth = 1.5f, IsAntialias = true };
+    private readonly SKPaint _outlierStrokePaint = new() { Color = new SKColor(0xF8, 0x71, 0xF1), Style = SKPaintStyle.Stroke, StrokeWidth = OutlierOutlineWidth, IsAntialias = true };
     private readonly SKPaint _hoverPointPaint = new() { Color = new SKColor(0xFA, 0xCC, 0x15), Style = SKPaintStyle.Stroke, StrokeWidth = 2.5f, IsAntialias = true };
     private readonly SKPaint _crosshairPaint;
     private readonly SKPaint _hudBgPaint = new() { Color = new SKColor(0x18, 0x18, 0x1B, 0xE0), Style = SKPaintStyle.Fill };
@@ -228,8 +248,9 @@ public sealed class ScatterPlotControl : Control, IDisposable
         bool showConfidence = ShowConfidenceBand;
         bool showPrediction = ShowPredictionBand;
         bool suppressOutliers = SuppressOutliers;
-        var xScale = XScale;
-        var yScale = YScale;
+        // A fixed-range axis is always linear, whatever the scale property says (the range is exact data units, a log axis cannot show it).
+        var xScale = ResolveEffectiveScale(XScale, dataset?.XFixedRange);
+        var yScale = ResolveEffectiveScale(YScale, dataset?.YFixedRange);
         int? hoveredIdx = HoveredPointIndex;
         int? selectedIdx = SelectedPointIndex;
         var cursorPos = _cursorPos;
@@ -279,6 +300,10 @@ public sealed class ScatterPlotControl : Control, IDisposable
         _transform.SetRanges(minX, maxX, minY, maxY, MarginLeft, MarginTop, vpW, vpH, w, h);
     }
 
+    /// <summary>The scale an axis is drawn with: linear when the axis has a fixed range, otherwise the requested one.</summary>
+    internal static PriceScaleType ResolveEffectiveScale(PriceScaleType scale, AxisRange? fixedRange)
+        => fixedRange.HasValue ? PriceScaleType.Linear : scale;
+
     internal static (double MinX, double MaxX, double MinY, double MaxY) ResolveViewportDataBounds(
         ScatterDataset? dataset,
         ScatterAnalysisResult? analysis,
@@ -326,6 +351,17 @@ public sealed class ScatterPlotControl : Control, IDisposable
 
         var (minX, maxX) = ComputeAxisBounds(rawMinX, rawMaxX, hasValid, xScale, dataset, isX: true, suppressOutliers);
         var (minY, maxY) = ComputeAxisBounds(rawMinY, rawMaxY, hasValid, yScale, dataset, isX: false, suppressOutliers);
+
+        // A fixed range is the axis itself: exactly [Min, Max] - no padding, no outlier suppression, no log scale.
+        if (dataset?.XFixedRange is { } fixedX)
+        {
+            (minX, maxX) = (fixedX.Min, fixedX.Max);
+        }
+
+        if (dataset?.YFixedRange is { } fixedY)
+        {
+            (minY, maxY) = (fixedY.Min, fixedY.Max);
+        }
 
         return (minX, maxX, minY, maxY);
     }
@@ -535,7 +571,9 @@ public sealed class ScatterPlotControl : Control, IDisposable
 
             // Save canvas state clipped to plot rectangle for data layers
             canvas.Save();
-            canvas.ClipRect(plotRect);
+            float clipPadX = dataset?.XFixedRange.HasValue == true ? FixedAxisClipPadding : 0.0f;
+            float clipPadY = dataset?.YFixedRange.HasValue == true ? FixedAxisClipPadding : 0.0f;
+            canvas.ClipRect(new SKRect(plotRect.Left - clipPadX, plotRect.Top - clipPadY, plotRect.Right + clipPadX, plotRect.Bottom + clipPadY));
 
             // Layer 2: Confidence & Prediction Interval Bands
             if (analysis != null && analysis.HasRegression && analysis.HasIntervals)
@@ -643,7 +681,7 @@ public sealed class ScatterPlotControl : Control, IDisposable
                         continue; // Overdraw suppressed
                     }
 
-                    float r = pt.Radius > 0.0f ? pt.Radius : 3.5f;
+                    float r = pt.Radius > 0.0f ? pt.Radius : DefaultMarkerRadius;
                     canvas.DrawCircle(sx, sy, r, _pointFillPaint);
                     canvas.DrawCircle(sx, sy, r, _pointStrokePaint);
                 }
@@ -668,12 +706,12 @@ public sealed class ScatterPlotControl : Control, IDisposable
                     float sy = (float)transform.YToScreen(pt.Y);
                     if (!float.IsFinite(sx) || !float.IsFinite(sy)) continue;
 
-                    float r = pt.Radius > 0.0f ? pt.Radius : 3.5f;
+                    float r = pt.Radius > 0.0f ? pt.Radius : DefaultMarkerRadius;
 
                     if (isOutlier)
                     {
-                        canvas.DrawCircle(sx, sy, r + 1.0f, _outlierFillPaint);
-                        canvas.DrawCircle(sx, sy, r + 1.0f, _outlierStrokePaint);
+                        canvas.DrawCircle(sx, sy, r + OutlierRadiusGrowth, _outlierFillPaint);
+                        canvas.DrawCircle(sx, sy, r + OutlierRadiusGrowth, _outlierStrokePaint);
                     }
                     else
                     {

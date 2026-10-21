@@ -211,4 +211,18 @@ public class ServiceCollectionExtensionsTests
         Assert.NotNull(layerService);
         Assert.IsType<StockAnalyzer.Avalonia.Services.Drawing.DrawingLayerService>(layerService);
     }
+
+    [Fact]
+    public async System.Threading.Tasks.Task AddCommonServices_ResolvesTheScatterMetricEvaluator_WithoutTouchingTheRegistry()
+    {
+        var services = new ServiceCollection();
+        services.AddCommonServices(new ConfigurationBuilder().Build());
+        await using var provider = services.BuildServiceProvider();
+
+        // The registry is only looked up, never built: building it would read the user's real Data\Config\scatter_metrics.json.
+        var evaluator = provider.GetRequiredService<StockAnalyzer.Core.Services.Analysis.IScatterMetricEvaluator>();
+
+        Assert.IsType<StockAnalyzer.Core.Services.Analysis.ScatterMetricEvaluator>(evaluator);
+        Assert.Same(evaluator, provider.GetRequiredService<StockAnalyzer.Core.Services.Analysis.IScatterMetricEvaluator>());
+    }
 }

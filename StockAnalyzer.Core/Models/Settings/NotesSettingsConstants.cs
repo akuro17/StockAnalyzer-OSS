@@ -1,4 +1,5 @@
 using StockAnalyzer.Core.Models.Notes;
+using StockAnalyzer.Core.Theme;
 
 namespace StockAnalyzer.Core.Models.Settings;
 
@@ -44,36 +45,29 @@ public static class NotesSettingsConstants
     public const double MinBodyFontSize = 12.0;
     public const double MaxBodyFontSize = 24.0;
 
-    /// <summary>Dark-theme default. ARGB, consumed via <c>IndicatorColor.FromUInt(...)</c>.</summary>
-    public const uint DefaultBodyTextColorArgb = 0xFFE0E0E0;
+    /// <summary>The Notes background is the "App Background" of Settings &gt; Theme for the theme in effect
+    /// (<c>INotesSettingsManager.DefaultBodyBackgroundColor</c>); this is only the fallback where no theme manager is available
+    /// (design time, an item built without settings). Read from the Dark preset, never copied, so it cannot drift from the Theme.</summary>
+    public static IndicatorColor FallbackBodyBackgroundColor => ThemeColors.Dark.ShellBackground;
 
-    /// <summary>Dark-theme default. ARGB, consumed via <c>IndicatorColor.FromUInt(...)</c>.</summary>
-    public const uint DefaultBodyBackgroundColorArgb = 0xFF181A20;
+    /// <summary>Default body text color of a theme: the "Text" color of that theme preset (<c>ThemeColors.ShellText</c>), read,
+    /// never copied. The URL and hashtag colors default to the same value (owner request: same color as the body text).</summary>
+    public static IndicatorColor GetDefaultBodyTextColor(bool isDarkTheme) => (isDarkTheme ? ThemeColors.Dark : ThemeColors.Light).ShellText;
 
-    /// <summary>Light-theme default (mirrors <c>ThemeColors.Light.ShellText</c>). ARGB, consumed via
+    /// <summary>Fallback body / URL / hashtag text color where no theme manager is available (design time, an item built without
+    /// settings): the Dark theme default.</summary>
+    public static IndicatorColor FallbackBodyTextColor => GetDefaultBodyTextColor(isDarkTheme: true);
+
+    /// <summary>Dark-theme default of the selection highlight behind text selected in a Note body (a dark blue
+    /// that keeps the Dark default body text color readable). ARGB, consumed via
     /// <c>IndicatorColor.FromUInt(...)</c>.</summary>
-    public const uint DefaultBodyTextColorArgbLight = 0xFF1F2328;
+    public const uint DefaultHighlightColorArgb = 0xFF264F78;
 
-    /// <summary>Light-theme default (mirrors <c>ThemeColors.Light.ShellBackground</c>). ARGB, consumed
-    /// via <c>IndicatorColor.FromUInt(...)</c>.</summary>
-    public const uint DefaultBodyBackgroundColorArgbLight = 0xFFFFFFFF;
+    /// <summary>Light-theme default of the selection highlight (a light blue that keeps
+    /// the Light default body text color readable). ARGB, consumed via
+    /// <c>IndicatorColor.FromUInt(...)</c>.</summary>
+    public const uint DefaultHighlightColorArgbLight = 0xFFB3D4FF;
 
-    /// <summary>Defaults to the same value as <see cref="DefaultBodyTextColorArgb"/> (fix request:
-    /// "デフォルトカラーを文章と同じ色にして"), consumed via <c>IndicatorColor.FromUInt(...)</c>.</summary>
-    public const uint DefaultUrlColorArgb = DefaultBodyTextColorArgb;
-
-    /// <summary>Same rationale as <see cref="DefaultUrlColorArgb"/>.</summary>
-    public const uint DefaultHashtagColorArgb = DefaultBodyTextColorArgb;
-
-    /// <summary>Light-theme counterpart of <see cref="DefaultUrlColorArgb"/>.</summary>
-    public const uint DefaultUrlColorArgbLight = DefaultBodyTextColorArgbLight;
-
-    /// <summary>Light-theme counterpart of <see cref="DefaultHashtagColorArgb"/>.</summary>
-    public const uint DefaultHashtagColorArgbLight = DefaultBodyTextColorArgbLight;
-
-    /// <summary>Returns the theme-appropriate default text/URL/hashtag color.</summary>
-    public static uint GetDefaultBodyTextColorArgb(bool isDarkTheme) => isDarkTheme ? DefaultBodyTextColorArgb : DefaultBodyTextColorArgbLight;
-
-    /// <summary>Returns the theme-appropriate default background color.</summary>
-    public static uint GetDefaultBodyBackgroundColorArgb(bool isDarkTheme) => isDarkTheme ? DefaultBodyBackgroundColorArgb : DefaultBodyBackgroundColorArgbLight;
+    /// <summary>Returns the theme-appropriate default selection-highlight color.</summary>
+    public static uint GetDefaultHighlightColorArgb(bool isDarkTheme) => isDarkTheme ? DefaultHighlightColorArgb : DefaultHighlightColorArgbLight;
 }

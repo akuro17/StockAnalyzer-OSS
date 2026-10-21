@@ -1,7 +1,11 @@
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
+using System.Linq;
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Documents;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
 using Avalonia.Media;
@@ -15,10 +19,31 @@ public partial class NoteCardView : UserControl
 {
     private NoteTimelineItemViewModel? _viewModel;
 
+    /// <summary>The Inlines <see cref="RebuildBody"/> built, in selection-layout coordinates (Run = its text length, inline button =
+    /// 1). The single source <see cref="SelectionOffsetMapper"/> reads, recorded at the single construction point so it can never
+    /// diverge from what is drawn.</summary>
+    private readonly List<BodyLayoutPiece> _bodyLayoutPieces = new();
+
+    /// <summary>The body selection frozen when the context flyout last opened; the three menu items act on it, never on a fresh read,
+    /// because the selection can be gone by the time a click arrives.</summary>
+    private NoteSelectionSnapshot _selectionSnapshot = NoteSelectionSnapshot.Empty;
+
+    /// <summary>x:Name of the body block in <c>NoteCardView.axaml</c>.</summary>
+    private const string BodyTextBlockName = "BodyTextBlock";
+    private const string CopyMenuItemName = "BodyCopyMenuItem";
+    private const string ApplyToFilterMenuItemName = "BodyApplyToFilterMenuItem";
+    private const string ApplyToSearchMenuItemName = "BodyApplyToSearchMenuItem";
+
+    private SelectableTextBlock? _selectableBody;
+    private MenuItem? _copyMenuItem;
+    private MenuItem? _applyToFilterMenuItem;
+    private MenuItem? _applyToSearchMenuItem;
+
     public NoteCardView()
     {
         InitializeComponent();
         DataContextChanged += OnDataContextChanged;
+        WireBodySelection();
     }
 
     private void InitializeComponent()
@@ -64,7 +89,10 @@ public partial class NoteCardView : UserControl
     /// </summary>
     private void RebuildBody()
     {
-        var bodyTextBlock = this.FindControl<TextBlock>("BodyTextBlock");
+        _bodyLayoutPieces.Clear();
+        _selectionSnapshot = NoteSelectionSnapshot.Empty;
+
+        var bodyTextBlock = this.FindControl<TextBlock>(BodyTextBlockName);
         if (bodyTextBlock is null)
         {
             return;
@@ -78,6 +106,7 @@ public partial class NoteCardView : UserControl
             return;
         }
 
+        var layoutOffset = 0;
         foreach (var segment in _viewModel.BodySegments)
         {
             Control? inlineControl = segment switch
@@ -88,9 +117,21 @@ public partial class NoteCardView : UserControl
                 _ => null,
             };
 
-            bodyTextBlock.Inlines.Add(inlineControl is not null
-                ? new InlineUIContainer(inlineControl)
-                : new Run(segment.Text));
+            if (inlineControl is not null)
+            {
+                bodyTextBlock.Inlines.Add(new InlineUIContainer(inlineControl));
+
+                // An embedded control occupies exactly one selection position; an inline image draws no text.
+                var drawnText = segment.AttachedImageId is null ? segment.Text : string.Empty;
+                _bodyLayoutPieces.Add(new BodyLayoutPiece(layoutOffset, 1, drawnText, true));
+                layoutOffset += 1;
+            }
+            else
+            {
+                bodyTextBlock.Inlines.Add(new Run(segment.Text));
+                _bodyLayoutPieces.Add(new BodyLayoutPiece(layoutOffset, segment.Text.Length, segment.Text, false));
+                layoutOffset += segment.Text.Length;
+            }
         }
     }
 
@@ -188,5 +229,161 @@ public partial class NoteCardView : UserControl
         }
         button.Click += (_, _) => _viewModel?.OpenUrlCommand.Execute(url);
         return button;
+    }
+
+    // ---- body text selection (Notes text selection feature) ----
+
+    /// <summary>Hooks the body's selection behaviour: the three context-menu items, the flyout-opening snapshot and the tunnelling
+    /// Ctrl+C / Ctrl+A handler (tunnelling so it runs before SelectableTextBlock's own key handling, which would copy the skewed
+    /// SelectedText - see SelectionOffsetMapper).</summary>
+    private void WireBodySelection()
+    {
+        if (this.FindControl<SelectableTextBlock>(BodyTextBlockName) is not { } bodyTextBlock)
+        {
+            return;
+        }
+
+        _selectableBody = bodyTextBlock;
+        bodyTextBlock.AddHandler(KeyDownEvent, BodyTextBlock_KeyDown, RoutingStrategies.Tunnel);
+
+        if (bodyTextBlock.ContextFlyout is not MenuFlyout flyout)
+        {
+            return;
+        }
+
+        _copyMenuItem = FindFlyoutItem(flyout, CopyMenuItemName);
+        _applyToFilterMenuItem = FindFlyoutItem(flyout, ApplyToFilterMenuItemName);
+        _applyToSearchMenuItem = FindFlyoutItem(flyout, ApplyToSearchMenuItemName);
+        if (_copyMenuItem is null || _applyToFilterMenuItem is null || _applyToSearchMenuItem is null)
+        {
+            // A markup edit that renames or drops an item must not silently switch the feature off.
+            Serilog.Log.Error("{View}: the body context menu lacks one of {Copy}, {Filter}, {Search}; text selection actions are unavailable",
+                nameof(NoteCardView), CopyMenuItemName, ApplyToFilterMenuItemName, ApplyToSearchMenuItemName);
+            return;
+        }
+
+        _copyMenuItem.Click += (_, _) =>
+        {
+            if (_selectionSnapshot.CanCopy)
+            {
+                CopyTextToClipboard(_selectionSnapshot.RawText);
+            }
+        };
+        _applyToFilterMenuItem.Click += (_, _) =>
+        {
+            if (_selectionSnapshot.CanApplyToFilter)
+            {
+                _viewModel?.ApplySelectionToFilter(_selectionSnapshot);
+            }
+        };
+        _applyToSearchMenuItem.Click += (_, _) =>
+        {
+            if (_selectionSnapshot.CanApplyToSearch)
+            {
+                _viewModel?.ApplySelectionToSearch(_selectionSnapshot);
+            }
+        };
+
+        flyout.Opening += BodyContextFlyout_Opening;
+    }
+
+    /// <summary>The text DRAWN inside the current body selection (hashtag / URL button text included), read through the layout-offset
+    /// map instead of the control's SelectedText.</summary>
+    private string ReadSelectedBodyText()
+    {
+        return _selectableBody is { } block
+            ? SelectionOffsetMapper.Build(_bodyLayoutPieces, block.SelectionStart, block.SelectionEnd)
+            : string.Empty;
+    }
+
+    private static MenuItem? FindFlyoutItem(MenuFlyout flyout, string name) =>
+        flyout.Items.OfType<MenuItem>().FirstOrDefault(item => item.Name == name);
+
+    /// <summary>Freezes the selection into <see cref="_selectionSnapshot"/> and sets each item's enabled state and disabled reason
+    /// (null while enabled - SA_UI_INTERACTION section 29; ToolTip.ShowOnDisabled is declared in the XAML). The snapshot is not
+    /// reset when the flyout closes: an item can only be clicked while the flyout is open, the next Opening replaces it, and a
+    /// close-before-click ordering could otherwise lose it.</summary>
+    private void BodyContextFlyout_Opening(object? sender, EventArgs e)
+    {
+        var raw = ReadSelectedBodyText();
+        _selectionSnapshot = _viewModel?.EvaluateSelection(raw) ?? NoteSelectionTextRules.EvaluateCopyOnly(raw);
+
+        ApplyMenuState(_copyMenuItem, _selectionSnapshot.CanCopy, _selectionSnapshot.CopyDisabledReason);
+        ApplyMenuState(_applyToFilterMenuItem, _selectionSnapshot.CanApplyToFilter, _selectionSnapshot.FilterDisabledReason);
+        ApplyMenuState(_applyToSearchMenuItem, _selectionSnapshot.CanApplyToSearch, _selectionSnapshot.SearchDisabledReason);
+    }
+
+    private static void ApplyMenuState(MenuItem? item, bool isEnabled, string? disabledReason)
+    {
+        if (item is null)
+        {
+            return;
+        }
+
+        item.IsEnabled = isEnabled;
+        ToolTip.SetTip(item, disabledReason);
+    }
+
+    /// <summary>Ctrl+C (the platform's Copy gesture) writes the drawn selection text and Ctrl+A selects the whole layout, both
+    /// replacing the control's own handling, which is wrong for a body containing inline buttons: Copy would write the skewed
+    /// SelectedText (button text missing, nothing at all once the range ends past the text) and SelectAll ends one position short
+    /// per button. A selection with no drawn text is left to the control (it does nothing, so the clipboard stays unchanged).</summary>
+    private void BodyTextBlock_KeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Handled || sender is not SelectableTextBlock block)
+        {
+            return;
+        }
+
+        var hotkeys = Application.Current?.PlatformSettings?.HotkeyConfiguration;
+
+        if (MatchesHotkey(hotkeys?.Copy, e, Key.C))
+        {
+            // Handled only when something is written: a selection that draws no text (just an inline image) is left to the
+            // control, which copies nothing, so the clipboard is never replaced by an empty string.
+            var text = block.SelectionStart != block.SelectionEnd ? ReadSelectedBodyText() : string.Empty;
+            if (text.Length > 0)
+            {
+                CopyTextToClipboard(text);
+                e.Handled = true;
+            }
+        }
+        else if (MatchesHotkey(hotkeys?.SelectAll, e, Key.A))
+        {
+            var total = SelectionOffsetMapper.TotalLength(_bodyLayoutPieces);
+            if (total > 0)
+            {
+                block.SelectionStart = 0;
+                block.SelectionEnd = total;
+                e.Handled = true;
+            }
+        }
+    }
+
+    /// <summary>True when <paramref name="e"/> matches one of the platform gestures; without a platform configuration falls back to
+    /// Ctrl + <paramref name="fallbackKey"/>.</summary>
+    private static bool MatchesHotkey(IReadOnlyList<KeyGesture>? gestures, KeyEventArgs e, Key fallbackKey) =>
+        gestures is { Count: > 0 }
+            ? gestures.Any(gesture => gesture.Matches(e))
+            : e.Key == fallbackKey && e.KeyModifiers == KeyModifiers.Control;
+
+    /// <summary>async void: an exception leaving this method would be raised on the UI synchronization context and end the process, so
+    /// everything is inside try/catch (AsyncVoidHandlerGuardTests enforces this).</summary>
+    private async void CopyTextToClipboard(string text)
+    {
+        try
+        {
+            var clipboard = TopLevel.GetTopLevel(this)?.Clipboard;
+            if (clipboard is null)
+            {
+                return;
+            }
+
+            await clipboard.SetTextAsync(text);
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "{Handler} failed", nameof(CopyTextToClipboard));
+        }
     }
 }

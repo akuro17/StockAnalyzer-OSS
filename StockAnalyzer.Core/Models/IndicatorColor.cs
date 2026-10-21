@@ -38,6 +38,17 @@ public struct IndicatorColor : IEquatable<IndicatorColor>
         return new IndicatorColor(alpha, R, G, B);
     }
 
+    // Rec. 709 luma weights of the gamma-encoded channels (the single definition of "how bright a color looks").
+    private const float LumaWeightRed = 0.2126f, LumaWeightGreen = 0.7152f, LumaWeightBlue = 0.0722f;
+    private const float MaxChannelValue = 255f;
+
+    /// <summary>Perceived brightness of an RGB triple, 0 (black) to 1 (white); alpha is ignored.</summary>
+    public static float Luma(byte r, byte g, byte b) =>
+        (LumaWeightRed * r + LumaWeightGreen * g + LumaWeightBlue * b) / MaxChannelValue;
+
+    /// <summary>Perceived brightness of this color, 0 (black) to 1 (white); alpha is ignored.</summary>
+    public float Luma() => Luma(R, G, B);
+
     public override bool Equals(object? obj) => obj is IndicatorColor other && Equals(other);
     public bool Equals(IndicatorColor other) => A == other.A && R == other.R && G == other.G && B == other.B;
     public override int GetHashCode() => HashCode.Combine(A, R, G, B);

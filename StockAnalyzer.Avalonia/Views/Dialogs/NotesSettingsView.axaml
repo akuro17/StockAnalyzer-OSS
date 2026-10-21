@@ -76,13 +76,23 @@
                         </StackPanel>
 
                         <!-- 5. Hashtag Color (no on/off toggle - always active, defaults to Body Text Color above) -->
-                        <StackPanel Margin="0,0,24,0">
+                        <StackPanel Margin="0,0,24,16">
                             <Grid ColumnDefinitions="*, Auto">
                                 <TextBlock Text="{l:Localize Settings_Notes_Item_HashtagColor}" FontWeight="SemiBold" VerticalAlignment="Center"/>
                                 <ColorPicker Grid.Column="1" Color="{Binding SelectedHashtagColor, Mode=TwoWay, Converter={StaticResource ColorConverter}}" Width="50" Height="28"/>
                             </Grid>
                             <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
                             <TextBlock Text="{l:Localize Settings_Notes_Desc_HashtagColor}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <!-- 6. Highlight Color (background of text selected in a Note body; the default is a light blue in the Light theme and a dark blue in the Dark theme) -->
+                        <StackPanel Margin="0,0,0,0">
+                            <Grid ColumnDefinitions="*, Auto">
+                                <TextBlock Text="{l:Localize Settings_Notes_Item_HighlightColor}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                <ColorPicker Grid.Column="1" Color="{Binding SelectedHighlightColor, Mode=TwoWay, Converter={StaticResource ColorConverter}}" Width="50" Height="28"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize Settings_Notes_Desc_HighlightColor}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
                         </StackPanel>
                     </UniformGrid>
                 </StackPanel>

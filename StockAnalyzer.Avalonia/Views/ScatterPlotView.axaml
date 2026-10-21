@@ -5,10 +5,18 @@
              xmlns:vm="using:StockAnalyzer.Avalonia.ViewModels"
              xmlns:controls="using:StockAnalyzer.Avalonia.Views.Controls"
              xmlns:l="using:StockAnalyzer.Avalonia.Markup"
+             xmlns:c="using:StockAnalyzer.Avalonia.Common"
              mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="600"
              x:Class="StockAnalyzer.Avalonia.Views.ScatterPlotView"
              x:DataType="vm:ScatterPlotViewModel"
              Background="{DynamicResource Brush.Background.Secondary}">
+
+    <UserControl.Resources>
+        <!-- The height of every toolbar control (mode buttons, toggles, metric combo boxes, the Offset box) and the side of the registration button. -->
+        <x:Double x:Key="ScatterToolbarControlHeight">32</x:Double>
+        <!-- The width of the X and Y metric combo boxes (a long label ends with an ellipsis and has its full text as tooltip). -->
+        <x:Double x:Key="ScatterMetricComboWidth">180</x:Double>
+    </UserControl.Resources>
 
     <UserControl.Styles>
         <!-- Standard scoped action button and control styling adhering to SA_UI_SUBWINDOW_STANDARD -->
@@ -16,7 +24,7 @@
         <!-- Default / Inactive state: Transparent background matching toolbar background, subtle border -->
         <Style Selector="Button.toolbar-btn">
             <Setter Property="Theme" Value="{DynamicResource InactiveModeButtonStyle}"/>
-            <Setter Property="Height" Value="32"/>
+            <Setter Property="Height" Value="{DynamicResource ScatterToolbarControlHeight}"/>
             <Setter Property="Padding" Value="10,0"/>
             <Setter Property="FontSize" Value="{DynamicResource BaseFontSize}"/>
             <Setter Property="HorizontalContentAlignment" Value="Center"/>
@@ -56,14 +64,16 @@
         <!-- ToggleButton (e.g. X Log, Y Log) toolbar dimensions adhering to ChartToggleButtonStyle -->
         <Style Selector="ToggleButton.toolbar-btn">
             <Setter Property="Theme" Value="{DynamicResource ChartToggleButtonStyle}"/>
-            <Setter Property="Height" Value="32"/>
+            <Setter Property="Height" Value="{DynamicResource ScatterToolbarControlHeight}"/>
             <Setter Property="Padding" Value="10,0"/>
             <Setter Property="FontSize" Value="{DynamicResource BaseFontSize}"/>
             <Setter Property="HorizontalContentAlignment" Value="Center"/>
             <Setter Property="VerticalContentAlignment" Value="Center"/>
         </Style>
         <Style Selector="ComboBox.toolbar-combo">
-            <Setter Property="Height" Value="32"/>
+            <!-- The Fluent ComboBox is top-aligned; centered, it spans the same row as the mode buttons whatever the height of the toolbar line. -->
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Height" Value="{DynamicResource ScatterToolbarControlHeight}"/>
             <Setter Property="FontSize" Value="{DynamicResource BaseFontSize}"/>
             <Setter Property="VerticalContentAlignment" Value="Center"/>
         </Style>
@@ -72,7 +82,7 @@
             <Setter Property="VerticalAlignment" Value="Center"/>
         </Style>
         <Style Selector="NumericUpDown.toolbar-num">
-            <Setter Property="Height" Value="32"/>
+            <Setter Property="Height" Value="{DynamicResource ScatterToolbarControlHeight}"/>
             <Setter Property="FontSize" Value="{DynamicResource BaseFontSize}"/>
             <Setter Property="VerticalContentAlignment" Value="Center"/>
             <Setter Property="HorizontalContentAlignment" Value="Right"/>
@@ -97,39 +107,77 @@
                             TabIndex="2" />
                 </StackPanel>
 
-                <!-- Metric Selectors (Visible in Scatter Mode) -->
+                <!-- Metric Selectors (Visible in Scatter Mode): only the metrics the user registered; the gear button opens the registration window -->
                 <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,16,0" IsVisible="{Binding IsScatterMode}">
                     <TextBlock Text="X:" VerticalAlignment="Center"
                                FontSize="{DynamicResource DetailFontSize}"
                                Foreground="{DynamicResource Brush.Text.Secondary}" />
                     <ComboBox Classes="toolbar-combo" ItemsSource="{Binding AvailableMetrics}"
-                              SelectedItem="{Binding SelectedXMetric}" Width="120"
-                              TabIndex="3" />
+                              AutomationProperties.AutomationId="Scatter_XMetricCombo"
+                              SelectedItem="{Binding SelectedXMetric}" Width="{StaticResource ScatterMetricComboWidth}"
+                              ToolTip.Tip="{Binding SelectedXMetric.Label}"
+                              TabIndex="3">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ScatterMetricOption">
+                                <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Label}" />
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
 
                     <TextBlock Text="Y:" VerticalAlignment="Center"
                                FontSize="{DynamicResource DetailFontSize}"
                                Foreground="{DynamicResource Brush.Text.Secondary}" Margin="8,0,0,0" />
                     <ComboBox Classes="toolbar-combo" ItemsSource="{Binding AvailableMetrics}"
-                              SelectedItem="{Binding SelectedYMetric}" Width="120"
-                              TabIndex="4" />
+                              AutomationProperties.AutomationId="Scatter_YMetricCombo"
+                              SelectedItem="{Binding SelectedYMetric}" Width="{StaticResource ScatterMetricComboWidth}"
+                              ToolTip.Tip="{Binding SelectedYMetric.Label}"
+                              TabIndex="4">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ScatterMetricOption">
+                                <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Label}" />
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+
+                    <!-- Register scatter metrics: Settings > Theme > Button colours through the secondary button theme -->
+                    <Button AutomationProperties.AutomationId="Scatter_RegisterMetricsButton"
+                            Theme="{DynamicResource SecondaryButtonStyle}"
+                            Foreground="{DynamicResource Brush.Button.Text}"
+                            Width="{StaticResource ScatterToolbarControlHeight}"
+                            Height="{StaticResource ScatterToolbarControlHeight}"
+                            Padding="0"
+                            HorizontalContentAlignment="Center"
+                            VerticalContentAlignment="Center"
+                            Command="{Binding OpenMetricRegistrationCommand}"
+                            ToolTip.Tip="{l:Localize ScatterMetric_Btn_Register}"
+                            TabIndex="5">
+                        <PathIcon Data="{x:Static c:SharedIconGeometries.Settings}" Width="16" Height="16"
+                                  Foreground="{Binding $parent[Button].Foreground}" />
+                    </Button>
                 </StackPanel>
 
                 <!-- Scale & Display Toggles (Visible in Scatter Mode) -->
                 <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,16,0" IsVisible="{Binding IsScatterMode}">
                     <ToggleButton Classes="toolbar-btn" Content="{l:Localize Scatter_Btn_XLog}"
                                   IsChecked="{Binding IsXLog, Mode=TwoWay}"
-                                  TabIndex="5" />
+                                  IsEnabled="{Binding IsXLogEnabled}"
+                                  ToolTip.ShowOnDisabled="True"
+                                  ToolTip.Tip="{Binding XLogToolTip}"
+                                  TabIndex="6" />
                     <ToggleButton Classes="toolbar-btn" Content="{l:Localize Scatter_Btn_YLog}"
                                   IsChecked="{Binding IsYLog, Mode=TwoWay}"
-                                  TabIndex="6" />
+                                  IsEnabled="{Binding IsYLogEnabled}"
+                                  ToolTip.ShowOnDisabled="True"
+                                  ToolTip.Tip="{Binding YLogToolTip}"
+                                  TabIndex="7" />
                     <CheckBox Classes="toolbar-check" Content="{l:Localize Scatter_Chk_Regression}" IsChecked="{Binding ShowRegressionLine}"
-                              TabIndex="7" />
-                    <CheckBox Classes="toolbar-check" Content="{l:Localize Scatter_Chk_ConfidenceBand}" IsChecked="{Binding ShowConfidenceBand}"
                               TabIndex="8" />
-                    <CheckBox Classes="toolbar-check" Content="{l:Localize Scatter_Chk_PredictionBand}" IsChecked="{Binding ShowPredictionBand}"
+                    <CheckBox Classes="toolbar-check" Content="{l:Localize Scatter_Chk_ConfidenceBand}" IsChecked="{Binding ShowConfidenceBand}"
                               TabIndex="9" />
-                    <CheckBox Classes="toolbar-check" Content="{l:Localize Scatter_Chk_SuppressOutliers}" IsChecked="{Binding SuppressOutliers}"
+                    <CheckBox Classes="toolbar-check" Content="{l:Localize Scatter_Chk_PredictionBand}" IsChecked="{Binding ShowPredictionBand}"
                               TabIndex="10" />
+                    <CheckBox Classes="toolbar-check" Content="{l:Localize Scatter_Chk_SuppressOutliers}" IsChecked="{Binding SuppressOutliers}"
+                              TabIndex="11" />
                 </StackPanel>
 
                 <!-- Heatmap Controls (Visible in Heatmap Mode) -->
@@ -158,8 +206,8 @@
                                    Increment="1"
                                    FormatString="0"
                                    MinWidth="96"
-                                   Height="32"
-                                   TabIndex="11"
+                                   Height="{StaticResource ScatterToolbarControlHeight}"
+                                   TabIndex="12"
                                    ToolTip.Tip="{l:Localize Scatter_Heatmap_OffsetTip}" />
                 </StackPanel>
 
@@ -197,6 +245,18 @@
                 SuppressOutliers="{Binding SuppressOutliers}"
                 XScale="{Binding XScale}"
                 YScale="{Binding YScale}" />
+
+            <!-- Guidance while no scatter metric is registered -->
+            <TextBlock IsVisible="{Binding ShowNoMetricsMessage}"
+                       AutomationProperties.AutomationId="Scatter_EmptyState"
+                       Text="{l:Localize Scatter_EmptyState_NoMetrics}"
+                       FontSize="{DynamicResource BaseFontSize}"
+                       Foreground="{DynamicResource Brush.Text.Secondary}"
+                       TextWrapping="Wrap"
+                       TextAlignment="Center"
+                       MaxWidth="480"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center" />
 
             <!-- Uniform Heatmap View adhering to SA_UI_SUBWINDOW_STANDARD Section 2.3 and SA_UI_INTERACTION Section 28 -->
             <ScrollViewer

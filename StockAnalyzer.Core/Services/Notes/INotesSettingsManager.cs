@@ -1,7 +1,9 @@
+using System;
 using System.ComponentModel;
 using System.Threading.Tasks;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Notes;
+using StockAnalyzer.Core.Models.Settings;
 
 namespace StockAnalyzer.Core.Services.Notes
 {
@@ -58,26 +60,92 @@ namespace StockAnalyzer.Core.Services.Notes
         double BodyFontSize { get; }
 
         /// <summary>Foreground color applied to every piece of text a Note renders (Settings &gt; Notes,
-        /// both the main timeline/detail page and the Trash/orphaned-files views). While still at its
-        /// default value (never explicitly customized by the user), this follows the app's Light/Dark
-        /// theme automatically; once the user picks an explicit color, it stops tracking theme changes.</summary>
+        /// both the main timeline/detail page and the Trash/orphaned-files views). Every Appearance
+        /// color below follows one contract: until the user picks a color for the Light/Dark mode in effect it is that theme's
+        /// default (and follows a mode switch); a pick belongs only to the mode it was made in, so a color chosen for one mode
+        /// never leaks into the other (see <see cref="GetColorPicks"/>).</summary>
         IndicatorColor BodyTextColor { get; }
 
         /// <summary>Background color applied to every Note card (Settings &gt; Notes, both the main
-        /// timeline/detail page and the Trash/orphaned-files views). Same default-tracks-theme,
-        /// customized-value-is-sticky contract as <see cref="BodyTextColor"/>.</summary>
+        /// timeline/detail page and the Trash/orphaned-files views). Same per-mode contract as
+        /// <see cref="BodyTextColor"/>; the default is the Theme "App Background".</summary>
         IndicatorColor BodyBackgroundColor { get; }
 
         /// <summary>Foreground color for clickable URL segments inside a Note body (Settings &gt; Notes,
         /// part of the "Appearance" section). Always an explicit value (no on/off toggle) - defaults
         /// to the same value as <see cref="BodyTextColor"/> but does not track later changes to it.
-        /// Same default-tracks-theme, customized-value-is-sticky contract as <see cref="BodyTextColor"/>.</summary>
+        /// Same per-mode contract as <see cref="BodyTextColor"/>.</summary>
         IndicatorColor UrlColor { get; }
 
         /// <summary>Foreground color for clickable hashtag segments inside a Note body (Settings &gt;
         /// Notes, part of the "Appearance" section); same always-explicit contract as
         /// <see cref="UrlColor"/>.</summary>
         IndicatorColor HashtagColor { get; }
+
+        /// <summary>Background color of the text a user highlights (mouse selection) inside a Note body
+        /// (Settings &gt; Notes, part of the "Appearance" section). Same per-mode
+        /// contract as <see cref="BodyTextColor"/>: the default is a light blue in
+        /// the Light theme and a dark blue in the Dark theme. Default interface member so an existing
+        /// implementation (and its tests) keeps compiling unchanged; the production manager overrides it.</summary>
+        IndicatorColor HighlightColor => IndicatorColor.FromUInt(NotesSettingsConstants.DefaultHighlightColorArgb);
+
+        /// <summary>The built-in <see cref="HighlightColor"/> for the CURRENT theme (what "Reset to default" restores).</summary>
+        IndicatorColor DefaultHighlightColor => IndicatorColor.FromUInt(NotesSettingsConstants.DefaultHighlightColorArgb);
+
+        void SetHighlightColor(IndicatorColor value) { }
+
+        /// <summary>The built-in <see cref="BodyBackgroundColor"/>: the "App Background" colour of Settings &gt; Theme for the
+        /// theme currently in effect (including a value the user changed there). While the Notes background has not been
+        /// customized it follows this value; "Reset to default" restores it. Default interface member (see
+        /// <see cref="HighlightColor"/>); the production manager overrides it.</summary>
+        IndicatorColor DefaultBodyBackgroundColor => NotesSettingsConstants.FallbackBodyBackgroundColor;
+
+        /// <summary>The colors the user picked for <paramref name="key"/>, per Light/Dark mode (null = the default of that theme). A
+        /// settings page snapshots and restores this instead of the color property, which only shows the mode in effect. Default
+        /// interface member: an implementation without a per-mode notion keeps one color for both modes.</summary>
+        ModeColorPicks GetColorPicks(NotesColorKey key)
+        {
+            var current = CurrentColorOf(key);
+            return new ModeColorPicks(current, current);
+        }
+
+        /// <summary>Restores picks taken with <see cref="GetColorPicks"/>. The default member applies one color to the mode in effect.</summary>
+        void SetColorPicks(NotesColorKey key, ModeColorPicks picks)
+        {
+            var color = picks.Dark ?? picks.Light ?? DefaultColorOf(key);
+            switch (key)
+            {
+                case NotesColorKey.BodyText: SetBodyTextColor(color); break;
+                case NotesColorKey.BodyBackground: SetBodyBackgroundColor(color); break;
+                case NotesColorKey.Url: SetUrlColor(color); break;
+                case NotesColorKey.Hashtag: SetHashtagColor(color); break;
+                case NotesColorKey.Highlight: SetHighlightColor(color); break;
+                default: throw new ArgumentOutOfRangeException(nameof(key), key, $"Unhandled {nameof(NotesColorKey)} value.");
+            }
+        }
+
+        private IndicatorColor CurrentColorOf(NotesColorKey key) => key switch
+        {
+            NotesColorKey.BodyText => BodyTextColor,
+            NotesColorKey.BodyBackground => BodyBackgroundColor,
+            NotesColorKey.Url => UrlColor,
+            NotesColorKey.Hashtag => HashtagColor,
+            NotesColorKey.Highlight => HighlightColor,
+            _ => throw new ArgumentOutOfRangeException(nameof(key), key, $"Unhandled {nameof(NotesColorKey)} value."),
+        };
+
+        private IndicatorColor DefaultColorOf(NotesColorKey key) => key switch
+        {
+            NotesColorKey.BodyText or NotesColorKey.Url or NotesColorKey.Hashtag => DefaultBodyTextColor,
+            NotesColorKey.BodyBackground => DefaultBodyBackgroundColor,
+            NotesColorKey.Highlight => DefaultHighlightColor,
+            _ => throw new ArgumentOutOfRangeException(nameof(key), key, $"Unhandled {nameof(NotesColorKey)} value."),
+        };
+
+        /// <summary>The built-in <see cref="BodyTextColor"/> for the CURRENT theme (what "Reset to default" restores, also for
+        /// <see cref="UrlColor"/> and <see cref="HashtagColor"/>, whose default is the body text color). Default interface
+        /// member (see <see cref="HighlightColor"/>); the production manager overrides it.</summary>
+        IndicatorColor DefaultBodyTextColor => NotesSettingsConstants.FallbackBodyTextColor;
 
         void SetThumbnailSizePixels(double value);
         void SetImageDisplayMode(NoteImageDisplayMode value);

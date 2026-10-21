@@ -160,6 +160,8 @@ public sealed class FakeNotesSettingsManager : INotesSettingsManager
     public IndicatorColor BodyBackgroundColor { get; private set; } = IndicatorColor.FromRgb(0, 0, 0);
     public IndicatorColor UrlColor { get; private set; } = IndicatorColor.FromRgb(255, 255, 255);
     public IndicatorColor HashtagColor { get; private set; } = IndicatorColor.FromRgb(255, 255, 255);
+    public IndicatorColor HighlightColor { get; private set; } = IndicatorColor.FromUInt(NotesSettingsConstants.DefaultHighlightColorArgb);
+    public IndicatorColor DefaultHighlightColor { get; set; } = IndicatorColor.FromUInt(NotesSettingsConstants.DefaultHighlightColorArgb);
 
     public void SetThumbnailSizePixels(double value) { ThumbnailSizePixels = value; RaisePropertyChanged(nameof(ThumbnailSizePixels)); }
     public void SetImageDisplayMode(NoteImageDisplayMode value) { ImageDisplayMode = value; RaisePropertyChanged(nameof(ImageDisplayMode)); }
@@ -178,6 +180,7 @@ public sealed class FakeNotesSettingsManager : INotesSettingsManager
     public void SetBodyBackgroundColor(IndicatorColor value) { BodyBackgroundColor = value; RaisePropertyChanged(nameof(BodyBackgroundColor)); }
     public void SetUrlColor(IndicatorColor value) { UrlColor = value; RaisePropertyChanged(nameof(UrlColor)); }
     public void SetHashtagColor(IndicatorColor value) { HashtagColor = value; RaisePropertyChanged(nameof(HashtagColor)); }
+    public void SetHighlightColor(IndicatorColor value) { HighlightColor = value; RaisePropertyChanged(nameof(HighlightColor)); }
     public Task SaveAsync() => Task.CompletedTask;
     public Task LoadAsync() => Task.CompletedTask;
     public event PropertyChangedEventHandler? PropertyChanged;

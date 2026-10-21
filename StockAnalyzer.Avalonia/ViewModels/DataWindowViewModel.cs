@@ -997,6 +997,27 @@ public partial class DataWindowViewModel : ViewModelBase,
                         childColor = IndicatorDefaultConstants.CrossCorrelationLagColor;
                     }
 
+                    if (Settings.TypeEnum == IndicatorType.Donchian)
+                    {
+                        if (seriesName == "Main" || seriesName == "MiddleLine")
+                        {
+                            if (string.IsNullOrEmpty(colorConfig?.DisplayName)) label = "Middle Line";
+                        }
+                        else if (seriesName == "UpperBand")
+                        {
+                            if (string.IsNullOrEmpty(colorConfig?.DisplayName)) label = "Upper Band";
+                        }
+                        else if (seriesName == "LowerBand")
+                        {
+                            if (string.IsNullOrEmpty(colorConfig?.DisplayName)) label = "Lower Band";
+                        }
+                        else if (seriesName == "Position")
+                        {
+                            label = "Position";
+                            childColor = parentColor;
+                        }
+                    }
+
                     var childItem = vm.UpdateOrAddChildItem(parentItem, childIndex++, label, val, childColor, false);
                     childItem.IsEnabled = Settings.IsEnabled;
                     childItem.AssociateId = Settings.Id;
@@ -1191,7 +1212,8 @@ public partial class DataWindowViewModel : ViewModelBase,
                             if (IndicatorChartSuppression.IsDataWindowSuppressed(indicator.TypeEnum, n))
                                 continue;
 
-                            bool isMainExplicitlyMapped = indicator.SeriesColors != null && indicator.SeriesColors.Any(c => c.TargetSeries.Contains("Main"));
+                            bool isMainExplicitlyMapped = (indicator.SeriesColors != null && indicator.SeriesColors.Any(c => c.TargetSeries.Contains("Main")))
+                                || indicator.TypeEnum == IndicatorType.Donchian;
                             if (n == "Main" && !isMainExplicitlyMapped && seriesNames.Any(other => other != "Main" && !IndicatorChartSuppression.IsDataWindowSuppressed(indicator.TypeEnum, other) && !other.Contains("Signal") && !other.Contains("Histogram") && !other.Contains("Trend")))
                                 continue;
 

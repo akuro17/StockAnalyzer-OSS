@@ -98,6 +98,20 @@ public interface IStockAnalyzerSettings
     /// <summary>Largest Offset (bars before the evaluated bar) a Filters condition may use; see <c>Screener:MaxConditionOffset</c> and <see cref="Models.Settings.ScreenerConditionOffsetLimits"/>.</summary>
     int ScreenerMaxConditionOffset => Models.Settings.ScreenerConditionOffsetLimits.DefaultMaxConditionOffset;
 
+    // Registered scatter metrics (section ScatterMetrics). Default interface members, so every existing implementer keeps compiling unchanged;
+    // the accepted ranges are the code contract Models.Settings.ScatterMetricLimits.
+    /// <summary>How many metrics the scatter Active list may hold; see <c>ScatterMetrics:MaxRegisteredMetrics</c>.</summary>
+    int ScatterMaxRegisteredMetrics => Models.Settings.ScatterMetricLimits.DefaultMaxRegisteredMetrics;
+
+    /// <summary>Largest Offset (bars before the latest bar) a scatter metric may use; see <c>ScatterMetrics:MaxOffset</c>.</summary>
+    int ScatterMaxMetricOffset => Models.Settings.ScatterMetricLimits.DefaultMaxOffset;
+
+    /// <summary>How many tickers a scatter evaluation processes at the same time; see <c>ScatterMetrics:MaxParallelism</c>.</summary>
+    int ScatterMaxParallelism => Models.Settings.ScatterMetricLimits.DefaultMaxParallelism;
+
+    /// <summary>Pause (ms) after the last key stroke before the scatter metric catalog search runs; see <c>ScatterMetrics:InputDebounceMilliseconds</c>.</summary>
+    int ScatterInputDebounceMilliseconds => Models.Settings.ScatterMetricLimits.DefaultInputDebounceMilliseconds;
+
     // Drawing interaction resource bounds
     /// <summary>
     /// Undo/redo history and freehand stroke bounds (see <see cref="Models.Settings.DrawingInteractionSettings"/>). Defaulted here (default interface member,

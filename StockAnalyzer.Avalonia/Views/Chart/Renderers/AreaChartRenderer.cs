@@ -164,7 +164,7 @@ public sealed class AreaChartRenderer : IChartRenderer, IDisposable
 
                 // 2. Dynamic Alpha Scaling based on Background Luminance
                 SKColor bgColor = config.ThemeManager.CurrentTheme.ChartBackground.ToSkColor();
-                float luminance = (0.2126f * bgColor.Red + 0.7152f * bgColor.Green + 0.0722f * bgColor.Blue) / 255f;
+                float luminance = IndicatorColor.Luma(bgColor.Red, bgColor.Green, bgColor.Blue);
                 
                 // Scale alpha: Light (L=1.0) -> 100%, Dark (L=0.0) -> ~60%
                 float alphaScale = ChartTheme.AreaChartAlphaBaseScale + ChartTheme.AreaChartAlphaLuminanceScale * luminance;
