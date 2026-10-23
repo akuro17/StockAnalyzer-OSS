@@ -1,3 +1,4 @@
+using StockAnalyzer.Core.Services;
 using System;
 using System.IO;
 using System.Threading.Tasks;
@@ -43,7 +44,7 @@ public class DrawingObjectsViewRefreshTests : IDisposable
             new StockAnalyzer.Avalonia.Services.DialogService(),
             null!,
             new StockAnalyzer.Avalonia.Services.MockStockAnalyzerSettings(),
-            new StockAnalyzer.Avalonia.Services.TimeFrameManager(new StockAnalyzer.Avalonia.Services.MockDataService()),
+            new StockAnalyzer.Core.Services.TimeFrameManager(new StockAnalyzer.Avalonia.Services.MockDataService()),
             null!,
             new StockAnalyzer.Core.Theme.ThemeManager(),
             settingsManager,

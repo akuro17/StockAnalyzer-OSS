@@ -26,6 +26,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) 
 ### Removed (API)
 - **`LayoutConstants.MaxPanelTabs`, `LayoutConstants.MAX_TAB_REORDER_DISTANCE` and `LayoutConstants.MAX_TABS_PER_PANEL`** (public constants in `StockAnalyzer.Core`): the limits are configuration now. Read them from `LayoutStateStore.MaxPanelTabs` / `LayoutStateStore.MaxTabReorderDistance`, or from `new LayoutSettings()` for the defaults. `MAX_TABS_PER_PANEL` (20) was unused and disagreed with the effective limit of 16. Code compiled against the removed constants must be updated.
 
+### Security
+- **Embedded Python upgraded to 3.13.17**: The embedded interpreter is now CPython 3.13.17 (previously 3.13.0 from the `Python.Included` package, which is removed). On Windows the app downloads `python-3.13.17-embed-amd64.zip` from python.org on first run and checks its SHA-256 before use. The interpreter is installed into its own folder `python-3.13.17-embed-amd64` and the app never falls back to an older Python. pip is bootstrapped with `get-pip.py` from `bootstrap.pypa.io` (not hash-checked) and upgraded to 26.2.2 or later. An existing `python-3.13.0-embed-amd64` folder is not used and can be deleted by hand.
+
 ---
 
 ## [1.0.0] - 2026-07-08

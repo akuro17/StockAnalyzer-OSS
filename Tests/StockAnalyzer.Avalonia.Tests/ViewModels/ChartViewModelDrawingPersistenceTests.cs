@@ -1,3 +1,4 @@
+using StockAnalyzer.Core.Services;
 using System;
 using System.IO;
 using System.Threading.Tasks;
@@ -46,7 +47,7 @@ public class ChartViewModelDrawingPersistenceTests : IDisposable
             new StockAnalyzer.Avalonia.Services.DialogService(),
             null!, // strategyFactory
             new StockAnalyzer.Avalonia.Services.MockStockAnalyzerSettings(),
-            new StockAnalyzer.Avalonia.Services.TimeFrameManager(new StockAnalyzer.Avalonia.Services.MockDataService()),
+            new StockAnalyzer.Core.Services.TimeFrameManager(new StockAnalyzer.Avalonia.Services.MockDataService()),
             null!, // marketStructureService
             new StockAnalyzer.Core.Theme.ThemeManager(),
             settingsManager,

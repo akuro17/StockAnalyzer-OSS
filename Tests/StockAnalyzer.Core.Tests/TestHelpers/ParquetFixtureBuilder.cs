@@ -18,14 +18,29 @@ public static class ParquetFixtureBuilder
     /// losses to work with (an all-gains or all-losses window makes RSI conditions match nothing by design).
     /// </summary>
     public static void SeedDailyOhlcv(string dir, string ticker, int days = 20)
+        => SeedDailyOhlcvFromCloses(dir, ticker, ZigZagCloses(days));
+
+    private static IReadOnlyList<decimal> ZigZagCloses(int days)
     {
-        var fixturePath = Path.Combine(dir, $"{ticker}.parquet").Replace("\\", "/");
-        var rows = new List<string>();
+        var closes = new List<decimal>(days);
         decimal close = 100m;
-        var date = new DateTime(2024, 1, 1);
         for (int i = 0; i < days; i++)
         {
             close += (i % 2 == 0) ? 1.0m : -0.5m;
+            closes.Add(close);
+        }
+
+        return closes;
+    }
+
+    /// <summary>Writes a daily OHLCV parquet whose closes are <paramref name="closes"/> (one bar per consecutive day from 2024-01-01; open/high/low derived as in <see cref="SeedDailyOhlcv"/>).</summary>
+    public static void SeedDailyOhlcvFromCloses(string dir, string ticker, IReadOnlyList<decimal> closes)
+    {
+        var fixturePath = Path.Combine(dir, $"{ticker}.parquet").Replace("\\", "/");
+        var rows = new List<string>();
+        var date = new DateTime(2024, 1, 1);
+        foreach (decimal close in closes)
+        {
             var open = close - 0.2m;
             var high = close + 0.5m;
             var low = close - 0.5m;

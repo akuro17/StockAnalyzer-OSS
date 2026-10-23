@@ -20,7 +20,7 @@ namespace StockAnalyzer.Core.Tests.Services
     /// Exercises <see cref="TrainingOrchestrator"/>'s process orchestration (argument passing,
     /// stdout protocol parsing, cancellation, temp-config cleanup) against a fake "interpreter" --
     /// a tiny <c>.cmd</c> script standing in for <c>run_training.py</c> -- so these tests need
-    /// neither the embedded Python.Included install nor any ML framework, and run everywhere
+    /// neither the embedded Python install nor any ML framework, and run everywhere
     /// <c>dotnet test</c> does. The real <c>run_training.py</c> protocol parsing rules themselves
     /// are covered by <see cref="TrainingProtocolLineTests"/> and were exercised end-to-end
     /// manually against real data during Task 3 (see the feature's step log).

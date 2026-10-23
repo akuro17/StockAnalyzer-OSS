@@ -35,10 +35,11 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
         public string TitleKey => "Settings_AIPredictions";
         public string IconKey => "SettingsAdvIcon";
 
-        public const string OnnxPipManualInstallCommand = "pip install torch --index-url https://download.pytorch.org/whl/cpu && pip install numpy onnx onnxruntime onnxscript tensorflow tf2onnx lightgbm scikit-learn skl2onnx onnxmltools";
-        public const string OnnxPipManualUpgradeCommand = "pip install torch --index-url https://download.pytorch.org/whl/cpu --upgrade && pip install numpy onnx onnxruntime onnxscript tensorflow tf2onnx lightgbm scikit-learn skl2onnx onnxmltools --upgrade";
+        /// <summary>Manual install command copied to the clipboard (PowerShell 7 form, embedded interpreter).</summary>
+        public static string OnnxPipManualInstallCommand => StockAnalyzer.Core.Services.ManualPipCommands.Onnx(StockAnalyzer.Core.Services.ManualShell.PowerShell7, upgrade: false);
 
-        public const string OnnxPipManualCommand = OnnxPipManualInstallCommand;
+        /// <summary>Manual upgrade command copied to the clipboard (PowerShell 7 form, embedded interpreter).</summary>
+        public static string OnnxPipManualUpgradeCommand => StockAnalyzer.Core.Services.ManualPipCommands.Onnx(StockAnalyzer.Core.Services.ManualShell.PowerShell7, upgrade: true);
 
         [ObservableProperty]
         [NotifyPropertyChangedFor(nameof(AutoButtonText))]
@@ -200,21 +201,6 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
             _toastNotificationService.ShowNotification(msg);
         }
 
-        public static readonly string[] OnnxTrainingPackages = new[]
-        {
-            "numpy",
-            "torch",
-            "onnx",
-            "onnxruntime",
-            "onnxscript",
-            "tensorflow",
-            "tf2onnx",
-            "lightgbm",
-            "scikit-learn",
-            "skl2onnx",
-            "onnxmltools"
-        };
-
         [RelayCommand]
         public async Task AutoInstallOnnxAsync()
         {
@@ -231,7 +217,7 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
                 if (_pythonService != null)
                 {
                     var progress = new Progress<string>(msg => StatusMessage = msg);
-                    await _pythonService.InstallPackagesAsync(OnnxTrainingPackages, forceUpgrade: isUpgrade, progress: progress);
+                    await _pythonService.InstallPackagesAsync(StockAnalyzer.Core.Services.PythonPackageSets.OnnxTraining, forceUpgrade: isUpgrade, progress: progress);
                     IsOnnxInstalled = true;
                 }
                 var successMsg = LocalizationManager.Instance[successKey] ?? (isUpgrade ? "ONNX update completed successfully." : "ONNX setup completed successfully.");

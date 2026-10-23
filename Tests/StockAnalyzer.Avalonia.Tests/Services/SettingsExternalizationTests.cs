@@ -1,3 +1,5 @@
+using StockAnalyzer.Core.Services;
+using StockAnalyzer.Core.Models.Settings;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
 using StockAnalyzer.Avalonia.Common;

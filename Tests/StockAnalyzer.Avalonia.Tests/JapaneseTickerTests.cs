@@ -55,7 +55,7 @@ public class JapaneseTickerTests
             var providerCandles = await provider.GetTickersDataAsync("3382-T", TimeFrame.D1);
             Assert.NotEmpty(providerCandles);
 
-            var tfManager = new StockAnalyzer.Avalonia.Services.TimeFrameManager(dataService);
+            var tfManager = new StockAnalyzer.Core.Services.TimeFrameManager(dataService);
             var d1Candles = await tfManager.GetCandlesAsync("3382-T", TimeFrame.D1, 50);
             var w1Candles = await tfManager.GetCandlesAsync("3382-T", TimeFrame.W1, 50);
             var mn1Candles = await tfManager.GetCandlesAsync("3382-T", TimeFrame.MN1, 50);
@@ -173,7 +173,7 @@ public class JapaneseTickerTests
             Assert.True(align7203.Series.ContainsKey("^GSPC"));
 
             // 4. Test Weekly aggregated self-correlation: AAPL on W1 with AAPL comparison
-            var tfManager = new StockAnalyzer.Avalonia.Services.TimeFrameManager(dataService);
+            var tfManager = new StockAnalyzer.Core.Services.TimeFrameManager(dataService);
             var weeklyCandles = await tfManager.GetCandlesAsync("AAPL", TimeFrame.W1, 50);
             var coreWeekly = System.Linq.Enumerable.ToList(System.Linq.Enumerable.Select(weeklyCandles, c => new CoreCandleData(c.Timestamp, c.Open, c.High, c.Low, c.Close, c.Volume)));
             var secWeekly = new System.Collections.Generic.Dictionary<string, System.Collections.Generic.IReadOnlyList<CoreCandleData?>>(System.StringComparer.OrdinalIgnoreCase)

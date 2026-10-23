@@ -2,7 +2,6 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Python.Runtime;
-using Python.Included;
 using Polly;
 using Polly.Retry;
 using Microsoft.Extensions.Logging;
@@ -150,22 +149,7 @@ namespace StockAnalyzer.Core.Services
                 var isWindows = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows);
                 if (isWindows && string.IsNullOrEmpty(_settings.PythonPath))
                 {
-                    var pythonHome = Installer.InstallPath;
-                    var pythonExeName = PythonExecutableName;
-                    var pythonExe = System.IO.Path.Combine(pythonHome, pythonExeName);
-                    bool embeddedExists = System.IO.File.Exists(pythonExe);
-                    if (!embeddedExists && System.IO.Directory.Exists(pythonHome))
-                    {
-                        var subdirs = System.IO.Directory.GetDirectories(pythonHome, "python-*-embed-*");
-                        foreach (var dir in subdirs)
-                        {
-                            if (System.IO.File.Exists(System.IO.Path.Combine(dir, pythonExeName)))
-                            {
-                                embeddedExists = true;
-                                break;
-                            }
-                        }
-                    }
+                    bool embeddedExists = PythonEmbeddedInstaller.IsInstalled();
 
                     bool bypassPackageInstall = false;
                     if (!embeddedExists)
@@ -210,10 +194,11 @@ namespace StockAnalyzer.Core.Services
                         _isInitializing = true;
                         try
                         {
-                            await Installer.SetupPython();
+                            await PythonEmbeddedInstaller.SetupAsync(ct: ct);
                             if (!PythonEngine.IsInitialized)
                             {
                                 LogSyncActivity("PythonEngine.Initialize starting...");
+                                PythonEmbeddedInstaller.ConfigureEngine();
                                 PythonEngine.Initialize();
                                 PythonEngine.BeginAllowThreads();
                                 LogSyncActivity("PythonEngine.Initialize complete.");
@@ -240,9 +225,12 @@ namespace StockAnalyzer.Core.Services
                 {
                     LogSyncActivity("SetupPython starting...");
                     ((IProgress<string>)initProgress).Report("Extracting Python environment...");
-                    await Installer.SetupPython();
+                    await PythonEmbeddedInstaller.SetupAsync(initProgress, ct);
                     LogSyncActivity("SetupPython complete.");
                     ct.ThrowIfCancellationRequested();
+
+                    // Before the package checks: InstallPackage returns early for up-to-date packages, so the pip upgrade must not depend on them.
+                    await EnsurePipSecureAsync(ct);
 
                     var packages = _settings.PythonEssentialPackages;
                     
@@ -263,6 +251,7 @@ namespace StockAnalyzer.Core.Services
                 if (!PythonEngine.IsInitialized)
                 {
                     LogSyncActivity("PythonEngine.Initialize starting...");
+                    PythonEmbeddedInstaller.ConfigureEngine();
                     PythonEngine.Initialize();
                     PythonEngine.BeginAllowThreads();
                     LogSyncActivity("PythonEngine.Initialize complete.");
@@ -391,23 +380,7 @@ namespace StockAnalyzer.Core.Services
                     await InitializeAsync(ct: linkedToken);
 
                     // 2. Resolve Paths
-                    var pythonHome = Installer.InstallPath;
-                    var pythonExeName = PythonExecutableName;
-                    var pythonExe = System.IO.Path.Combine(pythonHome, pythonExeName);
-
-                    if (!System.IO.File.Exists(pythonExe))
-                    {
-                        var subdirs = System.IO.Directory.GetDirectories(pythonHome, "python-*-embed-*");
-                        foreach (var dir in subdirs)
-                        {
-                            var candidate = System.IO.Path.Combine(dir, pythonExeName);
-                            if (System.IO.File.Exists(candidate))
-                            {
-                                pythonExe = candidate;
-                                break;
-                            }
-                        }
-                    }
+                    var pythonExe = PythonEmbeddedInstaller.ExecutablePath(PythonExecutableName);
 
                     if (!System.IO.File.Exists(pythonExe))
                         throw new System.IO.FileNotFoundException($"Python executable not found at {pythonExe}");
@@ -506,37 +479,13 @@ namespace StockAnalyzer.Core.Services
                 await InitializeAsync(ct: ct);
             }
 
-            return ResolvePythonExecutable(Installer.InstallPath, PythonExecutableName);
-        }
-
-        /// <summary>
-        /// Locates the interpreter executable under <paramref name="installRoot"/>, including the
-        /// <c>python-*-embed-*</c> subdirectory layout used by the Python.Included installer.
-        /// Mirrors the resolution already inlined at the <see cref="RunUpdatePipelineAsync(string?, IProgress{int}?, bool, CancellationToken)"/>
-        /// call sites; kept as its own method (rather than folded into them) so this new caller
-        /// does not touch that already-working code.
-        /// </summary>
-        private static string ResolvePythonExecutable(string installRoot, string exeName)
-        {
-            var candidate = System.IO.Path.Combine(installRoot, exeName);
-            if (System.IO.File.Exists(candidate))
+            var pythonExe = PythonEmbeddedInstaller.ExecutablePath(PythonExecutableName);
+            if (!System.IO.File.Exists(pythonExe))
             {
-                return candidate;
+                throw new System.IO.FileNotFoundException($"Python executable not found at {pythonExe}");
             }
 
-            if (System.IO.Directory.Exists(installRoot))
-            {
-                foreach (var dir in System.IO.Directory.GetDirectories(installRoot, "python-*-embed-*"))
-                {
-                    var nested = System.IO.Path.Combine(dir, exeName);
-                    if (System.IO.File.Exists(nested))
-                    {
-                        return nested;
-                    }
-                }
-            }
-
-            throw new System.IO.FileNotFoundException($"Python executable not found under {installRoot}");
+            return pythonExe;
         }
 
         public async Task RunUpdatePipelineAsync(string? symbol, SyncSessionConfig config, IProgress<int>? progress = null, CancellationToken ct = default)
@@ -569,23 +518,7 @@ namespace StockAnalyzer.Core.Services
                     await InitializeAsync(ct: linkedToken);
 
                     // 2. Resolve Paths
-                    var pythonHome = Installer.InstallPath;
-                    var pythonExeName = PythonExecutableName;
-                    var pythonExe = System.IO.Path.Combine(pythonHome, pythonExeName);
-
-                    if (!System.IO.File.Exists(pythonExe))
-                    {
-                        var subdirs = System.IO.Directory.GetDirectories(pythonHome, "python-*-embed-*");
-                        foreach (var dir in subdirs)
-                        {
-                            var candidate = System.IO.Path.Combine(dir, pythonExeName);
-                            if (System.IO.File.Exists(candidate))
-                            {
-                                pythonExe = candidate;
-                                break;
-                            }
-                        }
-                    }
+                    var pythonExe = PythonEmbeddedInstaller.ExecutablePath(PythonExecutableName);
 
                     if (!System.IO.File.Exists(pythonExe))
                         throw new System.IO.FileNotFoundException($"Python executable not found at {pythonExe}");
@@ -718,81 +651,79 @@ namespace StockAnalyzer.Core.Services
             LogSyncActivity("RunUpdatePipelineAsync FINISH (Success)");
         }
 
-        private async Task<bool> IsUpdateAvailableAsync(string packageName, CancellationToken ct)
+        /// <summary>
+        /// Update probe run by <see cref="CheckForUpdateAsync"/>. Multi-line on purpose: a one-line
+        /// form with compound statements is a syntax error in Python, so the probe never reported an update.
+        /// </summary>
+        internal const string UpdateCheckScript = """
+            import importlib.metadata, json, sys, urllib.request
+
+            def parse_v(v):
+                return tuple(int(x) for x in v.split('.') if x.isdigit())
+
+            def parse_release(v):
+                parts = v.split('.')
+                return tuple(int(x) for x in parts) if all(x.isdigit() for x in parts) else None
+
+            def norm(t):
+                t = list(t)
+                while t and t[-1] == 0:
+                    t.pop()
+                return tuple(t)
+
+            def is_yanked(files):
+                return not files or all(f.get('yanked') for f in files)
+
+            # Arguments: package name, request time limit in seconds, then optionally the lower bound and the exclusive upper major.
+            name = sys.argv[1]
+            request_timeout = float(sys.argv[2])
+            try:
+                installed = importlib.metadata.version(name)
+                req = urllib.request.Request(f'https://pypi.org/pypi/{name}/json', headers={'User-Agent': 'StockAnalyzer'})
+                with urllib.request.urlopen(req, timeout=request_timeout) as r:
+                    doc = json.loads(r.read().decode())
+                if len(sys.argv) >= 5:
+                    # Pinned package: the latest release inside >=sys.argv[3],<sys.argv[4] (final, not yanked).
+                    lower = norm(parse_v(sys.argv[3]))
+                    upper = int(sys.argv[4])
+                    inside = [t for v, files in doc['releases'].items() if not is_yanked(files)
+                              for t in [parse_release(v)] if t is not None and norm(t) >= lower and t[0] < upper]
+                    latest = max(inside, key=norm) if inside else ()
+                else:
+                    latest = parse_v(doc['info']['version'])
+                print('UPDATE_AVAILABLE' if norm(latest) > norm(parse_v(installed)) else 'NO_UPDATE')
+            except Exception as e:
+                print('ERROR:', e)
+            """;
+
+        /// <summary>
+        /// Whether a newer release exists. A pinned package is compared with the latest release inside its update range
+        /// (<see cref="PackageVersionRange"/>), so a newer major never makes every start run pip; an unpinned package is compared with the global latest.
+        /// A check that could not run is <see cref="UpdateCheckState.CheckFailed"/>, not "up to date". Cancellation through <paramref name="ct"/> is rethrown.
+        /// </summary>
+        private async Task<UpdateCheckResult> CheckForUpdateAsync(string packageName, string? pinnedVersion, CancellationToken ct)
         {
-            try
+            var pythonExe = PythonEmbeddedInstaller.ExecutablePath(PythonExecutableName);
+
+            if (!System.IO.File.Exists(pythonExe))
             {
-                var pythonHome = Installer.InstallPath;
-                var pythonExeName = PythonExecutableName;
-                var pythonExe = System.IO.Path.Combine(pythonHome, pythonExeName);
-
-                if (!System.IO.File.Exists(pythonExe))
-                {
-                    var subdirs = System.IO.Directory.GetDirectories(pythonHome, "python-*-embed-*");
-                    foreach (var dir in subdirs)
-                    {
-                        var candidate = System.IO.Path.Combine(dir, pythonExeName);
-                        if (System.IO.File.Exists(candidate)) { pythonExe = candidate; break; }
-                    }
-                }
-
-                if (!System.IO.File.Exists(pythonExe)) return false;
-
-                string pyCode = "import urllib.request, json, importlib.metadata; " +
-                                "packageName = '" + packageName + "'; " +
-                                "try: " +
-                                "    installed = importlib.metadata.version(packageName); " +
-                                "    req = urllib.request.Request(f'https://pypi.org/pypi/{packageName}/json', headers={'User-Agent': 'StockAnalyzer'}); " +
-                                "    with urllib.request.urlopen(req, timeout=3) as r: " +
-                                "        data = json.loads(r.read().decode()); " +
-                                "        latest = data['info']['version']; " +
-                                "    def parse_v(v): return tuple(int(x) for x in v.split('.') if x.isdigit()); " +
-                                "    if parse_v(latest) > parse_v(installed): print('UPDATE_AVAILABLE'); " +
-                                "    else: print('NO_UPDATE'); " +
-                                "except Exception as e: print('ERROR:', e)";
-
-                var startInfo = new System.Diagnostics.ProcessStartInfo
-                {
-                    FileName = pythonExe,
-                    Arguments = $"-c \"{pyCode}\"",
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true
-                };
-
-                using var process = System.Diagnostics.Process.Start(startInfo);
-                if (process == null) return false;
-
-                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-                using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, cts.Token);
-                try
-                {
-                    var stdoutTask = process.StandardOutput.ReadToEndAsync(linkedCts.Token);
-                    var stderrTask = process.StandardError.ReadToEndAsync(linkedCts.Token);
-
-                    await process.WaitForExitAsync(linkedCts.Token);
-                    var output = await stdoutTask;
-                    _ = await stderrTask;
-
-                    if (process.ExitCode == 0 && output.Contains("UPDATE_AVAILABLE"))
-                    {
-                        return true;
-                    }
-                }
-                catch (OperationCanceledException)
-                {
-                    try { if (!process.HasExited) process.Kill(true); } catch { }
-                    throw;
-                }
-
-                return false;
+                return new UpdateCheckResult(UpdateCheckState.CheckFailed, "the Python executable was not found");
             }
-            catch (Exception ex)
+
+            // "-" reads the script from stdin; the package name and the request time limit follow as sys.argv[1] and [2] (no quoting needed).
+            var arguments = new System.Collections.Generic.List<string>
             {
-                LogSyncActivity($"Failed to check updates for {packageName}: {ex.Message}");
-                return false;
+                "-",
+                packageName,
+                _settings.PythonUpdateCheckRequestTimeout.TotalSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture)
+            };
+            if (PackageVersionRange.UpperMajor(pinnedVersion) is { } upperMajor)
+            {
+                arguments.Add(pinnedVersion!.Trim());
+                arguments.Add(upperMajor.ToString(System.Globalization.CultureInfo.InvariantCulture));
             }
+
+            return await UpdateCheckProbe.RunAsync(pythonExe, arguments.ToArray(), UpdateCheckScript, _settings.PythonUpdateCheckTimeout, ct);
         }
 
         public async Task<bool> IsPackageInstalledAsync(string packageName, CancellationToken ct = default)
@@ -803,7 +734,7 @@ namespace StockAnalyzer.Core.Services
                 "scikit-learn" => "sklearn",
                 _ => packageName
             };
-            return await IsModuleInstalled(importName);
+            return await ProbeModuleAsync(importName, ct) == ModuleInstallState.Installed;
         }
 
         private async Task InstallPackage(string packageName, bool forceUpgrade, CancellationToken ct)
@@ -818,12 +749,37 @@ namespace StockAnalyzer.Core.Services
                 _ => packageName
             };
 
-            bool isInstalled = await IsModuleInstalled(importName);
+            var state = await ProbeModuleAsync(importName, ct);
+            if (!ModuleInstallProbe.IsConclusive(state))
+            {
+                LogSyncActivity($"Import check for {packageName} ended as {state}. The installed version is kept; pip is not run.", LogLevel.Warning);
+                return;
+            }
+
+            var pinnedMap = GetPinnedPackageVersions(msg => LogSyncActivity(msg, LogLevel.Warning));
+            string? pinnedVersion = null;
+            if (pinnedMap.TryGetValue(packageName, out pinnedVersion))
+            {
+                LogSyncActivity($"Resolved pinned version for '{packageName}': {pinnedVersion}");
+            }
+            else if (packageName != PythonPackageSets.TorchPackage)
+            {
+                LogSyncActivity($"Package '{packageName}' not found in requirements.txt; proceeding without strict pin", LogLevel.Warning);
+            }
+
+            bool isInstalled = state == ModuleInstallState.Installed;
             bool shouldUpdate = forceUpgrade;
 
             if (isInstalled && !forceUpgrade)
             {
-                shouldUpdate = await IsUpdateAvailableAsync(packageName, ct);
+                var check = await CheckForUpdateAsync(packageName, pinnedVersion, ct);
+                if (check.State == UpdateCheckState.CheckFailed)
+                {
+                    LogSyncActivity($"Update check for {packageName} failed: {check.Reason}. The installed version is kept; pip is not run.", LogLevel.Warning);
+                    return;
+                }
+
+                shouldUpdate = check.State == UpdateCheckState.UpdateAvailable;
                 if (!shouldUpdate)
                 {
                     LogSyncActivity($"Module {packageName} is already installed and up-to-date. Skipping pip.");
@@ -836,42 +792,42 @@ namespace StockAnalyzer.Core.Services
                 LogSyncActivity($"Module {packageName} not found. Running pip install...");
             }
 
-            await Installer.TryInstallPip();
+            await EnsurePipSecureAsync(ct);
 
-            // Bypass build isolation because the embedded environment often fails to create
-            // a clean isolated environment with all necessary build tools (like setuptools).
-            string pipArgs;
-            var pinnedMap = GetPinnedPackageVersions(msg => LogSyncActivity(msg, LogLevel.Warning));
-            string? pinnedVersion = null;
-            if (pinnedMap.TryGetValue(packageName, out pinnedVersion))
-            {
-                LogSyncActivity($"Resolved pinned version for '{packageName}': {pinnedVersion}");
-            }
-            else if (packageName != "torch")
-            {
-                LogSyncActivity($"Package '{packageName}' not found in requirements.txt; proceeding without strict pin", LogLevel.Warning);
-            }
-
-            if (packageName == "torch")
-            {
-                pipArgs = (shouldUpdate || forceUpgrade)
-                    ? "-m pip install --no-build-isolation --upgrade torch --index-url https://download.pytorch.org/whl/cpu"
-                    : "-m pip install --no-build-isolation torch --index-url https://download.pytorch.org/whl/cpu";
-            }
-            else if (!string.IsNullOrEmpty(pinnedVersion))
-            {
-                // Enforce strictly pinned version from requirements.txt without unverified --upgrade
-                pipArgs = $"-m pip install --no-build-isolation {packageName}=={pinnedVersion}";
-            }
-            else
-            {
-                pipArgs = (shouldUpdate || forceUpgrade)
-                    ? $"-m pip install --no-build-isolation --upgrade {packageName}"
-                    : $"-m pip install --no-build-isolation {packageName}";
-            }
-
-            await RunPipCommandAsync(pipArgs, ct);
+            await RunPipCommandAsync(BuildInstallArguments(packageName, pinnedVersion, shouldUpdate, forceUpgrade), ct);
             LogSyncActivity($"InstallPackage FINISH: {packageName}");
+        }
+
+        /// <summary>
+        /// pip arguments of an install step. Fresh install of a pinned package: the exact pin. Automatic update of a pinned package: the latest
+        /// release inside <c>&gt;=pin,&lt;next major</c> (D-01 B). A forced (user-initiated) upgrade and a package without a pin are not bounded
+        /// (N-04 A). The command start (build isolation bypassed) is <see cref="PythonPackageSets.PipInstallPrefix"/>.
+        /// </summary>
+        internal static string BuildInstallArguments(string packageName, string? pinnedVersion, bool shouldUpdate, bool forceUpgrade)
+        {
+            const string installPrefix = PythonPackageSets.PipInstallPrefix;
+            bool upgrade = shouldUpdate || forceUpgrade;
+
+            if (packageName == PythonPackageSets.TorchPackage)
+            {
+                return upgrade
+                    ? $"{installPrefix} --upgrade {packageName} --index-url {PythonPackageSets.TorchIndexUrl}"
+                    : $"{installPrefix} {packageName} --index-url {PythonPackageSets.TorchIndexUrl}";
+            }
+
+            if (!string.IsNullOrEmpty(pinnedVersion) && !upgrade)
+            {
+                return $"{installPrefix} {packageName}=={pinnedVersion}";
+            }
+
+            if (upgrade && !forceUpgrade && PackageVersionRange.UpgradeSpecifier(packageName, pinnedVersion) is { } specifier)
+            {
+                return $"{installPrefix} --upgrade \"{specifier}\"";
+            }
+
+            return upgrade
+                ? $"{installPrefix} --upgrade {packageName}"
+                : $"{installPrefix} {packageName}";
         }
 
         private static System.Collections.Generic.Dictionary<string, string>? _pinnedPackageVersions;
@@ -922,10 +878,40 @@ namespace StockAnalyzer.Core.Services
             }
         }
 
+        /// <summary>Minimum pip version required in the embedded interpreter (security requirement).</summary>
+        public const string MinimumPipVersion = "26.2.2";
+
+        private readonly PipSecurityGate _pipSecurity = new();
+
+        /// <summary>Interpreter arguments that enforce <see cref="MinimumPipVersion"/> and refresh the CA bundle.</summary>
+        public const string PipSecurityUpgradeArguments = PythonPackageSets.PipInstallCommand + " --upgrade \"pip>=" + MinimumPipVersion + "\" certifi";
+
+
+        private Task EnsurePipSecureAsync(CancellationToken ct)
+            => _pipSecurity.EnsureAsync(
+                ReadInstalledPipVersionAsync,
+                token => RunPipCommandAsync(PipSecurityUpgradeArguments, token),
+                ct);
+
+        /// <summary>
+        /// The pip version the embedded interpreter reports through its package metadata, or null when it cannot be read (including a read that
+        /// passes <c>PythonImportProbeTimeout</c>: it is the time limit of a plain interpreter start).
+        /// </summary>
+        private async Task<string?> ReadInstalledPipVersionAsync(CancellationToken ct)
+        {
+            var pythonExe = PythonEmbeddedInstaller.ExecutablePath(PythonExecutableName);
+            if (!System.IO.File.Exists(pythonExe)) return null;
+
+            return await PipVersionProbe.ReadAsync(
+                pythonExe,
+                "-c \"import importlib.metadata; print(importlib.metadata.version('pip'))\"",
+                _settings.PythonImportProbeTimeout,
+                ct);
+        }
+
         private async Task EnsurePipReadyAsync(CancellationToken ct = default)
         {
-            await Installer.SetupPython();
-            await Installer.TryInstallPip();
+            await PythonEmbeddedInstaller.SetupAsync(ct: ct);
         }
 
         public async Task InstallPackagesAsync(IEnumerable<string> packageNames, bool forceUpgrade = false, IProgress<string>? progress = null, CancellationToken ct = default)
@@ -945,20 +931,7 @@ namespace StockAnalyzer.Core.Services
 
         public async Task RunPipCommandAsync(string arguments, CancellationToken ct = default)
         {
-            var pythonHome = Installer.InstallPath;
-            var pythonExeName = PythonExecutableName;
-            var pythonExe = System.IO.Path.Combine(pythonHome, pythonExeName);
-
-            // Discovery
-            if (!System.IO.File.Exists(pythonExe))
-            {
-                var subdirs = System.IO.Directory.GetDirectories(pythonHome, "python-*-embed-*");
-                foreach (var dir in subdirs)
-                {
-                    var candidate = System.IO.Path.Combine(dir, pythonExeName);
-                    if (System.IO.File.Exists(candidate)) { pythonExe = candidate; break; }
-                }
-            }
+            var pythonExe = PythonEmbeddedInstaller.ExecutablePath(PythonExecutableName);
 
             if (!System.IO.File.Exists(pythonExe))
                 throw new Exception("Python executable not found for pip install.");
@@ -991,62 +964,14 @@ namespace StockAnalyzer.Core.Services
                 throw new Exception($"Pip command failed with exit code {process.ExitCode}");
         }
 
-        private async Task<bool> IsModuleInstalled(string importName)
+        /// <summary>The import check of one package; its time limit is <c>PythonImportProbeTimeout</c> (heavy packages must not be reported as missing because the check timed out).</summary>
+        private async Task<ModuleInstallState> ProbeModuleAsync(string importName, CancellationToken ct)
         {
-            try
-            {
-                var pythonHome = Installer.InstallPath;
-                var pythonExeName = PythonExecutableName;
-                var pythonExe = System.IO.Path.Combine(pythonHome, pythonExeName);
+            var pythonExe = PythonEmbeddedInstaller.ExecutablePath(PythonExecutableName);
 
-                // Basic discovery
-                if (!System.IO.File.Exists(pythonExe))
-                {
-                    var subdirs = System.IO.Directory.GetDirectories(pythonHome, "python-*-embed-*");
-                    foreach (var dir in subdirs)
-                    {
-                        var candidate = System.IO.Path.Combine(dir, pythonExeName);
-                        if (System.IO.File.Exists(candidate)) { pythonExe = candidate; break; }
-                    }
-                }
+            if (!System.IO.File.Exists(pythonExe)) return ModuleInstallState.Missing;
 
-                if (!System.IO.File.Exists(pythonExe)) return false;
-
-                var startInfo = new System.Diagnostics.ProcessStartInfo
-                {
-                    FileName = pythonExe,
-                    Arguments = $"-c \"import {importName}\"",
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true
-                };
-
-                using var process = System.Diagnostics.Process.Start(startInfo);
-                if (process == null) return false;
-                
-                // Set a short timeout for this check
-                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-                try
-                {
-                    var stdoutTask = process.StandardOutput.ReadToEndAsync(cts.Token);
-                    var stderrTask = process.StandardError.ReadToEndAsync(cts.Token);
-
-                    await process.WaitForExitAsync(cts.Token);
-                    _ = await stdoutTask;
-                    _ = await stderrTask;
-                    return process.ExitCode == 0;
-                }
-                catch (OperationCanceledException)
-                {
-                    try { if (!process.HasExited) process.Kill(true); } catch { }
-                    return false;
-                }
-            }
-            catch
-            {
-                return false;
-            }
+            return await ModuleInstallProbe.RunAsync(pythonExe, $"-c \"import {importName}\"", _settings.PythonImportProbeTimeout, ct);
         }
 
         public void Run(Action<PyModule> action)

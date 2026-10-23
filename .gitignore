@@ -126,3 +126,35 @@ StockAnalyzer.Python/training/artifacts/
 
 # Internal project context
 AGENTS.md
+
+# Generated verification artifacts (rebuilt from the tracked scripts in tools/verification and VerificationGen)
+VerificationGen/TempSource/
+VerificationGen/verification_data.json
+tools/verification/*report*.json
+tools/verification/runner_cs/CurrentIndicator.cs
+tools/verification/runner_cs/error.txt
+tools/verification/runner_cs/input.json
+tools/verification/runner_cs/output.json
+tools/verification/runner_cs/params.json
+tools/verification/runner_cs_batch/*.cs
+!tools/verification/runner_cs_batch/Program.cs
+tools/verification/runner_cs_batch/all_params.json
+tools/verification/runner_cs_batch/input.json
+tools/verification/runner_cs_batch/results_cs.json
+tools/verification/runner_js/CurrentIndicator.mjs
+tools/verification/runner_js/input.json
+tools/verification/runner_js/params.json
+tools/verification/runner_js_browser/modules/
+tools/verification/runner_js_browser/bundled_runner.html
+tools/verification/runner_js_browser/data_bundle.js
+tools/verification/runner_js_browser/results_js.json
+tools/generators/*report.json
+
+# Site backups, deploy logs, and deploy config that embeds a token
+Web/Site/Indicator/BAK Explan/
+Web/Site/Template/template bak/
+Web/Site/DataIngestion/logs.txt
+Web/Site/DataIngestion/app.yaml
+
+# Downloaded screening data snapshot
+latest_screening_data_gcs.json

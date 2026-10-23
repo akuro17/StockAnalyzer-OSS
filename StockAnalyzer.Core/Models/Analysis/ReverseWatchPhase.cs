@@ -1,14 +1,18 @@
 namespace StockAnalyzer.Core.Models.Analysis;
 
+/// <summary>
+/// The sector of the Reverse Watch plane a curve point lies in (<c>ReverseWatchSectors</c>). Each comment gives the compass sector and
+/// where the point lies on the price and volume axes; numbering and geometry only, the phases carry no meaning label.
+/// </summary>
 public enum ReverseWatchPhase
 {
     None,
-    Phase1, // South: Bull Reversal (陽転) - Price Low, Vol Avg
-    Phase2, // SE: Buy Signal (買い信号) - Price Low, Vol High
-    Phase3, // East: Strong Buy (買い乗せ) - Price Avg, Vol High
-    Phase4, // NE: Caution (天井警戒) - Price High, Vol High
-    Phase5, // North: Bear Reversal (陰転) - Price High, Vol Avg
-    Phase6, // NW: Sell Signal (売り信号) - Price High, Vol Low
-    Phase7, // West: Strong Sell (売り乗せ) - Price Avg, Vol Low
-    Phase8  // SW: Bottoming (底入れ) - Price Low, Vol Low
+    Phase1, // South-East: price low, volume high
+    Phase2, // East: price middle, volume high
+    Phase3, // North-East: price high, volume high
+    Phase4, // North: price high, volume middle
+    Phase5, // North-West: price high, volume low
+    Phase6, // West: price middle, volume low
+    Phase7, // South-West: price low, volume low
+    Phase8  // South: price low, volume middle
 }

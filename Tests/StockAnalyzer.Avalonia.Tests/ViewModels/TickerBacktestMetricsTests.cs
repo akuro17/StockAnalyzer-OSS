@@ -1,3 +1,4 @@
+using StockAnalyzer.Core.Services;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -367,8 +368,8 @@ public class TickerBacktestMetricsTests
         // would silently expire.
         var windowStart = new DateTime(2025, 10, 9, 0, 0, 0, DateTimeKind.Utc);
         var windowEnd = new DateTime(2026, 10, 9, 0, 0, 0, DateTimeKind.Utc);
-        var prepService = new StockAnalyzer.Avalonia.Services.BacktestRunPreparationService(dataService);
-        var snapshot = new StockAnalyzer.Avalonia.Services.BacktestRunSnapshot(
+        var prepService = new StockAnalyzer.Core.Services.BacktestRunPreparationService(dataService);
+        var snapshot = new StockAnalyzer.Core.Services.BacktestRunSnapshot(
             "AAPL",
             TimeFrame.D1,
             windowStart,
@@ -461,7 +462,7 @@ public class TickerBacktestMetricsTests
         var engine = new StockAnalyzer.Core.Services.Backtest.Engine.BacktestEngine(new IndicatorFactory());
         var reportGen = new StockAnalyzer.Core.Services.Backtest.Reporting.BacktestReportGenerator();
         var today = DateTime.UtcNow.Date;
-        var prepService = new StockAnalyzer.Avalonia.Services.BacktestRunPreparationService(dataService);
+        var prepService = new StockAnalyzer.Core.Services.BacktestRunPreparationService(dataService);
         var evalService = new StockAnalyzer.Core.Services.Backtest.Evaluation.BacktestEvaluationService(
             engine,
             reportGen,
@@ -477,7 +478,7 @@ public class TickerBacktestMetricsTests
 
         foreach (var sym in symbols)
         {
-            var snapshot = new StockAnalyzer.Avalonia.Services.BacktestRunSnapshot(
+            var snapshot = new StockAnalyzer.Core.Services.BacktestRunSnapshot(
                 sym,
                 resolvedFrame,
                 startUtc,

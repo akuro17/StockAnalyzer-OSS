@@ -1,3 +1,4 @@
+using StockAnalyzer.Core.Models.Settings;
 using System.Linq;
 using StockAnalyzer.Avalonia.ViewModels.Backtest;
 using StockAnalyzer.Avalonia.ViewModels.Screener;
@@ -303,7 +304,7 @@ public class ScreenerConditionTreeMoveTests
     public void DragStartDistance_DefaultsToConfiguredValue_AndRejectsBelowOne()
     {
         ScreenerConditionTreeViewModel tree = new(6, 40, 32);
-        Assert.Equal(new StockAnalyzer.Avalonia.Common.ScreenerSettings().ConditionDragStartDistance, tree.DragStartDistance);
+        Assert.Equal(new StockAnalyzer.Core.Models.Settings.ScreenerSettings().ConditionDragStartDistance, tree.DragStartDistance);
 
         ScreenerConditionTreeViewModel custom = new(6, 40, 32, dragStartDistance: 10);
         Assert.Equal(10, custom.DragStartDistance);

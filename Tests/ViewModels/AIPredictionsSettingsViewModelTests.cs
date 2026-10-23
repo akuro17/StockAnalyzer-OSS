@@ -120,7 +120,7 @@ public class AIPredictionsSettingsViewModelTests
     [Fact]
     public void AIPredictionsSettingsViewModel_OnnxTrainingPackages_CoversAllThreeModels()
     {
-        var packages = AIPredictionsSettingsViewModel.OnnxTrainingPackages;
+        var packages = StockAnalyzer.Core.Services.PythonPackageSets.OnnxTraining;
 
         Assert.Contains("numpy", packages);
         Assert.Contains("torch", packages);
@@ -149,7 +149,8 @@ public class AIPredictionsSettingsViewModelTests
 
         Assert.NotNull(fakeClipboard.CopiedText);
         Assert.Equal(AIPredictionsSettingsViewModel.OnnxPipManualInstallCommand, fakeClipboard.CopiedText);
-        Assert.DoesNotContain("--upgrade", fakeClipboard.CopiedText);
+        // Only the pip security step (pip>=26.2.2) upgrades; the fresh install does not.
+        Assert.Equal(1, fakeClipboard.CopiedText.Split("--upgrade").Length - 1);
     }
 
     [Fact]

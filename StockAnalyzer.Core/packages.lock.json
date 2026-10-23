@@ -72,14 +72,14 @@
           "Microsoft.ML.OnnxRuntime.Managed": "1.24.3"
         }
       },
-      "Python.Included": {
+      "pythonnet": {
         "type": "Direct",
-        "requested": "[3.13.0, )",
-        "resolved": "3.13.0",
-        "contentHash": "B2MGu6EY4vD3a+bH6k06AUhnLrpc6/DYzJIiJenUBw9AkSgVyY+UyD+3KNgCqj76/bKQoTIhI/49wMJygI3IgA==",
+        "requested": "[3.0.5, )",
+        "resolved": "3.0.5",
+        "contentHash": "20UVeB1uDpvCHZi8yNv7VCSUKVRRaxPZWFYhkO+BjfBB9GgOh2vEeucy3U7zTY8xEVCHf2XHpRNfAU/3quxXZw==",
         "dependencies": {
-          "Python.Deployment": "2.0.5",
-          "pythonnet": "3.0.5"
+          "Microsoft.CSharp": "4.7.0",
+          "System.Reflection.Emit": "4.3.0"
         }
       },
       "SkiaSharp": {
@@ -280,20 +280,6 @@
         "dependencies": {
           "Polly.Core": "8.0.0",
           "System.Threading.RateLimiting": "7.0.0"
-        }
-      },
-      "Python.Deployment": {
-        "type": "Transitive",
-        "resolved": "2.0.5",
-        "contentHash": "U+hZ6L5tgPjX9bA/+K2rVQ94MNWGld+HIH78ULZ5ogfwVNvesaIEXhvKPLA6O6YuQF406Uw3WBLTCRlCpMC2QQ=="
-      },
-      "pythonnet": {
-        "type": "Transitive",
-        "resolved": "3.0.5",
-        "contentHash": "20UVeB1uDpvCHZi8yNv7VCSUKVRRaxPZWFYhkO+BjfBB9GgOh2vEeucy3U7zTY8xEVCHf2XHpRNfAU/3quxXZw==",
-        "dependencies": {
-          "Microsoft.CSharp": "4.7.0",
-          "System.Reflection.Emit": "4.3.0"
         }
       },
       "SkiaSharp.NativeAssets.macOS": {

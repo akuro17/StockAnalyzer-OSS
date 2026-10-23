@@ -1,3 +1,4 @@
+using StockAnalyzer.Core.Services;
 using System.ComponentModel;
 using System.Threading.Tasks;
 using StockAnalyzer.Avalonia.Services;

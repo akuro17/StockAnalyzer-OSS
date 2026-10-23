@@ -9,15 +9,15 @@ StockAnalyzer is an open-source, cross-platform desktop application for stock an
 | OS | Architecture | Python Setup |
 |---|---|---|
 | Windows 10 / 11 | x64 | Automatic (embedded Python installer included) |
-| macOS (Intel & Apple Silicon) | x64 / ARM64 | Manual (requires system Python 3.8+ and configuration) |
-| Linux (Ubuntu / Debian-based) | x64 | Manual (requires system Python 3.8+ and configuration) |
+| macOS (Intel & Apple Silicon) | x64 / ARM64 | Manual (requires system Python 3.13 (3.13.17+) and configuration) |
+| Linux (Ubuntu / Debian-based) | x64 | Manual (requires system Python 3.13 (3.13.17+) and configuration) |
 
 ---
 
 ## Requirements
 
 - .NET SDK: 8.0 or later
-- Python: 3.10 to 3.12 (verified on 3.12; Windows includes automatic embedded Python)
+- Python: 3.13 (3.13.17 or later) with pip 26.2.2 or later; Windows includes automatic embedded Python
   - Core libraries: `yfinance`, `pandas`, `polars`, `pyarrow`.
 
 ---
@@ -28,6 +28,7 @@ StockAnalyzer is an open-source, cross-platform desktop application for stock an
 StockAnalyzer/
 ├── StockAnalyzer.Avalonia/  # Desktop UI (Views, ViewModels, Assets)
 ├── StockAnalyzer.Core/      # Business logic, math, and Named Pipe IPC
+├── StockAnalyzer.McpServer/ # Read-only MCP server for AI clients (stdio)
 ├── StockAnalyzer.Python/    # Python scripts for data ingestion and indicators
 └── Tests/                  # Unit, Integration, and UI Automation tests
 ```
@@ -68,15 +69,17 @@ You need to create a virtual environment, install dependencies, and update your 
 
 **macOS / Linux (Bash):**
 ```bash
-python3 -m venv .venv
+python3.13 -m venv .venv
 source .venv/bin/activate
+python -m pip install --upgrade "pip>=26.2.2" certifi
 pip install -r StockAnalyzer.Python/requirements.txt
 ```
 
 **Windows (PowerShell):**
 ```powershell
-python -m venv .venv
+py -3.13 -m venv .venv
 .venv\Scripts\Activate.ps1
+python -m pip install --upgrade "pip>=26.2.2" certifi
 pip install -r StockAnalyzer.Python\requirements.txt
 ```
 
@@ -181,7 +184,7 @@ This warning appears because the pre-built binaries generated on GitHub Actions 
 *   Why does the first launch take longer on Windows?
     The app is downloading a portable Python environment and installing packages. Subsequent startups are immediate. Check the `logs/` directory if you want to monitor the `pip` output.
 *   Can I use my own Python installation?
-    Yes. Update the `PythonPath` in `appsettings.json` to point to your preferred Python 3.8-3.11 binary.
+    Yes. Update the `PythonPath` in `appsettings.json` to point to your preferred Python 3.13 (3.13.17 or later) binary.
 *   What is `trend_predictor.onnx`?
     This is the machine learning model used for predictions. A `dummy.onnx` is provided to allow the app to compile and start, but actual predictions will fail until you replace it with a properly trained model.
 *   Python processes hang after a crash.

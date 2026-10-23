@@ -1,3 +1,5 @@
+using StockAnalyzer.Core.Services;
+using StockAnalyzer.Core.Models.Settings;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;

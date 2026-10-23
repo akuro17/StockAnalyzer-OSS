@@ -18,7 +18,6 @@ using StockAnalyzer.Avalonia.ViewModels;
 using StockAnalyzer.Avalonia.Services;
 using StockAnalyzer.Avalonia.Services.Drawing;
 using StockAnalyzer.Avalonia.Drawing.Objects;
-using StockAnalyzer.Core.Models.Confluence;
 using SkiaSharp;
 
 namespace StockAnalyzer.Avalonia.Views.Chart;
@@ -490,7 +489,7 @@ public class ChartInteractionController
     /// Publishes a crosshair position change message to the event bus.
     /// Resets properties on the cached payload to enforce ZeroAllocation.
     /// </summary>
-    public void UpdateCrosshairPosition(int index, CoreCandleData? candle, string symbol, int? tlbCount = null, StockAnalyzer.Core.Models.Analysis.ReverseWatchCurvePoint? rwPoint = null, double? mouseY = null, ConfluenceResult? confluence = null, double? screenX = null, double? screenY = null)
+    public void UpdateCrosshairPosition(int index, CoreCandleData? candle, string symbol, int? tlbCount = null, StockAnalyzer.Core.Models.Analysis.ReverseWatchCurvePoint? rwPoint = null, double? mouseY = null, double? screenX = null, double? screenY = null)
     {
         _crosshairData.CandleIndex = index;
         _crosshairData.HoveredCandle = candle;
@@ -498,7 +497,6 @@ public class ChartInteractionController
         _crosshairData.ThreeLineBreakCount = tlbCount;
         _crosshairData.ReverseWatchPoint = rwPoint;
         _crosshairData.MouseY = mouseY;
-        _crosshairData.Confluence = confluence;
         _crosshairData.ScreenX = screenX;
         _crosshairData.ScreenY = screenY;
         
@@ -516,7 +514,6 @@ public class ChartInteractionController
         _crosshairData.ThreeLineBreakCount = null;
         _crosshairData.ReverseWatchPoint = null;
         _crosshairData.MouseY = null;
-        _crosshairData.Confluence = null;
         _crosshairData.ScreenX = null;
         _crosshairData.ScreenY = null;
         

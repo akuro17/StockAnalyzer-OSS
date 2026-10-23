@@ -22,7 +22,7 @@ namespace StockAnalyzer.Core.Services;
 /// </summary>
 public class SourceIndicatorService : ISourceIndicatorService, IDisposable
 {
-    private const string FileName = "source_indicators.json";
+    internal const string FileName = "source_indicators.json";
     private readonly string _filePath;
     private readonly ILogger<SourceIndicatorService> _logger;
     private readonly JsonSerializerOptions _jsonOptions;

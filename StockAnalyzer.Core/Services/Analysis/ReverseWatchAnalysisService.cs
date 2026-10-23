@@ -147,42 +147,11 @@ public class ReverseWatchAnalysisService : IReverseWatchAnalysisService
             double normPrice = (double)(dPrice / rangeP);
             double normVol = (double)(dVol / rangeV);
 
-            // Calculate Angle
             // Y = normPrice, X = normVol
             double angle = Math.Atan2(normPrice, normVol);
             double degrees = angle * MathConstants.RadToDeg;
 
-            // Normalize to 0..360
-            if (degrees < 0) degrees += 360;
-
-            // Shift for 8-sector buckets centered on primary axes (0, 45, 90...)
-            double shifted = degrees + 22.5;
-            if (shifted >= 360) shifted -= 360; // Wrap around
-            
-            int sector = (int)(shifted / 45.0);
-
-            // Mapping per User Image/Table:
-            // Sector 0 (East) -> Phase 3
-            // Sector 1 (NE)   -> Phase 4
-            // Sector 2 (North)-> Phase 5
-            // Sector 3 (NW)   -> Phase 6
-            // Sector 4 (West) -> Phase 7
-            // Sector 5 (SW)   -> Phase 8
-            // Sector 6 (South)-> Phase 1
-            // Sector 7 (SE)   -> Phase 2
-
-            p.Phase = sector switch
-            {
-                0 => ReverseWatchPhase.Phase2, // East: Buy Continuation (買い乗せ)
-                1 => ReverseWatchPhase.Phase3, // NE: Caution (天井警戒)
-                2 => ReverseWatchPhase.Phase4, // North: Bearish Reversal (陰転)
-                3 => ReverseWatchPhase.Phase5, // NW: Sell Signal (売り)
-                4 => ReverseWatchPhase.Phase6, // West: Sell Continuation (売り乗せ)
-                5 => ReverseWatchPhase.Phase7, // SW: Bottoming Out (底入れ)
-                6 => ReverseWatchPhase.Phase8, // South: Bullish Reversal (陽転)
-                7 => ReverseWatchPhase.Phase1, // SE: Buy Signal (買い)
-                _ => ReverseWatchPhase.None
-            };
+            p.Phase = ReverseWatchSectors.PhaseAtAngle(degrees);
         }
         
         // Scaling Factor: Range Ratio

@@ -56,6 +56,11 @@ public interface IStockAnalyzerSettings
     int PythonMaxResponseBytes => new Models.Settings.PythonIpcSettings().MaxResponseBytes;
     int PythonMaxTimeoutRetries => new Models.Settings.PythonIpcSettings().MaxTimeoutRetries;
 
+    // Python package checks at start-up (defaults live in Models.Settings.PythonPackageCheckSettings)
+    TimeSpan PythonImportProbeTimeout => TimeSpan.FromSeconds(new Models.Settings.PythonPackageCheckSettings().ImportProbeTimeoutSeconds);
+    TimeSpan PythonUpdateCheckTimeout => TimeSpan.FromSeconds(new Models.Settings.PythonPackageCheckSettings().UpdateCheckTimeoutSeconds);
+    TimeSpan PythonUpdateCheckRequestTimeout => TimeSpan.FromSeconds(new Models.Settings.PythonPackageCheckSettings().UpdateCheckRequestTimeoutSeconds);
+
     // Backtest
     /// <summary>
     /// Largest Offset a backtest condition may use (see <see cref="Models.Settings.BacktestSettings.MaxConditionOffset"/>). Defaulted here (default interface member,

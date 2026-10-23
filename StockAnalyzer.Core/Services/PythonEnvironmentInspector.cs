@@ -7,7 +7,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using Python.Included;
 
 namespace StockAnalyzer.Core.Services
 {
@@ -65,7 +64,7 @@ print(json.dumps(_out))
             bool interpreterPresent;
             try
             {
-                interpreterPresent = Installer.IsPythonInstalled();
+                interpreterPresent = PythonEmbeddedInstaller.IsInstalled();
             }
             catch
             {

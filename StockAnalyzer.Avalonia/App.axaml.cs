@@ -1,3 +1,4 @@
+using StockAnalyzer.Core.Services;
 using Avalonia.Styling;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;

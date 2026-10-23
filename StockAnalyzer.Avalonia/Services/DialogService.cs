@@ -1741,7 +1741,7 @@ public partial class DialogService : IDialogService
                     {
                         try
                         {
-                            await desktop.MainWindow.Clipboard.SetTextAsync("pip install -r StockAnalyzer.Python/requirements.txt");
+                            await desktop.MainWindow.Clipboard.SetTextAsync(StockAnalyzer.Core.Services.ManualPipCommands.Setup(StockAnalyzer.Core.Services.ManualShell.PowerShell7));
                         }
                         catch { }
                     }
@@ -1772,7 +1772,7 @@ public partial class DialogService : IDialogService
     {
         if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            const string setupCommand = "pip install -r StockAnalyzer.Python/requirements.txt";
+            var setupCommand = StockAnalyzer.Core.Services.ManualPipCommands.Setup(StockAnalyzer.Core.Services.ManualShell.PowerShell7);
             if (desktop.MainWindow?.Clipboard != null)
             {
                 try
@@ -1831,7 +1831,7 @@ public partial class DialogService : IDialogService
                     Background = bgPrimaryBrush,
                     Child = new TextBlock 
                     { 
-                        Text = LocalizationManager.Instance["PythonSetup_Manual_Instructions"] ?? "", 
+                        Text = (LocalizationManager.Instance["PythonSetup_Manual_Instructions"] ?? "").Replace("{ManualCommands}", StockAnalyzer.Core.Services.ManualPipCommands.AllShells(StockAnalyzer.Core.Services.ManualPipCommands.Setup)),
                         TextWrapping = TextWrapping.Wrap,
                         Foreground = textPrimaryBrush,
                         FontSize = GetBaseFontSize(),
@@ -1985,7 +1985,7 @@ public partial class DialogService : IDialogService
                     {
                         try
                         {
-                            await desktop.MainWindow.Clipboard.SetTextAsync("pip install yfinance pandas polars pyarrow --upgrade");
+                            await desktop.MainWindow.Clipboard.SetTextAsync(StockAnalyzer.Core.Services.ManualPipCommands.Update(StockAnalyzer.Core.Services.ManualShell.PowerShell7));
                         }
                         catch { }
                     }
@@ -2012,7 +2012,7 @@ public partial class DialogService : IDialogService
     {
         if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            const string updateCommand = "pip install yfinance pandas polars pyarrow --upgrade";
+            var updateCommand = StockAnalyzer.Core.Services.ManualPipCommands.Update(StockAnalyzer.Core.Services.ManualShell.PowerShell7);
             if (desktop.MainWindow?.Clipboard != null)
             {
                 try
@@ -2071,7 +2071,7 @@ public partial class DialogService : IDialogService
                     Background = bgPrimaryBrush,
                     Child = new TextBlock 
                     { 
-                        Text = LocalizationManager.Instance["PythonUpdate_Manual_Instructions"] ?? "", 
+                        Text = (LocalizationManager.Instance["PythonUpdate_Manual_Instructions"] ?? "").Replace("{ManualCommands}", StockAnalyzer.Core.Services.ManualPipCommands.AllShells(StockAnalyzer.Core.Services.ManualPipCommands.Update)),
                         TextWrapping = TextWrapping.Wrap,
                         Foreground = textPrimaryBrush,
                         FontSize = GetBaseFontSize(),

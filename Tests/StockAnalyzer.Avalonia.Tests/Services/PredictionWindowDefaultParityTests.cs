@@ -1,3 +1,4 @@
+using StockAnalyzer.Core.Models.Settings;
 using System.IO;
 using System.Text.Json;
 using System.Text.RegularExpressions;

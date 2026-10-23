@@ -29,6 +29,9 @@
     <EmbeddedResource Remove="StockAnalyzer.Core.Tests\**" />
     <None Remove="StockAnalyzer.Core.Tests\**" />
     <Compile Remove="StockAnalyzer.Avalonia.Tests\**" />
+    <Compile Remove="IntegrationTests\**" />
+    <EmbeddedResource Remove="IntegrationTests\**" />
+    <None Remove="IntegrationTests\**" />
     <EmbeddedResource Remove="StockAnalyzer.Avalonia.Tests\**" />
     <None Remove="StockAnalyzer.Avalonia.Tests\**" />
     <Compile Remove="E2E\**" />
@@ -50,12 +53,17 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="StockAnalyzer.Core.Tests\TestHelpers\ParquetFixtureBuilder.cs" Link="ParquetFixtureBuilder.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Using Include="Xunit" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\StockAnalyzer.Core\StockAnalyzer.Core.csproj" />
     <ProjectReference Include="..\StockAnalyzer.Avalonia\StockAnalyzer.Avalonia.csproj" />
+    <ProjectReference Include="..\StockAnalyzer.McpServer\StockAnalyzer.McpServer.csproj" />
   </ItemGroup>
 
 </Project>

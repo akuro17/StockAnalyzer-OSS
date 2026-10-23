@@ -679,20 +679,6 @@
           "System.Threading.RateLimiting": "7.0.0"
         }
       },
-      "Python.Deployment": {
-        "type": "Transitive",
-        "resolved": "2.0.5",
-        "contentHash": "U+hZ6L5tgPjX9bA/+K2rVQ94MNWGld+HIH78ULZ5ogfwVNvesaIEXhvKPLA6O6YuQF406Uw3WBLTCRlCpMC2QQ=="
-      },
-      "Python.Included": {
-        "type": "Transitive",
-        "resolved": "3.13.0",
-        "contentHash": "B2MGu6EY4vD3a+bH6k06AUhnLrpc6/DYzJIiJenUBw9AkSgVyY+UyD+3KNgCqj76/bKQoTIhI/49wMJygI3IgA==",
-        "dependencies": {
-          "Python.Deployment": "2.0.5",
-          "pythonnet": "3.0.5"
-        }
-      },
       "pythonnet": {
         "type": "Transitive",
         "resolved": "3.0.5",
@@ -1873,9 +1859,9 @@
           "Microsoft.Extensions.Logging.Abstractions": "[8.0.0, )",
           "Microsoft.Extensions.Resilience": "[8.0.0, )",
           "Microsoft.ML.OnnxRuntime": "[1.24.3, )",
-          "Python.Included": "[3.13.0, )",
           "SkiaSharp": "[2.88.9, )",
-          "SkiaSharp.NativeAssets.Linux.NoDependencies": "[2.88.9, )"
+          "SkiaSharp.NativeAssets.Linux.NoDependencies": "[2.88.9, )",
+          "pythonnet": "[3.0.5, )"
         }
       }
     }

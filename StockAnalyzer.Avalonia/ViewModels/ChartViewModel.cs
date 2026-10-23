@@ -1970,6 +1970,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
 
         // --- Reverse Watch ---
         ShowReverseWatchGrid = s.ShowReverseWatchGrid;
+        ReverseWatchPeriod = s.ReverseWatchPeriod;
         ReverseWatchIsMaBased = s.ReverseWatchIsMaBased;
         ReverseWatchIsLogScaleVolume = s.ReverseWatchIsLogScaleVolume;
         ReverseWatchDataCount = s.ReverseWatchDataCount;
@@ -2132,7 +2133,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
         _messenger = WeakReferenceMessenger.Default;
         _dataService = new StockAnalyzer.Avalonia.Services.MockDataService();
         _dispatcherService = new StockAnalyzer.Avalonia.Services.Mocks.DesignTimeDispatcher();
-        _timeFrameManager = new StockAnalyzer.Avalonia.Services.TimeFrameManager(_dataService);
+        _timeFrameManager = new StockAnalyzer.Core.Services.TimeFrameManager(_dataService);
         DialogService = new StockAnalyzer.Avalonia.Services.DialogService();
         _themeManager = new Core.Theme.ThemeManager();
         _chartSettingsManager = new Services.MockChartSettingsManager();

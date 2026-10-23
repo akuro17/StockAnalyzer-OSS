@@ -12,7 +12,6 @@ using System.Threading.Tasks;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Utilities;
 using StockAnalyzer.Core.Models.Indicators;
-using StockAnalyzer.Core.Models.Confluence;
 using StockAnalyzer.Core.Theme;
 using StockAnalyzer.Core.Services;
 using System.Collections.Immutable;
@@ -143,7 +142,6 @@ public partial class DataWindowViewModel : ViewModelBase,
     private int _lastIndicatorCount = -1;
     private bool? _lastIsDark = null;
     private object? _lastResultsRef = null;
-    private StockAnalyzer.Core.Models.Confluence.ConfluenceResult? _lastConfluence = null;
     private CrosshairPositionData? _lastCrosshairData = null;
 
 
@@ -215,15 +213,6 @@ public partial class DataWindowViewModel : ViewModelBase,
 
     [ObservableProperty]
     private string _reverseWatchVolumeText = string.Empty;
-
-    [ObservableProperty]
-    private string _confluenceScoreText = string.Empty;
-
-    [ObservableProperty]
-    private IndicatorColor _confluenceColor = new IndicatorColor(255, 128, 128, 128); // Gray
-
-    [ObservableProperty]
-    private bool _isConfluenceVisible = false;
 
     [ObservableProperty]
     private bool _isOpenVisible = true;
@@ -623,9 +612,7 @@ public partial class DataWindowViewModel : ViewModelBase,
         _lastChartType = null;
         _lastRwPoint = null;
         _lastIndicatorCount = -1;
-        IsConfluenceVisible = false;
         _lastResultsRef = null;
-        _lastConfluence = null;
     }
 
     public void Receive(CrosshairPositionChangedMessage message)
@@ -643,7 +630,6 @@ public partial class DataWindowViewModel : ViewModelBase,
             bool isReverseWatch = vm._chartViewModel.ChartType == ChartType.ReverseWatch;
             int currentIndicatorCount = vm._chartViewModel.Indicators?.Count ?? 0;
             var currentResults = vm._chartViewModel.IndicatorResults;
-            var currentConfluence = data.Confluence;
             
             if (isReverseWatch)
             {
@@ -665,8 +651,7 @@ public partial class DataWindowViewModel : ViewModelBase,
                     vm._lastCrosshairCandleIndex == data.CandleIndex &&
                     Equals(vm._lastCrosshairCandle, data.HoveredCandle) &&
                     vm._lastIndicatorCount == currentIndicatorCount &&
-                    ReferenceEquals(vm._lastResultsRef, currentResults) &&
-                    Equals(vm._lastConfluence, currentConfluence))
+                    ReferenceEquals(vm._lastResultsRef, currentResults))
                 {
                     return; // State unchanged, skip allocations
                 }
@@ -675,7 +660,6 @@ public partial class DataWindowViewModel : ViewModelBase,
                 vm._lastCrosshairCandle = data.HoveredCandle;
                 vm._lastIndicatorCount = currentIndicatorCount;
                 vm._lastResultsRef = currentResults;
-                vm._lastConfluence = currentConfluence;
             }
             
             if (data.ReverseWatchPoint != null)
@@ -743,7 +727,6 @@ public partial class DataWindowViewModel : ViewModelBase,
                 vm.RenkoUpdateText = string.Empty;
                 vm.PointAndFigureCountText = string.Empty;
                 vm.IndicatorSectionTitle = vm._localizationService.GetString("DataWindow_Section_ReverseWatch");
-                vm.IsConfluenceVisible = false;
                 return;
             }
 
@@ -901,7 +884,6 @@ public partial class DataWindowViewModel : ViewModelBase,
         PointAndFigureCountText = string.Empty;
         ReverseWatchValueText = string.Empty;
         ReverseWatchVolumeText = string.Empty;
-        IsConfluenceVisible = false;
 
         IsOpenVisible = true;
         IsHighVisible = true;

@@ -78,7 +78,7 @@ public class ChartViewModelDeferredComputationRestoreTests : IDisposable
             new StockAnalyzer.Avalonia.Services.DialogService(),
             null!, // strategyFactory
             new StockAnalyzer.Avalonia.Services.MockStockAnalyzerSettings(),
-            new StockAnalyzer.Avalonia.Services.TimeFrameManager(dataService),
+            new StockAnalyzer.Core.Services.TimeFrameManager(dataService),
             null!, // marketStructureService
             new StockAnalyzer.Core.Theme.ThemeManager(),
             settingsManager,

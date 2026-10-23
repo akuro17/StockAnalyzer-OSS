@@ -18,6 +18,11 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Minimum pip version (security requirement) and Python series (3.13.17+ bundles pip 26.2.2); shared values
+env:
+  PIP_MIN_VERSION: '26.2.2'
+  PYTHON_VERSION: '3.13'
+
 jobs:
   analyze:
     name: Analyze
@@ -72,14 +77,14 @@ jobs:
       if: matrix.language == 'python'
       uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
       with:
-        python-version: '3.10'
+        python-version: '${{ env.PYTHON_VERSION }}'
         cache: 'pip'
         cache-dependency-path: 'StockAnalyzer.Python/requirements.txt'
 
     - name: Install Python dependencies
       if: matrix.language == 'python'
       run: |
-        python -m pip install --upgrade pip
+        python -m pip install --upgrade "pip>=${{ env.PIP_MIN_VERSION }}" certifi
         if [ -f StockAnalyzer.Python/requirements.txt ]; then
           pip install -r StockAnalyzer.Python/requirements.txt
         else

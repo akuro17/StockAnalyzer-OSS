@@ -1,7 +1,6 @@
 using System.Collections.Generic;
 using CommunityToolkit.Mvvm.Messaging.Messages;
 using StockAnalyzer.Core.Models;
-using StockAnalyzer.Core.Models.Confluence;
 using StockAnalyzer.Core.Models.Indicators;
 
 namespace StockAnalyzer.Avalonia.Common;
@@ -10,30 +9,6 @@ public class IndicatorSettingsChangedMessage : ValueChangedMessage<List<CoreIndi
 {
     public IndicatorSettingsChangedMessage(List<CoreIndicatorSettings> value) : base(value)
     {
-    }
-}
-
-/// <summary>
-/// Published by ChartDataCoordinator when a new snapshot is available.
-/// ConfluenceDashboardViewModel subscribes to this to maintain Zero-Allocation sync.
-/// </summary>
-/// <summary>
-/// Published by ChartDataCoordinator when a new snapshot is available.
-/// ConfluenceDashboardViewModel subscribes to this to maintain Zero-Allocation sync.
-/// </summary>
-public class ConfluenceSnapshotUpdatedMessage 
-{
-    public IReadOnlyDictionary<string, IIndicatorResult>? FullIndicatorResults { get; }
-    public IReadOnlyList<CoreIndicatorSettings> IndicatorSettings { get; }
-    public int FullCount { get; }
-    public ConfluenceSnapshotUpdatedMessage(
-        IReadOnlyDictionary<string, IIndicatorResult>? fullResults, 
-        IReadOnlyList<CoreIndicatorSettings> settings, 
-        int fullCount)
-    {
-        FullIndicatorResults = fullResults;
-        IndicatorSettings = settings;
-        FullCount = fullCount;
     }
 }
 
@@ -72,7 +47,6 @@ public class CrosshairPositionData
     public int? ThreeLineBreakCount { get; set; }
     public StockAnalyzer.Core.Models.Analysis.ReverseWatchCurvePoint? ReverseWatchPoint { get; set; }
     public double? MouseY { get; set; }
-    public ConfluenceResult? Confluence { get; set; }
 
     /// <summary>
     /// Screen X coordinate of the mouse pointer (relative to ChartCanvasBorder).

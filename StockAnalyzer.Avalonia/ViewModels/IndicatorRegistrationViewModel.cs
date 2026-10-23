@@ -1,3 +1,4 @@
+using StockAnalyzer.Core.Models.Settings;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -480,7 +481,7 @@ public partial class IndicatorRegistrationViewModel : ViewModelBase, IDisposable
         }
 
         StockAnalyzer.Core.Services.IStockAnalyzerSettings? effectiveSettings = settings ?? App.Current?.Services?.GetService<StockAnalyzer.Core.Services.IStockAnalyzerSettings>();
-        var defaultScreenerSettings = new StockAnalyzer.Avalonia.Common.ScreenerSettings();
+        var defaultScreenerSettings = new StockAnalyzer.Core.Models.Settings.ScreenerSettings();
         ConditionTree = new Screener.ScreenerConditionTreeViewModel(
             effectiveSettings?.ScreenerMaxFilterTreeDepth ?? defaultScreenerSettings.MaxFilterTreeDepth,
             effectiveSettings?.ScreenerMaxFilterTreeNodes ?? defaultScreenerSettings.MaxFilterTreeNodes,

@@ -184,7 +184,7 @@ public sealed record GlobalChartSettings
     public bool ShowReverseWatchGrid { get; init; } = true;
     public bool ReverseWatchIsMaBased { get; init; } = true;
     public bool ReverseWatchIsLogScaleVolume { get; init; } = false;
-    public int ReverseWatchPeriod { get; init; } = 20;
+    public int ReverseWatchPeriod { get; init; } = StockAnalyzer.Core.ChartConstants.DefaultReverseWatchPeriod;
     public int ReverseWatchDataCount { get; init; } = 100;
     public float ReverseWatchLineThickness { get; init; } = 1.0f;
 

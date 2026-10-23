@@ -1,3 +1,4 @@
+using StockAnalyzer.Core.Models.Settings;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -228,6 +229,78 @@ public static class PathDiscovery
 
         return resolvedPath;
     }
+
+    /// <summary>
+    /// Read-only counterpart of <see cref="ResolveDataPath"/>: returns the path that
+    /// <see cref="ResolveDataPath"/> would return for the same arguments, but never creates a
+    /// directory (the caller checks <see cref="Directory.Exists(string?)"/>). Used by hosts that
+    /// must not modify the file system. <paramref name="baseDirectory"/> defaults to
+    /// <see cref="AppDomain.BaseDirectory"/>; tests pass a temporary tree.
+    /// </summary>
+    public static string ResolveDataPathWithoutCreating(string? configPath, string defaultFolderName = StockAnalyzer.Core.Models.MarketDataSettings.DefaultDailyDataPath, string? filePattern = null, string? baseDirectory = null)
+    {
+        if (Environment.GetEnvironmentVariable(UiTestEnabledEnvironmentVariable) == "1")
+        {
+            string isolatedRoot = Environment.GetEnvironmentVariable(UiTestDataRootEnvironmentVariable)
+                ?? throw new InvalidOperationException("UI automation data root is required when UI tests are enabled.");
+            return ResolveUiTestDataPath(isolatedRoot, configPath ?? defaultFolderName);
+        }
+
+        if (!string.IsNullOrEmpty(configPath) && Path.IsPathRooted(configPath))
+        {
+            return configPath;
+        }
+
+        var relativePath = configPath ?? defaultFolderName;
+        var baseDir = baseDirectory ?? AppDomain.CurrentDomain.BaseDirectory;
+        int dataIdx = relativePath.IndexOf(DataFolderName, StringComparison.OrdinalIgnoreCase);
+        bool isDataPath = dataIdx >= 0;
+        var candidate = Path.GetFullPath(Path.Combine(baseDir, isDataPath ? relativePath.Substring(dataIdx) : relativePath));
+
+        if (!isDataPath
+            && Directory.Exists(candidate)
+            && (filePattern == null || Directory.GetFiles(candidate, filePattern).Any()))
+        {
+            return candidate;
+        }
+
+        string? fallbackDataDir = null;
+        var current = baseDir;
+        while (!string.IsNullOrEmpty(current))
+        {
+            string resolved = isDataPath
+                ? Path.GetFullPath(Path.Combine(current, DataFolderName, relativePath.Substring(dataIdx + DataFolderName.Length).TrimStart('\\', '/')))
+                : Path.GetFullPath(Path.Combine(current, relativePath));
+
+            if (File.Exists(Path.Combine(current, SolutionFileName)))
+            {
+                return resolved;
+            }
+
+            if (Directory.Exists(Path.Combine(current, DataFolderName)) && fallbackDataDir == null)
+            {
+                fallbackDataDir = resolved;
+            }
+
+            var parent = Directory.GetParent(current);
+            if (parent == null) break;
+            current = parent.FullName;
+        }
+
+        return fallbackDataDir ?? candidate;
+    }
+
+    /// <summary>Read-only counterpart of <see cref="ResolveTemplatesDirectory"/>: the same folder when it exists, never creates it (the caller checks <see cref="Directory.Exists(string?)"/>).</summary>
+    public static string ResolveTemplatesDirectoryWithoutCreating(StockAnalyzer.Core.Models.Templates.TemplateType type, string? baseDirectory = null)
+        => Path.Combine(ResolveDataPathWithoutCreating(null, "Data", baseDirectory: baseDirectory), "Templates", type.ToString());
+
+    /// <summary>Read-only counterpart of <see cref="ResolveSourceIndicatorsPath"/>: same result when the folder exists, never creates it.</summary>
+    public static string ResolveSourceIndicatorsPathWithoutCreating(string fileName)
+        => Path.Combine(ResolveDataPathWithoutCreating(null, "Data"), "SourceIndicators", SanitizeFileName(fileName));
+
+    /// <summary>Read-only counterpart of <see cref="ResolveDynamicPeriodDriversPath"/>: same result when the folder exists, never creates it.</summary>
+    public static string ResolveDynamicPeriodDriversPathWithoutCreating(string fileName)
+        => Path.Combine(ResolveDataPathWithoutCreating(null, "Data"), "DynamicPeriodDrivers", SanitizeFileName(fileName));
 
     internal static string ResolveUiTestDataPath(string isolatedRoot, string requestedPath)
     {

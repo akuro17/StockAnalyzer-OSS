@@ -7,7 +7,6 @@ using StockAnalyzer.Avalonia.Models;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Indicators;
 using StockAnalyzer.Core.Utilities;
-using StockAnalyzer.Core.Models.Confluence;
 using StockAnalyzer.Avalonia.Views.Chart.Renderers;
 
 namespace StockAnalyzer.Avalonia.Views.Chart;
@@ -156,10 +155,6 @@ public sealed class ChartDataSnapshot
     /// </summary>
     public ChartType ChartType { get; }
 
-    /// <summary>
-    /// Combined signal confluence result.
-    /// </summary>
-    public ConfluenceResult? Confluence { get; }
     
     /// <summary>
     /// Additional metadata for rendering (e.g., pre-formatted labels for ZeroAllocation).
@@ -218,7 +213,6 @@ public sealed class ChartDataSnapshot
         ChartType chartType = ChartType.Candlestick,
         int? threeLineBreakCount = null,
         IPriceRangeCalculator? priceRangeCalculator = null,
-        ConfluenceResult? confluence = null,
         IReadOnlyDictionary<string, string>? renderingMetadata = null,
         IReadOnlyDictionary<string, decimal?[]>? comparisonSeries = null,
         decimal? overrideMinPrice = null,
@@ -231,7 +225,7 @@ public sealed class ChartDataSnapshot
                symbol, timeframe, indicatorResults, indicatorSettings, drawings, startIndex, count,
                paddingTopPx, paddingBottomPx, chartHeightPx, minBrickSize, maxBrickSize, pnfAnalysis,
                multiWaveSignals, allPnfCandles, chartType, threeLineBreakCount, priceRangeCalculator,
-               confluence, renderingMetadata, comparisonSeries, overrideMinPrice, overrideMaxPrice,
+               renderingMetadata, comparisonSeries, overrideMinPrice, overrideMaxPrice,
                visibleCandleCount, kagiColumnMap, priceScale, modelAnalysis, attention)
     {
     }
@@ -256,7 +250,6 @@ public sealed class ChartDataSnapshot
         ChartType chartType = ChartType.Candlestick,
         int? threeLineBreakCount = null,
         IPriceRangeCalculator? priceRangeCalculator = null,
-        ConfluenceResult? confluence = null,
         IReadOnlyDictionary<string, string>? renderingMetadata = null,
         IReadOnlyDictionary<string, decimal?[]>? comparisonSeries = null,
         decimal? overrideMinPrice = null,
@@ -282,7 +275,6 @@ public sealed class ChartDataSnapshot
         MaxBrickSize = maxBrickSize;
         PnfAnalysis = pnfAnalysis;
         MultiWaveSignals = multiWaveSignals;
-        Confluence = confluence;
         RenderingMetadata = renderingMetadata ?? new Dictionary<string, string>();
         ComparisonSeries = comparisonSeries;
         AllCandles = allPnfCandles != null ? new List<CoreCandleData>(allPnfCandles) : null;
@@ -583,7 +575,6 @@ public sealed class ChartDataSnapshot
         ChartType chartType = ChartType.Candlestick,
         int? threeLineBreakCount = null,
         IPriceRangeCalculator? priceRangeCalculator = null,
-        ConfluenceResult? confluence = null,
         IReadOnlyDictionary<string, string>? renderingMetadata = null,
         IReadOnlyDictionary<string, decimal?[]>? comparisonSeries = null,
         decimal? overrideMinPrice = null,
@@ -605,7 +596,6 @@ public sealed class ChartDataSnapshot
         MaxBrickSize = maxBrickSize;
         PnfAnalysis = pnfAnalysis;
         MultiWaveSignals = multiWaveSignals;
-        Confluence = confluence;
         RenderingMetadata = renderingMetadata ?? new Dictionary<string, string>();
         ComparisonSeries = comparisonSeries;
         AllCandles = allCandles != null ? new List<CoreCandleData>(allCandles) : null;

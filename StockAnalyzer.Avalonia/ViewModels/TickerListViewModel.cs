@@ -1084,7 +1084,7 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
         StockAnalyzer.Core.Services.IDataService? dataService = null,
         StockAnalyzer.Core.Services.Backtest.Engine.IBacktestEngine? backtestEngine = null,
         StockAnalyzer.Core.Services.Backtest.Reporting.IBacktestReportGenerator? backtestReportGenerator = null,
-        StockAnalyzer.Avalonia.Services.IBacktestRunPreparationService? backtestRunPreparationService = null,
+        StockAnalyzer.Core.Services.IBacktestRunPreparationService? backtestRunPreparationService = null,
         StockAnalyzer.Core.Services.Backtest.Evaluation.IBacktestEvaluationService? backtestEvaluationService = null,
         StockAnalyzer.Core.Services.Backtest.Configuration.IBacktestDefaultSettingsManager? backtestDefaultSettingsManager = null,
         StockAnalyzer.Avalonia.Services.IBacktestSettingsCoordinator? backtestSettingsCoordinator = null)

@@ -12,14 +12,15 @@
 # packages. Pass --recreate for a clean rebuild.
 #
 # Usage:
-#   ./setup_env.sh [--python python3.12] [--venv PATH] [--recreate] [--skip-verify]
+#   ./setup_env.sh [--python python3.13] [--pip-min VERSION] [--venv PATH] [--recreate] [--skip-verify]
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REQUIREMENTS="${SCRIPT_DIR}/requirements.txt"
 
-PYTHON="python3"
+PYTHON="python3.13"
+PIP_MIN_VERSION="26.2.2"   # security requirement: minimum pip version
 VENV_PATH="$(cd "${SCRIPT_DIR}/.." && pwd)/.venv"
 TORCH_INDEX_URL="https://download.pytorch.org/whl/cpu"
 RECREATE=0
@@ -28,6 +29,7 @@ SKIP_VERIFY=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --python)       PYTHON="$2"; shift 2 ;;
+        --pip-min)      PIP_MIN_VERSION="$2"; shift 2 ;;
         --venv)         VENV_PATH="$2"; shift 2 ;;
         --torch-index)  TORCH_INDEX_URL="$2"; shift 2 ;;
         --recreate)     RECREATE=1; shift ;;
@@ -42,7 +44,7 @@ run()  { printf '> %s\n' "$*"; "$@"; }
 [ -f "$REQUIREMENTS" ] || { echo "requirements.txt not found: $REQUIREMENTS" >&2; exit 1; }
 
 step "Base interpreter"
-command -v "$PYTHON" >/dev/null 2>&1 || { echo "'$PYTHON' not found; install Python 3.10+ or pass --python." >&2; exit 1; }
+command -v "$PYTHON" >/dev/null 2>&1 || { echo "'$PYTHON' not found; install Python 3.13 (3.13.17+) or pass --python." >&2; exit 1; }
 run "$PYTHON" --version
 
 step "Virtual environment: $VENV_PATH"
@@ -60,8 +62,8 @@ VENV_PY="${VENV_PATH}/bin/python"
 [ -x "$VENV_PY" ] || VENV_PY="${VENV_PATH}/Scripts/python.exe"   # Git Bash on Windows
 [ -x "$VENV_PY" ] || { echo "venv python not found under $VENV_PATH" >&2; exit 1; }
 
-step "Upgrade pip / setuptools / wheel"
-run "$VENV_PY" -m pip install --upgrade pip setuptools wheel
+step "Upgrade pip (>=${PIP_MIN_VERSION}) / setuptools / wheel / certifi"
+run "$VENV_PY" -m pip install --upgrade "pip>=${PIP_MIN_VERSION}" setuptools wheel certifi
 
 step "torch (CPU wheel index: $TORCH_INDEX_URL)"
 run "$VENV_PY" -m pip install --index-url "$TORCH_INDEX_URL" "torch>=2.2"

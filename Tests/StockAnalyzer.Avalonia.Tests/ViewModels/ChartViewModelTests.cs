@@ -1,3 +1,4 @@
+using StockAnalyzer.Core.Services;
 using Xunit;
 using StockAnalyzer.Avalonia.ViewModels;
 using StockAnalyzer.Core.Models;
@@ -25,7 +26,7 @@ public class ChartViewModelTests
             new StockAnalyzer.Avalonia.Services.DialogService(),
             null!, // strategyFactory
             new StockAnalyzer.Avalonia.Services.MockStockAnalyzerSettings(),
-            new StockAnalyzer.Avalonia.Services.TimeFrameManager(new StockAnalyzer.Avalonia.Services.MockDataService()),
+            new StockAnalyzer.Core.Services.TimeFrameManager(new StockAnalyzer.Avalonia.Services.MockDataService()),
             null!, // marketStructureService
             new StockAnalyzer.Core.Theme.ThemeManager(),
             settingsManager,
@@ -365,7 +366,7 @@ public class ChartViewModelTests
             new StockAnalyzer.Avalonia.Services.DialogService(),
             null!,
             new StockAnalyzer.Avalonia.Services.MockStockAnalyzerSettings(),
-            new StockAnalyzer.Avalonia.Services.TimeFrameManager(new StockAnalyzer.Avalonia.Services.MockDataService()),
+            new StockAnalyzer.Core.Services.TimeFrameManager(new StockAnalyzer.Avalonia.Services.MockDataService()),
             null!,
             new StockAnalyzer.Core.Theme.ThemeManager(),
             new StockAnalyzer.Avalonia.Services.MockChartSettingsManager(),

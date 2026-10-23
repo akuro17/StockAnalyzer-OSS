@@ -18,14 +18,11 @@ public sealed class HeaderOverlayRenderer : IDisposable
     private readonly SKPaint _labelPaint;
     private readonly SKPaint _backgroundPaint;
     private readonly SKPaint _errorPaint;
-    private readonly SKPaint _scorePaint;
     private readonly SKPaint _indicatorColorBoxPaint;
 
     // Cache for strings to avoid per-frame allocations
     private long _lastOhlcvCandleTicks = -1;
     private string _ohlcvCache = string.Empty;
-    private decimal _lastConfluenceScore = -1;
-    private string _confluenceCache = string.Empty;
     private readonly System.Collections.Generic.Dictionary<string, (decimal Value, string Name, string Text)> _indicatorCache = new();
     private readonly System.Collections.Generic.Dictionary<string, string> _errorCache = new();
 
@@ -63,13 +60,6 @@ public sealed class HeaderOverlayRenderer : IDisposable
             Color = SKColors.Red,
             TextSize = 14,
             IsAntialias = true
-        };
-
-        _scorePaint = new SKPaint
-        {
-            TextSize = 14,
-            IsAntialias = true,
-            Typeface = SKTypeface.FromFamilyName("Arial", SKFontStyle.Bold)
         };
 
         _indicatorColorBoxPaint = new SKPaint
@@ -146,24 +136,6 @@ public sealed class HeaderOverlayRenderer : IDisposable
         }
         
         canvas.DrawText(_ohlcvCache, x, y, _labelPaint);
-        
-        // Draw Confluence Score (Step UI-2)
-        if (snapshot.Confluence.HasValue)
-        {
-            var conf = snapshot.Confluence.Value;
-            float scoreX = x + _labelPaint.MeasureText(_ohlcvCache) + 30; // 30px spacing
-
-            // Use Theme colors for consistency
-            string arrow = conf.Score >= 50 ? "▲" : "▼";
-            _scorePaint.Color = conf.Score >= 50 ? theme.Bullish.ToSkColor() : theme.Bearish.ToSkColor();
-            
-            if (_lastConfluenceScore != conf.Score)
-            {
-                _confluenceCache = $"Confluence: {arrow} {conf.Score:F0}%";
-                _lastConfluenceScore = conf.Score;
-            }
-            canvas.DrawText(_confluenceCache, scoreX, y, _scorePaint);
-        }
 
         // Move down for Indicators
         y += 20;
@@ -254,7 +226,6 @@ public sealed class HeaderOverlayRenderer : IDisposable
         _labelPaint.Dispose();
         _backgroundPaint.Dispose();
         _errorPaint.Dispose();
-        _scorePaint.Dispose();
         _indicatorColorBoxPaint.Dispose();
         _indicatorCache.Clear();
         _errorCache.Clear();

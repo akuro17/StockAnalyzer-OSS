@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using global::Avalonia;
 using SkiaSharp;
-using StockAnalyzer.Avalonia.Common;
 using StockAnalyzer.Avalonia.Drawing;
 using StockAnalyzer.Core.Models;
 using Xunit;

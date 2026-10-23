@@ -1,3 +1,5 @@
+using StockAnalyzer.Core.Services;
+using StockAnalyzer.Core.Models.Settings;
 using System;
 using System.ComponentModel;
 using System.IO;

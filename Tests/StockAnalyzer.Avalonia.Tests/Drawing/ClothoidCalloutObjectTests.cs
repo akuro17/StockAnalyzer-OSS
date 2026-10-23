@@ -4,7 +4,6 @@ using Avalonia;
 using Point = Avalonia.Point;
 using Avalonia.Media;
 using SkiaSharp;
-using StockAnalyzer.Avalonia.Common;
 using StockAnalyzer.Avalonia.Drawing;
 using StockAnalyzer.Avalonia.Drawing.Behaviors;
 using StockAnalyzer.Avalonia.Drawing.Serialization;

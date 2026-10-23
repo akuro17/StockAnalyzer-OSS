@@ -15,8 +15,12 @@
     packages. Use -Recreate for a clean rebuild.
 
 .PARAMETER Python
-    Launcher used to create the venv. Default: "python". On Windows "py -3.12"
-    also works: pass -Python "py" -PythonArgs "-3.12".
+    Launcher used to create the venv. Default: "py" on Windows (with -PythonArgs
+    "-3.13"), "python3.13" elsewhere. Override e.g. -Python "py" -PythonArgs "-3.14".
+
+.PARAMETER PipMinVersion
+    Minimum pip version enforced when bootstrapping the venv (security requirement).
+    Default: 26.2.2. The bootstrap fails if a pip at or above this version cannot be installed.
 
 .PARAMETER VenvPath
     Target venv directory. Default: StockAnalyzer.Python/.venv (one level up
@@ -35,12 +39,13 @@
     pwsh ./setup_env.ps1
 
 .EXAMPLE
-    pwsh ./setup_env.ps1 -Recreate -Python "py" -PythonArgs "-3.12"
+    pwsh ./setup_env.ps1 -Recreate -Python "py" -PythonArgs "-3.13"
 #>
 [CmdletBinding()]
 param(
-    [string]   $Python         = "python",
-    [string[]] $PythonArgs     = @(),
+    [string]   $Python         = $(if ($PSVersionTable.Platform -eq "Unix") { "python3.13" } else { "py" }),
+    [string[]] $PythonArgs     = $(if ($PSVersionTable.Platform -eq "Unix") { @() } else { @("-3.13") }),
+    [string]   $PipMinVersion  = "26.2.2",
     [string]   $VenvPath       = (Join-Path (Split-Path $PSScriptRoot -Parent) ".venv"),
     [string]   $TorchIndexUrl  = "https://download.pytorch.org/whl/cpu",
     [switch]   $Recreate,
@@ -64,7 +69,7 @@ if (-not (Test-Path $requirements)) { throw "requirements.txt not found next to 
 Write-Step "Base interpreter"
 $baseArgs = @($PythonArgs + @("--version"))
 try { Invoke-Checked $Python $baseArgs }
-catch { throw "Cannot run '$Python'. Install Python 3.10+ or pass -Python / -PythonArgs. ($_)" }
+catch { throw "Cannot run '$Python'. Install Python 3.13 (3.13.17+) or pass -Python / -PythonArgs. ($_)" }
 
 # --- 2. Create (or reuse) the venv -------------------------------------------
 Write-Step "Virtual environment: $VenvPath"
@@ -83,8 +88,8 @@ if (-not (Test-Path $venvPy)) { $venvPy = Join-Path $VenvPath "bin/python" }  # 
 if (-not (Test-Path $venvPy)) { throw "venv python not found under $VenvPath" }
 
 # --- 3. Bootstrap pip -------------------------------------------------------
-Write-Step "Upgrade pip / setuptools / wheel"
-Invoke-Checked $venvPy @("-m", "pip", "install", "--upgrade", "pip", "setuptools", "wheel")
+Write-Step "Upgrade pip (>=$PipMinVersion) / setuptools / wheel / certifi"
+Invoke-Checked $venvPy @("-m", "pip", "install", "--upgrade", "pip>=$PipMinVersion", "setuptools", "wheel", "certifi")
 
 # --- 4. torch first, from the CPU wheel index -------------------------------
 Write-Step "torch (CPU wheel index: $TorchIndexUrl)"

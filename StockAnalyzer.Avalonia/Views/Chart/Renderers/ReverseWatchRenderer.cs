@@ -6,6 +6,7 @@ using System.Linq;
 using Avalonia; // Added for Point and Rect
 using StockAnalyzer.Avalonia.Drawing; // Added for ICoordinateTransform
 using StockAnalyzer.Core.MathUtils;
+using StockAnalyzer.Core.Services.Analysis;
 
 namespace StockAnalyzer.Avalonia.Views.Chart.Renderers;
 
@@ -382,16 +383,9 @@ public class ReverseWatchRenderer : IChartRenderer
             
             // Determine phase at the midpoint of the sub-segment
             var mp = new SKPoint((sp.X + ep.X)/2, (sp.Y + ep.Y)/2);
-            var geometricPhase = GetPhaseAtPoint(mp, centerX, centerY, halfW, halfH);
-            
-            // Adjust phase based on user feedback ("Colors are shifted left by 1").
-            // User likely expects the phase color N to apply to the segment leading *towards* phase N+1,
-            // or there is a phase definition offset.
-            // Previous logic used "GetPreviousPhase" (N -> N-1). 
-            // Applying this shift aligns "Phase 2 color" to the "Phase 2" geometric region (if the definitions were shifted) 
-            var drawingPhase = GetPreviousPhase(geometricPhase);
-             
-            var phaseColor = config.GetPhaseColor(drawingPhase).ToSkColor();
+            var phase = GetPhaseAtPoint(mp, centerX, centerY, halfW, halfH);
+
+            var phaseColor = config.GetPhaseColor(phase).ToSkColor();
             paint.Color = new SKColor(phaseColor.Red, phaseColor.Green, phaseColor.Blue, alpha);
             
             canvas.DrawLine(sp, ep, paint);
@@ -410,38 +404,10 @@ public class ReverseWatchRenderer : IChartRenderer
          double lx = sx / halfW;
          double ly = -sy / halfH; // Flip Y back to standard math Y (Up is positive)
          
-         double angleRad = Math.Atan2(ly, lx); 
+         double angleRad = Math.Atan2(ly, lx);
          double angleDeg = angleRad * MathConstants.RadToDeg;
-         if (angleDeg < 0) angleDeg += 360.0;
-         
-         // Map angle to Phase
-         // Phase 3: East (0 deg) -> Region [337.5, 22.5)
-         // And so on, 45 degree steps
-         
-         if (angleDeg >= 337.5 || angleDeg < 22.5) return ReverseWatchPhase.Phase3; // East
-         if (angleDeg < 67.5) return ReverseWatchPhase.Phase4;  // NE
-         if (angleDeg < 112.5) return ReverseWatchPhase.Phase5; // North
-         if (angleDeg < 157.5) return ReverseWatchPhase.Phase6; // NW
-         if (angleDeg < 202.5) return ReverseWatchPhase.Phase7; // West
-         if (angleDeg < 247.5) return ReverseWatchPhase.Phase8; // SW
-         if (angleDeg < 292.5) return ReverseWatchPhase.Phase1; // South
-         return ReverseWatchPhase.Phase2; // SE
-    }
 
-    private ReverseWatchPhase GetPreviousPhase(ReverseWatchPhase phase)
-    {
-        return phase switch
-        {
-            ReverseWatchPhase.Phase1 => ReverseWatchPhase.Phase8,
-            ReverseWatchPhase.Phase2 => ReverseWatchPhase.Phase1,
-            ReverseWatchPhase.Phase3 => ReverseWatchPhase.Phase2,
-            ReverseWatchPhase.Phase4 => ReverseWatchPhase.Phase3,
-            ReverseWatchPhase.Phase5 => ReverseWatchPhase.Phase4,
-            ReverseWatchPhase.Phase6 => ReverseWatchPhase.Phase5,
-            ReverseWatchPhase.Phase7 => ReverseWatchPhase.Phase6,
-            ReverseWatchPhase.Phase8 => ReverseWatchPhase.Phase7,
-            _ => phase
-        };
+         return ReverseWatchSectors.PhaseAtAngle(angleDeg);
     }
 }
 

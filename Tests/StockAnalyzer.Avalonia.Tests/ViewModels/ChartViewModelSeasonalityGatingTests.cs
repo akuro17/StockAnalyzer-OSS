@@ -1,3 +1,4 @@
+using StockAnalyzer.Core.Services;
 using System;
 using System.Collections.Generic;
 using System.Threading;

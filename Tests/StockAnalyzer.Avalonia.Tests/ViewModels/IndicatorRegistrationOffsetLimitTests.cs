@@ -1,3 +1,4 @@
+using StockAnalyzer.Core.Models.Settings;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -92,7 +93,7 @@ public sealed class IndicatorRegistrationOffsetLimitTests
     {
         var vm = new IndicatorRegistrationViewModel(settings: new MockStockAnalyzerSettings());
 
-        Assert.Equal(new StockAnalyzer.Avalonia.Common.ScreenerSettings().MaxConditionOffset, (int)vm.MaxConditionOffset);
+        Assert.Equal(new StockAnalyzer.Core.Models.Settings.ScreenerSettings().MaxConditionOffset, (int)vm.MaxConditionOffset);
     }
 
     [Theory]

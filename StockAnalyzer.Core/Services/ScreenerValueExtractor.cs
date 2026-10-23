@@ -74,8 +74,30 @@ public class ScreenerValueExtractor : IScreenerValueExtractor
     }
 
     // The name that selects the metric is the one definition ScreenerIndicatorSideConfig.ResolveLookupName; a side that names nothing reads its DisplayName.
+    // A name that is one of the registry's names for a column (member name, short name or description) is resolved to the column's member name, so the
+    // metric a Column condition reads does not depend on which of its names the condition stored: the keyword matching of GetMetadataValue read no value
+    // for 39 and another metric for 26 of the 79 numeric columns when the description was the stored name.
     private static string ResolveColumnName(ScreenerIndicatorSideConfig config)
-        => config.ResolveLookupName() ?? config.DisplayName ?? "";
+        => RegistryMember(config.CustomDisplayName) ?? RegistryMember(config.OutputName) ?? RegistryMember(config.DisplayName)
+           ?? config.ResolveLookupName() ?? config.DisplayName ?? "";
+
+    private static readonly Lazy<Dictionary<string, string>> _columnMembersByName = new(BuildColumnMembersByName);
+
+    private static Dictionary<string, string> BuildColumnMembersByName()
+    {
+        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var column in Models.Watchlist.WatchlistColumnRegistry.AllColumns)
+        {
+            map.TryAdd(column.MemberName, column.MemberName);
+            if (!string.IsNullOrWhiteSpace(column.DisplayName)) map.TryAdd(column.DisplayName, column.MemberName);
+            if (!string.IsNullOrWhiteSpace(column.Description)) map.TryAdd(column.Description, column.MemberName);
+        }
+
+        return map;
+    }
+
+    private static string? RegistryMember(string? name)
+        => !string.IsNullOrWhiteSpace(name) && _columnMembersByName.Value.TryGetValue(name, out string? member) ? member : null;
 
     private static readonly CoreCandleData[] ProbeBar = { new(DateTime.MinValue, 0m, 0m, 0m, 0m, 0L) };
 
@@ -641,17 +663,17 @@ public class ScreenerValueExtractor : IScreenerValueExtractor
             return null;
         }
 
-        if (cleaned.Contains("evebitda")) return meta.EnterpriseToEbitda;
+        if (cleaned.Contains("evebitda") || cleaned.Contains("enterprisetoebitda")) return meta.EnterpriseToEbitda;
         if (cleaned.Contains("ebitda")) return meta.Ebitda;
         if (cleaned.Contains("freecash") || cleaned == "fcf") return meta.FreeCashflow;
-        if (cleaned.Contains("operatingcash") || cleaned == "ocf") return meta.OperatingCashflow;
+        if ((cleaned.Contains("operatingcash") && !cleaned.Contains("yield")) || cleaned == "ocf") return meta.OperatingCashflow;
         if (cleaned.Contains("trailingpe") || cleaned == "pe" || cleaned == "per") return meta.TrailingPE;
         if (cleaned.Contains("forwardpe")) return meta.ForwardPE;
         if (cleaned.Contains("pbr") || cleaned.Contains("pricetobook") || cleaned.Contains("pbratio") || cleaned == "pb") return meta.PriceToBook;
         if (cleaned.Contains("psr") || cleaned.Contains("pricetosales") || cleaned.Contains("psttm") || cleaned == "ps") return meta.PriceToSalesTrailing12Months;
         if (cleaned.Contains("peg")) return meta.PegRatio;
         if (cleaned == "ev" || cleaned.Contains("enterprisevalue")) return meta.EnterpriseValue;
-        if (cleaned.Contains("marketcap")) return meta.MarketCap;
+        if (cleaned.Contains("marketcap") && !cleaned.Contains("employee")) return meta.MarketCap;
         if (cleaned.Contains("sharesoutstanding")) return meta.SharesOutstanding;
         if (cleaned.Contains("floatshares")) return meta.FloatShares;
         if (cleaned.Contains("totaldebt")) return meta.TotalDebt;
@@ -713,6 +735,9 @@ public class ScreenerValueExtractor : IScreenerValueExtractor
         if (cleaned.Contains("enterprisetorevenue") || cleaned.Contains("evrevenue")) return meta.EnterpriseToRevenue;
         if (cleaned.Contains("averagevolume") || cleaned.Contains("avgvolume")) return meta.AverageVolume;
         if (cleaned.Contains("pricetocashflow") || cleaned.Contains("pcfratio") || cleaned == "pcf") return meta.PriceToCashFlowRatio;
+        if (cleaned.Contains("averagefloatturnover") || cleaned.Contains("avgfloatturnover")) return meta.AverageFloatTurnover;
+        if (cleaned.Contains("dailyfloatshareturnover") || cleaned.Contains("floatturnover")) return meta.DailyFloatShareTurnoverRatio;
+        if (cleaned.Contains("averageturnoverrate") || cleaned.Contains("avgturnoverrate")) return meta.AverageTurnoverRate;
         if (cleaned.Contains("turnoverrate") || cleaned.Contains("turnover")) return meta.DailyTurnoverRate ?? meta.AverageTurnoverRate;
         if (cleaned.Contains("targethigh")) return meta.TargetHighPrice;
         if (cleaned.Contains("targetlow")) return meta.TargetLowPrice;

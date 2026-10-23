@@ -5,11 +5,13 @@ using System.Threading;
 using System.Threading.Tasks;
 using Moq;
 using StockAnalyzer.Avalonia.Services;
+using StockAnalyzer.Avalonia.Tests.TestHelpers;
 using StockAnalyzer.Avalonia.ViewModels;
 using StockAnalyzer.Avalonia.ViewModels.Dialogs;
 using StockAnalyzer.Core.Interfaces;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Training;
+using StockAnalyzer.Core.Models.Watchlist;
 using StockAnalyzer.Core.Services;
 using Xunit;
 
@@ -35,7 +37,8 @@ public sealed class DefaultValueInventoryTests
             });
         var market = new Mock<IMarketDataProvider>();
         market.Setup(p => p.GetAvailableTickersAsync()).ReturnsAsync(new System.Collections.Generic.List<string> { "AAA" });
-        var wizard = new TrainingWizardViewModel(orchestrator: orchestrator.Object, marketDataProvider: market.Object);
+        var tickerStore = FakeTickerStateStore.FromProfiles(Array.Empty<WatchlistProfile>());     // the wizard's symbols come from the ticker store (All Tickers node)
+        var wizard = new TrainingWizardViewModel(orchestrator: orchestrator.Object, marketDataProvider: market.Object, tickerStore: tickerStore);
         Assert.True(wizard.StartTrainingCommand.CanExecute(null), "the wizard starts at its defaults with a ticker and nothing else");
         await wizard.StartTrainingCommand.ExecuteAsync(null);
         Assert.NotNull(captured);

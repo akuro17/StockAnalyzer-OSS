@@ -22,7 +22,7 @@ namespace StockAnalyzer.Core.Services;
 /// </summary>
 public class DynamicPeriodDriverService : IDynamicPeriodDriverService, IDisposable
 {
-    private const string FileName = "dynamic_period_drivers.json";
+    internal const string FileName = "dynamic_period_drivers.json";
     private readonly string _filePath;
     private readonly ILogger<DynamicPeriodDriverService> _logger;
     private readonly JsonSerializerOptions _jsonOptions;

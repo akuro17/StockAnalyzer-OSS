@@ -1,3 +1,4 @@
+using StockAnalyzer.Core.Models.Settings;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -56,7 +57,7 @@ public sealed partial class ScreenerConditionTreeViewModel : ObservableObject
         {
             throw new ArgumentOutOfRangeException(nameof(maxNameLength), maxNameLength, "maxNameLength must be >= 1.");
         }
-        int dragDistance = dragStartDistance ?? new StockAnalyzer.Avalonia.Common.ScreenerSettings().ConditionDragStartDistance;
+        int dragDistance = dragStartDistance ?? new StockAnalyzer.Core.Models.Settings.ScreenerSettings().ConditionDragStartDistance;
         if (dragDistance < 1)
         {
             throw new ArgumentOutOfRangeException(nameof(dragStartDistance), dragStartDistance, "dragStartDistance must be >= 1.");

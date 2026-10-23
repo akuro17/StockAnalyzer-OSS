@@ -248,7 +248,7 @@ public class ParquetMarketDataProvider : IMarketDataProvider
                     {
                         var deduplicatedList = rawList
                             .Where(s => !string.IsNullOrWhiteSpace(s))
-                            .Select(s => s.Trim().ToUpperInvariant().Replace('.', '-'))
+                            .Select(s => TickerSymbol.Canonicalize(s))
                             .Distinct(StringComparer.OrdinalIgnoreCase)
                             .ToList();
                         _logger.LogTrace("Loaded {Count} available tickers from master list: {Path}", deduplicatedList.Count, _tickerListPath);
@@ -272,7 +272,7 @@ public class ParquetMarketDataProvider : IMarketDataProvider
             Directory.GetFiles(_baseDataPath, "*.parquet")
                      .Select(Path.GetFileNameWithoutExtension)
                      .Where(f => !string.IsNullOrWhiteSpace(f))
-                     .Select(f => f!.Trim().ToUpperInvariant().Replace('.', '-'))
+                     .Select(f => TickerSymbol.Canonicalize(f!))
                      .Distinct(StringComparer.OrdinalIgnoreCase)
                      .OrderBy(x => x)
                      .ToList());
@@ -284,7 +284,7 @@ public class ParquetMarketDataProvider : IMarketDataProvider
     public async Task AddTickerAsync(string symbol)
     {
         if (string.IsNullOrWhiteSpace(symbol)) return;
-        symbol = symbol.Trim().ToUpperInvariant().Replace('.', '-');
+        symbol = TickerSymbol.Canonicalize(symbol);
 
         await UpdateTickerListAsync(list => 
         {
@@ -303,7 +303,7 @@ public class ParquetMarketDataProvider : IMarketDataProvider
         
         var normalizedSymbols = symbols
             .Where(s => !string.IsNullOrWhiteSpace(s))
-            .Select(s => s.Trim().ToUpperInvariant().Replace('.', '-'))
+            .Select(s => TickerSymbol.Canonicalize(s))
             .ToList();
 
         if (normalizedSymbols.Count == 0) return;
@@ -331,7 +331,7 @@ public class ParquetMarketDataProvider : IMarketDataProvider
         
         var normalizedSymbols = symbols
             .Where(s => !string.IsNullOrWhiteSpace(s))
-            .Select(s => s.Trim().ToUpperInvariant().Replace('.', '-'))
+            .Select(s => TickerSymbol.Canonicalize(s))
             .ToList();
 
         if (normalizedSymbols.Count == 0) return;

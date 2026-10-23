@@ -9,7 +9,6 @@ using System.Threading.Tasks;
 using Polly;
 using Polly.CircuitBreaker;
 using Polly.Retry;
-using Python.Included;
 
 namespace StockAnalyzer.Core.Services
 {
@@ -145,34 +144,15 @@ namespace StockAnalyzer.Core.Services
                 else
                 {
                     // Ensure Python is set up
-                    await Installer.SetupPython();
+                    await PythonEmbeddedInstaller.SetupAsync(ct: cancellationToken);
 
-                    // Locate python.exe / python
-                    // Python.Included installs to %LOCALAPPDATA%/python-3.11.3/... or similar
-                    // We can use Installer.InstallPath
-                    var pythonHome = Installer.InstallPath;
+                    // Locate python.exe (the pinned folder only, see PythonEmbeddedInstaller)
                     var pythonExeName = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows) ? "python.exe" : "python";
-                    pythonExe = Path.Combine(pythonHome, pythonExeName);
+                    pythonExe = PythonEmbeddedInstaller.ExecutablePath(pythonExeName);
 
                     if (!File.Exists(pythonExe))
                     {
-                        // Fallback: Check for versioned subdirectory (e.g. python-3.13.0-embed-amd64) inside InstallPath
-                        // This seems to happen with newer Python.Included versions or specific environments
-                        var subdirs = Directory.GetDirectories(pythonHome, "python-*-embed-*");
-                        foreach (var dir in subdirs)
-                        {
-                            var candidate = Path.Combine(dir, pythonExeName);
-                            if (File.Exists(candidate))
-                            {
-                                pythonExe = candidate;
-                                break;
-                            }
-                        }
-                    }
-
-                    if (!File.Exists(pythonExe))
-                    {
-                        throw new FileNotFoundException($"Python executable not found at {pythonExe} or subdirectories of {pythonHome}");
+                        throw new FileNotFoundException($"Python executable not found at {pythonExe}");
                     }
                 }
 

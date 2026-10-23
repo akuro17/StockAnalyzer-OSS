@@ -1,3 +1,4 @@
+using StockAnalyzer.Core.Services;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -34,7 +35,7 @@ public class DataWindowViewModelTrendDatesTests : IDisposable
             new StockAnalyzer.Avalonia.Services.DialogService(),
             null!,
             new StockAnalyzer.Avalonia.Services.MockStockAnalyzerSettings(),
-            new StockAnalyzer.Avalonia.Services.TimeFrameManager(new StockAnalyzer.Avalonia.Services.MockDataService()),
+            new StockAnalyzer.Core.Services.TimeFrameManager(new StockAnalyzer.Avalonia.Services.MockDataService()),
             null!,
             new StockAnalyzer.Core.Theme.ThemeManager(),
             new StockAnalyzer.Avalonia.Services.MockChartSettingsManager(),

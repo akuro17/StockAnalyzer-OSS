@@ -10,7 +10,7 @@ public class CoreSmaParameter : CoreIndicatorParameterBase
     [CoreParameterRange(1, 10000)]
     [Range(1, 1000)]
     [DisplayName("Period")]
-    [Description("Number of periods for the Simple Moving Average.")]
+    [Description("Number of bars (period) used in the calculation.")]
     public int Period 
     { 
         get => _period; 

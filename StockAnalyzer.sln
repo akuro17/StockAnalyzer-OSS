@@ -13,6 +13,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "StockAnalyzer.Core.Tests", 
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "StockAnalyzer.Avalonia", "StockAnalyzer.Avalonia\StockAnalyzer.Avalonia.csproj", "{529803C2-F0E3-40BE-8B52-29C1A12CEBA9}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "StockAnalyzer.McpServer", "StockAnalyzer.McpServer\StockAnalyzer.McpServer.csproj", "{164A62B5-8C7F-4C0B-B5F9-1315CFA62D98}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -36,6 +38,10 @@ Global
 		{529803C2-F0E3-40BE-8B52-29C1A12CEBA9}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{529803C2-F0E3-40BE-8B52-29C1A12CEBA9}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{529803C2-F0E3-40BE-8B52-29C1A12CEBA9}.Release|Any CPU.Build.0 = Release|Any CPU
+		{164A62B5-8C7F-4C0B-B5F9-1315CFA62D98}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{164A62B5-8C7F-4C0B-B5F9-1315CFA62D98}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{164A62B5-8C7F-4C0B-B5F9-1315CFA62D98}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{164A62B5-8C7F-4C0B-B5F9-1315CFA62D98}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{2EA58D5C-CBEC-4809-B1BA-7D0D72A269BD} = {DAF6EF47-A121-463F-AD32-2DA18BC62D92}

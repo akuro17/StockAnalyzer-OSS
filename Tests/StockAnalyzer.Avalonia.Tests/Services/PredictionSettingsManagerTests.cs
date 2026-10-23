@@ -1,4 +1,4 @@
-using StockAnalyzer.Avalonia.Common;
+using StockAnalyzer.Core.Models.Settings;
 using StockAnalyzer.Avalonia.Services;
 using Xunit;
 

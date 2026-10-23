@@ -637,6 +637,10 @@ public class ScreenerServiceTests : IDisposable
             AverageVolume = 5000000L,
             PriceToCashFlowRatio = 15m,
             DailyTurnoverRate = 0.01m,
+            // The three other turnover columns have their own properties; they used to be read through DailyTurnoverRate by keyword matching.
+            AverageTurnoverRate = 0.02m,
+            AverageFloatTurnover = 0.03m,
+            DailyFloatShareTurnoverRatio = 0.04m,
             TargetHighPrice = 220m,
             TargetLowPrice = 140m,
             TargetMeanPrice = 180m,

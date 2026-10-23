@@ -11,6 +11,7 @@ using StockAnalyzer.Avalonia.ViewModels.Dialogs;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Settings;
 using StockAnalyzer.Core.Models.Training;
+using StockAnalyzer.Core.Models.Watchlist;
 using StockAnalyzer.Core.Services;
 using StockAnalyzer.Core.Tests.Services;
 using Xunit;
@@ -179,7 +180,7 @@ public sealed class PredictionMonitoringPresentationTests : IDisposable
         market.Setup(m => m.GetAvailableTickersAsync()).ReturnsAsync(new[] { "X" });
         var scheduler = new Mock<IRetrainingScheduler>(); var trainer = new Mock<ITrainingOrchestrator>();
         using var vm = new TrainingWizardViewModel(orchestrator: trainer.Object, marketDataProvider: market.Object,
-            retrainingScheduler: scheduler.Object)
+            retrainingScheduler: scheduler.Object, tickerStore: FakeTickerStateStore.FromProfiles(Array.Empty<WatchlistProfile>()))
         {
             StartDate = new DateTime(2026, 1, 1), EndDate = new DateTime(2026, 9, 30),
             WindowSize = 4, Horizon = 1,

@@ -27,28 +27,14 @@ public static class ServiceCollectionExtensions
         // Register configuration options with DI
         services.Configure<ChartOptions>(configuration.GetSection("ChartOptions"));
         services.Configure<ThemeSettings>(configuration.GetSection("ThemeSettings"));
-        services.Configure<PythonSettings>(configuration.GetSection("Python"));
-        services.Configure<ChartDefaultSettings>(configuration.GetSection("Chart"));
-        services.Configure<PredictionSettings>(configuration.GetSection("Prediction"));
+        services.AddStockAnalyzerSettingsOptions(configuration);
         services.Configure<Core.Models.Settings.PredictionMonitoringSettings>(configuration.GetSection(Core.Models.Settings.PredictionMonitoringSettings.SectionName));
         services.Configure<Core.Models.Settings.FileReplaceRetrySettings>(configuration.GetSection(Core.Models.Settings.FileReplaceRetrySettings.SectionName));
-        services.Configure<MarketDataSettings>(configuration.GetSection("MarketDataSettings"));
-        services.Configure<ScreenerSettings>(configuration.GetSection("Screener"));
-        services.Configure<ScatterMetricSettings>(configuration.GetSection(Core.Models.Settings.ScatterMetricSettingsValidator.SectionName));
         services.Configure<TickersSettings>(configuration.GetSection("Tickers"));
         services.Configure<Core.Models.Settings.LayoutSettings>(configuration.GetSection("Layout"));
-        services.Configure<SmartScreenerSettings>(configuration.GetSection("SmartScreener"));
-        services.Configure<InfrastructureSettings>(configuration.GetSection("Infrastructure"));
-        services.Configure<MarketStructureSettings>(configuration.GetSection("MarketStructure"));
-        services.Configure<PatternRecognitionSettings>(configuration.GetSection("PatternRecognition"));
-        services.Configure<ResilienceSettings>(configuration.GetSection("Resilience"));
-        services.Configure<LocalizationSettings>(configuration.GetSection("Localization"));
-        services.Configure<StockAnalyzer.Core.Models.Settings.BacktestSettings>(configuration.GetSection("Backtest"));
-        services.Configure<StockAnalyzer.Core.Models.Settings.PythonIpcSettings>(configuration.GetSection("PythonIpc"));
-        services.Configure<StockAnalyzer.Core.Models.Settings.DrawingInteractionSettings>(configuration.GetSection("DrawingInteraction"));
 
         // Register custom settings
-        services.AddSingleton<Core.Services.IStockAnalyzerSettings, Services.StockAnalyzerSettings>();
+        services.AddSingleton<Core.Services.IStockAnalyzerSettings, Core.Services.StockAnalyzerSettings>();
         services.AddSingleton<Core.Interfaces.IWorkspaceSerializationService, Core.Services.WorkspaceSerializationService>();
         services.AddSingleton<Core.Theme.IThemeManager, Core.Theme.ThemeManager>();
         services.AddSingleton<IFontSettingsManager, FontSettingsManager>();
@@ -95,7 +81,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<Services.Export.ILayeredChartImageExportService, Services.Export.ChartImageExportService>();
         services.AddSingleton<ITickerSyncService, Services.TickerSyncService>();
         services.AddSingleton<Core.Services.IDataService, Core.Services.ParquetDataService>();
-        services.AddSingleton<Core.Services.ITimeFrameManager, Services.TimeFrameManager>();
+        services.AddSingleton<Core.Services.ITimeFrameManager, Core.Services.TimeFrameManager>();
         services.AddSingleton<Services.Drawing.IMagnetSnapService, Services.Drawing.MagnetSnapService>();
         services.AddSingleton<Services.Drawing.ISmartGuideService, Services.Drawing.SmartGuideService>();
         services.AddTransient<Services.VolumeProfileViewportCoordinator>();
@@ -317,7 +303,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<Core.Services.Backtest.Configuration.IBacktestConfigurationManager, Core.Services.Backtest.Configuration.BacktestConfigurationManager>();
         services.AddSingleton<Core.Services.Backtest.Configuration.IBacktestDefaultSettingsManager, Core.Services.Backtest.Configuration.BacktestDefaultSettingsManager>();
         services.AddSingleton<Core.Services.Backtest.Configuration.IBacktestColumnSettingsManager, Core.Services.Backtest.Configuration.BacktestColumnSettingsManager>();
-        services.AddSingleton<Services.IBacktestRunPreparationService, Services.BacktestRunPreparationService>();
+        services.AddSingleton<Core.Services.IBacktestRunPreparationService, Core.Services.BacktestRunPreparationService>();
         services.AddSingleton<Services.IBacktestSettingsCoordinator, Services.BacktestSettingsCoordinator>();
         services.AddTransient<ViewModels.Backtest.BacktestIndicatorSelectionViewModel>();
         services.AddTransient<ViewModels.Backtest.BacktestResultsViewModel>();
@@ -343,7 +329,6 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<MainWindowViewModel>();
         services.AddTransient<ChartViewModel>();
         services.AddSingleton<Func<ChartViewModel>>(sp => () => sp.GetRequiredService<ChartViewModel>());
-        services.AddSingleton<ConfluenceDashboardViewModel>();
         services.AddTransient<TickerListViewModel>();
         // Resolved through the shared facade rather than a fresh GetRequiredService<TickerListViewModel>():
         // TickerListViewModel is AddTransient, so an independent resolution here created a second,

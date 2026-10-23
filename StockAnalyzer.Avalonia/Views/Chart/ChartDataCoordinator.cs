@@ -20,7 +20,6 @@ using StockAnalyzer.Avalonia.Common;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using StockAnalyzer.Core.Services;
-using CommunityToolkit.Mvvm.Messaging;
 
 namespace StockAnalyzer.Avalonia.Views.Chart;
 
@@ -48,11 +47,10 @@ public class ChartDataCoordinator
     private readonly Microsoft.Extensions.Logging.ILogger<ChartDataCoordinator>? _logger;
 
     private readonly Core.Services.Analysis.IAnalysisPipelineService _analysisService;
-    private readonly IMessenger _messenger;
 
     /// <summary>
     /// Triggered whenever the chart data snapshot is recalculated.
-    /// Subscribers like ConfluenceDashboardViewModel use this to sync with latest data.
+    /// Subscribers use this to sync with the latest data.
     /// </summary>
     public event Action? SnapshotUpdated;
 
@@ -60,11 +58,10 @@ public class ChartDataCoordinator
     /// Optional analysis service. When omitted the coordinator builds its own <c>AnalysisPipelineService(pythonService)</c> exactly as before; it is
     /// deliberately not the DI singleton, which also carries the source-indicator and dynamic-period services this coordinator never had.
     /// </param>
-    public ChartDataCoordinator(IPythonService? pythonService = null, IMessenger? messenger = null, Microsoft.Extensions.Logging.ILogger<ChartDataCoordinator>? logger = null,
+    public ChartDataCoordinator(IPythonService? pythonService = null, Microsoft.Extensions.Logging.ILogger<ChartDataCoordinator>? logger = null,
         Core.Services.Analysis.IAnalysisPipelineService? analysisService = null)
     {
         _logger = logger;
-        _messenger = messenger ?? WeakReferenceMessenger.Default;
         // Initialize with default transform
         Transform = new GenericCoordinateTransform(
             ChartAxisMode.Time,
@@ -262,10 +259,6 @@ public class ChartDataCoordinator
     // Cached engine for Zero-Allocation scanning
     private readonly MultiWavePatternEngine _mwEngine = new();
 
-    // Signal Orchestration Facade (FR-39-12)
-    private readonly Core.Services.SignalOrchestrator _orchestrator = new();
-    private readonly List<ConfluenceSignal> _signalBuffer = new(32);
-    private readonly List<ConfluenceSignal> _deduplicatedSignalBuffer = new(32);
 
     private DateTime GetInterpolatedTime(double index, IReadOnlyList<CoreCandleData> candles)
     {
@@ -633,7 +626,6 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
         if (!suppressMessages)
         {
             SnapshotUpdated?.Invoke();
-            _messenger.Send(new ConfluenceSnapshotUpdatedMessage(indicatorValues!, viewModel.Indicators.ToList(), viewModel.Candles.Count));
         }
 
         // DataBounds and FutureOffset for Index charts are now fully managed inside AdjustSpecialChartView 
@@ -1196,7 +1188,6 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
                     chartType: viewModel.ChartType,
                     allCandles: _standardCandleBuffer, // FIX: Use correct parameter name for IReadOnlyList ctor
                     priceRangeCalculator: ChartTypeProfileRegistry.Get(viewModel.ChartType).PriceRangeCalculator,
-                    confluence: GetConfluenceForIndex(_convertedCandleCount - 1, indicatorResults, viewModel.Indicators),
                     priceScale: viewModel.PriceScale, modelAnalysis: viewModel.ModelAnalysis, attention: viewModel.AttentionSnapshot);
         }
     }
@@ -1229,7 +1220,6 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
             chartType: ChartType.HeikinAshi,
             allCandles: _heikinAshiBuffer, // FIX: Use correct parameter name for IReadOnlyList ctor
             priceRangeCalculator: ChartTypeProfileRegistry.Get(ChartType.HeikinAshi).PriceRangeCalculator,
-            confluence: GetConfluenceForIndex(_convertedCandleCount - 1, indicatorResults, viewModel.Indicators),
             priceScale: viewModel.PriceScale, modelAnalysis: viewModel.ModelAnalysis, attention: viewModel.AttentionSnapshot);
     }
     
@@ -1527,7 +1517,6 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
             allCandles: _renkoBuffer,
             chartType: ChartType.Renko,
             priceRangeCalculator: ChartTypeProfileRegistry.Get(ChartType.Renko).PriceRangeCalculator,
-            confluence: GetConfluenceForIndex(_convertedCandleCount - 1, indicatorResults, viewModel.Indicators),
             priceScale: viewModel.PriceScale, modelAnalysis: viewModel.ModelAnalysis, attention: viewModel.AttentionSnapshot);
     }
 
@@ -1667,7 +1656,6 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
             chartType: ChartType.PointAndFigure,
             // FR-PNF-02: ボックスサイズに基づくマージン込み価格範囲（最高値+1ボックス、最安値はスナップ切り捨て）
             priceRangeCalculator: PnfProfile.GetPriceRangeCalculator(viewModel.EffectivePnfBoxSize),
-            confluence: GetConfluenceForIndex(_convertedCandleCount - 1, indicatorResults, viewModel.Indicators),
             priceScale: viewModel.PriceScale, modelAnalysis: viewModel.ModelAnalysis, attention: viewModel.AttentionSnapshot,
             elementDates: SharedDatesOrNull(_pnfDatesBuffer, _pnfBuffer.Count, ref _pnfDatesShared));
     }
@@ -1892,7 +1880,6 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
             chartType: ChartType.Kagi,
             threeLineBreakCount: null,
             priceRangeCalculator: ChartTypeProfileRegistry.Get(ChartType.Kagi).PriceRangeCalculator,
-            confluence: GetConfluenceForIndex(_convertedCandleCount - 1, indicatorResults, viewModel.Indicators),
             renderingMetadata: null,
             comparisonSeries: null,
             overrideMinPrice: null,
@@ -2026,7 +2013,6 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
                     chartHeightPx: (decimal)layout.ChartArea.Height,
                     chartType: viewModel.ChartType,
                     priceRangeCalculator: priceCalc,
-                    confluence: GetConfluenceForIndex(_convertedCandleCount - 1, indicatorResults, viewModel.Indicators),
                     renderingMetadata: renderingMetadata,
                     comparisonSeries: comparisonSeries,
                     overrideMinPrice: globalMin != decimal.MaxValue ? globalMin : null,
@@ -2056,7 +2042,6 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
             chartType: viewModel.ChartType,
             allCandles: _standardCandleBuffer,
             priceRangeCalculator: StandardPriceRangeCalculator.Instance,
-            confluence: GetConfluenceForIndex(_convertedCandleCount - 1, indicatorResults, viewModel.Indicators),
             priceScale: viewModel.PriceScale, modelAnalysis: viewModel.ModelAnalysis, attention: viewModel.AttentionSnapshot);
     }
 
@@ -2130,7 +2115,6 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
             allCandles: _tlbBuffer,
             chartType: ChartType.ThreeLineBreak,
             priceRangeCalculator: ChartTypeProfileRegistry.Get(ChartType.ThreeLineBreak).PriceRangeCalculator,
-            confluence: GetConfluenceForIndex(_convertedCandleCount - 1, indicatorResults, viewModel.Indicators),
             priceScale: viewModel.PriceScale, modelAnalysis: viewModel.ModelAnalysis, attention: viewModel.AttentionSnapshot);
     }
 
@@ -2270,36 +2254,6 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
         return count;
     }
 
-    /// <summary>
-    /// Calculates the confluence score for a specific bar index by harvesting signals
-    /// from all active indicators. Enforces ZeroAllocation via internal buffers.
-    /// </summary>
-    public ConfluenceResult? GetConfluenceForIndex(int index, IReadOnlyDictionary<string, IIndicatorResult>? indicatorResults, IEnumerable<CoreIndicatorSettings>? settings)
-    {
-        if (indicatorResults == null || indicatorResults.Count == 0 || settings == null || index < 0) return null;
-
-        _signalBuffer.Clear();
-
-        foreach (var setting in settings)
-        {
-            if (indicatorResults.TryGetValue(setting.Id, out var result) && result.SignalProvider != null)
-            {
-                // Harvest signals for the specified index with context (result + settings)
-                foreach (var signal in result.SignalProvider.GetSignals(index, result, setting))
-                {
-                    _signalBuffer.Add(signal);
-                }
-            }
-        }
-
-        if (_signalBuffer.Count == 0) 
-        {
-            return new ConfluenceResult(index, 50, SignalDirection.Neutral, 0, "Monitoring...");
-        }
-
-        return _orchestrator.Orchestrate(index, _signalBuffer, _deduplicatedSignalBuffer);
-    }
-
     private int CalculateLatestTlbCount(IReadOnlyList<CoreCandleData> candles)
     {
         if (candles.Count == 0) return 0;
@@ -2361,7 +2315,6 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
             chartHeightPx: (decimal)layout.ChartArea.Height,
             chartType: ChartType.ReverseWatch,
             priceRangeCalculator: ChartTypeProfileRegistry.Get(ChartType.ReverseWatch).PriceRangeCalculator,
-            confluence: GetConfluenceForIndex(viewModel.Candles.Count - 1, indicatorResults, viewModel.Indicators),
             overrideMinPrice: _reverseWatchData?.Bounds.MinPrice,
             overrideMaxPrice: _reverseWatchData?.Bounds.MaxPrice,
             priceScale: viewModel.PriceScale, modelAnalysis: viewModel.ModelAnalysis, attention: viewModel.AttentionSnapshot)

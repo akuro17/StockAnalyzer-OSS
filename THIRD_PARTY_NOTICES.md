@@ -36,10 +36,15 @@ This application utilizes third-party open-source software packages. Below is a 
 - **Copyright**: (c) Microsoft Corporation
 - **Purpose**: Machine learning model execution engine.
 
-### 7. Python.Included
+### 7. pythonnet (Python.Runtime)
+- **License**: MIT License
+- **Copyright**: (c) 2006-2021 the contributors of the Python.NET project
+- **Purpose**: .NET bridge to the embedded Python runtime.
+
+### 7a. Python (embedded CPython 3.13.17)
 - **License**: Python Software Foundation License (PSF)
 - **Copyright**: Python Software Foundation
-- **Purpose**: Embedded Python runtime environment installer.
+- **Purpose**: Embedded Python runtime, downloaded from python.org on first run (Windows) and checked against its published SHA-256.
 
 ### 8. Serilog
 - **License**: Apache License 2.0

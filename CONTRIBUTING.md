@@ -43,7 +43,7 @@ cp StockAnalyzer.Avalonia/appsettings.example.json StockAnalyzer.Avalonia/appset
 
 ### 4. Set Up the Python Backend
 
-The backend data processing relies on Python 3.10 to 3.12 (verified on 3.12).
+The backend data processing relies on Python 3.13 (3.13.17 or later) with pip 26.2.2 or later.
 
 #### Option A: Windows (Automatic)
 
@@ -55,10 +55,11 @@ Create a virtual environment, install dependencies, and update your configuratio
 
 ```bash
 # Create and activate a virtual environment
-python3 -m venv .venv
+python3.13 -m venv .venv   # On Windows: py -3.13 -m venv .venv
 source .venv/bin/activate   # On Windows: .venv\Scripts\activate
 
-# Install requirements
+# Enforce the minimum pip version, then install requirements
+python -m pip install --upgrade "pip>=26.2.2" certifi
 pip install -r StockAnalyzer.Python/requirements.txt
 ```
 

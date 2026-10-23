@@ -8,7 +8,6 @@ using Avalonia.Media;
 using Avalonia.Rendering;
 using Avalonia.Rendering.SceneGraph;
 using Avalonia.Skia;
-using CommunityToolkit.Mvvm.Messaging;
 using SkiaSharp;
 using StockAnalyzer.Avalonia.ViewModels;
 using System;
@@ -267,10 +266,9 @@ public class ChartBaseControl : Control, ICustomHitTest
             : new ChartInteractionController();
         _interactionController.LayeredScene = _layeredScene;
 
-        // Resolve IPythonService and IMessenger for Coordinator (Phase 2 Component Coupling Fix)
+        // Resolve IPythonService for Coordinator (Phase 2 Component Coupling Fix)
         var pythonService = services?.GetService<IPythonService>();
-        var messenger = services?.GetService<IMessenger>();
-        _dataCoordinator = new ChartDataCoordinator(pythonService, messenger);
+        _dataCoordinator = new ChartDataCoordinator(pythonService);
         _dataCoordinator.SnapshotUpdated += UpdateVolumeProfileCoordinator;
         _dataCoordinator.SnapshotUpdated += UpdateTimeAtPriceCoordinator;
 
@@ -1148,7 +1146,7 @@ public class ChartBaseControl : Control, ICustomHitTest
                      ViewModel.LatestReverseWatchPoint = _reverseWatchData?.Points?.LastOrDefault();
                  }
             }
-            _interactionController.UpdateCrosshairPosition(index, hoveredCandle, symbol, tlbCount, rwPoint, position.Y, _dataCoordinator.GetConfluenceForIndex(index, _currentSnapshot.IndicatorResults, _currentSnapshot.IndicatorSettings), position.X, position.Y);
+            _interactionController.UpdateCrosshairPosition(index, hoveredCandle, symbol, tlbCount, rwPoint, position.Y, position.X, position.Y);
         }
     }
 
