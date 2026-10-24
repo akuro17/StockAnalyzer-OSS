@@ -558,6 +558,11 @@ public class ParquetMarketDataProvider : IMarketDataProvider
     public async Task<int> DeleteLatestTickerDataAsync(string symbol, int count)
     {
         if (count <= 0) return 0;
+        if (!AttestedFileNames.IsPlain(symbol))
+        {
+            _logger.LogWarning("Cannot delete latest time series data: Invalid ticker symbol '{Ticker}'", symbol);
+            return 0;
+        }
 
         var filePath = Path.Combine(_baseDataPath, $"{symbol}.parquet").Replace("\\", "/");
         if (!File.Exists(filePath))
@@ -576,7 +581,7 @@ public class ParquetMarketDataProvider : IMarketDataProvider
             }
 
             using var cmd = dbConnection.CreateCommand();
-            cmd.CommandText = $"SELECT date FROM read_parquet('{EscapeDuckDbPath(filePath)}') ORDER BY date DESC LIMIT ?";
+            cmd.CommandText = $"SELECT date FROM read_parquet('{FormatDuckDbPath(filePath)}') ORDER BY date DESC LIMIT ?";
             var countParam = cmd.CreateParameter();
             countParam.Value = count;
             cmd.Parameters.Add(countParam);
@@ -654,6 +659,7 @@ public class ParquetMarketDataProvider : IMarketDataProvider
                 }
 
                 var targetFiles = symbolList
+                    .Where(AttestedFileNames.IsPlain)
                     .Select(s => Path.Combine(_baseDataPath, $"{s}.parquet").Replace("\\", "/"))
                     .Where(f => File.Exists(f))
                     .ToList();
@@ -664,7 +670,7 @@ public class ParquetMarketDataProvider : IMarketDataProvider
                     return;
                 }
 
-                var filesListString = string.Join(", ", targetFiles.Select(f => $"'{f}'"));
+                var filesListString = string.Join(", ", targetFiles.Select(f => $"'{FormatDuckDbPath(f)}'"));
                 var sql = $@"
                     SELECT 
                         replace(regexp_replace(filename, '.*[\\\\/]', ''), '.parquet', '') as ticker,
@@ -933,6 +939,12 @@ public class ParquetMarketDataProvider : IMarketDataProvider
 
     public Task SaveMetadataAsync(string ticker, TickerMetadata meta)
     {
+        if (!AttestedFileNames.IsPlain(ticker))
+        {
+            _logger.LogWarning("Cannot save metadata: Invalid ticker symbol '{Ticker}'", ticker);
+            return Task.CompletedTask;
+        }
+
         if (meta.Tag != null)
         {
             _userTags[ticker] = meta.Tag;
@@ -943,6 +955,12 @@ public class ParquetMarketDataProvider : IMarketDataProvider
 
     private async Task SaveMetadataToDiskAsync(string ticker, TickerMetadata meta)
     {
+        if (!AttestedFileNames.IsPlain(ticker))
+        {
+            _logger.LogWarning("Cannot save metadata to disk: Invalid ticker symbol '{Ticker}'", ticker);
+            return;
+        }
+
         if (string.IsNullOrEmpty(meta.Tag))
         {
             if (_userTags.TryGetValue(ticker, out var userTag) && !string.IsNullOrEmpty(userTag))
@@ -1107,7 +1125,7 @@ public class ParquetMarketDataProvider : IMarketDataProvider
                             ? as {ColIsTPShort},
                             ? as {ColIsSLShort},
                             ? as {ColMetadataVersion}
-                    ) TO '{duckDbPath}' (FORMAT PARQUET)";
+                    ) TO '{FormatDuckDbPath(duckDbPath)}' (FORMAT PARQUET)";
 
                 void AddParam(object? value)
                 {
@@ -1337,6 +1355,12 @@ public class ParquetMarketDataProvider : IMarketDataProvider
 
     private async Task<MetadataDiskLoad> TryLoadMetadataFromDiskAsync(string ticker)
     {
+        if (!AttestedFileNames.IsPlain(ticker))
+        {
+            _logger.LogWarning("Cannot load metadata: Invalid ticker symbol '{Ticker}'", ticker);
+            return new MetadataDiskLoad(TickerMetadata.Unknown, ReadFailed: false);
+        }
+
         var filePath = Path.Combine(_metadataPath, $"{ticker}.meta.parquet").Replace("\\", "/");
         if (!File.Exists(filePath))
         {
@@ -1357,7 +1381,7 @@ public class ParquetMarketDataProvider : IMarketDataProvider
                     }
 
                     using var command = dbConnection.CreateCommand();
-                    command.CommandText = $"SELECT * FROM read_parquet('{EscapeDuckDbPath(filePath)}') LIMIT 1";
+                    command.CommandText = $"SELECT * FROM read_parquet('{FormatDuckDbPath(filePath)}') LIMIT 1";
 
                     using var reader = await command.ExecuteReaderAsync(ct);
                     if (await reader.ReadAsync(ct))
@@ -1667,6 +1691,12 @@ public class ParquetMarketDataProvider : IMarketDataProvider
 
         return null;
     }
+
+    /// <summary>
+    /// Formats a file system path for DuckDB SQL interpolation by converting backslashes to forward slashes
+    /// and escaping single quotes against SQL injection and syntax errors.
+    /// </summary>
+    internal static string FormatDuckDbPath(string path) => EscapeDuckDbPath(path.Replace("\\", "/"));
 
     internal static string EscapeDuckDbPath(string path) => path.Replace("'", "''");
 }

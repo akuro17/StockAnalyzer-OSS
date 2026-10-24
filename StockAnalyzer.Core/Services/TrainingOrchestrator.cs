@@ -11,6 +11,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using StockAnalyzer.Core.Execution;
 using StockAnalyzer.Core.Models.Training;
 
 namespace StockAnalyzer.Core.Services;
@@ -35,6 +36,7 @@ public sealed class TrainingOrchestrator : ITrainingOrchestrator
     private readonly IModelGenerationRegistry? _modelGenerations;
     private readonly int _maxRunDurationSeconds;
     private readonly TrainingJobGate _jobGate;
+    private readonly IPythonExecutableResolver? _executableResolver;
 
     public TrainingOrchestrator(
         IPythonService pythonService,
@@ -42,7 +44,8 @@ public sealed class TrainingOrchestrator : ITrainingOrchestrator
         ILogger<TrainingOrchestrator>? logger = null,
         ITrainingResourceSettings? resourceSettings = null,
         ITrainingSourceSnapshotProvider? sourceSnapshotProvider = null,
-        IModelGenerationRegistry? modelGenerations = null, TrainingJobGate? jobGate = null)
+        IModelGenerationRegistry? modelGenerations = null, TrainingJobGate? jobGate = null,
+        IPythonExecutableResolver? executableResolver = null)
     {
         _pythonService = pythonService ?? throw new ArgumentNullException(nameof(pythonService));
         _indicatorChannelExporter = indicatorChannelExporter ?? throw new ArgumentNullException(nameof(indicatorChannelExporter));
@@ -51,6 +54,7 @@ public sealed class TrainingOrchestrator : ITrainingOrchestrator
         _sourceSnapshotProvider = sourceSnapshotProvider;
         _modelGenerations = modelGenerations;
         _jobGate = jobGate ?? new TrainingJobGate();
+        _executableResolver = executableResolver;
         _maxRunDurationSeconds = checked(TrainingResourceOverrides.MaximumRunDurationMinutes * 60);
     }
 
@@ -103,7 +107,9 @@ public sealed class TrainingOrchestrator : ITrainingOrchestrator
         // structurally impossible rather than merely unlikely.
         var runId = config.InitializationMode == TrainingInitializationMode.Resume
             ? TrainingCheckpointContract.ReadResumeRunId(config.CheckpointPath!)
-            : $"{startedUtc.ToString("yyyyMMdd-HHmmssfff", CultureInfo.InvariantCulture)}-{Guid.NewGuid().ToString("N")[..8]}";
+            : config.ArtifactsDirectory is not null
+                ? config.RunId! // an ephemeral run: the caller named the job folder after it (TrainingJobConfig.Validate requires and checks it)
+                : TrainingRunId.New(startedUtc);
         using var parentLease = config.InitializationMode == TrainingInitializationMode.FineTune
             ? _modelGenerations?.Acquire(config.ParentModelId!)
                 ?? throw new InvalidOperationException("FineTune parent model generation is unavailable.")
@@ -192,7 +198,12 @@ public sealed class TrainingOrchestrator : ITrainingOrchestrator
         }
 
         runToken.ThrowIfCancellationRequested();
-        var pythonExe = await _pythonService.ResolvePythonExecutablePathAsync(runToken).ConfigureAwait(false);
+        // A resolver only locates an installed interpreter; the service may initialise (and install) Python, which a caller that must not do so avoids.
+        string pythonExe;
+        if (_executableResolver is null)
+            pythonExe = await _pythonService.ResolvePythonExecutablePathAsync(runToken).ConfigureAwait(false);
+        else if (!_executableResolver.TryResolve(out pythonExe))
+            throw new FileNotFoundException("The Python interpreter is not installed.");
         var scriptPath = PythonScriptLocator.Resolve(OrchestratorScriptRelativePath);
 
         var remaining = TimeSpan.FromSeconds(resourceLimits.MaxRunDurationSeconds) - runClock.Elapsed;
@@ -222,7 +233,10 @@ public sealed class TrainingOrchestrator : ITrainingOrchestrator
         startInfo.ArgumentList.Add(scriptPath);
         startInfo.ArgumentList.Add("--config");
         startInfo.ArgumentList.Add(configPath);
-        startInfo.Environment["PYTHONIOENCODING"] = "utf-8";
+        startInfo.Environment[PythonChildEnvironment.IoEncodingVariable] = PythonChildEnvironment.IoEncodingValue;
+        // An ephemeral run leaves nothing next to the scripts either: no bytecode cache. A normal run keeps its environment.
+        if (config.ArtifactsDirectory is not null)
+            startInfo.Environment[PythonChildEnvironment.NoBytecodeVariable] = PythonChildEnvironment.NoBytecodeValue;
         TrainingResourceGuard.ApplyToChild(startInfo, resourceLimits);
 
         var state = new RunState { Stage = config.RequiresFinalizedSource ? "Training" : null };

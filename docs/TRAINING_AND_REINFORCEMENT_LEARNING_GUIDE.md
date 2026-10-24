@@ -26,6 +26,10 @@ StockAnalyzer can create three kinds of files from your stored price data: a pre
 
 The Reinforcement Learning window only creates and reviews agents. Replaying an agent on the chart is done in Tools > Model Execution > Reinforcement Learning Playback.
 
+An AI client connected to the MCP server (started with `--enable-execution`, see `docs/SA_AI_INTEGRATION.md`) can also train a prediction model and run it. That model is temporary: it is written only to a folder of the operating system's temporary files, it is not registered, it does not appear in Tools > Model Execution > Prediction Models, and it is deleted when the MCP server stops. To keep a model, train it in the Training Wizard with the same settings.
+
+The same AI client can also start one reinforcement-learning smoke run (the trial run of the Reinforcement Learning window: one seed, 1,024 transitions, the factory costs of the Backtest window) with `sa_start_rl_training`. It reads the stored bars and the metadata of one symbol without changing them, registers nothing, keeps no model (the files are deleted when the job ends) and reports only the validation mean return, the seed, the checkpoint, the model size and its hash. It uses the same Python environment as the Reinforcement Learning window (`StockAnalyzer.Python/.venv`, with the pinned `gymnasium` and `stable-baselines3`), not the embedded Python.
+
 ---
 
 ## 2. Before you start
@@ -325,7 +329,7 @@ Nothing a portfolio run creates is registered or activated, and nothing is shown
 
 ## 7. Files and folders
 
-All folders are below the `Data` folder.
+All folders are below the `Data` folder, except the temporary folder in the last two rows.
 
 | File | Produced by | Folder | Safe to delete |
 |---|---|---|---|
@@ -339,6 +343,8 @@ All folders are below the `Data` folder.
 | `.zip` archives | Reinforcement Learning export | The folder you choose | Yes: it is your copy |
 | `portfolio_manifest.json` and the model and evaluation files it lists | Portfolio Reinforcement Learning | `TrainingArtifacts/RLPortfolio/<run id>` | Do not delete manually |
 | `panel.json` and the `symbols` folder | Portfolio Reinforcement Learning (stored panel) | `TrainingArtifacts/RLPortfolio/panels/<panel id>` | Do not delete manually |
+| `model.onnx` and the files the trainer writes next to it | A training job started by an AI client through the MCP server (`sa_start_training`, only with `--enable-execution`) | `<temporary folder of the operating system>/StockAnalyzer/ephemeral/<session>/<job>` (not below `Data`) | Not needed: the server deletes the folder when it stops, and keeps only the newest succeeded model while it runs. Folders left by a crashed server are deleted by the next start after 24 hours |
+| The files of one smoke run (`policy.onnx`, `policy.onnx.metrics.json`, `policy.pt`, `parity.json`, `dependencies.json`, `job.json`, the source copies and the logs) | A reinforcement-learning smoke run started by an AI client through the MCP server (`sa_start_rl_training`, only with `--enable-execution`) | `<temporary folder of the operating system>/StockAnalyzer/ephemeral/<session>/<job>/TrainingArtifacts/RL/...` (not below `Data`) | Not needed: the server deletes the folder when the job ends (also when it succeeded) and the rest when it stops |
 
 ---
 

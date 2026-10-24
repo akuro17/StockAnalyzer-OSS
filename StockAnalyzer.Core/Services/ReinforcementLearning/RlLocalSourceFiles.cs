@@ -16,10 +16,15 @@ internal static class RlLocalSourceFiles
         string MetadataIdentity, string MetadataSha256);
 
     public static async Task<Snapshot> CaptureAsync(string symbol, string destination,
-        TrainingResourceLimits limits, CancellationToken ct)
+        TrainingResourceLimits limits, CancellationToken ct, RlLocalSourceFolders? folders = null)
     {
-        string daily = Path.GetFullPath(PathDiscovery.ResolveDataPath(null, MarketDataSettings.DefaultDailyDataPath));
-        string metadata = Path.GetFullPath(PathDiscovery.ResolveDataPath(null, MarketDataSettings.DefaultMetadataDataPath));
+        if (folders is not null)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(folders.Daily);
+            ArgumentException.ThrowIfNullOrWhiteSpace(folders.Metadata);
+        }
+        string daily = folders?.Daily ?? Path.GetFullPath(PathDiscovery.ResolveDataPathWithoutCreating(null, MarketDataSettings.DefaultDailyDataPath));
+        string metadata = folders?.Metadata ?? Path.GetFullPath(PathDiscovery.ResolveDataPathWithoutCreating(null, MarketDataSettings.DefaultMetadataDataPath));
         string source = ParquetMarketDataProvider.ResolveFilePath(daily, symbol)
             ?? throw new FileNotFoundException("Unavailable: no existing Data/Daily Parquet matches the requested symbol.");
         string mapped = Path.GetFileNameWithoutExtension(source);
@@ -30,9 +35,17 @@ internal static class RlLocalSourceFiles
         long bound = Math.Min(RlContract.BufferByteLimit, checked((long)limits.MaxTensorSizeMiB * TrainingResourceOverrides.MiB));
         string sourceHash = await CopyAsync(daily, source, Path.Combine(destination, RlFiles.RawParquet), bound, ct).ConfigureAwait(false);
         string metadataHash = await CopyAsync(metadata, metadataFile, Path.Combine(destination, RlFiles.MetadataParquet), bound, ct).ConfigureAwait(false);
-        return new(Path.GetRelativePath(Directory.GetParent(daily)!.FullName, Path.GetFullPath(source)).Replace('\\', '/'),
-            mapped, sourceHash, Path.GetRelativePath(Directory.GetParent(metadata)!.FullName, metadataFile).Replace('\\', '/'), metadataHash);
+        // Named folders may be called anything; the manifest always describes the approved logical files (the rule RlSourceSnapshot checks) and never a real path.
+        return folders is null
+            ? new(Path.GetRelativePath(Directory.GetParent(daily)!.FullName, Path.GetFullPath(source)).Replace('\\', '/'),
+                mapped, sourceHash, Path.GetRelativePath(Directory.GetParent(metadata)!.FullName, metadataFile).Replace('\\', '/'), metadataHash)
+            : new(LogicalIdentity(MarketDataSettings.DefaultDailyDataPath, mapped + ".parquet"),
+                mapped, sourceHash, LogicalIdentity(MarketDataSettings.DefaultMetadataDataPath, mapped + RlLocalParquetReader.MetadataFileSuffix), metadataHash);
     }
+
+    /// <summary>The identity RlSourceSnapshot requires: the last segment of the approved default folder, a slash, and the file name.</summary>
+    internal static string LogicalIdentity(string approvedDefaultFolder, string fileName) =>
+        Path.GetFileName(Path.TrimEndingDirectorySeparator(approvedDefaultFolder)) + "/" + fileName;
 
     internal static void ValidatePath(string approvedFolder, string path)
     {

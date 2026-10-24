@@ -31,6 +31,16 @@ public interface IScreeningCondition
     }
 
     /// <summary>
+    /// Checks if the condition is met asynchronously with ticker metadata and the bars of the comparison symbols, for the indicators that compare two
+    /// tickers. The default ignores <paramref name="secondary"/> and runs the metadata form, so an implementation that does not read secondary data
+    /// needs no change.
+    /// </summary>
+    System.Threading.Tasks.ValueTask<bool> IsMetAsync(IReadOnlyList<CandleData> candles, Portfolio.TickerMetadata metadata, Screener.IScreenerSecondaryCandles? secondary)
+    {
+        return IsMetAsync(candles, metadata);
+    }
+
+    /// <summary>
     /// Checks if the condition is met asynchronously.
     /// The default implementation runs synchronously, but can be overridden 
     /// for ML inference or other async operations to prevent ThreadPool starvation.

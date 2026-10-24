@@ -127,5 +127,21 @@ namespace StockAnalyzer.Core.Tests.Services
             Assert.NotNull(result);
             // We can't guarantee count without knowing data, but it shouldn't throw.
         }
+
+        [Theory]
+        [InlineData("__import__('os').system('calc')")]
+        [InlineData("@os.system('calc')")]
+        [InlineData("price > 0 and __class__.__bases__")]
+        public async Task ScreenAsync_UnsafeQueries_ReturnsEmpty(string unsafeQuery)
+        {
+            var settings = new StubScreenerSettings();
+            var pythonService = new PythonService(settings);
+            var service = new SmartScreenerService(pythonService, settings);
+
+            var result = await service.ScreenAsync(unsafeQuery);
+
+            Assert.NotNull(result);
+            Assert.Empty(result);
+        }
     }
 }

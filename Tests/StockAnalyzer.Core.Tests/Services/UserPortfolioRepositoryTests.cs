@@ -161,6 +161,48 @@ public sealed class UserPortfolioRepositoryTests : IDisposable
         Assert.Null(tx.RelatedTransactionId);
     }
 
+    [Fact]
+    public async Task SaveAndLoad_PathWithSingleQuote_ShouldSucceedWithoutSqlError()
+    {
+        // Directory with single quote in path (e.g., user name "O'Connor")
+        string quoteDir = Path.Combine(_tempDirectory, "O'Connor's Portfolio");
+        Directory.CreateDirectory(quoteDir);
+        string quotePath = Path.Combine(quoteDir, "portfolio.json");
+
+        using var repository = new UserPortfolioRepository(quotePath);
+        var original = new Portfolio(
+            35000m,
+            new Dictionary<string, Position> { { "NVDA", new Position("NVDA", 15, 120m) } },
+            new List<Transaction>
+            {
+                new Transaction(
+                    DateTimeOffset.UtcNow,
+                    TransactionType.Buy,
+                    "NVDA",
+                    15m,
+                    120m,
+                    -1800m,
+                    2m,
+                    "Test Quote Path",
+                    null,
+                    null,
+                    Guid.NewGuid(),
+                    null
+                )
+            }
+        );
+
+        await repository.SavePortfolioAsync(original);
+        var loaded = await repository.LoadPortfolioAsync();
+
+        Assert.NotNull(loaded);
+        Assert.Equal(35000m, loaded.CashBalance);
+        Assert.Single(loaded.Positions);
+        Assert.Equal(15m, loaded.Positions["NVDA"].Quantity);
+        Assert.Single(loaded.History);
+        Assert.Equal("NVDA", loaded.History[0].Ticker);
+    }
+
     public void Dispose()
     {
         try

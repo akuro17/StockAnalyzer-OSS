@@ -1,5 +1,34 @@
+import ast
 import json
 import pandas as pd
+
+_SAFE_AST_NODES = (
+    ast.Expression,
+    ast.BoolOp, ast.And, ast.Or,
+    ast.BinOp, ast.Add, ast.Sub, ast.Mult, ast.Div, ast.Mod, ast.BitAnd, ast.BitOr,
+    ast.UnaryOp, ast.Not, ast.USub, ast.UAdd,
+    ast.Compare, ast.Eq, ast.NotEq, ast.Lt, ast.LtE, ast.Gt, ast.GtE, ast.In, ast.NotIn, ast.Is, ast.IsNot,
+    ast.Name, ast.Constant, ast.List, ast.Tuple, ast.Load,
+)
+
+def _is_safe_query_expr(criteria: str) -> bool:
+    if not isinstance(criteria, str):
+        return False
+    stripped = criteria.strip()
+    if not stripped or len(stripped) > 512 or "@" in stripped:
+        return False
+    try:
+        tree = ast.parse(stripped, mode="eval")
+    except SyntaxError:
+        return False
+    for node in ast.walk(tree):
+        if not isinstance(node, _SAFE_AST_NODES):
+            return False
+        if isinstance(node, ast.Name) and node.id.startswith("_"):
+            return False
+        if isinstance(node, ast.Constant) and not isinstance(node.value, (int, float, str, bool, type(None))):
+            return False
+    return True
 
 def screen_stocks(json_file_path, criteria):
     """
@@ -13,6 +42,9 @@ def screen_stocks(json_file_path, criteria):
         list: List of matching symbols.
     """
     try:
+        if not _is_safe_query_expr(criteria):
+            return []
+
         with open(json_file_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
             

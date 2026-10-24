@@ -26,6 +26,8 @@ public sealed class RlTrainingService : IRlResumableTrainingService
     private readonly ITrainingResourceSettings? _resourceSettings;
     private readonly string? _dataRoot;
     internal Action<int>? OwnedWorkerStarted { get; init; }
+    /// <summary>The folders the one symbol is copied from; null (every window of the application) means the fixed <c>Data/Daily</c> and <c>Data/Metadata</c>.</summary>
+    public RlLocalSourceFolders? LocalSourceFolders { get; init; }
     public RlTrainingService(IRlModelGenerationRegistry registry, TrainingJobGate? gate = null,
         ITrainingResourceSettings? resourceSettings = null, string? dataRoot = null)
     { _registry = registry; _gate = gate ?? new TrainingJobGate(); _resourceSettings = resourceSettings; _dataRoot = dataRoot; }
@@ -158,7 +160,7 @@ public sealed class RlTrainingService : IRlResumableTrainingService
             }
             await WriteAsync(configPath, wire, ct).ConfigureAwait(false);
             progress?.Report(new(runId, 0, RlTrainingPhases.Source, "Capturing existing local Data/Daily bytes; historical evidence unverified", 0));
-            source = await RlLocalSnapshotFactory.PrepareAsync(job, sourceDirectory, limits, ct).ConfigureAwait(false);
+            source = await RlLocalSnapshotFactory.PrepareAsync(job, sourceDirectory, limits, ct, LocalSourceFolders).ConfigureAwait(false);
             // Reject the unchanged requested interval before baselines or any ML worker can consume it.
             if (continuous) RlTemporalValidator.RequireSource(directionEvidence!, source);
             if (expanded)

@@ -121,5 +121,29 @@ namespace StockAnalyzer.Core.Tests.Services
 
             Assert.Equal(ModuleInstallState.Failed, state);
         }
+
+        [WindowsFact]
+        public async Task RunWithArgumentsAsync_WhenProcessExitsZero_ReturnsInstalled()
+        {
+            var state = await ModuleInstallProbe.RunWithArgumentsAsync("cmd.exe", new[] { "/c", "exit 0" }, TimeSpan.FromSeconds(30));
+
+            Assert.Equal(ModuleInstallState.Installed, state);
+        }
+
+        [WindowsFact]
+        public async Task RunWithArgumentsAsync_WhenProcessExitsNonZero_ReturnsMissing()
+        {
+            var state = await ModuleInstallProbe.RunWithArgumentsAsync("cmd.exe", new[] { "/c", "exit 1" }, TimeSpan.FromSeconds(30));
+
+            Assert.Equal(ModuleInstallState.Missing, state);
+        }
+
+        [Fact]
+        public async Task RunWithArgumentsAsync_WhenExecutableDoesNotExist_ReturnsFailed()
+        {
+            var state = await ModuleInstallProbe.RunWithArgumentsAsync(@"Z:\does-not-exist\python.exe", new[] { "-c", "import pandas" }, TimeSpan.FromSeconds(30));
+
+            Assert.Equal(ModuleInstallState.Failed, state);
+        }
     }
 }

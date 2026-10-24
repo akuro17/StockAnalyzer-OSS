@@ -73,6 +73,10 @@ public class ChartViewModelStaleTabTests : IDisposable
 
     private async Task OpenBothTabsAsync()
     {
+        // Each tab starts a load of its default symbol from its constructor. Without a synchronization context that load runs on the thread pool; if
+        // it is still in flight when Symbol is assigned, it records the NEW symbol as the drawings owner for drawings read for the old one, and its
+        // next load then saves them into the new symbol's file, so the other tab is stale before the test has changed anything.
+        await ChartViewModelTestWaits.AwaitLoadsAsync(_tabA, _tabB);
         _tabA.Symbol = Ticker;
         await ChartViewModelTestWaits.AwaitLoadsAsync(_tabA);
         _tabB.Symbol = Ticker;

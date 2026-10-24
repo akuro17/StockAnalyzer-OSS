@@ -16,6 +16,10 @@ namespace StockAnalyzer.Core.Services;
 /// </summary>
 public class TimeFrameManager : ITimeFrameManager
 {
+    // Upper bounds of the daily bars of one period (trading days are fewer), used to size the daily load for a weekly or monthly list.
+    private const int DailyBarsPerWeekBound = 7;
+    private const int DailyBarsPerMonthBound = 30;
+
     private readonly IDataService _dataService;
     private readonly ConcurrentDictionary<string, CacheEntry> _cache = new();
     private readonly int _maxCacheEntries;
@@ -45,8 +49,9 @@ public class TimeFrameManager : ITimeFrameManager
 
         string cacheKey = BuildCacheKey(symbol, timeFrame);
 
-        // 1. Check cache for exact match
-        if (_cache.TryGetValue(cacheKey, out var cached))
+        // 1. Check cache for exact match. An entry answers a request only when it holds enough: a list that was loaded for a smaller count (or
+        // that is a truncated daily list kept for an aggregation) must not be returned as if it were the whole history.
+        if (_cache.TryGetValue(cacheKey, out var cached) && cached.Covers(count))
         {
             cached.LastAccessed = DateTime.UtcNow;
             // Ensure we only return up to the requested count from the cache
@@ -61,26 +66,31 @@ public class TimeFrameManager : ITimeFrameManager
         if (timeFrame == TimeFrame.W1 || timeFrame == TimeFrame.MN1)
         {
             string dailyKey = BuildCacheKey(symbol, TimeFrame.D1);
-            IReadOnlyList<CandleData> dailyData;
 
-            if (_cache.TryGetValue(dailyKey, out var dailyCached))
+            // Daily bars the period count needs (generously: a week or month holds fewer than 7 or 30 daily bars); the whole history for count <= 0.
+            int dailyCount = count <= 0 ? 0 : (int)Math.Min((long)count * (timeFrame == TimeFrame.MN1 ? DailyBarsPerMonthBound : DailyBarsPerWeekBound), int.MaxValue);
+            IReadOnlyList<CandleData> dailyData;
+            bool dailyComplete;
+
+            if (_cache.TryGetValue(dailyKey, out var dailyCached) && dailyCached.Covers(dailyCount))
             {
                 dailyCached.LastAccessed = DateTime.UtcNow;
                 dailyData = dailyCached.Data;
+                dailyComplete = dailyCached.Complete;
             }
             else
             {
-                // Load Daily data if not in cache (e.g. initial load was Monthly)
-                // Request more candles for daily to ensure enough data for Monthly/Weekly aggregation
-                int dailyCount = timeFrame == TimeFrame.MN1 ? count * 30 : count * 7;
+                // No daily list in the cache, or one too short for this count (for example loaded for a daily chart of 200 bars): load what is needed.
                 dailyData = await _dataService.LoadCandlesAsync(symbol, TimeFrame.D1, dailyCount);
-                StoreInCache(dailyKey, dailyData);
+                dailyComplete = dailyCount <= 0 || dailyData.Count < dailyCount;
+                StoreInCache(dailyKey, dailyData, dailyCount, dailyComplete);
             }
 
             cancellationToken.ThrowIfCancellationRequested();
 
             var aggregated = TimeFrameAggregator.Aggregate(dailyData, timeFrame);
-            StoreInCache(cacheKey, aggregated);
+            // A period list built from a truncated daily list is only as long as that list allows.
+            StoreInCache(cacheKey, aggregated, dailyComplete ? count : Math.Min(count, aggregated.Count), dailyComplete);
 
             // Ensure we only return up to the requested count
             return (count > 0 && aggregated.Count > count)
@@ -95,8 +105,8 @@ public class TimeFrameManager : ITimeFrameManager
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        StoreInCache(cacheKey, data);
-        
+        StoreInCache(cacheKey, data, count, count <= 0 || data.Count < count);
+
         // Ensure we only return up to the requested count (defensive check)
         return (count > 0 && data.Count > count)
             ? data.Skip(data.Count - count).ToList()
@@ -128,9 +138,9 @@ public class TimeFrameManager : ITimeFrameManager
         return $"{symbol}:{timeFrame}";
     }
 
-    private void StoreInCache(string key, IReadOnlyList<CandleData> data)
+    private void StoreInCache(string key, IReadOnlyList<CandleData> data, int requestedCount, bool complete)
     {
-        var entry = new CacheEntry(data);
+        var entry = new CacheEntry(data, requestedCount, complete);
         _cache[key] = entry;
 
         // Evict oldest entries if cache exceeds max size
@@ -152,10 +162,21 @@ public class TimeFrameManager : ITimeFrameManager
         public IReadOnlyList<CandleData> Data { get; }
         public DateTime LastAccessed { get; set; }
 
-        public CacheEntry(IReadOnlyList<CandleData> data)
+        /// <summary>The count the list was loaded for (0 = the whole history was asked for).</summary>
+        public int RequestedCount { get; }
+
+        /// <summary>True when the list holds the whole stored history: it was asked for, or the source returned fewer bars than asked.</summary>
+        public bool Complete { get; }
+
+        public CacheEntry(IReadOnlyList<CandleData> data, int requestedCount, bool complete)
         {
             Data = data;
+            RequestedCount = requestedCount;
+            Complete = complete;
             LastAccessed = DateTime.UtcNow;
         }
+
+        /// <summary>Whether this list can answer a request for <paramref name="count"/> bars (count <= 0 asks for everything).</summary>
+        public bool Covers(int count) => Complete || (count > 0 && RequestedCount >= count);
     }
 }

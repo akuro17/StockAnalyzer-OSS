@@ -560,7 +560,7 @@ public class AnalysisPipelineService : IAnalysisPipelineService
         return AtrCalculator.Calculate(candleList, period);
     }
 
-    private static IReadOnlyList<CoreCandleData?>? ResolveSecondaryCandles(IReadOnlyDictionary<string, IReadOnlyList<CoreCandleData?>>? secondaryCandlesBySymbol, string symbol)
+    internal static IReadOnlyList<CoreCandleData?>? ResolveSecondaryCandles(IReadOnlyDictionary<string, IReadOnlyList<CoreCandleData?>>? secondaryCandlesBySymbol, string symbol)
     {
         if (secondaryCandlesBySymbol == null || string.IsNullOrWhiteSpace(symbol)) return null;
 

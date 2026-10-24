@@ -22,6 +22,13 @@ public partial class ScreenerIndicatorEntry : ObservableObject, IScreeningCondit
     }
 
     public bool IsMet(IReadOnlyList<CandleData> candles, Portfolio.TickerMetadata metadata)
+        => IsMet(candles, metadata, null);
+
+    /// <summary>
+    /// <see cref="IsMet(IReadOnlyList{CandleData}, Portfolio.TickerMetadata)"/> with the bars of the comparison symbols the indicators that compare two
+    /// tickers read; null keeps them without a value (the Screener tab's rule).
+    /// </summary>
+    public bool IsMet(IReadOnlyList<CandleData> candles, Portfolio.TickerMetadata metadata, IScreenerSecondaryCandles? secondary)
     {
         if (candles == null || candles.Count == 0) return false;
 
@@ -38,7 +45,7 @@ public partial class ScreenerIndicatorEntry : ObservableObject, IScreeningCondit
         // Column fundamental metrics: If metadata is null (data missing), strictly exclude from screening results
         if (LeftHand?.CategoryType == ScreenerItemCategoryType.Column)
         {
-            decimal? leftValNullable = ScreenerValueExtractor.Default.ExtractValueNullable(LeftHand, candles, metadata);
+            decimal? leftValNullable = ScreenerValueExtractor.Default.ExtractValueNullable(LeftHand, candles, metadata, secondary);
             if (!leftValNullable.HasValue)
             {
                 return false;
@@ -47,7 +54,7 @@ public partial class ScreenerIndicatorEntry : ObservableObject, IScreeningCondit
             decimal leftValue = leftValNullable.Value;
             decimal? rightValueNullable = TargetMode == RightHandTargetMode.NumericValue
                 ? RightNumericValue
-                : ScreenerValueExtractor.Default.ExtractValueNullable(RightHand, candles, metadata);
+                : ScreenerValueExtractor.Default.ExtractValueNullable(RightHand, candles, metadata, secondary);
             if (!rightValueNullable.HasValue) return false;
 
             decimal rightValue = rightValueNullable.Value;
@@ -64,13 +71,13 @@ public partial class ScreenerIndicatorEntry : ObservableObject, IScreeningCondit
             };
         }
 
-        decimal? extractedVal = ScreenerValueExtractor.Default.ExtractValueNullable(LeftHand, candles, metadata);
+        decimal? extractedVal = ScreenerValueExtractor.Default.ExtractValueNullable(LeftHand, candles, metadata, secondary);
         if (!extractedVal.HasValue) return false;
 
         decimal leftVal = extractedVal.Value;
         decimal? rightValNullable = TargetMode == RightHandTargetMode.NumericValue
             ? RightNumericValue
-            : ScreenerValueExtractor.Default.ExtractValueNullable(RightHand, candles, metadata);
+            : ScreenerValueExtractor.Default.ExtractValueNullable(RightHand, candles, metadata, secondary);
         if (!rightValNullable.HasValue) return false;
 
         decimal rightVal = rightValNullable.Value;
@@ -95,6 +102,11 @@ public partial class ScreenerIndicatorEntry : ObservableObject, IScreeningCondit
     public ValueTask<bool> IsMetAsync(IReadOnlyList<CandleData> candles, Portfolio.TickerMetadata metadata)
     {
         return ValueTask.FromResult(IsMet(candles, metadata));
+    }
+
+    public ValueTask<bool> IsMetAsync(IReadOnlyList<CandleData> candles, Portfolio.TickerMetadata metadata, IScreenerSecondaryCandles? secondary)
+    {
+        return ValueTask.FromResult(IsMet(candles, metadata, secondary));
     }
 
     /// <summary>

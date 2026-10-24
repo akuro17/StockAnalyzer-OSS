@@ -151,7 +151,7 @@ public sealed class BacktestGuiMcpEquivalenceTests : IDisposable
     // ---- the window's side --------------------------------------------------------------------------------------------------------------
 
     /// <summary>The snapshot the window builds (BuildRunSnapshot), from the same explicit values.</summary>
-    private BacktestRunSnapshot WindowSnapshot()
+    private BacktestRunSnapshot WindowSnapshot(int? annualPeriodsD1 = null, int? bootstrapSeed = null, int? bootstrapIterations = null)
     {
         IStockAnalyzerSettings settings = new ServiceCollection().AddStockAnalyzerReadOnlyCore(Configuration()).BuildServiceProvider().GetRequiredService<IStockAnalyzerSettings>();
 
@@ -189,7 +189,8 @@ public sealed class BacktestGuiMcpEquivalenceTests : IDisposable
             SchemaVersion = BacktestReportDefaults.CurrentSchemaVersion,
             AnnualRiskFreeRate = AnnualRiskFreeRate,
             AnnualMAR = AnnualMar,
-            AnnualPeriodsByFrame = BacktestReportDefaults.BuiltIn.AnnualPeriodsByFrame.ToDictionary(entry => entry.Key, entry => entry.Value),
+            AnnualPeriodsByFrame = BacktestReportDefaults.BuiltIn.AnnualPeriodsByFrame
+                .ToDictionary(entry => entry.Key, entry => entry.Key == TimeFrame.D1 && annualPeriodsD1 is { } periods ? periods : entry.Value),
         });
 
         return new BacktestRunSnapshot(
@@ -202,18 +203,18 @@ public sealed class BacktestGuiMcpEquivalenceTests : IDisposable
             ownedRisk,
             ImmutableArray<StrategyIndicatorRequest>.Empty,
             reportDefaults,
-            BacktestDefaults.BootstrapSeed,
-            BacktestDefaults.BootstrapIterations,
+            bootstrapSeed ?? BacktestDefaults.BootstrapSeed,
+            bootstrapIterations ?? BacktestDefaults.BootstrapIterations,
             tree);
     }
 
     /// <summary>What the window's RunBacktestAsync does with the snapshot: PrepareAsync, then Evaluate.</summary>
-    private async Task<BacktestEvaluationArtifact> RunLikeTheWindowAsync()
+    private async Task<BacktestEvaluationArtifact> RunLikeTheWindowAsync(int? annualPeriodsD1 = null, int? bootstrapSeed = null, int? bootstrapIterations = null)
     {
         using var db = new DuckDBConnectionManager();
         var preparation = new BacktestRunPreparationService(new ParquetDataService(db, Options.Create(_fixture.Settings)));
         var evaluation = new BacktestEvaluationService(new BacktestEngine(IndicatorFactory.Default), new BacktestReportGenerator(), new NoSamplingEvidenceTrustPolicy());
-        PreparedBacktestRun prepared = await preparation.PrepareAsync(WindowSnapshot(), CancellationToken.None);
+        PreparedBacktestRun prepared = await preparation.PrepareAsync(WindowSnapshot(annualPeriodsD1, bootstrapSeed, bootstrapIterations), CancellationToken.None);
         return evaluation.Evaluate(prepared.Input, prepared.Configuration, prepared.StrategySpecification, prepared.ReportOptions);
     }
 
@@ -283,6 +284,28 @@ public sealed class BacktestGuiMcpEquivalenceTests : IDisposable
         BacktestEvaluationArtifact window = await RunLikeTheWindowAsync();
 
         AssertSameResult(window, mcp);
+    }
+
+    [Fact]
+    public async Task TheAnnualPeriodsAndBootstrapValuesOfTheSettingsPageGiveTheSameResultInBothPaths()
+    {
+        const int annualPeriods = 365;
+        const int seed = 7;
+        const int iterations = 1500;
+        var dispatcher = await StartAsync();
+        string report = SettingsJson.Replace(
+            "\"report\":{",
+            $"\"report\":{{\"annualPeriodsD1\":{annualPeriods},\"bootstrapSeed\":{seed},\"bootstrapIterations\":{iterations},");
+
+        JsonElement mcp = await CallAsync(dispatcher, $"\"conditions\":{ConditionsJson}{Period}{report}{RiskJson}");
+        BacktestEvaluationArtifact window = await RunLikeTheWindowAsync(annualPeriods, seed, iterations);
+
+        AssertSameResult(window, mcp);
+        JsonElement echoed = mcp.GetProperty("effectiveSettings").GetProperty("report");
+        Assert.Equal(annualPeriods, echoed.GetProperty("annualPeriods").GetInt32());
+        Assert.Equal(seed, echoed.GetProperty("bootstrapSeed").GetInt32());
+        Assert.Equal(iterations, echoed.GetProperty("bootstrapIterations").GetInt32());
+        Assert.Equal(annualPeriods, window.Metadata.AnnualPeriods);
     }
 
     [Fact]

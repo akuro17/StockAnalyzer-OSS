@@ -26,10 +26,19 @@ public sealed class ScreenerTemplateEvaluator : IScreenerTemplateEvaluator
         _screenerService = screenerService;
     }
 
+    public Task<HashSet<string>> EvaluateAsync(
+        IReadOnlyList<string> symbols,
+        ScreenerIndicatorTemplate template,
+        TimeFrame timeFrame,
+        IProgress<int>? progress,
+        CancellationToken ct)
+        => EvaluateAsync(symbols, template, timeFrame, null, progress, ct);
+
     public async Task<HashSet<string>> EvaluateAsync(
         IReadOnlyList<string> symbols,
         ScreenerIndicatorTemplate template,
         TimeFrame timeFrame,
+        IScreenerSecondaryCandles? secondary,
         IProgress<int>? progress,
         CancellationToken ct)
     {
@@ -47,7 +56,10 @@ public sealed class ScreenerTemplateEvaluator : IScreenerTemplateEvaluator
             ct.ThrowIfCancellationRequested();
 
             var entry = entries[i];
-            var hits = await _screenerService.ScreenAsync(symbolList, entry, timeFrame, progress!, ct);
+            // Without comparison-symbol bars the original overload runs, so an IScreenerService that implements only that one is unaffected.
+            var hits = secondary == null
+                ? await _screenerService.ScreenAsync(symbolList, entry, timeFrame, progress!, ct)
+                : await _screenerService.ScreenAsync(symbolList, entry, timeFrame, secondary, progress!, ct);
             var hitSet = new HashSet<string>(hits);
 
             if (combined == null)

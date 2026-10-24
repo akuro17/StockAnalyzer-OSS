@@ -40,14 +40,30 @@ public sealed class StoredPeriodAdvisor : IStoredPeriodAdvisor
     }
 
     public Task<StoredPeriodProposal> ProposeForRlAsync(string symbol, int requiredBars, DateOnly? endBoundInclusive, CancellationToken cancellationToken)
+        => ProposeForRlAsync(symbol, requiredBars, endBoundInclusive, cancellationToken, folders: null);
+
+    public Task<StoredPeriodProposal> ProposeForRlAsync(string symbol, int requiredBars, DateOnly? endBoundInclusive, CancellationToken cancellationToken, RlLocalSourceFolders? folders)
     {
-        var (daily, metadata) = LocalFolders();
+        if (folders is not null)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(folders.Daily);
+            ArgumentException.ThrowIfNullOrWhiteSpace(folders.Metadata);
+        }
+        var (daily, metadata) = folders is not null ? (folders.Daily, folders.Metadata) : LocalFolders();
         return ProposeForRlAsync(symbol, requiredBars, endBoundInclusive, daily, metadata, cancellationToken);
     }
 
     public Task<DateOnly?> LatestFinalizedDateAsync(IReadOnlyList<string> symbols, CancellationToken cancellationToken)
+        => LatestFinalizedDateAsync(symbols, cancellationToken, folders: null);
+
+    public Task<DateOnly?> LatestFinalizedDateAsync(IReadOnlyList<string> symbols, CancellationToken cancellationToken, RlLocalSourceFolders? folders)
     {
-        var (daily, metadata) = LocalFolders();
+        if (folders is not null)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(folders.Daily);
+            ArgumentException.ThrowIfNullOrWhiteSpace(folders.Metadata);
+        }
+        var (daily, metadata) = folders is not null ? (folders.Daily, folders.Metadata) : LocalFolders();
         return LatestFinalizedDateAsync(symbols, daily, metadata, cancellationToken);
     }
 
@@ -79,16 +95,16 @@ public sealed class StoredPeriodAdvisor : IStoredPeriodAdvisor
     /// <summary>The configured folder of the timeframe (the one folder rule of the Training Wizard family).</summary>
     private string TrainingFolder(TrainingTimeframe timeframe) => Path.GetFullPath(timeframe switch
     {
-        TrainingTimeframe.Daily => PathDiscovery.ResolveDataPath(_settings.DailyDataPath, MarketDataSettings.DefaultDailyDataPath),
-        TrainingTimeframe.Weekly => PathDiscovery.ResolveDataPath(_settings.WeeklyDataPath, MarketDataSettings.DefaultWeeklyDataPath),
-        TrainingTimeframe.Monthly => PathDiscovery.ResolveDataPath(_settings.MonthlyDataPath, MarketDataSettings.DefaultMonthlyDataPath),
+        TrainingTimeframe.Daily => PathDiscovery.ResolveDataPathWithoutCreating(_settings.DailyDataPath, MarketDataSettings.DefaultDailyDataPath),
+        TrainingTimeframe.Weekly => PathDiscovery.ResolveDataPathWithoutCreating(_settings.WeeklyDataPath, MarketDataSettings.DefaultWeeklyDataPath),
+        TrainingTimeframe.Monthly => PathDiscovery.ResolveDataPathWithoutCreating(_settings.MonthlyDataPath, MarketDataSettings.DefaultMonthlyDataPath),
         _ => throw new ArgumentOutOfRangeException(nameof(timeframe), timeframe, "Unsupported training timeframe."),
     });
 
-    /// <summary>The Daily and Metadata folders of the RL family (the fixed Data folders, as the panel advisor and the preflight use them).</summary>
-    private static (string Daily, string Metadata) LocalFolders()
-        => (Path.GetFullPath(PathDiscovery.ResolveDataPath(null, MarketDataSettings.DefaultDailyDataPath)),
-            Path.GetFullPath(PathDiscovery.ResolveDataPath(null, MarketDataSettings.DefaultMetadataDataPath)));
+    /// <summary>The Daily and Metadata folders of the RL family.</summary>
+    private (string Daily, string Metadata) LocalFolders()
+        => (Path.GetFullPath(PathDiscovery.ResolveDataPathWithoutCreating(_settings.DailyDataPath, MarketDataSettings.DefaultDailyDataPath)),
+            Path.GetFullPath(PathDiscovery.ResolveDataPathWithoutCreating(_settings.MetadataPath, MarketDataSettings.DefaultMetadataDataPath)));
 
     /// <summary>RL / Portfolio RL family: final bars only (before the exchange date of now), equity metadata required.</summary>
     internal StoredPeriodProposal ProposeFinalized(IReadOnlyList<string> symbols, int requiredBars, DateOnly? endBoundInclusive,

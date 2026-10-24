@@ -26,6 +26,13 @@ public interface IScreenerValueExtractor
     decimal? ExtractValueNullable(ScreenerIndicatorSideConfig? config, IReadOnlyList<CandleData> candles, TickerMetadata metadata = default);
 
     /// <summary>
+    /// <see cref="ExtractValueNullable(ScreenerIndicatorSideConfig?, IReadOnlyList{CandleData}, TickerMetadata)"/> with the bars of the comparison symbols,
+    /// which an indicator that compares two tickers reads. Existing implementers need not change: the default ignores them.
+    /// </summary>
+    decimal? ExtractValueNullable(ScreenerIndicatorSideConfig? config, IReadOnlyList<CandleData> candles, TickerMetadata metadata, IScreenerSecondaryCandles? secondary)
+        => ExtractValueNullable(config, candles, metadata);
+
+    /// <summary>
     /// Extracts the indicator value returning null if dataset is missing or unresolvable, using CoreCandleData.
     /// </summary>
     decimal? ExtractValueNullable(ScreenerIndicatorSideConfig? config, IReadOnlyList<CoreCandleData> candles, TickerMetadata metadata = default) => null;

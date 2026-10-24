@@ -38,6 +38,7 @@ namespace StockAnalyzer.UITests.Infrastructure
         private string? _isolatedDataRoot;
         private string? _isolatedRunsRoot;
         private bool _disposed;
+        private UiTestWatchdog? _watchdog;
 
         // Configurable timeouts via Environment Variables (CI flexibility)
         private static readonly int StartupTimeoutMs = GetEnvInt("UI_TEST_STARTUP_TIMEOUT", 15000);
@@ -49,6 +50,32 @@ namespace StockAnalyzer.UITests.Infrastructure
             Output = output;
             _screenshotDirectory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Screenshots");
             Directory.CreateDirectory(_screenshotDirectory);
+        }
+
+        /// <summary>The time one test may take from the start of <see cref="LaunchApplication"/> (fixture preparation included). Overridden only by the tests of the limit itself.</summary>
+        protected virtual TimeSpan TimeLimit => TimeSpan.FromMilliseconds(UiTestLimits.TestTimeLimitMs);
+
+        /// <summary>
+        /// Starts the time limit once. It is not started by a constructor: a derived constructor that fails after this one has run is never disposed,
+        /// and a timer left running would terminate the test host five minutes later in the middle of an unrelated test.
+        /// </summary>
+        protected void StartTimeLimit() => _watchdog ??= new UiTestWatchdog(TimeLimit, OnTimeLimitExceeded);
+
+        /// <summary>
+        /// Time limit reached: stop the application and the test host immediately (xUnit cannot interrupt a synchronous test body).
+        /// The isolated data root is deliberately left in place; cleanup refuses a root whose application was still running.
+        /// </summary>
+        protected virtual void OnTimeLimitExceeded()
+        {
+            try { Console.Error.WriteLine($"[UI TEST TIMEOUT] The test exceeded {TimeLimit.TotalMilliseconds} ms; terminating the test process."); }
+            catch { /* the output stream may already be gone */ }
+            try
+            {
+                if (App != null)
+                    Process.GetProcessById(App.ProcessId).Kill(entireProcessTree: true);
+            }
+            catch { /* already exited */ }
+            Process.GetCurrentProcess().Kill();
         }
 
         protected void LaunchApplication(Action<string>? prepareFixture = null)
@@ -65,6 +92,7 @@ namespace StockAnalyzer.UITests.Infrastructure
                     $"Set the environment variable {PathDiscovery.UiTestEnabledEnvironmentVariable}=1 to run them intentionally.");
             }
 
+            StartTimeLimit();
             string appPath = FindApplicationPath();
             PrepareIsolatedDataRoot();
             LogInfo($"Launching application from: {appPath}");
@@ -357,6 +385,7 @@ namespace StockAnalyzer.UITests.Infrastructure
             if (_disposed) return;
             if (disposing)
             {
+                _watchdog?.Dispose();
                 try
                 {
                     // 1. Close Window gracefully

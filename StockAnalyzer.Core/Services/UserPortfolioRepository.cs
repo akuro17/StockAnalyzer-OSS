@@ -328,7 +328,7 @@ public sealed class UserPortfolioRepository : IUserPortfolioRepository, IDisposa
 
                     using (var command = dbConnection.CreateCommand())
                     {
-                        command.CommandText = $"COPY temp_cash TO '{tempCash.Replace("\\", "/")}' (FORMAT PARQUET);";
+                        command.CommandText = $"COPY temp_cash TO '{FormatDuckDbPath(tempCash)}' (FORMAT PARQUET);";
                         await command.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
                     }
                 }
@@ -362,7 +362,7 @@ public sealed class UserPortfolioRepository : IUserPortfolioRepository, IDisposa
 
                     using (var command = dbConnection.CreateCommand())
                     {
-                        command.CommandText = $"COPY temp_cash_balances TO '{tempCashBalances.Replace("\\", "/")}' (FORMAT PARQUET);";
+                        command.CommandText = $"COPY temp_cash_balances TO '{FormatDuckDbPath(tempCashBalances)}' (FORMAT PARQUET);";
                         await command.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
                     }
                 }
@@ -402,7 +402,7 @@ public sealed class UserPortfolioRepository : IUserPortfolioRepository, IDisposa
 
                     using (var command = dbConnection.CreateCommand())
                     {
-                        command.CommandText = $"COPY temp_positions TO '{tempPositions.Replace("\\", "/")}' (FORMAT PARQUET);";
+                        command.CommandText = $"COPY temp_positions TO '{FormatDuckDbPath(tempPositions)}' (FORMAT PARQUET);";
                         await command.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
                     }
                 }
@@ -447,7 +447,7 @@ public sealed class UserPortfolioRepository : IUserPortfolioRepository, IDisposa
 
                     using (var command = dbConnection.CreateCommand())
                     {
-                        command.CommandText = $"COPY temp_transactions TO '{tempTransactions.Replace("\\", "/")}' (FORMAT PARQUET);";
+                        command.CommandText = $"COPY temp_transactions TO '{FormatDuckDbPath(tempTransactions)}' (FORMAT PARQUET);";
                         await command.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
                     }
                 }
@@ -508,7 +508,7 @@ public sealed class UserPortfolioRepository : IUserPortfolioRepository, IDisposa
             {
                 using (var command = dbConnection.CreateCommand())
                 {
-                    command.CommandText = $"SELECT Currency, Balance FROM read_parquet('{_cashBalancesPath.Replace("\\", "/")}')";
+                    command.CommandText = $"SELECT Currency, Balance FROM read_parquet('{FormatDuckDbPath(_cashBalancesPath)}')";
                     using var reader = await command.ExecuteReaderAsync(ct).ConfigureAwait(false);
                     while (await reader.ReadAsync(ct).ConfigureAwait(false))
                     {
@@ -523,7 +523,7 @@ public sealed class UserPortfolioRepository : IUserPortfolioRepository, IDisposa
             {
                 using (var command = dbConnection.CreateCommand())
                 {
-                    command.CommandText = $"SELECT CashBalance FROM read_parquet('{_cashPath.Replace("\\", "/")}')";
+                    command.CommandText = $"SELECT CashBalance FROM read_parquet('{FormatDuckDbPath(_cashPath)}')";
                     using var reader = await command.ExecuteReaderAsync(ct).ConfigureAwait(false);
                     if (await reader.ReadAsync(ct).ConfigureAwait(false))
                     {
@@ -538,7 +538,7 @@ public sealed class UserPortfolioRepository : IUserPortfolioRepository, IDisposa
             {
                 try
                 {
-                    command.CommandText = $"SELECT Ticker, Quantity, AverageCostPerUnit, IsShort, AverageCostAmount, AverageCostCurrency FROM read_parquet('{_positionsPath.Replace("\\", "/")}')";
+                    command.CommandText = $"SELECT Ticker, Quantity, AverageCostPerUnit, IsShort, AverageCostAmount, AverageCostCurrency FROM read_parquet('{FormatDuckDbPath(_positionsPath)}')";
                     using var reader = await command.ExecuteReaderAsync(ct).ConfigureAwait(false);
                     while (await reader.ReadAsync(ct).ConfigureAwait(false))
                     {
@@ -555,7 +555,7 @@ public sealed class UserPortfolioRepository : IUserPortfolioRepository, IDisposa
                 catch
                 {
                     // Fallback to legacy
-                    command.CommandText = $"SELECT Ticker, Quantity, AverageCostPerUnit, IsShort FROM read_parquet('{_positionsPath.Replace("\\", "/")}')";
+                    command.CommandText = $"SELECT Ticker, Quantity, AverageCostPerUnit, IsShort FROM read_parquet('{FormatDuckDbPath(_positionsPath)}')";
                     using var reader = await command.ExecuteReaderAsync(ct).ConfigureAwait(false);
                     while (await reader.ReadAsync(ct).ConfigureAwait(false))
                     {
@@ -574,10 +574,10 @@ public sealed class UserPortfolioRepository : IUserPortfolioRepository, IDisposa
             {
                 try
                 {
-                    command.CommandText = @"SELECT 
+                    command.CommandText = $@"SELECT 
                         ExecutedAt, Type, Ticker, Quantity, PricePerUnit, CashAmount, Fee, Notes, TargetPrice, StopLoss, Id, RelatedTransactionId,
                         PriceAmount, PriceCurrency, CommissionAmount, CommissionCurrency, AppliedRateRate, AppliedRateBase, AppliedRateQuote
-                        FROM read_parquet('" + _transactionsPath.Replace("\\", "/") + "')";
+                        FROM read_parquet('{FormatDuckDbPath(_transactionsPath)}')";
                     using var reader = await command.ExecuteReaderAsync(ct).ConfigureAwait(false);
                     while (await reader.ReadAsync(ct).ConfigureAwait(false))
                     {
@@ -621,9 +621,9 @@ public sealed class UserPortfolioRepository : IUserPortfolioRepository, IDisposa
                 catch
                 {
                     // Fallback to legacy
-                    command.CommandText = @"SELECT 
+                    command.CommandText = $@"SELECT 
                         ExecutedAt, Type, Ticker, Quantity, PricePerUnit, CashAmount, Fee, Notes, TargetPrice, StopLoss, Id, RelatedTransactionId 
-                        FROM read_parquet('" + _transactionsPath.Replace("\\", "/") + "')";
+                        FROM read_parquet('{FormatDuckDbPath(_transactionsPath)}')";
                     using var reader = await command.ExecuteReaderAsync(ct).ConfigureAwait(false);
                     while (await reader.ReadAsync(ct).ConfigureAwait(false))
                     {
@@ -663,4 +663,7 @@ public sealed class UserPortfolioRepository : IUserPortfolioRepository, IDisposa
         _ioLock.Dispose();
         _disposed = true;
     }
+
+    private static string FormatDuckDbPath(string path) =>
+        ParquetMarketDataProvider.FormatDuckDbPath(path);
 }

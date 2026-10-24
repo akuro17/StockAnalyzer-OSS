@@ -14,6 +14,22 @@ namespace StockAnalyzer.Core.Services;
 public static class TimeFrameAggregator
 {
     /// <summary>
+    /// The last calendar day of the period a bar belongs to: the Sunday of its ISO week (W1), the last day of its month (MN1), or the bar's own date
+    /// (any other frame). <paramref name="barTimestamp"/> is the bar's timestamp, which for W1 and MN1 is the first trading day of the period.
+    /// A period is complete once the data (or an as-of date) reaches this day.
+    /// </summary>
+    public static DateTime PeriodEnd(DateTime barTimestamp, Models.TimeFrame timeFrame)
+    {
+        DateTime date = barTimestamp.Date;
+        return timeFrame switch
+        {
+            Models.TimeFrame.W1 => SundayOfIsoWeek(date),
+            Models.TimeFrame.MN1 => new DateTime(date.Year, date.Month, DateTime.DaysInMonth(date.Year, date.Month), 0, 0, 0, date.Kind),
+            _ => date,
+        };
+    }
+
+    /// <summary>
     /// Aggregates daily candle data into the specified target timeframe.
     /// Returns the input unchanged if target is Daily or lower.
     /// </summary>
@@ -92,8 +108,18 @@ public static class TimeFrameAggregator
         );
     }
 
+    // The one definition of a week: the grouping key and the period end below both come from the ISO 8601 week (Monday start) of the date.
+    private static (int Year, int Week) IsoWeekOf(DateTime date) => (ISOWeek.GetYear(date), ISOWeek.GetWeekOfYear(date));
+
     private static int GetIsoWeekKey(DateTime date)
     {
-        return ISOWeek.GetYear(date) * 100 + ISOWeek.GetWeekOfYear(date);
+        var (year, week) = IsoWeekOf(date);
+        return year * 100 + week;
+    }
+
+    private static DateTime SundayOfIsoWeek(DateTime date)
+    {
+        var (year, week) = IsoWeekOf(date);
+        return DateTime.SpecifyKind(ISOWeek.ToDateTime(year, week, DayOfWeek.Sunday), date.Kind);
     }
 }

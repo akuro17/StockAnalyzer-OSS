@@ -364,6 +364,55 @@ namespace StockAnalyzer.Core.Tests.Services
         }
 
         [Fact]
+        public async Task StartTrainingAsync_EphemeralRun_ChildGetsNoBytecodeCacheTheArtifactsDirectoryAndTheCallersRunId()
+        {
+            var runId = TrainingRunId.New(DateTimeOffset.UtcNow);
+            var artifacts = Path.Combine(StockAnalyzer.Core.Execution.EphemeralSandbox.Root, "session", runId);
+            var script = WriteFakeInterpreter(CaptureBytecodeEnvironmentBatch);
+            var orchestrator = new TrainingOrchestrator(new FakePythonService(script), s_indicatorChannelExporter);
+
+            var result = await orchestrator.StartTrainingAsync(ValidConfig() with { ArtifactsDirectory = artifacts, RunId = runId });
+
+            Assert.Equal(runId, result.RunId);
+            Assert.Equal("[1]", (await File.ReadAllTextAsync(Path.Combine(_workDir, "captured_bytecode.txt"))).Trim());
+            using var captured = JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(_workDir, "captured_bytecode_config.json")));
+            Assert.Equal(artifacts, captured.RootElement.GetProperty("artifacts_directory").GetString());
+            Assert.Equal(runId, captured.RootElement.GetProperty("run_id").GetString());
+        }
+
+        [Fact]
+        public async Task StartTrainingAsync_NormalRun_ChildEnvironmentAndWireAreUnchangedAndTheOrchestratorMakesTheRunId()
+        {
+            var script = WriteFakeInterpreter(CaptureBytecodeEnvironmentBatch);
+            var orchestrator = new TrainingOrchestrator(new FakePythonService(script), s_indicatorChannelExporter);
+            var callersId = TrainingRunId.New(DateTimeOffset.UtcNow);
+
+            var result = await orchestrator.StartTrainingAsync(ValidConfig() with { RunId = callersId });
+
+            // The caller's id is ignored outside the ephemeral mode: the orchestrator makes its own, in the same format as before.
+            Assert.True(TrainingRunId.IsValid(result.RunId));
+            Assert.NotEqual(callersId, result.RunId);
+            // The batch echoes the value in brackets (an unset variable is empty); a run of the normal mode must see exactly what the parent has.
+            var inherited = Environment.GetEnvironmentVariable("PYTHONDONTWRITEBYTECODE") ?? string.Empty;
+            Assert.Equal($"[{inherited}]", (await File.ReadAllTextAsync(Path.Combine(_workDir, "captured_bytecode.txt"))).Trim());
+            using var captured = JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(_workDir, "captured_bytecode_config.json")));
+            Assert.False(captured.RootElement.TryGetProperty("artifacts_directory", out _));
+            Assert.Equal(result.RunId, captured.RootElement.GetProperty("run_id").GetString());
+        }
+
+        [Fact]
+        public async Task StartTrainingAsync_WithAResolver_TheInterpreterIsTheResolversAndAMissingOneIsAFileNotFound()
+        {
+            var script = WriteFakeInterpreter(SuccessBatch);
+            var found = new TrainingOrchestrator(new FakePythonService(WriteFakeInterpreter(NeverCalledBatch)), s_indicatorChannelExporter,
+                executableResolver: new FixedResolver(script));
+            var missing = new TrainingOrchestrator(new FakePythonService(script), s_indicatorChannelExporter,
+                executableResolver: new FixedResolver(null));
+
+            Assert.True((await found.StartTrainingAsync(ValidConfig())).Success);
+            await Assert.ThrowsAsync<FileNotFoundException>(() => missing.StartTrainingAsync(ValidConfig()));
+        }
+
         public async Task StartTrainingAsync_Cancelled_ThrowsOperationCanceledExceptionPromptly()
         {
             var scriptPath = WriteFakeInterpreter(LoopingBatch);
@@ -775,6 +824,14 @@ namespace StockAnalyzer.Core.Tests.Services
             "echo PROGRESS:100\r\n" +
             "exit /b 0\r\n";
 
+        private const string CaptureBytecodeEnvironmentBatch =
+            "@echo off\r\n" +
+            "copy %4 \"%~dp0captured_bytecode_config.json\" >nul\r\n" +
+            ">\"%~dp0captured_bytecode.txt\" echo [%PYTHONDONTWRITEBYTECODE%]\r\n" +
+            "echo STAGE:done\r\n" +
+            "echo PROGRESS:100\r\n" +
+            "exit /b 0\r\n";
+
         private string WriteFakeInterpreter(string batchBody)
         {
             var path = Path.Combine(_workDir, "fake_python_" + Guid.NewGuid().ToString("N") + ".cmd");
@@ -795,6 +852,15 @@ namespace StockAnalyzer.Core.Tests.Services
 
             public Task<string> ResolvePythonExecutablePathAsync(CancellationToken ct = default)
                 => Task.FromResult(_executablePath);
+        }
+
+        private sealed class FixedResolver(string? path) : StockAnalyzer.Core.Execution.IPythonExecutableResolver
+        {
+            public bool TryResolve(out string executablePath)
+            {
+                executablePath = path ?? string.Empty;
+                return path is not null;
+            }
         }
 
         private sealed class SyncProgress<T> : IProgress<T>

@@ -19,4 +19,24 @@ public interface IScreenerTemplateEvaluator
         TimeFrame timeFrame,
         IProgress<int>? progress,
         CancellationToken ct);
+
+    /// <summary>
+    /// The evaluation of the overload above with the bars of the comparison symbols, which the indicators that compare two tickers read. An evaluator
+    /// that does not read them refuses them instead of ignoring them silently; null is the overload above.
+    /// </summary>
+    Task<HashSet<string>> EvaluateAsync(
+        IReadOnlyList<string> symbols,
+        ScreenerIndicatorTemplate template,
+        TimeFrame timeFrame,
+        Models.Screener.IScreenerSecondaryCandles? secondary,
+        IProgress<int>? progress,
+        CancellationToken ct)
+    {
+        if (secondary != null)
+        {
+            throw new NotSupportedException($"{GetType().Name} does not evaluate indicators that compare two tickers.");
+        }
+
+        return EvaluateAsync(symbols, template, timeFrame, progress, ct);
+    }
 }

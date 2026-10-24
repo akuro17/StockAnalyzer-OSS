@@ -60,6 +60,10 @@ public sealed class RlModelArchiveAndMetricsTests : IDisposable
         {
             var manifestEntry = archive.GetEntry(RlModelArchiveService.ManifestEntryName);
             Assert.NotNull(manifestEntry);
+            using var manifestStream = manifestEntry.Open();
+            var manifest = await System.Text.Json.JsonSerializer.DeserializeAsync<RlArchiveManifest>(manifestStream);
+            Assert.NotNull(manifest);
+            Assert.Equal("checkpoint_step_100", manifest.Metadata["SourceDirectory"]);
             Assert.NotNull(archive.GetEntry("model.onnx"));
             Assert.NotNull(archive.GetEntry("config.json"));
         }
@@ -126,5 +130,48 @@ public sealed class RlModelArchiveAndMetricsTests : IDisposable
         Assert.NotNull(result.Error);
         Assert.Contains("ZipSlip", result.Error, StringComparison.OrdinalIgnoreCase);
         Assert.False(File.Exists(Path.Combine(_testRoot, "safe_target_adjacent", "escaped.txt")));
+    }
+
+    [Theory]
+    [InlineData("../traversal_id")]
+    [InlineData("..\\traversal_id")]
+    [InlineData("sub/folder")]
+    [InlineData("sub\\folder")]
+    [InlineData("id\0withnull")]
+    public async Task ArchiveService_ManifestIdWithTraversalOrInvalidChars_FailsSafely(string maliciousId)
+    {
+        var service = new RlModelArchiveService();
+        string maliciousZip = Path.Combine(_testRoot, "malicious_manifest_id_" + Guid.NewGuid().ToString("N") + ".zip");
+
+        using (var zipStream = new FileStream(maliciousZip, FileMode.Create))
+        using (var archive = new ZipArchive(zipStream, ZipArchiveMode.Create))
+        {
+            var manifestEntry = archive.CreateEntry(RlModelArchiveService.ManifestEntryName);
+            using (var writer = new StreamWriter(manifestEntry.Open()))
+            {
+                var manifest = new RlArchiveManifest(
+                    SchemaVersion: 1,
+                    ArchiveKind: "Checkpoint",
+                    Id: maliciousId,
+                    CreatedUtc: DateTimeOffset.UtcNow,
+                    Metadata: new Dictionary<string, string>(),
+                    FileHashes: new Dictionary<string, string>());
+                writer.Write(System.Text.Json.JsonSerializer.Serialize(manifest));
+            }
+
+            var payloadEntry = archive.CreateEntry("model.onnx");
+            using (var payloadWriter = new StreamWriter(payloadEntry.Open()))
+            {
+                payloadWriter.Write("payload");
+            }
+        }
+
+        string importDir = Path.Combine(_testRoot, "safe_target_import_" + Guid.NewGuid().ToString("N"));
+        var result = await service.ImportArchiveAsync(maliciousZip, importDir);
+
+        Assert.False(result.Success);
+        Assert.NotNull(result.Error);
+        Assert.False(Directory.Exists(Path.Combine(_testRoot, "traversal_id")));
+        Assert.False(Directory.Exists(Path.Combine(importDir, "sub")));
     }
 }

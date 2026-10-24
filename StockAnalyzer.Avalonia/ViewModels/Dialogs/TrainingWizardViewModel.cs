@@ -123,24 +123,6 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
     /// </summary>
     private const int MaxLogLines = 2000;
 
-    /// <summary>Architectures offered per framework, mirroring each trainer's own <c>ARCHES</c> tuple (train_pytorch.py / train_tensorflow.py) or the single GBDT path (train_lightgbm.py has no --arch).</summary>
-    private static readonly IReadOnlyDictionary<TrainingFramework, string[]> ArchitecturesByFramework =
-        new Dictionary<TrainingFramework, string[]>
-        {
-            [TrainingFramework.PyTorch] = new[] { "lstm", "cnn", AttentionContract.Architecture },
-            [TrainingFramework.LightGBM] = new[] { TrainingEnsembleContract.LightGbmArchitecture },
-            [TrainingFramework.TensorFlow] = new[] { "lstm", "gru", "cnn" },
-        };
-
-    /// <summary>The architecture each framework starts with. Explicit on purpose: re-ordering <see cref="ArchitecturesByFramework"/> must not change the default.</summary>
-    private static readonly IReadOnlyDictionary<TrainingFramework, string> DefaultArchitectureByFramework =
-        new Dictionary<TrainingFramework, string>
-        {
-            [TrainingFramework.PyTorch] = "lstm",
-            [TrainingFramework.LightGBM] = TrainingEnsembleContract.LightGbmArchitecture,
-            [TrainingFramework.TensorFlow] = "lstm",
-        };
-
     private readonly IMessenger _messenger = WeakReferenceMessenger.Default;
     private readonly ITrainingOrchestrator? _orchestrator;
     private readonly IModelDeploymentService? _modelDeploymentService;
@@ -291,9 +273,9 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(StartTrainingCommand))]
-    private string _selectedArchitecture = DefaultArchitectureByFramework[TrainingFramework.PyTorch];
+    private string _selectedArchitecture = TrainingArchitectureCatalog.DefaultFor(TrainingFramework.PyTorch);
 
-    public IReadOnlyList<string> AvailableArchitectures => ArchitecturesByFramework[SelectedFramework];
+    public IReadOnlyList<string> AvailableArchitectures => TrainingArchitectureCatalog.For(SelectedFramework);
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(StartTrainingCommand))]
@@ -930,7 +912,7 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
         OnPropertyChanged(nameof(CanFreezeModules));
         if (!AvailableInitializationModes.Contains(SelectedInitializationMode))
             SelectedInitializationMode = TrainingInitializationMode.Fresh;
-        SelectedArchitecture = DefaultArchitectureByFramework[value];
+        SelectedArchitecture = TrainingArchitectureCatalog.DefaultFor(value);
     }
 
     partial void OnSelectedTargetTypeChanged(TargetType value)

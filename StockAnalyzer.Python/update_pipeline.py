@@ -91,6 +91,9 @@ def main():
             sys.exit(1)
 
     # Step 2: Update Daily Data (10% -> 60%)
+    # A failure here does not skip step 3: update_daily.py exits 1 when ANY ticker failed, and the tickers that were updated still need their
+    # weekly and monthly files. The pipeline reports the failure after step 3.
+    daily_failed = False
     if not args.skip_daily:
         daily_extra_args = []
         if args.delay is not None:
@@ -103,14 +106,18 @@ def main():
             daily_extra_args.append("--force-period")
 
         if not run_script("update_daily.py", 15, 60, args.ticker, daily_extra_args):
-            logging.error("Pipeline failed at update_daily.py")
-            sys.exit(1)
+            logging.error("update_daily.py failed; generating the weekly and monthly files of the tickers that were updated anyway")
+            daily_failed = True
     else:
         logging.info("Skipping update_daily.py as requested by --skip-daily")
 
     # Step 3: Generate Timeframes & Indicators (60% -> 100%)
-    if not run_script("generate_timeframes.py", 65, 100, args.ticker):
+    timeframes_ok = run_script("generate_timeframes.py", 65, 100, args.ticker)
+    if not timeframes_ok:
         logging.error("Pipeline failed at generate_timeframes.py")
+    if daily_failed:
+        logging.error("Pipeline failed at update_daily.py")
+    if daily_failed or not timeframes_ok:
         sys.exit(1)
 
     logging.info("Pipeline completed successfully.")

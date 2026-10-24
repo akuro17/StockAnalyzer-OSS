@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Microsoft.Extensions.Configuration;
 using StockAnalyzer.McpServer;
 using StockAnalyzer.McpServer.Execution;
@@ -220,7 +221,10 @@ public sealed class ResourceTests : IDisposable
         using var resource = await SendAsync(dispatcher, "resources/read", """{"uri":"stockanalyzer://catalog/indicators"}""");
         using var tool = (await McpTestSupport.CallAsync(dispatcher, "sa_get_capabilities", """{"includeDetails":true}"""))!;
 
-        Assert.Equal(McpTestSupport.Structured(tool).GetRawText(), ReadText(resource));
+        // The tool result carries one block more than the resource: whether (and what) the execution tools offer depends on how the server was started.
+        JsonObject toolResult = JsonNode.Parse(McpTestSupport.Structured(tool).GetRawText())!.AsObject();
+        Assert.True(toolResult.Remove("execution"));
+        Assert.Equal(toolResult.ToJsonString(), ReadText(resource));
         Assert.True(JsonDocument.Parse(ReadText(resource)).RootElement.GetProperty("indicatorCount").GetInt32() > 150);
     }
 

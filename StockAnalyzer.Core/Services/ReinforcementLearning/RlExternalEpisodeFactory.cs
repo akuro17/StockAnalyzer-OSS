@@ -46,9 +46,14 @@ internal static class RlExternalEpisodeFactory
     private const string EpisodeFolder = "episode";
 
     /// <summary>The first and last anchor date a ticker's completed stored bars allow.</summary>
-    public static async Task<RlAnchorRange> ReadAnchorRangeAsync(string symbol, TrainingResourceLimits limits, RlReplayWorkspace workspace, CancellationToken ct)
+    public static async Task<RlAnchorRange> ReadAnchorRangeAsync(string symbol, TrainingResourceLimits limits, RlReplayWorkspace workspace, CancellationToken ct, RlLocalSourceFolders? folders = null)
     {
-        var dates = (await ReadCalendarAsync(symbol, Path.Combine(CallDirectory(workspace), CalendarFolder), limits, null, null, ct).ConfigureAwait(false)).Dates;
+        if (folders is not null)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(folders.Daily);
+            ArgumentException.ThrowIfNullOrWhiteSpace(folders.Metadata);
+        }
+        var dates = (await ReadCalendarAsync(symbol, Path.Combine(CallDirectory(workspace), CalendarFolder), limits, null, null, ct, folders).ConfigureAwait(false)).Dates;
         RequireHistory(dates);
         return new RlAnchorRange(dates[RlContract.WindowLength - 1], dates[LastAnchorIndex(dates)]);
     }
@@ -60,10 +65,15 @@ internal static class RlExternalEpisodeFactory
     /// receives the milliseconds of the capture, the calendar read and the episode write and validation, and the size of what was read.
     /// </summary>
     public static async Task<RlExternalEpisode> PrepareAsync(string symbol, DateOnly anchorDate, TrainingResourceLimits limits,
-        RlReplayWorkspace workspace, CancellationToken ct, Action<string>? afterCapture = null, RlReplayTimings? timings = null)
+        RlReplayWorkspace workspace, CancellationToken ct, Action<string>? afterCapture = null, RlReplayTimings? timings = null, RlLocalSourceFolders? folders = null)
     {
+        if (folders is not null)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(folders.Daily);
+            ArgumentException.ThrowIfNullOrWhiteSpace(folders.Metadata);
+        }
         string directory = Path.Combine(CallDirectory(workspace), EpisodeFolder);
-        var calendar = await ReadCalendarAsync(symbol, directory, limits, afterCapture, timings, ct).ConfigureAwait(false);
+        var calendar = await ReadCalendarAsync(symbol, directory, limits, afterCapture, timings, ct, folders).ConfigureAwait(false);
         var dates = calendar.Dates;
         RequireHistory(dates);
         ct.ThrowIfCancellationRequested();
@@ -104,7 +114,7 @@ internal static class RlExternalEpisodeFactory
     /// at the instant of the capture) from that copy, without a row ceiling and without reading a price.
     /// </summary>
     private static async Task<CapturedCalendar> ReadCalendarAsync(string symbol, string directory, TrainingResourceLimits limits,
-        Action<string>? afterCapture, RlReplayTimings? timings, CancellationToken ct)
+        Action<string>? afterCapture, RlReplayTimings? timings, CancellationToken ct, RlLocalSourceFolders? folders = null)
     {
         if (string.IsNullOrWhiteSpace(symbol) || symbol.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
             throw new RlExternalReplayException(RlExternalReplayRejection.NoLocalData, "No stored daily data exists for this ticker.");
@@ -112,7 +122,7 @@ internal static class RlExternalEpisodeFactory
         {
             var started = DateTimeOffset.UtcNow;
             long captureStart = RlReplayTimings.Start();
-            var captured = await RlLocalSourceFiles.CaptureAsync(symbol.Trim(), directory, limits, ct).ConfigureAwait(false);
+            var captured = await RlLocalSourceFiles.CaptureAsync(symbol.Trim(), directory, limits, ct, folders).ConfigureAwait(false);
             if (timings is not null) timings.CaptureMs = RlReplayTimings.Since(captureStart);
             afterCapture?.Invoke(directory);
             long calendarStart = RlReplayTimings.Start();

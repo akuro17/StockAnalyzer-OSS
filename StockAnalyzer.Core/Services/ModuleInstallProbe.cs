@@ -44,20 +44,57 @@ namespace StockAnalyzer.Core.Services
         /// cancellation. Only the internal timeout is <see cref="ModuleInstallState.TimedOut"/>; cancellation through
         /// <paramref name="cancellationToken"/> is rethrown (N-07).
         /// </summary>
-        public static async Task<ModuleInstallState> RunAsync(string fileName, string arguments, TimeSpan timeout, CancellationToken cancellationToken = default)
+        public static Task<ModuleInstallState> RunAsync(string fileName, string arguments, TimeSpan timeout, CancellationToken cancellationToken = default)
+        {
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = fileName,
+                Arguments = arguments,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            };
+
+            return ExecuteProbeProcessAsync(startInfo, timeout, cancellationToken);
+        }
+
+        /// <summary>
+        /// Starts the process using <see cref="ProcessStartInfo.ArgumentList"/> to isolate arguments against shell injection.
+        /// </summary>
+        public static Task<ModuleInstallState> RunWithArgumentsAsync(
+            string fileName,
+            System.Collections.Generic.IReadOnlyList<string> argumentList,
+            TimeSpan timeout,
+            CancellationToken cancellationToken = default)
+        {
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = fileName,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            };
+
+            if (argumentList != null)
+            {
+                for (int i = 0; i < argumentList.Count; i++)
+                {
+                    startInfo.ArgumentList.Add(argumentList[i]);
+                }
+            }
+
+            return ExecuteProbeProcessAsync(startInfo, timeout, cancellationToken);
+        }
+
+        private static async Task<ModuleInstallState> ExecuteProbeProcessAsync(
+            ProcessStartInfo startInfo,
+            TimeSpan timeout,
+            CancellationToken cancellationToken)
         {
             try
             {
-                var startInfo = new ProcessStartInfo
-                {
-                    FileName = fileName,
-                    Arguments = arguments,
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true
-                };
-
                 using var process = Process.Start(startInfo);
                 if (process == null) return Classify(startFailed: true, timedOut: false, exitCode: null);
 

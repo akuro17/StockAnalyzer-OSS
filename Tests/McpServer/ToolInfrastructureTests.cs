@@ -90,6 +90,10 @@ public sealed class ToolInfrastructureTests
             "INVALID_ARGUMENT", "SYMBOL_NOT_FOUND", "UNSUPPORTED_TIMEFRAME", "UNKNOWN_INDICATOR", "INVALID_INDICATOR_PARAMETER", "INVALID_OUTPUT_SERIES",
             "CONDITION_LIMIT_EXCEEDED", "LIMIT_EXCEEDED", "INSUFFICIENT_MARKET_DATA", "TEMPLATE_NOT_FOUND", "TEMPLATE_MIGRATION_PENDING",
             "EXECUTION_TIMEOUT", "SERVER_BUSY", "FORBIDDEN_OPERATION", "DATA_UNAVAILABLE", "INTERNAL_ERROR",
+            // Added with the execution tools (plan 1, section 1.6); the codes above are unchanged.
+            "EXECUTION_BUSY", "JOB_NOT_FOUND", "ARTIFACT_NOT_FOUND", "PYTHON_ENV_MISSING",
+            // Added with the path-length check of the sandbox (decision 3-A of the MCP decisions program).
+            "SANDBOX_PATH_TOO_LONG",
         };
 
         Assert.Equal(expected.OrderBy(c => c), ToolErrorCodes.All.OrderBy(c => c));

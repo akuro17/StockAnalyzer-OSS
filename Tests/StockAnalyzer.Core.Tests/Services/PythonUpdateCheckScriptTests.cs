@@ -10,6 +10,7 @@ namespace StockAnalyzer.Core.Tests.Services
     /// Runs <see cref="PythonService.UpdateCheckScript"/> in the embedded interpreter with the installed version and the PyPI answer replaced
     /// by fixed values, so the range rule is checked offline. Without the embedded interpreter the tests are reported as skipped.
     /// </summary>
+    [Collection("ChildProcess")]
     public class PythonUpdateCheckScriptTests
     {
         private const string UpdateAvailable = "UPDATE_AVAILABLE";

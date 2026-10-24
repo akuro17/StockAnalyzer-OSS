@@ -258,6 +258,120 @@ public sealed class DataToolsTests : IDisposable
         Assert.Equal("2024-01-01", Candles(month)[0].GetProperty("timestamp").GetString());
     }
 
+    /// <summary>MSFT: flat closes of 100 for 20 consecutive days from Monday 2024-01-01, a spike to 500 on Jan 11 and a crash to 10 on Jan 12 (open = close - 0.2, high = close + 0.5, low = close - 0.5, volume 1000).</summary>
+    private void SeedSpikeAfterJan10()
+    {
+        var closes = Enumerable.Repeat(100m, 20).ToArray();
+        closes[10] = 500m;
+        closes[11] = 10m;
+        StockAnalyzer.Core.Tests.TestHelpers.ParquetFixtureBuilder.SeedDailyOhlcvFromCloses(_fixture.DailyDirectory, "MSFT", closes);
+    }
+
+    private static (string Timestamp, decimal Open, decimal High, decimal Low, decimal Close, long Volume)[] Bars(JsonDocument response)
+        => Candles(response).Select(c => (c.GetProperty("timestamp").GetString()!, c.GetProperty("open").GetDecimal(), c.GetProperty("high").GetDecimal(),
+            c.GetProperty("low").GetDecimal(), c.GetProperty("close").GetDecimal(), c.GetProperty("volume").GetInt64())).ToArray();
+
+    [Fact]
+    public async Task GetCandles_WeeklyWithEndDateCutsTheDailyBarsBeforeAggregatingSoNoLaterDayReachesABar()
+    {
+        SeedSpikeAfterJan10();
+
+        using var response = await CallAsync(await StartAsync(), "sa_get_candles", """{"symbol":"MSFT","timeFrame":"W1","endDate":"2024-01-10"}""");
+
+        var bars = Bars(response);
+        Assert.Equal(2, bars.Length);
+        Assert.Equal(("2024-01-01", 99.8m, 100.5m, 99.5m, 100m, 7000L), bars[0]);
+        Assert.Equal(("2024-01-08", 99.8m, 100.5m, 99.5m, 100m, 3000L), bars[1]); // Jan 8-10 only: neither the spike (Jan 11) nor the crash (Jan 12)
+        JsonElement result = McpTestSupport.Structured(response);
+        Assert.True(result.GetProperty("filteredByDate").GetBoolean());
+        Assert.False(result.GetProperty("droppedLeadingBar").GetBoolean());
+        Assert.Equal("2024-01-10", result.GetProperty("referenceDate").GetString());
+        Assert.Equal("2024-01-14", result.GetProperty("lastBarPeriodEnd").GetString());
+        Assert.True(result.GetProperty("lastBarPartial").GetBoolean());
+        Assert.False(result.GetProperty("droppedPartialBar").GetBoolean());
+    }
+
+    [Fact]
+    public async Task GetCandles_MonthlyWithEndDateHoldsOnlyTheDaysUpToItAndTheSpikeEntersFromItsOwnDay()
+    {
+        SeedSpikeAfterJan10();
+        var dispatcher = await StartAsync();
+
+        using var before = await CallAsync(dispatcher, "sa_get_candles", """{"symbol":"MSFT","timeFrame":"MN1","endDate":"2024-01-10"}""");
+        using var onSpike = await CallAsync(dispatcher, "sa_get_candles", """{"symbol":"MSFT","timeFrame":"MN1","endDate":"2024-01-11"}""");
+
+        Assert.Equal(("2024-01-01", 99.8m, 100.5m, 99.5m, 100m, 10000L), Assert.Single(Bars(before)));
+        Assert.Equal(("2024-01-01", 99.8m, 500.5m, 99.5m, 500m, 11000L), Assert.Single(Bars(onSpike)));
+        Assert.Equal("2024-01-31", McpTestSupport.Structured(before).GetProperty("lastBarPeriodEnd").GetString());
+    }
+
+    [Fact]
+    public async Task GetCandles_AWeekWhoseLastDayIsReachedIsCompleteAndAnEndDateBeyondTheDataIsCappedAtTheLastStoredDay()
+    {
+        SeedSpikeAfterJan10();
+        var dispatcher = await StartAsync();
+
+        using var sunday = await CallAsync(dispatcher, "sa_get_candles", """{"symbol":"MSFT","timeFrame":"W1","endDate":"2024-01-14","count":1}""");
+        using var beyond = await CallAsync(dispatcher, "sa_get_candles", """{"symbol":"MSFT","timeFrame":"W1","endDate":"2030-01-01","count":1}""");
+
+        Assert.Equal(("2024-01-08", 99.8m, 500.5m, 9.5m, 100m, 7000L), Assert.Single(Bars(sunday)));
+        Assert.False(McpTestSupport.Structured(sunday).GetProperty("lastBarPartial").GetBoolean());
+        Assert.Equal("2024-01-20", McpTestSupport.Structured(beyond).GetProperty("referenceDate").GetString()); // the last stored day, not the requested one
+        Assert.True(McpTestSupport.Structured(beyond).GetProperty("lastBarPartial").GetBoolean()); // week Jan 15-21 ends after Jan 20
+    }
+
+    [Fact]
+    public async Task GetCandles_WithoutEndDateTheNewestWeekAndMonthArePartialAndCompleteBarsOnlyDropsThem()
+    {
+        var dispatcher = await StartAsync();
+
+        using var week = await CallAsync(dispatcher, "sa_get_candles", """{"symbol":"MSFT","timeFrame":"W1","count":3}""");
+        using var weekComplete = await CallAsync(dispatcher, "sa_get_candles", """{"symbol":"MSFT","timeFrame":"W1","count":3,"completeBarsOnly":true}""");
+        using var month = await CallAsync(dispatcher, "sa_get_candles", """{"symbol":"MSFT","timeFrame":"MN1","count":1}""");
+
+        JsonElement weekResult = McpTestSupport.Structured(week);
+        Assert.Equal(3, Candles(week).Length);
+        Assert.True(weekResult.GetProperty("lastBarPartial").GetBoolean());
+        Assert.Equal("2024-01-20", weekResult.GetProperty("referenceDate").GetString());
+        Assert.Equal("2024-01-21", weekResult.GetProperty("lastBarPeriodEnd").GetString());
+        Assert.False(weekResult.GetProperty("droppedPartialBar").GetBoolean());
+        JsonElement completeResult = McpTestSupport.Structured(weekComplete);
+        Assert.Equal(new[] { "2024-01-01", "2024-01-08" }, Candles(weekComplete).Select(c => c.GetProperty("timestamp").GetString()).ToArray());
+        Assert.True(completeResult.GetProperty("droppedPartialBar").GetBoolean());
+        Assert.False(completeResult.GetProperty("lastBarPartial").GetBoolean());
+        Assert.Equal("2024-01-14", completeResult.GetProperty("lastBarPeriodEnd").GetString());
+        Assert.True(McpTestSupport.Structured(month).GetProperty("lastBarPartial").GetBoolean());
+    }
+
+    [Fact]
+    public async Task GetCandles_DailyBarsAreNeverPartialAndKeepEveryExistingKey()
+    {
+        using var response = await CallAsync(await StartAsync(), "sa_get_candles", """{"symbol":"MSFT","timeFrame":"D1","count":3,"completeBarsOnly":true}""");
+
+        JsonElement result = McpTestSupport.Structured(response);
+        Assert.Equal(JsonValueKind.Null, result.GetProperty("referenceDate").ValueKind);
+        Assert.Equal(JsonValueKind.Null, result.GetProperty("lastBarPeriodEnd").ValueKind);
+        Assert.False(result.GetProperty("lastBarPartial").GetBoolean());
+        Assert.False(result.GetProperty("droppedPartialBar").GetBoolean());
+        Assert.Equal(3, Candles(response).Length);
+        foreach (string key in new[] { "symbol", "timeFrame", "periodUnit", "timestampFormat", "units", "barCount", "requestedCount", "loadedBarCount", "matchedBarCount",
+                     "earliestAvailableTimestamp", "filteredByDate", "truncatedByLoadCap", "droppedLeadingBar", "candles" })
+        {
+            Assert.True(result.TryGetProperty(key, out _), key);
+        }
+    }
+
+    [Fact]
+    public async Task GetCandles_WeeklyEndDateReachesBarsOlderThanTheLatestWindow()
+    {
+        var dispatcher = await StartAsync(("MaxCandlesPerRequest", "2"), ("DefaultCandleCount", "2"), ("MaxOutputTailBars", "2"), ("DefaultOutputTailBars", "2"));
+
+        using var response = await CallAsync(dispatcher, "sa_get_candles", """{"symbol":"MSFT","timeFrame":"W1","endDate":"2024-01-10"}""");
+
+        // The weeks are Jan 1, Jan 8 and Jan 15; a window of the latest two (Jan 8, Jan 15) would hold no complete week up to Jan 10.
+        Assert.Equal(new[] { "2024-01-01", "2024-01-08" }, Candles(response).Select(c => c.GetProperty("timestamp").GetString()).ToArray());
+    }
+
     [Theory]
     [InlineData("M1")]
     [InlineData("M5")]

@@ -10,6 +10,7 @@ namespace StockAnalyzer.Core.Tests.Services
     /// Runs the content of <see cref="PythonEmbeddedDistribution.ScriptPathFileName"/> the way <c>site</c> does and checks which
     /// <c>sys.argv[0]</c> values put their folder on <c>sys.path</c>. Needs the embedded Python; without it the tests are reported as skipped.
     /// </summary>
+    [Collection("ChildProcess")]
     public class PythonScriptPathContentTests : IDisposable
     {
         private const string Harness =

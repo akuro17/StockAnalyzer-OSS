@@ -263,7 +263,7 @@ public sealed class McpServerHostTests
         }
     }
 
-    internal static Process StartServer()
+    internal static Process StartServer(params string[] arguments)
     {
         var startInfo = new ProcessStartInfo("dotnet")
         {
@@ -277,6 +277,10 @@ public sealed class McpServerHostTests
             CreateNoWindow = true,
         };
         startInfo.ArgumentList.Add(LocateServerAssembly());
+        foreach (string argument in arguments)
+        {
+            startInfo.ArgumentList.Add(argument);
+        }
 
         Process process = Process.Start(startInfo)!;
         process.StandardInput.NewLine = "\n";

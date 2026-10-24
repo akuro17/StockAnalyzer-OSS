@@ -28,10 +28,15 @@ public static class RlPanelPreflightEvaluator
 
     public static Task<PanelPreflight> EvaluateAsync(IReadOnlyList<string> symbols, DateOnly start, DateOnly endExclusive, bool holdoutRequested,
         RlPanelEvaluationMode mode, RlPortfolioSettings settings, TrainingResourceLimits limits, CancellationToken cancellationToken = default,
-        RlPanelPartitionPlan? plan = null)
+        RlPanelPartitionPlan? plan = null, RlLocalSourceFolders? folders = null)
     {
-        string daily = Path.GetFullPath(PathDiscovery.ResolveDataPath(null, MarketDataSettings.DefaultDailyDataPath));
-        string metadata = Path.GetFullPath(PathDiscovery.ResolveDataPath(null, MarketDataSettings.DefaultMetadataDataPath));
+        if (folders is not null)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(folders.Daily);
+            ArgumentException.ThrowIfNullOrWhiteSpace(folders.Metadata);
+        }
+        string daily = Path.GetFullPath(folders?.Daily ?? PathDiscovery.ResolveDataPathWithoutCreating(null, MarketDataSettings.DefaultDailyDataPath));
+        string metadata = Path.GetFullPath(folders?.Metadata ?? PathDiscovery.ResolveDataPathWithoutCreating(null, MarketDataSettings.DefaultMetadataDataPath));
         return Task.Run(() => Evaluate(symbols, start, endExclusive, holdoutRequested, mode, settings, limits, daily, metadata, cancellationToken, plan), cancellationToken);
     }
 

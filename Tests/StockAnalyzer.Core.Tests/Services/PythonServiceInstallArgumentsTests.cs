@@ -52,5 +52,25 @@ namespace StockAnalyzer.Core.Tests.Services
             Assert.Equal($"{Install} torch --index-url {index}", PythonService.BuildInstallArguments("torch", null, shouldUpdate: false, forceUpgrade: false));
             Assert.Equal($"{Install} --upgrade torch --index-url {index}", PythonService.BuildInstallArguments("torch", null, shouldUpdate: true, forceUpgrade: false));
         }
+
+        [Theory]
+        [InlineData("AAPL --force-metadata")]
+        [InlineData("../evil")]
+        [InlineData("..\\evil")]
+        [InlineData("AAPL\0evil")]
+        [InlineData(" ")]
+        [InlineData("-bad")]
+        public async System.Threading.Tasks.Task RunUpdatePipelineAsync_InvalidSymbol_ThrowsArgumentException(string invalidSymbol)
+        {
+            var settings = new StubScreenerSettings();
+            var service = new PythonService(settings);
+
+            await Assert.ThrowsAsync<System.ArgumentException>(() =>
+                service.RunUpdatePipelineAsync(invalidSymbol));
+
+            var config = new SyncSessionConfig(true, true, false, false, 2.0m, 5.0m, 5);
+            await Assert.ThrowsAsync<System.ArgumentException>(() =>
+                service.RunUpdatePipelineAsync(invalidSymbol, config));
+        }
     }
 }

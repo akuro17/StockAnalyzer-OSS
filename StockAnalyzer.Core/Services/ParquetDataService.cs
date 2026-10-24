@@ -47,7 +47,7 @@ public class ParquetDataService : IDataService, IAttestedMonitoringDataSource
                 throw new InvalidOperationException("Connection must support async operations.");
             using var command = connection.CreateCommand();
             // Read all rows, including pending forecasts outside the currently visible chart window.
-            command.CommandText = $"SELECT * FROM read_parquet('{EscapeDuckDbPath(path)}') ORDER BY date ASC";
+            command.CommandText = $"SELECT * FROM read_parquet('{FormatDuckDbPath(path)}') ORDER BY date ASC";
             using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
             var (snapshot, flags) = await ReadMonitoringRowsAsync(reader, cancellationToken).ConfigureAwait(false);
             return new MonitoringObservation(PredictionLogService.SourceRevision(snapshot), observedUtc, snapshot, flags);
@@ -158,7 +158,7 @@ public class ParquetDataService : IDataService, IAttestedMonitoringDataSource
                 if (_dbManager.GetConnection() is not DbConnection connection)
                     throw new InvalidOperationException("Connection must support async operations.");
                 using var command = connection.CreateCommand();
-                command.CommandText = $"SELECT * FROM read_parquet('{EscapeDuckDbPath(copyPath.Replace("\\", "/"))}') ORDER BY date ASC";
+                command.CommandText = $"SELECT * FROM read_parquet('{FormatDuckDbPath(copyPath)}') ORDER BY date ASC";
                 using var reader = await command.ExecuteReaderAsync(ct).ConfigureAwait(false);
                 candles = (await ReadMonitoringRowsAsync(reader, ct).ConfigureAwait(false)).Candles;
             }
@@ -250,7 +250,7 @@ public class ParquetDataService : IDataService, IAttestedMonitoringDataSource
                 using var command = dbConnection.CreateCommand();
                 
                 string limitClause = count > 0 ? $"LIMIT {count}" : "";
-                command.CommandText = $"SELECT date, open, high, low, close, volume FROM read_parquet('{EscapeDuckDbPath(filePath)}') WHERE close IS NOT NULL AND date IS NOT NULL ORDER BY date DESC {limitClause}";
+                command.CommandText = $"SELECT date, open, high, low, close, volume FROM read_parquet('{FormatDuckDbPath(filePath)}') WHERE close IS NOT NULL AND date IS NOT NULL ORDER BY date DESC {limitClause}";
 
                 using var reader = await command.ExecuteReaderAsync();
                 while (await reader.ReadAsync())
@@ -295,36 +295,9 @@ public class ParquetDataService : IDataService, IAttestedMonitoringDataSource
         return Common.PathDiscovery.ResolveDataPath(configuredPath, relativeFallback, ParquetSearchPattern);
     }
 
-    private static string? ResolveFilePath(string basePath, string symbol)
-    {
-        if (string.IsNullOrWhiteSpace(symbol)) return null;
+    private static string? ResolveFilePath(string basePath, string symbol) =>
+        ParquetMarketDataProvider.ResolveFilePath(basePath, symbol);
 
-        var candidates = new List<string> { symbol };
-        if (symbol.StartsWith('^'))
-        {
-            candidates.Add(symbol.TrimStart('^'));
-        }
-        else
-        {
-            candidates.Add("^" + symbol);
-        }
-
-        int count = candidates.Count;
-        for (int i = 0; i < count; i++)
-        {
-            var s = candidates[i];
-            if (s.Contains('.')) candidates.Add(s.Replace('.', '-'));
-            if (s.Contains('-')) candidates.Add(s.Replace('-', '.'));
-        }
-
-        for (int i = 0; i < candidates.Count; i++)
-        {
-            var path = Path.Combine(basePath, $"{candidates[i]}{ParquetExtension}").Replace("\\", "/");
-            if (File.Exists(path)) return path;
-        }
-
-        return null;
-    }
-
-    private static string EscapeDuckDbPath(string path) => path.Replace("'", "''");
+    private static string FormatDuckDbPath(string path) =>
+        ParquetMarketDataProvider.FormatDuckDbPath(path);
 }

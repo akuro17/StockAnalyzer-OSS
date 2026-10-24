@@ -35,11 +35,11 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
         public string TitleKey => "Settings_AIPredictions";
         public string IconKey => "SettingsAdvIcon";
 
-        /// <summary>Manual install command copied to the clipboard (PowerShell 7 form, embedded interpreter).</summary>
-        public static string OnnxPipManualInstallCommand => StockAnalyzer.Core.Services.ManualPipCommands.Onnx(StockAnalyzer.Core.Services.ManualShell.PowerShell7, upgrade: false);
+        /// <summary>Manual install command copied to the clipboard (using <see cref="StockAnalyzer.Core.Services.ManualPipCommands.ClipboardShell"/>, embedded interpreter).</summary>
+        public static string OnnxPipManualInstallCommand => StockAnalyzer.Core.Services.ManualPipCommands.Onnx(StockAnalyzer.Core.Services.ManualPipCommands.ClipboardShell, upgrade: false);
 
-        /// <summary>Manual upgrade command copied to the clipboard (PowerShell 7 form, embedded interpreter).</summary>
-        public static string OnnxPipManualUpgradeCommand => StockAnalyzer.Core.Services.ManualPipCommands.Onnx(StockAnalyzer.Core.Services.ManualShell.PowerShell7, upgrade: true);
+        /// <summary>Manual upgrade command copied to the clipboard (using <see cref="StockAnalyzer.Core.Services.ManualPipCommands.ClipboardShell"/>, embedded interpreter).</summary>
+        public static string OnnxPipManualUpgradeCommand => StockAnalyzer.Core.Services.ManualPipCommands.Onnx(StockAnalyzer.Core.Services.ManualPipCommands.ClipboardShell, upgrade: true);
 
         [ObservableProperty]
         [NotifyPropertyChangedFor(nameof(AutoButtonText))]

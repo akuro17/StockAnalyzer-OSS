@@ -72,7 +72,7 @@ public class ScatterMetricColumnAvailabilityTests
         _output.WriteLine($"Non-text Columns: {items.Count}; without a value for a fully filled ticker: {empty.Count}");
         _output.WriteLine(table.ToString());
         Assert.NotEmpty(items);
-        Assert.Equal(48, ScatterMetricEligibility.ColumnsWithoutAValue.Count);
+        Assert.Equal(13, ScatterMetricEligibility.ColumnsWithoutAValue.Count);
         Assert.True(empty.OrderBy(m => m, StringComparer.Ordinal).SequenceEqual(ScatterMetricEligibility.ColumnsWithoutAValue.OrderBy(m => m, StringComparer.Ordinal)),
             "The Columns without a value changed. Measured: " + string.Join(", ", empty.OrderBy(m => m, StringComparer.Ordinal)));
     }
@@ -86,7 +86,7 @@ public class ScatterMetricColumnAvailabilityTests
         TickerMetadata metadata = FullyFilledMetadata();
 
         Assert.Equal(all.Count - ScatterMetricEligibility.ColumnsWithoutAValue.Count, offered.Count);
-        Assert.Equal(52, offered.Count);
+        Assert.Equal(87, offered.Count);
         foreach (ScreenerCatalogItem item in offered)
         {
             Assert.NotNull(ScreenerValueExtractor.Default.ExtractValueNullable(ScatterMetricTestKit.Column(item).Source, bars, metadata));

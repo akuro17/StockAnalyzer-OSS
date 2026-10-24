@@ -482,7 +482,7 @@ public sealed class RunScreenerToolTests : IDisposable
     [InlineData("""{"left":{"indicator":"NotAnIndicator"},"comparison":"GreaterThan","right":1}""", "UNKNOWN_INDICATOR", "conditionTree.left.indicator")]
     [InlineData("""{"left":{"indicator":"Entropy"},"comparison":"GreaterThan","right":1}""", "UNKNOWN_INDICATOR", "conditionTree.left.indicator")]
     [InlineData("""{"left":{"indicator":"ZigZag"},"comparison":"GreaterThan","right":1}""", "INVALID_ARGUMENT", "conditionTree.left.indicator")]
-    [InlineData("""{"left":{"indicator":"Correlation"},"comparison":"GreaterThan","right":0}""", "INVALID_ARGUMENT", "conditionTree.left.indicator")]
+    [InlineData("""{"left":{"indicator":"Correlation"},"comparison":"GreaterThan","right":0}""", "INVALID_ARGUMENT", "conditionTree.left.parameters.ComparisonSymbol")]
     [InlineData("""{"left":{"indicator":"RSI","parameters":{"Period":0}},"comparison":"LessThan","right":30}""", "INVALID_INDICATOR_PARAMETER", "conditionTree.left.parameters.Period")]
     [InlineData("""{"left":{"indicator":"RSI","parameters":{"Nope":1}},"comparison":"LessThan","right":30}""", "INVALID_INDICATOR_PARAMETER", "conditionTree.left.parameters.Nope")]
     [InlineData("""{"left":{"indicator":"RSI","outputSeriesName":"Nope"},"comparison":"LessThan","right":30}""", "INVALID_OUTPUT_SERIES", "conditionTree.left.outputSeriesName")]

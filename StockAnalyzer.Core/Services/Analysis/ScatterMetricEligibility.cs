@@ -16,62 +16,28 @@ public static class ScatterMetricEligibility
 {
     /// <summary>
     /// The Columns (by <see cref="ScreenerCatalogItem.ColumnMemberName"/>) that give no number for a ticker whose metadata is completely filled in, when
-    /// they are built the way the registration screen builds them (the catalog description is the lookup key, see ScreenerValueExtractor.GetMetadataValue).
-    /// Measured 2026-10-21 (plan finding F-28): 48 of the 100 non-text Columns. Some are not numbers at all (summary, notes, time zone, dates), the others
-    /// are not mapped by the extractor under their catalog description. The owner decided (F-28 = B) to offer only the Columns that give a value. The test
+    /// they are built the way the registration screen builds them (the extractor resolves a Column by its registry member name, see ScreenerValueExtractor.ResolveColumnName).
+    /// Measured 2026-10-24 (plan finding F-28, measured again after the extractor resolved Columns by member name): 13 of the 100 non-text Columns. They are not
+    /// numbers at all (summary, notes, time zone, dates, quote type) or are flags that carry no value in the metadata. The first measurement (2026-10-21) found 48,
+    /// because the extractor then looked a Column up by its catalog description. The owner decided (F-28 = B) to offer only the Columns that give a value. The test
     /// <c>ScatterMetricColumnAvailabilityTests</c> measures the extractor again and fails when this table and the measurement differ in either direction.
     /// Sorted by ordinal comparison.
     /// </summary>
     public static IReadOnlyList<string> ColumnsWithoutAValue { get; } = new[]
     {
-        "AverageVolume",
-        "Beta",
-        "BookValue",
-        "CurrentRatio",
-        "DividendRate",
-        "EarningsGrowth",
-        "EarningsYield",
-        "Ebitda",
-        "ExDividendDate",
         "ExchangeTimezoneName",
-        "ExitLong",
-        "ExitShort",
-        "FiftyTwoWeekHigh",
-        "FiftyTwoWeekLow",
-        "FiftyTwoWeekRangePosition",
-        "ForwardEps",
-        "ForwardPE",
-        "FreeCashflow",
-        "FullTimeEmployees",
-        "GmtOffSetMilliseconds",
         "IsLong",
+        "IsSLLong",
+        "IsSLShort",
         "IsShort",
-        "LastFiscalYearEnd",
+        "IsTPLong",
+        "IsTPShort",
         "LastUpdatedUtc",
-        "Long",
         "LongBusinessSummary",
         "MetadataLastUpdated",
-        "MostRecentQuarter",
-        "NetCashRatio",
-        "NetDebt",
         "Notes",
-        "PayoutRatio",
-        "PegRatio",
-        "QuickRatio",
         "QuoteType",
         "Reminder",
-        "SharesOutstanding",
-        "Short",
-        "StopLossLong",
-        "StopLossShort",
-        "TargetHighPrice",
-        "TargetLowPrice",
-        "TargetMeanPrice",
-        "TargetMedianPrice",
-        "TotalDebt",
-        "TotalRevenue",
-        "TrailingEps",
-        "TrailingPE",
     };
 
     private static readonly HashSet<string> ExcludedMembers = new(ColumnsWithoutAValue, StringComparer.Ordinal);

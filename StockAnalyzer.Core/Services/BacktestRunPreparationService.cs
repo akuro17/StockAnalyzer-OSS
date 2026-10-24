@@ -214,7 +214,7 @@ public sealed class BacktestRunPreparationService : IBacktestRunPreparationServi
         }
 
         string expected = Path.TrimEndingDirectorySeparator(Path.GetFullPath(
-            PathDiscovery.ResolveDataPath(null, MarketDataSettings.DefaultDailyDataPath, "*.parquet")));
+            PathDiscovery.ResolveDataPathWithoutCreating(null, MarketDataSettings.DefaultDailyDataPath, "*.parquet")));
         string configured = Path.IsPathRooted(configuredPath)
             ? Path.TrimEndingDirectorySeparator(Path.GetFullPath(configuredPath!))
             : expected;

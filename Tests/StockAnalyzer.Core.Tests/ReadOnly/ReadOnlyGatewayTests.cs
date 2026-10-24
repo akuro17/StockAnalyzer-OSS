@@ -137,6 +137,142 @@ public sealed class ReadOnlyGatewayTests : IDisposable
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => CreateGateway().GetCandlesAsync(Msft, TimeFrame.D1, count));
     }
 
+    [Fact]
+    public async Task GetCandlesUpTo_CutsAtTheDateAndKeepsTheLatestBarsUpToIt()
+    {
+        var all = await CreateGateway().GetCandlesAsync(Msft, TimeFrame.D1, 20);
+
+        var cut = await CreateGateway().GetCandlesUpToAsync(Msft, TimeFrame.D1, new DateOnly(2024, 1, 12), 5);
+
+        Assert.Equal(all.Skip(7).Take(5).ToList(), cut);
+        Assert.Equal(new DateTime(2024, 1, 12), cut[^1].Timestamp.Date);
+    }
+
+    [Fact]
+    public async Task GetCandlesUpTo_ReachesADateOlderThanTheNewestCountBars()
+    {
+        var all = await CreateGateway().GetCandlesAsync(Msft, TimeFrame.D1, 20);
+
+        var cut = await CreateGateway().GetCandlesUpToAsync(Msft, TimeFrame.D1, new DateOnly(2024, 1, 6), 3);
+
+        var newest = await CreateGateway().GetCandlesAsync(Msft, TimeFrame.D1, 3);
+
+        Assert.Equal(all.Skip(3).Take(3).ToList(), cut);
+        Assert.All(newest, bar => Assert.True(DateOnly.FromDateTime(bar.Timestamp) > new DateOnly(2024, 1, 6)));
+    }
+
+    [Fact]
+    public async Task GetCandlesUpTo_ReturnsFewerBarsWhenFewerAreStoredAndNoneBeforeTheFirstBar()
+    {
+        var all = await CreateGateway().GetCandlesAsync(Msft, TimeFrame.D1, 20);
+
+        Assert.Equal(all.Take(2).ToList(), await CreateGateway().GetCandlesUpToAsync(Msft, TimeFrame.D1, new DateOnly(2024, 1, 2), 5));
+        Assert.Equal(all, await CreateGateway().GetCandlesUpToAsync(Msft, TimeFrame.D1, DateOnly.MaxValue, 500));
+        Assert.Empty(await CreateGateway().GetCandlesUpToAsync(Msft, TimeFrame.D1, new DateOnly(2023, 12, 31), 5));
+        Assert.Empty(await CreateGateway().GetCandlesUpToAsync("NOSUCH", TimeFrame.D1, DateOnly.MaxValue, 5));
+    }
+
+    [Theory]
+    [InlineData(TimeFrame.W1, 3)]
+    [InlineData(TimeFrame.MN1, 1)]
+    public async Task GetCandlesUpTo_AWeeklyOrMonthlyFrameIsAggregatedFromTheWholeHistory(TimeFrame timeFrame, int expectedBars)
+    {
+        var whole = await new TimeFrameManager(new ParquetDataService(_db, MarketDataOptions)).GetCandlesAsync("7203-T", timeFrame, 0);
+
+        var actual = await CreateGateway().GetCandlesUpToAsync("7203.t", timeFrame, DateOnly.MaxValue, 100);
+
+        Assert.Equal(expectedBars, actual.Count);
+        Assert.Equal(whole, actual);
+        Assert.Equal(whole.Skip(whole.Count - 1).ToList(), await CreateGateway().GetCandlesUpToAsync("7203.t", timeFrame, DateOnly.MaxValue, 1));
+    }
+
+    /// <summary>Flat closes of 100 for 20 consecutive days from Monday 2024-01-01, with a spike to 500 on Jan 11 and a crash to 10 on Jan 12 (open = close - 0.2, high = close + 0.5, low = close - 0.5, volume 1000).</summary>
+    private void SeedSpikeAfterJan10(string symbol)
+    {
+        var closes = Enumerable.Repeat(100m, 20).ToArray();
+        closes[10] = 500m;
+        closes[11] = 10m;
+        ParquetFixtureBuilder.SeedDailyOhlcvFromCloses(_fixture.DailyDirectory, symbol, closes);
+    }
+
+    [Fact]
+    public async Task GetCandlesUpTo_AWeeklyBarHoldsOnlyTheDaysUpToTheDateAndNoLaterDayReachesIt()
+    {
+        SeedSpikeAfterJan10("SPIKE");
+
+        var cut = await CreateGateway().GetCandlesUpToAsync("SPIKE", TimeFrame.W1, new DateOnly(2024, 1, 10), 100);
+
+        Assert.Equal(2, cut.Count);
+        Assert.Equal(new CandleData(new DateTime(2024, 1, 1), 99.8m, 100.5m, 99.5m, 100m, 7000), cut[0]); // the leading week is whole: 7 days, none truncated by the load
+        Assert.Equal(new CandleData(new DateTime(2024, 1, 8), 99.8m, 100.5m, 99.5m, 100m, 3000), cut[1]); // Jan 8-10 only: neither the spike (Jan 11) nor the crash (Jan 12)
+        Assert.Equal(new DateTime(2024, 1, 8), cut[1].Timestamp); // still dated by its first day
+    }
+
+    [Fact]
+    public async Task GetCandlesUpTo_AWeeklyBarTakesInTheSpikeAndTheCrashExactlyFromTheirOwnDay()
+    {
+        SeedSpikeAfterJan10("SPIKE");
+
+        var onSpikeDay = await CreateGateway().GetCandlesUpToAsync("SPIKE", TimeFrame.W1, new DateOnly(2024, 1, 11), 1);
+        var onCrashDay = await CreateGateway().GetCandlesUpToAsync("SPIKE", TimeFrame.W1, new DateOnly(2024, 1, 12), 1);
+        var wholeWeek = await CreateGateway().GetCandlesUpToAsync("SPIKE", TimeFrame.W1, new DateOnly(2024, 1, 14), 1);
+
+        Assert.Equal(new CandleData(new DateTime(2024, 1, 8), 99.8m, 500.5m, 99.5m, 500m, 4000), Assert.Single(onSpikeDay));
+        Assert.Equal(new CandleData(new DateTime(2024, 1, 8), 99.8m, 500.5m, 9.5m, 10m, 5000), Assert.Single(onCrashDay));
+        Assert.Equal(new CandleData(new DateTime(2024, 1, 8), 99.8m, 500.5m, 9.5m, 100m, 7000), Assert.Single(wholeWeek));
+    }
+
+    [Fact]
+    public async Task GetCandlesUpTo_AMonthlyBarHoldsOnlyTheDaysUpToTheDate()
+    {
+        SeedSpikeAfterJan10("SPIKE");
+
+        var beforeTheSpike = await CreateGateway().GetCandlesUpToAsync("SPIKE", TimeFrame.MN1, new DateOnly(2024, 1, 10), 100);
+        var wholeData = await CreateGateway().GetCandlesUpToAsync("SPIKE", TimeFrame.MN1, new DateOnly(2024, 1, 31), 100);
+
+        Assert.Equal(new CandleData(new DateTime(2024, 1, 1), 99.8m, 100.5m, 99.5m, 100m, 10000), Assert.Single(beforeTheSpike));
+        Assert.Equal(new CandleData(new DateTime(2024, 1, 1), 99.8m, 500.5m, 9.5m, 100m, 20000), Assert.Single(wholeData));
+    }
+
+    [Theory]
+    [InlineData(TimeFrame.W1)]
+    [InlineData(TimeFrame.MN1)]
+    public async Task GetCandlesUpTo_ABarCutAtTheDateEqualsAggregatingTheDailyBarsUpToThatDate(TimeFrame timeFrame)
+    {
+        SeedSpikeAfterJan10("SPIKE");
+        var endDate = new DateOnly(2024, 1, 10);
+        var daily = await CreateGateway().GetCandlesUpToAsync("SPIKE", TimeFrame.D1, endDate, 100);
+
+        var cut = await CreateGateway().GetCandlesUpToAsync("SPIKE", timeFrame, endDate, 100);
+
+        Assert.Equal(10, daily.Count);
+        Assert.Equal(TimeFrameAggregator.Aggregate(daily, timeFrame), cut);
+        Assert.All(cut, bar => Assert.True(DateOnly.FromDateTime(bar.Timestamp) <= endDate));
+    }
+
+    [Theory]
+    [InlineData(TimeFrame.M1)]
+    [InlineData(TimeFrame.H1)]
+    [InlineData(TimeFrame.H4)]
+    public async Task GetCandlesUpTo_RejectsFramesTheDataLayerCannotLoad(TimeFrame timeFrame)
+    {
+        await Assert.ThrowsAsync<NotSupportedException>(() => CreateGateway().GetCandlesUpToAsync(Msft, timeFrame, DateOnly.MaxValue, 5));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public async Task GetCandlesUpTo_RejectsANonPositiveCount(int count)
+    {
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => CreateGateway().GetCandlesUpToAsync(Msft, TimeFrame.D1, DateOnly.MaxValue, count));
+    }
+
+    [Fact]
+    public async Task GetCandlesUpTo_RejectsAMalformedSymbolBeforeAnyLookup()
+    {
+        await Assert.ThrowsAsync<ArgumentException>(() => CreateGateway().GetCandlesUpToAsync("../MSFT", TimeFrame.D1, DateOnly.MaxValue, 5));
+    }
+
     public static TheoryData<string> UnsafeSymbols => new()
     {
         "", " ", "../MSFT", "..\\MSFT", "C:\\MSFT", "C:MSFT", "sub/MSFT", "sub\\MSFT", "A\0B", new string('A', TickerSymbol.MaxLength + 1),

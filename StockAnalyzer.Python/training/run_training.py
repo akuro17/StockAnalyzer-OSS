@@ -58,6 +58,10 @@ import checkpoints  # noqa: E402
 # parquet reads work), so reuse it here instead of introducing a second, divergent resolution
 # scheme for this one output directory.
 ARTIFACTS_DIR: Path = ds.TRAINING_WIZARD_ARTIFACTS_DIR
+# Ephemeral mode: the only place a job may redirect ARTIFACTS_DIR to is <OS temp>/<TEMP_FOLDER>/<SANDBOX_FOLDER>/...
+# These two names mirror C# PathDiscovery.TempFolderName and EphemeralSandbox.FolderName (a C# test pins that they agree).
+EPHEMERAL_TEMP_FOLDER = "StockAnalyzer"
+EPHEMERAL_SANDBOX_FOLDER = "ephemeral"
 MAX_EVALUATION_FOLDS = ds._env_int("SA_MAX_EVALUATION_FOLDS", 10)
 MAX_RUN_DURATION_SECONDS = ds._env_int("SA_MAX_RUN_DURATION_SECONDS", 120 * 60)
 EXPLANATION_FAILED_STATUS = "failed"  # metrics.json "explanation".status of a run whose optional explanation raised
@@ -156,6 +160,9 @@ class JobConfig:
     start_date: Optional[str] = None
     end_date: Optional[str] = None
     output_name: Optional[str] = None
+    # Ephemeral mode (mirror of C# TrainingJobConfig.ArtifactsDirectory): when set, every artifact goes into this one folder,
+    # which must lie below the ephemeral sandbox root (see _apply_artifacts_directory). None = the normal mode.
+    artifacts_directory: Optional[str] = None
     # Orchestrator-assigned run identifier, threaded through from C# (see
     # TrainingOrchestrator.StartTrainingAsync). None only for a hand-written config used in a
     # manual/standalone invocation outside the C# orchestrator; main() falls back to a locally
@@ -223,6 +230,7 @@ class JobConfig:
                 start_date=_opt_str(raw.get("start_date")),
                 end_date=_opt_str(raw.get("end_date")),
                 output_name=_opt_str(raw.get("output_name")),
+                artifacts_directory=_opt_str(raw.get("artifacts_directory")),
                 run_id=_opt_str(raw.get("run_id")),
                 resource_limits=raw.get("resource_limits"),
                 remaining_run_budget_seconds=raw.get("remaining_run_budget_seconds"),
@@ -1182,6 +1190,27 @@ def _evaluation_revision(cfg: JobConfig, symbols: Dict[str, np.ndarray],
     return digest.hexdigest()
 
 
+EXIT_INVALID_ARTIFACTS_DIRECTORY = 2  # the job asked for an artifacts folder outside the ephemeral sandbox
+
+
+def _ephemeral_root() -> Path:
+    return Path(tempfile.gettempdir()).resolve() / EPHEMERAL_TEMP_FOLDER / EPHEMERAL_SANDBOX_FOLDER
+
+
+def _apply_artifacts_directory(cfg: JobConfig) -> Optional[str]:
+    """Ephemeral mode: points ARTIFACTS_DIR at the job's folder. Returns None on success (or when the mode is off),
+    otherwise the one-line reason, in which case ARTIFACTS_DIR is left unchanged."""
+    global ARTIFACTS_DIR
+    if cfg.artifacts_directory is None:
+        return None
+    requested = Path(cfg.artifacts_directory)
+    root = _ephemeral_root()
+    if not requested.is_absolute() or root not in requested.resolve().parents:
+        return f"artifacts_directory must be an absolute path below {root}"
+    ARTIFACTS_DIR = requested
+    return None
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     started_at = time.monotonic()
     parser = argparse.ArgumentParser(description="GUI-triggered ONNX training orchestrator.")
@@ -1198,6 +1227,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     if not config_path.is_file():
         raise SystemExit(f"config file not found: {config_path}")
     cfg = JobConfig.from_json(config_path.read_text(encoding="utf-8"))
+    artifacts_error = _apply_artifacts_directory(cfg)
+    if artifacts_error is not None:
+        print(artifacts_error, file=sys.stderr)
+        return EXIT_INVALID_ARTIFACTS_DIRECTORY
     run_limits = dict(cfg.resource_limits) if cfg.resource_limits is not None else _effective_resource_limits()
     run_budget_seconds = (cfg.remaining_run_budget_seconds if cfg.remaining_run_budget_seconds is not None
                           else MAX_RUN_DURATION_SECONDS)
@@ -2839,6 +2872,37 @@ def _run_selfcheck() -> None:
             globals()["_onnx_predict_fn"] = original_predict
             globals()["ARTIFACTS_DIR"] = original_artifacts
             globals()["_publish_release_bundle"] = original_publish
+
+    # (e) Ephemeral mode: artifacts_directory is accepted only below <temp>/StockAnalyzer/ephemeral; a null value changes nothing.
+    original_artifacts_dir = ARTIFACTS_DIR
+    try:
+        sandbox = _ephemeral_root()
+        outside = Path(tempfile.gettempdir()).resolve() / "selfcheck_not_the_sandbox" / "job"
+        ephemeral_base = {"symbols": ["A"], "architecture": "lstm", "window_size": 30, "horizon": 5}
+
+        def ephemeral_cfg(value: Optional[str]) -> JobConfig:
+            raw_cfg = dict(ephemeral_base)
+            if value is not None:
+                raw_cfg["artifacts_directory"] = value
+            return JobConfig.from_json(json.dumps(raw_cfg))
+
+        assert ephemeral_cfg(None).artifacts_directory is None
+        assert _apply_artifacts_directory(ephemeral_cfg(None)) is None and ARTIFACTS_DIR == original_artifacts_dir
+        rejected = (str(outside), "relative/dir", str(sandbox), str(sandbox.parent), str(sandbox / ".." / "escape"),
+                    str(Path(str(sandbox) + "_sibling") / "job"))
+        for bad in rejected:
+            assert _apply_artifacts_directory(ephemeral_cfg(bad)) is not None, bad
+            assert ARTIFACTS_DIR == original_artifacts_dir, bad
+        accepted = sandbox / "session" / "job"
+        assert _apply_artifacts_directory(ephemeral_cfg(str(accepted))) is None and ARTIFACTS_DIR == accepted
+        globals()["ARTIFACTS_DIR"] = original_artifacts_dir
+        with tempfile.TemporaryDirectory() as _ephemeral_tmp:
+            rejected_config = Path(_ephemeral_tmp) / "job.json"
+            rejected_config.write_text(json.dumps({**ephemeral_base, "artifacts_directory": str(outside)}), encoding="utf-8")
+            assert main(["--config", str(rejected_config)]) == EXIT_INVALID_ARTIFACTS_DIRECTORY
+            assert ARTIFACTS_DIR == original_artifacts_dir
+    finally:
+        globals()["ARTIFACTS_DIR"] = original_artifacts_dir
 
     print("run_training.py selfcheck: OK")
 

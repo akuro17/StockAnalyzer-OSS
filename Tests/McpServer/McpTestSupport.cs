@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text.Json;
+using Microsoft.Extensions.Configuration;
 using StockAnalyzer.McpServer;
 using StockAnalyzer.McpServer.Execution;
 using StockAnalyzer.McpServer.Limits;
@@ -13,13 +14,16 @@ internal sealed class FakeTool : IMcpTool
 {
     private readonly Func<JsonElement, CancellationToken, Task<string>> _invoke;
 
-    public FakeTool(string name, Func<JsonElement, CancellationToken, Task<string>> invoke, string? schemaJson = null, bool isHeavy = false)
+    public FakeTool(string name, Func<JsonElement, CancellationToken, Task<string>> invoke, string? schemaJson = null, bool isHeavy = false, bool isExecution = false)
     {
         Name = name;
         _invoke = invoke;
         InputSchemaJson = schemaJson ?? ToolSchema.Object().Build();
         IsHeavy = isHeavy;
+        IsExecution = isExecution;
     }
+
+    public bool IsExecution { get; }
 
     public string Name { get; }
 
@@ -34,6 +38,25 @@ internal sealed class FakeTool : IMcpTool
 
 internal static class McpTestSupport
 {
+    /// <summary>A configuration whose data folders do not exist (the server then reports an incomplete data folder and serves no data), with optional <c>AiIntegration</c> limit overrides.</summary>
+    public static IConfiguration EmptyDataConfiguration(string emptyRoot, params (string Key, int Value)[] limits)
+    {
+        var values = new Dictionary<string, string?>
+        {
+            ["MarketDataSettings:DailyDataPath"] = Path.Combine(emptyRoot, "Daily"),
+            ["MarketDataSettings:WeeklyDataPath"] = Path.Combine(emptyRoot, "Weekly"),
+            ["MarketDataSettings:MonthlyDataPath"] = Path.Combine(emptyRoot, "Monthly"),
+            ["MarketDataSettings:MetadataPath"] = Path.Combine(emptyRoot, "Metadata"),
+            ["MarketDataSettings:TickerListPath"] = Path.Combine(emptyRoot, "Tickers.csv"),
+        };
+        foreach ((string key, int value) in limits)
+        {
+            values[$"AiIntegration:{key}"] = value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        return new ConfigurationBuilder().AddInMemoryCollection(values).Build();
+    }
+
     public const string InitializeMessage = """{"jsonrpc":"2.0","id":0,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}""";
 
     public static McpMessageDispatcher CreateDispatcher(IEnumerable<IMcpTool> tools, McpLimits? limits = null, IEnumerable<string?>? roots = null, StringWriter? log = null)

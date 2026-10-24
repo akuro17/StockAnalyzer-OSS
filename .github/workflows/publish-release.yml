@@ -43,11 +43,22 @@ jobs:
       if: matrix.mode == 'self-contained'
       run: |
         dotnet publish StockAnalyzer.Avalonia/StockAnalyzer.Avalonia.csproj -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishSingleFile=true -o ./publish
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        dotnet publish StockAnalyzer.McpServer/StockAnalyzer.McpServer.csproj -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishSingleFile=true -o ./publish
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
     - name: Build and Publish (Framework-dependent)
       if: matrix.mode == 'framework-dependent'
       run: |
         dotnet publish StockAnalyzer.Avalonia/StockAnalyzer.Avalonia.csproj -c Release -r ${{ matrix.rid }} --self-contained false -o ./publish
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        dotnet publish StockAnalyzer.McpServer/StockAnalyzer.McpServer.csproj -c Release -r ${{ matrix.rid }} --self-contained false -o ./publish
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+    - name: Verify MCP server in publish output
+      run: |
+        $mcpName = if ('${{ matrix.rid }}' -like 'win-*') { 'StockAnalyzer.McpServer.exe' } else { 'StockAnalyzer.McpServer' }
+        if (-not (Test-Path (Join-Path ./publish $mcpName))) { Write-Error "$mcpName is missing from ./publish"; exit 1 }
 
     - name: Create ZIP archive
       run: |

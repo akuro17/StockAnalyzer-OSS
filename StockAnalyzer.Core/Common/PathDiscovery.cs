@@ -525,5 +525,12 @@ public static class PathDiscovery
         return Path.Combine(modelsDir, ModelGenerationsFolderName);
     }
 
+    /// <summary>Canonical immutable model generation store under the prediction Models directory without creating it.</summary>
+    public static string ResolveModelGenerationsDirectoryWithoutCreating()
+    {
+        var dataRoot = ResolveDataPathWithoutCreating(null, DataFolderName);
+        return Path.Combine(dataRoot, ModelsFolderName, ModelGenerationsFolderName);
+    }
+
     private static void Log(string msg) { /* No-op for production */ }
 }

@@ -27,6 +27,17 @@ public interface IReadOnlyStockAnalyzerGateway
     /// <exception cref="NotSupportedException"><paramref name="timeFrame"/> is not in <see cref="ReadOnlyGatewayContract.SupportedTimeFrames"/>.</exception>
     Task<IReadOnlyList<CandleData>> GetCandlesAsync(string symbol, TimeFrame timeFrame, int count, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// The latest <paramref name="count"/> bars of <paramref name="symbol"/> whose timestamp date is on or before <paramref name="endDate"/>, in chronological
+    /// order (fewer when fewer are stored; empty when none is). The whole stored daily history is read for the call and cut at the date, so the date may be older
+    /// than the newest <paramref name="count"/> bars, which <see cref="GetCandlesAsync"/> cannot reach. A weekly or monthly bar is aggregated from the days up to
+    /// <paramref name="endDate"/> only (it is dated by its first day and its high, low, close and volume never include a later day). Uses a new cache per call.
+    /// </summary>
+    /// <exception cref="ArgumentException"><paramref name="symbol"/> is not well formed.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="count"/> is not positive.</exception>
+    /// <exception cref="NotSupportedException"><paramref name="timeFrame"/> is not in <see cref="ReadOnlyGatewayContract.SupportedTimeFrames"/>.</exception>
+    Task<IReadOnlyList<CandleData>> GetCandlesUpToAsync(string symbol, TimeFrame timeFrame, DateOnly endDate, int count, CancellationToken cancellationToken = default);
+
     /// <summary>Stored metadata for <paramref name="symbol"/>, or null when none is stored. Never fetches from an external source.</summary>
     /// <exception cref="DataUnavailableException">The stored file exists but could not be read.</exception>
     Task<TickerMetadata?> GetStoredTickerMetadataAsync(string symbol, CancellationToken cancellationToken = default);
@@ -68,6 +79,22 @@ public interface IReadOnlyStockAnalyzerGateway
         TimeFrame timeFrame,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// <see cref="RunScreenerAsync(IReadOnlyList{string}, IScreeningCondition, TimeFrame, CancellationToken)"/> for a condition whose indicators compare
+    /// two tickers: the stored bars of <paramref name="comparisonSymbols"/> are read once, with the history the condition needs, and shared by the
+    /// evaluation of every symbol. A symbol of the list that is also evaluated is compared with itself. An empty list is the overload above.
+    /// </summary>
+    /// <exception cref="ArgumentException">A symbol is not well formed.</exception>
+    Task<IReadOnlyList<string>> RunScreenerAsync(
+        IReadOnlyList<string> symbols,
+        IScreeningCondition condition,
+        TimeFrame timeFrame,
+        IReadOnlyList<string> comparisonSymbols,
+        CancellationToken cancellationToken = default)
+        => comparisonSymbols.Count == 0
+            ? RunScreenerAsync(symbols, condition, timeFrame, cancellationToken)
+            : throw new NotSupportedException($"{GetType().Name} does not evaluate indicators that compare two tickers.");
+
     /// <summary>The saved Screener templates (favourites first, then by name). Reads the template files only: nothing is created, migrated or written.</summary>
     Task<ScreenerTemplateListing> ListScreenerTemplatesAsync(CancellationToken cancellationToken = default);
 
@@ -90,6 +117,20 @@ public interface IReadOnlyStockAnalyzerGateway
         ScreenerIndicatorTemplate template,
         TimeFrame timeFrame,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// <see cref="RunScreenerTemplateAsync(IReadOnlyList{string}, ScreenerIndicatorTemplate, TimeFrame, CancellationToken)"/> for a template whose
+    /// indicators compare two tickers; <paramref name="comparisonSymbols"/> are read once as in the Screener overload. An empty list is the overload above.
+    /// </summary>
+    Task<IReadOnlyList<string>> RunScreenerTemplateAsync(
+        IReadOnlyList<string> symbols,
+        ScreenerIndicatorTemplate template,
+        TimeFrame timeFrame,
+        IReadOnlyList<string> comparisonSymbols,
+        CancellationToken cancellationToken = default)
+        => comparisonSymbols.Count == 0
+            ? RunScreenerTemplateAsync(symbols, template, timeFrame, cancellationToken)
+            : throw new NotSupportedException($"{GetType().Name} does not evaluate indicators that compare two tickers.");
 
     /// <summary>
     /// Runs one backtest in memory with the application's own preparation service and evaluation service (the Backtest window's path):

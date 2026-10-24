@@ -15,9 +15,9 @@ namespace StockAnalyzer.Core.Services.ReinforcementLearning;
 internal static class RlLocalSnapshotFactory
 {
     public static async Task<RlSourceSnapshot> PrepareAsync(RlTrainingJob job, string directory,
-        TrainingResourceLimits limits, CancellationToken ct)
+        TrainingResourceLimits limits, CancellationToken ct, RlLocalSourceFolders? folders = null)
     {
-        await WriteSourceFilesAsync(job.Symbol, job.StartDate, job.EndDateExclusive, directory, limits, ct).ConfigureAwait(false);
+        await WriteSourceFilesAsync(job.Symbol, job.StartDate, job.EndDateExclusive, directory, limits, ct, folders).ConfigureAwait(false);
         return RlSourceSnapshot.Load(directory, limits, job.SmokeOnly, ct, job.EvaluationSpecificationId, job.ShortHistorySpecificationId);
     }
 
@@ -26,10 +26,10 @@ internal static class RlLocalSnapshotFactory
     /// building an episode catalog (a short history is a valid source here). Shared by the single-symbol and the portfolio snapshots.
     /// </summary>
     internal static async Task WriteSourceFilesAsync(string symbol, DateOnly startDate, DateOnly endDateExclusive, string directory,
-        TrainingResourceLimits limits, CancellationToken ct)
+        TrainingResourceLimits limits, CancellationToken ct, RlLocalSourceFolders? folders = null)
     {
         var started = DateTimeOffset.UtcNow;
-        var bytes = await RlLocalSourceFiles.CaptureAsync(symbol, directory, limits, ct).ConfigureAwait(false);
+        var bytes = await RlLocalSourceFiles.CaptureAsync(symbol, directory, limits, ct, folders).ConfigureAwait(false);
         await WriteSourceFilesFromCaptureAsync(bytes, started, symbol, startDate, endDateExclusive, directory, limits, ct).ConfigureAwait(false);
     }
 

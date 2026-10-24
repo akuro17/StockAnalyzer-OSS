@@ -171,7 +171,9 @@ public sealed record TrainingJobConfig
     /// <summary>
     /// Orchestrator-assigned run identifier (restored from the native manifest for Resume), set by <see cref="Services.TrainingOrchestrator"/>
     /// immediately before this config is serialized to the wire JSON -- never populated by the
-    /// wizard UI. Threaded through to <c>run_training.py</c> so both sides share exactly one
+    /// wizard UI. The one exception is an ephemeral run (<see cref="ArtifactsDirectory"/> set): its job folder is named after the
+    /// identifier, so the caller (the sandboxed execution gateway) creates it first with <see cref="TrainingRunId.New"/>, passes it
+    /// here, and the orchestrator uses it as given; it is then required (see <see cref="Validate"/>). Threaded through to <c>run_training.py</c> so both sides share exactly one
     /// identifier for the experiment-log folder name, the trainer's own <c>run_id=</c> log line,
     /// and the derived ONNX artifact filename stem. Replaces the previous design where each side
     /// independently derived its own timestamp-based id from two different clocks (C#'s
@@ -205,6 +207,13 @@ public sealed record TrainingJobConfig
     /// in Python (single formula source: the <c>ICoreIndicator</c> implementations).
     /// </summary>
     public IReadOnlyDictionary<string, string>? IndicatorChannelExportPaths { get; init; }
+
+    /// <summary>
+    /// Ephemeral mode: when not <see langword="null"/>, every artifact of the run is written inside this one folder, which must lie below
+    /// <see cref="Execution.EphemeralSandbox.Root"/>; nothing goes to <c>Data/TrainingArtifacts</c> and the caller registers nothing. Omitted
+    /// from the wire while <see langword="null"/> (the normal mode), so existing configs and older training packages are unaffected.
+    /// </summary>
+    public string? ArtifactsDirectory { get; init; }
 
     public string? SourceManifestPath { get; init; }
     public string? PreparedInputDir { get; init; }
@@ -389,6 +398,32 @@ public sealed record TrainingJobConfig
             && OutputName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
         {
             throw new InvalidOperationException("TrainingJobConfig: OutputName contains invalid file-name characters.");
+        }
+
+        if (ArtifactsDirectory is not null)
+        {
+            if (!Execution.EphemeralSandbox.IsStrictlyInside(ArtifactsDirectory))
+            {
+                throw new ArgumentException(
+                    "TrainingJobConfig: ArtifactsDirectory must be an absolute path below the ephemeral sandbox root.",
+                    nameof(ArtifactsDirectory));
+            }
+
+            // The job folder is named after the run id, so a folder and an id that disagree can never be produced.
+            if (!TrainingRunId.IsValid(RunId))
+            {
+                throw new ArgumentException(
+                    "TrainingJobConfig: an ephemeral run needs a RunId in the form yyyyMMdd-HHmmssfff-xxxxxxxx (lower-case hex).",
+                    nameof(RunId));
+            }
+
+            string folderName = Path.GetFileName(Path.TrimEndingDirectorySeparator(Path.GetFullPath(ArtifactsDirectory)));
+            if (!string.Equals(folderName, RunId, StringComparison.Ordinal))
+            {
+                throw new ArgumentException(
+                    "TrainingJobConfig: the last folder of ArtifactsDirectory must be the RunId.",
+                    nameof(ArtifactsDirectory));
+            }
         }
     }
 

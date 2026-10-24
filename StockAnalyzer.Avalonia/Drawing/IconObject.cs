@@ -37,9 +37,11 @@ public class IconObject : IChartObject, IDisposable
         get => _iconPath;
         set
         {
-            if (_iconPath == value) return;
-            _iconPath = value ?? string.Empty;
+            var normalized = value ?? string.Empty;
+            if (_iconPath == normalized) return;
+            _iconPath = normalized;
             _cachedBitmap = null;
+            _bitmapLoadAttempted = false;
         }
     }
 
@@ -144,6 +146,7 @@ public class IconObject : IChartObject, IDisposable
     private readonly SKPaint _bitmapPaint;
     private readonly SKPaint _selectedBorderPaint;
     private SKBitmap? _cachedBitmap;
+    private bool _bitmapLoadAttempted;
     private bool _disposed;
 
     public IconObject() : this(new ChartPoint(DateTime.UtcNow, 0m))
@@ -191,16 +194,20 @@ public class IconObject : IChartObject, IDisposable
     private SKBitmap? EnsureBitmap()
     {
         if (_cachedBitmap != null) return _cachedBitmap;
-        if (string.IsNullOrEmpty(_iconPath)) return null;
+        if (_bitmapLoadAttempted || string.IsNullOrEmpty(_iconPath)) return null;
 
         var service = DrawingThemeContext.IconDrawingService;
-        _cachedBitmap = service?.GetSkiaBitmap(_iconPath);
+        if (service == null) return null;
+
+        _bitmapLoadAttempted = true;
+        _cachedBitmap = service.GetSkiaBitmap(_iconPath);
         return _cachedBitmap;
     }
 
     internal void SetBitmap(SKBitmap? bitmap)
     {
         _cachedBitmap = bitmap;
+        _bitmapLoadAttempted = true;
     }
 
     public void Render(SKCanvas canvas, ICoordinateTransform transform)

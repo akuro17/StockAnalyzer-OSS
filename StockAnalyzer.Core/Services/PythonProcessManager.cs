@@ -179,7 +179,7 @@ namespace StockAnalyzer.Core.Services
                 startInfo.ArgumentList.Add(_pythonScriptPath);
                 startInfo.ArgumentList.Add("--pipe");
                 startInfo.ArgumentList.Add(_pipeName);
-                startInfo.EnvironmentVariables["PYTHONIOENCODING"] = "utf-8";
+                startInfo.EnvironmentVariables[PythonChildEnvironment.IoEncodingVariable] = PythonChildEnvironment.IoEncodingValue;
 
                 using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 cts.CancelAfter(_settings.PipeConnectionTimeoutMs);

@@ -129,6 +129,22 @@ namespace StockAnalyzer.Core.Tests.Services
         }
 
         [Fact]
+        public void ClipboardShell_IsWindowsPowerShell_SoThePastedCommandHasNoDoubleAmpersand()
+        {
+            Assert.Equal(ManualShell.WindowsPowerShell, ManualPipCommands.ClipboardShell);
+            foreach (var command in new[]
+            {
+                ManualPipCommands.Setup(ManualPipCommands.ClipboardShell),
+                ManualPipCommands.Update(ManualPipCommands.ClipboardShell),
+                ManualPipCommands.Onnx(ManualPipCommands.ClipboardShell, upgrade: true)
+            })
+            {
+                Assert.DoesNotContain("&&", command);   // Windows PowerShell 5.1 rejects it as a statement separator
+                Assert.Contains("if ($LASTEXITCODE -eq 0)", command);
+            }
+        }
+
+        [Fact]
         public void Onnx_InstallsTorchFromCpuIndexAndTheOtherPackagesFromDefaultIndex()
         {
             var lines = ManualPipCommands.OnnxArguments(upgrade: false);

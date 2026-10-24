@@ -20,7 +20,7 @@ public sealed class TrainingJobGate
     private const int DataRootKeyLength = 16;
 
     private readonly string _root;
-    public TrainingJobGate(string? root = null) => _root = root ?? DefaultRoot(PathDiscovery.ResolveDataPath(null, "Data"));
+    public TrainingJobGate(string? root = null) => _root = root ?? DefaultRoot(PathDiscovery.ResolveDataPathWithoutCreating(null, "Data"));
 
     /// <summary>
     /// <c>%TEMP%/StockAnalyzer/job-locks/&lt;key&gt;</c>, where the key identifies the Data root: only jobs that write to the same

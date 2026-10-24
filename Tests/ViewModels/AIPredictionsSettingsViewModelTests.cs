@@ -40,7 +40,7 @@ public class AIPredictionsSettingsViewModelTests
         }
     }
 
-    private class FakeClipboardService : IClipboardService
+    internal class FakeClipboardService : IClipboardService
     {
         public string? CopiedText { get; private set; }
         public Task SetTextAsync(string text)
@@ -51,7 +51,7 @@ public class AIPredictionsSettingsViewModelTests
         public Task<string?> GetTextAsync() => Task.FromResult(CopiedText);
     }
 
-    private class FakeToastNotificationService : IToastNotificationService
+    internal class FakeToastNotificationService : IToastNotificationService
     {
         public string? NotificationMessage { get; private set; }
         public bool IsNotificationVisible { get; private set; }
@@ -65,12 +65,14 @@ public class AIPredictionsSettingsViewModelTests
         public event PropertyChangedEventHandler? PropertyChanged { add { } remove { } }
     }
 
-    private class FakePythonService : IPythonService
+    internal class FakePythonService : IPythonService
     {
         public bool IsInitializing => false;
         public bool IsTorchInstalled { get; set; }
         public bool LastForceUpgrade { get; private set; }
         public bool InstallPackagesCalled { get; private set; }
+        public System.Collections.Generic.IReadOnlyList<string>? LastPackages { get; private set; }
+        public System.Func<Task>? InstallBehavior { get; set; }
 
         public Task<bool> IsPackageInstalledAsync(string packageName, System.Threading.CancellationToken ct = default)
         {
@@ -81,8 +83,9 @@ public class AIPredictionsSettingsViewModelTests
         {
             InstallPackagesCalled = true;
             LastForceUpgrade = forceUpgrade;
+            LastPackages = packageNames.ToList();
             progress?.Report("Completed");
-            return Task.CompletedTask;
+            return InstallBehavior?.Invoke() ?? Task.CompletedTask;
         }
 
         public Task InitializeAsync(System.IProgress<string>? progress = null, System.Threading.CancellationToken ct = default) => Task.CompletedTask;

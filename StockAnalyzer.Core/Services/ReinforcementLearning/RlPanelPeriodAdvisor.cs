@@ -41,10 +41,15 @@ public static class RlPanelPeriodAdvisor
     private sealed record Candidate(string Symbol, ImmutableArray<DateOnly> Dates);
 
     public static Task<RlStartSuggestion> SuggestAsync(IReadOnlyList<string> symbols, DateOnly endExclusive, RlPanelEvaluationMode mode,
-        TrainingResourceLimits limits, CancellationToken cancellationToken = default, RlPanelPartitionPlan? plan = null)
+        TrainingResourceLimits limits, CancellationToken cancellationToken = default, RlPanelPartitionPlan? plan = null, RlLocalSourceFolders? folders = null)
     {
-        string daily = Path.GetFullPath(PathDiscovery.ResolveDataPath(null, MarketDataSettings.DefaultDailyDataPath));
-        string metadata = Path.GetFullPath(PathDiscovery.ResolveDataPath(null, MarketDataSettings.DefaultMetadataDataPath));
+        if (folders is not null)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(folders.Daily);
+            ArgumentException.ThrowIfNullOrWhiteSpace(folders.Metadata);
+        }
+        string daily = Path.GetFullPath(folders?.Daily ?? PathDiscovery.ResolveDataPathWithoutCreating(null, MarketDataSettings.DefaultDailyDataPath));
+        string metadata = Path.GetFullPath(folders?.Metadata ?? PathDiscovery.ResolveDataPathWithoutCreating(null, MarketDataSettings.DefaultMetadataDataPath));
         return Task.Run(() => Suggest(symbols, endExclusive, mode, limits, daily, metadata, cancellationToken, plan), cancellationToken);
     }
 

@@ -62,7 +62,7 @@ public sealed class RlModelArchiveService : IRlModelArchiveService
         var metadata = new Dictionary<string, string>(StringComparer.Ordinal)
         {
             ["Type"] = "Checkpoint",
-            ["SourceDirectory"] = checkpointDirectory,
+            ["SourceDirectory"] = id,
         };
 
         return await PackageDirectoryAsync(checkpointDirectory, destinationZipPath, "Checkpoint", id, metadata, ct).ConfigureAwait(false);
@@ -80,7 +80,7 @@ public sealed class RlModelArchiveService : IRlModelArchiveService
         var metadata = new Dictionary<string, string>(StringComparer.Ordinal)
         {
             ["Type"] = "Generation",
-            ["SourceDirectory"] = generationDirectory,
+            ["SourceDirectory"] = id,
         };
 
         return await PackageDirectoryAsync(generationDirectory, destinationZipPath, "Generation", id, metadata, ct).ConfigureAwait(false);
@@ -110,10 +110,31 @@ public sealed class RlModelArchiveService : IRlModelArchiveService
                 manifest = await JsonSerializer.DeserializeAsync<RlArchiveManifest>(stream, cancellationToken: ct).ConfigureAwait(false);
             }
 
+            string safeBasePrefix = fullDest.EndsWith(Path.DirectorySeparatorChar)
+                ? fullDest
+                : fullDest + Path.DirectorySeparatorChar;
+
+            var pathComparison = OperatingSystem.IsWindows()
+                ? StringComparison.OrdinalIgnoreCase
+                : StringComparison.Ordinal;
+
             string targetDir = fullDest;
             if (manifest is not null && !string.IsNullOrWhiteSpace(manifest.Id))
             {
-                targetDir = Path.Combine(fullDest, manifest.Id);
+                if (!PlainFileName.IsValid(manifest.Id))
+                {
+                    return new RlArchiveImportResult(false, "", "", destinationDirectory, 0,
+                        $"Manifest Id '{manifest.Id}' contains invalid characters or path separators.");
+                }
+
+                string candidateDir = Path.GetFullPath(Path.Combine(fullDest, manifest.Id));
+                if (!candidateDir.StartsWith(safeBasePrefix, pathComparison))
+                {
+                    return new RlArchiveImportResult(false, "", "", destinationDirectory, 0,
+                        $"Manifest Id '{manifest.Id}' escapes destination directory.");
+                }
+
+                targetDir = candidateDir;
                 Directory.CreateDirectory(targetDir);
             }
             string fullTargetDir = Path.GetFullPath(targetDir);
@@ -129,7 +150,7 @@ public sealed class RlModelArchiveService : IRlModelArchiveService
                 if (entry.FullName == ManifestEntryName) continue;
 
                 string destPath = Path.GetFullPath(Path.Combine(targetDir, entry.FullName));
-                if (!destPath.StartsWith(safeTargetPrefix, StringComparison.OrdinalIgnoreCase))
+                if (!destPath.StartsWith(safeTargetPrefix, pathComparison))
                     throw new InvalidDataException($"Entry '{entry.FullName}' escapes target directory (ZipSlip prevention).");
 
                 Directory.CreateDirectory(Path.GetDirectoryName(destPath)!);

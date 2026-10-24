@@ -24,7 +24,14 @@ public static class ScreenerConditionTreeEvaluator
     /// reached by never scanning when zero entries were enabled.
     /// </summary>
     public static bool Evaluate(IScreenerConditionNode root, IReadOnlyList<CandleData> candles, TickerMetadata metadata)
-        => EvaluateOrAbsent(root, candles, metadata) ?? false;
+        => Evaluate(root, candles, metadata, null);
+
+    /// <summary>
+    /// <see cref="Evaluate(IScreenerConditionNode, IReadOnlyList{CandleData}, TickerMetadata)"/> with the bars of the comparison symbols the indicators
+    /// that compare two tickers read; null keeps them without a value (the Screener tab's rule).
+    /// </summary>
+    public static bool Evaluate(IScreenerConditionNode root, IReadOnlyList<CandleData> candles, TickerMetadata metadata, IScreenerSecondaryCandles? secondary)
+        => EvaluateOrAbsent(root, candles, metadata, secondary) ?? false;
 
     /// <summary>True when <paramref name="node"/>'s subtree contains at least one currently-enabled leaf. Used to reproduce the
     /// previous flat-list guard ("please register at least one condition") that used to gate <c>ScanAsync</c> before any scan ran.</summary>
@@ -46,19 +53,19 @@ public static class ScreenerConditionTreeEvaluator
     }
 
     /// <summary>Null means "this subtree contributes nothing" (a disabled leaf, or a group with no active child).</summary>
-    private static bool? EvaluateOrAbsent(IScreenerConditionNode node, IReadOnlyList<CandleData> candles, TickerMetadata metadata)
+    private static bool? EvaluateOrAbsent(IScreenerConditionNode node, IReadOnlyList<CandleData> candles, TickerMetadata metadata, IScreenerSecondaryCandles? secondary)
     {
         switch (node)
         {
             case ScreenerConditionLeaf leaf:
-                return leaf.Entry.IsEnabled ? leaf.Entry.IsMet(candles, metadata) : null;
+                return leaf.Entry.IsEnabled ? leaf.Entry.IsMet(candles, metadata, secondary) : null;
 
             case ScreenerConditionGroup group:
                 bool isAnd = group.Operator == LogicalOperator.And;
                 bool? result = null;
                 for (int i = 0; i < group.Children.Length; i++)
                 {
-                    bool? child = EvaluateOrAbsent(group.Children[i], candles, metadata);
+                    bool? child = EvaluateOrAbsent(group.Children[i], candles, metadata, secondary);
                     if (child is null) continue;
                     result = result is null ? child.Value : (isAnd ? (result.Value & child.Value) : (result.Value | child.Value));
                 }

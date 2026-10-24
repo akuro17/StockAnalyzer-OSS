@@ -319,6 +319,60 @@ public sealed class RunBacktestToolTests : IDisposable
         Assert.Equal("INVALID_ARGUMENT", Code(response));
     }
 
+    // ---- report: annual periods and bootstrap (the Backtest settings window's values) ----------------------------------------------------
+
+    [Fact]
+    public async Task OmittingTheReportValuesEqualsGivingTheFactoryDefaultsAndTheEchoShowsThem()
+    {
+        var dispatcher = await StartAsync();
+
+        JsonElement omitted = Result(await RunAsync(dispatcher, Conditions, Period));
+        JsonElement explicitDefaults = Result(await RunAsync(
+            dispatcher, Conditions, Period + $",\"report\":{{\"annualPeriodsD1\":252,\"bootstrapSeed\":{BacktestDefaults.BootstrapSeed},\"bootstrapIterations\":{BacktestDefaults.BootstrapIterations}}}"));
+
+        JsonElement report = omitted.GetProperty("effectiveSettings").GetProperty("report");
+        Assert.Equal(252, report.GetProperty("annualPeriods").GetInt32());
+        Assert.Equal(BacktestDefaults.BootstrapSeed, report.GetProperty("bootstrapSeed").GetInt32());
+        Assert.Equal(BacktestDefaults.BootstrapIterations, report.GetProperty("bootstrapIterations").GetInt32());
+        Assert.Equal(omitted.GetProperty("reproducibilityHash").GetString(), explicitDefaults.GetProperty("reproducibilityHash").GetString());
+        Assert.Equal(omitted.GetProperty("runFingerprint").GetProperty("sha256").GetString(), explicitDefaults.GetProperty("runFingerprint").GetProperty("sha256").GetString());
+        Assert.Equal(omitted.GetProperty("report").GetRawText(), explicitDefaults.GetProperty("report").GetRawText());
+    }
+
+    [Fact]
+    public async Task TheAnnualPeriodsAndTheBootstrapValuesAreAppliedAndEchoed()
+    {
+        var dispatcher = await StartAsync();
+
+        JsonElement baseline = Result(await RunAsync(dispatcher, Conditions, Period));
+        JsonElement result = Result(await RunAsync(dispatcher, Conditions, Period + ",\"report\":{\"annualPeriodsD1\":365,\"bootstrapSeed\":7,\"bootstrapIterations\":1500}"));
+
+        JsonElement report = result.GetProperty("effectiveSettings").GetProperty("report");
+        Assert.Equal(365, report.GetProperty("annualPeriods").GetInt32());
+        Assert.Equal(7, report.GetProperty("bootstrapSeed").GetInt32());
+        Assert.Equal(1500, report.GetProperty("bootstrapIterations").GetInt32());
+        Assert.NotEqual(baseline.GetProperty("report").GetRawText(), result.GetProperty("report").GetRawText()); // the annualised metrics use the period count
+    }
+
+    [Theory]
+    [InlineData("""{"annualPeriodsD1":0}""", "report")]
+    [InlineData("""{"annualPeriodsD1":367}""", "report")]
+    [InlineData("""{"annualPeriodsD1":1.5}""", "report.annualPeriodsD1")]
+    [InlineData("""{"annualPeriodsD1":"252"}""", "report.annualPeriodsD1")]
+    [InlineData("""{"bootstrapSeed":1.5}""", "report.bootstrapSeed")]
+    [InlineData("""{"bootstrapSeed":99999999999}""", "report.bootstrapSeed")]
+    [InlineData("""{"bootstrapIterations":999}""", "report.bootstrapIterations")]
+    [InlineData("""{"bootstrapIterations":"2000"}""", "report.bootstrapIterations")]
+    public async Task AnInvalidAnnualPeriodOrBootstrapValueIsRejectedByTheEnginesOwnRule(string report, string parameter)
+    {
+        var dispatcher = await StartAsync();
+
+        using JsonDocument response = await RunAsync(dispatcher, Conditions, Period + ",\"report\":" + report);
+
+        Assert.Equal("INVALID_ARGUMENT", Code(response));
+        Assert.Equal(parameter, Param(response));
+    }
+
     // ---- arguments ------------------------------------------------------------------------------------------------------------------
 
     [Fact]

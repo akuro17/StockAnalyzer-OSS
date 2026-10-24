@@ -24,6 +24,10 @@ namespace StockAnalyzer.Core.Services
 
         private string PythonExecutableName => System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows) ? "python.exe" : "python3";
 
+        private static readonly System.Text.RegularExpressions.Regex ValidPythonModuleNameRegex =
+            new(@"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$",
+                System.Text.RegularExpressions.RegexOptions.Compiled | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
         private void LogSyncActivity(string message, LogLevel level = LogLevel.Information)
         {
             _logger.Log(level, "{Message}", message);
@@ -361,6 +365,9 @@ namespace StockAnalyzer.Core.Services
 
         public async Task RunUpdatePipelineAsync(string? symbol = null, IProgress<int>? progress = null, bool forceMetadata = false, CancellationToken ct = default)
         {
+            if (!string.IsNullOrEmpty(symbol) && (!AttestedFileNames.IsPlain(symbol) || symbol.Contains(' ') || symbol.StartsWith('-')))
+                throw new ArgumentException($"Invalid ticker symbol '{symbol}'.", nameof(symbol));
+
             LogSyncActivity($"RunUpdatePipelineAsync START for {symbol}");
 
             // Set a safety timeout from settings (default 2 minutes) to prevent indefinite hangs.
@@ -388,14 +395,9 @@ namespace StockAnalyzer.Core.Services
                     var resolvedScriptPath = PythonScriptLocator.Resolve("update_pipeline.py");
 
                     // 3. Process Setup
-                    var arguments = $"-u \"{resolvedScriptPath}\"";
-                    if (!string.IsNullOrEmpty(symbol)) arguments += $" --ticker {symbol}";
-                    if (forceMetadata) arguments += " --force-metadata";
-
                     var startInfo = new System.Diagnostics.ProcessStartInfo
                     {
                         FileName = pythonExe,
-                        Arguments = arguments,
                         UseShellExecute = false,
                         RedirectStandardOutput = true,
                         RedirectStandardError = true,
@@ -403,7 +405,19 @@ namespace StockAnalyzer.Core.Services
                         WorkingDirectory = System.IO.Path.GetDirectoryName(resolvedScriptPath)
                     };
 
-                    LogSyncActivity($"Starting process: {pythonExe} {arguments}");
+                    startInfo.ArgumentList.Add("-u");
+                    startInfo.ArgumentList.Add(resolvedScriptPath);
+                    if (!string.IsNullOrEmpty(symbol))
+                    {
+                        startInfo.ArgumentList.Add("--ticker");
+                        startInfo.ArgumentList.Add(symbol);
+                    }
+                    if (forceMetadata)
+                    {
+                        startInfo.ArgumentList.Add("--force-metadata");
+                    }
+
+                    LogSyncActivity($"Starting process: {pythonExe} {string.Join(" ", startInfo.ArgumentList)}");
                     
                     var combinedOutput = new RollingLogBuffer(500);
                     using var process = new System.Diagnostics.Process { StartInfo = startInfo };
@@ -499,6 +513,9 @@ namespace StockAnalyzer.Core.Services
             if (config.StartSyncPeriodYears < 1 || config.StartSyncPeriodYears > 50)
                 throw new ArgumentOutOfRangeException(nameof(config.StartSyncPeriodYears), "StartSyncPeriodYears must be in range [1, 50].");
 
+            if (!string.IsNullOrEmpty(symbol) && (!AttestedFileNames.IsPlain(symbol) || symbol.Contains(' ') || symbol.StartsWith('-')))
+                throw new ArgumentException($"Invalid ticker symbol '{symbol}'.", nameof(symbol));
+
             LogSyncActivity($"RunUpdatePipelineAsync (Config) START for {symbol}");
 
             // Set a safety timeout from settings (default 2 minutes) to prevent indefinite hangs.
@@ -526,40 +543,9 @@ namespace StockAnalyzer.Core.Services
                     var resolvedScriptPath = PythonScriptLocator.Resolve("update_pipeline.py");
 
                     // 3. Process Setup
-                    var arguments = $"-u \"{resolvedScriptPath}\"";
-                    if (!string.IsNullOrEmpty(symbol)) arguments += $" --ticker {symbol}";
-                    if (!config.IsTimeSeriesSyncEnabled) arguments += " --skip-daily";
-                    if (config.IsMetadataSyncEnabled)
-                    {
-                        arguments += " --force-metadata";
-                        if (config.IsImputeMissingMetadataEnabled)
-                        {
-                            arguments += " --impute-missing";
-                        }
-                    }
-                    
-                    // Delay is fully managed on the C# Ticker-Loop side. We force Python process delay to 0
-                    // to prevent processes from hanging/sleeping, saving resources.
-                    arguments += " --delay 0";
-                    
-                    if (config.IsFullHistoryEnabled)
-                    {
-                        arguments += " --full-history";
-                    }
-                    else
-                    {
-                        arguments += $" --start-period {config.StartSyncPeriodYears}";
-                    }
-
-                    if (config.IsForcePeriodDownloadEnabled)
-                    {
-                        arguments += " --force-period";
-                    }
-
                     var startInfo = new System.Diagnostics.ProcessStartInfo
                     {
                         FileName = pythonExe,
-                        Arguments = arguments,
                         UseShellExecute = false,
                         RedirectStandardOutput = true,
                         RedirectStandardError = true,
@@ -567,7 +553,47 @@ namespace StockAnalyzer.Core.Services
                         WorkingDirectory = System.IO.Path.GetDirectoryName(resolvedScriptPath)
                     };
 
-                    LogSyncActivity($"Starting process (Config): {pythonExe} {arguments}");
+                    startInfo.ArgumentList.Add("-u");
+                    startInfo.ArgumentList.Add(resolvedScriptPath);
+                    if (!string.IsNullOrEmpty(symbol))
+                    {
+                        startInfo.ArgumentList.Add("--ticker");
+                        startInfo.ArgumentList.Add(symbol);
+                    }
+                    if (!config.IsTimeSeriesSyncEnabled)
+                    {
+                        startInfo.ArgumentList.Add("--skip-daily");
+                    }
+                    if (config.IsMetadataSyncEnabled)
+                    {
+                        startInfo.ArgumentList.Add("--force-metadata");
+                        if (config.IsImputeMissingMetadataEnabled)
+                        {
+                            startInfo.ArgumentList.Add("--impute-missing");
+                        }
+                    }
+                    
+                    // Delay is fully managed on the C# Ticker-Loop side. We force Python process delay to 0
+                    // to prevent processes from hanging/sleeping, saving resources.
+                    startInfo.ArgumentList.Add("--delay");
+                    startInfo.ArgumentList.Add("0");
+                    
+                    if (config.IsFullHistoryEnabled)
+                    {
+                        startInfo.ArgumentList.Add("--full-history");
+                    }
+                    else
+                    {
+                        startInfo.ArgumentList.Add("--start-period");
+                        startInfo.ArgumentList.Add(config.StartSyncPeriodYears.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                    }
+
+                    if (config.IsForcePeriodDownloadEnabled)
+                    {
+                        startInfo.ArgumentList.Add("--force-period");
+                    }
+
+                    LogSyncActivity($"Starting process (Config): {pythonExe} {string.Join(" ", startInfo.ArgumentList)}");
                     
                     var combinedOutput = new RollingLogBuffer(500);
                     using var process = new System.Diagnostics.Process { StartInfo = startInfo };
@@ -971,7 +997,12 @@ namespace StockAnalyzer.Core.Services
 
             if (!System.IO.File.Exists(pythonExe)) return ModuleInstallState.Missing;
 
-            return await ModuleInstallProbe.RunAsync(pythonExe, $"-c \"import {importName}\"", _settings.PythonImportProbeTimeout, ct);
+            if (string.IsNullOrWhiteSpace(importName) || !ValidPythonModuleNameRegex.IsMatch(importName))
+            {
+                return ModuleInstallState.Failed;
+            }
+
+            return await ModuleInstallProbe.RunWithArgumentsAsync(pythonExe, ["-c", $"import {importName}"], _settings.PythonImportProbeTimeout, ct);
         }
 
         public void Run(Action<PyModule> action)

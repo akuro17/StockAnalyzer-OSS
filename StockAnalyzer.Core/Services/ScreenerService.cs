@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Portfolio;
+using StockAnalyzer.Core.Models.Screener;
 
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -55,10 +56,19 @@ public class ScreenerService : IScreenerService
         return new List<string>();
     }
 
+    public Task<List<string>> ScreenAsync(
+        List<string> symbols,
+        IScreeningCondition condition,
+        TimeFrame timeFrame,
+        IProgress<int> progress,
+        CancellationToken ct)
+        => ScreenAsync(symbols, condition, timeFrame, null, progress, ct);
+
     public async Task<List<string>> ScreenAsync(
         List<string> symbols,
         IScreeningCondition condition,
         TimeFrame timeFrame,
+        IScreenerSecondaryCandles? secondary,
         IProgress<int> progress,
         CancellationToken ct)
     {
@@ -119,7 +129,8 @@ public class ScreenerService : IScreenerService
                         }
                     }
 
-                    if (candles != null && await condition.IsMetAsync(candles, metadata))
+                    // Without comparison-symbol bars the original two-argument form runs, so a condition that overrides only that form is unaffected.
+                    if (candles != null && await (secondary == null ? condition.IsMetAsync(candles, metadata) : condition.IsMetAsync(candles, metadata, secondary)))
                     {
                         matchedSymbols.Add((index, symbol));
                     }

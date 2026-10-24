@@ -23,22 +23,19 @@ public sealed partial class RlStoredPriceDesktopTests(ITestOutputHelper output) 
     public const string QualifiedDirectoryVariable = "SA_RL_UI_QUALIFIED_DIRECTORY";
     public const string EvidenceDirectoryVariable = "SA_RL_UI_EVIDENCE_DIRECTORY";
     public const string ContinuousDirectoryVariable = "SA_RL_T16_ACTOR_DIRECTORY";
+    public const string RecoveryConfigVariable = "SA_RL_R07_QUALIFICATION_CONFIG";
     private const string Symbol = "AAPL";
     private const int CompletionTimeoutMs = 180_000;
     /// <summary>A T16 run records its whole execution environment before it starts (3 min 14 s measured, plus a second verification); waits that include that start use this bound.</summary>
     private const int StrictRunTimeoutMs = 600_000;
-    /// <summary>Whole-test bounds (xUnit <c>Timeout</c>): a test with one local run, with one strict T16 run, and with two strict T16 runs (or one run plus a resumed one).</summary>
-    private const int LocalRunTestTimeoutMs = 600_000;
-    private const int OneStrictRunTestTimeoutMs = 1_500_000;
-    private const int TwoStrictRunsTestTimeoutMs = 2_400_000;
     private const int StableLayoutSamples = 3;
     private const int CheckpointScrollSteps = 3;
 
-    [Fact(Timeout = TwoStrictRunsTestTimeoutMs)]
+    [QualifiedEvidenceFact(EvidenceDirectoryVariable, RecoveryConfigVariable, Timeout = UiTestLimits.TestTimeLimitMs)]
     public void R09_RealPpoPauseReviewAndExplicitResumeThroughOwnedDesktop()
     {
         string evidence = Environment.GetEnvironmentVariable(EvidenceDirectoryVariable)!;
-        using var config = JsonDocument.Parse(File.ReadAllText(Environment.GetEnvironmentVariable("SA_RL_R07_QUALIFICATION_CONFIG")!));
+        using var config = JsonDocument.Parse(File.ReadAllText(Environment.GetEnvironmentVariable(RecoveryConfigVariable)!));
         string actor = config.RootElement.GetProperty("LaterActor").GetString()!;
         using var actorJob = JsonDocument.Parse(File.ReadAllText(Path.Combine(actor, RlFiles.Job)));
         LaunchApplication(root =>
@@ -105,11 +102,11 @@ public sealed partial class RlStoredPriceDesktopTests(ITestOutputHelper output) 
         window.Close();
     }
 
-    [Fact(Timeout = LocalRunTestTimeoutMs)]
+    [QualifiedEvidenceFact(EvidenceDirectoryVariable, RecoveryConfigVariable, Timeout = UiTestLimits.TestTimeLimitMs)]
     public void R08_DefaultSettingsRequiredRetentionSmokeAndExplicitCleanupThroughDesktop()
     {
         string evidence=Environment.GetEnvironmentVariable(EvidenceDirectoryVariable) ?? throw new InvalidOperationException("Owned evidence output required.");
-        using var config=JsonDocument.Parse(File.ReadAllText(Environment.GetEnvironmentVariable("SA_RL_R07_QUALIFICATION_CONFIG")!));
+        using var config=JsonDocument.Parse(File.ReadAllText(Environment.GetEnvironmentVariable(RecoveryConfigVariable)!));
         string actorDirectory=config.RootElement.GetProperty("LaterActor").GetString()!;
         string expiredRun="", expiredDirectory="";
         LaunchApplication(root=>
@@ -210,11 +207,11 @@ public sealed partial class RlStoredPriceDesktopTests(ITestOutputHelper output) 
         SaveScreenshot(window,"sa_T16_R08_desktop_cleaned.png"); window.Close();
     }
 
-    [Fact(Timeout = LocalRunTestTimeoutMs)]
+    [QualifiedEvidenceFact(EvidenceDirectoryVariable, RecoveryConfigVariable, Timeout = UiTestLimits.TestTimeLimitMs)]
     public void R07_ExplicitVerifiedBackupRecoveryThroughDesktop()
     {
         string evidence = Environment.GetEnvironmentVariable(EvidenceDirectoryVariable) ?? throw new InvalidOperationException("Explicit recovery evidence root required.");
-        using var config = JsonDocument.Parse(File.ReadAllText(Environment.GetEnvironmentVariable("SA_RL_R07_QUALIFICATION_CONFIG")
+        using var config = JsonDocument.Parse(File.ReadAllText(Environment.GetEnvironmentVariable(RecoveryConfigVariable)
             ?? throw new InvalidOperationException("Owned qualified recovery fixture configuration required.")));
         string earlierDirection = config.RootElement.GetProperty("EarlierDirection").GetString()!;
         string earlierActor = config.RootElement.GetProperty("EarlierActor").GetString()!;
@@ -274,7 +271,7 @@ public sealed partial class RlStoredPriceDesktopTests(ITestOutputHelper output) 
         window.Close();
     }
 
-    [Fact(Timeout = OneStrictRunTestTimeoutMs)]
+    [QualifiedEvidenceFact(QualifiedDirectoryVariable, ContinuousDirectoryVariable, EvidenceDirectoryVariable, Timeout = UiTestLimits.TestTimeLimitMs)]
     public void R06_AllBlockOptionSmokeReportAndLatestReplayThroughDesktop()
     {
         string directionDirectory = Environment.GetEnvironmentVariable(QualifiedDirectoryVariable)
@@ -351,7 +348,7 @@ public sealed partial class RlStoredPriceDesktopTests(ITestOutputHelper output) 
             original_active_untouched = true }));
     }
 
-    [Fact(Timeout = LocalRunTestTimeoutMs)]
+    [QualifiedEvidenceFact(QualifiedDirectoryVariable, ContinuousDirectoryVariable, Timeout = UiTestLimits.TestTimeLimitMs)]
     public void R04_ConstraintReportAndSeparatePolicyControlsThroughDesktop()
     {
         string directionDirectory = Environment.GetEnvironmentVariable(QualifiedDirectoryVariable)
@@ -418,7 +415,7 @@ public sealed partial class RlStoredPriceDesktopTests(ITestOutputHelper output) 
             .All(e => e.IsOffscreen), errorMessage: "Stale R04 evaluation details");
     }
 
-    [Fact(Timeout = LocalRunTestTimeoutMs)]
+    [QualifiedEvidenceFact(QualifiedDirectoryVariable, Timeout = UiTestLimits.TestTimeLimitMs)]
     public void LocalStoredPrices_TrainCancelActivateReplayAndInvalidateThroughDesktop()
     {
         string directory = Environment.GetEnvironmentVariable(QualifiedDirectoryVariable)
@@ -505,7 +502,7 @@ public sealed partial class RlStoredPriceDesktopTests(ITestOutputHelper output) 
         }
     }
 
-    [Fact(Timeout = TwoStrictRunsTestTimeoutMs)]
+    [QualifiedEvidenceFact(QualifiedDirectoryVariable, ContinuousDirectoryVariable, Timeout = UiTestLimits.TestTimeLimitMs)]
     public void ContinuousStoredPrices_SelectFrozenDirectionTrainAndPublishReadout()
     {
         string directionDirectory = Environment.GetEnvironmentVariable(QualifiedDirectoryVariable)

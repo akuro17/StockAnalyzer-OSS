@@ -31,6 +31,12 @@ namespace StockAnalyzer.Core.Services
     {
         private const string NonWindowsInterpreter = "python3";
 
+        /// <summary>
+        /// Shell form of every command copied to the clipboard. Windows PowerShell 5.1 (the default <c>powershell</c> window) has no <c>&amp;&amp;</c>; its form
+        /// (steps nested in <c>if ($LASTEXITCODE -eq 0) { ... }</c>) is also valid in PowerShell 7, so one pasted command works in both.
+        /// </summary>
+        public const ManualShell ClipboardShell = ManualShell.WindowsPowerShell;
+
         private static bool IsWindows => RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
 
         /// <summary>Absolute path of the interpreter the app uses (Windows), or <c>python3</c> elsewhere.</summary>

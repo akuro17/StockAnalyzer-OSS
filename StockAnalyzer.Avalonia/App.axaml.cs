@@ -105,15 +105,8 @@ public partial class App : Application, IDisposable, IThemeVariantDispatcher
                         return decision;
                     };
 
-                    pythonService.UpdateDecisionProvider = async () =>
-                    {
-                        var decision = await dialogService.ShowPythonUpdateConfirmationAsync();
-                        if (decision == StockAnalyzer.Core.Services.PythonSetupDecision.Manual)
-                        {
-                            await dialogService.ShowPythonManualUpdateInstructionsAsync();
-                        }
-                        return decision;
-                    };
+                    // Manual: the dialog's own handler has already copied the update command to the clipboard; no second window.
+                    pythonService.UpdateDecisionProvider = () => dialogService.ShowPythonUpdateConfirmationAsync();
 
                     // Awaited synchronously (small local JSON read) so IsUpdateSuppressed is
                     // guaranteed set before any Python-dependent UI action can trigger

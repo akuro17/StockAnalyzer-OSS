@@ -28,6 +28,11 @@ namespace StockAnalyzer.Avalonia.Services;
 
 public partial class DialogService : IDialogService
 {
+    /// <summary>Smallest width (DIP) of the "Configure Manually" button of the Python Library Update dialog: the label is shown in full at the app font size.</summary>
+    private const double ManualButtonMinWidth = 160;
+
+    /// <summary>Left and right padding (DIP) of the "Configure Manually" button; the same as the Settings buttons.</summary>
+    private const double ManualButtonHorizontalPadding = 16;
 
 
     private class MultiSyncProgressSession : IMultiSyncProgressSession
@@ -1741,7 +1746,7 @@ public partial class DialogService : IDialogService
                     {
                         try
                         {
-                            await desktop.MainWindow.Clipboard.SetTextAsync(StockAnalyzer.Core.Services.ManualPipCommands.Setup(StockAnalyzer.Core.Services.ManualShell.PowerShell7));
+                            await desktop.MainWindow.Clipboard.SetTextAsync(StockAnalyzer.Core.Services.ManualPipCommands.Setup(StockAnalyzer.Core.Services.ManualPipCommands.ClipboardShell));
                         }
                         catch { }
                     }
@@ -1772,7 +1777,7 @@ public partial class DialogService : IDialogService
     {
         if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            var setupCommand = StockAnalyzer.Core.Services.ManualPipCommands.Setup(StockAnalyzer.Core.Services.ManualShell.PowerShell7);
+            var setupCommand = StockAnalyzer.Core.Services.ManualPipCommands.Setup(StockAnalyzer.Core.Services.ManualPipCommands.ClipboardShell);
             if (desktop.MainWindow?.Clipboard != null)
             {
                 try
@@ -1899,7 +1904,8 @@ public partial class DialogService : IDialogService
                 var btnManual = new Button 
                 { 
                     Content = LocalizationManager.Instance["Btn_ConfigureManually"] ?? "Configure Manually", 
-                    Width = 140, 
+                    MinWidth = ManualButtonMinWidth, 
+                    Padding = new Thickness(ManualButtonHorizontalPadding, 0), 
                     Height = 36,
                     VerticalContentAlignment = VerticalAlignment.Center,
                     HorizontalContentAlignment = HorizontalAlignment.Center,
@@ -1985,7 +1991,7 @@ public partial class DialogService : IDialogService
                     {
                         try
                         {
-                            await desktop.MainWindow.Clipboard.SetTextAsync(StockAnalyzer.Core.Services.ManualPipCommands.Update(StockAnalyzer.Core.Services.ManualShell.PowerShell7));
+                            await desktop.MainWindow.Clipboard.SetTextAsync(StockAnalyzer.Core.Services.ManualPipCommands.Update(StockAnalyzer.Core.Services.ManualPipCommands.ClipboardShell));
                         }
                         catch { }
                     }
@@ -2012,7 +2018,7 @@ public partial class DialogService : IDialogService
     {
         if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            var updateCommand = StockAnalyzer.Core.Services.ManualPipCommands.Update(StockAnalyzer.Core.Services.ManualShell.PowerShell7);
+            var updateCommand = StockAnalyzer.Core.Services.ManualPipCommands.Update(StockAnalyzer.Core.Services.ManualPipCommands.ClipboardShell);
             if (desktop.MainWindow?.Clipboard != null)
             {
                 try

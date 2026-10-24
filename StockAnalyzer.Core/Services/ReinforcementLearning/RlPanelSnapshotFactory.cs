@@ -21,17 +21,22 @@ public static class RlPanelSnapshotFactory
 {
     public static Task<RlPanelSnapshot> PrepareAsync(IReadOnlyList<string> symbols, DateOnly startDate, DateOnly endDateExclusive,
         string directory, TrainingResourceLimits limits, RlPortfolioSettings settings, bool holdoutEnabled,
-        RlPanelEvaluationMode mode = RlPanelEvaluationMode.Standard, CancellationToken ct = default)
-        => PrepareAsync(symbols, startDate, endDateExclusive, directory, limits, settings, holdoutEnabled, mode, null, ct);
+        RlPanelEvaluationMode mode = RlPanelEvaluationMode.Standard, CancellationToken ct = default, RlLocalSourceFolders? folders = null)
+        => PrepareAsync(symbols, startDate, endDateExclusive, directory, limits, settings, holdoutEnabled, mode, null, ct, folders);
 
     /// <summary>The preparation with a partition plan (short-history only); a null plan is the behaviour of the evaluation mode.</summary>
     public static async Task<RlPanelSnapshot> PrepareAsync(IReadOnlyList<string> symbols, DateOnly startDate, DateOnly endDateExclusive,
         string directory, TrainingResourceLimits limits, RlPortfolioSettings settings, bool holdoutEnabled,
-        RlPanelEvaluationMode mode, RlPanelPartitionPlan? plan, CancellationToken ct = default)
+        RlPanelEvaluationMode mode, RlPanelPartitionPlan? plan, CancellationToken ct = default, RlLocalSourceFolders? folders = null)
     {
         ArgumentNullException.ThrowIfNull(limits);
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentException.ThrowIfNullOrWhiteSpace(directory);
+        if (folders is not null)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(folders.Daily);
+            ArgumentException.ThrowIfNullOrWhiteSpace(folders.Metadata);
+        }
         limits.Validate();
         _ = RlPortfolioSettingsValidator.Validate(settings, limits);
         var canonical = RlPanelUniverse.Canonicalize(symbols, holdoutEnabled, settings.MaxSymbols);
@@ -50,7 +55,7 @@ public static class RlPanelSnapshotFactory
                 string folder = RlPanelSnapshot.SymbolDirectory(directory, symbol);
                 try
                 {
-                    await RlLocalSnapshotFactory.WriteSourceFilesAsync(symbol, startDate, endDateExclusive, folder, limits, ct).ConfigureAwait(false);
+                    await RlLocalSnapshotFactory.WriteSourceFilesAsync(symbol, startDate, endDateExclusive, folder, limits, ct, folders).ConfigureAwait(false);
                     sources.Add(RlSourceSnapshot.ValidateSourceFiles(folder, limits, ct));
                 }
                 catch (Exception error) when (error is not OperationCanceledException)

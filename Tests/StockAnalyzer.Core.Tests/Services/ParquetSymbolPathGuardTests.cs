@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using StockAnalyzer.Core.Models;
+using StockAnalyzer.Core.Models.Portfolio;
 using StockAnalyzer.Core.Services;
 using StockAnalyzer.Core.Tests.TestHelpers;
 using Xunit;
@@ -89,5 +90,51 @@ public sealed class ParquetSymbolPathGuardTests : IDisposable
         Assert.Equal(0, deleted);
         Assert.Equal(before, await File.ReadAllBytesAsync(_victimPath));
         Assert.False(File.Exists(_victimPath + ".tmp"));
+    }
+
+    [Theory]
+    [InlineData("../victim")]
+    [InlineData("..\\victim")]
+    [InlineData("sub/victim")]
+    public async Task DeleteLatestTickerDataAsync_UnsafeSymbol_ReturnsZeroAndLeavesOutsideFileUntouched(string symbol)
+    {
+        byte[] before = await File.ReadAllBytesAsync(_victimPath);
+        var settings = Options.Create(new MarketDataSettings { DailyDataPath = _dataDir });
+        using var dbManager = new DuckDBConnectionManager(NullLogger<DuckDBConnectionManager>.Instance);
+        var provider = new ParquetMarketDataProvider(dbManager, new MockPythonServiceBase(), settings, NullLogger<ParquetMarketDataProvider>.Instance);
+
+        int deleted = await provider.DeleteLatestTickerDataAsync(symbol, 5);
+
+        Assert.Equal(0, deleted);
+        Assert.Equal(before, await File.ReadAllBytesAsync(_victimPath));
+    }
+
+    [Theory]
+    [InlineData("../victim")]
+    [InlineData("..\\victim")]
+    public async Task SaveMetadataAsync_UnsafeSymbol_LeavesOutsideFileUntouched(string symbol)
+    {
+        var settings = Options.Create(new MarketDataSettings { DailyDataPath = _dataDir });
+        using var dbManager = new DuckDBConnectionManager(NullLogger<DuckDBConnectionManager>.Instance);
+        var provider = new ParquetMarketDataProvider(dbManager, new MockPythonServiceBase(), settings, NullLogger<ParquetMarketDataProvider>.Instance);
+
+        await provider.SaveMetadataAsync(symbol, TickerMetadata.Unknown with { Tag = "malicious_tag" });
+
+        Assert.False(File.Exists(Path.Combine(_root, "victim.meta.parquet")));
+        Assert.False(File.Exists(Path.Combine(_root, "victim.meta.parquet.tmp")));
+    }
+
+    [Theory]
+    [InlineData("../victim")]
+    [InlineData("..\\victim")]
+    public async Task ParquetDataService_LoadCandlesAsync_UnsafeSymbol_ReturnsEmpty(string symbol)
+    {
+        var settings = Options.Create(new MarketDataSettings { DailyDataPath = _dataDir });
+        using var dbManager = new DuckDBConnectionManager(NullLogger<DuckDBConnectionManager>.Instance);
+        var service = new ParquetDataService(dbManager, settings, NullLogger<ParquetDataService>.Instance);
+
+        var candles = await service.LoadCandlesAsync(symbol, TimeFrame.D1, 10);
+
+        Assert.Empty(candles);
     }
 }

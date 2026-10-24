@@ -97,14 +97,18 @@ public class TimeFrameManagerTests
         Assert.Equal(2, spy.CallCount);
     }
 
+    /// <summary>A source whose history holds only <paramref name="stored"/> daily bars: a request for more returns all of them (the whole history).</summary>
+    private static SpyDataService SourceWithHistory(int stored)
+        => new((symbol, frame, count) => Task.FromResult(SpyDataService.GenerateCandles(count <= 0 ? stored : Math.Min(count, stored), frame)));
+
     [Fact]
-    public async Task GetCandlesAsync_WeeklyWithCachedDaily_AggregatesLocally()
+    public async Task GetCandlesAsync_WeeklyWithCachedWholeDailyHistory_AggregatesLocally()
     {
-        var spy = new SpyDataService();
+        var spy = SourceWithHistory(stored: 30);
         var manager = new TimeFrameManager(spy);
 
-        // Load daily first
-        await manager.GetCandlesAsync("AAPL", TimeFrame.D1, 10);
+        // The source holds 30 bars, fewer than the 100 asked for: the cached list is the whole history
+        await manager.GetCandlesAsync("AAPL", TimeFrame.D1, 100);
 
         // Request weekly - should NOT call DataService again
         var weekly = await manager.GetCandlesAsync("AAPL", TimeFrame.W1, 100);
@@ -117,13 +121,13 @@ public class TimeFrameManagerTests
     }
 
     [Fact]
-    public async Task GetCandlesAsync_MonthlyWithCachedDaily_AggregatesLocally()
+    public async Task GetCandlesAsync_MonthlyWithCachedWholeDailyHistory_AggregatesLocally()
     {
-        var spy = new SpyDataService();
+        var spy = SourceWithHistory(stored: 60);
         var manager = new TimeFrameManager(spy);
 
-        // Load 60 daily candles
-        await manager.GetCandlesAsync("AAPL", TimeFrame.D1, 60);
+        // 60 daily candles are all there is
+        await manager.GetCandlesAsync("AAPL", TimeFrame.D1, 100);
 
         // Request monthly
         var monthly = await manager.GetCandlesAsync("AAPL", TimeFrame.MN1, 100);
@@ -131,6 +135,80 @@ public class TimeFrameManagerTests
         Assert.Equal(1, spy.CallCount);
         Assert.NotNull(monthly);
         Assert.True(monthly.Count > 0);
+    }
+
+    [Fact]
+    public async Task GetCandlesAsync_WeeklyAfterAShortDailyList_LoadsTheDailyBarsItNeedsInsteadOfBuildingFromTheShortList()
+    {
+        var spy = new SpyDataService();
+        var manager = new TimeFrameManager(spy);
+        await manager.GetCandlesAsync("AAPL", TimeFrame.D1, 10); // a daily chart of 10 bars: the cached list is not the history
+
+        var weekly = await manager.GetCandlesAsync("AAPL", TimeFrame.W1, 100);
+
+        Assert.Equal(2, spy.CallCount); // 700 daily bars were loaded for 100 weeks
+        Assert.Equal(100, weekly.Count);
+        Assert.Equal(7021L, weekly[0].Volume); // a whole first week (volumes 1000..1006): no partial leading week built from the 10-bar list
+        Assert.Equal(7 * 100, (await manager.GetCandlesAsync("AAPL", TimeFrame.D1, 700)).Count); // the daily list now cached is the longer one
+        Assert.Equal(2, spy.CallCount);
+    }
+
+    [Fact]
+    public async Task GetCandlesAsync_DailyAfterAWeeklyLoad_IsNotAnsweredWithTheTruncatedDailyListOfTheWeeklyLoad()
+    {
+        var spy = new SpyDataService();
+        var manager = new TimeFrameManager(spy);
+        await manager.GetCandlesAsync("AAPL", TimeFrame.W1, 10); // keeps 70 daily bars for the aggregation
+
+        var daily = await manager.GetCandlesAsync("AAPL", TimeFrame.D1, 200);
+
+        Assert.Equal(200, daily.Count);
+        Assert.Equal(2, spy.CallCount);
+    }
+
+    [Fact]
+    public async Task GetCandlesAsync_AListLoadedForAnEqualOrLargerCountAnswersASmallerRequest_AndASmallerListNeverAnswersALargerOne()
+    {
+        var spy = new SpyDataService();
+        var manager = new TimeFrameManager(spy);
+
+        var large = await manager.GetCandlesAsync("AAPL", TimeFrame.D1, 200);
+        var small = await manager.GetCandlesAsync("AAPL", TimeFrame.D1, 50);
+        Assert.Equal(1, spy.CallCount);
+        Assert.Equal(large.Skip(150).ToList(), small);
+
+        var larger = await manager.GetCandlesAsync("AAPL", TimeFrame.D1, 300);
+        Assert.Equal(2, spy.CallCount);
+        Assert.Equal(300, larger.Count);
+    }
+
+    [Fact]
+    public async Task GetCandlesAsync_AWholeHistoryAnswersEveryRequestWithoutALoad()
+    {
+        var spy = SourceWithHistory(stored: 80);
+        var manager = new TimeFrameManager(spy);
+        var whole = await manager.GetCandlesAsync("AAPL", TimeFrame.D1, 0);
+
+        var bigger = await manager.GetCandlesAsync("AAPL", TimeFrame.D1, 500);
+        var weekly = await manager.GetCandlesAsync("AAPL", TimeFrame.W1, 0);
+
+        Assert.Equal(80, whole.Count);
+        Assert.Equal(80, bigger.Count);
+        Assert.True(weekly.Count > 0);
+        Assert.Equal(1, spy.CallCount);
+    }
+
+    [Fact]
+    public async Task GetCandlesAsync_AWeeklyListFromATruncatedDailyListDoesNotAnswerALargerWeeklyRequest()
+    {
+        var spy = new SpyDataService();
+        var manager = new TimeFrameManager(spy);
+        await manager.GetCandlesAsync("AAPL", TimeFrame.W1, 10);
+
+        var more = await manager.GetCandlesAsync("AAPL", TimeFrame.W1, 20);
+
+        Assert.Equal(20, more.Count);
+        Assert.Equal(2, spy.CallCount);
     }
 
     [Fact]

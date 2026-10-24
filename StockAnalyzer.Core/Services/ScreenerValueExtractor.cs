@@ -112,6 +112,14 @@ public class ScreenerValueExtractor : IScreenerValueExtractor
     internal static bool IsCandleValueColumn(ScreenerIndicatorSideConfig config) => NamesCandleValue(config);
 
     public decimal? ExtractValueNullable(ScreenerIndicatorSideConfig? config, IReadOnlyList<CandleData> candles, TickerMetadata metadata = default)
+        => ExtractValueNullable(config, candles, metadata, (IScreenerSecondaryCandles?)null);
+
+    /// <summary>
+    /// <see cref="ExtractValueNullable(ScreenerIndicatorSideConfig?, IReadOnlyList{CandleData}, TickerMetadata)"/> with the bars of the comparison symbols:
+    /// an indicator that compares two tickers reads its secondary bars from <paramref name="secondary"/>. Null keeps the original rule (no secondary data,
+    /// no value), which is what every caller that does not pass it gets.
+    /// </summary>
+    public decimal? ExtractValueNullable(ScreenerIndicatorSideConfig? config, IReadOnlyList<CandleData> candles, TickerMetadata metadata, IScreenerSecondaryCandles? secondary)
     {
         if (config == null || candles == null || candles.Count == 0) return null;
 
@@ -132,7 +140,7 @@ public class ScreenerValueExtractor : IScreenerValueExtractor
         if (!hasBar) return null;
 
         // For Indicator/Criteria evaluation, convert to CoreCandleData list
-        return ExtractValueNullable(config, ToCoreCandles(candles), metadata);
+        return ExtractValueNullable(config, ToCoreCandles(candles), metadata, secondary);
     }
 
     // The conversion of the candle list the previous call on this thread converted. A symbol's conditions are evaluated one after another on one thread
@@ -177,6 +185,10 @@ public class ScreenerValueExtractor : IScreenerValueExtractor
     /// so a comparison can treat "no value" as "not met" instead of as 0.
     /// </summary>
     public decimal? ExtractValueNullable(ScreenerIndicatorSideConfig? config, IReadOnlyList<CoreCandleData> candles, TickerMetadata metadata = default)
+        => ExtractValueNullable(config, candles, metadata, (IScreenerSecondaryCandles?)null);
+
+    /// <inheritdoc cref="ExtractValueNullable(ScreenerIndicatorSideConfig?, IReadOnlyList{CandleData}, TickerMetadata, IScreenerSecondaryCandles?)"/>
+    public decimal? ExtractValueNullable(ScreenerIndicatorSideConfig? config, IReadOnlyList<CoreCandleData> candles, TickerMetadata metadata, IScreenerSecondaryCandles? secondary)
     {
         if (config == null || candles == null || candles.Count == 0) return null;
 
@@ -436,6 +448,13 @@ public class ScreenerValueExtractor : IScreenerValueExtractor
                         Faults.Record(ScreenerFaultLog.SiteIndicatorConfigure, ex);
                         // Best effort parameter configuration fallback
                     }
+                }
+
+                // An indicator that compares two tickers reads the comparison symbol's bars from the scan's shared set. Without a set (or a symbol) it is
+                // given none: the instance is cached per thread, so a set an earlier scan gave it must not outlive that scan.
+                if (indicator is ICrossTickerIndicator crossTicker)
+                {
+                    crossTicker.SetSecondaryCandles(!string.IsNullOrWhiteSpace(crossTicker.ComparisonSymbol) ? secondary?.Get(crossTicker.ComparisonSymbol) : null);
                 }
 
                 var result = indicator.Calculate(candles);

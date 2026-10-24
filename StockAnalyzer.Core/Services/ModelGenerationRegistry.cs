@@ -199,10 +199,10 @@ public sealed partial class ModelGenerationRegistry : IModelGenerationRegistry, 
     private Pointer _pointer = new(null, Array.Empty<string>());
     private bool _disposed;
 
-    public ModelGenerationRegistry() : this(PathDiscovery.ResolveModelGenerationsDirectory()) { }
+    public ModelGenerationRegistry() : this(PathDiscovery.ResolveModelGenerationsDirectoryWithoutCreating()) { }
 
     public ModelGenerationRegistry(IStockAnalyzerSettings settings)
-        : this(PathDiscovery.ResolveModelGenerationsDirectory(), predictionSettings: settings) { }
+        : this(PathDiscovery.ResolveModelGenerationsDirectoryWithoutCreating(), predictionSettings: settings) { }
 
     internal ModelGenerationRegistry(string root, Func<string, Pointer, Task>? savePointer = null,
         IStockAnalyzerSettings? predictionSettings = null)

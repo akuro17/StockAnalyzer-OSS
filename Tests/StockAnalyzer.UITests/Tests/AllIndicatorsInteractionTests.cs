@@ -16,7 +16,7 @@ namespace StockAnalyzer.UITests.Tests
     {
         public AllIndicatorsInteractionTests(ITestOutputHelper output) : base(output) { }
 
-        [Fact(Timeout = 1200000)] // 20 minutes to handle 124 indicators on potentially slow CI
+        [Fact(Timeout = Infrastructure.UiTestLimits.TestTimeLimitMs)]
         public void VerifyAllIndicatorsInteraction_SingleSession()
         {
             // Optimize: Launch ONCE, then iterate.

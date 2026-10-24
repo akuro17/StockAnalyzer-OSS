@@ -49,8 +49,8 @@ internal static class RlWorkerProcess
             StandardInputEncoding = new UTF8Encoding(false, true),
         };
         start.ArgumentList.Add("-u"); start.ArgumentList.Add(script); start.ArgumentList.Add("--config"); start.ArgumentList.Add(configPath);
-        start.Environment["PYTHONIOENCODING"] = "utf-8";
-        start.Environment["PYTHONDONTWRITEBYTECODE"] = "1";
+        start.Environment[PythonChildEnvironment.IoEncodingVariable] = PythonChildEnvironment.IoEncodingValue;
+        start.Environment[PythonChildEnvironment.NoBytecodeVariable] = PythonChildEnvironment.NoBytecodeValue;
         TrainingResourceGuard.ApplyToChild(start, limits);
         await PumpAsync(start, Path.Combine(directory, Path.GetFileNameWithoutExtension(script) + ".stderr.log"), handler, beforeStart, started, ct).ConfigureAwait(false);
     }

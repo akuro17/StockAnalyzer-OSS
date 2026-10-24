@@ -37,6 +37,48 @@
                 </StackPanel>
             </Border>
 
+            <!-- Python Library Update: an action that takes effect when pressed (not saved or reverted with Apply/Cancel); same card as the AI Predictions ONNX setup. The "accent" buttons take the Settings > Theme Button colours. -->
+            <Border Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="{l:Localize PythonUpdate_Title}"
+                               FontSize="{DynamicResource BaseFontSize}"
+                               FontWeight="Bold"
+                               Foreground="{DynamicResource Brush.Accent.Primary}"/>
+
+                    <TextBlock Text="{l:Localize Settings_Python_LibraryUpdate_Desc}"
+                               FontSize="{DynamicResource HelperFontSize}"
+                               Foreground="{DynamicResource Brush.Text.Secondary}"
+                               TextWrapping="Wrap"/>
+
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <Button Content="{l:Localize Btn_AutoUpdate}"
+                                Command="{Binding AutoUpdateLibrariesCommand}"
+                                IsEnabled="{Binding !IsBusy}"
+                                Classes="accent"
+                                Height="36"
+                                Padding="16,0"
+                                VerticalContentAlignment="Center"/>
+
+                        <Button Content="{l:Localize Btn_ConfigureManually}"
+                                Command="{Binding ManualUpdateLibrariesCommand}"
+                                Classes="accent"
+                                Height="36"
+                                Padding="16,0"
+                                VerticalContentAlignment="Center"/>
+                    </StackPanel>
+
+                    <TextBlock Text="{Binding StatusMessage}"
+                               IsVisible="{Binding StatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                               FontSize="{DynamicResource DetailFontSize}"
+                               Foreground="{DynamicResource Brush.Accent.Primary}"
+                               TextWrapping="Wrap"/>
+                </StackPanel>
+            </Border>
+
         </StackPanel>
     </ScrollViewer>
 </UserControl>

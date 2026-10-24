@@ -440,4 +440,111 @@ public class IconDrawingTests
         DrawingThemeContext.IconDrawingService = service;
         Assert.Same(service, DrawingThemeContext.IconDrawingService);
     }
+
+    [Theory]
+    [InlineData(@"\\127.0.0.1\share\icon.png")]
+    [InlineData(@"\\localhost\c$\windows\system32\cmd.exe")]
+    [InlineData("//127.0.0.1/share/icon.png")]
+    [InlineData("//localhost/share/icon.png")]
+    public void ResolveFullPath_UncPaths_ReturnsNull(string uncPath)
+    {
+        var service = new IconDrawingService();
+        Assert.Null(service.ResolveFullPath(uncPath));
+        Assert.Null(service.GetSkiaBitmap(uncPath));
+    }
+
+    [Theory]
+    [InlineData("../outside.png")]
+    [InlineData("..\\outside.png")]
+    [InlineData("sub/../../outside.png")]
+    [InlineData("sub\\..\\..\\outside.png")]
+    public void ResolveFullPath_TraversalPaths_ReturnsNull(string traversalPath)
+    {
+        var service = new IconDrawingService();
+        Assert.Null(service.ResolveFullPath(traversalPath));
+        Assert.Null(service.GetSkiaBitmap(traversalPath));
+    }
+
+    [Fact]
+    public void ResolveFullPath_RootedPathOutsideRoot_ReturnsNull()
+    {
+        var tempOutside = Path.Combine(Path.GetTempPath(), "outside_icon_" + Guid.NewGuid().ToString("N") + ".png");
+        var service = new IconDrawingService();
+        Assert.Null(service.ResolveFullPath(tempOutside));
+        Assert.Null(service.GetSkiaBitmap(tempOutside));
+    }
+
+    [Fact]
+    public void ResolveFullPath_NormalRelativePath_ReturnsPathWithinRoot()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "icon_root_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempRoot);
+        try
+        {
+            var service = new IconDrawingService(rootDirectory: tempRoot);
+            var resolved = service.ResolveFullPath("star.png");
+            Assert.NotNull(resolved);
+            Assert.Equal(Path.Combine(tempRoot, "star.png"), resolved);
+
+            var resolvedSub = service.ResolveFullPath(Path.Combine("Arrows", "up.png"));
+            Assert.NotNull(resolvedSub);
+            Assert.Equal(Path.Combine(tempRoot, "Arrows", "up.png"), resolvedSub);
+        }
+        finally
+        {
+            try { Directory.Delete(tempRoot, true); } catch { }
+        }
+    }
+
+    private class MockCountingIconService : IIconDrawingService
+    {
+        public int CallCount { get; private set; }
+        public IconItemInfo? ActiveIcon { get; set; }
+
+        public IReadOnlyList<IconGroupInfo> GetGroups() => Array.Empty<IconGroupInfo>();
+        public IReadOnlyList<IconItemInfo> GetIcons(string? groupKey = null) => Array.Empty<IconItemInfo>();
+        public SKBitmap? GetSkiaBitmap(string relativeOrFullPath)
+        {
+            CallCount++;
+            return null; // Simulate missing or invalid icon
+        }
+        public global::Avalonia.Media.Imaging.Bitmap? GetAvaloniaBitmap(string relativeOrFullPath) => null;
+        public void Refresh() { }
+    }
+
+    [Fact]
+    public void IconObject_NegativeCache_CallsGetSkiaBitmapAtMostOnceForMissingOrInvalidPath()
+    {
+        var mockService = new MockCountingIconService();
+        var prevService = DrawingThemeContext.IconDrawingService;
+        try
+        {
+            DrawingThemeContext.IconDrawingService = mockService;
+
+            var pt = new ChartPoint(new DateTime(2025, 1, 1), 100m);
+            using var iconObj = new IconObject(pt, "non_existent.png", "test");
+
+            var transform = new DummyCoordinateTransform();
+            using var surface = SKSurface.Create(new SKImageInfo(800, 600));
+            var canvas = surface.Canvas;
+
+            // Render multiple frames
+            for (int i = 0; i < 60; i++)
+            {
+                iconObj.Render(canvas, transform);
+                iconObj.HitTest(new Point(10, 10), transform);
+            }
+
+            Assert.Equal(1, mockService.CallCount);
+
+            // Change path resets negative cache
+            iconObj.IconPath = "another_missing.png";
+            iconObj.Render(canvas, transform);
+            Assert.Equal(2, mockService.CallCount);
+        }
+        finally
+        {
+            DrawingThemeContext.IconDrawingService = prevService;
+        }
+    }
 }

@@ -96,12 +96,39 @@ public class IconDrawingService : IIconDrawingService
 
     private string GetRootDirectory() => _customRootDir ?? PathDiscovery.ResolveDataPath(null, "Data/Drawings/Icon");
 
-    private string ResolveFullPath(string relativeOrFullPath)
+    internal string? ResolveFullPath(string? relativeOrFullPath)
     {
-        if (Path.IsPathRooted(relativeOrFullPath)) return relativeOrFullPath;
+        if (string.IsNullOrWhiteSpace(relativeOrFullPath)) return null;
 
-        var rootDir = GetRootDirectory();
-        return Path.Combine(rootDir, relativeOrFullPath);
+        // Reject UNC paths immediately before any filesystem or path normalization API touches them.
+        if (relativeOrFullPath.StartsWith(@"\\", StringComparison.Ordinal) ||
+            relativeOrFullPath.StartsWith("//", StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        string rootDir;
+        string candidate;
+        try
+        {
+            rootDir = Path.GetFullPath(GetRootDirectory());
+            candidate = Path.IsPathRooted(relativeOrFullPath)
+                ? Path.GetFullPath(relativeOrFullPath)
+                : Path.GetFullPath(Path.Combine(rootDir, relativeOrFullPath));
+        }
+        catch (Exception ex) when (ex is ArgumentException or PathTooLongException or NotSupportedException or System.Security.SecurityException)
+        {
+            return null;
+        }
+
+        string rootPrefix = rootDir.EndsWith(Path.DirectorySeparatorChar)
+            ? rootDir
+            : rootDir + Path.DirectorySeparatorChar;
+        var comparison = OperatingSystem.IsWindows()
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+
+        return candidate.StartsWith(rootPrefix, comparison) ? candidate : null;
     }
 
     private (SKBitmap? Skia, global::Avalonia.Media.Imaging.Bitmap? Avalonia) LoadImagePair(string fullPath)

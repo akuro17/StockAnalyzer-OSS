@@ -36,6 +36,36 @@ public class TimeFrameAggregatorTests
         return candles;
     }
 
+    [Theory]
+    [InlineData("2024-01-01", "2024-01-07")] // Monday
+    [InlineData("2024-01-03", "2024-01-07")] // Wednesday
+    [InlineData("2024-01-07", "2024-01-07")] // Sunday is the last day of its own ISO week
+    [InlineData("2024-12-30", "2025-01-05")] // an ISO week across the year boundary
+    [InlineData("2025-01-02", "2025-01-05")] // first trading day after a holiday-shifted start
+    [InlineData("2020-12-31", "2021-01-03")] // week 53 of a 53-week ISO year
+    [InlineData("2021-01-01", "2021-01-03")] // January 1 that still belongs to the previous ISO year
+    public void PeriodEnd_Weekly_IsTheSundayOfTheIsoWeek(string barDate, string expectedEnd)
+    {
+        Assert.Equal(DateTime.Parse(expectedEnd), TimeFrameAggregator.PeriodEnd(DateTime.Parse(barDate), TimeFrame.W1));
+    }
+
+    [Theory]
+    [InlineData("2024-01-02", "2024-01-31")]
+    [InlineData("2024-02-01", "2024-02-29")] // leap year
+    [InlineData("2023-02-01", "2023-02-28")]
+    [InlineData("2024-12-31", "2024-12-31")]
+    public void PeriodEnd_Monthly_IsTheLastDayOfTheMonth(string barDate, string expectedEnd)
+    {
+        Assert.Equal(DateTime.Parse(expectedEnd), TimeFrameAggregator.PeriodEnd(DateTime.Parse(barDate), TimeFrame.MN1));
+    }
+
+    [Fact]
+    public void PeriodEnd_DailyAndTimeOfDay_AreTheDateItself()
+    {
+        Assert.Equal(new DateTime(2024, 1, 3), TimeFrameAggregator.PeriodEnd(new DateTime(2024, 1, 3, 15, 30, 0), TimeFrame.D1));
+        Assert.Equal(new DateTime(2024, 1, 7), TimeFrameAggregator.PeriodEnd(new DateTime(2024, 1, 3, 15, 30, 0), TimeFrame.W1));
+    }
+
     [Fact]
     public void AggregateDailyToWeekly_FiveDays_ProducesOneWeeklyCandle()
     {
