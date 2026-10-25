@@ -68,6 +68,16 @@ public interface IReadOnlyStockAnalyzerGateway
         int dataCount = 0);
 
     /// <summary>
+    /// Calculates the series, effective sizing, DataWindow metrics and optional pattern analysis for <paramref name="request"/>
+    /// over <paramref name="candles"/> (HeikinAshi, Renko, Kagi, PointAndFigure, ThreeLineBreak).
+    /// </summary>
+    ChartSeriesCalculationResult CalculateChartSeries(
+        IReadOnlyList<CoreCandleData> candles,
+        ChartSeriesRequest request,
+        CancellationToken cancellationToken = default)
+        => new StockAnalyzer.Core.Services.Analysis.ChartSeriesCalculationService().Calculate(candles, request, cancellationToken);
+
+    /// <summary>
     /// Evaluates <paramref name="condition"/> on the stored bars of every symbol in <paramref name="symbols"/> with the Screener's own service and returns the
     /// symbols that meet it, in the order of <paramref name="symbols"/>. Metadata is read from the stored files only. Cancellation stops the scan.
     /// </summary>

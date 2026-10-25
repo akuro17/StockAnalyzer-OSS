@@ -23,6 +23,7 @@ public sealed class ReadOnlyStockAnalyzerGateway : IReadOnlyStockAnalyzerGateway
     private readonly IScreenerTemplateEvaluator _templateEvaluator;
     private readonly IBacktestRunPreparationService _backtestPreparation;
     private readonly IBacktestEvaluationService _backtestEvaluation;
+    private readonly IChartSeriesCalculationService _chartSeriesCalculation;
 
     public ReadOnlyStockAnalyzerGateway(
         IReadOnlyMarketDataSource marketData,
@@ -32,7 +33,8 @@ public sealed class ReadOnlyStockAnalyzerGateway : IReadOnlyStockAnalyzerGateway
         IReadOnlyTemplateSource templates,
         IScreenerTemplateEvaluator templateEvaluator,
         IBacktestRunPreparationService backtestPreparation,
-        IBacktestEvaluationService backtestEvaluation)
+        IBacktestEvaluationService backtestEvaluation,
+        IChartSeriesCalculationService? chartSeriesCalculation = null)
     {
         _marketData = marketData ?? throw new ArgumentNullException(nameof(marketData));
         _dataService = dataService ?? throw new ArgumentNullException(nameof(dataService));
@@ -42,6 +44,7 @@ public sealed class ReadOnlyStockAnalyzerGateway : IReadOnlyStockAnalyzerGateway
         _templateEvaluator = templateEvaluator ?? throw new ArgumentNullException(nameof(templateEvaluator));
         _backtestPreparation = backtestPreparation ?? throw new ArgumentNullException(nameof(backtestPreparation));
         _backtestEvaluation = backtestEvaluation ?? throw new ArgumentNullException(nameof(backtestEvaluation));
+        _chartSeriesCalculation = chartSeriesCalculation ?? new ChartSeriesCalculationService();
     }
 
     public Task<IReadOnlyList<string>> GetAvailableTickersAsync(CancellationToken cancellationToken = default)
@@ -98,6 +101,16 @@ public sealed class ReadOnlyStockAnalyzerGateway : IReadOnlyStockAnalyzerGateway
         bool isLogScaleVolume = false,
         int dataCount = 0)
         => _pipeline.CalculateReverseWatch(candles, period, RequireCanonical(symbol), isMaBased, isLogScaleVolume, dataCount);
+
+    public ChartSeriesCalculationResult CalculateChartSeries(
+        IReadOnlyList<CoreCandleData> candles,
+        ChartSeriesRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(candles);
+        ArgumentNullException.ThrowIfNull(request);
+        return _chartSeriesCalculation.Calculate(candles, request, cancellationToken);
+    }
 
     public Task<IReadOnlyList<string>> RunScreenerAsync(
         IReadOnlyList<string> symbols,

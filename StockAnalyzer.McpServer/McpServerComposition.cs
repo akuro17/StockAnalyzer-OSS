@@ -146,6 +146,7 @@ internal static class McpServerComposition
                 new ListTemplatesTool(gateway, templateAdvisor, backtestBinder),
                 new RunBacktestTool(gateway, symbols, backtestBinder, limits),
                 new CalculateReverseWatchTool(gateway, symbols, limits),
+                new CalculateChartSeriesTool(gateway, symbols, limits),
             };
 
             Action? prepareExecution = null;

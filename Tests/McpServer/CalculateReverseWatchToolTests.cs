@@ -100,6 +100,17 @@ public sealed class CalculateReverseWatchToolTests : IDisposable
         Assert.False(result.GetProperty("isLogScaleVolume").GetBoolean());
         Assert.Equal(60, result.GetProperty("dataCount").GetInt32());
         Assert.Equal(direct.Points.Count, result.GetProperty("pointCount").GetInt32());
+        Assert.Equal(direct.Bounds.MinPrice, result.GetProperty("bounds").GetProperty("minPrice").GetDecimal());
+        Assert.Equal(direct.Bounds.MaxPrice, result.GetProperty("bounds").GetProperty("maxPrice").GetDecimal());
+        Assert.Equal(direct.Bounds.MinVolume, result.GetProperty("bounds").GetProperty("minVolume").GetDecimal());
+        Assert.Equal(direct.Bounds.MaxVolume, result.GetProperty("bounds").GetProperty("maxVolume").GetDecimal());
+        Assert.True(result.GetProperty("bounds").TryGetProperty("rawMinPrice", out _));
+        Assert.True(result.GetProperty("bounds").TryGetProperty("rawMaxPrice", out _));
+        Assert.True(result.GetProperty("bounds").TryGetProperty("centerPrice", out _));
+        Assert.True(result.GetProperty("bounds").TryGetProperty("rawMinVolume", out _));
+        Assert.True(result.GetProperty("bounds").TryGetProperty("rawMaxVolume", out _));
+        Assert.True(result.GetProperty("bounds").TryGetProperty("centerVolume", out _));
+        Assert.Equal("linear", result.GetProperty("bounds").GetProperty("volumeUnit").GetString());
         Assert.Equal(10, recent.Length);
         for (int i = 0; i < expected.Length; i++)
         {
@@ -107,6 +118,8 @@ public sealed class CalculateReverseWatchToolTests : IDisposable
             Assert.Equal(expected[i].Phase.ToString(), recent[i].GetProperty("phase").GetString());
             Assert.Equal(expected[i].PriceAverage, recent[i].GetProperty("priceAverage").GetDecimal());
             Assert.Equal(expected[i].VolumeAverage, recent[i].GetProperty("volumeAverage").GetDecimal());
+            Assert.Equal(expected[i].Close, recent[i].GetProperty("close").GetDecimal());
+            Assert.Equal(expected[i].Volume, recent[i].GetProperty("volume").GetInt64());
         }
 
         Assert.All(recent, point => Assert.Matches("^Phase[1-8]$", point.GetProperty("phase").GetString()!));
@@ -133,6 +146,24 @@ public sealed class CalculateReverseWatchToolTests : IDisposable
     }
 
     [Fact]
+    public async Task EndDateHistoricalCutoffMatchesApplicationServiceOnBarsUpToDate()
+    {
+        var dispatcher = await StartAsync();
+        string cutoff = "2024-02-15";
+        DateTime cutoffDate = DateTime.Parse(cutoff);
+
+        JsonElement result = Result(await CallAsync(dispatcher, $",\"endDate\":\"{cutoff}\",\"period\":10,\"dataCount\":30"));
+
+        var barsUpTo = Candles().Where(c => c.Timestamp <= cutoffDate).Select(c => new CandleData(c.Timestamp, c.Open, c.High, c.Low, c.Close, c.Volume)).ToList();
+        ReverseWatchCurveData direct = new ReverseWatchAnalysisService().Calculate(barsUpTo, period: 10, stockCode: Wave, dataCount: 30);
+
+        Assert.Equal(cutoff, result.GetProperty("endDate").GetString());
+        Assert.Equal(barsUpTo.Count, result.GetProperty("calculatedBarCount").GetInt32());
+        Assert.Equal(direct.Points.Count, result.GetProperty("pointCount").GetInt32());
+        Assert.Equal(direct.Bounds.MinPrice, result.GetProperty("bounds").GetProperty("minPrice").GetDecimal());
+    }
+
+    [Fact]
     public async Task ARequestThatCannotRunIsRefusedNamingTheArgument()
     {
         var dispatcher = await StartAsync();
@@ -143,11 +174,15 @@ public sealed class CalculateReverseWatchToolTests : IDisposable
             ("""{"symbol":"WAVE","timeFrame":"D1","period":0}""", "INVALID_ARGUMENT", "period"),
             ("""{"symbol":"WAVE","timeFrame":"D1","period":10001}""", "LIMIT_EXCEEDED", "period"),
             ("""{"symbol":"WAVE","timeFrame":"D1","dataCount":0}""", "INVALID_ARGUMENT", "dataCount"),
+            ("""{"symbol":"WAVE","timeFrame":"D1","dataCount":1}""", "INVALID_ARGUMENT", "dataCount"),
             ("""{"symbol":"WAVE","timeFrame":"D1","isMaBased":"yes"}""", "INVALID_ARGUMENT", "isMaBased"),
             ("""{"symbol":"WAVE","timeFrame":"D1","window":5}""", "INVALID_ARGUMENT", "window"),
             ("""{"symbol":"WAVE","timeFrame":"D1","outputTailCount":501}""", "LIMIT_EXCEEDED", "outputTailCount"),
             ("""{"symbol":"WAVE","timeFrame":"D1","lookbackBars":0}""", "INVALID_ARGUMENT", "lookbackBars"),
             ("""{"symbol":"WAVE","timeFrame":"D1","lookbackBars":10001}""", "LIMIT_EXCEEDED", "lookbackBars"),
+            ("""{"symbol":"WAVE","timeFrame":"D1","period":25,"dataCount":25,"lookbackBars":40}""", "INVALID_ARGUMENT", "lookbackBars"),
+            ("""{"symbol":"WAVE","timeFrame":"D1","endDate":"invalid-date"}""", "INVALID_ARGUMENT", "endDate"),
+            ("""{"symbol":"WAVE","timeFrame":"D1","endDate":"2020-01-01"}""", "INSUFFICIENT_MARKET_DATA", "endDate"),
         };
 
         foreach ((string arguments, string code, string parameter) in refusals)
@@ -156,6 +191,29 @@ public sealed class CalculateReverseWatchToolTests : IDisposable
 
             Assert.Equal(code, Code(response));
             Assert.Equal(parameter, Param(response));
+        }
+    }
+
+    [Fact]
+    public async Task FlatDataSingularityOutputsPhase0AndNeutralDescription()
+    {
+        const string flatSymbol = "msft";
+        var flatCloses = Enumerable.Repeat(100m, Days).ToList();
+        ParquetFixtureBuilder.SeedDailyOhlcvFromCloses(_fixture.DailyDirectory, flatSymbol, flatCloses);
+
+        var dispatcher = await StartAsync();
+        JsonElement result = Result(await CallAsync(dispatcher, ",\"period\":10,\"dataCount\":10,\"outputTailCount\":5", symbol: flatSymbol));
+
+        JsonElement[] recent = result.GetProperty("recent").EnumerateArray().ToArray();
+        Assert.NotEmpty(recent);
+        foreach (var point in recent)
+        {
+            Assert.Equal("Phase0", point.GetProperty("phase").GetString());
+            Assert.Equal("Neutral (No Variation)", point.GetProperty("phaseDescription").GetString());
+            Assert.Equal(0m, point.GetProperty("angle").GetDecimal());
+            Assert.Equal(0, point.GetProperty("phaseNumber").GetInt32());
+            Assert.Equal(ReverseWatchPhaseGeometry.Middle, point.GetProperty("pricePosition").GetString());
+            Assert.Equal(ReverseWatchPhaseGeometry.Middle, point.GetProperty("volumePosition").GetString());
         }
     }
 

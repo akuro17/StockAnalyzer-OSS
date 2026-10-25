@@ -291,7 +291,7 @@ public sealed class McpCommandLineTests : IDisposable
             ("sa_calculate_indicators", "lookbackBars", Max, 1, Max),
             ("sa_calculate_indicators", "outputTailCount", TailDefault, 1, TailMax),
             ("sa_calculate_reverse_watch", "period", null, 1, Max),
-            ("sa_calculate_reverse_watch", "dataCount", null, 1, Max),
+            ("sa_calculate_reverse_watch", "dataCount", null, 2, Max),
             ("sa_calculate_reverse_watch", "lookbackBars", Max, 1, Max),
             ("sa_calculate_reverse_watch", "outputTailCount", TailDefault, 1, TailMax),
             ("sa_run_backtest", "maxReturnedTrades", Trades, 0, Trades),

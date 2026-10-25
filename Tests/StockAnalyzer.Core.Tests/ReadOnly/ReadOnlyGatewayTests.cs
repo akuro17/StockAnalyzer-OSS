@@ -625,6 +625,19 @@ public sealed class ReadOnlyGatewayTests : IDisposable
     }
 
     [Fact]
+    public async Task CalculateChartSeries_MatchesDirectCalculation()
+    {
+        var gateway = CreateGateway();
+        var candles = (await gateway.GetCandlesAsync(Msft, TimeFrame.D1, 20)).Select(ToCore).ToList();
+        var req = new ChartSeriesRequest(ChartType.HeikinAshi);
+
+        var result = gateway.CalculateChartSeries(candles, req);
+
+        Assert.Equal(ChartType.HeikinAshi, result.ChartType);
+        Assert.Equal(candles.Count, result.ElementCount);
+    }
+
+    [Fact]
     public void TheInterfaceExposesOnlyReadingMembers()
     {
         string[] names = typeof(IReadOnlyStockAnalyzerGateway).GetMethods().Select(m => m.Name).ToArray();
@@ -639,7 +652,7 @@ public sealed class ReadOnlyGatewayTests : IDisposable
         Type[] parameters = typeof(ReadOnlyStockAnalyzerGateway).GetConstructors().Single().GetParameters().Select(p => p.ParameterType).ToArray();
 
         Assert.Equal(
-            new[] { typeof(IReadOnlyMarketDataSource), typeof(IDataService), typeof(StockAnalyzer.Core.Services.Analysis.IAnalysisPipelineService), typeof(IScreenerService), typeof(IReadOnlyTemplateSource), typeof(StockAnalyzer.Core.Services.Screener.IScreenerTemplateEvaluator), typeof(IBacktestRunPreparationService), typeof(IBacktestEvaluationService) },
+            new[] { typeof(IReadOnlyMarketDataSource), typeof(IDataService), typeof(StockAnalyzer.Core.Services.Analysis.IAnalysisPipelineService), typeof(IScreenerService), typeof(IReadOnlyTemplateSource), typeof(StockAnalyzer.Core.Services.Screener.IScreenerTemplateEvaluator), typeof(IBacktestRunPreparationService), typeof(IBacktestEvaluationService), typeof(IChartSeriesCalculationService) },
             parameters);
     }
 

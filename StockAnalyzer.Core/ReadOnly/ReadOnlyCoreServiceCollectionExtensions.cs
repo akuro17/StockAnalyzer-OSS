@@ -89,6 +89,7 @@ public static class ReadOnlyCoreServiceCollectionExtensions
         services.AddSingleton<ISamplingEvidenceTrustPolicy, NoSamplingEvidenceTrustPolicy>();
         services.AddSingleton<IBacktestEvaluationService, BacktestEvaluationService>();
         services.AddSingleton<IBacktestRunPreparationService, BacktestRunPreparationService>();
+        services.AddSingleton<IChartSeriesCalculationService, ChartSeriesCalculationService>();
 
         services.AddSingleton<IReadOnlyStockAnalyzerGateway, ReadOnlyStockAnalyzerGateway>();
         services.AddSingleton<ITickerGroupResolver, TickerGroupResolver>();

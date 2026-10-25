@@ -108,6 +108,13 @@ internal sealed class GetCapabilitiesTool : IMcpTool
             }
 
             writer.WriteEndArray();
+            writer.WriteStartArray("supportedChartSeriesTypes");
+            writer.WriteStringValue(nameof(ChartType.HeikinAshi));
+            writer.WriteStringValue(nameof(ChartType.Renko));
+            writer.WriteStringValue(nameof(ChartType.Kagi));
+            writer.WriteStringValue(nameof(ChartType.PointAndFigure));
+            writer.WriteStringValue(nameof(ChartType.ThreeLineBreak));
+            writer.WriteEndArray();
             writer.WriteStartArray("indicators");
             foreach (IndicatorCatalogEntry entry in entries)
             {
