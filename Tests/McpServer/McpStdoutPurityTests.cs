@@ -15,7 +15,7 @@ public sealed class McpStdoutPurityTests
     private static readonly TimeSpan SessionTimeout = TimeSpan.FromSeconds(90);
     private static readonly string[] Tools =
     {
-        "sa_list_tickers", "sa_get_candles", "sa_get_ticker_metadata", "sa_get_capabilities", "sa_get_settings",
+        "sa_list_tickers", "sa_list_ticker_groups", "sa_get_candles", "sa_get_ticker_metadata", "sa_get_capabilities", "sa_get_settings",
         "sa_calculate_indicators", "sa_run_screener", "sa_list_templates", "sa_run_backtest", "sa_calculate_reverse_watch",
     };
 
@@ -40,6 +40,7 @@ public sealed class McpStdoutPurityTests
             (20, McpTestSupport.CallMessage(20, "sa_get_candles", """{"symbol":"..\\..\\Windows","timeFrame":"D1"}""")),
             (21, McpTestSupport.CallMessage(21, "sa_get_candles", """{"symbol":"MSFT","timeFrame":"D1","count":99999}""")),
             (22, McpTestSupport.CallMessage(22, "sa_nothing", "{}")),
+            (23, McpTestSupport.CallMessage(23, "sa_list_ticker_groups", "{}")),
             (30, """{"jsonrpc":"2.0","id":30,"method":"resources/list"}"""),
             (31, """{"jsonrpc":"2.0","id":31,"method":"resources/read","params":{"uri":"stockanalyzer://catalog/indicators"}}"""),
             (32, """{"jsonrpc":"2.0","id":32,"method":"resources/read","params":{"uri":"stockanalyzer://catalog/screener"}}"""),

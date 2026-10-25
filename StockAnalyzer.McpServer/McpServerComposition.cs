@@ -68,13 +68,15 @@ internal static class McpServerComposition
     /// <param name="backtestTemplatesDirectory">The same for the backtest-condition templates. When only <paramref name="templatesDirectory"/> is given, there are no backtest templates (the application's folder is not read).</param>
     /// <param name="enableExecution">Offer the execution tools (<c>--enable-execution</c>); without it they are neither registered nor built, and the sandbox folder is never touched.</param>
     /// <param name="executionGateway">Only for tests: the gateway the execution tools use instead of the real one.</param>
+    /// <param name="workspaceSource">Only for tests: the workspace source used instead of reading the application's default workspace file.</param>
     public static McpServerRuntime Create(
         IConfiguration configuration,
         LogSink log,
         string? templatesDirectory = null,
         string? backtestTemplatesDirectory = null,
         bool enableExecution = false,
-        ISandboxedExecutionGateway? executionGateway = null)
+        ISandboxedExecutionGateway? executionGateway = null,
+        IReadOnlyWorkspaceSource? workspaceSource = null)
     {
         McpLimits limits = configuration.GetSection(McpLimits.SectionName).Get<McpLimits>() ?? new McpLimits();
         McpLimitsContract.Validate(limits);
@@ -92,6 +94,11 @@ internal static class McpServerComposition
             collection.Replace(ServiceDescriptor.Singleton<IReadOnlyTemplateSource>(new FileReadOnlyTemplateSource(
                 templatesDirectory ?? PathDiscovery.ResolveTemplatesDirectoryWithoutCreating(TemplateType.Screener),
                 backtestTemplatesDirectory ?? (templatesDirectory is null ? PathDiscovery.ResolveTemplatesDirectoryWithoutCreating(TemplateType.BacktestCondition) : null))));
+        }
+
+        if (workspaceSource is not null)
+        {
+            collection.Replace(ServiceDescriptor.Singleton<IReadOnlyWorkspaceSource>(workspaceSource));
         }
 
         ServiceProvider services = collection.BuildServiceProvider();
@@ -115,6 +122,8 @@ internal static class McpServerComposition
             var screenerBinder = new ScreenerConditionBinder(catalog, indicatorBinder, screenerCatalog, settings);
             var backtestBinder = new BacktestConditionBinder(catalog, indicatorBinder, settings);
             var templateAdvisor = new ScreenerTemplateAdvisor(catalog);
+            var resolvedWorkspaceSource = services.GetRequiredService<IReadOnlyWorkspaceSource>();
+            var groupResolver = services.GetService<ITickerGroupResolver>() ?? new TickerGroupResolver(gateway, resolvedWorkspaceSource);
             SandboxedExecutionSettings? executionSettings = enableExecution ? services.GetRequiredService<SandboxedExecutionSettings>() : null;
             if (executionSettings is not null && executionSettings.MaxPredictionBars > limits.MaxCandlesPerRequest)
             {
@@ -126,13 +135,14 @@ internal static class McpServerComposition
             var settingsTool = new GetSettingsTool(settings);
             var tools = new List<IMcpTool>
             {
-                new ListTickersTool(gateway, limits),
+                new ListTickersTool(gateway, groupResolver, limits),
+                new ListTickerGroupsTool(gateway, resolvedWorkspaceSource, limits),
                 new GetCandlesTool(gateway, symbols, limits),
                 new GetTickerMetadataTool(gateway, limits),
                 capabilitiesTool,
                 settingsTool,
                 new CalculateIndicatorsTool(gateway, symbols, catalog, indicatorBinder, new IndicatorChainPlan(factory), sanitizer, limits),
-                new RunScreenerTool(gateway, screenerBinder, ScreenerValueExtractor.Default, templateAdvisor, settings, limits),
+                new RunScreenerTool(gateway, groupResolver, screenerBinder, ScreenerValueExtractor.Default, templateAdvisor, settings, limits),
                 new ListTemplatesTool(gateway, templateAdvisor, backtestBinder),
                 new RunBacktestTool(gateway, symbols, backtestBinder, limits),
                 new CalculateReverseWatchTool(gateway, symbols, limits),

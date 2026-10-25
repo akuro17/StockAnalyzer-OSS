@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Text;
 using System.Text.Json;
+using StockAnalyzer.Core.ReadOnly;
 using StockAnalyzer.McpServer.Limits;
 using StockAnalyzer.McpServer.Tools;
 
@@ -126,6 +127,13 @@ internal sealed class ToolExecutor
         catch (ToolException error)
         {
             return ErrorResult(error);
+        }
+        catch (DataUnavailableException)
+        {
+            return ErrorResult(new ToolException(
+                ToolErrorCodes.DataUnavailable,
+                "The ticker list is temporarily unreadable.",
+                hint: "Retry in a moment."));
         }
         catch (Exception error)
         {

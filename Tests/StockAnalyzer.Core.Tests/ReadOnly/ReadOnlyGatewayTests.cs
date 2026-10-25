@@ -81,6 +81,13 @@ public sealed class ReadOnlyGatewayTests : IDisposable
         Assert.Equal(new[] { "MSFT", "7203-T" }, tickers);
     }
 
+    [Fact]
+    public async Task GetAvailableTickers_WhenTickerListCorrupt_ThrowsDataUnavailableException()
+    {
+        await File.WriteAllTextAsync(_fixture.TickerListPath, "{corrupt}");
+        await Assert.ThrowsAsync<DataUnavailableException>(() => CreateGateway().GetAvailableTickersAsync());
+    }
+
     [Theory]
     [InlineData(TimeFrame.D1, 5)]
     [InlineData(TimeFrame.D1, 20)]

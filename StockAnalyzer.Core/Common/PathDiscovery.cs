@@ -302,6 +302,10 @@ public static class PathDiscovery
     public static string ResolveDynamicPeriodDriversPathWithoutCreating(string fileName)
         => Path.Combine(ResolveDataPathWithoutCreating(null, "Data"), "DynamicPeriodDrivers", SanitizeFileName(fileName));
 
+    /// <summary>Read-only counterpart of <see cref="ResolveConfigPath"/>: same result when the folder exists, never creates it.</summary>
+    public static string ResolveConfigPathWithoutCreating(string fileName)
+        => Path.Combine(ResolveDataPathWithoutCreating(null, "Data"), "Config", SanitizeFileName(fileName));
+
     internal static string ResolveUiTestDataPath(string isolatedRoot, string requestedPath)
     {
         if (!Path.IsPathFullyQualified(isolatedRoot))

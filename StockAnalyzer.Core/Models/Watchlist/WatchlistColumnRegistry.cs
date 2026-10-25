@@ -69,7 +69,7 @@ namespace StockAnalyzer.Core.Models.Watchlist
             new WatchlistColumnMetadata("Col_MarketCapPerEmployee", "MarketCapPerEmployee", "100", 61, "Market Cap / Employee", "Market capitalization generated per employee", "Financial", "Market Cap / Total Employee Count"),
             new WatchlistColumnMetadata("Col_PegRatio", "PegRatio", "80", 62, "PEG Ratio", "P/E ratio adjusted for forecasted growth rate", "Valuation", "Forward P/E / Expected EPS Growth Rate (%)"),
             new WatchlistColumnMetadata("Col_OperatingCashFlowYield", "OperatingCashFlowYield", "80", 63, "OCF Yield", "Operating Cash Flow relative to market cap", "Ratio", "Operating Cash Flow / Market Cap"),
-            new WatchlistColumnMetadata("Col_NetCashRatio", "NetCashRatio", "80", 64, "Net Cash Ratio", "Cash asset ratio of the company", "Ratio", "(Total Cash - Total Debt) / Market Cap"),
+            new WatchlistColumnMetadata("Col_NetCashRatio", "NetCashRatio", "80", 64, "Net Cash Ratio", "Cash asset ratio of the company", "Ratio", "((Total Cash - Total Debt) / Market Cap) * 100"),
             new WatchlistColumnMetadata("Col_PriceToSalesTrailing12Months", "PriceToSalesTrailing12Months", "80", 65, "P/S (TTM)", "Price-to-Sales trailing 12 months", "Valuation", "Share Price / Revenue per Share"),
             new WatchlistColumnMetadata("Col_EnterpriseToRevenue", "EnterpriseToRevenue", "80", 66, "EV/Revenue", "EV relative to total revenue", "Valuation", "Enterprise Value / Total Revenue"),
             new WatchlistColumnMetadata("Col_EbitdaMargins", "EbitdaMargins", "80", 67, "EBITDA Margin", "EBITDA earnings margin percentage", "Ratio", "(EBITDA / Total Revenue) * 100"),

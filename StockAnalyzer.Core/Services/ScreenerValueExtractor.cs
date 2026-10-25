@@ -621,12 +621,7 @@ public class ScreenerValueExtractor : IScreenerValueExtractor
         // 1. Specific & Derived Metrics
         if (cleaned.Contains("pbrcalculated") || cleaned.Contains("pblive") || cleaned == "pblive")
         {
-            if (meta.PbrCalculated.HasValue) return meta.PbrCalculated.Value;
-            if (meta.CurrentPrice.HasValue && meta.BookValue.HasValue && meta.BookValue.Value != 0m)
-            {
-                return meta.CurrentPrice.Value / meta.BookValue.Value;
-            }
-            return meta.PriceToBook;
+            return meta.PbrCalculated ?? FundamentalsCalculator.ComputePbr(meta.CurrentPrice, meta.BookValue, meta.PriceToBook);
         }
         if (cleaned.Contains("dividendyieldcalculated") || cleaned.Contains("divyieldlive") || cleaned == "divyieldlive") return meta.DividendYieldCalculated ?? meta.DividendYield;
         if (cleaned.Contains("dividendpershare") || cleaned.Contains("dividendrate")) return meta.DividendRate;
@@ -646,40 +641,17 @@ public class ScreenerValueExtractor : IScreenerValueExtractor
         if (cleaned.Contains("quick")) return meta.QuickRatio;
         if (cleaned.Contains("netdebtequity") || cleaned.Contains("netderatio") || cleaned == "netde")
         {
-            if (meta.NetDebtEquityRatio.HasValue) return meta.NetDebtEquityRatio.Value;
-            if (meta.TotalDebt.HasValue && meta.TotalCash.HasValue && meta.BookValue.HasValue && meta.SharesOutstanding.HasValue)
-            {
-                decimal equity = meta.BookValue.Value * meta.SharesOutstanding.Value;
-                if (equity != 0m)
-                {
-                    return (meta.TotalDebt.Value - meta.TotalCash.Value) / equity;
-                }
-            }
-            return null;
+            return meta.NetDebtEquityRatio ?? FundamentalsCalculator.ComputeNetDebtEquityRatio(meta.TotalDebt, meta.TotalCash, meta.BookValue, meta.SharesOutstanding);
         }
 
         if (cleaned.Contains("deratio") || cleaned.Contains("debtofequity") || cleaned.Contains("debttoequity") || cleaned == "de")
         {
-            if (meta.DebtToEquity.HasValue) return meta.DebtToEquity.Value;
-            if (meta.TotalDebt.HasValue && meta.BookValue.HasValue && meta.SharesOutstanding.HasValue)
-            {
-                decimal equity = meta.BookValue.Value * meta.SharesOutstanding.Value;
-                if (equity != 0m)
-                {
-                    return meta.TotalDebt.Value / equity;
-                }
-            }
-            return null;
+            return meta.DebtToEquity ?? FundamentalsCalculator.ComputeDebtToEquityRatio(meta.TotalDebt, meta.BookValue, meta.SharesOutstanding);
         }
 
         if (cleaned.Contains("netdebttoebitda") || cleaned.Contains("netdebtebitda"))
         {
-            if (meta.NetDebtToEbitda.HasValue) return meta.NetDebtToEbitda.Value;
-            if (meta.NetDebt.HasValue && meta.Ebitda.HasValue && meta.Ebitda.Value != 0m)
-            {
-                return meta.NetDebt.Value / meta.Ebitda.Value;
-            }
-            return null;
+            return meta.NetDebtToEbitda ?? FundamentalsCalculator.ComputeNetDebtToEbitda(meta.NetDebt, meta.Ebitda, requirePositiveEbitda: false);
         }
 
         if (cleaned.Contains("evebitda") || cleaned.Contains("enterprisetoebitda")) return meta.EnterpriseToEbitda;
@@ -701,36 +673,17 @@ public class ScreenerValueExtractor : IScreenerValueExtractor
         if (cleaned.Contains("beta")) return meta.Beta;
         if (cleaned.Contains("fiftytwoweekrangeposition") || cleaned.Contains("52weekrangepos") || cleaned.Contains("52wrangepos") || cleaned.Contains("rangeposition"))
         {
-            if (meta.FiftyTwoWeekRangePosition.HasValue) return meta.FiftyTwoWeekRangePosition.Value;
-            if (meta.FiftyTwoWeekHigh.HasValue && meta.FiftyTwoWeekLow.HasValue && meta.CurrentPrice.HasValue)
-            {
-                decimal range = meta.FiftyTwoWeekHigh.Value - meta.FiftyTwoWeekLow.Value;
-                if (range != 0m)
-                {
-                    return (meta.CurrentPrice.Value - meta.FiftyTwoWeekLow.Value) / range;
-                }
-            }
-            return null;
+            return meta.FiftyTwoWeekRangePosition ?? FundamentalsCalculator.ComputeFiftyTwoWeekRangePosition(meta.CurrentPrice, meta.FiftyTwoWeekLow, meta.FiftyTwoWeekHigh);
         }
 
         if (cleaned.Contains("pctfromfiftytwoweekhigh") || cleaned.Contains("from52weekhigh") || cleaned.Contains("from52whigh"))
         {
-            if (meta.PctFromFiftyTwoWeekHigh.HasValue) return meta.PctFromFiftyTwoWeekHigh.Value;
-            if (meta.FiftyTwoWeekHigh.HasValue && meta.FiftyTwoWeekHigh.Value != 0m && meta.CurrentPrice.HasValue)
-            {
-                return ((meta.CurrentPrice.Value / meta.FiftyTwoWeekHigh.Value) - 1m) * 100m;
-            }
-            return null;
+            return meta.PctFromFiftyTwoWeekHigh ?? FundamentalsCalculator.ComputePctFromFiftyTwoWeekHigh(meta.CurrentPrice, meta.FiftyTwoWeekHigh);
         }
 
         if (cleaned.Contains("marketcapperemployee") || cleaned.Contains("marketcapemployee"))
         {
-            if (meta.MarketCapPerEmployee.HasValue) return meta.MarketCapPerEmployee.Value;
-            if (meta.MarketCap.HasValue && meta.FullTimeEmployees.HasValue && meta.FullTimeEmployees.Value != 0)
-            {
-                return meta.MarketCap.Value / (decimal)meta.FullTimeEmployees.Value;
-            }
-            return null;
+            return meta.MarketCapPerEmployee ?? FundamentalsCalculator.ComputeMarketCapPerEmployee(meta.MarketCap, meta.FullTimeEmployees);
         }
 
         if (cleaned.Contains("fiftytwoweekhigh") || cleaned.Contains("52weekhigh")) return meta.FiftyTwoWeekHigh;

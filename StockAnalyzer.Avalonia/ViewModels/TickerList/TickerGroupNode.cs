@@ -4,6 +4,8 @@ using System.Windows.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
 using StockAnalyzer.Core.Models.Watchlist;
 
+using StockAnalyzer.Core.Constants;
+
 namespace StockAnalyzer.Avalonia.ViewModels.TickerList;
 
 /// <summary>
@@ -67,7 +69,7 @@ public abstract partial class TickerGroupNode : ObservableObject, IEquatable<Tic
 /// </summary>
 public sealed partial class AllTickersNode : TickerGroupNode
 {
-    public static readonly Guid StaticId = new("00000000-0000-0000-0000-000000000001");
+    public static readonly Guid StaticId = TickerGroupIds.AllTickers;
     public AllTickersNode(string displayName) : base(StaticId, displayName)
     {
         Children = new ObservableCollection<TickerGroupNode>();

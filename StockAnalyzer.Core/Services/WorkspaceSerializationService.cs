@@ -22,6 +22,16 @@ public class WorkspaceSerializationService : IWorkspaceSerializationService, IDi
     private readonly ILogger<WorkspaceSerializationService> _logger;
     private readonly SemaphoreSlim _semaphore = new SemaphoreSlim(1, 1);
 
+    private static readonly JsonSerializerOptions SharedJsonOptions = new()
+    {
+        WriteIndented = true,
+        TypeInfoResolver = WorkspacePolymorphicResolver.CreateResolver(),
+        // Allows reading/writing fields if needed, but we mostly use properties
+        IncludeFields = true,
+        PropertyNameCaseInsensitive = true,
+        NumberHandling = JsonNumberHandling.AllowNamedFloatingPointLiterals
+    };
+
     public WorkspaceSerializationService()
         : this(null)
     {
@@ -30,15 +40,15 @@ public class WorkspaceSerializationService : IWorkspaceSerializationService, IDi
     public WorkspaceSerializationService(ILogger<WorkspaceSerializationService>? logger)
     {
         _logger = logger ?? NullLogger<WorkspaceSerializationService>.Instance;
-        _jsonOptions = new JsonSerializerOptions
-        {
-            WriteIndented = true,
-            TypeInfoResolver = WorkspacePolymorphicResolver.CreateResolver(),
-            // Allows reading/writing fields if needed, but we mostly use properties
-            IncludeFields = true,
-            PropertyNameCaseInsensitive = true,
-            NumberHandling = JsonNumberHandling.AllowNamedFloatingPointLiterals
-        };
+        _jsonOptions = SharedJsonOptions;
+    }
+
+    /// <summary>
+    /// Deserializes workspace settings from UTF-8 JSON bytes using the standard serializer options.
+    /// </summary>
+    public WorkspaceSettings? Deserialize(ReadOnlySpan<byte> utf8Json)
+    {
+        return JsonSerializer.Deserialize<WorkspaceSettings>(utf8Json, _jsonOptions);
     }
 
     /// <summary>

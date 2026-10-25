@@ -95,6 +95,7 @@ public sealed class McpToolSweepTests : IDisposable
     private static readonly (string Tool, string Arguments)[] Baselines =
     {
         ("sa_list_tickers", """{"limit":5,"includeMetadataSummary":true}"""),
+        ("sa_list_ticker_groups", "{}"),
         ("sa_get_candles", """{"symbol":"MSFT","timeFrame":"D1","count":5}"""),
         ("sa_get_ticker_metadata", """{"symbols":["MSFT","7203.T"]}"""),
         ("sa_get_capabilities", """{"indicatorTypeFilter":["RSI"],"includeScreenerCatalog":true}"""),

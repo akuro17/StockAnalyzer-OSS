@@ -6,7 +6,7 @@ namespace StockAnalyzer.Core.ReadOnly;
 /// </summary>
 public sealed class DataUnavailableException : Exception
 {
-    public DataUnavailableException(string message) : base(message)
+    public DataUnavailableException(string message, Exception? innerException = null) : base(message, innerException)
     {
     }
 }

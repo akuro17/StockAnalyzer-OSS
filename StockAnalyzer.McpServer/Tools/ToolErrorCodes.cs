@@ -18,6 +18,7 @@ internal static class ToolErrorCodes
     public const string ServerBusy = "SERVER_BUSY";
     public const string ForbiddenOperation = "FORBIDDEN_OPERATION";
     public const string DataUnavailable = "DATA_UNAVAILABLE";
+    public const string GroupNotFound = "GROUP_NOT_FOUND";
     public const string InternalError = "INTERNAL_ERROR";
 
     // Codes of the execution tools (offered only with --enable-execution).
@@ -34,7 +35,7 @@ internal static class ToolErrorCodes
     {
         InvalidArgument, SymbolNotFound, UnsupportedTimeFrame, UnknownIndicator, InvalidIndicatorParameter, InvalidOutputSeries,
         ConditionLimitExceeded, LimitExceeded, InsufficientMarketData, TemplateNotFound, TemplateMigrationPending, ExecutionTimeout,
-        ServerBusy, ForbiddenOperation, DataUnavailable, InternalError, ExecutionBusy, JobNotFound, ArtifactNotFound, PythonEnvMissing,
+        ServerBusy, ForbiddenOperation, DataUnavailable, GroupNotFound, InternalError, ExecutionBusy, JobNotFound, ArtifactNotFound, PythonEnvMissing,
         SandboxPathTooLong,
     };
 }

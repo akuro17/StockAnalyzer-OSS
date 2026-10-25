@@ -46,4 +46,10 @@ public sealed class McpLimits
     public int DefaultTickerPageSize { get; set; } = 100;
 
     public int MaxTickersPerPage { get; set; } = 1000;
+
+    /// <summary>Most nodes sa_list_ticker_groups lists; more is LIMIT_EXCEEDED (the tree is never cut).</summary>
+    public int MaxGroupNodes { get; set; } = 500;
+
+    /// <summary>Most symbols a Tickers-tab filter is evaluated on; more is LIMIT_EXCEEDED (the list is never cut).</summary>
+    public int MaxFilterEvaluationSymbols { get; set; } = 1000;
 }

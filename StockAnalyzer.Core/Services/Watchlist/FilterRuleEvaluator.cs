@@ -1,0 +1,163 @@
+using System.Globalization;
+using System.Reflection;
+using StockAnalyzer.Core.Models.Portfolio;
+using StockAnalyzer.Core.Models.Screener;
+using StockAnalyzer.Core.Models.Settings;
+
+namespace StockAnalyzer.Core.Services.Watchlist;
+
+/// <summary>
+/// Pure static evaluation engine for watchlist filter rules and settings.
+/// Evaluates <see cref="FilterSettings"/> and <see cref="FilterRule"/> against any <see cref="IFilterableSymbol"/>.
+/// </summary>
+public static class FilterRuleEvaluator
+{
+    public static object? GetPropertyValue(IFilterableSymbol item, string? propertyName)
+    {
+        if (item == null || string.IsNullOrEmpty(propertyName)) return null;
+        var val = item.GetPropertyValue(propertyName);
+        if (val != null) return val;
+
+        var prop = item.GetType().GetProperty(propertyName);
+        return prop?.GetValue(item);
+    }
+
+    /// <summary>
+    /// True when <paramref name="targetTag"/> is one of the comma- or semicolon-separated tokens of <paramref name="tags"/>.
+    /// Uses <see cref="TagMatcher.Contains"/> as the single shared implementation.
+    /// </summary>
+    public static bool ContainsTag(string tags, string targetTag) => TagMatcher.Contains(tags, targetTag);
+
+    public static bool TryGetDecimalValue(object? value, out decimal result)
+    {
+        if (value is decimal d) { result = d; return true; }
+        if (value is double dbl) { result = (decimal)dbl; return true; }
+        if (value is float f) { result = (decimal)f; return true; }
+        if (value is int i) { result = i; return true; }
+        if (value is long l) { result = l; return true; }
+        if (value is string s && decimal.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out var p)) { result = p; return true; }
+        result = 0;
+        return false;
+    }
+
+    public static bool Evaluate(IFilterableSymbol item, FilterSettings? settings)
+    {
+        if (item == null) return false;
+        if (settings?.Rules == null || settings.Rules.Count == 0) return true;
+
+        foreach (var rule in settings.Rules)
+        {
+            if (!EvaluateRule(item, rule))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    public static bool EvaluateRule(IFilterableSymbol item, FilterRule? rule)
+    {
+        if (item == null || rule == null) return false;
+
+        if (string.Equals(rule.Field, "Tag", StringComparison.OrdinalIgnoreCase))
+        {
+            var value = item.Tag ?? string.Empty;
+            var filterVal = rule.Value ?? string.Empty;
+            if (rule.IsCompareToField)
+            {
+                filterVal = GetPropertyValue(item, rule.Value)?.ToString() ?? string.Empty;
+            }
+
+            var op = rule.Operator?.Trim();
+            if (string.IsNullOrEmpty(op) || string.Equals(op, "*=", StringComparison.OrdinalIgnoreCase) || string.Equals(op, "Contains", StringComparison.OrdinalIgnoreCase) || string.Equals(op, "ContainsTag", StringComparison.OrdinalIgnoreCase))
+            {
+                return ContainsTag(value, filterVal);
+            }
+            if (string.Equals(op, "!*=", StringComparison.OrdinalIgnoreCase) || string.Equals(op, "NotContains", StringComparison.OrdinalIgnoreCase) || string.Equals(op, "!Contains", StringComparison.OrdinalIgnoreCase))
+            {
+                return !ContainsTag(value, filterVal);
+            }
+            if (string.Equals(op, "==", StringComparison.OrdinalIgnoreCase) || string.Equals(op, "=", StringComparison.OrdinalIgnoreCase) || string.Equals(op, "Equals", StringComparison.OrdinalIgnoreCase))
+            {
+                return value.AsSpan().Trim().Equals(filterVal.AsSpan().Trim(), StringComparison.OrdinalIgnoreCase);
+            }
+            if (string.Equals(op, "!=", StringComparison.OrdinalIgnoreCase) || string.Equals(op, "NotEquals", StringComparison.OrdinalIgnoreCase))
+            {
+                return !value.AsSpan().Trim().Equals(filterVal.AsSpan().Trim(), StringComparison.OrdinalIgnoreCase);
+            }
+            return ContainsTag(value, filterVal);
+        }
+        else
+        {
+            var val = GetPropertyValue(item, rule.Field);
+            if (val != null)
+            {
+                if (rule.IsCompareToField)
+                {
+                    var targetVal = GetPropertyValue(item, rule.Value);
+                    if (targetVal == null) return false;
+
+                    if (TryGetDecimalValue(val, out var valDec) && TryGetDecimalValue(targetVal, out var targetDec))
+                    {
+                        return EvaluateNumericOp(valDec, targetDec, rule.Operator);
+                    }
+                    else
+                    {
+                        var strVal = val.ToString() ?? string.Empty;
+                        var targetStr = targetVal.ToString() ?? string.Empty;
+                        return EvaluateTextOp(strVal, targetStr, rule.Operator);
+                    }
+                }
+                else
+                {
+                    if (TryGetDecimalValue(val, out var decVal))
+                    {
+                        if (decimal.TryParse(rule.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var filterDec))
+                        {
+                            return EvaluateNumericOp(decVal, filterDec, rule.Operator);
+                        }
+                    }
+                    else
+                    {
+                        var strVal = val.ToString() ?? string.Empty;
+                        var filterStr = rule.Value ?? string.Empty;
+                        return EvaluateTextOp(strVal, filterStr, rule.Operator);
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    public static bool EvaluateNumericOp(decimal a, decimal b, string? op)
+    {
+        var cleanOp = op?.Trim();
+        if (string.Equals(cleanOp, "==", StringComparison.OrdinalIgnoreCase) || string.Equals(cleanOp, "=", StringComparison.OrdinalIgnoreCase) || string.Equals(cleanOp, "Equals", StringComparison.OrdinalIgnoreCase))
+            return a == b;
+        if (string.Equals(cleanOp, "!=", StringComparison.OrdinalIgnoreCase) || string.Equals(cleanOp, "NotEquals", StringComparison.OrdinalIgnoreCase))
+            return a != b;
+        if (string.Equals(cleanOp, ">", StringComparison.OrdinalIgnoreCase) || string.Equals(cleanOp, "GreaterThan", StringComparison.OrdinalIgnoreCase))
+            return a > b;
+        if (string.Equals(cleanOp, ">=", StringComparison.OrdinalIgnoreCase) || string.Equals(cleanOp, "GreaterThanOrEqual", StringComparison.OrdinalIgnoreCase))
+            return a >= b;
+        if (string.Equals(cleanOp, "<", StringComparison.OrdinalIgnoreCase) || string.Equals(cleanOp, "LessThan", StringComparison.OrdinalIgnoreCase))
+            return a < b;
+        if (string.Equals(cleanOp, "<=", StringComparison.OrdinalIgnoreCase) || string.Equals(cleanOp, "LessThanOrEqual", StringComparison.OrdinalIgnoreCase))
+            return a <= b;
+        return false;
+    }
+
+    public static bool EvaluateTextOp(string strVal, string filterStr, string? op)
+    {
+        var cleanOp = op?.Trim();
+        if (string.IsNullOrEmpty(cleanOp) || string.Equals(cleanOp, "*=", StringComparison.OrdinalIgnoreCase) || string.Equals(cleanOp, "Contains", StringComparison.OrdinalIgnoreCase))
+            return strVal.Contains(filterStr, StringComparison.OrdinalIgnoreCase);
+        if (string.Equals(cleanOp, "!*=", StringComparison.OrdinalIgnoreCase) || string.Equals(cleanOp, "NotContains", StringComparison.OrdinalIgnoreCase) || string.Equals(cleanOp, "!Contains", StringComparison.OrdinalIgnoreCase))
+            return !strVal.Contains(filterStr, StringComparison.OrdinalIgnoreCase);
+        if (string.Equals(cleanOp, "==", StringComparison.OrdinalIgnoreCase) || string.Equals(cleanOp, "=", StringComparison.OrdinalIgnoreCase) || string.Equals(cleanOp, "Equals", StringComparison.OrdinalIgnoreCase))
+            return string.Equals(strVal, filterStr, StringComparison.OrdinalIgnoreCase);
+        if (string.Equals(cleanOp, "!=", StringComparison.OrdinalIgnoreCase) || string.Equals(cleanOp, "NotEquals", StringComparison.OrdinalIgnoreCase))
+            return !string.Equals(strVal, filterStr, StringComparison.OrdinalIgnoreCase);
+        return strVal.Contains(filterStr, StringComparison.OrdinalIgnoreCase);
+    }
+}

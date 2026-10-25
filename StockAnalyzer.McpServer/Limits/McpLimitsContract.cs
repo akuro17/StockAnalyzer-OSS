@@ -20,6 +20,9 @@ public static class McpLimitsContract
     /// <summary>Exactly one tool call executes at a time (the pipeline is not thread-safe per call and calls are not cancellable); not configurable.</summary>
     public const int MaxConcurrentToolCalls = 1;
 
+    /// <summary>Maximum nesting depth when traversing the group tree (All Tickers / category roots are depth 0); deeper subtrees are truncated.</summary>
+    public const int MaxGroupTreeDepth = 16;
+
     private const int Kibibyte = 1024;
     private const int Mebibyte = 1024 * Kibibyte;
 
@@ -43,6 +46,8 @@ public static class McpLimitsContract
         Band(nameof(McpLimits.MaxSecondarySymbolsPerCall), limits.MaxSecondarySymbolsPerCall, 1, 8);
         Band(nameof(McpLimits.MaxTickersPerPage), limits.MaxTickersPerPage, 1, 5000);
         Band(nameof(McpLimits.DefaultTickerPageSize), limits.DefaultTickerPageSize, 1, limits.MaxTickersPerPage);
+        Band(nameof(McpLimits.MaxGroupNodes), limits.MaxGroupNodes, 1, 5000);
+        Band(nameof(McpLimits.MaxFilterEvaluationSymbols), limits.MaxFilterEvaluationSymbols, 1, 5000);
     }
 
     private static void Band(string key, int value, int minimum, int maximum)

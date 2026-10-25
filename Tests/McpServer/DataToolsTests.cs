@@ -568,7 +568,7 @@ public sealed class DataToolsTests : IDisposable
         using var list = JsonDocument.Parse((await dispatcher.DispatchAsync("""{"jsonrpc":"2.0","id":3,"method":"tools/list"}""", CancellationToken.None))!);
 
         JsonElement[] tools = list.RootElement.GetProperty("result").GetProperty("tools").EnumerateArray().ToArray();
-        Assert.Equal(new[] { "sa_calculate_indicators", "sa_calculate_reverse_watch", "sa_get_candles", "sa_get_capabilities", "sa_get_settings", "sa_get_ticker_metadata", "sa_list_templates", "sa_list_tickers", "sa_run_backtest", "sa_run_screener" }, tools.Select(t => t.GetProperty("name").GetString()).ToArray());
+        Assert.Equal(new[] { "sa_calculate_indicators", "sa_calculate_reverse_watch", "sa_get_candles", "sa_get_capabilities", "sa_get_settings", "sa_get_ticker_metadata", "sa_list_templates", "sa_list_ticker_groups", "sa_list_tickers", "sa_run_backtest", "sa_run_screener" }, tools.Select(t => t.GetProperty("name").GetString()).ToArray());
         Assert.All(tools, tool =>
         {
             Assert.False(tool.GetProperty("inputSchema").GetProperty("additionalProperties").GetBoolean());
@@ -616,5 +616,28 @@ public sealed class DataToolsTests : IDisposable
         Assert.Contains(nameof(TickerMetadata.Reminder), TickerMetadataJson.AllFields);
         Assert.Contains(nameof(TickerMetadata.Tag), TickerMetadataJson.AllFields);
         Assert.Contains(nameof(TickerMetadata.Long), TickerMetadataJson.AllFields);
+    }
+
+    [Fact]
+    public async Task CorruptTickerList_ReturnsDataUnavailableInToolsRequiringRegistry()
+    {
+        await File.WriteAllTextAsync(_fixture.TickerListPath, "{corrupt json}");
+        var dispatcher = await StartAsync();
+
+        using var listResponse = await CallAsync(dispatcher, "sa_list_tickers");
+        Assert.True(McpTestSupport.IsError(listResponse));
+        Assert.Equal("DATA_UNAVAILABLE", McpTestSupport.Structured(listResponse).GetProperty("code").GetString());
+
+        using var screenerResponse = await CallAsync(dispatcher, "sa_run_screener", """{"conditionTree":{"left":{"price":"Close"},"comparison":"GreaterThan","right":150}}""");
+        Assert.True(McpTestSupport.IsError(screenerResponse));
+        Assert.Equal("DATA_UNAVAILABLE", McpTestSupport.Structured(screenerResponse).GetProperty("code").GetString());
+
+        using var candlesResponse = await CallAsync(dispatcher, "sa_get_candles", """{"symbol":"MSFT","timeFrame":"D1"}""");
+        Assert.True(McpTestSupport.IsError(candlesResponse));
+        Assert.Equal("DATA_UNAVAILABLE", McpTestSupport.Structured(candlesResponse).GetProperty("code").GetString());
+
+        using var groupsResponse = await CallAsync(dispatcher, "sa_list_ticker_groups");
+        Assert.True(McpTestSupport.IsError(groupsResponse));
+        Assert.Equal("DATA_UNAVAILABLE", McpTestSupport.Structured(groupsResponse).GetProperty("code").GetString());
     }
 }

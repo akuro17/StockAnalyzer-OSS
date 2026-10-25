@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Portfolio;
 using StockAnalyzer.Core.Services;
 using Xunit;
@@ -114,5 +115,84 @@ public class FundamentalsCalculatorTests
         // FiftyTwoWeekRangePosition = (250 - 100) / (300 - 100) = 150 / 200 = 0.75
         Assert.NotNull(result.FiftyTwoWeekRangePosition);
         Assert.Equal(0.75m, result.FiftyTwoWeekRangePosition.Value);
+    }
+
+    [Fact]
+    public void CalculateDerived_WhenMetadataCausesOverflow_ReturnsNullForOverflowedMetricsWithoutThrowing()
+    {
+        var meta = new TickerMetadata("OVERFLOW", "Overflow Corp", "US", "Tech", "Software", "USD")
+        {
+            CurrentPrice = decimal.MaxValue,
+            SharesOutstanding = 2m, // MarketCap overflows
+            BookValue = 1e-28m, // PbrCalculated overflows
+            DividendRate = decimal.MaxValue, // DividendYieldCalculated overflows when divided by 10m * 100m
+            TrailingEps = decimal.MaxValue,
+            FreeCashflow = decimal.MaxValue,
+            TotalRevenue = 1e-28m, // FcfMargin overflows
+            TotalDebt = decimal.MaxValue,
+            TotalCash = -1m, // NetDebt: MaxValue - (-1) overflows
+            Ebitda = 1e-28m,
+            FiftyTwoWeekHigh = 1e-28m,
+            FloatShares = decimal.MaxValue,
+            FullTimeEmployees = 1,
+            TrailingPE = decimal.MaxValue,
+            EarningsGrowth = 1e-28m,
+            OperatingCashflow = decimal.MaxValue
+        };
+
+        var result = FundamentalsCalculator.CalculateDerived(meta);
+
+        Assert.Null(result.MarketCap);
+        Assert.Null(result.PbrCalculated);
+        Assert.Null(result.FcfMargin);
+        Assert.Null(result.NetDebt);
+        Assert.Null(result.NetDebtToEbitda);
+        Assert.Null(result.PctFromFiftyTwoWeekHigh);
+        Assert.Null(result.FloatRatio);
+        Assert.Null(result.MarketCapPerEmployee);
+        Assert.Null(result.PegRatio);
+        Assert.Null(result.OperatingCashFlowYield);
+        Assert.Null(result.NetCashRatio);
+        Assert.Null(result.PriceToCashFlowRatio);
+    }
+
+    [Fact]
+    public void AtomicSSoT_BoundaryAndEdgeCases_BehaveDeterministically()
+    {
+        // Safe arithmetic primitives
+        Assert.Null(FundamentalsCalculator.TryDivide(10m, 0m));
+        Assert.Null(FundamentalsCalculator.TryDividePercent(10m, 0m));
+        Assert.Null(FundamentalsCalculator.TryMultiply(decimal.MaxValue, 2m));
+        Assert.Null(FundamentalsCalculator.TryMultiply((decimal?)null, 10m));
+        Assert.Null(FundamentalsCalculator.TryMultiply(10m, (decimal?)null));
+        Assert.Equal(50m, FundamentalsCalculator.TryMultiply((decimal?)5m, (decimal?)10m));
+        Assert.Null(FundamentalsCalculator.TryDividePercent(decimal.MaxValue, 10m)); // (MaxValue / 10) * 100 strictly overflows per lessons.md!
+
+        // ComputeMarketCap
+        Assert.Equal(200m, FundamentalsCalculator.ComputeMarketCap(100m, 2m));
+        Assert.Equal(0m, FundamentalsCalculator.ComputeMarketCap(100m, 0m, requireNonZeroShares: false));
+        Assert.Null(FundamentalsCalculator.ComputeMarketCap(100m, 0m, requireNonZeroShares: true));
+        Assert.Null(FundamentalsCalculator.ComputeMarketCap(null, 100m));
+
+        // ComputeNetDebtToEbitda
+        Assert.Equal(-2m, FundamentalsCalculator.ComputeNetDebtToEbitda(-20m, 10m, requirePositiveEbitda: true));
+        Assert.Null(FundamentalsCalculator.ComputeNetDebtToEbitda(-20m, -10m, requirePositiveEbitda: true)); // Negative EBITDA rejected when true
+        Assert.Equal(2m, FundamentalsCalculator.ComputeNetDebtToEbitda(-20m, -10m, requirePositiveEbitda: false)); // Allowed when false (Screener fallback)
+        Assert.Null(FundamentalsCalculator.ComputeNetDebtToEbitda(10m, 0m, requirePositiveEbitda: false));
+
+        // ComputeTurnoverRate
+        Assert.Equal(50m, FundamentalsCalculator.ComputeTurnoverRate(500, 1000m));
+        Assert.Null(FundamentalsCalculator.ComputeTurnoverRate(0, 1000m));
+        Assert.Null(FundamentalsCalculator.ComputeTurnoverRate(500, 0m));
+        Assert.Null(FundamentalsCalculator.ComputeTurnoverRate(500, null));
+
+        // ComputeNetDebtEquityRatio & ComputeDebtToEquityRatio
+        Assert.Equal(0.5m, FundamentalsCalculator.ComputeDebtToEquityRatio(100m, 10m, 20m)); // 100 / (10 * 20) = 100 / 200 = 0.5
+        Assert.Null(FundamentalsCalculator.ComputeDebtToEquityRatio(100m, 0m, 20m));
+        Assert.Null(FundamentalsCalculator.ComputeDebtToEquityRatio(decimal.MaxValue, 1e-28m, 1e-28m));
+
+        // ComputeFiftyTwoWeekRangePosition
+        Assert.Equal(0.5m, FundamentalsCalculator.ComputeFiftyTwoWeekRangePosition(150m, 100m, 200m));
+        Assert.Null(FundamentalsCalculator.ComputeFiftyTwoWeekRangePosition(150m, 100m, 100m)); // High == Low (range 0)
     }
 }

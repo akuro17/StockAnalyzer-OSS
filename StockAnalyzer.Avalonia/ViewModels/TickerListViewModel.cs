@@ -31,6 +31,8 @@ using StockAnalyzer.Core.Services.Backtest.Evaluation;
 using StockAnalyzer.Core.Services.Backtest.Reporting;
 using StockAnalyzer.Avalonia.ViewModels.Backtest;
 using StockAnalyzer.Core.Services.Backtest.Configuration;
+using StockAnalyzer.Core.Constants;
+using StockAnalyzer.Core.Services.Watchlist;
 using StockAnalyzer.Core.Utilities;
 using System.Collections.Immutable;
 using Microsoft.Extensions.DependencyInjection;
@@ -324,9 +326,9 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
     }
 
     // Fixed IDs for categories (Deterministic FSM)
-    public static readonly Guid AllTickersId = new("00000000-0000-0000-0000-000000000001");
-    public static readonly Guid WatchlistsCategoryId = new("00000000-0000-0000-0000-000000000002");
-    public static readonly Guid PortfoliosCategoryId = new("00000000-0000-0000-0000-000000000003");
+    public static readonly Guid AllTickersId = TickerGroupIds.AllTickers;
+    public static readonly Guid WatchlistsCategoryId = TickerGroupIds.Watchlists;
+    public static readonly Guid PortfoliosCategoryId = TickerGroupIds.Portfolios;
     
     public BulkObservableCollection<string> AvailableTickers { get; } = new();
     
@@ -4135,145 +4137,125 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
         if (item != null && meta != null)
         {
             item.IsMetadataLoaded = true;
-            item.Name = string.IsNullOrEmpty(meta.Value.ShortName) ? item.Symbol : meta.Value.ShortName;
-            item.Sector = meta.Value.Sector;
-            item.Industry = meta.Value.Industry;
-            if (!string.IsNullOrEmpty(meta.Value.Tag) || string.IsNullOrEmpty(item.Tag))
+
+            var row = TickerRowCalculator.Compute(
+                item.Symbol,
+                meta,
+                item.Close != 0
+                    ? new[] { new Core.Models.CandleData(item.LastUpdatedUtc?.DateTime ?? DateTime.UtcNow, item.Open, item.High, item.Low, item.Close, item.Volume) }
+                    : null);
+
+            item.Name = row.Name;
+            item.Sector = row.Sector;
+            item.Industry = row.Industry;
+            if (!string.IsNullOrEmpty(row.Tag) || string.IsNullOrEmpty(item.Tag))
             {
-                item.Tag = meta.Value.Tag;
+                item.Tag = row.Tag;
             }
             
-            item.ReturnOnEquity = meta.Value.ReturnOnEquity;
-            item.ReturnOnAssets = meta.Value.ReturnOnAssets;
-            item.GrossMargins = meta.Value.GrossMargins;
-            item.OperatingMargins = meta.Value.OperatingMargins;
-            item.ProfitMargins = meta.Value.ProfitMargins;
-            item.CurrentRatio = meta.Value.CurrentRatio;
-            item.DebtToEquity = meta.Value.DebtToEquity;
-            item.Ebitda = meta.Value.Ebitda;
-            item.FreeCashflow = meta.Value.FreeCashflow;
-            item.OperatingCashflow = meta.Value.OperatingCashflow;
-            item.TrailingPE = meta.Value.TrailingPE;
-            item.ForwardPE = meta.Value.ForwardPE;
-            item.PriceToBook = meta.Value.PriceToBook;
-            item.TrailingEps = meta.Value.TrailingEps;
-            item.ForwardEps = meta.Value.ForwardEps;
-            item.BookValue = meta.Value.BookValue;
-            item.SharesOutstanding = meta.Value.SharesOutstanding;
-            item.FloatShares = meta.Value.FloatShares;
-            item.ShortRatio = meta.Value.ShortRatio;
-            item.ShortPercentOfFloat = meta.Value.ShortPercentOfFloat;
-            item.HeldPercentInsiders = meta.Value.HeldPercentInsiders;
-            item.HeldPercentInstitutions = meta.Value.HeldPercentInstitutions;
-            item.LongBusinessSummary = meta.Value.LongBusinessSummary;
-            item.FullTimeEmployees = meta.Value.FullTimeEmployees;
-            item.FiftyTwoWeekHigh = meta.Value.FiftyTwoWeekHigh;
-            item.FiftyTwoWeekLow = meta.Value.FiftyTwoWeekLow;
-            item.RevenueGrowth = meta.Value.RevenueGrowth;
-            item.EarningsGrowth = meta.Value.EarningsGrowth;
-            item.EnterpriseValue = meta.Value.EnterpriseValue;
-            item.EnterpriseToEbitda = meta.Value.EnterpriseToEbitda;
-            item.Beta = meta.Value.Beta;
-            item.PayoutRatio = meta.Value.PayoutRatio;
-            item.DividendRate = meta.Value.DividendRate;
-            item.DividendYield = meta.Value.DividendYield;
-            item.TotalDebt = meta.Value.TotalDebt;
-            item.TotalCash = meta.Value.TotalCash;
-            item.TotalRevenue = meta.Value.TotalRevenue;
-            item.MarketCap = meta.Value.MarketCap;
-            item.PbrCalculated = meta.Value.PbrCalculated;
-            item.DividendYieldCalculated = meta.Value.DividendYieldCalculated;
-            item.EarningsYield = meta.Value.EarningsYield;
-            item.FcfYield = meta.Value.FcfYield;
-            item.FcfMargin = meta.Value.FcfMargin;
-            item.NetDebt = meta.Value.NetDebt;
-            item.NetDebtToEbitda = meta.Value.NetDebtToEbitda;
-            item.DividendCoverage = meta.Value.DividendCoverage;
-            item.PctFromFiftyTwoWeekHigh = meta.Value.PctFromFiftyTwoWeekHigh;
-            item.FloatRatio = meta.Value.FloatRatio;
-            item.MarketCapPerEmployee = meta.Value.MarketCapPerEmployee;
-            item.PegRatio = meta.Value.PegRatio;
-            item.OperatingCashFlowYield = meta.Value.OperatingCashFlowYield;
-            item.NetCashRatio = meta.Value.NetCashRatio;
-            item.PriceToSalesTrailing12Months = meta.Value.PriceToSalesTrailing12Months;
-            item.EnterpriseToRevenue = meta.Value.EnterpriseToRevenue;
-            item.EbitdaMargins = meta.Value.EbitdaMargins;
-            item.QuickRatio = meta.Value.QuickRatio;
-            item.AverageVolume = meta.Value.AverageVolume;
-            item.PriceToCashFlowRatio = meta.Value.PriceToCashFlowRatio;
-            item.NetDebtEquityRatio = meta.Value.NetDebtEquityRatio;
-            item.FiftyTwoWeekRangePosition = meta.Value.FiftyTwoWeekRangePosition;
-            item.AverageTurnoverRate = meta.Value.AverageTurnoverRate;
-            item.AverageFloatTurnover = meta.Value.AverageFloatTurnover;
+            item.ReturnOnEquity = row.ReturnOnEquity;
+            item.ReturnOnAssets = row.ReturnOnAssets;
+            item.GrossMargins = row.GrossMargins;
+            item.OperatingMargins = row.OperatingMargins;
+            item.ProfitMargins = row.ProfitMargins;
+            item.CurrentRatio = row.CurrentRatio;
+            item.DebtToEquity = row.DebtToEquity;
+            item.Ebitda = row.Ebitda;
+            item.FreeCashflow = row.FreeCashflow;
+            item.OperatingCashflow = row.OperatingCashflow;
+            item.TrailingPE = row.TrailingPE;
+            item.ForwardPE = row.ForwardPE;
+            item.PriceToBook = row.PriceToBook;
+            item.TrailingEps = row.TrailingEps;
+            item.ForwardEps = row.ForwardEps;
+            item.BookValue = row.BookValue;
+            item.SharesOutstanding = row.SharesOutstanding;
+            item.FloatShares = row.FloatShares;
+            item.ShortRatio = row.ShortRatio;
+            item.ShortPercentOfFloat = row.ShortPercentOfFloat;
+            item.HeldPercentInsiders = row.HeldPercentInsiders;
+            item.HeldPercentInstitutions = row.HeldPercentInstitutions;
+            item.LongBusinessSummary = row.LongBusinessSummary;
+            item.FullTimeEmployees = row.FullTimeEmployees;
+            item.FiftyTwoWeekHigh = row.FiftyTwoWeekHigh;
+            item.FiftyTwoWeekLow = row.FiftyTwoWeekLow;
+            item.RevenueGrowth = row.RevenueGrowth;
+            item.EarningsGrowth = row.EarningsGrowth;
+            item.EnterpriseValue = row.EnterpriseValue;
+            item.EnterpriseToEbitda = row.EnterpriseToEbitda;
+            item.Beta = row.Beta;
+            item.PayoutRatio = row.PayoutRatio;
+            item.DividendRate = row.DividendRate;
+            item.DividendYield = row.DividendYield;
+            item.TotalDebt = row.TotalDebt;
+            item.TotalCash = row.TotalCash;
+            item.TotalRevenue = row.TotalRevenue;
+            item.MarketCap = row.MarketCap;
+            item.PbrCalculated = row.PbrCalculated;
+            item.DividendYieldCalculated = row.DividendYieldCalculated;
+            item.EarningsYield = row.EarningsYield;
+            item.FcfYield = row.FcfYield;
+            item.FcfMargin = row.FcfMargin;
+            item.NetDebt = row.NetDebt;
+            item.NetDebtToEbitda = row.NetDebtToEbitda;
+            item.DividendCoverage = row.DividendCoverage;
+            item.PctFromFiftyTwoWeekHigh = row.PctFromFiftyTwoWeekHigh;
+            item.FloatRatio = row.FloatRatio;
+            item.MarketCapPerEmployee = row.MarketCapPerEmployee;
+            item.PegRatio = row.PegRatio;
+            item.OperatingCashFlowYield = row.OperatingCashFlowYield;
+            item.NetCashRatio = row.NetCashRatio;
+            item.PriceToSalesTrailing12Months = row.PriceToSalesTrailing12Months;
+            item.EnterpriseToRevenue = row.EnterpriseToRevenue;
+            item.EbitdaMargins = row.EbitdaMargins;
+            item.QuickRatio = row.QuickRatio;
+            item.AverageVolume = row.AverageVolume;
+            item.PriceToCashFlowRatio = row.PriceToCashFlowRatio;
+            item.NetDebtEquityRatio = row.NetDebtEquityRatio;
+            item.FiftyTwoWeekRangePosition = row.FiftyTwoWeekRangePosition;
+            item.AverageTurnoverRate = row.AverageTurnoverRate;
+            item.AverageFloatTurnover = row.AverageFloatTurnover;
             
-            item.Region = meta.Value.Region;
-            item.QuoteType = meta.Value.QuoteType;
-            item.ExchangeTimezoneName = meta.Value.ExchangeTimezoneName;
-            item.GmtOffSetMilliseconds = meta.Value.GmtOffSetMilliseconds;
-            item.ExDividendDate = meta.Value.ExDividendDate;
-            item.LastFiscalYearEnd = meta.Value.LastFiscalYearEnd;
-            item.MostRecentQuarter = meta.Value.MostRecentQuarter;
-            item.TargetHighPrice = meta.Value.TargetHighPrice;
-            item.TargetLowPrice = meta.Value.TargetLowPrice;
-            item.TargetMeanPrice = meta.Value.TargetMeanPrice;
-            item.TargetMedianPrice = meta.Value.TargetMedianPrice;
-            item.RecommendationKey = meta.Value.RecommendationKey;
-            item.RecommendationMean = meta.Value.RecommendationMean;
-            item.NumberOfAnalystOpinions = meta.Value.NumberOfAnalystOpinions;
+            item.Region = row.Region;
+            item.QuoteType = row.QuoteType;
+            item.ExchangeTimezoneName = row.ExchangeTimezoneName;
+            item.GmtOffSetMilliseconds = row.GmtOffSetMilliseconds;
+            item.ExDividendDate = row.ExDividendDate;
+            item.LastFiscalYearEnd = row.LastFiscalYearEnd;
+            item.MostRecentQuarter = row.MostRecentQuarter;
+            item.TargetHighPrice = row.TargetHighPrice;
+            item.TargetLowPrice = row.TargetLowPrice;
+            item.TargetMeanPrice = row.TargetMeanPrice;
+            item.TargetMedianPrice = row.TargetMedianPrice;
+            item.RecommendationKey = row.RecommendationKey;
+            item.RecommendationMean = row.RecommendationMean;
+            item.NumberOfAnalystOpinions = row.NumberOfAnalystOpinions;
 
-            if (item.Volume != 0)
+            if (row.DailyTurnoverRate.HasValue) item.DailyTurnoverRate = row.DailyTurnoverRate;
+            if (row.DailyFloatShareTurnoverRatio.HasValue) item.DailyFloatShareTurnoverRatio = row.DailyFloatShareTurnoverRatio;
+
+            if (item.Close == 0 && row.Close != 0)
             {
-                if (item.SharesOutstanding.HasValue && item.SharesOutstanding.Value != 0)
-                {
-                    item.DailyTurnoverRate = (item.Volume / item.SharesOutstanding.Value) * 100m;
-                }
-                if (item.FloatShares.HasValue && item.FloatShares.Value != 0)
-                {
-                    item.DailyFloatShareTurnoverRatio = (item.Volume / item.FloatShares.Value) * 100m;
-                }
+                item.Close = row.Close;
+                item.Change = row.Change;
+                item.ChangePercent = row.ChangePercent;
             }
 
-            if (item.Close == 0 && meta.Value.CurrentPrice.HasValue && meta.Value.CurrentPrice.Value != 0)
-            {
-                item.Close = meta.Value.CurrentPrice.Value;
-                if (meta.Value.LastClose.HasValue && meta.Value.LastClose.Value != 0)
-                {
-                    item.Change = meta.Value.CurrentPrice.Value - meta.Value.LastClose.Value;
-                    item.ChangePercent = (double)((meta.Value.CurrentPrice.Value - meta.Value.LastClose.Value) / meta.Value.LastClose.Value * 100m);
-                }
-            }
+            if (row.Long.HasValue) item.Long = row.Long;
+            if (row.ExitLong.HasValue) item.ExitLong = row.ExitLong;
+            if (row.StopLossLong.HasValue) item.StopLossLong = row.StopLossLong;
+            if (row.Short.HasValue) item.Short = row.Short;
+            if (row.ExitShort.HasValue) item.ExitShort = row.ExitShort;
+            if (row.StopLossShort.HasValue) item.StopLossShort = row.StopLossShort;
+            if (row.IsLong.HasValue) item.IsLong = row.IsLong;
+            if (row.IsTPLong.HasValue) item.IsTPLong = row.IsTPLong;
+            if (row.IsSLLong.HasValue) item.IsSLLong = row.IsSLLong;
+            if (row.IsShort.HasValue) item.IsShort = row.IsShort;
+            if (row.IsTPShort.HasValue) item.IsTPShort = row.IsTPShort;
+            if (row.IsSLShort.HasValue) item.IsSLShort = row.IsSLShort;
 
-            if (meta.Value.Long.HasValue || meta.Value.ExitLong.HasValue || meta.Value.StopLossLong.HasValue ||
-                meta.Value.Short.HasValue || meta.Value.ExitShort.HasValue || meta.Value.StopLossShort.HasValue ||
-                meta.Value.EntryPrice.HasValue || meta.Value.TargetPrice.HasValue || meta.Value.StopLoss.HasValue ||
-                meta.Value.IsLong.HasValue || meta.Value.IsTPLong.HasValue || meta.Value.IsSLLong.HasValue ||
-                meta.Value.IsShort.HasValue || meta.Value.IsTPShort.HasValue || meta.Value.IsSLShort.HasValue)
-            {
-                if (meta.Value.Long.HasValue || meta.Value.EntryPrice.HasValue) item.Long = meta.Value.Long ?? meta.Value.EntryPrice;
-                if (meta.Value.ExitLong.HasValue || meta.Value.TargetPrice.HasValue) item.ExitLong = meta.Value.ExitLong ?? meta.Value.TargetPrice;
-                if (meta.Value.StopLossLong.HasValue || meta.Value.StopLoss.HasValue) item.StopLossLong = meta.Value.StopLossLong ?? meta.Value.StopLoss;
-                if (meta.Value.Short.HasValue) item.Short = meta.Value.Short;
-                if (meta.Value.ExitShort.HasValue) item.ExitShort = meta.Value.ExitShort;
-                if (meta.Value.StopLossShort.HasValue) item.StopLossShort = meta.Value.StopLossShort;
-                if (meta.Value.IsLong.HasValue) item.IsLong = meta.Value.IsLong;
-                if (meta.Value.IsTPLong.HasValue) item.IsTPLong = meta.Value.IsTPLong;
-                if (meta.Value.IsSLLong.HasValue) item.IsSLLong = meta.Value.IsSLLong;
-                if (meta.Value.IsShort.HasValue) item.IsShort = meta.Value.IsShort;
-                if (meta.Value.IsTPShort.HasValue) item.IsTPShort = meta.Value.IsTPShort;
-                if (meta.Value.IsSLShort.HasValue) item.IsSLShort = meta.Value.IsSLShort;
-            }
-
-            item.MetadataLastUpdated = meta.Value.MetadataLastUpdated;
+            item.MetadataLastUpdated = row.MetadataLastUpdated;
         }
-    }
-
-    private static bool IsSortedByTimestamp(IReadOnlyList<Core.Models.CandleData> candles)
-    {
-        for (int i = 1; i < candles.Count; i++)
-        {
-            if (candles[i].Timestamp < candles[i - 1].Timestamp) return false;
-        }
-        return true;
     }
 
     private void ApplyTimeSeriesDataToItem(string symbol, IReadOnlyList<Core.Models.CandleData> candles)
@@ -4300,119 +4282,65 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
             return;
         }
 
-        IReadOnlyList<Core.Models.CandleData> sortedCandles = IsSortedByTimestamp(candles)
-            ? candles 
-            : candles.OrderBy(c => c.Timestamp).ToList();
+        var meta = BuildMetadataSnapshotFromItem(item);
+        var row = TickerRowCalculator.Compute(item.Symbol, meta, candles);
 
-        var latest = sortedCandles[sortedCandles.Count - 1];
-        item.LastUpdatedUtc = new DateTimeOffset(latest.Timestamp, TimeSpan.Zero);
-        item.Open = latest.Open;
-        item.High = latest.High;
-        item.Low = latest.Low;
-        item.Close = latest.Close;
-        item.Volume = latest.Volume;
+        item.LastUpdatedUtc = row.LastUpdatedUtc;
+        item.Open = row.Open;
+        item.High = row.High;
+        item.Low = row.Low;
+        item.Close = row.Close;
+        item.Volume = row.Volume;
+        item.Change = row.Change;
+        item.ChangePercent = row.ChangePercent;
 
-        // Change = Close - previous bar's Close (the single definition is PriceChange); zero without a previous bar.
-        var priceChange = PriceChange.FromPreviousClose(sortedCandles, sortedCandles.Count - 1);
-        item.Change = priceChange.Amount;
-        item.ChangePercent = (double)priceChange.Percent;
+        item.DailyTurnoverRate = row.DailyTurnoverRate;
+        item.DailyFloatShareTurnoverRatio = row.DailyFloatShareTurnoverRatio;
 
-        // Calculate Daily Turnovers
-        if (item.SharesOutstanding.HasValue && item.SharesOutstanding.Value != 0)
+        if (row.Close != 0)
         {
-            item.DailyTurnoverRate = (latest.Volume / item.SharesOutstanding.Value) * 100m;
+            item.MarketCap = row.MarketCap;
+            item.PbrCalculated = row.PbrCalculated;
+            item.DividendYieldCalculated = row.DividendYieldCalculated;
+            item.EarningsYield = row.EarningsYield;
+            item.FcfYield = row.FcfYield;
+            item.PctFromFiftyTwoWeekHigh = row.PctFromFiftyTwoWeekHigh;
+            item.MarketCapPerEmployee = row.MarketCapPerEmployee;
+            item.OperatingCashFlowYield = row.OperatingCashFlowYield;
+            item.NetCashRatio = row.NetCashRatio;
+            item.PriceToCashFlowRatio = row.PriceToCashFlowRatio;
+            item.FiftyTwoWeekRangePosition = row.FiftyTwoWeekRangePosition;
+            item.TrailingPE = row.TrailingPE;
+            item.ForwardPE = row.ForwardPE;
         }
-        if (item.FloatShares.HasValue && item.FloatShares.Value != 0)
+    }
+
+    private static TickerMetadata BuildMetadataSnapshotFromItem(WatchlistItemViewModel item)
+    {
+        return new TickerMetadata(
+            ShortName: item.Name,
+            LongName: item.Name,
+            Region: item.Region ?? string.Empty,
+            Sector: item.Sector,
+            Industry: item.Industry,
+            Currency: string.Empty,
+            CurrentPrice: item.Close,
+            LastClose: null)
         {
-            item.DailyFloatShareTurnoverRatio = (latest.Volume / item.FloatShares.Value) * 100m;
-        }
-
-        // Recalculate price-dependent metrics using the latest Close price
-        decimal close = latest.Close;
-        if (close != 0)
-        {
-            // 1. Market Cap
-            if (item.SharesOutstanding.HasValue && item.SharesOutstanding.Value != 0)
-            {
-                item.MarketCap = close * item.SharesOutstanding.Value;
-            }
-
-            // 2. PBR
-            if (item.BookValue.HasValue && item.BookValue.Value != 0)
-            {
-                item.PbrCalculated = close / item.BookValue.Value;
-            }
-
-            // 3. Dividend Yield
-            if (item.DividendRate.HasValue)
-            {
-                item.DividendYieldCalculated = (item.DividendRate.Value / close) * 100m;
-            }
-
-            // 4. Earnings Yield
-            if (item.TrailingEps.HasValue)
-            {
-                item.EarningsYield = (item.TrailingEps.Value / close) * 100m;
-            }
-
-            // 5. FCF Yield
-            if (item.FreeCashflow.HasValue && item.MarketCap.HasValue && item.MarketCap.Value != 0)
-            {
-                item.FcfYield = (item.FreeCashflow.Value / item.MarketCap.Value) * 100m;
-            }
-
-            // 6. % From 52 Week High
-            if (item.FiftyTwoWeekHigh.HasValue && item.FiftyTwoWeekHigh.Value != 0)
-            {
-                item.PctFromFiftyTwoWeekHigh = ((close / item.FiftyTwoWeekHigh.Value) - 1m) * 100m;
-            }
-
-            // 7. Market Cap Per Employee
-            if (item.MarketCap.HasValue && item.FullTimeEmployees.HasValue && item.FullTimeEmployees.Value != 0)
-            {
-                item.MarketCapPerEmployee = item.MarketCap.Value / (decimal)item.FullTimeEmployees.Value;
-            }
-
-            // 8. Operating Cash Flow Yield
-            if (item.OperatingCashflow.HasValue && item.MarketCap.HasValue && item.MarketCap.Value != 0)
-            {
-                item.OperatingCashFlowYield = (item.OperatingCashflow.Value / item.MarketCap.Value) * 100m;
-            }
-
-            // 9. Net Cash Ratio
-            if (item.TotalCash.HasValue && item.TotalDebt.HasValue && item.MarketCap.HasValue && item.MarketCap.Value != 0)
-            {
-                item.NetCashRatio = (item.TotalCash.Value - item.TotalDebt.Value) / item.MarketCap.Value;
-            }
-
-            // 10. Price to Cash Flow Ratio (PCFR)
-            if (item.OperatingCashflow.HasValue && item.MarketCap.HasValue && item.OperatingCashflow.Value != 0)
-            {
-                item.PriceToCashFlowRatio = item.MarketCap.Value / item.OperatingCashflow.Value;
-            }
-
-            // 11. 52-Week Range Position
-            if (item.FiftyTwoWeekLow.HasValue && item.FiftyTwoWeekHigh.HasValue)
-            {
-                decimal range = item.FiftyTwoWeekHigh.Value - item.FiftyTwoWeekLow.Value;
-                if (range != 0)
-                {
-                    item.FiftyTwoWeekRangePosition = (close - item.FiftyTwoWeekLow.Value) / range;
-                }
-            }
-
-            // 12. Trailing P/E (Live)
-            if (item.TrailingEps.HasValue && item.TrailingEps.Value != 0)
-            {
-                item.TrailingPE = close / item.TrailingEps.Value;
-            }
-
-            // 13. Forward P/E (Live)
-            if (item.ForwardEps.HasValue && item.ForwardEps.Value != 0)
-            {
-                item.ForwardPE = close / item.ForwardEps.Value;
-            }
-        }
+            SharesOutstanding = item.SharesOutstanding,
+            FloatShares = item.FloatShares,
+            BookValue = item.BookValue,
+            DividendRate = item.DividendRate,
+            TrailingEps = item.TrailingEps,
+            ForwardEps = item.ForwardEps,
+            FreeCashflow = item.FreeCashflow,
+            FiftyTwoWeekHigh = item.FiftyTwoWeekHigh,
+            FiftyTwoWeekLow = item.FiftyTwoWeekLow,
+            FullTimeEmployees = item.FullTimeEmployees,
+            OperatingCashflow = item.OperatingCashflow,
+            TotalCash = item.TotalCash,
+            TotalDebt = item.TotalDebt
+        };
     }
 
     public void MarkLoaded()

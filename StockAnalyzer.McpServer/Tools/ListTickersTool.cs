@@ -1,4 +1,11 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
+using StockAnalyzer.Core.Common;
+using StockAnalyzer.Core.Constants;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Portfolio;
 using StockAnalyzer.Core.ReadOnly;
@@ -13,23 +20,32 @@ internal sealed class ListTickersTool : IMcpTool
     private const string LimitArgument = "limit";
     private const string SearchArgument = "searchQuery";
     private const string SummaryArgument = "includeMetadataSummary";
+    private const string GroupIdArgument = "groupId";
 
     private readonly IReadOnlyStockAnalyzerGateway _gateway;
+    private readonly ITickerGroupResolver _groupResolver;
     private readonly McpLimits _limits;
 
     public ListTickersTool(IReadOnlyStockAnalyzerGateway gateway, McpLimits limits)
+        : this(gateway, new TickerGroupResolver(gateway, new FileReadOnlyWorkspaceSource(PathDiscovery.ResolveConfigPathWithoutCreating(LayoutConstants.DefaultWorkspaceFileName))), limits)
     {
-        _gateway = gateway;
-        _limits = limits;
+    }
+
+    public ListTickersTool(IReadOnlyStockAnalyzerGateway gateway, ITickerGroupResolver groupResolver, McpLimits limits)
+    {
+        _gateway = gateway ?? throw new ArgumentNullException(nameof(gateway));
+        _groupResolver = groupResolver ?? throw new ArgumentNullException(nameof(groupResolver));
+        _limits = limits ?? throw new ArgumentNullException(nameof(limits));
     }
 
     public string Name => "sa_list_tickers";
 
     public string Description =>
-        "Lists the ticker symbols that have stored market data, sorted by symbol (ordinal, ascending). " +
+        "Lists the registered ticker symbols (All Tickers), sorted by symbol (ordinal, ascending). " +
         "Symbols are canonical: upper case with '.' replaced by '-' (for example 7203-T). " +
         "searchQuery matches symbol or stored short name, ignoring case. " +
-        "includeMetadataSummary adds the stored identity fields (short name, long name, region, sector, industry, currency) to each returned ticker.";
+        "includeMetadataSummary adds the stored identity fields (short name, long name, region, sector, industry, currency) to each returned ticker. " +
+        "groupId restricts the symbols to the members of a saved ticker group (from sa_list_ticker_groups).";
 
     public bool IsHeavy => false;
 
@@ -38,6 +54,7 @@ internal sealed class ListTickersTool : IMcpTool
         .Integer(LimitArgument, $"Page size. Default {_limits.DefaultTickerPageSize}, at most {_limits.MaxTickersPerPage}.", defaultValue: _limits.DefaultTickerPageSize, minimum: 1, maximum: _limits.MaxTickersPerPage)
         .String(SearchArgument, "Case-insensitive text that must occur in the symbol or the stored short name.")
         .Boolean(SummaryArgument, $"Add stored identity fields to each returned ticker. At most {_limits.MaxSymbolsPerMetadataCall} tickers per call.")
+        .String(GroupIdArgument, "Guid of a ticker group from sa_list_ticker_groups. When given, lists only members of that group.")
         .Build();
 
     public async Task<string> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)
@@ -65,10 +82,43 @@ internal sealed class ListTickersTool : IMcpTool
             throw new ToolException(ToolErrorCodes.InvalidArgument, $"Argument '{SearchArgument}' must not be empty.", SearchArgument);
         }
 
-        List<string> tickers = (await _gateway.GetAvailableTickersAsync(cancellationToken).ConfigureAwait(false))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderBy(s => s, StringComparer.Ordinal)
-            .ToList();
+        string? groupIdRaw = ToolArgs.String(arguments, GroupIdArgument)?.Trim();
+        Guid? groupId = null;
+        GroupMembers? groupMembers = null;
+        if (groupIdRaw is not null)
+        {
+            if (!Guid.TryParse(groupIdRaw, out Guid parsedId))
+            {
+                throw new ToolException(ToolErrorCodes.InvalidArgument, $"Argument '{GroupIdArgument}' must be a valid Guid.", GroupIdArgument);
+            }
+
+            groupId = parsedId;
+            try
+            {
+                groupMembers = await _groupResolver.ResolveAsync(parsedId, _limits.MaxFilterEvaluationSymbols, cancellationToken).ConfigureAwait(false);
+            }
+            catch (GroupNotFoundException)
+            {
+                throw new ToolException(ToolErrorCodes.GroupNotFound, $"Group '{parsedId}' was not found in the workspace.", GroupIdArgument, "Use sa_list_ticker_groups to see available group ids.");
+            }
+            catch (FilterEvaluationLimitException ex)
+            {
+                throw new ToolException(ToolErrorCodes.LimitExceeded, ex.Message, GroupIdArgument, "Raise AiIntegration:MaxFilterEvaluationSymbols or narrow the group.");
+            }
+        }
+
+        List<string> tickers;
+        if (groupMembers is not null)
+        {
+            tickers = groupMembers.Symbols.ToList();
+        }
+        else
+        {
+            tickers = (await _gateway.GetAvailableTickersAsync(cancellationToken).ConfigureAwait(false))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(s => s, StringComparer.Ordinal)
+                .ToList();
+        }
 
         if (query is not null)
         {
@@ -88,6 +138,19 @@ internal sealed class ListTickersTool : IMcpTool
         return ToolJson.Build(writer =>
         {
             writer.WriteStartObject();
+            if (groupId.HasValue && groupMembers is not null)
+            {
+                writer.WriteString("groupId", groupId.Value.ToString("D").ToLowerInvariant());
+                writer.WriteString("groupKind", groupMembers.Kind.ToCamelCase());
+                writer.WriteNumber("groupUnregisteredMemberCount", groupMembers.UnregisteredCount);
+                writer.WriteStartArray("groupUnknownRuleFields");
+                foreach (string field in groupMembers.UnknownRuleFields)
+                {
+                    writer.WriteStringValue(field);
+                }
+                writer.WriteEndArray();
+            }
+
             writer.WriteNumber("totalCount", tickers.Count);
             writer.WriteNumber("offset", offset);
             writer.WriteNumber("limit", limit);

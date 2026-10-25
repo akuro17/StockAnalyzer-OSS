@@ -17,6 +17,7 @@ using System.Collections.Concurrent;
 using StockAnalyzer.Core.Models.Portfolio;
 using Python.Runtime;
 using System.Text.Json;
+using StockAnalyzer.Core.ReadOnly;
 
 namespace StockAnalyzer.Core.Services;
 
@@ -243,17 +244,7 @@ public class ParquetMarketDataProvider : IMarketDataProvider
                 try
                 {
                     var json = await File.ReadAllTextAsync(_tickerListPath);
-                    var rawList = JsonSerializer.Deserialize<List<string>>(json);
-                    if (rawList != null)
-                    {
-                        var deduplicatedList = rawList
-                            .Where(s => !string.IsNullOrWhiteSpace(s))
-                            .Select(s => TickerSymbol.Canonicalize(s))
-                            .Distinct(StringComparer.OrdinalIgnoreCase)
-                            .ToList();
-                        _logger.LogTrace("Loaded {Count} available tickers from master list: {Path}", deduplicatedList.Count, _tickerListPath);
-                        return deduplicatedList;
-                    }
+                    return ParseMasterTickerList(json, _tickerListPath);
                 }
                 catch (Exception ex)
                 {
@@ -279,6 +270,68 @@ public class ParquetMarketDataProvider : IMarketDataProvider
 
         _logger.LogTrace("Discovered {Count} available tickers via disk crawl in {BasePath}", tickers.Count, _baseDataPath);
         return tickers;
+    }
+
+    /// <summary>
+    /// Reads the configured master ticker list without ever falling back to a directory crawl.
+    /// Fails closed with <see cref="DataUnavailableException"/> when the file cannot be used.
+    /// </summary>
+    public async Task<IReadOnlyList<string>> GetRegisteredTickersAsync()
+    {
+        using (await _dbManager.AcquireLockAsync("GetAvailableTickers"))
+        {
+            if (string.IsNullOrEmpty(_tickerListPath))
+            {
+                throw new DataUnavailableException("No ticker list is configured.");
+            }
+
+            if (!File.Exists(_tickerListPath))
+            {
+                throw new DataUnavailableException("The ticker list file is missing.");
+            }
+
+            try
+            {
+                var json = await File.ReadAllTextAsync(_tickerListPath);
+                return ParseMasterTickerList(json, _tickerListPath);
+            }
+            catch (DataUnavailableException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to read master ticker list from {Path}.", _tickerListPath);
+                throw new DataUnavailableException("The ticker list could not be read.", ex);
+            }
+        }
+    }
+
+    private IReadOnlyList<string> ParseMasterTickerList(string json, string path)
+    {
+        List<string>? rawList;
+        try
+        {
+            rawList = JsonSerializer.Deserialize<List<string>>(json);
+        }
+        catch (Exception ex)
+        {
+            throw new DataUnavailableException("The ticker list could not be read.", ex);
+        }
+
+        if (rawList == null)
+        {
+            throw new DataUnavailableException("The ticker list could not be read.");
+        }
+
+        var deduplicatedList = rawList
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .Select(s => TickerSymbol.Canonicalize(s))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        _logger.LogTrace("Loaded {Count} available tickers from master list: {Path}", deduplicatedList.Count, path);
+        return deduplicatedList;
     }
 
     public async Task AddTickerAsync(string symbol)

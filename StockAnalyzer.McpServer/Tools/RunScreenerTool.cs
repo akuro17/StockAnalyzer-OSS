@@ -1,5 +1,7 @@
 using System.Collections.Immutable;
 using System.Text.Json;
+using StockAnalyzer.Core.Common;
+using StockAnalyzer.Core.Constants;
 using StockAnalyzer.Core.Interfaces;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Indicators;
@@ -22,6 +24,7 @@ internal sealed class RunScreenerTool : IMcpTool
     private const string ConditionArgument = "conditionTree";
     private const string TemplateArgument = "templateId";
     private const string SymbolsArgument = "symbols";
+    private const string GroupIdArgument = "groupId";
     private const string TimeFrameArgument = "timeFrame";
     private const string ValuesArgument = "includeMatchedValues";
     private const string MaxMatchesArgument = "maxReturnedMatches";
@@ -30,6 +33,7 @@ internal sealed class RunScreenerTool : IMcpTool
     internal const TimeFrame ScreenerTimeFrame = TimeFrame.D1;
 
     private readonly IReadOnlyStockAnalyzerGateway _gateway;
+    private readonly ITickerGroupResolver _groupResolver;
     private readonly ScreenerConditionBinder _binder;
     private readonly IScreenerValueExtractor _extractor;
     private readonly ScreenerTemplateAdvisor _advisor;
@@ -43,8 +47,21 @@ internal sealed class RunScreenerTool : IMcpTool
         ScreenerTemplateAdvisor advisor,
         IStockAnalyzerSettings settings,
         McpLimits limits)
+        : this(gateway, new TickerGroupResolver(gateway, new FileReadOnlyWorkspaceSource(PathDiscovery.ResolveConfigPathWithoutCreating(LayoutConstants.DefaultWorkspaceFileName))), binder, extractor, advisor, settings, limits)
+    {
+    }
+
+    public RunScreenerTool(
+        IReadOnlyStockAnalyzerGateway gateway,
+        ITickerGroupResolver groupResolver,
+        ScreenerConditionBinder binder,
+        IScreenerValueExtractor extractor,
+        ScreenerTemplateAdvisor advisor,
+        IStockAnalyzerSettings settings,
+        McpLimits limits)
     {
         _gateway = gateway;
+        _groupResolver = groupResolver ?? throw new ArgumentNullException(nameof(groupResolver));
         _binder = binder;
         _extractor = extractor;
         _advisor = advisor;
@@ -68,7 +85,7 @@ internal sealed class RunScreenerTool : IMcpTool
         "A comparison whose value cannot be calculated (too little history, no metadata) does not match. Indicators that look ahead are not allowed. " +
         $"An indicator that compares two symbols (isCrossTicker in sa_get_capabilities, for example Correlation) needs its ComparisonSymbol parameter: a stored symbol, at most {_limits.MaxSecondarySymbolsPerCall} different ones per call; " +
         "a symbol screened against itself is compared with itself, and the comparison symbol's bars are matched to each screened symbol's dates. " +
-        $"Omit symbols to screen every available symbol; otherwise list at most {_limits.MaxScreenerSymbols}. The tree size and offset limits are the application's Screener settings (see sa_get_settings). " +
+        $"Give symbols (at most {_limits.MaxScreenerSymbols}) or groupId to screen a specific universe; omit both to screen every available symbol. The tree size and offset limits are the application's Screener settings (see sa_get_settings). " +
         $"matchedSymbols are in ascending order, at most maxReturnedMatches (default and maximum {_limits.MaxReturnedMatches}); matchedSymbolCount is the true count and truncated says whether the list was cut. " +
         "includeMatchedValues adds the value of each comparison's two sides for every returned symbol. Only the daily time frame is screened. " +
         "A template is run as the user saved it (enabled entries combined from the first to the last by the And or Or of the preceding entry); entries that can never match here are listed in warnings. " +
@@ -79,7 +96,8 @@ internal sealed class RunScreenerTool : IMcpTool
     public string InputSchemaJson => ToolSchema.Object()
         .FreeObject(ConditionArgument, "The condition tree (see the tool description). Give this or templateId.")
         .String(TemplateArgument, "Id of a saved Screener template (from sa_list_templates). Give this or conditionTree.")
-        .StringArray(SymbolsArgument, $"Symbols to screen (at most {_limits.MaxScreenerSymbols}); omit to screen every available symbol.", minItems: 1)
+        .StringArray(SymbolsArgument, $"Symbols to screen (at most {_limits.MaxScreenerSymbols}); omit to screen every available symbol. Mutually exclusive with groupId.", minItems: 1)
+        .String(GroupIdArgument, "Guid of a saved ticker group (from sa_list_ticker_groups) to screen. Mutually exclusive with symbols.")
         .String(TimeFrameArgument, $"Time frame of the bars. Only {ScreenerTimeFrame} is supported (default).", allowedValues: Enum.GetNames<TimeFrame>())
         .Boolean(ValuesArgument, "Add the values each comparison read, per returned symbol. Default false.")
         .Integer(MaxMatchesArgument, $"Most matched symbols to return. Default and maximum {_limits.MaxReturnedMatches}.", defaultValue: _limits.MaxReturnedMatches, minimum: 1, maximum: _limits.MaxReturnedMatches)
@@ -97,6 +115,17 @@ internal sealed class RunScreenerTool : IMcpTool
                 "Give exactly one of conditionTree or templateId.",
                 hasTree ? TemplateArgument : ConditionArgument,
                 "Use sa_list_templates to find a template id, or write a conditionTree.");
+        }
+
+        bool hasSymbols = arguments.TryGetProperty(SymbolsArgument, out _);
+        string? groupIdText = ToolArgs.String(arguments, GroupIdArgument);
+        bool hasGroupId = groupIdText is not null;
+        if (hasSymbols && hasGroupId)
+        {
+            throw new ToolException(
+                ToolErrorCodes.InvalidArgument,
+                "Give at most one of symbols or groupId.",
+                GroupIdArgument);
         }
 
         int maxMatches = ToolArgs.PositiveWithin(arguments, MaxMatchesArgument, _limits.MaxReturnedMatches, _limits.MaxReturnedMatches);
@@ -136,7 +165,7 @@ internal sealed class RunScreenerTool : IMcpTool
             run = universe => _gateway.RunScreenerTemplateAsync(universe, loaded, ScreenerTimeFrame, comparisonSymbols, cancellationToken);
         }
 
-        (List<string> universe, bool isCustom) = await ResolveUniverseAsync(arguments, cancellationToken).ConfigureAwait(false);
+        (List<string> universe, bool isCustom, string? resolvedGroupId) = await ResolveUniverseAsync(arguments, cancellationToken).ConfigureAwait(false);
         IReadOnlyList<string> matched = universe.Count == 0 ? Array.Empty<string>() : await run(universe).ConfigureAwait(false);
 
         List<string> ordered = matched.OrderBy(symbol => symbol, StringComparer.Ordinal).ToList();
@@ -154,6 +183,14 @@ internal sealed class RunScreenerTool : IMcpTool
             writer.WriteStartObject();
             writer.WriteString("timeFrame", ScreenerTimeFrame.ToString());
             writer.WriteString("universe", isCustom ? "Custom" : "AllAvailable");
+            if (resolvedGroupId is not null)
+            {
+                writer.WriteString("groupId", resolvedGroupId);
+            }
+            else
+            {
+                writer.WriteNull("groupId");
+            }
             if (template is not null)
             {
                 writer.WriteStartObject("template");
@@ -232,39 +269,74 @@ internal sealed class RunScreenerTool : IMcpTool
         }
     }
 
-    private async Task<(List<string> Symbols, bool IsCustom)> ResolveUniverseAsync(JsonElement arguments, CancellationToken cancellationToken)
+    private async Task<(List<string> Symbols, bool IsCustom, string? GroupId)> ResolveUniverseAsync(JsonElement arguments, CancellationToken cancellationToken)
     {
         IReadOnlyList<string> available = await _gateway.GetAvailableTickersAsync(cancellationToken).ConfigureAwait(false);
         IReadOnlyList<string>? requested = ToolArgs.StringArray(arguments, SymbolsArgument);
-        if (requested is null)
-        {
-            return (available.OrderBy(symbol => symbol, StringComparer.Ordinal).ToList(), false);
-        }
+        string? groupIdRaw = ToolArgs.String(arguments, GroupIdArgument)?.Trim();
 
-        if (requested.Count > _limits.MaxScreenerSymbols)
+        if (requested is not null)
         {
-            throw new ToolException(
-                ToolErrorCodes.LimitExceeded,
-                $"At most {_limits.MaxScreenerSymbols} symbols per call.",
-                SymbolsArgument,
-                "Send fewer symbols, or omit symbols to screen every available symbol.");
-        }
-
-        var known = new HashSet<string>(available, StringComparer.OrdinalIgnoreCase);
-        var universe = new SortedSet<string>(StringComparer.Ordinal);
-        for (int index = 0; index < requested.Count; index++)
-        {
-            string path = $"{SymbolsArgument}[{index}]";
-            string canonical = SymbolResolver.Canonical(requested[index], path);
-            if (!known.Contains(canonical))
+            if (requested.Count > _limits.MaxScreenerSymbols)
             {
-                throw new ToolException(ToolErrorCodes.SymbolNotFound, $"Symbol '{canonical}' is not available.", path, "Call sa_list_tickers to see the available symbols.");
+                throw new ToolException(
+                    ToolErrorCodes.LimitExceeded,
+                    $"At most {_limits.MaxScreenerSymbols} symbols per call.",
+                    SymbolsArgument,
+                    "Send fewer symbols, or omit symbols to screen every available symbol.");
             }
 
-            universe.Add(canonical);
+            var known = new HashSet<string>(available, StringComparer.OrdinalIgnoreCase);
+            var universe = new SortedSet<string>(StringComparer.Ordinal);
+            for (int index = 0; index < requested.Count; index++)
+            {
+                string path = $"{SymbolsArgument}[{index}]";
+                string canonical = SymbolResolver.Canonical(requested[index], path);
+                if (!known.Contains(canonical))
+                {
+                    throw new ToolException(ToolErrorCodes.SymbolNotFound, $"Symbol '{canonical}' is not available.", path, "Call sa_list_tickers to see the available symbols.");
+                }
+
+                universe.Add(canonical);
+            }
+
+            return (universe.ToList(), true, null);
         }
 
-        return (universe.ToList(), true);
+        if (groupIdRaw is not null)
+        {
+            if (!Guid.TryParse(groupIdRaw, out Guid groupId))
+            {
+                throw new ToolException(ToolErrorCodes.InvalidArgument, $"Argument '{GroupIdArgument}' must be a valid Guid.", GroupIdArgument);
+            }
+
+            GroupMembers group;
+            try
+            {
+                group = await _groupResolver.ResolveAsync(groupId, _limits.MaxFilterEvaluationSymbols, cancellationToken).ConfigureAwait(false);
+            }
+            catch (GroupNotFoundException)
+            {
+                throw new ToolException(ToolErrorCodes.GroupNotFound, $"Group '{groupId}' was not found in the workspace.", GroupIdArgument, "Use sa_list_ticker_groups to see available group ids.");
+            }
+            catch (FilterEvaluationLimitException ex)
+            {
+                throw new ToolException(ToolErrorCodes.LimitExceeded, ex.Message, GroupIdArgument, "Raise AiIntegration:MaxFilterEvaluationSymbols or narrow the group.");
+            }
+
+            if (group.Symbols.Count > _limits.MaxScreenerSymbols)
+            {
+                throw new ToolException(
+                    ToolErrorCodes.LimitExceeded,
+                    $"The group contains {group.Symbols.Count} symbols, exceeding the limit of {_limits.MaxScreenerSymbols}.",
+                    GroupIdArgument,
+                    "Narrow the group or filter.");
+            }
+
+            return (group.Symbols.ToList(), true, groupId.ToString("D").ToLowerInvariant());
+        }
+
+        return (available.OrderBy(symbol => symbol, StringComparer.Ordinal).ToList(), false, null);
     }
 
     /// <summary>

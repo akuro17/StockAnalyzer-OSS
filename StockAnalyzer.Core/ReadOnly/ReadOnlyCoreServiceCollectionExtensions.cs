@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using StockAnalyzer.Core.Common;
+using StockAnalyzer.Core.Constants;
 using StockAnalyzer.Core.Interfaces;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Indicators;
@@ -76,6 +77,10 @@ public static class ReadOnlyCoreServiceCollectionExtensions
             PathDiscovery.ResolveTemplatesDirectoryWithoutCreating(TemplateType.Screener),
             PathDiscovery.ResolveTemplatesDirectoryWithoutCreating(TemplateType.BacktestCondition)));
 
+        // Workspace settings (watchlists, portfolios, custom categories, filters) are read without creating.
+        services.AddSingleton<IReadOnlyWorkspaceSource>(_ => new FileReadOnlyWorkspaceSource(
+            PathDiscovery.ResolveConfigPathWithoutCreating(LayoutConstants.DefaultWorkspaceFileName)));
+
         // The backtest path of the Backtest window: preparation (reads stored bars), engine, report generator, evaluation. All pure in-memory
         // code (the engine and the report use memory streams only); exporters, run history and the configuration managers are not registered.
         services.AddSingleton<IBacktestEngine, BacktestEngine>();
@@ -86,6 +91,7 @@ public static class ReadOnlyCoreServiceCollectionExtensions
         services.AddSingleton<IBacktestRunPreparationService, BacktestRunPreparationService>();
 
         services.AddSingleton<IReadOnlyStockAnalyzerGateway, ReadOnlyStockAnalyzerGateway>();
+        services.AddSingleton<ITickerGroupResolver, TickerGroupResolver>();
         return services;
     }
 }

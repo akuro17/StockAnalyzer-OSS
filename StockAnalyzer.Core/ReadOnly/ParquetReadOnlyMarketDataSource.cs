@@ -18,7 +18,7 @@ public sealed class ParquetReadOnlyMarketDataSource : IReadOnlyMarketDataSource
     }
 
     public Task<IReadOnlyList<string>> GetAvailableTickersAsync(CancellationToken cancellationToken = default)
-        => _provider.GetAvailableTickersAsync().WaitAsync(cancellationToken);
+        => _provider.GetRegisteredTickersAsync().WaitAsync(cancellationToken);
 
     public async Task<TickerMetadata?> TryGetStoredMetadataAsync(string canonicalSymbol, CancellationToken cancellationToken = default)
     {
