@@ -6,10 +6,15 @@
              xmlns:l="using:StockAnalyzer.Avalonia.Markup"
              xmlns:ui="using:StockAnalyzer.Avalonia.Common"
              xmlns:views="using:StockAnalyzer.Avalonia.Views.Dialogs"
+             xmlns:conv="clr-namespace:StockAnalyzer.Avalonia.Converters"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="600"
              x:Class="StockAnalyzer.Avalonia.Views.Dialogs.PredictionModelsView"
              x:DataType="vm:PredictionModelsViewModel"
              AutomationProperties.AutomationId="{x:Static ui:PredictionModelsUiConstants.Page}">
+
+    <UserControl.Resources>
+        <conv:EnumToLocalizedDisplayNameConverter x:Key="EnumToLocalizedDisplayNameConverter"/>
+    </UserControl.Resources>
 
     <Design.DataContext>
         <vm:PredictionModelsViewModel/>
@@ -78,10 +83,22 @@
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
-                    <StackPanel Orientation="Horizontal" Spacing="8">
+                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <TextBlock Text="{l:Localize PredictionModels_ArtifactSourceMode}" VerticalAlignment="Center"/>
+                        <ComboBox ItemsSource="{Binding AvailableArtifactSourceModes}"
+                                  SelectedItem="{Binding SelectedArtifactSourceMode, Mode=TwoWay}"
+                                  VerticalAlignment="Center">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Converter={StaticResource EnumToLocalizedDisplayNameConverter}}"/>
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
                         <Button Classes="accent" Content="{l:Localize Settings_ModelGenerations_AddFile}" Command="{Binding AddGenerationFromFileCommand}"
                                 IsEnabled="{Binding !IsBusy}"/>
                         <Button Classes="accent" Content="{l:Localize Settings_ModelGenerations_Remove}" Command="{Binding RemoveGenerationCommand}"
+                                IsEnabled="{Binding !IsBusy}"/>
+                        <Button Classes="accent" Content="{l:Localize PredictionModels_TestTempModel}" Command="{Binding TestTempModelFromFileCommand}"
                                 IsEnabled="{Binding !IsBusy}"/>
                     </StackPanel>
                     <TextBlock Text="{Binding GenerationStatusMessage}"

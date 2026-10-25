@@ -140,6 +140,7 @@ public sealed class PredictionLogService : IPredictionLogService, ICurrentPredic
                 ct.ThrowIfCancellationRequested();
                 var record = (await ReadAsync(path).ConfigureAwait(false))!;
                 var p = record.Prediction;
+                if (!PredictionMonitoringReducer.HasCanonicalAnchor(p)) continue;
                 if (p.Symbol != symbol || p.Timeframe != timeframe || record.Outcomes[^1].State == PredictionOutcomeState.Unavailable) continue;
                 if (PredictionMonitoringReducer.TryMature(p, record.Outcomes[^1], observations, rowByAnchor) is not { } outcome) continue;
                 await AtomicJsonFile.SaveAsync(path, record with { Outcomes = record.Outcomes.Add(outcome) },
@@ -188,6 +189,7 @@ public sealed class PredictionLogService : IPredictionLogService, ICurrentPredic
         {
             ct.ThrowIfCancellationRequested();
             var record = (await ReadAsync(path).ConfigureAwait(false))!;
+            if (!PredictionMonitoringReducer.HasCanonicalAnchor(record.Prediction)) continue;
             votes.Add(record.Prediction, record.Outcomes[^1]);
         }
         // Groups were validated as unique by ReadHealthAsync, so the exact-key lookup equals the former linear first-match.

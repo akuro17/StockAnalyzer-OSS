@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using Microsoft.ML.OnnxRuntime;
 using StockAnalyzer.Core.Models;
+using StockAnalyzer.Core.Models.Indicators;
 using StockAnalyzer.Core.Models.Training;
 using StockAnalyzer.Core.Services;
 
@@ -29,9 +31,8 @@ public sealed record EphemeralModelContract(
 public sealed record EphemeralPrediction(IReadOnlyList<ClassScore> Scores, string? PredictedClass, float? Confidence, float? Value);
 
 /// <summary>
-/// Runs an ephemeral model (a leased artifact) over daily bars. The contract is read from the model itself, so no configuration is needed, and the input is
-/// built by the same <see cref="IMLDataProcessor"/> the application's prediction service uses. Only what the gateway's trainer produces is supported
-/// (OHLCV min-max features, no fixed scaler, no calibration); anything else is an <see cref="EphemeralModelContractException"/>.
+/// Runs an ephemeral model (a leased artifact) over bars. The contract is read from the model itself, so no configuration is needed, and the input is
+/// built by the same <see cref="IMLDataProcessor"/> the application's prediction service uses.
 /// The lease must stay open while the model is used.
 /// </summary>
 public sealed class EphemeralPredictionModel : IDisposable
@@ -43,8 +44,26 @@ public sealed class EphemeralPredictionModel : IDisposable
     private readonly string _outputName;
     private readonly int _featuresPerBar;
     private readonly long[] _inputShape;
+    private readonly PredictionFeatureMode _mode;
+    private readonly FeatureSpec? _featureSpec;
+    private readonly FixedScaler? _scaler;
+    private readonly ModelCalibration? _calibration;
+    private readonly IIndicatorFactory? _indicatorFactory;
+    private readonly int _leadBars;
 
-    private EphemeralPredictionModel(InferenceSession session, IMLDataProcessor processor, EphemeralModelContract contract, string inputName, string outputName, int featuresPerBar)
+    private EphemeralPredictionModel(
+        InferenceSession session,
+        IMLDataProcessor processor,
+        EphemeralModelContract contract,
+        string inputName,
+        string outputName,
+        int featuresPerBar,
+        PredictionFeatureMode mode,
+        FeatureSpec? featureSpec,
+        FixedScaler? scaler,
+        ModelCalibration? calibration,
+        IIndicatorFactory? indicatorFactory,
+        int leadBars)
     {
         _session = session;
         _processor = processor;
@@ -53,15 +72,35 @@ public sealed class EphemeralPredictionModel : IDisposable
         _outputName = outputName;
         _featuresPerBar = featuresPerBar;
         _inputShape = new long[] { 1, contract.WindowSize, featuresPerBar };
+        _mode = mode;
+        _featureSpec = featureSpec;
+        _scaler = scaler;
+        _calibration = calibration;
+        _indicatorFactory = indicatorFactory;
+        _leadBars = leadBars;
     }
 
     public EphemeralModelContract Contract { get; }
 
+    /// <summary>Number of lead/warmup bars before the inference window required for lag offsets, log returns, or indicator calculation.</summary>
+    public int LeadBars => _leadBars;
+
     /// <exception cref="EphemeralModelContractException">The model cannot be run under the contract.</exception>
-    public static EphemeralPredictionModel Open(ArtifactLease lease, IMLDataProcessor processor)
+    public static EphemeralPredictionModel Open(ArtifactLease lease, IMLDataProcessor processor) =>
+        Open(lease, processor, EphemeralExecutionPolicy.McpFixed);
+
+    /// <exception cref="EphemeralModelContractException">The model cannot be run under the contract or policy.</exception>
+    public static EphemeralPredictionModel Open(
+        ArtifactLease lease,
+        IMLDataProcessor processor,
+        EphemeralExecutionPolicy? policy,
+        IIndicatorFactory? indicatorFactory = null,
+        int maxComposedChannels = 64,
+        long maxTensorBytes = 64L * 1024 * 1024)
     {
         ArgumentNullException.ThrowIfNull(lease);
         ArgumentNullException.ThrowIfNull(processor);
+        var effectivePolicy = policy ?? EphemeralExecutionPolicy.McpFixed;
         InferenceSession? session = null;
         try
         {
@@ -69,15 +108,40 @@ public sealed class EphemeralPredictionModel : IDisposable
             IReadOnlyDictionary<string, string> metadata = session.ModelMetadata.CustomMetadataMap;
             PredictionOutputContract output = PredictionModelMetadata.ReadOutputContract(metadata);
             bool regression = output.Semantic == PredictionOutputSemantic.LogReturn;
-            (PredictionFeatureMode mode, int window, _) = PredictionModelMetadata.ReadOwnFeatureContract(metadata);
-            if (mode != EphemeralFixedValues.Current.FeatureMode)
+            (PredictionFeatureMode mode, int window, FeatureSpec? ownSpec) = PredictionModelMetadata.ReadOwnFeatureContract(metadata);
+
+            if (effectivePolicy.RequiredFeatureMode is { } requiredMode && mode != requiredMode)
             {
-                throw new EphemeralModelContractException($"The model uses the feature mode {mode}; only {EphemeralFixedValues.Current.FeatureMode} is supported.");
+                throw new EphemeralModelContractException($"The model uses the feature mode {mode}; only {requiredMode} is supported.");
             }
 
-            if (PredictionModelMetadata.RequiresFixedScaler(metadata) || metadata.ContainsKey(ModelCalibrationContract.ReferenceKey))
+            bool requiresScaler = PredictionModelMetadata.RequiresFixedScaler(metadata);
+            bool hasCalibration = metadata.ContainsKey(ModelCalibrationContract.ReferenceKey);
+
+            if ((!effectivePolicy.AllowFixedScaler && requiresScaler) || (!effectivePolicy.AllowCalibration && hasCalibration))
             {
                 throw new EphemeralModelContractException("The model needs a fixed scaler or a calibration, which ephemeral models do not use.");
+            }
+
+            FeatureSpec? featureSpec = ownSpec;
+            if (mode == PredictionFeatureMode.ComposedFeatures)
+            {
+                if (featureSpec is null)
+                {
+                    throw new EphemeralModelContractException("The model uses ComposedFeatures mode but declares no feature specification.");
+                }
+
+                PredictionService.ValidateComposedFeatureSpec(featureSpec, maxComposedChannels, indicatorFactory!);
+            }
+
+            FixedScaler? scaler = null;
+            if (requiresScaler)
+            {
+                scaler = FixedScaler.Load(lease.OnnxPath, metadata);
+                if (featureSpec is not null)
+                {
+                    PredictionService.ValidateComposedFeatureSpec(featureSpec, maxComposedChannels, indicatorFactory!);
+                }
             }
 
             string[] labels = Array.Empty<string>();
@@ -91,14 +155,91 @@ public sealed class EphemeralPredictionModel : IDisposable
                 labels = classOrder.Split(',');
             }
 
+            ModelCalibration? calibration = null;
+            if (hasCalibration)
+            {
+                if (regression)
+                {
+                    throw new EphemeralModelContractException("Calibration cannot be applied to a regression model.");
+                }
+
+                calibration = ModelCalibration.Load(lease.OnnxPath, metadata);
+                if (calibration.ClassOrder != string.Join(",", labels))
+                {
+                    throw new EphemeralModelContractException("Model calibration class order disagrees with the configured class labels.");
+                }
+            }
+
             string inputName = PredictionService.ResolveNodeName(session.InputMetadata.Keys, null);
             string outputName = PredictionService.ResolveNodeName(session.OutputMetadata.Keys, null);
-            int featuresPerBar = PredictionService.ResolveFeaturesPerBar(mode, null);
+            int featuresPerBar = scaler?.Statistics.Length ?? PredictionService.ResolveFeaturesPerBar(mode, featureSpec);
             PredictionService.ValidateModelContract(
                 session.InputMetadata[inputName], session.OutputMetadata[outputName], window, featuresPerBar, regression ? 1 : labels.Length, inputName, outputName);
 
+            int maxLag = (scaler?.Lags ?? featureSpec?.Lags ?? Array.Empty<int>()).DefaultIfEmpty(0).Max();
+            int returnLead = mode is PredictionFeatureMode.LogReturn or PredictionFeatureMode.LogReturnOhlc ? 1 : 0;
+            int leadBars = Math.Max(maxLag, returnLead);
+
+            if (featureSpec is not null)
+            {
+                int indicatorWarmup = 0;
+                foreach (var channel in featureSpec.Channels)
+                {
+                    if (channel.Kind == FeatureChannelKind.Indicator)
+                    {
+                        int channelWarmup = 14;
+
+                        // Resolve via IIndicatorFactory (SSoT) to capture live registry defaults when available:
+                        if (indicatorFactory is not null && channel.Indicator is not null)
+                        {
+                            try
+                            {
+                                var paramObj = FeatureChannelConverter.ResolveParameterObject(channel, indicatorFactory, out _);
+                                if (paramObj is not null)
+                                {
+                                    channelWarmup = Math.Max(channelWarmup, paramObj.GetRequiredWarmupBars());
+                                    foreach (var prop in paramObj.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance))
+                                    {
+                                        if (prop.CanRead && (prop.PropertyType == typeof(int) || prop.PropertyType == typeof(int?)))
+                                        {
+                                            var val = prop.GetValue(paramObj);
+                                            if (val is int intVal && intVal > 0)
+                                            {
+                                                channelWarmup = Math.Max(channelWarmup, intVal);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            catch
+                            {
+                                // Fallback to explicit params parsing below if factory resolution fails
+                            }
+                        }
+
+                        if (channel.Params is not null)
+                        {
+                            foreach (var (_, val) in channel.Params)
+                            {
+                                if (int.TryParse(val, out var parsedInt) && parsedInt > 0)
+                                {
+                                    channelWarmup = Math.Max(channelWarmup, parsedInt);
+                                }
+                            }
+                        }
+                        indicatorWarmup = Math.Max(indicatorWarmup, channelWarmup);
+                    }
+                }
+
+                if (indicatorWarmup > 0)
+                {
+                    leadBars = Math.Max(leadBars, indicatorWarmup + maxLag);
+                }
+            }
+
             var contract = new EphemeralModelContract(window, mode.ToString(), regression, labels, output.HorizonBars, lease.Artifact.Sha256);
-            var model = new EphemeralPredictionModel(session, processor, contract, inputName, outputName, featuresPerBar);
+            var model = new EphemeralPredictionModel(
+                session, processor, contract, inputName, outputName, featuresPerBar, mode, featureSpec, scaler, calibration, indicatorFactory, leadBars);
             session = null;
             return model;
         }
@@ -118,16 +259,17 @@ public sealed class EphemeralPredictionModel : IDisposable
 
     /// <summary>
     /// The predictions at the last <paramref name="count"/> bars of <paramref name="history"/> (oldest first), each from the window that ends at its own bar:
-    /// no later bar is ever read. <paramref name="history"/> must be strictly chronological and hold at least <c>WindowSize + count - 1</c> bars.
+    /// no later bar is ever read. <paramref name="history"/> must be strictly chronological and hold at least <c>WindowSize + count - 1 + LeadBars</c> bars.
     /// </summary>
     public IReadOnlyList<EphemeralPrediction> PredictLast(IReadOnlyList<CandleData> history, int count)
     {
         ArgumentNullException.ThrowIfNull(history);
         ArgumentOutOfRangeException.ThrowIfLessThan(count, 1);
         int window = Contract.WindowSize;
-        if (history.Count < window + count - 1)
+        int minRequired = window + count - 1 + _leadBars;
+        if (history.Count < minRequired)
         {
-            throw new ArgumentException($"At least {window + count - 1} bars are needed; {history.Count} were given.", nameof(history));
+            throw new ArgumentException($"At least {minRequired} bars are needed; {history.Count} were given.", nameof(history));
         }
 
         PredictionService.ValidateChronologicalHistory(history);
@@ -136,7 +278,17 @@ public sealed class EphemeralPredictionModel : IDisposable
         for (int offset = 0; offset < count; offset++)
         {
             int end = history.Count - count + 1 + offset;
-            _processor.NormalizeCandles(history, end - window, window, buffer);
+            int startIndex = end - window;
+            try
+            {
+                PredictionService.PopulateWindowFeatures(
+                    history, startIndex, window, buffer.Length, _mode, _featureSpec, _scaler, _processor, _indicatorFactory, buffer);
+            }
+            catch (Exception ex) when (ex is not EphemeralModelContractException)
+            {
+                throw new EphemeralModelContractException("The model features could not be populated.", ex);
+            }
+
             results.Add(Run(buffer));
         }
 
@@ -201,13 +353,23 @@ public sealed class EphemeralPredictionModel : IDisposable
             throw new EphemeralModelContractException("The model output declared class probabilities but they do not sum to 1.");
         }
 
-        (float confidence, _) = _processor.ComputeConfidenceAndEntropy(values);
+        Span<float> probabilities = classCount <= IMLDataProcessor.MaxStackAllocClassCount ? stackalloc float[classCount] : new float[classCount];
+        if (_calibration is { IsEnabled: true } calibration)
+        {
+            calibration.Apply(values, probabilities);
+        }
+        else
+        {
+            values.CopyTo(probabilities);
+        }
+
+        (float confidence, _) = _processor.ComputeConfidenceAndEntropy(probabilities);
         var scores = new ClassScore[classCount];
         int best = 0;
         for (int index = 0; index < classCount; index++)
         {
-            scores[index] = new ClassScore(Contract.ClassLabels[index], values[index]);
-            if (values[index] > values[best])
+            scores[index] = new ClassScore(Contract.ClassLabels[index], probabilities[index]);
+            if (probabilities[index] > probabilities[best])
             {
                 best = index;
             }

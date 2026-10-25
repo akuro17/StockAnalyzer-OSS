@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Training;
 
 namespace StockAnalyzer.Core.Execution;
@@ -78,12 +79,28 @@ public sealed record EphemeralTrainingRequest
 
     public int NSplits { get; init; } = WalkForwardDataRequirement.DefaultSplitCount;
 
+    public TrainingTimeframe Timeframe { get; init; } = EphemeralFixedValues.Current.Timeframe;
+
+    public PredictionFeatureMode FeatureMode { get; init; } = EphemeralFixedValues.Current.FeatureMode;
+
+    public FeatureSpec? FeatureSpec { get; init; }
+
+    public TrainingInitializationMode InitializationMode { get; init; } = EphemeralFixedValues.Current.InitializationMode;
+
+    public TrainingEnsembleMethod EnsembleMethod { get; init; } = EphemeralFixedValues.Current.EnsembleMethod;
+
+    public bool FixedZScore { get; init; } = EphemeralFixedValues.Current.FixedZScore;
+
+    public bool Calibration { get; init; } = EphemeralFixedValues.Current.Calibration;
+
+    public bool Cpcv { get; init; } = EphemeralFixedValues.Current.Cpcv;
+
     /// <summary>
     /// The file-name stem of every ephemeral model. A short fixed stem on purpose: the trainer derives a long default stem (scope, task, architecture,
     /// features and the run id) and builds temporary names from it inside the job folder, and a Windows path of 260 characters or more (without the
     /// long-path setting) made a real run fail at its last step (measured 2026-10-24). The job folder already carries the run id.
     /// </summary>
-    internal const string OutputStem = "model";
+    public const string OutputStem = "model";
 
     /// <summary>The training job configuration of this request, with the gateway's fixed values, for the job <paramref name="jobId"/> writing into <paramref name="artifactsDirectory"/>.</summary>
     internal TrainingJobConfig ToJobConfig(string jobId, string artifactsDirectory) => new()
@@ -91,15 +108,16 @@ public sealed record EphemeralTrainingRequest
         Symbols = Symbols.ToArray(),
         StartDate = StartDate,
         EndDate = EndDate,
-        Timeframe = EphemeralFixedValues.Current.Timeframe,
+        Timeframe = Timeframe,
         Framework = Framework,
         Architecture = Architecture,
-        FeatureMode = EphemeralFixedValues.Current.FeatureMode,
-        InitializationMode = EphemeralFixedValues.Current.InitializationMode,
-        EnsembleMethod = EphemeralFixedValues.Current.EnsembleMethod,
-        FixedZScore = EphemeralFixedValues.Current.FixedZScore,
-        Calibration = EphemeralFixedValues.Current.Calibration,
-        Cpcv = EphemeralFixedValues.Current.Cpcv,
+        FeatureMode = FeatureMode,
+        FeatureSpec = FeatureSpec,
+        InitializationMode = InitializationMode,
+        EnsembleMethod = EnsembleMethod,
+        FixedZScore = FixedZScore,
+        Calibration = Calibration,
+        Cpcv = Cpcv,
         WindowSize = WindowSize,
         Horizon = Horizon,
         TargetType = TargetType,

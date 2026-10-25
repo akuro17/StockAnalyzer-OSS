@@ -184,10 +184,9 @@ internal sealed class GetCandlesTool : IMcpTool
     }
 
     private static bool IsPartial(List<CandleData> bars, TimeFrame timeFrame, DateTime? referenceDate)
-        => timeFrame is TimeFrame.W1 or TimeFrame.MN1
-            && bars.Count > 0
+        => bars.Count > 0
             && referenceDate is { } reference
-            && TimeFrameAggregator.PeriodEnd(bars[^1].Timestamp, timeFrame) > reference;
+            && TimeFrameAggregator.IsPartialPeriod(bars[^1].Timestamp, timeFrame, reference);
 
     private static void WriteDateOrNull(Utf8JsonWriter writer, string name, DateTime? value)
     {

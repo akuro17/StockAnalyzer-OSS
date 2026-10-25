@@ -46,7 +46,7 @@ public sealed class AttestedMonitoringRefresher(PredictionMonitoringBackendFacto
         if (snapshot.ProviderId != enrollment.ProviderId || snapshot.InstrumentId != enrollment.InstrumentId || snapshot.Timeframe != timeframe)
             throw new InvalidDataException("The attestation does not come from the enrolled provider, instrument and timeframe.");
         // The evidence must describe exactly the bars the chart accepted; a period snapshot of another timeframe never attests these.
-        if (!MonitoringAlignment.Matches(acceptedChartBars, snapshot.Candles))
+        if (!MonitoringAlignment.Matches(acceptedChartBars, snapshot.Candles, timeframe.ToCoreTimeFrame()))
         {
             _logger.LogInformation("The attestation of {Instrument} does not describe the bars the chart accepted for {Symbol} {Timeframe}; it is not applied.",
                 enrollment.InstrumentId, symbol, timeframe);

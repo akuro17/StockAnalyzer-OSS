@@ -225,6 +225,14 @@ public class ParquetDataService : IDataService, IAttestedMonitoringDataSource
     }
 
     public async Task<IReadOnlyList<CandleData>> LoadCandlesAsync(string symbol, TimeFrame timeFrame, int count = 100)
+        => await LoadCandlesAsync(symbol, timeFrame, count, includePartialBar: true, CancellationToken.None).ConfigureAwait(false);
+
+    public async Task<IReadOnlyList<CandleData>> LoadCandlesAsync(
+        string symbol,
+        TimeFrame timeFrame,
+        int count,
+        bool includePartialBar,
+        CancellationToken cancellationToken = default)
     {
         var basePath = ResolveBasePath(timeFrame);
 
@@ -235,10 +243,9 @@ public class ParquetDataService : IDataService, IAttestedMonitoringDataSource
             return Array.Empty<CandleData>();
         }
 
-
         try
         {
-            using (await _dbManager.AcquireLockAsync("LoadCandles"))
+            using (await _dbManager.AcquireLockAsync("LoadCandles", cancellationToken).ConfigureAwait(false))
             {
                 var connection = _dbManager.GetConnection();
                 if (connection is not DbConnection dbConnection)
@@ -246,14 +253,35 @@ public class ParquetDataService : IDataService, IAttestedMonitoringDataSource
                     throw new InvalidOperationException("Connection must be a DbConnection to support async operations.");
                 }
 
+                DateTime? referenceDate = null;
+                if (!includePartialBar && timeFrame is TimeFrame.W1 or TimeFrame.MN1)
+                {
+                    var dailyBasePath = ResolveBasePath(TimeFrame.D1);
+                    var dailyFilePath = ResolveFilePath(dailyBasePath, symbol);
+                    if (dailyFilePath != null)
+                    {
+                        using var maxDateCmd = dbConnection.CreateCommand();
+                        maxDateCmd.CommandText = $"SELECT MAX(date) FROM read_parquet('{FormatDuckDbPath(dailyFilePath)}') WHERE close IS NOT NULL AND date IS NOT NULL";
+                        var maxDateVal = await maxDateCmd.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+                        if (maxDateVal != null && maxDateVal != DBNull.Value)
+                        {
+                            referenceDate = Convert.ToDateTime(maxDateVal).Date;
+                        }
+                    }
+                }
+
                 var candles = new List<CandleData>();
                 using var command = dbConnection.CreateCommand();
-                
-                string limitClause = count > 0 ? $"LIMIT {count}" : "";
+
+                int fetchLimit = (!includePartialBar && timeFrame is TimeFrame.W1 or TimeFrame.MN1 && count > 0)
+                    ? checked(count + 1)
+                    : count;
+
+                string limitClause = fetchLimit > 0 ? $"LIMIT {fetchLimit}" : "";
                 command.CommandText = $"SELECT date, open, high, low, close, volume FROM read_parquet('{FormatDuckDbPath(filePath)}') WHERE close IS NOT NULL AND date IS NOT NULL ORDER BY date DESC {limitClause}";
 
-                using var reader = await command.ExecuteReaderAsync();
-                while (await reader.ReadAsync())
+                using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+                while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
                 {
                     if (reader.IsDBNull(0) || reader.IsDBNull(4)) continue;
 
@@ -272,6 +300,20 @@ public class ParquetDataService : IDataService, IAttestedMonitoringDataSource
 
                 // Reverse to get ASC order for the chart
                 candles.Reverse();
+
+                if (!includePartialBar && referenceDate is { } refDate)
+                {
+                    while (candles.Count > 0 && TimeFrameAggregator.IsPartialPeriod(candles[^1].Timestamp, timeFrame, refDate))
+                    {
+                        candles.RemoveAt(candles.Count - 1);
+                    }
+                }
+
+                if (count > 0 && candles.Count > count)
+                {
+                    candles.RemoveRange(0, candles.Count - count);
+                }
+
                 _logger.LogInformation("Loaded {Count} candles for {Symbol} from {FilePath}", candles.Count, symbol, filePath);
                 return candles;
             }

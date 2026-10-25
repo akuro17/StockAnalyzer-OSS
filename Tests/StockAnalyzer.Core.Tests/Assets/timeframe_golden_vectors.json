@@ -1,0 +1,287 @@
+[
+  {
+    "id": "monday_holiday_week",
+    "description": "Week with Monday holiday (MLK Day 2024-01-15); trading begins Tuesday 2024-01-16",
+    "reference_date": "2024-01-21",
+    "daily_bars": [
+      { "date": "2024-01-16", "open": 100.0, "high": 105.0, "low": 99.0, "close": 102.0, "volume": 1000 },
+      { "date": "2024-01-17", "open": 102.0, "high": 104.0, "low": 101.0, "close": 103.0, "volume": 1100 },
+      { "date": "2024-01-18", "open": 103.0, "high": 106.0, "low": 102.0, "close": 105.0, "volume": 1200 },
+      { "date": "2024-01-19", "open": 105.0, "high": 107.0, "low": 104.0, "close": 106.0, "volume": 1300 }
+    ],
+    "expected_weekly": [
+      {
+        "chart_timestamp": "2024-01-16",
+        "parquet_timestamp": "2024-01-15",
+        "period_key": 202403,
+        "open": 100.0,
+        "high": 107.0,
+        "low": 99.0,
+        "close": 106.0,
+        "volume": 4600,
+        "is_partial": false
+      }
+    ],
+    "expected_monthly": [
+      {
+        "chart_timestamp": "2024-01-16",
+        "parquet_timestamp": "2024-01-01",
+        "period_key": 202401,
+        "open": 100.0,
+        "high": 107.0,
+        "low": 99.0,
+        "close": 106.0,
+        "volume": 4600,
+        "is_partial": true
+      }
+    ]
+  },
+  {
+    "id": "month_first_on_weekend",
+    "description": "June 1, 2024 is Saturday; first trading day of June is Monday 2024-06-03",
+    "reference_date": "2024-06-04",
+    "daily_bars": [
+      { "date": "2024-05-31", "open": 90.0, "high": 95.0, "low": 89.0, "close": 92.0, "volume": 500 },
+      { "date": "2024-06-03", "open": 92.0, "high": 96.0, "low": 91.0, "close": 95.0, "volume": 600 },
+      { "date": "2024-06-04", "open": 95.0, "high": 98.0, "low": 94.0, "close": 97.0, "volume": 700 }
+    ],
+    "expected_weekly": [
+      {
+        "chart_timestamp": "2024-05-31",
+        "parquet_timestamp": "2024-05-27",
+        "period_key": 202422,
+        "open": 90.0,
+        "high": 95.0,
+        "low": 89.0,
+        "close": 92.0,
+        "volume": 500,
+        "is_partial": false
+      },
+      {
+        "chart_timestamp": "2024-06-03",
+        "parquet_timestamp": "2024-06-03",
+        "period_key": 202423,
+        "open": 92.0,
+        "high": 98.0,
+        "low": 91.0,
+        "close": 97.0,
+        "volume": 1300,
+        "is_partial": true
+      }
+    ],
+    "expected_monthly": [
+      {
+        "chart_timestamp": "2024-05-31",
+        "parquet_timestamp": "2024-05-01",
+        "period_key": 202405,
+        "open": 90.0,
+        "high": 95.0,
+        "low": 89.0,
+        "close": 92.0,
+        "volume": 500,
+        "is_partial": false
+      },
+      {
+        "chart_timestamp": "2024-06-03",
+        "parquet_timestamp": "2024-06-01",
+        "period_key": 202406,
+        "open": 92.0,
+        "high": 98.0,
+        "low": 91.0,
+        "close": 97.0,
+        "volume": 1300,
+        "is_partial": true
+      }
+    ]
+  },
+  {
+    "id": "iso_week_cross_year_2024_2025",
+    "description": "ISO week 1 of 2025 spans 2024-12-30 (Mon) to 2025-01-05 (Sun)",
+    "reference_date": "2025-01-05",
+    "daily_bars": [
+      { "date": "2024-12-30", "open": 200.0, "high": 205.0, "low": 198.0, "close": 202.0, "volume": 1000 },
+      { "date": "2024-12-31", "open": 202.0, "high": 206.0, "low": 201.0, "close": 204.0, "volume": 1100 },
+      { "date": "2025-01-02", "open": 204.0, "high": 208.0, "low": 203.0, "close": 207.0, "volume": 1200 },
+      { "date": "2025-01-03", "open": 207.0, "high": 210.0, "low": 205.0, "close": 209.0, "volume": 1300 }
+    ],
+    "expected_weekly": [
+      {
+        "chart_timestamp": "2024-12-30",
+        "parquet_timestamp": "2024-12-30",
+        "period_key": 202501,
+        "open": 200.0,
+        "high": 210.0,
+        "low": 198.0,
+        "close": 209.0,
+        "volume": 4600,
+        "is_partial": false
+      }
+    ],
+    "expected_monthly": [
+      {
+        "chart_timestamp": "2024-12-30",
+        "parquet_timestamp": "2024-12-01",
+        "period_key": 202412,
+        "open": 200.0,
+        "high": 206.0,
+        "low": 198.0,
+        "close": 204.0,
+        "volume": 2100,
+        "is_partial": false
+      },
+      {
+        "chart_timestamp": "2025-01-02",
+        "parquet_timestamp": "2025-01-01",
+        "period_key": 202501,
+        "open": 204.0,
+        "high": 210.0,
+        "low": 203.0,
+        "close": 209.0,
+        "volume": 2500,
+        "is_partial": true
+      }
+    ]
+  },
+  {
+    "id": "iso_week_53_boundary_2020_2021",
+    "description": "2020 has 53 ISO weeks; week 53 spans 2020-12-28 (Mon) to 2021-01-03 (Sun)",
+    "reference_date": "2021-01-03",
+    "daily_bars": [
+      { "date": "2020-12-28", "open": 300.0, "high": 305.0, "low": 295.0, "close": 302.0, "volume": 1000 },
+      { "date": "2020-12-29", "open": 302.0, "high": 306.0, "low": 300.0, "close": 304.0, "volume": 1000 },
+      { "date": "2020-12-30", "open": 304.0, "high": 308.0, "low": 302.0, "close": 306.0, "volume": 1000 },
+      { "date": "2020-12-31", "open": 306.0, "high": 310.0, "low": 305.0, "close": 308.0, "volume": 1000 }
+    ],
+    "expected_weekly": [
+      {
+        "chart_timestamp": "2020-12-28",
+        "parquet_timestamp": "2020-12-28",
+        "period_key": 202053,
+        "open": 300.0,
+        "high": 310.0,
+        "low": 295.0,
+        "close": 308.0,
+        "volume": 4000,
+        "is_partial": false
+      }
+    ],
+    "expected_monthly": [
+      {
+        "chart_timestamp": "2020-12-28",
+        "parquet_timestamp": "2020-12-01",
+        "period_key": 202012,
+        "open": 300.0,
+        "high": 310.0,
+        "low": 295.0,
+        "close": 308.0,
+        "volume": 4000,
+        "is_partial": false
+      }
+    ]
+  },
+  {
+    "id": "leap_year_feb_2024",
+    "description": "Leap year February 2024 has 29 days; period end is 2024-02-29",
+    "reference_date": "2024-02-29",
+    "daily_bars": [
+      { "date": "2024-02-28", "open": 150.0, "high": 154.0, "low": 149.0, "close": 151.0, "volume": 1000 },
+      { "date": "2024-02-29", "open": 151.0, "high": 155.0, "low": 148.0, "close": 152.0, "volume": 2000 }
+    ],
+    "expected_weekly": [
+      {
+        "chart_timestamp": "2024-02-28",
+        "parquet_timestamp": "2024-02-26",
+        "period_key": 202409,
+        "open": 150.0,
+        "high": 155.0,
+        "low": 148.0,
+        "close": 152.0,
+        "volume": 3000,
+        "is_partial": true
+      }
+    ],
+    "expected_monthly": [
+      {
+        "chart_timestamp": "2024-02-28",
+        "parquet_timestamp": "2024-02-01",
+        "period_key": 202402,
+        "open": 150.0,
+        "high": 155.0,
+        "low": 148.0,
+        "close": 152.0,
+        "volume": 3000,
+        "is_partial": false
+      }
+    ]
+  },
+  {
+    "id": "single_trading_day_week_and_month",
+    "description": "Only one trading day (Monday 2024-04-01)",
+    "reference_date": "2024-04-01",
+    "daily_bars": [
+      { "date": "2024-04-01", "open": 50.0, "high": 52.0, "low": 49.0, "close": 51.0, "volume": 800 }
+    ],
+    "expected_weekly": [
+      {
+        "chart_timestamp": "2024-04-01",
+        "parquet_timestamp": "2024-04-01",
+        "period_key": 202414,
+        "open": 50.0,
+        "high": 52.0,
+        "low": 49.0,
+        "close": 51.0,
+        "volume": 800,
+        "is_partial": true
+      }
+    ],
+    "expected_monthly": [
+      {
+        "chart_timestamp": "2024-04-01",
+        "parquet_timestamp": "2024-04-01",
+        "period_key": 202404,
+        "open": 50.0,
+        "high": 52.0,
+        "low": 49.0,
+        "close": 51.0,
+        "volume": 800,
+        "is_partial": true
+      }
+    ]
+  },
+  {
+    "id": "partial_trailing_week_and_month",
+    "description": "Mid-week and mid-month bar with reference date Wednesday 2024-10-23",
+    "reference_date": "2024-10-23",
+    "daily_bars": [
+      { "date": "2024-10-21", "open": 70.0, "high": 72.0, "low": 69.0, "close": 71.0, "volume": 900 },
+      { "date": "2024-10-22", "open": 71.0, "high": 73.0, "low": 70.0, "close": 72.0, "volume": 950 },
+      { "date": "2024-10-23", "open": 72.0, "high": 74.0, "low": 71.0, "close": 73.0, "volume": 1000 }
+    ],
+    "expected_weekly": [
+      {
+        "chart_timestamp": "2024-10-21",
+        "parquet_timestamp": "2024-10-21",
+        "period_key": 202443,
+        "open": 70.0,
+        "high": 74.0,
+        "low": 69.0,
+        "close": 73.0,
+        "volume": 2850,
+        "is_partial": true
+      }
+    ],
+    "expected_monthly": [
+      {
+        "chart_timestamp": "2024-10-21",
+        "parquet_timestamp": "2024-10-01",
+        "period_key": 202410,
+        "open": 70.0,
+        "high": 74.0,
+        "low": 69.0,
+        "close": 73.0,
+        "volume": 2850,
+        "is_partial": true
+      }
+    ]
+  }
+]

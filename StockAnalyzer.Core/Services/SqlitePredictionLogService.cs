@@ -121,7 +121,7 @@ internal sealed partial class SqlitePredictionLogService : IPredictionLogService
             foreach (var (p, latest) in await SqliteMonitoringStore.ReadLatestForSymbolAsync(connection, transaction, symbol, timeframe, ct, attested).ConfigureAwait(false))
             {
                 ct.ThrowIfCancellationRequested();
-                if (latest.State == PredictionOutcomeState.Unavailable) continue;
+                if (!PredictionMonitoringReducer.HasCanonicalAnchor(p) || latest.State == PredictionOutcomeState.Unavailable) continue;
                 if (PredictionMonitoringReducer.TryMature(p, latest, observations, rowByAnchor) is not { } outcome) continue;
                 await SqliteMonitoringStore.InsertOutcomeAsync(connection, transaction, p.PredictionId, outcome, ct).ConfigureAwait(false);
             }
@@ -205,7 +205,10 @@ internal sealed partial class SqlitePredictionLogService : IPredictionLogService
         foreach (var (model, target) in await SqliteMonitoringStore.ReadGroupsAsync(connection, transaction, ct).ConfigureAwait(false))
             votes.Register(model, target);
         foreach (var (p, latest) in await SqliteMonitoringStore.ReadVotesAsync(connection, transaction, now, ct).ConfigureAwait(false))
+        {
+            if (!PredictionMonitoringReducer.HasCanonicalAnchor(p)) continue;
             votes.Add(p, latest);
+        }
         var priorByGroup = previousRows.ToDictionary(r => (r.Snapshot.ModelId, r.Snapshot.TargetContractHash));
         var snapshots = new List<ModelMonitoringSnapshot>(); var alerts = new List<ModelDecayAlert>();
         foreach (var (key, value) in votes.Groups())

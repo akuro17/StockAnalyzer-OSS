@@ -26,6 +26,7 @@ a dataset from real parquet data and print its shape and class distribution.
 from __future__ import annotations
 
 import argparse
+import calendar
 import dataclasses
 import datetime
 import fractions
@@ -572,6 +573,27 @@ def _corp_action_warning(symbol: str, close: np.ndarray) -> str | None:
     return None
 
 
+def is_partial_period_bar(
+    bar_date: datetime.date | datetime.datetime,
+    timeframe: str,
+    reference_date: datetime.date | datetime.datetime,
+) -> bool:
+    """Return True if bar_date belongs to an incomplete period relative to reference_date."""
+    if isinstance(bar_date, datetime.datetime):
+        bar_date = bar_date.date()
+    if isinstance(reference_date, datetime.datetime):
+        reference_date = reference_date.date()
+    tf = timeframe.strip().lower()
+    if tf == "weekly":
+        period_end = bar_date + datetime.timedelta(days=6 - bar_date.weekday())
+        return period_end > reference_date
+    if tf == "monthly":
+        last_day = calendar.monthrange(bar_date.year, bar_date.month)[1]
+        period_end = datetime.date(bar_date.year, bar_date.month, last_day)
+        return period_end > reference_date
+    return False
+
+
 def load_parquet_dir(
     data_dir: Path | str,
     *,
@@ -581,6 +603,7 @@ def load_parquet_dir(
     start: str | datetime.date | None = None,
     end: str | datetime.date | None = None,
     allow_synthetic: bool = False,
+    include_partial_bar: bool = True,
 ):
     """Load every ``*.parquet`` under *data_dir* into ``{symbol: ndarray(rows, 5)}``.
 
@@ -647,6 +670,30 @@ def load_parquet_dir(
                 frame = frame.filter(date_expr >= start_bound)
             if end_bound is not None:
                 frame = frame.filter(date_expr <= end_bound)
+
+        if not include_partial_bar and directory.name.lower() in ("weekly", "monthly") and has_date and frame.height > 0:
+            daily_path = directory.parent / "Daily" / path.name
+            daily_max = None
+            if daily_path.is_file():
+                daily_df = pl.read_parquet(daily_path, columns=["date", "close"])
+                daily_max = (
+                    daily_df.filter(pl.col("close").is_not_null())
+                    .select(pl.col("date").cast(pl.Date).max())
+                    .item()
+                )
+            if end_bound is not None and (daily_max is None or end_bound < daily_max):
+                reference_date = end_bound
+            else:
+                reference_date = daily_max
+
+            if reference_date is not None:
+                while frame.height > 0:
+                    last_bar_date = frame.get_column("date").cast(pl.Date)[-1]
+                    if is_partial_period_bar(last_bar_date, directory.name.lower(), reference_date):
+                        frame = frame.head(frame.height - 1)
+                    else:
+                        break
+
         if has_date:
             date_col = frame.get_column("date").to_numpy().astype("datetime64[D]")
             msg = _date_gap_warning(path.stem, date_col)

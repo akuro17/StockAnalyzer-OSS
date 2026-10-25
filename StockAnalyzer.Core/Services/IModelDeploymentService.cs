@@ -31,6 +31,17 @@ public interface IModelDeploymentService
     /// </summary>
     Task<EnsembleRegistration> RegisterEnsembleAsync(string ensembleManifestPath, CancellationToken ct = default) =>
         throw new NotSupportedException("This deployment service cannot register an ensemble.");
+
+    /// <summary>
+    /// Atomically promotes an ephemeral or temporary training run's artifacts (the ONNX model, metrics, and any sidecars)
+    /// to the persistent <c>&lt;DataRoot&gt;/TrainingArtifacts/TW/</c> folder (or <paramref name="targetArtifactsDirectory"/> if supplied),
+    /// leaving the temporary source files intact and returning an updated <see cref="TrainingRunResult"/> referencing the promoted paths.
+    /// </summary>
+    Task<TrainingRunResult> PromoteTempRunToTrainingArtifactsAsync(
+        TrainingRunResult tempResult,
+        string? targetArtifactsDirectory = null,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(tempResult);
 }
 
 /// <summary>The generations registered for one ensemble run and the mixture that combines them.</summary>

@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -16,6 +17,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using StockAnalyzer.Avalonia.Common;
 using StockAnalyzer.Avalonia.Services;
 using StockAnalyzer.Avalonia.ViewModels.TickerList;
+using StockAnalyzer.Core.Execution;
 using StockAnalyzer.Core.Interfaces;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Indicators;
@@ -653,6 +655,20 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
     [NotifyPropertyChangedFor(nameof(HasRunActivity))]
     private TrainingRunResult? _lastResult;
 
+    public IReadOnlyList<OnnxArtifactStorageMode> AvailableStorageModes { get; } = Enum.GetValues<OnnxArtifactStorageMode>();
+
+    [ObservableProperty]
+    private OnnxArtifactStorageMode _selectedStorageMode = OnnxArtifactStorageMode.Artifacts;
+
+    [ObservableProperty]
+    private OnnxArtifactStorageMode _lastRunStorageMode = OnnxArtifactStorageMode.Artifacts;
+
+    private TrainingJobConfig? _lastRunConfig;
+    internal TrainingJobConfig? LastRunConfig { get => _lastRunConfig; set => _lastRunConfig = value; }
+    private readonly string _ephemeralSessionId = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(6)).ToLowerInvariant();
+    private FileStream? _ephemeralSessionLock;
+    private readonly HashSet<string> _unpromotedTempRunDirs = new(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>The generations registered from the last ensemble run, awaiting an explicit "use as ensemble".</summary>
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(UseAsEnsembleCommand))]
@@ -1155,7 +1171,7 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
         (SelectedEnsembleMethod != TrainingEnsembleMethod.None, "Enum_TrainingEnsembleMethod_" + SelectedEnsembleMethod));
     public bool HasModeBadges => ModeBadges.Count > 0;
 
-    private TrainingJobConfig? CreateCurrentTrainingConfig()
+    internal TrainingJobConfig? CreateCurrentTrainingConfig(string? ephemeralJobDirectory = null, string? explicitRunId = null)
     {
         if (!TryParseLags(out var lags)) return null;
         double clipSigma = 0;
@@ -1199,10 +1215,9 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
             Hyperparameters = Hyperparameters
                 .Where(h => !string.IsNullOrWhiteSpace(h.Key))
                 .ToDictionary(h => h.Key.Trim(), h => h.Value, StringComparer.OrdinalIgnoreCase),
-            // OutputName intentionally left null: run_training.py's _derive_output_stem already
-            // implements NAME-01 (single symbol -> that symbol; else -> multi-<count>). Reusing
-            // the real watchlist/portfolio name as the scope token (NAME-02) would require
-            // duplicating that stem-assembly logic on the C# side; deferred to a follow-up.
+            ArtifactsDirectory = ephemeralJobDirectory,
+            RunId = explicitRunId,
+            OutputName = explicitRunId is not null ? EphemeralTrainingRequest.OutputStem : null,
         };
     }
 
@@ -1214,7 +1229,20 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
             return;
         }
 
-        var config = CreateCurrentTrainingConfig();
+        var storageMode = SelectedStorageMode;
+        string? tempJobDir = null;
+        string? tempRunId = null;
+        if (storageMode == OnnxArtifactStorageMode.Temp)
+        {
+            EnsureEphemeralSessionLock();
+            CleanupUnpromotedTempRuns();
+            tempRunId = TrainingRunId.New(DateTimeOffset.UtcNow);
+            tempJobDir = Path.Combine(EphemeralSandbox.Root, _ephemeralSessionId, tempRunId);
+            Directory.CreateDirectory(tempJobDir);
+            _unpromotedTempRunDirs.Add(tempJobDir);
+        }
+
+        var config = CreateCurrentTrainingConfig(tempJobDir, tempRunId);
         if (config is null) return;
 
         try
@@ -1226,6 +1254,10 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
             _logger.LogWarning(ex, "TrainingWizardViewModel: training configuration was rejected.");
             StatusMessage = LocalizationManager.Instance[TrainingValidationMessageKey(ex.Message)]
                 ?? "Check the training settings and try again.";
+            if (storageMode == OnnxArtifactStorageMode.Temp && tempJobDir is not null)
+            {
+                try { Directory.Delete(tempJobDir, recursive: true); } catch { /* best-effort cleanup */ }
+            }
             return;
         }
 
@@ -1258,6 +1290,8 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
             _runTerminal = true;
             CancelTrainingCommand.NotifyCanExecuteChanged();
             LastResult = result;
+            _lastRunConfig = config;
+            LastRunStorageMode = storageMode;
             CheckpointManifestPath = result.CheckpointManifestPath ?? CheckpointManifestPath;
             if (config.RequiresFinalizedSource)
                 CurrentStage = result.Success ? "Completed" : "Failed";
@@ -1265,7 +1299,8 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
                 ? (LocalizationManager.Instance["TrainingWizard_Status_Completed"] ?? "Training completed.") + ReachSuffix(ReadEvaluation(result.MetricsArtifactPath))
                 : (result.Message ?? LocalizationManager.Instance["TrainingWizard_Status_Failed"] ?? "Training failed.");
 
-            if (_experimentLogService is not null)
+            // Only record experiment log if in persistent Artifacts mode
+            if (_experimentLogService is not null && storageMode == OnnxArtifactStorageMode.Artifacts)
             {
                 try
                 {
@@ -1285,6 +1320,11 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
                     _logger.LogWarning(logEx, "TrainingWizardViewModel: failed to record experiment log for run {RunId}.", result.RunId);
                 }
             }
+
+            if (!result.Success && storageMode == OnnxArtifactStorageMode.Temp && tempJobDir is not null)
+            {
+                try { Directory.Delete(tempJobDir, recursive: true); } catch { /* best-effort cleanup */ }
+            }
         }
         catch (OperationCanceledException)
         {
@@ -1294,6 +1334,10 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
             if (config.RequiresFinalizedSource)
                 CurrentStage = "Cancelled";
             StatusMessage = LocalizationManager.Instance["TrainingWizard_Status_Cancelled"] ?? "Training cancelled.";
+            if (storageMode == OnnxArtifactStorageMode.Temp && tempJobDir is not null)
+            {
+                try { Directory.Delete(tempJobDir, recursive: true); } catch { /* best-effort cleanup */ }
+            }
         }
         catch (Exception ex)
         {
@@ -1306,6 +1350,10 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
             StatusMessage = string.Format(
                 LocalizationManager.Instance["TrainingWizard_Status_StartError"] ?? "Could not start training: {0}",
                 ex.Message);
+            if (storageMode == OnnxArtifactStorageMode.Temp && tempJobDir is not null)
+            {
+                try { Directory.Delete(tempJobDir, recursive: true); } catch { /* best-effort cleanup */ }
+            }
         }
         finally
         {
@@ -1434,6 +1482,47 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
         IsDeploying = true;
         try
         {
+            if (LastRunStorageMode == OnnxArtifactStorageMode.Temp)
+            {
+                var origTempDir = Path.GetDirectoryName(result.OnnxArtifactPath);
+                var promotedResult = await _modelDeploymentService.PromoteTempRunToTrainingArtifactsAsync(
+                    result, cancellationToken: CancellationToken.None).ConfigureAwait(true);
+                if (!string.IsNullOrEmpty(origTempDir))
+                {
+                    _unpromotedTempRunDirs.Remove(origTempDir);
+                }
+
+                var configToLog = _lastRunConfig ?? CreateCurrentTrainingConfig() ?? new TrainingJobConfig
+                {
+                    RunId = promotedResult.RunId,
+                    Symbols = Array.Empty<string>(),
+                    Architecture = "mlp",
+                    WindowSize = 20,
+                    Horizon = 1,
+                };
+                if (_experimentLogService is not null)
+                {
+                    try
+                    {
+                        await _experimentLogService.RecordAsync(configToLog with
+                        {
+                            RunId = promotedResult.RunId,
+                            SourceProvenance = promotedResult.SourceProvenance,
+                            ArtifactsDirectory = null,
+                        }, promotedResult).ConfigureAwait(true);
+                    }
+                    catch (Exception logEx)
+                    {
+                        _logger.LogWarning(logEx, "TrainingWizardViewModel: failed to record deferred experiment log for run {RunId}.", promotedResult.RunId);
+                    }
+                }
+
+                LastResult = promotedResult;
+                LastRunStorageMode = OnnxArtifactStorageMode.Artifacts;
+                result = promotedResult;
+                onnxPath = promotedResult.OnnxArtifactPath!;
+            }
+
             if (result.EnsembleManifestPath is { } ensemblePath)
             {
                 // Every member becomes its own generation; none is activated and the active ensemble is untouched
@@ -1579,6 +1668,78 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
         catch (ObjectDisposedException)
         {
             // _runCts was already disposed by StartTrainingAsync's finally block; nothing to cancel.
+        }
+        CleanupEphemeralSession();
+    }
+
+    private void EnsureEphemeralSessionLock()
+    {
+        if (_ephemeralSessionLock is not null) return;
+        try
+        {
+            var sessionDir = Path.Combine(EphemeralSandbox.Root, _ephemeralSessionId);
+            Directory.CreateDirectory(sessionDir);
+            var lockPath = Path.Combine(sessionDir, "session.lock");
+            _ephemeralSessionLock = new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "TrainingWizardViewModel: could not acquire session lock for {SessionId}", _ephemeralSessionId);
+        }
+    }
+
+    private void CleanupUnpromotedTempRuns(string? exceptDir = null)
+    {
+        foreach (var dir in _unpromotedTempRunDirs.ToList())
+        {
+            if (exceptDir is not null && string.Equals(dir, exceptDir, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+            try
+            {
+                if (Directory.Exists(dir))
+                {
+                    Directory.Delete(dir, recursive: true);
+                }
+                _unpromotedTempRunDirs.Remove(dir);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogDebug(ex, "TrainingWizardViewModel: could not delete unpromoted temp dir {Dir}", dir);
+            }
+        }
+    }
+
+    private void CleanupEphemeralSession()
+    {
+        CleanupUnpromotedTempRuns();
+        if (_ephemeralSessionLock is not null)
+        {
+            try
+            {
+                _ephemeralSessionLock.Dispose();
+            }
+            catch { }
+            _ephemeralSessionLock = null;
+        }
+
+        var sessionDir = Path.Combine(EphemeralSandbox.Root, _ephemeralSessionId);
+        try
+        {
+            var lockPath = Path.Combine(sessionDir, "session.lock");
+            if (File.Exists(lockPath))
+            {
+                File.Delete(lockPath);
+            }
+            if (Directory.Exists(sessionDir) && !Directory.EnumerateFileSystemEntries(sessionDir).Any())
+            {
+                Directory.Delete(sessionDir);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "TrainingWizardViewModel: could not delete empty session dir {Dir}", sessionDir);
         }
     }
 }

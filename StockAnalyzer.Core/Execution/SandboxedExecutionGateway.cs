@@ -37,6 +37,7 @@ public sealed class SandboxedExecutionGateway : ISandboxedExecutionGateway, IDis
     private readonly TimeSpan _cancelGrace;
     private readonly EphemeralArtifactStore _store;
     private readonly IEphemeralRlRunner? _rlRunner;
+    private readonly EphemeralExecutionPolicy _policy;
     private readonly TrainingJobRegistry _jobs = new();
     private bool _disposed;
 
@@ -46,9 +47,10 @@ public sealed class SandboxedExecutionGateway : ISandboxedExecutionGateway, IDis
         IPythonExecutableResolver resolver,
         SandboxedExecutionSettings settings,
         ILogger<SandboxedExecutionGateway>? logger = null,
-        MarketDataSettings? marketData = null)
+        MarketDataSettings? marketData = null,
+        EphemeralExecutionPolicy? policy = null)
         : this(orchestrator, resolver, settings, logger, EphemeralSandbox.Root, TimeSpan.FromSeconds(ExecutionLimits.CancelGraceSeconds),
-            marketData is null ? null : new EphemeralRlRunner(RlLocalSourceFolders.FromSettings(marketData)))
+            marketData is null ? null : new EphemeralRlRunner(RlLocalSourceFolders.FromSettings(marketData)), policy)
     {
     }
 
@@ -62,7 +64,8 @@ public sealed class SandboxedExecutionGateway : ISandboxedExecutionGateway, IDis
         ILogger<SandboxedExecutionGateway>? logger,
         string sandboxRoot,
         TimeSpan cancelGrace,
-        IEphemeralRlRunner? rlRunner = null)
+        IEphemeralRlRunner? rlRunner = null,
+        EphemeralExecutionPolicy? policy = null)
     {
         ArgumentNullException.ThrowIfNull(orchestrator);
         ArgumentNullException.ThrowIfNull(resolver);
@@ -74,6 +77,7 @@ public sealed class SandboxedExecutionGateway : ISandboxedExecutionGateway, IDis
         _logger = (ILogger?)logger ?? NullLogger.Instance;
         _cancelGrace = cancelGrace;
         _store = new EphemeralArtifactStore(sandboxRoot, settings, _logger);
+        _policy = policy ?? EphemeralExecutionPolicy.McpFixed;
         int cleaned = _store.CleanOrphanSessions(DateTime.UtcNow);
         _logger.LogInformation("Sandboxed execution enabled; {Cleaned} abandoned session(s) removed.", cleaned);
     }
@@ -315,7 +319,7 @@ public sealed class SandboxedExecutionGateway : ISandboxedExecutionGateway, IDis
         }
     }
 
-    private static void ValidateRequest(EphemeralTrainingRequest request)
+    private void ValidateRequest(EphemeralTrainingRequest request)
     {
         if (request.Symbols is null || request.Symbols.Count == 0)
         {
@@ -330,6 +334,44 @@ public sealed class SandboxedExecutionGateway : ISandboxedExecutionGateway, IDis
         if (!TrainingArchitectureCatalog.For(request.Framework).Contains(request.Architecture, StringComparer.Ordinal))
         {
             throw Invalid($"Architecture '{request.Architecture}' is not offered for {request.Framework}.", nameof(request.Architecture));
+        }
+
+        if (_policy.EnforceMcpFixedValues)
+        {
+            if (_policy.RequiredTimeframe is { } reqTimeframe && request.Timeframe != reqTimeframe)
+            {
+                throw Invalid($"Training timeframe {request.Timeframe} is not permitted by execution policy (required: {reqTimeframe}).", nameof(request.Timeframe));
+            }
+
+            if (_policy.RequiredFeatureMode is { } reqFeatureMode && request.FeatureMode != reqFeatureMode)
+            {
+                throw Invalid($"Feature mode {request.FeatureMode} is not permitted by execution policy (required: {reqFeatureMode}).", nameof(request.FeatureMode));
+            }
+
+            if (!_policy.AllowFixedScaler && request.FixedZScore)
+            {
+                throw Invalid("Fixed scaler is not permitted by execution policy.", nameof(request.FixedZScore));
+            }
+
+            if (!_policy.AllowCalibration && request.Calibration)
+            {
+                throw Invalid("Model calibration is not permitted by execution policy.", nameof(request.Calibration));
+            }
+
+            if (!_policy.AllowCpcv && request.Cpcv)
+            {
+                throw Invalid("CPCV is not permitted by execution policy.", nameof(request.Cpcv));
+            }
+
+            if (!_policy.AllowEnsemble && request.EnsembleMethod != TrainingEnsembleMethod.None)
+            {
+                throw Invalid("Ensemble training is not permitted by execution policy.", nameof(request.EnsembleMethod));
+            }
+
+            if (!_policy.AllowNonFreshInitialization && request.InitializationMode != TrainingInitializationMode.Fresh)
+            {
+                throw Invalid("Non-fresh initialization is not permitted by execution policy.", nameof(request.InitializationMode));
+            }
         }
     }
 

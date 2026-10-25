@@ -19,4 +19,13 @@ internal static class MonitoringTimeframes
             default: timeframe = default; return false;
         }
     }
+
+    /// <summary>Maps a monitored timeframe to its corresponding core chart timeframe.</summary>
+    public static TimeFrame ToCoreTimeFrame(TimeframeType timeframe) => timeframe switch
+    {
+        TimeframeType.Daily => TimeFrame.D1,
+        TimeframeType.Weekly => TimeFrame.W1,
+        TimeframeType.Monthly => TimeFrame.MN1,
+        _ => throw new System.ArgumentOutOfRangeException(nameof(timeframe), timeframe, "Unsupported monitoring timeframe."),
+    };
 }

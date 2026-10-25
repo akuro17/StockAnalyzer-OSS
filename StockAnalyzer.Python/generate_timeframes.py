@@ -3,7 +3,6 @@ import sys
 import datetime
 import logging
 import polars as pl
-from indicators.adapter import IndicatorAdapter
 import argparse
 
 # Setup Logging
@@ -25,30 +24,6 @@ def ensure_directories():
         if not os.path.exists(d):
             os.makedirs(d)
             logging.info(f"Created directory: {d}")
-
-def calculate_indicators(df):
-    if df.is_empty():
-        return df
-
-    try:
-        candles = df.to_dicts()
-        adapter = IndicatorAdapter()
-
-        # 1. SMA 20
-        sma_values = adapter.calculate("SimpleMovingAverage", candles, {"period": 20})
-
-        # 2. RSI 14
-        rsi_values = adapter.calculate("RelativeStrengthIndex", candles, {"period": 14})
-
-        res_df = df.with_columns([
-            pl.Series("SMA_20", sma_values).cast(pl.Float32),
-            pl.Series("RSI_14", rsi_values).cast(pl.Float32)
-        ])
-
-        return res_df
-    except Exception as e:
-        logging.error(f"Error calculating indicators: {e}")
-        return df
 
 def _present(values):
     return [v for v in values if v is not None]
@@ -147,9 +122,6 @@ def resample_and_save(symbol):
                 pl.col("volume").sum()
             ])
         )
-
-        df_weekly = calculate_indicators(df_weekly)
-        df_monthly = calculate_indicators(df_monthly)
 
         # Both temp files are complete before either target is touched; a target is replaced in one step (no remove-then-replace gap).
         df_weekly.write_parquet(weekly_tmp, compression="zstd")

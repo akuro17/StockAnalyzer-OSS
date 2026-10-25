@@ -132,7 +132,7 @@ internal static class PredictionMonitoringReducer
             || result.OutputContract is not { Semantic: PredictionOutputSemantic.ClassProbabilities } output
             || output.Timeframe != timeframe
             || result.Label == PredictionResult.UnknownLabel) return null;
-        var captured = inputs.ToArray();
+        var captured = CanonicalizeInputs(inputs, timeframe);
         ValidateRecordInput(clock, captured, symbol);
         return await Task.Run(() =>
         {
@@ -150,6 +150,32 @@ internal static class PredictionMonitoringReducer
             return (MonitoredPrediction?)new MonitoredPrediction(id, modelId, manifest.ModelHash, symbol, timeframe, anchor,
                 output.HorizonBars, meta.NeutralThreshold, result.Label, target, feature, PredictionLogService.SourceRevision(captured), clock.GetUtcNow());
         }, ct).ConfigureAwait(false);
+    }
+
+    internal static CandleData[] CanonicalizeInputs(IReadOnlyList<CandleData> inputs, TimeframeType timeframe)
+    {
+        var coreTf = MonitoringTimeframes.ToCoreTimeFrame(timeframe);
+        if (coreTf == TimeFrame.D1) return inputs.ToArray();
+        var result = new CandleData[inputs.Count];
+        for (int i = 0; i < inputs.Count; i++)
+        {
+            var c = inputs[i];
+            var ts = c.Timestamp.TimeOfDay == TimeSpan.Zero
+                ? TimeFrameAggregator.PeriodStart(c.Timestamp, coreTf)
+                : c.Timestamp;
+            result[i] = c with { Timestamp = ts };
+        }
+        return result;
+    }
+
+    public static bool HasCanonicalAnchor(MonitoredPrediction p)
+    {
+        if (p is null) return false;
+        var coreTf = MonitoringTimeframes.ToCoreTimeFrame(p.Timeframe);
+        if (coreTf == TimeFrame.D1) return true;
+        if (p.AnchorUtc.TimeOfDay != TimeSpan.Zero) return false;
+        var expected = PredictionLogService.Utc(TimeFrameAggregator.PeriodStart(p.AnchorUtc.UtcDateTime, coreTf));
+        return p.AnchorUtc == expected;
     }
 
     /// <summary>The input checks that precede the recording of any forecast: chronological UTC candles, an anchor that is not in the future, a symbol.</summary>

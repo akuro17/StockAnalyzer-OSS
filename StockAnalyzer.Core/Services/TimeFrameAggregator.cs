@@ -30,6 +30,44 @@ public static class TimeFrameAggregator
     }
 
     /// <summary>
+    /// The first calendar day of the period a bar belongs to: the Monday of its ISO week (W1), the 1st of its month (MN1),
+    /// or the bar's own date (D1). Throws NotSupportedException for unsupported intraday timeframes.
+    /// </summary>
+    public static DateTime PeriodStart(DateTime barTimestamp, Models.TimeFrame timeFrame)
+    {
+        DateTime date = barTimestamp.Date;
+        return timeFrame switch
+        {
+            Models.TimeFrame.D1 => date,
+            Models.TimeFrame.W1 => MondayOfIsoWeek(date),
+            Models.TimeFrame.MN1 => new DateTime(date.Year, date.Month, 1, 0, 0, 0, date.Kind),
+            _ => throw new NotSupportedException($"TimeFrame {timeFrame} is not supported."),
+        };
+    }
+
+    /// <summary>
+    /// The integer period grouping key for a bar: YYYYMMDD (D1), YYYYWW (ISO week, W1), or YYYYMM (MN1).
+    /// </summary>
+    public static int GetPeriodKey(DateTime barTimestamp, Models.TimeFrame timeFrame)
+    {
+        DateTime date = barTimestamp.Date;
+        return timeFrame switch
+        {
+            Models.TimeFrame.D1 => date.Year * 10000 + date.Month * 100 + date.Day,
+            Models.TimeFrame.W1 => GetIsoWeekKey(date),
+            Models.TimeFrame.MN1 => date.Year * 100 + date.Month,
+            _ => throw new NotSupportedException($"TimeFrame {timeFrame} is not supported."),
+        };
+    }
+
+    /// <summary>
+    /// True when a W1 or MN1 bar's period ends after the reference date (e.g. the latest stored daily bar).
+    /// </summary>
+    public static bool IsPartialPeriod(DateTime barTimestamp, Models.TimeFrame timeFrame, DateTime referenceDate)
+        => timeFrame is Models.TimeFrame.W1 or Models.TimeFrame.MN1
+            && PeriodEnd(barTimestamp, timeFrame) > referenceDate.Date;
+
+    /// <summary>
     /// Aggregates daily candle data into the specified target timeframe.
     /// Returns the input unchanged if target is Daily or lower.
     /// </summary>
@@ -94,10 +132,36 @@ public static class TimeFrameAggregator
     /// Open = first candle's Open, Close = last candle's Close,
     /// High = max High, Low = min Low, Volume = sum of Volumes.
     /// Timestamp = first candle's Timestamp.
+    /// If duplicate daily candles exist for the same calendar date, the latest candle per date is kept.
     /// </summary>
     private static Models.CandleData AggregateGroup<TKey>(IGrouping<TKey, Models.CandleData> group)
     {
-        var candles = group.OrderBy(c => c.Timestamp).ToList();
+        var rawCandles = group.OrderBy(c => c.Timestamp).ToList();
+        List<Models.CandleData> candles;
+        bool hasDuplicateDates = false;
+        for (int i = 1; i < rawCandles.Count; i++)
+        {
+            if (rawCandles[i].Timestamp.Date == rawCandles[i - 1].Timestamp.Date)
+            {
+                hasDuplicateDates = true;
+                break;
+            }
+        }
+
+        if (hasDuplicateDates)
+        {
+            var deduplicated = new Dictionary<DateTime, Models.CandleData>();
+            foreach (var candle in rawCandles)
+            {
+                deduplicated[candle.Timestamp.Date] = candle;
+            }
+            candles = deduplicated.Values.OrderBy(c => c.Timestamp).ToList();
+        }
+        else
+        {
+            candles = rawCandles;
+        }
+
         return new Models.CandleData(
             Timestamp: candles[0].Timestamp,
             Open: candles[0].Open,
@@ -115,6 +179,12 @@ public static class TimeFrameAggregator
     {
         var (year, week) = IsoWeekOf(date);
         return year * 100 + week;
+    }
+
+    private static DateTime MondayOfIsoWeek(DateTime date)
+    {
+        var (year, week) = IsoWeekOf(date);
+        return DateTime.SpecifyKind(ISOWeek.ToDateTime(year, week, DayOfWeek.Monday), date.Kind);
     }
 
     private static DateTime SundayOfIsoWeek(DateTime date)

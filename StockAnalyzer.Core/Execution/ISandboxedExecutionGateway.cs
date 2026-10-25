@@ -1,6 +1,8 @@
 using System;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using StockAnalyzer.Core.Common;
 
 namespace StockAnalyzer.Core.Execution;
 
@@ -49,11 +51,28 @@ public sealed class ArtifactLease : IDisposable
     private readonly Action _release;
     private int _released;
 
-    internal ArtifactLease(EphemeralArtifact artifact, string onnxPath, Action release)
+    public ArtifactLease(EphemeralArtifact artifact, string onnxPath, Action? release = null)
     {
-        Artifact = artifact;
-        OnnxPath = onnxPath;
-        _release = release;
+        Artifact = artifact ?? throw new ArgumentNullException(nameof(artifact));
+        OnnxPath = onnxPath ?? throw new ArgumentNullException(nameof(onnxPath));
+        _release = release ?? (() => { });
+    }
+
+    /// <summary>Creates a standalone lease directly on an onnx file on disk.</summary>
+    public static ArtifactLease FromPath(string onnxPath, Action? release = null)
+    {
+        var fileInfo = new FileInfo(onnxPath);
+        var hash = ContentHash.OfFile(onnxPath);
+        var artifact = new EphemeralArtifact(
+            ArtifactId: "file-" + Guid.NewGuid().ToString("N"),
+            OnnxFileName: fileInfo.Name,
+            SizeBytes: fileInfo.Length,
+            Sha256: hash,
+            MetricsFileName: Path.ChangeExtension(fileInfo.Name, ".metrics.json"),
+            Loads: true,
+            InputShape: Array.Empty<long>(),
+            OutputShape: Array.Empty<long>());
+        return new ArtifactLease(artifact, onnxPath, release);
     }
 
     public EphemeralArtifact Artifact { get; }

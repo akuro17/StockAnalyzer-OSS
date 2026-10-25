@@ -53,7 +53,7 @@ public partial class ChartViewModel
                     throw new InvalidDataException("Provider finality is not bound to the observation snapshot.");
                 // A separately provided period snapshot must match this accepted chart population.
                 // In particular, daily finality cannot attest locally aggregated weekly/monthly bars.
-                if (!MonitoringAlignment.Matches(bars, observation.Candles)) observation = null;
+                if (!MonitoringAlignment.Matches(bars, observation.Candles, timeframe.ToCoreTimeFrame())) observation = null;
             }
             observation ??= new MonitoringObservation(PredictionLogService.SourceRevision(bars),
                 _timeProvider.GetUtcNow(), bars, Enumerable.Repeat(false, bars.Length).ToImmutableArray());

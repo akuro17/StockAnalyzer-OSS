@@ -845,6 +845,66 @@ public class PredictionService : IPredictionService, IDisposable
         }
     }
 
+    /// <summary>
+    /// Constructs and normalizes feature values for a single window into <paramref name="destination"/>,
+    /// reusing the canonical preprocessing pipeline across both live prediction and ephemeral/sandboxed models.
+    /// </summary>
+    internal static void PopulateWindowFeatures(
+        IReadOnlyList<CandleData> candleList,
+        int startIndex,
+        int runtimeWindow,
+        int featureCount,
+        PredictionFeatureMode mode,
+        FeatureSpec? featureSpec,
+        FixedScaler? scaler,
+        IMLDataProcessor dataProcessor,
+        IIndicatorFactory? indicatorFactory,
+        Span<float> destination)
+    {
+        if (scaler is not null)
+        {
+            var raw = new double[featureCount];
+            if (indicatorFactory is null && (featureSpec?.Channels.Any(c => c.Kind == FeatureChannelKind.Indicator) ?? false))
+            {
+                throw new InvalidOperationException("An indicator factory is required to compute indicator channels.");
+            }
+
+            BuildFixedRawTensor(candleList, startIndex, scaler, featureSpec, indicatorFactory!, raw);
+            scaler.Transform(raw, destination.Slice(0, featureCount));
+        }
+        else switch (mode)
+        {
+            case PredictionFeatureMode.LogReturn:
+                dataProcessor.ComputeLogReturns(candleList, startIndex, runtimeWindow, destination.Slice(0, featureCount));
+                break;
+            case PredictionFeatureMode.LogReturnOhlc:
+                dataProcessor.ComputeLogReturnsOhlc(candleList, startIndex, runtimeWindow, destination.Slice(0, featureCount));
+                break;
+            case PredictionFeatureMode.ZScoreStandardized:
+                dataProcessor.NormalizeZScoreOhlcv(candleList, startIndex, runtimeWindow, destination.Slice(0, featureCount));
+                break;
+            case PredictionFeatureMode.ZScoreOhlcvJoint:
+                dataProcessor.ComputeJointZScoreOhlcv(candleList, startIndex, runtimeWindow, destination.Slice(0, featureCount));
+                break;
+            case PredictionFeatureMode.ComposedFeatures:
+                if (featureSpec is null)
+                {
+                    throw new InvalidOperationException("A FeatureSpec is required for ComposedFeatures mode.");
+                }
+
+                if (indicatorFactory is null && featureSpec.Channels.Any(c => c.Kind == FeatureChannelKind.Indicator))
+                {
+                    throw new InvalidOperationException("An indicator factory is required to compute indicator channels.");
+                }
+
+                BuildComposedTensor(candleList, startIndex, runtimeWindow, featureSpec, indicatorFactory!, destination.Slice(0, featureCount));
+                break;
+            default:
+                dataProcessor.NormalizeCandles(candleList, startIndex, runtimeWindow, destination.Slice(0, featureCount));
+                break;
+        }
+    }
+
     public async Task<PredictionResult> PredictAsync(IEnumerable<CandleData> candles)
     {
         if (_disposed) throw new ObjectDisposedException(nameof(PredictionService));
@@ -902,35 +962,17 @@ public class PredictionService : IPredictionService, IDisposable
                 var buffer = ArrayPool<float>.Shared.Rent(featureCount);
                 try
                 {
-                    if (scaler is not null)
-                    {
-                        var raw = new double[featureCount];
-                        BuildFixedRawTensor(candleList, startIndex, scaler, runtime.FeatureSpec,
-                            _indicatorFactory, raw);
-                        scaler.Transform(raw, buffer.AsSpan(0, featureCount));
-                    }
-                    else switch (runtime.Mode)
-                    {
-                        case PredictionFeatureMode.LogReturn:
-                            _dataProcessor.ComputeLogReturns(candleList, startIndex, runtimeWindow, buffer.AsSpan(0, featureCount));
-                            break;
-                        case PredictionFeatureMode.LogReturnOhlc:
-                            _dataProcessor.ComputeLogReturnsOhlc(candleList, startIndex, runtimeWindow, buffer.AsSpan(0, featureCount));
-                            break;
-                        case PredictionFeatureMode.ZScoreStandardized:
-                            _dataProcessor.NormalizeZScoreOhlcv(candleList, startIndex, runtimeWindow, buffer.AsSpan(0, featureCount));
-                            break;
-                        case PredictionFeatureMode.ZScoreOhlcvJoint:
-                            _dataProcessor.ComputeJointZScoreOhlcv(candleList, startIndex, runtimeWindow, buffer.AsSpan(0, featureCount));
-                            break;
-                        case PredictionFeatureMode.ComposedFeatures:
-                            BuildComposedTensor(candleList, startIndex, runtimeWindow, runtime.FeatureSpec!,
-                                _indicatorFactory, buffer.AsSpan(0, featureCount));
-                            break;
-                        default:
-                            _dataProcessor.NormalizeCandles(candleList, startIndex, runtimeWindow, buffer.AsSpan(0, featureCount));
-                            break;
-                    }
+                    PopulateWindowFeatures(
+                        candleList,
+                        startIndex,
+                        runtimeWindow,
+                        featureCount,
+                        runtime.Mode,
+                        runtime.FeatureSpec,
+                        scaler,
+                        _dataProcessor,
+                        _indicatorFactory,
+                        buffer.AsSpan(0, featureCount));
 
                     return await Task.Run(() => RunInference(runtime, buffer, featureCount), ct);
                 }

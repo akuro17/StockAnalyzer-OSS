@@ -37,7 +37,7 @@ internal static class MonitoredPredictionFactory
             || result.OutputContract is not { Semantic: PredictionOutputSemantic.ClassProbabilities } output
             || output.Timeframe != timeframe
             || result.Label == PredictionResult.UnknownLabel) return null;
-        var captured = inputs.ToArray();
+        var captured = PredictionMonitoringReducer.CanonicalizeInputs(inputs, timeframe);
         PredictionMonitoringReducer.ValidateRecordInput(clock, captured, symbol);
         spec.Validate();
         ct.ThrowIfCancellationRequested();

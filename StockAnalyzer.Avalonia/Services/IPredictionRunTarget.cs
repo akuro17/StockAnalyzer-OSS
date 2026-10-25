@@ -27,4 +27,8 @@ public interface IPredictionRunTarget
 {
     /// <summary>Predicts again on the main chart now, with the active model or ensemble, for the candles it already holds.</summary>
     Task<PredictionRunReport> RunAsync(CancellationToken cancellationToken);
+
+    /// <summary>Runs a temporary sandbox prediction using an arbitrary ephemeral model against the main chart candles.</summary>
+    Task<PredictionRunReport> RunTempModelAsync(string onnxPath, CancellationToken cancellationToken = default) =>
+        Task.FromResult(new PredictionRunReport(PredictionRunOutcome.Unavailable, "", TimeframeType.Daily, null, "Not supported", 0));
 }

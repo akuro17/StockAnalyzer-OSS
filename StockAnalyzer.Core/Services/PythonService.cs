@@ -20,6 +20,7 @@ namespace StockAnalyzer.Core.Services
         private readonly IStockAnalyzerSettings _settings;
         private readonly ResiliencePipeline _resiliencePipeline;
         private readonly ILogger<PythonService> _logger;
+        private readonly ITimeFrameParquetGenerator? _timeframeGenerator;
         private bool _hasPromptedUpdate = false;
 
         private string PythonExecutableName => System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows) ? "python.exe" : "python3";
@@ -41,10 +42,14 @@ namespace StockAnalyzer.Core.Services
         public System.Action<System.IProgress<string>>? SetupProgressStarted { get; set; }
         public System.Action? SetupProgressFinished { get; set; }
 
-        public PythonService(IStockAnalyzerSettings settings, ILogger<PythonService>? logger = null)
+        public PythonService(
+            IStockAnalyzerSettings settings,
+            ILogger<PythonService>? logger = null,
+            ITimeFrameParquetGenerator? timeframeGenerator = null)
         {
             _settings = settings;
             _logger = logger ?? NullLogger<PythonService>.Instance;
+            _timeframeGenerator = timeframeGenerator;
             _resiliencePipeline = BuildResiliencePipeline();
         }
 
@@ -456,6 +461,24 @@ namespace StockAnalyzer.Core.Services
 
                     LogSyncActivity($"Process exited with code {process.ExitCode}");
 
+                    if (_timeframeGenerator != null)
+                    {
+                        try
+                        {
+                            LogSyncActivity($"Running TimeFrameParquetGenerator for {(string.IsNullOrEmpty(symbol) ? "all symbols" : symbol)}...");
+                            progress?.Report(90);
+                            int failed = await _timeframeGenerator.GenerateAsync(symbol, linkedToken).ConfigureAwait(false);
+                            if (failed > 0)
+                            {
+                                LogSyncActivity($"TimeFrameParquetGenerator reported {failed} failure(s).", LogLevel.Warning);
+                            }
+                        }
+                        catch (Exception tfEx)
+                        {
+                            LogSyncActivity($"TimeFrameParquetGenerator threw an exception: {tfEx.Message}", LogLevel.Error);
+                        }
+                    }
+
                     if (process.ExitCode != 0)
                     {
                         var errorLogs = combinedOutput.ToString();
@@ -463,6 +486,7 @@ namespace StockAnalyzer.Core.Services
                     }
 
                     LogSyncActivity("Pipeline task completed Successfully.");
+                    progress?.Report(100);
                 }
                 catch (Exception ex)
                 {
@@ -647,6 +671,24 @@ namespace StockAnalyzer.Core.Services
 
                     LogSyncActivity($"Process exited with code {process.ExitCode}");
 
+                    if (_timeframeGenerator != null)
+                    {
+                        try
+                        {
+                            LogSyncActivity($"Running TimeFrameParquetGenerator for {(string.IsNullOrEmpty(symbol) ? "all symbols" : symbol)}...");
+                            progress?.Report(90);
+                            int failed = await _timeframeGenerator.GenerateAsync(symbol, linkedToken).ConfigureAwait(false);
+                            if (failed > 0)
+                            {
+                                LogSyncActivity($"TimeFrameParquetGenerator reported {failed} failure(s).", LogLevel.Warning);
+                            }
+                        }
+                        catch (Exception tfEx)
+                        {
+                            LogSyncActivity($"TimeFrameParquetGenerator threw an exception: {tfEx.Message}", LogLevel.Error);
+                        }
+                    }
+
                     if (process.ExitCode != 0)
                     {
                         var errorLogs = combinedOutput.ToString();
@@ -654,6 +696,7 @@ namespace StockAnalyzer.Core.Services
                     }
 
                     LogSyncActivity("Pipeline task completed Successfully.");
+                    progress?.Report(100);
                 }
                 catch (Exception ex)
                 {

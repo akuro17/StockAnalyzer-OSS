@@ -11,4 +11,7 @@ public sealed class MainChartPredictionRunTarget(IServiceProvider services) : IP
 {
     public Task<PredictionRunReport> RunAsync(CancellationToken cancellationToken)
         => services.GetRequiredService<MainWindowViewModel>().ChartViewModel.RunPredictionNowAsync(cancellationToken);
+
+    public Task<PredictionRunReport> RunTempModelAsync(string onnxPath, CancellationToken cancellationToken = default)
+        => services.GetRequiredService<MainWindowViewModel>().ChartViewModel.RunTempModelNowAsync(onnxPath, cancellationToken);
 }

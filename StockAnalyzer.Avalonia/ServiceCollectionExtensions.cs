@@ -154,6 +154,9 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IWindowManagementService, WindowManagementService>();
         services.AddSingleton<IDetachedTabManager, DetachedTabManager>();
         
+        // TimeFrame Parquet Generator
+        services.AddSingleton<Core.Services.ITimeFrameParquetGenerator, Core.Services.TimeFrameParquetGenerator>();
+
         // Screener
         services.AddSingleton<Core.Services.IPythonService, Core.Services.PythonService>(); // SmartScreener dependency
         services.AddSingleton<Core.Services.IPythonEnvironmentInspector, Core.Services.PythonEnvironmentInspector>(); // About page environment probe (read-only, never triggers setup)

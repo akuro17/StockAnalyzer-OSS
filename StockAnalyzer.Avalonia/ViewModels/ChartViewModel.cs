@@ -48,6 +48,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
     private readonly Core.Services.MarketStructureService? _marketStructureService; // Used for DTW projection
     private readonly Core.Services.IDispatcherService _dispatcherService;
     private readonly Core.Services.IPredictionService? _predictionService;
+    private readonly Core.Models.Indicators.IIndicatorFactory? _indicatorFactory;
     private int _predictionRequestId;
     private readonly Core.Services.IPythonService? _pythonService;
     private readonly Core.Services.IMarketDataProvider? _marketDataProvider;
@@ -1800,7 +1801,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
 
 
 
-    public ChartViewModel(IDataService dataService, IDialogService dialogService, IChartStrategyFactory strategyFactory, IStockAnalyzerSettings settings, ITimeFrameManager timeFrameManager, Core.Services.MarketStructureService marketStructureService, Core.Theme.IThemeManager themeManager, Core.Services.IChartSettingsManager chartSettingsManager, Core.Services.IDispatcherService dispatcherService, Core.Services.IPredictionService? predictionService, Core.Services.Analysis.IAnalysisPipelineService analysisPipelineService, Core.Services.IMarketDataProvider? marketDataProvider = null, Core.Services.IPythonService? pythonService = null, Core.Services.IComparisonDataAligner? comparisonDataAligner = null, IMessenger? messenger = null, Services.Drawing.IChartDrawingRepository? drawingRepository = null, Microsoft.Extensions.Logging.ILogger<ChartViewModel>? logger = null, ISpiralAnalysisDataSource? spiralAnalysisDataSource = null, ISeasonalityChartDataSource? seasonalityChartDataSource = null, Services.Drawing.DrawingDocumentSessionStore? sessionStore = null, Core.Services.IModelAnalysisService? modelAnalysisService = null, Core.Services.IPredictionLogService? predictionLog = null, TimeProvider? timeProvider = null, Services.IMonitoringWorkOwner? monitoringWork = null, Services.IAttestedMonitoringRefresher? attestedMonitoring = null, Core.Services.IAttentionService? attentionService = null, Core.Services.IEnsembleAttentionService? ensembleAttentionService = null, Core.Services.IEnsembleSettingsManager? ensembleSettings = null)
+    public ChartViewModel(IDataService dataService, IDialogService dialogService, IChartStrategyFactory strategyFactory, IStockAnalyzerSettings settings, ITimeFrameManager timeFrameManager, Core.Services.MarketStructureService marketStructureService, Core.Theme.IThemeManager themeManager, Core.Services.IChartSettingsManager chartSettingsManager, Core.Services.IDispatcherService dispatcherService, Core.Services.IPredictionService? predictionService, Core.Services.Analysis.IAnalysisPipelineService analysisPipelineService, Core.Services.IMarketDataProvider? marketDataProvider = null, Core.Services.IPythonService? pythonService = null, Core.Services.IComparisonDataAligner? comparisonDataAligner = null, IMessenger? messenger = null, Services.Drawing.IChartDrawingRepository? drawingRepository = null, Microsoft.Extensions.Logging.ILogger<ChartViewModel>? logger = null, ISpiralAnalysisDataSource? spiralAnalysisDataSource = null, ISeasonalityChartDataSource? seasonalityChartDataSource = null, Services.Drawing.DrawingDocumentSessionStore? sessionStore = null, Core.Services.IModelAnalysisService? modelAnalysisService = null, Core.Services.IPredictionLogService? predictionLog = null, TimeProvider? timeProvider = null, Services.IMonitoringWorkOwner? monitoringWork = null, Services.IAttestedMonitoringRefresher? attestedMonitoring = null, Core.Services.IAttentionService? attentionService = null, Core.Services.IEnsembleAttentionService? ensembleAttentionService = null, Core.Services.IEnsembleSettingsManager? ensembleSettings = null, Core.Models.Indicators.IIndicatorFactory? indicatorFactory = null)
     {
         _attentionService = attentionService;
         _ensembleAttentionService = ensembleAttentionService;
@@ -1826,6 +1827,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
         _chartSettingsManager = chartSettingsManager;
         _dispatcherService = dispatcherService;
         _predictionService = predictionService;
+        _indicatorFactory = indicatorFactory ?? App.Current?.Services?.GetService<Core.Models.Indicators.IIndicatorFactory>();
         _pythonService = pythonService;
         _analysisPipelineService = analysisPipelineService;
         _comparisonDataAligner = comparisonDataAligner;
@@ -2138,6 +2140,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
         _themeManager = new Core.Theme.ThemeManager();
         _chartSettingsManager = new Services.MockChartSettingsManager();
         _analysisPipelineService = new Core.Services.Analysis.AnalysisPipelineService();
+        _indicatorFactory = App.Current?.Services?.GetService<Core.Models.Indicators.IIndicatorFactory>();
 
         _settings = new Services.MockStockAnalyzerSettings();
         _symbol = _settings.DefaultSymbol;

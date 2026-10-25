@@ -57,4 +57,44 @@ public sealed class MonitoringAlignmentTests
         var chart = source.Select(c => c with { Timestamp = DateTime.SpecifyKind(c.Timestamp, DateTimeKind.Unspecified) }).ToList();
         Assert.True(MonitoringAlignment.Matches(chart, source));
     }
+
+    [Fact]
+    public void WeeklyChartBar_WithTuesdayTimestamp_MatchesMondaySourceBar_WhenTimeFrameW1Given()
+    {
+        // Monday 2024-01-15 was a holiday; chart has Tuesday 2024-01-16; parquet source has Monday 2024-01-15.
+        var chart = new List<CandleData>
+        {
+            new(new DateTime(2024, 1, 16), 100m, 107m, 99m, 106m, 4600L)
+        };
+        var source = new List<CandleData>
+        {
+            new(new DateTime(2024, 1, 15), 100m, 107m, 99m, 106m, 4600L)
+        };
+
+        // When matched as default D1, dates differ (16 vs 15) -> false
+        Assert.False(MonitoringAlignment.Matches(chart, source, TimeFrame.D1));
+
+        // When matched as W1, normalized to Monday PeriodStart -> true
+        Assert.True(MonitoringAlignment.Matches(chart, source, TimeFrame.W1));
+    }
+
+    [Fact]
+    public void MonthlyChartBar_WithWeekendFirstHoliday_MatchesFirstOfMonthSourceBar_WhenTimeFrameMN1Given()
+    {
+        // June 1, 2024 was Saturday; chart has Monday 2024-06-03; parquet source has June 1 (2024-06-01).
+        var chart = new List<CandleData>
+        {
+            new(new DateTime(2024, 6, 3), 92m, 98m, 91m, 97m, 1300L)
+        };
+        var source = new List<CandleData>
+        {
+            new(new DateTime(2024, 6, 1), 92m, 98m, 91m, 97m, 1300L)
+        };
+
+        // When matched as default D1, dates differ (June 3 vs June 1) -> false
+        Assert.False(MonitoringAlignment.Matches(chart, source, TimeFrame.D1));
+
+        // When matched as MN1, normalized to 1st of month PeriodStart -> true
+        Assert.True(MonitoringAlignment.Matches(chart, source, TimeFrame.MN1));
+    }
 }

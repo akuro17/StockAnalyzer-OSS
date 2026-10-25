@@ -198,6 +198,31 @@ public sealed class EphemeralPredictionModelTests
     }
 
     [Fact]
+    public void Open_WithGuiEquivalentPolicy_RunsFixedScalerAndJointMetaModels()
+    {
+        // 1. JointMeta (ZScoreOhlcvJoint feature mode)
+        using (ArtifactLease leaseJoint = Lease(Fixture("trend_predictor_jointmeta.onnx")))
+        {
+            using EphemeralPredictionModel modelJoint = EphemeralPredictionModel.Open(
+                leaseJoint, new MLDataProcessor(), EphemeralExecutionPolicy.GuiEquivalent);
+            Assert.Equal("ZScoreOhlcvJoint", modelJoint.Contract.FeatureMode);
+            var predsJoint = modelJoint.PredictLast(History(30), 2);
+            Assert.Equal(2, predsJoint.Count);
+            Assert.NotNull(predsJoint[0].PredictedClass);
+        }
+
+        // 2. Fixed scaler model
+        using (ArtifactLease leaseScaler = Lease(Fixture("trend_predictor_fixed_scaler.onnx")))
+        {
+            using EphemeralPredictionModel modelScaler = EphemeralPredictionModel.Open(
+                leaseScaler, new MLDataProcessor(), EphemeralExecutionPolicy.GuiEquivalent);
+            var predsScaler = modelScaler.PredictLast(History(30), 2);
+            Assert.Equal(2, predsScaler.Count);
+            Assert.NotNull(predsScaler[0].PredictedClass);
+        }
+    }
+
+    [Fact]
     public void Open_AFailedOpenReleasesTheModelFile()
     {
         string path = Path.Combine(Path.GetTempPath(), "released-" + Guid.NewGuid().ToString("N") + ".onnx");

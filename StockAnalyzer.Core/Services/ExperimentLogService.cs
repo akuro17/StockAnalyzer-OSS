@@ -17,11 +17,50 @@ namespace StockAnalyzer.Core.Services;
 /// </summary>
 public sealed class ExperimentLogService : IExperimentLogService
 {
+    private static readonly SemaphoreSlim WriteLock = new(1, 1);
     private readonly ILogger<ExperimentLogService> _logger;
 
     public ExperimentLogService(ILogger<ExperimentLogService>? logger = null)
     {
         _logger = logger ?? NullLogger<ExperimentLogService>.Instance;
+    }
+
+    /// <summary>
+    /// Thread-safe append method for experiment logs with retry on transient file sharing violations.
+    /// </summary>
+    public static async Task AppendAsync(string filePath, string content, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
+        await WriteLock.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            var dir = Path.GetDirectoryName(Path.GetFullPath(filePath));
+            if (!string.IsNullOrEmpty(dir))
+            {
+                Directory.CreateDirectory(dir);
+            }
+
+            const int maxRetries = 3;
+            for (int attempt = 1; attempt <= maxRetries; attempt++)
+            {
+                try
+                {
+                    await using var stream = new FileStream(filePath, FileMode.Append, FileAccess.Write, FileShare.Read);
+                    await using var writer = new StreamWriter(stream, System.Text.Encoding.UTF8);
+                    await writer.WriteAsync(content.AsMemory(), ct).ConfigureAwait(false);
+                    await writer.FlushAsync(ct).ConfigureAwait(false);
+                    return;
+                }
+                catch (IOException) when (attempt < maxRetries)
+                {
+                    await Task.Delay(50 * attempt, ct).ConfigureAwait(false);
+                }
+            }
+        }
+        finally
+        {
+            WriteLock.Release();
+        }
     }
 
     public async Task RecordAsync(TrainingJobConfig config, TrainingRunResult result, CancellationToken ct = default)
@@ -48,10 +87,18 @@ public sealed class ExperimentLogService : IExperimentLogService
         // AtomicJsonFile.SaveAsync has no CancellationToken parameter; check ct explicitly around
         // each write instead of threading it through, to avoid widening that shared helper's
         // signature for this one caller.
-        ct.ThrowIfCancellationRequested();
-        await AtomicJsonFile.SaveAsync(configPath, config, TrainingConfigJson.Options).ConfigureAwait(false);
-        ct.ThrowIfCancellationRequested();
-        await AtomicJsonFile.SaveAsync(metricsPath, result, TrainingConfigJson.Options).ConfigureAwait(false);
+        await WriteLock.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            ct.ThrowIfCancellationRequested();
+            await AtomicJsonFile.SaveAsync(configPath, config, TrainingConfigJson.Options).ConfigureAwait(false);
+            ct.ThrowIfCancellationRequested();
+            await AtomicJsonFile.SaveAsync(metricsPath, result, TrainingConfigJson.Options).ConfigureAwait(false);
+        }
+        finally
+        {
+            WriteLock.Release();
+        }
 
         _logger.LogInformation("ExperimentLogService: recorded run {RunId} under {RunDir}.", result.RunId, runDir);
     }

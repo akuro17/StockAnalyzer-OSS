@@ -8,6 +8,7 @@ using SkiaSharp;
 using StockAnalyzer.Avalonia.Common;
 using StockAnalyzer.Core.Analysis;
 using StockAnalyzer.Core.Models;
+using StockAnalyzer.Core.Services;
 
 namespace StockAnalyzer.Avalonia.Drawing;
 
@@ -198,13 +199,13 @@ public class TimeAtPriceObject : IChartObject, IDisposable, IDrawingCalculatedVa
             while (currentIdx < totalCandles)
             {
                 var firstCandle = candleList[currentIdx];
-                int weekKey = ISOWeek.GetYear(firstCandle.Timestamp) * 100 + ISOWeek.GetWeekOfYear(firstCandle.Timestamp);
+                int weekKey = TimeFrameAggregator.GetPeriodKey(firstCandle.Timestamp, TimeFrame.W1);
 
                 int endIdx = currentIdx;
                 while (endIdx < totalCandles)
                 {
                     var c = candleList[endIdx];
-                    int k = ISOWeek.GetYear(c.Timestamp) * 100 + ISOWeek.GetWeekOfYear(c.Timestamp);
+                    int k = TimeFrameAggregator.GetPeriodKey(c.Timestamp, TimeFrame.W1);
                     if (k != weekKey) break;
                     endIdx++;
                 }

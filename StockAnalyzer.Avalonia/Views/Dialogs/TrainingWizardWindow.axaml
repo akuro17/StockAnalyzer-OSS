@@ -276,7 +276,7 @@
                                         </ComboBox>
                                     </StackPanel>
 
-                                    <!-- Row 1: Architecture -->
+                                    <!-- Row 1: Architecture & Storage Mode -->
                                     <StackPanel Grid.Row="1" Grid.Column="0" Spacing="6" IsEnabled="{Binding HasArchitectureChoice}">
                                         <TextBlock Text="{l:Localize TrainingWizard_Architecture}" Classes="fieldLabel"/>
                                         <ComboBox ItemsSource="{Binding AvailableArchitectures}"
@@ -284,6 +284,20 @@
                                                   HorizontalAlignment="Stretch" Height="36"
                                                   Background="{DynamicResource Brush.Background.Tertiary}"
                                                   BorderBrush="{DynamicResource Brush.Border.Primary}"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Row="1" Grid.Column="1" Spacing="6">
+                                        <TextBlock Text="{l:Localize TrainingWizard_StorageMode}" Classes="fieldLabel"/>
+                                        <ComboBox ItemsSource="{Binding AvailableStorageModes}"
+                                                  SelectedItem="{Binding SelectedStorageMode, Mode=TwoWay}"
+                                                  HorizontalAlignment="Stretch" Height="36"
+                                                  Background="{DynamicResource Brush.Background.Tertiary}"
+                                                  BorderBrush="{DynamicResource Brush.Border.Primary}">
+                                            <ComboBox.ItemTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock Text="{Binding Converter={StaticResource EnumToLocalizedDisplayNameConverter}}"/>
+                                                </DataTemplate>
+                                            </ComboBox.ItemTemplate>
+                                        </ComboBox>
                                     </StackPanel>
                                 </Grid>
                             </StackPanel>

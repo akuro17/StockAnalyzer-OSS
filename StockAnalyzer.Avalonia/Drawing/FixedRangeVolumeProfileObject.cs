@@ -8,6 +8,7 @@ using StockAnalyzer.Avalonia.Common;
 using StockAnalyzer.Core.Models;
 using System.Globalization;
 using StockAnalyzer.Core.Analysis;
+using StockAnalyzer.Core.Services;
 
 namespace StockAnalyzer.Avalonia.Drawing;
 
@@ -199,13 +200,13 @@ public class FixedRangeVolumeProfileObject : IChartObject, IDisposable, IDrawing
             while (currentIdx < totalCandles)
             {
                 var firstCandle = candleList[currentIdx];
-                int weekKey = ISOWeek.GetYear(firstCandle.Timestamp) * 100 + ISOWeek.GetWeekOfYear(firstCandle.Timestamp);
+                int weekKey = TimeFrameAggregator.GetPeriodKey(firstCandle.Timestamp, TimeFrame.W1);
 
                 int endIdx = currentIdx;
                 while (endIdx < totalCandles)
                 {
                     var c = candleList[endIdx];
-                    int k = ISOWeek.GetYear(c.Timestamp) * 100 + ISOWeek.GetWeekOfYear(c.Timestamp);
+                    int k = TimeFrameAggregator.GetPeriodKey(c.Timestamp, TimeFrame.W1);
                     if (k != weekKey) break;
                     endIdx++;
                 }

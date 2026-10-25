@@ -71,6 +71,11 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
         [ObservableProperty]
         private ModelGenerationSummary? _selectedGeneration;
 
+        [ObservableProperty]
+        private OnnxArtifactStorageMode _selectedArtifactSourceMode = OnnxArtifactStorageMode.Artifacts;
+
+        public IReadOnlyList<OnnxArtifactStorageMode> AvailableArtifactSourceModes { get; } = Enum.GetValues<OnnxArtifactStorageMode>();
+
         /// <param name="IsReplacement">The candidate cannot be compared with the active generation: the activation deactivates the active one and activates the candidate.</param>
         private sealed record PendingActivation(string ModelId, string? ExpectedActiveId, bool IsReplacement = false);
         private long _generationSelectionRevision;
@@ -294,10 +299,14 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
         private async Task AddGenerationFromFileAsync()
         {
             if (_modelRegistry is null || _dialogService is null || IsBusy) return;
+            var initialDir = SelectedArtifactSourceMode == OnnxArtifactStorageMode.Temp
+                ? StockAnalyzer.Core.Execution.EphemeralSandbox.Root
+                : StockAnalyzer.Core.Common.PathDiscovery.ResolveTrainingWizardArtifactsDirectory();
+            if (!Directory.Exists(initialDir)) Directory.CreateDirectory(initialDir);
             var path = await _dialogService.ShowOpenFileDialogAsync(
                 LocalizationManager.Instance["Settings_ModelGenerations_AddFile_Title"],
                 new[] { TrainingEnsembleArtifactLayout.ModelExtension },
-                StockAnalyzer.Core.Common.PathDiscovery.ResolveTrainingWizardArtifactsDirectory());   // where the Training Wizard puts its models
+                initialDir);
             if (string.IsNullOrEmpty(path)) return;
 
             IsBusy = true;

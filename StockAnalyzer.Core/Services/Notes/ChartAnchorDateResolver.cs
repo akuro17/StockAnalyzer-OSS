@@ -68,18 +68,8 @@ public static class ChartAnchorDateResolver
 
     private static bool IsWithinPeriod(DateTime candleTimestamp, DateTime anchorDate, TimeFrame timeframe) => timeframe switch
     {
-        TimeFrame.W1 => StartOfIsoWeek(candleTimestamp.Date) == StartOfIsoWeek(anchorDate.Date),
-        TimeFrame.MN1 => candleTimestamp.Year == anchorDate.Year && candleTimestamp.Month == anchorDate.Month,
+        TimeFrame.W1 => TimeFrameAggregator.PeriodStart(candleTimestamp.Date, TimeFrame.W1) == TimeFrameAggregator.PeriodStart(anchorDate.Date, TimeFrame.W1),
+        TimeFrame.MN1 => TimeFrameAggregator.PeriodStart(candleTimestamp.Date, TimeFrame.MN1) == TimeFrameAggregator.PeriodStart(anchorDate.Date, TimeFrame.MN1),
         _ => candleTimestamp.Date == anchorDate.Date,
     };
-
-    /// <summary>
-    /// Monday of the ISO 8601 week containing <paramref name="date"/>, matching how
-    /// <see cref="TimeFrameAggregator.AggregateDailyToWeekly"/> groups trading days into weekly candles.
-    /// </summary>
-    private static DateTime StartOfIsoWeek(DateTime date)
-    {
-        var daysSinceMonday = ((int)date.DayOfWeek - (int)DayOfWeek.Monday + 7) % 7;
-        return date.AddDays(-daysSinceMonday);
-    }
 }

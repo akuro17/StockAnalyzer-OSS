@@ -18,6 +18,16 @@ public interface IDataService
     Task<IReadOnlyList<CandleData>> LoadCandlesAsync(string symbol, TimeFrame timeFrame, int count = 100);
 
     /// <summary>
+    /// Loads candle data for the specified symbol and timeframe, optionally filtering out uncompleted (partial) trailing period bars.
+    /// </summary>
+    Task<IReadOnlyList<CandleData>> LoadCandlesAsync(
+        string symbol,
+        TimeFrame timeFrame,
+        int count,
+        bool includePartialBar,
+        CancellationToken cancellationToken = default) => LoadCandlesAsync(symbol, timeFrame, count);
+
+    /// <summary>
     /// Loads a complete provider-owned observation snapshot, with finality bound to its exact rows.
     /// True means the provider explicitly attests period closure; dates, file age and later rows
     /// are not evidence. Return null when this source has no observation/finality capability.

@@ -105,6 +105,244 @@ public sealed class ModelDeploymentService : IModelDeploymentService
         return finalOnnxPath;
     }
 
+    public async Task<TrainingRunResult> PromoteTempRunToTrainingArtifactsAsync(
+        TrainingRunResult tempResult,
+        string? targetArtifactsDirectory = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(tempResult);
+        if (!tempResult.Success || string.IsNullOrWhiteSpace(tempResult.OnnxArtifactPath))
+        {
+            throw new InvalidOperationException("Cannot promote an unsuccessful or empty training run result.");
+        }
+
+        if (!File.Exists(tempResult.OnnxArtifactPath))
+        {
+            throw new FileNotFoundException("Source ONNX file not found.", tempResult.OnnxArtifactPath);
+        }
+
+        var defaultArtifactsDir = PathDiscovery.ResolveTrainingWizardArtifactsDirectory();
+        string destDir;
+        if (string.IsNullOrWhiteSpace(targetArtifactsDirectory))
+        {
+            destDir = !string.IsNullOrWhiteSpace(tempResult.RunId)
+                ? Path.Combine(defaultArtifactsDir, tempResult.RunId)
+                : defaultArtifactsDir;
+        }
+        else
+        {
+            destDir = targetArtifactsDirectory;
+        }
+        Directory.CreateDirectory(destDir);
+
+        var sourceOnnxPath = Path.GetFullPath(tempResult.OnnxArtifactPath);
+        var sourceDir = Path.GetDirectoryName(sourceOnnxPath)!;
+        var fullDestDir = Path.GetFullPath(destDir);
+
+        if (string.Equals(sourceDir, fullDestDir, StringComparison.OrdinalIgnoreCase))
+        {
+            return tempResult;
+        }
+
+        var sourceFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        sourceFiles.Add(sourceOnnxPath);
+
+        if (!string.IsNullOrWhiteSpace(tempResult.MetricsArtifactPath) && File.Exists(tempResult.MetricsArtifactPath))
+        {
+            sourceFiles.Add(Path.GetFullPath(tempResult.MetricsArtifactPath));
+        }
+
+        if (!string.IsNullOrWhiteSpace(tempResult.CheckpointManifestPath) && File.Exists(tempResult.CheckpointManifestPath))
+        {
+            sourceFiles.Add(Path.GetFullPath(tempResult.CheckpointManifestPath));
+        }
+
+        if (!string.IsNullOrWhiteSpace(tempResult.EnsembleManifestPath) && File.Exists(tempResult.EnsembleManifestPath))
+        {
+            sourceFiles.Add(Path.GetFullPath(tempResult.EnsembleManifestPath));
+            try
+            {
+                var manifest = TrainingEnsembleManifest.Load(tempResult.EnsembleManifestPath);
+                foreach (var member in manifest.Members)
+                {
+                    if (File.Exists(member.OnnxPath)) sourceFiles.Add(Path.GetFullPath(member.OnnxPath));
+                    if (File.Exists(member.MetricsPath)) sourceFiles.Add(Path.GetFullPath(member.MetricsPath));
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Could not parse ensemble manifest during promotion; copying direct files only.");
+            }
+        }
+
+        var stems = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var file in sourceFiles.ToList())
+        {
+            if (file.EndsWith(".onnx", StringComparison.OrdinalIgnoreCase))
+            {
+                stems.Add(Path.GetFileNameWithoutExtension(file));
+                stems.Add(Path.GetFileName(file));
+            }
+        }
+
+        var allowedSuffixes = new[]
+        {
+            ".onnx",
+            ".metrics.json",
+            ".scaler.json",
+            ".analysis.json",
+            ".calibration.json",
+            ".explain.json",
+            ".attention.json",
+            ".ensemble.json",
+            ".checkpoints.json"
+        };
+
+        var fileNamesInDir = Directory.GetFiles(sourceDir);
+        foreach (var file in fileNamesInDir)
+        {
+            var fileName = Path.GetFileName(file);
+            if (fileName.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase) ||
+                fileName.Contains(".tmp_", StringComparison.OrdinalIgnoreCase) ||
+                fileName.Contains(".bak_", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            bool matchesStem = stems.Any(s => fileName.StartsWith(s + ".", StringComparison.OrdinalIgnoreCase) || string.Equals(fileName, s, StringComparison.OrdinalIgnoreCase));
+            bool hasAllowedSuffix = allowedSuffixes.Any(suffix => fileName.EndsWith(suffix, StringComparison.OrdinalIgnoreCase));
+            if (matchesStem && hasAllowedSuffix)
+            {
+                sourceFiles.Add(Path.GetFullPath(file));
+            }
+        }
+
+        var copyPlan = new List<(string Source, string Dest, string Temp, string Backup, bool ExistedOriginally)>();
+        foreach (var src in sourceFiles)
+        {
+            var relName = Path.GetFileName(src);
+            var destPath = Path.Combine(fullDestDir, relName);
+            var id = Guid.NewGuid().ToString("N");
+            var tempPath = destPath + ".tmp_" + id;
+            var backupPath = destPath + ".bak_" + id;
+            bool existed = File.Exists(destPath);
+            copyPlan.Add((src, destPath, tempPath, backupPath, existed));
+        }
+
+        var committed = new List<(string Dest, string Backup, bool ExistedOriginally)>();
+        try
+        {
+            // Phase 1: Copy all source files to .tmp_<guid>
+            foreach (var plan in copyPlan)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                await using (var source = File.OpenRead(plan.Source))
+                await using (var destination = File.Create(plan.Temp))
+                {
+                    await source.CopyToAsync(destination, cancellationToken).ConfigureAwait(false);
+                }
+            }
+
+            // Phase 2: Move existing files to .bak_<guid>, then move .tmp to destination
+            foreach (var plan in copyPlan)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (plan.ExistedOriginally)
+                {
+                    File.Move(plan.Dest, plan.Backup, overwrite: true);
+                }
+
+                File.Move(plan.Temp, plan.Dest, overwrite: true);
+                committed.Add((plan.Dest, plan.Backup, plan.ExistedOriginally));
+            }
+
+            // Success: Clean up all backups
+            foreach (var plan in copyPlan)
+            {
+                if (plan.ExistedOriginally && File.Exists(plan.Backup))
+                {
+                    try { File.Delete(plan.Backup); }
+                    catch (IOException) { }
+                    catch (UnauthorizedAccessException) { }
+                }
+            }
+        }
+        catch
+        {
+            // Failure: Clean up any remaining .tmp files and restore any committed backups
+            foreach (var plan in copyPlan)
+            {
+                if (File.Exists(plan.Temp))
+                {
+                    try { File.Delete(plan.Temp); }
+                    catch (IOException) { }
+                    catch (UnauthorizedAccessException) { }
+                }
+            }
+
+            foreach (var item in committed)
+            {
+                if (item.ExistedOriginally)
+                {
+                    try
+                    {
+                        if (File.Exists(item.Backup))
+                        {
+                            File.Move(item.Backup, item.Dest, overwrite: true);
+                        }
+                    }
+                    catch (IOException) { }
+                    catch (UnauthorizedAccessException) { }
+                }
+                else
+                {
+                    try
+                    {
+                        if (File.Exists(item.Dest))
+                        {
+                            File.Delete(item.Dest);
+                        }
+                    }
+                    catch (IOException) { }
+                    catch (UnauthorizedAccessException) { }
+                }
+            }
+
+            foreach (var plan in copyPlan)
+            {
+                if (plan.ExistedOriginally && File.Exists(plan.Backup) && !File.Exists(plan.Dest))
+                {
+                    try { File.Move(plan.Backup, plan.Dest, overwrite: true); }
+                    catch (IOException) { }
+                    catch (UnauthorizedAccessException) { }
+                }
+            }
+
+            throw;
+        }
+
+        var newOnnxPath = Path.Combine(fullDestDir, Path.GetFileName(tempResult.OnnxArtifactPath));
+        var newMetricsPath = !string.IsNullOrWhiteSpace(tempResult.MetricsArtifactPath)
+            ? Path.Combine(fullDestDir, Path.GetFileName(tempResult.MetricsArtifactPath))
+            : null;
+        var newCheckpointPath = !string.IsNullOrWhiteSpace(tempResult.CheckpointManifestPath)
+            ? Path.Combine(fullDestDir, Path.GetFileName(tempResult.CheckpointManifestPath))
+            : null;
+        var newEnsemblePath = !string.IsNullOrWhiteSpace(tempResult.EnsembleManifestPath)
+            ? Path.Combine(fullDestDir, Path.GetFileName(tempResult.EnsembleManifestPath))
+            : null;
+
+        _logger.LogInformation("Promoted temp run {RunId} ({Count} files) -> {DestDir}.", tempResult.RunId, copyPlan.Count, fullDestDir);
+
+        return tempResult with
+        {
+            OnnxArtifactPath = newOnnxPath,
+            MetricsArtifactPath = newMetricsPath,
+            CheckpointManifestPath = newCheckpointPath,
+            EnsembleManifestPath = newEnsemblePath,
+        };
+    }
+
     private static async Task AtomicCopyAsync(string sourcePath, string destinationPath, CancellationToken ct)
     {
         var tempPath = destinationPath + ".tmp";
