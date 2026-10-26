@@ -37,7 +37,11 @@ public class BacktestConditionTreeValidatorTests
     }
 
     private static BacktestConditionTree Snapshot(BacktestConditionTree tree, int? maxOffset = null, int? maxDepth = null, int? maxNodes = null)
-        => BacktestConditionValidator.SnapshotTree(tree, maxOffset ?? DefaultOffset, maxDepth ?? DefaultDepth, maxNodes ?? DefaultNodes);
+        => BacktestConditionValidator.SnapshotTree(
+            tree,
+            maxOffset ?? DefaultOffset,
+            maxDepth ?? (maxNodes.HasValue ? Math.Min(DefaultDepth, maxNodes.Value) : DefaultDepth),
+            maxNodes ?? DefaultNodes);
 
     [Fact]
     public void PocoDefaults_RespectTheLowerBound()
@@ -100,6 +104,53 @@ public class BacktestConditionTreeValidatorTests
     public void Limits_BelowTheMinimumBound_AreRejected(int depth, int nodes)
     {
         Assert.Throws<ArgumentOutOfRangeException>(() => Snapshot(BacktestConditionTree.Empty, maxDepth: depth, maxNodes: nodes));
+    }
+
+    [Theory]
+    [InlineData(BacktestConditionTreeRule.MaxDepthBound + 1, 10, 500)]
+    [InlineData(10, BacktestConditionTreeRule.MaxNodesBound + 1, 500)]
+    [InlineData(10, 50, BacktestConditionTreeRule.MaxOffsetBound + 1)]
+    public void Limits_AboveTheMaximumBound_AreRejected(int depth, int nodes, int offset)
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            Snapshot(BacktestConditionTree.Empty, maxOffset: offset, maxDepth: depth, maxNodes: nodes));
+    }
+
+    [Fact]
+    public void BacktestSettings_Validate_EnforcesHardBounds()
+    {
+        var settingsValid = new BacktestSettings();
+        settingsValid.Validate(); // Should pass with defaults
+
+        var depthExceeded = new BacktestSettings { MaxConditionTreeDepth = BacktestConditionTreeRule.MaxDepthBound + 1 };
+        Assert.Throws<InvalidOperationException>(() => depthExceeded.Validate());
+
+        var nodesExceeded = new BacktestSettings { MaxConditionTreeNodes = BacktestConditionTreeRule.MaxNodesBound + 1 };
+        Assert.Throws<InvalidOperationException>(() => nodesExceeded.Validate());
+
+        var offsetExceeded = new BacktestSettings { MaxConditionOffset = BacktestConditionTreeRule.MaxOffsetBound + 1 };
+        Assert.Throws<InvalidOperationException>(() => offsetExceeded.Validate());
+    }
+
+    [Fact]
+    public void BacktestSettings_Validate_CrossValidation_ThrowsWhenNodesLessThanDepth()
+    {
+        var invalid = new BacktestSettings
+        {
+            MaxConditionTreeDepth = 10,
+            MaxConditionTreeNodes = 8
+        };
+        var ex = Assert.Throws<InvalidOperationException>(() => invalid.Validate());
+        Assert.Contains("must be >= MaxConditionTreeDepth", ex.Message);
+    }
+
+    [Fact]
+    public void SnapshotTree_DepthExceedingNodes_ThrowsArgumentOutOfRangeException()
+    {
+        var ex = Assert.Throws<ArgumentOutOfRangeException>(() =>
+            BacktestConditionValidator.SnapshotTree(BacktestConditionTree.Empty, maxOffset: null, maxDepth: 10, maxNodes: 8));
+        Assert.Equal("maxDepth", ex.ParamName);
+        Assert.Contains("must not exceed maxNodes", ex.Message);
     }
 
     [Fact]
@@ -219,5 +270,48 @@ public class BacktestConditionTreeValidatorTests
 
         Assert.Throws<InvalidOperationException>(settings.Validate);
         new BacktestSettings { MaxConditionTreeDepth = 1, MaxConditionTreeNodes = 1 }.Validate();
+    }
+
+    [Fact]
+    public void MultiBranchTree_TotalNodesAcrossSiblingBranches_AtTheBoundPasses_AndOneAboveThrows()
+    {
+        // Tree structure:
+        // Root (1)
+        // - ChildGroup 1 (1 node) + 10 leaves = 11 nodes
+        // - ChildGroup 2 (1 node) + 10 leaves = 11 nodes
+        // - ChildGroup 3 (1 node) + (DefaultNodes - 1 - 11 - 11 - 1) leaves
+        // Total = 1 + 11 + 11 + 1 + (DefaultNodes - 24) = DefaultNodes
+        int remainingLeaves = DefaultNodes - 1 - 11 - 11 - 1;
+        Assert.True(remainingLeaves > 0);
+
+        var group1 = new BacktestConditionGroup(LogicalOperator.And, Enumerable.Range(0, 10).Select(_ => (IBacktestConditionNode)Leaf()).ToImmutableArray());
+        var group2 = new BacktestConditionGroup(LogicalOperator.Or, Enumerable.Range(0, 10).Select(_ => (IBacktestConditionNode)Leaf()).ToImmutableArray());
+        var group3AtBound = new BacktestConditionGroup(LogicalOperator.And, Enumerable.Range(0, remainingLeaves).Select(_ => (IBacktestConditionNode)Leaf()).ToImmutableArray());
+        var group3AboveBound = new BacktestConditionGroup(LogicalOperator.And, Enumerable.Range(0, remainingLeaves + 1).Select(_ => (IBacktestConditionNode)Leaf()).ToImmutableArray());
+
+        var rootAtBound = new BacktestConditionGroup(LogicalOperator.And, ImmutableArray.Create<IBacktestConditionNode>(group1, group2, group3AtBound));
+        var rootAboveBound = new BacktestConditionGroup(LogicalOperator.And, ImmutableArray.Create<IBacktestConditionNode>(group1, group2, group3AboveBound));
+
+        Snapshot(TreeWithEntryLong(rootAtBound));
+
+        var ex = Assert.Throws<ArgumentOutOfRangeException>(() => Snapshot(TreeWithEntryLong(rootAboveBound)));
+        Assert.Contains("Backtest:MaxConditionTreeNodes", ex.Message);
+    }
+
+    [Fact]
+    public void SnapshotTree_ValidatesLaterRoots_ThrowsNamingTheOffendingRoot()
+    {
+        // EntryLong, ExitLong, EntryShort, ExitShort, ReverseLong are empty
+        // ReverseShort exceeds depth
+        var tree = new BacktestConditionTree(
+            BacktestConditionGroup.EmptyAnd,
+            BacktestConditionGroup.EmptyAnd,
+            BacktestConditionGroup.EmptyAnd,
+            BacktestConditionGroup.EmptyAnd,
+            BacktestConditionGroup.EmptyAnd,
+            ChainOfDepth(DefaultDepth + 1));
+
+        var ex = Assert.Throws<ArgumentOutOfRangeException>(() => Snapshot(tree));
+        Assert.Contains("ReverseShort", ex.Message);
     }
 }

@@ -39,6 +39,8 @@ internal sealed class ListTickerGroupsTool : IMcpTool
 
     public bool IsHeavy => false;
 
+    public string? ExampleArgumentsJson => "{\"includeRules\":true}";
+
     public string InputSchemaJson => ToolSchema.Object()
         .Boolean(IncludeRulesArgument, "When true, each filter node includes its configured filter rules. Default false.")
         .Build();

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Avalonia.Controls;
@@ -13,6 +14,7 @@ using StockAnalyzer.Avalonia.Services;
 using StockAnalyzer.Avalonia.Tests.Services;
 using StockAnalyzer.Avalonia.ViewModels;
 using StockAnalyzer.Avalonia.ViewModels.Dialogs;
+using StockAnalyzer.Core.Execution;
 using StockAnalyzer.Core.Interfaces;
 using StockAnalyzer.Core.Models.ReinforcementLearning;
 using StockAnalyzer.Core.Services;
@@ -132,5 +134,41 @@ public sealed partial class RlUiTests
         var number = new NumericUpDown { Value = 1, DataContext = new object() };
         var exception = Record.Exception(() => RlInputValidation.SetField(number, "Decision"));
         Assert.Null(exception);
+    }
+
+    [AvaloniaFact]
+    public async Task Playback_ViewRendersTestTempModelButtonAndInvokesCommand()
+    {
+        string fakeOnnx = Path.Combine(EphemeralSandbox.Root, "test_policy.onnx");
+        var mockDialog = new Moq.Mock<IDialogService>();
+        mockDialog.Setup(d => d.ShowOpenFileDialogAsync(Moq.It.IsAny<string>(), Moq.It.IsAny<string[]>(), Moq.It.IsAny<string>()))
+            .Returns(Task.FromResult<string?>(fakeOnnx));
+
+        var f = await Playback(dialogService: mockDialog.Object);
+        using var vm = f.Vm;
+
+        var view = new StockAnalyzer.Avalonia.Views.Dialogs.RlPlaybackView { DataContext = vm };
+        var window = new Window { Content = view, Width = 900, Height = 1000 };
+        window.Show();
+        try
+        {
+            global::Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            var btn = view.GetVisualDescendants().OfType<Button>()
+                .Single(c => global::Avalonia.Automation.AutomationProperties.GetAutomationId(c) == RlUiConstants.PlaybackTestTempModel);
+            Assert.NotNull(btn);
+            Assert.True(btn.IsEffectivelyEnabled);
+
+            await vm.TestTempModelFromFileCommand.ExecuteAsync(null);
+            global::Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+            Assert.Single(f.Target.Applied);
+            Assert.Equal("%Temp%: test_policy.onnx shown.", vm.StatusMessage);
+            Assert.Single(f.Data.EphemeralReplays);
+            Assert.Equal(fakeOnnx, f.Data.EphemeralReplays[0].Model);
+        }
+        finally
+        {
+            window.Close();
+        }
     }
 }

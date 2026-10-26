@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Globalization;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text.Json;
@@ -12,6 +13,7 @@ using Microsoft.ML.OnnxRuntime;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Backtest.Engine;
 using StockAnalyzer.Core.Models.ReinforcementLearning;
+using StockAnalyzer.Core.Models.Settings;
 using StockAnalyzer.Core.Models.StoredPeriod;
 using StockAnalyzer.Core.Models.Training;
 using StockAnalyzer.Core.Services;
@@ -38,6 +40,8 @@ public sealed class SandboxedExecutionGateway : ISandboxedExecutionGateway, IDis
     private readonly EphemeralArtifactStore _store;
     private readonly IEphemeralRlRunner? _rlRunner;
     private readonly EphemeralExecutionPolicy _policy;
+    private readonly IModelGenerationRegistry _modelRegistry;
+    private readonly IEphemeralPortfolioRlRunner? _portfolioRunner;
     private readonly TrainingJobRegistry _jobs = new();
     private bool _disposed;
 
@@ -48,9 +52,11 @@ public sealed class SandboxedExecutionGateway : ISandboxedExecutionGateway, IDis
         SandboxedExecutionSettings settings,
         ILogger<SandboxedExecutionGateway>? logger = null,
         MarketDataSettings? marketData = null,
-        EphemeralExecutionPolicy? policy = null)
+        EphemeralExecutionPolicy? policy = null,
+        IModelGenerationRegistry? modelRegistry = null)
         : this(orchestrator, resolver, settings, logger, EphemeralSandbox.Root, TimeSpan.FromSeconds(ExecutionLimits.CancelGraceSeconds),
-            marketData is null ? null : new EphemeralRlRunner(RlLocalSourceFolders.FromSettings(marketData)), policy)
+            marketData is null ? null : new EphemeralRlRunner(RlLocalSourceFolders.FromSettings(marketData)), policy, modelRegistry,
+            new EphemeralPortfolioRlRunner())
     {
     }
 
@@ -65,7 +71,9 @@ public sealed class SandboxedExecutionGateway : ISandboxedExecutionGateway, IDis
         string sandboxRoot,
         TimeSpan cancelGrace,
         IEphemeralRlRunner? rlRunner = null,
-        EphemeralExecutionPolicy? policy = null)
+        EphemeralExecutionPolicy? policy = null,
+        IModelGenerationRegistry? modelRegistry = null,
+        IEphemeralPortfolioRlRunner? portfolioRunner = null)
     {
         ArgumentNullException.ThrowIfNull(orchestrator);
         ArgumentNullException.ThrowIfNull(resolver);
@@ -78,6 +86,8 @@ public sealed class SandboxedExecutionGateway : ISandboxedExecutionGateway, IDis
         _cancelGrace = cancelGrace;
         _store = new EphemeralArtifactStore(sandboxRoot, settings, _logger);
         _policy = policy ?? EphemeralExecutionPolicy.McpFixed;
+        _modelRegistry = modelRegistry ?? new ModelGenerationRegistry();
+        _portfolioRunner = portfolioRunner ?? new EphemeralPortfolioRlRunner();
         int cleaned = _store.CleanOrphanSessions(DateTime.UtcNow);
         _logger.LogInformation("Sandboxed execution enabled; {Cleaned} abandoned session(s) removed.", cleaned);
     }
@@ -161,7 +171,7 @@ public sealed class SandboxedExecutionGateway : ISandboxedExecutionGateway, IDis
 
         var job = new TrainingJobRecord(
             jobId,
-            new EphemeralRlRequest { Symbol = rlJob.Symbol, StartDate = rlJob.StartDate, EndDateExclusive = rlJob.EndDateExclusive },
+            new EphemeralRlRequest { Symbol = rlJob.Symbol, StartDate = rlJob.StartDate, EndDateExclusive = rlJob.EndDateExclusive, RetainArtifact = request.RetainArtifact },
             DateTimeOffset.UtcNow);
         if (!_jobs.TryAdd(job, _settings.MaxConcurrentJobs))
         {
@@ -184,6 +194,127 @@ public sealed class SandboxedExecutionGateway : ISandboxedExecutionGateway, IDis
         return new TrainingJobTicket(jobId, TrainingJobState.Running);
     }
 
+    public async Task<TrainingJobTicket> StartPortfolioRlTrainingAsync(EphemeralPortfolioRlRequest request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        cancellationToken.ThrowIfCancellationRequested();
+        IEphemeralPortfolioRlRunner runner = _portfolioRunner ?? throw new NotSupportedException("Reinforcement learning portfolio is not configured for this gateway.");
+
+        if (request.Symbols is null || request.Symbols.Count == 0)
+        {
+            throw Invalid("At least one symbol is required.", nameof(request.Symbols));
+        }
+
+        if (request.Symbols.Distinct(StringComparer.OrdinalIgnoreCase).Count() != request.Symbols.Count)
+        {
+            throw Invalid("A symbol is listed twice.", nameof(request.Symbols));
+        }
+
+        if (request.Symbols.Count < RlPortfolioContract.MinimumSymbols)
+        {
+            throw Invalid($"At least {RlPortfolioContract.MinimumSymbols} symbols are required.", nameof(request.Symbols));
+        }
+
+        if (request.Symbols.Count > ExecutionLimits.MaxPortfolioSymbols)
+        {
+            throw Invalid($"At most {ExecutionLimits.MaxPortfolioSymbols} symbols are supported.", nameof(request.Symbols));
+        }
+
+        if (request.StartDate is not null && request.EndDateExclusive is not null && request.StartDate >= request.EndDateExclusive)
+        {
+            throw Invalid("The start date must be before the end date.", nameof(request.StartDate));
+        }
+
+        if (request.MaxAssetWeightPercent is < 1 or > 100)
+        {
+            throw Invalid("The maximum asset weight percent must be between 1 and 100.", nameof(request.MaxAssetWeightPercent));
+        }
+
+        RlEnvironmentStatus environment = await runner.CheckEnvironmentAsync(cancellationToken).ConfigureAwait(false);
+        if (!environment.Available)
+        {
+            throw new RlEnvironmentMissingException(environment.MissingModule);
+        }
+
+        DateOnly? start = request.StartDate;
+        DateOnly end = request.EndDateExclusive ?? DateOnly.FromDateTime(DateTime.UtcNow);
+        if (start is null)
+        {
+            RlStartSuggestion? suggestion = await runner.SuggestStartAsync(request.Symbols, end, request.Mode, cancellationToken).ConfigureAwait(false);
+            if (suggestion is null || suggestion.Status == RlStartSuggestionStatus.NoUsableData || suggestion.Start is null)
+            {
+                throw new InsufficientStoredDataException(suggestion?.RequiredBars ?? 0, 0);
+            }
+
+            if (suggestion.Status == RlStartSuggestionStatus.InsufficientHistory)
+            {
+                throw new InsufficientStoredDataException(suggestion.RequiredBars, suggestion.AvailableBars);
+            }
+
+            start = suggestion.Start;
+        }
+
+        PanelPreflight preflight = await runner.PreflightAsync(request.Symbols, start.Value, end, request.SymbolHoldout, request.Mode, cancellationToken).ConfigureAwait(false);
+        var settings = new RlPortfolioSettings { MaxWeightPercent = request.MaxAssetWeightPercent };
+        var decision = RlPanelStartGate.Decide(preflight, excludeUnavailable: true, request.SymbolHoldout, settings);
+        if (!decision.CanStart)
+        {
+            throw Invalid($"Portfolio training cannot start: {decision.Blocker}", nameof(request.Symbols));
+        }
+
+        string jobId = TrainingRunId.New(DateTimeOffset.UtcNow);
+        RequireJobPathsFit(jobId, ExecutionLimits.RlLongestRelativePathChars);
+        _store.EnsureSession();
+        for (int attempt = 1; !_store.TryCreateJobDirectory(jobId); attempt++)
+        {
+            if (attempt >= ExecutionLimits.JobIdAttempts)
+            {
+                throw new IOException("A free job folder could not be found.");
+            }
+
+            jobId = TrainingRunId.New(DateTimeOffset.UtcNow);
+        }
+
+        var actualRequest = request with
+        {
+            StartDate = start,
+            EndDateExclusive = end,
+            Symbols = decision.TrainingSymbols.ToList(),
+        };
+
+        var job = new TrainingJobRecord(jobId, actualRequest, DateTimeOffset.UtcNow);
+        if (!_jobs.TryAdd(job, _settings.MaxConcurrentJobs))
+        {
+            _store.TryDeleteJobDirectory(jobId);
+            throw new ExecutionBusyException();
+        }
+
+        var runRequest = new RlPortfolioRunRequest(
+            decision.TrainingSymbols,
+            start.Value,
+            end,
+            decision.SymbolHoldout,
+            request.Mode,
+            FactoryCosts(),
+            SmokeOnly: true,
+            MaxWeightPercent: request.MaxAssetWeightPercent);
+
+        Task<RlPortfolioTrainingResult> run;
+        try
+        {
+            run = runner.RunAsync(runRequest, _store.JobDirectory(jobId), new InlineRlProgress(update => OnRlProgress(job, update)), job.Cancellation.Token);
+        }
+        catch (Exception error)
+        {
+            run = Task.FromException<RlPortfolioTrainingResult>(error);
+        }
+
+        _logger.LogInformation("Reinforcement-learning portfolio job {JobId} started.", jobId);
+        job.Run = RunPortfolioRlAsync(job, run);
+        return new TrainingJobTicket(jobId, TrainingJobState.Running);
+    }
+
     public TrainingJobStatus GetStatus(string jobId)
     {
         TrainingJobRecord job = _jobs.Find(jobId) ?? throw new JobNotFoundException(jobId);
@@ -203,7 +334,9 @@ public sealed class SandboxedExecutionGateway : ISandboxedExecutionGateway, IDis
                 job.Request,
                 job.Kind,
                 job.RlRequest,
-                job.RlResult);
+                job.RlResult,
+                job.PortfolioRlRequest,
+                job.PortfolioRlResult);
         }
     }
 
@@ -265,6 +398,36 @@ public sealed class SandboxedExecutionGateway : ISandboxedExecutionGateway, IDis
         }
 
         return new ArtifactLease(artifact, path, lease.Dispose);
+    }
+
+    public ArtifactLease LeaseRegisteredModel(string modelId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(modelId);
+        ModelGenerationLease? lease;
+        if (string.Equals(modelId, "active", StringComparison.OrdinalIgnoreCase))
+        {
+            lease = _modelRegistry.AcquireActive();
+            if (lease is null)
+            {
+                throw new ExecutionRequestInvalidException("No model is currently active in the registry.", nameof(modelId), new InvalidOperationException("Active model not found."));
+            }
+        }
+        else
+        {
+            lease = _modelRegistry.Acquire(modelId);
+            if (lease is null)
+            {
+                throw new ArtifactNotFoundException(modelId);
+            }
+        }
+
+        if (!File.Exists(lease.ModelPath))
+        {
+            lease.Dispose();
+            throw new ArtifactNotFoundException(modelId);
+        }
+
+        return ArtifactLease.FromPath(lease.ModelPath, lease.Dispose, lease.ModelId);
     }
 
     /// <summary>Stops every running job (the whole process tree), then deletes the session folder.</summary>
@@ -372,6 +535,24 @@ public sealed class SandboxedExecutionGateway : ISandboxedExecutionGateway, IDis
             {
                 throw Invalid("Non-fresh initialization is not permitted by execution policy.", nameof(request.InitializationMode));
             }
+        }
+
+        if (request.ClipSigma is { } sigma)
+        {
+            if (!double.IsFinite(sigma) || sigma <= 0.0)
+            {
+                throw Invalid("clipSigma must be a finite positive number.", nameof(request.ClipSigma));
+            }
+
+            if (!request.FixedZScore)
+            {
+                throw Invalid("clipSigma requires fixedZScore to be enabled.", nameof(request.ClipSigma));
+            }
+        }
+
+        if (request.Calibration && request.TargetType != TargetType.Classification)
+        {
+            throw Invalid("calibration is only supported for classification targets.", nameof(request.Calibration));
         }
     }
 
@@ -520,15 +701,14 @@ public sealed class SandboxedExecutionGateway : ISandboxedExecutionGateway, IDis
         }
 
         EphemeralRlResult? description = await Task.Run(() => TryDescribeRl(result)).ConfigureAwait(false);
+        bool cancelledEarly = false;
         lock (_jobs.Gate)
         {
             if (job.State != TrainingJobState.Validating)
             {
-                DeleteFolderOfFinishedJobUnlocked(job);
-                return;
+                cancelledEarly = true;
             }
-
-            if (description is null)
+            else if (description is null)
             {
                 _jobs.Apply(job, JobEvent.OnnxInvalid, DateTimeOffset.UtcNow);
                 AddMessage(job, "The produced file is not a loadable ONNX model.");
@@ -540,7 +720,23 @@ public sealed class SandboxedExecutionGateway : ISandboxedExecutionGateway, IDis
             }
         }
 
+        if (cancelledEarly)
+        {
+            DeleteFolderOfFinishedJob(job);
+            return;
+        }
+
         _logger.LogInformation("Reinforcement-learning job {JobId} finished; state {State}.", job.JobId, job.State);
+        if (job.RlRequest?.RetainArtifact == true && description is not null)
+        {
+            job.Artifact = TryDescribeRlArtifact(job.JobId, result.ModelPath, result.EvaluationPath);
+            if (job.Artifact is not null)
+            {
+                ApplyRetention();
+                return;
+            }
+        }
+
         DeleteFolderOfFinishedJob(job);
     }
 
@@ -584,6 +780,178 @@ public sealed class SandboxedExecutionGateway : ISandboxedExecutionGateway, IDis
     {
         string? line = LastWorkerErrorLine(_store.JobDirectory(job.JobId));
         return line is null ? error.Message : $"{error.Message} Worker: {line}";
+    }
+
+    private async Task RunPortfolioRlAsync(TrainingJobRecord job, Task<RlPortfolioTrainingResult> run)
+    {
+        try
+        {
+            RlPortfolioTrainingResult result = await run.ConfigureAwait(false);
+            await FinishPortfolioRlAsync(job, result).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            if (job.Cancellation.IsCancellationRequested)
+            {
+                Finalize(job, JobEvent.Stopped, "Cancelled.");
+            }
+            else
+            {
+                Finalize(job, JobEvent.TimedOut, "The run exceeded its time limit.");
+            }
+        }
+        catch (TimeoutException error)
+        {
+            Finalize(job, JobEvent.TimedOut, error.Message);
+        }
+        catch (Exception error)
+        {
+            Finalize(job, JobEvent.ProcessFailed, DescribeRlFailure(job, error));
+        }
+    }
+
+    private async Task FinishPortfolioRlAsync(TrainingJobRecord job, RlPortfolioTrainingResult result)
+    {
+        if (!SettleCancellation(job))
+        {
+            DeleteFolderOfFinishedJob(job);
+            return;
+        }
+
+        string jobDirectory = _store.JobDirectory(job.JobId);
+        if (!IsInside(jobDirectory, result.ModelPath) || !IsInside(jobDirectory, result.ReportPath) || !File.Exists(result.ModelPath) || !File.Exists(result.ReportPath))
+        {
+            Finalize(job, JobEvent.ProcessFailed, "The run produced no model or evaluation report.");
+            return;
+        }
+
+        lock (_jobs.Gate)
+        {
+            if (job.State != TrainingJobState.Running)
+            {
+                return;
+            }
+
+            _jobs.Apply(job, JobEvent.ProcessSucceeded, DateTimeOffset.UtcNow);
+        }
+
+        EphemeralPortfolioRlResult? description = await Task.Run(() => TryDescribePortfolioRl(result)).ConfigureAwait(false);
+        bool cancelledEarly = false;
+        lock (_jobs.Gate)
+        {
+            if (job.State != TrainingJobState.Validating)
+            {
+                cancelledEarly = true;
+            }
+            else if (description is null)
+            {
+                _jobs.Apply(job, JobEvent.OnnxInvalid, DateTimeOffset.UtcNow);
+                AddMessage(job, "The produced file is not a loadable ONNX model or valid evaluation.");
+            }
+            else
+            {
+                job.PortfolioRlResult = description;
+                _jobs.Apply(job, JobEvent.OnnxLoaded, DateTimeOffset.UtcNow);
+            }
+        }
+
+        if (cancelledEarly)
+        {
+            DeleteFolderOfFinishedJob(job);
+            return;
+        }
+
+        _logger.LogInformation("Reinforcement-learning portfolio job {JobId} finished; state {State}.", job.JobId, job.State);
+        if (job.PortfolioRlRequest?.RetainArtifact == true && description is not null)
+        {
+            job.Artifact = TryDescribeRlArtifact(job.JobId, result.ModelPath, result.ReportPath);
+            if (job.Artifact is not null)
+            {
+                ApplyRetention();
+                return;
+            }
+        }
+
+        DeleteFolderOfFinishedJob(job);
+    }
+
+    private static EphemeralPortfolioRlResult? TryDescribePortfolioRl(RlPortfolioTrainingResult result)
+    {
+        try
+        {
+            using (var session = new InferenceSession(result.ModelPath))
+            {
+                if (session.InputMetadata.Count == 0 || session.OutputMetadata.Count == 0)
+                {
+                    return null;
+                }
+            }
+
+            var evaluableBlocks = result.Evaluation.Cells
+                .Where(c => c.Evaluable)
+                .SelectMany(c => c.Blocks)
+                .ToList();
+
+            decimal policyMean = 0m;
+            decimal cashMean = 0m;
+            decimal equalBuyHoldMean = 0m;
+            decimal equalDailyRebalancedMean = 0m;
+            decimal? policyCompound = null;
+            decimal? cashCompound = null;
+            decimal? equalBuyHoldCompound = null;
+            decimal? equalDailyRebalancedCompound = null;
+            int? evaluatedBlockCount = null;
+
+            if (evaluableBlocks.Count > 0)
+            {
+                policyMean = evaluableBlocks.Sum(b => b.PolicyReturn) / evaluableBlocks.Count;
+                cashMean = evaluableBlocks.Sum(b => b.CashReturn) / evaluableBlocks.Count;
+                equalBuyHoldMean = evaluableBlocks.Sum(b => b.EqualBuyHoldReturn) / evaluableBlocks.Count;
+                equalDailyRebalancedMean = evaluableBlocks.Sum(b => b.EqualDailyRebalancedReturn) / evaluableBlocks.Count;
+
+                evaluatedBlockCount = evaluableBlocks.Count;
+                decimal polComp = 1m;
+                decimal cashComp = 1m;
+                decimal ebhComp = 1m;
+                decimal edrComp = 1m;
+                foreach (var b in evaluableBlocks)
+                {
+                    polComp *= (1m + b.PolicyReturn);
+                    cashComp *= (1m + b.CashReturn);
+                    ebhComp *= (1m + b.EqualBuyHoldReturn);
+                    edrComp *= (1m + b.EqualDailyRebalancedReturn);
+                }
+                policyCompound = polComp - 1m;
+                cashCompound = cashComp - 1m;
+                equalBuyHoldCompound = ebhComp - 1m;
+                equalDailyRebalancedCompound = edrComp - 1m;
+            }
+
+            using FileStream stream = File.OpenRead(result.ModelPath);
+            long modelSize = stream.Length;
+            string modelSha256 = Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant();
+
+            return new EphemeralPortfolioRlResult(
+                policyMean.ToString("F6", CultureInfo.InvariantCulture),
+                cashMean.ToString("F6", CultureInfo.InvariantCulture),
+                equalBuyHoldMean.ToString("F6", CultureInfo.InvariantCulture),
+                equalDailyRebalancedMean.ToString("F6", CultureInfo.InvariantCulture),
+                result.SelectedSeed,
+                result.SelectedCheckpoint,
+                result.UniverseSha256,
+                result.CalendarSha256,
+                modelSize,
+                modelSha256,
+                policyCompound,
+                cashCompound,
+                equalBuyHoldCompound,
+                equalDailyRebalancedCompound,
+                evaluatedBlockCount);
+        }
+        catch (Exception error) when (error is OnnxRuntimeException or JsonException or InvalidDataException or KeyNotFoundException or InvalidOperationException or FormatException or IOException)
+        {
+            return null;
+        }
     }
 
     private static string? LastWorkerErrorLine(string jobDirectory)
@@ -693,15 +1061,14 @@ public sealed class SandboxedExecutionGateway : ISandboxedExecutionGateway, IDis
         }
 
         EphemeralArtifact? artifact = await Task.Run(() => TryDescribe(job.JobId, result.OnnxArtifactPath)).ConfigureAwait(false);
+        bool cancelledEarly = false;
         lock (_jobs.Gate)
         {
             if (job.State != TrainingJobState.Validating)
             {
-                DeleteFolderOfFinishedJobUnlocked(job);
-                return;
+                cancelledEarly = true;
             }
-
-            if (artifact is null)
+            else if (artifact is null)
             {
                 _jobs.Apply(job, JobEvent.OnnxInvalid, DateTimeOffset.UtcNow);
                 AddMessage(job, "The produced file is not a loadable ONNX model.");
@@ -711,6 +1078,12 @@ public sealed class SandboxedExecutionGateway : ISandboxedExecutionGateway, IDis
                 job.Artifact = artifact;
                 _jobs.Apply(job, JobEvent.OnnxLoaded, DateTimeOffset.UtcNow);
             }
+        }
+
+        if (cancelledEarly)
+        {
+            DeleteFolderOfFinishedJob(job);
+            return;
         }
 
         _logger.LogInformation("Training job {JobId} finished; state {State}.", job.JobId, job.State);
@@ -830,9 +1203,47 @@ public sealed class SandboxedExecutionGateway : ISandboxedExecutionGateway, IDis
         }
     }
 
+    private EphemeralArtifact? TryDescribeRlArtifact(string jobId, string onnxPath, string evaluationPath)
+    {
+        if (!File.Exists(onnxPath) || !File.Exists(evaluationPath))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var session = new InferenceSession(onnxPath);
+            if (session.InputMetadata.Count == 0 || session.OutputMetadata.Count == 0)
+            {
+                return null;
+            }
+
+            string jobDir = _store.JobDirectory(jobId);
+            string relOnnx = Path.GetRelativePath(jobDir, onnxPath);
+            string relEval = Path.GetRelativePath(jobDir, evaluationPath);
+
+            using FileStream stream = File.OpenRead(onnxPath);
+            string hash = Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant();
+            return new EphemeralArtifact(
+                jobId,
+                relOnnx,
+                new FileInfo(onnxPath).Length,
+                hash,
+                relEval,
+                Loads: true,
+                session.InputMetadata.First().Value.Dimensions.Select(d => (long)d).ToArray(),
+                session.OutputMetadata.First().Value.Dimensions.Select(d => (long)d).ToArray());
+        }
+        catch (Exception error) when (error is OnnxRuntimeException or IOException)
+        {
+            return null;
+        }
+    }
+
     // Keeps the newest KeepLatestRuns succeeded jobs; the folders of the others are deleted unless a lease holds them (then a later release tries again).
     private void ApplyRetention()
     {
+        List<string> jobsToDelete = new();
         lock (_jobs.Gate)
         {
             IEnumerable<TrainingJobRecord> older = _jobs.Snapshot()
@@ -842,9 +1253,20 @@ public sealed class SandboxedExecutionGateway : ISandboxedExecutionGateway, IDis
                 .Skip(_settings.KeepLatestRuns);
             foreach (TrainingJobRecord job in older)
             {
-                if (_store.TryDeleteJobDirectory(job.JobId))
+                jobsToDelete.Add(job.JobId);
+            }
+        }
+
+        foreach (string jobId in jobsToDelete)
+        {
+            if (_store.TryDeleteJobDirectory(jobId))
+            {
+                lock (_jobs.Gate)
                 {
-                    job.Artifact = null;
+                    if (_jobs.Find(jobId) is { } record)
+                    {
+                        record.Artifact = null;
+                    }
                 }
             }
         }
@@ -859,21 +1281,22 @@ public sealed class SandboxedExecutionGateway : ISandboxedExecutionGateway, IDis
 
     private void DeleteFolderOfFinishedJob(TrainingJobRecord job)
     {
+        bool shouldDelete;
         lock (_jobs.Gate)
         {
-            DeleteFolderOfFinishedJobUnlocked(job);
+            shouldDelete = ShouldDeleteJobFolder(job);
         }
-    }
 
-    private void DeleteFolderOfFinishedJobUnlocked(TrainingJobRecord job)
-    {
-        // A supervised model is kept for the prediction tool; nothing reads a reinforcement-learning run's files, so every end removes them.
-        if (job.State is TrainingJobState.Failed or TrainingJobState.Cancelled
-            || (job.Kind == TrainingJobKind.ReinforcementLearning && TrainingJobTransitions.IsFinal(job.State)))
+        if (shouldDelete)
         {
             _store.TryDeleteJobDirectory(job.JobId);
         }
     }
+
+    private static bool ShouldDeleteJobFolder(TrainingJobRecord job)
+        // A supervised model is kept for the prediction tool; nothing reads a reinforcement-learning run's files, so every end removes them.
+        => job.State is TrainingJobState.Failed or TrainingJobState.Cancelled
+            || (job.Kind is TrainingJobKind.ReinforcementLearning or TrainingJobKind.PortfolioReinforcementLearning && TrainingJobTransitions.IsFinal(job.State));
 
     private void AddMessage(TrainingJobRecord job, string message)
     {

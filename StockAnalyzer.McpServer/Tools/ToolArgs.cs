@@ -14,6 +14,26 @@ internal static class ToolArgs
     public static long? Integer(JsonElement arguments, string name)
         => arguments.ValueKind == JsonValueKind.Object && arguments.TryGetProperty(name, out JsonElement value) ? value.GetInt64() : null;
 
+    public static double? Number(JsonElement arguments, string name)
+    {
+        if (arguments.ValueKind != JsonValueKind.Object || !arguments.TryGetProperty(name, out JsonElement value))
+        {
+            return null;
+        }
+
+        if (value.TryGetDouble(out double number))
+        {
+            if (!double.IsFinite(number))
+            {
+                throw new ToolException(ToolErrorCodes.InvalidArgument, $"Argument '{name}' must be a finite number.", name);
+            }
+
+            return number;
+        }
+
+        return null;
+    }
+
     public static bool? Boolean(JsonElement arguments, string name)
         => arguments.ValueKind == JsonValueKind.Object && arguments.TryGetProperty(name, out JsonElement value) ? value.GetBoolean() : null;
 

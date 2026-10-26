@@ -219,6 +219,51 @@ public sealed class McpCommandLineTests : IDisposable
     }
 
     [Fact]
+    public void RealRegistry_EveryToolHasValidExampleArgumentsJsonAndOutputIncludesIt()
+    {
+        McpServerRuntime runtime = CreateRuntimeWithExecution(enableExecution: true);
+
+        Assert.NotEmpty(runtime.Tools.Tools);
+        foreach (RegisteredTool registered in runtime.Tools.Tools)
+        {
+            IMcpTool tool = registered.Tool;
+            Assert.NotNull(tool.ExampleArgumentsJson);
+            Assert.False(string.IsNullOrWhiteSpace(tool.ExampleArgumentsJson));
+
+            // Must be valid single-line minified JSON object without newlines
+            Assert.DoesNotContain('\r', tool.ExampleArgumentsJson);
+            Assert.DoesNotContain('\n', tool.ExampleArgumentsJson);
+
+            using JsonDocument doc = JsonDocument.Parse(tool.ExampleArgumentsJson!);
+            Assert.Equal(JsonValueKind.Object, doc.RootElement.ValueKind);
+
+            // Must satisfy all required properties of the tool's schema
+            if (registered.Schema.TryGetProperty("required", out JsonElement requiredNames))
+            {
+                foreach (JsonElement req in requiredNames.EnumerateArray())
+                {
+                    string propName = req.GetString()!;
+                    Assert.True(
+                        doc.RootElement.TryGetProperty(propName, out _),
+                        $"Tool '{tool.Name}' ExampleArgumentsJson is missing required property '{propName}'.");
+                }
+            }
+
+            // Check that TryTool output includes the Example arguments block
+            Assert.True(McpHelpText.TryTool(runtime.Tools, includeExecutionTools: true, tool.Name, out string text, out _));
+            Assert.Contains("\nExample arguments:\n  " + tool.ExampleArgumentsJson + "\n", text);
+        }
+    }
+
+    [Fact]
+    public void Tool_WithoutExample_OutputDoesNotIncludeExampleArgumentsHeader()
+    {
+        var registry = new McpToolRegistry(new IMcpTool[] { new FakeTool("sa_demo", Noop) });
+        Assert.True(McpHelpText.TryTool(registry, includeExecutionTools: false, "sa_demo", out string text, out _));
+        Assert.DoesNotContain("Example arguments:", text);
+    }
+
+    [Fact]
     public void Texts_UseLineFeedOnlyAndEndWithOneAndHaveNoByteOrderMark()
     {
         McpServerRuntime runtime = CreateRuntime();
@@ -442,7 +487,7 @@ public sealed class McpCommandLineTests : IDisposable
 
     // ---- WP-3: the execution tools in the real executable --------------------------------------------------------------------
 
-    private static readonly string[] ExecutionToolNames = { "sa_start_training", "sa_get_training_status", "sa_cancel_training", "sa_run_onnx_prediction", "sa_start_rl_training" };
+    private static readonly string[] ExecutionToolNames = { "sa_start_training", "sa_get_training_status", "sa_cancel_training", "sa_run_onnx_prediction", "sa_start_rl_training", "sa_start_portfolio_rl_training", "sa_get_rl_playback" };
 
     [Fact]
     public async Task ChildProcess_HelpListsTheExecutionToolsOnlyWhenTheyAreEnabled()
@@ -558,8 +603,11 @@ public sealed class McpCommandLineTests : IDisposable
     }
 
     private McpServerRuntime CreateRuntime(params (string Key, int Value)[] limits)
+        => CreateRuntimeWithExecution(false, limits);
+
+    private McpServerRuntime CreateRuntimeWithExecution(bool enableExecution, params (string Key, int Value)[] limits)
     {
-        McpServerRuntime runtime = McpServerComposition.Create(McpTestSupport.EmptyDataConfiguration(_emptyRoot, limits), new LogSink(new StringWriter(), quiet: true));
+        McpServerRuntime runtime = McpServerComposition.Create(McpTestSupport.EmptyDataConfiguration(_emptyRoot, limits), new LogSink(new StringWriter(), quiet: true), enableExecution: enableExecution);
         _runtimes.Add(runtime);
         return runtime;
     }

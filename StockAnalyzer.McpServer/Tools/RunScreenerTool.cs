@@ -93,6 +93,8 @@ internal sealed class RunScreenerTool : IMcpTool
 
     public bool IsHeavy => true;
 
+    public string? ExampleArgumentsJson => "{\"timeFrame\":\"D1\",\"conditionTree\":{\"left\":{\"indicator\":\"RSI\",\"parameters\":{\"Period\":14}},\"comparison\":\"LessThan\",\"right\":30},\"maxReturnedMatches\":50}";
+
     public string InputSchemaJson => ToolSchema.Object()
         .FreeObject(ConditionArgument, "The condition tree (see the tool description). Give this or templateId.")
         .String(TemplateArgument, "Id of a saved Screener template (from sa_list_templates). Give this or conditionTree.")

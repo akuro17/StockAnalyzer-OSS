@@ -41,13 +41,17 @@ public class BacktestSettings
 
     public void Validate()
     {
-        if (MaxConditionTreeDepth < BacktestConditionTreeRule.MinBound)
+        if (MaxConditionTreeDepth < BacktestConditionTreeRule.MinBound || MaxConditionTreeDepth > BacktestConditionTreeRule.MaxDepthBound)
         {
-            throw new InvalidOperationException($"BacktestSettings: MaxConditionTreeDepth must be >= {BacktestConditionTreeRule.MinBound}.");
+            throw new InvalidOperationException($"BacktestSettings: MaxConditionTreeDepth must be within [{BacktestConditionTreeRule.MinBound}, {BacktestConditionTreeRule.MaxDepthBound}].");
         }
-        if (MaxConditionTreeNodes < BacktestConditionTreeRule.MinBound)
+        if (MaxConditionTreeNodes < BacktestConditionTreeRule.MinBound || MaxConditionTreeNodes > BacktestConditionTreeRule.MaxNodesBound)
         {
-            throw new InvalidOperationException($"BacktestSettings: MaxConditionTreeNodes must be >= {BacktestConditionTreeRule.MinBound}.");
+            throw new InvalidOperationException($"BacktestSettings: MaxConditionTreeNodes must be within [{BacktestConditionTreeRule.MinBound}, {BacktestConditionTreeRule.MaxNodesBound}].");
+        }
+        if (MaxConditionTreeNodes < MaxConditionTreeDepth)
+        {
+            throw new InvalidOperationException($"BacktestSettings: MaxConditionTreeNodes ({MaxConditionTreeNodes}) must be >= MaxConditionTreeDepth ({MaxConditionTreeDepth}).");
         }
 
         if (MaxConditionGroupNameLength < BacktestConditionTreeRule.MinBound)
@@ -60,9 +64,9 @@ public class BacktestSettings
             throw new InvalidOperationException($"BacktestSettings: ConditionDragStartDistance must be >= {BacktestConditionTreeRule.MinBound}.");
         }
 
-        if (MaxConditionOffset < BacktestConditionOffsetRule.MinOffset)
+        if (MaxConditionOffset < BacktestConditionOffsetRule.MinOffset || MaxConditionOffset > BacktestConditionTreeRule.MaxOffsetBound)
         {
-            throw new InvalidOperationException($"BacktestSettings: MaxConditionOffset must be >= {BacktestConditionOffsetRule.MinOffset}.");
+            throw new InvalidOperationException($"BacktestSettings: MaxConditionOffset must be within [{BacktestConditionOffsetRule.MinOffset}, {BacktestConditionTreeRule.MaxOffsetBound}].");
         }
     }
 }

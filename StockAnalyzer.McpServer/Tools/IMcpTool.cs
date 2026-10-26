@@ -22,5 +22,11 @@ internal interface IMcpTool
     /// <summary>True for a tool that starts work or writes (offered only with <c>--enable-execution</c>); the read-only tools keep the default.</summary>
     bool IsExecution => false;
 
+    /// <summary>
+    /// An optional compact JSON object string illustrating valid, copy-pasteable arguments for this tool. Default is null.
+    /// When non-null, must be a single-line minified JSON object containing all required properties and valid ranges.
+    /// </summary>
+    string? ExampleArgumentsJson => null;
+
     Task<string> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken);
 }

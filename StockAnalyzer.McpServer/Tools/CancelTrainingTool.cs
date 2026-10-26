@@ -23,6 +23,8 @@ internal sealed class CancelTrainingTool : IMcpTool
 
     public bool IsExecution => true;
 
+    public string? ExampleArgumentsJson => "{\"jobId\":\"00000000-0000-0000-0000-000000000000\"}";
+
     public string InputSchemaJson => ToolSchema.Object()
         .String(ExecutionToolSupport.JobIdArgument, "The jobId returned by sa_start_training.", required: true)
         .Build();

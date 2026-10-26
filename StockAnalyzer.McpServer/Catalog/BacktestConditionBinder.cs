@@ -114,7 +114,7 @@ internal sealed class BacktestConditionBinder
     /// application's own mapper, checked against the configured limits, and refused when a side names a time frame other than the backtest's (D1).
     /// </summary>
     /// <exception cref="ToolException">The template cannot run through this tool.</exception>
-    public BoundBacktestConditions FromTemplate(BacktestConditionTemplate template, string path)
+    public BoundBacktestConditions FromTemplate(BacktestConditionTemplate template, string path, TimeFrame evaluatedTimeFrame = TimeFrame.D1)
     {
         ArgumentNullException.ThrowIfNull(template);
         BacktestConditionTree tree;
@@ -131,11 +131,11 @@ internal sealed class BacktestConditionBinder
         {
             foreach (TimeFrame? frame in new[] { entry.Left.Frame, entry.Right?.Frame })
             {
-                if (frame is { } named && named != ReadOnlyGatewayContract.BacktestTimeFrame)
+                if (frame is { } named && named != evaluatedTimeFrame)
                 {
                     throw new ToolException(
                         ToolErrorCodes.UnsupportedTimeFrame,
-                        $"The template compares a {named} side; the backtest supports only {ReadOnlyGatewayContract.BacktestTimeFrame}.",
+                        $"The template compares a {named} side; the backtest was requested for {evaluatedTimeFrame}.",
                         path,
                         "Use a template whose sides all use the evaluated time frame.");
                 }

@@ -10,6 +10,7 @@ using StockAnalyzer.Core.Models.Indicators;
 using StockAnalyzer.Core.Models.Templates;
 using StockAnalyzer.Core.ReadOnly;
 using StockAnalyzer.Core.Services;
+using StockAnalyzer.Core.Services.ReinforcementLearning;
 using StockAnalyzer.McpServer.Catalog;
 using StockAnalyzer.McpServer.Execution;
 using StockAnalyzer.McpServer.Limits;
@@ -69,6 +70,7 @@ internal static class McpServerComposition
     /// <param name="enableExecution">Offer the execution tools (<c>--enable-execution</c>); without it they are neither registered nor built, and the sandbox folder is never touched.</param>
     /// <param name="executionGateway">Only for tests: the gateway the execution tools use instead of the real one.</param>
     /// <param name="workspaceSource">Only for tests: the workspace source used instead of reading the application's default workspace file.</param>
+    /// <param name="rlRegistry">Only for tests: the RL model registry used instead of the application's default registry.</param>
     public static McpServerRuntime Create(
         IConfiguration configuration,
         LogSink log,
@@ -76,7 +78,8 @@ internal static class McpServerComposition
         string? backtestTemplatesDirectory = null,
         bool enableExecution = false,
         ISandboxedExecutionGateway? executionGateway = null,
-        IReadOnlyWorkspaceSource? workspaceSource = null)
+        IReadOnlyWorkspaceSource? workspaceSource = null,
+        IRlModelGenerationRegistry? rlRegistry = null)
     {
         McpLimits limits = configuration.GetSection(McpLimits.SectionName).Get<McpLimits>() ?? new McpLimits();
         McpLimitsContract.Validate(limits);
@@ -99,6 +102,11 @@ internal static class McpServerComposition
         if (workspaceSource is not null)
         {
             collection.Replace(ServiceDescriptor.Singleton<IReadOnlyWorkspaceSource>(workspaceSource));
+        }
+
+        if (rlRegistry is not null)
+        {
+            collection.Replace(ServiceDescriptor.Singleton<IRlModelGenerationRegistry>(rlRegistry));
         }
 
         ServiceProvider services = collection.BuildServiceProvider();
@@ -147,6 +155,8 @@ internal static class McpServerComposition
                 new RunBacktestTool(gateway, symbols, backtestBinder, limits),
                 new CalculateReverseWatchTool(gateway, symbols, limits),
                 new CalculateChartSeriesTool(gateway, symbols, limits),
+                new CheckPortfolioRlPreflightTool(symbols, services.GetService<IRlPortfolioService>()),
+                new CheckRlPlaybackPreflightTool(symbols, services.GetService<IRlModelGenerationRegistry>()),
             };
 
             Action? prepareExecution = null;
@@ -168,7 +178,9 @@ internal static class McpServerComposition
                 tools.Add(new GetTrainingStatusTool(execution, sanitizer));
                 tools.Add(new CancelTrainingTool(execution));
                 tools.Add(new StartRlTrainingTool(execution, symbols));
+                tools.Add(new StartPortfolioRlTrainingTool(execution, symbols));
                 tools.Add(new RunOnnxPredictionTool(execution, gateway, symbols, new MLDataProcessor(), limits, executionSettings));
+                tools.Add(new GetRlPlaybackTool(symbols, services.GetService<IRlModelGenerationRegistry>()));
             }
 
             var resources = new McpResourceRegistry(new[]

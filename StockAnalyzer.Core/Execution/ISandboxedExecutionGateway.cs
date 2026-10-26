@@ -30,6 +30,17 @@ public interface ISandboxedExecutionGateway
     /// <exception cref="ExecutionPathTooLongException">The job folder is too deep for the run's longest file path. No job and no folder is created.</exception>
     Task<TrainingJobTicket> StartRlTrainingAsync(EphemeralRlRequest request, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Starts one portfolio reinforcement-learning smoke run in the ephemeral sandbox (the OS temp folder) and returns at once.
+    /// The job shares the table, the state machine and the concurrency limit; nothing is registered and nothing is written under <c>Data/</c>.
+    /// </summary>
+    /// <exception cref="ExecutionRequestInvalidException">A rule of the application refuses the request. No job is created.</exception>
+    /// <exception cref="InsufficientStoredDataException">The stored data cannot give the period. No job is created.</exception>
+    /// <exception cref="ExecutionBusyException">The allowed number of running jobs is reached. No job is created.</exception>
+    /// <exception cref="RlEnvironmentMissingException">The managed RL environment is not installed. No job is created.</exception>
+    /// <exception cref="ExecutionPathTooLongException">The job folder is too deep for the run's longest file path. No job and no folder is created.</exception>
+    Task<TrainingJobTicket> StartPortfolioRlTrainingAsync(EphemeralPortfolioRlRequest request, CancellationToken cancellationToken);
+
     /// <exception cref="JobNotFoundException">No job has this id.</exception>
     TrainingJobStatus GetStatus(string jobId);
 
@@ -43,6 +54,12 @@ public interface ISandboxedExecutionGateway
     /// <summary>The artifact's ONNX file, kept from deletion until the lease is disposed.</summary>
     /// <exception cref="ArtifactNotFoundException">No such artifact.</exception>
     ArtifactLease LeaseArtifact(string artifactId);
+
+    /// <summary>Leases a registered production model generation from the model store.</summary>
+    /// <param name="modelId">The model generation id, or <c>"active"</c> for the active model.</param>
+    /// <exception cref="ArtifactNotFoundException">The model is not found in the registry.</exception>
+    /// <exception cref="ExecutionRequestInvalidException">No model is currently active when asking for <c>"active"</c>.</exception>
+    ArtifactLease LeaseRegisteredModel(string modelId);
 }
 
 /// <summary>A read lease on an artifact: the files stay until it is disposed.</summary>
@@ -59,12 +76,13 @@ public sealed class ArtifactLease : IDisposable
     }
 
     /// <summary>Creates a standalone lease directly on an onnx file on disk.</summary>
-    public static ArtifactLease FromPath(string onnxPath, Action? release = null)
+    public static ArtifactLease FromPath(string onnxPath, Action? release = null, string? artifactId = null)
     {
         var fileInfo = new FileInfo(onnxPath);
         var hash = ContentHash.OfFile(onnxPath);
+        string id = string.IsNullOrWhiteSpace(artifactId) ? "file-" + Guid.NewGuid().ToString("N") : artifactId;
         var artifact = new EphemeralArtifact(
-            ArtifactId: "file-" + Guid.NewGuid().ToString("N"),
+            ArtifactId: id,
             OnnxFileName: fileInfo.Name,
             SizeBytes: fileInfo.Length,
             Sha256: hash,

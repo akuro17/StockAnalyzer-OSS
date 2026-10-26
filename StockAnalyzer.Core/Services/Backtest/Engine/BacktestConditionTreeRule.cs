@@ -14,6 +14,15 @@ public static class BacktestConditionTreeRule
     /// <summary>Smallest meaningful value of either limit (depth counts the root group as 1; the node count includes the root).</summary>
     public const int MinBound = 1;
 
+    /// <summary>Maximum supported condition tree depth ceiling.</summary>
+    public const int MaxDepthBound = 16;
+
+    /// <summary>Maximum supported condition tree total nodes ceiling.</summary>
+    public const int MaxNodesBound = 256;
+
+    /// <summary>Maximum supported condition offset ceiling.</summary>
+    public const int MaxOffsetBound = 1000;
+
     /// <summary>
     /// The fixed message of a tree that is nested too deeply to be processed. The recursive tree routines call
     /// <c>RuntimeHelpers.EnsureSufficientExecutionStack</c> (no numeric bound: the runtime knows the real stack) and the public entry points convert its

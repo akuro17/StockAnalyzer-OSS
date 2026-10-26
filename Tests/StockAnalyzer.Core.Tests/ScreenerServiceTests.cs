@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -287,6 +288,61 @@ public class ScreenerServiceTests : IDisposable
 
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => ServiceWith(DelayingDataService(seed: 1, symbolCount: 1))
             .ScreenAsync(new List<string> { "S2" }, tree, TimeFrame.D1, new SynchronousProgress(), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task ScreenAsync_TreeExceedingMaxDepth_IsRejected()
+    {
+        int configuredDepth = ((IStockAnalyzerSettings)new StubSettings()).ScreenerMaxFilterTreeDepth;
+        ScreenerConditionGroup current = new(LogicalOperator.And,
+            System.Collections.Immutable.ImmutableArray.Create<IScreenerConditionNode>(new ScreenerConditionLeaf(EntryWithOffsets(0))));
+        for (int i = 0; i < configuredDepth; i++)
+        {
+            current = new ScreenerConditionGroup(LogicalOperator.Or,
+                System.Collections.Immutable.ImmutableArray.Create<IScreenerConditionNode>(current));
+        }
+
+        var tree = new ScreenerConditionTreeCondition(current);
+
+        var ex = await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => ServiceWith(DelayingDataService(seed: 1, symbolCount: 1))
+            .ScreenAsync(new List<string> { "S2" }, tree, TimeFrame.D1, new SynchronousProgress(), CancellationToken.None));
+        Assert.Contains("Screener:MaxFilterTreeDepth", ex.Message);
+    }
+
+    [Fact]
+    public async Task ScreenAsync_TreeExceedingMaxNodes_IsRejected()
+    {
+        int configuredNodes = ((IStockAnalyzerSettings)new StubSettings()).ScreenerMaxFilterTreeNodes;
+        var leaves = Enumerable.Range(0, configuredNodes)
+            .Select(_ => (IScreenerConditionNode)new ScreenerConditionLeaf(EntryWithOffsets(0)))
+            .ToImmutableArray();
+        var tree = new ScreenerConditionTreeCondition(new ScreenerConditionGroup(LogicalOperator.Or, leaves));
+
+        var ex = await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => ServiceWith(DelayingDataService(seed: 1, symbolCount: 1))
+            .ScreenAsync(new List<string> { "S2" }, tree, TimeFrame.D1, new SynchronousProgress(), CancellationToken.None));
+        Assert.Contains("Screener:MaxFilterTreeNodes", ex.Message);
+    }
+
+    [Fact]
+    public async Task ScreenAsync_TreeWithNoActiveLeaves_ReturnsEmptyAndReportsCompleteWithoutLoadingData()
+    {
+        var disabledLeaf = new ScreenerConditionLeaf(new ScreenerIndicatorEntry
+        {
+            LeftHand = new ScreenerIndicatorSideConfig { IndicatorType = IndicatorType.SMA, Offset = 0 },
+            Operator = ComparisonOperator.GreaterThan,
+            TargetMode = RightHandTargetMode.NumericValue,
+            RightNumericValue = 50m,
+            IsEnabled = false
+        });
+        var tree = new ScreenerConditionTreeCondition(new ScreenerConditionGroup(LogicalOperator.And,
+            ImmutableArray.Create<IScreenerConditionNode>(disabledLeaf)));
+
+        var progress = new SynchronousProgress();
+        var result = await ServiceWith(DelayingDataService(seed: 1, symbolCount: 5))
+            .ScreenAsync(new List<string> { "S1", "S2" }, tree, TimeFrame.D1, progress, CancellationToken.None);
+
+        Assert.Empty(result);
+        Assert.Contains(100, progress.Reports);
     }
 
     [Fact]

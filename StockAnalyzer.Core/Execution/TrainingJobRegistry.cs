@@ -90,6 +90,14 @@ internal sealed class TrainingJobRecord
         StartedUtc = startedUtc;
     }
 
+    public TrainingJobRecord(string jobId, EphemeralPortfolioRlRequest request, DateTimeOffset startedUtc)
+    {
+        JobId = jobId;
+        Kind = TrainingJobKind.PortfolioReinforcementLearning;
+        PortfolioRlRequest = request;
+        StartedUtc = startedUtc;
+    }
+
     public string JobId { get; }
 
     public TrainingJobKind Kind { get; }
@@ -102,6 +110,12 @@ internal sealed class TrainingJobRecord
 
     /// <summary>What a succeeded reinforcement-learning job leaves to read.</summary>
     public EphemeralRlResult? RlResult { get; set; }
+
+    /// <summary>The portfolio reinforcement-learning request; null for other kinds.</summary>
+    public EphemeralPortfolioRlRequest? PortfolioRlRequest { get; }
+
+    /// <summary>What a succeeded portfolio reinforcement-learning job leaves to read.</summary>
+    public EphemeralPortfolioRlResult? PortfolioRlResult { get; set; }
 
     public DateTimeOffset StartedUtc { get; }
 

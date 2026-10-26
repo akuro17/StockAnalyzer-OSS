@@ -376,16 +376,23 @@ public sealed class RunBacktestToolTests : IDisposable
     // ---- arguments ------------------------------------------------------------------------------------------------------------------
 
     [Fact]
-    public async Task OnlyTheDailyFrameIsSupported()
+    public async Task SupportedTimeFramesAreExecutedAndUnsupportedAreRefused()
     {
         var dispatcher = await StartAsync();
 
-        using JsonDocument weekly = await RunAsync(dispatcher, Conditions, Period + ",\"timeFrame\":\"W1\"");
         using JsonDocument daily = await RunAsync(dispatcher, Conditions, Period + ",\"timeFrame\":\"D1\"");
+        using JsonDocument weekly = await RunAsync(dispatcher, Conditions, Period + ",\"timeFrame\":\"W1\"");
+        using JsonDocument monthly = await RunAsync(dispatcher, Conditions, Period + ",\"timeFrame\":\"MN1\"");
+        using JsonDocument hourly = await RunAsync(dispatcher, Conditions, Period + ",\"timeFrame\":\"H1\"");
 
-        Assert.Equal("UNSUPPORTED_TIMEFRAME", Code(weekly));
-        Assert.Equal("timeFrame", Param(weekly));
         Assert.Equal("D1", Result(daily).GetProperty("timeFrame").GetString());
+        Assert.Equal("W1", Result(weekly).GetProperty("timeFrame").GetString());
+        Assert.Equal(52, Result(weekly).GetProperty("report").GetProperty("annualPeriods").GetInt32());
+        Assert.Equal("MN1", Result(monthly).GetProperty("timeFrame").GetString());
+        Assert.Equal(12, Result(monthly).GetProperty("report").GetProperty("annualPeriods").GetInt32());
+
+        Assert.Equal("INVALID_ARGUMENT", Code(hourly));
+        Assert.Equal("timeFrame", Param(hourly));
     }
 
     [Theory]
@@ -514,7 +521,7 @@ public sealed class RunBacktestToolTests : IDisposable
 
         var depthDispatcher = await StartAsync(("Backtest:MaxConditionTreeDepth", "1"));
         using JsonDocument tooDeep = await RunAsync(depthDispatcher, deep, Period);
-        var nodeDispatcher = await StartAsync(("Backtest:MaxConditionTreeNodes", "3"));
+        var nodeDispatcher = await StartAsync(("Backtest:MaxConditionTreeNodes", "3"), ("Backtest:MaxConditionTreeDepth", "3"));
         using JsonDocument tooWide = await RunAsync(nodeDispatcher, wide, Period);
         var offsetDispatcher = await StartAsync(("Backtest:MaxConditionOffset", "10"));
         using JsonDocument tooFar = await RunAsync(offsetDispatcher, offset, Period);

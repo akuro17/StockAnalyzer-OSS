@@ -152,6 +152,9 @@ public sealed class BacktestGuiMcpEquivalenceTests : IDisposable
 
     /// <summary>The snapshot the window builds (BuildRunSnapshot), from the same explicit values.</summary>
     private BacktestRunSnapshot WindowSnapshot(int? annualPeriodsD1 = null, int? bootstrapSeed = null, int? bootstrapIterations = null)
+        => WindowSnapshot(TimeFrame.D1, annualPeriodsD1, bootstrapSeed, bootstrapIterations);
+
+    private BacktestRunSnapshot WindowSnapshot(TimeFrame frame, int? annualPeriodsD1 = null, int? bootstrapSeed = null, int? bootstrapIterations = null)
     {
         IStockAnalyzerSettings settings = new ServiceCollection().AddStockAnalyzerReadOnlyCore(Configuration()).BuildServiceProvider().GetRequiredService<IStockAnalyzerSettings>();
 
@@ -195,7 +198,7 @@ public sealed class BacktestGuiMcpEquivalenceTests : IDisposable
 
         return new BacktestRunSnapshot(
             "MSFT",
-            TimeFrame.D1,
+            frame,
             NormalizeUiDate(new DateTime(2024, 2, 1)),
             NormalizeUiDate(new DateTime(2024, 12, 31)),
             configuration,
@@ -209,12 +212,17 @@ public sealed class BacktestGuiMcpEquivalenceTests : IDisposable
     }
 
     /// <summary>What the window's RunBacktestAsync does with the snapshot: PrepareAsync, then Evaluate.</summary>
-    private async Task<BacktestEvaluationArtifact> RunLikeTheWindowAsync(int? annualPeriodsD1 = null, int? bootstrapSeed = null, int? bootstrapIterations = null)
+    private Task<BacktestEvaluationArtifact> RunLikeTheWindowAsync(int? annualPeriodsD1, int? bootstrapSeed = null, int? bootstrapIterations = null)
+        => RunLikeTheWindowAsync(TimeFrame.D1, annualPeriodsD1, bootstrapSeed, bootstrapIterations);
+
+    private async Task<BacktestEvaluationArtifact> RunLikeTheWindowAsync(TimeFrame frame = TimeFrame.D1, int? annualPeriodsD1 = null, int? bootstrapSeed = null, int? bootstrapIterations = null)
     {
         using var db = new DuckDBConnectionManager();
-        var preparation = new BacktestRunPreparationService(new ParquetDataService(db, Options.Create(_fixture.Settings)));
+        var rawDataService = new ParquetDataService(db, Options.Create(_fixture.Settings));
+        var aggregatingDataService = new AggregatingDataService(rawDataService, new TimeFrameManager(rawDataService));
+        var preparation = new BacktestRunPreparationService(aggregatingDataService);
         var evaluation = new BacktestEvaluationService(new BacktestEngine(IndicatorFactory.Default), new BacktestReportGenerator(), new NoSamplingEvidenceTrustPolicy());
-        PreparedBacktestRun prepared = await preparation.PrepareAsync(WindowSnapshot(annualPeriodsD1, bootstrapSeed, bootstrapIterations), CancellationToken.None);
+        PreparedBacktestRun prepared = await preparation.PrepareAsync(WindowSnapshot(frame, annualPeriodsD1, bootstrapSeed, bootstrapIterations), CancellationToken.None);
         return evaluation.Evaluate(prepared.Input, prepared.Configuration, prepared.StrategySpecification, prepared.ReportOptions);
     }
 
@@ -318,6 +326,18 @@ public sealed class BacktestGuiMcpEquivalenceTests : IDisposable
         BacktestEvaluationArtifact window = await RunLikeTheWindowAsync();
 
         Assert.Equal("template", mcp.GetProperty("conditionSource").GetString());
+        AssertSameResult(window, mcp);
+    }
+
+    [Fact]
+    public async Task TheMcpRunWithWeeklyFrameEqualsTheRunTheWindowWouldMake()
+    {
+        var dispatcher = await StartAsync();
+
+        JsonElement mcp = await CallAsync(dispatcher, $"\"conditions\":{ConditionsJson}{Period}{SettingsJson}{RiskJson},\"timeFrame\":\"W1\"");
+        BacktestEvaluationArtifact window = await RunLikeTheWindowAsync(TimeFrame.W1);
+
+        Assert.Equal("W1", mcp.GetProperty("timeFrame").GetString());
         AssertSameResult(window, mcp);
     }
 

@@ -10,6 +10,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using StockAnalyzer.Core.Execution;
 using StockAnalyzer.Core.Models.Backtest.Engine;
 using StockAnalyzer.Core.Models.Indicators;
 using StockAnalyzer.Core.Models.ReinforcementLearning;
@@ -215,6 +216,93 @@ public sealed class QValueService : IQValueService
         return Task.Run(() => ReplayExternalCoreAsync(request, cancellationToken), cancellationToken);
     }
 
+    /// <summary>
+    /// Replay on the stored bars using an ephemeral uncommitted ONNX policy model located in the OS temporary sandbox.
+    /// </summary>
+    public Task<RlExternalReplayResult> ReplayEphemeralAsync(
+        string onnxModelPath,
+        string symbol,
+        DateOnly asOfDate,
+        int decisionPosition,
+        string? policyId = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(onnxModelPath))
+            throw new ArgumentException("ONNX model path must not be null or empty.", nameof(onnxModelPath));
+        if (!EphemeralSandbox.IsStrictlyInside(onnxModelPath))
+            throw new ArgumentException("The ephemeral model path must be strictly inside the ephemeral sandbox.", nameof(onnxModelPath));
+        if (!File.Exists(onnxModelPath))
+            throw new FileNotFoundException("The ephemeral ONNX model file does not exist.", onnxModelPath);
+        if (decisionPosition < 0 || decisionPosition >= RlContract.EpisodeHorizon)
+            throw new ArgumentOutOfRangeException(nameof(decisionPosition), "A Q replay cursor must identify a nonterminal decision from 0 to 127.");
+        if (string.IsNullOrWhiteSpace(symbol))
+            throw new ArgumentException("Symbol must not be null or empty.", nameof(symbol));
+
+        return Task.Run(() => ReplayEphemeralCoreAsync(onnxModelPath, symbol, asOfDate, decisionPosition, policyId, cancellationToken), cancellationToken);
+    }
+
+    private async Task<RlExternalReplayResult> ReplayEphemeralCoreAsync(
+        string onnxModelPath,
+        string symbol,
+        DateOnly asOfDate,
+        int decisionPosition,
+        string? policyId,
+        CancellationToken cancellationToken)
+    {
+        long replayStart = RlReplayTimings.Start();
+        var timings = new RlReplayTimings();
+        var limits = RlTrainingValidation.FreezeLimits(continuous: false);
+        string modelDir = Path.GetDirectoryName(onnxModelPath) ?? string.Empty;
+        var costs = ResolveEphemeralCosts(modelDir);
+        using var workspace = RlReplayWorkspace.Create(_dataRoot, _logger);
+        var episode = await RlExternalEpisodeFactory.PrepareAsync(symbol, asOfDate, limits, workspace, cancellationToken, timings: timings).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        long modelStart = RlReplayTimings.Start();
+        using var model = new RlQModel(onnxModelPath);
+        using var session = new BacktestEngine(new IndicatorFactory()).CreateRlSession(episode.CreateInput(), costs);
+        RlSessionSnapshot account = session.Reset(cancellationToken);
+        string targetPolicy = policyId ?? RlFiles.Target;
+        var sma = targetPolicy == RlContract.SmaBaselineId ? RlBaselinePolicies.CreateSmaSignals(episode.Bars) : default;
+        timings.ModelLoadMs = RlReplayTimings.Since(modelStart);
+
+        RlAction Choose(RlSessionSnapshot current, int i) => targetPolicy == RlFiles.Target
+            ? RlContract.SelectAction(model.Infer(RlObservationBuilder.Build(current, model.Scaler)))
+            : RlBaselinePolicies.GetAction(targetPolicy, sma, RlContract.WindowLength - 1, i, RlContract.CandidateSeeds[0]);
+
+        long steppingStart = RlReplayTimings.Start();
+        account = RunDiscreteSteps(session, account, decisionPosition, Choose, cancellationToken);
+        timings.SteppingMs = RlReplayTimings.Since(steppingStart);
+        timings.Steps = decisionPosition;
+        if (account.Terminated) throw new InvalidOperationException("Unavailable: Q is not an executable action at an ended cursor.");
+        ValidateAccount(account, costs);
+
+        long inferenceStart = RlReplayTimings.Start();
+        float[] observation = RlObservationBuilder.Build(account, model.Scaler);
+        float[] q = model.Infer(observation);
+        timings.InferenceMs = RlReplayTimings.Since(inferenceStart);
+
+        var findings = RlScalerRangeCheck.Find(model.Scaler, targetPolicy == RlFiles.Target
+            ? RlObservationBuilder.RawRows(episode.Bars.AsSpan().Slice(0, decisionPosition + RlContract.WindowLength))
+            : RlObservationBuilder.RawWindow(account));
+
+        string accountRevision = Common.ContentHash.OfText(JsonSerializer.Serialize(account, RlFiles.Json));
+        string identity = string.Join("\n", "ephemeral", episode.Manifest.Symbol, asOfDate.ToString("O", CultureInfo.InvariantCulture),
+            episode.ResolvedAnchorDate.ToString("O", CultureInfo.InvariantCulture), targetPolicy,
+            decisionPosition.ToString(CultureInfo.InvariantCulture), episode.SourceRevision, accountRevision, ObservationHash(observation));
+        string key = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(identity))).ToLowerInvariant();
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var snapshot = new RlQSnapshot(key, "ephemeral", episode.Manifest.Symbol, account.MarketAnchor, q.ToImmutableArray(),
+            RlContract.SelectAction(q), account, RlFiles.Disclosure +
+                $" Acquisition={episode.Manifest.AcquisitionProvenanceStatus}; ingestion={episode.Manifest.IngestionImputationStatus}; precision={episode.Manifest.SourceStorageDtype}."
+                + ExternalWindowDisclosure, targetPolicy)
+            { ScalerFindings = findings };
+
+        timings.Log(_logger, replayStart, "Ephemeral", findings.Length);
+        return new RlExternalReplayResult(snapshot, asOfDate, episode.ResolvedAnchorDate);
+    }
+
     private async Task<RlExternalReplayResult> ReplayExternalCoreAsync(RlExternalReplayRequest request, CancellationToken cancellationToken)
     {
         if (request.DecisionCount < 0 || request.DecisionCount >= RlContract.EpisodeHorizon)
@@ -304,6 +392,26 @@ public sealed class QValueService : IQValueService
         for (int i = 0; i < observation.Length; i++)
             System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(i * sizeof(float), sizeof(float)), BitConverter.SingleToInt32Bits(observation[i]));
         return Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
+    }
+
+    private static BacktestConfiguration ResolveEphemeralCosts(string directory)
+    {
+        string jobPath = Path.Combine(directory, RlFiles.Job);
+        if (File.Exists(jobPath))
+        {
+            try { return LoadCosts(directory); } catch { /* fallback to factory costs */ }
+        }
+
+        return RlContract.CreateConfiguration(new BacktestConfiguration
+        {
+            SizingModel = BacktestDefaults.SizingModel,
+            SizingParameter = BacktestDefaults.SizingParameter,
+            InitialCapital = BacktestDefaults.InitialCapital,
+            CommissionFlat = BacktestDefaults.CommissionFlat,
+            CommissionPerUnit = BacktestDefaults.CommissionPerUnit,
+            SlippageRatio = BacktestDefaults.SlippageRatio,
+            LiquidationPenaltyRatio = BacktestDefaults.LiquidationPenaltyRatio,
+        });
     }
 
     private static BacktestConfiguration LoadCosts(string directory)

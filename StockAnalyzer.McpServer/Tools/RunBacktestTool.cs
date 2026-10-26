@@ -45,10 +45,10 @@ internal sealed class RunBacktestTool : IMcpTool
     public string Name => "sa_run_backtest";
 
     public string Description =>
-        "Runs one backtest on the stored daily bars of one symbol with the application's own backtest engine (the Backtest window's Legacy execution model) and returns the performance report, the trades and the run fingerprint. " +
+        "Runs one backtest on the stored bars of one symbol (daily D1, weekly W1 or monthly MN1) with the application's own backtest engine (the Backtest window's Legacy execution model) and returns the performance report, the trades and the run fingerprint. " +
         "Call sa_get_capabilities first for indicator types, parameters and series; indicators that look ahead are not allowed. " +
         "Give either conditions or templateId: templateId runs a saved backtest-condition template (ids from sa_list_templates with templateType backtestCondition) " +
-        "with its own conditions and risk settings; riskManagement must then be omitted, and the template's sides must use the daily time frame. " +
+        "with its own conditions and risk settings; riskManagement must then be omitted, and the template's sides must use the evaluated time frame. " +
         $"conditions has up to six roots: {string.Join(", ", BacktestConditionBinder.RootKeys)}. entryLong/entryShort open a long/short position, exitLong/exitShort close it, " +
         "reverseLong flips a short position to long and reverseShort flips a long position to short (a reverse root acts only while a position is held). Give at least one root, normally an entry. " +
         "A root is a group {operator: And|Or, children: [...]} of groups and comparisons, or one comparison. " +
@@ -60,11 +60,13 @@ internal sealed class RunBacktestTool : IMcpTool
         "account sets initialCapital, commissionFlat, commissionPerUnit, slippageRatio, sizingModel (FixedQuantity or PercentOfEquity), sizingParameter, initialMarginRatio, maintenanceMarginRatio and liquidationPenaltyRatio; " +
         "riskManagement sets stopLossRatio and takeProfitRatio of the entry price (0.05 = 5%); report sets annualRiskFreeRate, annualMar, annualPeriodsD1 (daily bars per year, for the annualised metrics), bootstrapSeed and bootstrapIterations (the report's bootstrap confidence intervals). " +
         "Omitted values are the Backtest window's factory defaults, not the values saved in the window; the result echoes every effective value. " +
-        "Only the daily time frame and the Legacy execution model are supported; there is no equity curve. " +
+        $"The supported time frames are {string.Join(", ", ReadOnlyGatewayContract.SupportedBacktestTimeFrames)}; the Legacy execution model is used; there is no equity curve. " +
         $"The result lists the first maxReturnedTrades trades in the order the engine closed them (default and maximum {_limits.MaxReturnedTrades}; totalTrades is the true count) and engine warnings by code. " +
         "Metrics keep status/value/unit/reason: a value is present only when status is Valid. The tool never changes anything and never fetches data.";
 
     public bool IsHeavy => true;
+
+    public string? ExampleArgumentsJson => "{\"symbol\":\"7203-T\",\"timeFrame\":\"D1\",\"conditions\":{\"entryLong\":{\"left\":{\"indicator\":\"RSI\",\"parameters\":{\"Period\":14}},\"comparison\":\"LessThan\",\"right\":30},\"exitLong\":{\"left\":{\"indicator\":\"RSI\",\"parameters\":{\"Period\":14}},\"comparison\":\"GreaterThan\",\"right\":70}},\"maxReturnedTrades\":50}";
 
     public string InputSchemaJson => ToolSchema.Object()
         .String(SymbolArgument, "The symbol to test (a ticker from sa_list_tickers).", required: true)
@@ -72,7 +74,7 @@ internal sealed class RunBacktestTool : IMcpTool
         .String(TemplateIdArgument, "Id of a saved backtest-condition template (sa_list_templates with templateType backtestCondition). Exactly one of conditions and templateId.")
         .String(StartArgument, "First evaluated day, yyyy-MM-dd. Default: the start of the stored history.")
         .String(EndArgument, "Last evaluated day, yyyy-MM-dd. Default: the latest stored bar.")
-        .String(TimeFrameArgument, $"Time frame of the bars. Only {ReadOnlyGatewayContract.BacktestTimeFrame} is supported (default).", allowedValues: Enum.GetNames<TimeFrame>())
+        .String(TimeFrameArgument, $"Time frame of the bars ({string.Join(", ", ReadOnlyGatewayContract.SupportedBacktestTimeFrames)}). Default {ReadOnlyGatewayContract.BacktestTimeFrame}.", allowedValues: ReadOnlyGatewayContract.SupportedBacktestTimeFrames.Select(t => t.ToString()).ToArray())
         .FreeObject(BacktestSettingsBinder.AccountArgument, "Capital, cost, sizing and margin settings (see the tool description). Omitted values are the factory defaults.")
         .FreeObject(BacktestSettingsBinder.RiskArgument, "Optional stop-loss and take-profit as ratios of the entry price: {stopLossRatio, takeProfitRatio}.")
         .FreeObject(BacktestSettingsBinder.ReportArgument, "Report settings: {annualRiskFreeRate, annualMar} (simple rates, 0.02 = 2%), {annualPeriodsD1} (daily bars per year), {bootstrapSeed, bootstrapIterations} (whole numbers). Omitted values are the factory defaults.")
@@ -81,7 +83,7 @@ internal sealed class RunBacktestTool : IMcpTool
 
     public async Task<string> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)
     {
-        CheckTimeFrame(arguments);
+        TimeFrame timeFrame = ResolveTimeFrame(arguments);
         DateOnly? requestedStart = ToolArgs.Date(arguments, StartArgument);
         DateOnly? requestedEnd = ToolArgs.Date(arguments, EndArgument);
         if (requestedStart is { } start && requestedEnd is { } end && start > end)
@@ -108,7 +110,7 @@ internal sealed class RunBacktestTool : IMcpTool
                 "Omit riskManagement, or use conditions instead of templateId.");
         }
 
-        BoundBacktestSettings settings = BacktestSettingsBinder.Bind(arguments);
+        BoundBacktestSettings settings = BacktestSettingsBinder.Bind(arguments, timeFrame);
         BoundBacktestConditions conditions;
         TemplateReference? template = null;
         if (templateText is null)
@@ -124,16 +126,16 @@ internal sealed class RunBacktestTool : IMcpTool
 
             BacktestConditionTemplate saved = await _gateway.GetBacktestConditionTemplateAsync(templateId, cancellationToken).ConfigureAwait(false)
                 ?? throw new ToolException(ToolErrorCodes.TemplateNotFound, $"No backtest-condition template has the id {templateId}.", TemplateIdArgument, "Call sa_list_templates with templateType backtestCondition.");
-            conditions = _conditions.FromTemplate(saved, TemplateIdArgument);
+            conditions = _conditions.FromTemplate(saved, TemplateIdArgument, timeFrame);
             settings = settings with { RiskManagement = BacktestSettingsBinder.FromTemplate(saved.RiskManagement) };
             template = new TemplateReference(saved.Id, saved.Name);
         }
 
         string symbol = await _symbols.ResolveAsync(ToolArgs.String(arguments, SymbolArgument)!, SymbolArgument, cancellationToken).ConfigureAwait(false);
-        IReadOnlyList<CandleData> stored = await _gateway.GetCandlesAsync(symbol, ReadOnlyGatewayContract.BacktestTimeFrame, _limits.MaxCandlesPerRequest, cancellationToken).ConfigureAwait(false);
+        IReadOnlyList<CandleData> stored = await _gateway.GetCandlesAsync(symbol, timeFrame, _limits.MaxCandlesPerRequest, cancellationToken).ConfigureAwait(false);
         if (stored.Count == 0)
         {
-            throw new ToolException(ToolErrorCodes.InsufficientMarketData, $"No stored daily bars exist for {symbol}.", SymbolArgument, "Call sa_list_tickers to see the symbols that have data.");
+            throw new ToolException(ToolErrorCodes.InsufficientMarketData, $"No stored {timeFrame} bars exist for {symbol}.", SymbolArgument, "Call sa_list_tickers to see the symbols that have data.");
         }
 
         DateOnly effectiveStart = requestedStart ?? DateOnly.FromDateTime(stored[0].Timestamp);
@@ -145,7 +147,7 @@ internal sealed class RunBacktestTool : IMcpTool
 
         var snapshot = new BacktestRunSnapshot(
             symbol,
-            ReadOnlyGatewayContract.BacktestTimeFrame,
+            timeFrame,
             ToUtc(effectiveStart),
             ToUtc(effectiveEnd),
             settings.Configuration,
@@ -167,28 +169,37 @@ internal sealed class RunBacktestTool : IMcpTool
             throw new ToolException(ToolErrorCodes.InvalidArgument, $"The backtest input was rejected: {error.Message.Split(Environment.NewLine)[0]}", hint: "Check the dates and the conditions.");
         }
 
-        return ToolJson.Build(writer => Write(writer, artifact, symbol, effectiveStart, effectiveEnd, requestedStart is null || requestedEnd is null, settings, conditions, maxTrades, template));
+        return ToolJson.Build(writer => Write(writer, artifact, symbol, timeFrame, effectiveStart, effectiveEnd, requestedStart is null || requestedEnd is null, settings, conditions, maxTrades, template));
     }
 
     private static DateTime ToUtc(DateOnly date) => DateTime.SpecifyKind(date.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
 
-    private static void CheckTimeFrame(JsonElement arguments)
+    private static TimeFrame ResolveTimeFrame(JsonElement arguments)
     {
         string? name = ToolArgs.String(arguments, TimeFrameArgument);
-        if (name is not null && Enum.Parse<TimeFrame>(name) != ReadOnlyGatewayContract.BacktestTimeFrame)
+        if (name is null)
+        {
+            return ReadOnlyGatewayContract.BacktestTimeFrame;
+        }
+
+        if (!Enum.TryParse<TimeFrame>(name, ignoreCase: true, out TimeFrame frame) ||
+            !ReadOnlyGatewayContract.SupportedBacktestTimeFrames.Contains(frame))
         {
             throw new ToolException(
                 ToolErrorCodes.UnsupportedTimeFrame,
                 $"Time frame {name} is not supported by the backtest.",
                 TimeFrameArgument,
-                $"Supported: {ReadOnlyGatewayContract.BacktestTimeFrame}.");
+                $"Supported: {string.Join(", ", ReadOnlyGatewayContract.SupportedBacktestTimeFrames)}.");
         }
+
+        return frame;
     }
 
     private void Write(
         System.Text.Json.Utf8JsonWriter writer,
         BacktestEvaluationArtifact artifact,
         string symbol,
+        TimeFrame timeFrame,
         DateOnly start,
         DateOnly end,
         bool datesDefaulted,
@@ -202,7 +213,7 @@ internal sealed class RunBacktestTool : IMcpTool
 
         writer.WriteStartObject();
         writer.WriteString("symbol", symbol);
-        writer.WriteString("timeFrame", ReadOnlyGatewayContract.BacktestTimeFrame.ToString());
+        writer.WriteString("timeFrame", timeFrame.ToString());
         writer.WriteString("executionModel", settings.Configuration.ExecutionModel.ToString());
         writer.WriteString("status", result.Status.ToString());
         writer.WriteBoolean("isInsufficientData", result.IsInsufficientData);

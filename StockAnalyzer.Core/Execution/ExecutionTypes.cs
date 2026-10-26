@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using StockAnalyzer.Core.Models;
+using StockAnalyzer.Core.Models.ReinforcementLearning;
 using StockAnalyzer.Core.Models.Training;
 
 namespace StockAnalyzer.Core.Execution;
@@ -91,6 +92,8 @@ public sealed record EphemeralTrainingRequest
 
     public bool FixedZScore { get; init; } = EphemeralFixedValues.Current.FixedZScore;
 
+    public double? ClipSigma { get; init; }
+
     public bool Calibration { get; init; } = EphemeralFixedValues.Current.Calibration;
 
     public bool Cpcv { get; init; } = EphemeralFixedValues.Current.Cpcv;
@@ -116,6 +119,7 @@ public sealed record EphemeralTrainingRequest
         InitializationMode = InitializationMode,
         EnsembleMethod = EnsembleMethod,
         FixedZScore = FixedZScore,
+        ClipSigma = ClipSigma,
         Calibration = Calibration,
         Cpcv = Cpcv,
         WindowSize = WindowSize,
@@ -148,6 +152,7 @@ public enum TrainingJobKind
 {
     Supervised,
     ReinforcementLearning,
+    PortfolioReinforcementLearning,
 }
 
 /// <summary>
@@ -163,6 +168,39 @@ public sealed record EphemeralRlRequest
 
     /// <summary>The first day NOT in the period (the RL window's "End Date" is exclusive).</summary>
     public DateOnly? EndDateExclusive { get; init; }
+
+    /// <summary>
+    /// When true, the ephemeral job folder and policy.onnx are retained under EphemeralSandbox.Root
+    /// for EphemeralRetentionMinutes (15 min) or until explicit lease disposal.
+    /// Default is false to strictly preserve 100% legacy behavior.
+    /// </summary>
+    public bool RetainArtifact { get; init; } = false;
+}
+
+/// <summary>
+/// What a client may choose for one sandboxed portfolio reinforcement-learning run. Everything else is fixed by the gateway:
+/// the smoke run of the application's Portfolio RL window (1 seed, 1024 transitions, factory costs, evaluation only).
+/// </summary>
+public sealed record EphemeralPortfolioRlRequest
+{
+    public required IReadOnlyList<string> Symbols { get; init; }
+
+    public DateOnly? StartDate { get; init; }
+
+    public DateOnly? EndDateExclusive { get; init; }
+
+    public bool SymbolHoldout { get; init; } = true;
+
+    public int MaxAssetWeightPercent { get; init; } = 100;
+
+    public RlPanelEvaluationMode Mode { get; init; } = RlPanelEvaluationMode.Standard;
+
+    /// <summary>
+    /// When true, the ephemeral job folder and policy.onnx are retained under EphemeralSandbox.Root
+    /// for EphemeralRetentionMinutes (15 min) or until explicit lease disposal.
+    /// Default is false to strictly preserve 100% legacy behavior.
+    /// </summary>
+    public bool RetainArtifact { get; init; } = false;
 }
 
 /// <summary>
@@ -177,6 +215,26 @@ public sealed record EphemeralRlResult(
     long ModelSizeBytes,
     string ModelSha256,
     string SourceRevision);
+
+/// <summary>
+/// What a succeeded portfolio RL smoke run leaves to read: the baseline comparisons, selected seed, and model identity.
+/// </summary>
+public sealed record EphemeralPortfolioRlResult(
+    string PolicyReturn,
+    string CashReturn,
+    string EqualBuyHoldReturn,
+    string EqualDailyRebalancedReturn,
+    int SelectedSeed,
+    int SelectedCheckpoint,
+    string UniverseSha256,
+    string CalendarSha256,
+    long ModelSizeBytes,
+    string ModelSha256,
+    decimal? PolicyCompoundReturn = null,
+    decimal? CashCompoundReturn = null,
+    decimal? EqualBuyHoldCompoundReturn = null,
+    decimal? EqualDailyRebalancedCompoundReturn = null,
+    int? EvaluatedBlockCount = null);
 
 /// <summary>
 /// A snapshot of one job. Messages are cut to <see cref="ExecutionLimits.MaxStatusMessageChars"/>; paths are removed by the tool layer. A supervised job
@@ -195,7 +253,9 @@ public sealed record TrainingJobStatus(
     EphemeralTrainingRequest? Request,
     TrainingJobKind Kind = TrainingJobKind.Supervised,
     EphemeralRlRequest? RlRequest = null,
-    EphemeralRlResult? RlResult = null);
+    EphemeralRlResult? RlResult = null,
+    EphemeralPortfolioRlRequest? PortfolioRlRequest = null,
+    EphemeralPortfolioRlResult? PortfolioRlResult = null);
 
 /// <summary>Another job cannot start: the allowed number of running jobs is reached.</summary>
 public sealed class ExecutionBusyException() : InvalidOperationException("The allowed number of running training jobs is reached.");

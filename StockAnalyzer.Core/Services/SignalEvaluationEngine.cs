@@ -14,17 +14,29 @@ public static class SignalEvaluationEngine
         return entry.IsMet(candles, metadata);
     }
 
-    public static bool EvaluateBundle(BundledSignalCondition bundle, IReadOnlyList<CandleData> candles, TickerMetadata metadata = default)
+    public static bool EvaluateBundle(BundledSignalCondition? bundle, IReadOnlyList<CandleData>? candles, TickerMetadata metadata = default)
     {
-        if (bundle == null || bundle.Conditions.Count == 0) return false;
-
-        foreach (var entry in bundle.Conditions)
+        if (bundle is null || bundle.Conditions is null || bundle.Conditions.Count == 0 || candles is null || candles.Count == 0)
         {
-            if (entry.IsEnabled && !EvaluateEntry(entry, candles, metadata))
+            return false;
+        }
+
+        bool hasActiveCondition = false;
+        for (int i = 0; i < bundle.Conditions.Count; i++)
+        {
+            ScreenerIndicatorEntry? entry = bundle.Conditions[i];
+            if (entry is null || !entry.IsEnabled)
+            {
+                continue;
+            }
+
+            hasActiveCondition = true;
+            if (!EvaluateEntry(entry, candles, metadata))
             {
                 return false;
             }
         }
-        return true;
+
+        return hasActiveCondition;
     }
 }

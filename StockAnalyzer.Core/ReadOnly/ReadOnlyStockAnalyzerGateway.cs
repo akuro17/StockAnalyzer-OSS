@@ -212,7 +212,7 @@ public sealed class ReadOnlyStockAnalyzerGateway : IReadOnlyStockAnalyzerGateway
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         string canonical = RequireCanonical(snapshot.Symbol);
-        if (snapshot.Frame != ReadOnlyGatewayContract.BacktestTimeFrame)
+        if (!ReadOnlyGatewayContract.SupportedBacktestTimeFrames.Contains(snapshot.Frame))
         {
             throw new NotSupportedException($"Time frame {snapshot.Frame} is not supported by the read-only backtest.");
         }

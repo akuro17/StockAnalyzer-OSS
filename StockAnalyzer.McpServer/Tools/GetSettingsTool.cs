@@ -25,6 +25,8 @@ internal sealed class GetSettingsTool : IMcpTool
 
     public bool IsHeavy => false;
 
+    public string? ExampleArgumentsJson => "{\"section\":\"Screener\"}";
+
     public string InputSchemaJson => ToolSchema.Object()
         .String(SectionArgument, "Only this section.", allowedValues: McpSettingsExposure.Sections)
         .Build();

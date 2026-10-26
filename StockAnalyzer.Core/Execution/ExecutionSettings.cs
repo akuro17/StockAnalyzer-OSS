@@ -42,6 +42,9 @@ public static class ExecutionLimits
     public const int MaxStatusTailMessagesAllowed = 100;
     public const int MinPredictionBars = 1;
 
+    /// <summary>Maximum number of portfolio symbols supported in a sandboxed portfolio reinforcement learning run.</summary>
+    public const int MaxPortfolioSymbols = 100;
+
     /// <summary>Seconds to wait for a cancelled training process to stop before the job is reported as cancelled anyway.</summary>
     public const int CancelGraceSeconds = 10;
 

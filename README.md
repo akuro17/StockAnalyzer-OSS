@@ -146,6 +146,9 @@ Data/
 > For detailed instructions on chart drawing shortcut keys, editing controls, and configuring custom icon stamps in `Data/Drawings/Icon/`, see the [Drawing Tools Guide](https://github.com/akuro17/StockAnalyzer-OSS/blob/main/docs/DRAWING_TOOLS_GUIDE.md).
 
 > [!TIP]
+> For Model Context Protocol (MCP) server options, command-line usage, tool schemas, and copy-pasteable execution examples, see the [MCP Server Command Reference](https://github.com/akuro17/StockAnalyzer-OSS/blob/main/docs/MCP_SERVER_COMMAND_REFERENCE.md).
+
+> [!TIP]
 > For the settings of Training Wizard, Reinforcement Learning and Portfolio Reinforcement Learning and for how to use the files they create, see the [Training and Reinforcement Learning Guide](https://github.com/akuro17/StockAnalyzer-OSS/blob/main/docs/TRAINING_AND_REINFORCEMENT_LEARNING_GUIDE.md).
 
 ---
@@ -216,5 +219,5 @@ See [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) for a complete list and l
 ## AI Contribution Notice
 
 > [!IMPORTANT]
-> StockAnalyzer is primarily developed and maintained using AI coding assistants. 
+> StockAnalyzer is primarily developed and maintained using AI coding assistants.
 > As such, it does not have a traditional team of human maintainers. Users are encouraged to utilize AI coding assistants themselves to troubleshoot issues, fix bugs, or implement new features locally.

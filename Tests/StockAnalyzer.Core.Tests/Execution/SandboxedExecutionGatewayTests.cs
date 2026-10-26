@@ -435,6 +435,56 @@ public sealed class SandboxedExecutionGatewayTests : IDisposable
     }
 
     [Fact]
+    public async Task Start_McpFixedPolicyAllowsFixedZScoreCalibrationAndCpcv()
+    {
+        var orchestrator = new ScriptedOrchestrator { Run = (config, _, _) => Success(config) };
+        SandboxedExecutionGateway gateway = Create(orchestrator, policy: EphemeralExecutionPolicy.McpFixed);
+
+        var request = Request() with
+        {
+            FixedZScore = true,
+            ClipSigma = 3.0,
+            Calibration = true,
+            Cpcv = true,
+        };
+
+        TrainingJobTicket ticket = await gateway.StartTrainingAsync(request, CancellationToken.None);
+        await WaitForAsync(gateway, ticket.JobId, TrainingJobState.Succeeded);
+
+        TrainingJobConfig config = Assert.Single(orchestrator.Configs);
+        Assert.True(config.FixedZScore);
+        Assert.Equal(3.0, config.ClipSigma);
+        Assert.True(config.Calibration);
+        Assert.True(config.Cpcv);
+    }
+
+    [Fact]
+    public async Task Refusal_ClipSigmaOrCalibrationInconsistenciesAreRejected()
+    {
+        var orchestrator = new ScriptedOrchestrator { Run = (config, _, _) => Success(config) };
+        SandboxedExecutionGateway gateway = Create(orchestrator, policy: EphemeralExecutionPolicy.McpFixed);
+
+        // clipSigma <= 0 or not finite
+        var negativeSigma = await Assert.ThrowsAsync<ExecutionRequestInvalidException>(() =>
+            gateway.StartTrainingAsync(Request() with { FixedZScore = true, ClipSigma = -1.0 }, CancellationToken.None));
+        Assert.Equal(nameof(EphemeralTrainingRequest.ClipSigma), negativeSigma.ParameterName);
+
+        var nanSigma = await Assert.ThrowsAsync<ExecutionRequestInvalidException>(() =>
+            gateway.StartTrainingAsync(Request() with { FixedZScore = true, ClipSigma = double.NaN }, CancellationToken.None));
+        Assert.Equal(nameof(EphemeralTrainingRequest.ClipSigma), nanSigma.ParameterName);
+
+        // clipSigma without FixedZScore
+        var sigmaWithoutZScore = await Assert.ThrowsAsync<ExecutionRequestInvalidException>(() =>
+            gateway.StartTrainingAsync(Request() with { FixedZScore = false, ClipSigma = 3.0 }, CancellationToken.None));
+        Assert.Equal(nameof(EphemeralTrainingRequest.ClipSigma), sigmaWithoutZScore.ParameterName);
+
+        // Calibration on Regression
+        var calOnReg = await Assert.ThrowsAsync<ExecutionRequestInvalidException>(() =>
+            gateway.StartTrainingAsync(Request() with { TargetType = TargetType.Regression, Calibration = true }, CancellationToken.None));
+        Assert.Equal(nameof(EphemeralTrainingRequest.Calibration), calOnReg.ParameterName);
+    }
+
+    [Fact]
     public async Task Refusal_ANullOrCancelledStartIsRefusedBeforeAnythingIsCreated()
     {
         SandboxedExecutionGateway gateway = Create(new ScriptedOrchestrator { Run = (config, _, _) => Success(config) });
@@ -554,6 +604,9 @@ public sealed class SandboxedExecutionGatewayTests : IDisposable
         Assert.Null(gateway.FindArtifact("latest"));
         Assert.Throws<ArtifactNotFoundException>(() => gateway.LeaseArtifact("20260101-000000000-00000000"));
         Assert.Throws<ArtifactNotFoundException>(() => gateway.LeaseArtifact("latest"));
+        Assert.Throws<ArtifactNotFoundException>(() => gateway.LeaseRegisteredModel("20260101-000000000-00000000"));
+        Assert.Throws<ExecutionRequestInvalidException>(() => gateway.LeaseRegisteredModel("active"));
+        Assert.Throws<ArgumentException>(() => gateway.LeaseRegisteredModel(""));
         await Task.CompletedTask;
         Assert.False(Directory.Exists(_root), "an idle gateway must not create the sandbox");
     }
@@ -821,9 +874,9 @@ public sealed class SandboxedExecutionGatewayTests : IDisposable
         Horizon = 1,
     };
 
-    private SandboxedExecutionGateway Create(ITrainingOrchestrator orchestrator, SandboxedExecutionSettings? settings = null, IPythonExecutableResolver? python = null, string? root = null, TimeSpan? grace = null)
+    private SandboxedExecutionGateway Create(ITrainingOrchestrator orchestrator, SandboxedExecutionSettings? settings = null, IPythonExecutableResolver? python = null, string? root = null, TimeSpan? grace = null, EphemeralExecutionPolicy? policy = null)
     {
-        var gateway = new SandboxedExecutionGateway(orchestrator, python ?? new FixedPython(true), settings ?? new SandboxedExecutionSettings(), null, root ?? _root, grace ?? ShortGrace);
+        var gateway = new SandboxedExecutionGateway(orchestrator, python ?? new FixedPython(true), settings ?? new SandboxedExecutionSettings(), null, root ?? _root, grace ?? ShortGrace, policy: policy);
         _gateways.Add(gateway);
         return gateway;
     }

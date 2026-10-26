@@ -108,18 +108,28 @@ public static class BacktestConditionValidator
     public static BacktestConditionTree SnapshotTree(BacktestConditionTree tree, int? maxOffset, int? maxDepth, int? maxNodes, int? maxNameLength = null)
     {
         ArgumentNullException.ThrowIfNull(tree);
-        if (maxDepth is < BacktestConditionTreeRule.MinBound)
+        if (maxDepth is < BacktestConditionTreeRule.MinBound || maxDepth > BacktestConditionTreeRule.MaxDepthBound)
         {
-            throw new ArgumentOutOfRangeException(nameof(maxDepth), maxDepth, $"maxDepth must be >= {BacktestConditionTreeRule.MinBound}.");
+            throw new ArgumentOutOfRangeException(nameof(maxDepth), maxDepth, $"maxDepth must be within [{BacktestConditionTreeRule.MinBound}, {BacktestConditionTreeRule.MaxDepthBound}].");
         }
-        if (maxNodes is < BacktestConditionTreeRule.MinBound)
+        if (maxNodes is < BacktestConditionTreeRule.MinBound || maxNodes > BacktestConditionTreeRule.MaxNodesBound)
         {
-            throw new ArgumentOutOfRangeException(nameof(maxNodes), maxNodes, $"maxNodes must be >= {BacktestConditionTreeRule.MinBound}.");
+            throw new ArgumentOutOfRangeException(nameof(maxNodes), maxNodes, $"maxNodes must be within [{BacktestConditionTreeRule.MinBound}, {BacktestConditionTreeRule.MaxNodesBound}].");
+        }
+        if (maxOffset is < BacktestConditionOffsetRule.MinOffset || maxOffset > BacktestConditionTreeRule.MaxOffsetBound)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maxOffset), maxOffset, $"maxOffset must be within [{BacktestConditionOffsetRule.MinOffset}, {BacktestConditionTreeRule.MaxOffsetBound}].");
         }
 
         if (maxNameLength is < BacktestConditionTreeRule.MinBound)
         {
             throw new ArgumentOutOfRangeException(nameof(maxNameLength), maxNameLength, $"maxNameLength must be >= {BacktestConditionTreeRule.MinBound}.");
+        }
+
+        if (maxDepth is { } d && maxNodes is { } n && d > n)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maxDepth), d,
+                $"maxDepth ({d}) must not exceed maxNodes ({n}): a tree cannot be deeper than it has nodes.");
         }
 
         int leafOrdinal = 0;

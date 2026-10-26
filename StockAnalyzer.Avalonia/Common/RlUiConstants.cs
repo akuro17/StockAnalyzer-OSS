@@ -56,6 +56,7 @@ public static class RlUiConstants
     public const string PlaybackClear = "RlPlayback_Clear";
     public const string PlaybackStatus = "RlPlayback_Status";
     public const string PlaybackRefresh = "RlPlayback_Refresh";
+    public const string PlaybackTestTempModel = "RlPlayback_TestTempModel";
     public const string PlaybackFreeCard = "RlPlayback_Free_Card";
     public const string PlaybackFreeTicker = "RlPlayback_Free_Ticker";
     public const string PlaybackFreeList = "RlPlayback_Free_List";

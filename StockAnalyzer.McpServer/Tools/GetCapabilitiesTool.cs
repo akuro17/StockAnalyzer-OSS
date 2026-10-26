@@ -49,6 +49,8 @@ internal sealed class GetCapabilitiesTool : IMcpTool
 
     public bool IsHeavy => false;
 
+    public string? ExampleArgumentsJson => "{\"category\":\"Oscillator\",\"includeDetails\":true}";
+
     public string InputSchemaJson => ToolSchema.Object()
         .String(CategoryArgument, "Only indicators of this category.", allowedValues: Enum.GetNames<CoreIndicatorCategory>())
         .StringArray(FilterArgument, "Only these indicator types (case-insensitive names, for example RSI). Turns the details on unless includeDetails is false.", minItems: 1)

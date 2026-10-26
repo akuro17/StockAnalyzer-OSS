@@ -42,6 +42,8 @@ internal sealed class ListTemplatesTool : IMcpTool
 
     public bool IsHeavy => false;
 
+    public string? ExampleArgumentsJson => "{\"templateType\":\"screener\"}";
+
     public string InputSchemaJson => ToolSchema.Object()
         .String(TemplateTypeArgument, "Which templates to list. Default screener.", allowedValues: new[] { ScreenerKind, BacktestConditionKind })
         .Build();

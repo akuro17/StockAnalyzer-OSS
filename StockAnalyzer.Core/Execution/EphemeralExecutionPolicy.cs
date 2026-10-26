@@ -65,16 +65,16 @@ public sealed record EphemeralExecutionPolicy
     };
 
     /// <summary>
-    /// Current MCP server restriction profile: enforces <see cref="EphemeralFixedValues.Current"/>.
+    /// Current MCP server restriction profile: enforces <see cref="EphemeralFixedValues.Current"/> baseline with opt-in scaling, calibration, and CPCV.
     /// </summary>
     public static EphemeralExecutionPolicy McpFixed { get; } = new()
     {
         EnforceMcpFixedValues = true,
         RequiredTimeframe = EphemeralFixedValues.Current.Timeframe,
         RequiredFeatureMode = EphemeralFixedValues.Current.FeatureMode,
-        AllowFixedScaler = !EphemeralFixedValues.Current.FixedZScore ? false : true,
-        AllowCalibration = EphemeralFixedValues.Current.Calibration,
-        AllowCpcv = EphemeralFixedValues.Current.Cpcv,
+        AllowFixedScaler = true,
+        AllowCalibration = true,
+        AllowCpcv = true,
         AllowEnsemble = EphemeralFixedValues.Current.EnsembleMethod != TrainingEnsembleMethod.None,
         AllowNonFreshInitialization = EphemeralFixedValues.Current.InitializationMode != TrainingInitializationMode.Fresh,
     };

@@ -16,6 +16,10 @@ internal static class TrainingRequestJson
     public const string TargetTypeArgument = "targetType";
     public const string HyperparametersArgument = "hyperparameters";
     public const string SplitsArgument = "nSplits";
+    public const string FixedZScoreArgument = "fixedZScore";
+    public const string ClipSigmaArgument = "clipSigma";
+    public const string CalibrationArgument = "calibration";
+    public const string CpcvArgument = "cpcv";
 
     /// <summary>Writes the request as the arguments that would start the same job.</summary>
     public static void Write(Utf8JsonWriter writer, EphemeralTrainingRequest request)
@@ -36,6 +40,26 @@ internal static class TrainingRequestJson
         writer.WriteNumber(HorizonArgument, request.Horizon);
         writer.WriteString(TargetTypeArgument, request.TargetType.ToString());
         writer.WriteNumber(SplitsArgument, request.NSplits);
+        if (request.FixedZScore)
+        {
+            writer.WriteBoolean(FixedZScoreArgument, true);
+        }
+
+        if (request.ClipSigma is { } clipSigma)
+        {
+            writer.WriteNumber(ClipSigmaArgument, clipSigma);
+        }
+
+        if (request.Calibration)
+        {
+            writer.WriteBoolean(CalibrationArgument, true);
+        }
+
+        if (request.Cpcv)
+        {
+            writer.WriteBoolean(CpcvArgument, true);
+        }
+
         writer.WriteStartObject(HyperparametersArgument);
         foreach (KeyValuePair<string, string> pair in request.Hyperparameters.OrderBy(p => p.Key, StringComparer.Ordinal))
         {

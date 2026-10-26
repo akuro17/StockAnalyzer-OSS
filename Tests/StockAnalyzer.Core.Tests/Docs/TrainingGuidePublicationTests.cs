@@ -15,6 +15,7 @@ public sealed class TrainingGuidePublicationTests
 {
     private const string GuideName = "TRAINING_AND_REINFORCEMENT_LEARNING_GUIDE.md";
     private const string DrawingGuideName = "DRAWING_TOOLS_GUIDE.md";
+    private const string McpGuideName = "MCP_SERVER_COMMAND_REFERENCE.md";
     private const string SettingsHeader = "| Setting | Where | Default | Allowed values | What it does |";
     private const string KeyHeader = "| Key | Where | Default | Allowed values | What it does |";
 
@@ -142,8 +143,10 @@ public sealed class TrainingGuidePublicationTests
         string skill = ReadRepoFile(".agent", "skills", "sa_release_file", "SKILL.md");
         Assert.Contains(GuideName, files); Assert.Contains(GuideName, patch); Assert.Contains(GuideName, skill);
         Assert.Contains(GuideName, ReadRepoFile("README.md"));
+        Assert.Contains(McpGuideName, files); Assert.Contains(McpGuideName, patch); Assert.Contains(McpGuideName, skill);
+        Assert.Contains(McpGuideName, ReadRepoFile("README.md"));
 
-        var expected = new[] { DrawingGuideName, GuideName }.OrderBy(n => n, StringComparer.Ordinal).ToArray();
+        var expected = new[] { DrawingGuideName, GuideName, McpGuideName }.OrderBy(n => n, StringComparer.Ordinal).ToArray();
         Assert.Equal(expected, NamesIn(files, "$PublicDocsToCopy"));
         Assert.Equal(expected, NamesIn(files, "$AllowedPublicDocs"));
         Assert.Equal(expected, NamesIn(patch, "$AllowedPublicDocs"));

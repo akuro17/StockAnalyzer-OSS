@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using StockAnalyzer.Avalonia.Services;
+using StockAnalyzer.Core.Execution;
 using StockAnalyzer.Core.Interfaces;
 using StockAnalyzer.Core.Models.ReinforcementLearning;
 using StockAnalyzer.Core.Services;
@@ -52,7 +53,9 @@ public sealed partial class RlPlaybackViewModel : ViewModelBase, IDisposable
     [ObservableProperty] private int _decision;
     [ObservableProperty] private RlDialogLoadState _modelsState = RlDialogLoadState.Unloaded;
     [ObservableProperty] private RlDialogLoadState _blocksState = RlDialogLoadState.Unloaded;
-    [ObservableProperty] private RlDialogOperation _operation = RlDialogOperation.Idle;
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(TestTempModelFromFileCommand))]
+    private RlDialogOperation _operation = RlDialogOperation.Idle;
     [ObservableProperty] private string _statusMessage = "";
 
     public int MaximumDecision => RlContract.EpisodeHorizon - 1;
@@ -197,6 +200,74 @@ public sealed partial class RlPlaybackViewModel : ViewModelBase, IDisposable
             {
                 if (_disposed) return;
                 StatusMessage = _localization.GetString("Settings_RlPlayback_Status_Shown");
+            });
+        }
+        catch (OperationCanceledException)
+        {
+            await PublishAsync(() => { if (!_disposed) StatusMessage = _localization.GetString("Settings_RlPlayback_Status_Cancelled"); });
+        }
+        catch (Exception e)
+        {
+            await PublishAsync(() => { if (!_disposed) StatusMessage = RlErrorText.Describe(e, _localization); });
+        }
+        finally
+        {
+            if (ReferenceEquals(_replayCts, cancel)) _replayCts = null;
+            await PublishAsync(() => { if (!_disposed) Operation = RlDialogOperation.Idle; });
+        }
+    }
+
+    private bool CanTestTempModel => _dialogService is not null && Operation == RlDialogOperation.Idle && !_disposed;
+
+    [RelayCommand(CanExecute = nameof(CanTestTempModel))]
+    private async Task TestTempModelFromFileAsync()
+    {
+        if (!CanTestTempModel || _dialogService is null) return;
+        var initialDir = EphemeralSandbox.Root;
+        if (!Directory.Exists(initialDir)) Directory.CreateDirectory(initialDir);
+
+        var path = await _dialogService.ShowOpenFileDialogAsync(
+            _localization.GetString("PredictionModels_TestTempModel_Title") ?? "Select Ephemeral Policy Model",
+            new[] { "onnx" },
+            initialDir);
+
+        if (string.IsNullOrEmpty(path)) return;
+
+        Operation = RlDialogOperation.Replaying;
+        StatusMessage = _localization.GetString("PredictionModels_Run_Running") ?? "Replaying...";
+        using var cancel = new CancellationTokenSource();
+        _replayCts = cancel;
+        try
+        {
+            string? modelSymbol = _data.ReadEphemeralModelSymbol(path);
+            string symbol = !string.IsNullOrWhiteSpace(Free?.TickerText)
+                ? Free.TickerText.Trim()
+                : (!string.IsNullOrWhiteSpace(modelSymbol) ? modelSymbol : SelectedModelOption?.Generation.Symbol ?? "");
+
+            if (string.IsNullOrWhiteSpace(symbol))
+                throw new InvalidDataException("Symbol must be specified.");
+
+            DateOnly asOfDate;
+            if (Free?.AnchorDate is { } ad)
+            {
+                asOfDate = DateOnly.FromDateTime(ad);
+            }
+            else
+            {
+                var range = await _data.GetEphemeralAnchorRangeAsync(symbol, cancel.Token);
+                asOfDate = range.LatestAnchor;
+            }
+
+            int decision = Math.Clamp(Decision, 0, MaximumDecision);
+            var result = await _data.ReplayEphemeralModelAsync(path, symbol, asOfDate, decision, cancellationToken: cancel.Token);
+            cancel.Token.ThrowIfCancellationRequested();
+            if (_disposed) return;
+            await _target.ApplyReplayAsync(result.Snapshot, cancel.Token);
+            var fileName = Path.GetFileName(path);
+            await PublishAsync(() =>
+            {
+                if (_disposed) return;
+                StatusMessage = $"%Temp%: {fileName} shown.";
             });
         }
         catch (OperationCanceledException)

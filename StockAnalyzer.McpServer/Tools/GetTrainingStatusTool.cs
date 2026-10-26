@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using StockAnalyzer.Core.Execution;
@@ -10,6 +11,7 @@ internal sealed class GetTrainingStatusTool : IMcpTool
     private const string Ellipsis = "...";
     private const string SupervisedKind = "supervised";
     private const string ReinforcementLearningKind = "reinforcement_learning";
+    private const string PortfolioReinforcementLearningKind = "portfolio_reinforcement_learning";
 
     private readonly ISandboxedExecutionGateway _gateway;
     private readonly ErrorMessageSanitizer _sanitizer;
@@ -23,21 +25,24 @@ internal sealed class GetTrainingStatusTool : IMcpTool
     public string Name => "sa_get_training_status";
 
     public string Description =>
-        "Returns the state of a job started with sa_start_training or sa_start_rl_training (kind says which): Running, Cancelling, Validating, Succeeded, Failed or Cancelled (the last three are final). " +
+        "Returns the state of a job started with sa_start_training, sa_start_rl_training, or sa_start_portfolio_rl_training (kind says which): Running, Cancelling, Validating, Succeeded, Failed or Cancelled (the last three are final). " +
         "stage is the trainer's current step and progressPercent is 0 to 100 (0 until the first progress report). metrics, when present, hold the latest numbers the trainer reported (null where a number is not finite). " +
         "messages are the latest status lines; request echoes the settings actually used. " +
         "When Succeeded, artifact describes the model (artifactId, file name, size, sha256 and whether it loads with its input and output shapes, -1 for a dynamic dimension) and sa_run_onnx_prediction can use it; " +
         "when Failed, failureReason is TIMEOUT, INVALID_ONNX or TRAINING_FAILED. The model lives in a temporary folder and is removed when the server stops; " +
         "to keep a model, repeat the run in the Training Wizard with the echoed request and register it there. " +
         "A reinforcement-learning job (kind reinforcement_learning) echoes its period in request, has no metrics or artifact, and when Succeeded reports result: " +
-        "validationMeanReturn (exact decimal text), candidateSeed, checkpointStep, trainingTransitions, model size and sha256, and the source revision; its files are removed when it ends.";
+        "validationMeanReturn (exact decimal text), candidateSeed, checkpointStep, trainingTransitions, model size and sha256, and the source revision; its files are removed when it ends. " +
+        "A portfolio reinforcement-learning job (kind portfolio_reinforcement_learning) echoes its parameters in request, and when Succeeded reports policyReturn and baselineComparison (cashReturn, equalBuyHoldReturn, equalDailyRebalancedReturn), selectedSeed, selectedCheckpoint, hashes and model identity.";
 
     public bool IsHeavy => false;
 
     public bool IsExecution => true;
 
+    public string? ExampleArgumentsJson => "{\"jobId\":\"00000000-0000-0000-0000-000000000000\"}";
+
     public string InputSchemaJson => ToolSchema.Object()
-        .String(ExecutionToolSupport.JobIdArgument, "The jobId returned by sa_start_training.", required: true)
+        .String(ExecutionToolSupport.JobIdArgument, "The jobId returned by sa_start_training, sa_start_rl_training, or sa_start_portfolio_rl_training.", required: true)
         .Build();
 
     public Task<string> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)
@@ -51,7 +56,13 @@ internal sealed class GetTrainingStatusTool : IMcpTool
     {
         writer.WriteStartObject();
         writer.WriteString(ExecutionToolSupport.JobIdArgument, status.JobId);
-        writer.WriteString("kind", status.Kind == TrainingJobKind.ReinforcementLearning ? ReinforcementLearningKind : SupervisedKind);
+        string kindString = status.Kind switch
+        {
+            TrainingJobKind.ReinforcementLearning => ReinforcementLearningKind,
+            TrainingJobKind.PortfolioReinforcementLearning => PortfolioReinforcementLearningKind,
+            _ => SupervisedKind,
+        };
+        writer.WriteString("kind", kindString);
         writer.WriteString("state", status.State.ToString());
         if (status.Stage is null)
         {
@@ -94,6 +105,10 @@ internal sealed class GetTrainingStatusTool : IMcpTool
         {
             WriteRlRequest(writer, status.RlRequest!);
         }
+        else if (status.Kind == TrainingJobKind.PortfolioReinforcementLearning)
+        {
+            WritePortfolioRlRequest(writer, status.PortfolioRlRequest!);
+        }
         else
         {
             TrainingRequestJson.Write(writer, status.Request!);
@@ -111,6 +126,46 @@ internal sealed class GetTrainingStatusTool : IMcpTool
             writer.WriteString("sha256", rl.ModelSha256);
             writer.WriteEndObject();
             writer.WriteString("sourceRevision", rl.SourceRevision);
+            writer.WriteEndObject();
+        }
+
+        if (status.PortfolioRlResult is { } prl)
+        {
+            writer.WriteStartObject("result");
+            writer.WriteString("policyReturn", prl.PolicyReturn);
+            if (prl.EvaluatedBlockCount is { } blockCount)
+            {
+                writer.WriteNumber("evaluatedBlockCount", blockCount);
+            }
+            if (prl.PolicyCompoundReturn is { } policyComp)
+            {
+                writer.WriteString("policyCompoundReturn", policyComp.ToString("F6", CultureInfo.InvariantCulture));
+            }
+            writer.WriteStartObject("baselineComparison");
+            writer.WriteString("cashReturn", prl.CashReturn);
+            writer.WriteString("equalBuyHoldReturn", prl.EqualBuyHoldReturn);
+            writer.WriteString("equalDailyRebalancedReturn", prl.EqualDailyRebalancedReturn);
+            if (prl.CashCompoundReturn is { } cashComp)
+            {
+                writer.WriteString("cashCompoundReturn", cashComp.ToString("F6", CultureInfo.InvariantCulture));
+            }
+            if (prl.EqualBuyHoldCompoundReturn is { } ebhComp)
+            {
+                writer.WriteString("equalBuyHoldCompoundReturn", ebhComp.ToString("F6", CultureInfo.InvariantCulture));
+            }
+            if (prl.EqualDailyRebalancedCompoundReturn is { } edrComp)
+            {
+                writer.WriteString("equalDailyRebalancedCompoundReturn", edrComp.ToString("F6", CultureInfo.InvariantCulture));
+            }
+            writer.WriteEndObject();
+            writer.WriteNumber("selectedSeed", prl.SelectedSeed);
+            writer.WriteNumber("selectedCheckpoint", prl.SelectedCheckpoint);
+            writer.WriteString("universeSha256", prl.UniverseSha256);
+            writer.WriteString("calendarSha256", prl.CalendarSha256);
+            writer.WriteStartObject("model");
+            writer.WriteNumber("sizeBytes", prl.ModelSizeBytes);
+            writer.WriteString("sha256", prl.ModelSha256);
+            writer.WriteEndObject();
             writer.WriteEndObject();
         }
 
@@ -143,6 +198,24 @@ internal sealed class GetTrainingStatusTool : IMcpTool
         writer.WriteString(StartRlTrainingTool.SymbolArgument, request.Symbol);
         writer.WriteString(StartRlTrainingTool.StartDateArgument, request.StartDate!.Value.ToString(ToolJson.DateFormat, System.Globalization.CultureInfo.InvariantCulture));
         writer.WriteString(StartRlTrainingTool.EndDateExclusiveArgument, request.EndDateExclusive!.Value.ToString(ToolJson.DateFormat, System.Globalization.CultureInfo.InvariantCulture));
+        writer.WriteBoolean("smokeOnly", true);
+        writer.WriteEndObject();
+    }
+
+    private static void WritePortfolioRlRequest(Utf8JsonWriter writer, EphemeralPortfolioRlRequest request)
+    {
+        writer.WriteStartObject();
+        writer.WriteStartArray("symbols");
+        foreach (string symbol in request.Symbols)
+        {
+            writer.WriteStringValue(symbol);
+        }
+        writer.WriteEndArray();
+        writer.WriteString("startDate", request.StartDate!.Value.ToString(ToolJson.DateFormat, System.Globalization.CultureInfo.InvariantCulture));
+        writer.WriteString("endDateExclusive", request.EndDateExclusive!.Value.ToString(ToolJson.DateFormat, System.Globalization.CultureInfo.InvariantCulture));
+        writer.WriteBoolean("symbolHoldout", request.SymbolHoldout);
+        writer.WriteNumber("maxAssetWeightPercent", request.MaxAssetWeightPercent);
+        writer.WriteString("mode", request.Mode.ToString());
         writer.WriteBoolean("smokeOnly", true);
         writer.WriteEndObject();
     }

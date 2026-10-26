@@ -33,11 +33,18 @@ internal sealed class FakeExecutionGateway : ISandboxedExecutionGateway
     public Func<EphemeralRlRequest, Task<TrainingJobTicket>> StartRl { get; set; }
         = _ => Task.FromResult(new TrainingJobTicket(JobId, TrainingJobState.Running));
 
+    public List<EphemeralPortfolioRlRequest> PortfolioRlRequests { get; } = new();
+
+    public Func<EphemeralPortfolioRlRequest, Task<TrainingJobTicket>> StartPortfolioRl { get; set; }
+        = _ => Task.FromResult(new TrainingJobTicket(JobId, TrainingJobState.Running));
+
     public Func<string, TrainingJobStatus> Status { get; set; } = jobId => throw new JobNotFoundException(jobId);
 
     public Func<string, TrainingJobState> CancelJob { get; set; } = jobId => throw new JobNotFoundException(jobId);
 
     public Func<string, ArtifactLease> Lease { get; set; } = id => throw new ArtifactNotFoundException(id);
+
+    public Func<string, ArtifactLease> LeaseRegistered { get; set; } = id => throw new ArtifactNotFoundException(id);
 
     public Task<TrainingJobTicket> StartTrainingAsync(EphemeralTrainingRequest request, CancellationToken cancellationToken)
     {
@@ -51,6 +58,12 @@ internal sealed class FakeExecutionGateway : ISandboxedExecutionGateway
         return StartRl(request);
     }
 
+    public Task<TrainingJobTicket> StartPortfolioRlTrainingAsync(EphemeralPortfolioRlRequest request, CancellationToken cancellationToken)
+    {
+        PortfolioRlRequests.Add(request);
+        return StartPortfolioRl(request);
+    }
+
     public TrainingJobStatus GetStatus(string jobId) => Status(jobId);
 
     public TrainingJobState Cancel(string jobId) => CancelJob(jobId);
@@ -61,6 +74,12 @@ internal sealed class FakeExecutionGateway : ISandboxedExecutionGateway
     {
         LeaseRequests.Add(artifactId);
         return Lease(artifactId);
+    }
+
+    public ArtifactLease LeaseRegisteredModel(string modelId)
+    {
+        LeaseRequests.Add(modelId);
+        return LeaseRegistered(modelId);
     }
 }
 
@@ -149,7 +168,7 @@ public sealed class ExecutionToolsTests : IDisposable
     private static async Task<JsonDocument> ListToolsAsync(McpMessageDispatcher dispatcher)
         => JsonDocument.Parse((await dispatcher.DispatchAsync("""{"jsonrpc":"2.0","id":2,"method":"tools/list"}""", CancellationToken.None))!);
 
-    private static readonly string[] ExecutionToolNames = { "sa_start_training", "sa_get_training_status", "sa_cancel_training", "sa_run_onnx_prediction", "sa_start_rl_training" };
+    private static readonly string[] ExecutionToolNames = { "sa_start_training", "sa_get_training_status", "sa_cancel_training", "sa_run_onnx_prediction", "sa_start_rl_training", "sa_start_portfolio_rl_training", "sa_get_rl_playback" };
 
     // ---- AT-4.1 / AT-4.3: offered only on request, with honest annotations --------------------------------------------------------
 
@@ -698,6 +717,180 @@ public sealed class ExecutionToolsTests : IDisposable
         Assert.Empty(_gateway.RlRequests);
     }
 
+    // ---- sa_start_portfolio_rl_training & sa_check_portfolio_rl_preflight -----------------------------------------------------------------
+
+    private static TrainingJobStatus PortfolioRlStatus(
+        TrainingJobState state, EphemeralPortfolioRlResult? result = null, TrainingFailureReason? reason = null, string? stage = "Training", int progress = 50, string[]? messages = null)
+        => new(
+            FakeExecutionGateway.JobId, state, stage, progress, TimeSpan.FromSeconds(15.2), null, messages ?? Array.Empty<string>(), null, reason, null,
+            TrainingJobKind.PortfolioReinforcementLearning,
+            null,
+            null,
+            new EphemeralPortfolioRlRequest
+            {
+                Symbols = new[] { "AAA", "BBB-X" },
+                StartDate = new DateOnly(2024, 1, 2),
+                EndDateExclusive = new DateOnly(2024, 3, 29),
+                SymbolHoldout = true,
+                MaxAssetWeightPercent = 100,
+                Mode = StockAnalyzer.Core.Models.ReinforcementLearning.RlPanelEvaluationMode.Standard,
+            },
+            result);
+
+    [Fact]
+    public async Task PortfolioRlStart_PassesCanonicalSymbolsAndParametersAndAnswersWithJobId()
+    {
+        using JsonDocument response = await CallAsync(await StartAsync(), "sa_start_portfolio_rl_training",
+            """{"symbols":["aaa","bbb.x"],"startDate":"2024-01-02","endDateExclusive":"2024-03-29","symbolHoldout":false,"maxAssetWeightPercent":80}""");
+
+        Assert.False(McpTestSupport.IsError(response), McpTestSupport.Structured(response).ToString());
+        JsonElement result = McpTestSupport.Structured(response);
+        Assert.Equal(FakeExecutionGateway.JobId, result.GetProperty("jobId").GetString());
+        Assert.Equal("Running", result.GetProperty("state").GetString());
+        Assert.Equal("os-temp", result.GetProperty("artifactsLocation").GetString());
+
+        EphemeralPortfolioRlRequest request = Assert.Single(_gateway.PortfolioRlRequests);
+        Assert.Equal(new[] { "AAA", "BBB-X" }, request.Symbols);
+        Assert.Equal(new DateOnly(2024, 1, 2), request.StartDate);
+        Assert.Equal(new DateOnly(2024, 3, 29), request.EndDateExclusive);
+        Assert.False(request.SymbolHoldout);
+        Assert.Equal(80, request.MaxAssetWeightPercent);
+    }
+
+    [Fact]
+    public async Task PortfolioRlStart_FewerThanFourSymbolsWithHoldoutIsReportedWithInvalidArgument()
+    {
+        using JsonDocument response = await CallAsync(await StartAsync(), "sa_start_portfolio_rl_training",
+            """{"symbols":["aaa","bbb.x"],"symbolHoldout":true}""");
+
+        Assert.True(McpTestSupport.IsError(response));
+        Assert.Equal("INVALID_ARGUMENT", McpTestSupport.ErrorCodeOf(response));
+        Assert.Equal("symbols", McpTestSupport.Structured(response).GetProperty("param").GetString());
+        Assert.Empty(_gateway.PortfolioRlRequests);
+    }
+
+    [Fact]
+    public async Task PortfolioRlStart_MistakeFewerThanTwoSymbolsIsReportedWithInvalidArgument()
+    {
+        using JsonDocument response = await CallAsync(await StartAsync(), "sa_start_portfolio_rl_training", """{"symbols":["AAA"]}""");
+
+        Assert.True(McpTestSupport.IsError(response));
+        Assert.Equal("INVALID_ARGUMENT", McpTestSupport.ErrorCodeOf(response));
+        Assert.Equal("symbols", McpTestSupport.Structured(response).GetProperty("param").GetString());
+        Assert.Empty(_gateway.PortfolioRlRequests);
+    }
+
+    [Fact]
+    public async Task PortfolioRlStatus_ARunningJobEchoesSymbolsAndParameters()
+    {
+        _gateway.Status = _ => PortfolioRlStatus(TrainingJobState.Running);
+
+        using JsonDocument response = await CallAsync(await StartAsync(), "sa_get_training_status", Arguments());
+
+        JsonElement result = McpTestSupport.Structured(response);
+        Assert.Equal("portfolio_reinforcement_learning", result.GetProperty("kind").GetString());
+        Assert.Equal("Running", result.GetProperty("state").GetString());
+        Assert.Equal("Training", result.GetProperty("stage").GetString());
+        Assert.Equal(50, result.GetProperty("progressPercent").GetInt32());
+        Assert.Equal(15.2, result.GetProperty("elapsedSeconds").GetDouble());
+
+        JsonElement request = result.GetProperty("request");
+        Assert.Equal(new[] { "AAA", "BBB-X" }, request.GetProperty("symbols").EnumerateArray().Select(s => s.GetString()).ToArray());
+        Assert.Equal("2024-01-02", request.GetProperty("startDate").GetString());
+        Assert.Equal("2024-03-29", request.GetProperty("endDateExclusive").GetString());
+        Assert.True(request.GetProperty("symbolHoldout").GetBoolean());
+        Assert.Equal(100, request.GetProperty("maxAssetWeightPercent").GetInt32());
+        Assert.True(request.GetProperty("smokeOnly").GetBoolean());
+    }
+
+    [Fact]
+    public async Task PortfolioRlStatus_ASucceededJobReportsBaselineComparisonsAndHashes()
+    {
+        var prl = new EphemeralPortfolioRlResult(
+            PolicyReturn: "0.052000",
+            CashReturn: "0.000000",
+            EqualBuyHoldReturn: "0.031500",
+            EqualDailyRebalancedReturn: "0.032100",
+            SelectedSeed: 42,
+            SelectedCheckpoint: 1024,
+            UniverseSha256: new string('a', 64),
+            CalendarSha256: new string('b', 64),
+            ModelSizeBytes: 8192,
+            ModelSha256: new string('c', 64));
+
+        _gateway.Status = _ => PortfolioRlStatus(TrainingJobState.Succeeded, prl, stage: "Complete", progress: 100);
+
+        using JsonDocument response = await CallAsync(await StartAsync(), "sa_get_training_status", Arguments());
+
+        JsonElement result = McpTestSupport.Structured(response).GetProperty("result");
+        Assert.Equal("0.052000", result.GetProperty("policyReturn").GetString());
+
+        JsonElement baselines = result.GetProperty("baselineComparison");
+        Assert.Equal("0.000000", baselines.GetProperty("cashReturn").GetString());
+        Assert.Equal("0.031500", baselines.GetProperty("equalBuyHoldReturn").GetString());
+        Assert.Equal("0.032100", baselines.GetProperty("equalDailyRebalancedReturn").GetString());
+
+        Assert.Equal(42, result.GetProperty("selectedSeed").GetInt32());
+        Assert.Equal(1024, result.GetProperty("selectedCheckpoint").GetInt32());
+        Assert.Equal(new string('a', 64), result.GetProperty("universeSha256").GetString());
+        Assert.Equal(new string('b', 64), result.GetProperty("calendarSha256").GetString());
+        Assert.Equal(8192, result.GetProperty("model").GetProperty("sizeBytes").GetInt64());
+        Assert.Equal(new string('c', 64), result.GetProperty("model").GetProperty("sha256").GetString());
+    }
+
+    [Fact]
+    public async Task PortfolioRlStatus_WithCompoundReturns_ReportsCompoundMetrics()
+    {
+        var prl = new EphemeralPortfolioRlResult(
+            PolicyReturn: "0.052000",
+            CashReturn: "0.000000",
+            EqualBuyHoldReturn: "0.031500",
+            EqualDailyRebalancedReturn: "0.032100",
+            SelectedSeed: 42,
+            SelectedCheckpoint: 1024,
+            UniverseSha256: new string('a', 64),
+            CalendarSha256: new string('b', 64),
+            ModelSizeBytes: 8192,
+            ModelSha256: new string('c', 64),
+            PolicyCompoundReturn: 0.106704m,
+            CashCompoundReturn: 0.000000m,
+            EqualBuyHoldCompoundReturn: 0.063992m,
+            EqualDailyRebalancedCompoundReturn: 0.065231m,
+            EvaluatedBlockCount: 2);
+
+        _gateway.Status = _ => PortfolioRlStatus(TrainingJobState.Succeeded, prl, stage: "Complete", progress: 100);
+
+        using JsonDocument response = await CallAsync(await StartAsync(), "sa_get_training_status", Arguments());
+
+        JsonElement result = McpTestSupport.Structured(response).GetProperty("result");
+        Assert.Equal(2, result.GetProperty("evaluatedBlockCount").GetInt32());
+        Assert.Equal("0.106704", result.GetProperty("policyCompoundReturn").GetString());
+
+        JsonElement baselines = result.GetProperty("baselineComparison");
+        Assert.Equal("0.000000", baselines.GetProperty("cashCompoundReturn").GetString());
+        Assert.Equal("0.063992", baselines.GetProperty("equalBuyHoldCompoundReturn").GetString());
+        Assert.Equal("0.065231", baselines.GetProperty("equalDailyRebalancedCompoundReturn").GetString());
+    }
+
+    [Fact]
+    public async Task PortfolioRlPreflight_ToolIsOfferedEvenWithoutExecutionFlag()
+    {
+        McpMessageDispatcher dispatcher = await StartAsync(enableExecution: false);
+
+        using JsonDocument list = await ListToolsAsync(dispatcher);
+        Assert.Contains("sa_check_portfolio_rl_preflight", ToolNames(list));
+    }
+
+    [Fact]
+    public async Task PortfolioRlPreflight_LessThanTwoSymbolsThrowsInvalidArgument()
+    {
+        using JsonDocument response = await CallAsync(await StartAsync(enableExecution: false), "sa_check_portfolio_rl_preflight", """{"symbols":["AAA"]}""");
+
+        Assert.True(McpTestSupport.IsError(response));
+        Assert.Equal("INVALID_ARGUMENT", McpTestSupport.ErrorCodeOf(response));
+        Assert.Equal("symbols", McpTestSupport.Structured(response).GetProperty("param").GetString());
+    }
+
     // ---- sa_get_training_status ------------------------------------------------------------------------------------------------------------
 
     private static TrainingJobStatus Status(
@@ -1148,6 +1341,187 @@ public sealed class ExecutionToolsTests : IDisposable
         Assert.Equal(
             McpTestSupport.Structured(latest).GetProperty("predictions").EnumerateArray().Select(Scores),
             result.GetProperty("predictions").EnumerateArray().Select(Scores));
+    }
+
+    [Fact]
+    public async Task Prediction_WithModelId_InvokesLeaseRegisteredModel_AndReturnsPrediction()
+    {
+        string modelId = "gen_20261026_test";
+        _gateway.LeaseRegistered = _ => LeaseOf(GoodModel);
+        McpMessageDispatcher dispatcher = await StartAsync(true);
+
+        using JsonDocument response = await CallAsync(dispatcher, "sa_run_onnx_prediction", $$"""{"modelId":"{{modelId}}","symbol":"{{Aaa}}"}""");
+
+        Assert.False(McpTestSupport.IsError(response), McpTestSupport.Structured(response).ToString());
+        JsonElement result = McpTestSupport.Structured(response);
+        Assert.Equal(modelId, result.GetProperty("modelId").GetString());
+        Assert.Equal(FakeExecutionGateway.JobId, result.GetProperty("resolvedModelId").GetString());
+        Assert.Equal(new[] { modelId }, _gateway.LeaseRequests);
+        Assert.Equal(Aaa, result.GetProperty("symbol").GetString());
+        Assert.Equal(1, _gateway.Released);
+    }
+
+    [Fact]
+    public async Task Prediction_WithActiveModelId_InvokesLeaseRegisteredModel_AndReturnsPrediction()
+    {
+        _gateway.LeaseRegistered = _ => LeaseOf(GoodModel);
+        McpMessageDispatcher dispatcher = await StartAsync(true);
+
+        using JsonDocument response = await CallAsync(dispatcher, "sa_run_onnx_prediction", $$"""{"modelId":"active","symbol":"{{Aaa}}"}""");
+
+        Assert.False(McpTestSupport.IsError(response), McpTestSupport.Structured(response).ToString());
+        JsonElement result = McpTestSupport.Structured(response);
+        Assert.Equal("active", result.GetProperty("modelId").GetString());
+        Assert.Equal(FakeExecutionGateway.JobId, result.GetProperty("resolvedModelId").GetString());
+        Assert.Equal(new[] { "active" }, _gateway.LeaseRequests);
+        Assert.Equal(1, _gateway.Released);
+    }
+
+    [Fact]
+    public async Task Prediction_WithBothArtifactIdAndModelId_FailsWithInvalidArgument()
+    {
+        McpMessageDispatcher dispatcher = await StartAsync(true);
+
+        using JsonDocument response = await CallAsync(dispatcher, "sa_run_onnx_prediction", $$"""{"artifactId":"latest","modelId":"active","symbol":"{{Aaa}}"}""");
+
+        Assert.True(McpTestSupport.IsError(response));
+        JsonElement error = McpTestSupport.Structured(response);
+        Assert.Equal("INVALID_ARGUMENT", error.GetProperty("code").GetString());
+        Assert.Contains("Exactly one of 'artifactId' or 'modelId' must be specified", error.GetProperty("message").GetString());
+    }
+
+    [Fact]
+    public async Task Prediction_WithNeitherArtifactIdNorModelId_FailsWithInvalidArgument()
+    {
+        McpMessageDispatcher dispatcher = await StartAsync(true);
+
+        using JsonDocument response = await CallAsync(dispatcher, "sa_run_onnx_prediction", $$"""{"symbol":"{{Aaa}}"}""");
+
+        Assert.True(McpTestSupport.IsError(response));
+        JsonElement error = McpTestSupport.Structured(response);
+        Assert.Equal("INVALID_ARGUMENT", error.GetProperty("code").GetString());
+        Assert.Contains("Exactly one of 'artifactId' or 'modelId' must be specified", error.GetProperty("message").GetString());
+    }
+
+    // ---- sa_get_rl_playback -----------------------------------------------------------------------------------------------------------------
+
+    [Fact]
+    public async Task RlPlayback_WithoutModelId_FailsWithInvalidArgument()
+    {
+        McpMessageDispatcher dispatcher = await StartAsync(true);
+
+        using JsonDocument response = await CallAsync(dispatcher, "sa_get_rl_playback", """{}""");
+
+        Assert.True(McpTestSupport.IsError(response));
+        JsonElement error = McpTestSupport.Structured(response);
+        Assert.Equal("INVALID_ARGUMENT", error.GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public async Task RlPlayback_WithNonExistentModelId_FailsWithArtifactNotFound()
+    {
+        McpMessageDispatcher dispatcher = await StartAsync(true);
+
+        using JsonDocument response = await CallAsync(dispatcher, "sa_get_rl_playback", """{"modelId":"nosuchmodel"}""");
+
+        Assert.True(McpTestSupport.IsError(response));
+        JsonElement error = McpTestSupport.Structured(response);
+        Assert.Equal("ARTIFACT_NOT_FOUND", error.GetProperty("code").GetString());
+    }
+
+    // ---- sa_start_training advanced options -------------------------------------------------------------------------------------------------
+
+    [Fact]
+    public async Task Start_PassesAdvancedOptionsToRequest()
+    {
+        using JsonDocument response = await CallAsync(
+            await StartAsync(), "sa_start_training",
+            """{"symbols":["AAA"],"framework":"LightGBM","architecture":"gbdt","windowSize":10,"horizon":1,"fixedZScore":true,"clipSigma":3.5,"calibration":true,"cpcv":true}""");
+
+        Assert.False(McpTestSupport.IsError(response));
+        EphemeralTrainingRequest request = Assert.Single(_gateway.Requests);
+        Assert.True(request.FixedZScore);
+        Assert.Equal(3.5, request.ClipSigma);
+        Assert.True(request.Calibration);
+        Assert.True(request.Cpcv);
+    }
+
+    [Fact]
+    public async Task Start_NegativeClipSigmaIsRejectedWithInvalidArgument()
+    {
+        using JsonDocument response = await CallAsync(
+            await StartAsync(), "sa_start_training",
+            """{"symbols":["AAA"],"framework":"LightGBM","architecture":"gbdt","windowSize":10,"horizon":1,"fixedZScore":true,"clipSigma":-1.0}""");
+
+        Assert.True(McpTestSupport.IsError(response));
+        Assert.Equal("INVALID_ARGUMENT", McpTestSupport.Structured(response).GetProperty("code").GetString());
+        Assert.Equal("clipSigma", McpTestSupport.Structured(response).GetProperty("param").GetString());
+    }
+
+    [Fact]
+    public async Task Start_ClipSigmaWithoutFixedZScoreIsRejectedWithInvalidArgument()
+    {
+        using JsonDocument response = await CallAsync(
+            await StartAsync(), "sa_start_training",
+            """{"symbols":["AAA"],"framework":"LightGBM","architecture":"gbdt","windowSize":10,"horizon":1,"fixedZScore":false,"clipSigma":3.0}""");
+
+        Assert.True(McpTestSupport.IsError(response));
+        JsonElement error = McpTestSupport.Structured(response);
+        Assert.Equal("INVALID_ARGUMENT", error.GetProperty("code").GetString());
+        Assert.Equal("clipSigma", error.GetProperty("param").GetString());
+    }
+
+    [Fact]
+    public async Task Start_CalibrationOnRegressionIsRejectedWithInvalidArgument()
+    {
+        using JsonDocument response = await CallAsync(
+            await StartAsync(), "sa_start_training",
+            """{"symbols":["AAA"],"framework":"LightGBM","architecture":"gbdt","windowSize":10,"horizon":1,"targetType":"Regression","calibration":true}""");
+
+        Assert.True(McpTestSupport.IsError(response));
+        JsonElement error = McpTestSupport.Structured(response);
+        Assert.Equal("INVALID_ARGUMENT", error.GetProperty("code").GetString());
+        Assert.Equal("calibration", error.GetProperty("param").GetString());
+    }
+
+    [Fact]
+    public async Task Prediction_ModelWithFixedScalerAndLeadBarsCanBeRunAndPredicts()
+    {
+        string fixedModel = Path.Combine(Path.GetDirectoryName(GoodModel)!, "trend_predictor_fixed_lag1_clip3.onnx");
+        McpMessageDispatcher dispatcher = await StartWithModelAsync(fixedModel);
+
+        using JsonDocument response = await CallAsync(dispatcher, "sa_run_onnx_prediction", Prediction(count: 2));
+
+        Assert.False(McpTestSupport.IsError(response), McpTestSupport.Structured(response).ToString());
+        JsonElement result = McpTestSupport.Structured(response);
+        Assert.Equal(2, result.GetProperty("predictions").GetArrayLength());
+    }
+
+    // ---- sa_check_rl_playback_preflight -----------------------------------------------------------------------------------------------------
+
+    [Fact]
+    public async Task RlPlaybackPreflight_ToolIsOfferedEvenWithoutExecutionFlag()
+    {
+        McpMessageDispatcher dispatcher = await StartAsync(enableExecution: false);
+
+        using JsonDocument response = await CallAsync(dispatcher, "sa_check_rl_playback_preflight", """{}""");
+
+        Assert.True(McpTestSupport.IsError(response));
+        JsonElement error = McpTestSupport.Structured(response);
+        Assert.Equal("INVALID_ARGUMENT", error.GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public async Task RlPlaybackPreflight_MissingModelReportsCannotReplay()
+    {
+        McpMessageDispatcher dispatcher = await StartAsync(enableExecution: false);
+
+        using JsonDocument response = await CallAsync(dispatcher, "sa_check_rl_playback_preflight", """{"modelId":"nosuchmodel"}""");
+
+        Assert.False(McpTestSupport.IsError(response));
+        JsonElement result = McpTestSupport.Structured(response);
+        Assert.False(result.GetProperty("canReplay").GetBoolean());
+        Assert.Contains("nosuchmodel", result.GetProperty("reason").GetString());
     }
 
     // ---- the log bridge (E-5) -------------------------------------------------------------------------------------------------------------------

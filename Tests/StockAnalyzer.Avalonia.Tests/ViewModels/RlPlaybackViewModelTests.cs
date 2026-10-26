@@ -64,6 +64,22 @@ public sealed partial class RlUiTests
             lock (ExternalReplays) ExternalReplays.Add(request);
             return External(request, ct);
         }
+        public Func<string, string, DateOnly, int, string?, CancellationToken, Task<RlExternalReplayResult>>? Ephemeral { get; set; }
+        public Func<string, string?>? EphemeralSymbol { get; set; }
+        public Func<string, CancellationToken, Task<RlAnchorRange>>? EphemeralAnchorRange { get; set; }
+        public List<(string Model, string Symbol, DateOnly Date, int Decision)> EphemeralReplays { get; } = new();
+        public override string? ReadEphemeralModelSymbol(string onnxModelPath) => EphemeralSymbol != null ? EphemeralSymbol(onnxModelPath) : "SPY";
+        public override Task<RlAnchorRange> GetEphemeralAnchorRangeAsync(string symbol, CancellationToken ct = default)
+            => EphemeralAnchorRange != null
+                ? EphemeralAnchorRange(symbol, ct)
+                : Task.FromResult(new RlAnchorRange(new DateOnly(2023, 1, 1), new DateOnly(2023, 6, 1)));
+        public override Task<RlExternalReplayResult> ReplayEphemeralModelAsync(string onnxModelPath, string symbol, DateOnly asOfDate, int decisionPosition, string? policyId = null, CancellationToken cancellationToken = default)
+        {
+            lock (EphemeralReplays) EphemeralReplays.Add((onnxModelPath, symbol, asOfDate, decisionPosition));
+            return Ephemeral != null
+                ? Ephemeral(onnxModelPath, symbol, asOfDate, decisionPosition, policyId, cancellationToken)
+                : Task.FromResult(new RlExternalReplayResult(Snapshot(0, 1, -1), asOfDate, asOfDate));
+        }
     }
 
     private sealed class RecordingReplayTarget : IRlReplayTarget
@@ -89,12 +105,12 @@ public sealed partial class RlUiTests
     private sealed record PlaybackFixture(RlPlaybackViewModel Vm, PlaybackData Data, RecordingReplayTarget Target, EmptyRegistry Registry);
 
     private static async Task<PlaybackFixture> Playback(IReadOnlyList<RlGeneration>? generations = null, Action<PlaybackData>? configure = null,
-        ILocalizationService? localization = null, Exception? listError = null)
+        ILocalizationService? localization = null, Exception? listError = null, IDialogService? dialogService = null)
     {
         var registry = new EmptyRegistry { Generations = generations ?? new[] { PlaybackGeneration("a") }, ListError = listError };
         var data = new PlaybackData(registry); configure?.Invoke(data);
         var target = new RecordingReplayTarget();
-        var vm = new RlPlaybackViewModel(registry, data, target, localization ?? NullLocalizationService.Instance, new SynchronousDispatcherService());
+        var vm = new RlPlaybackViewModel(registry, data, target, localization ?? NullLocalizationService.Instance, new SynchronousDispatcherService(), dialogService: dialogService);
         await vm.RefreshCommand.ExecuteAsync(null);
         await PlaybackUntil(() => vm.ModelsState != RlDialogLoadState.Loading && vm.BlocksState != RlDialogLoadState.Loading);
         return new(vm, data, target, registry);

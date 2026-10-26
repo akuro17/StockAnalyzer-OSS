@@ -49,6 +49,8 @@ internal sealed class ListTickersTool : IMcpTool
 
     public bool IsHeavy => false;
 
+    public string? ExampleArgumentsJson => "{\"limit\":20,\"searchQuery\":\"TOYOTA\"}";
+
     public string InputSchemaJson => ToolSchema.Object()
         .Integer(OffsetArgument, "Number of matching tickers to skip. Default 0.", defaultValue: 0, minimum: 0)
         .Integer(LimitArgument, $"Page size. Default {_limits.DefaultTickerPageSize}, at most {_limits.MaxTickersPerPage}.", defaultValue: _limits.DefaultTickerPageSize, minimum: 1, maximum: _limits.MaxTickersPerPage)

@@ -5,6 +5,8 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.ML.OnnxRuntime;
+using StockAnalyzer.Core.Execution;
 using StockAnalyzer.Core.Models.ReinforcementLearning;
 using StockAnalyzer.Core.Models.Training;
 
@@ -71,6 +73,69 @@ public class RlDialogDataService(IRlModelGenerationRegistry registry, IQValueSer
             var result = await replay.ReplayExternalAsync(request, ct).ConfigureAwait(false);
             ct.ThrowIfCancellationRequested();
             return result;
+        }, ct);
+
+    /// <summary>
+    /// Replays an ephemeral uncommitted ONNX policy model located in the OS temporary sandbox.
+    /// Precondition: EphemeralSandbox.IsStrictlyInside(onnxModelPath) == true
+    /// Postcondition: Output action is deterministically computed via finite-Q greedy selection.
+    /// </summary>
+    public virtual Task<RlExternalReplayResult> ReplayEphemeralModelAsync(
+        string onnxModelPath,
+        string symbol,
+        DateOnly asOfDate,
+        int decisionPosition,
+        string? policyId = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(onnxModelPath))
+            throw new ArgumentException("ONNX model path must not be null or empty.", nameof(onnxModelPath));
+        if (!EphemeralSandbox.IsStrictlyInside(onnxModelPath))
+            throw new ArgumentException("The ephemeral model path must be strictly inside the ephemeral sandbox.", nameof(onnxModelPath));
+        if (!File.Exists(onnxModelPath))
+            throw new FileNotFoundException("The ephemeral ONNX model file does not exist.", onnxModelPath);
+        if (decisionPosition < 0 || decisionPosition >= RlContract.EpisodeHorizon)
+            throw new ArgumentOutOfRangeException(nameof(decisionPosition), "Decision position must be between 0 and 127.");
+        if (string.IsNullOrWhiteSpace(symbol))
+            throw new ArgumentException("Symbol must not be null or empty.", nameof(symbol));
+
+        return replay.ReplayEphemeralAsync(onnxModelPath, symbol, asOfDate, decisionPosition, policyId, cancellationToken);
+    }
+
+    /// <summary>
+    /// Reads the canonical trained symbol stored in the custom metadata of an ephemeral ONNX model.
+    /// Returns null if the model cannot be opened or does not contain a symbol entry.
+    /// </summary>
+    public virtual string? ReadEphemeralModelSymbol(string onnxModelPath)
+    {
+        if (string.IsNullOrWhiteSpace(onnxModelPath) || !File.Exists(onnxModelPath) || !EphemeralSandbox.IsStrictlyInside(onnxModelPath))
+            return null;
+
+        try
+        {
+            using var session = new InferenceSession(onnxModelPath);
+            return session.ModelMetadata.CustomMetadataMap.TryGetValue("symbol", out var s) && !string.IsNullOrWhiteSpace(s)
+                ? s
+                : null;
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Resolves the earliest and latest valid anchor dates for an ephemeral replay on the stored bars of <paramref name="symbol"/>.
+    /// </summary>
+    public virtual Task<RlAnchorRange> GetEphemeralAnchorRangeAsync(string symbol, CancellationToken ct = default)
+        => Task.Run(async () =>
+        {
+            if (string.IsNullOrWhiteSpace(symbol))
+                throw new ArgumentException("Symbol must not be null or empty.", nameof(symbol));
+
+            var limits = RlTrainingValidation.FreezeLimits(continuous: false);
+            using var workspace = RlReplayWorkspace.Create(dataRoot);
+            return await RlExternalEpisodeFactory.ReadAnchorRangeAsync(symbol, limits, workspace, ct).ConfigureAwait(false);
         }, ct);
 
     /// <summary>The first and last anchor date the stored bars of <paramref name="symbol"/> allow; nothing is prepared or kept.</summary>

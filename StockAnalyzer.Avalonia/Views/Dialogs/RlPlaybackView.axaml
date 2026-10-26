@@ -59,6 +59,9 @@
                                 Command="{Binding RemoveSelectedModelCommand}"
                                 IsVisible="{Binding SelectedModelHasNoWorkFolder}"
                                 AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.RemoveModel}"/>
+                        <Button Classes="accent" Content="{l:Localize PredictionModels_TestTempModel}"
+                                Command="{Binding TestTempModelFromFileCommand}"
+                                AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.PlaybackTestTempModel}"/>
                     </StackPanel>
                 </StackPanel>
             </Border>

@@ -59,6 +59,9 @@ internal sealed class DeferredSandboxedExecutionGateway : ISandboxedExecutionGat
     public Task<TrainingJobTicket> StartRlTrainingAsync(EphemeralRlRequest request, CancellationToken cancellationToken)
         => Inner.StartRlTrainingAsync(request, cancellationToken);
 
+    public Task<TrainingJobTicket> StartPortfolioRlTrainingAsync(EphemeralPortfolioRlRequest request, CancellationToken cancellationToken)
+        => Inner.StartPortfolioRlTrainingAsync(request, cancellationToken);
+
     public TrainingJobStatus GetStatus(string jobId) => Inner.GetStatus(jobId);
 
     public TrainingJobState Cancel(string jobId) => Inner.Cancel(jobId);
@@ -66,4 +69,6 @@ internal sealed class DeferredSandboxedExecutionGateway : ISandboxedExecutionGat
     public EphemeralArtifact? FindArtifact(string artifactIdOrLatest) => Inner.FindArtifact(artifactIdOrLatest);
 
     public ArtifactLease LeaseArtifact(string artifactId) => Inner.LeaseArtifact(artifactId);
+
+    public ArtifactLease LeaseRegisteredModel(string modelId) => Inner.LeaseRegisteredModel(modelId);
 }

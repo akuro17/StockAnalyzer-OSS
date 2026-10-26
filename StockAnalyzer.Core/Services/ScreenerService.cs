@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Portfolio;
 using StockAnalyzer.Core.Models.Screener;
+using StockAnalyzer.Core.Services.Screener;
 
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -80,6 +81,21 @@ public class ScreenerService : IScreenerService
         {
             throw new ArgumentOutOfRangeException(nameof(condition), maxOffset,
                 $"The condition uses an Offset of {maxOffset} bars, above the configured Screener:MaxConditionOffset of {allowedOffset}.");
+        }
+
+        if (condition is ScreenerConditionTreeCondition treeCondition)
+        {
+            ScreenerConditionTreeValidator.Validate(
+                treeCondition.Root,
+                allowedOffset,
+                _settings.ScreenerMaxFilterTreeDepth,
+                _settings.ScreenerMaxFilterTreeNodes);
+
+            if (!ScreenerConditionTreeEvaluator.HasActiveLeaf(treeCondition.Root))
+            {
+                progress?.Report(100);
+                return new List<string>();
+            }
         }
 
         if (symbols == null || !symbols.Any())

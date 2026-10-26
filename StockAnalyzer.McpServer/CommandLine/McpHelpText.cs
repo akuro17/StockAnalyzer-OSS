@@ -96,6 +96,11 @@ internal static class McpHelpText
             builder.Append($"  (none){NewLine}");
         }
 
+        if (!string.IsNullOrWhiteSpace(tool.ExampleArgumentsJson))
+        {
+            builder.Append($"{NewLine}Example arguments:{NewLine}  {tool.ExampleArgumentsJson}{NewLine}");
+        }
+
         text = builder.ToString();
         error = string.Empty;
         return true;

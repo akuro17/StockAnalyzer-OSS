@@ -33,6 +33,8 @@ internal sealed class StartRlTrainingTool : IMcpTool
 
     public bool IsExecution => true;
 
+    public string? ExampleArgumentsJson => "{\"symbol\":\"7203-T\"}";
+
     public string InputSchemaJson => ToolSchema.Object()
         .String(SymbolArgument, "The symbol to train on ('.' and '-' are interchangeable).", required: true)
         .String(StartDateArgument, $"First date of the period ({ToolJson.DateFormat}). Default: the earliest start from which the required bars are stored.")

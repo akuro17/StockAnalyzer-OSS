@@ -13,8 +13,12 @@ public static class ReadOnlyGatewayContract
     public static IReadOnlyList<TimeFrame> SupportedTimeFrames { get; } = new[] { TimeFrame.D1, TimeFrame.W1, TimeFrame.MN1 };
 
     /// <summary>
-    /// The time frame a backtest can run on. The preparation service reads the stored bars of the frame directly; only the daily
-    /// folder is read by this host (the weekly and monthly series are aggregated by <see cref="Services.TimeFrameManager"/>, not stored).
+    /// The default time frame a backtest runs on when omitted.
     /// </summary>
     public const TimeFrame BacktestTimeFrame = TimeFrame.D1;
+
+    /// <summary>
+    /// The time frames a backtest can run on: D1 directly or W1/MN1 aggregated from daily bars.
+    /// </summary>
+    public static IReadOnlyList<TimeFrame> SupportedBacktestTimeFrames { get; } = new[] { TimeFrame.D1, TimeFrame.W1, TimeFrame.MN1 };
 }

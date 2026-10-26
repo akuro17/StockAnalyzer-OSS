@@ -83,12 +83,17 @@ public static class ReadOnlyCoreServiceCollectionExtensions
 
         // The backtest path of the Backtest window: preparation (reads stored bars), engine, report generator, evaluation. All pure in-memory
         // code (the engine and the report use memory streams only); exporters, run history and the configuration managers are not registered.
+        services.AddSingleton<ITimeFrameManager>(sp => new TimeFrameManager(sp.GetRequiredService<IDataService>()));
         services.AddSingleton<IBacktestEngine, BacktestEngine>();
         services.AddSingleton<BacktestReportGenerator>();
         services.AddSingleton<IQualifiedBacktestReportGenerator>(sp => sp.GetRequiredService<BacktestReportGenerator>());
         services.AddSingleton<ISamplingEvidenceTrustPolicy, NoSamplingEvidenceTrustPolicy>();
         services.AddSingleton<IBacktestEvaluationService, BacktestEvaluationService>();
-        services.AddSingleton<IBacktestRunPreparationService, BacktestRunPreparationService>();
+        services.AddSingleton<IBacktestRunPreparationService>(sp => new BacktestRunPreparationService(
+            new AggregatingDataService(
+                sp.GetRequiredService<IDataService>(),
+                sp.GetRequiredService<ITimeFrameManager>()),
+            sp.GetService<IOptions<MarketDataSettings>>()));
         services.AddSingleton<IChartSeriesCalculationService, ChartSeriesCalculationService>();
 
         services.AddSingleton<IReadOnlyStockAnalyzerGateway, ReadOnlyStockAnalyzerGateway>();

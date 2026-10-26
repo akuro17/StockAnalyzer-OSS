@@ -31,6 +31,8 @@ internal sealed class GetTickerMetadataTool : IMcpTool
 
     public bool IsHeavy => false;
 
+    public string? ExampleArgumentsJson => "{\"symbols\":[\"7203-T\",\"6758-T\"]}";
+
     public string InputSchemaJson => ToolSchema.Object()
         .StringArray(SymbolsArgument, "Ticker symbols; '.' and '-' are interchangeable.", required: true, minItems: 1)
         .Build();

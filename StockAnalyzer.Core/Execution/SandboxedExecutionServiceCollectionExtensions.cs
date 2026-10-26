@@ -44,7 +44,8 @@ public static class SandboxedExecutionServiceCollectionExtensions
             sp.GetRequiredService<IPythonExecutableResolver>(),
             sp.GetRequiredService<SandboxedExecutionSettings>(),
             sp.GetService<ILogger<SandboxedExecutionGateway>>(),
-            sp.GetRequiredService<IOptions<MarketDataSettings>>().Value));
+            sp.GetRequiredService<IOptions<MarketDataSettings>>().Value,
+            modelRegistry: sp.GetService<IModelGenerationRegistry>()));
         return services;
     }
 }

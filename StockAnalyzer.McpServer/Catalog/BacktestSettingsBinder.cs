@@ -39,11 +39,11 @@ internal static class BacktestSettingsBinder
     private static readonly string[] RiskKeys = McpBacktestSettingsExposure.KeysOf(McpBacktestSettingsExposure.RiskSection);
     private static readonly string[] ReportKeys = McpBacktestSettingsExposure.KeysOf(McpBacktestSettingsExposure.ReportSection);
 
-    public static BoundBacktestSettings Bind(JsonElement arguments)
+    public static BoundBacktestSettings Bind(JsonElement arguments, TimeFrame frame = TimeFrame.D1)
     {
         BacktestConfiguration account = BindAccount(Object(arguments, AccountArgument));
         BacktestRiskManagementSettings? risk = BindRisk(Object(arguments, RiskArgument));
-        (BacktestReportDefaults report, int seed, int iterations) = BindReport(Object(arguments, ReportArgument));
+        (BacktestReportDefaults report, int seed, int iterations) = BindReport(Object(arguments, ReportArgument), frame);
         return new BoundBacktestSettings(account, risk, report, seed, iterations);
     }
 
@@ -140,7 +140,7 @@ internal static class BacktestSettingsBinder
         }
     }
 
-    private static (BacktestReportDefaults Defaults, int BootstrapSeed, int BootstrapIterations) BindReport(JsonElement? report)
+    private static (BacktestReportDefaults Defaults, int BootstrapSeed, int BootstrapIterations) BindReport(JsonElement? report, TimeFrame frame)
     {
         if (report is { } given)
         {
@@ -150,11 +150,10 @@ internal static class BacktestSettingsBinder
 
         BacktestReportDefaults builtIn = BacktestReportDefaults.BuiltIn;
 
-        // The tool runs the daily frame only, so the daily annual period count is the one the window's value can reach.
-        Dictionary<TimeFrame, int> periods = builtIn.AnnualPeriodsByFrame;
+        Dictionary<TimeFrame, int> periods = new(builtIn.AnnualPeriodsByFrame);
         if (ReadInteger(report, ReportArgument, AnnualPeriodsDailyKey) is { } daily)
         {
-            periods[ReadOnlyGatewayContract.BacktestTimeFrame] = daily;
+            periods[TimeFrame.D1] = daily;
         }
 
         int seed = ReadInteger(report, ReportArgument, BootstrapSeedKey) ?? BacktestDefaults.BootstrapSeed;
@@ -163,7 +162,7 @@ internal static class BacktestSettingsBinder
         {
             // The engine's own rule for the resample count (the window checks it the same way); the other values are checked by the report defaults.
             DateTime placeholderUtc = DateTime.UtcNow;
-            _ = new BacktestReportOptions(ReadOnlyGatewayContract.BacktestTimeFrame, 0, placeholderUtc, placeholderUtc) { BootstrapIterations = iterations };
+            _ = new BacktestReportOptions(frame, 0, placeholderUtc, placeholderUtc) { BootstrapIterations = iterations };
         }
         catch (ArgumentOutOfRangeException error)
         {
