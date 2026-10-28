@@ -83,6 +83,10 @@ public static class RlUiConstants
     public const string EvaluationReport = "Rl_EvaluationReport";
     public const string EvaluationDetails = "Rl_EvaluationDetails";
     public const double EvaluationMaximumHeight = 240d;
+    /// <summary>A generation is "robust" when its validation and final-evaluation returns differ by at most this fraction (and the final one is positive).</summary>
+    public const decimal GenerationRobustGapMaximum = 0.05m;
+    /// <summary>A generation is "overfit" when its validation return exceeds the final-evaluation return by more than this fraction.</summary>
+    public const decimal GenerationOverfitGapMinimum = 0.10m;
     public const string TrainingSetupSection = "Rl_TrainingSetupSection";
     public const string CostsSection = "Rl_CostsSection";
     public const string TrainingSection = "Rl_TrainingSection";
@@ -90,8 +94,8 @@ public static class RlUiConstants
     public const string MaintenanceSection = "Rl_MaintenanceSection";
     public const string VerificationSection = "Rl_VerificationSection";
     public const string CheckpointExport = "Rl_CheckpointExport";
-    public const string CheckpointImport = "Rl_CheckpointImport";
     public const string GenerationExport = "Rl_GenerationExport";
+    public const string GenerationImport = "Rl_GenerationImport";
     public const string RiskMetricsHeader = "Rl_RiskMetricsHeader";
     public const string CheckpointStatusBadge = "Rl_CheckpointStatusBadge";
     public const string RecoveryStatusBadge = "Rl_RecoveryStatusBadge";

@@ -156,11 +156,19 @@ public class BacktestIndicatorCausalityGuardTests
     [Fact]
     public void Engine_FailsLoudly_WhenAnAllowedIndicatorCalculationIsUnsuccessful()
     {
-        // A real indicator that reports failure: EMA with Period 0 -> "Attempted to divide by zero" (IsSuccessful == false). The engine used to consume
-        // that as an empty series (every condition silently false); it must now stop with an explicit error.
-        var request = new StrategyIndicatorRequest("bad", IndicatorType.EMA, new CoreSmaParameter { Period = 0 });
+        // A real indicator that reports failure with valid parameters: SMA over prices near decimal.MaxValue overflows inside the indicator, which catches it
+        // and returns IsSuccessful == false. The engine used to consume that as an empty series (every condition silently false); it must now stop with an
+        // explicit error. (An invalid Period no longer gets this far: IndicatorFactory.Create validates the parameters first.)
+        const decimal overflowingPrice = 7e28m;
+        const int barCount = 4, smaPeriod = 3;
+        const long barVolume = 1000;
+        DateTime start = new(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        ImmutableArray<CandleData> bars = ImmutableArray.CreateRange(Enumerable.Range(0, barCount)
+            .Select(day => new CandleData(start.AddDays(day), overflowingPrice, overflowingPrice, overflowingPrice, overflowingPrice, barVolume)));
+        var request = new StrategyIndicatorRequest("bad", IndicatorType.SMA, new CoreSmaParameter { Period = smaPeriod });
 
-        var ex = Assert.Throws<InvalidOperationException>(() => RunWith(request));
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            VerificationHarness.Run(VerificationHarness.MakeInput(bars), VerificationHarness.MakeConfig(), new RequestingStrategy(request)));
 
         Assert.Contains("calculation failed", ex.Message);
         Assert.Contains("bad", ex.Message);

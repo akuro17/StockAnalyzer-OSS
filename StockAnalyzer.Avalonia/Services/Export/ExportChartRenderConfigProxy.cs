@@ -133,7 +133,7 @@ public sealed class ExportChartRenderConfigProxy :
     // Comparison
     public ComparisonAlignedData? ComparisonData => _inner is IComparisonRenderConfig c ? c.ComparisonData : null;
     public ComparisonMode ComparisonMode => _inner is IComparisonRenderConfig c ? c.ComparisonMode : ComparisonMode.Performance;
-    public int ComparisonZScorePeriod => _inner is IComparisonRenderConfig c ? c.ComparisonZScorePeriod : 20;
+    public int ComparisonZScorePeriod => _inner is IComparisonRenderConfig c ? c.ComparisonZScorePeriod : ComparisonSeriesDefaults.DefaultZScorePeriod;
     public SeriesColorIndex SeriesColorIndex => _inner is IComparisonRenderConfig c ? c.SeriesColorIndex : new SeriesColorIndex();
     public bool ShowTickerInsteadOfValue => _inner is IComparisonRenderConfig c && c.ShowTickerInsteadOfValue;
 }

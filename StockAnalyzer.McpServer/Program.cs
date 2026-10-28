@@ -37,8 +37,7 @@ try
 {
     runtime = McpServerComposition.Create(McpServerComposition.LoadConfiguration(AppContext.BaseDirectory), log, enableExecution: commandLine.EnableExecution);
 }
-catch (Exception error) when (error is McpLimitsException or ExecutionLimitsException)
-{
+catch (Exception error) when (error is McpLimitsException or ExecutionLimitsException){
     log.Error($"Invalid configuration: {error.Message}");
     return McpCommandLine.ExitInvalidConfiguration;
 }

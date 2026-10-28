@@ -4,6 +4,7 @@ import datetime
 import logging
 import polars as pl
 import argparse
+from symbol_validator import is_well_formed_ticker
 
 # Setup Logging
 logging.basicConfig(
@@ -56,6 +57,8 @@ def verify_symbol(symbol, daily_rows):
     Returns the list of problems (empty when the files are the aggregation of the daily file).
     """
     problems = []
+    if not is_well_formed_ticker(symbol):
+        return [f"{symbol}: invalid ticker symbol"]
     for period, root in (("week", WEEKLY_DATA_ROOT), ("month", MONTHLY_DATA_ROOT)):
         path = os.path.join(root, f"{symbol}.parquet")
         if not os.path.exists(path):
@@ -78,6 +81,9 @@ def resample_and_save(symbol):
     Every failure is logged and returned as False (the caller turns it into the exit code), and an old file is never removed: a failed
     run leaves the previous files, which verify_symbol / the exit code then report as not current.
     """
+    if not is_well_formed_ticker(symbol):
+        logging.error(f"Invalid ticker symbol: {symbol!r}")
+        return False
     # Date label of a bar: the first CALENDAR day of its period (the Monday of the ISO week, the 1st of the month), which is how polars labels
     # a dynamic window. TimeFrameAggregator (C#) labels the first TRADING day; the open, high, low, close and volume are the same
     # (Tests/StockAnalyzer.Core.Tests/Services/TimeframeGenerationParityTests.cs proves it, and the label rule).
@@ -231,6 +237,8 @@ def main():
         # Get list of tickers from Daily directory
         files = [f for f in os.listdir(DAILY_DATA_ROOT) if f.endswith(".parquet")]
         tickers = [f.replace(".parquet", "") for f in files]
+
+    tickers = [t for t in tickers if is_well_formed_ticker(t)]
 
     logging.info(f"Starting pre-generation for {len(tickers)} tickers...")
 

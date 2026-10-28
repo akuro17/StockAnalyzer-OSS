@@ -50,6 +50,7 @@ import fixed_scaler  # noqa: E402
 import metrics  # noqa: E402
 import onnx_meta  # noqa: E402  (sibling module, path inserted above)
 import checkpoints  # noqa: E402
+from trainer_flags import RESERVED_TRAINER_FLAGS, normalize_flag  # noqa: E402
 
 # <DataRoot>/TrainingArtifacts/TW (the Training Wizard folder), not a path relative to this script: this file lives under
 # StockAnalyzer.Python/training/, which in a release build is copied beside the executable
@@ -592,30 +593,9 @@ def _resolve_training_dir(cfg: JobConfig, raw_data_dir: Path, tmp_root: Path) ->
     return staged
 
 
-# Flags this function itself emits. A hyperparameter reusing one of these would silently win
-# ("last flag wins" is argparse's own rule for a repeated option) and override a wizard field
-# the user set through its own UI control, so it is rejected instead -- see _build_trainer_argv.
-# A future flag is added here in the same PR that wires it into the trainers, not before.
-_RESERVED_TRAINER_FLAGS: frozenset = frozenset({
-    "data-dir", "feature-mode", "feature-spec", "target-type", "window", "horizon", "timeframe", "wf-splits",
-    "gap", "out", "arch", "indicator-channel-export-paths", "outer-fold-index",
-    "max-symbols", "smoke",
-    "fixed-zscore", "clip-sigma", "lags",
-    "initialization-mode", "init-from", "checkpoint-dir", "run-id",
-    "parent-model-id", "parent-model-hash", "freeze-paths",
-    "preflight",
-    "pretrain", "bag-index", "bag-count", "bag-seed", "bag-fraction", "bag-block-length", "meta-segment",
-    "cpcv-groups", "cpcv-test-groups", "cpcv-combination",
-})
-
-
-def _normalize_flag(key: object) -> str:
-    """Turn a hyperparameter key into the CLI flag name it collides with / emits as.
-
-    Shared by the reserved-flag conflict check and argv emission below so the two stay in
-    lockstep by construction instead of by two independently maintained copies of the rule.
-    """
-    return str(key).strip().lstrip("-").replace("_", "-")
+# Flags this function itself emits. Defined authoritatively in trainer_flags.py SSoT.
+_RESERVED_TRAINER_FLAGS: frozenset = RESERVED_TRAINER_FLAGS
+_normalize_flag = normalize_flag
 
 
 def _build_trainer_argv(cfg: JobConfig, data_dir: Path, out_path: Path,

@@ -46,6 +46,7 @@ public sealed class SandboxedExecutionGateway : ISandboxedExecutionGateway, IDis
     private bool _disposed;
 
     /// <param name="marketData">The configured market-data folders the reinforcement-learning runs read from; null leaves reinforcement learning out.</param>
+    /// <param name="portfolioSettings">The already validated "RlPortfolio" settings the portfolio runs use; null keeps the defaults.</param>
     public SandboxedExecutionGateway(
         ITrainingOrchestrator orchestrator,
         IPythonExecutableResolver resolver,
@@ -53,11 +54,19 @@ public sealed class SandboxedExecutionGateway : ISandboxedExecutionGateway, IDis
         ILogger<SandboxedExecutionGateway>? logger = null,
         MarketDataSettings? marketData = null,
         EphemeralExecutionPolicy? policy = null,
-        IModelGenerationRegistry? modelRegistry = null)
+        IModelGenerationRegistry? modelRegistry = null,
+        RlPortfolioSettings? portfolioSettings = null)
         : this(orchestrator, resolver, settings, logger, EphemeralSandbox.Root, TimeSpan.FromSeconds(ExecutionLimits.CancelGraceSeconds),
-            marketData is null ? null : new EphemeralRlRunner(RlLocalSourceFolders.FromSettings(marketData)), policy, modelRegistry,
-            new EphemeralPortfolioRlRunner())
+            SourceFoldersOf(marketData, out var folders) ? new EphemeralRlRunner(folders) : null, policy, modelRegistry,
+            new EphemeralPortfolioRlRunner(portfolioSettings, folders))
     {
+    }
+
+    /// <summary>The market-data folders the RL runners read from, resolved once for both runners; none when no market-data settings are given.</summary>
+    private static bool SourceFoldersOf(MarketDataSettings? marketData, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out RlLocalSourceFolders? folders)
+    {
+        folders = marketData is null ? null : RlLocalSourceFolders.FromSettings(marketData);
+        return folders is not null;
     }
 
     /// <param name="sandboxRoot">The sandbox root; only a test uses another folder.</param>
@@ -86,7 +95,7 @@ public sealed class SandboxedExecutionGateway : ISandboxedExecutionGateway, IDis
         _cancelGrace = cancelGrace;
         _store = new EphemeralArtifactStore(sandboxRoot, settings, _logger);
         _policy = policy ?? EphemeralExecutionPolicy.McpFixed;
-        _modelRegistry = modelRegistry ?? new ModelGenerationRegistry();
+        _modelRegistry = modelRegistry ?? new ReadOnlyModelGenerationRegistry();
         _portfolioRunner = portfolioRunner ?? new EphemeralPortfolioRlRunner();
         int cleaned = _store.CleanOrphanSessions(DateTime.UtcNow);
         _logger.LogInformation("Sandboxed execution enabled; {Cleaned} abandoned session(s) removed.", cleaned);
@@ -256,7 +265,8 @@ public sealed class SandboxedExecutionGateway : ISandboxedExecutionGateway, IDis
         }
 
         PanelPreflight preflight = await runner.PreflightAsync(request.Symbols, start.Value, end, request.SymbolHoldout, request.Mode, cancellationToken).ConfigureAwait(false);
-        var settings = new RlPortfolioSettings { MaxWeightPercent = request.MaxAssetWeightPercent };
+        // The configured "RlPortfolio" settings (symbol maximum, holdout share) gate the start as in the GUI; only the weight cap is this request's own.
+        RlPortfolioSettings settings = runner.Settings.WithRunOverrides(null, request.MaxAssetWeightPercent);
         var decision = RlPanelStartGate.Decide(preflight, excludeUnavailable: true, request.SymbolHoldout, settings);
         if (!decision.CanStart)
         {
@@ -372,7 +382,7 @@ public sealed class SandboxedExecutionGateway : ISandboxedExecutionGateway, IDis
         {
             if (string.Equals(artifactIdOrLatest, LatestAlias, StringComparison.Ordinal))
             {
-                return NewestSucceeded()?.Artifact;
+                return NewestSucceeded(TrainingJobKind.Supervised)?.Artifact;
             }
 
             TrainingJobRecord? job = _jobs.Find(artifactIdOrLatest);
@@ -1240,18 +1250,32 @@ public sealed class SandboxedExecutionGateway : ISandboxedExecutionGateway, IDis
         }
     }
 
-    // Keeps the newest KeepLatestRuns succeeded jobs; the folders of the others are deleted unless a lease holds them (then a later release tries again).
+    // Keeps the newest KeepLatestRuns succeeded jobs per job kind; the folders of the others are deleted unless a lease holds them (then a later release tries again).
     private void ApplyRetention()
     {
         List<string> jobsToDelete = new();
         lock (_jobs.Gate)
         {
-            IEnumerable<TrainingJobRecord> older = _jobs.Snapshot()
-                .Where(job => job.State == TrainingJobState.Succeeded && job.Artifact is not null)
+            var snapshot = _jobs.Snapshot();
+
+            // Retain Supervised jobs separately so RL runs do not evict prediction models
+            IEnumerable<TrainingJobRecord> olderSupervised = snapshot
+                .Where(job => job.Kind == TrainingJobKind.Supervised && job.State == TrainingJobState.Succeeded && job.Artifact is not null)
                 .OrderByDescending(job => job.CompletedUtc)
                 .ThenByDescending(job => job.JobId, StringComparer.Ordinal)
                 .Skip(_settings.KeepLatestRuns);
-            foreach (TrainingJobRecord job in older)
+            foreach (TrainingJobRecord job in olderSupervised)
+            {
+                jobsToDelete.Add(job.JobId);
+            }
+
+            // Retain RL / Portfolio RL jobs separately
+            IEnumerable<TrainingJobRecord> olderOther = snapshot
+                .Where(job => job.Kind != TrainingJobKind.Supervised && job.State == TrainingJobState.Succeeded && job.Artifact is not null)
+                .OrderByDescending(job => job.CompletedUtc)
+                .ThenByDescending(job => job.JobId, StringComparer.Ordinal)
+                .Skip(_settings.KeepLatestRuns);
+            foreach (TrainingJobRecord job in olderOther)
             {
                 jobsToDelete.Add(job.JobId);
             }
@@ -1272,9 +1296,9 @@ public sealed class SandboxedExecutionGateway : ISandboxedExecutionGateway, IDis
         }
     }
 
-    private TrainingJobRecord? NewestSucceeded()
+    private TrainingJobRecord? NewestSucceeded(TrainingJobKind kind = TrainingJobKind.Supervised)
         => _jobs.Snapshot()
-            .Where(job => job.State == TrainingJobState.Succeeded && job.Artifact is not null)
+            .Where(job => job.Kind == kind && job.State == TrainingJobState.Succeeded && job.Artifact is not null)
             .OrderByDescending(job => job.CompletedUtc)
             .ThenByDescending(job => job.JobId, StringComparer.Ordinal)
             .FirstOrDefault();

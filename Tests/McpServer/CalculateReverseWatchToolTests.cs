@@ -177,7 +177,7 @@ public sealed class CalculateReverseWatchToolTests : IDisposable
             ("""{"symbol":"WAVE","timeFrame":"D1","dataCount":1}""", "INVALID_ARGUMENT", "dataCount"),
             ("""{"symbol":"WAVE","timeFrame":"D1","isMaBased":"yes"}""", "INVALID_ARGUMENT", "isMaBased"),
             ("""{"symbol":"WAVE","timeFrame":"D1","window":5}""", "INVALID_ARGUMENT", "window"),
-            ("""{"symbol":"WAVE","timeFrame":"D1","outputTailCount":501}""", "LIMIT_EXCEEDED", "outputTailCount"),
+            ("""{"symbol":"WAVE","timeFrame":"D1","outputTailCount":5001}""", "LIMIT_EXCEEDED", "outputTailCount"),
             ("""{"symbol":"WAVE","timeFrame":"D1","lookbackBars":0}""", "INVALID_ARGUMENT", "lookbackBars"),
             ("""{"symbol":"WAVE","timeFrame":"D1","lookbackBars":10001}""", "LIMIT_EXCEEDED", "lookbackBars"),
             ("""{"symbol":"WAVE","timeFrame":"D1","period":25,"dataCount":25,"lookbackBars":40}""", "INVALID_ARGUMENT", "lookbackBars"),

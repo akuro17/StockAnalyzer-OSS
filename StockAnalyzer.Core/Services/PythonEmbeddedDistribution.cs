@@ -18,8 +18,11 @@ namespace StockAnalyzer.Core.Services
         /// <summary>SHA-256 of <see cref="ArchiveUrl"/> as published by python.org (release_file API, sha256_sum).</summary>
         public const string ArchiveSha256 = "9e35319bffedab8b36ad44d8f377cb4f1733bcec257a0b6d04d94f01486ddb38";
 
-        /// <summary>Unversioned pip bootstrap script. Not hash-checked (owner decision).</summary>
-        public const string GetPipUrl = "https://bootstrap.pypa.io/get-pip.py";
+        /// <summary>Pinned get-pip.py bootstrap script release from pypa/get-pip.</summary>
+        public const string GetPipUrl = "https://raw.githubusercontent.com/pypa/get-pip/37ae3c4daaf63a0c203176251fb99c0e238562b5/public/get-pip.py";
+
+        /// <summary>SHA-256 of <see cref="GetPipUrl"/>.</summary>
+        public const string GetPipSha256 = "f4448a01e3ab2914c65f4ca59d4cacba6b2dbde19a483fbac46587f8bbaff424";
 
         /// <summary>Interpreter DLL shipped in the archive.</summary>
         public const string PythonDllName = "python313.dll";

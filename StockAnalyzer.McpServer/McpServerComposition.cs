@@ -63,11 +63,36 @@ internal static class McpServerComposition
             .AddJsonFile(ConfigurationFileName, optional: true, reloadOnChange: false)
             .Build();
 
+    /// <summary>
+    /// The "RlPortfolio" section (defaults when absent), checked at start-up against the same limits as the GUI. A value outside the standard band runs and is
+    /// logged; one outside the hard band stops the start-up.
+    /// </summary>
+    /// <exception cref="ExecutionLimitsException">A value is outside its hard band.</exception>
+    private static Core.Models.Settings.RlPortfolioSettings ReadPortfolioSettings(IConfiguration configuration, LogSink log)
+    {
+        var settings = configuration.GetSection(Core.Models.Settings.RlPortfolioSettings.SectionName).Get<Core.Models.Settings.RlPortfolioSettings>()
+            ?? new Core.Models.Settings.RlPortfolioSettings();
+        try
+        {
+            foreach (string warning in Core.Models.Settings.RlPortfolioSettingsValidator.Validate(
+                settings, Core.Models.ReinforcementLearning.RlTrainingValidation.FreezeLimits(continuous: true)))
+            {
+                log.Info(warning);
+            }
+        }
+        catch (ArgumentOutOfRangeException error)
+        {
+            throw new ExecutionLimitsException($"{Core.Models.Settings.RlPortfolioSettings.SectionName}:{error.ParamName} = {error.ActualValue}: {error.Message.ReplaceLineEndings(" ")}");
+        }
+
+        return settings;
+    }
+
     /// <exception cref="McpLimitsException">A configured limit is outside its hard band.</exception>
-    /// <exception cref="ExecutionLimitsException">A configured execution setting is outside its band (only when <paramref name="enableExecution"/>).</exception>
+    /// <exception cref="ExecutionLimitsException">A configured execution setting is outside its band (only when <paramref name="enableExecution"/>), or a configured <c>RlPortfolio</c> value is outside its hard band.</exception>
     /// <param name="templatesDirectory">Only for hosts and tests that keep the Screener templates elsewhere; null reads the application's own template folder.</param>
     /// <param name="backtestTemplatesDirectory">The same for the backtest-condition templates. When only <paramref name="templatesDirectory"/> is given, there are no backtest templates (the application's folder is not read).</param>
-    /// <param name="enableExecution">Offer the execution tools (<c>--enable-execution</c>); without it they are neither registered nor built, and the sandbox folder is never touched.</param>
+    /// <param name="enableExecution">Offer the execution tools (<c>--enable-execution</c>); without it they are neither registered nor built, and the execution sandbox folder is never touched (sa_check_rl_playback_preflight alone may create a transient RlReplay working folder below the operating system's temporary folder).</param>
     /// <param name="executionGateway">Only for tests: the gateway the execution tools use instead of the real one.</param>
     /// <param name="workspaceSource">Only for tests: the workspace source used instead of reading the application's default workspace file.</param>
     /// <param name="rlRegistry">Only for tests: the RL model registry used instead of the application's default registry.</param>
@@ -83,14 +108,22 @@ internal static class McpServerComposition
     {
         McpLimits limits = configuration.GetSection(McpLimits.SectionName).Get<McpLimits>() ?? new McpLimits();
         McpLimitsContract.Validate(limits);
+        Core.Models.Settings.RlPortfolioSettings portfolioSettings = ReadPortfolioSettings(configuration, log);
 
         var collection = new ServiceCollection().AddStockAnalyzerReadOnlyCore(configuration);
+        // The portfolio preflight and the portfolio training run of the execution gateway use the settings the GUI reads from the same section.
+        collection.AddSingleton(portfolioSettings);
         if (enableExecution)
         {
             // The gateway's information log (job ids and states) goes to standard error; the orchestrator's own log is not routed anywhere.
             collection.AddSingleton<ILogger<SandboxedExecutionGateway>>(new LogSinkLogger<SandboxedExecutionGateway>(log));
             collection.AddStockAnalyzerSandboxedExecution(configuration);
         }
+
+        // The portfolio preflight reads the same configured market-data folders as the other tools (not only the fixed Data folders).
+        collection.AddSingleton<IRlPortfolioService>(sp => new RlPortfolioService(
+            portfolioSettings,
+            sourceFolders: RlLocalSourceFolders.FromSettings(sp.GetRequiredService<IOptions<MarketDataSettings>>().Value)));
 
         if (templatesDirectory is not null || backtestTemplatesDirectory is not null)
         {
@@ -118,7 +151,10 @@ internal static class McpServerComposition
                 log.Info($"The data folder is incomplete ({string.Join(", ", tree.MissingItems)}); data tools return empty results until it is complete.");
             }
 
-            var sanitizer = new ErrorMessageSanitizer(KnownRoots(services.GetRequiredService<IOptions<MarketDataSettings>>().Value));
+            MarketDataSettings marketData = services.GetRequiredService<IOptions<MarketDataSettings>>().Value;
+            var sanitizer = new ErrorMessageSanitizer(KnownRoots(marketData));
+            // The replay tools read the same configured market-data folders as the other data tools (not only the fixed Data folders).
+            RlLocalSourceFolders rlSourceFolders = RlLocalSourceFolders.FromSettings(marketData);
             var gateway = services.GetRequiredService<IReadOnlyStockAnalyzerGateway>();
             var factory = services.GetRequiredService<IIndicatorFactory>();
             var catalogProvider = new ScreenerCatalogProvider();
@@ -155,8 +191,9 @@ internal static class McpServerComposition
                 new RunBacktestTool(gateway, symbols, backtestBinder, limits),
                 new CalculateReverseWatchTool(gateway, symbols, limits),
                 new CalculateChartSeriesTool(gateway, symbols, limits),
+                new CalculateRelativePerformanceTool(gateway, symbols, sanitizer, limits),
                 new CheckPortfolioRlPreflightTool(symbols, services.GetService<IRlPortfolioService>()),
-                new CheckRlPlaybackPreflightTool(symbols, services.GetService<IRlModelGenerationRegistry>()),
+                new CheckRlPlaybackPreflightTool(symbols, services.GetService<IRlModelGenerationRegistry>(), sourceFolders: rlSourceFolders),
             };
 
             Action? prepareExecution = null;
@@ -180,7 +217,7 @@ internal static class McpServerComposition
                 tools.Add(new StartRlTrainingTool(execution, symbols));
                 tools.Add(new StartPortfolioRlTrainingTool(execution, symbols));
                 tools.Add(new RunOnnxPredictionTool(execution, gateway, symbols, new MLDataProcessor(), limits, executionSettings));
-                tools.Add(new GetRlPlaybackTool(symbols, services.GetService<IRlModelGenerationRegistry>()));
+                tools.Add(new GetRlPlaybackTool(symbols, services.GetService<IRlModelGenerationRegistry>(), sourceFolders: rlSourceFolders));
             }
 
             var resources = new McpResourceRegistry(new[]

@@ -368,6 +368,23 @@ namespace StockAnalyzer.Core.Services
             });
         }
 
+        private string ResolvePythonExecutable()
+        {
+            if (!string.IsNullOrEmpty(_settings.PythonPath) && System.IO.File.Exists(_settings.PythonPath))
+            {
+                return _settings.PythonPath;
+            }
+
+            if (System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows))
+            {
+                return PythonEmbeddedInstaller.ExecutablePath(PythonExecutableName);
+            }
+
+            return PythonInterpreterLocator.TryResolveExecutable(out var located) && System.IO.File.Exists(located)
+                ? located
+                : PythonInterpreterLocator.ExecutableName;
+        }
+
         public async Task RunUpdatePipelineAsync(string? symbol = null, IProgress<int>? progress = null, bool forceMetadata = false, CancellationToken ct = default)
         {
             if (!string.IsNullOrEmpty(symbol) && (!AttestedFileNames.IsPlain(symbol) || symbol.Contains(' ') || symbol.StartsWith('-')))
@@ -392,7 +409,7 @@ namespace StockAnalyzer.Core.Services
                     await InitializeAsync(ct: linkedToken);
 
                     // 2. Resolve Paths
-                    var pythonExe = PythonEmbeddedInstaller.ExecutablePath(PythonExecutableName);
+                    var pythonExe = ResolvePythonExecutable();
 
                     if (!System.IO.File.Exists(pythonExe))
                         throw new System.IO.FileNotFoundException($"Python executable not found at {pythonExe}");
@@ -517,7 +534,7 @@ namespace StockAnalyzer.Core.Services
                 await InitializeAsync(ct: ct);
             }
 
-            var pythonExe = PythonEmbeddedInstaller.ExecutablePath(PythonExecutableName);
+            var pythonExe = ResolvePythonExecutable();
             if (!System.IO.File.Exists(pythonExe))
             {
                 throw new System.IO.FileNotFoundException($"Python executable not found at {pythonExe}");
@@ -559,7 +576,7 @@ namespace StockAnalyzer.Core.Services
                     await InitializeAsync(ct: linkedToken);
 
                     // 2. Resolve Paths
-                    var pythonExe = PythonEmbeddedInstaller.ExecutablePath(PythonExecutableName);
+                    var pythonExe = ResolvePythonExecutable();
 
                     if (!System.IO.File.Exists(pythonExe))
                         throw new System.IO.FileNotFoundException($"Python executable not found at {pythonExe}");
@@ -772,7 +789,7 @@ namespace StockAnalyzer.Core.Services
         /// </summary>
         private async Task<UpdateCheckResult> CheckForUpdateAsync(string packageName, string? pinnedVersion, CancellationToken ct)
         {
-            var pythonExe = PythonEmbeddedInstaller.ExecutablePath(PythonExecutableName);
+            var pythonExe = ResolvePythonExecutable();
 
             if (!System.IO.File.Exists(pythonExe))
             {
@@ -968,7 +985,7 @@ namespace StockAnalyzer.Core.Services
         /// </summary>
         private async Task<string?> ReadInstalledPipVersionAsync(CancellationToken ct)
         {
-            var pythonExe = PythonEmbeddedInstaller.ExecutablePath(PythonExecutableName);
+            var pythonExe = ResolvePythonExecutable();
             if (!System.IO.File.Exists(pythonExe)) return null;
 
             return await PipVersionProbe.ReadAsync(
@@ -998,12 +1015,50 @@ namespace StockAnalyzer.Core.Services
             }
         }
 
-        public async Task RunPipCommandAsync(string arguments, CancellationToken ct = default)
+        public async Task RunPipCommandAsync(System.Collections.Generic.IReadOnlyList<string> arguments, CancellationToken ct = default)
         {
-            var pythonExe = PythonEmbeddedInstaller.ExecutablePath(PythonExecutableName);
+            var pythonExe = ResolvePythonExecutable();
 
             if (!System.IO.File.Exists(pythonExe))
-                throw new Exception("Python executable not found for pip install.");
+                throw new System.IO.FileNotFoundException("Python executable not found for pip install.", pythonExe);
+
+            var startInfo = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = pythonExe,
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true
+            };
+            foreach (var arg in arguments)
+            {
+                startInfo.ArgumentList.Add(arg);
+            }
+
+            using var process = new System.Diagnostics.Process { StartInfo = startInfo };
+            process.OutputDataReceived += (s, e) => { if (e.Data != null) LogSyncActivity($"[PIP OUT] {e.Data}", LogLevel.Debug); };
+            process.ErrorDataReceived += (s, e) => { if (e.Data != null) LogSyncActivity($"[PIP ERR] {e.Data}", LogLevel.Debug); };
+
+            using var reg = ct.Register(() => { try { if (!process.HasExited) process.Kill(true); } catch { } });
+
+            await _resiliencePipeline.ExecuteAsync(async innerCt => 
+            {
+                process.Start();
+                process.BeginOutputReadLine();
+                process.BeginErrorReadLine();
+                await process.WaitForExitAsync(innerCt);
+            }, ct);
+
+            if (process.ExitCode != 0)
+                throw new InvalidOperationException($"Pip command failed with exit code {process.ExitCode}");
+        }
+
+        public async Task RunPipCommandAsync(string arguments, CancellationToken ct = default)
+        {
+            var pythonExe = ResolvePythonExecutable();
+
+            if (!System.IO.File.Exists(pythonExe))
+                throw new System.IO.FileNotFoundException("Python executable not found for pip install.", pythonExe);
 
             var startInfo = new System.Diagnostics.ProcessStartInfo
             {
@@ -1030,13 +1085,13 @@ namespace StockAnalyzer.Core.Services
             }, ct);
 
             if (process.ExitCode != 0)
-                throw new Exception($"Pip command failed with exit code {process.ExitCode}");
+                throw new InvalidOperationException($"Pip command failed with exit code {process.ExitCode}");
         }
 
         /// <summary>The import check of one package; its time limit is <c>PythonImportProbeTimeout</c> (heavy packages must not be reported as missing because the check timed out).</summary>
         private async Task<ModuleInstallState> ProbeModuleAsync(string importName, CancellationToken ct)
         {
-            var pythonExe = PythonEmbeddedInstaller.ExecutablePath(PythonExecutableName);
+            var pythonExe = ResolvePythonExecutable();
 
             if (!System.IO.File.Exists(pythonExe)) return ModuleInstallState.Missing;
 

@@ -6,6 +6,7 @@ import logging
 import argparse
 import polars as pl
 from data_provider import StockDataProvider
+from symbol_validator import is_well_formed_ticker
 
 # Setup Logging
 logging.basicConfig(
@@ -190,6 +191,9 @@ def impute_missing_metadata(meta: dict) -> dict:
 
 def update_ticker_metadata(symbol, metadata_root=DEFAULT_METADATA_ROOT, impute_missing=False):
     """Fetch metadata for a ticker and save it as a parquet file."""
+    if not is_well_formed_ticker(symbol):
+        logger.error(f"Invalid ticker symbol: {symbol!r}")
+        return False
     os.makedirs(metadata_root, exist_ok=True)
     
     logger.info(f"Fetching metadata for {symbol} (impute_missing={impute_missing})...")
@@ -452,6 +456,11 @@ def main():
     parser.add_argument("--ticker", "-t", type=str, required=True, help="Specific ticker to update.")
     parser.add_argument("--impute-missing", action="store_true", help="Enable estimation/imputation of missing metadata indicators.")
     args = parser.parse_args()
+
+    if not is_well_formed_ticker(args.ticker):
+        logger.error(f"Invalid ticker symbol: {args.ticker!r}")
+        import sys
+        sys.exit(1)
 
     success = update_ticker_metadata(args.ticker, impute_missing=args.impute_missing)
     if not success:

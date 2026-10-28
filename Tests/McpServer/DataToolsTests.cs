@@ -568,7 +568,7 @@ public sealed class DataToolsTests : IDisposable
         using var list = JsonDocument.Parse((await dispatcher.DispatchAsync("""{"jsonrpc":"2.0","id":3,"method":"tools/list"}""", CancellationToken.None))!);
 
         JsonElement[] tools = list.RootElement.GetProperty("result").GetProperty("tools").EnumerateArray().ToArray();
-        Assert.Equal(new[] { "sa_calculate_chart_series", "sa_calculate_indicators", "sa_calculate_reverse_watch", "sa_check_portfolio_rl_preflight", "sa_check_rl_playback_preflight", "sa_get_candles", "sa_get_capabilities", "sa_get_settings", "sa_get_ticker_metadata", "sa_list_templates", "sa_list_ticker_groups", "sa_list_tickers", "sa_run_backtest", "sa_run_screener" }, tools.Select(t => t.GetProperty("name").GetString()).ToArray());
+        Assert.Equal(new[] { "sa_calculate_chart_series", "sa_calculate_indicators", "sa_calculate_relative_performance", "sa_calculate_reverse_watch", "sa_check_portfolio_rl_preflight", "sa_check_rl_playback_preflight", "sa_get_candles", "sa_get_capabilities", "sa_get_settings", "sa_get_ticker_metadata", "sa_list_templates", "sa_list_ticker_groups", "sa_list_tickers", "sa_run_backtest", "sa_run_screener" }, tools.Select(t => t.GetProperty("name").GetString()).ToArray());
         Assert.All(tools, tool =>
         {
             Assert.False(tool.GetProperty("inputSchema").GetProperty("additionalProperties").GetBoolean());

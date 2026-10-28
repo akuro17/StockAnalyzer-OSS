@@ -1269,6 +1269,37 @@ public static class DefaultCoreIndicatorSettings
                     new SeriesColorConfig { Name = CoreCointegrationSpreadIndicator.ADFStatisticSeriesName, DisplayName = "ADF Statistic (τ)", Color = IndicatorDefaultConstants.CointegrationSpreadAdfColor, TargetSeries = new List<string> { CoreCointegrationSpreadIndicator.ADFStatisticSeriesName } }
                 }
             },
+            new CoreIndicatorSettings
+            {
+                TypeEnum = IndicatorType.PairRatio,
+                Category = CoreIndicatorCategory.Other,
+                IsEnabled = false,
+                ParameterObject = new CorePairRatioParameter(),
+                Color = IndicatorDefaultConstants.PairRatioColor,
+                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness,
+                Style = CoreLineStyle.Solid,
+                IsOverlay = false,
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
+                {
+                    new SeriesColorConfig { Name = "Values", DisplayName = "Pair Ratio (A/B)", Color = IndicatorDefaultConstants.PairRatioColor, TargetSeries = new List<string> { "Main" } }
+                }
+            },
+            new CoreIndicatorSettings
+            {
+                TypeEnum = IndicatorType.PairSpread,
+                Category = CoreIndicatorCategory.Other,
+                IsEnabled = false,
+                ParameterObject = new CorePairSpreadParameter(),
+                Color = IndicatorDefaultConstants.PairSpreadColor,
+                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness,
+                Style = CoreLineStyle.Solid,
+                IsOverlay = false,
+                IncludeZeroBaseline = true,
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
+                {
+                    new SeriesColorConfig { Name = "Values", DisplayName = "Pair Spread (A-B)", Color = IndicatorDefaultConstants.PairSpreadColor, TargetSeries = new List<string> { "Main" } }
+                }
+            },
             new CoreIndicatorSettings 
             { 
                 TypeEnum = IndicatorType.ClassicPivotPoints, 

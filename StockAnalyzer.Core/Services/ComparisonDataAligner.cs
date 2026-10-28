@@ -4,6 +4,7 @@ using Polly;
 using Polly.Retry;
 using StockAnalyzer.Core.Common;
 using StockAnalyzer.Core.Models;
+using StockAnalyzer.Core.Models.Watchlist;
 
 using System;
 using System.Collections.Generic;
@@ -21,7 +22,8 @@ public class ComparisonDataAligner : IComparisonDataAligner
     private const int MaxForwardFillDays = 30;
     private const double MaxNullRatio = 0.50;
     
-    public int MaxComparisonSymbols { get; set; } = 5;
+    /// <summary>Most comparison symbols aligned (the primary symbol not counted); the standard value is what the settings dialog lets a user register.</summary>
+    public int MaxComparisonSymbols { get; set; } = WatchlistConstants.MaxRelativePerformanceTargets;
 
     private readonly IDataService _dataService;
     private readonly ILogger<ComparisonDataAligner> _logger;

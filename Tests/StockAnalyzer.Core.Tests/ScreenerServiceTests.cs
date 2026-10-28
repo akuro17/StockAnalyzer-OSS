@@ -436,24 +436,17 @@ public class ScreenerServiceTests : IDisposable
         var condition = new MockScreeningCondition(_ => true);
         var service = new ScreenerService(dataService, _stubSettings, Enumerable.Empty<IMarketDataProvider>());
         
-        var progressValues = new System.Collections.Concurrent.ConcurrentQueue<int>();
-        var tcs = new TaskCompletionSource<bool>();
-        var progress = new Progress<int>(p => 
-        {
-            progressValues.Enqueue(p);
-            if (p == 100) tcs.TrySetResult(true);
-        });
+        // Progress<int> posts every report to the thread pool, so two reports can arrive out of order (the last one was 50 in about 8% of runs).
+        // The service reports 100 after all work finished; a receiver that records on the reporting thread keeps that order.
+        var progress = new SynchronousProgress();
 
         // Act
         await service.ScreenAsync(symbols, condition, TimeFrame.D1, progress, CancellationToken.None);
 
-        // Wait for the 100% progress report to be processed
-        await Task.WhenAny(tcs.Task, Task.Delay(1000));
-
         // Assert
-        Assert.Contains(50, progressValues);
-        Assert.Contains(100, progressValues);
-        Assert.Equal(100, progressValues.Last());
+        Assert.Contains(50, progress.Reports);
+        Assert.Contains(100, progress.Reports);
+        Assert.Equal(100, progress.Reports.Last());
     }
 
     [Fact]

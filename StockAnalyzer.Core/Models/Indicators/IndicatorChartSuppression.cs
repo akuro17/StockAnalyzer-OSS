@@ -20,6 +20,15 @@ namespace StockAnalyzer.Core.Models.Indicators;
 /// </summary>
 public static class IndicatorChartSuppression
 {
+    // Same values as the Main / Upper / Lower series under another name; must be declared before the tables that use it.
+    private static readonly string[] SsaResidualBandAliasSeries =
+    {
+        nameof(CoreSSAResidualBandIndicator.CenterBand),
+        nameof(CoreSSAResidualBandIndicator.UpperBand),
+        nameof(CoreSSAResidualBandIndicator.LowerBand),
+        nameof(CoreSSAResidualBandIndicator.Center),
+    };
+
     // Series names are bound with nameof to the producing indicator's public series property, which
     // is the exact name CoreIndicatorBase.CreateAutomaticResult emits (prop.Name). "Main" has no
     // backing property, so it comes from IndicatorResult.MainSeriesName.
@@ -63,6 +72,12 @@ public static class IndicatorChartSuppression
             {
                 nameof(CoreDonchianChannelIndicator.Position),
             },
+            // BandWidth is a percentage (not drawn on the price panel, still shown in the DataWindow) and the aliases
+            // repeat the drawn Main / Upper / Lower series; all of them stay in the result so the screener can resolve them.
+            [IndicatorType.SSAResidualBand] = new HashSet<string>(SsaResidualBandAliasSeries, StringComparer.Ordinal)
+            {
+                nameof(CoreSSAResidualBandIndicator.BandWidth),
+            },
         };
 
     private static readonly IReadOnlyDictionary<IndicatorType, IReadOnlySet<string>> SuppressedDataWindowSeries =
@@ -93,6 +108,7 @@ public static class IndicatorChartSuppression
                 nameof(CoreClothoidMovingAverageIndicator.EffectiveLag),
                 nameof(CoreClothoidMovingAverageIndicator.EffectiveSampleSize),
             },
+            [IndicatorType.SSAResidualBand] = new HashSet<string>(SsaResidualBandAliasSeries, StringComparer.Ordinal),
         };
 
     /// <summary>

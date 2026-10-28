@@ -25,13 +25,16 @@ public sealed class QValueService : IQValueService
     private readonly IRlModelGenerationRegistry _registry;
     private readonly ILogger<QValueService> _logger;
     private readonly string? _dataRoot;
+    private readonly RlLocalSourceFolders? _sourceFolders;
 
     /// <param name="dataRoot">The <c>Data</c> folder that receives the temporary external-replay workspaces; null resolves the application data folder.</param>
-    public QValueService(IRlModelGenerationRegistry registry, ILogger<QValueService>? logger = null, string? dataRoot = null)
+    /// <param name="sourceFolders">The daily and metadata folders the external replays read the ticker from; null keeps the fixed <c>Data/Daily</c> and <c>Data/Metadata</c>.</param>
+    public QValueService(IRlModelGenerationRegistry registry, ILogger<QValueService>? logger = null, string? dataRoot = null, RlLocalSourceFolders? sourceFolders = null)
     {
         _registry = registry ?? throw new ArgumentNullException(nameof(registry));
         _logger = logger ?? NullLogger<QValueService>.Instance;
         _dataRoot = dataRoot;
+        _sourceFolders = sourceFolders;
     }
 
     /// <summary>Compare exported native Q fixtures to real C# CPU ONNX execution and exact greedy actions.</summary>
@@ -255,7 +258,7 @@ public sealed class QValueService : IQValueService
         string modelDir = Path.GetDirectoryName(onnxModelPath) ?? string.Empty;
         var costs = ResolveEphemeralCosts(modelDir);
         using var workspace = RlReplayWorkspace.Create(_dataRoot, _logger);
-        var episode = await RlExternalEpisodeFactory.PrepareAsync(symbol, asOfDate, limits, workspace, cancellationToken, timings: timings).ConfigureAwait(false);
+        var episode = await RlExternalEpisodeFactory.PrepareAsync(symbol, asOfDate, limits, workspace, cancellationToken, timings: timings, folders: _sourceFolders).ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
 
         long modelStart = RlReplayTimings.Start();
@@ -325,7 +328,7 @@ public sealed class QValueService : IQValueService
         var timings = new RlReplayTimings();
         using var workspace = RlReplayWorkspace.Create(_dataRoot, _logger);
         var episode = await RlExternalEpisodeFactory.PrepareAsync(request.Symbol, request.AnchorDate, limits, workspace, cancellationToken,
-            timings: timings).ConfigureAwait(false);
+            timings: timings, folders: _sourceFolders).ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
         long modelStart = RlReplayTimings.Start();
         using var model = new RlQModel(lease.ModelPath);

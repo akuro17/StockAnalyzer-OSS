@@ -13,6 +13,9 @@ namespace StockAnalyzer.Core.Execution;
 
 internal interface IEphemeralPortfolioRlRunner
 {
+    /// <summary>The settings the runner's preflight and runs use; the start gate decides on the same values.</summary>
+    RlPortfolioSettings Settings { get; }
+
     Task<RlEnvironmentStatus> CheckEnvironmentAsync(CancellationToken cancellationToken);
 
     Task<PanelPreflight> PreflightAsync(
@@ -40,17 +43,22 @@ internal sealed class EphemeralPortfolioRlRunner : IEphemeralPortfolioRlRunner
 {
     private const string LockFolder = "locks";
     private readonly RlPortfolioSettings _settings;
+    private readonly RlLocalSourceFolders? _folders;
     private readonly RlEnvironmentProbe _environment;
 
-    public EphemeralPortfolioRlRunner(RlPortfolioSettings? settings = null)
+    /// <param name="folders">The market-data folders the panel is read from; null keeps the fixed <c>Data/Daily</c> and <c>Data/Metadata</c>.</param>
+    public EphemeralPortfolioRlRunner(RlPortfolioSettings? settings = null, RlLocalSourceFolders? folders = null)
     {
         _settings = settings ?? new RlPortfolioSettings();
+        _folders = folders;
         _environment = new RlEnvironmentProbe(() =>
         {
             var (_, pythonRoot, python) = RlWorkerProcess.ResolveInterpreter("training/train_rl_portfolio.py");
             return (python, pythonRoot);
         });
     }
+
+    public RlPortfolioSettings Settings => _settings;
 
     public Task<RlEnvironmentStatus> CheckEnvironmentAsync(CancellationToken cancellationToken)
         => _environment.CheckAsync(cancellationToken);
@@ -63,7 +71,7 @@ internal sealed class EphemeralPortfolioRlRunner : IEphemeralPortfolioRlRunner
         RlPanelEvaluationMode mode,
         CancellationToken cancellationToken)
     {
-        var service = new RlPortfolioService(_settings);
+        var service = new RlPortfolioService(_settings, sourceFolders: _folders);
         return service.PreflightAsync(symbols, start, endExclusive, holdoutRequested, mode, cancellationToken);
     }
 
@@ -73,7 +81,7 @@ internal sealed class EphemeralPortfolioRlRunner : IEphemeralPortfolioRlRunner
         RlPanelEvaluationMode mode,
         CancellationToken cancellationToken)
     {
-        var service = new RlPortfolioService(_settings);
+        var service = new RlPortfolioService(_settings, sourceFolders: _folders);
         return service.SuggestStartAsync(symbols, endExclusive, mode, cancellationToken);
     }
 
@@ -86,7 +94,8 @@ internal sealed class EphemeralPortfolioRlRunner : IEphemeralPortfolioRlRunner
         var service = new RlPortfolioService(
             _settings,
             new TrainingJobGate(Path.Combine(jobDirectory, LockFolder)),
-            dataRoot: jobDirectory);
+            dataRoot: jobDirectory,
+            sourceFolders: _folders);
         return await service.RunAsync(request, progress, cancellationToken).ConfigureAwait(false);
     }
 }

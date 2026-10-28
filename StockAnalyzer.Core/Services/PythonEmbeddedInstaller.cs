@@ -175,6 +175,7 @@ namespace StockAnalyzer.Core.Services
         {
             var scriptPath = Path.Combine(directory, GetPipScriptName);
             await DownloadAsync(PythonEmbeddedDistribution.GetPipUrl, scriptPath, ct).ConfigureAwait(false);
+            VerifySha256(scriptPath, PythonEmbeddedDistribution.GetPipSha256);
             try
             {
                 await RunGetPipAsync(directory, ct).ConfigureAwait(false);

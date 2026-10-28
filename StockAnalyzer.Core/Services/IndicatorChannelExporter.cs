@@ -57,7 +57,8 @@ public sealed class IndicatorChannelExporter
     /// Exports every <see cref="FeatureChannelKind.Indicator"/> channel of <paramref name="spec"/>
     /// for each of <paramref name="symbols"/> to its own parquet file. Returns an empty map (no
     /// files written) when <paramref name="spec"/> has no Indicator-kind channel. Throws
-    /// <see cref="InvalidOperationException"/> when <paramref name="timeframe"/> is not
+    /// <see cref="InvalidOperationException"/> when an Indicator-kind channel is refused by
+    /// <see cref="BacktestIndicatorEligibility"/> (before any market data is read), and when <paramref name="timeframe"/> is not
     /// <see cref="TrainingTimeframe.Daily"/> and an Indicator-kind channel is present, because
     /// <see cref="IMarketDataProvider.GetTickersDataAsync"/> only supports
     /// <see cref="TimeFrame.D1"/> today.
@@ -101,6 +102,7 @@ public sealed class IndicatorChannelExporter
         foreach (var (index, channel) in indicatorChannels)
         {
             var indicatorType = channel.Indicator!.Value;
+            BacktestIndicatorEligibility.ThrowIfRefused(indicatorType);
             if (!_indicatorFactory.IsRegistered(indicatorType))
             {
                 throw new InvalidOperationException(
@@ -180,9 +182,7 @@ public sealed class IndicatorChannelExporter
             foreach (var (channel, index) in channels)
             {
                 var type = channel.Indicator!.Value;
-                var violation = BacktestIndicatorEligibility.Check(type, null);
-                if (violation != BacktestIndicatorViolationReason.None)
-                    throw new InvalidOperationException(BacktestIndicatorEligibility.Describe(type, null, violation));
+                BacktestIndicatorEligibility.ThrowIfRefused(type);
                 if (!_indicatorFactory.IsRegistered(type))
                     throw new InvalidOperationException($"Indicator type '{type}' is not registered.");
                 parameters[index] = FeatureChannelConverter.ResolveParameterObject(channel, _indicatorFactory, out var warnings);

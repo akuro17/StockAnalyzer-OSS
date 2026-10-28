@@ -11,6 +11,7 @@ using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Indicators;
 using StockAnalyzer.Core.Models.Training;
 using StockAnalyzer.Core.Services;
+using StockAnalyzer.Core.Services.Backtest.Engine;
 
 namespace StockAnalyzer.Core.Tests.Services;
 
@@ -247,6 +248,28 @@ public class PredictionServiceTests
             Channels = new[] { new FeatureChannel { Kind = FeatureChannelKind.Indicator, Indicator = IndicatorType.RSI } },
         };
         Assert.Same(spec, PredictionService.ValidateComposedFeatureSpec(spec, TestMaxComposedChannels, RealIndicatorFactory));
+    }
+
+    // One non-causal type (look-ahead values) and the types with no synchronous output (two-symbol types would be an empty channel).
+    [Theory]
+    [InlineData(IndicatorType.ZigZag)]
+    [InlineData(IndicatorType.VolumeProfile)]
+    [InlineData(IndicatorType.Ratiocator)]
+    [InlineData(IndicatorType.PairRatio)]
+    [InlineData(IndicatorType.PairSpread)]
+    public void ValidateComposedFeatureSpec_IndicatorChannelRefusedByEligibility_ThrowsWithTheEligibilityMessage(IndicatorType type)
+    {
+        var spec = new FeatureSpec
+        {
+            Channels = new[] { new FeatureChannel { Kind = FeatureChannelKind.Indicator, Indicator = type } },
+        };
+        var violation = BacktestIndicatorEligibility.Check(type, null);
+        Assert.NotEqual(BacktestIndicatorViolationReason.None, violation);
+
+        var ex = Assert.Throws<InvalidOperationException>(
+            () => PredictionService.ValidateComposedFeatureSpec(spec, TestMaxComposedChannels, RealIndicatorFactory));
+
+        Assert.Equal(BacktestIndicatorEligibility.Describe(type, null, violation), ex.Message);
     }
 
     [Theory]

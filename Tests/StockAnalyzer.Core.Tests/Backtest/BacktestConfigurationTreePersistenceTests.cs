@@ -163,10 +163,20 @@ public class BacktestConfigurationTreePersistenceTests : IDisposable
     [Fact]
     public void EntryConversion_NormalizesADisplayAliasToTheCanonicalSeriesName()
     {
-        var dto = new BacktestConditionEntryDto { Left = new BacktestConditionSideDto { IndicatorType = IndicatorType.BB, OutputName = "Upper" }, RightNumericValue = 1m };
+        var dto = new BacktestConditionEntryDto { Left = new BacktestConditionSideDto { IndicatorType = IndicatorType.Price, PriceSource = PriceType.High, OutputName = nameof(PriceType.High) }, RightNumericValue = 1m };
 
         Assert.Equal("Main", BacktestConditionTreeDtoMapper.ToEntry(dto).Left.OutputName);
-        Assert.Equal("Main", BacktestConditionTreeDtoMapper.ToEntryDto(new BacktestConditionEntry { Left = new BacktestConditionSide { IndicatorType = IndicatorType.BB, OutputName = "Upper" } }).Left.OutputName);
+        Assert.Equal("Main", BacktestConditionTreeDtoMapper.ToEntryDto(new BacktestConditionEntry { Left = new BacktestConditionSide { IndicatorType = IndicatorType.Price, PriceSource = PriceType.High, OutputName = nameof(PriceType.High) } }).Left.OutputName);
+    }
+
+    [Fact]
+    public void EntryConversion_KeepsARealNamedSeriesInsteadOfReadingTheMainSeries()
+    {
+        // Bollinger's Upper is its own series (Main is the middle band); normalizing it to Main would silently compare the wrong band.
+        var dto = new BacktestConditionEntryDto { Left = new BacktestConditionSideDto { IndicatorType = IndicatorType.BB, OutputName = "Upper" }, RightNumericValue = 1m };
+
+        Assert.Equal("Upper", BacktestConditionTreeDtoMapper.ToEntry(dto).Left.OutputName);
+        Assert.Equal("Upper", BacktestConditionTreeDtoMapper.ToEntryDto(new BacktestConditionEntry { Left = new BacktestConditionSide { IndicatorType = IndicatorType.BB, OutputName = "Upper" } }).Left.OutputName);
     }
 
     [Fact]

@@ -8,6 +8,7 @@
   <ItemGroup>
     <InternalsVisibleTo Include="StockAnalyzer.Core.Tests" />
     <InternalsVisibleTo Include="StockAnalyzer.Tests" />
+    <InternalsVisibleTo Include="StockAnalyzer.Avalonia.Tests" />
   </ItemGroup>
 
   <ItemGroup>

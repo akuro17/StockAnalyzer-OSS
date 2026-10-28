@@ -96,7 +96,7 @@ internal sealed class CalculateChartSeriesTool : IMcpTool
 
     public bool IsHeavy => false;
 
-    public string? ExampleArgumentsJson => "{\"symbol\":\"7203-T\",\"timeFrame\":\"D1\",\"chartType\":\"HeikinAshi\",\"outputTailCount\":50}";
+    public string? ExampleArgumentsJson => "{\"symbol\":\"7203-T\",\"timeFrame\":\"D1\",\"chartType\":\"HeikinAshi\",\"outputTailCount\":200}";
 
     public string InputSchemaJson => ToolSchema.Object()
         .String(SymbolArgument, "Ticker symbol; '.' and '-' are interchangeable (7203.T and 7203-T are the same).", required: true)

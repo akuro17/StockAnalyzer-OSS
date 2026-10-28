@@ -1,3 +1,5 @@
+using StockAnalyzer.Core.Models.Watchlist;
+
 namespace StockAnalyzer.McpServer.Limits;
 
 /// <summary>A configured limit is outside its hard band or breaks a relation between limits; names the configuration key.</summary>
@@ -28,7 +30,7 @@ public static class McpLimitsContract
 
     public static void Validate(McpLimits limits)
     {
-        Band(nameof(McpLimits.MaxCandlesPerRequest), limits.MaxCandlesPerRequest, 1, 10000);
+        Band(nameof(McpLimits.MaxCandlesPerRequest), limits.MaxCandlesPerRequest, 1, 50000);
         Band(nameof(McpLimits.DefaultCandleCount), limits.DefaultCandleCount, 1, limits.MaxCandlesPerRequest);
         Band(nameof(McpLimits.MaxIndicatorsPerCall), limits.MaxIndicatorsPerCall, 1, 64);
         Band(nameof(McpLimits.MaxSymbolsPerMetadataCall), limits.MaxSymbolsPerMetadataCall, 1, 500);
@@ -36,14 +38,15 @@ public static class McpLimitsContract
         Band(nameof(McpLimits.MaxReturnedWarnings), limits.MaxReturnedWarnings, 0, 200);
         Band(nameof(McpLimits.MaxOutputTailBars), limits.MaxOutputTailBars, 1, limits.MaxCandlesPerRequest);
         Band(nameof(McpLimits.DefaultOutputTailBars), limits.DefaultOutputTailBars, 1, limits.MaxOutputTailBars);
-        Band(nameof(McpLimits.ToolTimeoutSeconds), limits.ToolTimeoutSeconds, 1, 300);
-        Band(nameof(McpLimits.HeavyToolTimeoutSeconds), limits.HeavyToolTimeoutSeconds, limits.ToolTimeoutSeconds, 600);
-        Band(nameof(McpLimits.QueueWaitSeconds), limits.QueueWaitSeconds, 0, 120);
+        Band(nameof(McpLimits.ToolTimeoutSeconds), limits.ToolTimeoutSeconds, 1, 900);
+        Band(nameof(McpLimits.HeavyToolTimeoutSeconds), limits.HeavyToolTimeoutSeconds, limits.ToolTimeoutSeconds, 1800);
+        Band(nameof(McpLimits.QueueWaitSeconds), limits.QueueWaitSeconds, 0, 600);
         Band(nameof(McpLimits.MaxResponseBytes), limits.MaxResponseBytes, 64 * Kibibyte, 8 * Mebibyte);
         Band(nameof(McpLimits.MaxRequestBytes), limits.MaxRequestBytes, 4 * Kibibyte, 8 * Mebibyte);
         Band(nameof(McpLimits.MaxScreenerSymbols), limits.MaxScreenerSymbols, 1, 5000);
         Band(nameof(McpLimits.MaxReturnedMatches), limits.MaxReturnedMatches, 1, 1000);
         Band(nameof(McpLimits.MaxSecondarySymbolsPerCall), limits.MaxSecondarySymbolsPerCall, 1, 8);
+        Band(nameof(McpLimits.MaxComparisonTargets), limits.MaxComparisonTargets, 1, WatchlistConstants.MaxRelativePerformanceTargets);
         Band(nameof(McpLimits.MaxTickersPerPage), limits.MaxTickersPerPage, 1, 5000);
         Band(nameof(McpLimits.DefaultTickerPageSize), limits.DefaultTickerPageSize, 1, limits.MaxTickersPerPage);
         Band(nameof(McpLimits.MaxGroupNodes), limits.MaxGroupNodes, 1, 5000);

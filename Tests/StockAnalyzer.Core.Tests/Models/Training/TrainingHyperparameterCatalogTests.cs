@@ -99,7 +99,7 @@ public sealed class TrainingHyperparameterCatalogTests
     [Fact]
     public void EveryKeyIsAFlagOfEveryTrainerItIsOfferedFor_AndNoKeyIsReserved()
     {
-        var reservedBlock = Regex.Match(Trainer("run_training.py"), @"_RESERVED_TRAINER_FLAGS: frozenset = frozenset\(\{(?<body>.*?)\}\)", RegexOptions.Singleline);
+        var reservedBlock = Regex.Match(Trainer("trainer_flags.py"), @"^RESERVED_TRAINER_FLAGS: frozenset = frozenset\(\{(?<body>.*?)\}\)", RegexOptions.Singleline | RegexOptions.Multiline);
         Assert.True(reservedBlock.Success);
         var reserved = Regex.Matches(reservedBlock.Groups["body"].Value, "\"([a-z0-9-]+)\"").Select(m => m.Groups[1].Value).ToHashSet();
         Assert.NotEmpty(reserved);

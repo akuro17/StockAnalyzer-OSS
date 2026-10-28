@@ -13,6 +13,7 @@ using Polly.Retry;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Indicators;
 using StockAnalyzer.Core.Models.Training;
+using StockAnalyzer.Core.Services.Backtest.Engine;
 
 namespace StockAnalyzer.Core.Services;
 
@@ -560,7 +561,8 @@ public class PredictionService : IPredictionService, IDisposable
     /// channel with a non-Heikin-Ashi <see cref="PriceType"/> (Heikin-Ashi price types need
     /// recursive state across the full candle history that this release does not thread through
     /// inference) or a <see cref="FeatureChannelKind.Indicator"/> channel registered in
-    /// <paramref name="indicatorFactory"/>. Every <see cref="FeatureChannel.Params"/> (including empty)
+    /// <paramref name="indicatorFactory"/> and accepted by <see cref="BacktestIndicatorEligibility"/>
+    /// (a model trained with a refused indicator channel is not loaded). Every <see cref="FeatureChannel.Params"/> (including empty)
     /// is validated via <see cref="FeatureChannelConverter.ResolveParameterObject"/> (an unparseable
     /// value throws there; an unrecognized key is warned-and-skipped per that method's own
     /// contract, same as the Training Wizard's parameter picker). Returns <paramref name="spec"/>
@@ -605,6 +607,10 @@ public class PredictionService : IPredictionService, IDisposable
                         throw new InvalidOperationException(
                             $"Composed features: indicator channel type '{channel.Indicator}' is not registered in IIndicatorFactory.");
                     }
+
+                    // The same eligibility rule the training export applies: a refused type would feed look-ahead values
+                    // or an empty channel (a two-symbol type gets no comparison candles here) into the input tensor.
+                    BacktestIndicatorEligibility.ThrowIfRefused(channel.Indicator.Value);
 
                     // Validates that Params can actually be applied (an unparseable value throws
                     // here via FeatureChannelConverter.ApplyParams); the resulting parameter object

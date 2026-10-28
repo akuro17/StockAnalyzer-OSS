@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Configuration;
+using StockAnalyzer.Core.Models.Watchlist;
 using StockAnalyzer.McpServer.Limits;
 
 namespace StockAnalyzer.Tests.McpServer;
@@ -22,21 +23,22 @@ public class McpLimitsTests
         Assert.Equal(100, limits.MaxSymbolsPerMetadataCall);
         Assert.Equal(200, limits.MaxReturnedTrades);
         Assert.Equal(20, limits.MaxReturnedWarnings);
-        Assert.Equal(500, limits.MaxOutputTailBars);
-        Assert.Equal(50, limits.DefaultOutputTailBars);
-        Assert.Equal(30, limits.ToolTimeoutSeconds);
-        Assert.Equal(60, limits.HeavyToolTimeoutSeconds);
-        Assert.Equal(30, limits.QueueWaitSeconds);
+        Assert.Equal(5000, limits.MaxOutputTailBars);
+        Assert.Equal(200, limits.DefaultOutputTailBars);
+        Assert.Equal(60, limits.ToolTimeoutSeconds);
+        Assert.Equal(180, limits.HeavyToolTimeoutSeconds);
+        Assert.Equal(60, limits.QueueWaitSeconds);
         Assert.Equal(500, limits.MaxScreenerSymbols);
         Assert.Equal(200, limits.MaxReturnedMatches);
         Assert.Equal(4, limits.MaxSecondarySymbolsPerCall);
+        Assert.Equal(WatchlistConstants.MaxRelativePerformanceTargets, limits.MaxComparisonTargets);
         Assert.Equal(1, McpLimitsContract.MaxConcurrentToolCalls);
     }
 
     public static TheoryData<string, int> OutOfBand => new()
     {
         { nameof(McpLimits.MaxCandlesPerRequest), 0 },
-        { nameof(McpLimits.MaxCandlesPerRequest), 10001 },
+        { nameof(McpLimits.MaxCandlesPerRequest), 50001 },
         { nameof(McpLimits.DefaultCandleCount), 0 },
         { nameof(McpLimits.DefaultOutputTailBars), 0 },
         { nameof(McpLimits.MaxIndicatorsPerCall), 65 },
@@ -46,16 +48,18 @@ public class McpLimitsTests
         { nameof(McpLimits.MaxReturnedWarnings), -1 },
         { nameof(McpLimits.MaxReturnedWarnings), 201 },
         { nameof(McpLimits.ToolTimeoutSeconds), 0 },
-        { nameof(McpLimits.ToolTimeoutSeconds), 301 },
-        { nameof(McpLimits.HeavyToolTimeoutSeconds), 601 },
+        { nameof(McpLimits.ToolTimeoutSeconds), 901 },
+        { nameof(McpLimits.HeavyToolTimeoutSeconds), 1801 },
         { nameof(McpLimits.QueueWaitSeconds), -1 },
-        { nameof(McpLimits.QueueWaitSeconds), 121 },
+        { nameof(McpLimits.QueueWaitSeconds), 601 },
         { nameof(McpLimits.MaxResponseBytes), 65535 },
         { nameof(McpLimits.MaxResponseBytes), 8 * 1024 * 1024 + 1 },
         { nameof(McpLimits.MaxRequestBytes), 4095 },
         { nameof(McpLimits.MaxScreenerSymbols), 5001 },
         { nameof(McpLimits.MaxReturnedMatches), 1001 },
         { nameof(McpLimits.MaxSecondarySymbolsPerCall), 9 },
+        { nameof(McpLimits.MaxComparisonTargets), 0 },
+        { nameof(McpLimits.MaxComparisonTargets), WatchlistConstants.MaxRelativePerformanceTargets + 1 },
         { nameof(McpLimits.MaxTickersPerPage), 5001 },
         { nameof(McpLimits.DefaultTickerPageSize), 0 },
     };
@@ -98,8 +102,16 @@ public class McpLimitsTests
         });
         McpLimitsContract.Validate(new McpLimits
         {
-            ToolTimeoutSeconds = 300, HeavyToolTimeoutSeconds = 600, QueueWaitSeconds = 120, MaxReturnedTrades = 1000, MaxReturnedWarnings = 200, MaxResponseBytes = 8 * 1024 * 1024,
+            ToolTimeoutSeconds = 900, HeavyToolTimeoutSeconds = 1800, QueueWaitSeconds = 600, MaxReturnedTrades = 1000, MaxReturnedWarnings = 200, MaxResponseBytes = 8 * 1024 * 1024,
         });
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(WatchlistConstants.MaxRelativePerformanceTargets)]
+    public void TheEdgesOfTheComparisonTargetBandAreAccepted(int value)
+    {
+        McpLimitsContract.Validate(new McpLimits { MaxComparisonTargets = value });
     }
 
     [Fact]
@@ -108,15 +120,17 @@ public class McpLimitsTests
         IConfiguration configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
-                [$"{McpLimits.SectionName}:{nameof(McpLimits.MaxCandlesPerRequest)}"] = "500",
+                [$"{McpLimits.SectionName}:{nameof(McpLimits.MaxCandlesPerRequest)}"] = "6000",
                 [$"{McpLimits.SectionName}:{nameof(McpLimits.QueueWaitSeconds)}"] = "0",
+                [$"{McpLimits.SectionName}:{nameof(McpLimits.MaxComparisonTargets)}"] = "7",
             })
             .Build();
 
         McpLimits limits = configuration.GetSection(McpLimits.SectionName).Get<McpLimits>()!;
 
-        Assert.Equal(500, limits.MaxCandlesPerRequest);
+        Assert.Equal(6000, limits.MaxCandlesPerRequest);
         Assert.Equal(0, limits.QueueWaitSeconds);
+        Assert.Equal(7, limits.MaxComparisonTargets);
         Assert.Equal(200, limits.DefaultCandleCount);
         McpLimitsContract.Validate(limits);
     }

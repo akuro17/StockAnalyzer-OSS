@@ -28,6 +28,7 @@ public partial class DialogService
                     _serviceProvider.GetRequiredService<IQValueService>(),
                     _serviceProvider.GetRequiredService<IBacktestDefaultSettingsManager>(), chart, localization, _serviceProvider.GetRequiredService<StockAnalyzer.Core.Services.IDispatcherService>(),
                     _serviceProvider.GetRequiredService<RlDialogDataService>(),
+                    dialogService: this,
                     periodAdvisor: _serviceProvider.GetService<StockAnalyzer.Core.Services.StoredPeriod.IStoredPeriodAdvisor>());
                 var window = new RlTrainingWindow { DataContext = vm, Icon = desktop.MainWindow.Icon };
                 window.Opened += async (_, _) => await vm.InitializeAsync();

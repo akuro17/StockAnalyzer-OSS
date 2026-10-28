@@ -14,6 +14,7 @@ using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Indicators;
 using StockAnalyzer.Core.Models.Templates;
 using StockAnalyzer.Core.Models.Training;
+using StockAnalyzer.Core.Services.Backtest.Engine;
 
 namespace StockAnalyzer.Avalonia.ViewModels.Dialogs;
 
@@ -296,6 +297,12 @@ internal sealed partial class IndicatorCatalogSection : ObservableObject
 
         foreach (var type in _indicatorFactory.GetRegisteredTypes())
         {
+            // Offer only what the training export accepts: BacktestIndicatorEligibility is the one rule (IndicatorChannelExporter refuses the rest at the start of a run).
+            if (!BacktestIndicatorEligibility.IsAllowed(type))
+            {
+                continue;
+            }
+
             var settings = _indicatorFactory.Create(type)?.GetDefaultSettings();
             AllCatalogItems.Add(new IndicatorCatalogItem
             {

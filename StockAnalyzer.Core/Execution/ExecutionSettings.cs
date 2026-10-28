@@ -53,8 +53,8 @@ public static class ExecutionLimits
 
     /// <summary>
     /// Seconds the check of the reinforcement-learning environment (one import of its packages) may take before the environment counts as unusable. Measured
-    /// 3.1-3.2 s on this machine; the margin is for a cold disk, and it stays below the 30-second default tool timeout. The tool timeout is configurable
-    /// (<c>McpLimits.ToolTimeoutSeconds</c>, 1 to 300) and is not checked against this value: a call that is cut off by a shorter tool timeout stops waiting only,
+    /// 3.1-3.2 s on this machine; the margin is for a cold disk, and it stays below the 60-second default tool timeout. The tool timeout is configurable
+    /// (<c>McpLimits.ToolTimeoutSeconds</c>, 1 to 900) and is not checked against this value: a call that is cut off by a shorter tool timeout stops waiting only,
     /// the probe goes on and its answer is shared by the next start (see <c>RlEnvironmentProbe</c>).
     /// </summary>
     public const int RlEnvironmentProbeSeconds = 20;

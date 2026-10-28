@@ -1,3 +1,5 @@
+using StockAnalyzer.Core.Models.Watchlist;
+
 namespace StockAnalyzer.McpServer.Limits;
 
 /// <summary>
@@ -22,16 +24,16 @@ public sealed class McpLimits
     /// <summary>Most engine warnings (one per affected bar, so there can be thousands) that sa_run_backtest lists; the counts by code are always complete.</summary>
     public int MaxReturnedWarnings { get; set; } = 20;
 
-    public int MaxOutputTailBars { get; set; } = 500;
+    public int MaxOutputTailBars { get; set; } = 5000;
 
-    /// <summary>How many trailing bars of each indicator series a result carries when the client does not say (plan S-05: 50).</summary>
-    public int DefaultOutputTailBars { get; set; } = 50;
+    /// <summary>How many trailing bars of each indicator series a result carries when the client does not say.</summary>
+    public int DefaultOutputTailBars { get; set; } = 200;
 
-    public int ToolTimeoutSeconds { get; set; } = 30;
+    public int ToolTimeoutSeconds { get; set; } = 60;
 
-    public int HeavyToolTimeoutSeconds { get; set; } = 60;
+    public int HeavyToolTimeoutSeconds { get; set; } = 180;
 
-    public int QueueWaitSeconds { get; set; } = 30;
+    public int QueueWaitSeconds { get; set; } = 60;
 
     public int MaxResponseBytes { get; set; } = 4 * 1024 * 1024;
 
@@ -42,6 +44,9 @@ public sealed class McpLimits
     public int MaxReturnedMatches { get; set; } = 200;
 
     public int MaxSecondarySymbolsPerCall { get; set; } = 4;
+
+    /// <summary>Most different comparison symbols (the primary symbol not counted) one relative-performance call aligns; more is LIMIT_EXCEEDED (never cut). Standard value = the chart's limit (the aligner's default, WatchlistConstants.MaxRelativePerformanceTargets).</summary>
+    public int MaxComparisonTargets { get; set; } = WatchlistConstants.MaxRelativePerformanceTargets;
 
     public int DefaultTickerPageSize { get; set; } = 100;
 

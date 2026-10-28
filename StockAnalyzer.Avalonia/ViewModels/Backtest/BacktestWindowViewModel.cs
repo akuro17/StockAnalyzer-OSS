@@ -104,7 +104,7 @@ public partial class BacktestWindowViewModel : ViewModelBase, IDisposable
     /// actually supports (<see cref="StockAnalyzer.Core.Services.ParquetDataService.LoadCandlesAsync"/>
     /// only reads Daily/Weekly/Monthly Parquet files) - selecting any other TimeFrame would already
     /// fail on Run with a NotSupportedException, so it is not offered here.</summary>
-    public IReadOnlyList<TimeFrame> AvailableFrames { get; } = new[] { TimeFrame.D1, TimeFrame.W1, TimeFrame.MN1 };
+    public IReadOnlyList<TimeFrame> AvailableFrames { get; } = DataServiceTimeFrames.Supported;
 
     public IReadOnlyList<PositionSizingModel> AvailableSizingModels { get; } = Enum.GetValues<PositionSizingModel>();
 

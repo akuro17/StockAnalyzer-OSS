@@ -15,8 +15,9 @@ public class DefaultCoreIndicatorSettingsTests
         // + 1 Autocorrelation + 1 EfficiencyRatio + 1 DMI + 1 FDI + 1 TimeAtPrice
         // + 1 ClothoidOscillator + 1 ClothoidMovingAverage + 1 CrossCorrelation + 1 RollingBeta + 1 RollingAlpha
         // + 1 Ratiocator + 1 RollingRSquared + 1 CointegrationSpread + 1 ClassicPivotPoints + 1 PivotPointsAdvanced
-        // + 1 StandardDeviation + 1 MassIndex + 1 Donchian (disabled by default, added 2026-10-20).
-        Assert.Equal(88, defaults.Count);
+        // + 1 StandardDeviation + 1 MassIndex + 1 Donchian (disabled by default, added 2026-10-20)
+        // + 1 PairRatio + 1 PairSpread (disabled by default, added 2026-10-28).
+        Assert.Equal(90, defaults.Count);
     }
 
     [Fact]

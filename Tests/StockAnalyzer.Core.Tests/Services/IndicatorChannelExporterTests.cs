@@ -10,6 +10,7 @@ using StockAnalyzer.Core.Models.Indicators;
 using StockAnalyzer.Core.Models.Portfolio;
 using StockAnalyzer.Core.Models.Training;
 using StockAnalyzer.Core.Services;
+using StockAnalyzer.Core.Services.Backtest.Engine;
 
 namespace StockAnalyzer.Core.Tests.Services;
 
@@ -263,6 +264,46 @@ public sealed class IndicatorChannelExporterTests
         {
             if (exportPath is not null) TryDelete(exportPath);
         }
+    }
+
+    // The Daily export must refuse the same types the prepared (weekly/monthly) export and the backtest refuse (BacktestIndicatorEligibility):
+    // a two-symbol type gets no comparison candles here and would be exported as a silently all-NULL channel, a non-causal type would feed
+    // future bars into the features. The guard must act before any market data is read.
+    [Theory]
+    [InlineData(IndicatorType.PairRatio)]      // SynchronousCalculationUnsupported (two-symbol)
+    [InlineData(IndicatorType.PairSpread)]     // SynchronousCalculationUnsupported (two-symbol)
+    [InlineData(IndicatorType.Ratiocator)]     // SynchronousCalculationUnsupported (two-symbol)
+    [InlineData(IndicatorType.ZigZag)]         // NonCausal
+    [InlineData(IndicatorType.VolumeProfile)]  // NonCausal
+    public async Task ExportAsync_IndicatorTheEligibilityRuleRefuses_ThrowsTheRuleMessageWithoutTouchingMarketDataProvider(IndicatorType type)
+    {
+        var exporter = new IndicatorChannelExporter(new NeverCalledMarketDataProvider(), IndicatorFactory.Default);
+        BacktestIndicatorViolationReason reason = BacktestIndicatorEligibility.Check(type, null);
+        Assert.NotEqual(BacktestIndicatorViolationReason.None, reason);
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => exporter.ExportAsync(IndicatorOnlySpec(type), new[] { "TESTSYM" }, TrainingTimeframe.Daily, "run1"));
+
+        Assert.Equal(BacktestIndicatorEligibility.Describe(type, null, reason), exception.Message);
+    }
+
+    [Fact]
+    public async Task ExportAsync_OneRefusedChannelAmongAllowedOnes_RefusesTheWholeExport()
+    {
+        var spec = new FeatureSpec
+        {
+            Channels = new[]
+            {
+                new FeatureChannel { Kind = FeatureChannelKind.Indicator, Indicator = IndicatorType.SMA },
+                new FeatureChannel { Kind = FeatureChannelKind.Indicator, Indicator = IndicatorType.PairRatio },
+            },
+        };
+        var exporter = new IndicatorChannelExporter(new NeverCalledMarketDataProvider(), IndicatorFactory.Default);
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => exporter.ExportAsync(spec, new[] { "TESTSYM" }, TrainingTimeframe.Daily, "run1"));
+
+        Assert.Contains(nameof(IndicatorType.PairRatio), exception.Message);
     }
 
     private static (List<DateTime> Dates, List<double?> Values) ReadDateAndChannel(string parquetPath, int channelIndex)

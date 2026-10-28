@@ -18,23 +18,30 @@ internal sealed class CheckRlPlaybackPreflightTool : IMcpTool
 
     private readonly SymbolResolver _symbols;
     private readonly IRlModelGenerationRegistry _registry;
-    private readonly RlDialogDataService _dataService;
+    private readonly RlDialogDataService? _dataService;
+    private readonly RlLocalSourceFolders? _sourceFolders;
 
     public CheckRlPlaybackPreflightTool(
         SymbolResolver symbols,
         IRlModelGenerationRegistry? registry = null,
-        RlDialogDataService? dataService = null)
+        RlDialogDataService? dataService = null,
+        RlLocalSourceFolders? sourceFolders = null)
     {
         _symbols = symbols ?? throw new ArgumentNullException(nameof(symbols));
-        _registry = registry ?? new ModelGenerationRegistry();
-        _dataService = dataService ?? new RlDialogDataService(_registry, new QValueService(_registry, dataRoot: EphemeralSandbox.Root), EphemeralSandbox.Root);
+        _registry = registry ?? new ReadOnlyModelGenerationRegistry();
+        _dataService = dataService;
+        _sourceFolders = sourceFolders;
     }
+
+    private RlDialogDataService GetDataService()
+        => _dataService ?? new RlDialogDataService(_registry, new QValueService(_registry, dataRoot: EphemeralSandbox.Root, sourceFolders: _sourceFolders), EphemeralSandbox.Root, _sourceFolders);
 
     public string Name => "sa_check_rl_playback_preflight";
 
     public string Description =>
         "Checks whether a registered reinforcement learning model can be replayed on a symbol's stored daily bars, and reports the valid anchor date range ([earliestAnchorDate, latestAnchorDate]), " +
-        "episode horizon (128 bars), observation window (64 bars), and model metadata. Read-only and zero-mutation.";
+        "episode horizon (128 bars), observation window (64 bars), and model metadata. " +
+        "Never writes the Data tree or the model registry; it may create and delete a transient working folder under the operating system's temporary folder while it reads the stored bars.";
 
     public bool IsHeavy => false;
 
@@ -90,7 +97,7 @@ internal sealed class CheckRlPlaybackPreflightTool : IMcpTool
 
         try
         {
-            RlAnchorRange range = await _dataService.GetAnchorRangeAsync(resolvedModelId, symbol, cancellationToken).ConfigureAwait(false);
+            RlAnchorRange range = await GetDataService().GetAnchorRangeAsync(resolvedModelId, symbol, cancellationToken).ConfigureAwait(false);
             earliestAnchor = range.EarliestAnchor;
             latestAnchor = range.LatestAnchor;
             canReplay = true;

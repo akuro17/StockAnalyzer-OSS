@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
@@ -10,9 +11,12 @@ using Microsoft.Extensions.DependencyInjection;
 using StockAnalyzer.Core.Common;
 using StockAnalyzer.Core.Execution;
 using StockAnalyzer.Core.Models;
+using StockAnalyzer.Core.Models.ReinforcementLearning;
+using StockAnalyzer.Core.Models.Settings;
 using StockAnalyzer.Core.Models.Training;
 using StockAnalyzer.Core.ReadOnly;
 using StockAnalyzer.Core.Services;
+using StockAnalyzer.Core.Services.ReinforcementLearning;
 using StockAnalyzer.Core.Tests.Services;
 using Xunit;
 using Xunit.Sdk;
@@ -863,7 +867,42 @@ public sealed class SandboxedExecutionGatewayTests : IDisposable
 
     // ---- helpers ----------------------------------------------------------------------------------------------------------------------------------
 
-    private static string GoodModel => Path.Combine(AppContext.BaseDirectory, "Assets", "trend_predictor_goodmeta.onnx");
+    // ---- the portfolio runner is built from the settings the public constructor is given ---------------------------------------
+
+    private const int PortfolioBars = 1_400;
+    private static readonly string[] PortfolioSymbols = { "GWA", "GWB", "GWC", "GWD" };
+    private const string PortfolioRunnerField = "_portfolioRunner";
+
+    /// <summary>The preflight of the gateway's own portfolio runner, built by the public constructor (the product's wiring) over the given folders and settings.</summary>
+    private async Task<PanelPreflight> PortfolioPreflightOfAsync(MarketDataSettings marketData, RlPortfolioSettings? portfolioSettings)
+    {
+        var gateway = new SandboxedExecutionGateway(
+            new ScriptedOrchestrator(), new FixedPython(true), new SandboxedExecutionSettings(), null, marketData, portfolioSettings: portfolioSettings);
+        _gateways.Add(gateway);
+        var runner = (IEphemeralPortfolioRlRunner?)typeof(SandboxedExecutionGateway)
+            .GetField(PortfolioRunnerField, BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(gateway);
+        Assert.NotNull(runner);
+        return await runner.PreflightAsync(PortfolioSymbols, RlSourceFixture.FirstDay, RlSourceFixture.FirstDay.AddDays(PortfolioBars), true,
+            RlPanelEvaluationMode.ShortHistory, CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task PublicConstructor_HandsThePortfolioSettingsAndTheMarketDataFoldersToThePortfolioRunner()
+    {
+        string tree = Path.Combine(Path.GetTempPath(), "sa_gw_portfolio_" + Guid.NewGuid().ToString("N"));
+        _extraRoots.Add(tree);
+        foreach (string symbol in PortfolioSymbols) RlSourceFixture.WriteLocalSymbol(tree, symbol, RlSourceFixture.FirstDay, PortfolioBars);
+        var marketData = new MarketDataSettings { DailyDataPath = Path.Combine(tree, "Daily"), MetadataPath = Path.Combine(tree, "Metadata") };
+
+        PanelPreflight byDefault = await PortfolioPreflightOfAsync(marketData, null);
+        PanelPreflight configured = await PortfolioPreflightOfAsync(marketData, new RlPortfolioSettings { MinimumTrainBars = PortfolioBars * 2 });
+
+        Assert.Equal(PortfolioSymbols.Length, byDefault.ReadyCount);   // the folders reach the runner
+        Assert.True(byDefault.Feasible);
+        Assert.False(configured.Feasible);                             // the settings reach the runner
+    }
+
+    private static string GoodModel =>Path.Combine(AppContext.BaseDirectory, "Assets", "trend_predictor_goodmeta.onnx");
 
     private static EphemeralTrainingRequest Request() => new()
     {

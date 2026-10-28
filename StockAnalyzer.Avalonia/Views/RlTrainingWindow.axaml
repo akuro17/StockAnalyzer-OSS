@@ -434,7 +434,6 @@
                   <!-- Checkpoint Export & Import Actions -->
                   <StackPanel Orientation="Horizontal" Spacing="{x:Static ui:RlUiLayout.FieldGap}">
                     <Button Classes="action" Content="{l:Localize Rl.Checkpoint.Export}" Command="{Binding ExportCheckpointCommand}" ToolTip.Tip="{l:Localize Rl.Checkpoint.ExportTip}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.CheckpointExport}" IsVisible="{Binding HasSelectedCheckpoint}" IsEnabled="{Binding CanExportCheckpoint}" />
-                    <Button Classes="action" Content="{l:Localize Rl.Checkpoint.Import}" Command="{Binding ImportCheckpointCommand}" ToolTip.Tip="{l:Localize Rl.Checkpoint.ImportTip}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.CheckpointImport}" IsEnabled="{Binding CanImportCheckpoint}" />
                   </StackPanel>
                   <TextBlock Classes="diagnostic" Text="{Binding CheckpointsDisplay}" TextWrapping="Wrap" />
                 </StackPanel>
@@ -487,6 +486,11 @@
                               ToolTip.Tip="{l:Localize Rl.Generation.ExportTip}"
                               AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.GenerationExport}"
                               IsVisible="{Binding HasSelectedModel}" />
+                      <Button Classes="action" Content="{l:Localize Rl.Generation.Import}"
+                              Command="{Binding ImportGenerationCommand}"
+                              IsEnabled="{Binding CanImportGeneration}"
+                              ToolTip.Tip="{l:Localize Rl.Generation.ImportTip}"
+                              AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.GenerationImport}" />
                       <Button Classes="action" Content="{l:Localize Rl.Activate}"
                               Command="{Binding ActivateCommand}"
                               IsEnabled="{Binding CanActivate}"
@@ -512,11 +516,12 @@
                     <ItemsControl.ItemTemplate>
                       <DataTemplate x:DataType="vm:RlGenerationScatterPoint">
                         <Border Background="{DynamicResource CardBackground}" CornerRadius="4" Padding="8,4" Margin="0,2">
-                          <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="12">
+                          <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto" ColumnSpacing="12">
                             <TextBlock Classes="value" Text="{Binding ModelId}" TextTrimming="CharacterEllipsis" FontWeight="{Binding SelectionFontWeight}" />
                             <TextBlock Grid.Column="1" Classes="diagnostic" Text="{Binding ValidationDisplay}" />
                             <TextBlock Grid.Column="2" Classes="value" Text="{Binding OosDisplay}" />
-                            <Border Grid.Column="3" Background="{Binding QualityBadgeColor}" CornerRadius="3" Padding="6,1">
+                            <TextBlock Grid.Column="3" Classes="diagnostic" Text="{Binding OverfitGapDisplay}" ToolTip.Tip="{l:Localize Rl.Ui.GenerationComparison.GapTip}" />
+                            <Border Grid.Column="4" Background="{Binding QualityBadgeColor}" CornerRadius="3" Padding="6,1">
                               <TextBlock Classes="diagnostic" Foreground="White" Text="{Binding QualityBadge}" />
                             </Border>
                           </Grid>

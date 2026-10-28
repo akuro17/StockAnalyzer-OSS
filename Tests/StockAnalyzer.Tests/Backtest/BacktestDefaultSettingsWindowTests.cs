@@ -56,6 +56,14 @@ public class BacktestDefaultSettingsWindowTests
     }
 
     [Fact]
+    public void WindowFrameList_OffersOnlyDailyWeeklyAndMonthly()
+    {
+        BacktestWindowViewModel vm = BacktestTestFactory.CreateViewModel();
+
+        Assert.Equal(new[] { TimeFrame.D1, TimeFrame.W1, TimeFrame.MN1 }, vm.AvailableFrames);
+    }
+
+    [Fact]
     public async Task NoSettingsFile_WindowKeepsPreviousBuiltInDefaults()
     {
         (BacktestWindowViewModel vm, string path) = await CreateWithSettingsAsync(saved: null);

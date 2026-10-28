@@ -366,6 +366,8 @@ public sealed class ComprehensiveOnnxGenerationAndPlaybackTests : IDisposable
 
     private sealed class ScriptedRunnerWithNoData : IEphemeralPortfolioRlRunner
     {
+        public StockAnalyzer.Core.Models.Settings.RlPortfolioSettings Settings { get; } = new();
+
         public Task<RlEnvironmentStatus> CheckEnvironmentAsync(CancellationToken cancellationToken)
             => Task.FromResult(RlEnvironmentStatus.Usable);
 

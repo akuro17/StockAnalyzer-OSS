@@ -70,5 +70,28 @@ namespace StockAnalyzer.Core.Tests.Models
             Assert.Equal(10m, range1.High);
             Assert.Equal(-10m, range1.Low);
         }
+
+        // Zero denominators give no value, so there is no range (the same rule ComparisonSeriesCalculator applies to the plotted values).
+        [Fact]
+        public void GetPriceRange_PerformanceMode_ZeroBaseCloseGivesNoRange()
+        {
+            var data = CreateTestData("BASE", "OTHER", new[] { 0m, 5m }, new[] { 0m, 8m });
+            var calculator = new ComparisonPriceRangeCalculator(data, 0, ComparisonMode.Performance);
+
+            var range = calculator.GetPriceRange(new CoreCandleData(data.Timestamps[1], 0, 0, 0, 0, 0));
+
+            Assert.Equal((0m, 0m), range);
+        }
+
+        [Fact]
+        public void GetPriceRange_RatioMode_ZeroPrimaryCloseGivesNoRange()
+        {
+            var data = CreateTestData("BASE", "OTHER", new[] { 100m, 0m }, new[] { 50m, 40m });
+            var calculator = new ComparisonPriceRangeCalculator(data, 0, ComparisonMode.Ratio);
+
+            var range = calculator.GetPriceRange(new CoreCandleData(data.Timestamps[1], 0, 0, 0, 0, 0));
+
+            Assert.Equal((0m, 0m), range);
+        }
     }
 }

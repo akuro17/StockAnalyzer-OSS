@@ -7,6 +7,7 @@ using Microsoft.Extensions.Options;
 using StockAnalyzer.Core.Interfaces;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Indicators;
+using StockAnalyzer.Core.Models.Settings;
 using StockAnalyzer.Core.ReadOnly;
 using StockAnalyzer.Core.Services;
 
@@ -45,7 +46,8 @@ public static class SandboxedExecutionServiceCollectionExtensions
             sp.GetRequiredService<SandboxedExecutionSettings>(),
             sp.GetService<ILogger<SandboxedExecutionGateway>>(),
             sp.GetRequiredService<IOptions<MarketDataSettings>>().Value,
-            modelRegistry: sp.GetService<IModelGenerationRegistry>()));
+            modelRegistry: sp.GetService<IModelGenerationRegistry>(),
+            portfolioSettings: sp.GetService<RlPortfolioSettings>()));
         return services;
     }
 }

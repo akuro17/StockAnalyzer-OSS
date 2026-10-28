@@ -17,7 +17,7 @@ public enum RlDialogLoadState { Unsupported, Unloaded, Loading, Loaded, Failed }
 /// <summary>Why Start is disabled, in the priority <see cref="RlTrainingDialogViewModel.CurrentStartBlocker"/> evaluates them.</summary>
 public enum RlStartBlocker { None, SymbolMissing, StartDateMissing, EndDateMissing, DateOrderInvalid, CostsInvalid, DirectionModelMissing, RetentionInvalid, InputInvalid }
 public enum RlDialogOperation { Idle, Training, InspectingCheckpoints, Replaying, Activating,
-    SavingRetention, InspectingArtifacts, Cleaning, InspectingRecovery, Recovering, RemovingModel, Disposed }
+    SavingRetention, InspectingArtifacts, Cleaning, InspectingRecovery, Recovering, RemovingModel, RegisteringModel, Disposed }
 public sealed record RlNamedValue(string Name, string Value);
 public sealed record RlPolicyOption(string Id, string Name);
 public sealed record RlModelOption(RlGeneration Generation, string Name);

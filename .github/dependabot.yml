@@ -1,15 +1,84 @@
 version: 2
 updates:
-  # NuGet パッケージのアップデート設定
+  # ---------------------------------------------------------
+  # 1. NuGet パッケージのアップデート設定
+  # ---------------------------------------------------------
   - package-ecosystem: "nuget"
     directory: "/"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "build"
+      include: "scope"
+    # .NET 8 固定環境のためのメジャー更新制御
+    ignore:
+      - dependency-name: "Microsoft.Extensions.*"
+        update-types: ["version-update:semver-major"]
+    # パッケージの整合性を保つためのグループ化設定
+    groups:
+      avalonia:
+        patterns:
+          - "Avalonia*"
+      dotnet-extensions:
+        patterns:
+          - "Microsoft.Extensions*"
+          - "Microsoft.Data.Sqlite"
+          - "Microsoft.ML.OnnxRuntime"
+      logging:
+        patterns:
+          - "Serilog*"
+      testing:
+        patterns:
+          - "xunit*"
+          - "Microsoft.NET.Test.Sdk"
+          - "coverlet.collector"
+          - "Moq"
+          - "FlaUI*"
 
-  # GitHub Actions ワークフローのアップデート設定
+  # ---------------------------------------------------------
+  # 2. StockAnalyzer.Python のアップデート設定
+  # ---------------------------------------------------------
+  - package-ecosystem: "pip"
+    directory: "/StockAnalyzer.Python"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "build"
+      include: "scope"
+    groups:
+      data-science:
+        patterns:
+          - "pandas"
+          - "polars"
+          - "pyarrow"
+          - "yfinance"
+
+  # ---------------------------------------------------------
+  # 3. Web/Site/DataIngestion のアップデート設定
+  # ---------------------------------------------------------
+  - package-ecosystem: "pip"
+    directory: "/Web/Site/DataIngestion"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "build"
+      include: "scope"
+
+  # ---------------------------------------------------------
+  # 4. GitHub Actions ワークフローのアップデート設定
+  # ---------------------------------------------------------
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "monthly"
     open-pull-requests-limit: 5
+    commit-message:
+      prefix: "ci"
+      include: "scope"
+    groups:
+      actions:
+        patterns:
+          - "*"

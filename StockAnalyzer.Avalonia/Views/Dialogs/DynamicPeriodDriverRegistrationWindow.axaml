@@ -95,8 +95,7 @@
                             <!-- "Price" category button -->
                             <Button Content="{l:Localize Library_Nav_Price}"
                                     Command="{Binding SelectPriceCommand}"
-                                    Classes="navCategory"
-                                    FontWeight="SemiBold"/>
+                                    Classes="navCategory"/>
 
                             <!-- Category List -->
                             <ListBox Background="Transparent"

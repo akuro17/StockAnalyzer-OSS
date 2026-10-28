@@ -45,18 +45,22 @@ public static class BacktestIndicatorEligibility
     public static IReadOnlyCollection<(IndicatorType Type, string OutputName)> NonCausalSeries { get; } = ImmutableArray.Create(
         (IndicatorType.Ichimoku, CoreIchimokuIndicator.ChikouSpanSeriesName));
 
-    /// <summary>Indicators without a usable synchronous calculation path (Python/async-only or placeholder-only).</summary>
+    /// <summary>
+    /// Indicators without a usable synchronous calculation result on default parameters: Python/async-only or placeholder-only, or a two-symbol
+    /// indicator that has no value without a comparison symbol and is therefore not evaluable by the L2 causality test.
+    /// </summary>
     public static IReadOnlyCollection<IndicatorType> SynchronousCalculationUnsupportedTypes { get; } = new[]
     {
         IndicatorType.CointegrationSpread,
         IndicatorType.Entropy,
         IndicatorType.Garch11,
         IndicatorType.HurstExponent,
+        IndicatorType.PairRatio,
+        IndicatorType.PairSpread,
         IndicatorType.Ratiocator,
         IndicatorType.RollingAlpha,
         IndicatorType.RollingBeta,
         IndicatorType.RollingRSquared,
-        IndicatorType.ThreeLineBreakSignal,
     }.ToFrozenSet();
 
     /// <summary>Type-level checks first, then series-level. <paramref name="outputName"/> may be null/blank (= the indicator's main series, never blocked at series level).</summary>
@@ -83,16 +87,30 @@ public static class BacktestIndicatorEligibility
     public static bool IsTypeBlocked(IndicatorType type)
         => NonCausalIndicatorTypes.Contains(type) || SynchronousCalculationUnsupportedTypes.Contains(type);
 
-    /// <summary>English diagnostic used by exceptions and configuration-load errors.</summary>
+    /// <summary>
+    /// Throws <see cref="InvalidOperationException"/> carrying <see cref="Describe"/> when the whole indicator is refused (main series, no output name).
+    /// The one refusal used by the training export and by the prediction feature-spec validation, so both fail with the same message.
+    /// </summary>
+    public static void ThrowIfRefused(IndicatorType type)
+    {
+        var violation = Check(type, null);
+        if (violation != BacktestIndicatorViolationReason.None)
+            throw new InvalidOperationException(Describe(type, null, violation));
+    }
+
+    /// <summary>
+    /// English diagnostic used by exceptions and configuration-load errors. The wording names no consumer because the one rule serves the Backtest,
+    /// the Screener, the training export and the prediction validation; the caller's message already says which of them refused.
+    /// </summary>
     public static string Describe(IndicatorType type, string? outputName, BacktestIndicatorViolationReason reason)
     {
         string target = string.IsNullOrWhiteSpace(outputName) ? type.ToString() : $"{type}.{outputName}";
         return reason switch
         {
             BacktestIndicatorViolationReason.NonCausal =>
-                $"'{target}' cannot be used in a backtest: its value at a bar depends on later bars (look-ahead).",
+                $"'{target}' cannot be used here: its value at a bar depends on later bars (look-ahead).",
             BacktestIndicatorViolationReason.SynchronousCalculationUnsupported =>
-                $"'{target}' cannot be used in a backtest: it has no usable synchronous calculation output.",
+                $"'{target}' cannot be used here: it has no usable synchronous calculation output.",
             _ => $"'{target}' is allowed.",
         };
     }

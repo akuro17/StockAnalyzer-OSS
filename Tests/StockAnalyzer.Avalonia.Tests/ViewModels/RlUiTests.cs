@@ -558,10 +558,14 @@ public sealed partial class RlUiTests(ITestOutputHelper output)
         /// <summary>When set, <see cref="ListRl"/> throws it (a registry that cannot be read).</summary>
         public Exception? ListError { get; init; }
         public IReadOnlyList<RlGeneration> ListRl() => ListError is { } error ? throw error : Generations;
-        public ModelGenerationLease? AcquireRl(string id) => null;
+        /// <summary>The lease the registry hands out for a model id (the default: none, as an empty registry).</summary>
+        public Func<string, ModelGenerationLease?> LeaseFor { get; set; } = _ => null;
+        public ModelGenerationLease? AcquireRl(string id) => LeaseFor(id);
         public ModelGenerationLease? AcquireRlActive() => null;
         public RlGeneration? GetRlGeneration(string id) => null;
         public Task<bool> ActivateRlAsync(string id, CancellationToken cancellationToken = default) => Task.FromResult(false);
-        public Task<RlGeneration> RegisterRlAsync(string directory, CancellationToken cancellationToken = default) => throw new InvalidOperationException("UI fixture cannot register generations.");
+        /// <summary>What a registration does with the directory it is handed (the default: a fixture that cannot register).</summary>
+        public Func<string, Task<RlGeneration>> RegisterHandler { get; set; } = _ => throw new InvalidOperationException("UI fixture cannot register generations.");
+        public Task<RlGeneration> RegisterRlAsync(string directory, CancellationToken cancellationToken = default) => RegisterHandler(directory);
     }
 }

@@ -23,7 +23,7 @@ public static class FeatureChannelNormalizationDefaults
         IndicatorType.RSI, IndicatorType.ConnorsRsi, IndicatorType.AdaptiveRSI, IndicatorType.Stoch, IndicatorType.WilliamsR, IndicatorType.MFI,
         IndicatorType.CMO, IndicatorType.UltimateOscillator, IndicatorType.DeMarker, IndicatorType.RCI, IndicatorType.SchaffTrendCycle,
         IndicatorType.ADX, IndicatorType.ADXR, IndicatorType.DMI, IndicatorType.Aroon, IndicatorType.Vortex, IndicatorType.CMF, IndicatorType.BOP,
-        IndicatorType.ChoppinessIndex, IndicatorType.PsychologicalLine, IndicatorType.EfficiencyRatio, IndicatorType.HurstExponent,
+        IndicatorType.ChoppinessIndex, IndicatorType.PsychologicalLine, IndicatorType.EfficiencyRatio,
         IndicatorType.FisherTransform, IndicatorType.CCI,
         // ratios and percentages
         IndicatorType.ROC, IndicatorType.PPO, IndicatorType.PriceOscillator, IndicatorType.TRIX, IndicatorType.BollingerBandsRatio,

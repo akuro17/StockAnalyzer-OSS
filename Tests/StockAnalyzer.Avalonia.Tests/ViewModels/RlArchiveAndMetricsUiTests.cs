@@ -16,7 +16,7 @@ namespace StockAnalyzer.Avalonia.Tests.ViewModels;
 public sealed partial class RlUiTests
 {
     [Fact]
-    public async Task CheckpointExportAndImport_CommandExecutionUpdatesUiState()
+    public async Task CheckpointExport_CommandExecutionUpdatesUiState()
     {
         string tempDir = Path.Combine(Path.GetTempPath(), "RlUiArchiveTest_" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempDir);
@@ -50,7 +50,6 @@ public sealed partial class RlUiTests
 
             await vm.InitializeAsync();
             Assert.False(vm.CanExportCheckpoint);
-            Assert.True(vm.CanImportCheckpoint);
 
             await vm.InspectCheckpointsCommand.ExecuteAsync(null);
             Assert.NotEmpty(vm.CheckpointRows);
@@ -61,9 +60,6 @@ public sealed partial class RlUiTests
             // Execute export (headless fallback writes to Path.GetTempPath()/StockAnalyzer_Exports)
             await vm.ExportCheckpointCommand.ExecuteAsync(null);
             Assert.Contains("Rl.Archive.ExportSucceeded", vm.Message, StringComparison.OrdinalIgnoreCase);
-
-            // Execute import command with empty/headless (should safely handle without throwing)
-            await vm.ImportCheckpointCommand.ExecuteAsync(null);
         }
         finally
         {
@@ -105,7 +101,9 @@ public sealed partial class RlUiTests
         vm.SelectedGeneration = gen;
         Assert.True(vm.CanExportGeneration);
 
+        // The empty registry hands out no lease, so there are no model files to archive: the export reports it instead of a success.
         await vm.ExportGenerationCommand.ExecuteAsync(null);
-        Assert.Contains("Rl.Archive.ExportSucceeded", vm.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Rl.Archive.ExportSucceeded", vm.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Generation is unavailable", vm.TechnicalDetails, StringComparison.OrdinalIgnoreCase);
     }
 }

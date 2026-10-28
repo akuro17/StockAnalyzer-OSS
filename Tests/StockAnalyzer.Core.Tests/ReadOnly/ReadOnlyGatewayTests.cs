@@ -601,7 +601,8 @@ public sealed class ReadOnlyGatewayTests : IDisposable
     {
         ReadOnlyStockAnalyzerGateway gateway = CreateGateway();
 
-        await Assert.ThrowsAsync<NotSupportedException>(() => gateway.RunBacktestAsync(BacktestSnapshot(frame: TimeFrame.W1)));
+        // W1 and MN1 are supported (ReadOnlyGatewayContract.SupportedBacktestTimeFrames); an intraday frame is not.
+        await Assert.ThrowsAsync<NotSupportedException>(() => gateway.RunBacktestAsync(BacktestSnapshot(frame: TimeFrame.H1)));
         await Assert.ThrowsAsync<NotSupportedException>(() => gateway.RunBacktestAsync(BacktestSnapshot(model: ExecutionModel.StrictEvidence)));
         await Assert.ThrowsAsync<NotSupportedException>(() => gateway.RunBacktestAsync(BacktestSnapshot(model: ExecutionModel.YFinanceApproximate)));
         await Assert.ThrowsAsync<ArgumentException>(() => gateway.RunBacktestAsync(BacktestSnapshot(symbol: "../evil")));

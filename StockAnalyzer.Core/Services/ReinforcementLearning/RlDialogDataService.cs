@@ -23,7 +23,8 @@ public sealed record RlDialogBlocks(ImmutableArray<RlEpisodeBlock> Blocks,
 
 /// <summary>Background artifact reads and replay with one lease covering their full dependent lifetime.</summary>
 /// <param name="dataRoot">The <c>Data</c> folder that receives temporary calendar reads; null resolves the application data folder.</param>
-public class RlDialogDataService(IRlModelGenerationRegistry registry, IQValueService replay, string? dataRoot = null)
+/// <param name="sourceFolders">The daily and metadata folders the anchor ranges are read from; null keeps the fixed <c>Data/Daily</c> and <c>Data/Metadata</c>.</param>
+public class RlDialogDataService(IRlModelGenerationRegistry registry, IQValueService replay, string? dataRoot = null, RlLocalSourceFolders? sourceFolders = null)
 {
     public virtual Task<RlDialogBlocks> LoadBlocksAsync(string modelId, CancellationToken ct) => Task.Run(() =>
     {
@@ -135,7 +136,7 @@ public class RlDialogDataService(IRlModelGenerationRegistry registry, IQValueSer
 
             var limits = RlTrainingValidation.FreezeLimits(continuous: false);
             using var workspace = RlReplayWorkspace.Create(dataRoot);
-            return await RlExternalEpisodeFactory.ReadAnchorRangeAsync(symbol, limits, workspace, ct).ConfigureAwait(false);
+            return await RlExternalEpisodeFactory.ReadAnchorRangeAsync(symbol, limits, workspace, ct, sourceFolders).ConfigureAwait(false);
         }, ct);
 
     /// <summary>The first and last anchor date the stored bars of <paramref name="symbol"/> allow; nothing is prepared or kept.</summary>
@@ -146,7 +147,7 @@ public class RlDialogDataService(IRlModelGenerationRegistry registry, IQValueSer
             ct.ThrowIfCancellationRequested();
             var limits = QValueService.LoadLimits(Path.GetDirectoryName(lease.ModelPath)!);
             using var workspace = RlReplayWorkspace.Create(dataRoot);
-            return await RlExternalEpisodeFactory.ReadAnchorRangeAsync(symbol, limits, workspace, ct).ConfigureAwait(false);
+            return await RlExternalEpisodeFactory.ReadAnchorRangeAsync(symbol, limits, workspace, ct, sourceFolders).ConfigureAwait(false);
         }, ct);
 
     /// <summary>The symbol and period of the source the generation was trained on.</summary>

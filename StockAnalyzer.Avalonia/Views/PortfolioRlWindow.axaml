@@ -420,19 +420,17 @@
           <Border Classes="section" IsVisible="{Binding HasPortfolioWeights}">
             <StackPanel Spacing="{x:Static ui:RlUiLayout.FieldGap}">
               <TextBlock Classes="heading" Text="{l:Localize Prl.Section.Allocation}" />
+              <TextBlock Classes="diagnostic" Text="{l:Localize Prl.Allocation.BaselineNote}" />
               <TextBlock Classes="diagnostic" Text="{Binding PortfolioAllocationSummary}"
                          AutomationProperties.AutomationId="{x:Static ui:PrlUiConstants.AllocationSummary}" />
               <ItemsControl ItemsSource="{Binding PortfolioWeights}" AutomationProperties.AutomationId="{x:Static ui:PrlUiConstants.WeightTable}">
                 <ItemsControl.ItemTemplate>
                   <DataTemplate x:DataType="vm:PortfolioWeightVisualRow">
-                    <Grid ColumnDefinitions="90,130,*,70,120" Margin="0,3">
+                    <Grid ColumnDefinitions="90,130,*,70" Margin="0,3">
                       <TextBlock Classes="value" Text="{Binding Symbol}" VerticalAlignment="Center" FontWeight="SemiBold" />
                       <TextBlock Grid.Column="1" Classes="diagnostic" Text="{Binding RoleText}" VerticalAlignment="Center" />
                       <ProgressBar Grid.Column="2" Minimum="0" Maximum="100" Value="{Binding TargetWeightPercent}" Height="12" VerticalAlignment="Center" Margin="8,0" />
                       <TextBlock Grid.Column="3" Classes="value" Text="{Binding WeightDisplay}" VerticalAlignment="Center" HorizontalAlignment="Right" FontWeight="SemiBold" />
-                      <Border Grid.Column="4" Background="{DynamicResource Brush.Background.Secondary}" CornerRadius="3" Padding="4,2" Margin="8,0,0,0" HorizontalAlignment="Center">
-                        <TextBlock Classes="diagnostic" Text="{Binding CorrelationLabel}" VerticalAlignment="Center" />
-                      </Border>
                     </Grid>
                   </DataTemplate>
                 </ItemsControl.ItemTemplate>

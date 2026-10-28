@@ -112,7 +112,7 @@ public sealed class BacktestDefaultSettings
             startUtc = endUtc.AddYears(-lookbackYears);
         }
 
-        TimeFrame frame = Enum.IsDefined(DefaultTimeFrame) ? DefaultTimeFrame : TimeFrame.D1;
+        TimeFrame frame = DataServiceTimeFrames.Supported.Contains(DefaultTimeFrame) ? DefaultTimeFrame : TimeFrame.D1;
         return (startUtc, endUtc, frame);
     }
 
@@ -193,9 +193,9 @@ public sealed class BacktestDefaultSettings
             }
         }
 
-        if (!Enum.IsDefined(source.DefaultTimeFrame))
+        if (!DataServiceTimeFrames.Supported.Contains(source.DefaultTimeFrame))
         {
-            errors.TryAdd(nameof(DefaultTimeFrame), "DefaultTimeFrame is not a valid TimeFrame value.");
+            errors.TryAdd(nameof(DefaultTimeFrame), "DefaultTimeFrame is not a time frame the data layer can serve (Day, Week or Month).");
         }
 
         if (source.EndDateMode == BacktestEndDateMode.FixedDate && !source.FixedEndDateUtc.HasValue)
@@ -296,9 +296,9 @@ public sealed class BacktestDefaultSettings
             throw new ArgumentException($"SchemaVersion must equal {CurrentSchemaVersion}.", nameof(source));
         }
 
-        if (!Enum.IsDefined(source.DefaultTimeFrame))
+        if (!DataServiceTimeFrames.Supported.Contains(source.DefaultTimeFrame))
         {
-            throw new ArgumentOutOfRangeException(nameof(source.DefaultTimeFrame), "DefaultTimeFrame is not a valid TimeFrame value.");
+            throw new ArgumentOutOfRangeException(nameof(source.DefaultTimeFrame), "DefaultTimeFrame is not a time frame the data layer can serve (Day, Week or Month).");
         }
 
         if (source.EndDateMode == BacktestEndDateMode.FixedDate && !source.FixedEndDateUtc.HasValue)

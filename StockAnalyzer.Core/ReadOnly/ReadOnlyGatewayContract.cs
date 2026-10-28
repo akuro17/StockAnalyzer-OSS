@@ -10,7 +10,7 @@ public static class ReadOnlyGatewayContract
     /// Time frames that can be loaded: D1 directly from the stored daily files, W1 and MN1 aggregated from D1.
     /// The data layer does not support the intraday frames.
     /// </summary>
-    public static IReadOnlyList<TimeFrame> SupportedTimeFrames { get; } = new[] { TimeFrame.D1, TimeFrame.W1, TimeFrame.MN1 };
+    public static IReadOnlyList<TimeFrame> SupportedTimeFrames { get; } = DataServiceTimeFrames.Supported;
 
     /// <summary>
     /// The default time frame a backtest runs on when omitted.
@@ -20,5 +20,5 @@ public static class ReadOnlyGatewayContract
     /// <summary>
     /// The time frames a backtest can run on: D1 directly or W1/MN1 aggregated from daily bars.
     /// </summary>
-    public static IReadOnlyList<TimeFrame> SupportedBacktestTimeFrames { get; } = new[] { TimeFrame.D1, TimeFrame.W1, TimeFrame.MN1 };
+    public static IReadOnlyList<TimeFrame> SupportedBacktestTimeFrames { get; } = DataServiceTimeFrames.Supported;
 }

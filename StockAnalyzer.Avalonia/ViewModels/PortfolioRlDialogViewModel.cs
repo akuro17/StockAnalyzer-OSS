@@ -85,8 +85,11 @@ public sealed record PortfolioSymbolRow(string Symbol, RlPanelSymbolStatus Statu
     public bool HasDetail => Detail.Length > 0;
 }
 
-/// <summary>One symbol's weight allocation visual row in the portfolio allocation viewer.</summary>
-public sealed record PortfolioWeightVisualRow(string Symbol, double TargetWeightPercent, string WeightDisplay, string RoleText, string CorrelationLabel);
+/// <summary>
+/// One symbol's weight allocation visual row in the portfolio allocation viewer. <paramref name="TargetWeightPercent"/> is the bar length only (a double control
+/// property); the weights are decimal everywhere else and the text comes from the decimal.
+/// </summary>
+public sealed record PortfolioWeightVisualRow(string Symbol, double TargetWeightPercent, string WeightDisplay, string RoleText);
 
 /// <summary>
 /// Portfolio reinforcement-learning dialog (D23). It holds no calculation and no file access: sources come from the ticker tree and the
@@ -1069,23 +1072,22 @@ public sealed partial class PortfolioRlDialogViewModel : ObservableObject, IDisp
         int configuredMaxWeight = _service.Settings.MaxWeightPercent;
         int maxWeight = TryPercent(MaxWeightPercentText, RlPortfolioLimits.MaxWeightPercent, out int parsedMax) ? parsedMax : configuredMaxWeight;
 
-        // Equal baseline allocation capped at MaxWeightPercent
-        double equalShare = 100.0 / readySymbols.Count;
-        double targetWeight = Math.Min(maxWeight, Math.Round(equalShare, 2));
+        // Equal-weight baseline shown before training: the same Core definition the evaluation baselines use (capped at MaxWeightPercent).
+        var tradable = new bool[readySymbols.Count];
+        Array.Fill(tradable, true);
+        var baseline = RlPortfolioWeights.EqualWeights(tradable, maxWeight);
 
-        double totalAllocated = 0.0;
+        decimal totalAllocated = 0m;
         for (int i = 0; i < readySymbols.Count; i++)
         {
             var sym = readySymbols[i];
-            double weight = targetWeight;
+            decimal weight = baseline.Assets[i] * RlPercent.DecimalDivisor;
             totalAllocated += weight;
-            string corr = i == 0 ? "Anchor (Base)" : string.Format(CultureInfo.InvariantCulture, "Basket r~{0:0.00}", 0.65 + (i % 4) * 0.08);
             PortfolioWeights.Add(new PortfolioWeightVisualRow(
                 sym.Symbol,
-                weight,
+                (double)weight,
                 string.Format(CultureInfo.InvariantCulture, "{0:0.0}%", weight),
-                sym.RoleText,
-                corr));
+                sym.RoleText));
         }
 
         PortfolioAllocationSummary = string.Format(

@@ -94,6 +94,8 @@
                                 </DataTemplate>
                             </ComboBox.ItemTemplate>
                         </ComboBox>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
                         <Button Classes="accent" Content="{l:Localize Settings_ModelGenerations_AddFile}" Command="{Binding AddGenerationFromFileCommand}"
                                 IsEnabled="{Binding !IsBusy}"/>
                         <Button Classes="accent" Content="{l:Localize Settings_ModelGenerations_Remove}" Command="{Binding RemoveGenerationCommand}"

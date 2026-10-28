@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using StockAnalyzer.Avalonia.Common;
 using StockAnalyzer.Core.Models.Backtest.Configuration;
 using StockAnalyzer.Core.Models.Backtest.Engine;
 using StockAnalyzer.Core.Models.ReinforcementLearning;
@@ -356,11 +357,11 @@ public sealed partial class RlTrainingDialogViewModel : ObservableObject, IDispo
             decimal oos = g.OosReturn;
             decimal gap = Math.Abs(val - oos);
             bool isSelected = g.ModelId == SelectedGeneration?.ModelId;
-            string badge = gap <= 0.05m && oos > 0 ? _localization.GetString("Rl.Ui.Badge.Robust")
-                : (val > oos && gap > 0.10m) ? _localization.GetString("Rl.Ui.Badge.Overfit")
+            string badge = gap <= RlUiConstants.GenerationRobustGapMaximum && oos > 0 ? _localization.GetString("Rl.Ui.Badge.Robust")
+                : (val > oos && gap > RlUiConstants.GenerationOverfitGapMinimum) ? _localization.GetString("Rl.Ui.Badge.Overfit")
                 : _localization.GetString("Rl.Ui.Badge.Neutral");
-            string color = gap <= 0.05m && oos > 0 ? "#26A69A"
-                : (val > oos && gap > 0.10m) ? "#EF5350"
+            string color = gap <= RlUiConstants.GenerationRobustGapMaximum && oos > 0 ? "#26A69A"
+                : (val > oos && gap > RlUiConstants.GenerationOverfitGapMinimum) ? "#EF5350"
                 : "#FFA726";
             GenerationScatterPoints.Add(new(g.ModelId, val, oos,
                 val.ToString("P" + RlContract.DisplayDecimals, CultureInfo.CurrentCulture),

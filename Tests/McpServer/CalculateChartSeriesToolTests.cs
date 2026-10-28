@@ -244,7 +244,7 @@ public sealed class CalculateChartSeriesToolTests : IDisposable
             ("""{"symbol":"WAVE","timeFrame":"D1","chartType":"Renko","includePatterns":true}""", "INVALID_ARGUMENT", "includePatterns"),
             ("""{"symbol":"WAVE","timeFrame":"D1","chartType":"Renko","brickSize":0}""", "INVALID_ARGUMENT", "brickSize"),
             ("""{"symbol":"WAVE","timeFrame":"D1","chartType":"Renko","atrPeriod":501}""", "LIMIT_EXCEEDED", "atrPeriod"),
-            ("""{"symbol":"WAVE","timeFrame":"D1","chartType":"HeikinAshi","outputTailCount":501}""", "LIMIT_EXCEEDED", "outputTailCount"),
+            ("""{"symbol":"WAVE","timeFrame":"D1","chartType":"HeikinAshi","outputTailCount":5001}""", "LIMIT_EXCEEDED", "outputTailCount"),
             ("""{"symbol":"WAVE","timeFrame":"D1","chartType":"HeikinAshi","endDate":"invalid-date"}""", "INVALID_ARGUMENT", "endDate"),
             ("""{"symbol":"WAVE","timeFrame":"D1","chartType":"HeikinAshi","endDate":"2020-01-01"}""", "INSUFFICIENT_MARKET_DATA", "endDate"),
             ("""{"symbol":"WAVE","timeFrame":"D1","chartType":"Renko","brickSize":2.0,"brickPercent":1.0}""", "INVALID_ARGUMENT", "brickPercent"),

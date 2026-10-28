@@ -12,6 +12,7 @@ using Microsoft.ML.OnnxRuntime;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Settings;
 using StockAnalyzer.Core.Services;
+using StockAnalyzer.Core.Services.Backtest.Engine;
 using StockAnalyzer.Core.Tests.TestHelpers;
 using Xunit;
 
@@ -395,6 +396,27 @@ public sealed class ModelGenerationRegistryTests : IDisposable
         using var registry = new ModelGenerationRegistry(Path.Combine(_root, "registry"));
         var source = Source("model.onnx", 0.4, fixture: Path.Combine("Assets", fixture));
         await Assert.ThrowsAsync<InvalidDataException>(() => registry.RegisterAsync(source));
+        Assert.Empty(registry.List());
+    }
+
+    // A model whose feature spec holds an indicator the eligibility rule refuses is rejected at registration, and the message says why
+    // (a non-causal type feeds look-ahead values into the tensor; a two-symbol type would be an empty channel).
+    [Theory]
+    [InlineData(IndicatorType.ZigZag)]
+    [InlineData(IndicatorType.PairRatio)]
+    public async Task RegistrationRejectsAComposedModelWithAnIndicatorTheEligibilityRuleRefuses_AndNamesTheReason(IndicatorType refused)
+    {
+        string fixture = Path.Combine(_root, "refused_channel.onnx");
+        Directory.CreateDirectory(_root);
+        OnnxMetadataFixture.ReplaceValue(Path.Combine("Assets", "trend_predictor_legacy_composed.onnx"), fixture, PredictionModelMetadata.FeatureSpecKey,
+            $$"""{"channels":[{"kind":"indicator","indicator":"{{refused}}","normalization":"none"}]}""");
+        using var registry = new ModelGenerationRegistry(Path.Combine(_root, "registry"));
+
+        var ex = await Assert.ThrowsAsync<InvalidDataException>(() => registry.RegisterAsync(Source("model.onnx", 0.4, fixture: fixture)));
+
+        var violation = BacktestIndicatorEligibility.Check(refused, null);
+        Assert.NotEqual(BacktestIndicatorViolationReason.None, violation);
+        Assert.Contains(BacktestIndicatorEligibility.Describe(refused, null, violation), ex.Message);
         Assert.Empty(registry.List());
     }
 

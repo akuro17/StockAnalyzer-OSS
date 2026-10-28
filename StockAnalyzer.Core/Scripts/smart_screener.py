@@ -26,8 +26,24 @@ def _is_safe_query_expr(criteria: str) -> bool:
             return False
         if isinstance(node, ast.Name) and node.id.startswith("_"):
             return False
-        if isinstance(node, ast.Constant) and not isinstance(node.value, (int, float, str, bool, type(None))):
-            return False
+        if isinstance(node, ast.Constant):
+            if not isinstance(node.value, (int, float, str, bool, type(None))):
+                return False
+            if isinstance(node.value, str) and len(node.value) > 64:
+                return False
+            if isinstance(node.value, (int, float)) and abs(node.value) > 1e15:
+                return False
+        if isinstance(node, ast.BinOp):
+            for child in (node.left, node.right):
+                if isinstance(child, (ast.List, ast.Tuple)):
+                    return False
+                if isinstance(child, ast.Constant) and isinstance(child.value, str):
+                    return False
+        if isinstance(node, ast.UnaryOp):
+            if isinstance(node.operand, (ast.List, ast.Tuple)):
+                return False
+            if isinstance(node.operand, ast.Constant) and isinstance(node.operand.value, str):
+                return False
     return True
 
 def screen_stocks(json_file_path, criteria):

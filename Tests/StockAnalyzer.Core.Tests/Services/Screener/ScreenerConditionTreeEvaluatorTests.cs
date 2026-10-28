@@ -7,6 +7,7 @@ using StockAnalyzer.Core.Models.Indicators;
 using StockAnalyzer.Core.Models.Portfolio;
 using StockAnalyzer.Core.Models.Screener;
 using StockAnalyzer.Core.Services.Screener;
+using StockAnalyzer.Core.Tests.Common;
 using Xunit;
 
 namespace StockAnalyzer.Core.Tests.Services.Screener;
@@ -324,6 +325,9 @@ public class ScreenerConditionTreeEvaluatorTests
         IsEnabled = isEnabled
     });
 
+    /// <summary>Evaluations inside one measured window; the value the test measured before the collection-free window was introduced.</summary>
+    private const int MeasuredEvaluations = 1000;
+
     [Fact]
     public void Evaluate_ZeroAllocation_OnEvaluationPath()
     {
@@ -338,17 +342,20 @@ public class ScreenerConditionTreeEvaluatorTests
             _ = Evaluate(tree);
         }
 
-        long beforeAllocated = GC.GetAllocatedBytesForCurrentThread();
-
-        for (int i = 0; i < 1000; i++)
+        // A garbage collection that another test triggers while the loop runs adds a multiple of 1056 bytes to this thread's counter although this
+        // thread allocated nothing (0 in every window alone, 1056 or 2112 in about half of them beside a concurrent GC.Collect, which the
+        // Screener service tests cause), and beside them it touched all of several samples. AllocationProbe therefore accepts only a sample in
+        // which no collection ran.
+        long allocated = AllocationProbe.InCollectionFreeWindow(() =>
         {
-            _ = Evaluate(tree);
-        }
+            for (int i = 0; i < MeasuredEvaluations; i++)
+            {
+                _ = Evaluate(tree);
+            }
+        });
 
-        long afterAllocated = GC.GetAllocatedBytesForCurrentThread();
-        long diff = afterAllocated - beforeAllocated;
-
-        Assert.Equal(0, diff);
+        Assert.True(allocated >= 0, "every sample overlapped a garbage collection");
+        Assert.Equal(0, allocated);
     }
 
     private sealed class UnsupportedNode : IScreenerConditionNode

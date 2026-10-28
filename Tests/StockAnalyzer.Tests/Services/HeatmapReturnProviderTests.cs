@@ -303,6 +303,21 @@ public sealed class HeatmapReturnProviderTests : IDisposable
         Assert.Equal(2, res.Items.Count);
     }
 
+    [Theory]
+    [InlineData("../evil")]
+    [InlineData("..\\evil")]
+    [InlineData("sub/ticker")]
+    [InlineData("sub\\ticker")]
+    [InlineData("ticker:name")]
+    [InlineData("   ")]
+    public async Task DuckDbProvider_PathTraversalTicker_IsSafelySkipped(string malformedSymbol)
+    {
+        var provider = CreateDuckDbProvider();
+        var res = await provider.ComputeAsync(new[] { malformedSymbol }, 0);
+        Assert.NotNull(res);
+        Assert.Equal("Synthetic", res.ProviderId);
+    }
+
     [Fact]
     public async Task DuckDbProvider_PreCancelledToken_ThrowsOperationCanceledException()
     {

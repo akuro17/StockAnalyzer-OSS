@@ -345,6 +345,30 @@ public sealed class EnsembleMonitoringRecordTests : IDisposable
         Assert.Same(meta1, meta2); // Exactly same instance from LRU cache
     }
 
+    // Other test classes read the same fixture model (one content hash, one model id) in parallel, so the first read of an id can happen on several
+    // threads at once; every caller must still get the one instance the cache holds (the cache keeps the first value).
+    [Fact]
+    public async Task MetadataCache_ConcurrentFirstReads_AllReturnTheCachedInstance()
+    {
+        const int readers = 4;
+        var registry = new ModelGenerationRegistry(Path.Combine(_kit.Root, "concurrent-registry"));
+        _disposables.Add(registry);
+        var model = await registry.RegisterAsync(Path.Combine("Assets", "analysis_fixture.onnx"));
+
+        PredictionMonitoringReducer.ClearMetadataCacheForTesting();
+        using var go = new ManualResetEventSlim(false);
+        var reads = Enumerable.Range(0, readers).Select(_ => Task.Factory.StartNew(() =>
+        {
+            go.Wait();
+            return PredictionMonitoringReducer.GetOrReadModelMetadata(registry, model.ModelId);
+        }, TaskCreationOptions.LongRunning)).ToArray();
+        go.Set();
+        var results = await Task.WhenAll(reads);
+
+        var cached = PredictionMonitoringReducer.GetOrReadModelMetadata(registry, model.ModelId);
+        Assert.All(results, result => Assert.Same(cached, result));
+    }
+
     // ---- lifecycle -----------------------------------------------------------------------------------------------------
 
     [Theory]

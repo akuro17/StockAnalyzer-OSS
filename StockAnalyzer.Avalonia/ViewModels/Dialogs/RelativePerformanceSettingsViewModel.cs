@@ -39,6 +39,8 @@ public partial class RelativePerformanceSettingsViewModel : BaseChartSettingsVie
 
     public static IReadOnlyList<StockAnalyzer.Core.Models.ComparisonMode> ModeOptions { get; } = Enum.GetValues<StockAnalyzer.Core.Models.ComparisonMode>();
 
+    public decimal ZScorePeriodMaximum => StockAnalyzer.Core.Models.ComparisonSeriesDefaults.MaxZScorePeriod;
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsModified))]
     private bool _showFloatingTooltip;

@@ -1,6 +1,7 @@
 import os
 import polars as pl
 import argparse
+from symbol_validator import is_well_formed_ticker
 
 def verify_parquet(file_path):
     print(f"Verifying: {file_path}")
@@ -45,6 +46,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("ticker", help="Ticker symbol to verify")
     args = parser.parse_args()
+
+    if not is_well_formed_ticker(args.ticker):
+        print(f"Error: Invalid ticker symbol: {args.ticker!r}")
+        import sys
+        sys.exit(1)
     
     data_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "Data", "Daily", f"{args.ticker}.parquet"))
     verify_parquet(data_path)

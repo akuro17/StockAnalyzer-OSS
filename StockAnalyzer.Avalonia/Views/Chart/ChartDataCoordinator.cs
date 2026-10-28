@@ -1919,75 +1919,38 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
                 var priceCalc = new ComparisonPriceRangeCalculator(viewModel.ComparisonData, _startIndex, viewModel.ComparisonMode, viewModel.ComparisonZScorePeriod);
                 var comparisonSeries = new Dictionary<string, decimal?[]>();
                 var comparisonData = viewModel.ComparisonData;
-                comparisonData.Series.TryGetValue(comparisonData.PrimarySymbol, out var primarySeries);
-
                 var renderingMetadata = new Dictionary<string, string>();
                 var symbols = comparisonData.Series.Keys.OrderBy(s => s).ToList();
-                
+
+                // The mode formulas live in ComparisonSeriesCalculator (shared with the MCP tool); this method keeps only the chart's own concerns.
+                var calculated = ComparisonSeriesCalculator.Calculate(comparisonData, safeStart, visibleSliceCount, viewModel.ComparisonMode, viewModel.ComparisonZScorePeriod);
+
                 foreach (var symbol in symbols)
                 {
-                    int colorIndex = viewModel.SeriesColorIndex.GetOrAdd(symbol);
+                    viewModel.SeriesColorIndex.GetOrAdd(symbol);
                     var series = comparisonData.Series[symbol];
                     if (series == null || series.Length == 0) continue;
 
-                    int baseSearchStart = Math.Max(0, _startIndex); 
-                    decimal? foundBase = null;
-                    if (series.Length > baseSearchStart && series[baseSearchStart] is { } exact) 
+                    // A window that runs past the aligned timeline keeps its full length; the missing bars stay undefined.
+                    decimal?[] buffer = calculated.Series[symbol].Values;
+                    if (buffer.Length != visibleSliceCount)
                     {
-                        foundBase = exact.Close;
+                        var padded = new decimal?[visibleSliceCount];
+                        Array.Copy(buffer, padded, buffer.Length);
+                        buffer = padded;
                     }
-                    else if (series.Length > 0)
-                    {
-                        int actualBaseIdx = Math.Min(baseSearchStart, series.Length - 1);
-                        for (int i = actualBaseIdx; i >= 0; i--) { if (series[i] is { } prev) { foundBase = prev.Close; break; } }
-                        if (foundBase == null)
-                        {
-                            for (int i = actualBaseIdx + 1; i < series.Length; i++) { if (series[i] is { } next) { foundBase = next.Close; break; } }
-                        }
-                    }
-                    decimal basePrice = foundBase ?? 0;
 
-                    var buffer = new decimal?[visibleSliceCount];
+                    bool isStaticBase = (viewModel.ComparisonMode == ComparisonMode.Ratio || viewModel.ComparisonMode == ComparisonMode.Spread) && symbol == comparisonData.PrimarySymbol;
                     decimal? lastVisibleValue = null;
-
-                    for (int i = 0; i < visibleSliceCount; i++)
+                    for (int i = 0; i < buffer.Length; i++)
                     {
-                        int sourceIdx = safeStart + i;
-                        if (sourceIdx >= series.Length || !series[sourceIdx].HasValue) continue;
+                        if (buffer[i] is not { } val) continue;
 
-                        var currentCandle = series[sourceIdx]!.Value;
-                        decimal val = 0;
-                        bool isValid = false;
-
-                        switch (viewModel.ComparisonMode)
+                        lastVisibleValue = val;
+                        if (!isStaticBase)
                         {
-                            case ComparisonMode.Performance:
-                                if (basePrice != 0) { val = (currentCandle.Close - basePrice) / basePrice * 100m; isValid = true; }
-                                break;
-                            case ComparisonMode.Ratio:
-                                if (primarySeries != null && sourceIdx < primarySeries.Length && primarySeries[sourceIdx] is { } ratioPc && ratioPc.Close != 0)
-                                { val = currentCandle.Close / ratioPc.Close; isValid = true; }
-                                break;
-                            case ComparisonMode.ZScore:
-                                if (ComparisonPriceRangeCalculator.ComputeZScore(series, sourceIdx, viewModel.ComparisonZScorePeriod, out var z))
-                                { val = (decimal)z; isValid = true; }
-                                break;
-                            case ComparisonMode.Spread:
-                                if (primarySeries != null && sourceIdx < primarySeries.Length && primarySeries[sourceIdx] is { } spreadPc)
-                                { val = currentCandle.Close - spreadPc.Close; isValid = true; }
-                                break;
-                        }
-
-                        if (isValid)
-                        {
-                            buffer[i] = val;
-                            lastVisibleValue = val;
-                            bool isStaticBase = (viewModel.ComparisonMode == ComparisonMode.Ratio || viewModel.ComparisonMode == ComparisonMode.Spread) && symbol == comparisonData.PrimarySymbol;
-                            if (!isStaticBase)
-                            {
-                                if (val < globalMin) globalMin = val;
-                                if (val > globalMax) globalMax = val;
-                            }
+                            if (val < globalMin) globalMin = val;
+                            if (val > globalMax) globalMax = val;
                         }
                     }
 

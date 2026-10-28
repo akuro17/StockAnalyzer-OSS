@@ -280,7 +280,7 @@
 
                         <Grid ColumnDefinitions="*, Auto" IsVisible="{Binding ComparisonMode, Converter={x:Static ObjectConverters.Equal}, ConverterParameter={x:Static models:ComparisonMode.ZScore}}">
                             <TextBlock Text="{l:Localize Settings_Chart_Item_ZScorePeriod}" VerticalAlignment="Center" FontSize="{DynamicResource DetailFontSize}"/>
-                            <NumericUpDown Grid.Column="1" Value="{Binding ComparisonZScorePeriod}" Minimum="1" Maximum="500" Width="150"/>
+                            <NumericUpDown Grid.Column="1" Value="{Binding ComparisonZScorePeriod}" Minimum="1" Maximum="{Binding ZScorePeriodMaximum}" Width="150"/>
                         </Grid>
 
                         <Grid ColumnDefinitions="*, Auto">

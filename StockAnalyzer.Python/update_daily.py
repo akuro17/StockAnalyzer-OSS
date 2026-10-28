@@ -3,6 +3,7 @@ import logging
 import datetime
 import polars as pl
 from data_provider import StockDataProvider
+from symbol_validator import is_well_formed_ticker
 import argparse
 import json
 
@@ -30,6 +31,9 @@ def ensure_directories():
         logging.info(f"Created data directory: {DATA_ROOT}")
 
 def update_ticker(provider, symbol, delay=None, start_period=5, full_history=False, force_period=False):
+    if not is_well_formed_ticker(symbol):
+        logging.error(f"Skipping invalid ticker symbol: {symbol!r}")
+        return
     file_path = os.path.join(DATA_ROOT, f"{symbol}.parquet")
     
     start_ts = 0
@@ -151,6 +155,8 @@ def main():
         target_tickers = [t.strip().upper() for t in args.ticker.split(",")]
         # Filter: only update if it's in our known list, or allow any if requested
         tickers = target_tickers
+
+    tickers = [t for t in tickers if is_well_formed_ticker(t)]
 
     logging.info(f"Starting daily update for {len(tickers)} tickers...")
     

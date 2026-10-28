@@ -31,8 +31,9 @@ public sealed partial class RlTrainingDialogViewModel
     public bool CanConfirmResume => Editable && HasResumeSelection;
     public bool CanConfirmAbandon => Editable && HasAbandonSelection;
     public bool CanExportCheckpoint => Editable && SelectedCheckpoint is not null;
-    public bool CanImportCheckpoint => Editable && CheckpointAvailable;
     public bool CanExportGeneration => Editable && SelectedGeneration is not null;
+    public bool CanImportGeneration => Editable && StorageAvailable && _dialogService is not null;
+    private const string GenerationImportStagingPrefix = "StockAnalyzer_GenerationImport_";
 
     public string InspectCheckpointsTooltip => _localization.GetString("Rl.Ui.Tooltip.InspectCheckpointsHelp");
 
@@ -92,7 +93,8 @@ public sealed partial class RlTrainingDialogViewModel
     {
         OnPropertyChanged(nameof(CanPause)); OnPropertyChanged(nameof(CanResumeCheckpoint)); OnPropertyChanged(nameof(CanAbandonCheckpoint));
         OnPropertyChanged(nameof(CanConfirmResume)); OnPropertyChanged(nameof(CanConfirmAbandon));
-        OnPropertyChanged(nameof(CanExportCheckpoint)); OnPropertyChanged(nameof(CanImportCheckpoint)); OnPropertyChanged(nameof(CanExportGeneration));
+        OnPropertyChanged(nameof(CanExportCheckpoint)); OnPropertyChanged(nameof(CanExportGeneration));
+        OnPropertyChanged(nameof(CanImportGeneration)); ImportGenerationCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(StatusDisplay)); OnPropertyChanged(nameof(ResumeTooltip)); OnPropertyChanged(nameof(AbandonTooltip));
         OnPropertyChanged(nameof(ResumeConfirmTooltip)); OnPropertyChanged(nameof(AbandonConfirmTooltip));
         OnPropertyChanged(nameof(InspectCheckpointsTooltip));
@@ -100,7 +102,7 @@ public sealed partial class RlTrainingDialogViewModel
         OnPropertyChanged(nameof(HasSelectedCheckpoint));
         OnPropertyChanged(nameof(RecoveryStatusBadgeDisplay)); OnPropertyChanged(nameof(InspectRecoveryTooltip)); OnPropertyChanged(nameof(RecoverPointerTooltip));
         PauseCommand.NotifyCanExecuteChanged(); ResumeCheckpointCommand.NotifyCanExecuteChanged(); AbandonCheckpointCommand.NotifyCanExecuteChanged();
-        ExportCheckpointCommand.NotifyCanExecuteChanged(); ImportCheckpointCommand.NotifyCanExecuteChanged(); ExportGenerationCommand.NotifyCanExecuteChanged();
+        ExportCheckpointCommand.NotifyCanExecuteChanged(); ExportGenerationCommand.NotifyCanExecuteChanged();
     }
     [RelayCommand(CanExecute = nameof(CanPause))] private void Pause()
     {
@@ -192,40 +194,8 @@ public sealed partial class RlTrainingDialogViewModel
 
         try
         {
-            await _archiveService.ExportCheckpointArchiveAsync(checkpointDir, targetPath);
+            await Task.Run(() => _archiveService.ExportCheckpointArchiveAsync(checkpointDir, targetPath));
             Message = string.Format(CultureInfo.CurrentCulture, _localization.GetString("Rl.Archive.ExportSucceeded"), targetPath);
-        }
-        catch (Exception ex)
-        {
-            SetErrorMessage(ex);
-        }
-    }
-
-    [RelayCommand(CanExecute = nameof(CanImportCheckpoint))]
-    private async Task ImportCheckpointAsync()
-    {
-        if (!CanImportCheckpoint || _disposed) return;
-        string sourceZip = "";
-        if (_dialogService is not null)
-        {
-            sourceZip = await _dialogService.ShowOpenFileDialogAsync("Import Checkpoint Archive", new[] { "zip" }) ?? "";
-        }
-
-        if (string.IsNullOrWhiteSpace(sourceZip)) return;
-
-        try
-        {
-            string targetDir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "StockAnalyzer_ImportedCheckpoints");
-            var result = await _archiveService.ImportArchiveAsync(sourceZip, targetDir);
-            if (result.Success)
-            {
-                Message = string.Format(CultureInfo.CurrentCulture, _localization.GetString("Rl.Archive.ImportSucceeded"), result.Id, result.FileCount);
-                await InspectCheckpointsAsync();
-            }
-            else
-            {
-                Message = result.Error ?? _localization.GetString("Rl.Archive.InvalidFormat");
-            }
         }
         catch (Exception ex)
         {
@@ -256,17 +226,77 @@ public sealed partial class RlTrainingDialogViewModel
 
         try
         {
-            string sourceDir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "stage_export_" + modelId[..Math.Min(8, modelId.Length)]);
-            System.IO.Directory.CreateDirectory(sourceDir);
-            var manifestJson = System.Text.Json.JsonSerializer.Serialize(gen, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
-            await System.IO.File.WriteAllTextAsync(System.IO.Path.Combine(sourceDir, "manifest.json"), manifestJson);
+            // The lease keeps the registered generation directory in place while its files are archived.
+            using var lease = _registry.AcquireRl(modelId);
+            if (lease is null)
+            {
+                SetErrorMessage(new System.IO.InvalidDataException("Generation is unavailable."));
+                return;
+            }
 
-            await _archiveService.ExportGenerationArchiveAsync(sourceDir, targetPath);
+            string generationDirectory = System.IO.Path.GetDirectoryName(lease.ModelPath)!;
+            await Task.Run(() => _archiveService.ExportGenerationArchiveAsync(generationDirectory, targetPath));
             Message = string.Format(CultureInfo.CurrentCulture, _localization.GetString("Rl.Archive.ExportSucceeded"), targetPath);
         }
         catch (Exception ex)
         {
             SetErrorMessage(ex);
+        }
+    }
+
+    private const string ArchiveFailureKeyPrefix = "Rl.Archive.Failure.";
+
+    /// <summary>The refusal in the window's language; a reason the window has no text for falls back to the technical text of the service.</summary>
+    private string DescribeImportFailure(RlArchiveImportResult result)
+        => result.Reason is RlArchiveImportFailure.None or RlArchiveImportFailure.Other
+            ? result.Error ?? _localization.GetString("Rl.Archive.InvalidFormat")
+            : string.Format(CultureInfo.CurrentCulture, _localization.GetString(ArchiveFailureKeyPrefix + result.Reason), result.ReasonArgument);
+
+    /// <summary>Registers a model archive exported from this application. The model is verified (T3) and checked by the registry; it is never activated.</summary>
+    [RelayCommand(CanExecute = nameof(CanImportGeneration))]
+    private async Task ImportGenerationAsync()
+    {
+        if (!CanImportGeneration || _dialogService is null || _disposed) return;
+        string sourceZip = await _dialogService.ShowOpenFileDialogAsync(_localization.GetString("Rl.Generation.Import"), new[] { "zip" }) ?? "";
+        if (string.IsNullOrWhiteSpace(sourceZip) || _disposed) return;
+
+        string stagingDir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), GenerationImportStagingPrefix + Guid.NewGuid().ToString("N"));
+        BeginOperation(RlDialogOperation.RegisteringModel);
+        try
+        {
+            var result = await Task.Run(() => _archiveService.ImportArchiveAsync(sourceZip, stagingDir));
+            if (!result.Success)
+            {
+                Message = DescribeImportFailure(result);
+                return;
+            }
+
+            if (result.ArchiveKind != RlModelArchiveService.GenerationKind)
+            {
+                Message = _localization.GetString("Rl.Archive.InvalidFormat");
+                return;
+            }
+
+            var generation = await _registry.RegisterRlAsync(result.TargetDirectory);
+            Message = string.Format(CultureInfo.CurrentCulture, _localization.GetString("Rl.Archive.GenerationRegistered"), generation.ModelId);
+            await RefreshGenerationsAsync();
+        }
+        catch (Exception ex)
+        {
+            SetErrorMessage(ex);
+        }
+        finally
+        {
+            try
+            {
+                if (System.IO.Directory.Exists(stagingDir)) System.IO.Directory.Delete(stagingDir, recursive: true);
+            }
+            catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException)
+            {
+                // Best-effort cleanup of the temporary extraction folder
+            }
+
+            EndOperation();
         }
     }
 }

@@ -201,7 +201,7 @@ public sealed class ExecutionToolsTests : IDisposable
     public void TheNumberOfBarsOfOnePredictionCannotExceedTheCandleLimit()
     {
         var error = Assert.Throws<ExecutionLimitsException>(() => McpServerComposition.Create(
-            Configuration(("AiIntegration:MaxCandlesPerRequest", "500"), ("AiIntegration:Execution:MaxPredictionBars", "501")),
+            Configuration(("AiIntegration:MaxCandlesPerRequest", "500"), ("AiIntegration:MaxOutputTailBars", "500"), ("AiIntegration:Execution:MaxPredictionBars", "501")),
             new LogSink(new StringWriter()),
             enableExecution: true));
 

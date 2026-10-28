@@ -17,7 +17,7 @@ public sealed class McpStdoutPurityTests
     {
         "sa_list_tickers", "sa_list_ticker_groups", "sa_get_candles", "sa_get_ticker_metadata", "sa_get_capabilities", "sa_get_settings",
         "sa_calculate_indicators", "sa_run_screener", "sa_list_templates", "sa_run_backtest", "sa_calculate_reverse_watch", "sa_calculate_chart_series",
-        "sa_check_portfolio_rl_preflight", "sa_check_rl_playback_preflight",
+        "sa_check_portfolio_rl_preflight", "sa_check_rl_playback_preflight", "sa_calculate_relative_performance",
     };
 
     private const string Entry = """{"left":{"price":"Close"},"comparison":"GreaterThan","right":{"price":"Close","offset":1}}""";
@@ -45,6 +45,7 @@ public sealed class McpStdoutPurityTests
             (24, McpTestSupport.CallMessage(24, "sa_calculate_chart_series", """{"symbol":"NOSUCH","timeFrame":"D1","chartType":"HeikinAshi"}""")),
             (25, McpTestSupport.CallMessage(25, "sa_check_portfolio_rl_preflight", """{"symbols":["NOSUCH1","NOSUCH2"]}""")),
             (26, McpTestSupport.CallMessage(26, "sa_check_rl_playback_preflight", """{"modelId":"NOSUCH"}""")),
+            (27, McpTestSupport.CallMessage(27, "sa_calculate_relative_performance", """{"symbol":"NOSUCH","timeFrame":"D1","comparisonSymbols":["NOSUCH2"]}""")),
             (30, """{"jsonrpc":"2.0","id":30,"method":"resources/list"}"""),
             (31, """{"jsonrpc":"2.0","id":31,"method":"resources/read","params":{"uri":"stockanalyzer://catalog/indicators"}}"""),
             (32, """{"jsonrpc":"2.0","id":32,"method":"resources/read","params":{"uri":"stockanalyzer://catalog/screener"}}"""),

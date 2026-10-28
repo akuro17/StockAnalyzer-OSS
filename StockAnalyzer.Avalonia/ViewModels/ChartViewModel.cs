@@ -778,7 +778,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
     partial void OnComparisonModeChanged(ComparisonMode value) => RequestRender(RenderReason.DataChanged);
 
     [ObservableProperty]
-    private int _comparisonZScorePeriod = 20;
+    private int _comparisonZScorePeriod = ComparisonSeriesDefaults.DefaultZScorePeriod;
 
     partial void OnComparisonZScorePeriodChanged(int value) => RequestRender(RenderReason.DataChanged);
 

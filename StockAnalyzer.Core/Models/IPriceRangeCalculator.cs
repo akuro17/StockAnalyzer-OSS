@@ -116,7 +116,7 @@ public sealed class ComparisonPriceRangeCalculator : IPriceRangeCalculator
     private readonly int _zScorePeriod;
     private readonly Dictionary<string, decimal> _basePrices;
 
-    public ComparisonPriceRangeCalculator(ComparisonAlignedData data, int startIndex, ComparisonMode mode = ComparisonMode.Performance, int zScorePeriod = 20)
+    public ComparisonPriceRangeCalculator(ComparisonAlignedData data, int startIndex, ComparisonMode mode = ComparisonMode.Performance, int zScorePeriod = ComparisonSeriesDefaults.DefaultZScorePeriod)
     {
         _data = data ?? throw new ArgumentNullException(nameof(data));
         _startIndex = startIndex;
@@ -131,34 +131,10 @@ public sealed class ComparisonPriceRangeCalculator : IPriceRangeCalculator
                 var series = kvp.Value;
                 if (series == null || series.Length == 0) continue;
                 
-                // 表示開始点（startIndex）を基準点とする。欠損している場合は後方、次に前方を探索して補完する。
-                int start = Math.Clamp(startIndex, 0, series.Length - 1);
-                decimal? foundBase = null;
-                
-                if (series[start] is { } exact) 
+                // 表示開始点（startIndex）を基準点とする。欠損している場合は後方、次に前方を探索して補完する（探索は ComparisonSeriesCalculator と共通）。
+                if (ComparisonSeriesCalculator.FindBaseIndex(series, Math.Max(0, startIndex)) is { } baseIndex)
                 {
-                    foundBase = exact.Close;
-                }
-                else 
-                {
-                    // 後方探索（過去の終値を使用）
-                    for (int i = start - 1; i >= 0; i--) 
-                    { 
-                        if (series[i] is { } prev) { foundBase = prev.Close; break; } 
-                     }
-                    // それでも見つからない場合のみ前方探索
-                    if (foundBase == null) 
-                    {
-                        for (int i = start + 1; i < series.Length; i++) 
-                        { 
-                            if (series[i] is { } next) { foundBase = next.Close; break; } 
-                        }
-                    }
-                }
-
-                if (foundBase != null)
-                {
-                    _basePrices[kvp.Key] = foundBase.Value;
+                    _basePrices[kvp.Key] = series[baseIndex]!.Value.Close;
                 }
             }
         }
@@ -184,9 +160,10 @@ public sealed class ComparisonPriceRangeCalculator : IPriceRangeCalculator
             switch (_mode)
             {
                 case ComparisonMode.Performance:
-                    if (_basePrices.TryGetValue(symbol, out var basePrice) && basePrice != 0)
+                    if (_basePrices.TryGetValue(symbol, out var basePrice) &&
+                        ComparisonSeriesCalculator.PerformanceValue(series[index]!.Value.Close, basePrice) is { } performance)
                     {
-                        val = (series[index]!.Value.Close - basePrice) / basePrice * 100m;
+                        val = performance;
                     }
                     else continue;
                     break;
@@ -195,10 +172,9 @@ public sealed class ComparisonPriceRangeCalculator : IPriceRangeCalculator
                     if (_data.Series.TryGetValue(_data.PrimarySymbol, out var primarySeries) &&
                         primarySeries != null && index < primarySeries.Length && primarySeries[index] is { } primaryCandle)
                     {
-                        var primaryClose = primaryCandle.Close;
-                        if (primaryClose != 0)
+                        if (ComparisonSeriesCalculator.RatioValue(series[index]!.Value.Close, primaryCandle.Close) is { } ratio)
                         {
-                            val = series[index]!.Value.Close / primaryClose;
+                            val = ratio;
                         }
                         else continue;
                     }
@@ -217,7 +193,7 @@ public sealed class ComparisonPriceRangeCalculator : IPriceRangeCalculator
                     if (_data.Series.TryGetValue(_data.PrimarySymbol, out var spreadPrimarySeries) &&
                         spreadPrimarySeries != null && index < spreadPrimarySeries.Length && spreadPrimarySeries[index] is { } spreadPrimaryCandle)
                     {
-                        val = series[index]!.Value.Close - spreadPrimaryCandle.Close;
+                        val = ComparisonSeriesCalculator.SpreadValue(series[index]!.Value.Close, spreadPrimaryCandle.Close);
                     }
                     else continue;
                     break;
@@ -264,6 +240,10 @@ public sealed class ComparisonPriceRangeCalculator : IPriceRangeCalculator
         return (max, min);
     }
 
+    /// <remarks>
+    /// All arithmetic is in double on purpose (Rule DT-2 of SA_ARCHITECTURE_RULES: a non-linear statistical estimator, narrowed to decimal at the output). The divisor is n
+    /// (population deviation; owner decision 2026-10-28, indicators_formulas_0052). CoreZScoreIndicator sums in decimal with the same divisor; the two differ by less than 1e-13.
+    /// </remarks>
     public static bool ComputeZScore(CandleData?[] series, int index, int period, out double zScore)
     {
         zScore = 0;
@@ -295,7 +275,7 @@ public sealed class ComparisonPriceRangeCalculator : IPriceRangeCalculator
         }
 
         double stdDev = Math.Sqrt(sumSqDiff / period);
-        if (stdDev < 1e-10) return false; // Avoid division by zero
+        if (stdDev < ComparisonSeriesDefaults.FlatWindowDeviationEpsilon) return false; // Avoid division by zero
 
         zScore = ((double)series[index]!.Value.Close - mean) / stdDev;
         return true;

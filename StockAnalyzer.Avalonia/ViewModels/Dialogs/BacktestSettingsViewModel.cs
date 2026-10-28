@@ -38,7 +38,7 @@ public partial class BacktestSettingsViewModel : ViewModelBase, ISettingsPageVie
     public string TitleKey => "Settings_Backtest";
     public string IconKey => "SettingsBacktestIcon";
 
-    public IReadOnlyList<TimeFrame> AvailableFrames { get; } = Enum.GetValues<TimeFrame>();
+    public IReadOnlyList<TimeFrame> AvailableFrames { get; } = DataServiceTimeFrames.Supported;
     public IReadOnlyList<BacktestEndDateMode> EndDateModeOptions { get; } = Enum.GetValues<BacktestEndDateMode>();
     public IReadOnlyList<BacktestStartDateMode> StartDateModeOptions { get; } = Enum.GetValues<BacktestStartDateMode>();
     public IReadOnlyList<PositionSizingModel> SizingModelOptions { get; } = Enum.GetValues<PositionSizingModel>();

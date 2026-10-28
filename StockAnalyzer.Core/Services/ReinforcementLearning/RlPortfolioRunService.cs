@@ -76,11 +76,14 @@ public sealed class RlPortfolioService : IRlPortfolioService
 {
     private readonly TrainingJobGate _gate;
     private readonly string? _dataRoot;
+    private readonly RlLocalSourceFolders? _sourceFolders;
     private readonly TrainingResourceLimits _limits;
 
     /// <summary>Validates the settings against the frozen resource limits at construction: a hard-limit violation stops the application start instead of a later run.</summary>
-    public RlPortfolioService(RlPortfolioSettings settings, TrainingJobGate? gate = null, string? dataRoot = null)
+    /// <param name="sourceFolders">The folders the panel is read from (preflight, start suggestion, capture); null keeps the fixed <c>Data/Daily</c> and <c>Data/Metadata</c>.</param>
+    public RlPortfolioService(RlPortfolioSettings settings, TrainingJobGate? gate = null, string? dataRoot = null, RlLocalSourceFolders? sourceFolders = null)
     {
+        _sourceFolders = sourceFolders;
         Settings = settings ?? throw new ArgumentNullException(nameof(settings));
         _limits = RlTrainingValidation.FreezeLimits(continuous: true);
         Warnings = RlPortfolioSettingsValidator.Validate(settings, _limits);
@@ -104,7 +107,7 @@ public sealed class RlPortfolioService : IRlPortfolioService
     public Task<PanelPreflight> PreflightAsync(System.Collections.Generic.IReadOnlyList<string> symbols, DateOnly start, DateOnly endExclusive,
         bool holdoutRequested, RlPanelEvaluationMode mode, RlPanelPartitionPlan? plan, int? holdoutPercent, CancellationToken cancellationToken)
         => RlPanelPreflightEvaluator.EvaluateAsync(symbols, start, endExclusive, holdoutRequested, mode, Settings.WithRunOverrides(holdoutPercent, null), _limits,
-            cancellationToken, ResolvePlan(mode, plan));
+            cancellationToken, ResolvePlan(mode, plan), _sourceFolders);
 
     /// <summary>
     /// The single owner of the partition plan of a run: the plan of the request, else the plan of the settings, for the short-history evaluation only.
@@ -128,7 +131,7 @@ public sealed class RlPortfolioService : IRlPortfolioService
 
     public async Task<RlStartSuggestion?> SuggestStartAsync(System.Collections.Generic.IReadOnlyList<string> symbols, DateOnly endExclusive,
         RlPanelEvaluationMode mode, RlPanelPartitionPlan? plan, CancellationToken cancellationToken)
-        => await RlPanelPeriodAdvisor.SuggestAsync(symbols, endExclusive, mode, _limits, cancellationToken, ResolvePlan(mode, plan)).ConfigureAwait(false);
+        => await RlPanelPeriodAdvisor.SuggestAsync(symbols, endExclusive, mode, _limits, cancellationToken, ResolvePlan(mode, plan), _sourceFolders).ConfigureAwait(false);
 
     public async Task<RlPortfolioTrainingResult> RunAsync(RlPortfolioRunRequest request, IProgress<RlTrainingProgress>? progress,
         CancellationToken cancellationToken)
@@ -142,7 +145,7 @@ public sealed class RlPortfolioService : IRlPortfolioService
         bool captured = request.PanelId is null;
         string panelDirectory = request.PanelId is { } stored ? store.ExistingPanelDirectory(stored)
             : (await RlPanelSnapshotFactory.PrepareAsync(request.Symbols, request.Start, request.EndExclusive,
-                store.PanelDirectory(Guid.NewGuid()), _limits, settings, request.SymbolHoldout, request.Mode, plan, cancellationToken).ConfigureAwait(false)).Directory;
+                store.PanelDirectory(Guid.NewGuid()), _limits, settings, request.SymbolHoldout, request.Mode, plan, cancellationToken, _sourceFolders).ConfigureAwait(false)).Directory;
         var runner = new RlPortfolioTrainingRunner(_gate, _dataRoot);
         try
         {

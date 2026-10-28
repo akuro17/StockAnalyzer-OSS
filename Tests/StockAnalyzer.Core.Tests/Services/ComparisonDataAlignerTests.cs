@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Moq;
 using StockAnalyzer.Core.Models;
+using StockAnalyzer.Core.Models.Watchlist;
 using StockAnalyzer.Core.Services;
 using System;
 using System.Collections.Generic;
@@ -179,6 +180,7 @@ public class ComparisonDataAlignerTests
             .ReturnsAsync(primaryData);
 
         var symbols = new[] { "S1", "S2", "S3", "S4", "S5", "S6" };
+        _aligner.MaxComparisonSymbols = 5;
 
         // Act
         var result = await _aligner.AlignAsync("AAPL", symbols, TimeFrame.D1, 1);
@@ -186,6 +188,26 @@ public class ComparisonDataAlignerTests
         // Assert
         Assert.Equal(6, result.Series.Count); // 5 Comparisons + 1 Primary
         Assert.DoesNotContain(result.Series.Keys, s => s == "S6");
+    }
+
+    [Fact]
+    public async Task AlignAsync_StandardLimit_IsWhatTheSettingsDialogAllows()
+    {
+        // Arrange
+        var primaryData = new List<CandleData> { new(new DateTime(2024, 1, 1), 1, 1, 1, 1, 1) };
+        _dataServiceMock.Setup(d => d.LoadCandlesAsync(It.IsAny<string>(), It.IsAny<TimeFrame>(), It.IsAny<int>()))
+            .ReturnsAsync(primaryData);
+
+        int dialogLimit = WatchlistConstants.MaxRelativePerformanceTargets;
+        var symbols = Enumerable.Range(1, dialogLimit + 1).Select(i => $"S{i}").ToArray();
+
+        // Act
+        var result = await _aligner.AlignAsync("AAPL", symbols, TimeFrame.D1, 1);
+
+        // Assert
+        Assert.Equal(dialogLimit, _aligner.MaxComparisonSymbols);
+        Assert.Equal(dialogLimit + 1, result.Series.Count); // every registrable comparison symbol + the primary
+        Assert.DoesNotContain(result.Series.Keys, s => s == $"S{dialogLimit + 1}");
     }
 
     [Fact]

@@ -482,7 +482,7 @@
                         <MenuItem Header="{l:Localize Chart_ExportImage}" Command="{Binding ExportChartImageCommand}"/>
                     </ContextMenu>
                 </Border.ContextMenu>
-                <Grid RowDefinitions="*,Auto,Auto,Auto,Auto">
+                <Grid RowDefinitions="*,Auto,Auto,Auto,Auto,Auto">
                     <chart:RlQPanel Grid.Row="1" ViewModel="{Binding ChartViewModel}" IsVisible="{Binding ChartViewModel.HasRlPresentation}" BaseFontSize="{DynamicResource BaseFontSize}" HelperFontSize="{DynamicResource HelperFontSize}" TextBrush="{DynamicResource Brush.Foreground.Secondary}"/>
                     <TextBlock Grid.Row="2" Text="{Binding ChartViewModel.RlPresentation.ContinuousReadout, FallbackValue='', TargetNullValue=''}"
                                IsVisible="{Binding ChartViewModel.RlPresentation.HasContinuousReadout, FallbackValue=False}" TextWrapping="Wrap"
@@ -497,6 +497,10 @@
                         <ScrollViewer MaxHeight="{x:Static rlui:RlUiConstants.EvaluationMaximumHeight}"><TextBlock Text="{Binding ChartViewModel.RlPresentation.EvaluationReadout}" TextWrapping="Wrap"
                             AutomationProperties.AutomationId="{x:Static rlui:RlUiConstants.EvaluationReport}"/></ScrollViewer>
                     </Expander>
+                    <TextBlock Grid.Row="5" Text="{Binding ChartViewModel.RlPresentation.ScopeReadout, FallbackValue='', TargetNullValue=''}"
+                               IsVisible="{Binding ChartViewModel.RlPresentation.HasScopeReadout, FallbackValue=False}" TextWrapping="Wrap"
+                               FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Semantic.Warning}"
+                               AutomationProperties.AutomationId="{x:Static rlui:RlUiConstants.ScopeReadout}"/>
                     <chart:ChartBaseControl RlFontSize="{DynamicResource BaseFontSize}" RlTextBrush="{DynamicResource Brush.Foreground.Secondary}" Name="ChartControl"
                                             AutomationProperties.AutomationId="ChartCanvas"
                                             AutomationProperties.Name="Chart Area"

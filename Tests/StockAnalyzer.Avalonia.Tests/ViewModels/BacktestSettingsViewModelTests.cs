@@ -40,6 +40,14 @@ public class BacktestSettingsViewModelTests
     }
 
     [Fact]
+    public void AvailableFrames_OffersOnlyDailyWeeklyAndMonthly()
+    {
+        var vm = new BacktestSettingsViewModel();
+
+        Assert.Equal(new[] { TimeFrame.D1, TimeFrame.W1, TimeFrame.MN1 }, vm.AvailableFrames);
+    }
+
+    [Fact]
     public void SettingsViewModel_NavigatesToTheBacktestPage()
     {
         string path = NewTempPath();

@@ -1,8 +1,12 @@
 
 import importlib
 import logging
-import pandas as pd
 import os
+import re
+import pandas as pd
+
+_INDICATOR_NAME_REGEX = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
+_RESERVED_INDICATOR_MODULES = frozenset({"adapter", "__init__"})
 
 class IndicatorAdapter:
     """
@@ -24,8 +28,12 @@ class IndicatorAdapter:
         Returns:
             list: The calculated values.
         """
-        if not indicator_name:
-            raise ValueError("Indicator name is required")
+        if (
+            not isinstance(indicator_name, str)
+            or not _INDICATOR_NAME_REGEX.fullmatch(indicator_name)
+            or indicator_name in _RESERVED_INDICATOR_MODULES
+        ):
+            raise ValueError(f"Invalid or unsafe indicator name: {indicator_name!r}")
 
         # 1. Dynamic Import
         try:

@@ -146,7 +146,7 @@ public sealed class CalculateIndicatorsToolTests : IDisposable
         using var response = await CallAsync(await StartAsync(), Args("""[{"id":"r","type":"rsi","parameters":{"period":5}}]"""));
 
         JsonElement result = Result(response, "r");
-        Assert.Equal(direct[rsi.Id].MainValues.TakeLast(50).ToArray(), Values(result.GetProperty("series").GetProperty("RSI")));
+        Assert.Equal(direct[rsi.Id].MainValues.TakeLast(200).ToArray(), Values(result.GetProperty("series").GetProperty("RSI")));
         Assert.Equal("Relative Strength Index (5)", result.GetProperty("displayName").GetString());
         Assert.Equal(5, result.GetProperty("leadingNullCount").GetProperty("RSI").GetInt32());
     }
@@ -162,22 +162,22 @@ public sealed class CalculateIndicatorsToolTests : IDisposable
 
         Assert.Equal("Open", Result(response, "s").GetProperty("priceSource").GetString());
         Assert.Equal("Close", Result(response, "c").GetProperty("priceSource").GetString());
-        Assert.Equal(direct[sma.Id].MainValues.TakeLast(50).ToArray(), Values(Result(response, "s").GetProperty("series").GetProperty("SMA")));
+        Assert.Equal(direct[sma.Id].MainValues.TakeLast(200).ToArray(), Values(Result(response, "s").GetProperty("series").GetProperty("SMA")));
         Assert.NotEqual(Values(Result(response, "c").GetProperty("series").GetProperty("SMA")), Values(Result(response, "s").GetProperty("series").GetProperty("SMA")));
     }
 
     // ---- window and tail ------------------------------------------------------------------------------------------
 
     [Fact]
-    public async Task TheTailDefaultsToFiftyAndIsCappedByTheBars()
+    public async Task TheTailDefaultsToTwoHundredAndIsCappedByTheBars()
     {
         var dispatcher = await StartAsync();
 
         using var byDefault = await CallAsync(dispatcher, Args("""[{"id":"r","type":"RSI"}]"""));
         using var more = await CallAsync(dispatcher, Args("""[{"id":"r","type":"RSI"}]""", extra: ""","outputTailCount":500"""));
 
-        Assert.Equal(50, McpTestSupport.Structured(byDefault).GetProperty("returnedBarCount").GetInt32());
-        Assert.Equal(50, Values(Result(byDefault, "r").GetProperty("series").GetProperty("RSI")).Length);
+        Assert.Equal(200, McpTestSupport.Structured(byDefault).GetProperty("returnedBarCount").GetInt32());
+        Assert.Equal(200, Values(Result(byDefault, "r").GetProperty("series").GetProperty("RSI")).Length);
         Assert.Equal(StoredDays, McpTestSupport.Structured(more).GetProperty("returnedBarCount").GetInt32()); // fewer bars than the tail asked for
         Assert.Equal(StoredDays, McpTestSupport.Structured(more).GetProperty("timestamps").GetArrayLength());
     }
@@ -238,7 +238,7 @@ public sealed class CalculateIndicatorsToolTests : IDisposable
         decimal?[] senkouA = direct.Values.Single().GetSeries("SenkouSpanA").ToArray();
         Assert.True(senkouA.Length > candles.Count);
         Assert.Equal(senkouA.Skip(candles.Count).ToArray(), Values(ichimoku.GetProperty("projectedValues").GetProperty("SenkouSpanA")));
-        Assert.Equal(senkouA.Skip(candles.Count - 50).Take(50).ToArray(), Values(ichimoku.GetProperty("series").GetProperty("SenkouSpanA")));
+        Assert.Equal(senkouA.Skip(candles.Count - 200).Take(200).ToArray(), Values(ichimoku.GetProperty("series").GetProperty("SenkouSpanA")));
         Assert.False(ichimoku.GetProperty("projectedValues").TryGetProperty("TenkanSen", out _));
     }
 
@@ -265,7 +265,7 @@ public sealed class CalculateIndicatorsToolTests : IDisposable
         using var response = await CallAsync(await StartAsync(),
             Args("""[{"id":"smaOfRsi","type":"SMA","parameters":{"Period":5},"sourceIndicatorId":"rsi"},{"id":"rsi","type":"RSI"}]"""));
 
-        Assert.Equal(direct[sma.Id].MainValues.TakeLast(50).ToArray(), Values(Result(response, "smaOfRsi").GetProperty("series").GetProperty("SMA")));
+        Assert.Equal(direct[sma.Id].MainValues.TakeLast(200).ToArray(), Values(Result(response, "smaOfRsi").GetProperty("series").GetProperty("SMA")));
         Assert.True(Values(Result(response, "smaOfRsi").GetProperty("series").GetProperty("SMA")).All(v => v is null or < 100m)); // RSI scale, not price scale
     }
 
@@ -280,7 +280,7 @@ public sealed class CalculateIndicatorsToolTests : IDisposable
         using var response = await CallAsync(await StartAsync(),
             Args("""[{"id":"m","type":"MACD"},{"id":"s","type":"SMA","sourceIndicatorId":"m","sourceOutputSeriesName":"signal"}]"""));
 
-        Assert.Equal(direct[sma.Id].MainValues.TakeLast(50).ToArray(), Values(Result(response, "s").GetProperty("series").GetProperty("SMA")));
+        Assert.Equal(direct[sma.Id].MainValues.TakeLast(200).ToArray(), Values(Result(response, "s").GetProperty("series").GetProperty("SMA")));
     }
 
     public static TheoryData<string, string, string> BadChains => new()
@@ -391,7 +391,7 @@ public sealed class CalculateIndicatorsToolTests : IDisposable
         { """{"symbol":"MSFT","timeFrame":"D1","indicators":[{"id":"a","type":"RSI"},{"id":"a","type":"SMA"}]}""", ToolErrorCodes.InvalidArgument, "indicators[1].id" },
         { """{"symbol":"MSFT","timeFrame":"D1","indicators":[{"id":"a","type":"RSI"}],"outputTailCount":0}""", ToolErrorCodes.InvalidArgument, "outputTailCount" },
         { """{"symbol":"MSFT","timeFrame":"D1","indicators":[{"id":"a","type":"RSI"}],"lookbackBars":10001}""", ToolErrorCodes.LimitExceeded, "lookbackBars" },
-        { """{"symbol":"MSFT","timeFrame":"D1","indicators":[{"id":"a","type":"RSI"}],"outputTailCount":501}""", ToolErrorCodes.LimitExceeded, "outputTailCount" },
+        { """{"symbol":"MSFT","timeFrame":"D1","indicators":[{"id":"a","type":"RSI"}],"outputTailCount":5001}""", ToolErrorCodes.LimitExceeded, "outputTailCount" },
         { """{"symbol":"MSFT","timeFrame":"H1","indicators":[{"id":"a","type":"RSI"}]}""", ToolErrorCodes.UnsupportedTimeFrame, "timeFrame" },
         { """{"symbol":"NOPE","timeFrame":"D1","indicators":[{"id":"a","type":"RSI"}]}""", ToolErrorCodes.SymbolNotFound, "symbol" },
         { """{"symbol":"..\\x","timeFrame":"D1","indicators":[{"id":"a","type":"RSI"}]}""", ToolErrorCodes.InvalidArgument, "symbol" },
@@ -452,6 +452,39 @@ public sealed class CalculateIndicatorsToolTests : IDisposable
         Assert.True(result.GetProperty("isSuccessful").GetBoolean(), result.GetRawText());
         Assert.Contains("AAPL", result.GetProperty("displayName").GetString());
         Assert.Contains(Values(result.GetProperty("series").EnumerateObject().First().Value), v => v is not null);
+    }
+
+    [Fact]
+    public async Task PairRatioIsTheChartSymbolsCloseOverTheComparisonSymbolsCloseOfTheSameDate()
+    {
+        var (primary, _) = await DirectAsync("MSFT", TimeFrame.D1);
+        var (comparison, _) = await DirectAsync("AAPL", TimeFrame.D1);
+        Dictionary<DateTime, decimal> comparisonClose = comparison.ToDictionary(c => c.Timestamp.Date, c => c.Close);
+
+        using var response = await CallAsync(await StartAsync(),
+            Args("""[{"id":"p","type":"PairRatio","parameters":{"ComparisonSymbol":"aapl"}}]""", extra: ""","outputTailCount":20"""));
+
+        Assert.False(McpTestSupport.IsError(response));
+        JsonElement result = Result(response, "p");
+        Assert.True(result.GetProperty("isSuccessful").GetBoolean(), result.GetRawText());
+        Assert.Contains("AAPL", result.GetProperty("displayName").GetString());
+        decimal?[] returned = Values(result.GetProperty("series").EnumerateObject().First().Value);
+        CoreCandleData[] tail = primary.TakeLast(20).ToArray();
+
+        Assert.Equal(tail.Length, returned.Length);
+        Assert.Contains(returned, value => value is not null);
+        int matchedBars = 0;
+        for (int i = 0; i < tail.Length; i++)
+        {
+            // A bar whose date B does not have is carried forward upstream, so it has no same-date close to compare with.
+            if (returned[i] is { } value && comparisonClose.TryGetValue(tail[i].Timestamp.Date, out decimal comparisonValue))
+            {
+                Assert.Equal(tail[i].Close / comparisonValue, value);
+                matchedBars++;
+            }
+        }
+
+        Assert.True(matchedBars > 0, "no bar had both a returned value and a same-date comparison close");
     }
 
     [Fact]

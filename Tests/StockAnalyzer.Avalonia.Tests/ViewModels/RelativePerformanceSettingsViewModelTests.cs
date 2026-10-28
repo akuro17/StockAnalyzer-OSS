@@ -12,6 +12,18 @@ namespace StockAnalyzer.Avalonia.Tests.ViewModels;
 public class RelativePerformanceSettingsViewModelTests
 {
     [Fact]
+    public void ZScorePeriodMaximum_IsTheSharedDefinition()
+    {
+        var vm = new RelativePerformanceSettingsViewModel(
+            new MockChartSettingsManager(),
+            marketDataProvider: null!,
+            dispatcherService: null!,
+            logger: NullLogger<RelativePerformanceSettingsViewModel>.Instance);
+
+        Assert.Equal(StockAnalyzer.Core.Models.ComparisonSeriesDefaults.MaxZScorePeriod, vm.ZScorePeriodMaximum);
+    }
+
+    [Fact]
     public void SavePresetCommand_SavesCurrentSymbolListAsPreset()
     {
         // Arrange

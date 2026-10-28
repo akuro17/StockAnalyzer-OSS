@@ -489,6 +489,10 @@ public static class IndicatorDefaultConstants
     public static readonly IndicatorColor CointegrationSpreadHedgeRatioColor = new(255, 171, 71, 188); // Purple #AB47BC
     public static readonly IndicatorColor CointegrationSpreadAdfColor = new(255, 30, 144, 255);    // DodgerBlue #1E90FF
 
+    // === Pair Ratio / Pair Spread ===
+    public static readonly IndicatorColor PairRatioColor = new(255, 0, 188, 212);   // Cyan #00BCD4
+    public static readonly IndicatorColor PairSpreadColor = new(255, 255, 112, 67); // Deep Orange #FF7043
+
     // === Classic Pivot Points ===
     public static readonly IndicatorColor ClassicPivotPointsPivotColor = new(255, 255, 214, 0); // Gold / Yellow #FFD600
     public static readonly IndicatorColor ClassicPivotPointsR1Color = new(255, 239, 83, 80);     // Red 400 #EF5350

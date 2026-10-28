@@ -574,7 +574,6 @@
                                     <Button Content="{l:Localize Library_Nav_Price}"
                                             Command="{Binding SelectPriceCommand}"
                                             Classes="navCategory"
-                                            FontWeight="SemiBold"
                                             AutomationProperties.AutomationId="Library_Nav_Price"/>
 
                                     <!-- Category List -->

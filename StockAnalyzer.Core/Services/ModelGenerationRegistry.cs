@@ -321,8 +321,9 @@ public sealed partial class ModelGenerationRegistry : IModelGenerationRegistry, 
                 throw new InvalidDataException("ONNX metadata and evaluation contract disagree.");
             if (!ShapeValid(session, windowSize, target, classOrder))
                 throw new InvalidDataException("ONNX tensor shape disagrees with the evaluation contract.");
-            if (!FeatureContractValid(session))
-                throw new InvalidDataException("ONNX feature contract cannot be executed by prediction.");
+            if (!FeatureContractValid(session, out var contractRefusal))
+                throw new InvalidDataException("ONNX feature contract cannot be executed by prediction."
+                    + (contractRefusal is null ? "" : " " + contractRefusal));
             var scalerRef = metadata.GetValueOrDefault(PredictionModelMetadata.ScalerReferenceKey) ?? "";
             var sidecars = new List<ModelSidecar>();
             if (PredictionModelMetadata.RequiresFixedScaler(metadata))
@@ -716,7 +717,7 @@ public sealed partial class ModelGenerationRegistry : IModelGenerationRegistry, 
                 || (m.TargetType == PredictionModelMetadata.TargetTypeClassification
                     && metadata[PredictionModelMetadata.ClassOrderKey] != m.ClassOrder)) return false;
             if (!ShapeValid(session, windowSize, m.TargetType, m.ClassOrder)) return false;
-            if (!FeatureContractValid(session)) return false;
+            if (!FeatureContractValid(session, out _)) return false;
             bool requiresScaler = PredictionModelMetadata.RequiresFixedScaler(metadata);
             if ((requiresScaler && (scalerRef != m.ModelFile + ".scaler.json"
                 || !m.RequiredSidecars.Any(s => s.Kind == "scaler" && s.File == scalerRef)))
@@ -879,8 +880,13 @@ public sealed partial class ModelGenerationRegistry : IModelGenerationRegistry, 
         catch (InvalidOperationException) { return false; }
     }
 
-    private static bool FeatureContractValid(InferenceSession session)
+    /// <summary>
+    /// <paramref name="refusal"/> carries the reason only when the feature spec itself is refused (for example an indicator channel the eligibility
+    /// rule refuses); every other failure keeps it null, as before.
+    /// </summary>
+    private static bool FeatureContractValid(InferenceSession session, out string? refusal)
     {
+        refusal = null;
         var metadata = session.ModelMetadata.CustomMetadataMap;
         var mode = PredictionModelMetadata.ParseFeatureMode(
             metadata.GetValueOrDefault(PredictionModelMetadata.FeatureModeKey));
@@ -901,6 +907,7 @@ public sealed partial class ModelGenerationRegistry : IModelGenerationRegistry, 
             }
             catch (Exception ex) when (ex is JsonException or InvalidOperationException or ArgumentException)
             {
+                refusal = ex.Message;
                 return false;
             }
             if (fixedScaler && spec!.Channels.Any(channel => channel.Normalization != ChannelNormalization.None))

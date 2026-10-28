@@ -301,7 +301,11 @@ public enum IndicatorType
     [Description("Rolling R-Squared")] RollingRSquared,
 
     // Statistics / Econometric
-    [Description("Cointegration Spread")] CointegrationSpread
+    [Description("Cointegration Spread")] CointegrationSpread,
+
+    // Pair Ratio (A / B) and Pair Spread (A - B) of the chart symbol and a comparison symbol
+    [Description("Pair Ratio")] PairRatio,
+    [Description("Pair Spread")] PairSpread
 }
 
 public static class IndicatorTypeExtensions

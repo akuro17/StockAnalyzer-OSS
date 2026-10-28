@@ -170,7 +170,6 @@ public sealed class EphemeralPredictionModelTests
 
     [Theory]
     [InlineData("trend_predictor_jointmeta.onnx")]            // another feature mode
-    [InlineData("trend_predictor_fixed_scaler.onnx")]         // needs a fixed scaler
     [InlineData("trend_predictor_badmeta.onnx")]              // a contract that does not hold together
     [InlineData("trend_predictor_double_input.onnx")]         // not the graph shape of the trainer
     [InlineData("trend_predictor_duplicate_classes.onnx")]    // an invalid class order
@@ -179,6 +178,18 @@ public sealed class EphemeralPredictionModelTests
         using ArtifactLease lease = Lease(Fixture(fixture));
 
         Assert.Throws<EphemeralModelContractException>(() => EphemeralPredictionModel.Open(lease, new MLDataProcessor()));
+    }
+
+    [Fact]
+    public void Open_AFixedScalerModelIsAcceptedByTheMcpPolicy_AndRefusedWhenThePolicyDoesNotAllowIt()
+    {
+        using ArtifactLease lease = Lease(Fixture("trend_predictor_fixed_scaler.onnx"));
+
+        Assert.True(EphemeralExecutionPolicy.McpFixed.AllowFixedScaler);
+        using (EphemeralPredictionModel.Open(lease, new MLDataProcessor())) { }
+
+        var withoutScaler = EphemeralExecutionPolicy.McpFixed with { AllowFixedScaler = false };
+        Assert.Throws<EphemeralModelContractException>(() => EphemeralPredictionModel.Open(lease, new MLDataProcessor(), withoutScaler));
     }
 
     [Fact]

@@ -65,7 +65,7 @@ public sealed class DuckDbHeatmapReturnProvider : IHeatmapReturnProvider
         for (int i = 0; i < tickers.Count; i++)
         {
             string symbol = tickers[i];
-            if (string.IsNullOrWhiteSpace(symbol)) continue;
+            if (string.IsNullOrWhiteSpace(symbol) || !TickerSymbol.IsWellFormed(symbol)) continue;
             if (existingDailyFiles.ContainsKey(symbol)) continue;
 
             string path = Path.Combine(_baseDataPath, $"{symbol}.parquet").Replace("\\", "/");

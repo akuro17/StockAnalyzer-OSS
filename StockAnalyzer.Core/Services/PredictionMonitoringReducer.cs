@@ -46,8 +46,9 @@ internal static class PredictionMonitoringReducer
         var feature = FixedScaler.ComputeContractHash(metadata);
 
         var result = new ModelMonitoringMetadata(contract, threshold, feature);
+        // Two callers can read the same model at once; the cache keeps the first value, so return that one and every caller sees one instance.
         s_metadataCache.TryAdd(modelId, result);
-        return result;
+        return s_metadataCache.TryGet(modelId, out var canonical) ? canonical : result;
     }
     /// <summary>
     /// True for the three class labels that a monitored forecast and an observed outcome can carry (the labels <see cref="PredictionLogService.ActualLabel"/>

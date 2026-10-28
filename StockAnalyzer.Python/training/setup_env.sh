@@ -76,10 +76,11 @@ if [ "$SKIP_VERIFY" -eq 1 ]; then
 else
     step "Verification"
     run "$VENV_PY" -m pip check
-    run "$VENV_PY" -c "import torch, onnx, onnxruntime, tensorflow, tf2onnx, lightgbm, sklearn, skl2onnx, onnxmltools; \
+    run "$VENV_PY" -c "import torch, onnx, onnxruntime, tensorflow, tf2onnx, lightgbm, sklearn, skl2onnx, onnxmltools, gymnasium, stable_baselines3; \
 print('torch', torch.__version__); print('onnx', onnx.__version__); \
 print('onnxruntime', onnxruntime.__version__); print('tensorflow', tensorflow.__version__); \
-print('lightgbm', lightgbm.__version__)"
+print('lightgbm', lightgbm.__version__); print('gymnasium', gymnasium.__version__); \
+print('stable_baselines3', stable_baselines3.__version__)"
     ( cd "$SCRIPT_DIR" && run "$VENV_PY" dataset.py --selfcheck )
 fi
 

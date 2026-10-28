@@ -59,7 +59,7 @@ public sealed record GlobalChartSettings
     public List<RelativePerformancePreset> RelativePerformancePresets { get; init; } = new();
     public bool ShowFloatingTooltip { get; init; } = false;
     public ComparisonMode RelativePerformanceMode { get; init; } = ComparisonMode.Performance;
-    public int ComparisonZScorePeriod { get; init; } = 20;
+    public int ComparisonZScorePeriod { get; init; } = ComparisonSeriesDefaults.DefaultZScorePeriod;
     public bool ShowTickerInsteadOfValue { get; init; } = false;
     
     // --- Layout & Visuals ---

@@ -127,7 +127,8 @@ internal sealed class CheckPortfolioRlPreflightTool : IMcpTool
         }
 
         PanelPreflight preflight = await _portfolioService.PreflightAsync(resolvedSymbols, start.Value, endExclusive, holdout, mode, cancellationToken).ConfigureAwait(false);
-        var settings = new RlPortfolioSettings { MaxWeightPercent = maxWeightPercent };
+        // The configured "RlPortfolio" settings (symbol maximum, holdout share) gate the start exactly as in the GUI; only the weight cap is this call's own.
+        RlPortfolioSettings settings = _portfolioService.Settings.WithRunOverrides(null, maxWeightPercent);
         var decision = RlPanelStartGate.Decide(preflight, excludeUnavailable: true, holdout, settings);
 
         return ToolJson.Build(writer =>

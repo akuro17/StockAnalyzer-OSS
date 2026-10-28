@@ -129,11 +129,18 @@ public class CoreSSAResidualBandIndicatorTests
             Assert.True(bw[i] >= 0m, $"BandWidth ({bw[i]}) should be >= 0 at bar {i}");
         }
 
-        // Overlay series dictionary must contain only price-native series (no percentage BandWidth)
+        // The result serves every series (screener resolves BandWidth), but the price-panel chart draws only price-native ones.
         Assert.True(result.HasSeries(IndicatorResult.MainSeriesName));
         Assert.True(result.HasSeries(CoreSSAResidualBandIndicator.UpperSeriesName));
         Assert.True(result.HasSeries(CoreSSAResidualBandIndicator.LowerSeriesName));
-        Assert.False(result.HasSeries(CoreSSAResidualBandIndicator.BandWidthSeriesName));
+        Assert.True(result.HasSeries(CoreSSAResidualBandIndicator.BandWidthSeriesName));
+
+        var drawn = result.SeriesNames.Where(name => !IndicatorChartSuppression.IsSuppressed(IndicatorType.SSAResidualBand, name)).OrderBy(name => name, StringComparer.Ordinal).ToArray();
+        Assert.Equal(new[] { CoreSSAResidualBandIndicator.LowerSeriesName, IndicatorResult.MainSeriesName, CoreSSAResidualBandIndicator.UpperSeriesName }, drawn);
+
+        // The DataWindow keeps the three distinct series and the BandWidth percentage, without the repeated aliases.
+        var inspected = result.SeriesNames.Where(name => !IndicatorChartSuppression.IsDataWindowSuppressed(IndicatorType.SSAResidualBand, name)).OrderBy(name => name, StringComparer.Ordinal).ToArray();
+        Assert.Equal(new[] { CoreSSAResidualBandIndicator.BandWidthSeriesName, CoreSSAResidualBandIndicator.LowerSeriesName, IndicatorResult.MainSeriesName, CoreSSAResidualBandIndicator.UpperSeriesName }, inspected);
     }
 
     [Fact]

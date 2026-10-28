@@ -47,6 +47,24 @@ namespace StockAnalyzer.Core.Tests.Services
         }
 
         [Fact]
+        public void GetPipSha256_Is64HexCharacters()
+        {
+            Assert.NotNull(PythonEmbeddedDistribution.GetPipSha256);
+            Assert.Equal(64, PythonEmbeddedDistribution.GetPipSha256.Length);
+            Assert.StartsWith("https://", PythonEmbeddedDistribution.GetPipUrl, StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Fact]
+        public void VerifySha256_GetPip_DifferentContent_Throws()
+        {
+            var path = Path.Combine(_root, "get-pip.py");
+            File.WriteAllText(path, "tampered get-pip script");
+
+            Assert.Throws<InvalidDataException>(() =>
+                PythonEmbeddedInstaller.VerifySha256(path, PythonEmbeddedDistribution.GetPipSha256));
+        }
+
+        [Fact]
         public void VerifySha256_MatchingHash_DoesNotThrow()
         {
             var path = Path.Combine(_root, "archive.zip");

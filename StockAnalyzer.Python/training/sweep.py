@@ -30,6 +30,7 @@ from typing import Dict, List, Sequence
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import dataset as ds  # noqa: E402  (sibling module; also the FEATURE_MODES SSoT)
+from trainer_flags import SWEEP_RESERVED_TRAINER_FLAGS, validate_extra_flags  # noqa: E402
 
 _TRAINING_DIR: Path = Path(__file__).resolve().parent
 TRAINERS: Dict[str, str] = {
@@ -52,6 +53,10 @@ _METRIC_COLUMNS: Sequence[str] = (
     "auc_ovr",
     "brier",
 )
+
+# Defined authoritatively in trainer_flags.py SSoT.
+_RESERVED_TRAINER_FLAGS = SWEEP_RESERVED_TRAINER_FLAGS
+_validate_extra_flags = validate_extra_flags
 
 
 def _parse_int_list(text: str) -> List[int]:
@@ -83,7 +88,7 @@ def build_command(
         if args.epochs is not None:
             cmd += ["--epochs", str(args.epochs)]
     if args.extra:
-        cmd += shlex.split(args.extra)
+        cmd += _validate_extra_flags(args.extra)
     return cmd
 
 
@@ -187,6 +192,13 @@ def _run_selfcheck() -> None:
     ])
     cmd_pt = build_command(ns_pt, "zscore", 10, Path("y.onnx"))
     assert "--arch" in cmd_pt and "cnn" in cmd_pt and "--epochs" in cmd_pt, cmd_pt
+
+    ns_bad = _parse_args(["--extra", "--out /tmp/bad"])
+    try:
+        build_command(ns_bad, "zscore", 10, Path("y.onnx"))
+        assert False, "Passing --out via --extra must raise ValueError"
+    except ValueError:
+        pass
 
     print("sweep.py selfcheck: OK")
 

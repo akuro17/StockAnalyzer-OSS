@@ -3,6 +3,7 @@ import sys
 import subprocess
 import logging
 import argparse
+from symbol_validator import is_well_formed_ticker
 
 # Setup Logging
 logging.basicConfig(
@@ -77,6 +78,12 @@ def main():
     parser.add_argument("--full-history", action="store_true", help="Download max period if no existing data.")
     parser.add_argument("--force-period", action="store_true", help="Force download anew within lookback period range without incremental sync.")
     args = parser.parse_args()
+
+    if args.ticker:
+        for t in args.ticker.split(","):
+            if not is_well_formed_ticker(t):
+                logging.error(f"Invalid ticker in --ticker: {t!r}")
+                sys.exit(1)
 
     print("PROGRESS:0")
     sys.stdout.flush()

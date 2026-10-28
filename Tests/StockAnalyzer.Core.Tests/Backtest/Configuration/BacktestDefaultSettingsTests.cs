@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Text.Json;
 using System.Threading.Tasks;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Backtest.Configuration;
@@ -415,6 +416,66 @@ public class BacktestDefaultSettingsTests
             AnnualPeriodsByFrame = valid.AnnualPeriodsByFrame,
             BootstrapIterations = valid.BootstrapIterations,
         }));
+    }
+
+    // A defined TimeFrame the data layer cannot serve: the Settings page could save these before its list was limited to D1/W1/MN1.
+    public static TheoryData<TimeFrame> UnsupportedDefinedFrames() => new()
+    {
+        TimeFrame.M1, TimeFrame.M5, TimeFrame.M15, TimeFrame.M30, TimeFrame.H1, TimeFrame.H4,
+    };
+
+    /// <summary>The Custom() settings with only the default time frame replaced (round trip through JSON, which does not validate).</summary>
+    private static BacktestDefaultSettings CustomWithFrame(TimeFrame frame)
+    {
+        string json = JsonSerializer.Serialize(Custom()).Replace(
+            $"\"DefaultTimeFrame\":{(int)TimeFrame.W1}", $"\"DefaultTimeFrame\":{(int)frame}", StringComparison.Ordinal);
+        return JsonSerializer.Deserialize<BacktestDefaultSettings>(json)!;
+    }
+
+    [Theory]
+    [MemberData(nameof(UnsupportedDefinedFrames))]
+    public void SnapshotValidated_RejectsADefaultTimeFrameTheDataLayerCannotServe(TimeFrame frame)
+    {
+        Assert.Equal(frame, CustomWithFrame(frame).DefaultTimeFrame);
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => BacktestDefaultSettings.SnapshotValidated(CustomWithFrame(frame)));
+    }
+
+    [Theory]
+    [MemberData(nameof(UnsupportedDefinedFrames))]
+    public void FindErrors_ReportsADefaultTimeFrameTheDataLayerCannotServe(TimeFrame frame)
+    {
+        var errors = BacktestDefaultSettings.FindErrors(CustomWithFrame(frame));
+
+        Assert.Contains(nameof(BacktestDefaultSettings.DefaultTimeFrame), errors.Keys);
+    }
+
+    [Theory]
+    [MemberData(nameof(UnsupportedDefinedFrames))]
+    public void ResolveTargetDataAndPeriod_FallsBackToDailyForADefaultTimeFrameTheDataLayerCannotServe(TimeFrame frame)
+    {
+        var (_, _, resolved) = CustomWithFrame(frame).ResolveTargetDataAndPeriod();
+
+        Assert.Equal(TimeFrame.D1, resolved);
+    }
+
+    [Fact]
+    public async Task Manager_FileWithAnUnsupportedDefaultTimeFrame_FallsBackToBuiltInInsteadOfLoadingIt()
+    {
+        string path = NewTempPath();
+        try
+        {
+            await File.WriteAllTextAsync(path, JsonSerializer.Serialize(CustomWithFrame(TimeFrame.H1)));
+
+            BacktestDefaultSettingsLoadResult result = await new BacktestDefaultSettingsManager(path).LoadAsync();
+
+            Assert.Equal(BacktestDefaultSettingsLoadStatus.BuiltInFallback, result.Status);
+            Assert.Equal(TimeFrame.D1, result.Settings.DefaultTimeFrame);
+        }
+        finally
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
     }
 
     [Fact]

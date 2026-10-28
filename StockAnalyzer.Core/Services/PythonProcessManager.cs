@@ -146,8 +146,8 @@ namespace StockAnalyzer.Core.Services
                     // Ensure Python is set up
                     await PythonEmbeddedInstaller.SetupAsync(ct: cancellationToken);
 
-                    // Locate python.exe (the pinned folder only, see PythonEmbeddedInstaller)
-                    var pythonExeName = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows) ? "python.exe" : "python";
+                    // Locate python executable (the pinned folder only, see PythonEmbeddedInstaller / PythonInterpreterLocator)
+                    var pythonExeName = PythonInterpreterLocator.ExecutableName;
                     pythonExe = PythonEmbeddedInstaller.ExecutablePath(pythonExeName);
 
                     if (!File.Exists(pythonExe))

@@ -10,6 +10,7 @@ using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Indicators;
 using StockAnalyzer.Core.Models.Templates;
 using StockAnalyzer.Core.Models.Training;
+using StockAnalyzer.Core.Services.Backtest.Engine;
 using Xunit;
 
 namespace StockAnalyzer.Avalonia.Tests.ViewModels.Dialogs;
@@ -55,6 +56,33 @@ public class FakeFeatureTemplateService : ITemplateService
 public class FeatureChannelPickerViewModelTests
 {
     private static FeatureChannelPickerViewModel NewPicker() => new(IndicatorFactory.Default);
+
+    [Fact]
+    public void Catalog_OffersExactlyTheRegisteredTypesTheTrainingExportAccepts()
+    {
+        var offered = NewPicker().AllCatalogItems.Select(i => i.Type).ToHashSet();
+        var expected = IndicatorFactory.Default.GetRegisteredTypes()
+            .Where(type => BacktestIndicatorEligibility.Check(type, null) == BacktestIndicatorViolationReason.None)
+            .ToHashSet();
+
+        Assert.Equal(expected, offered);
+        Assert.Contains(IndicatorType.SMA, offered);
+        Assert.Contains(IndicatorType.RSI, offered);
+    }
+
+    [Theory]
+    [InlineData(IndicatorType.PairRatio)]      // two-symbol: the Daily export has no comparison candles
+    [InlineData(IndicatorType.PairSpread)]
+    [InlineData(IndicatorType.Ratiocator)]
+    [InlineData(IndicatorType.ZigZag)]         // non-causal
+    [InlineData(IndicatorType.VolumeProfile)]  // non-causal
+    public void Catalog_DoesNotOfferAnIndicatorTheTrainingExportRefuses(IndicatorType refused)
+    {
+        var vm = NewPicker();
+
+        Assert.DoesNotContain(vm.AllCatalogItems, i => i.Type == refused);
+        Assert.DoesNotContain(vm.FilteredCatalogItems, i => i.Type == refused);
+    }
 
     [Fact]
     public void Catalog_IsPopulatedAndFiltersBySearch()

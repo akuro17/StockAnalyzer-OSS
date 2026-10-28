@@ -2596,13 +2596,40 @@ public sealed class PortfolioRlDialogViewModelTests : IDisposable
         Assert.NotEmpty(vm.PortfolioAllocationSummary);
 
         var first = vm.PortfolioWeights[0];
-        Assert.Equal("Anchor (Base)", first.CorrelationLabel);
         Assert.True(first.TargetWeightPercent > 0);
 
         // When changing MaxWeightPercentText
         vm.MaxWeightPercentText = "10";
         Assert.All(vm.PortfolioWeights, w => Assert.True(w.TargetWeightPercent <= 10.0));
         Assert.Contains("10%", vm.PortfolioAllocationSummary);
+
+        var capped = RlPortfolioWeights.EqualWeights(Enumerable.Repeat(true, vm.PortfolioWeights.Count).ToArray(), 10);
+        Assert.Equal(capped.Assets.Select(a => (double)(a * 100m)), vm.PortfolioWeights.Select(w => w.TargetWeightPercent));
+    }
+
+    [Fact]
+    public async Task PortfolioWeightsTable_EqualsTheCoreEqualWeightBaselineWithoutInventedColumns()
+    {
+        const int readyCount = 3;
+        const int uncappedPercent = 100;
+        var (vm, _, _, store) = Create(preflight: (s, e) => Pre(true, s, e, Ready(readyCount)));
+        await Loaded(vm, store);
+        vm.MaxWeightPercentText = uncappedPercent.ToString(CultureInfo.InvariantCulture);
+
+        var expected = RlPortfolioWeights.EqualWeights(Enumerable.Repeat(true, readyCount).ToArray(), uncappedPercent);
+        Assert.Equal(readyCount, vm.PortfolioWeights.Count);
+        for (int i = 0; i < readyCount; i++)
+        {
+            Assert.Equal((double)(expected.Assets[i] * 100m), vm.PortfolioWeights[i].TargetWeightPercent);
+            Assert.Equal("33.3%", vm.PortfolioWeights[i].WeightDisplay);
+        }
+        decimal totalPercent = expected.Assets.Sum() * 100m;      // the quantization residual stays in cash
+        Assert.Contains(totalPercent.ToString("0.0", CultureInfo.CurrentCulture) + "%", vm.PortfolioAllocationSummary);
+
+        Assert.DoesNotContain(typeof(PortfolioWeightVisualRow).GetProperties(), p => p.Name.Contains("Correlation"));
+        string xaml = File.ReadAllText(Path.Combine(JsonLocalization.Root(), "Views", "PortfolioRlWindow.axaml"));
+        Assert.DoesNotContain("CorrelationLabel", xaml);
+        Assert.Contains("Prl.Allocation.BaselineNote", xaml);
     }
 
     // ----- locale parity -----

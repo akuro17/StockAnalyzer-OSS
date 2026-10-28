@@ -106,6 +106,7 @@ public sealed class McpToolSweepTests : IDisposable
         ("sa_run_backtest", """{"symbol":"MSFT","conditions":{"entryLong":""" + Entry + ""","exitLong":""" + Exit + "}}"),
         ("sa_calculate_reverse_watch", """{"symbol":"MSFT","timeFrame":"D1"}"""),
         ("sa_calculate_chart_series", """{"symbol":"MSFT","timeFrame":"D1","chartType":"HeikinAshi"}"""),
+        ("sa_calculate_relative_performance", """{"symbol":"MSFT","timeFrame":"D1","comparisonSymbols":["7203.T"]}"""),
         ("sa_check_portfolio_rl_preflight", """{"symbols":["MSFT","7203.T"]}"""),
         ("sa_check_rl_playback_preflight", """{"modelId":"active","symbol":"MSFT"}"""),
     };
@@ -121,6 +122,8 @@ public sealed class McpToolSweepTests : IDisposable
         ("sa_run_backtest", """{"symbol":"@@","conditions":{"entryLong":""" + Entry + ""","exitLong":""" + Exit + "}}"),
         ("sa_calculate_reverse_watch", """{"symbol":"@@","timeFrame":"D1"}"""),
         ("sa_calculate_chart_series", """{"symbol":"@@","timeFrame":"D1","chartType":"HeikinAshi"}"""),
+        ("sa_calculate_relative_performance", """{"symbol":"@@","timeFrame":"D1"}"""),
+        ("sa_calculate_relative_performance", """{"symbol":"MSFT","timeFrame":"D1","comparisonSymbols":["@@"]}"""),
         ("sa_check_portfolio_rl_preflight", """{"symbols":["@@","MSFT"]}"""),
         ("sa_check_rl_playback_preflight", """{"modelId":"active","symbol":"@@"}"""),
     };

@@ -25,6 +25,8 @@ public sealed partial class ModelGenerationRegistry
     private string? _rlPointerError, _rlContinuousPointerError;
     private string RlRoot => Path.Combine(_root, RlFiles.RlFolder);
     private static string[] RlRequiredFiles => RequiredRlFiles(false);
+    /// <summary>The most files a registered RL generation has besides its manifest: the continuous policy with its temporal evidence needs every optional file.</summary>
+    internal static int MaxRlGenerationFileCount => RequiredRlFiles(continuous: true, temporal: true).Length;
     private static string[] RequiredRlFiles(bool continuous, bool temporal = false) => new[]
     {
         RlFiles.Model, RlFiles.Model + RlFiles.ScalerSuffix, RlFiles.Model + RlFiles.EvaluationSuffix,

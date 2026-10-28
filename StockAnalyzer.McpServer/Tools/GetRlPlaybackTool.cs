@@ -26,11 +26,12 @@ internal sealed class GetRlPlaybackTool : IMcpTool
     public GetRlPlaybackTool(
         SymbolResolver symbols,
         IRlModelGenerationRegistry? registry = null,
-        RlDialogDataService? dataService = null)
+        RlDialogDataService? dataService = null,
+        RlLocalSourceFolders? sourceFolders = null)
     {
         _symbols = symbols ?? throw new ArgumentNullException(nameof(symbols));
-        _registry = registry ?? new ModelGenerationRegistry();
-        _dataService = dataService ?? new RlDialogDataService(_registry, new QValueService(_registry, dataRoot: EphemeralSandbox.Root), EphemeralSandbox.Root);
+        _registry = registry ?? new ReadOnlyModelGenerationRegistry();
+        _dataService = dataService ?? new RlDialogDataService(_registry, new QValueService(_registry, dataRoot: EphemeralSandbox.Root, sourceFolders: sourceFolders), EphemeralSandbox.Root, sourceFolders);
     }
 
     public string Name => "sa_get_rl_playback";

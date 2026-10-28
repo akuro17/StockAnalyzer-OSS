@@ -15,6 +15,7 @@ using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Backtest.Configuration;
 using StockAnalyzer.Core.Models.Backtest.Engine;
 using StockAnalyzer.Core.Models.ReinforcementLearning;
+using StockAnalyzer.Core.Models.Settings;
 using StockAnalyzer.Core.Models.StoredPeriod;
 using StockAnalyzer.Core.Models.Training;
 using StockAnalyzer.Core.Services;
@@ -182,6 +183,25 @@ public sealed class EphemeralRlRetentionTests : IDisposable
     }
 
     [Fact]
+    public async Task SandboxedExecutionGateway_PortfolioRl_StartGateUsesTheRunnersConfiguredSymbolMaximum()
+    {
+        string[] symbols = { "AAPL", "MSFT", "GOOG" };
+        var runner = new ScriptedPortfolioRunner(GoodModelPath, new RlPortfolioSettings { MaxSymbols = symbols.Length - 1 });
+        SandboxedExecutionGateway gateway = CreateGateway(portfolioRunner: runner);
+
+        var request = new EphemeralPortfolioRlRequest
+        {
+            Symbols = symbols,
+            StartDate = new DateOnly(2023, 1, 1),
+            EndDateExclusive = new DateOnly(2024, 1, 1),
+        };
+
+        var refusal = await Assert.ThrowsAsync<ExecutionRequestInvalidException>(() => gateway.StartPortfolioRlTrainingAsync(request, CancellationToken.None));
+
+        Assert.Contains(nameof(RlPanelStartBlocker.TooManySymbols), refusal.Message);
+    }
+
+    [Fact]
     public async Task ReplayEphemeralModelAsync_ValidatesInputBoundaries()
     {
         var fakeReplay = new FakeQValueService();
@@ -283,8 +303,10 @@ public sealed class EphemeralRlRetentionTests : IDisposable
         }
     }
 
-    private sealed class ScriptedPortfolioRunner(string goodModel) : IEphemeralPortfolioRlRunner
+    private sealed class ScriptedPortfolioRunner(string goodModel, RlPortfolioSettings? settings = null) : IEphemeralPortfolioRlRunner
     {
+        public RlPortfolioSettings Settings { get; } = settings ?? new RlPortfolioSettings();
+
         public Task<RlEnvironmentStatus> CheckEnvironmentAsync(CancellationToken cancellationToken)
             => Task.FromResult(RlEnvironmentStatus.Usable);
 

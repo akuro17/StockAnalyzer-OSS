@@ -11,6 +11,12 @@ namespace StockAnalyzer.Core.Tests.Services
         private static readonly TimeSpan ShortLimit = TimeSpan.FromMilliseconds(200);
         private static readonly TimeSpan LongLimit = TimeSpan.FromSeconds(30);
 
+        // A child that outlives any delay of the limit timer on a saturated thread pool (26 s seen), and the bound that separates "stopped at the
+        // limit" from "ended with the child": one ping per second, so the child lives about LongLivedChildPings - 1 seconds.
+        private const int LongLivedChildPings = 130;
+        private static readonly TimeSpan StoppedAtTheLimitBound = TimeSpan.FromSeconds(60);
+        private static readonly string LongLivedChildCommand = $"ping -n {LongLivedChildPings} 127.0.0.1 >nul";
+
         [Fact]
         public void Classify_UpdateAvailableOutput_ReturnsUpdateAvailable()
         {
@@ -100,14 +106,17 @@ namespace StockAnalyzer.Core.Tests.Services
         }
 
         // L-4: a child that never reads its input must not hold the check past the limit (the input is larger than the pipe buffer).
+        // The limit timer runs on the thread pool, so a pool saturated by parallel tests delays it (26 s seen in the full suite). The child
+        // therefore lives far longer than that delay and the bound sits between the two: a write bound by the limit returns whenever the timer
+        // finally runs, a write bound by the child's life would take about as long as the child lives.
         [WindowsFact]
         public async Task RunAsync_WhenTheChildDoesNotReadItsInput_ReturnsCheckFailedAtTheLimit()
         {
             var started = DateTime.UtcNow;
-            var result = await UpdateCheckProbe.RunAsync("cmd.exe", new[] { "/c", "ping -n 30 127.0.0.1 >nul" }, new string('x', 4_000_000), ShortLimit, CancellationToken.None);
+            var result = await UpdateCheckProbe.RunAsync("cmd.exe", new[] { "/c", LongLivedChildCommand }, new string('x', 4_000_000), ShortLimit, CancellationToken.None);
 
             Assert.Equal(UpdateCheckState.CheckFailed, result.State);
-            Assert.True(DateTime.UtcNow - started < TimeSpan.FromSeconds(15), "the input write must be bound by the limit");
+            Assert.True(DateTime.UtcNow - started < StoppedAtTheLimitBound, "the input write must be bound by the limit");
         }
 
         [WindowsFact]

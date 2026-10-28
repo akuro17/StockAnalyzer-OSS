@@ -168,6 +168,49 @@ public sealed class RlLocalSourceFoldersTests : IDisposable
         Assert.False(Directory.Exists(Path.Combine(_root, "preflight_missing")));
     }
 
+    private const int PanelBars = 1_400;
+    private static readonly string[] PanelSymbols = { "PRLA", "PRLB", "PRLC", "PRLD" };
+
+    /// <summary>Several symbols under the usual names, then both folders moved to names the application never uses.</summary>
+    private RlLocalSourceFolders OddlyNamedPanelFolders()
+    {
+        string tree = Path.Combine(_root, "panel_tree");
+        foreach (string symbol in PanelSymbols) RlSourceFixture.WriteLocalSymbol(tree, symbol, RlSourceFixture.FirstDay, PanelBars);
+        string prices = Path.Combine(_root, "panel_elsewhere", "Prices"), meta = Path.Combine(_root, "panel_elsewhere", "Meta");
+        Directory.CreateDirectory(Path.GetDirectoryName(prices)!);
+        Directory.Move(Path.Combine(tree, "Daily"), prices);
+        Directory.Move(Path.Combine(tree, "Metadata"), meta);
+        return new RlLocalSourceFolders(prices, meta);
+    }
+
+    [Fact]
+    public async Task PortfolioServiceWithoutFoldersReadsOnlyTheFixedDataFolders()
+    {
+        OddlyNamedPanelFolders();
+        var service = new RlPortfolioService(new RlPortfolioSettings());
+
+        var preflight = await service.PreflightAsync(PanelSymbols, RlSourceFixture.FirstDay, RlSourceFixture.FirstDay.AddDays(PanelBars),
+            true, RlPanelEvaluationMode.ShortHistory, CancellationToken.None);
+
+        Assert.All(preflight.Symbols, s => Assert.Equal(RlPanelSymbolStatus.MissingFile, s.Status));
+    }
+
+    [Fact]
+    public async Task PortfolioServiceWithNamedFoldersPreflightsAndSuggestsFromThem()
+    {
+        var folders = OddlyNamedPanelFolders();
+        var service = new RlPortfolioService(new RlPortfolioSettings(), sourceFolders: folders);
+        var end = RlSourceFixture.FirstDay.AddDays(PanelBars);
+
+        var preflight = await service.PreflightAsync(PanelSymbols, RlSourceFixture.FirstDay, end, true, RlPanelEvaluationMode.ShortHistory, CancellationToken.None);
+        var suggestion = await service.SuggestStartAsync(PanelSymbols, end, RlPanelEvaluationMode.ShortHistory, CancellationToken.None);
+
+        Assert.All(preflight.Symbols, s => Assert.Equal(RlPanelSymbolStatus.Ready, s.Status));
+        Assert.Equal(PanelSymbols.Length, preflight.ReadyCount);
+        Assert.NotNull(suggestion);
+        Assert.NotEqual(RlStartSuggestionStatus.NoUsableData, suggestion.Status);
+    }
+
     [Fact]
     public async Task RlExternalEpisodeFactoryWithNamedFoldersReadsSuccessfully()
     {

@@ -8,6 +8,7 @@ using StockAnalyzer.Core.Models.Indicators.Advanced;
 using StockAnalyzer.Core.Models.Portfolio;
 using StockAnalyzer.Core.Models.Screener;
 using StockAnalyzer.Core.Services;
+using StockAnalyzer.Core.Tests.Common;
 
 namespace StockAnalyzer.Tests;
 
@@ -587,15 +588,17 @@ public class ScreenerValueExtractorTests
         extractor.ExtractValue(Sma(5), RisingCandleData(500)); // creates the indicator instance, so only the candle conversion differs below
         var list = RisingCandleData(500);
 
-        long a = GC.GetAllocatedBytesForCurrentThread();
-        decimal cold = extractor.ExtractValue(Sma(5), list);
-        long b = GC.GetAllocatedBytesForCurrentThread();
-        decimal warm = extractor.ExtractValue(Sma(5), list);
-        long c = GC.GetAllocatedBytesForCurrentThread();
+        // A garbage collection another test triggers meanwhile adds bytes to this thread's counter although it allocated nothing, so each side is
+        // a sample in which no collection ran (AllocationProbe). A cold sample converts a fresh list each time; the warm samples reuse the last one.
+        decimal cold = 0;
+        decimal warm = 0;
+        long coldBytes = AllocationProbe.InCollectionFreeWindow(() => cold = extractor.ExtractValue(Sma(5), list), prepare: () => list = RisingCandleData(500));
+        long warmBytes = AllocationProbe.InCollectionFreeWindow(() => warm = extractor.ExtractValue(Sma(5), list));
 
+        Assert.True(coldBytes >= 0 && warmBytes >= 0, "every sample overlapped a garbage collection");
         Assert.Equal(cold, warm);
         // The cold call converts the 500 bars, the warm call does not: it allocates clearly less (measured about one third).
-        Assert.True((c - b) < (b - a) * 0.75, $"warm {c - b} bytes, cold {b - a} bytes");
+        Assert.True(warmBytes < coldBytes * 0.75, $"warm {warmBytes} bytes, cold {coldBytes} bytes");
     }
 
     [Fact]

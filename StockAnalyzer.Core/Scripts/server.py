@@ -4,6 +4,7 @@ import argparse
 import time
 import io
 import os
+import re
 import threading
 import pyarrow as pa
 
@@ -14,6 +15,9 @@ if not IS_WINDOWS:
 
 # Bytes requested per read() on the Windows byte-stream pipe.
 PIPE_READ_CHUNK_SIZE = 65536
+MAX_LINE_BYTES = 16 * 1024 * 1024       # 16 MiB
+MAX_TRANSFER_BYTES = 256 * 1024 * 1024  # 256 MiB
+_PIPE_NAME_PATTERN = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
 
 
 def write_all(pipe, data):
@@ -42,6 +46,8 @@ def read_line(pipe, cursor):
             if line.endswith(b'\r'):
                 line = line[:-1]
             return line
+        if len(cursor) >= MAX_LINE_BYTES:
+            raise IOError(f"Frame exceeded maximum line limit ({MAX_LINE_BYTES} bytes)")
         chunk = pipe.read(PIPE_READ_CHUNK_SIZE)
         if not chunk:
             if cursor:
@@ -72,6 +78,8 @@ def read_line_uds(conn, cursor):
             if line.endswith(b'\r'):
                 line = line[:-1]
             return line
+        if len(cursor) >= MAX_LINE_BYTES:
+            raise IOError(f"Frame exceeded maximum line limit ({MAX_LINE_BYTES} bytes)")
         try:
             chunk = conn.recv(PIPE_READ_CHUNK_SIZE)
         except Exception as e:
@@ -97,8 +105,18 @@ def read_some_uds(conn, cursor, size):
     return data
 
 
+def validate_pipe_name(pipe_name):
+    """Validate pipe name to prevent directory traversal and arbitrary file unlinking."""
+    if not isinstance(pipe_name, str) or not _PIPE_NAME_PATTERN.fullmatch(pipe_name):
+        raise ValueError(f"Invalid pipe name: {pipe_name!r}")
+    if os.path.basename(pipe_name) != pipe_name or ".." in pipe_name or "/" in pipe_name or "\\" in pipe_name:
+        raise ValueError(f"Pipe name contains path traversal segments: {pipe_name!r}")
+    return pipe_name
+
+
 def get_uds_socket_path(pipe_name):
     """Resolve Unix domain socket path matching .NET NamedPipe discovery."""
+    validate_pipe_name(pipe_name)
     dotnet_pipe_env = os.environ.get('DOTNET_PIPE_PATH')
     if dotnet_pipe_env and os.path.exists(dotnet_pipe_env):
         return os.path.join(dotnet_pipe_env, pipe_name)
@@ -262,7 +280,12 @@ def run_server(pipe_name):
         print(f"Binding Unix domain socket at {socket_path}...")
         server_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         try:
-            server_socket.bind(socket_path)
+            old_umask = os.umask(0o077) if hasattr(os, 'umask') else None
+            try:
+                server_socket.bind(socket_path)
+            finally:
+                if old_umask is not None:
+                    os.umask(old_umask)
             server_socket.listen(1)
             conn, addr = server_socket.accept()
             read_cursor = bytearray()
@@ -329,8 +352,12 @@ def run_server(pipe_name):
                      response["result"] = args
                 elif method == "prepare_data_transfer":
                     # Args should contain 'size'
-                    size = args.get('size', 0)
-                    if size > 0:
+                    size = args.get('size', 0) if isinstance(args, dict) else 0
+                    if not isinstance(size, int) or size <= 0 or size > MAX_TRANSFER_BYTES:
+                        response["status"] = "error"
+                        response["error"] = f"Invalid transfer size. Must be an integer between 1 and {MAX_TRANSFER_BYTES} bytes."
+                        write_pipe((json.dumps(response) + "\n").encode('utf-8'))
+                    else:
                         # Send "ready" first
                         response["status"] = "ready"
                         write_pipe((json.dumps(response) + "\n").encode('utf-8'))
@@ -365,10 +392,6 @@ def run_server(pipe_name):
                              err_response = { "status": "error", "error": str(e) }
                              write_pipe((json.dumps(err_response) + "\n").encode('utf-8'))
                              continue
-
-                    else:
-                        response["status"] = "error"
-                        response["error"] = "Invalid size"
                 
                 elif method == "calculate_fft_trend_filter":
                     if global_df is None:
