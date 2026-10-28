@@ -22,7 +22,7 @@ training = [
     "pyarrow>=23.0.1",
     "tzdata>=2024.1",
     "gymnasium==1.2.1",
-    "stable-baselines3==2.7.0",
+    "stable-baselines3==2.9.0",
     "torch>=2.2",
     "onnx>=1.16",
     "onnxruntime>=1.18",

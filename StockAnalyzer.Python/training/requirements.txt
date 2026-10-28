@@ -9,7 +9,7 @@ tzdata>=2024.1
 #
 # Reinforcement Learning (RlContract.cs SSoT: gymnasium 1.2.1, stable-baselines3 2.7.0):
 gymnasium==1.2.1
-stable-baselines3==2.7.0
+stable-baselines3==2.9.0
 #
 # PyTorch training + ONNX export (train_pytorch.py):
 #   torch is CPU-only here; install via:
