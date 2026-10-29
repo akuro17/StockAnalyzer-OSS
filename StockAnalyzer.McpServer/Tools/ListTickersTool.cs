@@ -89,24 +89,9 @@ internal sealed class ListTickersTool : IMcpTool
         GroupMembers? groupMembers = null;
         if (groupIdRaw is not null)
         {
-            if (!Guid.TryParse(groupIdRaw, out Guid parsedId))
-            {
-                throw new ToolException(ToolErrorCodes.InvalidArgument, $"Argument '{GroupIdArgument}' must be a valid Guid.", GroupIdArgument);
-            }
-
-            groupId = parsedId;
-            try
-            {
-                groupMembers = await _groupResolver.ResolveAsync(parsedId, _limits.MaxFilterEvaluationSymbols, cancellationToken).ConfigureAwait(false);
-            }
-            catch (GroupNotFoundException)
-            {
-                throw new ToolException(ToolErrorCodes.GroupNotFound, $"Group '{parsedId}' was not found in the workspace.", GroupIdArgument, "Use sa_list_ticker_groups to see available group ids.");
-            }
-            catch (FilterEvaluationLimitException ex)
-            {
-                throw new ToolException(ToolErrorCodes.LimitExceeded, ex.Message, GroupIdArgument, "Raise AiIntegration:MaxFilterEvaluationSymbols or narrow the group.");
-            }
+            ResolvedGroup resolved = await GroupMembersLookup.ResolveAsync(_groupResolver, groupIdRaw, GroupIdArgument, _limits.MaxFilterEvaluationSymbols, cancellationToken).ConfigureAwait(false);
+            groupId = resolved.Id;
+            groupMembers = resolved.Members;
         }
 
         List<string> tickers;

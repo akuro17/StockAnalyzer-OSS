@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using StockAnalyzer.Core.Models.Screener;
 
@@ -144,11 +145,14 @@ public sealed record TickerRow : IFilterableSymbol
     private static readonly Dictionary<string, Func<TickerRow, object?>> _propertyGetters;
     private static readonly Dictionary<string, Func<TickerRow, object?>> _normalizedGetters;
     private static readonly HashSet<Func<TickerRow, object?>> _candleDependentGetters;
+    private static readonly Dictionary<Func<TickerRow, object?>, Type> _fieldTypeByGetter;
+    private static readonly IReadOnlyList<string> _knownFieldNames;
 
     static TickerRow()
     {
         var getters = new Dictionary<string, Func<TickerRow, object?>>(StringComparer.OrdinalIgnoreCase);
         var normalized = new Dictionary<string, Func<TickerRow, object?>>(StringComparer.OrdinalIgnoreCase);
+        var fieldTypes = new Dictionary<Func<TickerRow, object?>, Type>(ReferenceEqualityComparer.Instance);
 
         // Reflect all public instance readable properties of TickerRow
         foreach (var prop in typeof(TickerRow).GetProperties(BindingFlags.Public | BindingFlags.Instance))
@@ -157,6 +161,7 @@ public sealed record TickerRow : IFilterableSymbol
             var capturedProp = prop;
             Func<TickerRow, object?> getter = row => capturedProp.GetValue(row);
             getters[prop.Name] = getter;
+            fieldTypes[getter] = Nullable.GetUnderlyingType(prop.PropertyType) ?? prop.PropertyType;
 
             var normKey = NormalizePropertyName(prop.Name);
             if (!normalized.ContainsKey(normKey))
@@ -277,6 +282,8 @@ public sealed record TickerRow : IFilterableSymbol
 
         _propertyGetters = getters;
         _normalizedGetters = normalized;
+        _fieldTypeByGetter = fieldTypes;
+        _knownFieldNames = getters.Keys.OrderBy(name => name, StringComparer.Ordinal).ToList();
 
         string[] candleDependentProps =
         {
@@ -346,6 +353,31 @@ public sealed record TickerRow : IFilterableSymbol
             return _candleDependentGetters.Contains(normGetter);
         }
         return false;
+    }
+
+    /// <summary>
+    /// Every name <see cref="IsKnownField"/> accepts by exact (case-insensitive) match: the property names and the aliases, ordinal ascending.
+    /// Spellings that only match after normalisation (spaces, hyphens, ...) are not listed.
+    /// </summary>
+    public static IReadOnlyList<string> KnownFieldNames => _knownFieldNames;
+
+    /// <summary>
+    /// The CLR type of the value a known field or alias holds (the underlying type for a nullable property, for example
+    /// <see cref="decimal"/> for <c>decimal?</c>); false for an unknown name.
+    /// </summary>
+    public static bool TryGetFieldType(string? propertyName, out Type fieldType)
+    {
+        fieldType = typeof(object);
+        if (string.IsNullOrWhiteSpace(propertyName)) return false;
+        if (!_propertyGetters.TryGetValue(propertyName, out var getter)
+            && !_normalizedGetters.TryGetValue(NormalizePropertyName(propertyName), out getter))
+        {
+            return false;
+        }
+
+        if (!_fieldTypeByGetter.TryGetValue(getter, out var type)) return false;
+        fieldType = type;
+        return true;
     }
 
     public object? GetPropertyValue(string propertyName)

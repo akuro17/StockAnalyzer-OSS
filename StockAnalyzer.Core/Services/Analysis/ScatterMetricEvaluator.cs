@@ -173,16 +173,7 @@ public sealed class ScatterMetricEvaluator : IScatterMetricEvaluator
 
     /// <summary>The source the extractor reads: the metric's own for Day, a copy that says Day for Week and Month (the bars given to it are those of the metric's time frame).</summary>
     private static ScreenerIndicatorSideConfig ExtractionSource(ScatterMetricDefinition metric)
-    {
-        if (metric.Source.TimeFrame == TimeFrame.D1)
-        {
-            return metric.Source;
-        }
-
-        ScreenerIndicatorSideConfig copy = metric.Source.Clone();
-        copy.TimeFrame = TimeFrame.D1;
-        return copy;
-    }
+        => metric.Source.WithTimeFrame(TimeFrame.D1);
 
     private static int RequiredCount(ScatterMetricDefinition metric)
         => ScreenerHistoryRequirements.GetRequiredCandleCount(new ScreenerIndicatorEntry

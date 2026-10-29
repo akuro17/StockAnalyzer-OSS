@@ -935,12 +935,83 @@ public class TickerListViewModelTests
         // Synchronously-completed task: the awaiting caller (TickerListViewModel.
         // EvaluateScreenerTemplateFilterAsync) resumes on the same call stack, so setting
         // SelectedScreenerTemplate from a test observes the resulting ApplyFilter() synchronously.
+        public int PlainCalls { get; private set; }
+
+        public int SideFrameCalls { get; private set; }
+
         public Task<HashSet<string>> EvaluateAsync(
             IReadOnlyList<string> symbols,
             StockAnalyzer.Core.Models.Templates.ScreenerIndicatorTemplate template,
             TimeFrame timeFrame,
             IProgress<int>? progress,
-            CancellationToken ct) => Task.FromResult(_matches);
+            CancellationToken ct)
+        {
+            PlainCalls++;
+            return Task.FromResult(_matches);
+        }
+
+        public Task<HashSet<string>> EvaluateWithSideFramesAsync(
+            IReadOnlyList<string> symbols,
+            StockAnalyzer.Core.Models.Templates.ScreenerIndicatorTemplate template,
+            StockAnalyzer.Core.Services.Screener.ScreenerBarSelection selection,
+            IProgress<int>? progress,
+            CancellationToken ct)
+        {
+            SideFrameCalls++;
+            return Task.FromResult(_matches);
+        }
+    }
+
+    // A template whose enabled entries read daily bars only keeps the plain evaluation; one with a weekly or monthly side is evaluated with every side on its own frame.
+    [Theory]
+    [InlineData(TimeFrame.D1, 1, 0)]
+    [InlineData(TimeFrame.W1, 0, 1)]
+    [InlineData(TimeFrame.MN1, 0, 1)]
+    public void ScreenerTemplateFilter_RoutesATemplateByTheFramesOfItsSides(TimeFrame frame, int plainCalls, int sideFrameCalls)
+    {
+        var watchlist = new StockAnalyzer.Core.Models.Watchlist.WatchlistProfile(
+            Guid.NewGuid(), "Tech", StockAnalyzer.Core.Models.IndicatorColor.FromRgb(0, 0, 255), isPortfolio: false,
+            items: new List<StockAnalyzer.Core.Models.Watchlist.WatchlistItem> { new("AAPL", DateTimeOffset.UtcNow) });
+        var mockWatchlistManager = new Mock<IWatchlistManager>();
+        mockWatchlistManager.Setup(w => w.GetAllProfiles())
+            .Returns(new List<StockAnalyzer.Core.Models.Watchlist.WatchlistProfile> { watchlist });
+        var fakeEvaluator = new FakeScreenerTemplateEvaluator(new HashSet<string> { "AAPL" });
+        var vm = new TickerListViewModel(
+            marketDataProvider: null!,
+            pythonService: null!,
+            messenger: WeakReferenceMessenger.Default,
+            dispatcherService: new StockAnalyzer.Avalonia.Tests.Services.SynchronousDispatcherService(),
+            watchlistManager: mockWatchlistManager.Object,
+            portfolioManager: null!,
+            dialogService: null!,
+            tickerImportService: null!,
+            chartSettingsManager: new MockChartSettingsManager(),
+            logger: NullLogger<TickerListViewModel>.Instance,
+            templateService: null,
+            screenerTemplateEvaluator: fakeEvaluator);
+
+        try
+        {
+            vm.SelectedNode = vm.Groups.First(n => n.Id == TickerListViewModel.WatchlistsCategoryId).Children!.First();
+            var template = new StockAnalyzer.Core.Models.Templates.ScreenerIndicatorTemplate { Name = "T" };
+            template.SetEntries(new[]
+            {
+                new StockAnalyzer.Core.Models.Screener.ScreenerIndicatorEntry
+                {
+                    LeftHand = new StockAnalyzer.Core.Models.Screener.ScreenerIndicatorSideConfig { IndicatorType = IndicatorType.Price, OutputName = "Close", TimeFrame = frame },
+                },
+            });
+
+            vm.SelectedScreenerTemplate = template;
+
+            Assert.Equal(plainCalls, fakeEvaluator.PlainCalls);
+            Assert.Equal(sideFrameCalls, fakeEvaluator.SideFrameCalls);
+            Assert.Equal(new List<string> { "AAPL" }, vm.DisplayItems.Select(i => i.Symbol).ToList());
+        }
+        finally
+        {
+            vm.Dispose();
+        }
     }
 
     [Fact]

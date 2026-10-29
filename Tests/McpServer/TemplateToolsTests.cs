@@ -133,11 +133,18 @@ public sealed class TemplateToolsTests : IDisposable
     [Fact]
     public async Task EntriesThatCanNeverMatchAreReportedAsWarnings()
     {
+        // A weekly side is evaluated now (each side reads its own frame): it is no problem. AnchoredVWAP has no definition on a weekly side.
         var weekly = new ScreenerIndicatorEntry
         {
             LeftHand = new ScreenerIndicatorSideConfig { IndicatorType = IndicatorType.RSI, OutputName = "RSI", TimeFrame = TimeFrame.W1 },
             Operator = ComparisonOperator.LessThan,
             RightNumericValue = 30m,
+        };
+        var anchoredWeekly = new ScreenerIndicatorEntry
+        {
+            LeftHand = new ScreenerIndicatorSideConfig { IndicatorType = IndicatorType.AnchoredVWAP, OutputName = "Main", TimeFrame = TimeFrame.W1 },
+            Operator = ComparisonOperator.GreaterThan,
+            RightNumericValue = 1m,
         };
         var lookAhead = new ScreenerIndicatorEntry
         {
@@ -145,15 +152,17 @@ public sealed class TemplateToolsTests : IDisposable
             Operator = ComparisonOperator.GreaterThan,
             RightNumericValue = 1m,
         };
-        Save("Problems", false, weekly, lookAhead, CloseAbove(100m, enabled: false), CloseAbove(100m));
+        Save("Problems", false, weekly, anchoredWeekly, lookAhead, CloseAbove(100m, enabled: false), CloseAbove(100m));
         var dispatcher = await StartAsync();
 
         using var response = await ListAsync(dispatcher);
 
         string[] warnings = McpTestSupport.Structured(response).GetProperty("templates")[0].GetProperty("warnings").EnumerateArray().Select(w => w.GetString()!).ToArray();
         Assert.Equal(2, warnings.Length);
+        Assert.DoesNotContain(warnings, warning => warning.Contains("Entry 0", StringComparison.Ordinal));
         Assert.Contains("W1", warnings[0]);
-        Assert.Contains("Entry 0", warnings[0]);
+        Assert.Contains("Entry 1", warnings[0]);
+        Assert.Contains("AnchoredVWAP", warnings[0]);
         Assert.Contains("ZigZag", warnings[1]);
         Assert.Contains("never matches", warnings[1]);
     }
@@ -297,9 +306,10 @@ public sealed class TemplateToolsTests : IDisposable
     [Fact]
     public async Task WarningsOfATemplateAreReturnedWithTheResult()
     {
+        // A weekly side is evaluated (each side reads its own frame); AnchoredVWAP has no definition on one, so this entry never matches and says so.
         var weekly = new ScreenerIndicatorEntry
         {
-            LeftHand = new ScreenerIndicatorSideConfig { IndicatorType = IndicatorType.RSI, OutputName = "RSI", TimeFrame = TimeFrame.W1 },
+            LeftHand = new ScreenerIndicatorSideConfig { IndicatorType = IndicatorType.AnchoredVWAP, OutputName = "Main", TimeFrame = TimeFrame.W1 },
             Operator = ComparisonOperator.LessThan,
             RightNumericValue = 30m,
         };

@@ -101,6 +101,14 @@ internal sealed class ToolSchema
             item.WriteTo(writer);
         });
 
+    /// <summary>An object with fixed keys, each checked against <paramref name="inner"/> (nested names are reported as <c>name.key</c>).</summary>
+    public ToolSchema NestedObject(string name, string description, ToolSchema inner, bool required = false)
+        => Add(name, required, writer =>
+        {
+            writer.WriteString("description", description);
+            inner.WriteMembers(writer);
+        });
+
     /// <summary>An object whose keys are not fixed by the schema (the tool checks them); values are checked by the tool.</summary>
     public ToolSchema FreeObject(string name, string description, bool required = false)
         => Add(name, required, writer =>
@@ -124,6 +132,13 @@ internal sealed class ToolSchema
     private void WriteTo(Utf8JsonWriter writer)
     {
         writer.WriteStartObject();
+        WriteMembers(writer);
+        writer.WriteEndObject();
+    }
+
+    /// <summary>The members of the schema object (type, properties, required, additionalProperties) without the surrounding braces.</summary>
+    private void WriteMembers(Utf8JsonWriter writer)
+    {
         writer.WriteString("type", "object");
         writer.WriteStartObject("properties");
         foreach (var (name, write) in _properties)
@@ -146,7 +161,6 @@ internal sealed class ToolSchema
         }
 
         writer.WriteBoolean("additionalProperties", false);
-        writer.WriteEndObject();
     }
 
     private ToolSchema Add(string name, bool required, Action<Utf8JsonWriter> write)

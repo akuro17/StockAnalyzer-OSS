@@ -24,7 +24,7 @@ public class IndicatorRegistrationViewModelTests
         { "Bearish Three-Line Strike", "Bullish Three-Line Strike" },
     };
 
-    // The Screener evaluates every condition on daily bars, so the dialog must not offer a frame it would silently ignore.
+    // A host that evaluates every condition on daily bars (the ticker-notes dialog) must not be offered a frame it would silently ignore.
     [Fact]
     public void TimeFrameChoices_OfferOnlyTheDailyFrame()
     {
@@ -33,6 +33,75 @@ public class IndicatorRegistrationViewModelTests
         Assert.Equal(new[] { TimeFrame.D1 }, vm.AvailableTimeFrames.Select(t => t.Value));
         Assert.Equal(TimeFrame.D1, vm.LeftSelectedTimeFrameItem.Value);
         Assert.Equal(TimeFrame.D1, vm.RightSelectedTimeFrameItem.Value);
+    }
+
+    // The Screener reads the bars of each side's own frame, so it widens the list (UseSideTimeFrames); another instance of the same view model is not affected.
+    [Fact]
+    public void UseSideTimeFrames_OffersTheSingleDefinitionAndSelectsDayOnBothSides()
+    {
+        var screener = new IndicatorRegistrationViewModel();
+        var notes = new IndicatorRegistrationViewModel();
+        var changed = new System.Collections.Generic.List<string?>();
+        screener.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
+
+        screener.UseSideTimeFrames(DataServiceTimeFrames.Supported);
+
+        Assert.Equal(DataServiceTimeFrames.Supported, screener.AvailableTimeFrames.Select(t => t.Value));
+        Assert.Equal(TimeFrame.D1, screener.LeftSelectedTimeFrameItem.Value);
+        Assert.Equal(TimeFrame.D1, screener.RightSelectedTimeFrameItem.Value);
+        Assert.Contains(screener.LeftSelectedTimeFrameItem, screener.AvailableTimeFrames); // the same instance, so the ComboBox keeps its selection
+        Assert.Contains(screener.RightSelectedTimeFrameItem, screener.AvailableTimeFrames);
+        Assert.Contains(nameof(IndicatorRegistrationViewModel.AvailableTimeFrames), changed);
+        Assert.All(screener.AvailableTimeFrames, item => Assert.False(string.IsNullOrWhiteSpace(item.DisplayName)));
+        Assert.Equal(new[] { TimeFrame.D1 }, notes.AvailableTimeFrames.Select(t => t.Value));
+    }
+
+    [Fact]
+    public void UseSideTimeFrames_RefusesAListWithoutDayAndNull()
+    {
+        var vm = new IndicatorRegistrationViewModel();
+
+        Assert.Throws<System.ArgumentException>(() => vm.UseSideTimeFrames(new[] { TimeFrame.W1 }));
+        Assert.Throws<System.ArgumentNullException>(() => vm.UseSideTimeFrames(null!));
+        Assert.Equal(new[] { TimeFrame.D1 }, vm.AvailableTimeFrames.Select(t => t.Value));
+    }
+
+    [Fact]
+    public void RegisterIndicator_StoresTheFrameChosenOnEachSide()
+    {
+        var vm = new IndicatorRegistrationViewModel();
+        vm.UseSideTimeFrames(DataServiceTimeFrames.Supported);
+        vm.LeftSelectedIndicator = new ScreenerCatalogItem { DisplayName = "SMA" };
+        vm.RightSelectedIndicator = new ScreenerCatalogItem { DisplayName = "EMA" };
+        vm.SetRightModeIndicatorCommand.Execute(null);
+        vm.LeftSelectedTimeFrameItem = vm.AvailableTimeFrames.First(t => t.Value == TimeFrame.W1);
+        vm.RightSelectedTimeFrameItem = vm.AvailableTimeFrames.First(t => t.Value == TimeFrame.MN1);
+
+        vm.RegisterIndicatorCommand.Execute(null);
+
+        var entry = vm.RegisteredEntries[^1];
+        Assert.Equal(TimeFrame.W1, entry.LeftHand.TimeFrame);
+        Assert.Equal(TimeFrame.MN1, entry.RightHand.TimeFrame);
+    }
+
+    // A fundamental (market cap, ...) is a property of the ticker, not of a bar: whatever frame is selected, none is stored for it.
+    [Fact]
+    public void RegisterIndicator_StoresNoFrameForAFundamentalColumnButKeepsItForABarValueColumn()
+    {
+        var vm = new IndicatorRegistrationViewModel();
+        vm.UseSideTimeFrames(DataServiceTimeFrames.Supported);
+        vm.LeftSelectedTimeFrameItem = vm.AvailableTimeFrames.First(t => t.Value == TimeFrame.W1);
+
+        vm.LeftSelectedIndicator = new ScreenerCatalogItem { DisplayName = "Market Cap", ShortName = "MarketCap", CategoryType = ScreenerItemCategoryType.Column };
+        vm.RegisterIndicatorCommand.Execute(null);
+        var fundamental = vm.RegisteredEntries[^1];
+
+        vm.LeftSelectedIndicator = new ScreenerCatalogItem { DisplayName = "Close", ShortName = "Close", CategoryType = ScreenerItemCategoryType.Column };
+        vm.RegisterIndicatorCommand.Execute(null);
+        var barValue = vm.RegisteredEntries[^1];
+
+        Assert.Equal(TimeFrame.D1, fundamental.LeftHand.TimeFrame);
+        Assert.Equal(TimeFrame.W1, barValue.LeftHand.TimeFrame);
     }
 
     [Fact]

@@ -41,8 +41,17 @@ public interface IScreeningCondition
     }
 
     /// <summary>
+    /// Checks if the condition is met when each side reads the bars of its own time frame from <paramref name="bars"/>. A condition that does not read the bars of
+    /// more than one time frame cannot answer this, so the default refuses instead of falling back to the daily bars (which would give a wrong answer silently).
+    /// </summary>
+    System.Threading.Tasks.ValueTask<bool> IsMetOnBarsAsync(Services.Screener.IScreenerBarSet bars, Portfolio.TickerMetadata metadata, Screener.IScreenerSecondaryCandles? secondary = null)
+    {
+        throw new System.NotSupportedException($"{GetType().Name} does not evaluate sides on their own time frames.");
+    }
+
+    /// <summary>
     /// Checks if the condition is met asynchronously.
-    /// The default implementation runs synchronously, but can be overridden 
+    /// The default implementation runs synchronously, but can be overridden
     /// for ML inference or other async operations to prevent ThreadPool starvation.
     /// </summary>
     /// <param name="candles">A read-only list of candle data.</param>

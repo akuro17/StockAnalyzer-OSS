@@ -78,4 +78,91 @@ public sealed class ScreenerTemplateEvaluator : IScreenerTemplateEvaluator
 
         return combined ?? new HashSet<string>();
     }
+
+    public async Task<HashSet<string>> EvaluateWithSideFramesAsync(
+        IReadOnlyList<string> symbols,
+        ScreenerIndicatorTemplate template,
+        ScreenerBarSelection selection,
+        IProgress<int>? progress,
+        CancellationToken ct)
+        => (await EvaluateWithSideFramesReportAsync(symbols, template, selection, progress, ct).ConfigureAwait(false)).Matched.ToHashSet();
+
+    public async Task<ScreenerSideFramesResult> EvaluateWithSideFramesReportAsync(
+        IReadOnlyList<string> symbols,
+        ScreenerIndicatorTemplate template,
+        ScreenerBarSelection selection,
+        IProgress<int>? progress,
+        CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(symbols);
+        ArgumentNullException.ThrowIfNull(template);
+        ArgumentNullException.ThrowIfNull(selection);
+
+        var entries = template.Entries.Where(e => e.IsEnabled).ToList();
+        if (entries.Count == 0 || symbols.Count == 0)
+        {
+            return new ScreenerSideFramesResult(Array.Empty<string>(), Array.Empty<string>(), Array.Empty<ScreenerFrameReport>());
+        }
+
+        // The same fold as EvaluateAsync (the preceding entry's LogicalOperator: Or unions, anything else intersects); only the scan of one entry differs.
+        HashSet<string>? combined = null;
+        var scans = new List<ScreenerSideFramesResult>(entries.Count);
+        var symbolList = symbols.ToList();
+
+        for (int i = 0; i < entries.Count; i++)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            ScreenerSideFramesResult scan = await _screenerService.ScreenWithSideFramesAsync(symbolList, entries[i], selection, progress!, ct);
+            scans.Add(scan);
+            var hitSet = new HashSet<string>(scan.Matched);
+
+            if (combined == null)
+            {
+                combined = hitSet;
+            }
+            else if (entries[i - 1].LogicalOperator == LogicalOperator.Or)
+            {
+                combined.UnionWith(hitSet);
+            }
+            else
+            {
+                combined.IntersectWith(hitSet);
+            }
+        }
+
+        return Merge(combined ?? new HashSet<string>(), scans);
+    }
+
+    /// <summary>
+    /// The matched symbols with the reports of the entry scans merged. Every entry scans the same symbols over the same selection, so the symbols without bars and the partial
+    /// periods of a frame are the same for each entry that reads it (united here), and so is the number of skipped partial bars (the largest is kept).
+    /// </summary>
+    private static ScreenerSideFramesResult Merge(HashSet<string> matched, IReadOnlyList<ScreenerSideFramesResult> scans)
+    {
+        var withoutDaily = new SortedSet<string>(StringComparer.Ordinal);
+        var frames = new Dictionary<TimeFrame, (SortedSet<string> Without, SortedSet<DateOnly> Starts, int Skipped)>();
+        foreach (ScreenerSideFramesResult scan in scans)
+        {
+            withoutDaily.UnionWith(scan.SymbolsWithoutDailyBars);
+            foreach (ScreenerFrameReport report in scan.Frames)
+            {
+                if (!frames.TryGetValue(report.Frame, out var merged))
+                {
+                    merged = (new SortedSet<string>(StringComparer.Ordinal), new SortedSet<DateOnly>(), 0);
+                }
+
+                merged.Without.UnionWith(report.SymbolsWithoutBars);
+                merged.Starts.UnionWith(report.PartialLastBarPeriodStarts);
+                frames[report.Frame] = (merged.Without, merged.Starts, Math.Max(merged.Skipped, report.SkippedPartialBarCount));
+            }
+        }
+
+        List<TimeFrame> order = DataServiceTimeFrames.Supported.ToList();
+        var reports = frames
+            .OrderBy(pair => order.IndexOf(pair.Key))
+            .Select(pair => new ScreenerFrameReport(pair.Key, pair.Value.Without.ToList(), pair.Value.Starts.ToList(), pair.Value.Skipped))
+            .ToList();
+        return new ScreenerSideFramesResult(matched.ToList(), withoutDaily.ToList(), reports);
+    }
 }

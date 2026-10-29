@@ -33,6 +33,13 @@ public abstract class TemplateBase
     public int SchemaVersion { get; set; } = DefaultSchemaVersion;
 
     /// <summary>
+    /// True when the template was read from a file of an older schema whose content no longer has a defined meaning and was therefore discarded. A reader
+    /// (<c>TemplateService</c>, the read-only template source) does not hand such a template out. False for every template type that has no such rule.
+    /// </summary>
+    [JsonIgnore]
+    public virtual bool IsDiscardedLegacy => false;
+
+    /// <summary>
     /// Optional description providing context or usage hints for the template.
     /// </summary>
     public string? Description { get; set; }

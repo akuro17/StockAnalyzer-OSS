@@ -33,6 +33,15 @@ public static class ScreenerConditionTreeEvaluator
     public static bool Evaluate(IScreenerConditionNode root, IReadOnlyList<CandleData> candles, TickerMetadata metadata, IScreenerSecondaryCandles? secondary)
         => EvaluateOrAbsent(root, candles, metadata, secondary) ?? false;
 
+    /// <summary>
+    /// <see cref="Evaluate(IScreenerConditionNode, IReadOnlyList{CandleData}, TickerMetadata, IScreenerSecondaryCandles?)"/> for a tree whose sides read the bars of their
+    /// own time frames from <paramref name="bars"/> (<see cref="ScreenerIndicatorEntry.IsMetOnBars"/>). The same AND/OR fold: a disabled leaf is absent, no short
+    /// circuit, an empty or all-absent group (and so an all-absent root) is false. Both evaluations share the one fold below; a test pins that they give the same
+    /// answer for the same tree on D1 bars.
+    /// </summary>
+    public static bool EvaluateOnBars(IScreenerConditionNode root, IScreenerBarSet bars, TickerMetadata metadata, IScreenerSecondaryCandles? secondary = null)
+        => EvaluateOrAbsentOnBars(root, bars, metadata, secondary) ?? false;
+
     /// <summary>True when <paramref name="node"/>'s subtree contains at least one currently-enabled leaf. Used to reproduce the
     /// previous flat-list guard ("please register at least one condition") that used to gate <c>ScanAsync</c> before any scan ran.</summary>
     public static bool HasActiveLeaf(IScreenerConditionNode node)
@@ -52,20 +61,66 @@ public static class ScreenerConditionTreeEvaluator
         }
     }
 
-    /// <summary>Null means "this subtree contributes nothing" (a disabled leaf, or a group with no active child).</summary>
+    /// <summary>How one enabled leaf is evaluated; a struct so that the fold is specialised per kind (no delegate) and the bars and the metadata are held once, not copied per node.</summary>
+    private interface ILeafEvaluator
+    {
+        bool IsMet(ScreenerIndicatorEntry entry);
+    }
+
+    /// <summary>The leaf of the daily evaluation: one candle list.</summary>
+    private readonly struct DailyLeaf : ILeafEvaluator
+    {
+        private readonly IReadOnlyList<CandleData> _candles;
+        private readonly TickerMetadata _metadata;
+        private readonly IScreenerSecondaryCandles? _secondary;
+
+        public DailyLeaf(IReadOnlyList<CandleData> candles, TickerMetadata metadata, IScreenerSecondaryCandles? secondary)
+        {
+            _candles = candles;
+            _metadata = metadata;
+            _secondary = secondary;
+        }
+
+        public bool IsMet(ScreenerIndicatorEntry entry) => entry.IsMet(_candles, _metadata, _secondary);
+    }
+
+    /// <summary>The leaf of the evaluation in which each side reads its own time frame: one bar set.</summary>
+    private readonly struct BarSetLeaf : ILeafEvaluator
+    {
+        private readonly IScreenerBarSet _bars;
+        private readonly TickerMetadata _metadata;
+        private readonly IScreenerSecondaryCandles? _secondary;
+
+        public BarSetLeaf(IScreenerBarSet bars, TickerMetadata metadata, IScreenerSecondaryCandles? secondary)
+        {
+            _bars = bars;
+            _metadata = metadata;
+            _secondary = secondary;
+        }
+
+        public bool IsMet(ScreenerIndicatorEntry entry) => entry.IsMetOnBars(_bars, _metadata, _secondary);
+    }
+
+    private static bool? EvaluateOrAbsentOnBars(IScreenerConditionNode node, IScreenerBarSet bars, TickerMetadata metadata, IScreenerSecondaryCandles? secondary)
+        => EvaluateOrAbsent(node, new BarSetLeaf(bars, metadata, secondary));
+
     private static bool? EvaluateOrAbsent(IScreenerConditionNode node, IReadOnlyList<CandleData> candles, TickerMetadata metadata, IScreenerSecondaryCandles? secondary)
+        => EvaluateOrAbsent(node, new DailyLeaf(candles, metadata, secondary));
+
+    /// <summary>The one AND/OR fold. Null means "this subtree contributes nothing" (a disabled leaf, or a group with no active child).</summary>
+    private static bool? EvaluateOrAbsent<TLeaf>(IScreenerConditionNode node, in TLeaf leafEvaluator) where TLeaf : struct, ILeafEvaluator
     {
         switch (node)
         {
             case ScreenerConditionLeaf leaf:
-                return leaf.Entry.IsEnabled ? leaf.Entry.IsMet(candles, metadata, secondary) : null;
+                return leaf.Entry.IsEnabled ? leafEvaluator.IsMet(leaf.Entry) : null;
 
             case ScreenerConditionGroup group:
                 bool isAnd = group.Operator == LogicalOperator.And;
                 bool? result = null;
                 for (int i = 0; i < group.Children.Length; i++)
                 {
-                    bool? child = EvaluateOrAbsent(group.Children[i], candles, metadata, secondary);
+                    bool? child = EvaluateOrAbsent(group.Children[i], in leafEvaluator);
                     if (child is null) continue;
                     result = result is null ? child.Value : (isAnd ? (result.Value & child.Value) : (result.Value | child.Value));
                 }

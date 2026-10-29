@@ -2,6 +2,7 @@ using System.Globalization;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Indicators;
 using StockAnalyzer.Core.Models.Screener;
+using StockAnalyzer.Core.Services.Screener;
 
 namespace StockAnalyzer.McpServer.Catalog;
 
@@ -22,7 +23,9 @@ internal static class ScreenerEntryText
     /// <summary>The indicator with its parameters, or the price, column or pattern name (the side's own DisplayName would read "SMA (Market Cap)" for a column).</summary>
     public static string DescribeSide(ScreenerIndicatorSideConfig side)
     {
-        string title = side.CategoryType == ScreenerItemCategoryType.Indicator && side.IndicatorType != IndicatorType.Price ? side.GetColumnHeaderTitle() : side.OutputName;
+        string title = side.CategoryType == ScreenerItemCategoryType.Indicator && side.IndicatorType != IndicatorType.Price
+            ? side.GetColumnHeaderTitle()
+            : side.OutputName + (ScreenerSideFrames.ReadsBars(side) ? ScreenerIndicatorSideConfig.FrameLabel(side.TimeFrame) : string.Empty);
         return side.Offset > 0 ? $"{title} [{side.Offset} bars back]" : title;
     }
 }

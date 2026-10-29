@@ -502,7 +502,6 @@ public sealed class RunScreenerToolTests : IDisposable
     }
 
     [Theory]
-    [InlineData(",\"timeFrame\":\"W1\"", "UNSUPPORTED_TIMEFRAME", "timeFrame")]
     [InlineData(",\"timeFrame\":\"M5\"", "UNSUPPORTED_TIMEFRAME", "timeFrame")]
     [InlineData(""","symbols":["NOPE"]""", "SYMBOL_NOT_FOUND", "symbols[0]")]
     [InlineData(""","symbols":["../x"]""", "INVALID_ARGUMENT", "symbols[0]")]

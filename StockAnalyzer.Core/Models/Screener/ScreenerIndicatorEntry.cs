@@ -1,9 +1,11 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using StockAnalyzer.Core.Models.Indicators;
 using StockAnalyzer.Core.Services;
+using StockAnalyzer.Core.Services.Screener;
 
 namespace StockAnalyzer.Core.Models.Screener;
 
@@ -107,6 +109,53 @@ public partial class ScreenerIndicatorEntry : ObservableObject, IScreeningCondit
     public ValueTask<bool> IsMetAsync(IReadOnlyList<CandleData> candles, Portfolio.TickerMetadata metadata, IScreenerSecondaryCandles? secondary)
     {
         return ValueTask.FromResult(IsMet(candles, metadata, secondary));
+    }
+
+    /// <summary>
+    /// The evaluation in which each side reads the bars of its OWN time frame (<see cref="ScreenerIndicatorSideConfig.TimeFrame"/>) from <paramref name="bars"/>.
+    /// A side that reads no bars (a fundamental Column) ignores its time frame. With only D1 sides the result equals
+    /// <see cref="IsMet(IReadOnlyList{CandleData}, Portfolio.TickerMetadata, IScreenerSecondaryCandles?)"/> on the D1 bars. A side with no value (no bar at its Offset
+    /// in its own frame, an unsupported frame, an indicator without a value) makes the entry not met.
+    /// </summary>
+    public bool IsMetOnBars(IScreenerBarSet bars, Portfolio.TickerMetadata metadata, IScreenerSecondaryCandles? secondary = null)
+    {
+        ArgumentNullException.ThrowIfNull(bars);
+
+        if (bars.Get(TimeFrame.D1).Count == 0) return false;
+
+        if (TargetMode == RightHandTargetMode.StringValue)
+        {
+            return ScreenerTextFields.IsMet(
+                Operator,
+                ScreenerTextFields.ResolveFieldName(LeftHand),
+                ScreenerValueExtractor.Default.ExtractStringValue(LeftHand, metadata),
+                RightStringValue);
+        }
+
+        decimal? left = ValueOnBars(LeftHand, bars, metadata, secondary);
+        if (!left.HasValue) return false;
+
+        decimal? right = TargetMode == RightHandTargetMode.NumericValue
+            ? RightNumericValue
+            : ValueOnBars(RightHand, bars, metadata, secondary);
+        if (!right.HasValue) return false;
+
+        return ScreenerComparison.Compare(Operator, left.Value, right.Value);
+    }
+
+    public ValueTask<bool> IsMetOnBarsAsync(IScreenerBarSet bars, Portfolio.TickerMetadata metadata, IScreenerSecondaryCandles? secondary = null)
+        => ValueTask.FromResult(IsMetOnBars(bars, metadata, secondary));
+
+    private static decimal? ValueOnBars(ScreenerIndicatorSideConfig side, IScreenerBarSet bars, Portfolio.TickerMetadata metadata, IScreenerSecondaryCandles? secondary)
+    {
+        TimeFrame frame = ScreenerSideFrames.FrameOf(side);
+        if (!DataServiceTimeFrames.Supported.Contains(frame))
+        {
+            ScreenerValueExtractor.Default.Faults.Warn(ScreenerFaultLog.SiteIndicatorCalculate, $"Time frame '{frame}' is not served by the data layer; the side has no value.");
+            return null;
+        }
+
+        return ScreenerValueExtractor.Default.ExtractValueNullableOnSideFrame(side, bars.GetCore(frame), metadata, secondary);
     }
 
     /// <summary>

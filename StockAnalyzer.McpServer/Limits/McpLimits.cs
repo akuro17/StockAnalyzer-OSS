@@ -57,4 +57,7 @@ public sealed class McpLimits
 
     /// <summary>Most symbols a Tickers-tab filter is evaluated on; more is LIMIT_EXCEEDED (the list is never cut).</summary>
     public int MaxFilterEvaluationSymbols { get; set; } = 1000;
+
+    /// <summary>Most rules one sa_filter_tickers call evaluates; more is LIMIT_EXCEEDED (the list is never cut).</summary>
+    public int MaxInlineFilterRules { get; set; } = 32;
 }

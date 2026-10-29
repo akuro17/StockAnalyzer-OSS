@@ -102,11 +102,9 @@ public static class TimeFrameAggregator
             return Array.Empty<Models.CandleData>();
         }
 
-        return dailyCandles
-            .GroupBy(c => GetIsoWeekKey(c.Timestamp))
-            .OrderBy(g => g.Key)
-            .Select(AggregateGroup)
-            .ToList();
+        return IsChronological(dailyCandles)
+            ? AggregateChronological(dailyCandles, GetIsoWeekKey)
+            : AggregateDailyToWeeklyByGrouping(dailyCandles);
     }
 
     /// <summary>
@@ -120,11 +118,120 @@ public static class TimeFrameAggregator
             return Array.Empty<Models.CandleData>();
         }
 
-        return dailyCandles
+        return IsChronological(dailyCandles)
+            ? AggregateChronological(dailyCandles, GetMonthKey)
+            : AggregateDailyToMonthlyByGrouping(dailyCandles);
+    }
+
+    // The grouping forms are the reference of the single pass below and the path of a series that is not in chronological order (they group by key, wherever the days are).
+    internal static IReadOnlyList<Models.CandleData> AggregateDailyToWeeklyByGrouping(IReadOnlyList<Models.CandleData> dailyCandles)
+        => dailyCandles
+            .GroupBy(c => GetIsoWeekKey(c.Timestamp))
+            .OrderBy(g => g.Key)
+            .Select(AggregateGroup)
+            .ToList();
+
+    internal static IReadOnlyList<Models.CandleData> AggregateDailyToMonthlyByGrouping(IReadOnlyList<Models.CandleData> dailyCandles)
+        => dailyCandles
             .GroupBy(c => new { c.Timestamp.Year, c.Timestamp.Month })
             .OrderBy(g => g.Key.Year).ThenBy(g => g.Key.Month)
             .Select(AggregateGroup)
             .ToList();
+
+    // True when no candle is dated before the one preceding it. The key of a period never decreases along such a series, so every period is one run of candles.
+    private static bool IsChronological(IReadOnlyList<Models.CandleData> candles)
+    {
+        for (int i = 1; i < candles.Count; i++)
+        {
+            if (candles[i].Timestamp < candles[i - 1].Timestamp)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// The result of the grouping forms for a chronological series, in one pass and without the intermediate groups: each run of candles with the same
+    /// <paramref name="periodKeyOf"/> becomes one candle (see <see cref="AggregateGroup{TKey}"/> for its fields).
+    /// </summary>
+    private static List<Models.CandleData> AggregateChronological(IReadOnlyList<Models.CandleData> candles, Func<DateTime, int> periodKeyOf)
+    {
+        var aggregated = new List<Models.CandleData>();
+        var period = new PeriodBuilder();
+        int periodKey = periodKeyOf(candles[0].Timestamp);
+
+        for (int i = 0; i < candles.Count; i++)
+        {
+            int key = periodKeyOf(candles[i].Timestamp);
+            if (key != periodKey)
+            {
+                aggregated.Add(period.Build());
+                period = new PeriodBuilder();
+                periodKey = key;
+            }
+
+            period.Add(candles[i]);
+        }
+
+        aggregated.Add(period.Build());
+        return aggregated;
+    }
+
+    /// <summary>
+    /// The fields of <see cref="AggregateGroup{TKey}"/> built candle by candle: of several candles dated the same calendar day only the last one counts
+    /// (the candles arrive in chronological order, so those days are adjacent), and the bar is dated by the first day that counts.
+    /// </summary>
+    private struct PeriodBuilder
+    {
+        private Models.CandleData _latestDay;
+        private bool _hasLatestDay;
+        private Models.CandleData _firstDay;
+        private bool _hasFirstDay;
+        private decimal _high;
+        private decimal _low;
+        private long _volume;
+
+        public void Add(Models.CandleData candle)
+        {
+            if (_hasLatestDay && _latestDay.Timestamp.Date != candle.Timestamp.Date)
+            {
+                CountLatestDay();
+            }
+
+            _latestDay = candle;
+            _hasLatestDay = true;
+        }
+
+        public Models.CandleData Build()
+        {
+            CountLatestDay();
+            return new Models.CandleData(
+                Timestamp: _firstDay.Timestamp,
+                Open: _firstDay.Open,
+                High: _high,
+                Low: _low,
+                Close: _latestDay.Close,
+                Volume: _volume);
+        }
+
+        private void CountLatestDay()
+        {
+            if (!_hasFirstDay)
+            {
+                _firstDay = _latestDay;
+                _hasFirstDay = true;
+                _high = _latestDay.High;
+                _low = _latestDay.Low;
+                _volume = _latestDay.Volume;
+                return;
+            }
+
+            _high = Math.Max(_high, _latestDay.High);
+            _low = Math.Min(_low, _latestDay.Low);
+            _volume = checked(_volume + _latestDay.Volume);
+        }
     }
 
     /// <summary>
@@ -180,6 +287,8 @@ public static class TimeFrameAggregator
         var (year, week) = IsoWeekOf(date);
         return year * 100 + week;
     }
+
+    private static int GetMonthKey(DateTime date) => date.Year * 100 + date.Month;
 
     private static DateTime MondayOfIsoWeek(DateTime date)
     {

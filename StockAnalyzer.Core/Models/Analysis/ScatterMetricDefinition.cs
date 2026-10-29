@@ -17,7 +17,6 @@ namespace StockAnalyzer.Core.Models.Analysis;
 public sealed class ScatterMetricDefinition
 {
     private const char KeySeparator = '|';
-    private const string TimeFrameLabelPrefix = " [";
     private const string OffsetLabelPrefix = " [-";
     private const string OffsetLabelSuffix = "]";
     private const string RoundTripFormat = "R";
@@ -45,7 +44,7 @@ public sealed class ScatterMetricDefinition
             string title = Source.GetColumnHeaderTitle();
             if (!string.IsNullOrWhiteSpace(Source.CustomDisplayName) && Source.TimeFrame != TimeFrame.D1)
             {
-                title = string.Concat(title, TimeFrameLabelPrefix, Source.TimeFrame.ToString(), OffsetLabelSuffix);
+                title = string.Concat(title, ScreenerIndicatorSideConfig.FrameLabel(Source.TimeFrame));
             }
 
             return Source.Offset > 0

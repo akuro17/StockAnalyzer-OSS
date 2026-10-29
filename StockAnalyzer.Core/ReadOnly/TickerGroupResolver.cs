@@ -64,9 +64,7 @@ public sealed class TickerGroupResolver : ITickerGroupResolver
         var resolvedCache = new Dictionary<Guid, GroupMembers>();
         var visiting = new HashSet<Guid>();
 
-        var metadataCache = new Dictionary<string, TickerMetadata>(StringComparer.OrdinalIgnoreCase);
-        var rowWithoutCandlesCache = new Dictionary<string, TickerRow>(StringComparer.OrdinalIgnoreCase);
-        var rowWithCandlesCache = new Dictionary<string, TickerRow>(StringComparer.OrdinalIgnoreCase);
+        var evaluator = new TickerFilterEvaluator(_gateway);
         long cumulativeEvaluatedSymbols = 0;
 
         async Task<GroupMembers> ResolveNodeAsync(Guid id)
@@ -132,67 +130,7 @@ public sealed class TickerGroupResolver : ITickerGroupResolver
 
                     cumulativeEvaluatedSymbols = projectedEvaluations;
 
-                    var filterSettings = new FilterSettings { Rules = node.Rules.ToList() };
-                    bool needsCandles = NeedsCandles(node.Rules);
-                    var matched = new List<string>();
-
-                    foreach (var symbol in parentSymbols)
-                    {
-                        cancellationToken.ThrowIfCancellationRequested();
-
-                        TickerRow row;
-                        if (rowWithCandlesCache.TryGetValue(symbol, out var fullRow))
-                        {
-                            row = fullRow;
-                        }
-                        else if (!needsCandles)
-                        {
-                            if (!rowWithoutCandlesCache.TryGetValue(symbol, out var metaRow))
-                            {
-                                if (!metadataCache.TryGetValue(symbol, out var meta))
-                                {
-                                    meta = await _gateway.GetStoredTickerMetadataAsync(symbol, cancellationToken).ConfigureAwait(false) ?? TickerMetadata.Unknown;
-                                    metadataCache[symbol] = meta;
-                                }
-                                metaRow = TickerRowCalculator.Compute(symbol, meta, Array.Empty<CandleData>());
-                                rowWithoutCandlesCache[symbol] = metaRow;
-                            }
-                            row = metaRow;
-                        }
-                        else
-                        {
-                            if (!metadataCache.TryGetValue(symbol, out var meta))
-                            {
-                                meta = await _gateway.GetStoredTickerMetadataAsync(symbol, cancellationToken).ConfigureAwait(false) ?? TickerMetadata.Unknown;
-                                metadataCache[symbol] = meta;
-                            }
-
-                            IReadOnlyList<CandleData> candles;
-                            try
-                            {
-                                candles = await _gateway.GetCandlesAsync(symbol, TimeFrame.D1, 2, cancellationToken).ConfigureAwait(false);
-                            }
-                            catch (DataUnavailableException)
-                            {
-                                throw;
-                            }
-                            catch (ArgumentException)
-                            {
-                                candles = Array.Empty<CandleData>();
-                            }
-
-                            fullRow = TickerRowCalculator.Compute(symbol, meta, candles);
-                            rowWithCandlesCache[symbol] = fullRow;
-                            row = fullRow;
-                        }
-
-                        if (FilterRuleEvaluator.Evaluate(row, filterSettings))
-                        {
-                            matched.Add(symbol);
-                        }
-                    }
-
-                    var matchedSorted = matched.OrderBy(s => s, StringComparer.Ordinal).ToList();
+                    var matchedSorted = (await evaluator.FilterAsync(parentSymbols, node.Rules, cancellationToken).ConfigureAwait(false)).ToList();
                     var filterResult = new GroupMembers(matchedSorted, 0, unknownRuleFields, TickerGroupKind.Filter);
                     resolvedCache[id] = filterResult;
                     return filterResult;
@@ -205,24 +143,6 @@ public sealed class TickerGroupResolver : ITickerGroupResolver
         }
 
         return await ResolveNodeAsync(groupId).ConfigureAwait(false);
-    }
-
-    private static bool NeedsCandles(IReadOnlyList<FilterRule>? rules)
-    {
-        if (rules == null || rules.Count == 0) return false;
-        for (int i = 0; i < rules.Count; i++)
-        {
-            var rule = rules[i];
-            if (TickerRow.RequiresCandles(rule.Field))
-            {
-                return true;
-            }
-            if (rule.IsCompareToField && TickerRow.RequiresCandles(rule.Value))
-            {
-                return true;
-            }
-        }
-        return false;
     }
 
     private static IReadOnlyList<string> CollectUnknownRuleFields(IReadOnlyList<FilterRule>? rules)

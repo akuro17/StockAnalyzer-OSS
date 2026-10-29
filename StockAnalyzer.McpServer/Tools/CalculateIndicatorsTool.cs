@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using StockAnalyzer.Core.Common;
 using StockAnalyzer.Core.Models;
@@ -21,6 +22,8 @@ internal sealed class CalculateIndicatorsTool : IMcpTool
     private const string IndicatorsArgument = "indicators";
     private const string LookbackArgument = "lookbackBars";
     private const string TailArgument = "outputTailCount";
+    private const string EndDateArgument = "endDate";
+    private const string AsOfDateArgument = "asOfDate";
     private const string ComparisonSymbolName = "ComparisonSymbol";
 
     /// <summary>The reason of a result in which every value is null (plan S-10): the history may be shorter than the warm-up, or a signal-type indicator found nothing.</summary>
@@ -63,15 +66,24 @@ internal sealed class CalculateIndicatorsTool : IMcpTool
         "Omitted parameters use the application defaults. All periods are in bars of the requested time frame (periodUnit is always bars). " +
         $"The calculation runs over up to lookbackBars stored bars (default and maximum {_limits.MaxCandlesPerRequest}) so that long-period indicators are warmed up; " +
         $"only the last outputTailCount bars (default {_limits.DefaultOutputTailBars}, at most {_limits.MaxOutputTailBars}) are returned, aligned with the timestamps array. " +
+        $"endDate ({ToolJson.DateFormat}, inclusive) ends the calculation at the last bar dated on or before it, so the latest bar and every value are as they were known on that date " +
+        "(for W1 and MN1 the daily bars are cut at endDate before the period bars are built; the window is then the latest lookbackBars bars up to endDate); " +
+        "comparison symbols are cut at the same date, no bar after it is read, and endDate is echoed in the result only when given. " +
         "A leading null means the indicator has not accumulated enough bars yet (leadingNullCount counts them over the whole calculated history). " +
         "Some indicators (for example Ichimoku SenkouSpanA and SenkouSpanB) also project values beyond the last bar; those are returned in projectedValues and belong to no bar yet. " +
         "nonCausalSeries lists series whose value at a bar depends on later bars. " +
         "Indicator on indicator: sourceIndicatorId feeds one output series (sourceOutputSeriesName) of another indicator of the same call as the price input, " +
         "dynamicPeriodIndicatorId feeds one as adaptive periods; one upstream indicator can be asked for one series only. " +
         "Cross-ticker indicators need the ComparisonSymbol parameter. " +
+        "allowUnregistered true also accepts a symbol (and comparison symbols) that is not in the ticker list but has stored daily bars; it is named in warnings, and a symbol without stored bars is SYMBOL_NOT_FOUND. " +
         "Prices are in the instrument's units; the application stores no output unit per indicator (see unitUndefined in sa_get_capabilities).";
 
     public bool IsHeavy => false;
+
+    public IReadOnlyDictionary<string, string>? MisnamedArgumentHints { get; } = new Dictionary<string, string>(StringComparer.Ordinal)
+    {
+        [AsOfDateArgument] = $"This tool names the last-bar date '{EndDateArgument}' (sa_run_screener uses '{AsOfDateArgument}').",
+    };
 
     public string? ExampleArgumentsJson => "{\"symbol\":\"7203-T\",\"timeFrame\":\"D1\",\"indicators\":[{\"id\":\"sma25\",\"type\":\"SMA\",\"parameters\":{\"Period\":25}}],\"outputTailCount\":200}";
 
@@ -94,14 +106,25 @@ internal sealed class CalculateIndicatorsTool : IMcpTool
             minItems: 1)
         .Integer(LookbackArgument, $"Stored bars the calculation runs over, newest last. Default and maximum {_limits.MaxCandlesPerRequest}.", defaultValue: _limits.MaxCandlesPerRequest, minimum: 1, maximum: _limits.MaxCandlesPerRequest)
         .Integer(TailArgument, $"Number of trailing bars returned per series. Default {_limits.DefaultOutputTailBars}, at most {_limits.MaxOutputTailBars}.", defaultValue: _limits.DefaultOutputTailBars, minimum: 1, maximum: _limits.MaxOutputTailBars)
+        .String(EndDateArgument, $"Last date to include ({ToolJson.DateFormat}). If specified, the latest bar is the last bar dated on or before it. Default: the latest stored bar.")
+        .Boolean(SymbolResolver.AllowUnregisteredArgument, "Accept a symbol (and comparison symbols) that is not in the ticker list but has stored daily bars. Default false.")
         .Build();
 
     public async Task<string> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)
     {
-        string symbol = await _symbols.ResolveAsync(ToolArgs.String(arguments, SymbolArgument)!, SymbolArgument, cancellationToken).ConfigureAwait(false);
+        bool allowUnregistered = ToolArgs.Boolean(arguments, SymbolResolver.AllowUnregisteredArgument) ?? false;
+        var warnings = new List<string>();
+        ResolvedSymbol resolved = await _symbols.ResolveAsync(ToolArgs.String(arguments, SymbolArgument)!, SymbolArgument, allowUnregistered, cancellationToken).ConfigureAwait(false);
+        string symbol = resolved.Symbol;
+        if (!resolved.IsRegistered)
+        {
+            warnings.Add(SymbolResolver.OffListWarning(new[] { symbol }));
+        }
+
         TimeFrame timeFrame = ToolArgs.SupportedTimeFrame(arguments, TimeFrameArgument);
         int lookback = ToolArgs.PositiveWithin(arguments, LookbackArgument, _limits.MaxCandlesPerRequest, _limits.MaxCandlesPerRequest);
         int tail = ToolArgs.PositiveWithin(arguments, TailArgument, _limits.DefaultOutputTailBars, _limits.MaxOutputTailBars);
+        DateOnly? endDate = ToolArgs.Date(arguments, EndDateArgument);
 
         JsonElement indicators = arguments.GetProperty(IndicatorsArgument);
         if (indicators.GetArrayLength() > _limits.MaxIndicatorsPerCall)
@@ -115,18 +138,35 @@ internal sealed class CalculateIndicatorsTool : IMcpTool
 
         List<RequestedIndicator> requests = Bind(indicators);
         _chain.Apply(requests);
-        List<string> comparisonSymbols = await ResolveComparisonSymbolsAsync(requests, symbol, cancellationToken).ConfigureAwait(false);
+        List<string> comparisonSymbols = await ResolveComparisonSymbolsAsync(requests, symbol, allowUnregistered, warnings, cancellationToken).ConfigureAwait(false);
 
-        (List<CandleData> loaded, bool droppedLeadingBar) = await _loader.LoadAsync(symbol, timeFrame, lookback, cancellationToken).ConfigureAwait(false);
-        if (loaded.Count == 0)
+        List<CandleData> loaded;
+        bool droppedLeadingBar;
+        if (endDate is { } asOf)
         {
-            throw new ToolException(ToolErrorCodes.InsufficientMarketData, $"No stored {timeFrame} bars exist for {symbol}.", SymbolArgument);
+            // The gateway reads the whole stored daily history and cuts it at the date, so no leading week or month is truncated by the load.
+            loaded = await _loader.LoadUpToAsync(symbol, timeFrame, asOf, lookback, cancellationToken).ConfigureAwait(false);
+            droppedLeadingBar = false;
+            if (loaded.Count == 0)
+            {
+                throw new ToolException(
+                    ToolErrorCodes.InsufficientMarketData,
+                    $"No stored {timeFrame} bars exist on or before {asOf.ToString(ToolJson.DateFormat, CultureInfo.InvariantCulture)} for {symbol}.",
+                    EndDateArgument);
+            }
+        }
+        else
+        {
+            (loaded, droppedLeadingBar) = await _loader.LoadAsync(symbol, timeFrame, lookback, cancellationToken).ConfigureAwait(false);
+            if (loaded.Count == 0)
+            {
+                throw new ToolException(ToolErrorCodes.InsufficientMarketData, $"No stored {timeFrame} bars exist for {symbol}.", SymbolArgument);
+            }
         }
 
         List<CoreCandleData> candles = loaded.Select(ToCore).ToList();
-        var warnings = new List<string>();
         IReadOnlyDictionary<string, IReadOnlyList<CoreCandleData?>>? secondary =
-            await AlignComparisonAsync(symbol, comparisonSymbols, timeFrame, candles.Count, warnings, cancellationToken).ConfigureAwait(false);
+            await AlignComparisonAsync(symbol, comparisonSymbols, timeFrame, candles.Count, endDate, warnings, cancellationToken).ConfigureAwait(false);
 
         var excluded = new HashSet<string>(
             comparisonSymbols.Where(c => secondary is null || !secondary.ContainsKey(c)),
@@ -140,7 +180,7 @@ internal sealed class CalculateIndicatorsTool : IMcpTool
             .CalculateIndicatorsAsync(candles, requests.Select(r => r.Settings).ToList(), secondary)
             .ConfigureAwait(false);
 
-        return ToolJson.Build(writer => WriteResult(writer, symbol, timeFrame, lookback, loaded, droppedLeadingBar, tail, requests, results, warnings, excluded));
+        return ToolJson.Build(writer => WriteResult(writer, symbol, timeFrame, endDate, lookback, loaded, droppedLeadingBar, tail, requests, results, warnings, excluded));
     }
 
     private List<RequestedIndicator> Bind(JsonElement indicators)
@@ -200,9 +240,11 @@ internal sealed class CalculateIndicatorsTool : IMcpTool
     /// Cross-ticker indicators need a comparison symbol: it must be a stored ticker and is written back in canonical form.
     /// Returns the distinct comparison symbols, the primary symbol included when an indicator compares a symbol with itself.
     /// </summary>
-    private async Task<List<string>> ResolveComparisonSymbolsAsync(List<RequestedIndicator> requests, string primary, CancellationToken cancellationToken)
+    private async Task<List<string>> ResolveComparisonSymbolsAsync(
+        List<RequestedIndicator> requests, string primary, bool allowUnregistered, List<string> warnings, CancellationToken cancellationToken)
     {
         var symbols = new List<string>();
+        var offList = new List<string>();
         foreach (RequestedIndicator request in requests)
         {
             if (request.Settings.ParameterObject is not ICrossTickerParameter cross)
@@ -220,8 +262,14 @@ internal sealed class CalculateIndicatorsTool : IMcpTool
                     "Set it to a symbol from sa_list_tickers.");
             }
 
-            string canonical = await _symbols.ResolveAsync(cross.ComparisonSymbol, path, cancellationToken).ConfigureAwait(false);
+            ResolvedSymbol comparison = await _symbols.ResolveAsync(cross.ComparisonSymbol, path, allowUnregistered, cancellationToken).ConfigureAwait(false);
+            string canonical = comparison.Symbol;
             cross.ComparisonSymbol = canonical;
+            if (!comparison.IsRegistered && !offList.Contains(canonical, StringComparer.OrdinalIgnoreCase))
+            {
+                offList.Add(canonical);
+            }
+
             if (!symbols.Contains(canonical, StringComparer.OrdinalIgnoreCase))
             {
                 symbols.Add(canonical);
@@ -238,6 +286,11 @@ internal sealed class CalculateIndicatorsTool : IMcpTool
                 "Split the call.");
         }
 
+        if (offList.Count > 0)
+        {
+            warnings.Add(SymbolResolver.OffListWarning(offList));
+        }
+
         return symbols;
     }
 
@@ -247,6 +300,7 @@ internal sealed class CalculateIndicatorsTool : IMcpTool
         List<string> comparisonSymbols,
         TimeFrame timeFrame,
         int barCount,
+        DateOnly? endDate,
         List<string> warnings,
         CancellationToken cancellationToken)
     {
@@ -255,7 +309,9 @@ internal sealed class CalculateIndicatorsTool : IMcpTool
             return null;
         }
 
-        var aligner = new ComparisonDataAligner(new WindowedDataService(_loader)) { MaxComparisonSymbols = _limits.MaxSecondarySymbolsPerCall };
+        // With an end date every symbol is cut at the same day; without one the loader is the unchanged latest-bars path.
+        IDataService data = endDate is null ? new WindowedDataService(_loader) : new EndDateAwareDataService(_loader, endDate);
+        var aligner = new ComparisonDataAligner(data) { MaxComparisonSymbols = _limits.MaxSecondarySymbolsPerCall };
         ComparisonAlignedData aligned = await aligner.AlignAsync(symbol, comparisonSymbols, timeFrame, barCount, cancellationToken).ConfigureAwait(false);
         warnings.AddRange(aligned.Warnings.Select(_sanitizer.Sanitize));
 
@@ -274,6 +330,7 @@ internal sealed class CalculateIndicatorsTool : IMcpTool
         Utf8JsonWriter writer,
         string symbol,
         TimeFrame timeFrame,
+        DateOnly? endDate,
         int lookback,
         List<CandleData> loaded,
         bool droppedLeadingBar,
@@ -290,6 +347,11 @@ internal sealed class CalculateIndicatorsTool : IMcpTool
         writer.WriteStartObject();
         writer.WriteString("symbol", symbol);
         writer.WriteString("timeFrame", timeFrame.ToString());
+        if (endDate is not null)
+        {
+            writer.WriteString("endDate", endDate.Value.ToString(ToolJson.DateFormat, CultureInfo.InvariantCulture));
+        }
+
         writer.WriteString("periodUnit", GetCapabilitiesTool.PeriodUnit);
         writer.WriteString("timestampFormat", ToolJson.DateFormat);
         writer.WriteNumber("lookbackBars", lookback);

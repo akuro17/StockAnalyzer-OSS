@@ -21,7 +21,7 @@
 |                               |                                                |  |
 |                               v                                                v  |
 |                     [McpResourceRegistry]                             [McpToolRegistry]  |
-|                     - catalog/indicators                              - 15 Read-Only Tools|
+|                     - catalog/indicators                              - 16 Read-Only Tools|
 |                     - catalog/screener                                - 7 Execution Tools |
 |                     - settings/current                                  (--enable-execution)
 |                               |                                                |  |
@@ -84,18 +84,19 @@ Tunable parameters configured in `appsettings.json` under section `AiIntegration
 | `MaxOutputTailBars` | `int` | `5000` | `1` | `MaxCandlesPerRequest` | Maximum number of trailing calculated bars returned in indicator or chart series calls. |
 | `DefaultOutputTailBars` | `int` | `200` | `1` | `MaxOutputTailBars` | Default trailing bar count when `outputTailCount` is omitted. |
 | `ToolTimeoutSeconds` | `int` | `60` | `1` | `900` | Cancellation timeout for standard read-only tools. |
-| `HeavyToolTimeoutSeconds` | `int` | `180` | `ToolTimeout` | `1800` | Cancellation timeout for heavy computational tools (`sa_run_screener`, `sa_run_backtest`). |
+| `HeavyToolTimeoutSeconds` | `int` | `180` | `ToolTimeout` | `1800` | Cancellation timeout for heavy computational tools (`sa_run_screener`, `sa_run_backtest`, `sa_filter_tickers`). |
 | `QueueWaitSeconds` | `int` | `60` | `0` | `600` | Maximum time a request waits in the internal execution queue before timeout. |
 | `MaxResponseBytes` | `int` | `4194304` | `65536` | `8388608` | Maximum byte size of a serialized JSON-RPC response payload (default: 4 MB, max: 8 MB). |
 | `MaxRequestBytes` | `int` | `1048576` | `4096` | `8388608` | Maximum byte size of an incoming JSON-RPC request line (default: 1 MB, max: 8 MB). |
-| `MaxScreenerSymbols` | `int` | `500` | `1` | `5000` | Maximum number of symbols evaluated during an explicit universe screener run. |
+| `MaxScreenerSymbols` | `int` | `500` | `1` | `5000` | Maximum number of symbols evaluated during an explicit universe screener run; also the most symbols that may reach the screener of one `sa_filter_tickers` call (the symbols its rules kept). |
 | `MaxReturnedMatches` | `int` | `200` | `1` | `1000` | Maximum number of matched symbols returned by `sa_run_screener`. |
 | `MaxSecondarySymbolsPerCall` | `int` | `4` | `1` | `8` | Maximum number of distinct comparison symbols allowed for cross-ticker indicators. |
 | `MaxComparisonTargets` | `int` | `10` | `1` | `10` | Maximum number of distinct comparison symbols in one `sa_calculate_relative_performance` call (the primary symbol and repeats are not counted). Exceeding it raises `LIMIT_EXCEEDED`. |
-| `DefaultTickerPageSize` | `int` | `100` | `1` | `MaxTickersPerPage` | Default page size when `limit` is omitted in `sa_list_tickers`. |
-| `MaxTickersPerPage` | `int` | `1000` | `1` | `5000` | Maximum page size allowed in `sa_list_tickers`. |
+| `DefaultTickerPageSize` | `int` | `100` | `1` | `MaxTickersPerPage` | Default page size when `limit` is omitted in `sa_list_tickers` and `sa_filter_tickers`. |
+| `MaxTickersPerPage` | `int` | `1000` | `1` | `5000` | Maximum page size allowed in `sa_list_tickers` and `sa_filter_tickers`. |
 | `MaxGroupNodes` | `int` | `500` | `1` | `5000` | Maximum number of group nodes returned by `sa_list_ticker_groups`. |
-| `MaxFilterEvaluationSymbols` | `int` | `1000` | `1` | `5000` | Maximum number of symbols evaluated when filtering ticker lists. |
+| `MaxFilterEvaluationSymbols` | `int` | `1000` | `1` | `5000` | Maximum number of symbols evaluated when filtering ticker lists; for `sa_filter_tickers` the most symbols of its universe (more raises `LIMIT_EXCEEDED`, never cut). |
+| `MaxInlineFilterRules` | `int` | `32` | `1` | `128` | Maximum number of rules in one `sa_filter_tickers` call (more raises `LIMIT_EXCEEDED`, never cut). |
 
 ---
 
@@ -123,7 +124,7 @@ URI Scheme: `stockanalyzer://`
 |---|---|---|
 | `INVALID_ARGUMENT` | All Tools | Argument syntax violation, unknown argument, out-of-range value, or logical contradiction (e.g., `startDate > endDate`). |
 | `SYMBOL_NOT_FOUND` | Symbol Tools | Requested ticker symbol is not registered or cannot be resolved. |
-| `UNSUPPORTED_TIMEFRAME` | Timeframe Tools | Requested timeframe is not supported by the invoked tool (e.g., requesting `W1` on `sa_run_screener`). |
+| `UNSUPPORTED_TIMEFRAME` | Timeframe Tools | Requested timeframe is not supported by the invoked tool (e.g., an intraday frame such as `M5` on `sa_run_screener`). |
 | `UNKNOWN_INDICATOR` | Indicator Tools | Requested indicator type name does not exist in `IndicatorCatalog`. |
 | `INVALID_INDICATOR_PARAMETER` | Indicator Tools | Specified parameter name is invalid or value is outside `CoreParameterRange`. |
 | `INVALID_OUTPUT_SERIES` | Indicator Tools | Requested output series name does not exist on the specified indicator. |
@@ -149,9 +150,9 @@ URI Scheme: `stockanalyzer://`
 
 ---
 
-## 6. Read-Only Tools Reference (15 Tools)
+## 6. Read-Only Tools Reference (16 Tools)
 
-All read-only tools are marked read-only and non-destructive in `tools/list`. Every `timeFrame` schema lists all time-frame names, but only `D1`, `W1` and `MN1` are accepted (`UNSUPPORTED_TIMEFRAME` otherwise); `sa_run_screener` accepts `D1` only. Heavy tools run under `HeavyToolTimeoutSeconds` (default 180 s), the others under `ToolTimeoutSeconds` (default 60 s).
+All read-only tools are marked read-only and non-destructive in `tools/list`. Every `timeFrame` schema lists all time-frame names, but only `D1`, `W1` and `MN1` are accepted (`UNSUPPORTED_TIMEFRAME` otherwise). The date that ends a calculation is `endDate` for tools that return a series over a window and `asOfDate` for tools that evaluate one bar per symbol or predict (`sa_run_screener`, `sa_run_onnx_prediction`, `sa_get_rl_playback`); there is no alias, and the other spelling is `INVALID_ARGUMENT` (for `sa_calculate_indicators` with `asOfDate` and `sa_run_screener` with `endDate` the hint names the right argument). With a date a symbol is read as it was known on that date (the daily series is cut before `W1` and `MN1` bars are built); a date removes look-ahead only, not survivorship bias: the universe is today's ticker list. Heavy tools run under `HeavyToolTimeoutSeconds` (default 180 s), the others under `ToolTimeoutSeconds` (default 60 s).
 
 ### 6.1 `sa_list_tickers`
 Lists registered ticker symbols (All Tickers), ordinally sorted. Canonical format: uppercase with `-` (e.g., `7203-T`).
@@ -282,15 +283,17 @@ Calculates up to `MaxIndicatorsPerCall` indicators on stored bars using the core
 | `indicators[].dynamicPeriodOutputSeriesName` | `string` | No | `null` | - | - | Series name of dynamic period indicator. |
 | `lookbackBars` | `integer` | No | `MaxCandlesPerRequest` | Min: `1`, Max: `MaxCandlesPerRequest` | - | Stored bars the calculation runs over (warm-up window). |
 | `outputTailCount` | `integer` | No | `DefaultOutputTailBars` | Min: `1`, Max: `MaxOutputTailBars` | - | Trailing bars returned per series. |
+| `endDate` | `string` | No | latest stored bar | `yyyy-MM-dd` | - | Last date to include: the latest bar is the last bar dated on or before it, the window is the latest `lookbackBars` bars up to it, comparison symbols are cut at the same date. A malformed date is `INVALID_ARGUMENT` at `endDate`; no bar on or before it is `INSUFFICIENT_MARKET_DATA` at `endDate`. |
+| `allowUnregistered` | `boolean` | No | `false` | - | - | Accepts `symbol` and `ComparisonSymbol` values that are not in the ticker list but have stored daily bars; they are named in `warnings`. A symbol with no stored daily bar is `SYMBOL_NOT_FOUND`. |
 
 - **Boundary Conditions**: Leading nulls mean warm-up (`leadingNullCount`); if every value is null the result reports why. A failing indicator is reported in its own result and does not fail the call. Projected values (e.g. Ichimoku spans) belong to no bar yet.
-- **Return Fields**: `symbol`, `timeFrame`, `periodUnit`, `timestampFormat`, `lookbackBars`, `calculatedBarCount`, `returnedBarCount`, `earliestCalculatedTimestamp`, `latestTimestamp`, `droppedLeadingBar`, `timestamps`, `results` (keyed by indicator ID: `type`, `displayName`, `isSuccessful`, `errorMessage?`, `priceSource`, `series`, `latestValues`, `leadingNullCount`, `projectedValues?`, `nonCausalSeries?`), `warnings`.
+- **Return Fields**: `symbol`, `timeFrame`, `endDate?` (only when given), `periodUnit`, `timestampFormat`, `lookbackBars`, `calculatedBarCount`, `returnedBarCount`, `earliestCalculatedTimestamp`, `latestTimestamp`, `droppedLeadingBar`, `timestamps`, `results` (keyed by indicator ID: `type`, `displayName`, `isSuccessful`, `errorMessage?`, `priceSource`, `series`, `latestValues`, `leadingNullCount`, `projectedValues?`, `nonCausalSeries?`), `warnings`.
 - **Error Codes**: `SYMBOL_NOT_FOUND`, `UNSUPPORTED_TIMEFRAME`, `UNKNOWN_INDICATOR`, `INVALID_INDICATOR_PARAMETER`, `INVALID_OUTPUT_SERIES`, `LIMIT_EXCEEDED`, `INSUFFICIENT_MARKET_DATA`.
 
 ---
 
 ### 6.8 `sa_run_screener`
-Evaluates a condition tree against the latest daily bar (`D1`) of a symbol universe, with the Screener tab's own evaluation.
+Evaluates a condition tree against the latest bar of a symbol universe, with the Screener tab's own evaluation (daily bars by default; `W1` and `MN1` are built from the daily bars the way the Screener tab builds the bars of a side that names Week or Month; each side may name its own `timeFrame`; the tab has no `asOfDate`, `sortBy` or comparison-symbol bars). With `asOfDate` each symbol is evaluated on its last bar on or before that date; with `sortBy` the matches are ranked.
 
 - **Heavy**: `true` (`HeavyToolTimeoutSeconds`)
 - **Arguments**:
@@ -301,12 +304,22 @@ Evaluates a condition tree against the latest daily bar (`D1`) of a symbol unive
 | `templateId` | `string` | No | `null` | - | - | Saved screener template id from `sa_list_templates`. |
 | `symbols` | `string[]` | No | `null` | MinItems: `1`, MaxItems: `MaxScreenerSymbols` | - | Specific universe. Mutually exclusive with `groupId`. |
 | `groupId` | `string` | No | `null` | - | - | Workspace group GUID. Mutually exclusive with `symbols`. |
-| `timeFrame` | `string` | No | `D1` | - | `D1` | Only `D1` supported. |
+| `timeFrame` | `string` | No | `D1` | - | `D1`, `W1`, `MN1` | Bar duration of the whole scan, or of every side that names no `timeFrame` once a side does (see Per-side time frame); a `W1` or `MN1` bar is built from the stored daily bars. Other frames are `UNSUPPORTED_TIMEFRAME`. |
+| `completeBarsOnly` | `boolean` | No | `true` | - | - | `W1` and `MN1` only (ignored for `D1`). `true`: when the latest period has not ended, the previous complete period is evaluated; `false`: the partial period is evaluated and named in the result. |
+| `asOfDate` | `string` | No | latest stored bar | `yyyy-MM-dd` | - | Evaluation date (inclusive). Applies to every path (`conditionTree`, `templateId`, `groupId`) and to the comparison symbols, `includeMatchedValues` and `sortBy`. With it a column that is not read from the bars is `INVALID_ARGUMENT` (see Boundary Conditions). |
+| `sortBy` | `object` | No | `null` | - | - | Side `{indicator\|price\|column: name, parameters?, outputSeriesName?, offset?}` the matched symbols are ranked by, evaluated like a comparison side (a two-ticker indicator needs `ComparisonSymbol`). A `criteria` side and a text column are `INVALID_ARGUMENT` (`sortBy.criteria`, `sortBy.column`). |
+| `sortDirection` | `string` | No | `Descending` | - | `Descending`, `Ascending` | Needs `sortBy` (`INVALID_ARGUMENT` at `sortDirection` without it). |
 | `includeMatchedValues` | `boolean` | No | `false` | - | - | Returns the values each comparison read, per returned symbol. |
 | `maxReturnedMatches` | `integer` | No | `MaxReturnedMatches` | Min: `1`, Max: `MaxReturnedMatches` | - | Maximum matched symbols returned. |
+| `allowUnregistered` | `boolean` | No | `false` | - | - | Accepts explicit `symbols` and `ComparisonSymbol` values that are not in the ticker list but have stored daily bars; they are named in `warnings`. Not for `groupId`. |
 
-- **Boundary Conditions**: Omitting both `symbols` and `groupId` screens every available symbol. A comparison that cannot be calculated does not match. Look-ahead indicators are refused. Two-ticker indicators (`Correlation`, `CrossCorrelation`) need `ComparisonSymbol`.
-- **Return Fields**: `timeFrame`, `universe`, `groupId`, `template{id, name}?`, `evaluatedSymbolCount`, `matchedSymbolCount`, `returnedMatchCount`, `truncated`, `treeNodeCount`, `treeDepth`, `matchedSymbols` (ascending), `comparisons[{id, path, text}]` and `matchedValues` (with `includeMatchedValues`), `warnings?`.
+- **Boundary Conditions**: Omitting both `symbols` and `groupId` screens every available symbol. A comparison that cannot be calculated does not match. Look-ahead indicators are refused. Two-ticker indicators (`Correlation`, `CrossCorrelation`) need `ComparisonSymbol` (an empty one is refused: the chart's Price-vs-Volume mode is not available here).
+  - **Two-ticker indicators on `W1`/`MN1`**: both symbols are read through the same bar selection (date cut, aggregation, partial-period rule, each symbol with its own reference date). A `W1` or `MN1` bar is stamped with the first stored day of its period and the two symbols are matched by that exact date, as on the chart: a period whose first stored day differs between the symbols has no value, a window that contains it has no value, the condition does not match and `warnings` stays silent; `sortBy` then gives `sortValue` `null`. A comparison symbol stored only to a mid-week day loses that week as partial (with `completeBarsOnly: true`) while the screened symbol keeps it.
+  - **Per-side time frame**: a side object (`indicator`, `price`, `column`, `criteria`, and `sortBy`) takes an optional `timeFrame` (`D1`, `W1`, `MN1`; periods and `offset` count bars of that frame), so one condition can compare, for example, the daily `Close` with a weekly `SMA`: `{"left":{"price":"Close"},"comparison":"GreaterThan","right":{"indicator":"SMA","parameters":{"Period":10},"timeFrame":"W1"}}`. While no side (and no saved template) names a frame, the whole scan is on the tool-level `timeFrame` as before. As soon as one does, every side reads its own frame: a side without `timeFrame` reads the tool-level `timeFrame` (default `D1`); a saved template that stores a `W1` or `MN1` bar-reading side reads its stored frames and refuses a tool-level `timeFrame` other than `D1` (`INVALID_ARGUMENT` at `timeFrame`). `INVALID_ARGUMENT` at `<side>.timeFrame`: a value that is not a frame the server supports, any `timeFrame` on a column not read from the bars (only `Open`, `High`, `Low`, `Close`, `Volume`, `Change`, `Change %` have bars), a frame other than `D1` on `AnchoredVWAP` or on a two-ticker indicator. A two-ticker indicator is refused anywhere in such a call (that scan reads no comparison symbol); in a saved template it is listed in `warnings` and never matches. The result then has `sideFrames` (below) instead of the single `partialLastBar`, `partialPeriodStarts` and `skippedPartialBarCount`. `sa_get_capabilities` with `includeScreenerCatalog` lists the frames in `screener.sideTimeFrames`.
+  - **As of a date**: a symbol with no bar on or before `asOfDate` is not evaluated and is counted in `noDataAtAsOfCount`, not in `evaluatedSymbolCount`. Only the columns read from the bars (`Open`, `High`, `Low`, `Close`, `Volume`, `Change`, `Change %`) are accepted; every other column (also the text columns) is today's stored snapshot and is refused at its side path (`conditionTree.<comparison>.left.column`, `entries[i].leftHand`, `sortBy.column`) with the allowed names in the hint. A `groupId` adds a warning that its members are those of today. `asOfDate` removes look-ahead only, not survivorship bias (today's ticker list). An as-of scan reads the whole daily history of every scanned symbol.
+  - **Partial `W1`/`MN1` period**: a period is partial while its last calendar day (the Sunday of the week, the last day of the month) is after the reference date, which is `asOfDate` or the last stored daily bar, whichever is earlier (the rule of `lastBarPartial` in `sa_get_candles`); a week whose last stored day is a Friday is partial. `completeBarsOnly: true` evaluates the previous period instead (`skippedPartialBarCount` counts the symbols), `false` evaluates the partial one (`partialLastBar: true`, `partialPeriodStarts`). Periods in conditions are bars of the requested frame.
+  - **Ranking**: `Descending` puts the larger `sortValue` first, `Ascending` the smaller; a symbol without a value is last in both directions; equal values are in ascending symbol order. `matchedSymbols` then follow the ranking, `maxReturnedMatches` keeps the first ranks and `matchedSymbolCount` stays the true count. Without `sortBy` the list is ascending and there is no `ranking`. `sortValue` has the unit of the chosen side (indicator outputs have no stored unit). The sort side is read for every matched symbol.
+- **Return Fields**: `timeFrame`, `asOfDate?` (only when given), `completeBarsOnly?` (`W1`/`MN1`), `universe`, `groupId`, `template{id, name}?`, `evaluatedSymbolCount`, `noDataAtAsOfCount?` (only with `asOfDate`), `partialLastBar?`, `partialPeriodStarts?` (only when true) and `skippedPartialBarCount?` (only with `completeBarsOnly` true) (`W1`/`MN1`; none of the three on a scan with per-side frames), `sideFrames?[{timeFrame, partialLastBar, partialPeriodStarts?, skippedPartialBarCount?, symbolsWithoutBarsCount, symbolsWithoutBars}]` (only on a scan with per-side frames, one entry per `W1`/`MN1` frame the condition read; `symbolsWithoutBars` lists the first `maxReturnedMatches`), `matchedSymbolCount`, `returnedMatchCount`, `truncated`, `treeNodeCount`, `treeDepth`, `matchedSymbols` (ascending; in ranking order with `sortBy`), `ranking?[{rank, symbol, sortValue}]` (only with `sortBy`; `sortValue` is a number or `null`), `comparisons[{id, path, text}]` and `matchedValues` (with `includeMatchedValues`), `warnings?`.
 - **Error Codes**: `SYMBOL_NOT_FOUND`, `UNSUPPORTED_TIMEFRAME`, `TEMPLATE_NOT_FOUND`, `GROUP_NOT_FOUND`, `CONDITION_LIMIT_EXCEEDED`, `LIMIT_EXCEEDED`.
 
 ---
@@ -345,6 +358,7 @@ Executes an in-memory backtest on daily, weekly or monthly bars using the Legacy
 | `riskManagement` | `object` | No | `null` | - | - | `{stopLossRatio, takeProfitRatio}`; not with `templateId`. |
 | `report` | `object` | No | factory defaults | - | - | `annualRiskFreeRate`, `annualMar`, `annualPeriodsD1` (1..366), `bootstrapSeed`, `bootstrapIterations` (at least 1000). |
 | `maxReturnedTrades` | `integer` | No | `MaxReturnedTrades` | Min: `0`, Max: `MaxReturnedTrades` | - | Max trades listed; `0` lists none. |
+| `allowUnregistered` | `boolean` | No | `false` | - | - | Accepts a `symbol` that is not in the ticker list but has stored bars; it is named in `warnings`. A symbol with no stored bars is `SYMBOL_NOT_FOUND`. |
 
 - **Boundary Conditions**: With `templateId`, `riskManagement` must be omitted (the template's risk settings govern). `startDate > endDate` raises `INVALID_ARGUMENT`. A side whose time frame differs from the evaluated `timeFrame` is `UNSUPPORTED_TIMEFRAME`. Two-ticker indicators are refused. Omitted settings are the window's factory defaults and every effective value is echoed.
 - **Return Fields**: `symbol`, `timeFrame`, `executionModel`, `status`, `isInsufficientData`, `strategy`, `conditionSource`, `template{id, name}?`, `period{startDate, endDate, datesFromStoredHistory, warmUpBarCount, evaluatedBarCount}`, `lastProcessedBar`, `equity{initial, final}`, `reproducibilityHash`, `runFingerprint`, `report` (metrics keep status, value, unit and reason), `effectiveSettings{account, riskManagement, report}`, `conditionRoots`, `trades{totalTrades, returnedTrades, truncated, order, items}`, `engineWarnings`, `warnings`.
@@ -472,6 +486,36 @@ Calculates the values the Relative Performance chart plots for a primary symbol 
 - **Return Fields**: `symbol`, `timeFrame`, `endDate?`, `mode`, `unit`, `zScorePeriod?`, `lookbackBars`, `alignedBarCount`, `returnedBarCount`, `baselineDate?` (Performance), `timestamps` (array), `series` (object keyed by symbol, primary first: `isPrimary`, `baseDate?`, `basePrice?`, `values` with `null` for undefined), `excludedSymbols` (`{symbol, reason}`), `ignoredSymbols` (`{symbol, reason}`), `warnings`.
 - **Error Codes**: `INVALID_ARGUMENT` (malformed symbol, `mode` spelling, `zScorePeriod` outside 2..500, malformed `endDate`), `SYMBOL_NOT_FOUND`, `INSUFFICIENT_MARKET_DATA`, `LIMIT_EXCEEDED`.
 - **Order of checks for `comparisonSymbols`**: each element in turn has its shape checked (`INVALID_ARGUMENT` at `comparisonSymbols[i]`) and is counted; the first different symbol over the limit is `LIMIT_EXCEEDED` at once and the rest of the list is not examined; only a list that passed gets the stored-ticker lookups (`SYMBOL_NOT_FOUND`). A list over the limit is answered with `LIMIT_EXCEEDED` without any lookup, even if it also contains an unknown symbol.
+
+---
+
+### 6.16 `sa_filter_tickers`
+Filters tickers with rules sent in the call (the Tickers-tab rule filter, without a saved filter or group), optionally followed by a Screener condition. The same rule evaluator and row calculation as a saved Tickers-tab filter.
+
+- **Heavy**: `true` (`HeavyToolTimeoutSeconds`; the screener can read long histories of up to `MaxScreenerSymbols` symbols)
+- **Arguments**:
+
+| Argument | Type | Req | Default | Bounds | Allowed Values | Description |
+|---|---|---|---|---|---|---|
+| `symbols` | `string[]` | No | `null` | MinItems: `1`, MaxItems: `MaxFilterEvaluationSymbols` | - | Symbols to filter. Mutually exclusive with `groupId`. Omit both to filter every registered symbol. |
+| `groupId` | `string` | No | `null` | - | - | GUID of a saved workspace group from `sa_list_ticker_groups`; its members are the universe. |
+| `rules` | `object[]` | No | `[]` | MaxItems: `MaxInlineFilterRules` | - | Rules, all must hold (AND). |
+| `rules[].field` | `string` | Yes | - | - | Tickers-tab column name or alias | Unknown field is `INVALID_ARGUMENT`. |
+| `rules[].operator` | `string` | Yes | - | - | per field kind, see below | Case-insensitive. |
+| `rules[].value` | `string` | Yes | - | - | - | Number (numeric fields) or text; a field name when `isCompareToField` is true. |
+| `rules[].isCompareToField` | `boolean` | No | `false` | - | - | `value` names another field of the same kind. |
+| `screener` | `object` | No | `null` | - | - | `{conditionTree}`: the condition grammar of `sa_run_screener`, applied after the rules to the symbols they kept. `templateId` is not supported. |
+| `includeFields` | `string[]` | No | `[]` | at most the number of known column names and aliases | known column names or aliases | Columns added to each returned match (`null` when not available). |
+| `offset` | `integer` | No | `0` | Min: `0` | - | Matches to skip. |
+| `limit` | `integer` | No | `100` | Min: `1`, Max: `MaxTickersPerPage` | - | Page size. |
+| `allowUnregistered` | `boolean` | No | `false` | - | - | Evaluates listed `symbols` that are not in the ticker list but have stored daily bars (named in `warnings`). A listed symbol with no stored daily bar is `SYMBOL_NOT_FOUND`. Not for `groupId` or the whole-list universe. |
+
+- **Operators by field kind**: numeric fields: `==`, `=`, `Equals`, `!=`, `NotEquals`, `>`, `GreaterThan`, `>=`, `GreaterThanOrEqual`, `<`, `LessThan`, `<=`, `LessThanOrEqual` (`value` must be a number). Text, flag and date-time fields (compared through their text, ignoring case): `*=`, `Contains`, `!*=`, `NotContains`, `!Contains`, `==`, `=`, `Equals`, `!=`, `NotEquals`. The `Tag` field: the text operators plus `ContainsTag` (tags are separated by comma or semicolon). With `isCompareToField`, numeric compares with numeric and text with text; `Tag` may be compared with any field.
+- **Evaluation order**: universe, rules, screener (on the symbols the rules kept), sort (ordinal, ascending), paging.
+- **Boundary Conditions**: Without rules and screener the whole universe is returned. An empty universe is an empty result, not an error. Symbols are canonicalised and de-duplicated; a symbol not in the ticker list is counted in `universe.unregisteredCount` and left out (one warning), unless `allowUnregistered` is true. A price-dependent field uses the latest stored daily bar and the one before it; a symbol without stored bars matches no such rule. A bad condition, or one that names a comparison symbol which is not stored, is refused whatever the rules keep. At most `MaxScreenerSymbols` symbols may reach the screener. There is no `compareMode`: the evaluator ignores it.
+- **Units**: field values keep the unit of the Tickers-tab column (for example `ChangePercent` is a percent value); the tool converts nothing.
+- **Return Fields**: `universe{kind (symbols|group|all), inputCount, unregisteredCount, groupId?, evaluatedCount}`, `ruleCount`, `screenerApplied`, `screener{evaluatedSymbolCount, treeNodeCount, treeDepth}?`, `totalMatchCount`, `offset`, `limit`, `returnedCount`, `hasMore`, `matches` (array of `{symbol, fields?}`), `warnings`.
+- **Error Codes**: `INVALID_ARGUMENT` (path `rules[i].field`, `rules[i].operator`, `rules[i].value`, `includeFields[i]`, `symbols[i]`, `groupId`, `screener...`), `LIMIT_EXCEEDED` (`rules`, `symbols`, `groupId`, `limit`, `includeFields`, `screener.conditionTree`), `GROUP_NOT_FOUND`, `SYMBOL_NOT_FOUND`, `UNKNOWN_INDICATOR`, `INVALID_INDICATOR_PARAMETER`, `CONDITION_LIMIT_EXCEEDED`.
 
 ---
 

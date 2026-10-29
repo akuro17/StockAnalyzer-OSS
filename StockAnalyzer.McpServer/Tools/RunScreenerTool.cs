@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Globalization;
 using System.Text.Json;
 using StockAnalyzer.Core.Common;
 using StockAnalyzer.Core.Constants;
@@ -10,6 +11,7 @@ using StockAnalyzer.Core.Models.Screener;
 using StockAnalyzer.Core.Models.Templates;
 using StockAnalyzer.Core.ReadOnly;
 using StockAnalyzer.Core.Services;
+using StockAnalyzer.Core.Services.Screener;
 using StockAnalyzer.McpServer.Catalog;
 using StockAnalyzer.McpServer.Limits;
 
@@ -28,8 +30,15 @@ internal sealed class RunScreenerTool : IMcpTool
     private const string TimeFrameArgument = "timeFrame";
     private const string ValuesArgument = "includeMatchedValues";
     private const string MaxMatchesArgument = "maxReturnedMatches";
+    private const string AsOfDateArgument = "asOfDate";
+    private const string EndDateArgument = "endDate";
+    private const string CompleteBarsOnlyArgument = "completeBarsOnly";
+    private const string SortByArgument = "sortBy";
+    private const string SortDirectionArgument = "sortDirection";
+    private const string SortAscending = "Ascending";
+    private const string SortDescending = "Descending";
 
-    /// <summary>The Screener evaluates daily bars only: the value extractor returns "no value" for any other frame (plan A-06).</summary>
+    /// <summary>The time frame of a scan that names none, and the one the Screener tab and the other tools that screen (sa_filter_tickers) use.</summary>
     internal const TimeFrame ScreenerTimeFrame = TimeFrame.D1;
 
     private readonly IReadOnlyStockAnalyzerGateway _gateway;
@@ -39,6 +48,8 @@ internal sealed class RunScreenerTool : IMcpTool
     private readonly ScreenerTemplateAdvisor _advisor;
     private readonly IStockAnalyzerSettings _settings;
     private readonly McpLimits _limits;
+    private readonly SymbolResolver _symbols;
+    private readonly ScreenerComparisonSymbolResolver _comparisonSymbols;
 
     public RunScreenerTool(
         IReadOnlyStockAnalyzerGateway gateway,
@@ -67,17 +78,19 @@ internal sealed class RunScreenerTool : IMcpTool
         _advisor = advisor;
         _settings = settings;
         _limits = limits;
+        _symbols = new SymbolResolver(gateway);
+        _comparisonSymbols = new ScreenerComparisonSymbolResolver(gateway, _symbols, limits);
     }
 
     public string Name => "sa_run_screener";
 
     public string Description =>
-        "Finds the symbols whose latest daily bar meets a condition, with the application's own Screener (the same evaluation as the Screener tab). " +
+        "Finds the symbols whose latest bar meets a condition, with the application's own Screener (the same evaluation as the Screener tab for the daily time frame). " +
         "Call sa_get_capabilities with includeScreenerCatalog true first to learn the column, criteria and price names; indicator types, parameters and series come from sa_get_capabilities. " +
         "Give exactly one of conditionTree (a condition you write) or templateId (a Screener template the user saved; ids come from sa_list_templates). " +
         "conditionTree is a group {operator: And|Or, children: [...]} of groups and comparisons (or one comparison). " +
         "A comparison is {left: side, comparison: GreaterThan|GreaterThanOrEqual|LessThan|LessThanOrEqual|Equal|NotEqual|Contains|DoesNotContain, right: number | text | side}. " +
-        "A side names exactly one of indicator (with optional parameters and outputSeriesName), price, column or criteria, plus an optional offset (bars back from the latest bar, default 0). " +
+        "A side names exactly one of indicator (with optional parameters and outputSeriesName), price, column or criteria, plus an optional offset (bars back from the latest bar of the side's own time frame, default 0) and an optional timeFrame (see below). " +
         "Example: {\"operator\":\"And\",\"children\":[{\"left\":{\"indicator\":\"RSI\",\"parameters\":{\"Period\":14}},\"comparison\":\"LessThan\",\"right\":30}," +
         "{\"left\":{\"price\":\"Close\"},\"comparison\":\"GreaterThan\",\"right\":{\"indicator\":\"SMA\",\"parameters\":{\"Period\":200}}}]}. " +
         "A criteria side is 1 when the pattern is present at the bar and 0 otherwise (compare it with Equal 1). " +
@@ -87,27 +100,73 @@ internal sealed class RunScreenerTool : IMcpTool
         "a symbol screened against itself is compared with itself, and the comparison symbol's bars are matched to each screened symbol's dates. " +
         $"Give symbols (at most {_limits.MaxScreenerSymbols}) or groupId to screen a specific universe; omit both to screen every available symbol. The tree size and offset limits are the application's Screener settings (see sa_get_settings). " +
         $"matchedSymbols are in ascending order, at most maxReturnedMatches (default and maximum {_limits.MaxReturnedMatches}); matchedSymbolCount is the true count and truncated says whether the list was cut. " +
-        "includeMatchedValues adds the value of each comparison's two sides for every returned symbol. Only the daily time frame is screened. " +
+        "sortBy ranks the matched symbols by one side (an indicator, price or numeric column with optional parameters, outputSeriesName and offset, evaluated exactly like a comparison side; a criteria side or a text column is INVALID_ARGUMENT) " +
+        "in sortDirection Descending (default) or Ascending; the list is then ranked, not alphabetical: matchedSymbols follow ranking, ranking is [{rank, symbol, sortValue}] (rank 1 first; sortValue is the side's value in its own unit, null where it cannot be calculated), " +
+        "a symbol without a value comes after all that have one in either direction, equal values are in ascending symbol order, and maxReturnedMatches keeps the first ranks while matchedSymbolCount stays the true count. " +
+        "Without sortBy there is no ranking key and matchedSymbols stay ascending. Ranking reads the sort side of every matched symbol. " +
+        "includeMatchedValues adds the value of each comparison's two sides for every returned symbol. " +
+        $"timeFrame D1 (default), W1 or MN1: a weekly or monthly bar is built from the stored daily bars (the days of the period, dated by their first day), and periods in conditions are in bars of that frame. " +
+        "A last W1 or MN1 period is partial while its last calendar day (the Sunday of the week, the last day of the month) is after the reference date (asOfDate, or the last stored day), the rule of sa_get_candles; " +
+        "completeBarsOnly true (default) evaluates the previous complete period instead and skippedPartialBarCount says for how many symbols, false evaluates the partial period and sets partialLastBar true with its partialPeriodStarts. " +
+        "Each side may name its own timeFrame (D1, W1 or MN1; sortBy too), so one condition can mix frames, for example the daily close against a weekly SMA: " +
+        "{\"left\":{\"price\":\"Close\"},\"comparison\":\"GreaterThan\",\"right\":{\"indicator\":\"SMA\",\"parameters\":{\"Period\":10},\"timeFrame\":\"W1\"}}. " +
+        "As soon as one side (or sortBy, or a saved template that stores a weekly or monthly side) names a frame, every side reads its own frame: a side without timeFrame reads the tool-level timeFrame (default D1), and a template reads the frames it stores " +
+        "(then the tool-level timeFrame must be D1 or omitted). With no side naming a frame the whole scan is on the tool-level timeFrame as above. " +
+        "A side's period and offset count bars of its own frame. completeBarsOnly and asOfDate apply to every weekly or monthly side. " +
+        "A scan in which sides read their own frames reports each weekly or monthly frame it read in sideFrames [{timeFrame, partialLastBar, partialPeriodStarts, skippedPartialBarCount, symbolsWithoutBarsCount, symbolsWithoutBars}] " +
+        "and has no top-level partialLastBar, partialPeriodStarts or skippedPartialBarCount. " +
+        "INVALID_ARGUMENT (param <side>.timeFrame): a timeFrame on a column read from the stored metadata (only Open, High, Low, Close, Volume, Change and Change % have bars), a frame other than D1 on AnchoredVWAP or on an indicator that compares two symbols; " +
+        "an indicator that compares two symbols is not accepted at all in a scan in which a side names its timeFrame. " +
+        $"asOfDate ({ToolJson.DateFormat}, inclusive) evaluates every symbol on its last bar dated on or before that date, reading no later bar (comparison symbols and includeMatchedValues too); " +
+        "a symbol with no bar on or before it is not evaluated and is counted in noDataAtAsOfCount instead of evaluatedSymbolCount. " +
+        $"With asOfDate a column side must be one read from the bars ({string.Join(", ", _binder.AsOfColumnNames)}): every other column is today's stored snapshot and is refused with INVALID_ARGUMENT. " +
+        "asOfDate removes look-ahead only, not survivorship bias: the screened universe is today's ticker list (symbols delisted since are absent), and the members of a groupId are today's. " +
+        "allowUnregistered true also accepts symbols (and comparison symbols) that are not in the ticker list but have stored daily bars; they are named in warnings, and a symbol without stored bars is SYMBOL_NOT_FOUND. It applies to explicit symbols only, not to groupId. " +
         "A template is run as the user saved it (enabled entries combined from the first to the last by the And or Or of the preceding entry); entries that can never match here are listed in warnings. " +
         "The tool never changes anything and never fetches data.";
 
     public bool IsHeavy => true;
 
-    public string? ExampleArgumentsJson => "{\"timeFrame\":\"D1\",\"conditionTree\":{\"left\":{\"indicator\":\"RSI\",\"parameters\":{\"Period\":14}},\"comparison\":\"LessThan\",\"right\":30},\"maxReturnedMatches\":50}";
+    public IReadOnlyDictionary<string, string>? MisnamedArgumentHints { get; } = new Dictionary<string, string>(StringComparer.Ordinal)
+    {
+        [EndDateArgument] = $"This tool names the evaluation date '{AsOfDateArgument}' (sa_calculate_indicators uses '{EndDateArgument}').",
+    };
+
+    public string? ExampleArgumentsJson => "{\"timeFrame\":\"D1\",\"conditionTree\":{\"left\":{\"price\":\"Close\"},\"comparison\":\"GreaterThan\",\"right\":{\"indicator\":\"SMA\",\"parameters\":{\"Period\":10},\"timeFrame\":\"W1\"}},\"maxReturnedMatches\":50}";
 
     public string InputSchemaJson => ToolSchema.Object()
         .FreeObject(ConditionArgument, "The condition tree (see the tool description). Give this or templateId.")
         .String(TemplateArgument, "Id of a saved Screener template (from sa_list_templates). Give this or conditionTree.")
         .StringArray(SymbolsArgument, $"Symbols to screen (at most {_limits.MaxScreenerSymbols}); omit to screen every available symbol. Mutually exclusive with groupId.", minItems: 1)
         .String(GroupIdArgument, "Guid of a saved ticker group (from sa_list_ticker_groups) to screen. Mutually exclusive with symbols.")
-        .String(TimeFrameArgument, $"Time frame of the bars. Only {ScreenerTimeFrame} is supported (default).", allowedValues: Enum.GetNames<TimeFrame>())
+        .String(TimeFrameArgument, $"Time frame of the bars of every side that names no timeFrame of its own. Supported: {ToolArgs.SupportedTimeFrameNames}. Default {ScreenerTimeFrame}.", allowedValues: Enum.GetNames<TimeFrame>())
+        .Boolean(CompleteBarsOnlyArgument, "W1 and MN1 only (ignored for D1): true (default) evaluates the last complete period when the latest one has not ended; false evaluates the partial period and says so (partialLastBar).")
+        .FreeObject(SortByArgument, "Rank the matched symbols by one side: {indicator|price|column: name, parameters?, outputSeriesName?, offset?} (the same side object as in conditionTree; not criteria or a text column).")
+        .String(SortDirectionArgument, $"{SortDescending} (default: larger value first) or {SortAscending}. Needs sortBy.", allowedValues: new[] { SortDescending, SortAscending })
+        .String(AsOfDateArgument, $"Evaluation date ({ToolJson.DateFormat}, inclusive): each symbol is evaluated on its last bar on or before it. Default: the latest stored bar. Columns other than those read from the bars are refused with it.")
         .Boolean(ValuesArgument, "Add the values each comparison read, per returned symbol. Default false.")
+        .Boolean(SymbolResolver.AllowUnregisteredArgument, "Accept symbols that are not in the ticker list but have stored daily bars. Default false.")
         .Integer(MaxMatchesArgument, $"Most matched symbols to return. Default and maximum {_limits.MaxReturnedMatches}.", defaultValue: _limits.MaxReturnedMatches, minimum: 1, maximum: _limits.MaxReturnedMatches)
         .Build();
 
     public async Task<string> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)
     {
-        CheckTimeFrame(arguments);
+        TimeFrame timeFrame = arguments.TryGetProperty(TimeFrameArgument, out _) ? ToolArgs.SupportedTimeFrame(arguments, TimeFrameArgument) : ScreenerTimeFrame;
+        DateOnly? asOf = ToolArgs.Date(arguments, AsOfDateArgument);
+        bool isPeriodFrame = timeFrame is TimeFrame.W1 or TimeFrame.MN1;
+        bool completeBarsOnly = ToolArgs.Boolean(arguments, CompleteBarsOnlyArgument) ?? ScreenerBarSelection.DefaultCompleteBarsOnly;
+
+        // The plain latest-daily-bar scan keeps its own path (unchanged); a date or a weekly / monthly frame reads a selection of bars built from the daily history.
+        var source = new BarSource(timeFrame, asOf is not null || timeFrame != ScreenerTimeFrame ? new ScreenerBarSelection(asOf, completeBarsOnly) : null);
+
+        // A side may name its own timeFrame. While none does, the whole scan is on the tool-level frame (the path above, unchanged). As soon as one does (a side of the
+        // condition, of the sortBy, or of the saved template), every side reads its own literal frame and the scan runs on a bar set per symbol.
+        var sideSelection = new ScreenerBarSelection(asOf, completeBarsOnly);
+        bool sortNamesFrame = arguments.TryGetProperty(SortByArgument, out JsonElement sortProbe)
+            && sortProbe.ValueKind == JsonValueKind.Object
+            && sortProbe.TryGetProperty(ScreenerConditionBinder.SideTimeFrameKey, out _);
+        bool sideFrames;
+        Func<IReadOnlyList<string>, Task<ScreenerSideFramesResult>>? runSideFrames = null;
         bool hasTree = arguments.TryGetProperty(ConditionArgument, out JsonElement tree);
         string? templateText = ToolArgs.String(arguments, TemplateArgument);
         if (hasTree == (templateText is not null))
@@ -132,13 +191,14 @@ internal sealed class RunScreenerTool : IMcpTool
 
         int maxMatches = ToolArgs.PositiveWithin(arguments, MaxMatchesArgument, _limits.MaxReturnedMatches, _limits.MaxReturnedMatches);
         bool includeValues = ToolArgs.Boolean(arguments, ValuesArgument) ?? false;
+        bool allowUnregistered = ToolArgs.Boolean(arguments, SymbolResolver.AllowUnregisteredArgument) ?? false;
 
         // Both modes end in the same pieces: the leaves (for matched values), a condition that sizes the history, and a way to run it.
         IReadOnlyList<ScreenerLeaf> leaves;
         IScreeningCondition sizing;
-        Func<IReadOnlyList<string>, Task<IReadOnlyList<string>>> run;
+        Func<IReadOnlyList<string>, Task<ScreenerBarsResult>>? run = null;
         ScreenerIndicatorTemplate? template = null;
-        IReadOnlyList<string> warnings = Array.Empty<string>();
+        var warnings = new List<string>();
         IReadOnlyList<string> comparisonSymbols;
         int nodeCount = 0, depth = 0;
         if (hasTree)
@@ -148,13 +208,31 @@ internal sealed class RunScreenerTool : IMcpTool
             sizing = bound.Condition;
             nodeCount = bound.NodeCount;
             depth = bound.Depth;
-            comparisonSymbols = await ResolveComparisonSymbolsAsync(bound.ComparisonSymbols, ConditionArgument, cancellationToken).ConfigureAwait(false);
-            run = universe => _gateway.RunScreenerAsync(universe, bound.Condition, ScreenerTimeFrame, comparisonSymbols, cancellationToken);
+            if (asOf is not null)
+            {
+                _binder.RequireAsOfCompatible(bound.Leaves, isTemplate: false, AsOfDateArgument);
+            }
+
+            sideFrames = bound.ExplicitFrameSides.Count > 0 || sortNamesFrame;
+            if (sideFrames)
+            {
+                _binder.ApplyLiteralFrames(bound, timeFrame);
+                comparisonSymbols = Array.Empty<string>();
+                runSideFrames = universe => _gateway.RunScreenerWithSideFramesAsync(universe, bound.Condition, sideSelection, cancellationToken);
+            }
+            else
+            {
+                comparisonSymbols = await _comparisonSymbols.ResolveAsync(bound.ComparisonSymbols, ConditionArgument, allowUnregistered, warnings, cancellationToken).ConfigureAwait(false);
+                IReadOnlyList<string> symbolsToCompare = comparisonSymbols;
+                run = source.Selection is { } treeSelection
+                    ? universe => _gateway.RunScreenerOnBarsAsync(universe, bound.Condition, timeFrame, symbolsToCompare, treeSelection, cancellationToken)
+                    : async universe => PlainResult(await _gateway.RunScreenerAsync(universe, bound.Condition, timeFrame, symbolsToCompare, cancellationToken).ConfigureAwait(false));
+            }
         }
         else
         {
             template = await LoadTemplateAsync(templateText!, cancellationToken).ConfigureAwait(false);
-            warnings = _advisor.Warnings(template);
+            warnings.AddRange(_advisor.Warnings(template));
             leaves = template.Entries
                 .Select((entry, index) => (entry, index))
                 .Where(item => item.entry.IsEnabled)
@@ -163,27 +241,127 @@ internal sealed class RunScreenerTool : IMcpTool
             sizing = new ScreenerConditionTreeCondition(new ScreenerConditionGroup(
                 LogicalOperator.And, leaves.Select(leaf => (IScreenerConditionNode)new ScreenerConditionLeaf(leaf.Entry)).ToImmutableArray()));
             ScreenerIndicatorTemplate loaded = template;
-            comparisonSymbols = await ResolveComparisonSymbolsAsync(TemplateComparisonSymbols(leaves), TemplateArgument, cancellationToken).ConfigureAwait(false);
-            run = universe => _gateway.RunScreenerTemplateAsync(universe, loaded, ScreenerTimeFrame, comparisonSymbols, cancellationToken);
+            if (asOf is not null)
+            {
+                _binder.RequireAsOfCompatible(leaves, isTemplate: true, AsOfDateArgument);
+            }
+
+            // A template stores a frame on every side, so one that reads a weekly or monthly bar is run on those frames (the tool-level frame has nothing left to say).
+            sideFrames = ScreenerSideFrames.UsesNonDailyBars(template.Entries) || sortNamesFrame;
+            if (sideFrames)
+            {
+                if (timeFrame != ScreenerTimeFrame)
+                {
+                    throw new ToolException(
+                        ToolErrorCodes.InvalidArgument,
+                        "This scan reads the time frames stored in the template (or named by sortBy), so a tool-level timeFrame other than D1 has no side to apply to.",
+                        TimeFrameArgument,
+                        "Omit timeFrame, and give the frame of the ranking as sortBy.timeFrame.");
+                }
+
+                comparisonSymbols = Array.Empty<string>();
+                runSideFrames = universe => _gateway.RunScreenerTemplateWithSideFramesAsync(universe, loaded, sideSelection, cancellationToken);
+            }
+            else
+            {
+                comparisonSymbols = await _comparisonSymbols.ResolveAsync(TemplateComparisonSymbols(leaves), TemplateArgument, allowUnregistered, warnings, cancellationToken).ConfigureAwait(false);
+                IReadOnlyList<string> symbolsToCompare = comparisonSymbols;
+                run = source.Selection is { } templateSelection
+                    ? universe => _gateway.RunScreenerTemplateOnBarsAsync(universe, loaded, timeFrame, symbolsToCompare, templateSelection, cancellationToken)
+                    : async universe => PlainResult(await _gateway.RunScreenerTemplateAsync(universe, loaded, timeFrame, symbolsToCompare, cancellationToken).ConfigureAwait(false));
+            }
         }
 
-        (List<string> universe, bool isCustom, string? resolvedGroupId) = await ResolveUniverseAsync(arguments, cancellationToken).ConfigureAwait(false);
-        IReadOnlyList<string> matched = universe.Count == 0 ? Array.Empty<string>() : await run(universe).ConfigureAwait(false);
+        // sortBy and sortDirection are checked, like the condition, before anything is scanned.
+        BoundSortSide? sortSide = null;
+        IReadOnlyList<string> sortComparisonSymbols = Array.Empty<string>();
+        bool descending = true;
+        if (arguments.TryGetProperty(SortByArgument, out JsonElement sortBy))
+        {
+            sortSide = _binder.BindSortSide(sortBy, SortByArgument);
+            if (sideFrames)
+            {
+                _binder.ApplyLiteralFrame(sortSide, timeFrame, SortByArgument);
+            }
 
-        List<string> ordered = matched.OrderBy(symbol => symbol, StringComparer.Ordinal).ToList();
+            if (asOf is not null)
+            {
+                _binder.RequireAsOfCompatible(sortSide, AsOfDateArgument);
+            }
+
+            sortComparisonSymbols = await _comparisonSymbols.ResolveAsync(sortSide.ComparisonSymbols, SortByArgument, allowUnregistered, warnings, cancellationToken).ConfigureAwait(false);
+            descending = !string.Equals(ToolArgs.String(arguments, SortDirectionArgument), SortAscending, StringComparison.Ordinal);
+        }
+        else if (arguments.TryGetProperty(SortDirectionArgument, out _))
+        {
+            throw new ToolException(ToolErrorCodes.InvalidArgument, "sortDirection needs sortBy.", SortDirectionArgument, "Give sortBy, or omit sortDirection.");
+        }
+
+        (List<string> universe, bool isCustom, string? resolvedGroupId) = await ResolveUniverseAsync(arguments, allowUnregistered, warnings, cancellationToken).ConfigureAwait(false);
+        if (asOf is not null && resolvedGroupId is not null)
+        {
+            warnings.Add("The members of the group are those of today (a group defined by filter rules is resolved on today's stored data), not those on asOfDate.");
+        }
+
+        ScreenerBarsResult screened;
+        ScreenerSideFramesResult? framesResult = null;
+        if (runSideFrames is not null)
+        {
+            framesResult = universe.Count == 0
+                ? new ScreenerSideFramesResult(Array.Empty<string>(), Array.Empty<string>(), Array.Empty<ScreenerFrameReport>())
+                : await runSideFrames(universe).ConfigureAwait(false);
+            screened = new ScreenerBarsResult(framesResult.Matched, framesResult.SymbolsWithoutDailyBars, Array.Empty<DateOnly>(), 0);
+        }
+        else
+        {
+            screened = universe.Count == 0 ? PlainResult(Array.Empty<string>()) : await run!(universe).ConfigureAwait(false);
+        }
+
+        IReadOnlyList<string> matched = screened.Matched;
+        int noDataAtAsOf = asOf is not null ? screened.SymbolsWithoutBars.Count : 0;
+
+        List<string> ordered;
+        Dictionary<string, decimal?>? sortValues = null;
+        if (sortSide is not null)
+        {
+            sortValues = sideFrames
+                ? await SortValuesOnSideFrameAsync(matched, sortSide, sideSelection, cancellationToken).ConfigureAwait(false)
+                : await SortValuesAsync(matched, sortSide, sortComparisonSymbols, source, cancellationToken).ConfigureAwait(false);
+            ordered = Rank(sortValues, descending);
+        }
+        else
+        {
+            ordered = matched.OrderBy(symbol => symbol, StringComparer.Ordinal).ToList();
+        }
+
         List<string> returned = ordered.Take(maxMatches).ToList();
         Dictionary<string, TickerMetadata?>? metadata = null;
-        Dictionary<string, IReadOnlyList<CandleData>>? candles = null;
+        ValueBars? candles = null;
         IScreenerSecondaryCandles? secondary = null;
         if (includeValues)
         {
-            (candles, metadata, secondary) = await LoadValueInputsAsync(returned, sizing, comparisonSymbols, cancellationToken).ConfigureAwait(false);
+            (candles, metadata, secondary) = sideFrames
+                ? await LoadSideFrameValueInputsAsync(returned, sizing, sideSelection, cancellationToken).ConfigureAwait(false)
+                : await LoadValueInputsAsync(returned, sizing, comparisonSymbols, source, cancellationToken).ConfigureAwait(false);
         }
+
+        // The old path reports one frame for the whole scan; the side-frame path reports each weekly or monthly frame a side reads.
+        bool writeCompleteBarsOnly = sideFrames ? framesResult!.Frames.Count > 0 : isPeriodFrame;
 
         return ToolJson.Build(writer =>
         {
             writer.WriteStartObject();
-            writer.WriteString("timeFrame", ScreenerTimeFrame.ToString());
+            writer.WriteString("timeFrame", timeFrame.ToString());
+            if (asOf is { } asOfDate)
+            {
+                writer.WriteString("asOfDate", asOfDate.ToString(ToolJson.DateFormat, CultureInfo.InvariantCulture));
+            }
+
+            if (writeCompleteBarsOnly)
+            {
+                writer.WriteBoolean("completeBarsOnly", completeBarsOnly);
+            }
+
             writer.WriteString("universe", isCustom ? "Custom" : "AllAvailable");
             if (resolvedGroupId is not null)
             {
@@ -201,7 +379,37 @@ internal sealed class RunScreenerTool : IMcpTool
                 writer.WriteEndObject();
             }
 
-            writer.WriteNumber("evaluatedSymbolCount", universe.Count);
+            writer.WriteNumber("evaluatedSymbolCount", universe.Count - noDataAtAsOf);
+            if (asOf is not null)
+            {
+                writer.WriteNumber("noDataAtAsOfCount", noDataAtAsOf);
+            }
+
+            if (sideFrames)
+            {
+                WriteSideFrames(writer, framesResult!.Frames, completeBarsOnly, maxMatches);
+            }
+            else if (isPeriodFrame)
+            {
+                // A partial last period (its last calendar day is after the reference date) is either left out (completeBarsOnly) or evaluated and named here.
+                writer.WriteBoolean("partialLastBar", screened.PartialLastBarPeriodStarts.Count > 0);
+                if (screened.PartialLastBarPeriodStarts.Count > 0)
+                {
+                    writer.WriteStartArray("partialPeriodStarts");
+                    foreach (DateOnly start in screened.PartialLastBarPeriodStarts)
+                    {
+                        writer.WriteStringValue(start.ToString(ToolJson.DateFormat, CultureInfo.InvariantCulture));
+                    }
+
+                    writer.WriteEndArray();
+                }
+
+                if (completeBarsOnly)
+                {
+                    writer.WriteNumber("skippedPartialBarCount", screened.SkippedPartialBarCount);
+                }
+            }
+
             writer.WriteNumber("matchedSymbolCount", ordered.Count);
             writer.WriteNumber("returnedMatchCount", returned.Count);
             writer.WriteBoolean("truncated", ordered.Count > returned.Count);
@@ -218,6 +426,29 @@ internal sealed class RunScreenerTool : IMcpTool
             }
 
             writer.WriteEndArray();
+            if (sortValues is not null)
+            {
+                writer.WriteStartArray("ranking");
+                for (int index = 0; index < returned.Count; index++)
+                {
+                    writer.WriteStartObject();
+                    writer.WriteNumber("rank", index + 1);
+                    writer.WriteString("symbol", returned[index]);
+                    if (sortValues[returned[index]] is { } sortValue)
+                    {
+                        writer.WriteNumber("sortValue", sortValue);
+                    }
+                    else
+                    {
+                        writer.WriteNull("sortValue");
+                    }
+
+                    writer.WriteEndObject();
+                }
+
+                writer.WriteEndArray();
+            }
+
             if (warnings.Count > 0)
             {
                 writer.WriteStartArray("warnings");
@@ -262,16 +493,7 @@ internal sealed class RunScreenerTool : IMcpTool
         return template;
     }
 
-    private static void CheckTimeFrame(JsonElement arguments)
-    {
-        string? name = ToolArgs.String(arguments, TimeFrameArgument);
-        if (name is not null && Enum.Parse<TimeFrame>(name) != ScreenerTimeFrame)
-        {
-            throw new ToolException(ToolErrorCodes.UnsupportedTimeFrame, $"Time frame {name} is not supported by the screener.", TimeFrameArgument, $"Supported: {ScreenerTimeFrame}.");
-        }
-    }
-
-    private async Task<(List<string> Symbols, bool IsCustom, string? GroupId)> ResolveUniverseAsync(JsonElement arguments, CancellationToken cancellationToken)
+    private async Task<(List<string> Symbols, bool IsCustom, string? GroupId)> ResolveUniverseAsync(JsonElement arguments, bool allowUnregistered, List<string> warnings, CancellationToken cancellationToken)
     {
         IReadOnlyList<string> available = await _gateway.GetAvailableTickersAsync(cancellationToken).ConfigureAwait(false);
         IReadOnlyList<string>? requested = ToolArgs.StringArray(arguments, SymbolsArgument);
@@ -290,16 +512,31 @@ internal sealed class RunScreenerTool : IMcpTool
 
             var known = new HashSet<string>(available, StringComparer.OrdinalIgnoreCase);
             var universe = new SortedSet<string>(StringComparer.Ordinal);
+            var offList = new SortedSet<string>(StringComparer.Ordinal);
             for (int index = 0; index < requested.Count; index++)
             {
                 string path = $"{SymbolsArgument}[{index}]";
                 string canonical = SymbolResolver.Canonical(requested[index], path);
                 if (!known.Contains(canonical))
                 {
-                    throw new ToolException(ToolErrorCodes.SymbolNotFound, $"Symbol '{canonical}' is not available.", path, "Call sa_list_tickers to see the available symbols.");
+                    if (!allowUnregistered)
+                    {
+                        throw new ToolException(ToolErrorCodes.SymbolNotFound, $"Symbol '{canonical}' is not available.", path, "Call sa_list_tickers to see the available symbols.");
+                    }
+
+                    if (!offList.Contains(canonical))
+                    {
+                        await _symbols.RequireStoredBarsAsync(canonical, path, cancellationToken).ConfigureAwait(false);
+                        offList.Add(canonical);
+                    }
                 }
 
                 universe.Add(canonical);
+            }
+
+            if (offList.Count > 0)
+            {
+                warnings.Add(SymbolResolver.OffListWarning(offList));
             }
 
             return (universe.ToList(), true, null);
@@ -307,24 +544,7 @@ internal sealed class RunScreenerTool : IMcpTool
 
         if (groupIdRaw is not null)
         {
-            if (!Guid.TryParse(groupIdRaw, out Guid groupId))
-            {
-                throw new ToolException(ToolErrorCodes.InvalidArgument, $"Argument '{GroupIdArgument}' must be a valid Guid.", GroupIdArgument);
-            }
-
-            GroupMembers group;
-            try
-            {
-                group = await _groupResolver.ResolveAsync(groupId, _limits.MaxFilterEvaluationSymbols, cancellationToken).ConfigureAwait(false);
-            }
-            catch (GroupNotFoundException)
-            {
-                throw new ToolException(ToolErrorCodes.GroupNotFound, $"Group '{groupId}' was not found in the workspace.", GroupIdArgument, "Use sa_list_ticker_groups to see available group ids.");
-            }
-            catch (FilterEvaluationLimitException ex)
-            {
-                throw new ToolException(ToolErrorCodes.LimitExceeded, ex.Message, GroupIdArgument, "Raise AiIntegration:MaxFilterEvaluationSymbols or narrow the group.");
-            }
+            (Guid groupId, GroupMembers group) = await GroupMembersLookup.ResolveAsync(_groupResolver, groupIdRaw, GroupIdArgument, _limits.MaxFilterEvaluationSymbols, cancellationToken).ConfigureAwait(false);
 
             if (group.Symbols.Count > _limits.MaxScreenerSymbols)
             {
@@ -339,48 +559,6 @@ internal sealed class RunScreenerTool : IMcpTool
         }
 
         return (available.OrderBy(symbol => symbol, StringComparer.Ordinal).ToList(), false, null);
-    }
-
-    /// <summary>
-    /// The comparison symbols the condition names, canonical and distinct: each must be a stored symbol (SYMBOL_NOT_FOUND names the parameter that
-    /// holds it) and there are at most <see cref="McpLimits.MaxSecondarySymbolsPerCall"/> different ones (LIMIT_EXCEEDED). A symbol that is also
-    /// screened is allowed: it is compared with itself.
-    /// </summary>
-    private async Task<IReadOnlyList<string>> ResolveComparisonSymbolsAsync(
-        IReadOnlyList<ScreenerComparisonSymbol> named, string argument, CancellationToken cancellationToken)
-    {
-        if (named.Count == 0)
-        {
-            return Array.Empty<string>();
-        }
-
-        IReadOnlyList<string> available = await _gateway.GetAvailableTickersAsync(cancellationToken).ConfigureAwait(false);
-        var known = new HashSet<string>(available, StringComparer.OrdinalIgnoreCase);
-        var symbols = new List<string>();
-        foreach (ScreenerComparisonSymbol item in named)
-        {
-            string canonical = SymbolResolver.Canonical(item.Symbol, item.Path);
-            if (!known.Contains(canonical))
-            {
-                throw new ToolException(ToolErrorCodes.SymbolNotFound, $"Symbol '{canonical}' is not available.", item.Path, "Call sa_list_tickers to see the available symbols.");
-            }
-
-            if (!symbols.Contains(canonical, StringComparer.OrdinalIgnoreCase))
-            {
-                symbols.Add(canonical);
-            }
-        }
-
-        if (symbols.Count > _limits.MaxSecondarySymbolsPerCall)
-        {
-            throw new ToolException(
-                ToolErrorCodes.LimitExceeded,
-                $"At most {_limits.MaxSecondarySymbolsPerCall} different comparison symbols per call.",
-                argument,
-                "Use fewer different ComparisonSymbol values.");
-        }
-
-        return symbols;
     }
 
     /// <summary>The comparison symbols the enabled entries of a saved template name, with the path of the entry side that holds each.</summary>
@@ -407,45 +585,231 @@ internal sealed class RunScreenerTool : IMcpTool
     /// The bars and stored metadata the screener read for each returned symbol, loaded the way the screener loads them (the history the condition needs),
     /// and the bars of the comparison symbols (null when there are none).
     /// </summary>
-    private async Task<(Dictionary<string, IReadOnlyList<CandleData>> Candles, Dictionary<string, TickerMetadata?> Metadata, IScreenerSecondaryCandles? Secondary)> LoadValueInputsAsync(
-        IReadOnlyList<string> symbols, IScreeningCondition sizing, IReadOnlyList<string> comparisonSymbols, CancellationToken cancellationToken)
+    private async Task<(ValueBars Candles, Dictionary<string, TickerMetadata?> Metadata, IScreenerSecondaryCandles? Secondary)> LoadValueInputsAsync(
+        IReadOnlyList<string> symbols, IScreeningCondition sizing, IReadOnlyList<string> comparisonSymbols, BarSource source, CancellationToken cancellationToken)
     {
-        int required = ScreenerHistoryRequirements.GetRequiredCandleCount(sizing);
-        int count = required <= 0 ? _limits.MaxCandlesPerRequest : Math.Min(required, _limits.MaxCandlesPerRequest);
+        int count = HistoryCount(sizing);
         var candles = new Dictionary<string, IReadOnlyList<CandleData>>(StringComparer.Ordinal);
         var metadata = new Dictionary<string, TickerMetadata?>(StringComparer.Ordinal);
         foreach (string symbol in symbols)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            candles[symbol] = await _gateway.GetCandlesAsync(symbol, ScreenerTimeFrame, count, cancellationToken).ConfigureAwait(false);
+            candles[symbol] = await LoadBarsAsync(source, symbol, count, cancellationToken).ConfigureAwait(false);
             metadata[symbol] = await _gateway.GetStoredTickerMetadataAsync(symbol, cancellationToken).ConfigureAwait(false);
         }
 
-        ScreenerSecondaryCandles? secondary = null;
-        if (comparisonSymbols.Count > 0)
+        return (ValueBars.OfOneFrame(candles), metadata, await LoadSecondaryAsync(source, comparisonSymbols, count, cancellationToken).ConfigureAwait(false));
+    }
+
+    /// <summary>
+    /// <see cref="LoadValueInputsAsync"/> for a scan in which each side reads its own time frame: for every returned symbol the bars of each frame the condition reads, cut and
+    /// aggregated exactly as the scan cut and aggregated them, and the stored metadata. There are no comparison symbols in this scan.
+    /// </summary>
+    private async Task<(ValueBars Candles, Dictionary<string, TickerMetadata?> Metadata, IScreenerSecondaryCandles? Secondary)> LoadSideFrameValueInputsAsync(
+        IReadOnlyList<string> symbols, IScreeningCondition sizing, ScreenerBarSelection selection, CancellationToken cancellationToken)
+    {
+        int count = HistoryCount(sizing);
+        IReadOnlyList<TimeFrame> frames = ScreenerSideFrames.Collect(sizing);
+        var byFrame = new Dictionary<string, Dictionary<TimeFrame, IReadOnlyList<CandleData>>>(StringComparer.Ordinal);
+        var metadata = new Dictionary<string, TickerMetadata?>(StringComparer.Ordinal);
+        foreach (string symbol in symbols)
         {
-            var bySymbol = new Dictionary<string, IReadOnlyList<CoreCandleData?>>(StringComparer.OrdinalIgnoreCase);
-            foreach (string comparison in comparisonSymbols)
+            cancellationToken.ThrowIfCancellationRequested();
+            var bars = new Dictionary<TimeFrame, IReadOnlyList<CandleData>>();
+            foreach (TimeFrame frame in frames)
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                IReadOnlyList<CandleData> bars = await _gateway.GetCandlesAsync(comparison, ScreenerTimeFrame, count, cancellationToken).ConfigureAwait(false);
-                if (bars.Count > 0)
-                {
-                    bySymbol[comparison] = bars.Select(bar => (CoreCandleData?)new CoreCandleData(bar.Timestamp, bar.Open, bar.High, bar.Low, bar.Close, bar.Volume)).ToList();
-                }
+                bars[frame] = await _gateway.GetScreenerBarsAsync(symbol, frame, selection, count, cancellationToken).ConfigureAwait(false);
             }
 
-            secondary = new ScreenerSecondaryCandles(bySymbol);
+            byFrame[symbol] = bars;
+            metadata[symbol] = await _gateway.GetStoredTickerMetadataAsync(symbol, cancellationToken).ConfigureAwait(false);
         }
 
-        return (candles, metadata, secondary);
+        return (ValueBars.OfSideFrames(byFrame), metadata, null);
+    }
+
+    /// <summary>The number of bars the Screener loads for a condition (0 = the whole history), capped by the request limit.</summary>
+    private int HistoryCount(IScreeningCondition sizing)
+    {
+        int required = ScreenerHistoryRequirements.GetRequiredCandleCount(sizing);
+        return required <= 0 ? _limits.MaxCandlesPerRequest : Math.Min(required, _limits.MaxCandlesPerRequest);
+    }
+
+    /// <summary>The bars of the comparison symbols, read the way the scan read them; null when there are none.</summary>
+    private async Task<IScreenerSecondaryCandles?> LoadSecondaryAsync(BarSource source, IReadOnlyList<string> comparisonSymbols, int count, CancellationToken cancellationToken)
+    {
+        if (comparisonSymbols.Count == 0)
+        {
+            return null;
+        }
+
+        var bySymbol = new Dictionary<string, IReadOnlyList<CoreCandleData?>>(StringComparer.OrdinalIgnoreCase);
+        foreach (string comparison in comparisonSymbols)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            IReadOnlyList<CandleData> bars = await LoadBarsAsync(source, comparison, count, cancellationToken).ConfigureAwait(false);
+            if (bars.Count > 0)
+            {
+                bySymbol[comparison] = bars.Select(bar => (CoreCandleData?)new CoreCandleData(bar.Timestamp, bar.Open, bar.High, bar.Low, bar.Close, bar.Volume)).ToList();
+            }
+        }
+
+        return new ScreenerSecondaryCandles(bySymbol);
+    }
+
+    /// <summary>The latest <paramref name="count"/> bars of the symbol that the scan evaluated: those of the selection when there is one (date, frame, partial-period rule), else the latest stored bars.</summary>
+    private async Task<IReadOnlyList<CandleData>> LoadBarsAsync(BarSource source, string symbol, int count, CancellationToken cancellationToken)
+        => source.Selection is { } selection
+            ? await _gateway.GetScreenerBarsAsync(symbol, source.TimeFrame, selection, count, cancellationToken).ConfigureAwait(false)
+            : await _gateway.GetCandlesAsync(symbol, source.TimeFrame, count, cancellationToken).ConfigureAwait(false);
+
+    /// <summary>
+    /// The value of the sort side for every matched symbol, each read from the bars the scan evaluated with the extractor the comparisons use (offset included);
+    /// null where it cannot be calculated. One symbol is held at a time.
+    /// </summary>
+    private async Task<Dictionary<string, decimal?>> SortValuesAsync(
+        IReadOnlyList<string> symbols, BoundSortSide sort, IReadOnlyList<string> comparisonSymbols, BarSource source, CancellationToken cancellationToken)
+    {
+        int count = HistoryCount(sort.Sizing);
+        IScreenerSecondaryCandles? secondary = await LoadSecondaryAsync(source, comparisonSymbols, count, cancellationToken).ConfigureAwait(false);
+        bool readsMetadata = sort.Side.CategoryType == ScreenerItemCategoryType.Column;
+        var values = new Dictionary<string, decimal?>(StringComparer.Ordinal);
+        foreach (string symbol in symbols)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            IReadOnlyList<CandleData> bars = await LoadBarsAsync(source, symbol, count, cancellationToken).ConfigureAwait(false);
+            TickerMetadata metadata = readsMetadata
+                ? await _gateway.GetStoredTickerMetadataAsync(symbol, cancellationToken).ConfigureAwait(false) ?? TickerMetadata.Unknown
+                : TickerMetadata.Unknown;
+            values[symbol] = _extractor.ExtractValueNullable(sort.Side, bars, metadata, secondary);
+        }
+
+        return values;
+    }
+
+    /// <summary>
+    /// <see cref="SortValuesAsync"/> for a scan in which each side reads its own time frame: the sort side is read from the bars of ITS frame (cut and aggregated as the scan did).
+    /// There are no comparison symbols in this scan.
+    /// </summary>
+    private async Task<Dictionary<string, decimal?>> SortValuesOnSideFrameAsync(
+        IReadOnlyList<string> symbols, BoundSortSide sort, ScreenerBarSelection selection, CancellationToken cancellationToken)
+    {
+        int count = HistoryCount(sort.Sizing);
+        TimeFrame frame = ScreenerSideFrames.FrameOf(sort.Side);
+        ScreenerIndicatorSideConfig onItsBars = ValueBars.ForItsOwnBars(sort.Side);
+        bool readsMetadata = sort.Side.CategoryType == ScreenerItemCategoryType.Column;
+        var values = new Dictionary<string, decimal?>(StringComparer.Ordinal);
+        foreach (string symbol in symbols)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            IReadOnlyList<CandleData> bars = await _gateway.GetScreenerBarsAsync(symbol, frame, selection, count, cancellationToken).ConfigureAwait(false);
+            TickerMetadata metadata = readsMetadata
+                ? await _gateway.GetStoredTickerMetadataAsync(symbol, cancellationToken).ConfigureAwait(false) ?? TickerMetadata.Unknown
+                : TickerMetadata.Unknown;
+            values[symbol] = _extractor.ExtractValueNullable(onItsBars, bars, metadata);
+        }
+
+        return values;
+    }
+
+    /// <summary>
+    /// The symbols in rank order (plan 02 section 6.2): the larger value first for Descending, the smaller for Ascending; a symbol without a value after all that have one
+    /// whichever the direction; equal values (and all symbols without a value) by ordinal order of the symbol.
+    /// </summary>
+    internal static List<string> Rank(IReadOnlyDictionary<string, decimal?> values, bool descending)
+    {
+        IOrderedEnumerable<string> byPresence = values.Keys.OrderBy(symbol => values[symbol] is null ? 1 : 0);
+        IOrderedEnumerable<string> byValue = descending
+            ? byPresence.ThenByDescending(symbol => values[symbol] ?? 0m)
+            : byPresence.ThenBy(symbol => values[symbol] ?? 0m);
+        return byValue.ThenBy(symbol => symbol, StringComparer.Ordinal).ToList();
+    }
+
+    /// <summary>Where the bars a request reads come from: the time frame, and the selection (date, partial-period rule) when the scan was not the plain latest-bar scan.</summary>
+    private sealed record BarSource(TimeFrame TimeFrame, ScreenerBarSelection? Selection);
+
+    /// <summary>The answer of a plain scan (no selection): nothing is without bars and no period is partial.</summary>
+    private static ScreenerBarsResult PlainResult(IReadOnlyList<string> matched) => new(matched, Array.Empty<string>(), Array.Empty<DateOnly>(), 0);
+
+    /// <summary>
+    /// The bars each returned symbol's values are read from: one list per symbol when the whole scan is on one frame, one list per symbol and frame when each side reads its own.
+    /// </summary>
+    private sealed class ValueBars
+    {
+        private readonly Dictionary<string, IReadOnlyList<CandleData>>? _oneFrame;
+        private readonly Dictionary<string, Dictionary<TimeFrame, IReadOnlyList<CandleData>>>? _bySideFrame;
+
+        private ValueBars(Dictionary<string, IReadOnlyList<CandleData>>? oneFrame, Dictionary<string, Dictionary<TimeFrame, IReadOnlyList<CandleData>>>? bySideFrame)
+        {
+            _oneFrame = oneFrame;
+            _bySideFrame = bySideFrame;
+        }
+
+        public static ValueBars OfOneFrame(Dictionary<string, IReadOnlyList<CandleData>> bars) => new(bars, null);
+
+        public static ValueBars OfSideFrames(Dictionary<string, Dictionary<TimeFrame, IReadOnlyList<CandleData>>> bars) => new(null, bars);
+
+        /// <summary>The bars <paramref name="side"/> reads for <paramref name="symbol"/>: those of its own frame when each side reads its own.</summary>
+        public IReadOnlyList<CandleData> Of(string symbol, ScreenerIndicatorSideConfig side)
+            => _oneFrame is not null ? _oneFrame[symbol] : _bySideFrame![symbol][ScreenerSideFrames.FrameOf(side)];
+
+        /// <summary>The side as the extractor is given it with <see cref="Of"/>'s bars: when each side reads its own frame the list is already of that frame, so the side is read as a D1 side (the extractor refuses a weekly side of the one-frame scan).</summary>
+        public ScreenerIndicatorSideConfig Read(ScreenerIndicatorSideConfig side) => _bySideFrame is not null ? ForItsOwnBars(side) : side;
+
+        /// <summary>A copy of <paramref name="side"/> on D1 when it reads weekly or monthly bars (the list it is given is already of its frame), else the side itself.</summary>
+        public static ScreenerIndicatorSideConfig ForItsOwnBars(ScreenerIndicatorSideConfig side)
+            => ScreenerSideFrames.ReadsBars(side) ? side.WithTimeFrame(TimeFrame.D1) : side;
+    }
+
+    /// <summary>The report of each weekly or monthly frame a scan read: sideFrames [{timeFrame, partialLastBar, partialPeriodStarts?, skippedPartialBarCount?, symbolsWithoutBarsCount, symbolsWithoutBars}].</summary>
+    private static void WriteSideFrames(System.Text.Json.Utf8JsonWriter writer, IReadOnlyList<ScreenerFrameReport> frames, bool completeBarsOnly, int listLimit)
+    {
+        if (frames.Count == 0)
+        {
+            return;
+        }
+
+        writer.WriteStartArray("sideFrames");
+        foreach (ScreenerFrameReport report in frames)
+        {
+            writer.WriteStartObject();
+            writer.WriteString("timeFrame", report.Frame.ToString());
+            writer.WriteBoolean("partialLastBar", report.PartialLastBarPeriodStarts.Count > 0);
+            if (report.PartialLastBarPeriodStarts.Count > 0)
+            {
+                writer.WriteStartArray("partialPeriodStarts");
+                foreach (DateOnly start in report.PartialLastBarPeriodStarts)
+                {
+                    writer.WriteStringValue(start.ToString(ToolJson.DateFormat, CultureInfo.InvariantCulture));
+                }
+
+                writer.WriteEndArray();
+            }
+
+            if (completeBarsOnly)
+            {
+                writer.WriteNumber("skippedPartialBarCount", report.SkippedPartialBarCount);
+            }
+
+            writer.WriteNumber("symbolsWithoutBarsCount", report.SymbolsWithoutBars.Count);
+            writer.WriteStartArray("symbolsWithoutBars");
+            foreach (string symbol in report.SymbolsWithoutBars.Take(listLimit))
+            {
+                writer.WriteStringValue(symbol);
+            }
+
+            writer.WriteEndArray();
+            writer.WriteEndObject();
+        }
+
+        writer.WriteEndArray();
     }
 
     private void WriteValues(
         System.Text.Json.Utf8JsonWriter writer,
         IReadOnlyList<ScreenerLeaf> leaves,
         IReadOnlyList<string> symbols,
-        IReadOnlyDictionary<string, IReadOnlyList<CandleData>> candles,
+        ValueBars candles,
         IReadOnlyDictionary<string, TickerMetadata?> metadata,
         IScreenerSecondaryCandles? secondary)
     {
@@ -468,8 +832,8 @@ internal sealed class RunScreenerTool : IMcpTool
             foreach (ScreenerLeaf leaf in leaves)
             {
                 writer.WriteStartObject(leaf.Id);
-                WriteSideValue(writer, "left", leaf.Entry, leaf.Entry.LeftHand, candles[symbol], meta, secondary, isRight: false);
-                WriteSideValue(writer, "right", leaf.Entry, leaf.Entry.RightHand, candles[symbol], meta, secondary, isRight: true);
+                WriteSideValue(writer, "left", leaf.Entry, leaf.Entry.LeftHand, candles, symbol, meta, secondary, isRight: false);
+                WriteSideValue(writer, "right", leaf.Entry, leaf.Entry.RightHand, candles, symbol, meta, secondary, isRight: true);
                 writer.WriteEndObject();
             }
 
@@ -484,7 +848,8 @@ internal sealed class RunScreenerTool : IMcpTool
         string name,
         ScreenerIndicatorEntry entry,
         ScreenerIndicatorSideConfig side,
-        IReadOnlyList<CandleData> candles,
+        ValueBars bars,
+        string symbol,
         TickerMetadata metadata,
         IScreenerSecondaryCandles? secondary,
         bool isRight)
@@ -515,7 +880,7 @@ internal sealed class RunScreenerTool : IMcpTool
             return;
         }
 
-        if (_extractor.ExtractValueNullable(side, candles, metadata, secondary) is { } value)
+        if (_extractor.ExtractValueNullable(bars.Read(side), bars.Of(symbol, side), metadata, secondary) is { } value)
         {
             writer.WriteNumber(name, value);
         }

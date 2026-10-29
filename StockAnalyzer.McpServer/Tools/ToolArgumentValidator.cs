@@ -9,9 +9,11 @@ namespace StockAnalyzer.McpServer.Tools;
 /// </summary>
 internal static class ToolArgumentValidator
 {
-    public static void Validate(JsonElement schema, JsonElement arguments) => ValidateObject(string.Empty, schema, arguments);
+    /// <param name="misnamedHints">Optional hints for top-level names that are unknown here but named by a sibling tool (see <see cref="IMcpTool.MisnamedArgumentHints"/>); null keeps the generic hint.</param>
+    public static void Validate(JsonElement schema, JsonElement arguments, IReadOnlyDictionary<string, string>? misnamedHints = null)
+        => ValidateObject(string.Empty, schema, arguments, misnamedHints);
 
-    private static void ValidateObject(string prefix, JsonElement schema, JsonElement arguments)
+    private static void ValidateObject(string prefix, JsonElement schema, JsonElement arguments, IReadOnlyDictionary<string, string>? misnamedHints = null)
     {
         JsonElement properties = schema.GetProperty("properties");
         bool hasObject = arguments.ValueKind == JsonValueKind.Object;
@@ -23,8 +25,10 @@ internal static class ToolArgumentValidator
                 string path = prefix + argument.Name;
                 if (!properties.TryGetProperty(argument.Name, out JsonElement propertySchema))
                 {
-                    throw new ToolException(ToolErrorCodes.InvalidArgument, $"Unknown argument '{path}'.", path,
-                        "Call tools/list to see the accepted arguments.");
+                    string hint = prefix.Length == 0 && misnamedHints is not null && misnamedHints.TryGetValue(argument.Name, out string? misnamed)
+                        ? misnamed
+                        : "Call tools/list to see the accepted arguments.";
+                    throw new ToolException(ToolErrorCodes.InvalidArgument, $"Unknown argument '{path}'.", path, hint);
                 }
 
                 CheckValue(path, argument.Value, propertySchema);

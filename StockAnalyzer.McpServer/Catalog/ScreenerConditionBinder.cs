@@ -4,7 +4,9 @@ using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Indicators;
 using StockAnalyzer.Core.Models.Parameters;
 using StockAnalyzer.Core.Models.Screener;
+using StockAnalyzer.Core.ReadOnly;
 using StockAnalyzer.Core.Services;
+using StockAnalyzer.Core.Services.Screener;
 using StockAnalyzer.McpServer.Tools;
 using static StockAnalyzer.McpServer.Catalog.ConditionJson;
 
@@ -16,13 +18,28 @@ internal sealed record ScreenerLeaf(string Id, string Path, ScreenerIndicatorEnt
 /// <summary>A comparison symbol a condition names (canonical form) and the path of the parameter that names it, for error parameters.</summary>
 internal sealed record ScreenerComparisonSymbol(string Symbol, string Path);
 
-/// <summary>The tree as the Screener evaluates it, with its leaves, the comparison symbols it names and the measures the size limits use.</summary>
+/// <summary>
+/// The tree as the Screener evaluates it, with its leaves, the comparison symbols it names and the measures the size limits use.
+/// <see cref="ExplicitFrameSides"/> are the sides whose <c>timeFrame</c> the client wrote (compared by reference); while none is, every side still holds the placeholder D1 (the scan frame).
+/// </summary>
 internal sealed record BoundScreenerCondition(
     ScreenerConditionTreeCondition Condition,
     IReadOnlyList<ScreenerLeaf> Leaves,
     int NodeCount,
     int Depth,
-    IReadOnlyList<ScreenerComparisonSymbol> ComparisonSymbols);
+    IReadOnlyList<ScreenerComparisonSymbol> ComparisonSymbols,
+    IReadOnlyCollection<ScreenerIndicatorSideConfig> ExplicitFrameSides);
+
+/// <summary>
+/// The bound <c>sortBy</c> side: the side, its one-comparison leaf (for the as-of column check), a condition that sizes its history and the comparison symbols it names;
+/// <see cref="NamesFrame"/> says whether the client wrote its <c>timeFrame</c>.
+/// </summary>
+internal sealed record BoundSortSide(
+    ScreenerIndicatorSideConfig Side,
+    ScreenerLeaf Leaf,
+    IScreeningCondition Sizing,
+    IReadOnlyList<ScreenerComparisonSymbol> ComparisonSymbols,
+    bool NamesFrame);
 
 /// <summary>
 /// Turns the client's condition tree into the objects the Screener tab builds: <see cref="ScreenerConditionGroup"/> and
@@ -34,7 +51,10 @@ internal sealed class ScreenerConditionBinder
 {
     private static readonly string[] GroupKeys = { "operator", "children" };
     private static readonly string[] LeafKeys = { "left", "comparison", "right" };
-    private static readonly string[] SideKeys = { "indicator", "price", "column", "criteria", "parameters", "outputSeriesName", "offset" };
+    /// <summary>The optional key of a side that names the time frame whose bars the side reads (D1, W1 or MN1).</summary>
+    public const string SideTimeFrameKey = "timeFrame";
+
+    private static readonly string[] SideKeys = { "indicator", "price", "column", "criteria", "parameters", "outputSeriesName", "offset", SideTimeFrameKey };
     private static readonly string[] SideKinds = { "indicator", "price", "column", "criteria" };
     private const string ComparisonSymbolName = nameof(ICrossTickerParameter.ComparisonSymbol);
     private static readonly ComparisonOperator[] TextOperators = { ComparisonOperator.Equal, ComparisonOperator.NotEqual, ComparisonOperator.Contains, ComparisonOperator.DoesNotContain };
@@ -56,6 +76,101 @@ internal sealed class ScreenerConditionBinder
     /// <summary>The group operator names.</summary>
     public static IReadOnlyList<string> LogicalOperatorNames { get; } = Enum.GetNames<LogicalOperator>();
 
+    /// <summary>The columns that stay usable with an as-of date (read from the bars), in catalogue order.</summary>
+    public IReadOnlyList<string> AsOfColumnNames => new ScreenerAsOfColumnGuard(_screenerCatalog).AllowedColumns;
+
+    /// <summary>
+    /// Owner decision D-02a: with an as-of date no comparison side may read a snapshot column (see <see cref="ScreenerAsOfColumnGuard"/>). The argument path of a refused
+    /// side is <c>left.column</c>/<c>right.column</c> under the comparison for a condition tree, <c>leftHand</c>/<c>rightHand</c> under the entry for a saved template.
+    /// </summary>
+    public void RequireAsOfCompatible(IReadOnlyList<ScreenerLeaf> leaves, bool isTemplate, string asOfArgument)
+        => new ScreenerAsOfColumnGuard(_screenerCatalog).Require(
+            leaves,
+            leaf => isTemplate ? ($"{leaf.Path}.leftHand", $"{leaf.Path}.rightHand") : ($"{leaf.Path}.left.column", $"{leaf.Path}.right.column"),
+            asOfArgument);
+
+    /// <summary>
+    /// Binds the <c>sortBy</c> side (an indicator, price or numeric column; owner decision D-02e). A criteria side is true or false and a text column has no order, so
+    /// both are refused. The side is wrapped in a one-comparison condition only so that the history it needs can be sized the way the Screener sizes a condition.
+    /// </summary>
+    public BoundSortSide BindSortSide(JsonElement side, string path)
+    {
+        if (side.ValueKind == JsonValueKind.Object && side.TryGetProperty("criteria", out _))
+        {
+            throw new ToolException(
+                ToolErrorCodes.InvalidArgument,
+                "A criteria side is 1 or 0 (pattern present or not) and cannot rank symbols.",
+                $"{path}.criteria",
+                "Sort by an indicator, a price or a numeric column.");
+        }
+
+        var state = new State();
+        (ScreenerIndicatorSideConfig config, bool isText) = BindSide(side, path, state);
+        if (isText)
+        {
+            throw new ToolException(ToolErrorCodes.InvalidArgument, "A text column has no order to rank symbols by.", $"{path}.column", "Sort by an indicator, a price or a numeric column.");
+        }
+
+        var entry = new ScreenerIndicatorEntry
+        {
+            LeftHand = config,
+            Operator = ComparisonOperator.GreaterThan,
+            TargetMode = RightHandTargetMode.NumericValue,
+            RightNumericValue = 0m,
+            IsEnabled = true,
+        };
+        var sizing = new ScreenerConditionTreeCondition(new ScreenerConditionGroup(
+            LogicalOperator.And, ImmutableArray.Create<IScreenerConditionNode>(new ScreenerConditionLeaf(entry))));
+        return new BoundSortSide(config, new ScreenerLeaf("S0", path, entry), sizing, state.ComparisonSymbols, state.ExplicitFrameSides.Contains(config));
+    }
+
+    /// <summary>
+    /// The scan in which each side reads its own time frame: every bar-reading side whose <c>timeFrame</c> the client did not write gets <paramref name="toolFrame"/> (the tool-level
+    /// <c>timeFrame</c>, default D1) as its literal frame. That scan evaluates no indicator that compares two symbols (the comparison symbol's bars are daily), so one is refused
+    /// wherever it stands; AnchoredVWAP (its anchor date has no definition against a weekly or monthly bar stamp) is refused on a frame other than D1.
+    /// </summary>
+    public void ApplyLiteralFrames(BoundScreenerCondition bound, TimeFrame toolFrame)
+    {
+        foreach (ScreenerLeaf leaf in bound.Leaves)
+        {
+            ApplyLiteralFrame(leaf.Entry.LeftHand, $"{leaf.Path}.left", bound.ExplicitFrameSides, toolFrame);
+            if (leaf.Entry.TargetMode == RightHandTargetMode.Indicator)
+            {
+                ApplyLiteralFrame(leaf.Entry.RightHand, $"{leaf.Path}.right", bound.ExplicitFrameSides, toolFrame);
+            }
+        }
+    }
+
+    /// <summary>The <c>sortBy</c> side of <see cref="ApplyLiteralFrames"/>.</summary>
+    public void ApplyLiteralFrame(BoundSortSide sort, TimeFrame toolFrame, string sortArgument)
+        => ApplyLiteralFrame(sort.Side, sortArgument, sort.NamesFrame ? new[] { sort.Side } : Array.Empty<ScreenerIndicatorSideConfig>(), toolFrame);
+
+    private static void ApplyLiteralFrame(ScreenerIndicatorSideConfig side, string path, IReadOnlyCollection<ScreenerIndicatorSideConfig> explicitSides, TimeFrame toolFrame)
+    {
+        if (!explicitSides.Contains(side) && ScreenerSideFrames.ReadsBars(side))
+        {
+            side.TimeFrame = toolFrame;
+        }
+
+        if (ScreenerComparisonSymbols.Of(side) is not null)
+        {
+            throw new ToolException(
+                ToolErrorCodes.InvalidArgument,
+                "An indicator that compares two symbols cannot be used when a side names its own timeFrame: that scan reads no comparison symbol.",
+                explicitSides.Contains(side) ? $"{path}.{SideTimeFrameKey}" : $"{path}.indicator",
+                "Remove the timeFrame of every side (the tool-level timeFrame then applies to the whole scan), or use an indicator of one symbol.");
+        }
+
+        if (side.IndicatorType == IndicatorType.AnchoredVWAP && side.CategoryType == ScreenerItemCategoryType.Indicator && side.TimeFrame != TimeFrame.D1)
+        {
+            throw NoDefinitionOnFrame(side.TimeFrame, $"{path}.indicator");
+        }
+    }
+
+    /// <summary>Owner decision D-02a for the <c>sortBy</c> side: with an as-of date it must not read a snapshot column (the refused path is <c>sortBy.column</c>).</summary>
+    public void RequireAsOfCompatible(BoundSortSide sortSide, string asOfArgument)
+        => new ScreenerAsOfColumnGuard(_screenerCatalog).Require(new[] { sortSide.Leaf }, leaf => ($"{leaf.Path}.column", $"{leaf.Path}.column"), asOfArgument);
+
     public BoundScreenerCondition Bind(JsonElement tree, string path)
     {
         var state = new State();
@@ -72,7 +187,7 @@ internal sealed class ScreenerConditionBinder
             root = new ScreenerConditionGroup(LogicalOperator.And, ImmutableArray.Create<IScreenerConditionNode>(BindLeaf(tree, path, state)));
         }
 
-        return new BoundScreenerCondition(new ScreenerConditionTreeCondition(root), state.Leaves, state.Nodes, state.Depth, state.ComparisonSymbols);
+        return new BoundScreenerCondition(new ScreenerConditionTreeCondition(root), state.Leaves, state.Nodes, state.Depth, state.ComparisonSymbols, state.ExplicitFrameSides);
     }
 
     private static bool IsGroup(JsonElement node)
@@ -187,8 +302,71 @@ internal sealed class ScreenerConditionBinder
         return new ScreenerConditionLeaf(entry);
     }
 
-    /// <summary>One side of a comparison; the flag says whether it is a text column.</summary>
+    /// <summary>
+    /// One side of a comparison; the flag says whether it is a text column. The side holds the placeholder frame D1 unless the client wrote a <c>timeFrame</c> (recorded in
+    /// <see cref="State.ExplicitFrameSides"/>); what a side without one reads is decided by the tool (<see cref="ApplyLiteralFrames"/>).
+    /// </summary>
     private (ScreenerIndicatorSideConfig Side, bool IsText) BindSide(JsonElement side, string path, State state)
+    {
+        (ScreenerIndicatorSideConfig config, bool isText) = BindSideKind(side, path, state);
+        if (side.TryGetProperty(SideTimeFrameKey, out JsonElement frameElement))
+        {
+            config.TimeFrame = ParseSideFrame(frameElement, config, $"{path}.{SideTimeFrameKey}");
+            state.ExplicitFrameSides.Add(config);
+        }
+
+        return (config, isText);
+    }
+
+    /// <summary>
+    /// The frame a side names. Refused (INVALID_ARGUMENT naming <paramref name="path"/>): a name that is not a time frame or that the data layer cannot load, any frame on a column
+    /// read from the stored metadata (a snapshot, it has no bars), and a frame other than D1 on an indicator that compares two symbols or on AnchoredVWAP.
+    /// </summary>
+    private static TimeFrame ParseSideFrame(JsonElement element, ScreenerIndicatorSideConfig config, string path)
+    {
+        string? name = element.ValueKind == JsonValueKind.String ? element.GetString() : null;
+        if (name is null || !Enum.GetNames<TimeFrame>().Contains(name, StringComparer.Ordinal))
+        {
+            throw new ToolException(ToolErrorCodes.InvalidArgument, "timeFrame is a time frame name.", path, $"Supported: {ToolArgs.SupportedTimeFrameNames}.");
+        }
+
+        TimeFrame frame = Enum.Parse<TimeFrame>(name);
+
+        if (!ReadOnlyGatewayContract.SupportedTimeFrames.Contains(frame))
+        {
+            throw new ToolException(ToolErrorCodes.InvalidArgument, $"Time frame {frame} is not supported.", path, $"Supported: {ToolArgs.SupportedTimeFrameNames}.");
+        }
+
+        if (!ScreenerSideFrames.ReadsBars(config))
+        {
+            throw new ToolException(
+                ToolErrorCodes.InvalidArgument,
+                "A column read from the stored metadata (a snapshot) has no bars and so no time frame.",
+                path,
+                "Remove timeFrame from this side. Open, High, Low, Close, Volume, Change and Change % are the columns read from the bars.");
+        }
+
+        if (frame != TimeFrame.D1 && ScreenerComparisonSymbols.Of(config) is not null)
+        {
+            throw new ToolException(
+                ToolErrorCodes.InvalidArgument,
+                "An indicator that compares two symbols reads daily bars only.",
+                path,
+                "Use timeFrame D1 (or none) on this side.");
+        }
+
+        if (frame != TimeFrame.D1 && config.CategoryType == ScreenerItemCategoryType.Indicator && config.IndicatorType == IndicatorType.AnchoredVWAP)
+        {
+            throw NoDefinitionOnFrame(frame, path);
+        }
+
+        return frame;
+    }
+
+    private static ToolException NoDefinitionOnFrame(TimeFrame frame, string path)
+        => new(ToolErrorCodes.InvalidArgument, $"AnchoredVWAP has no definition on {frame} bars (its anchor date is a day).", path, "Use timeFrame D1 on this side.");
+
+    private (ScreenerIndicatorSideConfig Side, bool IsText) BindSideKind(JsonElement side, string path, State state)
     {
         RequireObject(side, path);
         RejectUnknownKeys(side, path, SideKeys);
@@ -328,6 +506,9 @@ internal sealed class ScreenerConditionBinder
         public List<ScreenerLeaf> Leaves { get; } = new();
 
         public List<ScreenerComparisonSymbol> ComparisonSymbols { get; } = new();
+
+        /// <summary>The bound sides whose <c>timeFrame</c> the client wrote, by reference.</summary>
+        public HashSet<ScreenerIndicatorSideConfig> ExplicitFrameSides { get; } = new(ReferenceEqualityComparer.Instance);
 
         public int Nodes { get; private set; }
 

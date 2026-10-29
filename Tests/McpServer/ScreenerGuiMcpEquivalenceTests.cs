@@ -354,6 +354,84 @@ public sealed class ScreenerGuiMcpEquivalenceTests : IDisposable
         Assert.Empty(withoutBars);
     }
 
+    // ---- sides that read their own time frame (per-side frame plan, T6) ----------------------------------------------------------------------
+
+    private static ScreenerIndicatorSideConfig OnFrame(ScreenerIndicatorSideConfig side, TimeFrame frame)
+    {
+        side.TimeFrame = frame;
+        return side;
+    }
+
+    /// <summary>The tab's call when a condition reads a weekly or monthly bar: <c>ScreenWithSideFramesAsync</c> with the selection the tab builds (no date, complete bars only).</summary>
+    private async Task<string[]> TabSideFramesAsync(IScreeningCondition condition)
+    {
+        ScreenerSideFramesResult result = await _services!.GetRequiredService<IScreenerService>().ScreenWithSideFramesAsync(
+            Symbols.OrderBy(s => s, StringComparer.Ordinal).ToList(), condition, new ScreenerBarSelection(null, CompleteBarsOnly: true), new Progress<int>(), CancellationToken.None);
+        return result.Matched.ToArray();
+    }
+
+    [Fact]
+    public async Task Case7_ADailySideAgainstAWeeklyIndicatorGivesTheSymbolsOfTheTabsSideFrameScan()
+    {
+        await StartAsync();
+
+        // Close against the weekly 10-bar average, and the weekly close against the daily 20-bar average: each of the two conditions separates the six random walks.
+        IScreeningCondition closeAboveWeeklyAverage = Tree(Leaf(Versus(CloseSide(), ComparisonOperator.GreaterThan, OnFrame(SmaSide(10), TimeFrame.W1))));
+        IScreeningCondition weeklyCloseBelowDailyAverage = Tree(Leaf(Versus(OnFrame(CloseSide(), TimeFrame.W1), ComparisonOperator.LessThan, SmaSide(SmaLong))));
+
+        string[] fromTab = await TabSideFramesAsync(closeAboveWeeklyAverage);
+        string[] fromMcp = await McpAsync(Request("""{"left":{"price":"Close"},"comparison":"GreaterThan","right":{"indicator":"SMA","parameters":{"Period":10},"timeFrame":"W1"}}"""));
+        Assert.Equal(fromTab, fromMcp);
+        Assert.InRange(fromMcp.Length, 1, Symbols.Length - 1);
+
+        string[] fromTabSecond = await TabSideFramesAsync(weeklyCloseBelowDailyAverage);
+        string[] fromMcpSecond = await McpAsync(Request("{\"left\":{\"price\":\"Close\",\"timeFrame\":\"W1\"},\"comparison\":\"LessThan\",\"right\":{\"indicator\":\"SMA\",\"parameters\":{\"Period\":" + SmaLong + "}}}"));
+        Assert.Equal(fromTabSecond, fromMcpSecond);
+        Assert.InRange(fromMcpSecond.Length, 1, Symbols.Length - 1);
+    }
+
+    [Fact]
+    public async Task Case8_ATreeThatMixesFramesGivesTheSymbolsOfTheTabsSideFrameScan()
+    {
+        await StartAsync();
+        decimal level = MedianLastClose();
+        IScreeningCondition tab = Tree(Group(
+            LogicalOperator.Or,
+            Leaf(Numeric(CloseSide(), ComparisonOperator.GreaterThan, level)),
+            Leaf(Versus(OnFrame(SmaSide(SmaShort), TimeFrame.MN1), ComparisonOperator.GreaterThan, OnFrame(SmaSide(3), TimeFrame.MN1)))));
+        string json = $$$"""
+            {"operator":"Or","children":[
+              {"left":{"price":"Close"},"comparison":"GreaterThan","right":{{{N(level)}}}},
+              {"left":{"indicator":"SMA","parameters":{"Period":{{{SmaShort}}}},"timeFrame":"MN1"},"comparison":"GreaterThan","right":{"indicator":"SMA","parameters":{"Period":3},"timeFrame":"MN1"}}]}
+            """;
+
+        string[] fromTab = await TabSideFramesAsync(tab);
+        string[] fromMcp = await McpAsync(Request(json));
+
+        Assert.Equal(fromTab, fromMcp);
+        Assert.NotEmpty(fromMcp);
+    }
+
+    [Fact]
+    public async Task ASavedTemplateWithAWeeklySideGivesTheSymbolsOfTheTabsTemplateRunOnSideFrames()
+    {
+        ScreenerIndicatorEntry first = Versus(CloseSide(), ComparisonOperator.GreaterThan, OnFrame(SmaSide(10), TimeFrame.W1));
+        first.LogicalOperator = LogicalOperator.And;
+        ScreenerIndicatorEntry second = Numeric(OnFrame(CloseSide(), TimeFrame.W1), ComparisonOperator.GreaterThan, MedianLastClose() / 2m);
+        var template = new ScreenerIndicatorTemplate { Id = Guid.NewGuid(), Name = "EquivalenceWeekly", Description = "EquivalenceWeekly" };
+        template.SetEntries(new[] { first, second });
+        Directory.CreateDirectory(_templates);
+        File.WriteAllText(Path.Combine(_templates, $"{template.Id}.json"), JsonSerializer.Serialize(template, FileReadOnlyTemplateSource.CreateJsonOptions()));
+        await StartAsync();
+
+        HashSet<string> tabSet = await _services!.GetRequiredService<IScreenerTemplateEvaluator>().EvaluateWithSideFramesAsync(
+            Symbols.OrderBy(s => s, StringComparer.Ordinal).ToList(), template, new ScreenerBarSelection(null, CompleteBarsOnly: true), new Progress<int>(), CancellationToken.None);
+        string[] viaTemplate = await McpAsync($$"""{"templateId":"{{template.Id}}"}""");
+
+        Assert.Equal(tabSet.OrderBy(s => s, StringComparer.Ordinal), viaTemplate);
+        Assert.InRange(viaTemplate.Length, 1, Symbols.Length - 1);
+    }
+
     // ---- a saved template runs as the same conditions given directly ------------------------------------------------------------------------
 
     [Fact]

@@ -452,6 +452,65 @@ public class TimeFrameAggregatorTests
         Assert.Equal(2700L, weekly[0].Volume);
     }
 
+    // A chronological series with gaps (weekends, holidays, a few missing weeks), calendar days that appear twice (a corrected candle, sometimes at another time of day),
+    // across ISO year boundaries (week 53 of 2020 and 2026) and month ends.
+    private static List<CandleData> ChronologicalSeriesWithDuplicates(int seed)
+    {
+        var random = new Random(seed);
+        var candles = new List<CandleData>();
+        DateTime day = new DateTime(2019, 11, 25);
+        decimal price = 100m;
+        while (day < new DateTime(2027, 2, 1))
+        {
+            bool skip = day.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday || random.Next(40) == 0;
+            if (!skip)
+            {
+                int copies = random.Next(25) == 0 ? 2 : 1;
+                for (int copy = 0; copy < copies; copy++)
+                {
+                    price = Math.Max(1m, price + random.Next(-300, 301) / 100m);
+                    candles.Add(new CandleData(day.AddHours(copy * random.Next(0, 3)), price, price + random.Next(0, 200) / 100m, price - random.Next(0, 100) / 100m, price + random.Next(-50, 51) / 100m, random.Next(1, 5_000_000)));
+                }
+            }
+
+            day = day.AddDays(random.Next(30) == 0 ? 9 : 1);
+        }
+
+        return candles;
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    public void TheSinglePassAggregationEqualsTheGroupingForms(int seed)
+    {
+        List<CandleData> daily = ChronologicalSeriesWithDuplicates(seed);
+        Assert.Contains(daily.Zip(daily.Skip(1)), pair => pair.First.Timestamp.Date == pair.Second.Timestamp.Date);
+
+        Assert.Equal(TimeFrameAggregator.AggregateDailyToWeeklyByGrouping(daily), TimeFrameAggregator.AggregateDailyToWeekly(daily));
+        Assert.Equal(TimeFrameAggregator.AggregateDailyToMonthlyByGrouping(daily), TimeFrameAggregator.AggregateDailyToMonthly(daily));
+
+        // every prefix of the series ends a period at a different place: a lone day, a period of one day, a duplicated last day
+        for (int length = 1; length <= 60; length++)
+        {
+            List<CandleData> prefix = daily.Take(length).ToList();
+            Assert.Equal(TimeFrameAggregator.AggregateDailyToWeeklyByGrouping(prefix), TimeFrameAggregator.AggregateDailyToWeekly(prefix));
+            Assert.Equal(TimeFrameAggregator.AggregateDailyToMonthlyByGrouping(prefix), TimeFrameAggregator.AggregateDailyToMonthly(prefix));
+        }
+    }
+
+    [Fact]
+    public void ASeriesThatIsNotChronologicalIsStillGroupedByPeriod()
+    {
+        List<CandleData> daily = ChronologicalSeriesWithDuplicates(4).Take(400).ToList();
+        var shuffled = daily.OrderBy(candle => candle.Close).ThenBy(candle => candle.Volume).ToList();
+        Assert.NotEqual(daily, shuffled);
+
+        Assert.Equal(TimeFrameAggregator.AggregateDailyToWeeklyByGrouping(shuffled), TimeFrameAggregator.AggregateDailyToWeekly(shuffled));
+        Assert.Equal(TimeFrameAggregator.AggregateDailyToMonthlyByGrouping(shuffled), TimeFrameAggregator.AggregateDailyToMonthly(shuffled));
+    }
+
     [Fact]
     public void MarketDataSettings_Validate_RejectsDuplicatePaths()
     {

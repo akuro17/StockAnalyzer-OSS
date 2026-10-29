@@ -4,12 +4,13 @@ using StockAnalyzer.Core.Models.Screener;
 using StockAnalyzer.Core.Models.Templates;
 using StockAnalyzer.Core.Services;
 using StockAnalyzer.Core.Services.Backtest.Engine;
+using StockAnalyzer.Core.Services.Screener;
 
 namespace StockAnalyzer.McpServer.Catalog;
 
 /// <summary>
 /// Says which enabled entries of a saved Screener template can never match here. The Screener tab accepts entries this server's
-/// screener evaluates to "no value" (a side on another time frame, a look-ahead indicator, a two-symbol indicator without a comparison symbol); a template is the user's own, so it is
+/// screener evaluates to "no value" (a look-ahead indicator, a two-symbol indicator without a comparison symbol or beside weekly or monthly bars, AnchoredVWAP on another time frame); a template is the user's own, so it is
 /// run as saved and the entries that cannot match are reported instead of being silently ignored.
 /// </summary>
 internal sealed class ScreenerTemplateAdvisor
@@ -29,6 +30,8 @@ internal sealed class ScreenerTemplateAdvisor
             warnings.Add("The template has no enabled entry, so nothing can match.");
         }
 
+        // A template that reads a weekly or monthly bar on any side is run with every side on its own stored frame (no comparison symbols are read then).
+        bool sideFrameScan = ScreenerSideFrames.UsesNonDailyBars(template.Entries);
         for (int index = 0; index < template.Entries.Count; index++)
         {
             ScreenerIndicatorEntry entry = template.Entries[index];
@@ -37,7 +40,7 @@ internal sealed class ScreenerTemplateAdvisor
                 continue;
             }
 
-            foreach (string problem in Problems(entry.LeftHand).Concat(entry.TargetMode == RightHandTargetMode.Indicator ? Problems(entry.RightHand) : Array.Empty<string>()))
+            foreach (string problem in Problems(entry.LeftHand, sideFrameScan).Concat(entry.TargetMode == RightHandTargetMode.Indicator ? Problems(entry.RightHand, sideFrameScan) : Array.Empty<string>()))
             {
                 warnings.Add($"Entry {index} ({ScreenerEntryText.Describe(entry)}): {problem}, so it never matches.");
             }
@@ -46,7 +49,7 @@ internal sealed class ScreenerTemplateAdvisor
         return warnings;
     }
 
-    private IEnumerable<string> Problems(ScreenerIndicatorSideConfig side)
+    private IEnumerable<string> Problems(ScreenerIndicatorSideConfig side, bool sideFrameScan)
     {
         // Only an indicator side is evaluated through the indicator calculation; prices, columns and patterns are read directly.
         if (side.CategoryType != ScreenerItemCategoryType.Indicator || side.IndicatorType == IndicatorType.Price)
@@ -54,9 +57,9 @@ internal sealed class ScreenerTemplateAdvisor
             yield break;
         }
 
-        if (side.TimeFrame != TimeFrame.D1)
+        if (side.TimeFrame != TimeFrame.D1 && side.IndicatorType == IndicatorType.AnchoredVWAP)
         {
-            yield return $"the {side.IndicatorType} side uses the {side.TimeFrame} time frame and the screener evaluates D1 only";
+            yield return $"AnchoredVWAP has no definition on the {side.TimeFrame} time frame of its side";
         }
 
         IndicatorCatalogEntry? entry = _indicators.Find(side.IndicatorType.ToString());
@@ -67,6 +70,10 @@ internal sealed class ScreenerTemplateAdvisor
         else if (entry.IsCrossTicker && ScreenerComparisonSymbols.Of(side) is null)
         {
             yield return $"{side.IndicatorType} compares two symbols and the side names no ComparisonSymbol";
+        }
+        else if (entry.IsCrossTicker && (sideFrameScan || side.TimeFrame != TimeFrame.D1))
+        {
+            yield return $"{side.IndicatorType} compares two symbols, which is not evaluated in a template that reads weekly or monthly bars (the comparison symbol's bars are daily)";
         }
         else if (!BacktestIndicatorEligibility.IsAllowed(side.IndicatorType, side.OutputName))
         {

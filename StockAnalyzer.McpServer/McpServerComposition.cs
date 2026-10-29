@@ -181,6 +181,7 @@ internal static class McpServerComposition
             {
                 new ListTickersTool(gateway, groupResolver, limits),
                 new ListTickerGroupsTool(gateway, resolvedWorkspaceSource, limits),
+                new FilterTickersTool(gateway, groupResolver, screenerBinder, limits),
                 new GetCandlesTool(gateway, symbols, limits),
                 new GetTickerMetadataTool(gateway, limits),
                 capabilitiesTool,

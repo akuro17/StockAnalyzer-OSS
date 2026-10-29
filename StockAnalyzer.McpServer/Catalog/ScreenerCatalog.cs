@@ -69,6 +69,21 @@ internal sealed class ScreenerCatalog
             Offset = offset,
         };
 
+    /// <summary>
+    /// True when the Column <paramref name="side"/> is read from the bars of its own time frame (Open, High, Low, Close, Volume, Change, Change %): the value of a bar is
+    /// then the value on that bar's date. Every other column is read from the stored metadata, a snapshot that holds today's value whatever date is evaluated.
+    /// The one definition is <see cref="ScreenerValueExtractor.IsCandleValueColumn"/> (the same that gives a side its time frame), so a side stored under any of the column's names is
+    /// classified as it is evaluated; <c>ScreenerBarColumnDefinitionTests</c> pins the seven bar columns among the catalog's columns.
+    /// </summary>
+    public static bool ReadsFromBars(ScreenerIndicatorSideConfig side) => ScreenerValueExtractor.IsCandleValueColumn(side);
+
+    /// <summary>The bars of the probe reads: two bars, so that Change and Change % have a previous close.</summary>
+    private static readonly IReadOnlyList<CandleData> ProbeBars = new List<CandleData>
+    {
+        new() { Timestamp = new DateTime(2024, 1, 1), Open = 10m, High = 12m, Low = 9m, Close = 11m, Volume = 100 },
+        new() { Timestamp = new DateTime(2024, 1, 2), Open = 11m, High = 13m, Low = 10m, Close = 12m, Volume = 200 },
+    };
+
     private static ScreenerCatalogItem? Find(IReadOnlyList<ScreenerCatalogItem> items, string name)
         => items.FirstOrDefault(item => string.Equals(item.ShortName, name.Trim(), StringComparison.OrdinalIgnoreCase));
 
@@ -107,11 +122,7 @@ internal sealed class ScreenerCatalog
         public static HashSet<string> EvaluableColumns(IReadOnlyList<ScreenerCatalogItem> columns)
         {
             (TickerMetadata metadata, Dictionary<string, decimal> expected) = ProbeMetadata();
-            var bars = new List<CandleData>
-            {
-                new() { Timestamp = new DateTime(2024, 1, 1), Open = 10m, High = 12m, Low = 9m, Close = 11m, Volume = 100 },
-                new() { Timestamp = new DateTime(2024, 1, 2), Open = 11m, High = 13m, Low = 10m, Close = 12m, Volume = 200 },
-            };
+            IReadOnlyList<CandleData> bars = ProbeBars;
 
             var evaluable = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (ScreenerCatalogItem column in columns)
@@ -125,7 +136,7 @@ internal sealed class ScreenerCatalog
                 ScreenerIndicatorSideConfig side = ColumnSide(column, 0);
 
                 // A value that is there without any metadata is read from the bars (Open, High, Low, Close, Volume, Change, Change %).
-                if (ScreenerValueExtractor.Default.ExtractValueNullable(side, bars, default) is not null)
+                if (ReadsFromBars(side))
                 {
                     evaluable.Add(column.ShortName);
                     continue;

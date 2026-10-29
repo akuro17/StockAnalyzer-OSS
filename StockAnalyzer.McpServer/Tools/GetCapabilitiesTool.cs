@@ -43,7 +43,8 @@ internal sealed class GetCapabilitiesTool : IMcpTool
         "backtestEligibility is Allowed, NonCausal (the value at a bar depends on later bars) or SynchronousCalculationUnsupported; nonCausalSeries lists the series that look ahead. " +
         "Unregistered types are defined in the product but cannot be calculated (isRegistered false). " +
         "unit is null because no indicator output unit is stored in the application; unitUndefined lists those types. " +
-        "includeScreenerCatalog adds the names sa_run_screener accepts besides indicators: columns (isText true for the text columns; unavailableColumns lists table columns no condition can read reliably), criteria (patterns) and price sources, with the comparison and group operator names. " +
+        "includeScreenerCatalog adds the names sa_run_screener accepts besides indicators: columns (isText true for the text columns; unavailableColumns lists table columns no condition can read reliably), criteria (patterns) and price sources, with the comparison and group operator names, " +
+        "timeFrame (the default frame of a scan) and sideTimeFrames (the frames a side may name with its own timeFrame; a column read from the stored metadata has none). " +
         "execution says whether the training tools are offered (enabled) and, when they are, lists what sa_start_training accepts: frameworks, architectures, hyperparameters, the fixed values and the limits, and what sa_start_rl_training does (reinforcementLearning). " +
         $"Period parameters and lengths are always in {PeriodUnit} of the requested time frame.";
 
@@ -260,6 +261,7 @@ internal sealed class GetCapabilitiesTool : IMcpTool
     private void WriteScreenerCatalogProperties(Utf8JsonWriter writer)
     {
         writer.WriteString("timeFrame", RunScreenerTool.ScreenerTimeFrame.ToString());
+        WriteStrings(writer, "sideTimeFrames", ReadOnlyGatewayContract.SupportedTimeFrames.Select(frame => frame.ToString()).ToList());
         WriteStrings(writer, "comparisons", ScreenerConditionBinder.ComparisonNames);
         WriteStrings(writer, "groupOperators", ScreenerConditionBinder.LogicalOperatorNames);
         WriteNames(writer, "columns", _screenerCatalog.Columns);

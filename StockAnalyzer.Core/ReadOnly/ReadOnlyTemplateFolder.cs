@@ -81,7 +81,10 @@ internal sealed class ReadOnlyTemplateFolder<T> where T : TemplateBase
         try
         {
             await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, 4096, useAsync: true);
-            return await JsonSerializer.DeserializeAsync<T>(stream, _options, cancellationToken).ConfigureAwait(false);
+            T? template = await JsonSerializer.DeserializeAsync<T>(stream, _options, cancellationToken).ConfigureAwait(false);
+
+            // A template of an older schema whose content no longer has a defined meaning is not served (it counts as an unreadable file).
+            return template is { IsDiscardedLegacy: true } ? null : template;
         }
         catch (Exception error) when (TemplateFailureRule.IsIsolatable(error))
         {

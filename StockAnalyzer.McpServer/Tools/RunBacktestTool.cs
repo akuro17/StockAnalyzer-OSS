@@ -62,6 +62,7 @@ internal sealed class RunBacktestTool : IMcpTool
         "Omitted values are the Backtest window's factory defaults, not the values saved in the window; the result echoes every effective value. " +
         $"The supported time frames are {string.Join(", ", ReadOnlyGatewayContract.SupportedBacktestTimeFrames)}; the Legacy execution model is used; there is no equity curve. " +
         $"The result lists the first maxReturnedTrades trades in the order the engine closed them (default and maximum {_limits.MaxReturnedTrades}; totalTrades is the true count) and engine warnings by code. " +
+        "allowUnregistered true also accepts a symbol that is not in the ticker list but has stored bars; it is named in warnings, and a symbol without stored bars is SYMBOL_NOT_FOUND. " +
         "Metrics keep status/value/unit/reason: a value is present only when status is Valid. The tool never changes anything and never fetches data.";
 
     public bool IsHeavy => true;
@@ -79,6 +80,7 @@ internal sealed class RunBacktestTool : IMcpTool
         .FreeObject(BacktestSettingsBinder.RiskArgument, "Optional stop-loss and take-profit as ratios of the entry price: {stopLossRatio, takeProfitRatio}.")
         .FreeObject(BacktestSettingsBinder.ReportArgument, "Report settings: {annualRiskFreeRate, annualMar} (simple rates, 0.02 = 2%), {annualPeriodsD1} (daily bars per year), {bootstrapSeed, bootstrapIterations} (whole numbers). Omitted values are the factory defaults.")
         .Integer(MaxTradesArgument, $"Most trades to list. Default and maximum {_limits.MaxReturnedTrades}; 0 lists none.", defaultValue: _limits.MaxReturnedTrades, minimum: 0, maximum: _limits.MaxReturnedTrades)
+        .Boolean(SymbolResolver.AllowUnregisteredArgument, "Accept a symbol that is not in the ticker list but has stored bars. Default false.")
         .Build();
 
     public async Task<string> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)
@@ -131,7 +133,10 @@ internal sealed class RunBacktestTool : IMcpTool
             template = new TemplateReference(saved.Id, saved.Name);
         }
 
-        string symbol = await _symbols.ResolveAsync(ToolArgs.String(arguments, SymbolArgument)!, SymbolArgument, cancellationToken).ConfigureAwait(false);
+        bool allowUnregistered = ToolArgs.Boolean(arguments, SymbolResolver.AllowUnregisteredArgument) ?? false;
+        ResolvedSymbol resolved = await _symbols.ResolveAsync(ToolArgs.String(arguments, SymbolArgument)!, SymbolArgument, allowUnregistered, cancellationToken).ConfigureAwait(false);
+        string symbol = resolved.Symbol;
+        IReadOnlyList<string> symbolWarnings = resolved.IsRegistered ? Array.Empty<string>() : new[] { SymbolResolver.OffListWarning(new[] { symbol }) };
         IReadOnlyList<CandleData> stored = await _gateway.GetCandlesAsync(symbol, timeFrame, _limits.MaxCandlesPerRequest, cancellationToken).ConfigureAwait(false);
         if (stored.Count == 0)
         {
@@ -169,7 +174,7 @@ internal sealed class RunBacktestTool : IMcpTool
             throw new ToolException(ToolErrorCodes.InvalidArgument, $"The backtest input was rejected: {error.Message.Split(Environment.NewLine)[0]}", hint: "Check the dates and the conditions.");
         }
 
-        return ToolJson.Build(writer => Write(writer, artifact, symbol, timeFrame, effectiveStart, effectiveEnd, requestedStart is null || requestedEnd is null, settings, conditions, maxTrades, template));
+        return ToolJson.Build(writer => Write(writer, artifact, symbol, timeFrame, effectiveStart, effectiveEnd, requestedStart is null || requestedEnd is null, settings, conditions, maxTrades, template, symbolWarnings));
     }
 
     private static DateTime ToUtc(DateOnly date) => DateTime.SpecifyKind(date.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
@@ -206,7 +211,8 @@ internal sealed class RunBacktestTool : IMcpTool
         BoundBacktestSettings settings,
         BoundBacktestConditions conditions,
         int maxTrades,
-        TemplateReference? template)
+        TemplateReference? template,
+        IReadOnlyList<string> symbolWarnings)
     {
         BacktestResult result = artifact.Result;
         BacktestEvaluationMetadata metadata = artifact.Metadata;
@@ -277,7 +283,8 @@ internal sealed class RunBacktestTool : IMcpTool
 
         WriteTrades(writer, result, maxTrades);
         WriteEngineWarnings(writer, result);
-        var notes = new List<string>(conditions.Warnings);
+        var notes = new List<string>(symbolWarnings);
+        notes.AddRange(conditions.Warnings);
         if (metadata.SampleCount == 0)
         {
             notes.Add("No stored bar lies inside the period: nothing was evaluated, so every metric is undefined.");

@@ -164,7 +164,10 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
         try
         {
             var symbols = _tickerSortBuffer.Count > 0 ? _tickerSortBuffer.ToList() : _allTickers.ToList();
-            var matches = await _screenerTemplateEvaluator!.EvaluateAsync(symbols, template, TimeFrame.D1, null, cts.Token);
+            // A template whose enabled entries read daily bars only keeps the plain evaluation; one with a weekly or monthly side reads each side's own frame.
+            var matches = ScreenerSideFrames.UsesNonDailyBars(template.Entries)
+                ? await _screenerTemplateEvaluator!.EvaluateWithSideFramesAsync(symbols, template, new ScreenerBarSelection(null, ScreenerBarSelection.DefaultCompleteBarsOnly), null, cts.Token)
+                : await _screenerTemplateEvaluator!.EvaluateAsync(symbols, template, TimeFrame.D1, null, cts.Token);
 
             if (cts.IsCancellationRequested || !ReferenceEquals(_screenerTemplateFilterCts, cts)) return;
 

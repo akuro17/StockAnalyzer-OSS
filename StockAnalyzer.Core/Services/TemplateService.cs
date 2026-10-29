@@ -73,6 +73,12 @@ public class TemplateService : ITemplateService, IDisposable
         {
             await using var fileStream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, useAsync: true);
             var template = await JsonSerializer.DeserializeAsync<T>(fileStream, _jsonOptions).ConfigureAwait(false);
+            if (template is { IsDiscardedLegacy: true })
+            {
+                _logger.LogWarning("Template '{Name}' ({Id}) of type {Type} is of an older schema whose content has no defined meaning and was discarded ({FilePath} is left as it is).", template.Name, id, type, filePath);
+                return null;
+            }
+
             return template;
         }
         catch (Exception ex)
@@ -118,7 +124,11 @@ public class TemplateService : ITemplateService, IDisposable
                 {
                     await using var fileStream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, useAsync: true);
                     var template = await JsonSerializer.DeserializeAsync<T>(fileStream, _jsonOptions).ConfigureAwait(false);
-                    if (template != null)
+                    if (template is { IsDiscardedLegacy: true })
+                    {
+                        _logger.LogWarning("Template '{Name}' of type {Type} is of an older schema whose content has no defined meaning and was discarded ({FilePath} is left as it is).", template.Name, type, file);
+                    }
+                    else if (template != null)
                     {
                         result.Add(template);
                     }

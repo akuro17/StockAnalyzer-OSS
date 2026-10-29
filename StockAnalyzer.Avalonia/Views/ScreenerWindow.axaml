@@ -348,6 +348,16 @@
                                     </DataTemplate>
                                 </ComboBox.ItemTemplate>
                             </ComboBox>
+
+                            <!-- The frame of each condition is chosen in the Indicators tab (per side). This choice applies to every weekly or monthly side and is shown only while one is enabled. -->
+                            <CheckBox x:Name="CompleteBarsOnlyCheckBox"
+                                      Margin="0,8,0,0"
+                                      FontSize="{DynamicResource BaseFontSize}"
+                                      Content="{l:Localize Check_Screener_CompleteBarsOnly}"
+                                      IsVisible="{Binding IsCompleteBarsOptionVisible}"
+                                      IsChecked="{Binding CompleteBarsOnly}"
+                                      IsEnabled="{Binding IsNotScanning}"
+                                      ToolTip.Tip="{l:Localize Tip_Screener_CompleteBarsOnly}"/>
                         </StackPanel>
                     </Border>
                     </Grid>

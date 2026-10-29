@@ -51,6 +51,7 @@ public static class McpLimitsContract
         Band(nameof(McpLimits.DefaultTickerPageSize), limits.DefaultTickerPageSize, 1, limits.MaxTickersPerPage);
         Band(nameof(McpLimits.MaxGroupNodes), limits.MaxGroupNodes, 1, 5000);
         Band(nameof(McpLimits.MaxFilterEvaluationSymbols), limits.MaxFilterEvaluationSymbols, 1, 5000);
+        Band(nameof(McpLimits.MaxInlineFilterRules), limits.MaxInlineFilterRules, 1, 128);
     }
 
     private static void Band(string key, int value, int minimum, int maximum)

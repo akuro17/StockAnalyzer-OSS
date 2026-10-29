@@ -96,9 +96,10 @@ public sealed class McpToolSweepTests : IDisposable
     {
         ("sa_list_tickers", """{"limit":5,"includeMetadataSummary":true}"""),
         ("sa_list_ticker_groups", "{}"),
+        ("sa_filter_tickers", """{"symbols":["MSFT","7203.T"],"rules":[{"field":"Close","operator":">","value":"1"}],"includeFields":["Close","Sector"]}"""),
         ("sa_get_candles", """{"symbol":"MSFT","timeFrame":"D1","count":5}"""),
         ("sa_get_ticker_metadata", """{"symbols":["MSFT","7203.T"]}"""),
-        ("sa_get_capabilities", """{"indicatorTypeFilter":["RSI"],"includeScreenerCatalog":true}"""),
+        ("sa_get_capabilities","""{"indicatorTypeFilter":["RSI"],"includeScreenerCatalog":true}"""),
         ("sa_get_settings", "{}"),
         ("sa_calculate_indicators", """{"symbol":"MSFT","timeFrame":"D1","indicators":""" + Indicators + "}"),
         ("sa_run_screener", """{"conditionTree":""" + HighClose + ""","symbols":["MSFT"]}"""),
@@ -114,6 +115,7 @@ public sealed class McpToolSweepTests : IDisposable
     /// <summary>Every argument position that carries a symbol or a template id; the slot is replaced with each corpus entry.</summary>
     private static readonly (string Tool, string Arguments)[] NameSlots =
     {
+        ("sa_filter_tickers", """{"symbols":["@@"],"rules":[{"field":"Close","operator":">","value":"1"}]}"""),
         ("sa_get_candles", """{"symbol":"@@","timeFrame":"D1"}"""),
         ("sa_get_ticker_metadata", """{"symbols":["@@"]}"""),
         ("sa_calculate_indicators", """{"symbol":"@@","timeFrame":"D1","indicators":""" + Indicators + "}"),
@@ -311,6 +313,7 @@ public sealed class McpToolSweepTests : IDisposable
         var limits = new McpLimits();
         string Symbols(int count) => string.Join(",", Enumerable.Range(0, count).Select(i => $"\"S{i}\""));
         string Many(int count) => string.Join(",", Enumerable.Range(0, count).Select(i => $"{{\"id\":\"i{i}\",\"type\":\"RSI\"}}"));
+        string Rules(int count) => "[" + string.Join(",", Enumerable.Repeat("""{"field":"Close","operator":">","value":"1"}""", count)) + "]";
         const string Frame = "\"symbol\":\"MSFT\",\"timeFrame\":\"D1\"";
 
         return new (string Tool, string Arguments, string Parameter)[]
@@ -327,6 +330,9 @@ public sealed class McpToolSweepTests : IDisposable
             ("sa_run_screener", $"{{\"conditionTree\":{HighClose},\"maxReturnedMatches\":{limits.MaxReturnedMatches + 1}}}", "maxReturnedMatches"),
             ("sa_run_screener", $"{{\"conditionTree\":{HighClose},\"symbols\":[{Symbols(limits.MaxScreenerSymbols + 1)}]}}", "symbols"),
             ("sa_run_backtest", $"{{\"symbol\":\"MSFT\",\"conditions\":{{\"entryLong\":{Entry}}},\"maxReturnedTrades\":{limits.MaxReturnedTrades + 1}}}", "maxReturnedTrades"),
+            ("sa_filter_tickers", $"{{\"rules\":{Rules(limits.MaxInlineFilterRules + 1)}}}", "rules"),
+            ("sa_filter_tickers", $"{{\"symbols\":[{Symbols(limits.MaxFilterEvaluationSymbols + 1)}]}}", "symbols"),
+            ("sa_filter_tickers", $"{{\"limit\":{limits.MaxTickersPerPage + 1}}}", "limit"),
             // 32-bit and 64-bit overflow must be a refusal as well, never a wrap-around or an exception.
             ("sa_get_candles", $"{{{Frame},\"count\":2147483648}}", "count"),
             ("sa_list_tickers", "{\"limit\":9223372036854775807}", "limit"),

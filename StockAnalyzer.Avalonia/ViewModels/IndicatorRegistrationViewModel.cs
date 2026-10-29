@@ -444,13 +444,39 @@ public partial class IndicatorRegistrationViewModel : ViewModelBase, IDisposable
     // ===== Common Available TimeFrames =====
 
     /// <summary>
-    /// The frames a condition can be registered on. The Screener evaluates every condition on daily bars (one daily candle list per symbol), so a weekly or
-    /// monthly choice would be stored but ignored - a "[W1]" label must mean weekly data. Entries saved earlier with W1/MN1 still load unchanged.
+    /// The frames a condition can be registered on. By default only Day: a host that evaluates every condition on daily bars (the ticker-notes dialog) would store but
+    /// ignore a weekly or monthly choice - a "[W1]" label must mean weekly data. The Screener, which reads the bars of each side's own frame, widens the list with
+    /// <see cref="UseSideTimeFrames"/>.
     /// </summary>
-    public IReadOnlyList<TimeFrameItem> AvailableTimeFrames { get; } = new[]
+    public IReadOnlyList<TimeFrameItem> AvailableTimeFrames { get; private set; } = new[]
     {
         new TimeFrameItem { Value = TimeFrame.D1, DisplayName = "Day" }
     };
+
+    /// <summary>
+    /// Offers <paramref name="frames"/> (in the given order, display names from the <c>Enum_TimeFrame_*</c> keys) as the frames of both sides and selects Day on both.
+    /// <paramref name="frames"/> must contain Day. Only a host that reads the bars of each side's own frame may call this.
+    /// </summary>
+    public void UseSideTimeFrames(IReadOnlyList<TimeFrame> frames)
+    {
+        ArgumentNullException.ThrowIfNull(frames);
+        if (!frames.Contains(TimeFrame.D1))
+        {
+            throw new ArgumentException("The frames must contain D1.", nameof(frames));
+        }
+
+        AvailableTimeFrames = frames
+            .Select(frame => new TimeFrameItem
+            {
+                Value = frame,
+                DisplayName = _localizationService.TryGetString($"Enum_{nameof(TimeFrame)}_{frame}", out string? name) ? name : frame.ToString()
+            })
+            .ToArray();
+        OnPropertyChanged(nameof(AvailableTimeFrames));
+
+        LeftSelectedTimeFrameItem = AvailableTimeFrames.First(item => item.Value == TimeFrame.D1);
+        RightSelectedTimeFrameItem = AvailableTimeFrames.First(item => item.Value == TimeFrame.D1);
+    }
 
     // ===== Constructor =====
 
@@ -941,6 +967,13 @@ public partial class IndicatorRegistrationViewModel : ViewModelBase, IDisposable
                 config.Parameters[kvp.Key] = kvp.Value;
             }
         }
+
+        // A fundamental (market cap, ...) is a property of the ticker, not of a bar: it has no time frame, so none is stored.
+        if (category == ScreenerItemCategoryType.Column && !ScreenerValueExtractor.IsCandleValueColumn(config))
+        {
+            config.TimeFrame = TimeFrame.D1;
+        }
+
         return config;
     }
 

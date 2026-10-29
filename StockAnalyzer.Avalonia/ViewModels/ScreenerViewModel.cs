@@ -113,6 +113,114 @@ public partial class ScreenerViewModel : ViewModelBase, IDisposable
 
     public bool IsNotScanning => !IsScanning;
 
+    /// <summary>True: a weekly or monthly bar list leaves out the last week or month that has not ended (the default, as in the MCP Screener). Used by every weekly or monthly side of a scan; a daily scan has none.</summary>
+    [ObservableProperty]
+    private bool _completeBarsOnly = ScreenerBarSelection.DefaultCompleteBarsOnly;
+
+    private bool _isCompleteBarsOptionVisible;
+
+    /// <summary>The "complete bars only" choice means something only while an enabled condition reads a weekly or monthly bar list (<see cref="ScreenerSideFrames.UsesNonDailyBars(ScreenerIndicatorEntry)"/>).</summary>
+    public bool IsCompleteBarsOptionVisible => _isCompleteBarsOptionVisible;
+
+    // The registered entries whose IsEnabled is watched: the visibility above is recomputed when an entry is added, removed, cleared, enabled or disabled.
+    // The frame of a registered side never changes (an entry is only created or removed), so nothing else can alter the answer.
+    private readonly HashSet<ScreenerIndicatorEntry> _watchedEntries = new();
+
+    /// <summary>Hooks the registration view model up to this scan: it offers the frames the data layer defines for each side, and the watch above starts.</summary>
+    private void WatchRegisteredEntries()
+    {
+        IndicatorRegistrationViewModel.UseSideTimeFrames(DataServiceTimeFrames.Supported);
+        IndicatorRegistrationViewModel.RegisteredEntries.CollectionChanged += OnRegisteredEntriesChanged;
+        SyncWatchedEntries();
+    }
+
+    private void OnRegisteredEntriesChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e) => SyncWatchedEntries();
+
+    private void SyncWatchedEntries()
+    {
+        var registered = IndicatorRegistrationViewModel.RegisteredEntries;
+        foreach (ScreenerIndicatorEntry gone in _watchedEntries.Where(entry => !registered.Contains(entry)).ToList())
+        {
+            gone.PropertyChanged -= OnWatchedEntryChanged;
+            _watchedEntries.Remove(gone);
+        }
+
+        foreach (ScreenerIndicatorEntry entry in registered)
+        {
+            if (_watchedEntries.Add(entry))
+            {
+                entry.PropertyChanged += OnWatchedEntryChanged;
+            }
+        }
+
+        RefreshCompleteBarsOption();
+    }
+
+    private void OnWatchedEntryChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(ScreenerIndicatorEntry.IsEnabled))
+        {
+            RefreshCompleteBarsOption();
+        }
+    }
+
+    private void RefreshCompleteBarsOption()
+    {
+        bool visible = ScreenerSideFrames.UsesNonDailyBars(IndicatorRegistrationViewModel.RegisteredEntries);
+        if (visible != _isCompleteBarsOptionVisible)
+        {
+            _isCompleteBarsOptionVisible = visible;
+            OnPropertyChanged(nameof(IsCompleteBarsOptionVisible));
+        }
+    }
+
+    /// <summary>
+    /// True when the value a result column shows is read from the bars of the side's own weekly or monthly frame: an indicator, price or Criteria side with such a frame always is, a Column only
+    /// when it names a bar value (Open, High, Low, Close, Volume, Change, Change %: the extractor's own decision, the one the condition was evaluated with). A fundamental Column is a property
+    /// of the ticker, not of a bar. A daily side keeps its daily snapshot for every Column.
+    /// </summary>
+    private static bool ReadsSideFrameBars(ScreenerIndicatorSideConfig config, ScreenerItemCategoryType category)
+        => config.TimeFrame != TimeFrame.D1 && (category != ScreenerItemCategoryType.Column || ScreenerValueExtractor.IsCandleValueColumn(config));
+
+    /// <summary>
+    /// The title (and, through the member key built from it, the identity) of a result column. A value read from the bars of a weekly or monthly side says so with the frame label of the side's
+    /// own frame (" [W1]" / " [MN1]", part of <see cref="ScreenerIndicatorSideConfig.GetColumnHeaderTitle"/>), so the grid, which keeps a column of the same identity, cannot show a daily title over
+    /// weekly values. A side that does not read bars (a fundamental that an older entry stored with a frame) has no label.
+    /// </summary>
+    private static string ColumnTitle(ScreenerIndicatorSideConfig config, ScreenerItemCategoryType category)
+    {
+        string title = config.GetColumnHeaderTitle();
+        string label = ScreenerIndicatorSideConfig.FrameLabel(config.TimeFrame);
+        return label.Length > 0 && !ReadsSideFrameBars(config, category) && title.EndsWith(label, StringComparison.Ordinal) ? title[..^label.Length] : title;
+    }
+
+    private const string PeriodStartDateFormat = "yyyy-MM-dd";
+
+    /// <summary>The note a weekly or monthly frame adds to the status line: which unfinished periods were left out or evaluated, and the symbols without a bar in the frame.</summary>
+    private static string FrameNote(ScreenerFrameReport result)
+    {
+        TimeFrame frame = result.Frame;
+        string period = LocalizationManager.Instance[frame == TimeFrame.MN1 ? "Timeframe_Month" : "Timeframe_Week"].ToLowerInvariant();
+        var notes = new List<string>();
+        if (result.SkippedPartialBarCount > 0)
+        {
+            notes.Add(string.Format(LocalizationManager.Instance["Screener_Scan_FrameNoteSkipped"], result.SkippedPartialBarCount, period));
+        }
+
+        if (result.PartialLastBarPeriodStarts.Count > 0)
+        {
+            string starts = string.Join(", ", result.PartialLastBarPeriodStarts.Select(start => start.ToString(PeriodStartDateFormat, System.Globalization.CultureInfo.InvariantCulture)));
+            notes.Add(string.Format(LocalizationManager.Instance["Screener_Scan_FrameNoteEvaluated"], period, starts));
+        }
+
+        if (result.SymbolsWithoutBars.Count > 0)
+        {
+            notes.Add(string.Format(LocalizationManager.Instance["Screener_Scan_FrameNoteNoBars"], result.SymbolsWithoutBars.Count));
+        }
+
+        return notes.Count == 0 ? string.Empty : " " + string.Join(" ", notes);
+    }
+
     [ObservableProperty]
     private string _statusMessage = "Ready to scan.";
 
@@ -213,6 +321,7 @@ public partial class ScreenerViewModel : ViewModelBase, IDisposable
     private void Initialize()
     {
         InitializeColumns();
+        WatchRegisteredEntries();
 
         if (_watchlistManager != null)
         {
@@ -637,6 +746,7 @@ public partial class ScreenerViewModel : ViewModelBase, IDisposable
 
     private void InitializeFallback()
     {
+        WatchRegisteredEntries();
         if (IndicatorRegistrationViewModel != null)
         {
             IndicatorRegistrationViewModel.RegisteredEntries.CollectionChanged += (s, e) => UpdateCriteriaFlowItems();
@@ -694,13 +804,22 @@ public partial class ScreenerViewModel : ViewModelBase, IDisposable
         try
         {
             var condition = new ScreenerConditionTreeCondition(conditionTree);
-            List<string> hits = await _screenerService.ScreenAsync(
-                TargetSymbols.ToList(),
-                condition,
-                TimeFrame.D1,
-                progress,
-                scanCts.Token
-            );
+
+            // A condition whose enabled sides all read daily bars is the unchanged plain scan. Otherwise every side reads the bars of its own frame, built the way the chart and the
+            // MCP Screener build them (daily history aggregated to the frame, an unfinished last period left out unless asked for), not from the stored weekly/monthly files.
+            var barSelection = new ScreenerBarSelection(null, CompleteBarsOnly);
+            int barHistory = ScreenerHistoryRequirements.GetRequiredCandleCount(condition);
+            ScreenerSideFramesResult? framesResult = null;
+            List<string> hits;
+            if (!ScreenerSideFrames.UsesNonDailyBars(condition))
+            {
+                hits = await _screenerService.ScreenAsync(TargetSymbols.ToList(), condition, TimeFrame.D1, progress, scanCts.Token);
+            }
+            else
+            {
+                framesResult = await _screenerService.ScreenWithSideFramesAsync(TargetSymbols.ToList(), condition, barSelection, progress, scanCts.Token);
+                hits = framesResult.Matched.ToList();
+            }
 
             // Rebuild dynamic indicator columns on ActiveColumns
             var fixedCols = ActiveColumns.Where(c => !c.MemberName.StartsWith("Indicator_")).ToList();
@@ -708,6 +827,7 @@ public partial class ScreenerViewModel : ViewModelBase, IDisposable
             foreach (var col in fixedCols) ActiveColumns.Add(col);
 
             var sideConfigsForColumns = new List<(ScreenerIndicatorSideConfig Config, ScreenerItemCategoryType Category)>();
+            var columnPlans = new List<(ScreenerIndicatorSideConfig Config, ScreenerItemCategoryType Category, string MemberKey, bool ReadsFrameBars, ScreenerIndicatorSideConfig DisplayConfig)>();
             var activeEntriesForColumns = IndicatorRegistrationViewModel?.RegisteredEntries?.Where(e => e.IsEnabled).ToList();
             if (activeEntriesForColumns != null)
             {
@@ -717,7 +837,7 @@ public partial class ScreenerViewModel : ViewModelBase, IDisposable
                 {
                     if (entry.LeftHand != null)
                     {
-                        string header = entry.LeftHand.GetColumnHeaderTitle();
+                        string header = ColumnTitle(entry.LeftHand, entry.CategoryType);
                         if (seenHeaders.Add(header))
                         {
                             sideConfigsForColumns.Add((entry.LeftHand, entry.CategoryType));
@@ -726,7 +846,7 @@ public partial class ScreenerViewModel : ViewModelBase, IDisposable
 
                     if (entry.TargetMode == RightHandTargetMode.Indicator && entry.RightHand != null)
                     {
-                        string header = entry.RightHand.GetColumnHeaderTitle();
+                        string header = ColumnTitle(entry.RightHand, ScreenerItemCategoryType.Indicator);
                         if (seenHeaders.Add(header))
                         {
                             sideConfigsForColumns.Add((entry.RightHand, ScreenerItemCategoryType.Indicator));
@@ -737,9 +857,13 @@ public partial class ScreenerViewModel : ViewModelBase, IDisposable
                 for (int idx = 0; idx < sideConfigsForColumns.Count; idx++)
                 {
                     var (config, category) = sideConfigsForColumns[idx];
-                    string headerTitle = config.GetColumnHeaderTitle();
+                    string headerTitle = ColumnTitle(config, category);
                     string memberKey = $"Indicator_{idx}_{headerTitle}";
                     ActiveColumns.Add(new WatchlistColumnMetadata(headerTitle, memberKey, "90", 100 + idx));
+                    // A side that reads weekly or monthly bars is given those bars through a daily-framed copy (made once per column): the value extractor reads the frame of the bars it is handed as daily.
+                    bool readsFrameBars = ReadsSideFrameBars(config, category);
+                    ScreenerIndicatorSideConfig displayConfig = readsFrameBars ? config.WithTimeFrame(TimeFrame.D1) : config;
+                    columnPlans.Add((config, category, memberKey, readsFrameBars, displayConfig));
                 }
             }
 
@@ -865,21 +989,28 @@ public partial class ScreenerViewModel : ViewModelBase, IDisposable
                             item.Change = priceChange.Amount;
                             item.ChangePercent = (double)priceChange.Percent;
 
-                            if (sideConfigsForColumns != null && sideConfigsForColumns.Count > 0)
+                            if (columnPlans.Count > 0)
                             {
-                                for (int idx = 0; idx < sideConfigsForColumns.Count; idx++)
+                                // The values the conditions read come from the bars of each side's own frame (the ones the scan evaluated); the fixed price columns above stay the daily snapshot.
+                                // A weekly or monthly list is read once per symbol, however many columns use it.
+                                var barsOfFrame = new Dictionary<TimeFrame, IReadOnlyList<CandleData>> { [TimeFrame.D1] = candles };
+                                foreach (var (config, category, memberKey, readsFrameBars, displayConfig) in columnPlans)
                                 {
-                                    var (config, category) = sideConfigsForColumns[idx];
-                                    string headerTitle = config.GetColumnHeaderTitle();
-                                    string memberKey = $"Indicator_{idx}_{headerTitle}";
                                     try
                                     {
+                                        IReadOnlyList<CandleData> valueBars = candles;
+                                        if (readsFrameBars && !barsOfFrame.TryGetValue(config.TimeFrame, out valueBars!))
+                                        {
+                                            valueBars = await _screenerService.LoadScreenerBarsAsync(symbol, config.TimeFrame, barSelection, barHistory, scanCts.Token);
+                                            barsOfFrame[config.TimeFrame] = valueBars;
+                                        }
+
                                         if (category == ScreenerItemCategoryType.Criteria)
                                         {
-                                            decimal cVal = _valueExtractor.ExtractValue(config, candles);
+                                            decimal cVal = _valueExtractor.ExtractValue(displayConfig, valueBars);
                                             item.DynamicIndicatorValues[memberKey] = cVal > 0m ? "Match" : "-";
                                         }
-                                        else if (category == ScreenerItemCategoryType.Column)
+                                        else if (category == ScreenerItemCategoryType.Column && !readsFrameBars)
                                         {
                                             string propName = config.ResolveLookupName() ?? config.DisplayName;
 
@@ -894,7 +1025,7 @@ public partial class ScreenerViewModel : ViewModelBase, IDisposable
                                         }
                                         else
                                         {
-                                            decimal? val = _valueExtractor.ExtractValueNullable(config, candles);
+                                            decimal? val = _valueExtractor.ExtractValueNullable(displayConfig, valueBars);
                                             item.DynamicIndicatorValues[memberKey] = val;
                                         }
                                     }
@@ -919,8 +1050,15 @@ public partial class ScreenerViewModel : ViewModelBase, IDisposable
             UpdateCriteriaFlowItems();
 
             StatusMessage = hits.Count > 0
-                ? $"Scan complete. Found {hits.Count} matches." 
-                : "Scan complete. No matches found.";
+                ? string.Format(LocalizationManager.Instance["Screener_Status_ScanComplete"], hits.Count)
+                : LocalizationManager.Instance["Screener_Status_ScanCompleteNone"];
+            if (framesResult is not null)
+            {
+                foreach (ScreenerFrameReport report in framesResult.Frames)
+                {
+                    StatusMessage += FrameNote(report);
+                }
+            }
         }
         catch (OperationCanceledException)
         {
@@ -1045,6 +1183,17 @@ public partial class ScreenerViewModel : ViewModelBase, IDisposable
         _targetSymbolsCts?.Cancel();
         _targetSymbolsCts?.Dispose();
         _targetSymbolsCts = null;
+
+        foreach (ScreenerIndicatorEntry entry in _watchedEntries)
+        {
+            entry.PropertyChanged -= OnWatchedEntryChanged;
+        }
+
+        _watchedEntries.Clear();
+        if (IndicatorRegistrationViewModel != null)
+        {
+            IndicatorRegistrationViewModel.RegisteredEntries.CollectionChanged -= OnRegisteredEntriesChanged;
+        }
 
         IndicatorRegistrationViewModel?.Dispose();
 

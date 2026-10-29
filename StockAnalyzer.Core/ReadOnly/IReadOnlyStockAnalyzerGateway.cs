@@ -4,6 +4,7 @@ using StockAnalyzer.Core.Models.Indicators;
 using StockAnalyzer.Core.Models.Portfolio;
 using StockAnalyzer.Core.Models.Templates;
 using StockAnalyzer.Core.Services;
+using StockAnalyzer.Core.Services.Screener;
 using StockAnalyzer.Core.Services.Backtest.Evaluation;
 
 namespace StockAnalyzer.Core.ReadOnly;
@@ -105,6 +106,39 @@ public interface IReadOnlyStockAnalyzerGateway
             ? RunScreenerAsync(symbols, condition, timeFrame, cancellationToken)
             : throw new NotSupportedException($"{GetType().Name} does not evaluate indicators that compare two tickers.");
 
+    /// <summary>
+    /// The scan of <see cref="RunScreenerAsync(IReadOnlyList{string}, IScreeningCondition, TimeFrame, IReadOnlyList{string}, CancellationToken)"/> over the bars of
+    /// <paramref name="selection"/>: with an as-of date each symbol is evaluated on its last bar dated on or before it (a weekly or monthly bar is built from the days up
+    /// to the date), the comparison symbols too; a weekly or monthly frame is built from the stored daily bars; <see cref="ScreenerBarSelection.CompleteBarsOnly"/> leaves out
+    /// a last period that has not ended. A symbol with no bar to evaluate is returned in <see cref="ScreenerBarsResult.SymbolsWithoutBars"/>. Metadata is the stored snapshot.
+    /// </summary>
+    /// <exception cref="ArgumentException">A symbol is not well formed.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">The condition uses an Offset above the configured maximum.</exception>
+    /// <exception cref="NotSupportedException">The host cannot rebuild its screener over another data source.</exception>
+    Task<ScreenerBarsResult> RunScreenerOnBarsAsync(
+        IReadOnlyList<string> symbols,
+        IScreeningCondition condition,
+        TimeFrame timeFrame,
+        IReadOnlyList<string> comparisonSymbols,
+        ScreenerBarSelection selection,
+        CancellationToken cancellationToken = default)
+        => throw new NotSupportedException($"{GetType().Name} does not run a scan on a selection of bars.");
+
+    /// <summary>
+    /// The latest <paramref name="count"/> bars of <paramref name="symbol"/> that a scan over <paramref name="selection"/> evaluates (the same cut, aggregation and partial-period
+    /// rule), in chronological order; empty when there is none. Used to show the values a scan read. Uses a new cache per call.
+    /// </summary>
+    /// <exception cref="ArgumentException"><paramref name="symbol"/> is not well formed.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="count"/> is not positive.</exception>
+    /// <exception cref="NotSupportedException"><paramref name="timeFrame"/> is not in <see cref="ReadOnlyGatewayContract.SupportedTimeFrames"/>.</exception>
+    Task<IReadOnlyList<CandleData>> GetScreenerBarsAsync(
+        string symbol,
+        TimeFrame timeFrame,
+        ScreenerBarSelection selection,
+        int count,
+        CancellationToken cancellationToken = default)
+        => throw new NotSupportedException($"{GetType().Name} does not read a selection of bars.");
+
     /// <summary>The saved Screener templates (favourites first, then by name). Reads the template files only: nothing is created, migrated or written.</summary>
     Task<ScreenerTemplateListing> ListScreenerTemplatesAsync(CancellationToken cancellationToken = default);
 
@@ -141,6 +175,50 @@ public interface IReadOnlyStockAnalyzerGateway
         => comparisonSymbols.Count == 0
             ? RunScreenerTemplateAsync(symbols, template, timeFrame, cancellationToken)
             : throw new NotSupportedException($"{GetType().Name} does not evaluate indicators that compare two tickers.");
+
+    /// <summary>
+    /// <see cref="RunScreenerOnBarsAsync"/> for a saved template: the enabled entries are combined as in
+    /// <see cref="RunScreenerTemplateAsync(IReadOnlyList{string}, ScreenerIndicatorTemplate, TimeFrame, IReadOnlyList{string}, CancellationToken)"/>, over the bars of <paramref name="selection"/>.
+    /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException">An entry uses an Offset above the configured maximum.</exception>
+    /// <exception cref="NotSupportedException">The host cannot rebuild its screener over another data source.</exception>
+    Task<ScreenerBarsResult> RunScreenerTemplateOnBarsAsync(
+        IReadOnlyList<string> symbols,
+        ScreenerIndicatorTemplate template,
+        TimeFrame timeFrame,
+        IReadOnlyList<string> comparisonSymbols,
+        ScreenerBarSelection selection,
+        CancellationToken cancellationToken = default)
+        => throw new NotSupportedException($"{GetType().Name} does not run a scan on a selection of bars.");
+
+    /// <summary>
+    /// The scan in which every side of <paramref name="condition"/> reads the bars of its OWN time frame (<see cref="IScreenerService.ScreenWithSideFramesAsync"/>), built from the
+    /// stored daily bars: with an as-of date each frame is built from the days up to it, <see cref="ScreenerBarSelection.CompleteBarsOnly"/> leaves out a last weekly or monthly period that
+    /// has not ended. Matched symbols are in the order of <paramref name="symbols"/>. Indicators that compare two tickers are not evaluated (no comparison symbols are read).
+    /// </summary>
+    /// <exception cref="ArgumentException">A symbol is not well formed.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">The condition uses an Offset above the configured maximum.</exception>
+    /// <exception cref="NotSupportedException">A side reads a time frame outside <see cref="ReadOnlyGatewayContract.SupportedTimeFrames"/>, or the host does not scan sides on their own time frames.</exception>
+    Task<ScreenerSideFramesResult> RunScreenerWithSideFramesAsync(
+        IReadOnlyList<string> symbols,
+        IScreeningCondition condition,
+        ScreenerBarSelection selection,
+        CancellationToken cancellationToken = default)
+        => throw new NotSupportedException($"{GetType().Name} does not scan sides on their own time frames.");
+
+    /// <summary>
+    /// <see cref="RunScreenerWithSideFramesAsync"/> for a saved template: the enabled entries are combined as in
+    /// <see cref="RunScreenerTemplateAsync(IReadOnlyList{string}, ScreenerIndicatorTemplate, TimeFrame, CancellationToken)"/>, each side reading its own stored time frame; the
+    /// reports of the entries are merged. Matched symbols are in no particular order.
+    /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException">An entry uses an Offset above the configured maximum.</exception>
+    /// <exception cref="NotSupportedException">A side reads a time frame outside <see cref="ReadOnlyGatewayContract.SupportedTimeFrames"/>, or the host does not scan sides on their own time frames.</exception>
+    Task<ScreenerSideFramesResult> RunScreenerTemplateWithSideFramesAsync(
+        IReadOnlyList<string> symbols,
+        ScreenerIndicatorTemplate template,
+        ScreenerBarSelection selection,
+        CancellationToken cancellationToken = default)
+        => throw new NotSupportedException($"{GetType().Name} does not scan sides on their own time frames.");
 
     /// <summary>
     /// Runs one backtest in memory with the application's own preparation service and evaluation service (the Backtest window's path):

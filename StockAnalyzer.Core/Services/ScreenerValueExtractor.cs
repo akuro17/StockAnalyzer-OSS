@@ -109,7 +109,7 @@ public class ScreenerValueExtractor : IScreenerValueExtractor
     /// True when the Column <paramref name="config"/> names a value read from the bar series of its own time frame (Open, High, Low, Close, Volume,
     /// Change, Change %); a fundamental (market cap, ...) is a property of the ticker, not of a bar, so it has no time frame.
     /// </summary>
-    internal static bool IsCandleValueColumn(ScreenerIndicatorSideConfig config) => NamesCandleValue(config);
+    public static bool IsCandleValueColumn(ScreenerIndicatorSideConfig config) => NamesCandleValue(config);
 
     public decimal? ExtractValueNullable(ScreenerIndicatorSideConfig? config, IReadOnlyList<CandleData> candles, TickerMetadata metadata = default)
         => ExtractValueNullable(config, candles, metadata, (IScreenerSecondaryCandles?)null);
@@ -189,6 +189,18 @@ public class ScreenerValueExtractor : IScreenerValueExtractor
 
     /// <inheritdoc cref="ExtractValueNullable(ScreenerIndicatorSideConfig?, IReadOnlyList{CandleData}, TickerMetadata, IScreenerSecondaryCandles?)"/>
     public decimal? ExtractValueNullable(ScreenerIndicatorSideConfig? config, IReadOnlyList<CoreCandleData> candles, TickerMetadata metadata, IScreenerSecondaryCandles? secondary)
+        => ExtractCore(config, candles, metadata, secondary, sideFrameBars: false);
+
+    /// <summary>
+    /// The value of a side whose <paramref name="candlesOfSideFrame"/> are the bars of the side's OWN time frame (a weekly side gets weekly bars). The result is the one of
+    /// <see cref="ExtractValueNullable(ScreenerIndicatorSideConfig?, IReadOnlyList{CoreCandleData}, TickerMetadata, IScreenerSecondaryCandles?)"/> except that the daily-only rule
+    /// (an indicator side with a time frame other than D1 has no value) is not applied, and two sides that the bars of another frame cannot serve have no value:
+    /// an indicator that compares two tickers (the comparison symbol's bars are daily) and AnchoredVWAP (its anchor date is not defined against a weekly or monthly bar stamp).
+    /// </summary>
+    public decimal? ExtractValueNullableOnSideFrame(ScreenerIndicatorSideConfig? config, IReadOnlyList<CoreCandleData> candlesOfSideFrame, TickerMetadata metadata, IScreenerSecondaryCandles? secondary)
+        => ExtractCore(config, candlesOfSideFrame, metadata, secondary, sideFrameBars: true);
+
+    private decimal? ExtractCore(ScreenerIndicatorSideConfig? config, IReadOnlyList<CoreCandleData> candles, TickerMetadata metadata, IScreenerSecondaryCandles? secondary, bool sideFrameBars)
     {
         if (config == null || candles == null || candles.Count == 0) return null;
 
@@ -379,9 +391,15 @@ public class ScreenerValueExtractor : IScreenerValueExtractor
             return 0m;
         }
 
-        if (config.TimeFrame != TimeFrame.D1)
+        if (config.TimeFrame != TimeFrame.D1 && !sideFrameBars)
         {
             Faults.Warn(ScreenerFaultLog.SiteIndicatorCalculate, $"Unsupported non-D1 TimeFrame '{config.TimeFrame}' in daily screener for '{config.IndicatorType}'. Failing closed.");
+            return null;
+        }
+
+        if (config.TimeFrame != TimeFrame.D1 && config.IndicatorType == IndicatorType.AnchoredVWAP)
+        {
+            Faults.Warn(ScreenerFaultLog.SiteIndicatorCalculate, $"AnchoredVWAP has no definition on the '{config.TimeFrame}' bars of a side. Failing closed.");
             return null;
         }
 
@@ -454,6 +472,13 @@ public class ScreenerValueExtractor : IScreenerValueExtractor
                 // given none: the instance is cached per thread, so a set an earlier scan gave it must not outlive that scan.
                 if (indicator is ICrossTickerIndicator crossTicker)
                 {
+                    if (config.TimeFrame != TimeFrame.D1)
+                    {
+                        crossTicker.SetSecondaryCandles(null);
+                        Faults.Warn(ScreenerFaultLog.SiteIndicatorCalculate, $"'{config.IndicatorType}' compares two tickers on daily bars only; the '{config.TimeFrame}' side has no value. Failing closed.");
+                        return null;
+                    }
+
                     crossTicker.SetSecondaryCandles(!string.IsNullOrWhiteSpace(crossTicker.ComparisonSymbol) ? secondary?.Get(crossTicker.ComparisonSymbol) : null);
                 }
 

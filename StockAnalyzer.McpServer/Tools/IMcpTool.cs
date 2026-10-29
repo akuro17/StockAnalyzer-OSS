@@ -28,5 +28,12 @@ internal interface IMcpTool
     /// </summary>
     string? ExampleArgumentsJson => null;
 
+    /// <summary>
+    /// Top-level argument names that a sibling tool accepts for the same idea but this tool does not (for example the as-of date is <c>endDate</c> in one tool and
+    /// <c>asOfDate</c> in another), each with the sentence that names the right argument. An unknown argument found here is rejected with that sentence as its hint.
+    /// Not part of the input schema, and no alias is accepted. Default is none.
+    /// </summary>
+    IReadOnlyDictionary<string, string>? MisnamedArgumentHints => null;
+
     Task<string> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken);
 }

@@ -68,9 +68,7 @@ public sealed class ReadOnlyStockAnalyzerGateway : IReadOnlyStockAnalyzerGateway
         // straddles endDate holds only the days up to it. Count 0 asks the data layer for the whole stored history
         // (the manager truncates only for a positive count), so no leading week or month is truncated by the load.
         IReadOnlyList<CandleData> daily = await new TimeFrameManager(_dataService).GetCandlesAsync(canonical, TimeFrame.D1, 0, cancellationToken).ConfigureAwait(false);
-        List<CandleData> dailyUpToDate = daily.Where(bar => DateOnly.FromDateTime(bar.Timestamp) <= endDate).ToList();
-        IReadOnlyList<CandleData> upToDate = TimeFrameAggregator.Aggregate(dailyUpToDate, timeFrame);
-        return upToDate.Count > count ? upToDate.Skip(upToDate.Count - count).ToList() : upToDate;
+        return AsOfCandleWindow.Build(daily, endDate, timeFrame, count);
     }
 
     private static void RequireSupportedTimeFrame(TimeFrame timeFrame)
@@ -119,12 +117,43 @@ public sealed class ReadOnlyStockAnalyzerGateway : IReadOnlyStockAnalyzerGateway
         CancellationToken cancellationToken = default)
         => RunScreenerAsync(symbols, condition, timeFrame, Array.Empty<string>(), cancellationToken);
 
-    public async Task<IReadOnlyList<string>> RunScreenerAsync(
+    public Task<IReadOnlyList<string>> RunScreenerAsync(
         IReadOnlyList<string> symbols,
         IScreeningCondition condition,
         TimeFrame timeFrame,
         IReadOnlyList<string> comparisonSymbols,
         CancellationToken cancellationToken = default)
+        => RunScreenerCoreAsync(_dataService, _screener, symbols, condition, timeFrame, comparisonSymbols, cancellationToken);
+
+    public async Task<ScreenerBarsResult> RunScreenerOnBarsAsync(
+        IReadOnlyList<string> symbols,
+        IScreeningCondition condition,
+        TimeFrame timeFrame,
+        IReadOnlyList<string> comparisonSymbols,
+        ScreenerBarSelection selection,
+        CancellationToken cancellationToken = default)
+    {
+        var bars = new ScreenerBarsDataService(_dataService, selection);
+        IReadOnlyList<string> matched = await RunScreenerCoreAsync(bars, ScreenerOver(bars), symbols, condition, timeFrame, comparisonSymbols, cancellationToken).ConfigureAwait(false);
+        return ResultOf(matched, bars, symbols);
+    }
+
+    public async Task<IReadOnlyList<CandleData>> GetScreenerBarsAsync(string symbol, TimeFrame timeFrame, ScreenerBarSelection selection, int count, CancellationToken cancellationToken = default)
+    {
+        string canonical = RequireCanonical(symbol);
+        RequireSupportedTimeFrame(timeFrame);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(count);
+        return await new ScreenerBarsDataService(_dataService, selection).LoadCandlesAsync(canonical, timeFrame, count).ConfigureAwait(false);
+    }
+
+    private async Task<IReadOnlyList<string>> RunScreenerCoreAsync(
+        IDataService dataService,
+        IScreenerService screener,
+        IReadOnlyList<string> symbols,
+        IScreeningCondition condition,
+        TimeFrame timeFrame,
+        IReadOnlyList<string> comparisonSymbols,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(symbols);
         ArgumentNullException.ThrowIfNull(condition);
@@ -135,17 +164,27 @@ public sealed class ReadOnlyStockAnalyzerGateway : IReadOnlyStockAnalyzerGateway
         }
 
         var canonical = symbols.Select(RequireCanonical).ToList();
-        ScreenerSecondaryCandles? secondary = await LoadComparisonCandlesAsync(comparisonSymbols, timeFrame, ScreenerHistoryRequirements.GetRequiredCandleCount(condition), cancellationToken).ConfigureAwait(false);
+        ScreenerSecondaryCandles? secondary = await LoadComparisonCandlesAsync(dataService, comparisonSymbols, timeFrame, ScreenerHistoryRequirements.GetRequiredCandleCount(condition), cancellationToken).ConfigureAwait(false);
         return secondary is null
-            ? await _screener.ScreenAsync(canonical, condition, timeFrame, new Progress<int>(), cancellationToken).ConfigureAwait(false)
-            : await _screener.ScreenAsync(canonical, condition, timeFrame, secondary, new Progress<int>(), cancellationToken).ConfigureAwait(false);
+            ? await screener.ScreenAsync(canonical, condition, timeFrame, new Progress<int>(), cancellationToken).ConfigureAwait(false)
+            : await screener.ScreenAsync(canonical, condition, timeFrame, secondary, new Progress<int>(), cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>The configured screener rebuilt over <paramref name="bars"/>; the shared instance is never changed.</summary>
+    private IScreenerService ScreenerOver(ScreenerBarsDataService bars)
+        => _screener is IScreenerServiceFactory factory
+            ? factory.CreateScreener(bars)
+            : throw new NotSupportedException($"{_screener.GetType().Name} cannot be rebuilt over another data source.");
+
+    /// <summary>What the scan over <paramref name="bars"/> served, restricted to the scanned symbols (the comparison symbols are read through the same service).</summary>
+    private static ScreenerBarsResult ResultOf(IReadOnlyList<string> matched, ScreenerBarsDataService bars, IReadOnlyList<string> symbols)
+        => bars.ToResult(matched, symbols.Select(RequireCanonical));
+
     /// <summary>The bars of the comparison symbols with the history the condition needs, read once for the whole scan; null when there is no comparison symbol.</summary>
-    private async Task<ScreenerSecondaryCandles?> LoadComparisonCandlesAsync(IReadOnlyList<string> comparisonSymbols, TimeFrame timeFrame, int requiredCount, CancellationToken cancellationToken)
+    private static async Task<ScreenerSecondaryCandles?> LoadComparisonCandlesAsync(IDataService dataService, IReadOnlyList<string> comparisonSymbols, TimeFrame timeFrame, int requiredCount, CancellationToken cancellationToken)
         => comparisonSymbols.Count == 0
             ? null
-            : await ScreenerSecondaryCandles.LoadAsync(_dataService, comparisonSymbols.Select(RequireCanonical), timeFrame, requiredCount, cancellationToken).ConfigureAwait(false);
+            : await ScreenerSecondaryCandles.LoadAsync(dataService, comparisonSymbols.Select(RequireCanonical), timeFrame, requiredCount, cancellationToken).ConfigureAwait(false);
 
     public Task<ScreenerTemplateListing> ListScreenerTemplatesAsync(CancellationToken cancellationToken = default)
         => _templates.ListScreenerTemplatesAsync(cancellationToken);
@@ -166,12 +205,70 @@ public sealed class ReadOnlyStockAnalyzerGateway : IReadOnlyStockAnalyzerGateway
         CancellationToken cancellationToken = default)
         => RunScreenerTemplateAsync(symbols, template, timeFrame, Array.Empty<string>(), cancellationToken);
 
-    public async Task<IReadOnlyList<string>> RunScreenerTemplateAsync(
+    public Task<IReadOnlyList<string>> RunScreenerTemplateAsync(
         IReadOnlyList<string> symbols,
         ScreenerIndicatorTemplate template,
         TimeFrame timeFrame,
         IReadOnlyList<string> comparisonSymbols,
         CancellationToken cancellationToken = default)
+        => RunScreenerTemplateCoreAsync(_dataService, _templateEvaluator, symbols, template, timeFrame, comparisonSymbols, cancellationToken);
+
+    public async Task<ScreenerBarsResult> RunScreenerTemplateOnBarsAsync(
+        IReadOnlyList<string> symbols,
+        ScreenerIndicatorTemplate template,
+        TimeFrame timeFrame,
+        IReadOnlyList<string> comparisonSymbols,
+        ScreenerBarSelection selection,
+        CancellationToken cancellationToken = default)
+    {
+        var bars = new ScreenerBarsDataService(_dataService, selection);
+        var evaluator = new ScreenerTemplateEvaluator(ScreenerOver(bars));
+        IReadOnlyList<string> matched = await RunScreenerTemplateCoreAsync(bars, evaluator, symbols, template, timeFrame, comparisonSymbols, cancellationToken).ConfigureAwait(false);
+        return ResultOf(matched, bars, symbols);
+    }
+
+    public async Task<ScreenerSideFramesResult> RunScreenerWithSideFramesAsync(
+        IReadOnlyList<string> symbols,
+        IScreeningCondition condition,
+        ScreenerBarSelection selection,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(symbols);
+        ArgumentNullException.ThrowIfNull(condition);
+        ArgumentNullException.ThrowIfNull(selection);
+        RequireSupportedFrames(ScreenerSideFrames.Collect(condition));
+        return await _screener.ScreenWithSideFramesAsync(symbols.Select(RequireCanonical).ToList(), condition, selection, new Progress<int>(), cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<ScreenerSideFramesResult> RunScreenerTemplateWithSideFramesAsync(
+        IReadOnlyList<string> symbols,
+        ScreenerIndicatorTemplate template,
+        ScreenerBarSelection selection,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(symbols);
+        ArgumentNullException.ThrowIfNull(template);
+        ArgumentNullException.ThrowIfNull(selection);
+        RequireSupportedFrames(ScreenerSideFrames.Collect(template.Entries));
+        return await _templateEvaluator.EvaluateWithSideFramesReportAsync(symbols.Select(RequireCanonical).ToList(), template, selection, new Progress<int>(), cancellationToken).ConfigureAwait(false);
+    }
+
+    private static void RequireSupportedFrames(IReadOnlyList<TimeFrame> frames)
+    {
+        foreach (TimeFrame frame in frames)
+        {
+            RequireSupportedTimeFrame(frame);
+        }
+    }
+
+    private static async Task<IReadOnlyList<string>> RunScreenerTemplateCoreAsync(
+        IDataService dataService,
+        IScreenerTemplateEvaluator templateEvaluator,
+        IReadOnlyList<string> symbols,
+        ScreenerIndicatorTemplate template,
+        TimeFrame timeFrame,
+        IReadOnlyList<string> comparisonSymbols,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(symbols);
         ArgumentNullException.ThrowIfNull(template);
@@ -183,10 +280,10 @@ public sealed class ReadOnlyStockAnalyzerGateway : IReadOnlyStockAnalyzerGateway
 
         var canonical = symbols.Select(RequireCanonical).ToList();
         int requiredCount = RequiredCandleCount(template);
-        ScreenerSecondaryCandles? secondary = await LoadComparisonCandlesAsync(comparisonSymbols, timeFrame, requiredCount, cancellationToken).ConfigureAwait(false);
+        ScreenerSecondaryCandles? secondary = await LoadComparisonCandlesAsync(dataService, comparisonSymbols, timeFrame, requiredCount, cancellationToken).ConfigureAwait(false);
         HashSet<string> matched = secondary is null
-            ? await _templateEvaluator.EvaluateAsync(canonical, template, timeFrame, new Progress<int>(), cancellationToken).ConfigureAwait(false)
-            : await _templateEvaluator.EvaluateAsync(canonical, template, timeFrame, secondary, new Progress<int>(), cancellationToken).ConfigureAwait(false);
+            ? await templateEvaluator.EvaluateAsync(canonical, template, timeFrame, new Progress<int>(), cancellationToken).ConfigureAwait(false)
+            : await templateEvaluator.EvaluateAsync(canonical, template, timeFrame, secondary, new Progress<int>(), cancellationToken).ConfigureAwait(false);
         return matched.ToList();
     }
 

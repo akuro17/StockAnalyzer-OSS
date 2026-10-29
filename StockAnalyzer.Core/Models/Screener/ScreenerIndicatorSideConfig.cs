@@ -122,8 +122,29 @@ public class ScreenerIndicatorSideConfig
     {
         if (!string.IsNullOrWhiteSpace(CustomDisplayName)) return CustomDisplayName;
         string paramStr = FormattedParameters;
-        string tfStr = TimeFrame != TimeFrame.D1 ? $" [{TimeFrame}]" : "";
-        return $"{DisplayName}{paramStr}{tfStr}";
+        return $"{DisplayName}{paramStr}{FrameLabel(TimeFrame)}";
+    }
+
+    /// <summary>
+    /// The one definition of the frame label of a column title: " [W1]" / " [MN1]" for a frame other than daily, empty for daily (a daily value is the unmarked default).
+    /// Used by <see cref="GetColumnHeaderTitle"/>, the scatter metric title and the Screener tab's result columns of a weekly or monthly scan.
+    /// </summary>
+    public static string FrameLabel(TimeFrame frame) => frame != TimeFrame.D1 ? $" [{frame}]" : string.Empty;
+
+    /// <summary>
+    /// This side when it already has <paramref name="frame"/>, otherwise a copy that has it (this side is never changed). The one way to hand the value extractor the bars of a weekly
+    /// or monthly frame: the extractor's daily-only rule reads the frame of the side, so the side is given the frame (D1) of the list it is handed.
+    /// </summary>
+    public ScreenerIndicatorSideConfig WithTimeFrame(TimeFrame frame)
+    {
+        if (TimeFrame == frame)
+        {
+            return this;
+        }
+
+        ScreenerIndicatorSideConfig copy = Clone();
+        copy.TimeFrame = frame;
+        return copy;
     }
 
     /// <summary>

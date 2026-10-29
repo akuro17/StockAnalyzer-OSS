@@ -31,6 +31,7 @@ public class McpLimitsTests
         Assert.Equal(500, limits.MaxScreenerSymbols);
         Assert.Equal(200, limits.MaxReturnedMatches);
         Assert.Equal(4, limits.MaxSecondarySymbolsPerCall);
+        Assert.Equal(32, limits.MaxInlineFilterRules);
         Assert.Equal(WatchlistConstants.MaxRelativePerformanceTargets, limits.MaxComparisonTargets);
         Assert.Equal(1, McpLimitsContract.MaxConcurrentToolCalls);
     }
@@ -62,6 +63,8 @@ public class McpLimitsTests
         { nameof(McpLimits.MaxComparisonTargets), WatchlistConstants.MaxRelativePerformanceTargets + 1 },
         { nameof(McpLimits.MaxTickersPerPage), 5001 },
         { nameof(McpLimits.DefaultTickerPageSize), 0 },
+        { nameof(McpLimits.MaxInlineFilterRules), 0 },
+        { nameof(McpLimits.MaxInlineFilterRules), 129 },
     };
 
     [Theory]
@@ -104,6 +107,14 @@ public class McpLimitsTests
         {
             ToolTimeoutSeconds = 900, HeavyToolTimeoutSeconds = 1800, QueueWaitSeconds = 600, MaxReturnedTrades = 1000, MaxReturnedWarnings = 200, MaxResponseBytes = 8 * 1024 * 1024,
         });
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(128)]
+    public void TheEdgesOfTheInlineFilterRuleBandAreAccepted(int value)
+    {
+        McpLimitsContract.Validate(new McpLimits { MaxInlineFilterRules = value });
     }
 
     [Theory]

@@ -55,7 +55,7 @@ internal sealed class ToolExecutor
         {
             try
             {
-                ToolArgumentValidator.Validate(registered.Schema, arguments);
+                ToolArgumentValidator.Validate(registered.Schema, arguments, registered.Tool.MisnamedArgumentHints);
             }
             catch (ToolException error)
             {
