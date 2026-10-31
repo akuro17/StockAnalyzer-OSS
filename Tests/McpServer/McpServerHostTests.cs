@@ -145,7 +145,7 @@ public sealed class McpServerHostTests
             using var tools = JsonDocument.Parse((await stdout.ReadLineAsync(cancellation.Token))!);
             Assert.Equal(2, tools.RootElement.GetProperty("id").GetInt32());
             Assert.Equal(
-                new[] { "sa_calculate_chart_series", "sa_calculate_indicators", "sa_calculate_relative_performance", "sa_calculate_reverse_watch", "sa_check_portfolio_rl_preflight", "sa_check_rl_playback_preflight", "sa_filter_tickers", "sa_get_candles", "sa_get_capabilities", "sa_get_settings", "sa_get_ticker_metadata", "sa_list_templates", "sa_list_ticker_groups", "sa_list_tickers", "sa_run_backtest", "sa_run_screener" },
+                new[] { "sa_analyze_cycles", "sa_analyze_market_structure", "sa_calculate_chart_series", "sa_calculate_indicators", "sa_calculate_relative_performance", "sa_calculate_reverse_watch", "sa_calculate_volume_profile", "sa_check_portfolio_rl_preflight", "sa_check_rl_playback_preflight", "sa_detect_candle_patterns", "sa_detect_chart_patterns", "sa_detect_divergences", "sa_extract_signal_events", "sa_filter_tickers", "sa_find_support_resistance", "sa_get_candles", "sa_get_capabilities", "sa_get_seasonality", "sa_get_settings", "sa_get_ticker_metadata", "sa_list_templates", "sa_list_ticker_groups", "sa_list_tickers", "sa_optimize_backtest", "sa_project_price_path", "sa_run_backtest", "sa_run_screener", "sa_run_walk_forward_analysis" },
                 tools.RootElement.GetProperty("result").GetProperty("tools").EnumerateArray().Select(t => t.GetProperty("name").GetString()).ToArray());
 
             await stdin.WriteLineAsync(ToolsCall);

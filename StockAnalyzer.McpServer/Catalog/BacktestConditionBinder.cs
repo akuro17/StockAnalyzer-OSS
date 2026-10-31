@@ -29,9 +29,17 @@ internal sealed record BoundBacktestConditions(BacktestConditionTree Tree, IRead
 /// </summary>
 internal sealed class BacktestConditionBinder
 {
+    /// <summary>The side key that names the time frame whose bars the side reads (see <see cref="BacktestConditionSide.Frame"/>).</summary>
+    public const string FrameKey = "frame";
+
+    // The Backtest settings keys named in a limit error's hint (the Screener keys are ScreenerSettingsValidator's constants; the Backtest settings own none).
+    private const string MaxConditionOffsetSetting = "Backtest:MaxConditionOffset";
+    private const string MaxConditionTreeDepthSetting = "Backtest:MaxConditionTreeDepth";
+    private const string MaxConditionTreeNodesSetting = "Backtest:MaxConditionTreeNodes";
+
     private static readonly string[] GroupKeys = { "operator", "children" };
     private static readonly string[] LeafKeys = { "left", "comparison", "right" };
-    private static readonly string[] SideKeys = { "indicator", "price", "parameters", "outputSeriesName", "offset" };
+    private static readonly string[] SideKeys = { "indicator", "price", "parameters", "outputSeriesName", "offset", FrameKey };
     private static readonly string[] SideKinds = { "indicator", "price" };
 
     /// <summary>The comparisons the backtest evaluates (the screener's text comparisons do not apply to numeric series).</summary>
@@ -71,7 +79,8 @@ internal sealed class BacktestConditionBinder
         _settings = settings;
     }
 
-    public BoundBacktestConditions Bind(JsonElement conditions, string path)
+    /// <param name="evaluatedTimeFrame">The time frame the backtest runs on: a side's <c>frame</c> must be this or a coarser one.</param>
+    public BoundBacktestConditions Bind(JsonElement conditions, string path, TimeFrame evaluatedTimeFrame = TimeFrame.D1)
     {
         RequireObject(conditions, path);
         RejectUnknownKeys(conditions, path, RootKeys.ToArray());
@@ -87,7 +96,7 @@ internal sealed class BacktestConditionBinder
             }
 
             string rootPath = $"{path}.{key}";
-            var state = new State();
+            var state = new State(evaluatedTimeFrame);
             BacktestConditionGroup group = IsGroup(root)
                 ? BindGroup(root, rootPath, 1, state)
                 : SingleLeafRoot(root, rootPath, state);
@@ -110,8 +119,35 @@ internal sealed class BacktestConditionBinder
     }
 
     /// <summary>
+    /// Turns a single condition (a root group or a single leaf comparison) into an <see cref="IBacktestConditionNode"/>,
+    /// checking syntax, parameter ranges and tree limits.
+    /// </summary>
+    public IBacktestConditionNode BindSingleCondition(JsonElement condition, string path, TimeFrame evaluatedTimeFrame = TimeFrame.D1)
+    {
+        RequireObject(condition, path);
+        var state = new State(evaluatedTimeFrame);
+        BacktestConditionGroup group = IsGroup(condition)
+            ? BindGroup(condition, path, 1, state)
+            : SingleLeafRoot(condition, path, state);
+
+        if (state.Leaves == 0)
+        {
+            throw new ToolException(ToolErrorCodes.InvalidArgument, "condition needs at least one comparison.", path);
+        }
+
+        CheckIndicatorParameters(group, path, path);
+
+        BacktestConditionTree dummyTree = BacktestConditionTree.Create((section, side) =>
+            (section == BacktestConditionSection.Entry && side == TradeSide.Long) ? group : BacktestConditionGroup.EmptyAnd);
+        ValidateTree(dummyTree, path);
+
+        return group;
+    }
+
+    /// <summary>
     /// The conditions of a saved backtest-condition template, under the same rules as the client's tree: the template's tree is converted with the
-    /// application's own mapper, checked against the configured limits, and refused when a side names a time frame other than the backtest's (D1).
+    /// application's own mapper, checked against the configured limits, and refused when a side names a time frame finer than the backtest's
+    /// (a coarser one is read through <see cref="TimeframeAlignment"/>, like a client's <c>frame</c>).
     /// </summary>
     /// <exception cref="ToolException">The template cannot run through this tool.</exception>
     public BoundBacktestConditions FromTemplate(BacktestConditionTemplate template, string path, TimeFrame evaluatedTimeFrame = TimeFrame.D1)
@@ -131,13 +167,13 @@ internal sealed class BacktestConditionBinder
         {
             foreach (TimeFrame? frame in new[] { entry.Left.Frame, entry.Right?.Frame })
             {
-                if (frame is { } named && named != evaluatedTimeFrame)
+                if (frame is { } named && ToolArgs.IsFinerThan(named, evaluatedTimeFrame))
                 {
                     throw new ToolException(
                         ToolErrorCodes.UnsupportedTimeFrame,
-                        $"The template compares a {named} side; the backtest was requested for {evaluatedTimeFrame}.",
+                        $"The template compares a {named} side, which is finer than the backtest's {evaluatedTimeFrame}.",
                         path,
-                        "Use a template whose sides all use the evaluated time frame.");
+                        "Use a template whose sides use the evaluated time frame or a coarser one.");
                 }
             }
         }
@@ -281,20 +317,39 @@ internal sealed class BacktestConditionBinder
     /// <summary>A root given as one comparison is an And group of one leaf (a tree root is always a group).</summary>
     private BacktestConditionGroup SingleLeafRoot(JsonElement node, string path, State state)
     {
+        if (ConditionOperatorExpander.TryGetName(node, out string expanded))
+        {
+            // A comparison that expands to several is itself the root And group, as the same comparisons written out would be.
+            state.Depth = 1;
+            IBacktestConditionNode bound = BindExpanded(node, expanded, path, state, 1);
+            if (bound is BacktestConditionGroup group)
+            {
+                return group;
+            }
+
+            state.CountNode(path, _settings);
+            return new BacktestConditionGroup(LogicalOperator.And, ImmutableArray.Create(bound));
+        }
+
         state.CountNode(path, _settings);
         state.Depth = 1;
-        return new BacktestConditionGroup(LogicalOperator.And, ImmutableArray.Create<IBacktestConditionNode>(BindLeaf(node, path, state)));
+        return new BacktestConditionGroup(LogicalOperator.And, ImmutableArray.Create<IBacktestConditionNode>(BindLeaf(node, path, state, state.Depth + 1)));
+    }
+
+    /// <summary>A group created at nesting level <paramref name="depth"/> must stay within the configured depth.</summary>
+    private void RequireDepth(int depth, string path)
+    {
+        if (depth > _settings.BacktestMaxConditionTreeDepth)
+        {
+            throw TreeLimit($"The condition tree is nested deeper than {_settings.BacktestMaxConditionTreeDepth} levels.", path, MaxConditionTreeDepthSetting, _settings.BacktestMaxConditionTreeDepth);
+        }
     }
 
     private BacktestConditionGroup BindGroup(JsonElement node, string path, int depth, State state)
     {
         RequireObject(node, path);
         RejectUnknownKeys(node, path, GroupKeys);
-        if (depth > _settings.BacktestMaxConditionTreeDepth)
-        {
-            throw TreeLimit($"The condition tree is nested deeper than {_settings.BacktestMaxConditionTreeDepth} levels.", path, "Backtest:MaxConditionTreeDepth", _settings.BacktestMaxConditionTreeDepth);
-        }
-
+        RequireDepth(depth, path);
         state.Depth = Math.Max(state.Depth, depth);
         state.CountNode(path, _settings);
 
@@ -310,21 +365,59 @@ internal sealed class BacktestConditionBinder
         foreach (JsonElement child in children.EnumerateArray())
         {
             string childPath = $"{path}.children[{index}]";
-            bound.Add(IsGroup(child) ? BindGroup(child, childPath, depth + 1, state) : BindLeaf(child, childPath, state));
+            bound.Add(IsGroup(child) ? BindGroup(child, childPath, depth + 1, state) : BindLeaf(child, childPath, state, depth + 1));
             index++;
         }
 
         return new BacktestConditionGroup(op, bound.ToImmutable());
     }
 
-    private IBacktestConditionNode BindLeaf(JsonElement node, string path, State state)
+    /// <param name="depth">The nesting level a group created at this position would have (the level of the parent group plus one).</param>
+    private IBacktestConditionNode BindLeaf(JsonElement node, string path, State state, int depth)
     {
         RequireObject(node, path);
+        if (ConditionOperatorExpander.TryGetName(node, out string expanded))
+        {
+            return BindExpanded(node, expanded, path, state, depth);
+        }
+
         RejectUnknownKeys(node, path, LeafKeys);
         state.CountNode(path, _settings);
+        return BindComparison(node, path, state);
+    }
+
+    /// <summary>
+    /// A comparison written with one of <see cref="ConditionOperatorExpander.ExpandedComparisonNames"/>: it becomes the comparisons of <see cref="ConditionOperatorExpander"/>, each bound by the
+    /// ordinary rules. The expanded groups and comparisons count against the same tree limits, and every error names the path of the node the client wrote.
+    /// </summary>
+    private IBacktestConditionNode BindExpanded(JsonElement node, string name, string path, State state, int depth)
+    {
+        RejectUnknownKeys(node, path, ConditionOperatorExpander.LeafKeys);
+        IReadOnlyList<JsonElement> comparisons = ConditionOperatorExpander.Expand(node, name, path, _settings.BacktestMaxConditionOffset, MaxConditionOffsetSetting);
+        if (comparisons.Count == 1)
+        {
+            state.CountNode(path, _settings);
+            return BindComparison(comparisons[0], path, state);
+        }
+
+        RequireDepth(depth, path);
+        state.Depth = Math.Max(state.Depth, depth);
+        state.CountNode(path, _settings);
+        var bound = ImmutableArray.CreateBuilder<IBacktestConditionNode>();
+        foreach (JsonElement comparison in comparisons)
+        {
+            state.CountNode(path, _settings);
+            bound.Add(BindComparison(comparison, path, state));
+        }
+
+        return new BacktestConditionGroup(LogicalOperator.And, bound.ToImmutable());
+    }
+
+    private IBacktestConditionNode BindComparison(JsonElement node, string path, State state)
+    {
         state.Leaves++;
 
-        BacktestConditionSide left = BindSide(Require(node, "left", path, JsonValueKind.Object), $"{path}.left");
+        BacktestConditionSide left = BindSide(Require(node, "left", path, JsonValueKind.Object), $"{path}.left", state.EvaluatedTimeFrame);
         ComparisonOperator op = ParseEnum<ComparisonOperator>(Require(node, "comparison", path, JsonValueKind.String), $"{path}.comparison", ComparisonNames);
         JsonElement right = Require(node, "right", path);
         string rightPath = $"{path}.right";
@@ -351,7 +444,7 @@ internal sealed class BacktestConditionBinder
                     Left = left,
                     Operator = op,
                     TargetMode = RightHandTargetMode.Indicator,
-                    Right = BindSide(right, rightPath),
+                    Right = BindSide(right, rightPath, state.EvaluatedTimeFrame),
                 });
 
             default:
@@ -363,7 +456,7 @@ internal sealed class BacktestConditionBinder
         }
     }
 
-    private BacktestConditionSide BindSide(JsonElement side, string path)
+    private BacktestConditionSide BindSide(JsonElement side, string path, TimeFrame evaluatedTimeFrame)
     {
         RequireObject(side, path);
         RejectUnknownKeys(side, path, SideKeys);
@@ -388,9 +481,11 @@ internal sealed class BacktestConditionBinder
 
             if (!BacktestConditionOffsetRule.IsWithinLimit(offset, _settings.BacktestMaxConditionOffset))
             {
-                throw TreeLimit($"The offset {offset} is above the maximum {_settings.BacktestMaxConditionOffset}.", $"{path}.offset", "Backtest:MaxConditionOffset", _settings.BacktestMaxConditionOffset);
+                throw TreeLimit($"The offset {offset} is above the maximum {_settings.BacktestMaxConditionOffset}.", $"{path}.offset", MaxConditionOffsetSetting,_settings.BacktestMaxConditionOffset);
             }
         }
+
+        TimeFrame? frame = BindFrame(side, path, evaluatedTimeFrame);
 
         string kind = kinds[0];
         string name = Require(side, kind, path, JsonValueKind.String).GetString()!;
@@ -408,6 +503,7 @@ internal sealed class BacktestConditionBinder
                 PriceSource = price,
                 OutputName = IndicatorResult.MainSeriesName,
                 Offset = offset,
+                Frame = frame,
             };
         }
 
@@ -418,7 +514,49 @@ internal sealed class BacktestConditionBinder
             Parameters = resolved.Settings.ParameterObject?.Clone(),
             OutputName = resolved.Series,
             Offset = offset,
+            Frame = frame,
         };
+    }
+
+    /// <summary>
+    /// The side's optional <c>frame</c>: exactly D1, W1 or MN1 (case-sensitive, like the engine's own names). The evaluated frame is the same as
+    /// omitting the key (null); a finer frame is refused, because the alignment rule reads the previous closed period of a coarser frame only.
+    /// The name is parsed here and not with <see cref="ToolArgs.SupportedTimeFrame(string, string)"/> on purpose: a side accepts the engine's frames
+    /// (<see cref="ReadOnlyGatewayContract.SupportedBacktestTimeFrames"/>) with a case-sensitive spelling, while the tools' time-frame arguments accept the data layer's
+    /// frames (<see cref="ReadOnlyGatewayContract.SupportedTimeFrames"/>) after the schema enum has checked the name. Only the "finer" order is shared (<see cref="ToolArgs.IsFinerThan"/>).
+    /// </summary>
+    private static TimeFrame? BindFrame(JsonElement side, string path, TimeFrame evaluatedTimeFrame)
+    {
+        if (!side.TryGetProperty(FrameKey, out JsonElement element))
+        {
+            return null;
+        }
+
+        string framePath = $"{path}.{FrameKey}";
+        IReadOnlyList<TimeFrame> supported = ReadOnlyGatewayContract.SupportedBacktestTimeFrames;
+        string? text = element.ValueKind == JsonValueKind.String ? element.GetString() : null;
+        TimeFrame? named = supported.Where(candidate => string.Equals(candidate.ToString(), text, StringComparison.Ordinal))
+            .Select(candidate => (TimeFrame?)candidate)
+            .FirstOrDefault();
+        if (named is not { } frame)
+        {
+            throw new ToolException(
+                ToolErrorCodes.InvalidArgument,
+                "frame must be one of the supported time frames, written exactly as listed.",
+                framePath,
+                $"Allowed values: {string.Join(", ", supported)}.");
+        }
+
+        if (ToolArgs.IsFinerThan(frame, evaluatedTimeFrame))
+        {
+            throw new ToolException(
+                ToolErrorCodes.UnsupportedTimeFrame,
+                $"A {frame} side is finer than the backtest's {evaluatedTimeFrame}.",
+                framePath,
+                $"Give {evaluatedTimeFrame} or a coarser frame, or omit frame.");
+        }
+
+        return frame == evaluatedTimeFrame ? null : frame;
     }
 
     /// <summary>The application's own validation, with the configured limits: the same call the Backtest window makes before a run.</summary>
@@ -427,6 +565,10 @@ internal sealed class BacktestConditionBinder
 
     private sealed class State
     {
+        public State(TimeFrame evaluatedTimeFrame) => EvaluatedTimeFrame = evaluatedTimeFrame;
+
+        public TimeFrame EvaluatedTimeFrame { get; }
+
         public int Nodes { get; private set; }
 
         public int Depth { get; set; }
@@ -441,7 +583,7 @@ internal sealed class BacktestConditionBinder
                 throw TreeLimit(
                     $"A condition root has more than {settings.BacktestMaxConditionTreeNodes} nodes (groups and comparisons).",
                     path,
-                    "Backtest:MaxConditionTreeNodes",
+                    MaxConditionTreeNodesSetting,
                     settings.BacktestMaxConditionTreeNodes);
             }
         }
@@ -489,6 +631,11 @@ internal static class BacktestConditionText
             string outputName = BacktestConditionValidator.NormalizeOutputName(side);
             string series = string.Equals(outputName, IndicatorResult.MainSeriesName, StringComparison.Ordinal) ? string.Empty : $".{outputName}";
             title = $"{side.IndicatorType}({parameters}){series}";
+        }
+
+        if (side.Frame is { } frame)
+        {
+            title = $"{title}@{frame}";
         }
 
         return side.Offset > 0 ? $"{title} [{side.Offset} bars back]" : title;

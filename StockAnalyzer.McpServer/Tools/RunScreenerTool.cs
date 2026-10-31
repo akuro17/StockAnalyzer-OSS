@@ -90,6 +90,7 @@ internal sealed class RunScreenerTool : IMcpTool
         "Give exactly one of conditionTree (a condition you write) or templateId (a Screener template the user saved; ids come from sa_list_templates). " +
         "conditionTree is a group {operator: And|Or, children: [...]} of groups and comparisons (or one comparison). " +
         "A comparison is {left: side, comparison: GreaterThan|GreaterThanOrEqual|LessThan|LessThanOrEqual|Equal|NotEqual|Contains|DoesNotContain, right: number | text | side}. " +
+        ConditionOperatorExpander.Description + " " +
         "A side names exactly one of indicator (with optional parameters and outputSeriesName), price, column or criteria, plus an optional offset (bars back from the latest bar of the side's own time frame, default 0) and an optional timeFrame (see below). " +
         "Example: {\"operator\":\"And\",\"children\":[{\"left\":{\"indicator\":\"RSI\",\"parameters\":{\"Period\":14}},\"comparison\":\"LessThan\",\"right\":30}," +
         "{\"left\":{\"price\":\"Close\"},\"comparison\":\"GreaterThan\",\"right\":{\"indicator\":\"SMA\",\"parameters\":{\"Period\":200}}}]}. " +

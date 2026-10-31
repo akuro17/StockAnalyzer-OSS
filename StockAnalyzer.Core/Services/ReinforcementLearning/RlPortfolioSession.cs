@@ -42,17 +42,24 @@ public sealed class RlPortfolioSession : IDisposable
             throw new ArgumentException("The block must span exactly one episode support.", nameof(block));
         if (tradable.IsDefault || tradable.Length < RlPortfolioContract.MinimumBlockSymbols)
             throw new ArgumentException($"At least {RlPortfolioContract.MinimumBlockSymbols} tradable symbols are required.", nameof(tradable));
+        // The accountant reads Close at every decision index (the first decision onwards) and Open of the following bar; bars before
+        // the first decision are never read by this session, so only the prices it divides by are checked.
+        int firstDecision = block.StartIndex + RlContract.WindowLength - 1;
         for (int i = 0; i < tradable.Length; i++)
         {
             if (i > 0 && tradable[i] <= tradable[i - 1]) throw new ArgumentException("Tradable symbols must be strictly ascending.", nameof(tradable));
             if (tradable[i] < 0 || tradable[i] >= bars.SymbolCount || !block.EligibleSymbols.Contains(tradable[i]))
                 throw new ArgumentException("Every tradable symbol must be a block-eligible panel symbol.", nameof(tradable));
             for (int t = block.StartIndex; t < block.EndExclusive; t++)
-                if (!bars.TryGetBar(tradable[i], t, out _))
+            {
+                if (!bars.TryGetBar(tradable[i], t, out var bar))
                     throw new ArgumentException("A tradable symbol must have a bar on every index of the block.", nameof(tradable));
+                if ((t >= firstDecision && bar.Close <= 0m) || (t > firstDecision && bar.Open <= 0m))
+                    throw new ArgumentException("A tradable symbol must have a positive Close from the first decision and a positive Open after it.", nameof(tradable));
+            }
         }
         _bars = bars; _block = block; _tradable = tradable; _costs = costs;
-        _firstDecision = block.StartIndex + RlContract.WindowLength - 1;
+        _firstDecision = firstDecision;
     }
 
     public RlPortfolioSessionState State { get { lock (_gate) return _state; } }

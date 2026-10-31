@@ -16,6 +16,9 @@ public static class AtomicJsonFile
     internal const string BackupSuffix = ".bak";
     internal const string TemporarySuffix = ".tmp";
 
+    /// <summary>Buffer size of the temporary-file stream; <see cref="AtomicFileWriter"/> uses the same value.</summary>
+    internal const int StreamBufferSize = 4096;
+
     /// <summary>
     /// Publishes the finished temp file as <paramref name="filePath"/>. Normally <paramref name="replace"/> (<see cref="File.Replace(string, string, string?)"/>)
     /// swaps it in atomically; when that is not supported or fails with an I/O error (drive roots such as <c>Y:\</c> or a volume
@@ -55,7 +58,7 @@ public static class AtomicJsonFile
                 Directory.CreateDirectory(directory);
             }
 
-            using (var stream = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None, 4096, useAsync: true))
+            using (var stream = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None, StreamBufferSize, useAsync: true))
             {
                 await JsonSerializer.SerializeAsync(stream, data, options);
             }
@@ -104,13 +107,21 @@ public static class AtomicJsonFile
     }
 
     /// <summary>
+    /// Opens <paramref name="filePath"/> for reading. Same defaults as <see cref="File.OpenRead(string)"/> except the sharing mode:
+    /// a reader that does not allow <see cref="FileShare.Delete"/> makes a concurrent <see cref="File.Replace(string, string, string?)"/>
+    /// (and the <see cref="File.Move(string, string, bool)"/> fallback of <see cref="Commit"/>) fail on Windows, which would lose a save.
+    /// </summary>
+    internal static FileStream OpenForRead(string filePath)
+        => new(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+
+    /// <summary>
     /// Reads and deserializes <paramref name="filePath"/>. Callers are expected to check
     /// <see cref="File.Exists(string)"/> beforehand, since "file absent" typically means
     /// "apply defaults" rather than an error for these settings files.
     /// </summary>
     public static async Task<T?> LoadAsync<T>(string filePath, JsonSerializerOptions? options = null)
     {
-        using var stream = File.OpenRead(filePath);
+        using var stream = OpenForRead(filePath);
         return await JsonSerializer.DeserializeAsync<T>(stream, options);
     }
 }

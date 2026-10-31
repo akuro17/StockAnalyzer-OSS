@@ -478,7 +478,10 @@ namespace StockAnalyzer.Avalonia.Services
                     HighlightColorLight = _colorPicks[NotesColorKey.Highlight].Light
                 };
 
-                await StockAnalyzer.Core.Common.AtomicJsonFile.SaveAsync(NotesSettingsFilePath, data, JsonOptions);
+                using (await StockAnalyzer.Core.Common.SerializedPathGate.AcquireAsync(NotesSettingsFilePath).ConfigureAwait(false))
+                {
+                    await StockAnalyzer.Core.Common.AtomicJsonFile.SaveAsync(NotesSettingsFilePath, data, JsonOptions);
+                }
             }
             catch (Exception ex)
             {

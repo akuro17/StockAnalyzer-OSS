@@ -308,6 +308,30 @@ public class ChartImageExportServiceTests
     }
 
     [Fact]
+    public async Task ExportToFileAsync_OverwritesAnExistingExport_AndLeavesNoTemporaryFile()
+    {
+        var sut = new ChartImageExportService();
+        var directory = Path.Combine(Path.GetTempPath(), $"test_chart_export_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        var target = Path.Combine(directory, "chart.png");
+        byte[] first = [1, 2, 3];
+        byte[] second = [9, 8, 7, 6, 5];
+
+        try
+        {
+            Assert.True(await sut.ExportToFileAsync(target, first));
+            Assert.True(await sut.ExportToFileAsync(target, second));
+
+            Assert.Equal(second, await File.ReadAllBytesAsync(target));
+            Assert.Equal(new[] { "chart.png" }, Array.ConvertAll(Directory.GetFiles(directory), Path.GetFileName));
+        }
+        finally
+        {
+            try { Directory.Delete(directory, recursive: true); } catch { /* best effort */ }
+        }
+    }
+
+    [Fact]
     public async Task ExportToFileAsync_WritesFileAtomically()
     {
         // Arrange

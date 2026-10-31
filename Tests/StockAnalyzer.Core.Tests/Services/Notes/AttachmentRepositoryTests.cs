@@ -68,6 +68,26 @@ public class AttachmentRepositoryTests
     }
 
     [Fact]
+    public async Task SaveAsync_LeavesOnlyTheStoredFileInTheAttachmentsFolder()
+    {
+        var tempDir = CreateIsolatedTempDirectory();
+        try
+        {
+            var (_, attachmentRepository, _) = await CreateInitializedRepositoriesAsync(tempDir);
+
+            var result = await attachmentRepository.SaveAsync(CreateTestImageBytes(40, 30), "a.png");
+
+            Assert.True(result.Success);
+            var files = Directory.GetFiles(Path.Combine(tempDir, "Attachments"));
+            Assert.Equal(new[] { result.Attachment!.StoredFileName }, Array.ConvertAll(files, Path.GetFileName));
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, true); } catch { /* best-effort cleanup */ }
+        }
+    }
+
+    [Fact]
     public async Task GetByIdAsync_ForSavedAttachment_ReturnsMatchingMetadata()
     {
         var tempDir = CreateIsolatedTempDirectory();

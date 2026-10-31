@@ -263,13 +263,8 @@ public sealed class ChartImageExportService : IChartImageExportService, ILayered
 
         try
         {
-            var directory = Path.GetDirectoryName(filePath);
-            if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
-            {
-                Directory.CreateDirectory(directory);
-            }
-
-            await File.WriteAllBytesAsync(filePath, imageBytes).ConfigureAwait(false);
+            // The writer creates a missing directory itself.
+            await StockAnalyzer.Core.Common.AtomicFileWriter.WriteAllBytesAsync(filePath, imageBytes).ConfigureAwait(false);
             _logger.LogInformation("Successfully saved exported chart image to {FilePath} ({Length} bytes)", filePath, imageBytes.Length);
             return true;
         }

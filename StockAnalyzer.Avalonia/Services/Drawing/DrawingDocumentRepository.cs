@@ -121,7 +121,7 @@ public class DrawingDocumentRepository : IDrawingDocumentRepository
                     _logger.LogWarning(jEx, "Corrupted drawing document at {Path}, creating backup", path);
                     try
                     {
-                        var corruptedPath = path + ".corrupted";
+                        var corruptedPath = StockAnalyzer.Core.Common.CorruptedFile.PathFor(path);
                         File.Copy(path, corruptedPath, overwrite: true);
                     }
                     catch

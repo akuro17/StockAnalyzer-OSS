@@ -47,19 +47,29 @@ internal static class ToolArgs
 
     /// <summary>A required time-frame argument (the schema enum guarantees a defined name); frames the data layer cannot load are UNSUPPORTED_TIMEFRAME.</summary>
     public static TimeFrame SupportedTimeFrame(JsonElement arguments, string name)
+        => SupportedTimeFrame(String(arguments, name)!, name);
+
+    /// <summary>A time-frame name already read from the arguments, reported at <paramref name="path"/> when the data layer cannot load it.</summary>
+    public static TimeFrame SupportedTimeFrame(string timeFrameName, string path)
     {
-        TimeFrame timeFrame = Enum.Parse<TimeFrame>(String(arguments, name)!);
+        TimeFrame timeFrame = Enum.Parse<TimeFrame>(timeFrameName);
         if (!ReadOnlyGatewayContract.SupportedTimeFrames.Contains(timeFrame))
         {
             throw new ToolException(
                 ToolErrorCodes.UnsupportedTimeFrame,
                 $"Time frame {timeFrame} is not supported.",
-                name,
+                path,
                 $"Supported: {SupportedTimeFrameNames}.");
         }
 
         return timeFrame;
     }
+
+    /// <summary>
+    /// True when <paramref name="frame"/> has shorter bars than <paramref name="reference"/>. The one definition of "finer": the <see cref="TimeFrame"/> members are
+    /// declared fine to coarse (pinned by a test, so a reorder of the enum fails loudly).
+    /// </summary>
+    public static bool IsFinerThan(TimeFrame frame, TimeFrame reference) => frame < reference;
 
     /// <summary>Parses a yyyy-MM-dd date argument; anything else is INVALID_ARGUMENT naming the argument.</summary>
     public static DateOnly? Date(JsonElement arguments, string name)

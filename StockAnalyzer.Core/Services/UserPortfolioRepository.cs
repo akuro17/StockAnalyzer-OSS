@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Data.Common;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -24,6 +25,7 @@ public sealed class UserPortfolioRepository : IUserPortfolioRepository, IDisposa
     private readonly bool _ownsDbManager;
     private readonly ILogger<UserPortfolioRepository> _logger;
     private readonly SemaphoreSlim _ioLock = new(1, 1);
+    private Exception? _lastLoadFailure;   // set by a load that found the files but could not read them; guarded by _ioLock
     private bool _disposed;
 
     public UserPortfolioRepository(string? customPath = null, ILogger<UserPortfolioRepository>? logger = null)
@@ -89,7 +91,16 @@ public sealed class UserPortfolioRepository : IUserPortfolioRepository, IDisposa
                 _logger.LogWarning(ex, "Failed to restore the portfolio files after an unfinished save.");
             }
 
-            if (File.Exists(_positionsPath) && File.Exists(_transactionsPath) && File.Exists(_cashPath))
+            _lastLoadFailure = null;
+            var coreFiles = new[] { _positionsPath, _transactionsPath, _cashPath };
+            if (coreFiles.Any(File.Exists) && !coreFiles.All(File.Exists))
+            {
+                // Some of the three core files are there and some are not: the store is damaged, which is not the same as nothing stored.
+                var missing = string.Join(", ", coreFiles.Where(path => !File.Exists(path)).Select(path => Path.GetFileName(path)));
+                _lastLoadFailure = new FileNotFoundException($"The stored portfolio is incomplete; missing: {missing}.");
+                _logger.LogWarning(_lastLoadFailure, "The stored portfolio is incomplete.");
+            }
+            else if (coreFiles.All(File.Exists))
             {
                 try
                 {
@@ -102,6 +113,9 @@ public sealed class UserPortfolioRepository : IUserPortfolioRepository, IDisposa
                 catch (Exception ex)
                 {
                     _logger.LogWarning(ex, "Failed to load portfolio from Parquet.");
+                    // The files exist but could not be read: the empty result below is "unreadable", not "nothing stored", so a save must not build on it.
+                    // This includes a cancelled read: its empty result is just as unusable as a base for a save, and the next load lifts the block.
+                    _lastLoadFailure = ex;
                 }
             }
 
@@ -123,6 +137,13 @@ public sealed class UserPortfolioRepository : IUserPortfolioRepository, IDisposa
         await _ioLock.WaitAsync(ct).ConfigureAwait(false);
         try
         {
+            if (_lastLoadFailure != null)
+            {
+                throw new IOException(
+                    $"The stored portfolio in '{Path.GetDirectoryName(_positionsPath)}' could not be read; the save was skipped so that the stored files are kept. Load the portfolio again after fixing the cause.",
+                    _lastLoadFailure);
+            }
+
             await SavePortfolioInternalAsync(portfolio, ct).ConfigureAwait(false);
         }
         finally
@@ -133,6 +154,46 @@ public sealed class UserPortfolioRepository : IUserPortfolioRepository, IDisposa
 
     private const string SwapMarkerFileName = "portfolio.swap";
     private const string BackupSuffix = ".bak";
+
+    // Every stored amount, quantity, price and rate is DECIMAL(precision, scale); the SQL type text is built from these two numbers only.
+    private const int DecimalPrecision = 28;
+    private const int DecimalScale = 10;
+    private static readonly string DecimalSqlType = string.Create(CultureInfo.InvariantCulture, $"DECIMAL({DecimalPrecision},{DecimalScale})");
+
+    /// <summary>The first magnitude that no longer fits the integer part (precision minus scale digits) of the stored type.</summary>
+    private static readonly decimal DecimalIntegerPartLimit = IntegerPartLimit();
+
+    private static decimal IntegerPartLimit()
+    {
+        decimal limit = 1m;
+        for (int i = 0; i < DecimalPrecision - DecimalScale; i++) limit *= 10m;
+        return limit;
+    }
+
+    /// <summary>
+    /// The one rule for a value on its way into the stored columns: rounded to <see cref="DecimalScale"/> decimals, halves away from zero (the way DuckDB casts a
+    /// decimal parameter, measured), because the appender would truncate and accept an out-of-range value silently. A value whose integer part exceeds the type
+    /// throws <see cref="OverflowException"/> so the save fails before any file changes. The calculation side is untouched; only the stored copy is rounded.
+    /// </summary>
+    internal static decimal ToStoredDecimal(decimal value)
+    {
+        decimal rounded = Math.Round(value, DecimalScale, MidpointRounding.AwayFromZero);
+        if (Math.Abs(rounded) >= DecimalIntegerPartLimit)
+        {
+            throw new OverflowException(string.Create(CultureInfo.InvariantCulture,
+                $"A portfolio value does not fit the stored type {DecimalSqlType}: the integer part is limited to {DecimalPrecision - DecimalScale} digits."));
+        }
+
+        return rounded;
+    }
+
+    /// <summary>
+    /// The one rule for a value read from the stored columns. A <c>DECIMAL</c> column already has at most <see cref="DecimalScale"/> decimals; a legacy
+    /// <c>DOUBLE</c> column is converted to 15 significant digits by <see cref="Convert.ToDecimal(object, IFormatProvider)"/> and then rounded to the same scale, so a
+    /// legacy file reads exactly as it will after its first save in the new format.
+    /// </summary>
+    internal static decimal ReadStoredDecimal(object value) =>
+        Math.Round(Convert.ToDecimal(value, CultureInfo.InvariantCulture), DecimalScale, MidpointRounding.AwayFromZero);
 
     private string SwapMarkerPath => Path.Combine(Path.GetDirectoryName(_positionsPath)!, SwapMarkerFileName);
 
@@ -238,32 +299,48 @@ public sealed class UserPortfolioRepository : IUserPortfolioRepository, IDisposa
             throw new InvalidOperationException("Connection must be a DuckDBConnection to append transactions.");
         }
 
+        // Every number is converted before the appender exists: ToStoredDecimal throws for an out-of-range value, and an exception raised while a row is half
+        // written crashes the process when the appender is disposed (measured: AccessViolationException in the test host).
+        var numbers = history.Select(tx => new StoredTransactionNumbers(
+            ToStoredDecimal(tx.Quantity), ToStoredDecimal(tx.PricePerUnit), ToStoredDecimal(tx.CashAmount), ToStoredDecimal(tx.Fee),
+            tx.TargetPrice.HasValue ? ToStoredDecimal(tx.TargetPrice.Value) : null,
+            tx.StopLoss.HasValue ? ToStoredDecimal(tx.StopLoss.Value) : null,
+            ToStoredDecimal(tx.Price.Amount), ToStoredDecimal(tx.Commission.Amount),
+            tx.AppliedRate.HasValue ? ToStoredDecimal(tx.AppliedRate.Value.Rate) : null)).ToList();
+
         using var appender = duckConnection.CreateAppender("temp_transactions");
-        foreach (var tx in history)
+        for (int i = 0; i < history.Count; i++)
         {
+            var tx = history[i];
+            var stored = numbers[i];
             var row = appender.CreateRow();
             row.AppendValue(tx.ExecutedAt.UtcDateTime);
             row.AppendValue((int)tx.Type);
             AppendNullable(row, tx.Ticker);
-            row.AppendValue(Convert.ToDouble(tx.Quantity));
-            row.AppendValue(Convert.ToDouble(tx.PricePerUnit));
-            row.AppendValue(Convert.ToDouble(tx.CashAmount));
-            row.AppendValue(Convert.ToDouble(tx.Fee));
+            row.AppendValue(stored.Quantity);
+            row.AppendValue(stored.PricePerUnit);
+            row.AppendValue(stored.CashAmount);
+            row.AppendValue(stored.Fee);
             AppendNullable(row, tx.Notes);
-            AppendNullable(row, tx.TargetPrice);
-            AppendNullable(row, tx.StopLoss);
+            AppendNullable(row, stored.TargetPrice);
+            AppendNullable(row, stored.StopLoss);
             row.AppendValue(tx.Id.ToString());
             AppendNullable(row, tx.RelatedTransactionId?.ToString());
-            row.AppendValue(Convert.ToDouble(tx.Price.Amount));
+            row.AppendValue(stored.PriceAmount);
             row.AppendValue(tx.Price.Currency.Value);
-            row.AppendValue(Convert.ToDouble(tx.Commission.Amount));
+            row.AppendValue(stored.CommissionAmount);
             row.AppendValue(tx.Commission.Currency.Value);
-            AppendNullable(row, tx.AppliedRate?.Rate);
+            AppendNullable(row, stored.AppliedRate);
             AppendNullable(row, tx.AppliedRate?.BaseCurrency.Value);
             AppendNullable(row, tx.AppliedRate?.QuoteCurrency.Value);
             row.EndRow();
         }
     }
+
+    /// <summary>The numeric columns of one transaction after <see cref="ToStoredDecimal"/>, in the order of the table definition.</summary>
+    private readonly record struct StoredTransactionNumbers(
+        decimal Quantity, decimal PricePerUnit, decimal CashAmount, decimal Fee, decimal? TargetPrice, decimal? StopLoss,
+        decimal PriceAmount, decimal CommissionAmount, decimal? AppliedRate);
 
     private static void AppendNullable(DuckDBAppenderRow row, string? value)
     {
@@ -273,7 +350,7 @@ public sealed class UserPortfolioRepository : IUserPortfolioRepository, IDisposa
 
     private static void AppendNullable(DuckDBAppenderRow row, decimal? value)
     {
-        if (value.HasValue) row.AppendValue(Convert.ToDouble(value.Value));
+        if (value.HasValue) row.AppendValue(value.Value);
         else row.AppendNullValue();
     }
 
@@ -312,7 +389,7 @@ public sealed class UserPortfolioRepository : IUserPortfolioRepository, IDisposa
                 // A. Save JPY Cash Balance (Legacy)
                 using (var command = dbConnection.CreateCommand())
                 {
-                    command.CommandText = "CREATE TEMP TABLE temp_cash (CashBalance DOUBLE);";
+                    command.CommandText = $"CREATE TEMP TABLE temp_cash (CashBalance {DecimalSqlType});";
                     await command.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
                 }
                 try
@@ -321,7 +398,7 @@ public sealed class UserPortfolioRepository : IUserPortfolioRepository, IDisposa
                     {
                         command.CommandText = "INSERT INTO temp_cash VALUES ($1);";
                         var p = command.CreateParameter();
-                        p.Value = Convert.ToDouble(portfolio.CashBalance);
+                        p.Value = ToStoredDecimal(portfolio.CashBalance);
                         command.Parameters.Add(p);
                         await command.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
                     }
@@ -344,7 +421,7 @@ public sealed class UserPortfolioRepository : IUserPortfolioRepository, IDisposa
                 // A2. Save Multi-Currency Cash Balances
                 using (var command = dbConnection.CreateCommand())
                 {
-                    command.CommandText = "CREATE TEMP TABLE temp_cash_balances (Currency VARCHAR, Balance DOUBLE);";
+                    command.CommandText = $"CREATE TEMP TABLE temp_cash_balances (Currency VARCHAR, Balance {DecimalSqlType});";
                     await command.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
                 }
                 try
@@ -355,7 +432,7 @@ public sealed class UserPortfolioRepository : IUserPortfolioRepository, IDisposa
                         {
                             command.CommandText = "INSERT INTO temp_cash_balances VALUES ($1, $2);";
                             var p1 = command.CreateParameter(); p1.Value = kvp.Key.Value; command.Parameters.Add(p1);
-                            var p2 = command.CreateParameter(); p2.Value = Convert.ToDouble(kvp.Value); command.Parameters.Add(p2);
+                            var p2 = command.CreateParameter(); p2.Value = ToStoredDecimal(kvp.Value); command.Parameters.Add(p2);
                             await command.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
                         }
                     }
@@ -378,7 +455,7 @@ public sealed class UserPortfolioRepository : IUserPortfolioRepository, IDisposa
                 // B. Save Positions
                 using (var command = dbConnection.CreateCommand())
                 {
-                    command.CommandText = "CREATE TEMP TABLE temp_positions (Ticker VARCHAR, Quantity DOUBLE, AverageCostPerUnit DOUBLE, IsShort BOOLEAN, AverageCostAmount DOUBLE, AverageCostCurrency VARCHAR);";
+                    command.CommandText = $"CREATE TEMP TABLE temp_positions (Ticker VARCHAR, Quantity {DecimalSqlType}, AverageCostPerUnit {DecimalSqlType}, IsShort BOOLEAN, AverageCostAmount {DecimalSqlType}, AverageCostCurrency VARCHAR);";
                     await command.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
                 }
                 try
@@ -390,10 +467,10 @@ public sealed class UserPortfolioRepository : IUserPortfolioRepository, IDisposa
                             command.CommandText = "INSERT INTO temp_positions VALUES ($1, $2, $3, $4, $5, $6);";
                             
                             var p1 = command.CreateParameter(); p1.Value = pos.Ticker; command.Parameters.Add(p1);
-                            var p2 = command.CreateParameter(); p2.Value = Convert.ToDouble(pos.Quantity); command.Parameters.Add(p2);
-                            var p3 = command.CreateParameter(); p3.Value = Convert.ToDouble(pos.AverageCostPerUnit); command.Parameters.Add(p3);
+                            var p2 = command.CreateParameter(); p2.Value = ToStoredDecimal(pos.Quantity); command.Parameters.Add(p2);
+                            var p3 = command.CreateParameter(); p3.Value = ToStoredDecimal(pos.AverageCostPerUnit); command.Parameters.Add(p3);
                             var p4 = command.CreateParameter(); p4.Value = pos.IsShort; command.Parameters.Add(p4);
-                            var p5 = command.CreateParameter(); p5.Value = Convert.ToDouble(pos.AverageCost.Amount); command.Parameters.Add(p5);
+                            var p5 = command.CreateParameter(); p5.Value = ToStoredDecimal(pos.AverageCost.Amount); command.Parameters.Add(p5);
                             var p6 = command.CreateParameter(); p6.Value = pos.AverageCost.Currency.Value; command.Parameters.Add(p6);
                             
                             await command.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
@@ -418,24 +495,24 @@ public sealed class UserPortfolioRepository : IUserPortfolioRepository, IDisposa
                 // C. Save Transactions
                 using (var command = dbConnection.CreateCommand())
                 {
-                    command.CommandText = @"CREATE TEMP TABLE temp_transactions (
+                    command.CommandText = $@"CREATE TEMP TABLE temp_transactions (
                         ExecutedAt TIMESTAMP,
                         Type INTEGER,
                         Ticker VARCHAR,
-                        Quantity DOUBLE,
-                        PricePerUnit DOUBLE,
-                        CashAmount DOUBLE,
-                        Fee DOUBLE,
+                        Quantity {DecimalSqlType},
+                        PricePerUnit {DecimalSqlType},
+                        CashAmount {DecimalSqlType},
+                        Fee {DecimalSqlType},
                         Notes VARCHAR,
-                        TargetPrice DOUBLE,
-                        StopLoss DOUBLE,
+                        TargetPrice {DecimalSqlType},
+                        StopLoss {DecimalSqlType},
                         Id VARCHAR,
                         RelatedTransactionId VARCHAR,
-                        PriceAmount DOUBLE,
+                        PriceAmount {DecimalSqlType},
                         PriceCurrency VARCHAR,
-                        CommissionAmount DOUBLE,
+                        CommissionAmount {DecimalSqlType},
                         CommissionCurrency VARCHAR,
-                        AppliedRateRate DOUBLE,
+                        AppliedRateRate {DecimalSqlType},
                         AppliedRateBase VARCHAR,
                         AppliedRateQuote VARCHAR
                     );";
@@ -488,6 +565,25 @@ public sealed class UserPortfolioRepository : IUserPortfolioRepository, IDisposa
         }
     }
 
+    // Columns that older files do not have; a file that has all of them is read in the current layout, any other file in the legacy layout.
+    private static readonly string[] PositionMultiCurrencyColumns = { "AverageCostAmount", "AverageCostCurrency" };
+    private static readonly string[] TransactionMultiCurrencyColumns =
+        { "PriceAmount", "PriceCurrency", "CommissionAmount", "CommissionCurrency", "AppliedRateRate", "AppliedRateBase", "AppliedRateQuote" };
+
+    private static async Task<HashSet<string>> ReadColumnNamesAsync(DbConnection dbConnection, string parquetPath, CancellationToken ct)
+    {
+        using var command = dbConnection.CreateCommand();
+        command.CommandText = $"DESCRIBE SELECT * FROM read_parquet('{FormatDuckDbPath(parquetPath)}')";
+        using var reader = await command.ExecuteReaderAsync(ct).ConfigureAwait(false);
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        while (await reader.ReadAsync(ct).ConfigureAwait(false))
+        {
+            names.Add(reader.GetString(0));
+        }
+
+        return names;
+    }
+
     private async Task<Portfolio?> LoadPortfolioFromParquetAsync(CancellationToken ct)
     {
         decimal cashBalance = 0m;
@@ -513,7 +609,7 @@ public sealed class UserPortfolioRepository : IUserPortfolioRepository, IDisposa
                     while (await reader.ReadAsync(ct).ConfigureAwait(false))
                     {
                         var cur = new CurrencyCode(reader.GetString(0));
-                        var bal = Convert.ToDecimal(reader.GetValue(1));
+                        var bal = ReadStoredDecimal(reader.GetValue(1));
                         cashBalances[cur] = bal;
                     }
                 }
@@ -527,41 +623,43 @@ public sealed class UserPortfolioRepository : IUserPortfolioRepository, IDisposa
                     using var reader = await command.ExecuteReaderAsync(ct).ConfigureAwait(false);
                     if (await reader.ReadAsync(ct).ConfigureAwait(false))
                     {
-                        cashBalance = Convert.ToDecimal(reader.GetValue(0));
+                        cashBalance = ReadStoredDecimal(reader.GetValue(0));
                     }
                 }
                 cashBalances[CurrencyCode.JPY] = cashBalance;
             }
 
-            // 2. Read Positions
+            // 2. Read Positions. The layout is decided from the column names, so a row that fails to convert fails the read instead of silently
+            // switching to the older layout and dropping its newer columns.
+            var positionColumns = await ReadColumnNamesAsync(dbConnection, _positionsPath, ct).ConfigureAwait(false);
             using (var command = dbConnection.CreateCommand())
             {
-                try
+                if (positionColumns.IsSupersetOf(PositionMultiCurrencyColumns))
                 {
                     command.CommandText = $"SELECT Ticker, Quantity, AverageCostPerUnit, IsShort, AverageCostAmount, AverageCostCurrency FROM read_parquet('{FormatDuckDbPath(_positionsPath)}')";
                     using var reader = await command.ExecuteReaderAsync(ct).ConfigureAwait(false);
                     while (await reader.ReadAsync(ct).ConfigureAwait(false))
                     {
                         var ticker = reader.GetString(0);
-                        var quantity = Convert.ToDecimal(reader.GetValue(1));
-                        var avgCost = Convert.ToDecimal(reader.GetValue(2));
+                        var quantity = ReadStoredDecimal(reader.GetValue(1));
+                        var avgCost = ReadStoredDecimal(reader.GetValue(2));
                         var isShort = reader.GetBoolean(3);
-                        var costAmt = Convert.ToDecimal(reader.GetValue(4));
+                        var costAmt = ReadStoredDecimal(reader.GetValue(4));
                         var costCur = new CurrencyCode(reader.GetString(5));
                         var key = ticker + (isShort ? "_Short" : "");
                         positions[key] = new Position(ticker, quantity, avgCost, isShort, new Money(costAmt, costCur));
                     }
                 }
-                catch
+                else
                 {
-                    // Fallback to legacy
+                    // Layout written before the cost currency existed: only the first four columns.
                     command.CommandText = $"SELECT Ticker, Quantity, AverageCostPerUnit, IsShort FROM read_parquet('{FormatDuckDbPath(_positionsPath)}')";
                     using var reader = await command.ExecuteReaderAsync(ct).ConfigureAwait(false);
                     while (await reader.ReadAsync(ct).ConfigureAwait(false))
                     {
                         var ticker = reader.GetString(0);
-                        var quantity = Convert.ToDecimal(reader.GetValue(1));
-                        var avgCost = Convert.ToDecimal(reader.GetValue(2));
+                        var quantity = ReadStoredDecimal(reader.GetValue(1));
+                        var avgCost = ReadStoredDecimal(reader.GetValue(2));
                         var isShort = reader.GetBoolean(3);
                         var key = ticker + (isShort ? "_Short" : "");
                         positions[key] = new Position(ticker, quantity, avgCost, isShort);
@@ -570,9 +668,10 @@ public sealed class UserPortfolioRepository : IUserPortfolioRepository, IDisposa
             }
 
             // 3. Read Transactions
+            var transactionColumns = await ReadColumnNamesAsync(dbConnection, _transactionsPath, ct).ConfigureAwait(false);
             using (var command = dbConnection.CreateCommand())
             {
-                try
+                if (transactionColumns.IsSupersetOf(TransactionMultiCurrencyColumns))
                 {
                     command.CommandText = $@"SELECT 
                         ExecutedAt, Type, Ticker, Quantity, PricePerUnit, CashAmount, Fee, Notes, TargetPrice, StopLoss, Id, RelatedTransactionId,
@@ -584,27 +683,27 @@ public sealed class UserPortfolioRepository : IUserPortfolioRepository, IDisposa
                         var executedAt = new DateTimeOffset(reader.GetDateTime(0), TimeSpan.Zero);
                         var type = (TransactionType)reader.GetInt32(1);
                         var ticker = reader.IsDBNull(2) ? null : reader.GetString(2);
-                        var quantity = Convert.ToDecimal(reader.GetValue(3));
-                        var price = Convert.ToDecimal(reader.GetValue(4));
-                        var cash = Convert.ToDecimal(reader.GetValue(5));
-                        var fee = Convert.ToDecimal(reader.GetValue(6));
+                        var quantity = ReadStoredDecimal(reader.GetValue(3));
+                        var price = ReadStoredDecimal(reader.GetValue(4));
+                        var cash = ReadStoredDecimal(reader.GetValue(5));
+                        var fee = ReadStoredDecimal(reader.GetValue(6));
                         var notes = reader.IsDBNull(7) ? null : reader.GetString(7);
                         
-                        decimal? targetPrice = reader.IsDBNull(8) ? null : Convert.ToDecimal(reader.GetValue(8));
-                        decimal? stopLoss = reader.IsDBNull(9) ? null : Convert.ToDecimal(reader.GetValue(9));
+                        decimal? targetPrice = reader.IsDBNull(8) ? null : ReadStoredDecimal(reader.GetValue(8));
+                        decimal? stopLoss = reader.IsDBNull(9) ? null : ReadStoredDecimal(reader.GetValue(9));
                         
                         var id = Guid.Parse(reader.GetString(10));
                         Guid? relatedId = reader.IsDBNull(11) ? null : Guid.Parse(reader.GetString(11));
 
-                        var prcAmt = Convert.ToDecimal(reader.GetValue(12));
+                        var prcAmt = ReadStoredDecimal(reader.GetValue(12));
                         var prcCur = new CurrencyCode(reader.GetString(13));
-                        var comAmt = Convert.ToDecimal(reader.GetValue(14));
+                        var comAmt = ReadStoredDecimal(reader.GetValue(14));
                         var comCur = new CurrencyCode(reader.GetString(15));
 
                         ExchangeRate? rate = null;
                         if (!reader.IsDBNull(16))
                         {
-                            var rateVal = Convert.ToDecimal(reader.GetValue(16));
+                            var rateVal = ReadStoredDecimal(reader.GetValue(16));
                             var rateBase = new CurrencyCode(reader.GetString(17));
                             var rateQuote = new CurrencyCode(reader.GetString(18));
                             rate = new ExchangeRate(rateBase, rateQuote, rateVal, executedAt.DateTime);
@@ -618,11 +717,11 @@ public sealed class UserPortfolioRepository : IUserPortfolioRepository, IDisposa
                         ));
                     }
                 }
-                catch
+                else
                 {
-                    // Fallback to legacy
-                    command.CommandText = $@"SELECT 
-                        ExecutedAt, Type, Ticker, Quantity, PricePerUnit, CashAmount, Fee, Notes, TargetPrice, StopLoss, Id, RelatedTransactionId 
+                    // Layout written before the multi-currency columns existed: only the first twelve columns.
+                    command.CommandText = $@"SELECT
+                        ExecutedAt, Type, Ticker, Quantity, PricePerUnit, CashAmount, Fee, Notes, TargetPrice, StopLoss, Id, RelatedTransactionId
                         FROM read_parquet('{FormatDuckDbPath(_transactionsPath)}')";
                     using var reader = await command.ExecuteReaderAsync(ct).ConfigureAwait(false);
                     while (await reader.ReadAsync(ct).ConfigureAwait(false))
@@ -630,14 +729,14 @@ public sealed class UserPortfolioRepository : IUserPortfolioRepository, IDisposa
                         var executedAt = new DateTimeOffset(reader.GetDateTime(0), TimeSpan.Zero);
                         var type = (TransactionType)reader.GetInt32(1);
                         var ticker = reader.IsDBNull(2) ? null : reader.GetString(2);
-                        var quantity = Convert.ToDecimal(reader.GetValue(3));
-                        var price = Convert.ToDecimal(reader.GetValue(4));
-                        var cash = Convert.ToDecimal(reader.GetValue(5));
-                        var fee = Convert.ToDecimal(reader.GetValue(6));
+                        var quantity = ReadStoredDecimal(reader.GetValue(3));
+                        var price = ReadStoredDecimal(reader.GetValue(4));
+                        var cash = ReadStoredDecimal(reader.GetValue(5));
+                        var fee = ReadStoredDecimal(reader.GetValue(6));
                         var notes = reader.IsDBNull(7) ? null : reader.GetString(7);
                         
-                        decimal? targetPrice = reader.IsDBNull(8) ? null : Convert.ToDecimal(reader.GetValue(8));
-                        decimal? stopLoss = reader.IsDBNull(9) ? null : Convert.ToDecimal(reader.GetValue(9));
+                        decimal? targetPrice = reader.IsDBNull(8) ? null : ReadStoredDecimal(reader.GetValue(8));
+                        decimal? stopLoss = reader.IsDBNull(9) ? null : ReadStoredDecimal(reader.GetValue(9));
                         
                         var id = Guid.Parse(reader.GetString(10));
                         Guid? relatedId = reader.IsDBNull(11) ? null : Guid.Parse(reader.GetString(11));

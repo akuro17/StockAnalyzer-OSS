@@ -535,7 +535,7 @@ public static class AdaptiveSmoothingHelper
     {
         if (avgLoss == 0m)
         {
-            return avgGain == 0m ? 50.0m : 100.0m;
+            return avgGain == 0m ? IndicatorCalculationHelper.BoundedOscillatorNeutral : 100.0m;
         }
 
         decimal rs = avgGain / avgLoss;

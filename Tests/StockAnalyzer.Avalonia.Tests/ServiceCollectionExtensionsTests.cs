@@ -26,6 +26,27 @@ public class ServiceCollectionExtensionsTests
     }
 
     [Fact]
+    public void AddCommonServices_GivesTheMainWindowViewModelTheRegisteredBacktestColumnSettingsManager()
+    {
+        // IoHydrationWebAiReview T7: the container builds the view model by constructor injection, so the optional
+        // trailing parameter is filled from this singleton registration (and not left at its null default).
+        var services = new ServiceCollection();
+        services.AddCommonServices(new ConfigurationBuilder().Build());
+        services.AddViewModels();
+
+        var manager = Assert.Single(services, d => d.ServiceType == typeof(StockAnalyzer.Core.Services.Backtest.Configuration.IBacktestColumnSettingsManager));
+        Assert.Equal(ServiceLifetime.Singleton, manager.Lifetime);
+        Assert.Equal(typeof(StockAnalyzer.Core.Services.Backtest.Configuration.BacktestColumnSettingsManager), manager.ImplementationType);
+
+        var viewModel = Assert.Single(services, d => d.ServiceType == typeof(StockAnalyzer.Avalonia.ViewModels.MainWindowViewModel));
+        Assert.Equal(typeof(StockAnalyzer.Avalonia.ViewModels.MainWindowViewModel), viewModel.ImplementationType);
+        var injected = Assert.Single(
+            typeof(StockAnalyzer.Avalonia.ViewModels.MainWindowViewModel).GetConstructors().SelectMany(c => c.GetParameters()),
+            p => p.ParameterType == typeof(StockAnalyzer.Core.Services.Backtest.Configuration.IBacktestColumnSettingsManager));
+        Assert.True(injected.IsOptional);
+    }
+
+    [Fact]
     public void AddCommonServices_RegistersTheGraphConsumerSeparatelyFromTheSingleSymbolPrediction()
     {
         var services = new ServiceCollection();

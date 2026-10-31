@@ -476,7 +476,7 @@ public sealed class RunBacktestToolTests : IDisposable
     [InlineData("""{"entryLong":{"left":{"price":"Close","indicator":"RSI"},"comparison":"GreaterThan","right":1}}""", "INVALID_ARGUMENT", "conditions.entryLong.left")]
     [InlineData("""{"entryLong":{"left":{"offset":1},"comparison":"GreaterThan","right":1}}""", "INVALID_ARGUMENT", "conditions.entryLong.left")]
     [InlineData("""{"entryLong":{"left":{"column":"Sector"},"comparison":"GreaterThan","right":1}}""", "INVALID_ARGUMENT", "conditions.entryLong.left.column")]
-    [InlineData("""{"entryLong":{"left":{"price":"Close","frame":"W1"},"comparison":"GreaterThan","right":1}}""", "INVALID_ARGUMENT", "conditions.entryLong.left.frame")]
+    [InlineData("""{"entryLong":{"left":{"price":"Close","timeFrame":"W1"},"comparison":"GreaterThan","right":1}}""", "INVALID_ARGUMENT", "conditions.entryLong.left.timeFrame")]
     [InlineData("""{"entryLong":{"left":{"price":"Typo"},"comparison":"GreaterThan","right":1}}""", "INVALID_ARGUMENT", "conditions.entryLong.left.price")]
     [InlineData("""{"entryLong":{"left":{"price":"Close","parameters":{"Period":1}},"comparison":"GreaterThan","right":1}}""", "INVALID_ARGUMENT", "conditions.entryLong.left")]
     [InlineData("""{"entryLong":{"left":{"price":"Close","offset":-1},"comparison":"GreaterThan","right":1}}""", "INVALID_ARGUMENT", "conditions.entryLong.left.offset")]

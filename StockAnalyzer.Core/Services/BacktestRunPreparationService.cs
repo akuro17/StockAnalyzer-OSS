@@ -41,6 +41,13 @@ public sealed record PreparedBacktestRun(
 public interface IBacktestRunPreparationService
 {
     Task<PreparedBacktestRun> PrepareAsync(BacktestRunSnapshot snapshot, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// <see cref="PrepareAsync(BacktestRunSnapshot, CancellationToken)"/> reading the bar series through <paramref name="sharedBars"/>, so the
+    /// runs of one batch load each series once. The result equals the one of the other overload; a service that cannot share ignores the cache.
+    /// </summary>
+    Task<PreparedBacktestRun> PrepareAsync(BacktestRunSnapshot snapshot, BacktestBarCache sharedBars, CancellationToken cancellationToken)
+        => PrepareAsync(snapshot, cancellationToken);
 }
 
 public sealed class StrictEvidenceAdapterUnavailableException : NotSupportedException
@@ -71,7 +78,22 @@ public sealed class BacktestRunPreparationService : IBacktestRunPreparationServi
         _marketDataSettings = marketDataSettings?.Value ?? new MarketDataSettings();
     }
 
-    public async Task<PreparedBacktestRun> PrepareAsync(BacktestRunSnapshot snapshot, CancellationToken cancellationToken)
+    public Task<PreparedBacktestRun> PrepareAsync(BacktestRunSnapshot snapshot, CancellationToken cancellationToken)
+        => PrepareCoreAsync(snapshot, LoadStoredBarsAsync, cancellationToken);
+
+    public Task<PreparedBacktestRun> PrepareAsync(BacktestRunSnapshot snapshot, BacktestBarCache sharedBars, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(sharedBars);
+        return PrepareCoreAsync(snapshot, (symbol, frame) => sharedBars.GetOrLoadAsync(symbol, frame, () => LoadStoredBarsAsync(symbol, frame)), cancellationToken);
+    }
+
+    private Task<IReadOnlyList<CandleData>> LoadStoredBarsAsync(string symbol, TimeFrame frame)
+        => _dataService.LoadCandlesAsync(symbol, frame, count: 0);
+
+    private async Task<PreparedBacktestRun> PrepareCoreAsync(
+        BacktestRunSnapshot snapshot,
+        Func<string, TimeFrame, Task<IReadOnlyList<CandleData>>> loadBars,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         if (snapshot.Configuration.ExecutionModel == ExecutionModel.StrictEvidence)
@@ -88,9 +110,7 @@ public sealed class BacktestRunPreparationService : IBacktestRunPreparationServi
         }
 
         cancellationToken.ThrowIfCancellationRequested();
-        IReadOnlyList<CandleData> raw = await _dataService
-            .LoadCandlesAsync(snapshot.Symbol, snapshot.Frame, count: 0)
-            .ConfigureAwait(false);
+        IReadOnlyList<CandleData> raw = await loadBars(snapshot.Symbol, snapshot.Frame).ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
 
         ImmutableArray<CandleData> rawBars = ImmutableArray.CreateRange(raw);
@@ -151,9 +171,7 @@ public sealed class BacktestRunPreparationService : IBacktestRunPreparationServi
             foreach (TimeFrame frame in foreignFrames.OrderBy(value => value))
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                IReadOnlyList<CandleData> foreign = await _dataService
-                    .LoadCandlesAsync(snapshot.Symbol, frame, count: 0)
-                    .ConfigureAwait(false);
+                IReadOnlyList<CandleData> foreign = await loadBars(snapshot.Symbol, frame).ConfigureAwait(false);
                 cancellationToken.ThrowIfCancellationRequested();
                 additionalBars.Add(frame, ImmutableArray.CreateRange(foreign));
             }

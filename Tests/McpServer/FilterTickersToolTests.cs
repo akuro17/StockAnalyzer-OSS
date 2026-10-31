@@ -407,6 +407,23 @@ public sealed class FilterTickersToolTests : IDisposable
         Assert.Equal(1, result.GetProperty("totalMatchCount").GetInt32());
     }
 
+    [Theory]
+    [InlineData("""{"left":{"price":"Close"},"comparison":"Rising","bars":1}""", CloseAbovePreviousClose)]
+    [InlineData(
+        """{"left":{"price":"Close"},"comparison":"CrossesAbove","right":105}""",
+        """{"operator":"And","children":[{"left":{"price":"Close"},"comparison":"GreaterThan","right":105},{"left":{"price":"Close","offset":1},"comparison":"LessThanOrEqual","right":105}]}""")]
+    public async Task AnExpandedComparisonNameInTheScreenerConditionKeepsTheSymbolsTheComparisonsWrittenOutKeep(string sugar, string handWritten)
+    {
+        var dispatcher = await StartAsync();
+
+        using var sugared = await CallAsync(dispatcher, ScreenerCall("""["MSFT","AAPL","NVDA"]""", sugar));
+        using var written = await CallAsync(dispatcher, ScreenerCall("""["MSFT","AAPL","NVDA"]""", handWritten));
+
+        Assert.False(McpTestSupport.IsError(sugared), McpTestSupport.Structured(sugared).ToString());
+        Assert.NotEmpty(Symbols(McpTestSupport.Structured(sugared)));
+        Assert.Equal(Symbols(McpTestSupport.Structured(written)).Order(StringComparer.Ordinal), Symbols(McpTestSupport.Structured(sugared)).Order(StringComparer.Ordinal));
+    }
+
     [Fact]
     public async Task TheScreenerRunsOnTheSymbolsTheRulesKept()
     {

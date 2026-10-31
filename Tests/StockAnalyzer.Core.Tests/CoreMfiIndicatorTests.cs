@@ -66,6 +66,40 @@ namespace StockAnalyzer.Core.Tests
         }
 
         [Fact]
+        public void Calculate_WithFlatPrices_ReturnsNeutral50()
+        {
+            var indicator = new CoreMfiIndicator { Period = 3 };
+            var candles = CreateTestCandles(
+                new decimal[] { 10, 10, 10, 10, 10 },
+                new decimal[] { 10, 10, 10, 10, 10 },
+                new decimal[] { 10, 10, 10, 10, 10 },
+                new decimal[] { 100, 110, 120, 130, 140 }
+            );
+
+            indicator.Calculate(candles);
+
+            Assert.Equal(50m, indicator.Values[3]);
+            Assert.Equal(50m, indicator.Values[4]);
+        }
+
+        [Fact]
+        public void Calculate_WithZeroVolumeAndMovingPrices_ReturnsNeutral50()
+        {
+            var indicator = new CoreMfiIndicator { Period = 3 };
+            var candles = CreateTestCandles(
+                new decimal[] { 10, 11, 10, 11, 10 },
+                new decimal[] { 8, 9, 8, 9, 8 },
+                new decimal[] { 9, 10, 9, 10, 9 },
+                new decimal[] { 0, 0, 0, 0, 0 }
+            );
+
+            indicator.Calculate(candles);
+
+            Assert.Equal(50m, indicator.Values[3]);
+            Assert.Equal(50m, indicator.Values[4]);
+        }
+
+        [Fact]
         public void Calculate_WithInsufficientData_ReturnsNulls()
         {
             var indicator = new CoreMfiIndicator { Period = 5 };

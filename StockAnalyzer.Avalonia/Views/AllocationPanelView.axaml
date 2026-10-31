@@ -20,7 +20,8 @@
         <Border Grid.Row="0" Padding="12" Background="{DynamicResource Brush.Background.Primary}" 
                 BorderThickness="0,0,0,1" BorderBrush="{DynamicResource Brush.Border.Primary}">
             <StackPanel Orientation="Horizontal" Spacing="20">
-                <TextBlock Text="{l:Localize Allocation_Label_TotalAssets}" Foreground="{DynamicResource Brush.Text.Secondary}" VerticalAlignment="Center"/>
+                <TextBlock Text="{l:Localize Allocation_Label_TotalAssets}" Foreground="{DynamicResource Brush.Text.Secondary}" VerticalAlignment="Center"
+                           ToolTip.Tip="{l:Localize Allocation_Tip_TotalAssets}"/>
                 <TextBlock Text="{Binding TotalValue, StringFormat={}{0:N0}}" FontSize="{DynamicResource TitleFontSize}" FontWeight="SemiBold" 
                            VerticalAlignment="Center" FontFamily="MS Gothic, Courier New, monospace"/>
             </StackPanel>

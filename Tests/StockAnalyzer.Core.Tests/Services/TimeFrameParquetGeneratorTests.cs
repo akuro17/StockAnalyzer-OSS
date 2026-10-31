@@ -192,6 +192,51 @@ public sealed class TimeFrameParquetGeneratorTests : IDisposable
         Assert.True(File.Exists(Path.Combine(_settings.Value.MonthlyDataPath!, "SYM2.parquet")));
     }
 
+    /// <summary>The stored files follow the shared golden vectors: the production path (daily Parquet in, weekly and monthly Parquet out).</summary>
+    [Theory]
+    [MemberData(nameof(GoldenVectorIds))]
+    public async Task GenerateAsync_FromDailyParquet_WritesTheBarsAndDatesOfTheGoldenVector(string vectorId)
+    {
+        GoldenVector vector = TimeFrameGoldenVectors.Get(vectorId);
+        const string symbol = "GOLDEN";
+        await WriteDailyParquetAsync(symbol, vector.DailyBars);
+
+        Assert.Equal(0, await _generator.GenerateAsync(symbol));
+
+        await AssertFileMatchesAsync(Path.Combine(_settings.Value.WeeklyDataPath!, $"{symbol}.parquet"), vector.Weekly, $"{vectorId} weekly");
+        await AssertFileMatchesAsync(Path.Combine(_settings.Value.MonthlyDataPath!, $"{symbol}.parquet"), vector.Monthly, $"{vectorId} monthly");
+    }
+
+    public static IEnumerable<object[]> GoldenVectorIds() => TimeFrameGoldenVectors.Ids();
+
+    private async Task AssertFileMatchesAsync(string parquetPath, IReadOnlyList<GoldenBar> expected, string at)
+    {
+        Assert.True(File.Exists(parquetPath), $"{at}: file must exist");
+        using (await _dbManager.AcquireLockAsync("TestVerifyGolden"))
+        {
+            var conn = (DbConnection)_dbManager.GetConnection();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = $"SELECT date, open, high, low, close, volume FROM read_parquet('{parquetPath.Replace('\\', '/')}') ORDER BY date ASC;";
+            using var reader = await cmd.ExecuteReaderAsync();
+
+            int index = 0;
+            while (await reader.ReadAsync())
+            {
+                Assert.True(index < expected.Count, $"{at}: more rows than the vector expects");
+                GoldenBar bar = expected[index];
+                Assert.True(bar.ParquetTimestamp == reader.GetDateTime(0).Date, $"{at} #{index}: date {reader.GetDateTime(0):yyyy-MM-dd}, expected {bar.ParquetTimestamp:yyyy-MM-dd}");
+                Assert.Equal((float)bar.Open, Convert.ToSingle(reader.GetValue(1)));
+                Assert.Equal((float)bar.High, Convert.ToSingle(reader.GetValue(2)));
+                Assert.Equal((float)bar.Low, Convert.ToSingle(reader.GetValue(3)));
+                Assert.Equal((float)bar.Close, Convert.ToSingle(reader.GetValue(4)));
+                Assert.Equal(bar.Volume, Convert.ToInt64(reader.GetValue(5)));
+                index++;
+            }
+
+            Assert.Equal(expected.Count, index);
+        }
+    }
+
     private async Task WriteDailyParquetAsync(string symbol, IReadOnlyList<CandleData> bars)
     {
         var dailyPath = Path.Combine(_settings.Value.DailyDataPath!, $"{symbol}.parquet");

@@ -254,12 +254,13 @@ public class ScreenerSprint2Tests
         Assert.True(result.IsSuccessful);
         Assert.Equal(50, indicator.Values.Count);
 
-        for (int i = 0; i < 9; i++)
+        // The first bar has no previous close (overnight return undefined), so the first output is at index Period.
+        for (int i = 0; i < 10; i++)
         {
             Assert.Null(indicator.Values[i]);
         }
 
-        for (int i = 9; i < 50; i++)
+        for (int i = 10; i < 50; i++)
         {
             Assert.NotNull(indicator.Values[i]);
             Assert.True(indicator.Values[i] >= 0m, $"Volatility at index {i} was negative: {indicator.Values[i]}");

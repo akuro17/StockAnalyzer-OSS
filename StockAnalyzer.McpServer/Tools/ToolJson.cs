@@ -24,6 +24,32 @@ internal static class ToolJson
         return Encoding.UTF8.GetString(stream.ToArray());
     }
 
+    /// <summary>Writes <paramref name="value"/> as a number, or a JSON null when it has no value (a decimal is written as a number, never through double).</summary>
+    public static void WriteNullableNumber(Utf8JsonWriter writer, string name, decimal? value)
+    {
+        if (value is { } present)
+        {
+            writer.WriteNumber(name, present);
+        }
+        else
+        {
+            writer.WriteNull(name);
+        }
+    }
+
+    /// <summary>Writes <paramref name="value"/> as a whole number, or a JSON null when it has no value.</summary>
+    public static void WriteNullableNumber(Utf8JsonWriter writer, string name, long? value)
+    {
+        if (value is { } present)
+        {
+            writer.WriteNumber(name, present);
+        }
+        else
+        {
+            writer.WriteNull(name);
+        }
+    }
+
     public static string FormatDate(DateTime value) => value.ToString(DateFormat, CultureInfo.InvariantCulture);
 
     public static string FormatDateTime(DateTime value) => value.ToString(DateTimeFormat, CultureInfo.InvariantCulture);

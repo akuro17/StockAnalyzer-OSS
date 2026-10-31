@@ -1,5 +1,6 @@
 using Xunit;
 using StockAnalyzer.Core.Services;
+using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Portfolio;
 using StockAnalyzer.Core.Interfaces;
 using Moq;
@@ -90,6 +91,98 @@ public class PortfolioAggregationTests
         Assert.Equal(2, result.SectorAllocations.Count);
         Assert.Contains(result.SectorAllocations, a => a.Category == "Technology" && a.Percentage == 50.00m);
         Assert.Contains(result.SectorAllocations, a => a.Category == "Cash" && a.Percentage == 50.00m);
+    }
+
+    // Pins (characterization, not a statement of the intended definition): allocation counts a short position as
+    // its absolute size (gross exposure), so with shorts the allocation total is not the net assets of Evaluate.
+    [Fact]
+    public async Task GetAllocationAsync_WithShortPosition_CountsShortAsGrossExposureAndTotalDiffersFromNetAssets()
+    {
+        var sut = new PortfolioManager();
+        var now = DateTimeOffset.UtcNow;
+        var portfolio = sut.RebuildPortfolio(0m, new List<Transaction>
+        {
+            new Transaction(now.AddDays(-4), TransactionType.Deposit, null, 0, 0, 1000m),
+            new Transaction(now.AddDays(-3), TransactionType.Long, "A", 5, 100m, 0m),    // cost 500
+            new Transaction(now.AddDays(-2), TransactionType.Short, "B", 5, 200m, 0m),   // proceeds 1000
+        });
+        var latestPrices = new Dictionary<string, decimal> { { "A", 200m }, { "B", 200m } };
+
+        var mockProvider = new Mock<IMarketDataProvider>();
+        mockProvider.Setup(p => p.GetMetadataAsync("A")).ReturnsAsync(new TickerMetadata("A", "A", "US", "SecA", "IndA", "USD"));
+        mockProvider.Setup(p => p.GetMetadataAsync("B")).ReturnsAsync(new TickerMetadata("B", "B", "US", "SecB", "IndB", "USD"));
+
+        var allocation = await sut.GetAllocationAsync(portfolio, latestPrices, mockProvider.Object);
+        var evaluation = sut.Evaluate(portfolio, latestPrices);
+
+        // cash 1000 - 500 + 1000 = 1500; long 5 x 200 = 1000; short 5 x 200 = 1000 counted POSITIVE
+        Assert.Equal(1500m, portfolio.CashBalance);
+        Assert.Equal(3500m, allocation.TotalValue);
+        Assert.Contains(allocation.SectorAllocations, a => a.Category == "SecB" && a.MarketValue == 1000m);
+        Assert.Contains(allocation.AssetAllocations, a => a.Category == "Equity" && a.MarketValue == 2000m);
+        // net assets: 1500 + 1000 - 1000 = 1500
+        Assert.Equal(1500m, evaluation.Metrics.TotalValue);
+        Assert.NotEqual(evaluation.Metrics.TotalValue, allocation.TotalValue);
+    }
+
+    // Pins: the portfolio key of a short is "TICKER_Short", which a market data provider does not know, so the heatmap
+    // silently leaves shorts out (the real ParquetMarketDataProvider only reads <symbol>.parquet files that exist).
+    [Fact]
+    public async Task GetPerformanceHeatmapAsync_WithShortPosition_LeavesTheShortOut()
+    {
+        var portfolio = new Portfolio(
+            0,
+            new Dictionary<string, Position>
+            {
+                { "AAPL", new Position("AAPL", 10, 100) },
+                { "AAPL_Short", new Position("AAPL", 5, 120, isShort: true) },
+            }.ToImmutableDictionary(),
+            ImmutableList<Transaction>.Empty);
+
+        var knownPrices = new Dictionary<string, decimal> { { "AAPL", 150m } };
+        var requested = new List<string>();
+        var mockProvider = new Mock<IMarketDataProvider>();
+        mockProvider.Setup(p => p.GetLatestPricesAsync(It.IsAny<IEnumerable<string>>()))
+            .ReturnsAsync((IEnumerable<string> symbols) =>
+            {
+                requested.AddRange(symbols);
+                return (IReadOnlyDictionary<string, decimal>)symbols.Where(knownPrices.ContainsKey).ToDictionary(s => s, s => knownPrices[s]);
+            });
+        mockProvider.Setup(p => p.GetTickersDataAsync(It.IsAny<string>(), It.IsAny<TimeFrame>()))
+            .ReturnsAsync((IReadOnlyList<CandleData>)new List<CandleData>());
+        mockProvider.Setup(p => p.GetMetadataAsync(It.IsAny<string>()))
+            .ReturnsAsync((string t) => new TickerMetadata(t, t, "US", "Tech", "Software", "USD"));
+
+        var entries = await new PortfolioManager().GetPerformanceHeatmapAsync(portfolio, PerformancePeriod.OneDay, mockProvider.Object);
+
+        Assert.Contains("AAPL_Short", requested);
+        var entry = Assert.Single(entries);
+        Assert.Equal("AAPL", entry.Ticker);
+        Assert.Equal(1f, entry.Weight);
+    }
+
+    // Pins (N-1): allocation adds quantity x price of every position and the JPY cash without any currency conversion.
+    [Fact]
+    public async Task GetAllocationAsync_WithMixedCurrencyHoldings_DoesNotConvertCurrencies()
+    {
+        var portfolio = new Portfolio(
+            1000m,
+            new Dictionary<string, Position>
+            {
+                { "7203", new Position("7203", 10, 100, false, new Money(100m, CurrencyCode.JPY)) },
+                { "AAPL", new Position("AAPL", 10, 100, false, new Money(100m, CurrencyCode.USD)) },
+            }.ToImmutableDictionary(),
+            ImmutableList<Transaction>.Empty);
+        var latestPrices = new Dictionary<string, decimal> { { "7203", 100m }, { "AAPL", 100m } };
+
+        var mockProvider = new Mock<IMarketDataProvider>();
+        mockProvider.Setup(p => p.GetMetadataAsync(It.IsAny<string>()))
+            .ReturnsAsync((string t) => new TickerMetadata(t, t, "US", "Tech", "Software", "USD"));
+
+        var allocation = await new PortfolioManager().GetAllocationAsync(portfolio, latestPrices, mockProvider.Object);
+
+        // 1000 JPY of stock + 1000 USD of stock + 1000 JPY cash are simply added: 3000, whatever the exchange rate is.
+        Assert.Equal(3000m, allocation.TotalValue);
     }
 
     [Fact]

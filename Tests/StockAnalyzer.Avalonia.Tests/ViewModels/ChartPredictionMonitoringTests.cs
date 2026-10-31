@@ -39,12 +39,15 @@ public sealed class ChartPredictionMonitoringTests
                 OutputContract = PredictionModelMetadata.ReadOutputContract(onnx.ModelMetadata.CustomMetadataMap)
             };
             var source = new ParquetDataService(db, Options.Create(new MarketDataSettings { DailyDataPath = root }));
+            // The bars end yesterday: the source stamps its observation with the wall clock, and a matured outcome counts only while its label end is inside the monitoring window of
+            // PredictionMonitoringPolicy.LookbackCalendarDays before now, so a literal date stops counting once it is that old.
+            var lastBarDate = DateTime.UtcNow.Date.AddDays(-1).ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
             void Write(decimal last)
             {
                 var path = Path.Combine(root, "AAPL.parquet").Replace("\\", "/").Replace("'", "''");
                 using var command = db.GetConnection().CreateCommand();
                 var price = $"CAST(CASE WHEN n = 199 THEN {last.ToString(System.Globalization.CultureInfo.InvariantCulture)} ELSE 100 END AS DECIMAL(18,6))";
-                command.CommandText = $"COPY (SELECT DATE '2026-09-30' + CAST(n-199 AS INTEGER) AS date, "
+                command.CommandText = $"COPY (SELECT DATE '{lastBarDate}' + CAST(n-199 AS INTEGER) AS date, "
                     + $"{price} AS open, {price} AS high, {price} AS low, {price} AS close, CAST(100 AS BIGINT) AS volume, "
                     + $"TRUE AS {ParquetDataService.FinalityColumn} FROM range(200) rows(n)) TO '{path}' (FORMAT PARQUET)";
                 command.ExecuteNonQuery();

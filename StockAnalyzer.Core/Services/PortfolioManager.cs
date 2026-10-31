@@ -43,6 +43,7 @@ public class PortfolioManager : IPortfolioManager
         public Dictionary<string, Position> Positions { get; set; } = new();
         public List<ClosedPosition> ClosedPositions { get; set; } = new();
         public decimal TotalRealizedPnL { get; set; }
+        public Dictionary<CurrencyCode, decimal> RealizedPnLByCurrency { get; set; } = new();
         public Dictionary<string, List<OpenLot>> OpenLots { get; set; } = new();
     }
 
@@ -210,6 +211,7 @@ public class PortfolioManager : IPortfolioManager
                                         }
                                     }
                                     result.TotalRealizedPnL += pnlInBase;
+                                    result.RealizedPnLByCurrency[currency] = result.RealizedPnLByCurrency.GetValueOrDefault(currency, 0m) + pnl;
 
                                     targetLot.RemainingQuantity -= matchQty;
                                     exitQtyRemaining -= matchQty;
@@ -265,6 +267,7 @@ public class PortfolioManager : IPortfolioManager
                                 }
                             }
                             result.TotalRealizedPnL += pnlInBase;
+                            result.RealizedPnLByCurrency[currency] = result.RealizedPnLByCurrency.GetValueOrDefault(currency, 0m) + pnl;
 
                             oldestLot.RemainingQuantity -= matchQty;
                             exitQtyRemaining -= matchQty;
@@ -311,7 +314,8 @@ public class PortfolioManager : IPortfolioManager
             transactions.OrderBy(t => t.ExecutedAt).ToImmutableList(),
             result.ClosedPositions.ToImmutableList(),
             result.TotalRealizedPnL,
-            cashBalances: result.CashBalances.ToImmutableDictionary()
+            cashBalances: result.CashBalances.ToImmutableDictionary(),
+            realizedPnLByCurrency: result.RealizedPnLByCurrency.ToImmutableDictionary()
         );
     }
 
@@ -340,7 +344,8 @@ public class PortfolioManager : IPortfolioManager
             nextHistory.ToImmutableList(),
             newResult.ClosedPositions.ToImmutableList(),
             newResult.TotalRealizedPnL,
-            cashBalances: finalCashBalances.ToImmutableDictionary()
+            cashBalances: finalCashBalances.ToImmutableDictionary(),
+            realizedPnLByCurrency: newResult.RealizedPnLByCurrency.ToImmutableDictionary()
         );
     }
 
@@ -365,12 +370,14 @@ public class PortfolioManager : IPortfolioManager
     {
         var positionValues = new Dictionary<string, decimal>();
         var positionPLs = new Dictionary<string, decimal>();
-        var metrics = Calculate(portfolio, latestPrices, latestRates, targetBaseCurrency, positionValues, positionPLs);
+        var unconverted = new HashSet<CurrencyCode>();
+        var metrics = Calculate(portfolio, latestPrices, latestRates, targetBaseCurrency, positionValues, positionPLs, unconverted);
 
         return new PortfolioEvaluationResult(
             metrics,
             positionValues.ToImmutableDictionary(),
-            positionPLs.ToImmutableDictionary()
+            positionPLs.ToImmutableDictionary(),
+            unconverted.Count == 0 ? null : unconverted.OrderBy(c => c.Value, StringComparer.Ordinal).ToImmutableList()
         );
     }
 
@@ -447,9 +454,33 @@ public class PortfolioManager : IPortfolioManager
         IReadOnlyDictionary<string, decimal> latestPrices, 
         IReadOnlyDictionary<CurrencyCode, ExchangeRate> latestRates,
         CurrencyCode targetBaseCurrency,
-        Dictionary<string, decimal>? positionValues, 
-        Dictionary<string, decimal>? positionPLs)
+        Dictionary<string, decimal>? positionValues,
+        Dictionary<string, decimal>? positionPLs,
+        ISet<CurrencyCode>? unconverted = null)
     {
+        // A holding that cannot be converted is left out of every total (and reported in 'unconverted') instead of being
+        // added at 1x. The one exception is a portfolio that holds a single currency: nothing is mixed, so its amounts stay native.
+        var heldCurrencies = CollectHeldCurrencies(portfolio);
+        var isSingleCurrency = heldCurrencies.Count == 1;
+
+        bool TryAmount(Money money, out decimal amount)
+        {
+            if (money.Amount == 0m)
+            {
+                amount = 0m;
+                return true;
+            }
+            if (TryConvertToTarget(money, targetBaseCurrency, latestRates, out amount)) return true;
+            if (isSingleCurrency)
+            {
+                amount = money.Amount;
+                return true;
+            }
+            unconverted?.Add(money.Currency);
+            amount = 0m;
+            return false;
+        }
+
         decimal totalPositionValueInBase = 0;
         decimal totalUnrealizedPLInBase = 0;
 
@@ -479,24 +510,10 @@ public class PortfolioManager : IPortfolioManager
                 : position.Quantity * (currentPriceLocal - position.AverageCostPerUnit);
 
             // Convert to target base currency
-            decimal marketValueBase = 0;
-            decimal plBase = 0;
-
-            if (assetCurrency == targetBaseCurrency)
+            if (!TryAmount(new Money(marketValueLocal, assetCurrency), out var marketValueBase)
+                || !TryAmount(new Money(plLocal, assetCurrency), out var plBase))
             {
-                marketValueBase = marketValueLocal;
-                plBase = plLocal;
-            }
-            else if (latestRates.TryGetValue(assetCurrency, out var rate))
-            {
-                marketValueBase = rate.Convert(new Money(marketValueLocal, assetCurrency)).Amount;
-                plBase = rate.Convert(new Money(plLocal, assetCurrency)).Amount;
-            }
-            else
-            {
-                // Fallback to Mid rate assumes 1
-                marketValueBase = marketValueLocal;
-                plBase = plLocal;
+                continue;
             }
 
             totalPositionValueInBase += marketValueBase;
@@ -510,38 +527,31 @@ public class PortfolioManager : IPortfolioManager
         decimal totalCashInBase = 0;
         foreach (var kvp in portfolio.CashBalances)
         {
-            var currency = kvp.Key;
-            var balance = kvp.Value;
-
-            if (currency == targetBaseCurrency)
+            if (TryAmount(new Money(kvp.Value, kvp.Key), out var cashBase))
             {
-                totalCashInBase += balance;
-            }
-            else if (latestRates.TryGetValue(currency, out var rate))
-            {
-                totalCashInBase += rate.Convert(new Money(balance, currency)).Amount;
-            }
-            else
-            {
-                totalCashInBase += balance;
+                totalCashInBase += cashBase;
             }
         }
 
         var totalValueInBase = totalCashInBase + totalPositionValueInBase;
         var cashRatio = totalValueInBase == 0 ? 0 : (totalCashInBase / totalValueInBase) * 100;
 
+        // Realized PnL: per exit currency at the latest rate (like cash). A portfolio without the per-currency figures
+        // only knows the USD book value (exit-time rate applied), which is converted as one USD amount.
         decimal totalRealizedPLInBase = 0;
-        if (targetBaseCurrency == CurrencyCode.USD)
+        if (portfolio.RealizedPnLByCurrency != null)
         {
-            totalRealizedPLInBase = portfolio.TotalRealizedPnL;
+            foreach (var realized in portfolio.RealizedPnLByCurrency)
+            {
+                if (TryAmount(new Money(realized.Value, realized.Key), out var realizedBase))
+                {
+                    totalRealizedPLInBase += realizedBase;
+                }
+            }
         }
-        else if (latestRates.TryGetValue(CurrencyCode.USD, out var rate))
+        else if (TryAmount(new Money(portfolio.TotalRealizedPnL, CurrencyCode.USD), out var realizedUsdBase))
         {
-            totalRealizedPLInBase = rate.Convert(new Money(portfolio.TotalRealizedPnL, CurrencyCode.USD)).Amount;
-        }
-        else
-        {
-            totalRealizedPLInBase = portfolio.TotalRealizedPnL;
+            totalRealizedPLInBase = realizedUsdBase;
         }
 
         return new PortfolioMetrics(
@@ -551,6 +561,83 @@ public class PortfolioManager : IPortfolioManager
             totalCashInBase,
             cashRatio
         );
+    }
+
+    /// <summary>Currencies in which the portfolio holds a non-zero amount (cash, open positions, realized PnL).</summary>
+    private static HashSet<CurrencyCode> CollectHeldCurrencies(Portfolio portfolio)
+    {
+        var held = new HashSet<CurrencyCode>();
+        foreach (var balance in portfolio.CashBalances)
+        {
+            if (balance.Value != 0m) held.Add(balance.Key);
+        }
+        foreach (var position in portfolio.Positions.Values)
+        {
+            held.Add(position.AverageCost.Currency);
+        }
+        if (portfolio.RealizedPnLByCurrency != null)
+        {
+            foreach (var realized in portfolio.RealizedPnLByCurrency)
+            {
+                if (realized.Value != 0m) held.Add(realized.Key);
+            }
+        }
+        else if (portfolio.TotalRealizedPnL != 0m)
+        {
+            held.Add(CurrencyCode.USD);
+        }
+        return held;
+    }
+
+    /// <summary>
+    /// Converts <paramref name="money"/> into <paramref name="target"/> without assuming anything about the rate dictionary:
+    /// same currency, then a direct rate (money currency to target), then a cross through USD (money currency to USD divided by target to USD).
+    /// Returns false when none of these rates is available. A rate whose quote currency is not the one needed is never used.
+    /// </summary>
+    private static bool TryConvertToTarget(
+        Money money,
+        CurrencyCode target,
+        IReadOnlyDictionary<CurrencyCode, ExchangeRate> rates,
+        out decimal converted)
+    {
+        if (money.Currency == target)
+        {
+            converted = money.Amount;
+            return true;
+        }
+
+        if (rates.TryGetValue(money.Currency, out var direct)
+            && direct.BaseCurrency == money.Currency
+            && direct.QuoteCurrency == target)
+        {
+            converted = direct.Convert(money).Amount;
+            return true;
+        }
+
+        if (TryGetRateToUsd(money.Currency, rates, out var fromRate) && TryGetRateToUsd(target, rates, out var toRate))
+        {
+            converted = money.Amount * fromRate / toRate;
+            return true;
+        }
+
+        converted = 0m;
+        return false;
+    }
+
+    private static bool TryGetRateToUsd(CurrencyCode currency, IReadOnlyDictionary<CurrencyCode, ExchangeRate> rates, out decimal rateToUsd)
+    {
+        if (currency == CurrencyCode.USD)
+        {
+            rateToUsd = 1m;
+            return true;
+        }
+        if (rates.TryGetValue(currency, out var rate) && rate.BaseCurrency == currency && rate.QuoteCurrency == CurrencyCode.USD)
+        {
+            rateToUsd = rate.Rate;
+            return true;
+        }
+        rateToUsd = 0m;
+        return false;
     }
 
     public async Task<AllocationResult> GetAllocationAsync(

@@ -139,6 +139,7 @@ internal sealed class GetCapabilitiesTool : IMcpTool
                 writer.WriteEndObject();
             }
 
+            WriteBacktestOptimization(writer);
             if (includeExecution)
             {
                 WriteExecution(writer);
@@ -146,6 +147,24 @@ internal sealed class GetCapabilitiesTool : IMcpTool
 
             writer.WriteEndObject();
         });
+    }
+
+    // The report metrics sa_optimize_backtest can rank by: every metric of the existing backtest report, minus the ones the production path never reports as Valid.
+    private static void WriteBacktestOptimization(Utf8JsonWriter writer)
+    {
+        writer.WriteStartObject("backtestOptimization");
+        WriteStrings(writer, "objectives", OptimizationObjectives.Names);
+        writer.WriteStartArray("excludedObjectives");
+        foreach (KeyValuePair<string, string> excluded in OptimizationObjectives.Excluded)
+        {
+            writer.WriteStartObject();
+            writer.WriteString("name", BacktestReportJson.JsonName(excluded.Key));
+            writer.WriteString("reason", excluded.Value);
+            writer.WriteEndObject();
+        }
+
+        writer.WriteEndArray();
+        writer.WriteEndObject();
     }
 
     // The block lists what the execution tools accept, drawn from the application's own tables, so a new hyperparameter or architecture appears here by itself.
@@ -263,6 +282,7 @@ internal sealed class GetCapabilitiesTool : IMcpTool
         writer.WriteString("timeFrame", RunScreenerTool.ScreenerTimeFrame.ToString());
         WriteStrings(writer, "sideTimeFrames", ReadOnlyGatewayContract.SupportedTimeFrames.Select(frame => frame.ToString()).ToList());
         WriteStrings(writer, "comparisons", ScreenerConditionBinder.ComparisonNames);
+        WriteStrings(writer, "expandedComparisons", ConditionOperatorExpander.ExpandedComparisonNames);
         WriteStrings(writer, "groupOperators", ScreenerConditionBinder.LogicalOperatorNames);
         WriteNames(writer, "columns", _screenerCatalog.Columns);
         WriteStrings(writer, "unavailableColumns", _screenerCatalog.UnavailableColumns);

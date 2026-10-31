@@ -228,4 +228,43 @@ public interface IReadOnlyStockAnalyzerGateway
     /// <exception cref="ArgumentException">The snapshot symbol is not well formed or the snapshot is rejected by the engine's validation.</exception>
     /// <exception cref="NotSupportedException">The execution model or the time frame is not supported by the read-only host.</exception>
     Task<BacktestEvaluationArtifact> RunBacktestAsync(BacktestRunSnapshot snapshot, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Runs many backtests with <see cref="RunBacktestAsync"/>'s own path and returns the artifacts in the order of <paramref name="snapshots"/>;
+    /// each artifact equals the one a single <see cref="RunBacktestAsync"/> call would return (down to the run fingerprint). The stored bars of a
+    /// (symbol, time frame) are read once for the whole batch. At most <paramref name="degreeOfParallelism"/> runs execute at the same time; the
+    /// result does not depend on that number. The first failure in input order is rethrown with its original type (runs after it may be skipped),
+    /// and cancellation stops the batch without a partial result. The default implementation runs the snapshots one after another.
+    /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="degreeOfParallelism"/> is below 1.</exception>
+    /// <exception cref="ArgumentException">A snapshot symbol is not well formed or a snapshot is rejected by the engine's validation.</exception>
+    /// <exception cref="NotSupportedException">A snapshot uses an execution model or time frame the read-only host does not support.</exception>
+    Task<IReadOnlyList<BacktestEvaluationArtifact>> RunBacktestBatchAsync(
+        IReadOnlyList<BacktestRunSnapshot> snapshots,
+        int degreeOfParallelism,
+        CancellationToken cancellationToken = default)
+        => RunBacktestBatchAsync(snapshots, degreeOfParallelism, artifact => artifact, cancellationToken);
+
+    /// <summary>
+    /// <see cref="RunBacktestBatchAsync(IReadOnlyList{BacktestRunSnapshot}, int, CancellationToken)"/> that hands each artifact to
+    /// <paramref name="project"/> as soon as its run ends and keeps only the projection, so a large batch does not hold every equity curve and trade list
+    /// at once. <paramref name="project"/> may run on several threads at the same time and must not modify the artifact; an exception it throws is a
+    /// failure of that snapshot (the first failure in input order is rethrown).
+    /// </summary>
+    async Task<IReadOnlyList<TResult>> RunBacktestBatchAsync<TResult>(
+        IReadOnlyList<BacktestRunSnapshot> snapshots,
+        int degreeOfParallelism,
+        Func<BacktestEvaluationArtifact, TResult> project,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(snapshots);
+        ArgumentNullException.ThrowIfNull(project);
+        var results = new List<TResult>(snapshots.Count);
+        foreach (BacktestRunSnapshot snapshot in snapshots)
+        {
+            results.Add(project(await RunBacktestAsync(snapshot, cancellationToken).ConfigureAwait(false)));
+        }
+
+        return results;
+    }
 }

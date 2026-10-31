@@ -46,7 +46,7 @@ public sealed class ExperimentLogService : IExperimentLogService
                 try
                 {
                     await using var stream = new FileStream(filePath, FileMode.Append, FileAccess.Write, FileShare.Read);
-                    await using var writer = new StreamWriter(stream, System.Text.Encoding.UTF8);
+                    await using var writer = new StreamWriter(stream, new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
                     await writer.WriteAsync(content.AsMemory(), ct).ConfigureAwait(false);
                     await writer.FlushAsync(ct).ConfigureAwait(false);
                     return;

@@ -429,46 +429,9 @@ public sealed class ConditionBasedBacktestStrategy : IBacktestStrategy, IBacktes
     /// same request - without this they would silently compare a value against itself.</summary>
     private static (IReadOnlyList<StrategyIndicatorRequest>, IReadOnlyDictionary<BacktestConditionSide, string>) BuildIndicatorRequests(
         IReadOnlyList<BacktestConditionEntry> entries)
-        => BuildIndicatorRequests(BacktestConditionValidator.ActiveSides(entries));
+        => ConditionSeriesEvaluator.BuildIndicatorRequests(BacktestConditionValidator.ActiveSides(entries));
 
     private static (IReadOnlyList<StrategyIndicatorRequest>, IReadOnlyDictionary<BacktestConditionSide, string>) BuildIndicatorRequests(
         IEnumerable<BacktestConditionSide> activeSides)
-    {
-        var dedup = new Dictionary<(IndicatorType Type, string ParametersKey, string OutputName, TimeFrame? Frame, PriceType? PriceSource), string>();
-        var mapping = new Dictionary<BacktestConditionSide, string>();
-        var requests = new List<StrategyIndicatorRequest>();
-
-        foreach (BacktestConditionSide side in activeSides)
-        {
-            RegisterSide(side, dedup, mapping, requests);
-        }
-
-        return (requests, mapping);
-    }
-
-    private static void RegisterSide(
-        BacktestConditionSide side,
-        Dictionary<(IndicatorType Type, string ParametersKey, string OutputName, TimeFrame? Frame, PriceType? PriceSource), string> dedup,
-        Dictionary<BacktestConditionSide, string> mapping,
-        List<StrategyIndicatorRequest> requests)
-    {
-        (IndicatorType, string, string, TimeFrame?, PriceType?) dedupKey = (side.IndicatorType, ParametersContentKey(side.Parameters), side.OutputName, side.Frame, side.PriceSource);
-        if (!dedup.TryGetValue(dedupKey, out string? key))
-        {
-            key = $"cond{dedup.Count}";
-            dedup[dedupKey] = key;
-            requests.Add(new StrategyIndicatorRequest(
-                key,
-                side.IndicatorType,
-                side.Parameters?.Clone(),
-                side.Frame,
-                BacktestConditionValidator.NormalizeOutputName(side),
-                side.PriceSource,
-                StrictOutputName: true));
-        }
-        mapping[side] = key;
-    }
-
-    private static string ParametersContentKey(CoreIndicatorParameterBase? parameters)
-        => parameters is null ? string.Empty : JsonSerializer.Serialize(parameters, parameters.GetType());
+        => ConditionSeriesEvaluator.BuildIndicatorRequests(activeSides);
 }

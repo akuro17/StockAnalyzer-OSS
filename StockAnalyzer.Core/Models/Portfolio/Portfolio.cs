@@ -12,13 +12,20 @@ public sealed record Portfolio
     public IReadOnlyList<ClosedPosition> ClosedPositions { get; init; }
     public decimal TotalRealizedPnL { get; init; }
 
+    /// <summary>
+    /// Realized PnL kept in the currency of the exit transaction. Null when the portfolio was not built by
+    /// <see cref="StockAnalyzer.Core.Services.PortfolioManager"/> (then only <see cref="TotalRealizedPnL"/> is known).
+    /// </summary>
+    public IReadOnlyDictionary<CurrencyCode, decimal>? RealizedPnLByCurrency { get; init; }
+
     public Portfolio(
         decimal cashBalance,
         IReadOnlyDictionary<string, Position>? positions = null,
         IReadOnlyList<Transaction>? history = null,
         IReadOnlyList<ClosedPosition>? closedPositions = null,
         decimal totalRealizedPnL = 0m,
-        IReadOnlyDictionary<CurrencyCode, decimal>? cashBalances = null)
+        IReadOnlyDictionary<CurrencyCode, decimal>? cashBalances = null,
+        IReadOnlyDictionary<CurrencyCode, decimal>? realizedPnLByCurrency = null)
     {
         if (cashBalance < 0) throw new ArgumentOutOfRangeException(nameof(cashBalance), "Cash balance cannot be negative.");
         
@@ -28,5 +35,6 @@ public sealed record Portfolio
         History = history ?? new List<Transaction>();
         ClosedPositions = closedPositions ?? new List<ClosedPosition>();
         TotalRealizedPnL = totalRealizedPnL;
+        RealizedPnLByCurrency = realizedPnLByCurrency;
     }
 }

@@ -182,6 +182,57 @@ public sealed class EphemeralRlRetentionTests : IDisposable
         Assert.True(File.Exists(lease.OnnxPath));
     }
 
+    /// <summary>
+    /// A client that polls the status must never see a retained job as Succeeded while its artifact is still missing: the state and the artifact
+    /// become visible together. The polling here has no delay, so it also looks at the moment between the model being validated and described.
+    /// </summary>
+    private static async Task AssertSucceededNeverShowsWithoutArtifactAsync(SandboxedExecutionGateway gateway, string jobId)
+    {
+        using var cts = new CancellationTokenSource(Patience);
+        while (!cts.Token.IsCancellationRequested)
+        {
+            TrainingJobStatus status = gateway.GetStatus(jobId);
+            if (status.State == TrainingJobState.Succeeded)
+            {
+                Assert.NotNull(status.Artifact);
+                return;
+            }
+
+            Assert.True(status.State is not (TrainingJobState.Failed or TrainingJobState.Cancelled), $"Job ended as {status.State}.");
+            await Task.Yield();
+        }
+
+        throw new TimeoutException($"Job {jobId} did not finish within {Patience.TotalSeconds} seconds.");
+    }
+
+    [Fact]
+    public async Task SandboxedExecutionGateway_Rl_WhenRetainArtifactIsTrue_NeverShowsSucceededWithoutTheArtifact()
+    {
+        for (int run = 0; run < 5; run++)
+        {
+            SandboxedExecutionGateway gateway = CreateGateway(rlRunner: new ScriptedRlRunner(GoodModelPath));
+            TrainingJobTicket ticket = await gateway.StartRlTrainingAsync(
+                new EphemeralRlRequest { Symbol = "SPY", StartDate = new DateOnly(2023, 1, 1), EndDateExclusive = new DateOnly(2024, 1, 1), RetainArtifact = true },
+                CancellationToken.None);
+
+            await AssertSucceededNeverShowsWithoutArtifactAsync(gateway, ticket.JobId);
+        }
+    }
+
+    [Fact]
+    public async Task SandboxedExecutionGateway_PortfolioRl_WhenRetainArtifactIsTrue_NeverShowsSucceededWithoutTheArtifact()
+    {
+        for (int run = 0; run < 5; run++)
+        {
+            SandboxedExecutionGateway gateway = CreateGateway(portfolioRunner: new ScriptedPortfolioRunner(GoodModelPath));
+            TrainingJobTicket ticket = await gateway.StartPortfolioRlTrainingAsync(
+                new EphemeralPortfolioRlRequest { Symbols = new[] { "AAPL", "MSFT", "GOOG" }, StartDate = new DateOnly(2023, 1, 1), EndDateExclusive = new DateOnly(2024, 1, 1), RetainArtifact = true },
+                CancellationToken.None);
+
+            await AssertSucceededNeverShowsWithoutArtifactAsync(gateway, ticket.JobId);
+        }
+    }
+
     [Fact]
     public async Task SandboxedExecutionGateway_PortfolioRl_StartGateUsesTheRunnersConfiguredSymbolMaximum()
     {

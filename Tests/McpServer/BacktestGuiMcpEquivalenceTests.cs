@@ -71,11 +71,11 @@ public sealed class BacktestGuiMcpEquivalenceTests : IDisposable
 
     // ---- the one condition tree, as persisted data (what the window saves and a template stores) ---------------------------------------
 
-    private static BacktestConditionSideDto Close() => new() { IndicatorType = IndicatorType.Price, PriceSource = PriceType.Close, OutputName = IndicatorResult.MainSeriesName };
+    private static BacktestConditionSideDto Close(TimeFrame? frame = null) => new() { IndicatorType = IndicatorType.Price, PriceSource = PriceType.Close, OutputName = IndicatorResult.MainSeriesName, Frame = frame };
 
-    private static BacktestConditionSideDto Sma() => new() { IndicatorType = IndicatorType.SMA, Parameters = new CoreSmaParameter { Period = SmaPeriod }, OutputName = IndicatorResult.MainSeriesName };
+    private static BacktestConditionSideDto Sma(TimeFrame? frame = null) => new() { IndicatorType = IndicatorType.SMA, Parameters = new CoreSmaParameter { Period = SmaPeriod }, OutputName = IndicatorResult.MainSeriesName, Frame = frame };
 
-    private static BacktestConditionNodeDto Rule(ComparisonOperator op) => new()
+    private static BacktestConditionNodeDto Rule(ComparisonOperator op, TimeFrame? sideFrame = null) => new()
     {
         Kind = BacktestConditionNodeKind.Group,
         Operator = LogicalOperator.And,
@@ -84,20 +84,26 @@ public sealed class BacktestGuiMcpEquivalenceTests : IDisposable
             new()
             {
                 Kind = BacktestConditionNodeKind.Leaf,
-                Comparison = new BacktestConditionEntryDto { Left = Close(), Operator = op, TargetMode = RightHandTargetMode.Indicator, Right = Sma() },
+                Comparison = new BacktestConditionEntryDto { Left = Close(sideFrame), Operator = op, TargetMode = RightHandTargetMode.Indicator, Right = Sma(sideFrame) },
             },
         },
     };
 
-    private static BacktestConditionTreeDto TreeDto() => new() { EntryLong = Rule(ComparisonOperator.GreaterThan), ExitLong = Rule(ComparisonOperator.LessThan) };
+    private static BacktestConditionTreeDto TreeDto(TimeFrame? sideFrame = null)
+        => new() { EntryLong = Rule(ComparisonOperator.GreaterThan, sideFrame), ExitLong = Rule(ComparisonOperator.LessThan, sideFrame) };
 
     private static string N(decimal value) => value.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
-    private static string SmaSide() => "{\"indicator\":\"SMA\",\"parameters\":{\"Period\":" + SmaPeriod + "}}";
+    private static string SmaSide(string frameKey) => "{\"indicator\":\"SMA\",\"parameters\":{\"Period\":" + SmaPeriod + "}" + frameKey + "}";
 
-    private static readonly string ConditionsJson =
-        "{\"entryLong\":{\"left\":{\"price\":\"Close\"},\"comparison\":\"GreaterThan\",\"right\":" + SmaSide() + "},"
-        + "\"exitLong\":{\"left\":{\"price\":\"Close\"},\"comparison\":\"LessThan\",\"right\":" + SmaSide() + "}}";
+    private static string Conditions(string frameKey)
+        => "{\"entryLong\":{\"left\":{\"price\":\"Close\"" + frameKey + "},\"comparison\":\"GreaterThan\",\"right\":" + SmaSide(frameKey) + "},"
+        + "\"exitLong\":{\"left\":{\"price\":\"Close\"" + frameKey + "},\"comparison\":\"LessThan\",\"right\":" + SmaSide(frameKey) + "}}";
+
+    private static readonly string ConditionsJson = Conditions(string.Empty);
+
+    /// <summary>The same conditions with every side on W1 (the side key the plan 05 / T1 binder accepts).</summary>
+    private static readonly string WeeklySideConditionsJson = Conditions(",\"frame\":\"W1\"");
 
     private static readonly string SettingsJson =
         ",\"account\":{\"initialCapital\":" + N(InitialCapital) + ",\"commissionFlat\":" + N(CommissionFlat) + ",\"commissionPerUnit\":" + N(CommissionPerUnit)
@@ -154,7 +160,7 @@ public sealed class BacktestGuiMcpEquivalenceTests : IDisposable
     private BacktestRunSnapshot WindowSnapshot(int? annualPeriodsD1 = null, int? bootstrapSeed = null, int? bootstrapIterations = null)
         => WindowSnapshot(TimeFrame.D1, annualPeriodsD1, bootstrapSeed, bootstrapIterations);
 
-    private BacktestRunSnapshot WindowSnapshot(TimeFrame frame, int? annualPeriodsD1 = null, int? bootstrapSeed = null, int? bootstrapIterations = null)
+    private BacktestRunSnapshot WindowSnapshot(TimeFrame frame, int? annualPeriodsD1 = null, int? bootstrapSeed = null, int? bootstrapIterations = null, TimeFrame? sideFrame = null)
     {
         IStockAnalyzerSettings settings = new ServiceCollection().AddStockAnalyzerReadOnlyCore(Configuration()).BuildServiceProvider().GetRequiredService<IStockAnalyzerSettings>();
 
@@ -177,7 +183,7 @@ public sealed class BacktestGuiMcpEquivalenceTests : IDisposable
         configuration.Validate();
 
         BacktestConditionTree tree = BacktestConditionValidator.SnapshotTree(
-            BacktestConditionTreeDtoMapper.ToTree(TreeDto(), settings.BacktestMaxConditionTreeDepth),
+            BacktestConditionTreeDtoMapper.ToTree(TreeDto(sideFrame), settings.BacktestMaxConditionTreeDepth),
             settings.BacktestMaxConditionOffset,
             settings.BacktestMaxConditionTreeDepth,
             settings.BacktestMaxConditionTreeNodes,
@@ -215,18 +221,30 @@ public sealed class BacktestGuiMcpEquivalenceTests : IDisposable
     private Task<BacktestEvaluationArtifact> RunLikeTheWindowAsync(int? annualPeriodsD1, int? bootstrapSeed = null, int? bootstrapIterations = null)
         => RunLikeTheWindowAsync(TimeFrame.D1, annualPeriodsD1, bootstrapSeed, bootstrapIterations);
 
-    private async Task<BacktestEvaluationArtifact> RunLikeTheWindowAsync(TimeFrame frame = TimeFrame.D1, int? annualPeriodsD1 = null, int? bootstrapSeed = null, int? bootstrapIterations = null)
+    private async Task<BacktestEvaluationArtifact> RunLikeTheWindowAsync(TimeFrame frame = TimeFrame.D1, int? annualPeriodsD1 = null, int? bootstrapSeed = null, int? bootstrapIterations = null, TimeFrame? sideFrame = null)
     {
         using var db = new DuckDBConnectionManager();
         var rawDataService = new ParquetDataService(db, Options.Create(_fixture.Settings));
         var aggregatingDataService = new AggregatingDataService(rawDataService, new TimeFrameManager(rawDataService));
         var preparation = new BacktestRunPreparationService(aggregatingDataService);
         var evaluation = new BacktestEvaluationService(new BacktestEngine(IndicatorFactory.Default), new BacktestReportGenerator(), new NoSamplingEvidenceTrustPolicy());
-        PreparedBacktestRun prepared = await preparation.PrepareAsync(WindowSnapshot(frame, annualPeriodsD1, bootstrapSeed, bootstrapIterations), CancellationToken.None);
+        PreparedBacktestRun prepared = await preparation.PrepareAsync(WindowSnapshot(frame, annualPeriodsD1, bootstrapSeed, bootstrapIterations, sideFrame), CancellationToken.None);
         return evaluation.Evaluate(prepared.Input, prepared.Configuration, prepared.StrategySpecification, prepared.ReportOptions);
     }
 
     // ---- the comparison: exact, every trade and every report field ----------------------------------------------------------------
+
+    private static void AssertSamePercent(decimal? expected, JsonElement actual)
+    {
+        if (expected is { } value)
+        {
+            Assert.Equal(value, actual.GetDecimal());
+        }
+        else
+        {
+            Assert.Equal(JsonValueKind.Null, actual.ValueKind);
+        }
+    }
 
     private static void AssertSameResult(BacktestEvaluationArtifact window, JsonElement mcp)
     {
@@ -267,6 +285,10 @@ public sealed class BacktestGuiMcpEquivalenceTests : IDisposable
             Assert.Equal(trade.IsForcedLiquidation, item.GetProperty("isForcedLiquidation").GetBoolean());
             Assert.Equal(trade.EntrySignal, item.GetProperty("entrySignal").GetString());
             Assert.Equal(trade.ExitReason, item.GetProperty("exitReason").GetString());
+            Assert.Equal(trade.MfePrice, item.GetProperty("mfePrice").GetDecimal());
+            Assert.Equal(trade.MaePrice, item.GetProperty("maePrice").GetDecimal());
+            AssertSamePercent(trade.MfePercent, item.GetProperty("mfePercent"));
+            AssertSamePercent(trade.MaePercent, item.GetProperty("maePercent"));
         }
 
         Assert.Equal(result.EquityPoints[^1].Equity, mcp.GetProperty("equity").GetProperty("final").GetDecimal());
@@ -339,6 +361,19 @@ public sealed class BacktestGuiMcpEquivalenceTests : IDisposable
 
         Assert.Equal("W1", mcp.GetProperty("timeFrame").GetString());
         AssertSameResult(window, mcp);
+    }
+
+    [Fact]
+    public async Task TheMcpRunWithWeeklySidesEqualsTheRunTheWindowWouldMakeWithWeeklySideFrames()
+    {
+        var dispatcher = await StartAsync();
+
+        JsonElement mcp = await CallAsync(dispatcher, $"\"conditions\":{WeeklySideConditionsJson}{Period}{SettingsJson}{RiskJson}");
+        BacktestEvaluationArtifact window = await RunLikeTheWindowAsync(sideFrame: TimeFrame.W1);
+        BacktestEvaluationArtifact daily = await RunLikeTheWindowAsync();
+
+        AssertSameResult(window, mcp);
+        Assert.NotEqual(daily.RunFingerprint.Sha256, window.RunFingerprint.Sha256);
     }
 
     [Fact]

@@ -333,4 +333,44 @@ public sealed class RlPortfolioSessionTests
         var bars = new RlPanelBarsFixture(2, (s, t) => s == 1 && t == 100 ? null : (100m, 100m));
         Assert.Throws<ArgumentException>(() => new RlPortfolioSession(bars, RlPanelBarsFixture.Block(0, 1), ImmutableArray.Create(0, 1), Costs(10_000m)));
     }
+
+    [Theory]
+    [InlineData(0)]   // Open of a tradable symbol is not positive
+    [InlineData(1)]   // Close of a tradable symbol is not positive
+    public void ATradableSymbolWithANonPositivePriceIsRejectedAtConstruction(int zeroedField)
+    {
+        var bars = new RlPanelBarsFixture(2, (s, t) => s == 1 && t == 100 ? (zeroedField == 0 ? 0m : 100m, zeroedField == 1 ? 0m : 100m) : (100m, 100m));
+
+        Assert.Throws<ArgumentException>(() => new RlPortfolioSession(bars, RlPanelBarsFixture.Block(0, 1), ImmutableArray.Create(0, 1), Costs(10_000m)));
+    }
+
+    [Theory]
+    [InlineData(10, 0.0, 0.0)]    // warm-up bar: never read by the session
+    [InlineData(63, 0.0, 100.0)]  // Open at the first decision index: the first fill reads the Open of the next bar
+    public void APriceTheSessionNeverReadsDoesNotBlockConstruction(int index, double open, double close)
+    {
+        var bars = new RlPanelBarsFixture(2, (s, t) => s == 1 && t == index ? ((decimal)open, (decimal)close) : (100m, 100m));
+
+        using var session = new RlPortfolioSession(bars, RlPanelBarsFixture.Block(0, 1), ImmutableArray.Create(0, 1), Costs(10_000m));
+
+        Assert.Equal(RlPortfolioSessionState.Created, session.State);
+    }
+
+    [Fact]
+    public void AZeroCloseAtTheFirstDecisionIsRejectedAtConstruction()
+    {
+        var bars = new RlPanelBarsFixture(2, (s, t) => s == 1 && t == 63 ? (100m, 0m) : (100m, 100m));
+
+        Assert.Throws<ArgumentException>(() => new RlPortfolioSession(bars, RlPanelBarsFixture.Block(0, 1), ImmutableArray.Create(0, 1), Costs(10_000m)));
+    }
+
+    [Fact]
+    public void ANonPositivePriceOfAnUntradedSymbolDoesNotBlockConstruction()
+    {
+        var bars = new RlPanelBarsFixture(3, (s, t) => s == 2 && t == 100 ? (0m, 0m) : (100m, 100m));
+
+        using var session = new RlPortfolioSession(bars, RlPanelBarsFixture.Block(0, 1, 2), ImmutableArray.Create(0, 1), Costs(10_000m));
+
+        Assert.Equal(RlPortfolioSessionState.Created, session.State);
+    }
 }

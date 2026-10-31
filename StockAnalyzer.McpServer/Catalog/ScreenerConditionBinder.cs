@@ -4,6 +4,7 @@ using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Indicators;
 using StockAnalyzer.Core.Models.Parameters;
 using StockAnalyzer.Core.Models.Screener;
+using StockAnalyzer.Core.Models.Settings;
 using StockAnalyzer.Core.ReadOnly;
 using StockAnalyzer.Core.Services;
 using StockAnalyzer.Core.Services.Screener;
@@ -179,12 +180,27 @@ internal sealed class ScreenerConditionBinder
         {
             root = BindGroup(tree, path, 1, state);
         }
+        else if (ConditionOperatorExpander.TryGetName(tree, out string expanded))
+        {
+            // A comparison that expands to several is itself the root And group, as the same comparisons written out would be.
+            state.Depth = 1;
+            IScreenerConditionNode bound = BindExpanded(tree, expanded, path, state, 1);
+            if (bound is ScreenerConditionGroup group)
+            {
+                root = group;
+            }
+            else
+            {
+                state.CountNode(path, _settings);
+                root = new ScreenerConditionGroup(LogicalOperator.And, ImmutableArray.Create(bound));
+            }
+        }
         else
         {
             // A single comparison is a tree of one leaf under an And root, as the Screener tab holds it.
             state.CountNode(path, _settings);
             state.Depth = 1;
-            root = new ScreenerConditionGroup(LogicalOperator.And, ImmutableArray.Create<IScreenerConditionNode>(BindLeaf(tree, path, state)));
+            root = new ScreenerConditionGroup(LogicalOperator.And, ImmutableArray.Create<IScreenerConditionNode>(BindLeaf(tree, path, state, state.Depth + 1)));
         }
 
         return new BoundScreenerCondition(new ScreenerConditionTreeCondition(root), state.Leaves, state.Nodes, state.Depth, state.ComparisonSymbols, state.ExplicitFrameSides);
@@ -197,11 +213,7 @@ internal sealed class ScreenerConditionBinder
     {
         RequireObject(node, path);
         RejectUnknownKeys(node, path, GroupKeys);
-        if (depth > _settings.ScreenerMaxFilterTreeDepth)
-        {
-            throw TreeLimit($"The condition tree is nested deeper than {_settings.ScreenerMaxFilterTreeDepth} levels.", path, "Screener:MaxFilterTreeDepth", _settings.ScreenerMaxFilterTreeDepth);
-        }
-
+        RequireDepth(depth, path);
         state.Depth = Math.Max(state.Depth, depth);
         state.CountNode(path, _settings);
 
@@ -217,19 +229,65 @@ internal sealed class ScreenerConditionBinder
         foreach (JsonElement child in children.EnumerateArray())
         {
             string childPath = $"{path}.children[{index}]";
-            bound.Add(IsGroup(child) ? BindGroup(child, childPath, depth + 1, state) : BindLeaf(child, childPath, state));
+            bound.Add(IsGroup(child) ? BindGroup(child, childPath, depth + 1, state) : BindLeaf(child, childPath, state, depth + 1));
             index++;
         }
 
         return new ScreenerConditionGroup(op, bound.ToImmutable());
     }
 
-    private IScreenerConditionNode BindLeaf(JsonElement node, string path, State state)
+    /// <summary>A group created at nesting level <paramref name="depth"/> must stay within the configured depth.</summary>
+    private void RequireDepth(int depth, string path)
+    {
+        if (depth > _settings.ScreenerMaxFilterTreeDepth)
+        {
+            throw TreeLimit($"The condition tree is nested deeper than {_settings.ScreenerMaxFilterTreeDepth} levels.", path, ScreenerSettingsValidator.MaxFilterTreeDepthKey, _settings.ScreenerMaxFilterTreeDepth);
+        }
+    }
+
+    /// <param name="depth">The nesting level a group created at this position would have (the level of the parent group plus one).</param>
+    private IScreenerConditionNode BindLeaf(JsonElement node, string path, State state, int depth)
     {
         RequireObject(node, path);
+        if (ConditionOperatorExpander.TryGetName(node, out string expanded))
+        {
+            return BindExpanded(node, expanded, path, state, depth);
+        }
+
         RejectUnknownKeys(node, path, LeafKeys);
         state.CountNode(path, _settings);
+        return BindComparison(node, path, state);
+    }
 
+    /// <summary>
+    /// A comparison written with one of <see cref="ConditionOperatorExpander.ExpandedComparisonNames"/>: it becomes the comparisons of <see cref="ConditionOperatorExpander"/>, each bound by the
+    /// ordinary rules. The expanded groups and comparisons count against the same tree limits, and every error names the path of the node the client wrote.
+    /// </summary>
+    private IScreenerConditionNode BindExpanded(JsonElement node, string name, string path, State state, int depth)
+    {
+        RejectUnknownKeys(node, path, ConditionOperatorExpander.LeafKeys);
+        IReadOnlyList<JsonElement> comparisons = ConditionOperatorExpander.Expand(node, name, path, _settings.ScreenerMaxConditionOffset, ScreenerSettingsValidator.MaxConditionOffsetKey);
+        if (comparisons.Count == 1)
+        {
+            state.CountNode(path, _settings);
+            return BindComparison(comparisons[0], path, state);
+        }
+
+        RequireDepth(depth, path);
+        state.Depth = Math.Max(state.Depth, depth);
+        state.CountNode(path, _settings);
+        var bound = ImmutableArray.CreateBuilder<IScreenerConditionNode>();
+        foreach (JsonElement comparison in comparisons)
+        {
+            state.CountNode(path, _settings);
+            bound.Add(BindComparison(comparison, path, state));
+        }
+
+        return new ScreenerConditionGroup(LogicalOperator.And, bound.ToImmutable());
+    }
+
+    private IScreenerConditionNode BindComparison(JsonElement node, string path, State state)
+    {
         (ScreenerIndicatorSideConfig left, bool leftIsText) = BindSide(Require(node, "left", path, JsonValueKind.Object), $"{path}.left", state);
         ComparisonOperator op = ParseEnum<ComparisonOperator>(Require(node, "comparison", path, JsonValueKind.String), $"{path}.comparison", ComparisonNames);
         JsonElement right = Require(node, "right", path);
@@ -391,7 +449,7 @@ internal sealed class ScreenerConditionBinder
 
             if (offset > _settings.ScreenerMaxConditionOffset)
             {
-                throw TreeLimit($"The offset {offset} is above the maximum {_settings.ScreenerMaxConditionOffset}.", $"{path}.offset", "Screener:MaxConditionOffset", _settings.ScreenerMaxConditionOffset);
+                throw TreeLimit($"The offset {offset} is above the maximum {_settings.ScreenerMaxConditionOffset}.", $"{path}.offset", ScreenerSettingsValidator.MaxConditionOffsetKey,_settings.ScreenerMaxConditionOffset);
             }
         }
 
@@ -519,7 +577,7 @@ internal sealed class ScreenerConditionBinder
             Nodes++;
             if (Nodes > settings.ScreenerMaxFilterTreeNodes)
             {
-                throw TreeLimit($"The condition tree has more than {settings.ScreenerMaxFilterTreeNodes} nodes (groups and comparisons).", path, "Screener:MaxFilterTreeNodes", settings.ScreenerMaxFilterTreeNodes);
+                throw TreeLimit($"The condition tree has more than {settings.ScreenerMaxFilterTreeNodes} nodes (groups and comparisons).", path, ScreenerSettingsValidator.MaxFilterTreeNodesKey,settings.ScreenerMaxFilterTreeNodes);
             }
         }
     }

@@ -125,6 +125,13 @@ public partial class PortfolioSummaryViewModel : ViewModelBase, IDisposable, IRe
     public bool IsTotalRealizedLoss => TotalRealizedPnL < 0;
     public bool IsTotalRealizedNeutral => TotalRealizedPnL == 0;
 
+    /// <summary>Warning shown above the totals when some currencies could not be converted (null = nothing to warn about).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasUnconvertedNotice))]
+    private string? _unconvertedNotice;
+
+    public bool HasUnconvertedNotice => UnconvertedNotice != null;
+
     [ObservableProperty] private bool _isLoading = true;
     [ObservableProperty] private bool _isEmpty;
     [ObservableProperty] private bool _hasError;
@@ -445,6 +452,7 @@ public partial class PortfolioSummaryViewModel : ViewModelBase, IDisposable, IRe
                 {
                     vm.IsLoading = false;
                     vm.IsEmpty = true;
+                    vm.UnconvertedNotice = null;
                 }, this);
                 return;
             }
@@ -526,6 +534,14 @@ public partial class PortfolioSummaryViewModel : ViewModelBase, IDisposable, IRe
 
                 vm.Metrics = result.Metrics;
                 vm.TotalRealizedPnL = result.Metrics.TotalRealizedPL;
+
+                var unconverted = result.UnconvertedCurrencies;
+                vm.UnconvertedNotice = unconverted == null || unconverted.Count == 0
+                    ? null
+                    : vm._localizationService.GetFormattedString(
+                        "Portfolio_Notice_UnconvertedCurrencies",
+                        "Some currencies cannot be converted (no exchange rate): {0}",
+                        string.Join(", ", unconverted));
 
                 // Sync UI positions (In-place update to minimize allocations)
                 vm._currentKeysBuffer.Clear();
@@ -623,6 +639,7 @@ public partial class PortfolioSummaryViewModel : ViewModelBase, IDisposable, IRe
                     
                     pvm.IsHedged = vm._tickersWithBothBuffer.Contains(pos.Ticker);
                     pvm.UpdateFrom(evaluation);
+                    pvm.IsConversionUnavailable = unconverted != null && unconverted.Contains(pos.AverageCost.Currency);
                     vm.Positions.Add(pvm);
                 }
 
@@ -653,6 +670,7 @@ public partial class PortfolioSummaryViewModel : ViewModelBase, IDisposable, IRe
 
                             pvm.IsHedged = false;
                             pvm.UpdateFrom(evaluation);
+                            pvm.IsConversionUnavailable = false;
                             vm.Positions.Add(pvm);
                         }
                     }

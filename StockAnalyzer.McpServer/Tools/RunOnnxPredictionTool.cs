@@ -51,7 +51,7 @@ internal sealed class RunOnnxPredictionTool : IMcpTool
         "Each prediction uses only the model's window of bars that ends at its own bar (never a later bar): the latest 'count' bars up to asOfDate are predicted, oldest first. " +
         "A classifier returns classScores (probabilities, the model's own class order), predictedClass (the most probable class) and confidence (its probability); " +
         "a regressor returns value (the predicted log return). modelContract lists the window, feature mode, classes and the sha256 of the model. " +
-        "These numbers are model outputs for research, not advice. The model must be a succeeded job's (see sa_get_training_status) or 'latest', or a registered modelId (or 'active').";
+        $"{McpDisclaimerConstants.ResearchNotAdvice} The model must be a succeeded job's (see sa_get_training_status) or 'latest', or a registered modelId (or 'active').";
 
     public bool IsHeavy => false;
 

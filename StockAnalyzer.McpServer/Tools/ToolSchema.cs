@@ -86,6 +86,17 @@ internal sealed class ToolSchema
             writer.WriteEndObject();
         });
 
+    /// <summary>An array of integers; the count and the range of the items are checked by the tool.</summary>
+    public ToolSchema IntegerArray(string name, string description, bool required = false)
+        => Add(name, required, writer =>
+        {
+            writer.WriteString("type", "array");
+            writer.WriteString("description", description);
+            writer.WriteStartObject("items");
+            writer.WriteString("type", "integer");
+            writer.WriteEndObject();
+        });
+
     /// <summary>An array of objects, each checked against <paramref name="item"/> (nested names are reported as <c>name[i].key</c>).</summary>
     public ToolSchema ObjectArray(string name, string description, ToolSchema item, bool required = false, int minItems = 0)
         => Add(name, required, writer =>

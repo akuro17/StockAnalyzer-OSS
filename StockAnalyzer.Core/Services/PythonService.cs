@@ -23,6 +23,9 @@ namespace StockAnalyzer.Core.Services
         private readonly ITimeFrameParquetGenerator? _timeframeGenerator;
         private bool _hasPromptedUpdate = false;
 
+        /// <summary>Progress percent reported while the weekly and monthly files are generated (after the daily update, before completion at 100).</summary>
+        private const int TimeFrameGenerationProgressPercent = 90;
+
         private string PythonExecutableName => System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows) ? "python.exe" : "python3";
 
         private static readonly System.Text.RegularExpressions.Regex ValidPythonModuleNameRegex =
@@ -478,28 +481,17 @@ namespace StockAnalyzer.Core.Services
 
                     LogSyncActivity($"Process exited with code {process.ExitCode}");
 
-                    if (_timeframeGenerator != null)
-                    {
-                        try
-                        {
-                            LogSyncActivity($"Running TimeFrameParquetGenerator for {(string.IsNullOrEmpty(symbol) ? "all symbols" : symbol)}...");
-                            progress?.Report(90);
-                            int failed = await _timeframeGenerator.GenerateAsync(symbol, linkedToken).ConfigureAwait(false);
-                            if (failed > 0)
-                            {
-                                LogSyncActivity($"TimeFrameParquetGenerator reported {failed} failure(s).", LogLevel.Warning);
-                            }
-                        }
-                        catch (Exception tfEx)
-                        {
-                            LogSyncActivity($"TimeFrameParquetGenerator threw an exception: {tfEx.Message}", LogLevel.Error);
-                        }
-                    }
+                    string? timeframeFailure = await GenerateTimeFramesAsync(symbol, progress, linkedToken).ConfigureAwait(false);
 
                     if (process.ExitCode != 0)
                     {
                         var errorLogs = combinedOutput.ToString();
                         throw new Exception($"Update pipeline failed with exit code {process.ExitCode}.{Environment.NewLine}Logs:{Environment.NewLine}{errorLogs}");
+                    }
+
+                    if (timeframeFailure != null)
+                    {
+                        throw new InvalidOperationException(timeframeFailure);
                     }
 
                     LogSyncActivity("Pipeline task completed Successfully.");
@@ -525,6 +517,43 @@ namespace StockAnalyzer.Core.Services
             // Await executionTask to propagate any exceptions
             await executionTask;
             LogSyncActivity("RunUpdatePipelineAsync FINISH (Success)");
+        }
+
+        /// <summary>
+        /// Writes the weekly and monthly files after the daily update (the files are read by the screener, scatter plot, backtest and training, so a failed
+        /// generation must reach the sync result). Returns null on success or when no generator is configured, otherwise the failure text.
+        /// A cancellation is not a failure and propagates.
+        /// </summary>
+        internal async Task<string?> GenerateTimeFramesAsync(string? symbol, IProgress<int>? progress, CancellationToken ct)
+        {
+            if (_timeframeGenerator == null)
+            {
+                return null;
+            }
+
+            string target = string.IsNullOrEmpty(symbol) ? "all symbols" : symbol;
+            try
+            {
+                LogSyncActivity($"Running TimeFrameParquetGenerator for {target}...");
+                progress?.Report(TimeFrameGenerationProgressPercent);
+                int failed = await _timeframeGenerator.GenerateAsync(symbol, ct).ConfigureAwait(false);
+                if (failed > 0)
+                {
+                    LogSyncActivity($"TimeFrameParquetGenerator reported {failed} failure(s).", LogLevel.Error);
+                    return $"Weekly and monthly file generation failed for {failed} ticker(s) ({target}). The daily data were updated.";
+                }
+
+                return null;
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception tfEx)
+            {
+                LogSyncActivity($"TimeFrameParquetGenerator threw an exception: {tfEx.Message}", LogLevel.Error);
+                return $"Weekly and monthly file generation failed for {target}: {tfEx.Message} The daily data were updated.";
+            }
         }
 
         public async Task<string> ResolvePythonExecutablePathAsync(CancellationToken ct = default)
@@ -688,28 +717,17 @@ namespace StockAnalyzer.Core.Services
 
                     LogSyncActivity($"Process exited with code {process.ExitCode}");
 
-                    if (_timeframeGenerator != null)
-                    {
-                        try
-                        {
-                            LogSyncActivity($"Running TimeFrameParquetGenerator for {(string.IsNullOrEmpty(symbol) ? "all symbols" : symbol)}...");
-                            progress?.Report(90);
-                            int failed = await _timeframeGenerator.GenerateAsync(symbol, linkedToken).ConfigureAwait(false);
-                            if (failed > 0)
-                            {
-                                LogSyncActivity($"TimeFrameParquetGenerator reported {failed} failure(s).", LogLevel.Warning);
-                            }
-                        }
-                        catch (Exception tfEx)
-                        {
-                            LogSyncActivity($"TimeFrameParquetGenerator threw an exception: {tfEx.Message}", LogLevel.Error);
-                        }
-                    }
+                    string? timeframeFailure = await GenerateTimeFramesAsync(symbol, progress, linkedToken).ConfigureAwait(false);
 
                     if (process.ExitCode != 0)
                     {
                         var errorLogs = combinedOutput.ToString();
                         throw new Exception($"Update pipeline failed with exit code {process.ExitCode}.{Environment.NewLine}Logs:{Environment.NewLine}{errorLogs}");
+                    }
+
+                    if (timeframeFailure != null)
+                    {
+                        throw new InvalidOperationException(timeframeFailure);
                     }
 
                     LogSyncActivity("Pipeline task completed Successfully.");

@@ -196,7 +196,10 @@ public class ThemeManager : IThemeManager
                 Colors = CurrentTheme
             };
 
-            await AtomicJsonFile.SaveAsync(_themeFilePath, data, JsonOptions);
+            using (await SerializedPathGate.AcquireAsync(_themeFilePath).ConfigureAwait(false))
+            {
+                await AtomicJsonFile.SaveAsync(_themeFilePath, data, JsonOptions);
+            }
         }
         catch (Exception ex)
         {

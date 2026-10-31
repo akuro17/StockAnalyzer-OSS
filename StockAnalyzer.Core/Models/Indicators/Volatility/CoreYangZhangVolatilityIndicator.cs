@@ -55,6 +55,14 @@ public class CoreYangZhangVolatilityIndicator : CoreIndicatorBase
                 continue;
             }
 
+            if (m == 0)
+            {
+                // The first bar has no previous close, so its overnight return is undefined and the
+                // bar cannot belong to a window (first output is at index Period).
+                isValid[0] = false;
+                continue;
+            }
+
             isValid[m] = true;
 
             double o = (double)candle.Open;
@@ -62,15 +70,8 @@ public class CoreYangZhangVolatilityIndicator : CoreIndicatorBase
             double l = (double)candle.Low;
             double c = (double)candle.Close;
 
-            if (m == 0)
-            {
-                overnightLog[0] = 0.0;
-            }
-            else
-            {
-                double prevC = (double)candles[m - 1].Close;
-                overnightLog[m] = Math.Log(o / prevC);
-            }
+            double prevC = (double)candles[m - 1].Close;
+            overnightLog[m] = Math.Log(o / prevC);
 
             double cm = Math.Log(c / o);
             openCloseLog[m] = cm;

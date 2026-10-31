@@ -139,7 +139,19 @@
             <!-- Tab 0: Summary -->
             <TabItem Header="Summary">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
-                    <Border Margin="12" Padding="16" 
+                  <StackPanel>
+                    <Border Margin="12,12,12,0" Padding="12,8"
+                            IsVisible="{Binding HasUnconvertedNotice}"
+                            BorderThickness="1"
+                            CornerRadius="6"
+                            BorderBrush="{DynamicResource Brush.Semantic.Warning}"
+                            HorizontalAlignment="Left">
+                        <TextBlock Text="{Binding UnconvertedNotice}"
+                                   TextWrapping="Wrap" MaxWidth="720"
+                                   Foreground="{DynamicResource Brush.Semantic.Warning}"
+                                   FontSize="{DynamicResource HelperFontSize}"/>
+                    </Border>
+                    <Border Margin="12" Padding="16"
                             Background="{DynamicResource Brush.Background.Primary}"
                             CornerRadius="8"
                             BorderThickness="1"
@@ -176,6 +188,7 @@
                             </StackPanel>
                         </StackPanel>
                     </Border>
+                  </StackPanel>
                 </ScrollViewer>
             </TabItem>
                 <!-- Tab 1: Positions -->
@@ -249,9 +262,16 @@
                                 <DataGridTemplateColumn Header="{l:Localize Portfolio_Col_MarketValue}" Width="120">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate x:DataType="vm:PortfolioPositionViewModel">
-                                            <TextBlock Text="{Binding MarketValue, StringFormat={}{0:N0}}"
-                                                       HorizontalAlignment="Right" VerticalAlignment="Center"
-                                                       Margin="0,0,12,0" Classes="value"/>
+                                            <Panel>
+                                                <TextBlock Text="{Binding MarketValue, StringFormat={}{0:N0}}"
+                                                           IsVisible="{Binding !IsConversionUnavailable}"
+                                                           HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                           Margin="0,0,12,0" Classes="value"/>
+                                                <TextBlock Text="{x:Static vm:PortfolioPositionViewModel.UnavailableValueText}"
+                                                           IsVisible="{Binding IsConversionUnavailable}"
+                                                           HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                           Margin="0,0,12,0" Classes="value"/>
+                                            </Panel>
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>
                                 </DataGridTemplateColumn>
@@ -259,13 +279,20 @@
                                 <DataGridTemplateColumn Header="{l:Localize Portfolio_Col_PnL}" Width="120">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate x:DataType="vm:PortfolioPositionViewModel">
-                                            <TextBlock Text="{Binding UnrealizedPnL, StringFormat={}{0:N0}}"
-                                                       VerticalAlignment="Center" HorizontalAlignment="Right"
-                                                       Margin="0,0,12,0"
-                                                       Classes="value"
-                                                       Classes.profit="{Binding IsProfit}"
-                                                       Classes.loss="{Binding IsLoss}"
-                                                       Classes.neutral="{Binding IsNeutral}"/>
+                                            <Panel>
+                                                <TextBlock Text="{Binding UnrealizedPnL, StringFormat={}{0:N0}}"
+                                                           IsVisible="{Binding !IsConversionUnavailable}"
+                                                           VerticalAlignment="Center" HorizontalAlignment="Right"
+                                                           Margin="0,0,12,0"
+                                                           Classes="value"
+                                                           Classes.profit="{Binding IsProfit}"
+                                                           Classes.loss="{Binding IsLoss}"
+                                                           Classes.neutral="{Binding IsNeutral}"/>
+                                                <TextBlock Text="{x:Static vm:PortfolioPositionViewModel.UnavailableValueText}"
+                                                           IsVisible="{Binding IsConversionUnavailable}"
+                                                           VerticalAlignment="Center" HorizontalAlignment="Right"
+                                                           Margin="0,0,12,0" Classes="value"/>
+                                            </Panel>
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>
                                 </DataGridTemplateColumn>

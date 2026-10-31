@@ -10,9 +10,9 @@ using Xunit.Sdk;
 namespace StockAnalyzer.Core.Tests.Services;
 
 /// <summary>
-/// W3: the weekly and monthly files follow every daily update. <c>generate_timeframes.py</c> checks its own result (<c>--selfcheck</c>: failures are
-/// counted into the exit code, what was written is read back and compared with a re-aggregation of the daily file), and <c>update_pipeline.py</c> runs
-/// it also when the daily update failed. The pipeline is run here with stub sub-scripts, so only its decisions are tested (opt-in: starts Python).
+/// W3: the weekly and monthly files follow every daily update, written by the C# <c>TimeFrameParquetGenerator</c> after <c>update_pipeline.py</c>.
+/// There is no Python generator any more (owner decision 2026-10-31); <c>update_pipeline.py</c> reports the daily update only and must not run one. The
+/// pipeline is run here with stub sub-scripts, so only its decisions are tested (opt-in: starts Python).
 /// </summary>
 [Collection("ChildProcess")]
 public sealed class TimeframeGenerationPipelineTests
@@ -63,62 +63,30 @@ public sealed class TimeframeGenerationPipelineTests
         return (process.ExitCode, await output + await error);
     }
 
-    [ChildProcessFact]
-    public async Task TheGeneratorChecksItsOwnFailureAndVerificationRules()
-    {
-        string root = RepositoryRoot();
-
-        (int exitCode, string output) = await RunAsync(Python(root), root, Path.Combine(root, "StockAnalyzer.Python", "generate_timeframes.py"), "--selfcheck");
-
-        Assert.True(exitCode == 0, output);
-        Assert.Contains("SELFCHECK OK", output);
-    }
-
-    [ChildProcessFact]
-    public async Task TheGeneratorExitsNonZeroWhenATickerHasNoDailyFile()
-    {
-        string root = RepositoryRoot();
-        string workdir = Path.Combine(Path.GetTempPath(), "sa_tf_gen_" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(workdir);
-        try
-        {
-            // The real script, started for a ticker whose daily file does not exist in the real Data/Daily: nothing is written, the exit code says so.
-            string ticker = "NOSUCHTICKER" + Guid.NewGuid().ToString("N")[..8].ToUpperInvariant();
-
-            (int exitCode, string output) = await RunAsync(Python(root), workdir, Path.Combine(root, "StockAnalyzer.Python", "generate_timeframes.py"), "--ticker", ticker);
-
-            Assert.NotEqual(0, exitCode);
-            Assert.Contains("FAILED", output);
-            Assert.False(File.Exists(Path.Combine(root, "Data", "Weekly", ticker + ".parquet")));
-            Assert.False(File.Exists(Path.Combine(root, "Data", "Monthly", ticker + ".parquet")));
-        }
-        finally
-        {
-            try { Directory.Delete(workdir, true); } catch (IOException) { }
-        }
-    }
-
     [ChildProcessTheory]
-    [InlineData(0, 0, 0)] // both fine
-    [InlineData(1, 0, 1)] // the daily update failed: the generator still ran, the pipeline reports the failure
-    [InlineData(0, 1, 1)] // the generator failed: the pipeline reports it
-    [InlineData(1, 1, 1)] // both failed
-    public async Task ThePipelineRunsTheGeneratorAfterAFailedDailyUpdateAndFailsIfEitherFailed(int dailyExit, int generatorExit, int expectedExit)
+    [InlineData(0, 0)] // the daily update worked: the pipeline succeeds
+    [InlineData(1, 1)] // the daily update failed: the pipeline reports the failure
+    public async Task ThePipelineReportsTheDailyUpdateAndNeverRunsThePythonGenerator(int dailyExit, int expectedExit)
     {
         string root = RepositoryRoot();
         string folder = Path.Combine(Path.GetTempPath(), "sa_tf_pipe_" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(folder);
         try
         {
-            File.Copy(Path.Combine(root, "StockAnalyzer.Python", "update_pipeline.py"), Path.Combine(folder, "update_pipeline.py"));
+            // The weekly and monthly files are written by the C# TimeFrameParquetGenerator after the pipeline; a generator script next to the pipeline must stay unused.
+            foreach (string script in new[] { "update_pipeline.py", "symbol_validator.py" })
+            {
+                File.Copy(Path.Combine(root, "StockAnalyzer.Python", script), Path.Combine(folder, script));
+            }
+
             File.WriteAllText(Path.Combine(folder, "update_daily.py"), $"import sys\nsys.exit({dailyExit})\n");
             File.WriteAllText(Path.Combine(folder, "generate_timeframes.py"),
-                $"import sys\nopen(r'{Path.Combine(folder, GeneratorRanMarker)}', 'w').write('ran')\nsys.exit({generatorExit})\n");
+                $"import sys\nopen(r'{Path.Combine(folder, GeneratorRanMarker)}', 'w').write('ran')\nsys.exit(0)\n");
 
             (int exitCode, string output) = await RunAsync(Python(root), folder, Path.Combine(folder, "update_pipeline.py"), "--ticker", "AAA");
 
             Assert.True(expectedExit == exitCode, output);
-            Assert.True(File.Exists(Path.Combine(folder, GeneratorRanMarker)), "the generator must run whatever the daily update returned");
+            Assert.False(File.Exists(Path.Combine(folder, GeneratorRanMarker)), "the pipeline must not run the Python generator (the C# generator writes the files)");
         }
         finally
         {

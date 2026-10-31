@@ -1333,122 +1333,17 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
     /// see docs/sa_implementation_plan_BacktestComparisonSignals section 3.2.4.</summary>
     private IndicatorSeriesSet PrepareIndicators(BacktestInput input, IReadOnlyList<StrategyIndicatorRequest> requests, CancellationToken cancellationToken)
     {
-        var series = new Dictionary<string, ImmutableArray<decimal?>>(requests.Count);
-        if (requests.Count == 0) return new IndicatorSeriesSet(series);
+        IReadOnlyDictionary<TimeFrame, IReadOnlyList<CandleData>>? foreignBars = input.AdditionalTimeframeBars?
+            .ToDictionary(kvp => kvp.Key, kvp => (IReadOnlyList<CandleData>)kvp.Value);
 
-        var coreCandles = new CoreCandleData[input.Bars.Length];
-        for (int i = 0; i < coreCandles.Length; i++)
-        {
-            CandleData bar = input.Bars[i];
-            coreCandles[i] = new CoreCandleData(bar.Timestamp, bar.Open, bar.High, bar.Low, bar.Close, bar.Volume);
-        }
-
-        var foreignCoreCandlesByFrame = new Dictionary<TimeFrame, CoreCandleData[]>();
-
-        foreach (StrategyIndicatorRequest request in requests)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            // Causality guard (docs/sa_implementation_plan_BacktestIndicatorCausalityGuard): refuse non-causal / synchronously
-            // uncomputable outputs before anything is calculated - the whole-array precompute below would otherwise leak future bars.
-            BacktestIndicatorViolationReason violation = BacktestIndicatorEligibility.Check(request.Type, request.OutputName);
-            if (violation != BacktestIndicatorViolationReason.None)
-            {
-                throw new InvalidOperationException(
-                    $"StrategyIndicatorRequest '{request.Key}': {BacktestIndicatorEligibility.Describe(request.Type, request.OutputName, violation)}");
-            }
-
-            ICoreIndicator indicator = _indicatorFactory.Create(request.Type, request.Parameters)
-                ?? throw new InvalidOperationException($"Indicator type '{request.Type}' is not registered in IIndicatorFactory.");
-
-            // Plan docs/sa_improvement_plan_BacktestPriceSourceConditionFix: mirrors
-            // AnalysisPipelineService.SyncPriceSource's existing mechanism for applying a non-Close price
-            // source onto a created indicator instance. Without this, a "Price" catalog condition (one row
-            // per PriceType - "Open"/"High"/"Low"/...) always evaluated against the instance's own default
-            // (Close) regardless of which row was actually selected.
-            if (request.PriceSource is { } priceSource && indicator is CoreIndicatorBase baseIndicator)
-            {
-                baseIndicator.PriceSource = priceSource;
-            }
-
-            if (request.Frame is null || request.Frame == input.Frame)
-            {
-                IIndicatorResult result = indicator.Calculate(coreCandles);
-                EnsureCalculationSucceeded(request, result);
-                series[request.Key] = ExtractRequestedSeries(result, request.OutputName, request.StrictOutputName).ToImmutableArray();
-                continue;
-            }
-
-            TimeFrame foreignFrame = request.Frame.Value;
-            if (input.AdditionalTimeframeBars is null ||
-                !input.AdditionalTimeframeBars.TryGetValue(foreignFrame, out ImmutableArray<CandleData> foreignBars))
-            {
-                throw new InvalidOperationException(
-                    $"StrategyIndicatorRequest '{request.Key}' requires Frame '{foreignFrame}', but " +
-                    $"{nameof(BacktestInput.AdditionalTimeframeBars)} does not supply bars for it.");
-            }
-
-            if (!foreignCoreCandlesByFrame.TryGetValue(foreignFrame, out CoreCandleData[]? foreignCoreCandles))
-            {
-                foreignCoreCandles = new CoreCandleData[foreignBars.Length];
-                for (int i = 0; i < foreignCoreCandles.Length; i++)
-                {
-                    CandleData bar = foreignBars[i];
-                    foreignCoreCandles[i] = new CoreCandleData(bar.Timestamp, bar.Open, bar.High, bar.Low, bar.Close, bar.Volume);
-                }
-                foreignCoreCandlesByFrame[foreignFrame] = foreignCoreCandles;
-            }
-
-            IIndicatorResult foreignResult = indicator.Calculate(foreignCoreCandles);
-            EnsureCalculationSucceeded(request, foreignResult);
-            // A series may extend past the last candle (Ichimoku's Senkou spans hold count + Displacement values). That tail is a projection the
-            // backtest cannot know, and Align needs exactly one value per foreign bar, so only the per-bar part is kept.
-            ImmutableArray<decimal?> foreignValues = ExtractRequestedSeries(foreignResult, request.OutputName, request.StrictOutputName).Take(foreignBars.Length).ToImmutableArray();
-            series[request.Key] = TimeframeAlignment.Align(input.Bars, foreignBars, foreignValues);
-        }
-
-        return new IndicatorSeriesSet(series);
+        return ConditionSeriesEvaluator.PrepareIndicators(
+            _indicatorFactory,
+            input.Bars,
+            input.Frame,
+            requests,
+            foreignBars,
+            cancellationToken);
     }
-
-    /// <summary>An unsuccessful indicator result used to be consumed as an empty series, silently turning every condition on it into "false"; fail loudly instead.</summary>
-    private static void EnsureCalculationSucceeded(StrategyIndicatorRequest request, IIndicatorResult result)
-    {
-        if (!result.IsSuccessful)
-        {
-            throw new InvalidOperationException(
-                $"StrategyIndicatorRequest '{request.Key}': indicator '{request.Type}' calculation failed: {result.ErrorMessage}");
-        }
-    }
-
-    /// <summary>Task 6a safe-extension (docs/sa_implementation_plan_BacktestOutputNameSupport):
-    /// mirrors the exact HasSeries/GetSeries-guarded pattern <c>ScreenerValueExtractor</c> already uses,
-    /// so a request naming a non-Main series of a multi-series indicator (e.g. MACD's "Signal") is
-    /// honored, while a request whose OutputName is missing/not found or the default "Main" behaves
-    /// byte-for-byte identically to before this field existed.</summary>
-    private static IReadOnlyList<decimal?> ExtractRequestedSeries(IIndicatorResult result, string outputName, bool strictOutputName)
-    {
-        if (!strictOutputName)
-        {
-            return (!string.IsNullOrWhiteSpace(outputName) && result.HasSeries(outputName))
-                ? result.GetSeries(outputName)
-                : result.MainValues;
-        }
-
-        string normalized = string.IsNullOrWhiteSpace(outputName) ? IndicatorResult.MainSeriesName : outputName;
-        if (string.Equals(normalized, IndicatorResult.MainSeriesName, StringComparison.Ordinal))
-        {
-            return result.MainValues;
-        }
-
-        string? exactName = result.SeriesNamesList.FirstOrDefault(name => string.Equals(name, normalized, StringComparison.Ordinal));
-        if (exactName is null)
-        {
-            throw new InvalidOperationException($"Indicator result does not contain the requested series '{normalized}'.");
-        }
-
-        return result.GetSeries(exactName);
-    }
-
     /// <summary>SHA-256 over a deterministic byte serialization of every input/config/output field that affects the run's outcome, per BacktestResult's own "same input+config+strategy must hash identically" contract.</summary>
     private static byte[] ComputeReproducibilityHash(
         BacktestInput input, BacktestConfiguration config, string strategyName,

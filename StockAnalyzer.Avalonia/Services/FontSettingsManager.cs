@@ -182,7 +182,10 @@ namespace StockAnalyzer.Avalonia.Services
                     TooltipFontSize = TooltipFontSize
                 };
 
-                await StockAnalyzer.Core.Common.AtomicJsonFile.SaveAsync(FontSettingsFilePath, data);
+                using (await StockAnalyzer.Core.Common.SerializedPathGate.AcquireAsync(FontSettingsFilePath).ConfigureAwait(false))
+                {
+                    await StockAnalyzer.Core.Common.AtomicJsonFile.SaveAsync(FontSettingsFilePath, data);
+                }
             }
             catch (Exception ex)
             {

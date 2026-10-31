@@ -266,6 +266,97 @@ public class PortfolioSummaryViewModelTests
         Assert.Equal(145m, capturedRates[CurrencyCode.USD].Rate);
     }
 
+    private async Task<PortfolioSummaryViewModel> EvaluateWithResultAsync(Portfolio portfolio, IReadOnlyList<CurrencyCode>? unconverted)
+    {
+        _mockWatchlistManager.Setup(w => w.GetAllProfiles()).Returns(new List<WatchlistProfile>());
+        _mockMarketDataProvider.Setup(m => m.GetLatestPricesAsync(It.IsAny<IEnumerable<string>>()))
+            .ReturnsAsync(new Dictionary<string, decimal>());
+        _mockPortfolioManager.Setup(p => p.LoadPortfolioAsync(It.IsAny<System.Threading.CancellationToken>())).ReturnsAsync(portfolio);
+        _mockPortfolioManager.Setup(p => p.RebuildPortfolio(It.IsAny<decimal>(), It.IsAny<IReadOnlyList<Transaction>>())).Returns(portfolio);
+        _mockPortfolioManager.Setup(p => p.Evaluate(
+                It.IsAny<Portfolio>(),
+                It.IsAny<IReadOnlyDictionary<string, decimal>>(),
+                It.IsAny<IReadOnlyDictionary<CurrencyCode, ExchangeRate>>(),
+                It.IsAny<CurrencyCode>()))
+            .Returns(new PortfolioEvaluationResult(
+                new PortfolioMetrics(0, 0, 0, 0, 0),
+                new Dictionary<string, decimal>(),
+                new Dictionary<string, decimal>(),
+                unconverted));
+
+        var viewModel = new PortfolioSummaryViewModel(
+            _mockPortfolioManager.Object,
+            _mockMarketDataProvider.Object,
+            _dispatcherService,
+            _mockMessenger.Object,
+            _mockLogger.Object,
+            _mockWatchlistManager.Object,
+            _mockDialogService.Object,
+            _dialogViewModelFactory,
+            _mockDesignTimeDetector.Object,
+            _mockLocalizationService.Object
+        );
+
+        await SelectRootAndRefreshAsync(viewModel);
+        return viewModel;
+    }
+
+    // Public surface only: selecting a node starts the evaluation, the forced refresh waits for it (the refresh semaphore serializes both).
+    private static async Task SelectRootAndRefreshAsync(PortfolioSummaryViewModel viewModel)
+    {
+        viewModel.SelectedNode = new TreeNode(Guid.NewGuid(), "Root", true);
+        await viewModel.RefreshDataAsync(force: true);
+    }
+
+    private static Portfolio PortfolioWithUsdAndEurPositions() => new Portfolio(
+        0m,
+        new Dictionary<string, Position>
+        {
+            { "AAPL", new Position("AAPL", 1m, 100m, false, new Money(100m, CurrencyCode.USD)) },
+            { "SAP", new Position("SAP", 1m, 100m, false, new Money(100m, CurrencyCode.EUR)) },
+            { "7203", new Position("7203", 1m, 100m, false, new Money(100m, CurrencyCode.JPY)) },
+        });
+
+    [Fact]
+    public async Task Evaluate_WithUnconvertedCurrencies_ShowsNoticeWithCodesAndMarksOnlyThoseRows()
+    {
+        var viewModel = await EvaluateWithResultAsync(PortfolioWithUsdAndEurPositions(), new[] { CurrencyCode.EUR, CurrencyCode.USD });
+
+        Assert.True(viewModel.HasUnconvertedNotice);
+        Assert.Contains("EUR, USD", viewModel.UnconvertedNotice);
+        Assert.True(viewModel.Positions.Single(p => p.Symbol == "AAPL").IsConversionUnavailable);
+        Assert.True(viewModel.Positions.Single(p => p.Symbol == "SAP").IsConversionUnavailable);
+        Assert.False(viewModel.Positions.Single(p => p.Symbol == "7203").IsConversionUnavailable);
+    }
+
+    [Fact]
+    public async Task Evaluate_WithoutUnconvertedCurrencies_HidesNoticeAndMarksNoRow()
+    {
+        var viewModel = await EvaluateWithResultAsync(PortfolioWithUsdAndEurPositions(), null);
+
+        Assert.False(viewModel.HasUnconvertedNotice);
+        Assert.Null(viewModel.UnconvertedNotice);
+        Assert.All(viewModel.Positions, p => Assert.False(p.IsConversionUnavailable));
+    }
+
+    [Fact]
+    public async Task Evaluate_AfterUnconvertedCurrenciesDisappear_ClearsNoticeAndRowMarkers()
+    {
+        var viewModel = await EvaluateWithResultAsync(PortfolioWithUsdAndEurPositions(), new[] { CurrencyCode.USD });
+        Assert.True(viewModel.HasUnconvertedNotice);
+
+        _mockPortfolioManager.Setup(p => p.Evaluate(
+                It.IsAny<Portfolio>(),
+                It.IsAny<IReadOnlyDictionary<string, decimal>>(),
+                It.IsAny<IReadOnlyDictionary<CurrencyCode, ExchangeRate>>(),
+                It.IsAny<CurrencyCode>()))
+            .Returns(new PortfolioEvaluationResult(new PortfolioMetrics(0, 0, 0, 0, 0), new Dictionary<string, decimal>(), new Dictionary<string, decimal>()));
+        await SelectRootAndRefreshAsync(viewModel);
+
+        Assert.False(viewModel.HasUnconvertedNotice);
+        Assert.All(viewModel.Positions, p => Assert.False(p.IsConversionUnavailable));
+    }
+
     [Fact]
     public void Receive_ColumnChooserAppliedMessage_UpdatesIsNotesColumnVisible()
     {

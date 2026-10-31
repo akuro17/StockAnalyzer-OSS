@@ -73,6 +73,7 @@ public partial class MainWindowViewModel : ViewModelBase,
     private readonly ISourceIndicatorService? _sourceIndicatorService;
     private readonly IDynamicPeriodDriverService? _dynamicPeriodDriverService;
     private readonly IContainerRegistry? _containerRegistry;
+    private readonly StockAnalyzer.Core.Services.Backtest.Configuration.IBacktestColumnSettingsManager? _backtestColumnSettingsManager;
 
     // Child VM
     public ChartViewModel ChartViewModel { get; }
@@ -238,8 +239,10 @@ public partial class MainWindowViewModel : ViewModelBase,
         Func<ChartViewModel> chartViewModelFactory,
         ISourceIndicatorService? sourceIndicatorService = null,
         IDynamicPeriodDriverService? dynamicPeriodDriverService = null,
-        IContainerRegistry? containerRegistry = null)
+        IContainerRegistry? containerRegistry = null,
+        StockAnalyzer.Core.Services.Backtest.Configuration.IBacktestColumnSettingsManager? backtestColumnSettingsManager = null)
     {
+        _backtestColumnSettingsManager = backtestColumnSettingsManager;
         _sourceIndicatorService = sourceIndicatorService;
         _dynamicPeriodDriverService = dynamicPeriodDriverService;
         _containerRegistry = containerRegistry;
@@ -1328,7 +1331,8 @@ public partial class MainWindowViewModel : ViewModelBase,
         }
 
         // Capture Backtest column settings
-        var backtestSettings = new StockAnalyzer.Core.Services.Backtest.Configuration.BacktestColumnSettingsManager().Load();
+        var backtestSettings = (_backtestColumnSettingsManager
+            ?? new StockAnalyzer.Core.Services.Backtest.Configuration.BacktestColumnSettingsManager()).Load();
         if (backtestSettings != null)
         {
             settings.BacktestTradeVisibleColumns = new List<string>(backtestSettings.TradeVisibleColumns);

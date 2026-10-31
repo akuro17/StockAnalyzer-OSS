@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using SkiaSharp;
+using StockAnalyzer.Core.Common;
 using StockAnalyzer.Core.Models.Notes;
 
 namespace StockAnalyzer.Core.Services.Notes;
@@ -106,7 +107,7 @@ public sealed class AttachmentRepository
             var attachmentId = Guid.NewGuid();
             var storedFileName = $"{attachmentId}{extension.ToLowerInvariant()}";
             var filePath = Path.Combine(_attachmentsDirectory, storedFileName);
-            await File.WriteAllBytesAsync(filePath, encoded.ToArray(), ct).ConfigureAwait(false);
+            await AtomicFileWriter.WriteAllBytesAsync(filePath, encoded.ToArray(), ct).ConfigureAwait(false);
 
             var attachment = new Attachment(
                 attachmentId,

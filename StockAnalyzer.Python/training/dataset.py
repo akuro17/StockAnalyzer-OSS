@@ -418,7 +418,7 @@ TRAINING_ARTIFACTS_ROOT: Path = DATA_ROOT / "TrainingArtifacts"
 TRAINING_WIZARD_ARTIFACTS_DIR: Path = TRAINING_ARTIFACTS_ROOT / "TW"
 
 # timeframe wire string (mirrors C# StockAnalyzer.Core.Models.Training.TrainingTimeframe) ->
-# the parquet subdirectory produced by generate_timeframes.py. Single source of truth for the
+# the parquet subdirectory written by the C# TimeFrameParquetGenerator. Single source of truth for the
 # Daily/Weekly/Monthly mapping on the Python side.
 TIMEFRAME_DIRS: Dict[str, str] = {"daily": "Daily", "weekly": "Weekly", "monthly": "Monthly"}
 
@@ -427,7 +427,7 @@ def resolve_timeframe_dir(timeframe: str, data_root: Path | str | None = None) -
     """Map a timeframe wire string to its parquet directory.
 
     ``daily`` -> ``<repo>/Data/Daily``; ``weekly`` / ``monthly`` map to the directories
-    written by ``generate_timeframes.py``. The lookup is case-insensitive. Raises
+    written by the C# ``TimeFrameParquetGenerator``. The lookup is case-insensitive. Raises
     ``ValueError`` on an unrecognized value.
     """
     key = str(timeframe).strip().lower()

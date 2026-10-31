@@ -146,8 +146,8 @@ def classification_report_dict(
         raise ValueError(f"probs shape {p.shape} != ({total}, {num_classes})")
     onehot = np.eye(num_classes, dtype=np.float64)[yt]
 
+    multi_logloss = _multi_logloss(yt, p, num_classes, _HAVE_SKLEARN)
     if _HAVE_SKLEARN:
-        multi_logloss = float(_sk.log_loss(yt, p, labels=list(range(num_classes))))
         try:
             auc_ovr = float(_sk.roc_auc_score(
                 yt, p, average="macro", multi_class="ovr", labels=list(range(num_classes))
@@ -155,8 +155,6 @@ def classification_report_dict(
         except ValueError:
             auc_ovr = float("nan")
     else:
-        clipped = np.clip(p, LOGLOSS_EPS, 1.0 - LOGLOSS_EPS)
-        multi_logloss = float(-np.mean(np.log(clipped[np.arange(total), yt])))
         aucs = [_binary_auc(onehot[:, c], p[:, c]) for c in range(num_classes)]
         finite = [a for a in aucs if np.isfinite(a)]
         auc_ovr = float(np.mean(finite)) if finite else float("nan")
@@ -167,6 +165,14 @@ def classification_report_dict(
     report["auc_ovr"] = auc_ovr
     report["brier"] = brier
     return report
+
+
+def _multi_logloss(yt: np.ndarray, p: np.ndarray, num_classes: int, use_sklearn: bool) -> float:
+    """Multi-class log-loss: ``sklearn.metrics.log_loss`` when ``use_sklearn`` else the numpy formula (clip, then mean of -log p[true])."""
+    if use_sklearn:
+        return float(_sk.log_loss(yt, p, labels=list(range(num_classes))))
+    clipped = np.clip(p, LOGLOSS_EPS, 1.0 - LOGLOSS_EPS)
+    return float(-np.mean(np.log(clipped[np.arange(yt.shape[0]), yt])))
 
 
 def regression_metrics(
@@ -180,6 +186,9 @@ def regression_metrics(
     ``majority_baseline_accuracy`` -- ``rmse_zero_baseline`` /
     ``mae_zero_baseline`` -- and ``rmse_over_baseline`` is negative when the model
     beats it.
+
+    ``directional_accuracy`` compares ``sign(y_pred)`` with ``sign(y_true)``, where the sign of exactly ``0.0`` is ``0``: a window whose
+    realized target is ``0.0`` counts as a hit only when the prediction is exactly ``0.0``, and as a miss for any other prediction.
     """
     yt = np.asarray(y_true, dtype=np.float64).ravel()
     yp = np.asarray(y_pred, dtype=np.float64).ravel()
@@ -287,6 +296,19 @@ def _run_selfcheck() -> None:
     rep_b = classification_report_dict(y_true, y_pred, probs=blur)
     assert np.isfinite(rep_b["multi_logloss"]) and 0.0 <= rep_b["brier"] <= 2.0
     assert 0.0 <= rep_b["auc_ovr"] <= 1.0 or np.isnan(rep_b["auc_ovr"])
+
+    # numpy log-loss fallback == sklearn log_loss, also for rows that do not sum to one. Measured on scikit-learn 1.9.1: sklearn does NOT
+    # renormalize rows, so the fallback must not either; a sklearn that renormalizes would break this assertion on purpose (parity signal).
+    if _HAVE_SKLEARN:
+        import warnings
+
+        unnormalized = np.array([[0.45, 0.45, 0.0], [0.1, 0.1, 0.7], [0.2, 0.3, 0.4]])  # rows sum to 0.9
+        yt_u = np.array([0, 2, 1], dtype=np.int64)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            with_sklearn = _multi_logloss(yt_u, unnormalized, 3, use_sklearn=True)
+        with_fallback = _multi_logloss(yt_u, unnormalized, 3, use_sklearn=False)
+        assert abs(with_sklearn - with_fallback) < 1e-12, (with_sklearn, with_fallback)
 
     # numpy AUC identity vs a hand case: scores perfectly separate the positives
     assert abs(_binary_auc(np.array([0, 0, 1, 1]), np.array([0.1, 0.2, 0.8, 0.9])) - 1.0) < 1e-9

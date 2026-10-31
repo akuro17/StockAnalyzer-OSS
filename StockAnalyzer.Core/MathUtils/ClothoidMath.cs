@@ -5,7 +5,7 @@ namespace StockAnalyzer.Core.MathUtils;
 
 /// <summary>
 /// Mathematical engine for Clothoid Curve (Euler / Cornu Spiral) trend trajectory projections.
-/// Uses FresnelMath for analytical closed-form coordinate evaluation, coupled with
+/// Evaluates the trajectory coordinates by composite Simpson quadrature (it does not call FresnelMath), coupled with
 /// a robust exponentially weighted 2nd-order polynomial fit (WLS) for scale-invariant initial parameter estimation.
 /// Enforces time-monotonicity invariant (dx/ds &gt; 0) with a smooth tanh angle damping filter.
 /// </summary>

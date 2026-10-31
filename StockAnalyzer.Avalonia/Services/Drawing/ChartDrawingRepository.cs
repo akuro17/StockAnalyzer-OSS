@@ -190,7 +190,7 @@ public class ChartDrawingRepository : IChartDrawingRepository
             // corruption-recovery pattern) instead of silently discarding it on next save.
             try
             {
-                var backupPath = path + ".corrupted";
+                var backupPath = StockAnalyzer.Core.Common.CorruptedFile.PathFor(path);
                 File.Copy(path, backupPath, overwrite: true);
             }
             catch { /* best-effort; a failed backup must not prevent falling back to empty */ }

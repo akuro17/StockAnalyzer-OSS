@@ -20,6 +20,12 @@ public partial class PortfolioPositionViewModel : ViewModelBase
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(Type))] [NotifyPropertyChangedFor(nameof(ShowSymbol))] [NotifyPropertyChangedFor(nameof(SymbolMargin))] [NotifyPropertyChangedFor(nameof(SymbolVerticalAlignment))] [NotifyPropertyChangedFor(nameof(ZIndex))] [NotifyPropertyChangedFor(nameof(SymbolBorderThickness))] private bool _isShort;
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(ShowSymbol))] [NotifyPropertyChangedFor(nameof(SymbolMargin))] [NotifyPropertyChangedFor(nameof(SymbolVerticalAlignment))] [NotifyPropertyChangedFor(nameof(ZIndex))] [NotifyPropertyChangedFor(nameof(SymbolBorderThickness))] private bool _isHedged;
 
+    /// <summary>Text of the value and PnL cells while <see cref="IsConversionUnavailable"/> is true (an em dash, never 0).</summary>
+    public const string UnavailableValueText = "—";
+
+    /// <summary>True when the position's currency has no usable exchange rate; value and PnL cells then show <see cref="UnavailableValueText"/> instead of 0.</summary>
+    [ObservableProperty] private bool _isConversionUnavailable;
+
     public string Type => IsShort ? "Short" : "Long";
 
     public bool ShowSymbol => !IsShort || !IsHedged;

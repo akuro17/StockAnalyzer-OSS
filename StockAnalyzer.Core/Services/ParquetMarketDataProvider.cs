@@ -178,8 +178,8 @@ public class ParquetMarketDataProvider : IMarketDataProvider
                     Directory.CreateDirectory(parentDir);
                 }
                 var defaultTickers = new List<string>();
-                var defaultJson = JsonSerializer.Serialize(defaultTickers, new JsonSerializerOptions { WriteIndented = true });
-                File.WriteAllText(_tickerListPath, defaultJson, System.Text.Encoding.UTF8);
+                // Shared atomic writer: UTF-8 without BOM, tmp + move. The file is shared with the Python pipeline (same path as before).
+                Common.AtomicJsonFile.Save(_tickerListPath, defaultTickers, new JsonSerializerOptions { WriteIndented = true });
                 _logger.LogInformation("Created default master ticker list at {Path}", _tickerListPath);
             }
             catch (Exception ex)
@@ -815,7 +815,7 @@ public class ParquetMarketDataProvider : IMarketDataProvider
                             if (val == null) return null;
                             var s = val.ToString()?.Trim();
                             if (string.IsNullOrEmpty(s) || s.Equals("N/A", StringComparison.OrdinalIgnoreCase) || s.Equals("None", StringComparison.OrdinalIgnoreCase)) return null;
-                            return Convert.ToDecimal(s);
+                            return ParseInvariantDecimal(s);
                         }
                         catch
                         {
@@ -870,8 +870,8 @@ public class ParquetMarketDataProvider : IMarketDataProvider
                         Normalize(sector),
                         Normalize(industry),
                         Normalize(currency, "USD"),
-                        currentPrice != null && currentPrice.ToString() != "None" ? (decimal?)Convert.ToDecimal(currentPrice.ToString()) : null,
-                        lastClose != null && lastClose.ToString() != "None" ? (decimal?)Convert.ToDecimal(lastClose.ToString()) : null
+                        currentPrice != null && currentPrice.ToString() != "None" ? (decimal?)ParseInvariantDecimal(currentPrice.ToString()) : null,
+                        lastClose != null && lastClose.ToString() != "None" ? (decimal?)ParseInvariantDecimal(lastClose.ToString()) : null
                     )
                     {
                         ReturnOnEquity = GetPercent("returnOnEquity"),
@@ -1752,4 +1752,15 @@ public class ParquetMarketDataProvider : IMarketDataProvider
     internal static string FormatDuckDbPath(string path) => EscapeDuckDbPath(path.Replace("\\", "/"));
 
     internal static string EscapeDuckDbPath(string path) => path.Replace("'", "''");
+
+    /// <summary>
+    /// Parses decimal text coming from Python (<c>str()</c> of a float: '.' decimal separator) independently of the thread culture.
+    /// Accepts exactly what <c>Convert.ToDecimal(string)</c> accepts under en-US (white space, sign, '.', ',' thousands); exponent
+    /// notation, currency symbols and parentheses are still rejected with <see cref="FormatException"/>.
+    /// </summary>
+    internal static decimal ParseInvariantDecimal(string text)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        return decimal.Parse(text, System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture);
+    }
 }

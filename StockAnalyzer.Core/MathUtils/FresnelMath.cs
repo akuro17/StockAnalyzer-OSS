@@ -8,9 +8,10 @@ namespace StockAnalyzer.Core.MathUtils;
 /// Definitions:
 ///   C(u) = \int_0^u \cos(\frac{\pi}{2} t^2) dt
 ///   S(u) = \int_0^u \sin(\frac{\pi}{2} t^2) dt
-/// Uses analytical term-ratio recurrence relations for Taylor series expansions (|u| &lt;= 5.5),
-/// and asymptotic auxiliary rational expansions for extremely large arguments (|u| &gt; 5.5).
-/// Absolute error is guaranteed to be &lt; 1e-12 across the entire real domain.
+/// Uses analytical term-ratio recurrence relations for Taylor series expansions (|u| &lt;= 4.0),
+/// and asymptotic auxiliary rational expansions for larger arguments (|u| &gt; 4.0); infinite arguments return the limits +-0.5.
+/// Measured maximum absolute error against a 28-digit decimal Taylor oracle (FresnelMathAccuracyTests, grid step 0.01, |u| &lt;= 5):
+/// 7.2e-8 on the Taylor branch (cancellation of terms up to ~5e8 near u = 4) and 4.7e-8 on the asymptotic branch. Larger |u| is not measured.
 /// Zero heap allocation.
 /// </summary>
 public static class FresnelMath
@@ -34,6 +35,13 @@ public static class FresnelMath
         if (u == 0.0)
         {
             return (0.0, 0.0);
+        }
+
+        // Limits of the integrals: C(+-inf) = S(+-inf) = +-1/2.
+        if (double.IsInfinity(u))
+        {
+            double limit = u > 0.0 ? 0.5 : -0.5;
+            return (limit, limit);
         }
 
         // Fresnel integrals are odd functions: C(-u) = -C(u), S(-u) = -S(u)
@@ -112,7 +120,7 @@ public static class FresnelMath
     }
 
     /// <summary>
-    /// Asymptotic auxiliary function evaluation for |u| &gt; 5.5:
+    /// Asymptotic auxiliary function evaluation for |u| &gt; 4.0:
     /// C(u) = 1/2 + f(u) \sin(\pi u^2 / 2) - g(u) \cos(\pi u^2 / 2)
     /// S(u) = 1/2 - f(u) \cos(\pi u^2 / 2) - g(u) \sin(\pi u^2 / 2)
     /// </summary>

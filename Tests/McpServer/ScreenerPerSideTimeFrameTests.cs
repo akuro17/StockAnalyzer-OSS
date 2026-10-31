@@ -97,6 +97,22 @@ public sealed class ScreenerPerSideTimeFrameTests : IDisposable
     }
 
     [Fact]
+    public async Task AnExpandedNameKeepsTheTimeFrameOfItsSideOnEveryComparisonItBecomes()
+    {
+        // Plan 05 / T2 with the per-side time frame: Rising 2 on a weekly close is two weekly comparisons (UP's last complete weekly closes are 498, 491, 484).
+        const string risingWeeks = """{"left":{"price":"Close","timeFrame":"W1"},"comparison":"Rising","bars":2}""";
+        const string writtenOut = """{"operator":"And","children":[{"left":{"price":"Close","timeFrame":"W1"},"comparison":"GreaterThan","right":{"price":"Close","timeFrame":"W1","offset":1}},{"left":{"price":"Close","timeFrame":"W1","offset":1},"comparison":"GreaterThan","right":{"price":"Close","timeFrame":"W1","offset":2}}]}""";
+
+        using JsonDocument sugared = JsonDocument.Parse(await Trend().CallAsync("sa_run_screener", Call(risingWeeks, ",\"symbols\":[\"UP\",\"DOWN\"]")));
+        using JsonDocument written = JsonDocument.Parse(await Trend().CallAsync("sa_run_screener", Call(writtenOut, ",\"symbols\":[\"UP\",\"DOWN\"]")));
+
+        Assert.Equal(new[] { "UP" }, Symbols(sugared.RootElement));
+        Assert.Equal(Symbols(written.RootElement), Symbols(sugared.RootElement));
+        Assert.Equal(FrameReport(written.RootElement, "W1").GetRawText(), FrameReport(sugared.RootElement, "W1").GetRawText());
+        Assert.Single(sugared.RootElement.GetProperty("sideFrames").EnumerateArray());
+    }
+
+    [Fact]
     public async Task WithCompleteBarsOnlyFalseTheWeeklySideReadsThePartialWeekAndNamesIt()
     {
         const string atLeastTheWeeklyClose = """{"left":{"price":"Close"},"comparison":"GreaterThanOrEqual","right":{"price":"Close","timeFrame":"W1"}}""";

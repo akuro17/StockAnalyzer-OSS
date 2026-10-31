@@ -36,6 +36,18 @@ internal sealed class RequestedIndicator
 
     public string? DynamicSeries { get; }
 
+    /// <summary>The time frame the client wrote for this indicator (<c>indicators[i].timeFrame</c>), also when it equals the call's; null when none was written.</summary>
+    public TimeFrame? WrittenTimeFrame { get; init; }
+
+    /// <summary>
+    /// The frame whose bars this indicator is calculated on when it differs from the call's (the written frame is coarser than the call's); null means the call's own bars
+    /// (the key was omitted or named the call's frame, which is the same thing).
+    /// </summary>
+    public TimeFrame? OwnTimeFrame { get; init; }
+
+    /// <summary>The bars of <see cref="OwnTimeFrame"/> the indicator is calculated on, set by the tool once they are loaded; null while <see cref="OwnTimeFrame"/> is null.</summary>
+    public IReadOnlyList<CandleData>? OwnBars { get; set; }
+
     public string Path => $"indicators[{Index}]";
 }
 
@@ -75,6 +87,17 @@ internal sealed class IndicatorChainPlan
         {
             byId[upstreamId].Settings.OutputSeriesName = series;
         }
+    }
+
+    /// <summary>
+    /// The listed output series of <paramref name="request"/> that is its main series (the one an omitted series name means), or null when none of the listed
+    /// names is an alias of the main series.
+    /// </summary>
+    public string? MainSeriesDisplayName(RequestedIndicator request)
+    {
+        var type = Enum.Parse<IndicatorType>(request.Entry.Type);
+        return request.Entry.OutputSeriesNames.FirstOrDefault(name =>
+            string.Equals(IndicatorOutputSeriesResolver.Normalize(type, name, request.Settings.PriceSource, _factory), MainSeries, StringComparison.Ordinal));
     }
 
     /// <summary>The output series of <paramref name="request"/> whose value at a bar depends on later bars (its own, or all of them when its input does).</summary>
@@ -153,6 +176,16 @@ internal sealed class IndicatorChainPlan
             throw new ToolException(ToolErrorCodes.InvalidArgument, $"Indicator '{request.Id}' cannot use itself as input (circular reference).", idPath);
         }
 
+        // The pipeline reads an upstream indicator's series bar by bar from one calculation, so both must run on the same bars.
+        if (request.OwnTimeFrame != upstream.OwnTimeFrame)
+        {
+            throw new ToolException(
+                ToolErrorCodes.InvalidArgument,
+                $"Indicator '{request.Id}' and its input '{upstream.Id}' use different time frames ('{FrameName(request)}' and '{FrameName(upstream)}').",
+                idPath,
+                "Give both indicators the same timeFrame (or none), because an indicator on an indicator reads it bar by bar on one time frame.");
+        }
+
         string normalized = MainSeries;
         if (series is not null)
         {
@@ -180,6 +213,8 @@ internal sealed class IndicatorChainPlan
             request.Settings.DynamicPeriodIndicatorId = upstream.Settings.Id;
         }
     }
+
+    private static string FrameName(RequestedIndicator indicator) => indicator.OwnTimeFrame?.ToString() ?? "the call's time frame";
 
     private static string CanonicalSeries(RequestedIndicator indicator, string series)
         => indicator.Entry.OutputSeriesNames.FirstOrDefault(n => string.Equals(n, series, StringComparison.OrdinalIgnoreCase)) ?? series;

@@ -101,7 +101,7 @@ namespace StockAnalyzer.Core.Models.Indicators.Volatility
                         avgUp = sumUp / Period;
                         avgDown = sumDown / Period;
                         decimal total = avgUp.Value + avgDown.Value;
-                        _values.Add(total == 0m ? 50m : 100m * (avgUp.Value / total));
+                        _values.Add(total == 0m ? IndicatorCalculationHelper.BoundedOscillatorNeutral : 100m * (avgUp.Value / total));
                     }
                 }
                 else
@@ -112,7 +112,7 @@ namespace StockAnalyzer.Core.Models.Indicators.Volatility
                         avgDown = (avgDown.Value * (Period - 1) + downStd[i]!.Value) / Period;
 
                         decimal total = avgUp.Value + avgDown.Value;
-                        _values.Add(total == 0m ? 50m : 100m * (avgUp.Value / total));
+                        _values.Add(total == 0m ? IndicatorCalculationHelper.BoundedOscillatorNeutral : 100m * (avgUp.Value / total));
                     }
                     else
                     {

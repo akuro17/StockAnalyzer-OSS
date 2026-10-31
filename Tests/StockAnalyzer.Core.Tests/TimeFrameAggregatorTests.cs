@@ -308,62 +308,31 @@ public class TimeFrameAggregatorTests
     [Fact]
     public void GoldenVectors_AllSevenBoundaryCases_MatchAggregatorAndRules()
     {
-        string path = System.IO.Path.Combine(AppContext.BaseDirectory, "Assets", "timeframe_golden_vectors.json");
-        if (!System.IO.File.Exists(path))
+        IReadOnlyList<GoldenVector> vectors = TimeFrameGoldenVectors.Load();
+        Assert.Equal(TimeFrameGoldenVectors.RequiredVectorCount, vectors.Count);
+
+        foreach (GoldenVector vector in vectors)
         {
-            path = System.IO.Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "Assets", "timeframe_golden_vectors.json");
+            AssertFrameMatches(vector, TimeFrameAggregator.AggregateDailyToWeekly(vector.DailyBars), vector.Weekly, TimeFrame.W1);
+            AssertFrameMatches(vector, TimeFrameAggregator.AggregateDailyToMonthly(vector.DailyBars), vector.Monthly, TimeFrame.MN1);
         }
-        Assert.True(System.IO.File.Exists(path), $"Golden vectors file not found at {path}");
+    }
 
-        string json = System.IO.File.ReadAllText(path);
-        using var doc = System.Text.Json.JsonDocument.Parse(json);
-        Assert.Equal(7, doc.RootElement.GetArrayLength());
-
-        foreach (var vector in doc.RootElement.EnumerateArray())
+    private static void AssertFrameMatches(GoldenVector vector, IReadOnlyList<CandleData> actual, IReadOnlyList<GoldenBar> expected, TimeFrame frame)
+    {
+        Assert.Equal(expected.Count, actual.Count);
+        for (int i = 0; i < actual.Count; i++)
         {
-            DateTime refDate = DateTime.Parse(vector.GetProperty("reference_date").GetString()!);
-
-            var daily = vector.GetProperty("daily_bars").EnumerateArray().Select(b => new CandleData(
-                DateTime.Parse(b.GetProperty("date").GetString()!),
-                b.GetProperty("open").GetDecimal(),
-                b.GetProperty("high").GetDecimal(),
-                b.GetProperty("low").GetDecimal(),
-                b.GetProperty("close").GetDecimal(),
-                b.GetProperty("volume").GetInt64())).ToList();
-
-            var weekly = TimeFrameAggregator.AggregateDailyToWeekly(daily);
-            var expectedWeekly = vector.GetProperty("expected_weekly").EnumerateArray().ToList();
-            Assert.Equal(expectedWeekly.Count, weekly.Count);
-            for (int i = 0; i < weekly.Count; i++)
-            {
-                var exp = expectedWeekly[i];
-                Assert.Equal(DateTime.Parse(exp.GetProperty("chart_timestamp").GetString()!), weekly[i].Timestamp.Date);
-                Assert.Equal(DateTime.Parse(exp.GetProperty("parquet_timestamp").GetString()!), TimeFrameAggregator.PeriodStart(weekly[i].Timestamp, TimeFrame.W1));
-                Assert.Equal(exp.GetProperty("period_key").GetInt32(), TimeFrameAggregator.GetPeriodKey(weekly[i].Timestamp, TimeFrame.W1));
-                Assert.Equal(exp.GetProperty("open").GetDecimal(), weekly[i].Open);
-                Assert.Equal(exp.GetProperty("high").GetDecimal(), weekly[i].High);
-                Assert.Equal(exp.GetProperty("low").GetDecimal(), weekly[i].Low);
-                Assert.Equal(exp.GetProperty("close").GetDecimal(), weekly[i].Close);
-                Assert.Equal(exp.GetProperty("volume").GetInt64(), weekly[i].Volume);
-                Assert.Equal(exp.GetProperty("is_partial").GetBoolean(), TimeFrameAggregator.IsPartialPeriod(weekly[i].Timestamp, TimeFrame.W1, refDate));
-            }
-
-            var monthly = TimeFrameAggregator.AggregateDailyToMonthly(daily);
-            var expectedMonthly = vector.GetProperty("expected_monthly").EnumerateArray().ToList();
-            Assert.Equal(expectedMonthly.Count, monthly.Count);
-            for (int i = 0; i < monthly.Count; i++)
-            {
-                var exp = expectedMonthly[i];
-                Assert.Equal(DateTime.Parse(exp.GetProperty("chart_timestamp").GetString()!), monthly[i].Timestamp.Date);
-                Assert.Equal(DateTime.Parse(exp.GetProperty("parquet_timestamp").GetString()!), TimeFrameAggregator.PeriodStart(monthly[i].Timestamp, TimeFrame.MN1));
-                Assert.Equal(exp.GetProperty("period_key").GetInt32(), TimeFrameAggregator.GetPeriodKey(monthly[i].Timestamp, TimeFrame.MN1));
-                Assert.Equal(exp.GetProperty("open").GetDecimal(), monthly[i].Open);
-                Assert.Equal(exp.GetProperty("high").GetDecimal(), monthly[i].High);
-                Assert.Equal(exp.GetProperty("low").GetDecimal(), monthly[i].Low);
-                Assert.Equal(exp.GetProperty("close").GetDecimal(), monthly[i].Close);
-                Assert.Equal(exp.GetProperty("volume").GetInt64(), monthly[i].Volume);
-                Assert.Equal(exp.GetProperty("is_partial").GetBoolean(), TimeFrameAggregator.IsPartialPeriod(monthly[i].Timestamp, TimeFrame.MN1, refDate));
-            }
+            GoldenBar exp = expected[i];
+            Assert.Equal(exp.ChartTimestamp, actual[i].Timestamp.Date);
+            Assert.Equal(exp.ParquetTimestamp, TimeFrameAggregator.PeriodStart(actual[i].Timestamp, frame));
+            Assert.Equal(exp.PeriodKey, TimeFrameAggregator.GetPeriodKey(actual[i].Timestamp, frame));
+            Assert.Equal(exp.Open, actual[i].Open);
+            Assert.Equal(exp.High, actual[i].High);
+            Assert.Equal(exp.Low, actual[i].Low);
+            Assert.Equal(exp.Close, actual[i].Close);
+            Assert.Equal(exp.Volume, actual[i].Volume);
+            Assert.Equal(exp.IsPartial, TimeFrameAggregator.IsPartialPeriod(actual[i].Timestamp, frame, vector.ReferenceDate));
         }
     }
 

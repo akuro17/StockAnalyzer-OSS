@@ -39,7 +39,10 @@ namespace StockAnalyzer.Avalonia.Services
                     ShowUpdateConfirmationDialog = ShowUpdateConfirmationDialog
                 };
 
-                await StockAnalyzer.Core.Common.AtomicJsonFile.SaveAsync(PythonSettingsFilePath, data);
+                using (await StockAnalyzer.Core.Common.SerializedPathGate.AcquireAsync(PythonSettingsFilePath).ConfigureAwait(false))
+                {
+                    await StockAnalyzer.Core.Common.AtomicJsonFile.SaveAsync(PythonSettingsFilePath, data);
+                }
             }
             catch (Exception ex)
             {

@@ -20,6 +20,9 @@ public class McpLimitsTests
         Assert.Equal(10000, limits.MaxCandlesPerRequest);
         Assert.Equal(200, limits.DefaultCandleCount);
         Assert.Equal(16, limits.MaxIndicatorsPerCall);
+        Assert.Equal(16, limits.MaxDerivedSeriesPerCall);
+        Assert.Equal(20, limits.DefaultSummaryTrendBars);
+        Assert.Equal(32, limits.MaxLookbackOffsets);
         Assert.Equal(100, limits.MaxSymbolsPerMetadataCall);
         Assert.Equal(200, limits.MaxReturnedTrades);
         Assert.Equal(20, limits.MaxReturnedWarnings);
@@ -32,6 +35,20 @@ public class McpLimitsTests
         Assert.Equal(200, limits.MaxReturnedMatches);
         Assert.Equal(4, limits.MaxSecondarySymbolsPerCall);
         Assert.Equal(32, limits.MaxInlineFilterRules);
+        Assert.Equal(5000, limits.MaxEquityCurvePoints);
+        Assert.Equal(5, limits.MaxDrawdownEpisodes);
+        Assert.Equal(500, limits.MaxOptimizationCombinations);
+        Assert.Equal(10, limits.MaxOptimizationTopK);
+        Assert.Equal(4, limits.MaxOptimizationParameters);
+        Assert.Equal(4, limits.OptimizationDegreeOfParallelism);
+        Assert.Equal(8, limits.MaxWalkForwardWindows);
+        Assert.Equal(1, limits.DefaultMinInSampleTrades);
+        Assert.Equal(200, limits.MaxVolumeProfileBins);
+        Assert.Equal(20, limits.MaxSupportResistanceLevels);
+        Assert.Equal(50, limits.MaxCycleBins);
+        Assert.Equal(100, limits.MaxReturnedPatterns);
+        Assert.Equal(100, limits.MaxProjectionBars);
+        Assert.Equal(50, limits.MaxSeasonalityYears);
         Assert.Equal(WatchlistConstants.MaxRelativePerformanceTargets, limits.MaxComparisonTargets);
         Assert.Equal(1, McpLimitsContract.MaxConcurrentToolCalls);
     }
@@ -43,6 +60,12 @@ public class McpLimitsTests
         { nameof(McpLimits.DefaultCandleCount), 0 },
         { nameof(McpLimits.DefaultOutputTailBars), 0 },
         { nameof(McpLimits.MaxIndicatorsPerCall), 65 },
+        { nameof(McpLimits.MaxDerivedSeriesPerCall), 0 },
+        { nameof(McpLimits.MaxDerivedSeriesPerCall), 65 },
+        { nameof(McpLimits.DefaultSummaryTrendBars), 1 },
+        { nameof(McpLimits.DefaultSummaryTrendBars), 50001 },
+        { nameof(McpLimits.MaxLookbackOffsets), 0 },
+        { nameof(McpLimits.MaxLookbackOffsets), 1001 },
         { nameof(McpLimits.MaxSymbolsPerMetadataCall), 501 },
         { nameof(McpLimits.MaxReturnedTrades), -1 },
         { nameof(McpLimits.MaxReturnedTrades), 1001 },
@@ -65,6 +88,34 @@ public class McpLimitsTests
         { nameof(McpLimits.DefaultTickerPageSize), 0 },
         { nameof(McpLimits.MaxInlineFilterRules), 0 },
         { nameof(McpLimits.MaxInlineFilterRules), 129 },
+        { nameof(McpLimits.MaxEquityCurvePoints), 0 },
+        { nameof(McpLimits.MaxEquityCurvePoints), 50001 },
+        { nameof(McpLimits.MaxDrawdownEpisodes), 0 },
+        { nameof(McpLimits.MaxDrawdownEpisodes), 51 },
+        { nameof(McpLimits.MaxOptimizationCombinations), 0 },
+        { nameof(McpLimits.MaxOptimizationCombinations), 20001 },
+        { nameof(McpLimits.MaxOptimizationTopK), 0 },
+        { nameof(McpLimits.MaxOptimizationTopK), 101 },
+        { nameof(McpLimits.MaxOptimizationParameters), 0 },
+        { nameof(McpLimits.MaxOptimizationParameters), 9 },
+        { nameof(McpLimits.OptimizationDegreeOfParallelism), 0 },
+        { nameof(McpLimits.OptimizationDegreeOfParallelism), 65 },
+        { nameof(McpLimits.MaxWalkForwardWindows), 0 },
+        { nameof(McpLimits.MaxWalkForwardWindows), 61 },
+        { nameof(McpLimits.DefaultMinInSampleTrades), -1 },
+        { nameof(McpLimits.DefaultMinInSampleTrades), 1001 },
+        { nameof(McpLimits.MaxVolumeProfileBins), 1 },
+        { nameof(McpLimits.MaxVolumeProfileBins), 501 },
+        { nameof(McpLimits.MaxSupportResistanceLevels), 0 },
+        { nameof(McpLimits.MaxSupportResistanceLevels), 101 },
+        { nameof(McpLimits.MaxCycleBins), 0 },
+        { nameof(McpLimits.MaxCycleBins), 501 },
+        { nameof(McpLimits.MaxReturnedPatterns), 0 },
+        { nameof(McpLimits.MaxReturnedPatterns), 1001 },
+        { nameof(McpLimits.MaxProjectionBars), 0 },
+        { nameof(McpLimits.MaxProjectionBars), 101 },
+        { nameof(McpLimits.MaxSeasonalityYears), 0 },
+        { nameof(McpLimits.MaxSeasonalityYears), 101 },
     };
 
     [Theory]
@@ -96,6 +147,18 @@ public class McpLimitsTests
     }
 
     [Fact]
+    public void TheCurveLimitInForceNeverExceedsWhatTheResponseSizeCanCarry_AndAConfigurationIsNotRefusedForIt()
+    {
+        // 4 MiB / 160 bytes per point = 26214 points fit; a response limit at its band minimum (64 KiB) still starts, with 409 points in force.
+        Assert.Equal(5000, McpLimitsContract.EffectiveMaxEquityCurvePoints(new McpLimits()));
+        Assert.Equal(26214, McpLimitsContract.EffectiveMaxEquityCurvePoints(new McpLimits { MaxEquityCurvePoints = 30000 }));
+        Assert.Equal(30000, McpLimitsContract.EffectiveMaxEquityCurvePoints(new McpLimits { MaxEquityCurvePoints = 30000, MaxResponseBytes = 8 * 1024 * 1024 }));
+        var smallResponse = new McpLimits { MaxResponseBytes = 64 * 1024 };
+        McpLimitsContract.Validate(smallResponse);
+        Assert.Equal(409, McpLimitsContract.EffectiveMaxEquityCurvePoints(smallResponse));
+    }
+
+    [Fact]
     public void TheEdgesOfEveryBandAreAccepted()
     {
         McpLimitsContract.Validate(new McpLimits
@@ -110,11 +173,61 @@ public class McpLimitsTests
     }
 
     [Theory]
+    [InlineData(2, 1)]
+    [InlineData(50000, 1000)]
+    public void TheEdgesOfTheSummaryBandsAreAccepted(int trendBars, int offsets)
+    {
+        McpLimitsContract.Validate(new McpLimits { DefaultSummaryTrendBars = trendBars, MaxLookbackOffsets = offsets });
+    }
+
+    [Fact]
+    public void TheTrendWindowInForceFollowsTheCalculationWindow_AndASmallRequestLimitIsNotRefusedForIt()
+    {
+        Assert.Equal(20, McpLimitsContract.EffectiveDefaultTrendBars(new McpLimits()));
+        Assert.Equal(10000, McpLimitsContract.EffectiveMaxTrendBars(new McpLimits()));
+        var small = new McpLimits { MaxCandlesPerRequest = 10, DefaultCandleCount = 10, MaxOutputTailBars = 10, DefaultOutputTailBars = 10 };
+        McpLimitsContract.Validate(small);
+        Assert.Equal(10, McpLimitsContract.EffectiveDefaultTrendBars(small));
+        Assert.Equal(10, McpLimitsContract.EffectiveMaxTrendBars(small));
+        var one = new McpLimits { MaxCandlesPerRequest = 1, DefaultCandleCount = 1, MaxOutputTailBars = 1, DefaultOutputTailBars = 1 };
+        McpLimitsContract.Validate(one);
+        Assert.Equal(2, McpLimitsContract.EffectiveMaxTrendBars(one));
+        Assert.Equal(2, McpLimitsContract.EffectiveDefaultTrendBars(one));
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(64)]
+    public void TheEdgesOfTheDerivedSeriesBandAreAccepted(int value)
+    {
+        McpLimitsContract.Validate(new McpLimits { MaxDerivedSeriesPerCall = value });
+    }
+
+    [Theory]
     [InlineData(1)]
     [InlineData(128)]
     public void TheEdgesOfTheInlineFilterRuleBandAreAccepted(int value)
     {
         McpLimitsContract.Validate(new McpLimits { MaxInlineFilterRules = value });
+    }
+
+    [Theory]
+    [InlineData(1, 1)]
+    [InlineData(50000, 50)]
+    public void TheEdgesOfTheBacktestDiagnosticsBandsAreAccepted(int points, int episodes)
+    {
+        McpLimitsContract.Validate(new McpLimits { MaxEquityCurvePoints = points, MaxDrawdownEpisodes = episodes });
+    }
+
+    [Theory]
+    [InlineData(1, 1, 1, 1, 1, 0)]
+    [InlineData(20000, 100, 8, 64, 60, 1000)]
+    public void TheEdgesOfTheOptimizationBandsAreAccepted(int combinations, int topK, int parameters, int parallelism, int windows, int minTrades)
+    {
+        McpLimitsContract.Validate(new McpLimits
+        {
+            MaxOptimizationCombinations = combinations, MaxOptimizationTopK = topK, MaxOptimizationParameters = parameters, OptimizationDegreeOfParallelism = parallelism, MaxWalkForwardWindows = windows, DefaultMinInSampleTrades = minTrades,
+        });
     }
 
     [Theory]

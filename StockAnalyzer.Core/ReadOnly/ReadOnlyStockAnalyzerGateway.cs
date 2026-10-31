@@ -1,3 +1,4 @@
+using System.Runtime.ExceptionServices;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Analysis;
 using StockAnalyzer.Core.Models.Backtest.Engine;
@@ -305,7 +306,76 @@ public sealed class ReadOnlyStockAnalyzerGateway : IReadOnlyStockAnalyzerGateway
         return required;
     }
 
-    public async Task<BacktestEvaluationArtifact> RunBacktestAsync(BacktestRunSnapshot snapshot, CancellationToken cancellationToken = default)
+    public Task<BacktestEvaluationArtifact> RunBacktestAsync(BacktestRunSnapshot snapshot, CancellationToken cancellationToken = default)
+        => RunBacktestCoreAsync(snapshot, sharedBars: null, cancellationToken);
+
+    public Task<IReadOnlyList<BacktestEvaluationArtifact>> RunBacktestBatchAsync(
+        IReadOnlyList<BacktestRunSnapshot> snapshots,
+        int degreeOfParallelism,
+        CancellationToken cancellationToken = default)
+        => RunBacktestBatchAsync(snapshots, degreeOfParallelism, artifact => artifact, cancellationToken);
+
+    public async Task<IReadOnlyList<TResult>> RunBacktestBatchAsync<TResult>(
+        IReadOnlyList<BacktestRunSnapshot> snapshots,
+        int degreeOfParallelism,
+        Func<BacktestEvaluationArtifact, TResult> project,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(snapshots);
+        ArgumentNullException.ThrowIfNull(project);
+        ArgumentOutOfRangeException.ThrowIfLessThan(degreeOfParallelism, 1);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (snapshots.Count == 0)
+        {
+            return Array.Empty<TResult>();
+        }
+
+        var sharedBars = new BacktestBarCache();
+        var results = new TResult[snapshots.Count];
+        var failures = new ExceptionDispatchInfo?[snapshots.Count];
+        int lowestFailedIndex = int.MaxValue;
+        var options = new ParallelOptions { MaxDegreeOfParallelism = degreeOfParallelism, CancellationToken = cancellationToken };
+
+        // Indices are handed out in ascending order. A run above an already failed index cannot change which failure is reported (the lowest
+        // one wins), so it is skipped; a run below it still executes. Hence the reported failure is the one a sequential loop would hit first.
+        await Parallel.ForEachAsync(Enumerable.Range(0, snapshots.Count), options, async (index, token) =>
+        {
+            if (index > Volatile.Read(ref lowestFailedIndex))
+            {
+                return;
+            }
+
+            try
+            {
+                results[index] = project(await RunBacktestCoreAsync(snapshots[index], sharedBars, token).ConfigureAwait(false));
+            }
+            catch (Exception ex) when (!token.IsCancellationRequested)
+            {
+                failures[index] = ExceptionDispatchInfo.Capture(ex);
+                int observed = Volatile.Read(ref lowestFailedIndex);
+                while (index < observed)
+                {
+                    int previous = Interlocked.CompareExchange(ref lowestFailedIndex, index, observed);
+                    if (previous == observed)
+                    {
+                        break;
+                    }
+
+                    observed = previous;
+                }
+            }
+        }).ConfigureAwait(false);
+
+        cancellationToken.ThrowIfCancellationRequested();
+        if (lowestFailedIndex != int.MaxValue)
+        {
+            failures[lowestFailedIndex]!.Throw();
+        }
+
+        return results;
+    }
+
+    private async Task<BacktestEvaluationArtifact> RunBacktestCoreAsync(BacktestRunSnapshot snapshot, BacktestBarCache? sharedBars, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         string canonical = RequireCanonical(snapshot.Symbol);
@@ -319,7 +389,10 @@ public sealed class ReadOnlyStockAnalyzerGateway : IReadOnlyStockAnalyzerGateway
             throw new NotSupportedException($"Execution model {snapshot.Configuration.ExecutionModel} is not supported by the read-only backtest.");
         }
 
-        PreparedBacktestRun prepared = await _backtestPreparation.PrepareAsync(snapshot with { Symbol = canonical }, cancellationToken).ConfigureAwait(false);
+        BacktestRunSnapshot canonicalSnapshot = snapshot with { Symbol = canonical };
+        PreparedBacktestRun prepared = await (sharedBars is null
+            ? _backtestPreparation.PrepareAsync(canonicalSnapshot, cancellationToken)
+            : _backtestPreparation.PrepareAsync(canonicalSnapshot, sharedBars, cancellationToken)).ConfigureAwait(false);
         return await Task.Run(
             () => _backtestEvaluation.Evaluate(
                 prepared.Input,

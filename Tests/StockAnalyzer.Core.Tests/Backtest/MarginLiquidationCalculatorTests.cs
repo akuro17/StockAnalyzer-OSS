@@ -104,4 +104,28 @@ public class MarginLiquidationCalculatorTests
 
         Assert.Equal(100.5m, fillPrice); // 100 * (1 + 0.005)
     }
+
+    // ---- Maintenance margin ratio range [0, 1): the Long divisor is q * (1 - ratio) ----
+
+    [Theory]
+    [InlineData(1.0)]
+    [InlineData(1.5)]
+    [InlineData(-0.1)]
+    public void ComputeLiquidationPrice_RatioOutsideZeroToOne_Throws(double ratio)
+    {
+        var error = Assert.Throws<ArgumentOutOfRangeException>(() =>
+            MarginLiquidationCalculator.ComputeLiquidationPrice(TradeSide.Long, 40m, 100m, 0m, 1000m, (decimal)ratio));
+
+        Assert.Equal("maintenanceMarginRatio", error.ParamName);
+    }
+
+    [Theory]
+    [InlineData(TradeSide.Long)]
+    [InlineData(TradeSide.Short)]
+    public void ComputeLiquidationPrice_RatioZero_IsAccepted(TradeSide side)
+    {
+        decimal pLiq = MarginLiquidationCalculator.ComputeLiquidationPrice(side, 40m, 100m, 0m, 1000m, 0m);
+
+        Assert.True(pLiq > 0m);
+    }
 }

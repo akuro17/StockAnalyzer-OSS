@@ -145,7 +145,7 @@ public sealed class BacktestConditionTemplateToolsTests : IDisposable
     }
 
     [Fact]
-    public async Task ATemplateWithAWeeklySideIsListedWithAWarning()
+    public async Task ATemplateWithAWeeklySideIsListedWithoutAWarningAndTheTextNamesTheFrame()
     {
         Save("Weekly", EntryOnly(CloseBelow(1000m, TimeFrame.W1)));
         var dispatcher = await StartAsync();
@@ -153,7 +153,8 @@ public sealed class BacktestConditionTemplateToolsTests : IDisposable
         using JsonDocument response = await ListAsync(dispatcher);
 
         JsonElement template = McpTestSupport.Structured(response).GetProperty("templates")[0];
-        Assert.Contains("W1", template.GetProperty("warnings")[0].GetString());
+        Assert.False(template.TryGetProperty("warnings", out _));
+        Assert.Contains("Close@W1", template.GetProperty("roots")[0].GetProperty("text").GetString());
     }
 
     // ---- sa_run_backtest with templateId ----------------------------------------------------------------------------
@@ -239,14 +240,39 @@ public sealed class BacktestConditionTemplateToolsTests : IDisposable
     }
 
     [Fact]
-    public async Task ATemplateWithAWeeklySideIsRefusedWithUnsupportedTimeFrame()
+    public async Task ATemplateWithAWeeklySideRunsOnDailyBarsAndEchoesTheFrame()
     {
         Guid id = Save("Weekly", EntryOnly(CloseBelow(1000m, TimeFrame.W1)));
         var dispatcher = await StartAsync();
 
         using JsonDocument response = await RunAsync(dispatcher, $"\"templateId\":\"{id}\"");
 
+        JsonElement result = McpTestSupport.Structured(response);
+        Assert.False(McpTestSupport.IsError(response), result.ToString());
+        Assert.Equal("D1", result.GetProperty("timeFrame").GetString());
+        Assert.Contains("Close@W1", result.GetProperty("conditionRoots")[0].GetProperty("text").GetString());
+    }
+
+    [Fact]
+    public async Task ATemplateWithADailySideIsRefusedOnAWeeklyRunWithUnsupportedTimeFrame()
+    {
+        Guid id = Save("Daily", EntryOnly(CloseBelow(1000m, TimeFrame.D1)));
+        var dispatcher = await StartAsync();
+
+        using JsonDocument response = await RunAsync(dispatcher, $"\"templateId\":\"{id}\",\"timeFrame\":\"W1\"");
+
         Assert.Equal("UNSUPPORTED_TIMEFRAME", Code(response));
+    }
+
+    [Fact]
+    public async Task ATemplateWithAWeeklySideRunsOnWeeklyBars()
+    {
+        Guid id = Save("Weekly on weekly", EntryOnly(CloseBelow(1000m, TimeFrame.W1)));
+        var dispatcher = await StartAsync();
+
+        using JsonDocument response = await RunAsync(dispatcher, $"\"templateId\":\"{id}\",\"timeFrame\":\"W1\"");
+
+        Assert.False(McpTestSupport.IsError(response), McpTestSupport.Structured(response).ToString());
     }
 
     // ---- indicator parameter ranges of a template (D-20 A) -----------------------------------------------------------

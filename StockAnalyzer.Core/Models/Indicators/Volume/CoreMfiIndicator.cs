@@ -39,7 +39,10 @@ namespace StockAnalyzer.Core.Models.Indicators.Volume
                     else if (tp < prevTp) negFlow += mf;
                 }
 
-                decimal mfi = negFlow == 0 ? 100 : 100 - (100 / (1 + posFlow / negFlow));
+                // No flow in either direction is neutral, as CoreRsiIndicator does for avgGain == avgLoss == 0.
+                decimal mfi = negFlow == 0
+                    ? (posFlow == 0 ? IndicatorCalculationHelper.BoundedOscillatorNeutral : 100)
+                    : 100 - (100 / (1 + posFlow / negFlow));
                 _values.Add(mfi);
             }
 

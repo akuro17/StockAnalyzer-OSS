@@ -7,6 +7,7 @@ using StockAnalyzer.Core.Models.Templates;
 using StockAnalyzer.Core.ReadOnly;
 using StockAnalyzer.Core.Services.Backtest.Evaluation;
 using StockAnalyzer.Core.Services.Backtest.Engine;
+using StockAnalyzer.Core.Services.Backtest.Reporting;
 using StockAnalyzer.McpServer.Catalog;
 using StockAnalyzer.McpServer.Limits;
 
@@ -22,9 +23,12 @@ internal sealed class RunBacktestTool : IMcpTool
     private const string TimeFrameArgument = "timeFrame";
     private const string StartArgument = "startDate";
     private const string EndArgument = "endDate";
-    private const string ConditionsArgument = "conditions";
+    internal const string ConditionsArgument = "conditions";
     private const string TemplateIdArgument = "templateId";
     private const string MaxTradesArgument = "maxReturnedTrades";
+    private const string EquityCurveArgument = BacktestDiagnostics.EquityCurveArgument;
+    private const string DrawdownEpisodesArgument = BacktestDiagnostics.DrawdownEpisodesArgument;
+    private const string PeriodicReturnsArgument = BacktestDiagnostics.PeriodicReturnsArgument;
 
     /// <summary>The saved template a run used (its name is echoed with its id).</summary>
     private sealed record TemplateReference(Guid Id, string Name);
@@ -48,20 +52,29 @@ internal sealed class RunBacktestTool : IMcpTool
         "Runs one backtest on the stored bars of one symbol (daily D1, weekly W1 or monthly MN1) with the application's own backtest engine (the Backtest window's Legacy execution model) and returns the performance report, the trades and the run fingerprint. " +
         "Call sa_get_capabilities first for indicator types, parameters and series; indicators that look ahead are not allowed. " +
         "Give either conditions or templateId: templateId runs a saved backtest-condition template (ids from sa_list_templates with templateType backtestCondition) " +
-        "with its own conditions and risk settings; riskManagement must then be omitted, and the template's sides must use the evaluated time frame. " +
+        "with its own conditions and risk settings; riskManagement must then be omitted, and the template's sides must use the evaluated time frame or a coarser one. " +
         $"conditions has up to six roots: {string.Join(", ", BacktestConditionBinder.RootKeys)}. entryLong/entryShort open a long/short position, exitLong/exitShort close it, " +
         "reverseLong flips a short position to long and reverseShort flips a long position to short (a reverse root acts only while a position is held). Give at least one root, normally an entry. " +
         "A root is a group {operator: And|Or, children: [...]} of groups and comparisons, or one comparison. " +
         $"A comparison is {{left: side, comparison: {string.Join("|", BacktestConditionBinder.ComparisonNames)}, right: number | side}}. " +
-        "A side names exactly one of indicator (with optional parameters and outputSeriesName) or price (Close, Open, High, Low, ...), plus an optional offset (bars back from the evaluated bar, default 0). " +
+        $"{ConditionOperatorExpander.Description} " +
+        "A side names exactly one of indicator (with optional parameters and outputSeriesName) or price (Close, Open, High, Low, ...), plus an optional offset (bars back from the evaluated bar, default 0) " +
+        $"and an optional frame ({string.Join("|", ReadOnlyGatewayContract.SupportedBacktestTimeFrames)}, the evaluated frame or a coarser one; a finer one is UNSUPPORTED_TIMEFRAME) that reads the side on that frame's bars: " +
+        "the value shown at a bar is that of the previous CLOSED period containing the bar (a W1 side on a daily bar is last week's value, never the running week's), and a bar with no closed period yet does not match. " +
         "Example: {\"entryLong\":{\"left\":{\"indicator\":\"RSI\",\"parameters\":{\"Period\":14}},\"comparison\":\"LessThan\",\"right\":30}," +
         "\"exitLong\":{\"left\":{\"indicator\":\"RSI\",\"parameters\":{\"Period\":14}},\"comparison\":\"GreaterThan\",\"right\":70}}. " +
         "startDate and endDate (yyyy-MM-dd, inclusive) default to the stored history (at most the latest " + _limits.MaxCandlesPerRequest + " bars); bars before startDate warm the indicators up. " +
         "account sets initialCapital, commissionFlat, commissionPerUnit, slippageRatio, sizingModel (FixedQuantity or PercentOfEquity), sizingParameter, initialMarginRatio, maintenanceMarginRatio and liquidationPenaltyRatio; " +
         "riskManagement sets stopLossRatio and takeProfitRatio of the entry price (0.05 = 5%); report sets annualRiskFreeRate, annualMar, annualPeriodsD1 (daily bars per year, for the annualised metrics), bootstrapSeed and bootstrapIterations (the report's bootstrap confidence intervals). " +
         "Omitted values are the Backtest window's factory defaults, not the values saved in the window; the result echoes every effective value. " +
-        $"The supported time frames are {string.Join(", ", ReadOnlyGatewayContract.SupportedBacktestTimeFrames)}; the Legacy execution model is used; there is no equity curve. " +
+        $"The supported time frames are {string.Join(", ", ReadOnlyGatewayContract.SupportedBacktestTimeFrames)}; the Legacy execution model is used. " +
         $"The result lists the first maxReturnedTrades trades in the order the engine closed them (default and maximum {_limits.MaxReturnedTrades}; totalTrades is the true count) and engine warnings by code. " +
+        "Each trade carries mfePrice and maePrice (largest favourable and adverse excursion from the entry price, in price units, never negative, measured on bar highs and lows so the order inside a bar is unknown, before fees and slippage) and mfePercent and maePercent (the same as percent of the entry price; null when the entry price is not positive). " +
+        $"Optional diagnostics, all off by default: includeEquityCurve ({string.Join("|", BacktestDiagnostics.CurveNames)}) adds equityCurve (equity in account currency per evaluated bar, or the last bar of each ISO week or calendar month, with drawdownRatio = equity / running high - 1, at most {McpLimitsContract.EffectiveMaxEquityCurvePoints(_limits)} points, more is LIMIT_EXCEEDED); " +
+        $"includeDrawdownEpisodes (0 to {_limits.MaxDrawdownEpisodes}) adds the deepest drawdown episodes (depthRatio, dates, bar counts; recovery fields are null while still underwater); " +
+        "includePeriodicReturns adds monthly and yearly returnRatio (period-end equity / previous period-end equity - 1; isPartial marks a period the evaluated dates cut). " +
+        "includePeriodicReturns and includeEquityCurve Monthly are refused for timeFrame W1 (UNSUPPORTED_TIMEFRAME) because a weekly bar cannot be cut at a month end. " +
+        $"A part whose arithmetic fails is left out and named in {BacktestDiagnostics.UnavailableKey} with a reason. " +
         "allowUnregistered true also accepts a symbol that is not in the ticker list but has stored bars; it is named in warnings, and a symbol without stored bars is SYMBOL_NOT_FOUND. " +
         "Metrics keep status/value/unit/reason: a value is present only when status is Valid. The tool never changes anything and never fetches data.";
 
@@ -81,6 +94,9 @@ internal sealed class RunBacktestTool : IMcpTool
         .FreeObject(BacktestSettingsBinder.ReportArgument, "Report settings: {annualRiskFreeRate, annualMar} (simple rates, 0.02 = 2%), {annualPeriodsD1} (daily bars per year), {bootstrapSeed, bootstrapIterations} (whole numbers). Omitted values are the factory defaults.")
         .Integer(MaxTradesArgument, $"Most trades to list. Default and maximum {_limits.MaxReturnedTrades}; 0 lists none.", defaultValue: _limits.MaxReturnedTrades, minimum: 0, maximum: _limits.MaxReturnedTrades)
         .Boolean(SymbolResolver.AllowUnregisteredArgument, "Accept a symbol that is not in the ticker list but has stored bars. Default false.")
+        .String(EquityCurveArgument, $"Add the equity curve: None (default), Weekly or Monthly (the last evaluated bar of each ISO week or calendar month) or Bar (every evaluated bar; LIMIT_EXCEEDED above {McpLimitsContract.EffectiveMaxEquityCurvePoints(_limits)} points).", allowedValues: BacktestDiagnostics.CurveNames)
+        .Integer(DrawdownEpisodesArgument, $"Add the deepest drawdown episodes. Default 0 adds none; maximum {_limits.MaxDrawdownEpisodes}.", defaultValue: 0, minimum: 0, maximum: _limits.MaxDrawdownEpisodes)
+        .Boolean(PeriodicReturnsArgument, "Add monthly and yearly returns of the equity. Default false.")
         .Build();
 
     public async Task<string> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)
@@ -94,6 +110,11 @@ internal sealed class RunBacktestTool : IMcpTool
         }
 
         int maxTrades = ToolArgs.NonNegativeWithin(arguments, MaxTradesArgument, _limits.MaxReturnedTrades, _limits.MaxReturnedTrades);
+        var diagnosticsRequest = new BacktestDiagnosticsRequest(
+            ToolArgs.String(arguments, EquityCurveArgument) is { } curveName ? BacktestDiagnostics.ParseCurve(curveName) : null,
+            ToolArgs.NonNegativeWithin(arguments, DrawdownEpisodesArgument, 0, _limits.MaxDrawdownEpisodes),
+            ToolArgs.Boolean(arguments, PeriodicReturnsArgument) ?? false);
+        BacktestDiagnostics.EnsureTimeFrameSupported(diagnosticsRequest, timeFrame);
 
         // Everything the client sent is checked before any data is read.
         string? templateText = ToolArgs.String(arguments, TemplateIdArgument);
@@ -117,7 +138,7 @@ internal sealed class RunBacktestTool : IMcpTool
         TemplateReference? template = null;
         if (templateText is null)
         {
-            conditions = _conditions.Bind(arguments.GetProperty(ConditionsArgument), ConditionsArgument);
+            conditions = _conditions.Bind(arguments.GetProperty(ConditionsArgument), ConditionsArgument, timeFrame);
         }
         else
         {
@@ -150,6 +171,13 @@ internal sealed class RunBacktestTool : IMcpTool
             throw new ToolException(ToolErrorCodes.InvalidArgument, $"{StartArgument} must not be after {EndArgument}.", StartArgument);
         }
 
+        if (diagnosticsRequest.Curve == EquityCurveResolution.Bar)
+        {
+            // The stored bars inside the period are a lower bound of the evaluated bars, so a refusal here is never wrong and saves the run.
+            int barsInPeriod = stored.Count(bar => DateOnly.FromDateTime(bar.Timestamp) >= effectiveStart && DateOnly.FromDateTime(bar.Timestamp) <= effectiveEnd);
+            BacktestDiagnostics.EnsureCurveFits(EquityCurveResolution.Bar, barsInPeriod, _limits);
+        }
+
         var snapshot = new BacktestRunSnapshot(
             symbol,
             timeFrame,
@@ -174,12 +202,13 @@ internal sealed class RunBacktestTool : IMcpTool
             throw new ToolException(ToolErrorCodes.InvalidArgument, $"The backtest input was rejected: {error.Message.Split(Environment.NewLine)[0]}", hint: "Check the dates and the conditions.");
         }
 
-        return ToolJson.Build(writer => Write(writer, artifact, symbol, timeFrame, effectiveStart, effectiveEnd, requestedStart is null || requestedEnd is null, settings, conditions, maxTrades, template, symbolWarnings));
+        BacktestDiagnostics? diagnostics = diagnosticsRequest.Any ? BacktestDiagnostics.Compute(artifact, diagnosticsRequest, _limits) : null;
+        return ToolJson.Build(writer => Write(writer, artifact, symbol, timeFrame, effectiveStart, effectiveEnd, requestedStart is null || requestedEnd is null, settings, conditions, maxTrades, template, symbolWarnings, diagnostics));
     }
 
-    private static DateTime ToUtc(DateOnly date) => DateTime.SpecifyKind(date.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
+    internal static DateTime ToUtc(DateOnly date) => DateTime.SpecifyKind(date.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
 
-    private static TimeFrame ResolveTimeFrame(JsonElement arguments)
+    internal static TimeFrame ResolveTimeFrame(JsonElement arguments)
     {
         string? name = ToolArgs.String(arguments, TimeFrameArgument);
         if (name is null)
@@ -212,7 +241,8 @@ internal sealed class RunBacktestTool : IMcpTool
         BoundBacktestConditions conditions,
         int maxTrades,
         TemplateReference? template,
-        IReadOnlyList<string> symbolWarnings)
+        IReadOnlyList<string> symbolWarnings,
+        BacktestDiagnostics? diagnostics)
     {
         BacktestResult result = artifact.Result;
         BacktestEvaluationMetadata metadata = artifact.Metadata;
@@ -283,6 +313,7 @@ internal sealed class RunBacktestTool : IMcpTool
 
         WriteTrades(writer, result, maxTrades);
         WriteEngineWarnings(writer, result);
+        diagnostics?.Write(writer);
         var notes = new List<string>(symbolWarnings);
         notes.AddRange(conditions.Warnings);
         if (metadata.SampleCount == 0)
@@ -386,6 +417,10 @@ internal sealed class RunBacktestTool : IMcpTool
             writer.WriteBoolean("isForcedLiquidation", trade.IsForcedLiquidation);
             writer.WriteString("entrySignal", trade.EntrySignal);
             writer.WriteString("exitReason", trade.ExitReason);
+            writer.WriteNumber("mfePrice", trade.MfePrice);
+            writer.WriteNumber("maePrice", trade.MaePrice);
+            ToolJson.WriteNullableNumber(writer, "mfePercent", trade.MfePercent);
+            ToolJson.WriteNullableNumber(writer, "maePercent", trade.MaePercent);
             writer.WriteEndObject();
         }
 

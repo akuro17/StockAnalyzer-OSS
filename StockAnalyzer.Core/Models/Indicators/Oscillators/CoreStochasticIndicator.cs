@@ -50,7 +50,7 @@ public class CoreStochasticIndicator : CoreIndicatorBase
                 lowest = Math.Min(lowest, candles[i - j].Low);
             }
 
-            fastK[i] = highest == lowest ? 50 : ((candles[i].Close - lowest) / (highest - lowest)) * 100;
+            fastK[i] = highest == lowest ? IndicatorCalculationHelper.BoundedOscillatorNeutral : ((candles[i].Close - lowest) / (highest - lowest)) * 100;
         }
 
         // 2. Calculate Slow %K (Smooth Fast %K)

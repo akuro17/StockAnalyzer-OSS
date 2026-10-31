@@ -89,6 +89,10 @@ public sealed class McpToolSweepTests : IDisposable
 
     // ---- the sweep tables ------------------------------------------------------------------------------------------------------------
 
+    private const string OptimizeAt = """{"symbol":"@@","conditions":{"entryLong":{"left":{"price":"Close"},"comparison":"GreaterThan","right":{"$param":"level"}}},"parameterRanges":[{"name":"level","start":1,"end":2,"step":1}],"objective":"totalPnL"}""";
+
+    private const string WalkForwardAt = """{"symbol":"@@","conditions":{"entryLong":{"left":{"price":"Close"},"comparison":"GreaterThan","right":{"$param":"level"}}},"parameterRanges":[{"name":"level","start":1,"end":2,"step":1}],"objective":"totalPnL","windows":{"generator":{"mode":"Rolling","inSampleBars":10,"outOfSampleBars":5,"stepBars":100}}}""";
+
     private static readonly string Indicators = """[{"id":"r","type":"RSI"}]""";
 
     /// <summary>One call per tool that must succeed on the fixture tree.</summary>
@@ -105,8 +109,20 @@ public sealed class McpToolSweepTests : IDisposable
         ("sa_run_screener", """{"conditionTree":""" + HighClose + ""","symbols":["MSFT"]}"""),
         ("sa_list_templates", "{}"),
         ("sa_run_backtest", """{"symbol":"MSFT","conditions":{"entryLong":""" + Entry + ""","exitLong":""" + Exit + "}}"),
+        ("sa_extract_signal_events", """{"symbol":"MSFT","timeFrame":"D1","condition":""" + Entry + "}"),
+        ("sa_detect_divergences", """{"symbol":"MSFT","timeFrame":"D1"}"""),
+        ("sa_optimize_backtest", OptimizeAt.Replace("@@", "MSFT")),
+        ("sa_run_walk_forward_analysis", WalkForwardAt.Replace("@@", "MSFT")),
         ("sa_calculate_reverse_watch", """{"symbol":"MSFT","timeFrame":"D1"}"""),
         ("sa_calculate_chart_series", """{"symbol":"MSFT","timeFrame":"D1","chartType":"HeikinAshi"}"""),
+        ("sa_calculate_volume_profile", """{"symbol":"MSFT","timeFrame":"D1"}"""),
+        ("sa_analyze_market_structure", """{"symbol":"MSFT","timeFrame":"D1"}"""),
+        ("sa_find_support_resistance", """{"symbol":"MSFT","timeFrame":"D1"}"""),
+        ("sa_detect_candle_patterns", """{"symbol":"MSFT","timeFrame":"D1"}"""),
+        ("sa_detect_chart_patterns", """{"symbol":"MSFT","timeFrame":"D1"}"""),
+        ("sa_analyze_cycles", """{"symbol":"MSFT","timeFrame":"D1"}"""),
+        ("sa_project_price_path", """{"symbol":"MSFT","timeFrame":"D1","method":"Arima"}"""),
+        ("sa_get_seasonality", """{"symbol":"MSFT","timeFrame":"D1"}"""),
         ("sa_calculate_relative_performance", """{"symbol":"MSFT","timeFrame":"D1","comparisonSymbols":["7203.T"]}"""),
         ("sa_check_portfolio_rl_preflight", """{"symbols":["MSFT","7203.T"]}"""),
         ("sa_check_rl_playback_preflight", """{"modelId":"active","symbol":"MSFT"}"""),
@@ -122,8 +138,20 @@ public sealed class McpToolSweepTests : IDisposable
         ("sa_run_screener", """{"conditionTree":""" + HighClose + ""","symbols":["@@"]}"""),
         ("sa_run_screener", """{"templateId":"@@"}"""),
         ("sa_run_backtest", """{"symbol":"@@","conditions":{"entryLong":""" + Entry + ""","exitLong":""" + Exit + "}}"),
+        ("sa_extract_signal_events", """{"symbol":"@@","timeFrame":"D1","condition":""" + Entry + "}"),
+        ("sa_detect_divergences", """{"symbol":"@@","timeFrame":"D1"}"""),
+        ("sa_optimize_backtest", OptimizeAt),
+        ("sa_run_walk_forward_analysis", WalkForwardAt),
         ("sa_calculate_reverse_watch", """{"symbol":"@@","timeFrame":"D1"}"""),
         ("sa_calculate_chart_series", """{"symbol":"@@","timeFrame":"D1","chartType":"HeikinAshi"}"""),
+        ("sa_calculate_volume_profile", """{"symbol":"@@","timeFrame":"D1"}"""),
+        ("sa_analyze_market_structure", """{"symbol":"@@","timeFrame":"D1"}"""),
+        ("sa_find_support_resistance", """{"symbol":"@@","timeFrame":"D1"}"""),
+        ("sa_detect_candle_patterns", """{"symbol":"@@","timeFrame":"D1"}"""),
+        ("sa_detect_chart_patterns", """{"symbol":"@@","timeFrame":"D1"}"""),
+        ("sa_analyze_cycles", """{"symbol":"@@","timeFrame":"D1"}"""),
+        ("sa_project_price_path", """{"symbol":"@@","timeFrame":"D1","method":"Arima"}"""),
+        ("sa_get_seasonality", """{"symbol":"@@","timeFrame":"D1"}"""),
         ("sa_calculate_relative_performance", """{"symbol":"@@","timeFrame":"D1"}"""),
         ("sa_calculate_relative_performance", """{"symbol":"MSFT","timeFrame":"D1","comparisonSymbols":["@@"]}"""),
         ("sa_check_portfolio_rl_preflight", """{"symbols":["@@","MSFT"]}"""),
@@ -253,7 +281,7 @@ public sealed class McpToolSweepTests : IDisposable
 
             if (McpTestSupport.IsError(document))
             {
-                Assert.Contains(McpTestSupport.ErrorCodeOf(document), refusals);
+                Assert.True(refusals.Contains(McpTestSupport.ErrorCodeOf(document)), $"{tool} with '{value}': {response}");
             }
             else
             {
@@ -313,6 +341,7 @@ public sealed class McpToolSweepTests : IDisposable
         var limits = new McpLimits();
         string Symbols(int count) => string.Join(",", Enumerable.Range(0, count).Select(i => $"\"S{i}\""));
         string Many(int count) => string.Join(",", Enumerable.Range(0, count).Select(i => $"{{\"id\":\"i{i}\",\"type\":\"RSI\"}}"));
+        string DerivedMany(int count) => string.Join(",", Enumerable.Range(0, count).Select(i => $"{{\"id\":\"d{i}\",\"op\":\"Add\",\"left\":{{\"ref\":\"i0\"}},\"right\":{{\"constant\":1}}}}"));
         string Rules(int count) => "[" + string.Join(",", Enumerable.Repeat("""{"field":"Close","operator":">","value":"1"}""", count)) + "]";
         const string Frame = "\"symbol\":\"MSFT\",\"timeFrame\":\"D1\"";
 
@@ -324,18 +353,38 @@ public sealed class McpToolSweepTests : IDisposable
             ("sa_calculate_indicators", $"{{{Frame},\"indicators\":{Indicators},\"lookbackBars\":{limits.MaxCandlesPerRequest + 1}}}", "lookbackBars"),
             ("sa_calculate_indicators", $"{{{Frame},\"indicators\":{Indicators},\"outputTailCount\":{limits.MaxOutputTailBars + 1}}}", "outputTailCount"),
             ("sa_calculate_indicators", $"{{{Frame},\"indicators\":[{Many(limits.MaxIndicatorsPerCall + 1)}]}}", "indicators"),
+            ("sa_calculate_indicators", $"{{{Frame},\"indicators\":[{{\"id\":\"i0\",\"type\":\"RSI\"}}],\"derived\":[{DerivedMany(limits.MaxDerivedSeriesPerCall + 1)}]}}", "derived"),
+            ("sa_calculate_indicators", $"{{{Frame},\"indicators\":{Indicators},\"lookbackOffsets\":[{string.Join(",", Enumerable.Range(0, limits.MaxLookbackOffsets + 1))}]}}", "lookbackOffsets"),
+            ("sa_calculate_indicators", $"{{{Frame},\"indicators\":{Indicators},\"summary\":true,\"trendBars\":{limits.MaxCandlesPerRequest + 1}}}", "trendBars"),
             ("sa_calculate_reverse_watch", $"{{{Frame},\"lookbackBars\":{limits.MaxCandlesPerRequest + 1}}}", "lookbackBars"),
             ("sa_calculate_reverse_watch", $"{{{Frame},\"outputTailCount\":{limits.MaxOutputTailBars + 1}}}", "outputTailCount"),
             ("sa_calculate_reverse_watch", $"{{{Frame},\"period\":{limits.MaxCandlesPerRequest + 1}}}", "period"),
             ("sa_run_screener", $"{{\"conditionTree\":{HighClose},\"maxReturnedMatches\":{limits.MaxReturnedMatches + 1}}}", "maxReturnedMatches"),
             ("sa_run_screener", $"{{\"conditionTree\":{HighClose},\"symbols\":[{Symbols(limits.MaxScreenerSymbols + 1)}]}}", "symbols"),
             ("sa_run_backtest", $"{{\"symbol\":\"MSFT\",\"conditions\":{{\"entryLong\":{Entry}}},\"maxReturnedTrades\":{limits.MaxReturnedTrades + 1}}}", "maxReturnedTrades"),
+            ("sa_optimize_backtest", OptimizeAt.Replace("@@", "MSFT").Replace("\"objective\"", $"\"topK\":{limits.MaxOptimizationTopK + 1},\"objective\""), "topK"),
             ("sa_filter_tickers", $"{{\"rules\":{Rules(limits.MaxInlineFilterRules + 1)}}}", "rules"),
             ("sa_filter_tickers", $"{{\"symbols\":[{Symbols(limits.MaxFilterEvaluationSymbols + 1)}]}}", "symbols"),
             ("sa_filter_tickers", $"{{\"limit\":{limits.MaxTickersPerPage + 1}}}", "limit"),
+            ("sa_extract_signal_events", $"{{\"symbol\":\"MSFT\",\"timeFrame\":\"D1\",\"condition\":{{\"left\":{{\"price\":\"Close\"}},\"comparison\":\"GreaterThan\",\"right\":0}},\"maxEvents\":{limits.MaxReturnedEvents + 1}}}", "maxEvents"),
+            ("sa_extract_signal_events", $"{{\"symbol\":\"MSFT\",\"timeFrame\":\"D1\",\"condition\":{{\"left\":{{\"price\":\"Close\"}},\"comparison\":\"GreaterThan\",\"right\":0}},\"forwardBars\":[{string.Join(",", Enumerable.Repeat(1, limits.MaxForwardBarsList + 1))}]}}", "forwardBars"),
+            ("sa_detect_divergences", $"{{{Frame},\"maxEvents\":{limits.MaxReturnedEvents + 1}}}", "maxEvents"),
+            ("sa_calculate_volume_profile", $"{{{Frame},\"binCount\":{limits.MaxVolumeProfileBins + 1}}}", "binCount"),
+            ("sa_calculate_volume_profile", $"{{{Frame},\"rangeBars\":{limits.MaxCandlesPerRequest + 1}}}", "rangeBars"),
+            ("sa_find_support_resistance", $"{{{Frame},\"maxLevels\":{limits.MaxSupportResistanceLevels + 1}}}", "maxLevels"),
+            ("sa_detect_candle_patterns", $"{{{Frame},\"windowBars\":{limits.MaxOutputTailBars + 1}}}", "windowBars"),
+            ("sa_detect_chart_patterns", $"{{{Frame},\"maxPatterns\":{limits.MaxReturnedPatterns + 1}}}", "maxPatterns"),
+            ("sa_analyze_cycles", $"{{{Frame},\"topBins\":{limits.MaxCycleBins + 1}}}", "topBins"),
+            ("sa_analyze_cycles", $"{{{Frame},\"rangeBars\":{limits.MaxCandlesPerRequest + 1}}}", "rangeBars"),
+            ("sa_project_price_path", $"{{{Frame},\"method\":\"Arima\",\"horizonBars\":{limits.MaxProjectionBars + 1}}}", "horizonBars"),
+            ("sa_get_seasonality", $"{{{Frame},\"years\":{limits.MaxSeasonalityYears + 1}}}", "years"),
             // 32-bit and 64-bit overflow must be a refusal as well, never a wrap-around or an exception.
             ("sa_get_candles", $"{{{Frame},\"count\":2147483648}}", "count"),
             ("sa_list_tickers", "{\"limit\":9223372036854775807}", "limit"),
+            ("sa_calculate_volume_profile", $"{{{Frame},\"binCount\":4294967320}}", "binCount"),
+            ("sa_detect_chart_patterns", $"{{{Frame},\"dtwMinWindow\":4294967320}}", "dtwMinWindow"),
+            ("sa_project_price_path", $"{{{Frame},\"method\":\"Arima\",\"horizonBars\":4294967320}}", "horizonBars"),
+            ("sa_get_seasonality", $"{{{Frame},\"years\":4294967320}}", "years"),
         }.Select(call => new object[] { call.Tool, call.Arguments, call.Parameter });
     }
 
@@ -361,6 +410,13 @@ public sealed class McpToolSweepTests : IDisposable
     [InlineData("sa_list_tickers", """{"offset":-1}""")]
     [InlineData("sa_list_tickers", """{"limit":1e9}""")]
     [InlineData("sa_run_backtest", """{"symbol":"MSFT","conditions":{},"maxReturnedTrades":-5}""")]
+    [InlineData("sa_optimize_backtest", """{"symbol":"MSFT","conditions":{},"parameterRanges":[{"name":"a","start":1,"end":2,"step":1}],"objective":"totalPnL","topK":-5}""")]
+    [InlineData("sa_run_walk_forward_analysis", """{"symbol":"MSFT","conditions":{},"parameterRanges":[{"name":"a","start":1,"end":2,"step":1}],"objective":"totalPnL","windows":{"generator":{"mode":"Rolling","inSampleBars":-5,"outOfSampleBars":5,"stepBars":5}}}""")]
+    [InlineData("sa_extract_signal_events", """{"symbol":"MSFT","timeFrame":"D1","condition":{"left":{"price":"Close"},"comparison":"GreaterThan","right":0},"maxEvents":-1}""")]
+    [InlineData("sa_detect_divergences", """{"symbol":"MSFT","timeFrame":"D1","pivotOrder":-1}""")]
+    [InlineData("sa_detect_divergences", """{"symbol":"MSFT","timeFrame":"D1","shortMaPeriod":-1}""")]
+    [InlineData("sa_project_price_path", """{"symbol":"MSFT","timeFrame":"D1","method":"Arima","arimaP":4294967320}""")]
+    [InlineData("sa_get_seasonality", """{"symbol":"MSFT","timeFrame":"D1","startMonth":4294967320}""")]
     public async Task ANonsenseNumberIsRefusedAndNeverBecomesAnInternalError(string tool, string arguments)
     {
         var dispatcher = await StartAsync();
@@ -374,7 +430,11 @@ public sealed class McpToolSweepTests : IDisposable
     [Theory]
     [InlineData("sa_run_screener", "conditionTree")]
     [InlineData("sa_run_backtest", "conditions")]
+    [InlineData("sa_optimize_backtest", "conditions")]
+    [InlineData("sa_run_walk_forward_analysis", "conditions")]
     [InlineData("sa_calculate_indicators", "parameters")]
+    [InlineData("sa_extract_signal_events", "condition")]
+    [InlineData("sa_detect_divergences", "indicatorParameters")]
     public async Task ADeeplyNestedArgumentIsAnAnsweredErrorNotACrash(string tool, string where)
     {
         var dispatcher = await StartAsync();
@@ -382,7 +442,8 @@ public sealed class McpToolSweepTests : IDisposable
         string arguments = tool switch
         {
             "sa_run_screener" => $$"""{"{{where}}":{{nested}}}""",
-            "sa_run_backtest" => $$"""{"symbol":"MSFT","{{where}}":{{nested}}}""",
+            "sa_run_backtest" or "sa_optimize_backtest" or "sa_run_walk_forward_analysis" => $$"""{"symbol":"MSFT","{{where}}":{{nested}}}""",
+            "sa_extract_signal_events" or "sa_detect_divergences" => $$"""{"symbol":"MSFT","timeFrame":"D1","{{where}}":{{nested}}}""",
             _ => $$"""{"symbol":"MSFT","timeFrame":"D1","indicators":[{"id":"r","type":"RSI","{{where}}":{{nested}}}]}""",
         };
 

@@ -32,11 +32,21 @@ internal static class MainWindowViewModelFactory
     /// <param name="panelTabFactory">Defaults to <see cref="MockPanelTabFactory"/>.</param>
     /// <param name="containerRegistry">Defaults to a new <see cref="ContainerRegistry"/>.</param>
     /// <param name="layoutSettings">Layout limits of the created <see cref="LayoutStateStore"/>; the defaults when omitted.</param>
+    /// <param name="stateStore">A store the caller already shares with a real coordinator/scheduler; <paramref name="layoutSettings"/> is then unused.</param>
+    /// <param name="layoutSaveScheduler">Replaces the mocked scheduler (the returned <c>Scheduler</c> mock is then not wired).</param>
+    /// <param name="workspaceCoordinator">Replaces the mocked coordinator (it is bound to the view model by the constructor).</param>
+    /// <param name="serializationService">Replaces the mocked serialization service.</param>
+    /// <param name="backtestColumnSettingsManager">Passed to the constructor; omitted means the view model falls back to its own manager.</param>
     internal static MainWindowViewModelParts Create(
         IDispatcherService? dispatcher = null,
         IPanelTabFactory? panelTabFactory = null,
         IContainerRegistry? containerRegistry = null,
-        LayoutSettings? layoutSettings = null)
+        LayoutSettings? layoutSettings = null,
+        LayoutStateStore? stateStore = null,
+        ILayoutSaveScheduler? layoutSaveScheduler = null,
+        IWorkspaceCoordinator? workspaceCoordinator = null,
+        IWorkspaceSerializationService? serializationService = null,
+        StockAnalyzer.Core.Services.Backtest.Configuration.IBacktestColumnSettingsManager? backtestColumnSettingsManager = null)
     {
         dispatcher ??= new SynchronousDispatcherService();
         panelTabFactory ??= new MockPanelTabFactory();
@@ -84,7 +94,7 @@ internal static class MainWindowViewModelFactory
         var tabManager = new Mock<IDetachedTabManager>();
         var scheduler = new Mock<ILayoutSaveScheduler>();
 
-        var store = new LayoutStateStore(null, layoutSettings);
+        var store = stateStore ?? new LayoutStateStore(null, layoutSettings);
 
         var vm = new MainWindowViewModel(
             dialog.Object,
@@ -97,11 +107,12 @@ internal static class MainWindowViewModelFactory
             tabManager.Object,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<MainWindowViewModel>.Instance,
             store,
-            scheduler.Object,
-            new Mock<IWorkspaceCoordinator>().Object,
-            new Mock<IWorkspaceSerializationService>().Object,
+            layoutSaveScheduler ?? scheduler.Object,
+            workspaceCoordinator ?? new Mock<IWorkspaceCoordinator>().Object,
+            serializationService ?? new Mock<IWorkspaceSerializationService>().Object,
             () => new ChartViewModel(),
-            containerRegistry: containerRegistry);
+            containerRegistry: containerRegistry,
+            backtestColumnSettingsManager: backtestColumnSettingsManager);
 
         return new MainWindowViewModelParts(vm, dialog, localization, tabManager, scheduler, tearOff, store);
     }

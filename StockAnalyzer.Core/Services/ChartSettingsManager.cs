@@ -150,7 +150,7 @@ public sealed class ChartSettingsManager : IChartSettingsManager
             // GS-6-3: Create backup of corrupted file
             try
             {
-                string backupPath = _settingsFilePath + ".corrupted";
+                string backupPath = StockAnalyzer.Core.Common.CorruptedFile.PathFor(_settingsFilePath);
                 if (File.Exists(_settingsFilePath)) File.Copy(_settingsFilePath, backupPath, true);
             }
             catch { /* Ignore secondary failures */ }

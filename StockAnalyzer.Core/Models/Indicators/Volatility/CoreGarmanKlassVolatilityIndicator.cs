@@ -24,7 +24,7 @@ namespace StockAnalyzer.Core.Models.Indicators.Volatility
 
             foreach (var candle in candles)
             {
-                if (candle.Low <= 0 || candle.Open <= 0)
+                if (candle.Open <= 0 || candle.High <= 0 || candle.Low <= 0 || candle.Close <= 0)
                 {
                     _values.Add(null);
                     continue;
@@ -35,7 +35,7 @@ namespace StockAnalyzer.Core.Models.Indicators.Volatility
 
                 var variance = 0.5 * h_l * h_l - factor * c_o * c_o;
 
-                if (variance < 0)
+                if (!double.IsFinite(variance) || variance < 0)
                 {
                     _values.Add(null);
                 }

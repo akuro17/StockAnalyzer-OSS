@@ -331,7 +331,7 @@ public static class PathDiscovery
         return candidate;
     }
 
-    private static StringComparison PathComparison => OperatingSystem.IsWindows()
+    internal static StringComparison PathComparison => OperatingSystem.IsWindows()
         ? StringComparison.OrdinalIgnoreCase
         : StringComparison.Ordinal;
 

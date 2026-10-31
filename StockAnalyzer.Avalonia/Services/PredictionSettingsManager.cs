@@ -46,7 +46,10 @@ namespace StockAnalyzer.Avalonia.Services
                     WindowSize = WindowSize
                 };
 
-                await StockAnalyzer.Core.Common.AtomicJsonFile.SaveAsync(PredictionSettingsFilePath, data);
+                using (await StockAnalyzer.Core.Common.SerializedPathGate.AcquireAsync(PredictionSettingsFilePath).ConfigureAwait(false))
+                {
+                    await StockAnalyzer.Core.Common.AtomicJsonFile.SaveAsync(PredictionSettingsFilePath, data);
+                }
             }
             catch (Exception ex)
             {

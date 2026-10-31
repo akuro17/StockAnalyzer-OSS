@@ -711,6 +711,11 @@ public sealed class SandboxedExecutionGateway : ISandboxedExecutionGateway, IDis
         }
 
         EphemeralRlResult? description = await Task.Run(() => TryDescribeRl(result)).ConfigureAwait(false);
+
+        // The artifact is described before the job becomes Succeeded, so a client that polls never sees a retained job as Succeeded without it.
+        EphemeralArtifact? artifact = job.RlRequest?.RetainArtifact == true && description is not null
+            ? await Task.Run(() => TryDescribeRlArtifact(job.JobId, result.ModelPath, result.EvaluationPath)).ConfigureAwait(false)
+            : null;
         bool cancelledEarly = false;
         lock (_jobs.Gate)
         {
@@ -726,6 +731,7 @@ public sealed class SandboxedExecutionGateway : ISandboxedExecutionGateway, IDis
             else
             {
                 job.RlResult = description;
+                job.Artifact = artifact;
                 _jobs.Apply(job, JobEvent.OnnxLoaded, DateTimeOffset.UtcNow);
             }
         }
@@ -737,14 +743,10 @@ public sealed class SandboxedExecutionGateway : ISandboxedExecutionGateway, IDis
         }
 
         _logger.LogInformation("Reinforcement-learning job {JobId} finished; state {State}.", job.JobId, job.State);
-        if (job.RlRequest?.RetainArtifact == true && description is not null)
+        if (artifact is not null)
         {
-            job.Artifact = TryDescribeRlArtifact(job.JobId, result.ModelPath, result.EvaluationPath);
-            if (job.Artifact is not null)
-            {
-                ApplyRetention();
-                return;
-            }
+            ApplyRetention();
+            return;
         }
 
         DeleteFolderOfFinishedJob(job);
@@ -846,6 +848,11 @@ public sealed class SandboxedExecutionGateway : ISandboxedExecutionGateway, IDis
         }
 
         EphemeralPortfolioRlResult? description = await Task.Run(() => TryDescribePortfolioRl(result)).ConfigureAwait(false);
+
+        // The artifact is described before the job becomes Succeeded, so a client that polls never sees a retained job as Succeeded without it.
+        EphemeralArtifact? artifact = job.PortfolioRlRequest?.RetainArtifact == true && description is not null
+            ? await Task.Run(() => TryDescribeRlArtifact(job.JobId, result.ModelPath, result.ReportPath)).ConfigureAwait(false)
+            : null;
         bool cancelledEarly = false;
         lock (_jobs.Gate)
         {
@@ -861,6 +868,7 @@ public sealed class SandboxedExecutionGateway : ISandboxedExecutionGateway, IDis
             else
             {
                 job.PortfolioRlResult = description;
+                job.Artifact = artifact;
                 _jobs.Apply(job, JobEvent.OnnxLoaded, DateTimeOffset.UtcNow);
             }
         }
@@ -872,14 +880,10 @@ public sealed class SandboxedExecutionGateway : ISandboxedExecutionGateway, IDis
         }
 
         _logger.LogInformation("Reinforcement-learning portfolio job {JobId} finished; state {State}.", job.JobId, job.State);
-        if (job.PortfolioRlRequest?.RetainArtifact == true && description is not null)
+        if (artifact is not null)
         {
-            job.Artifact = TryDescribeRlArtifact(job.JobId, result.ModelPath, result.ReportPath);
-            if (job.Artifact is not null)
-            {
-                ApplyRetention();
-                return;
-            }
+            ApplyRetention();
+            return;
         }
 
         DeleteFolderOfFinishedJob(job);

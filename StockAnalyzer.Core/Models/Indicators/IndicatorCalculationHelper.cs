@@ -8,6 +8,12 @@ namespace StockAnalyzer.Core.Models.Indicators;
 public static class IndicatorCalculationHelper
 {
     /// <summary>
+    /// Midpoint of a 0-100 bounded oscillator (RSI, MFI, Stochastic, RVI): the value returned when the input carries no direction
+    /// (no gain and no loss, no money flow, a flat high-low range, no up and no down deviation).
+    /// </summary>
+    public const decimal BoundedOscillatorNeutral = 50m;
+
+    /// <summary>
     /// Calculates Exponential Moving Average (EMA) from a list of decimal values.
     /// </summary>
     /// <param name="prices">List of prices (non-nullable)</param>

@@ -356,7 +356,8 @@ public class MultiCurrencyModelsTests
 
         var result = manager.Evaluate(portfolio, latestPrices, latestRates, CurrencyCode.JPY);
 
-        // Realized PL in JPY = 65.66 * 150 = 9849 JPY
-        Assert.Equal(9849m, result.Metrics.TotalRealizedPL);
+        // Realized PnL is kept per exit currency and shown like cash: the JPY trade's 9,800 JPY stays 9,800 JPY.
+        // (Before the per-currency bookkeeping it was the exit-time USD figure revalued at the latest rate: 65.66 * 150 = 9,849.)
+        Assert.Equal(9800m, result.Metrics.TotalRealizedPL);
     }
 }

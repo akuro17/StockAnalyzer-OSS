@@ -19,6 +19,8 @@ public static class MarginLiquidationCalculator
     public static decimal ComputeLiquidationPrice(TradeSide side, decimal quantity, decimal entryPrice, decimal cash, decimal heldMargin, decimal maintenanceMarginRatio)
     {
         if (quantity <= 0m) throw new ArgumentOutOfRangeException(nameof(quantity), quantity, "Quantity must be > 0.");
+        if (maintenanceMarginRatio < 0m || maintenanceMarginRatio >= 1m)
+            throw new ArgumentOutOfRangeException(nameof(maintenanceMarginRatio), maintenanceMarginRatio, "Maintenance margin ratio must be in [0, 1).");
 
         return side switch
         {

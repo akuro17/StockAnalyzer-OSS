@@ -14,5 +14,6 @@ public readonly record struct PortfolioMetrics(
 public readonly record struct PortfolioEvaluationResult(
     PortfolioMetrics Metrics,
     IReadOnlyDictionary<string, decimal> PositionValues,
-    IReadOnlyDictionary<string, decimal> PositionPLs
+    IReadOnlyDictionary<string, decimal> PositionPLs,
+    IReadOnlyList<CurrencyCode>? UnconvertedCurrencies = null
 );

@@ -94,6 +94,9 @@ internal static class BacktestReportJson
         }
     }
 
+    /// <summary>The JSON key the report writer uses for the property named <paramref name="propertyName"/> ("CAGR" is "cagr", "AnnualizedSharpe" is "annualizedSharpe").</summary>
+    public static string JsonName(string propertyName) => ToCamelCase(propertyName);
+
     private static string ToCamelCase(string name)
     {
         // Acronym-led names (CAGR, SQN) lower-case the whole leading run, so the JSON reads "cagr", "sqn", "annualizedSharpe".
