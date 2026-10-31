@@ -50,15 +50,15 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Avalonia" Version="11.3.10" />
-    <PackageReference Include="Avalonia.Controls.DataGrid" Version="11.3.10" />
-    <PackageReference Include="Avalonia.Controls.ColorPicker" Version="11.3.10" />
-    <PackageReference Include="Avalonia.Controls.TreeDataGrid" Version="11.0.10" />
-    <PackageReference Include="Avalonia.Desktop" Version="11.3.10" />
-    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.10" />
-    <PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.10" />
+    <PackageReference Include="Avalonia" Version="12.1.4" />
+    <PackageReference Include="Avalonia.Controls.DataGrid" Version="12.1.2" />
+    <PackageReference Include="Avalonia.Controls.ColorPicker" Version="12.1.4" />
+    <PackageReference Include="Avalonia.Controls.TreeDataGrid" Version="12.3.2" />
+    <PackageReference Include="Avalonia.Desktop" Version="12.1.4" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.4" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="12.1.4" />
     <!--Condition below is needed to remove Avalonia.Diagnostics package from build output in Release configuration.-->
-    <PackageReference Include="Avalonia.Diagnostics" Version="11.3.10">
+    <PackageReference Include="Avalonia.Diagnostics" Version="11.3.22">
       <IncludeAssets Condition="'$(Configuration)' != 'Debug'">None</IncludeAssets>
       <PrivateAssets Condition="'$(Configuration)' != 'Debug'">All</PrivateAssets>
     </PackageReference>
@@ -72,7 +72,7 @@
     <PackageReference Include="Serilog.Sinks.Async" Version="2.1.0" />
     <PackageReference Include="SkiaSharp" Version="2.88.9" />
     <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="2.88.9" />
-    <PackageReference Include="Avalonia.ReactiveUI" Version="11.2.3" />
+    <PackageReference Include="Avalonia.ReactiveUI" Version="11.3.8" />
     <PackageReference Include="System.Reactive" Version="6.0.1" />
     <!-- Serilog Logging -->
     <PackageReference Include="Serilog" Version="4.2.0" />
