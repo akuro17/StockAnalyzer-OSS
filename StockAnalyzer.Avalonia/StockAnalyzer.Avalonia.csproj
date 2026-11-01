@@ -150,4 +150,18 @@
           SkipUnchangedFiles="true"
           Condition="'$(PublishDir)' != ''" />
   </Target>
+
+  <!-- Copy Reference Manual to publish directory for dotnet publish / GitHub Actions packaging -->
+  <Target Name="CopyReferenceManualToPublish" AfterTargets="Publish" Condition="'$(PublishDir)' != ''">
+    <ItemGroup Condition="Exists('$(MSBuildProjectDirectory)/../docs/ReferenceManual')">
+      <_ReferenceManualPublishFiles Include="$(MSBuildProjectDirectory)/../docs/ReferenceManual/**/*.*" />
+    </ItemGroup>
+    <ItemGroup Condition="!Exists('$(MSBuildProjectDirectory)/../docs/ReferenceManual') And Exists('$(MSBuildProjectDirectory)/../docs/OSS')">
+      <_ReferenceManualPublishFiles Include="$(MSBuildProjectDirectory)/../docs/OSS/**/*.*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_ReferenceManualPublishFiles)"
+          DestinationFolder="$(PublishDir)docs/ReferenceManual/%(RecursiveDir)"
+          SkipUnchangedFiles="true"
+          Condition="'@(_ReferenceManualPublishFiles)' != ''" />
+  </Target>
 </Project>

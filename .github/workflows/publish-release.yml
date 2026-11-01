@@ -60,6 +60,25 @@ jobs:
         $mcpName = if ('${{ matrix.rid }}' -like 'win-*') { 'StockAnalyzer.McpServer.exe' } else { 'StockAnalyzer.McpServer' }
         if (-not (Test-Path (Join-Path ./publish $mcpName))) { Write-Error "$mcpName is missing from ./publish"; exit 1 }
 
+    - name: Ensure Reference Manual in publish output
+      run: |
+        $dest = "./publish/docs/ReferenceManual"
+        if (-not (Test-Path (Join-Path $dest "README.md"))) {
+          $refManualSrc = if (Test-Path "docs/ReferenceManual") { "docs/ReferenceManual" } elseif (Test-Path "docs/OSS") { "docs/OSS" } else { $null }
+          if ($refManualSrc) {
+            New-Item -ItemType Directory -Path $dest -Force | Out-Null
+            Copy-Item -Path "$refManualSrc/*" -Destination $dest -Recurse -Force
+            Write-Host "Copied $refManualSrc to $dest"
+          } else {
+            Write-Error "Reference Manual source directory not found in repository."
+            exit 1
+          }
+        }
+        if (-not (Test-Path (Join-Path $dest "README.md"))) {
+          Write-Error "ReferenceManual/README.md is missing from $dest"; exit 1
+        }
+        Write-Host "Verified docs/ReferenceManual in publish directory." -ForegroundColor Green
+
     - name: Create ZIP archive
       run: |
         Compress-Archive -Path ./publish/* -DestinationPath ./StockAnalyzer-${{ matrix.rid }}-${{ matrix.mode }}.zip
