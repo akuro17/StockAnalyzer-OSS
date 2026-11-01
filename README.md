@@ -151,6 +151,9 @@ Data/
 > [!TIP]
 > For the settings of Training Wizard, Reinforcement Learning and Portfolio Reinforcement Learning and for how to use the files they create, see the [Training and Reinforcement Learning Guide](https://github.com/akuro17/StockAnalyzer-OSS/blob/main/docs/TRAINING_AND_REINFORCEMENT_LEARNING_GUIDE.md).
 
+> [!TIP]
+> For detailed schema specifications, property tables, and editing guides for configuration and template files, see the [Configuration & Template Reference Manual](https://github.com/akuro17/StockAnalyzer-OSS/blob/main/docs/ReferenceManual/README.md).
+
 ---
 
 ## Testing
