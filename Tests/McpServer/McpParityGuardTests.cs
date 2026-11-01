@@ -65,7 +65,7 @@ public sealed class McpParityGuardTests : IDisposable
         Assert.Equal(
             new[] { "initialCapital", "commissionFlat", "commissionPerUnit", "slippageRatio", "sizingModel", "sizingParameter", "initialMarginRatio", "maintenanceMarginRatio", "liquidationPenaltyRatio" },
             McpBacktestSettingsExposure.KeysOf(McpBacktestSettingsExposure.AccountSection));
-        Assert.Equal(new[] { "stopLossRatio", "takeProfitRatio" }, McpBacktestSettingsExposure.KeysOf(McpBacktestSettingsExposure.RiskSection));
+        Assert.Equal(new[] { "stopLossRatio", "takeProfitRatio", "dynamicExits" }, McpBacktestSettingsExposure.KeysOf(McpBacktestSettingsExposure.RiskSection));
         Assert.Equal(
             new[] { "annualRiskFreeRate", "annualMar", "annualPeriodsD1", "bootstrapSeed", "bootstrapIterations" },
             McpBacktestSettingsExposure.KeysOf(McpBacktestSettingsExposure.ReportSection));

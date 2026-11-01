@@ -64,6 +64,8 @@ internal sealed class DeferredSandboxedExecutionGateway : ISandboxedExecutionGat
 
     public TrainingJobStatus GetStatus(string jobId) => Inner.GetStatus(jobId);
 
+    public IReadOnlyList<TrainingJobSummary> ListJobs() => Inner.ListJobs();
+
     public TrainingJobState Cancel(string jobId) => Inner.Cancel(jobId);
 
     public EphemeralArtifact? FindArtifact(string artifactIdOrLatest) => Inner.FindArtifact(artifactIdOrLatest);

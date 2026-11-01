@@ -25,7 +25,7 @@ public sealed class AggregatingDataService : IDataService
     public async Task<IReadOnlyList<CandleData>> LoadCandlesAsync(string symbol, TimeFrame timeFrame, int count = 100)
     {
         IReadOnlyList<CandleData> direct = await _inner.LoadCandlesAsync(symbol, timeFrame, count).ConfigureAwait(false);
-        if (direct.Count > 0 || (timeFrame != TimeFrame.W1 && timeFrame != TimeFrame.MN1))
+        if (direct.Count > 0 || !TimeFrameAggregator.IsPeriodFrame(timeFrame))
         {
             return direct;
         }
@@ -41,7 +41,7 @@ public sealed class AggregatingDataService : IDataService
         CancellationToken cancellationToken = default)
     {
         IReadOnlyList<CandleData> direct = await _inner.LoadCandlesAsync(symbol, timeFrame, count, includePartialBar, cancellationToken).ConfigureAwait(false);
-        if (direct.Count > 0 || (timeFrame != TimeFrame.W1 && timeFrame != TimeFrame.MN1))
+        if (direct.Count > 0 || !TimeFrameAggregator.IsPeriodFrame(timeFrame))
         {
             return direct;
         }

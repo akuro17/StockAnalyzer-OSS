@@ -289,6 +289,49 @@ public sealed class BacktestRunFingerprintBuilder
         {
             writer.NullableDecimal(risk.StopLossPercent);
             writer.NullableDecimal(risk.TakeProfitPercent);
+            WriteDynamicExits(writer, risk.DynamicExits);
+        }
+    }
+
+    private static void WriteDynamicExits(CanonicalWriter writer, DynamicExitConfiguration? dynamicExits)
+    {
+        if (dynamicExits is not { IsEnabled: true }) return;
+
+        writer.Bool(true);
+        writer.NullableInt32(dynamicExits.MaxHoldingBars);
+        if (dynamicExits.AtrStop is { } atrStop)
+        {
+            writer.Bool(true);
+            writer.Int32(atrStop.Period);
+            writer.Decimal(atrStop.Multiple);
+        }
+        else
+        {
+            writer.Bool(false);
+        }
+
+        if (dynamicExits.AtrTarget is { } atrTarget)
+        {
+            writer.Bool(true);
+            writer.Int32(atrTarget.Period);
+            writer.Decimal(atrTarget.Multiple);
+        }
+        else
+        {
+            writer.Bool(false);
+        }
+
+        if (dynamicExits.TrailingStop is { } trailing)
+        {
+            writer.Bool(true);
+            writer.Enum(trailing.Mode);
+            writer.NullableInt32(trailing.Period);
+            writer.NullableDecimal(trailing.Multiple);
+            writer.NullableDecimal(trailing.Ratio);
+        }
+        else
+        {
+            writer.Bool(false);
         }
     }
 

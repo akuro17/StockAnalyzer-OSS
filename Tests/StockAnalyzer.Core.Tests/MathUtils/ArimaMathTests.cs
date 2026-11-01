@@ -377,5 +377,65 @@ public class ArimaMathTests
 
         Assert.False(success);
     }
+
+    [Fact]
+    public void EstimateArimaForecast_CaseC_DegreesOfFreedomDeficit_ReturnsFalseAndLastPrice()
+    {
+        // T2.4: Period = 20, P = 5, D = 0, Q = 5
+        // n = 20, m = 5, t0 = 10 -> sampleCount = 10 <= kTotal = 10.
+        // Specification requirement: returns false and outputs window[^1] (last observed price).
+        uint state = 12345;
+        double[] window20 = new double[20];
+        for (int i = 0; i < 20; i++)
+        {
+            state = (state * 1103515245 + 12345) & 0x7fffffff;
+            window20[i] = 100.0 + (state % 1000) / 100.0;
+        }
+
+        bool success = ArimaMath.EstimateArimaForecast(window20, p: 5, d: 0, q: 5, out double forecast);
+
+        Assert.False(success);
+        Assert.Equal(window20[^1], forecast);
+    }
+
+    [Fact]
+    public void EstimateArimaForecast_CaseC_SingularSystem_ReturnsFalseAndLastPrice()
+    {
+        // T2.3: Geometric series w[i] = 100 * 1.01^i, n = 40, P = 2, D = 0, Q = 1
+        // AR(8) auxiliary regression fits near-machine-epsilon, making MA residual columns zero vectors,
+        // which leads to a singular normal matrix Z^T Z.
+        // Specification requirement: returns false and outputs window[^1].
+        double[] geom40 = new double[40];
+        for (int i = 0; i < 40; i++)
+        {
+            geom40[i] = 100.0 * Math.Pow(1.01, i);
+        }
+
+        bool success = ArimaMath.EstimateArimaForecast(geom40, p: 2, d: 0, q: 1, out double forecast);
+
+        Assert.False(success);
+        Assert.Equal(geom40[^1], forecast);
+    }
+
+    [Fact]
+    public void EstimateArimaForecast_DefaultParameters_UnchangedByFallbackChanges()
+    {
+        // Default parameters (P = 1, D = 1, Q = 1, Period = 30)
+        // With standard non-flat prices, Hannan-Rissanen regression operates normally.
+        uint state = 54321;
+        double[] window30 = new double[30];
+        for (int i = 0; i < 30; i++)
+        {
+            state = (state * 1103515245 + 12345) & 0x7fffffff;
+            window30[i] = 100.0 + (state % 1000) / 100.0;
+        }
+
+        bool success = ArimaMath.EstimateArimaForecast(window30, p: 1, d: 1, q: 1, out double forecast);
+
+        Assert.True(success);
+        Assert.False(double.IsNaN(forecast));
+        Assert.False(double.IsInfinity(forecast));
+        Assert.NotEqual(window30[^1], forecast);
+    }
 }
 

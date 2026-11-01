@@ -1383,6 +1383,61 @@ public static class IndicatorCalculationHelper
 
         return (plusDiList, minusDiList, dxList);
     }
+
+    /// <summary>
+    /// Calculates the Wilder ADX series from a DX series using standard Wilder recursion.
+    /// Seed is the arithmetic mean of the first <paramref name="period"/> DX values placed at index <c>2 * period - 2</c>.
+    /// </summary>
+    public static List<decimal?> CalculateWilderAdxSeries(IReadOnlyList<decimal?> dx, int period)
+    {
+        if (dx == null) return new List<decimal?>();
+        int n = dx.Count;
+        int s = 2 * period - 2;
+        var result = new List<decimal?>(n);
+
+        if (period <= 0 || n < s + 1)
+        {
+            for (int i = 0; i < n; i++) result.Add(null);
+            return result;
+        }
+
+        for (int i = 0; i < s; i++)
+        {
+            result.Add(null);
+        }
+
+        // Seed at s = 2 * period - 2: mean of dx[period - 1 .. s]
+        decimal sumDx = 0m;
+        for (int k = period - 1; k <= s; k++)
+        {
+            var val = dx[k];
+            if (!val.HasValue)
+            {
+                for (int j = s; j < n; j++) result.Add(null);
+                return result;
+            }
+            sumDx += val.Value;
+        }
+
+        decimal prevAdx = sumDx / period;
+        result.Add(prevAdx);
+
+        // Recursion for i > s: (prev * (period - 1) + dx[i]) / period
+        for (int i = s + 1; i < n; i++)
+        {
+            var val = dx[i];
+            if (!val.HasValue)
+            {
+                for (int j = i; j < n; j++) result.Add(null);
+                return result;
+            }
+            decimal adx = (prevAdx * (period - 1) + val.Value) / period;
+            prevAdx = adx;
+            result.Add(adx);
+        }
+
+        return result;
+    }
 }
 
 

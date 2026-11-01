@@ -52,6 +52,22 @@ public readonly struct StrategyContext
     public decimal? EntryPrice { get; init; }
 
     /// <summary>
+    /// Bar index where the currently-open position was filled; null while Flat.
+    /// Used by dynamic time-based and ATR exits.
+    /// </summary>
+    public int? EntryBarIndex { get; init; }
+
+    /// <summary>
+    /// Highest price observed during the currently-open position (including entry fill and all held bars); null while Flat.
+    /// </summary>
+    public decimal? PositionHigh { get; init; }
+
+    /// <summary>
+    /// Lowest price observed during the currently-open position (including entry fill and all held bars); null while Flat.
+    /// </summary>
+    public decimal? PositionLow { get; init; }
+
+    /// <summary>
     /// Intrabar path conflict mode for resolving Stop-Loss vs Take-Profit on same-bar double breaches.
     /// </summary>
     public PricePathConflictMode PricePathConflictMode { get; init; }

@@ -38,6 +38,9 @@ public sealed class TickerGroupResolverTests
         public Task<IReadOnlyList<string>> GetAvailableTickersAsync(CancellationToken cancellationToken = default)
             => Task.FromResult<IReadOnlyList<string>>(Registry);
 
+        public Task<SymbolCoverage> GetCoverageAsync(string symbol, CancellationToken cancellationToken = default)
+            => throw new NotImplementedException();
+
         public Task<IReadOnlyList<CandleData>> GetCandlesAsync(string symbol, TimeFrame timeFrame, int count, CancellationToken cancellationToken = default)
         {
             CandlesCallCount++;

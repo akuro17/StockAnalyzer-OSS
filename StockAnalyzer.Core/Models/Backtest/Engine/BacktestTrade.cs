@@ -32,6 +32,8 @@ public readonly record struct BacktestTrade(
     public string EntrySignal { get; init; } = string.Empty;
     [JsonIgnore]
     public string ExitReason { get; init; } = string.Empty;
+    [JsonIgnore]
+    public decimal? StopLevelAtExit { get; init; } = null;
 
     [JsonIgnore]
     public decimal EntryValue => checked(EntryPrice * Quantity);

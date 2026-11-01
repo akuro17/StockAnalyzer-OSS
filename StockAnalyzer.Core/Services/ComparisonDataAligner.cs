@@ -121,8 +121,10 @@ public class ComparisonDataAligner : IComparisonDataAligner
                     continue;
                 }
 
-                var aligned = AlignSeries(symbol, timestamps, candles);
-                
+                var aligned = TimeFrameAggregator.IsPeriodFrame(timeFrame)
+                    ? AlignSeriesByPeriod(symbol, timestamps, candles, timeFrame)
+                    : AlignSeries(symbol, timestamps, candles);
+
                 // Validate quality
                 int nullCount = aligned.Count(c => c == null);
                 double nullRatio = (double)nullCount / timestamps.Length;
@@ -159,6 +161,32 @@ public class ComparisonDataAligner : IComparisonDataAligner
         return new ComparisonAlignedData(primarySymbol, timestamps, series, warnings);
     }
 
+
+    /// <summary>
+    /// The W1 / MN1 form of <see cref="AlignSeries"/>. Weekly and monthly bars built by <see cref="TimeFrameAggregator"/> are dated by the first trading day of
+    /// their period, so two markets with different holidays date the same ISO week or calendar month differently and an exact-date match misses.
+    /// Here a comparison bar belongs to the base bar of the same <see cref="TimeFrameAggregator.GetPeriodKey"/>: it is re-dated to that base bar's timestamp
+    /// (prices and volume unchanged) and then aligned by the unchanged <see cref="AlignSeries"/>, so carry-forward and the series shape are the same as for every other frame.
+    /// A comparison bar of a period the base timeline does not contain is left as it is (it matches no base bar); when the base timeline holds two bars of one period,
+    /// only the first of them is matched.
+    /// </summary>
+    private CandleData?[] AlignSeriesByPeriod(string symbol, DateTime[] baseTimeline, IReadOnlyList<CandleData> rawData, TimeFrame timeFrame)
+    {
+        var baseTimestampByPeriod = new Dictionary<int, DateTime>(baseTimeline.Length);
+        foreach (var timestamp in baseTimeline)
+        {
+            baseTimestampByPeriod.TryAdd(TimeFrameAggregator.GetPeriodKey(timestamp, timeFrame), timestamp);
+        }
+
+        var redated = new List<CandleData>(rawData.Count);
+        foreach (var candle in rawData)
+        {
+            int periodKey = TimeFrameAggregator.GetPeriodKey(candle.Timestamp, timeFrame);
+            redated.Add(baseTimestampByPeriod.TryGetValue(periodKey, out var baseTimestamp) ? candle with { Timestamp = baseTimestamp } : candle);
+        }
+
+        return AlignSeries(symbol, baseTimeline, redated);
+    }
 
     private CandleData?[] AlignSeries(string symbol, DateTime[] baseTimeline, IReadOnlyList<CandleData> rawData)
 

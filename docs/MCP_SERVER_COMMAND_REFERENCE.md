@@ -21,8 +21,8 @@
 |                               |                                                |  |
 |                               v                                                v  |
 |                     [McpResourceRegistry]                             [McpToolRegistry]  |
-|                     - catalog/indicators                              - 28 Read-Only Tools|
-|                     - catalog/screener                                - 7 Execution Tools |
+|                     - catalog/indicators                              - 36 Read-Only Tools|
+|                     - catalog/screener                                - 9 Execution Tools |
 |                     - settings/current                                  (--enable-execution)
 |                               |                                                |  |
 +-------------------------------|------------------------------------------------|--+
@@ -90,7 +90,7 @@ Tunable parameters configured in `appsettings.json` under section `AiIntegration
 | `MaxOutputTailBars` | `int` | `5000` | `1` | `MaxCandlesPerRequest` | Maximum number of trailing calculated bars returned in indicator or chart series calls. |
 | `DefaultOutputTailBars` | `int` | `200` | `1` | `MaxOutputTailBars` | Default trailing bar count when `outputTailCount` is omitted. |
 | `ToolTimeoutSeconds` | `int` | `60` | `1` | `900` | Cancellation timeout for standard read-only tools. |
-| `HeavyToolTimeoutSeconds` | `int` | `180` | `ToolTimeout` | `1800` | Cancellation timeout for heavy computational tools (`sa_run_screener`, `sa_run_backtest`, `sa_filter_tickers`, `sa_optimize_backtest`, `sa_run_walk_forward_analysis`). |
+| `HeavyToolTimeoutSeconds` | `int` | `180` | `ToolTimeout` | `1800` | Cancellation timeout for heavy computational tools (`sa_run_screener`, `sa_run_backtest`, `sa_filter_tickers`, `sa_optimize_backtest`, `sa_run_walk_forward_analysis`, `sa_calculate_market_breadth`, `sa_run_portfolio_backtest`). |
 | `QueueWaitSeconds` | `int` | `60` | `0` | `600` | Maximum time a request waits in the internal execution queue before timeout. |
 | `MaxResponseBytes` | `int` | `4194304` | `65536` | `8388608` | Maximum byte size of a serialized JSON-RPC response payload (default: 4 MB, max: 8 MB). |
 | `MaxRequestBytes` | `int` | `1048576` | `4096` | `8388608` | Maximum byte size of an incoming JSON-RPC request line (default: 1 MB, max: 8 MB). |
@@ -108,7 +108,7 @@ Tunable parameters configured in `appsettings.json` under section `AiIntegration
 | `MaxOptimizationCombinations` | `int` | `500` | `1` | `20000` | Maximum number of parameter combinations (product of the value counts of `parameterRanges`) of one `sa_optimize_backtest` call and per window of one `sa_run_walk_forward_analysis` call; more raises `LIMIT_EXCEEDED`, the grid is never thinned. |
 | `MaxOptimizationTopK` | `int` | `10` | `1` | `100` | Maximum `topK` of `sa_optimize_backtest` (more raises `LIMIT_EXCEEDED`). |
 | `MaxOptimizationParameters` | `int` | `4` | `1` | `8` | Maximum entries of `parameterRanges` (more raises `LIMIT_EXCEEDED`). |
-| `OptimizationDegreeOfParallelism` | `int` | `4` | `1` | `64` | Backtests of one optimisation or walk-forward call that run at the same time; the result never depends on it. |
+| `OptimizationDegreeOfParallelism` | `int` | `4` | `1` | `64` | Backtests of one optimisation, walk-forward, or portfolio backtest call that run at the same time; the result never depends on it. |
 | `MaxWalkForwardWindows` | `int` | `8` | `1` | `60` | Maximum windows of one `sa_run_walk_forward_analysis` call (more raises `LIMIT_EXCEEDED`, never cut). Standard 8: 12 windows of 1000 in-sample bars with 500 combinations took 102 s at 4 threads, more than half of `HeavyToolTimeoutSeconds`. |
 | `DefaultMinInSampleTrades` | `int` | `1` | `0` | `1000` | Default of `minInSampleTrades` in `sa_run_walk_forward_analysis`. |
 | `MaxVolumeProfileBins` | `int` | `200` | `2` | `500` | Maximum vertical price bins one `sa_calculate_volume_profile` call may divide the price range into (`binCount`). |
@@ -117,6 +117,10 @@ Tunable parameters configured in `appsettings.json` under section `AiIntegration
 | `MaxReturnedPatterns` | `int` | `100` | `1` | `1000` | Maximum chart pattern occurrences one `sa_detect_chart_patterns` call may return (`maxPatterns`). |
 | `MaxProjectionBars` | `int` | `100` | `1` | `100` | Maximum multi-step forecast bars one `sa_project_price_path` call may extrapolate forward (`horizonBars`). |
 | `MaxSeasonalityYears` | `int` | `50` | `1` | `100` | Maximum overlaid calendar years one `sa_get_seasonality` call may aggregate (`years`). |
+| `MaxCrossAssetSymbols` | `int` | `50` | `2` | `500` | Maximum number of symbols analyzed in one `sa_calculate_cross_asset_stats` call (more raises `LIMIT_EXCEEDED`). |
+| `MaxBreadthSymbols` | `int` | `500` | `1` | `5000` | Maximum number of symbols analyzed in one `sa_calculate_market_breadth` call (more raises `LIMIT_EXCEEDED`). |
+| `MaxPortfolioBacktestSymbols` | `int` | `50` | `1` | `500` | Maximum number of symbols analyzed in one `sa_run_portfolio_backtest` call (more raises `LIMIT_EXCEEDED`). |
+| `MaxListedModels` | `int` | `100` | `1` | `1000` | Maximum number of models returned in `sa_list_models` (more raises `LIMIT_EXCEEDED`). |
 
 ---
 
@@ -168,9 +172,12 @@ URI Scheme: `stockanalyzer://`
 ### 5.3 Codes Every Tool Can Return
 `INVALID_ARGUMENT` (schema check), `EXECUTION_TIMEOUT`, `SERVER_BUSY`, `INTERNAL_ERROR`, `DATA_UNAVAILABLE`, and `LIMIT_EXCEEDED` for an over-large result. The **Error Codes** line of each tool below lists the codes specific to that tool in addition.
 
+### 5.4 Output Schema Support (`outputSchema`)
+Starting with protocol enhancement, `tools/list` conditionally advertises `outputSchema` (JSON Schema 2020-12 subset) for supported tools (`sa_list_tickers`, `sa_get_candles`, `sa_get_capabilities`). The returned `structuredContent` in `tools/call` strictly conforms to the declared schema. For other tools, `outputSchema` is omitted to preserve byte-exact backward compatibility.
+
 ---
 
-## 6. Read-Only Tools Reference (28 Tools)
+## 6. Read-Only Tools Reference (36 Tools)
 
 All read-only tools are marked read-only and non-destructive in `tools/list`. Every `timeFrame` schema lists all time-frame names, but only `D1`, `W1` and `MN1` are accepted (`UNSUPPORTED_TIMEFRAME` otherwise). The date that ends a calculation is `endDate` for tools that return a series over a window and `asOfDate` for tools that evaluate one bar per symbol or predict (`sa_run_screener`, `sa_run_onnx_prediction`, `sa_get_rl_playback`); there is no alias, and the other spelling is `INVALID_ARGUMENT` (for `sa_calculate_indicators` with `asOfDate` and `sa_run_screener` with `endDate` the hint names the right argument). With a date a symbol is read as it was known on that date (the daily series is cut before `W1` and `MN1` bars are built); a date removes look-ahead only, not survivorship bias: the universe is today's ticker list. Heavy tools run under `HeavyToolTimeoutSeconds` (default 180 s), the others under `ToolTimeoutSeconds` (default 60 s).
 
@@ -349,7 +356,7 @@ Evaluates a condition tree against the latest bar of a symbol universe, with the
 | `allowUnregistered` | `boolean` | No | `false` | - | - | Accepts explicit `symbols` and `ComparisonSymbol` values that are not in the ticker list but have stored daily bars; they are named in `warnings`. Not for `groupId`. |
 
 - **Boundary Conditions**: Omitting both `symbols` and `groupId` screens every available symbol. A comparison that cannot be calculated does not match. Look-ahead indicators are refused. Two-ticker indicators (`Correlation`, `CrossCorrelation`) need `ComparisonSymbol` (an empty one is refused: the chart's Price-vs-Volume mode is not available here).
-  - **Two-ticker indicators on `W1`/`MN1`**: both symbols are read through the same bar selection (date cut, aggregation, partial-period rule, each symbol with its own reference date). A `W1` or `MN1` bar is stamped with the first stored day of its period and the two symbols are matched by that exact date, as on the chart: a period whose first stored day differs between the symbols has no value, a window that contains it has no value, the condition does not match and `warnings` stays silent; `sortBy` then gives `sortValue` `null`. A comparison symbol stored only to a mid-week day loses that week as partial (with `completeBarsOnly: true`) while the screened symbol keeps it.
+  - **Two-ticker indicators on `W1`/`MN1`**: both symbols are read through the same bar selection (date cut, aggregation, partial-period rule, each symbol with its own reference date). A `W1` or `MN1` bar is stamped with the first stored day of its period and the two symbols are matched by that exact date (the chart and `sa_calculate_indicators` match `W1`/`MN1` comparison symbols by ISO week or calendar month instead, so for markets with different holidays this scan can differ from them): a period whose first stored day differs between the symbols has no value, a window that contains it has no value, the condition does not match and `warnings` stays silent; `sortBy` then gives `sortValue` `null`. A comparison symbol stored only to a mid-week day loses that week as partial (with `completeBarsOnly: true`) while the screened symbol keeps it.
   - **Per-side time frame**: a side object (`indicator`, `price`, `column`, `criteria`, and `sortBy`) takes an optional `timeFrame` (`D1`, `W1`, `MN1`; periods and `offset` count bars of that frame), so one condition can compare, for example, the daily `Close` with a weekly `SMA`: `{"left":{"price":"Close"},"comparison":"GreaterThan","right":{"indicator":"SMA","parameters":{"Period":10},"timeFrame":"W1"}}`. While no side (and no saved template) names a frame, the whole scan is on the tool-level `timeFrame` as before. As soon as one does, every side reads its own frame: a side without `timeFrame` reads the tool-level `timeFrame` (default `D1`); a saved template that stores a `W1` or `MN1` bar-reading side reads its stored frames and refuses a tool-level `timeFrame` other than `D1` (`INVALID_ARGUMENT` at `timeFrame`). `INVALID_ARGUMENT` at `<side>.timeFrame`: a value that is not a frame the server supports, any `timeFrame` on a column not read from the bars (only `Open`, `High`, `Low`, `Close`, `Volume`, `Change`, `Change %` have bars), a frame other than `D1` on `AnchoredVWAP` or on a two-ticker indicator. A two-ticker indicator is refused anywhere in such a call (that scan reads no comparison symbol); in a saved template it is listed in `warnings` and never matches. The result then has `sideFrames` (below) instead of the single `partialLastBar`, `partialPeriodStarts` and `skippedPartialBarCount`. `sa_get_capabilities` with `includeScreenerCatalog` lists the frames in `screener.sideTimeFrames`.
   - **Expanded comparisons** (also in `sa_run_backtest`, `sa_optimize_backtest`, `sa_run_walk_forward_analysis` and `screener.conditionTree` of `sa_filter_tickers`; not in saved templates): `CrossesAbove`, `CrossesBelow`, `Rising` and `Falling` are not application operators; each leaf is expanded, exactly, into the application's own comparisons joined by And. With `a[k]` the side `a` with its `offset` raised by `k` bars (an offset already written is added to; a number as `right` stays that number): `CrossesAbove` = `left[0] > right[0]` and `left[1] <= right[1]`; `CrossesBelow` = `left[0] < right[0]` and `left[1] >= right[1]`; `Rising` with the leaf key `bars` N (integer 1 to the largest offset, no `right`) = `left[0] > left[1]` and `left[1] > left[2]` ... and `left[N-1] > left[N]` (N comparisons, every bar consecutive); `Falling` = the same with `<`. `bars` on a cross is `INVALID_ARGUMENT` at `<leaf>.bars`; `right` on `Rising` or `Falling` is `INVALID_ARGUMENT` at `<leaf>.right`. An offset that the expansion would push past the largest offset (`Screener:MaxConditionOffset`, `Backtest:MaxConditionOffset`) is `INVALID_ARGUMENT` at the leaf, with the setting in the hint. The expanded group and comparisons count against the tree limits (`CONDITION_LIMIT_EXCEEDED` at the leaf the client wrote); errors in a side name the side as written. A root that is one expanding leaf equals the same comparisons written out as a group, down to the run fingerprint. The names are listed in `sa_get_capabilities` `screener.expandedComparisons` (with `includeScreenerCatalog`); `treeNodeCount`, `comparisons[]` and `conditionRoots[]` show the expansion.
   - **As of a date**: a symbol with no bar on or before `asOfDate` is not evaluated and is counted in `noDataAtAsOfCount`, not in `evaluatedSymbolCount`. Only the columns read from the bars (`Open`, `High`, `Low`, `Close`, `Volume`, `Change`, `Change %`) are accepted; every other column (also the text columns) is today's stored snapshot and is refused at its side path (`conditionTree.<comparison>.left.column`, `entries[i].leftHand`, `sortBy.column`) with the allowed names in the hint. A `groupId` adds a warning that its members are those of today. `asOfDate` removes look-ahead only, not survivorship bias (today's ticker list). An as-of scan reads the whole daily history of every scanned symbol.
@@ -391,7 +398,7 @@ Executes an in-memory backtest on daily, weekly or monthly bars using the Legacy
 | `startDate` | `string` | No | stored history | `yyyy-MM-dd` | - | First evaluated day. |
 | `endDate` | `string` | No | latest stored bar | `yyyy-MM-dd` | - | Last evaluated day. |
 | `account` | `object` | No | factory defaults | - | - | `initialCapital`, `commissionFlat`, `commissionPerUnit`, `slippageRatio`, `sizingModel` (`FixedQuantity`\|`PercentOfEquity`), `sizingParameter`, `initialMarginRatio`, `maintenanceMarginRatio`, `liquidationPenaltyRatio`. |
-| `riskManagement` | `object` | No | `null` | - | - | `{stopLossRatio, takeProfitRatio}`; not with `templateId`. |
+| `riskManagement` | `object` | No | `null` | - | - | `{stopLossRatio, takeProfitRatio, dynamicExits{maxHoldingBars, atrStop{period, multiple}, atrTarget{period, multiple}, trailingStop{mode, period, multiple, ratio}}}`; not with `templateId`. |
 | `report` | `object` | No | factory defaults | - | - | `annualRiskFreeRate`, `annualMar`, `annualPeriodsD1` (1..366), `bootstrapSeed`, `bootstrapIterations` (at least 1000). |
 | `maxReturnedTrades` | `integer` | No | `MaxReturnedTrades` | Min: `0`, Max: `MaxReturnedTrades` | - | Max trades listed; `0` lists none. |
 | `allowUnregistered` | `boolean` | No | `false` | - | - | Accepts a `symbol` that is not in the ticker list but has stored bars; it is named in `warnings`. A symbol with no stored bars is `SYMBOL_NOT_FOUND`. |
@@ -401,9 +408,10 @@ Executes an in-memory backtest on daily, weekly or monthly bars using the Legacy
 
 - **Diagnostics (units)**: computed on the evaluated bars only (warm-up excluded), with the initial capital as the first equity. `equity` is in account currency (cash + held margin + unrealized profit and loss). `drawdownRatio = equity / running high - 1` is a unitless ratio at most 0 (`-0.12` = 12 percent below the high; the running high covers every bar before `Weekly` or `Monthly` thinning; `null` with `reason` `NonPositivePeak` when the high is not positive). A drawdown episode runs from a peak to the first later bar at or above it; `depthRatio = (peakEquity - troughEquity) / peakEquity` is a unitless ratio, `declineBars`, `recoveryBars` and `underwaterBars` count bars, and the recovery fields are `null` while still underwater; rank 1 equals `report.maxDrawdown`. `returnRatio = period-end equity / previous period-end equity - 1` is a unitless ratio (the first period starts at the initial capital; `null` with `reason` `NonPositiveStartEquity` when the start equity is not positive); `isPartial` marks a month or year cut by the requested `startDate` or `endDate`. With no stored bar in the period all three parts are empty. **Weekly bars:** a weekly bar is dated by the first trading day of its week but closes on the last, so it cannot be cut at a month or year end; with `timeFrame` `W1` the monthly and yearly returns and the `Monthly` curve are refused (`UNSUPPORTED_TIMEFRAME`, use `D1` or `MN1`) rather than returning a number that mixes two months; the `Bar` and `Weekly` curves and the episodes are exact on weekly bars. On `MN1` bars every bar is one calendar month. **Arithmetic failure:** a part whose decimal arithmetic overflows (tiny positive initial capital with a huge equity) is left out and named in `diagnosticsUnavailable[{part, reason}]`; the report, the trades and the other parts are unchanged. Episodes are ranked on the same double-precision ratio as `report.maxDrawdown`; depths equal at that resolution are ordered by the earlier peak. A run that stops early does not mark its last period partial (`isPartial` follows the requested dates).
 - **Trade excursions**: each trade also carries `mfePrice` and `maePrice` (maximum favourable and adverse excursion from `entryPrice` in price units, never negative, before fees and slippage) and `mfePercent` and `maePercent` (the same as percent of `entryPrice`, `null` when `entryPrice` is not positive). They are measured on bar highs and lows, so the order of the high and the low inside a bar is unknown (a bar-resolution approximation).
+- **Dynamic exits**: `riskManagement.dynamicExits` supports `maxHoldingBars` (integer $\ge 1$, time stop executed at next open), `atrStop` (`{period >= 1, multiple > 0}` fixed ATR stop), `atrTarget` (`{period >= 1, multiple > 0}` fixed ATR target), and `trailingStop` (`{mode: "AtrMultiple" | "Ratio", period?, multiple?, ratio?}`, causal ratcheting stop active from bar $t+1$). Dynamic exits ratchet causally on evaluated bars without forward references; tightest active stop takes precedence. Stop evaluation records `stopLevelAtExit` (in price units, `null` when exit is non-stop) and populates `exitReason` with expanded vocabulary ("Stop-Loss breach", "Take-Profit breach", "Time Stop", "ATR Stop", "ATR Target", "Trailing Stop", "Condition exit chain matched"). Echoed under `effectiveSettings.riskManagement.dynamicExits`.
 - **Boundary Conditions**: With `templateId`, `riskManagement` must be omitted (the template's risk settings govern). `startDate > endDate` raises `INVALID_ARGUMENT`. Two-ticker indicators are refused (the engine takes the bars of one symbol). Omitted settings are the window's factory defaults and every effective value is echoed.
   - **Side time frame**: a side of `conditions` takes an optional `frame`, written exactly `D1`, `W1` or `MN1` (lowercase, empty or a non-string is `INVALID_ARGUMENT` at `<side>.frame`). The evaluated `timeFrame` is the same as omitting the key (same run fingerprint); a frame finer than `timeFrame` is `UNSUPPORTED_TIMEFRAME` at `<side>.frame` (for a saved template, at `templateId`). The side is calculated on the stored bars of that frame and aligned with `TimeframeAlignment.Align`: the value at an evaluated bar is that of the period before the one containing the bar, so a `W1` side on a daily bar is last week's and never the running week's; a bar with no closed period yet does not match. The alignment never reads a bar after the evaluated bar; at a period boundary it can lag one period more. A saved template with a `W1` or `MN1` side is accepted on a finer `timeFrame` and `sa_list_templates` lists it without a warning. `conditionRoots[].text` writes such a side as `title@W1`.
-- **Return Fields**: `symbol`, `timeFrame`, `executionModel`, `status`, `isInsufficientData`, `strategy`, `conditionSource`, `template{id, name}?`, `period{startDate, endDate, datesFromStoredHistory, warmUpBarCount, evaluatedBarCount}`, `lastProcessedBar`, `equity{initial, final}`, `reproducibilityHash`, `runFingerprint`, `report` (metrics keep status, value, unit and reason), `effectiveSettings{account, riskManagement, report}`, `conditionRoots`, `trades{totalTrades, returnedTrades, truncated, order, items}` (each item also has `mfePrice`, `maePrice`, `mfePercent`, `maePercent`), `engineWarnings`, `equityCurve{resolution, pointCount, points[{date, equity, drawdownRatio, reason?}]}?`, `drawdownEpisodes[{rank, peakDate, troughDate, recoveryDate, peakEquity, troughEquity, depthRatio, declineBars, recoveryBars, underwaterBars}]?`, `periodicReturns{monthly[{year, month, returnRatio, isPartial, reason?}], yearly[{year, returnRatio, isPartial, reason?}]}?`, `diagnosticsUnavailable[{part, reason}]?`, `warnings`.
+- **Return Fields**: `symbol`, `timeFrame`, `executionModel`, `status`, `isInsufficientData`, `strategy`, `conditionSource`, `template{id, name}?`, `period{startDate, endDate, datesFromStoredHistory, warmUpBarCount, evaluatedBarCount}`, `lastProcessedBar`, `equity{initial, final}`, `reproducibilityHash`, `runFingerprint`, `report` (metrics keep status, value, unit and reason), `effectiveSettings{account, riskManagement, report}`, `conditionRoots`, `trades{totalTrades, returnedTrades, truncated, order, items}` (each item also has `mfePrice`, `maePrice`, `mfePercent`, `maePercent`, `stopLevelAtExit`, `exitReason`), `engineWarnings`, `equityCurve{resolution, pointCount, points[{date, equity, drawdownRatio, reason?}]}?`, `drawdownEpisodes[{rank, peakDate, troughDate, recoveryDate, peakEquity, troughEquity, depthRatio, declineBars, recoveryBars, underwaterBars}]?`, `periodicReturns{monthly[{year, month, returnRatio, isPartial, reason?}], yearly[{year, returnRatio, isPartial, reason?}]}?`, `diagnosticsUnavailable[{part, reason}]?`, `warnings`.
 - **Error Codes**: `SYMBOL_NOT_FOUND`, `UNSUPPORTED_TIMEFRAME`, `TEMPLATE_NOT_FOUND`, `INVALID_INDICATOR_PARAMETER`, `CONDITION_LIMIT_EXCEEDED`, `INSUFFICIENT_MARKET_DATA`, `LIMIT_EXCEEDED`.
 
 ---
@@ -883,9 +891,181 @@ Extracts the historical calendar seasonality matrix and monthly fractional retur
 
 ---
 
+### 6.29 `sa_calculate_cross_asset_stats`
+Calculates cross-asset return statistics across 2 to `MaxCrossAssetSymbols` (default 50) symbols: Pearson correlation matrix, sample covariance matrix ($N-1$ degrees of freedom Bessel correction per D-10a), and benchmark Beta, Alpha, and $R^2$ OLS statistics. Aligns bars using an inner join on common trading dates. Read-only.
+
+- **Heavy**: `false` (`ToolTimeoutSeconds`)
+- **Arguments**:
+
+| Argument | Type | Req | Default | Bounds | Allowed Values | Description |
+|---|---|---|---|---|---|---|
+| `symbols` | `string[]` | No* | - | 2..`MaxCrossAssetSymbols` (50) | - | Universe ticker symbols. Mutually exclusive with `groupId`. |
+| `groupId` | `string` | No* | - | - | - | Guid of a saved ticker group (from `sa_list_ticker_groups`). Mutually exclusive with `symbols`. |
+| `benchmark` | `string` | No | - | - | - | Optional benchmark ticker symbol for Beta, Alpha, and $R^2$ calculation. |
+| `timeFrame` | `string` | No | `D1` | - | `D1`, `W1`, `MN1` | Bar timeframe for analysis. |
+| `lookbackBars` | `integer` | No | `DefaultCandleCount` (200) | 1..`MaxCandlesPerRequest` | - | Stored bars loaded per symbol up to `endDate`. |
+| `endDate` | `string` | No | stored history | `yyyy-MM-dd` | - | Last date of the evaluation window (inclusive). |
+| `returnBasis` | `string` | No | `SimpleReturn` | - | `SimpleReturn`, `LogReturn` | Return calculation basis (D-10e). |
+| `includeCovariance` | `boolean` | No | `false` | - | - | Whether to include the sample covariance matrix in the result. |
+
+\* *Either `symbols` or `groupId` may be specified, or neither to evaluate the registered ticker repository up to `MaxCrossAssetSymbols`.*
+
+- **Return Fields**: `symbols`, `commonDateCount`, `startDate`, `endDate`, `returnBasis`, `covarianceDegreesOfFreedom` (`Sample(N-1)`), `correlation` (2D array of floats/nulls), `covariance` (optional 2D array of floats), `betaAlpha` (array of `{symbol, beta, alpha, rSquared}`), `excludedSymbols` (array of `{symbol, reason}`), `notes`.
+- **Statistical Invariants**:
+  - Sample covariance strictly uses Bessel correction divisor $(N - 1)$ per D-10a.
+  - Pearson correlation clamps to $[-1.0, 1.0]$. Zero variance series safely output `null` instead of NaN.
+  - Benchmark Alpha is the per-bar OLS intercept $\alpha_i = \bar{r}_i - \beta_i \bar{r}_b$ without risk-free deduction (D-10b).
+- **Error Codes**: `INVALID_ARGUMENT` (`symbols`, `groupId`, `benchmark`, `timeFrame`, `lookbackBars`, `endDate`, `returnBasis`, fewer than 2 symbols), `SYMBOL_NOT_FOUND`, `UNSUPPORTED_TIMEFRAME`, `INSUFFICIENT_MARKET_DATA` (fewer than 3 common dates), `LIMIT_EXCEEDED` (`symbols` or `groupId` count > `MaxCrossAssetSymbols`).
+
 ---
 
-## 7. Execution Tools Reference (7 Tools, `--enable-execution` Required)
+### 6.30 `sa_calculate_market_breadth`
+Calculates internal market structure and breadth analytics across a universe of up to `MaxBreadthSymbols` (default 500) symbols: Advancers, Decliners, Unchanged, Volume, A/D Line, A/D Ratio, McClellan Oscillator, Summation Index, % Above SMA, New Highs/Lows, TRIN (Arms Index), and CVI. Aligns bars on the union of trading days. Read-only (heavy).
+
+- **Heavy**: `true` (`HeavyToolTimeoutSeconds`)
+- **Arguments**:
+
+| Argument | Type | Req | Default | Bounds | Allowed Values | Description |
+|---|---|---|---|---|---|---|
+| `symbols` | `string[]` | No* | - | 1..`MaxBreadthSymbols` (500) | - | Universe ticker symbols. Mutually exclusive with `groupId`. |
+| `groupId` | `string` | No* | - | - | - | Guid of a saved ticker group (from `sa_list_ticker_groups`). Mutually exclusive with `symbols`. |
+| `timeFrame` | `string` | No | `D1` | - | `D1`, `W1`, `MN1` | Bar timeframe for analysis. |
+| `lookbackBars` | `integer` | No | `DefaultCandleCount` (200) | 1..`MaxCandlesPerRequest` | - | Stored bars loaded per symbol up to `endDate`. |
+| `outputTailCount` | `integer` | No | `DefaultOutputTailBars` (200) | 1..`MaxOutputTailBars` | - | Number of trailing bars returned per series. |
+| `endDate` | `string` | No | stored history | `yyyy-MM-dd` | - | Last date of the evaluation window (inclusive). |
+| `adRatioBars` | `integer` | No | `20` | 1..`MaxCandlesPerRequest` | - | Lookback window in days for A/D Ratio. |
+| `mcClellanFast` | `integer` | No | `19` | 1..`MaxCandlesPerRequest` | - | Fast EMA period for McClellan Oscillator (D-10d). |
+| `mcClellanSlow` | `integer` | No | `39` | 1..`MaxCandlesPerRequest` | - | Slow EMA period for McClellan Oscillator (D-10d). |
+| `maBars` | `integer` | No | `50` | 1..`MaxCandlesPerRequest` | - | Lookback period in bars for % Above SMA. |
+| `highLowBars` | `integer` | No | `20` | 1..`MaxCandlesPerRequest` | - | Lookback window in bars for New Highs / New Lows (D-10c). |
+| `include` | `string[]` | No | all series | - | `advancers`, `decliners`, `unchanged`, `adLine`, `adRatio`, `mcClellan`, `summationIndex`, `pctAboveMa`, `newHighs`, `newLows`, `netNewHighs`, `trin`, `cvi` | Optional array of series names to filter output. |
+
+\* *Either `symbols` or `groupId` may be specified, or neither to evaluate the registered ticker repository up to `MaxBreadthSymbols`.*
+
+- **Return Fields**: `dateCount`, `symbolCount`, `excludedSymbols` (array of `{symbol, reason}`), `series` (`dates[]`, `advancers[]`, `decliners[]`, `unchanged[]`, `adLine[]`, `adRatio[]`, `mcClellan[]`, `summationIndex[]`, `pctAboveMa[]`, `newHighs[]`, `newLows[]`, `netNewHighs[]`, `trin[]`, `cvi[]`), `notes`.
+- **Breadth Formulas & Invariants**:
+  - Daily changes ($A, D, U, UpVol, DownVol$) compare each ticker to its own previous bar (D-10f). Missing/halted dates for a ticker are excluded from counts on that day (D-10g). First day has no previous bar and emits 0 changes.
+  - SSoT indicators: McClellan Oscillator uses Core `IndicatorCalculationHelper.CalculateEma` (Fast 19 / Slow 39), % Above SMA uses `IndicatorCalculationHelper.CalculateSma`, and New Highs/Lows uses `RollingExtremeHelper` on Close prices.
+  - Output is sliced to `outputTailCount` after warming up all moving averages and rolling extremes.
+- **Error Codes**: `INVALID_ARGUMENT` (`symbols`, `groupId`, `timeFrame`, `lookbackBars`, `outputTailCount`, `endDate`, indicator window arguments, `include` series names), `SYMBOL_NOT_FOUND`, `UNSUPPORTED_TIMEFRAME`, `INSUFFICIENT_MARKET_DATA`, `LIMIT_EXCEEDED` (`symbols` or `groupId` count > `MaxBreadthSymbols`).
+
+### 6.31 `sa_run_portfolio_backtest`
+Executes an identical backtest strategy across a basket of up to `MaxPortfolioBacktestSymbols` (default 50) symbols in parallel using the independent sleeves model. Total capital is divided equally into isolated sleeves (D-11c). Failed sleeves (no data) remain flat cash without capital reallocation (D-11b). Composes portfolio equity on the union of trading dates with forward-fill, evaluating portfolio-level total return, max drawdown episode via `DrawdownEpisodeEnumerator`, and pooled trade statistics. Read-only (heavy).
+
+- **Heavy**: `true` (`HeavyToolTimeoutSeconds`)
+- **Arguments**:
+
+| Argument | Type | Req | Default | Bounds | Allowed Values | Description |
+|---|---|---|---|---|---|---|
+| `symbols` | `string[]` | No* | - | 1..`MaxPortfolioBacktestSymbols` (50) | - | Target ticker symbols to run backtest against (duplicates folded). Mutually exclusive with `groupId`. |
+| `groupId` | `string` | No* | - | 1..`MaxPortfolioBacktestSymbols` (50) members | - | Guid of a saved ticker group (from `sa_list_ticker_groups`). Mutually exclusive with `symbols`. |
+| `conditions` | `object` | No** | - | Up to 6 roots | - | Backtest entry/exit condition tree (identical across sleeves). Mutually exclusive with `templateId`. |
+| `templateId` | `string` | No** | - | - | - | Guid of a saved backtest-condition template (from `sa_list_templates`). Mutually exclusive with `conditions`. |
+| `timeFrame` | `string` | No | `D1` | - | `D1`, `W1`, `MN1` | Bar timeframe for evaluation. |
+| `startDate` | `string` | No | stored history | `yyyy-MM-dd` | - | Start date of backtest evaluation period (inclusive). |
+| `endDate` | `string` | No | stored history | `yyyy-MM-dd` | - | End date of backtest evaluation period (inclusive). |
+| `account` | `object` | No | factory defaults | - | - | Account settings. `initialCapital` represents total portfolio capital divided equally into sleeves. |
+| `riskManagement` | `object` | No | - | - | - | Risk management parameters (`stopLossRatio`, `takeProfitRatio`, `dynamicExits`). Prohibited with `templateId`. |
+| `report` | `object` | No | factory defaults | - | - | Report calculation parameters (`annualRiskFreeRate`, `annualMar`, `annualPeriodsD1`, `bootstrapSeed`, `bootstrapIterations`). |
+| `allocation` | `string` | No | `Equal` | - | `Equal` | Capital allocation strategy. Only `Equal` supported (v1 Independent Sleeves). `maxConcurrentPositions` rejected with `INVALID_ARGUMENT` (D-11a). |
+| `maxReturnedTradesPerSymbol` | `integer` | No | `0` | 0..`MaxReturnedTrades` (200) | - | Maximum closed trades returned per symbol (0 omits trade list). |
+| `allowUnregistered` | `boolean` | No | `false` | - | - | Accepts symbols not in ticker list but having stored bars. |
+| `includeEquityCurve` | `string` | No | `None` | - | `None`, `Weekly`, `Monthly` | Downsampled composite portfolio equity curve resolution (`Bar` not supported; `Monthly` with `W1` is `UNSUPPORTED_TIMEFRAME`). |
+
+\* *Exactly one of `symbols` or `groupId` must be provided.*  
+\*\* *Exactly one of `conditions` or `templateId` must be provided.*
+
+- **Return Fields**: `method` (`"IndependentSleeves"`), `allocation` (`"Equal"`), `symbolCount`, `succeededCount`, `failedCount`, `allocatedTotal`, `symbolResults` (array of `{symbol, status("Succeeded"|"InsufficientData"|"Failed"), reason?, sleeveCapital, finalEquity, totalReturn, totalTrades, winRate, profitFactor, annualizedSharpe, maxDrawdown, runFingerprint, trades?}`), `composite` (`allocatedTotal`, `finalEquity`, `totalReturn`, `maxDrawdownRatio`, `worstEpisode{peakDate, troughDate, recoveryDate?, peakEquity, troughEquity, depthRatio, declineBars, recoveryBars?, underwaterBars?}`, `pooledTradeCount`, `pooledWinRate`, `equityCurve{resolution, pointCount, points[{date, equity, drawdownRatio, reason?}]}?`), `notes`.
+- **Sleeve Model & Portfolio Invariants**:
+  - Independent sleeves model: Each symbol executes as an isolated single-symbol backtest with `sleeveCapital = initialCapital / N` (`decimal` exact division, D-11c).
+  - Failed sleeves: Any symbol with missing or insufficient data remains as flat cash ($E_s(t) = \text{sleeveCapital}$) for the entire evaluation duration; capital is not reallocated to surviving symbols (D-11b).
+  - Shared margin, concurrent position limits, and portfolio-level rebalancing are excluded from v1 (D-11a).
+  - Composite equity is sampled on the union of active trading dates with forward-fill for inactive bars.
+  - Drawdown metrics reuse `DrawdownEpisodeEnumerator` on composite equity. Risk-adjusted ratios (Sharpe, Sortino) are not composed and are reported at symbol level only.
+- **Error Codes**: `INVALID_ARGUMENT` (`symbols`, `groupId`, `conditions`, `templateId`, `allocation`, `account`, `riskManagement`, `report`, `maxReturnedTradesPerSymbol`, `includeEquityCurve`, `maxConcurrentPositions`), `SYMBOL_NOT_FOUND`, `GROUP_NOT_FOUND`, `TEMPLATE_NOT_FOUND`, `UNSUPPORTED_TIMEFRAME`, `LIMIT_EXCEEDED` (`symbols` count > `MaxPortfolioBacktestSymbols`).
+
+---
+
+### 6.32 `sa_list_models`
+Lists registered supervised and reinforcement learning model generations with contracts and summary metrics.
+
+- **Arguments**:
+
+| Argument | Type | Req | Default | Bounds | Description |
+|---|---|---|---|---|---|
+| `kind` | `string` | No | `"All"` | `"All"`, `"Supervised"`, `"ReinforcementLearning"` | Model kind filter. |
+| `symbol` | `string` | No | - | - | Canonical ticker symbol filter. |
+| `offset` | `integer` | No | `0` | Min: `0` | Number of models to skip. |
+| `limit` | `integer` | No | `100` | Min: `1`, Max: `MaxListedModels` (1000) | Maximum number of models to return. |
+
+- **Return Fields**: `totalCount`, `offset`, `limit`, `returnedCount`, `hasMore`, `activeModelId{supervised, reinforcementLearning}`, `models` (array of `{modelId, kind, symbols, timeFrame, createdAt, isActive, contract{windowSize, horizonBars, targetType, classCount, architecture?}, metrics{metricName?, score?, evaluationRevision?, validationReturn?, oosReturn?}}`).
+- **Error Codes**: `INVALID_ARGUMENT`, `SYMBOL_NOT_FOUND`, `LIMIT_EXCEEDED`.
+
+---
+
+### 6.33 `sa_get_model_explanation`
+Reads generation-bound explainability (Shapley permutation sampling, PDP) and temperature calibration sidecars, with optional regime assignment.
+
+- **Arguments**:
+
+| Argument | Type | Req | Default | Bounds | Description |
+|---|---|---|---|---|---|
+| `modelId` | `string` | Yes | - | GUID or `"active"` | Model generation ID to explain. |
+| `symbol` | `string` | No | - | - | Optional canonical symbol for regime assignment. |
+| `asOfDate` | `string` | No | latest bar | `yyyy-MM-dd` | Anchor date for regime assignment. |
+
+- **Return Fields**: `modelId`, `resolvedModelId`, `explanation{availability, reason?, timeframe?, windowSize?, baseChannels?, orderedChannels?, status?, outputSpace?, method?, seed?, permutations?, backgroundSize?, modelCalls?, classes?, population?, records?, pdp?, stability?}`, `calibration{availability, reason?, classOrder?, method?, score?, epsilon?, temperature?, status?, fit?, evaluation?}`, `regime?{id, anchorDate}`. Note: per-prediction attribution `topContributingFeatures` is excluded by design (B-13a). Zero file paths exposed.
+- **Error Codes**: `INVALID_ARGUMENT`, `ARTIFACT_NOT_FOUND`, `SYMBOL_NOT_FOUND`, `INSUFFICIENT_MARKET_DATA`.
+
+---
+
+### 6.34 `sa_get_symbol_coverage`
+Queries stored candle coverage (bar count, earliest timestamp, latest timestamp) per timeframe for the given symbols without reading all candle data into memory.
+
+- **Arguments**:
+
+| Argument | Type | Req | Default | Bounds | Description |
+|---|---|---|---|---|---|
+| `symbols` | `string[]` | Yes | - | 1..`MaxSymbolsPerMetadataCall` (100) | Requested ticker symbols. Duplicates are folded while preserving order. |
+
+- **Return Fields**: `results` (array of `{ symbol, found, hasMetadata, timeSeriesLastUpdated, timeFrames }` where each item in `timeFrames` is `{ timeFrame, barCount, earliestTimestamp, latestTimestamp }`). `found: false` indicates unregistered symbol or 0 total stored bars across all timeframes. Indicative calculable period is excluded by design (use `sa_calculate_indicators` `leadingNullCount` instead).
+- **Error Codes**: `INVALID_ARGUMENT`, `LIMIT_EXCEEDED`.
+
+---
+
+### 6.35 `sa_validate_condition_tree`
+Validates a Screener or Backtest condition tree against available indicators and parameter rules without executing the scan or requiring market data.
+
+- **Arguments**:
+
+| Argument | Type | Req | Default | Bounds | Description |
+|---|---|---|---|---|---|
+| `kind` | `string` | Yes | - | `"screener"`, `"backtest"` | Target condition tree schema. |
+| `conditionTree` | `object` | No | - | - | Condition tree structure when `kind` is `"screener"`. |
+| `conditions` | `object` | No | - | - | Condition tree structure when `kind` is `"backtest"`. |
+| `timeFrame` | `string` | No | `"D1"` | `D1`, `W1`, `MN1` | Evaluation timeframe context for backtest conditions. |
+
+- **Return Fields**: `valid` (boolean), `kind`, `treeNodeCount?` (screener), `treeDepth?` (screener), `conditionRoots?` (backtest, array of `{ root, comparisonCount, text }`), `comparisons` (array of `{ id, path, text }`), `error?` (`{ code, message, path, hint }`, first validation failure only). When invalid, returns `valid: false` rather than failing tool execution. For cross-ticker conditions, verifies that comparison symbols exist in the ticker registry (`SYMBOL_NOT_FOUND`).
+- **Error Codes**: `INVALID_ARGUMENT`.
+
+---
+
+### 6.36 `sa_get_template_detail`
+Loads a saved Screener or Backtest condition template by ID and returns its structural condition tree and configuration in authoritative MCP JSON format.
+
+- **Arguments**:
+
+| Argument | Type | Req | Default | Bounds | Description |
+|---|---|---|---|---|---|
+| `templateType` | `string` | No | `"screener"` | `"screener"`, `"backtestCondition"` | Template category to load. |
+| `templateId` | `string` | Yes | - | Valid GUID string | Unique identifier of the saved template. |
+
+- **Return Fields**: `id`, `name`, `description`, `isFavorite`, `updatedAt`, `conditionTree?` (screener MCP condition tree), `conditions?` (backtest MCP condition tree), `riskManagement?` (backtest risk management config), `unconvertibleEntries?` (screener, array of `{ index, reason }`). Unconvertible entries are reported explicitly without silent omission.
+- **Error Codes**: `INVALID_ARGUMENT`, `TEMPLATE_NOT_FOUND`.
+
+---
+
+## 7. Execution Tools Reference (9 Tools, `--enable-execution` Required)
 
 Opt-in execution tools operating exclusively within an ephemeral OS temporary sandbox directory (`<OS temp>/StockAnalyzer/ephemeral`); nothing is saved under `Data` and nothing is registered. Without the flag they are absent from `tools/list` and `tools/call` answers `-32602`. They are marked as not read-only in `tools/list`. Work runs in a supervised child process: the start tools return at once (`sa_start_portfolio_rl_training` is the only one marked heavy). A job started by any of the three start tools is polled with `sa_get_training_status` and stopped with `sa_cancel_training` (one job table, one `jobId` format).
 
@@ -1005,3 +1185,33 @@ Replays a registered reinforcement-learning model over stored daily bars in an i
 
 - **Return Fields**: `modelId`, `symbol`, `anchorDate`, `decisionPosition`, `qValues{hold, buy, sell}`, `selectedAction`, `discountFactor` (0.99), `policyId`, `hasPriceScaleWarning`, `hasDataGapWarning`.
 - **Error Codes**: `ARTIFACT_NOT_FOUND`, `INSUFFICIENT_MARKET_DATA`.
+
+---
+
+### 7.8 `sa_get_model_attention`
+Evaluates deep neural attention weight sidecar (`.attention.onnx`) over the history observation window up to an anchor date.
+
+- **Arguments**:
+
+| Argument | Type | Req | Default | Bounds | Description |
+|---|---|---|---|---|---|
+| `modelId` | `string` | Yes | - | GUID or `"active"` | Registered model generation ID. |
+| `symbol` | `string` | Yes | - | - | Canonical ticker symbol. |
+| `asOfDate` | `string` | No | latest bar | `yyyy-MM-dd` | Anchor date ending observation window. |
+
+- **Return Fields**: `modelId`, `resolvedModelId`, `symbol`, `asOfDate`, `status`, `reason?`, `detail?`, `modelContract{windowSize, heads, architecture, layout, unit}`, `attention` (array of `{barOffset, date, weight, relative}`). Inference results are ephemeral and zero mutation is guaranteed.
+- **Error Codes**: `INVALID_ARGUMENT`, `SYMBOL_NOT_FOUND`, `ARTIFACT_NOT_FOUND`, `INSUFFICIENT_MARKET_DATA`, `INTERNAL_ERROR`.
+
+---
+
+### 7.9 `sa_list_training_jobs`
+Lists training jobs tracked in the current server session from `TrainingJobRegistry`, sorted newest first.
+
+- **Arguments**:
+
+| Argument | Type | Req | Default | Bounds | Description |
+|---|---|---|---|---|---|
+| `limit` | `integer` | No | `64` | Min: `1`, Max: `64` | Maximum number of job summaries to return. |
+
+- **Return Fields**: `jobs` (array of `{jobId, kind("supervised"|"reinforcement_learning"|"portfolio_reinforcement_learning"), state, stage, elapsedSeconds}`). Excludes model internals, requests, and file paths; full details are retrieved via `sa_get_training_status`.
+- **Error Codes**: `INVALID_ARGUMENT`, `LIMIT_EXCEEDED`.

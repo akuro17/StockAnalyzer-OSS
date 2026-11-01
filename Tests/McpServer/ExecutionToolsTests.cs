@@ -40,6 +40,8 @@ internal sealed class FakeExecutionGateway : ISandboxedExecutionGateway
 
     public Func<string, TrainingJobStatus> Status { get; set; } = jobId => throw new JobNotFoundException(jobId);
 
+    public Func<IReadOnlyList<TrainingJobSummary>> Jobs { get; set; } = () => Array.Empty<TrainingJobSummary>();
+
     public Func<string, TrainingJobState> CancelJob { get; set; } = jobId => throw new JobNotFoundException(jobId);
 
     public Func<string, ArtifactLease> Lease { get; set; } = id => throw new ArtifactNotFoundException(id);
@@ -65,6 +67,8 @@ internal sealed class FakeExecutionGateway : ISandboxedExecutionGateway
     }
 
     public TrainingJobStatus GetStatus(string jobId) => Status(jobId);
+
+    public IReadOnlyList<TrainingJobSummary> ListJobs() => Jobs();
 
     public TrainingJobState Cancel(string jobId) => CancelJob(jobId);
 
@@ -168,7 +172,7 @@ public sealed class ExecutionToolsTests : IDisposable
     private static async Task<JsonDocument> ListToolsAsync(McpMessageDispatcher dispatcher)
         => JsonDocument.Parse((await dispatcher.DispatchAsync("""{"jsonrpc":"2.0","id":2,"method":"tools/list"}""", CancellationToken.None))!);
 
-    private static readonly string[] ExecutionToolNames = { "sa_start_training", "sa_get_training_status", "sa_cancel_training", "sa_run_onnx_prediction", "sa_start_rl_training", "sa_start_portfolio_rl_training", "sa_get_rl_playback" };
+    private static readonly string[] ExecutionToolNames = { "sa_start_training", "sa_get_training_status", "sa_cancel_training", "sa_run_onnx_prediction", "sa_start_rl_training", "sa_start_portfolio_rl_training", "sa_get_rl_playback", "sa_get_model_attention", "sa_list_training_jobs" };
 
     // ---- AT-4.1 / AT-4.3: offered only on request, with honest annotations --------------------------------------------------------
 

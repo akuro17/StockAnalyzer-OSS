@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text.Json;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Backtest.Engine;
+using StockAnalyzer.Core.Models.Parameters;
 using StockAnalyzer.Core.Models.Screener;
 
 namespace StockAnalyzer.Core.Services.Backtest.Engine;
@@ -105,11 +106,13 @@ public sealed class ConditionBasedBacktestStrategy : IBacktestStrategy, IBacktes
         _exitChain = paths.Exit;
         _reversalLongChain = paths.ReverseLong;
         _reversalShortChain = paths.ReverseShort;
-        (_requiredIndicators, _sideToIndicatorKey) = BuildIndicatorRequests(snapshot);
+        (IReadOnlyList<StrategyIndicatorRequest> baseRequests, _sideToIndicatorKey) = BuildIndicatorRequests(snapshot);
+        _requiredIndicators = AppendDynamicExitIndicators(baseRequests, riskManagement?.DynamicExits);
         _riskManagement = riskManagement is null ? null : new BacktestRiskManagementSettings
         {
             StopLossPercent = riskManagement.StopLossPercent,
             TakeProfitPercent = riskManagement.TakeProfitPercent,
+            DynamicExits = riskManagement.DynamicExits is { IsEnabled: true } ? riskManagement.DynamicExits : null,
         };
         _entries = snapshot.ToArray();
     }
@@ -121,11 +124,13 @@ public sealed class ConditionBasedBacktestStrategy : IBacktestStrategy, IBacktes
         BacktestConditionValidator.ValidateRiskManagement(riskManagement);
 
         _longEntryChain = _shortEntryChain = _exitChain = _reversalLongChain = _reversalShortChain = Array.Empty<BacktestConditionEntry>();
-        (_requiredIndicators, _sideToIndicatorKey) = BuildIndicatorRequests(BacktestConditionValidator.ActiveSides(_tree));
+        (IReadOnlyList<StrategyIndicatorRequest> baseTreeRequests, _sideToIndicatorKey) = BuildIndicatorRequests(BacktestConditionValidator.ActiveSides(_tree));
+        _requiredIndicators = AppendDynamicExitIndicators(baseTreeRequests, riskManagement?.DynamicExits);
         _riskManagement = riskManagement is null ? null : new BacktestRiskManagementSettings
         {
             StopLossPercent = riskManagement.StopLossPercent,
             TakeProfitPercent = riskManagement.TakeProfitPercent,
+            DynamicExits = riskManagement.DynamicExits is { IsEnabled: true } ? riskManagement.DynamicExits : null,
         };
         _entries = Array.Empty<BacktestConditionEntry>();
     }
@@ -150,14 +155,47 @@ public sealed class ConditionBasedBacktestStrategy : IBacktestStrategy, IBacktes
     /// <summary>The configured entry-price-relative stop-loss / take-profit settings, or null when none were supplied.</summary>
     public BacktestRiskManagementSettings? RiskManagement => _riskManagement;
 
+    private readonly List<BacktestWarning> _warnings = new();
+    private readonly HashSet<int> _atrWarnedEntryBars = new();
+    private int? _trailingEntryBar;
+    private decimal? _activeTrailingStopPrice;
+    private decimal? _ratchetedTrailingStopPrice;
+    private decimal? _trailingExtreme;
+    private int _lastEvaluatedBar = -1;
+    private int _lastSeenBarIndex = -1;
+
+    private void CheckRunBoundary(int currentBarIndex)
+    {
+        if (currentBarIndex <= _lastSeenBarIndex)
+        {
+            _warnings.Clear();
+            _atrWarnedEntryBars.Clear();
+            ResetTrailingStop();
+        }
+        _lastSeenBarIndex = currentBarIndex;
+    }
+
+    private void ResetTrailingStop()
+    {
+        _trailingEntryBar = null;
+        _activeTrailingStopPrice = null;
+        _ratchetedTrailingStopPrice = null;
+        _trailingExtreme = null;
+        _lastEvaluatedBar = -1;
+    }
+
     public IReadOnlyList<StrategyIndicatorRequest> GetRequiredIndicators() => _requiredIndicators;
+
+    public IReadOnlyList<BacktestWarning> GetWarnings() => _warnings;
 
     public StrategyOrderRequest? Evaluate(StrategyContext context)
     {
+        CheckRunBoundary(context.BarIndex);
         if (_tree is not null) return EvaluateTree(_tree, context);
 
         if (context.PositionSide is null)
         {
+            ResetTrailingStop();
             bool longMatch = _longEntryChain.Count > 0 &&
                 BacktestConditionEvaluator.Evaluate(_longEntryChain, _sideToIndicatorKey, context.Indicators, context.BarIndex);
             bool shortMatch = _shortEntryChain.Count > 0 &&
@@ -183,6 +221,16 @@ public sealed class ConditionBasedBacktestStrategy : IBacktestStrategy, IBacktes
         if (_riskManagement is { IsEnabled: true } && EvaluateRiskManagementBreach(context) is { } riskExit)
         {
             return riskExit;
+        }
+
+        if (_riskManagement?.DynamicExits?.MaxHoldingBars is { } maxHoldingBars && context.EntryBarIndex is { } entryBar)
+        {
+            int heldBars = context.BarIndex - entryBar;
+            if (heldBars >= maxHoldingBars)
+            {
+                SignalType timeExitSignal = context.PositionSide == TradeSide.Long ? SignalType.LongExit : SignalType.ShortExit;
+                return new StrategyOrderRequest(timeExitSignal, OrderType.Market, null, null, Gtc, "Time Stop");
+            }
         }
 
         // Reversal (plan section 2.2 third row): a Reversal entry whose own Position is the OPPOSITE of
@@ -242,6 +290,7 @@ public sealed class ConditionBasedBacktestStrategy : IBacktestStrategy, IBacktes
     {
         if (context.PositionSide is null)
         {
+            ResetTrailingStop();
             bool longMatch = TreeRootMatches(tree.EntryLong, context);
             bool shortMatch = TreeRootMatches(tree.EntryShort, context);
 
@@ -263,6 +312,16 @@ public sealed class ConditionBasedBacktestStrategy : IBacktestStrategy, IBacktes
         if (_riskManagement is { IsEnabled: true } && EvaluateRiskManagementBreach(context) is { } riskExit)
         {
             return riskExit;
+        }
+
+        if (_riskManagement?.DynamicExits?.MaxHoldingBars is { } maxHoldingBars && context.EntryBarIndex is { } entryBar)
+        {
+            int heldBars = context.BarIndex - entryBar;
+            if (heldBars >= maxHoldingBars)
+            {
+                SignalType timeExitSignal = context.PositionSide == TradeSide.Long ? SignalType.LongExit : SignalType.ShortExit;
+                return new StrategyOrderRequest(timeExitSignal, OrderType.Market, null, null, Gtc, "Time Stop");
+            }
         }
 
         if (context.PositionSide == TradeSide.Long && TreeRootMatches(tree.ReverseShort, context))
@@ -321,65 +380,317 @@ public sealed class ConditionBasedBacktestStrategy : IBacktestStrategy, IBacktes
         TradeSide side = isLong ? TradeSide.Long : TradeSide.Short;
         SignalType exitSignal = isLong ? SignalType.LongExit : SignalType.ShortExit;
 
-        (decimal? stopPrice, decimal? limitPrice) = ComputeRiskThresholds(entryPrice, isLong);
+        AdvanceDynamicExitStateForBar(context, entryPrice, isLong);
+        (decimal? stopPrice, string? stopReason, decimal? limitPrice, string? limitReason) = ComputeRiskThresholds(context, entryPrice, isLong);
 
+        StrategyOrderRequest? breachOrder = null;
         if (stopPrice.HasValue && limitPrice.HasValue)
         {
             SlTpWinner winner = ExitPrecedenceResolver.ResolveIntrabarSlTp(
                 bar, side, stopPrice.Value, limitPrice.Value, context.PricePathConflictMode);
 
-            return winner switch
+            breachOrder = winner switch
             {
-                SlTpWinner.StopLoss => new StrategyOrderRequest(exitSignal, OrderType.Stop, null, stopPrice.Value, Gtc, "Stop-Loss breach"),
-                SlTpWinner.TakeProfit => new StrategyOrderRequest(exitSignal, OrderType.Limit, limitPrice.Value, null, Gtc, "Take-Profit breach"),
+                SlTpWinner.StopLoss => new StrategyOrderRequest(exitSignal, OrderType.Stop, null, stopPrice.Value, Gtc, stopReason ?? "Stop-Loss breach"),
+                SlTpWinner.TakeProfit => new StrategyOrderRequest(exitSignal, OrderType.Limit, limitPrice.Value, null, Gtc, limitReason ?? "Take-Profit breach"),
                 _ => null,
             };
         }
-
-        if (stopPrice.HasValue)
+        else if (stopPrice.HasValue)
         {
             bool breached = isLong ? bar.Low <= stopPrice.Value : bar.High >= stopPrice.Value;
             if (breached)
             {
-                return new StrategyOrderRequest(exitSignal, OrderType.Stop, null, stopPrice.Value, Gtc, "Stop-Loss breach");
+                breachOrder = new StrategyOrderRequest(exitSignal, OrderType.Stop, null, stopPrice.Value, Gtc, stopReason ?? "Stop-Loss breach");
             }
         }
-
-        if (limitPrice.HasValue)
+        else if (limitPrice.HasValue)
         {
             bool breached = isLong ? bar.High >= limitPrice.Value : bar.Low <= limitPrice.Value;
             if (breached)
             {
-                return new StrategyOrderRequest(exitSignal, OrderType.Limit, limitPrice.Value, null, Gtc, "Take-Profit breach");
+                breachOrder = new StrategyOrderRequest(exitSignal, OrderType.Limit, limitPrice.Value, null, Gtc, limitReason ?? "Take-Profit breach");
             }
         }
 
-        return null;
+        if (breachOrder is null)
+        {
+            PostEvaluateTrailingStopRatchet(context, isLong);
+        }
+
+        return breachOrder;
+    }
+
+    private void AdvanceDynamicExitStateForBar(StrategyContext context, decimal entryPrice, bool isLong)
+    {
+        if (context.EntryBarIndex is not { } entryBar) return;
+
+        if (_riskManagement?.DynamicExits is { } dynamicExits)
+        {
+            int signalBar = entryBar - 1;
+            var periods = new HashSet<int>();
+            if (dynamicExits.AtrStop is { } s) periods.Add(s.Period);
+            if (dynamicExits.AtrTarget is { } tg) periods.Add(tg.Period);
+            if (dynamicExits.TrailingStop is { Mode: TrailingExitMode.AtrMultiple, Period: { } tp }) periods.Add(tp);
+
+            foreach (int p in periods)
+            {
+                string key = AtrKey(p);
+                decimal? atr = signalBar >= 0 ? context.Indicators.ValueAt(key, signalBar) : null;
+                if ((atr is null or <= 0m) && _atrWarnedEntryBars.Add(entryBar))
+                {
+                    _warnings.Add(new BacktestWarning(
+                        WarningCode.DynamicExitAtrUnavailable,
+                        context.BarIndex,
+                        context.Bar.Timestamp,
+                        $"Dynamic exit ATR unavailable at bar {context.BarIndex} ({context.Bar.Timestamp:yyyy-MM-dd}): insufficient warm-up or non-positive ATR value."));
+                    break;
+                }
+            }
+        }
+
+        if (_riskManagement?.DynamicExits?.TrailingStop is { } trailingStop)
+        {
+            if (_trailingEntryBar != entryBar)
+            {
+                _trailingEntryBar = entryBar;
+                _trailingExtreme = isLong
+                    ? Math.Max(entryPrice, context.PositionHigh ?? context.Bar.High)
+                    : Math.Min(entryPrice, context.PositionLow ?? context.Bar.Low);
+                _activeTrailingStopPrice = null;
+
+                decimal? offset = null;
+                if (trailingStop.Mode == TrailingExitMode.AtrMultiple)
+                {
+                    int signalBar = entryBar - 1;
+                    if (trailingStop.Period.HasValue && trailingStop.Multiple.HasValue)
+                    {
+                        string key = AtrKey(trailingStop.Period.Value);
+                        decimal? atr = signalBar >= 0 ? context.Indicators.ValueAt(key, signalBar) : null;
+                        if (atr is > 0m)
+                        {
+                            offset = trailingStop.Multiple.Value * atr.Value;
+                        }
+                    }
+                }
+                else if (trailingStop.Mode == TrailingExitMode.Ratio && trailingStop.Ratio.HasValue)
+                {
+                    offset = trailingStop.Ratio.Value * _trailingExtreme.Value;
+                }
+
+                if (offset.HasValue)
+                {
+                    decimal initialLevel = isLong ? entryPrice - offset.Value : entryPrice + offset.Value;
+                    _ratchetedTrailingStopPrice = isLong
+                        ? Math.Max(initialLevel, _trailingExtreme.Value - offset.Value)
+                        : Math.Min(initialLevel, _trailingExtreme.Value + offset.Value);
+                }
+                else
+                {
+                    _ratchetedTrailingStopPrice = null;
+                }
+                _lastEvaluatedBar = context.BarIndex;
+            }
+            else if (context.BarIndex > _lastEvaluatedBar)
+            {
+                _activeTrailingStopPrice = _ratchetedTrailingStopPrice;
+                _lastEvaluatedBar = context.BarIndex;
+            }
+        }
+    }
+
+    private void PostEvaluateTrailingStopRatchet(StrategyContext context, bool isLong)
+    {
+        if (_riskManagement?.DynamicExits?.TrailingStop is not { } trailing) return;
+        if (!_ratchetedTrailingStopPrice.HasValue || context.EntryBarIndex is not { } eb) return;
+
+        decimal currentBarExtreme = isLong
+            ? Math.Max(context.Bar.High, context.PositionHigh ?? context.Bar.High)
+            : Math.Min(context.Bar.Low, context.PositionLow ?? context.Bar.Low);
+
+        _trailingExtreme = isLong
+            ? Math.Max(_trailingExtreme ?? currentBarExtreme, currentBarExtreme)
+            : Math.Min(_trailingExtreme ?? currentBarExtreme, currentBarExtreme);
+
+        decimal? newOffset = null;
+        if (trailing.Mode == TrailingExitMode.AtrMultiple)
+        {
+            int signalBar = eb - 1;
+            if (trailing.Period.HasValue && trailing.Multiple.HasValue)
+            {
+                string key = AtrKey(trailing.Period.Value);
+                decimal? atr = signalBar >= 0 ? context.Indicators.ValueAt(key, signalBar) : null;
+                if (atr is > 0m)
+                {
+                    newOffset = trailing.Multiple.Value * atr.Value;
+                }
+            }
+        }
+        else if (trailing.Mode == TrailingExitMode.Ratio && trailing.Ratio.HasValue)
+        {
+            newOffset = trailing.Ratio.Value * _trailingExtreme.Value;
+        }
+
+        if (newOffset.HasValue)
+        {
+            if (isLong)
+            {
+                decimal candidate = _trailingExtreme.Value - newOffset.Value;
+                if (candidate > _ratchetedTrailingStopPrice.Value)
+                {
+                    _ratchetedTrailingStopPrice = candidate;
+                }
+            }
+            else
+            {
+                decimal candidate = _trailingExtreme.Value + newOffset.Value;
+                if (candidate < _ratchetedTrailingStopPrice.Value)
+                {
+                    _ratchetedTrailingStopPrice = candidate;
+                }
+            }
+        }
+        _lastEvaluatedBar = context.BarIndex;
     }
 
     /// <summary>
-    /// The entry-relative Stop-Loss and Take-Profit prices (null when that percentage is not configured). The single definition shared by
+    /// The entry-relative Stop-Loss, Take-Profit and dynamic ATR prices (null when that threshold is not configured). The single definition shared by
     /// <see cref="EvaluateRiskManagementBreach"/> and <see cref="TryDetectRiskTie"/>, so the detector can never disagree with the decision.
     /// </summary>
-    private (decimal? Stop, decimal? Limit) ComputeRiskThresholds(decimal entryPrice, bool isLong)
+    private (decimal? Stop, string? StopReason, decimal? Limit, string? LimitReason) ComputeRiskThresholds(StrategyContext context, decimal entryPrice, bool isLong)
     {
-        decimal? stopPrice = null;
+        decimal? fixedStopPrice = null;
+        string? stopReason = null;
         if (_riskManagement!.StopLossPercent is { } stopLossPercent)
         {
-            stopPrice = EnsurePositiveThreshold(
+            fixedStopPrice = EnsurePositiveThreshold(
                 isLong ? checked(entryPrice * (1m - stopLossPercent)) : checked(entryPrice * (1m + stopLossPercent)),
                 "Stop-Loss");
+            stopReason = "Stop-Loss breach";
         }
 
-        decimal? limitPrice = null;
+        decimal? atrStopPrice = null;
+        if (_riskManagement.DynamicExits?.AtrStop is { } atrStop)
+        {
+            int signalBar = context.EntryBarIndex.HasValue ? context.EntryBarIndex.Value - 1 : -1;
+            string key = AtrKey(atrStop.Period);
+            decimal? atr = signalBar >= 0 ? context.Indicators.ValueAt(key, signalBar) : null;
+            if (atr is > 0m && atrStop.Multiple > 0m)
+            {
+                decimal rawStop = isLong ? entryPrice - (atrStop.Multiple * atr.Value) : entryPrice + (atrStop.Multiple * atr.Value);
+                if (rawStop > 0m)
+                {
+                    atrStopPrice = rawStop;
+                }
+            }
+        }
+
+        decimal? trailingStopPrice = null;
+        if (_riskManagement.DynamicExits?.TrailingStop is not null && context.EntryBarIndex is { } entryBar)
+        {
+            if (context.BarIndex > entryBar && _activeTrailingStopPrice is { } active && active > 0m)
+            {
+                trailingStopPrice = active;
+            }
+        }
+
+        decimal? finalStopPrice = null;
+        if (fixedStopPrice.HasValue)
+        {
+            finalStopPrice = fixedStopPrice;
+            stopReason = "Stop-Loss breach";
+        }
+
+        if (atrStopPrice.HasValue)
+        {
+            if (!finalStopPrice.HasValue || (isLong ? atrStopPrice.Value > finalStopPrice.Value : atrStopPrice.Value < finalStopPrice.Value))
+            {
+                finalStopPrice = atrStopPrice;
+                stopReason = "ATR Stop";
+            }
+        }
+
+        if (trailingStopPrice.HasValue)
+        {
+            bool isTighter = !finalStopPrice.HasValue ||
+                (isLong ? trailingStopPrice.Value > finalStopPrice.Value : trailingStopPrice.Value < finalStopPrice.Value);
+            bool isDynamicTie = finalStopPrice.HasValue && trailingStopPrice.Value == finalStopPrice.Value && stopReason == "ATR Stop";
+
+            if (isTighter || isDynamicTie)
+            {
+                finalStopPrice = trailingStopPrice;
+                stopReason = "Trailing Stop";
+            }
+        }
+
+        decimal? fixedLimitPrice = null;
+        string? limitReason = null;
         if (_riskManagement.TakeProfitPercent is { } takeProfitPercent)
         {
-            limitPrice = EnsurePositiveThreshold(
+            fixedLimitPrice = EnsurePositiveThreshold(
                 isLong ? checked(entryPrice * (1m + takeProfitPercent)) : checked(entryPrice * (1m - takeProfitPercent)),
                 "Take-Profit");
+            limitReason = "Take-Profit breach";
         }
 
-        return (stopPrice, limitPrice);
+        decimal? atrTargetPrice = null;
+        if (_riskManagement.DynamicExits?.AtrTarget is { } atrTarget)
+        {
+            int signalBar = context.EntryBarIndex.HasValue ? context.EntryBarIndex.Value - 1 : -1;
+            string key = AtrKey(atrTarget.Period);
+            decimal? atr = signalBar >= 0 ? context.Indicators.ValueAt(key, signalBar) : null;
+            if (atr is > 0m && atrTarget.Multiple > 0m)
+            {
+                decimal rawTarget = isLong ? entryPrice + (atrTarget.Multiple * atr.Value) : entryPrice - (atrTarget.Multiple * atr.Value);
+                if (rawTarget > 0m)
+                {
+                    atrTargetPrice = rawTarget;
+                }
+            }
+        }
+
+        decimal? finalLimitPrice = null;
+        if (fixedLimitPrice.HasValue && atrTargetPrice.HasValue)
+        {
+            if (isLong)
+            {
+                if (atrTargetPrice.Value < fixedLimitPrice.Value)
+                {
+                    finalLimitPrice = atrTargetPrice;
+                    limitReason = "ATR Target";
+                }
+                else
+                {
+                    finalLimitPrice = fixedLimitPrice;
+                    limitReason = "Take-Profit breach";
+                }
+            }
+            else
+            {
+                if (atrTargetPrice.Value > fixedLimitPrice.Value)
+                {
+                    finalLimitPrice = atrTargetPrice;
+                    limitReason = "ATR Target";
+                }
+                else
+                {
+                    finalLimitPrice = fixedLimitPrice;
+                    limitReason = "Take-Profit breach";
+                }
+            }
+        }
+        else if (atrTargetPrice.HasValue)
+        {
+            finalLimitPrice = atrTargetPrice;
+            limitReason = "ATR Target";
+        }
+        else if (fixedLimitPrice.HasValue)
+        {
+            finalLimitPrice = fixedLimitPrice;
+            limitReason = "Take-Profit breach";
+        }
+
+        return (finalStopPrice, stopReason, finalLimitPrice, limitReason);
     }
 
     /// <summary>
@@ -389,11 +700,11 @@ public sealed class ConditionBasedBacktestStrategy : IBacktestStrategy, IBacktes
     public bool TryDetectRiskTie(in StrategyContext context, out RiskTie tie)
     {
         tie = default;
-        if (_riskManagement is not { IsEnabled: true, StopLossPercent: not null, TakeProfitPercent: not null }) return false;
+        if (_riskManagement is not { IsEnabled: true }) return false;
         if (context.PositionSide is not { } side || context.EntryPrice is not { } entryPrice) return false;
 
         bool isLong = side == TradeSide.Long;
-        (decimal? stopPrice, decimal? limitPrice) = ComputeRiskThresholds(entryPrice, isLong);
+        (decimal? stopPrice, _, decimal? limitPrice, _) = ComputeRiskThresholds(context, entryPrice, isLong);
         if (stopPrice is not { } stop || limitPrice is not { } limit) return false;
 
         CandleData bar = context.Bar;
@@ -414,6 +725,37 @@ public sealed class ConditionBasedBacktestStrategy : IBacktestStrategy, IBacktes
         tie = new RiskTie(side, outcome, openDecided, differs);
         return true;
     }
+
+    private static IReadOnlyList<StrategyIndicatorRequest> AppendDynamicExitIndicators(
+        IReadOnlyList<StrategyIndicatorRequest> baseRequests,
+        DynamicExitConfiguration? dynamicExits)
+    {
+        if (dynamicExits is null) return baseRequests;
+
+        var set = new HashSet<int>();
+        if (dynamicExits.AtrStop is { } stop) set.Add(stop.Period);
+        if (dynamicExits.AtrTarget is { } target) set.Add(target.Period);
+        if (dynamicExits.TrailingStop is { Mode: TrailingExitMode.AtrMultiple, Period: { } period }) set.Add(period);
+
+        if (set.Count == 0) return baseRequests;
+
+        var list = new List<StrategyIndicatorRequest>(baseRequests);
+        foreach (int p in set)
+        {
+            list.Add(new StrategyIndicatorRequest(
+                AtrKey(p),
+                IndicatorType.ATR,
+                new CoreAtrParameter { Period = p },
+                Frame: null,
+                OutputName: "Main",
+                PriceSource: null,
+                StrictOutputName: true));
+        }
+
+        return list;
+    }
+
+    public static string AtrKey(int period) => $"dynamic_exit_atr_{period}";
 
     private static decimal EnsurePositiveThreshold(decimal value, string name)
         => value > 0m ? value : throw new OverflowException($"{name} threshold rounded to a non-positive decimal value.");

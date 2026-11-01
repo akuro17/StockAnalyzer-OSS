@@ -18,6 +18,12 @@ public enum WarningCode
     /// One warning per bar carries either this code or <see cref="AmbiguousIntrabarOrder"/>, never both. Append-only.
     /// </summary>
     AmbiguousIntrabarOrderAffectsOutcome = 3,
+
+    /// <summary>
+    /// Emitted when an ATR-based dynamic exit was configured but ATR was unavailable at the signal bar (e.g. insufficient warmup or non-positive).
+    /// Append-only.
+    /// </summary>
+    DynamicExitAtrUnavailable = 4,
 }
 
 /// <summary>

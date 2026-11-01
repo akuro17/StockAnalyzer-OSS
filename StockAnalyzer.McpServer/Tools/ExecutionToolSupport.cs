@@ -1,4 +1,6 @@
+using System;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using StockAnalyzer.Core.Execution;
 using StockAnalyzer.Core.Models.Training;
 
@@ -9,6 +11,29 @@ internal static class ExecutionToolSupport
 {
     public const string JobIdArgument = "jobId";
     public const string ArtifactIdArgument = "artifactId";
+
+    public const string SupervisedKind = "supervised";
+    public const string ReinforcementLearningKind = "reinforcement_learning";
+    public const string PortfolioReinforcementLearningKind = "portfolio_reinforcement_learning";
+
+    private const string Ellipsis = "...";
+
+    private static readonly Regex RestOfRemovedPath = new(
+        Regex.Escape(ErrorMessageSanitizer.Placeholder) + @"[\\/][^\s""']*", RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    public static string KindName(TrainingJobKind kind) => kind switch
+    {
+        TrainingJobKind.ReinforcementLearning => ReinforcementLearningKind,
+        TrainingJobKind.PortfolioReinforcementLearning => PortfolioReinforcementLearningKind,
+        _ => SupervisedKind,
+    };
+
+    public static string Clean(ErrorMessageSanitizer sanitizer, string text, int maxChars)
+    {
+        ArgumentNullException.ThrowIfNull(sanitizer);
+        string clean = RestOfRemovedPath.Replace(sanitizer.Sanitize(text), ErrorMessageSanitizer.Placeholder);
+        return clean.Length > maxChars ? clean[..(maxChars - Ellipsis.Length)] + Ellipsis : clean;
+    }
 
     /// <summary>The only hint of PYTHON_ENV_MISSING: a manual command would carry a path.</summary>
     public const string PythonEnvironmentHint = "Start StockAnalyzer once to install the embedded Python.";

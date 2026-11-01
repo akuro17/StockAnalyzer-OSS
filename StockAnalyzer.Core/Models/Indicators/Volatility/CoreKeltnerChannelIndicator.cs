@@ -44,22 +44,37 @@ public class CoreKeltnerChannelIndicator : CoreIndicatorBase
         var atr = new CoreAtrIndicator { Period = AtrPeriod };
         atr.Calculate(candles);
 
+        int emaSeedIndex = EmaPeriod - 1;
+
         for (int i = 0; i < candles.Count; i++)
         {
-            if (i < System.Math.Max(EmaPeriod, AtrPeriod) - 1 || !atr.Values[i].HasValue)
-            { _values.Add(null); UpperBand.Add(null); LowerBand.Add(null); continue; }
-
-            if (ema == null)
+            if (i >= emaSeedIndex)
             {
-                decimal sum = 0;
-                for (int j = 0; j < EmaPeriod; j++) sum += priceSeries[i - j] ?? 0m;
-                ema = sum / EmaPeriod;
+                if (ema == null)
+                {
+                    decimal sum = 0;
+                    for (int j = 0; j < EmaPeriod; j++) sum += priceSeries[i - j] ?? 0m;
+                    ema = sum / EmaPeriod;
+                }
+                else
+                {
+                    ema = ((priceSeries[i] ?? 0m) - ema.Value) * mult + ema.Value;
+                }
             }
-            else ema = ((priceSeries[i] ?? 0m) - ema.Value) * mult + ema.Value;
 
-            _values.Add(ema);
-            UpperBand.Add(ema + Multiplier * atr.Values[i]!.Value);
-            LowerBand.Add(ema - Multiplier * atr.Values[i]!.Value);
+            var atrV = atr.Values[i];
+            if (ema == null || !atrV.HasValue)
+            {
+                _values.Add(null);
+                UpperBand.Add(null);
+                LowerBand.Add(null);
+            }
+            else
+            {
+                _values.Add(ema);
+                UpperBand.Add(ema + Multiplier * atrV.Value);
+                LowerBand.Add(ema - Multiplier * atrV.Value);
+            }
         }
 
         return CreateAutomaticResult();

@@ -276,6 +276,48 @@ public static class BacktestConditionValidator
         if (settings is null) return;
         ValidateRiskRatio(settings.StopLossPercent, nameof(settings.StopLossPercent));
         ValidateRiskRatio(settings.TakeProfitPercent, nameof(settings.TakeProfitPercent));
+        ValidateDynamicExits(settings.DynamicExits);
+    }
+
+    public static void ValidateDynamicExits(DynamicExitConfiguration? dynamicExits)
+    {
+        if (dynamicExits is null) return;
+
+        if (dynamicExits.MaxHoldingBars is { } maxHoldingBars && maxHoldingBars < 1)
+        {
+            throw new ArgumentOutOfRangeException(nameof(dynamicExits.MaxHoldingBars), maxHoldingBars, "MaxHoldingBars must be >= 1.");
+        }
+
+        if (dynamicExits.AtrStop is { } atrStop)
+        {
+            if (atrStop.Period < 1) throw new ArgumentOutOfRangeException(nameof(atrStop.Period), atrStop.Period, "AtrStop.Period must be >= 1.");
+            if (atrStop.Multiple <= 0m) throw new ArgumentOutOfRangeException(nameof(atrStop.Multiple), atrStop.Multiple, "AtrStop.Multiple must be > 0.");
+        }
+
+        if (dynamicExits.AtrTarget is { } atrTarget)
+        {
+            if (atrTarget.Period < 1) throw new ArgumentOutOfRangeException(nameof(atrTarget.Period), atrTarget.Period, "AtrTarget.Period must be >= 1.");
+            if (atrTarget.Multiple <= 0m) throw new ArgumentOutOfRangeException(nameof(atrTarget.Multiple), atrTarget.Multiple, "AtrTarget.Multiple must be > 0.");
+        }
+
+        if (dynamicExits.TrailingStop is { } trailingStop)
+        {
+            if (trailingStop.Mode == TrailingExitMode.AtrMultiple)
+            {
+                if (trailingStop.Period is null or < 1) throw new ArgumentOutOfRangeException(nameof(trailingStop.Period), trailingStop.Period, "TrailingStop.Period must be >= 1 for AtrMultiple mode.");
+                if (trailingStop.Multiple is null or <= 0m) throw new ArgumentOutOfRangeException(nameof(trailingStop.Multiple), trailingStop.Multiple, "TrailingStop.Multiple must be > 0 for AtrMultiple mode.");
+                if (trailingStop.Ratio is not null) throw new ArgumentException("TrailingStop.Ratio must be null for AtrMultiple mode.", nameof(trailingStop.Ratio));
+            }
+            else if (trailingStop.Mode == TrailingExitMode.Ratio)
+            {
+                if (trailingStop.Ratio is null or <= 0m or >= 1m) throw new ArgumentOutOfRangeException(nameof(trailingStop.Ratio), trailingStop.Ratio, "TrailingStop.Ratio must be > 0 and < 1 for Ratio mode.");
+                if (trailingStop.Period is not null || trailingStop.Multiple is not null) throw new ArgumentException("TrailingStop.Period and Multiple must be null for Ratio mode.", nameof(trailingStop));
+            }
+            else
+            {
+                throw new ArgumentOutOfRangeException(nameof(trailingStop.Mode), trailingStop.Mode, "Unknown TrailingExitMode.");
+            }
+        }
     }
 
     public static string NormalizeOutputName(BacktestConditionSide side)

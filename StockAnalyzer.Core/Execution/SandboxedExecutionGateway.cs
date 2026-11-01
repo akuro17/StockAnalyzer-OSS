@@ -350,6 +350,29 @@ public sealed class SandboxedExecutionGateway : ISandboxedExecutionGateway, IDis
         }
     }
 
+    public IReadOnlyList<TrainingJobSummary> ListJobs()
+    {
+        lock (_jobs.Gate)
+        {
+            return _jobs.Snapshot()
+                .OrderByDescending(job => job.StartedUtc)
+                .ThenBy(job => job.JobId, StringComparer.Ordinal)
+                .Take(ExecutionLimits.MaxTrackedJobs)
+                .Select(job =>
+                {
+                    DateTimeOffset end = job.CompletedUtc ?? DateTimeOffset.UtcNow;
+                    return new TrainingJobSummary(
+                        job.JobId,
+                        job.Kind,
+                        job.State,
+                        job.Stage,
+                        end - job.StartedUtc,
+                        job.StartedUtc);
+                })
+                .ToList();
+        }
+    }
+
     public TrainingJobState Cancel(string jobId)
     {
         TrainingJobRecord job = _jobs.Find(jobId) ?? throw new JobNotFoundException(jobId);

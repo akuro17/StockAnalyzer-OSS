@@ -194,26 +194,7 @@ internal sealed class BacktestDiagnostics
     {
         if (_request.Curve is { } resolution && !IsUnavailable(EquityCurveArgument))
         {
-            writer.WriteStartObject("equityCurve");
-            writer.WriteString("resolution", resolution.ToString());
-            writer.WriteNumber("pointCount", _curve.Length);
-            writer.WriteStartArray("points");
-            foreach (EquityCurvePoint point in _curve)
-            {
-                writer.WriteStartObject();
-                writer.WriteString("date", ToolJson.FormatDate(point.Timestamp));
-                writer.WriteNumber("equity", point.Equity);
-                ToolJson.WriteNullableNumber(writer, "drawdownRatio", point.DrawdownRatio);
-                if (point.DrawdownReason is { } reason)
-                {
-                    writer.WriteString("reason", reason);
-                }
-
-                writer.WriteEndObject();
-            }
-
-            writer.WriteEndArray();
-            writer.WriteEndObject();
+            WriteEquityCurve(writer, resolution, _curve);
         }
 
         if (_request.EpisodeCount > 0 && !IsUnavailable(DrawdownEpisodesArgument))
@@ -223,23 +204,7 @@ internal sealed class BacktestDiagnostics
             {
                 writer.WriteStartObject();
                 writer.WriteNumber("rank", episode.Rank);
-                writer.WriteString("peakDate", ToolJson.FormatDate(episode.PeakUtc));
-                writer.WriteString("troughDate", ToolJson.FormatDate(episode.TroughUtc));
-                if (episode.RecoveryUtc is { } recovery)
-                {
-                    writer.WriteString("recoveryDate", ToolJson.FormatDate(recovery));
-                }
-                else
-                {
-                    writer.WriteNull("recoveryDate");
-                }
-
-                writer.WriteNumber("peakEquity", episode.PeakEquity);
-                writer.WriteNumber("troughEquity", episode.TroughEquity);
-                writer.WriteNumber("depthRatio", episode.DepthRatio);
-                writer.WriteNumber("declineBars", episode.DeclineBars);
-                ToolJson.WriteNullableNumber(writer, "recoveryBars", episode.RecoveryBars);
-                ToolJson.WriteNullableNumber(writer, "underwaterBars", episode.UnderwaterBars);
+                WriteEpisodeFields(writer, episode);
                 writer.WriteEndObject();
             }
 
@@ -292,5 +257,50 @@ internal sealed class BacktestDiagnostics
         }
 
         writer.WriteEndArray();
+    }
+
+    internal static void WriteEquityCurve(Utf8JsonWriter writer, EquityCurveResolution resolution, ImmutableArray<EquityCurvePoint> curve)
+    {
+        writer.WriteStartObject("equityCurve");
+        writer.WriteString("resolution", resolution.ToString());
+        writer.WriteNumber("pointCount", curve.Length);
+        writer.WriteStartArray("points");
+        foreach (EquityCurvePoint point in curve)
+        {
+            writer.WriteStartObject();
+            writer.WriteString("date", ToolJson.FormatDate(point.Timestamp));
+            writer.WriteNumber("equity", point.Equity);
+            ToolJson.WriteNullableNumber(writer, "drawdownRatio", point.DrawdownRatio);
+            if (point.DrawdownReason is { } reason)
+            {
+                writer.WriteString("reason", reason);
+            }
+
+            writer.WriteEndObject();
+        }
+
+        writer.WriteEndArray();
+        writer.WriteEndObject();
+    }
+
+    internal static void WriteEpisodeFields(Utf8JsonWriter writer, RankedDrawdownEpisode episode)
+    {
+        writer.WriteString("peakDate", ToolJson.FormatDate(episode.PeakUtc));
+        writer.WriteString("troughDate", ToolJson.FormatDate(episode.TroughUtc));
+        if (episode.RecoveryUtc is { } recovery)
+        {
+            writer.WriteString("recoveryDate", ToolJson.FormatDate(recovery));
+        }
+        else
+        {
+            writer.WriteNull("recoveryDate");
+        }
+
+        writer.WriteNumber("peakEquity", episode.PeakEquity);
+        writer.WriteNumber("troughEquity", episode.TroughEquity);
+        writer.WriteNumber("depthRatio", episode.DepthRatio);
+        writer.WriteNumber("declineBars", episode.DeclineBars);
+        ToolJson.WriteNullableNumber(writer, "recoveryBars", episode.RecoveryBars);
+        ToolJson.WriteNullableNumber(writer, "underwaterBars", episode.UnderwaterBars);
     }
 }

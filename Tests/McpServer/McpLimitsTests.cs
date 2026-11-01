@@ -34,6 +34,8 @@ public class McpLimitsTests
         Assert.Equal(500, limits.MaxScreenerSymbols);
         Assert.Equal(200, limits.MaxReturnedMatches);
         Assert.Equal(4, limits.MaxSecondarySymbolsPerCall);
+        Assert.Equal(50, limits.MaxCrossAssetSymbols);
+        Assert.Equal(500, limits.MaxBreadthSymbols);
         Assert.Equal(32, limits.MaxInlineFilterRules);
         Assert.Equal(5000, limits.MaxEquityCurvePoints);
         Assert.Equal(5, limits.MaxDrawdownEpisodes);
@@ -49,6 +51,7 @@ public class McpLimitsTests
         Assert.Equal(100, limits.MaxReturnedPatterns);
         Assert.Equal(100, limits.MaxProjectionBars);
         Assert.Equal(50, limits.MaxSeasonalityYears);
+        Assert.Equal(100, limits.MaxListedModels);
         Assert.Equal(WatchlistConstants.MaxRelativePerformanceTargets, limits.MaxComparisonTargets);
         Assert.Equal(1, McpLimitsContract.MaxConcurrentToolCalls);
     }
@@ -82,6 +85,8 @@ public class McpLimitsTests
         { nameof(McpLimits.MaxScreenerSymbols), 5001 },
         { nameof(McpLimits.MaxReturnedMatches), 1001 },
         { nameof(McpLimits.MaxSecondarySymbolsPerCall), 9 },
+        { nameof(McpLimits.MaxCrossAssetSymbols), 1 },
+        { nameof(McpLimits.MaxCrossAssetSymbols), 501 },
         { nameof(McpLimits.MaxComparisonTargets), 0 },
         { nameof(McpLimits.MaxComparisonTargets), WatchlistConstants.MaxRelativePerformanceTargets + 1 },
         { nameof(McpLimits.MaxTickersPerPage), 5001 },
@@ -116,6 +121,10 @@ public class McpLimitsTests
         { nameof(McpLimits.MaxProjectionBars), 101 },
         { nameof(McpLimits.MaxSeasonalityYears), 0 },
         { nameof(McpLimits.MaxSeasonalityYears), 101 },
+        { nameof(McpLimits.MaxBreadthSymbols), 0 },
+        { nameof(McpLimits.MaxBreadthSymbols), 5001 },
+        { nameof(McpLimits.MaxListedModels), 0 },
+        { nameof(McpLimits.MaxListedModels), 1001 },
     };
 
     [Theory]
@@ -209,6 +218,14 @@ public class McpLimitsTests
     public void TheEdgesOfTheInlineFilterRuleBandAreAccepted(int value)
     {
         McpLimitsContract.Validate(new McpLimits { MaxInlineFilterRules = value });
+    }
+
+    [Theory]
+    [InlineData(2, 1)]
+    [InlineData(500, 5000)]
+    public void TheEdgesOfTheCrossAssetAndBreadthBandsAreAccepted(int crossAssetSymbols, int breadthSymbols)
+    {
+        McpLimitsContract.Validate(new McpLimits { MaxCrossAssetSymbols = crossAssetSymbols, MaxBreadthSymbols = breadthSymbols });
     }
 
     [Theory]

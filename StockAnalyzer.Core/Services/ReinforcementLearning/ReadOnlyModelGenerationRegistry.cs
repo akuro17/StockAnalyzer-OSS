@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using StockAnalyzer.Core.Common;
+using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.ReinforcementLearning;
 using StockAnalyzer.Core.Services;
 
@@ -30,6 +31,11 @@ public sealed class ReadOnlyModelGenerationRegistry : IRlModelGenerationRegistry
 
     #region IRlModelGenerationRegistry
 
+    private static bool IsSafeModelId(string? modelId) =>
+        !string.IsNullOrWhiteSpace(modelId)
+        && !modelId.StartsWith('.')
+        && PlainFileName.IsValid(modelId);
+
     public string? RlActiveId
     {
         get
@@ -52,7 +58,7 @@ public sealed class ReadOnlyModelGenerationRegistry : IRlModelGenerationRegistry
 
     public RlGeneration? GetRlGeneration(string modelId)
     {
-        if (string.IsNullOrWhiteSpace(modelId)) return null;
+        if (!IsSafeModelId(modelId)) return null;
 
         try
         {
@@ -93,7 +99,7 @@ public sealed class ReadOnlyModelGenerationRegistry : IRlModelGenerationRegistry
 
     public ModelGenerationLease? AcquireRl(string modelId)
     {
-        if (string.IsNullOrWhiteSpace(modelId)) return null;
+        if (!IsSafeModelId(modelId)) return null;
 
         try
         {
@@ -170,9 +176,11 @@ public sealed class ReadOnlyModelGenerationRegistry : IRlModelGenerationRegistry
         }
     }
 
+    public ModelGenerationManifest? GetManifest(string modelId) => TryGetManifest(modelId);
+
     public ModelGenerationManifest? TryGetManifest(string modelId)
     {
-        if (string.IsNullOrWhiteSpace(modelId)) return null;
+        if (!IsSafeModelId(modelId)) return null;
 
         try
         {
@@ -226,14 +234,189 @@ public sealed class ReadOnlyModelGenerationRegistry : IRlModelGenerationRegistry
         return result.OrderBy(m => m.ModelId, StringComparer.Ordinal).ToArray();
     }
 
+    /// <summary>
+    /// Enumerates catalog entries across supervised and reinforcement learning models for MCP listing and inspection.
+    /// Ordered by CreatedAt descending, tie-broken by ModelId ordinal ascending. Zero-mutation.
+    /// </summary>
+    public IReadOnlyList<ModelCatalogEntry> EnumerateCatalogEntries()
+    {
+        var entries = new List<ModelCatalogEntry>();
+
+        // Supervised models
+        if (Directory.Exists(_root))
+        {
+            string? currentActive = ActiveId;
+            try
+            {
+                foreach (var dir in Directory.EnumerateDirectories(_root))
+                {
+                    string dirName = Path.GetFileName(dir);
+                    if (dirName.StartsWith('.') || string.Equals(dirName, RlFiles.RlFolder, StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    if (TryGetManifest(dirName) is { } manifest)
+                    {
+                        string manifestPath = Path.Combine(dir, "manifest.json");
+                        DateTimeOffset createdAt = File.Exists(manifestPath)
+                            ? File.GetCreationTimeUtc(manifestPath)
+                            : Directory.GetCreationTimeUtc(dir);
+
+                        int windowSize = 0;
+                        var symbols = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+                        string baseName = Path.ChangeExtension(manifest.ModelFile, null);
+                        string scalerPath = Path.Combine(dir, manifest.ModelFile + ".scaler.json");
+                        if (!File.Exists(scalerPath)) scalerPath = Path.Combine(dir, baseName + ".scaler.json");
+
+                        if (File.Exists(scalerPath))
+                        {
+                            try
+                            {
+                                using var doc = JsonDocument.Parse(File.ReadAllText(scalerPath));
+                                if (doc.RootElement.TryGetProperty("window_size", out var winProp) && winProp.TryGetInt32(out var winVal))
+                                {
+                                    windowSize = winVal;
+                                }
+                            }
+                            catch { }
+                        }
+
+                        string explainPath = Path.Combine(dir, manifest.ModelFile + ".explain.json");
+                        if (!File.Exists(explainPath)) explainPath = Path.Combine(dir, baseName + ".explain.json");
+                        if (windowSize == 0 && File.Exists(explainPath))
+                        {
+                            try
+                            {
+                                using var doc = JsonDocument.Parse(File.ReadAllText(explainPath));
+                                if (doc.RootElement.TryGetProperty("window_size", out var winProp) && winProp.TryGetInt32(out var winVal))
+                                {
+                                    windowSize = winVal;
+                                }
+                            }
+                            catch { }
+                        }
+
+                        string metricsPath = Path.Combine(dir, manifest.ModelFile + ".metrics.json");
+                        if (!File.Exists(metricsPath)) metricsPath = Path.Combine(dir, baseName + ".metrics.json");
+                        if (File.Exists(metricsPath))
+                        {
+                            try
+                            {
+                                using var doc = JsonDocument.Parse(File.ReadAllText(metricsPath));
+                                if (windowSize == 0 && doc.RootElement.TryGetProperty("window_size", out var winProp) && winProp.TryGetInt32(out var winVal))
+                                {
+                                    windowSize = winVal;
+                                }
+                                if (doc.RootElement.TryGetProperty("created_utc", out var createdProp)
+                                    && DateTimeOffset.TryParse(createdProp.GetString(), out var parsedCreated))
+                                {
+                                    createdAt = parsedCreated;
+                                }
+                                if (doc.RootElement.TryGetProperty("symbols", out var symArray) && symArray.ValueKind == JsonValueKind.Array)
+                                {
+                                    foreach (var item in symArray.EnumerateArray())
+                                    {
+                                        if (item.GetString() is { } s && !string.IsNullOrWhiteSpace(s))
+                                            symbols.Add(s);
+                                    }
+                                }
+                            }
+                            catch { }
+                        }
+
+                        string analysisPath = Path.Combine(dir, manifest.ModelFile + ".analysis.json");
+                        if (!File.Exists(analysisPath)) analysisPath = Path.Combine(dir, baseName + ".analysis.json");
+                        if (File.Exists(analysisPath))
+                        {
+                            try
+                            {
+                                using var doc = JsonDocument.Parse(File.ReadAllText(analysisPath));
+                                if (windowSize == 0 && doc.RootElement.TryGetProperty("window_size", out var winProp) && winProp.TryGetInt32(out var winVal))
+                                {
+                                    windowSize = winVal;
+                                }
+                                if (doc.RootElement.TryGetProperty("periods", out var periodsProp) && periodsProp.ValueKind == JsonValueKind.Array)
+                                {
+                                    foreach (var period in periodsProp.EnumerateArray())
+                                    {
+                                        if (period.TryGetProperty("symbol", out var sym) && sym.GetString() is { } s && !string.IsNullOrWhiteSpace(s))
+                                            symbols.Add(s);
+                                    }
+                                }
+                            }
+                            catch { }
+                        }
+
+                        int classCount = string.Equals(manifest.TargetType, "regression", StringComparison.OrdinalIgnoreCase)
+                            ? 0
+                            : (manifest.ClassOrder?.Split(',', StringSplitOptions.RemoveEmptyEntries).Length ?? 0);
+
+                        entries.Add(new ModelCatalogEntry(
+                            ModelId: manifest.ModelId,
+                            Kind: "Supervised",
+                            Symbols: symbols.OrderBy(s => s, StringComparer.OrdinalIgnoreCase).ToArray(),
+                            Timeframe: manifest.Timeframe,
+                            CreatedAt: createdAt,
+                            IsActive: manifest.ModelId == currentActive,
+                            WindowSize: windowSize,
+                            HorizonBars: manifest.Horizon,
+                            TargetType: manifest.TargetType,
+                            ClassCount: classCount,
+                            Architecture: manifest.TrainingLineage?.Mode,
+                            Score: manifest.Score,
+                            EvaluationRevision: manifest.EvaluationRevision,
+                            ValidationReturn: null,
+                            OosReturn: null
+                        ));
+                    }
+                }
+            }
+            catch { }
+        }
+
+        // Reinforcement Learning models
+        try
+        {
+            string? rlActive = RlActiveId;
+            foreach (var gen in ListRl())
+            {
+                entries.Add(new ModelCatalogEntry(
+                    ModelId: gen.ModelId,
+                    Kind: "ReinforcementLearning",
+                    Symbols: string.IsNullOrWhiteSpace(gen.Symbol) ? Array.Empty<string>() : new[] { gen.Symbol },
+                    Timeframe: "daily",
+                    CreatedAt: gen.CreatedUtc,
+                    IsActive: gen.ModelId == rlActive,
+                    WindowSize: RlContract.WindowLength,
+                    HorizonBars: RlContract.EpisodeHorizon,
+                    TargetType: gen.Target,
+                    ClassCount: 0,
+                    Architecture: "PPO",
+                    Score: null,
+                    EvaluationRevision: gen.EvaluationRevision,
+                    ValidationReturn: gen.ValidationReturn,
+                    OosReturn: gen.OosReturn
+                ));
+            }
+        }
+        catch { }
+
+        return entries
+            .OrderByDescending(e => e.CreatedAt)
+            .ThenBy(e => e.ModelId, StringComparer.Ordinal)
+            .ToArray();
+    }
+
     public ModelGenerationLease? Acquire(string modelId)
     {
-        if (string.IsNullOrWhiteSpace(modelId)) return null;
+        if (!IsSafeModelId(modelId)) return null;
 
         try
         {
             var manifest = TryGetManifest(modelId);
-            if (manifest is null) return null;
+            if (manifest is null || !PlainFileName.IsValid(manifest.ModelFile)) return null;
 
             string modelPath = Path.Combine(_root, modelId, manifest.ModelFile);
             if (!File.Exists(modelPath)) return null;

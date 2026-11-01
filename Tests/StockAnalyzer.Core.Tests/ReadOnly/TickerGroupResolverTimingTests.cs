@@ -57,6 +57,9 @@ public sealed class TickerGroupResolverTimingTests
         public Task<IReadOnlyList<string>> GetAvailableTickersAsync(CancellationToken cancellationToken = default)
             => Task.FromResult<IReadOnlyList<string>>(_registry);
 
+        public Task<SymbolCoverage> GetCoverageAsync(string symbol, CancellationToken cancellationToken = default)
+            => throw new NotImplementedException();
+
         public Task<TickerMetadata?> GetStoredTickerMetadataAsync(string symbol, CancellationToken cancellationToken = default)
             => Task.FromResult<TickerMetadata?>(_metadata);
 

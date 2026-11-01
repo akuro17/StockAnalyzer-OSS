@@ -157,7 +157,7 @@ internal sealed class ScreenerBarsDataService : IDataService
         ConcurrentDictionary<string, DateOnly> skipped,
         ConcurrentDictionary<string, DateOnly> evaluated)
     {
-        if (window.Count > 0 && timeFrame is TimeFrame.W1 or TimeFrame.MN1)
+        if (window.Count > 0 && TimeFrameAggregator.IsPeriodFrame(timeFrame))
         {
             DateTime reference = ReferenceDate(daily, Selection.AsOfDate);
             CandleData last = window[^1];

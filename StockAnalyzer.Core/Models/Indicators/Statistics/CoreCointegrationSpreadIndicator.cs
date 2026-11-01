@@ -55,12 +55,14 @@ public class CoreCointegrationSpreadIndicator : CoreIndicatorBase, ICrossTickerI
     public List<decimal?> HedgeRatio { get; } = new();
     public List<decimal?> Intercept { get; } = new();
     public List<decimal?> ADFStatistic { get; } = new();
+    public List<decimal?> HalfLife { get; } = new();
 
     // ── Series Name Constants ──
     public const string ZScoreSeriesName = "ZScore";
     public const string HedgeRatioSeriesName = "HedgeRatio";
     public const string InterceptSeriesName = "Intercept";
     public const string ADFStatisticSeriesName = "ADFStatistic";
+    public const string HalfLifeSeriesName = "HalfLife";
 
     // ── Constructors ──
     public CoreCointegrationSpreadIndicator()
@@ -372,17 +374,21 @@ public class CoreCointegrationSpreadIndicator : CoreIndicatorBase, ICrossTickerI
             }
         }
 
-        // Step 3: Calculate Rolling Augmented Dickey-Fuller (ADF) Test Statistic for Spread Stationarity
+        // Step 3: Calculate Rolling Augmented Dickey-Fuller (ADF) Test Statistic and Half-Life for Spread Stationarity
         var adfValues = new List<decimal?>(spreadValues.Count);
+        var halfLifeValues = new List<decimal?>(spreadValues.Count);
         for (int t = 0; t < spreadValues.Count; t++)
         {
             if (t < Period - 1)
             {
                 adfValues.Add(null);
+                halfLifeValues.Add(null);
                 continue;
             }
 
-            adfValues.Add(ComputeAdfStatistic(spreadValues, t, Period));
+            var (rho, tau) = ComputeAdfRegression(spreadValues, t, Period);
+            adfValues.Add(tau);
+            halfLifeValues.Add(tau == null ? null : ComputeHalfLife(rho));
         }
 
         _values.AddRange(spreadValues);
@@ -390,6 +396,7 @@ public class CoreCointegrationSpreadIndicator : CoreIndicatorBase, ICrossTickerI
         HedgeRatio.AddRange(betaValues);
         Intercept.AddRange(alphaValues);
         ADFStatistic.AddRange(adfValues);
+        HalfLife.AddRange(halfLifeValues);
 
         // Pad with nulls if original seriesA was longer
         for (int i = spreadValues.Count; i < outputCount; i++)
@@ -399,27 +406,28 @@ public class CoreCointegrationSpreadIndicator : CoreIndicatorBase, ICrossTickerI
             HedgeRatio.Add(null);
             Intercept.Add(null);
             ADFStatistic.Add(null);
+            HalfLife.Add(null);
         }
 
         return IndicatorResult.Success(CreateSeriesDictionary());
     }
 
     /// <summary>
-    /// Computes Dickey-Fuller test statistic (tau value) for residual stationarity over window [endIndex - windowSize + 1, endIndex].
-    /// Model: Delta e_t = rho * e_{t-1} + u_t
+    /// Estimates Dickey-Fuller regression: Delta e_t = rho * e_{t-1} + u_t over window [endIndex - windowSize + 1, endIndex].
+    /// Returns (rho, tau) where tau = rho / se(rho).
     /// </summary>
-    private static decimal? ComputeAdfStatistic(IReadOnlyList<decimal?> spreadSeries, int endIndex, int windowSize)
+    private static (decimal? Rho, decimal? Tau) ComputeAdfRegression(IReadOnlyList<decimal?> spreadSeries, int endIndex, int windowSize)
     {
         int startIndex = endIndex - windowSize + 1;
-        if (startIndex < 0) return null;
+        if (startIndex < 0) return (null, null);
 
         for (int i = startIndex; i <= endIndex; i++)
         {
-            if (!spreadSeries[i].HasValue) return null;
+            if (!spreadSeries[i].HasValue) return (null, null);
         }
 
         int m = windowSize - 1;
-        if (m < 3) return null; // Need degrees of freedom
+        if (m < 3) return (null, null); // Need degrees of freedom
 
         try
         {
@@ -437,7 +445,7 @@ public class CoreCointegrationSpreadIndicator : CoreIndicatorBase, ICrossTickerI
 
                 if (sumXX < IndicatorDefaultConstants.CointegrationSpreadEpsilon)
                 {
-                    return null;
+                    return (null, null);
                 }
 
                 decimal rho = sumXY / sumXX;
@@ -452,27 +460,50 @@ public class CoreCointegrationSpreadIndicator : CoreIndicatorBase, ICrossTickerI
                     sumU2 += u * u;
                 }
 
-                if (m <= 1) return null;
+                if (m <= 1) return (rho, null);
                 decimal s2 = sumU2 / (m - 1);
                 double seDouble = Math.Sqrt((double)(s2 / sumXX));
                 if (seDouble <= 0.0 || double.IsNaN(seDouble) || double.IsInfinity(seDouble))
                 {
-                    return null;
+                    return (rho, null);
                 }
 
                 decimal se = (decimal)seDouble;
                 if (se < IndicatorDefaultConstants.CointegrationSpreadEpsilon)
                 {
-                    return null;
+                    return (rho, null);
                 }
 
-                return rho / se;
+                return (rho, rho / se);
             }
         }
         catch (OverflowException)
         {
-            return null;
+            return (null, null);
         }
+    }
+
+    /// <summary>
+    /// Computes Dickey-Fuller test statistic (tau value) for residual stationarity over window [endIndex - windowSize + 1, endIndex].
+    /// Model: Delta e_t = rho * e_{t-1} + u_t
+    /// </summary>
+    private static decimal? ComputeAdfStatistic(IReadOnlyList<decimal?> spreadSeries, int endIndex, int windowSize)
+    {
+        return ComputeAdfRegression(spreadSeries, endIndex, windowSize).Tau;
+    }
+
+    /// <summary>
+    /// Computes the exact half-life of mean reversion: HL = -ln(2) / ln(1 + rho) for -1 &lt; rho &lt; 0.
+    /// Returns null if rho &gt;= 0, rho &lt;= -1, or numerical bounds are exceeded.
+    /// </summary>
+    public static decimal? ComputeHalfLife(decimal? rho)
+    {
+        if (rho == null || !(rho > -1m && rho < 0m)) return null;
+        double denom = Math.Log(1.0 + (double)rho.Value);
+        if (!double.IsFinite(denom) || Math.Abs(denom) <= IndicatorDefaultConstants.HalfLifeLogEpsilon) return null;
+        double hl = -Math.Log(2.0) / denom;
+        if (!double.IsFinite(hl) || hl <= 0.0 || hl > (double)decimal.MaxValue) return null;
+        return (decimal)hl;
     }
 
     private void ClearAllSeries()
@@ -482,6 +513,7 @@ public class CoreCointegrationSpreadIndicator : CoreIndicatorBase, ICrossTickerI
         HedgeRatio.Clear();
         Intercept.Clear();
         ADFStatistic.Clear();
+        HalfLife.Clear();
     }
 
     private IIndicatorResult FillNulls(int count)
@@ -493,6 +525,7 @@ public class CoreCointegrationSpreadIndicator : CoreIndicatorBase, ICrossTickerI
             HedgeRatio.Add(null);
             Intercept.Add(null);
             ADFStatistic.Add(null);
+            HalfLife.Add(null);
         }
         return IndicatorResult.Success(CreateSeriesDictionary());
     }
@@ -505,7 +538,8 @@ public class CoreCointegrationSpreadIndicator : CoreIndicatorBase, ICrossTickerI
             { ZScoreSeriesName, ZScore },
             { HedgeRatioSeriesName, HedgeRatio },
             { InterceptSeriesName, Intercept },
-            { ADFStatisticSeriesName, ADFStatistic }
+            { ADFStatisticSeriesName, ADFStatistic },
+            { HalfLifeSeriesName, HalfLife }
         };
     }
 }

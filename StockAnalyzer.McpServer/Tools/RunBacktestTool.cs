@@ -65,11 +65,11 @@ internal sealed class RunBacktestTool : IMcpTool
         "\"exitLong\":{\"left\":{\"indicator\":\"RSI\",\"parameters\":{\"Period\":14}},\"comparison\":\"GreaterThan\",\"right\":70}}. " +
         "startDate and endDate (yyyy-MM-dd, inclusive) default to the stored history (at most the latest " + _limits.MaxCandlesPerRequest + " bars); bars before startDate warm the indicators up. " +
         "account sets initialCapital, commissionFlat, commissionPerUnit, slippageRatio, sizingModel (FixedQuantity or PercentOfEquity), sizingParameter, initialMarginRatio, maintenanceMarginRatio and liquidationPenaltyRatio; " +
-        "riskManagement sets stopLossRatio and takeProfitRatio of the entry price (0.05 = 5%); report sets annualRiskFreeRate, annualMar, annualPeriodsD1 (daily bars per year, for the annualised metrics), bootstrapSeed and bootstrapIterations (the report's bootstrap confidence intervals). " +
+        "riskManagement sets stopLossRatio and takeProfitRatio of the entry price (0.05 = 5%), and dynamicExits (maxHoldingBars, atrStop, atrTarget, trailingStop); report sets annualRiskFreeRate, annualMar, annualPeriodsD1 (daily bars per year, for the annualised metrics), bootstrapSeed and bootstrapIterations (the report's bootstrap confidence intervals). " +
         "Omitted values are the Backtest window's factory defaults, not the values saved in the window; the result echoes every effective value. " +
         $"The supported time frames are {string.Join(", ", ReadOnlyGatewayContract.SupportedBacktestTimeFrames)}; the Legacy execution model is used. " +
         $"The result lists the first maxReturnedTrades trades in the order the engine closed them (default and maximum {_limits.MaxReturnedTrades}; totalTrades is the true count) and engine warnings by code. " +
-        "Each trade carries mfePrice and maePrice (largest favourable and adverse excursion from the entry price, in price units, never negative, measured on bar highs and lows so the order inside a bar is unknown, before fees and slippage) and mfePercent and maePercent (the same as percent of the entry price; null when the entry price is not positive). " +
+        "Each trade carries mfePrice and maePrice (largest favourable and adverse excursion from the entry price, in price units, never negative, measured on bar highs and lows so the order inside a bar is unknown, before fees and slippage) and mfePercent and maePercent (the same as percent of the entry price; null when the entry price is not positive), and stopLevelAtExit (stop price threshold at exit when exited via a stop; null otherwise). " +
         $"Optional diagnostics, all off by default: includeEquityCurve ({string.Join("|", BacktestDiagnostics.CurveNames)}) adds equityCurve (equity in account currency per evaluated bar, or the last bar of each ISO week or calendar month, with drawdownRatio = equity / running high - 1, at most {McpLimitsContract.EffectiveMaxEquityCurvePoints(_limits)} points, more is LIMIT_EXCEEDED); " +
         $"includeDrawdownEpisodes (0 to {_limits.MaxDrawdownEpisodes}) adds the deepest drawdown episodes (depthRatio, dates, bar counts; recovery fields are null while still underwater); " +
         "includePeriodicReturns adds monthly and yearly returnRatio (period-end equity / previous period-end equity - 1; isPartial marks a period the evaluated dates cut). " +
@@ -90,7 +90,7 @@ internal sealed class RunBacktestTool : IMcpTool
         .String(EndArgument, "Last evaluated day, yyyy-MM-dd. Default: the latest stored bar.")
         .String(TimeFrameArgument, $"Time frame of the bars ({string.Join(", ", ReadOnlyGatewayContract.SupportedBacktestTimeFrames)}). Default {ReadOnlyGatewayContract.BacktestTimeFrame}.", allowedValues: ReadOnlyGatewayContract.SupportedBacktestTimeFrames.Select(t => t.ToString()).ToArray())
         .FreeObject(BacktestSettingsBinder.AccountArgument, "Capital, cost, sizing and margin settings (see the tool description). Omitted values are the factory defaults.")
-        .FreeObject(BacktestSettingsBinder.RiskArgument, "Optional stop-loss and take-profit as ratios of the entry price: {stopLossRatio, takeProfitRatio}.")
+        .FreeObject(BacktestSettingsBinder.RiskArgument, "Optional stop-loss, take-profit and dynamic exits: {stopLossRatio, takeProfitRatio, dynamicExits{maxHoldingBars, atrStop, atrTarget, trailingStop}}.")
         .FreeObject(BacktestSettingsBinder.ReportArgument, "Report settings: {annualRiskFreeRate, annualMar} (simple rates, 0.02 = 2%), {annualPeriodsD1} (daily bars per year), {bootstrapSeed, bootstrapIterations} (whole numbers). Omitted values are the factory defaults.")
         .Integer(MaxTradesArgument, $"Most trades to list. Default and maximum {_limits.MaxReturnedTrades}; 0 lists none.", defaultValue: _limits.MaxReturnedTrades, minimum: 0, maximum: _limits.MaxReturnedTrades)
         .Boolean(SymbolResolver.AllowUnregisteredArgument, "Accept a symbol that is not in the ticker list but has stored bars. Default false.")
@@ -289,21 +289,7 @@ internal sealed class RunBacktestTool : IMcpTool
         writer.WriteEndObject();
 
         writer.WriteString("reproducibilityHash", Convert.ToHexString(result.ReproducibilityHash));
-        writer.WriteStartObject("runFingerprint");
-        writer.WriteBoolean("isAvailable", artifact.RunFingerprint.IsAvailable);
-        if (artifact.RunFingerprint.Sha256 is { } sha)
-        {
-            writer.WriteString("sha256", sha);
-        }
-
-        writer.WriteNumber("schemaVersion", artifact.RunFingerprint.SchemaVersion);
-        writer.WriteNumber("executionSemanticsVersion", artifact.RunFingerprint.ExecutionSemanticsVersion);
-        if (artifact.RunFingerprint.UnavailableReason is { } reason)
-        {
-            writer.WriteString("unavailableReason", reason);
-        }
-
-        writer.WriteEndObject();
+        BacktestReportJson.WriteRunFingerprint(writer, artifact.RunFingerprint);
 
         if (artifact.Report is { } report)
         {
@@ -362,6 +348,39 @@ internal sealed class RunBacktestTool : IMcpTool
             writer.WriteNumber("takeProfitRatio", take);
         }
 
+        if (settings.RiskManagement?.DynamicExits is { } dynamicExits)
+        {
+            writer.WriteStartObject("dynamicExits");
+            if (dynamicExits.MaxHoldingBars is { } maxHoldingBars)
+            {
+                writer.WriteNumber("maxHoldingBars", maxHoldingBars);
+            }
+            if (dynamicExits.AtrStop is { } atrStop)
+            {
+                writer.WriteStartObject("atrStop");
+                writer.WriteNumber("period", atrStop.Period);
+                writer.WriteNumber("multiple", atrStop.Multiple);
+                writer.WriteEndObject();
+            }
+            if (dynamicExits.AtrTarget is { } atrTarget)
+            {
+                writer.WriteStartObject("atrTarget");
+                writer.WriteNumber("period", atrTarget.Period);
+                writer.WriteNumber("multiple", atrTarget.Multiple);
+                writer.WriteEndObject();
+            }
+            if (dynamicExits.TrailingStop is { } trailingStop)
+            {
+                writer.WriteStartObject("trailingStop");
+                writer.WriteString("mode", trailingStop.Mode.ToString());
+                if (trailingStop.Period is { } p) writer.WriteNumber("period", p);
+                if (trailingStop.Multiple is { } m) writer.WriteNumber("multiple", m);
+                if (trailingStop.Ratio is { } r) writer.WriteNumber("ratio", r);
+                writer.WriteEndObject();
+            }
+            writer.WriteEndObject();
+        }
+
         writer.WriteEndObject();
 
         writer.WriteStartObject("report");
@@ -417,6 +436,7 @@ internal sealed class RunBacktestTool : IMcpTool
             writer.WriteBoolean("isForcedLiquidation", trade.IsForcedLiquidation);
             writer.WriteString("entrySignal", trade.EntrySignal);
             writer.WriteString("exitReason", trade.ExitReason);
+            ToolJson.WriteNullableNumber(writer, "stopLevelAtExit", trade.StopLevelAtExit);
             writer.WriteNumber("mfePrice", trade.MfePrice);
             writer.WriteNumber("maePrice", trade.MaePrice);
             ToolJson.WriteNullableNumber(writer, "mfePercent", trade.MfePercent);

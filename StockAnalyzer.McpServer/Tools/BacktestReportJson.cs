@@ -113,4 +113,61 @@ internal static class BacktestReportJson
 
         return name[..(upper - 1)].ToLowerInvariant() + name[(upper - 1)..];
     }
+
+    public static void WriteRunFingerprint(Utf8JsonWriter writer, BacktestReportRunFingerprint? fingerprint)
+    {
+        writer.WriteStartObject("runFingerprint");
+        if (fingerprint is { } fp)
+        {
+            writer.WriteBoolean("isAvailable", fp.IsAvailable);
+            if (fp.Sha256 is { } sha)
+            {
+                writer.WriteString("sha256", sha);
+            }
+
+            writer.WriteNumber("schemaVersion", fp.SchemaVersion);
+            writer.WriteNumber("executionSemanticsVersion", fp.ExecutionSemanticsVersion);
+            if (fp.UnavailableReason is { } reason)
+            {
+                writer.WriteString("unavailableReason", reason);
+            }
+        }
+        else
+        {
+            writer.WriteBoolean("isAvailable", false);
+            writer.WriteNumber("schemaVersion", 0);
+            writer.WriteNumber("executionSemanticsVersion", 0);
+        }
+
+        writer.WriteEndObject();
+    }
+
+    public static void WriteMetric(Utf8JsonWriter writer, string propertyName, MetricValue? metric)
+    {
+        writer.WriteStartObject(propertyName);
+        if (metric is { } m)
+        {
+            writer.WriteString("status", m.Status.ToString());
+            if (m.Value is { } number)
+            {
+                writer.WriteNumber("value", number);
+            }
+            else
+            {
+                writer.WriteNull("value");
+            }
+
+            writer.WriteString("unit", m.Unit.ToString());
+            writer.WriteString("reason", m.Reason.ToString());
+        }
+        else
+        {
+            writer.WriteString("status", MetricStatus.NotApplicable.ToString());
+            writer.WriteNull("value");
+            writer.WriteString("unit", MetricUnit.Dimensionless.ToString());
+            writer.WriteString("reason", MetricReason.None.ToString());
+        }
+
+        writer.WriteEndObject();
+    }
 }

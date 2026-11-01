@@ -46,26 +46,7 @@ public class CoreAdxIndicator : CoreIndicatorBase
         PlusDI.AddRange(plusDi);
         MinusDI.AddRange(minusDi);
 
-        decimal prevAdx = 0m;
-        for (int i = 0; i < n; i++)
-        {
-            if (i < Period - 1)
-            {
-                _values.Add(null);
-            }
-            else if (i == Period - 1)
-            {
-                prevAdx = dxList[i] ?? 0m;
-                _values.Add(prevAdx);
-            }
-            else
-            {
-                decimal dx = dxList[i] ?? 0m;
-                decimal adx = (prevAdx * (Period - 1) + dx) / Period;
-                prevAdx = adx;
-                _values.Add(adx);
-            }
-        }
+        _values.AddRange(IndicatorCalculationHelper.CalculateWilderAdxSeries(dxList, Period));
 
         return CreateAutomaticResult();
     }

@@ -118,5 +118,6 @@ public sealed class BacktestStrategySpecification
             {
                 StopLossPercent = riskManagement.StopLossPercent,
                 TakeProfitPercent = riskManagement.TakeProfitPercent,
+                DynamicExits = riskManagement.DynamicExits is { IsEnabled: true } ? riskManagement.DynamicExits : null,
             };
 }

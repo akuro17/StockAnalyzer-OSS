@@ -34,9 +34,8 @@ public class CoreBollingerBandsIndicator : CoreIndicatorBase
 
     protected override IIndicatorResult CalculateCore(IReadOnlyList<CoreCandleData> candles)
     {
-        // Define the result type for parallel calculation
-        // Tuple: (Middle, Upper, Lower)
-        var results = CalculateParallel(candles, CalculateSegment);
+        var priceSeries = PriceDataHelper.ExtractPriceSeries(candles, PriceSource);
+        var results = CalculateParallel(candles, (c, s, e) => CalculateSegment(c, priceSeries, s, e));
 
         // Clear and Populate
         _values.Clear();
@@ -66,15 +65,15 @@ public class CoreBollingerBandsIndicator : CoreIndicatorBase
         });
     }
 
-    private List<(decimal? Middle, decimal? Upper, decimal? Lower)> CalculateSegment(IReadOnlyList<CoreCandleData> candles, int start, int end)
+    private List<(decimal? Middle, decimal? Upper, decimal? Lower)> CalculateSegment(
+        IReadOnlyList<CoreCandleData> candles,
+        IReadOnlyList<decimal?> priceSeries,
+        int start,
+        int end)
     {
         var results = new List<(decimal? Middle, decimal? Upper, decimal? Lower)>(end - start);
         int period = Period;
         decimal multiplier = StdDevMultiplier;
-
-        // Optimization: Use locally accumulated sums if possible, 
-        // but for Standard Deviation, naive O(N*Period) is safer and easier to parallelize without numerical instability of running variance algorithms.
-        // Given Phase 3.6 scope, we focus on safe parallelization.
 
         for (int i = start; i < end; i++)
         {
@@ -84,23 +83,34 @@ public class CoreBollingerBandsIndicator : CoreIndicatorBase
                 continue;
             }
 
-            // SMA
+            bool hasNull = false;
             decimal sum = 0;
             for (int j = 0; j < period; j++)
             {
-                sum += candles[i - j].Close;
+                var p = priceSeries[i - j];
+                if (!p.HasValue)
+                {
+                    hasNull = true;
+                    break;
+                }
+                sum += p.Value;
             }
+
+            if (hasNull)
+            {
+                results.Add((null, null, null));
+                continue;
+            }
+
             decimal sma = sum / period;
 
-            // Standard Deviation
             decimal variance = 0;
             for (int j = 0; j < period; j++)
             {
-                decimal diff = candles[i - j].Close - sma;
+                decimal diff = priceSeries[i - j]!.Value - sma;
                 variance += diff * diff;
             }
-            
-            // Sqrt is expensive, parallelization helps here
+
             decimal stdDev = (decimal)System.Math.Sqrt((double)(variance / period));
 
             decimal upper = sma + multiplier * stdDev;

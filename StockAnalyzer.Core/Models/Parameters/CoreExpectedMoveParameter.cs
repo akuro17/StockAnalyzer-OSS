@@ -8,7 +8,7 @@ public class CoreExpectedMoveParameter : CoreIndicatorParameterBase
     private int _period = 14;
 
     [DisplayName("Period")]
-    [Description("Historical volatility calculation period.")]
+    [Description("ATR calculation period (bars).")]
     [CoreParameterRange(1, 1000)]
     public int Period
     {

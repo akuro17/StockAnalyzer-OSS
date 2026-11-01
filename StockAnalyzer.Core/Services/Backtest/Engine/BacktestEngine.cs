@@ -407,6 +407,9 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
                 PendingExitOrderId = s.PendingExitOrderIndex != -1 ? s.Orders[s.PendingExitOrderIndex].OrderId : null,
                 Indicators = barBoundedIndicators is null ? indicatorSeries : barBoundedIndicators[i],
                 EntryPrice = positionSide is null ? null : s.EntryPrice,
+                EntryBarIndex = positionSide is null ? null : s.EntryBar,
+                PositionHigh = positionSide is null ? null : s.PositionHigh,
+                PositionLow = positionSide is null ? null : s.PositionLow,
                 PricePathConflictMode = configuration.PricePathConflictMode,
             };
 
@@ -528,7 +531,7 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
             strategy.Name,
             hash,
             isInsufficientData: false,
-            warnings: AppendAmbiguityWarnings(input, configuration, s.Ambiguities, warnings));
+            warnings: AppendAmbiguityWarnings(input, configuration, s.Ambiguities, strategy.GetWarnings(), warnings));
     }
 
     /// <summary>
@@ -537,12 +540,15 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
     /// Warnings are not part of the run fingerprint; the text is a pure function of hashed inputs, so two identical runs give identical warnings.
     /// </summary>
     private static ImmutableArray<BacktestWarning> AppendAmbiguityWarnings(
-        BacktestInput input, BacktestConfiguration configuration, List<IntrabarAmbiguity> ambiguities, ImmutableArray<BacktestWarning> warnings)
+        BacktestInput input, BacktestConfiguration configuration, List<IntrabarAmbiguity> ambiguities, IReadOnlyList<BacktestWarning> strategyWarnings, ImmutableArray<BacktestWarning> warnings)
     {
-        if (ambiguities.Count == 0) return warnings;
+        bool hasStrategyWarnings = strategyWarnings != null && strategyWarnings.Count > 0;
+        if (ambiguities.Count == 0 && !hasStrategyWarnings) return warnings;
 
-        ImmutableArray<BacktestWarning>.Builder builder = ImmutableArray.CreateBuilder<BacktestWarning>((warnings.IsDefault ? 0 : warnings.Length) + ambiguities.Count);
+        int extraCount = ambiguities.Count + (hasStrategyWarnings ? strategyWarnings!.Count : 0);
+        ImmutableArray<BacktestWarning>.Builder builder = ImmutableArray.CreateBuilder<BacktestWarning>((warnings.IsDefault ? 0 : warnings.Length) + extraCount);
         if (!warnings.IsDefault) builder.AddRange(warnings);
+        if (hasStrategyWarnings) builder.AddRange(strategyWarnings!);
         foreach (IntrabarAmbiguity ambiguity in ambiguities)
         {
             DateTime timestamp = input.Bars[ambiguity.BarIndex].Timestamp;
@@ -1115,7 +1121,7 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
     /// (<see cref="ExecuteForcedLiquidation"/>), since both perform the exact same account-state
     /// transition (sections 1.5.4 and 1.5.6) - kept as a single method rather than duplicated inline.
     /// </summary>
-    private static void ClosePosition(RunState s, int i, CandleData bar, TradeSide side, long originatingOrderId, OrderSide fillSide, decimal fillPrice, decimal quantity, decimal commission, decimal slippageAmount, bool isForcedLiquidation, OrderType? orderType = null, string? orderReason = null)
+    private static void ClosePosition(RunState s, int i, CandleData bar, TradeSide side, long originatingOrderId, OrderSide fillSide, decimal fillPrice, decimal quantity, decimal commission, decimal slippageAmount, bool isForcedLiquidation, OrderType? orderType = null, string? orderReason = null, decimal? stopPrice = null)
     {
         s.Operation = BacktestArithmeticOperation.ExitAccounting;
         decimal realizedPnL = s.Q * (fillPrice - s.EntryPrice);
@@ -1153,6 +1159,7 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
             MaePrice = maePrice,
             EntrySignal = s.CurrentEntryReason,
             ExitReason = exitReason,
+            StopLevelAtExit = stopPrice,
         });
 
         s.HeldMargin = 0m;
@@ -1228,7 +1235,7 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
         TradeSide side = s.Q > 0m ? TradeSide.Long : TradeSide.Short;
         decimal quantity = Math.Abs(s.Q);
 
-        ClosePosition(s, i, bar, side, order.OrderId, order.Side, outcome.FillPrice, quantity, outcome.Commission, outcome.SlippageAmount, isForcedLiquidation: false, order.Type, order.Reason);
+        ClosePosition(s, i, bar, side, order.OrderId, order.Side, outcome.FillPrice, quantity, outcome.Commission, outcome.SlippageAmount, isForcedLiquidation: false, order.Type, order.Reason, order.StopPrice);
 
         s.Orders[s.PendingExitOrderIndex] = order with { Status = OrderStatus.Filled, StopActivated = outcome.StopActivated };
         s.PendingExitOrderIndex = -1;

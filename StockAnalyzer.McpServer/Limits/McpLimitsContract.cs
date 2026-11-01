@@ -63,6 +63,9 @@ public static class McpLimitsContract
         Band(nameof(McpLimits.MaxScreenerSymbols), limits.MaxScreenerSymbols, 1, 5000);
         Band(nameof(McpLimits.MaxReturnedMatches), limits.MaxReturnedMatches, 1, 1000);
         Band(nameof(McpLimits.MaxSecondarySymbolsPerCall), limits.MaxSecondarySymbolsPerCall, 1, 8);
+        Band(nameof(McpLimits.MaxCrossAssetSymbols), limits.MaxCrossAssetSymbols, 2, 500);
+        Band(nameof(McpLimits.MaxBreadthSymbols), limits.MaxBreadthSymbols, 1, 5000);
+        Band(nameof(McpLimits.MaxPortfolioBacktestSymbols), limits.MaxPortfolioBacktestSymbols, 1, 500);
         Band(nameof(McpLimits.MaxComparisonTargets), limits.MaxComparisonTargets, 1, WatchlistConstants.MaxRelativePerformanceTargets);
         Band(nameof(McpLimits.MaxTickersPerPage), limits.MaxTickersPerPage, 1, 5000);
         Band(nameof(McpLimits.DefaultTickerPageSize), limits.DefaultTickerPageSize, 1, limits.MaxTickersPerPage);
@@ -83,6 +86,7 @@ public static class McpLimitsContract
         Band(nameof(McpLimits.MaxReturnedPatterns), limits.MaxReturnedPatterns, 1, 1000);
         Band(nameof(McpLimits.MaxProjectionBars), limits.MaxProjectionBars, 1, 100);
         Band(nameof(McpLimits.MaxSeasonalityYears), limits.MaxSeasonalityYears, (int)SeasonalityChartConstants.MinYearsToOverlay, (int)SeasonalityChartConstants.MaxYearsToOverlay);
+        Band(nameof(McpLimits.MaxListedModels), limits.MaxListedModels, 1, 1000);
     }
 
     /// <summary>

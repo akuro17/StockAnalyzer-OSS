@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using StockAnalyzer.Core.Models.Backtest.Engine;
 
 namespace StockAnalyzer.Core.Services.Backtest.Engine;
 
@@ -37,4 +38,10 @@ public interface IBacktestStrategy
     /// double) keeps compiling and behaving identically without any change.
     /// </summary>
     StrategyOrderRequest? EvaluateExit(StrategyContext context) => null;
+
+    /// <summary>
+    /// Warnings collected by the strategy during the run (e.g. dynamic exit ATR unavailability).
+    /// Safe extension with default empty implementation.
+    /// </summary>
+    IReadOnlyList<BacktestWarning> GetWarnings() => Array.Empty<BacktestWarning>();
 }

@@ -294,6 +294,7 @@ public sealed class ReadOnlyGatewayTests : IDisposable
         await Assert.ThrowsAsync<ArgumentException>(() => gateway.GetCandlesAsync(symbol, TimeFrame.D1, 5));
         await Assert.ThrowsAsync<ArgumentException>(() => gateway.GetStoredTickerMetadataAsync(symbol));
         await Assert.ThrowsAsync<ArgumentException>(() => gateway.GetTimeSeriesLastUpdatedAsync(symbol));
+        await Assert.ThrowsAsync<ArgumentException>(() => gateway.GetCoverageAsync(symbol));
     }
 
     [Fact]

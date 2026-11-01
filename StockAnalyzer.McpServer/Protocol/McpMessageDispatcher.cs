@@ -239,6 +239,11 @@ internal sealed class McpMessageDispatcher
                 writer.WriteString("description", registered.Tool.Description);
                 writer.WritePropertyName("inputSchema");
                 registered.Schema.WriteTo(writer);
+                if (registered.OutputSchema is { } outputSchema)
+                {
+                    writer.WritePropertyName("outputSchema");
+                    outputSchema.WriteTo(writer);
+                }
                 writer.WriteStartObject("annotations");
                 // Execution tools start work in the temporary sandbox: not read-only, and a repeated call is not the same call.
                 bool execution = registered.Tool.IsExecution;

@@ -14,7 +14,9 @@ public sealed class BacktestRiskManagementSettings
 
     public decimal? TakeProfitPercent { get; init; }
 
+    public DynamicExitConfiguration? DynamicExits { get; init; }
+
     /// <summary>True when at least one threshold is configured — lets a caller skip constructing/passing
     /// this type at all when both are left blank, without duplicating that null-check at every call site.</summary>
-    public bool IsEnabled => StopLossPercent.HasValue || TakeProfitPercent.HasValue;
+    public bool IsEnabled => StopLossPercent.HasValue || TakeProfitPercent.HasValue || (DynamicExits is not null && DynamicExits.IsEnabled);
 }

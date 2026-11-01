@@ -63,7 +63,7 @@ public class TimeFrameManager : ITimeFrameManager
         cancellationToken.ThrowIfCancellationRequested();
 
         // 2. For weekly/monthly: always aggregate from daily data
-        if (timeFrame == TimeFrame.W1 || timeFrame == TimeFrame.MN1)
+        if (TimeFrameAggregator.IsPeriodFrame(timeFrame))
         {
             string dailyKey = BuildCacheKey(symbol, TimeFrame.D1);
 

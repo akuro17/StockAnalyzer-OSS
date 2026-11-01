@@ -79,4 +79,100 @@ public class CoreAdxrIndicatorTests
         Assert.Equal(40, result.MainValues.Count);
         Assert.True(result.MainValues.All(v => v == null));
     }
+
+    private static List<decimal?> CalculateOldAdxr(IReadOnlyList<CoreCandleData> candles, int period, int adxrPeriod)
+    {
+        int n = candles.Count;
+        int seedIndex = 2 * period - 2;
+        var result = new List<decimal?>(n);
+
+        if (period <= 0 || adxrPeriod <= 0 || n < period)
+        {
+            for (int i = 0; i < n; i++) result.Add(null);
+            return result;
+        }
+
+        var (_, _, dxList) = StockAnalyzer.Core.Models.Indicators.IndicatorCalculationHelper.CalculateWilderDmiSeries(candles, period);
+        var adxList = new List<decimal?>(n);
+        decimal prevAdx = 0m;
+
+        for (int i = 0; i < n; i++)
+        {
+            if (i < seedIndex)
+            {
+                adxList.Add(null);
+            }
+            else if (i == seedIndex)
+            {
+                decimal sumDx = 0m;
+                for (int k = period - 1; k <= seedIndex; k++)
+                {
+                    sumDx += dxList[k] ?? 0m;
+                }
+                prevAdx = sumDx / period;
+                adxList.Add(prevAdx);
+            }
+            else
+            {
+                decimal dx = dxList[i] ?? 0m;
+                decimal adx = (prevAdx * (period - 1) + dx) / period;
+                prevAdx = adx;
+                adxList.Add(adx);
+            }
+        }
+
+        for (int i = 0; i < n; i++)
+        {
+            if (i < seedIndex + adxrPeriod)
+            {
+                result.Add(null);
+                continue;
+            }
+
+            var currentAdx = adxList[i];
+            var pastAdx = adxList[i - adxrPeriod];
+
+            if (currentAdx.HasValue && pastAdx.HasValue)
+            {
+                result.Add((currentAdx.Value + pastAdx.Value) / 2m);
+            }
+            else
+            {
+                result.Add(null);
+            }
+        }
+
+        return result;
+    }
+
+    [Theory]
+    [InlineData(14, 14)]
+    [InlineData(10, 10)]
+    [InlineData(7, 14)]
+    public void Calculate_MatchesPreChangeInlineAlgorithm(int period, int adxrPeriod)
+    {
+        var random = new Random(42);
+        decimal price = 100m;
+        var start = DateTime.Today;
+        var candles = new List<CoreCandleData>();
+        for (int i = 0; i < 200; i++)
+        {
+            decimal change = (decimal)(random.NextDouble() * 10 - 5);
+            price = Math.Max(10m, price + change);
+            candles.Add(new CoreCandleData(start.AddDays(i), price - 2, price + 4, price - 4, price, 1000));
+        }
+
+        var indicator = new CoreAdxrIndicator { Period = period, AdxrPeriod = adxrPeriod };
+        var actual = indicator.Calculate(candles);
+        var expected = CalculateOldAdxr(candles, period, adxrPeriod);
+
+        Assert.True(actual.IsSuccessful);
+        Assert.Equal(200, actual.MainValues.Count);
+        Assert.Equal(200, expected.Count);
+
+        for (int i = 0; i < 200; i++)
+        {
+            Assert.Equal(expected[i], actual.MainValues[i]);
+        }
+    }
 }

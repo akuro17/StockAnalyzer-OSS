@@ -53,6 +53,11 @@ public class CointegrationSpreadTests
         // Intercept must be suppressed from chart rendering to avoid dominating sub-panel auto-range
         Assert.DoesNotContain(settings.SeriesColors, sc => sc.Name == CoreCointegrationSpreadIndicator.InterceptSeriesName);
         Assert.True(IndicatorChartSuppression.IsSuppressed(IndicatorType.CointegrationSpread, CoreCointegrationSpreadIndicator.InterceptSeriesName));
+
+        // HalfLife must also be suppressed from chart rendering (unit: bars, scales differently)
+        Assert.DoesNotContain(settings.SeriesColors, sc => sc.Name == CoreCointegrationSpreadIndicator.HalfLifeSeriesName);
+        Assert.True(IndicatorChartSuppression.IsSuppressed(IndicatorType.CointegrationSpread, CoreCointegrationSpreadIndicator.HalfLifeSeriesName));
+        Assert.False(IndicatorChartSuppression.IsDataWindowSuppressed(IndicatorType.CointegrationSpread, CoreCointegrationSpreadIndicator.HalfLifeSeriesName));
     }
 
     private static List<CoreCandleData> CreateWavyCandles(int count, decimal basePrice, int phase)
@@ -113,6 +118,7 @@ public class CointegrationSpreadTests
         Assert.Empty(indicator.HedgeRatio);
         Assert.Empty(indicator.Intercept);
         Assert.Empty(indicator.ADFStatistic);
+        Assert.Empty(indicator.HalfLife);
     }
 
     [Fact]
@@ -141,6 +147,7 @@ public class CointegrationSpreadTests
         Assert.All(indicator.HedgeRatio, h => Assert.Null(h));
         Assert.All(indicator.Intercept, a => Assert.Null(a));
         Assert.All(indicator.ADFStatistic, adf => Assert.Null(adf));
+        Assert.All(indicator.HalfLife, hl => Assert.Null(hl));
     }
 
     [Fact]
@@ -585,5 +592,139 @@ public class CointegrationSpreadTests
 
         var ex = Assert.Throws<ArgumentException>(() => param.Validate());
         Assert.Contains("ZScorePeriod", ex.Message);
+    }
+
+    [Fact]
+    public void Case20_HalfLife_Formula_BoundaryAndOverflowGuards()
+    {
+        // rho = -0.5m -> HL = 1.0 (tol 1e-9)
+        decimal? hl1 = CoreCointegrationSpreadIndicator.ComputeHalfLife(-0.5m);
+        Assert.NotNull(hl1);
+        Assert.Equal(1.0m, hl1.Value, precision: 9);
+
+        // rho = -0.05m -> HL ~= 13.5134 (tol 1e-3)
+        // -ln(2)/ln(0.95) = -0.6931471805599453 / -0.05129329438755058 = 13.51340733
+        decimal? hl2 = CoreCointegrationSpreadIndicator.ComputeHalfLife(-0.05m);
+        Assert.NotNull(hl2);
+        Assert.True(Math.Abs(hl2.Value - 13.5134m) < 0.001m, $"Expected ~13.5134, got {hl2.Value}");
+
+        // rho = -1e-18m, -1e-13m, -1e-12m -> null and no exception (denominator rounds to 0 or <= 1e-12)
+        Assert.Null(CoreCointegrationSpreadIndicator.ComputeHalfLife(-1e-18m));
+        Assert.Null(CoreCointegrationSpreadIndicator.ComputeHalfLife(-1e-13m));
+        Assert.Null(CoreCointegrationSpreadIndicator.ComputeHalfLife(-1e-12m));
+
+        // rho = 0m, 0.3m, -1m, -1.5m, null -> null
+        Assert.Null(CoreCointegrationSpreadIndicator.ComputeHalfLife(0m));
+        Assert.Null(CoreCointegrationSpreadIndicator.ComputeHalfLife(0.3m));
+        Assert.Null(CoreCointegrationSpreadIndicator.ComputeHalfLife(-1m));
+        Assert.Null(CoreCointegrationSpreadIndicator.ComputeHalfLife(-1.5m));
+        Assert.Null(CoreCointegrationSpreadIndicator.ComputeHalfLife(null));
+
+        // rho just above -1 (e.g. -0.999999m) -> finite positive HL < 1, no exception
+        // 1 + rho = 1e-6 -> ln(1e-6) ~= -13.8155 -> HL = -0.693147 / -13.8155 ~= 0.05017
+        decimal? hlNearMin = CoreCointegrationSpreadIndicator.ComputeHalfLife(-0.999999m);
+        Assert.NotNull(hlNearMin);
+        Assert.True(hlNearMin.Value > 0m && hlNearMin.Value < 1m, $"Expected 0 < HL < 1, got {hlNearMin.Value}");
+    }
+
+    [Fact]
+    public void Case21_HalfLife_SeriesLevel_AlignmentAndNullGuards()
+    {
+        int n = 70;
+        var yPrices = new decimal[n];
+        var xPrices = new decimal[n];
+        var random = new Random(101);
+
+        decimal spread = 0m;
+        for (int i = 0; i < n; i++)
+        {
+            decimal x = 100m + (decimal)(random.NextDouble() * 10 - 5);
+            xPrices[i] = x;
+            decimal u = (decimal)(random.NextDouble() * 0.4 - 0.2);
+            spread = 0.7m * spread + u; // Moderate mean-reverting (rho ~ -0.3)
+            yPrices[i] = 2m * x + 10m + spread;
+        }
+
+        var candlesY = CreateTestCandles(yPrices);
+        var candlesX = CreateTestCandles(xPrices);
+
+        var indicator = new CoreCointegrationSpreadIndicator(30, 20, candlesX);
+        var result = indicator.Calculate(candlesY);
+
+        Assert.True(result.IsSuccessful);
+        Assert.Equal(n, indicator.HalfLife.Count);
+        Assert.True(result.HasSeries(CoreCointegrationSpreadIndicator.HalfLifeSeriesName));
+
+        // Invariant: HalfLife is null wherever ADFStatistic is null
+        for (int i = 0; i < n; i++)
+        {
+            if (indicator.ADFStatistic[i] == null)
+            {
+                Assert.Null(indicator.HalfLife[i]);
+            }
+        }
+
+        // Warmup: first 29 bars must be null
+        for (int i = 0; i < 29; i++)
+        {
+            Assert.Null(indicator.HalfLife[i]);
+        }
+
+        // Check non-null count and inspect values
+        var nonNullHl = indicator.HalfLife.Where(h => h.HasValue).ToList();
+        var nonNullAdf = indicator.ADFStatistic.Where(a => a.HasValue).ToList();
+        Assert.True(nonNullAdf.Count > 0, $"Expected non-null ADF, got {nonNullAdf.Count}");
+        Assert.True(nonNullHl.Count > 0, "Expected non-null HalfLife values in stationary region.");
+
+        var lastHalfLife = indicator.HalfLife.Last();
+        Assert.NotNull(lastHalfLife);
+        Assert.True(lastHalfLife.Value > 0m, $"Expected positive HalfLife, got {lastHalfLife.Value}");
+    }
+
+    [Fact]
+    public void Case22_AdfStatistic_RefactoredWrapper_ExactMatchWithRecomputation()
+    {
+        // Independent test oracle to prove R1 (refactoring does not alter ADF outputs)
+        int n = 50;
+        var spreadSeries = new List<decimal?>(n);
+        for (int i = 0; i < n; i++)
+        {
+            spreadSeries.Add(10m + (decimal)Math.Sin(i * 0.3) * 5m);
+        }
+
+        int window = 20;
+        for (int t = window - 1; t < n; t++)
+        {
+            int startIndex = t - window + 1;
+            decimal sumXX = 0m;
+            decimal sumXY = 0m;
+            for (int k = startIndex + 1; k <= t; k++)
+            {
+                decimal x = spreadSeries[k - 1]!.Value;
+                decimal y = spreadSeries[k]!.Value - x;
+                sumXX += x * x;
+                sumXY += x * y;
+            }
+            decimal rho = sumXY / sumXX;
+            decimal sumU2 = 0m;
+            for (int k = startIndex + 1; k <= t; k++)
+            {
+                decimal x = spreadSeries[k - 1]!.Value;
+                decimal y = spreadSeries[k]!.Value - x;
+                decimal u = y - (rho * x);
+                sumU2 += u * u;
+            }
+            decimal s2 = sumU2 / (window - 2);
+            double seDouble = Math.Sqrt((double)(s2 / sumXX));
+            decimal se = (decimal)seDouble;
+            decimal expectedTau = rho / se;
+
+            var method = typeof(CoreCointegrationSpreadIndicator).GetMethod("ComputeAdfStatistic", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+            Assert.NotNull(method);
+            decimal? actualTau = (decimal?)method!.Invoke(null, new object[] { spreadSeries, t, window });
+
+            Assert.NotNull(actualTau);
+            Assert.Equal(expectedTau, actualTau.Value);
+        }
     }
 }

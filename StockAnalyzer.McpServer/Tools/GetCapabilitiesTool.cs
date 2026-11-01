@@ -59,6 +59,48 @@ internal sealed class GetCapabilitiesTool : IMcpTool
         .Boolean(ScreenerCatalogArgument, "Add the screener catalogue (columns, criteria, price sources, operators). Default false.")
         .Build();
 
+    public string? OutputSchemaJson => OutputSchema;
+
+    private static readonly string OutputSchema = BuildOutputSchema();
+
+    private static string BuildOutputSchema()
+    {
+        var paramItem = ToolSchema.OpenObject()
+            .String("name", "Parameter name.", required: true)
+            .String("displayName", "Parameter display name.", required: true)
+            .String("type", "Type name of the parameter.", required: true);
+
+        var indicatorItem = ToolSchema.Object()
+            .String("type", "Indicator type name.", required: true)
+            .Boolean("isRegistered", "True when indicator is registered for calculation.", required: true)
+            .String("displayName", "Display name.", required: true)
+            .String("category", "Indicator category.")
+            .String("backtestEligibility", "Backtest eligibility.")
+            .NullableString("unit", "Unit of measurement.")
+            .Boolean("isCrossTicker", "True when indicator compares two symbols.")
+            .StringArray("outputSeriesNames", "Output series names.")
+            .StringArray("nonCausalSeries", "Series that look ahead.")
+            .ObjectArray("parameters", "Parameters list.", paramItem);
+
+        var optItem = ToolSchema.Object()
+            .String("name", "Metric name.", required: true)
+            .String("reason", "Reason excluded.", required: true);
+
+        var backtestOptSchema = ToolSchema.Object()
+            .StringArray("objectives", "Available optimization objective names.", required: true)
+            .ObjectArray("excludedObjectives", "Excluded optimization objectives.", optItem, required: true);
+
+        return ToolSchema.OpenObject()
+            .Integer("indicatorCount", "Number of indicators matching the filter.", required: true)
+            .String("periodUnit", "Unit of period parameters.", required: true)
+            .StringArray("supportedTimeFrames", "Supported bar time frames.", required: true)
+            .StringArray("supportedChartSeriesTypes", "Supported chart series types.", required: true)
+            .ObjectArray("indicators", "Available indicators.", indicatorItem, required: true)
+            .StringArray("unitUndefined", "Indicators with undefined output unit.", required: true)
+            .NestedObject("backtestOptimization", "Backtest optimization settings.", backtestOptSchema, required: true)
+            .Build();
+    }
+
     public Task<string> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)
     {
         string? category = ToolArgs.String(arguments, CategoryArgument);

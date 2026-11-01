@@ -59,6 +59,46 @@ internal sealed class GetCandlesTool : IMcpTool
         .Boolean(CompleteBarsOnlyArgument, "W1 and MN1 only: drop the last bar when its period has not ended yet (see lastBarPartial). Default false.")
         .Build();
 
+    public string? OutputSchemaJson => OutputSchema;
+
+    private static readonly string OutputSchema = BuildOutputSchema();
+
+    private static string BuildOutputSchema()
+    {
+        var unitsSchema = ToolSchema.Object()
+            .String("price", "Price unit.", required: true)
+            .String("volume", "Volume unit.", required: true);
+
+        var candleItem = ToolSchema.Object()
+            .String("timestamp", "Bar timestamp.", required: true)
+            .Number("open", "Open price.", required: true)
+            .Number("high", "High price.", required: true)
+            .Number("low", "Low price.", required: true)
+            .Number("close", "Close price.", required: true)
+            .Number("volume", "Volume in shares.", required: true);
+
+        return ToolSchema.Object()
+            .String("symbol", "Ticker symbol.", required: true)
+            .String("timeFrame", "Time frame of the bars.", required: true)
+            .String("periodUnit", "Unit of period parameters.", required: true)
+            .String("timestampFormat", "Date/time format of bar timestamps.", required: true)
+            .NestedObject("units", "Units of prices and volumes.", unitsSchema, required: true)
+            .Integer("barCount", "Number of returned bars.", required: true)
+            .Integer("requestedCount", "Requested bar count.", required: true)
+            .Integer("loadedBarCount", "Number of bars loaded from storage.", required: true)
+            .Integer("matchedBarCount", "Number of bars matched by date filter.", required: true)
+            .NullableString("earliestAvailableTimestamp", "Earliest available bar date in storage.")
+            .Boolean("filteredByDate", "True when date range filter was applied.", required: true)
+            .Boolean("truncatedByLoadCap", "True when load cap truncated history.", required: true)
+            .Boolean("droppedLeadingBar", "True when oldest aggregated bar was partial.", required: true)
+            .NullableString("referenceDate", "Reference date for partial bar calculation.")
+            .NullableString("lastBarPeriodEnd", "Period end date for the last bar.")
+            .Boolean("lastBarPartial", "True when the latest bar covers an incomplete period.", required: true)
+            .Boolean("droppedPartialBar", "True when incomplete latest bar was dropped.", required: true)
+            .ObjectArray("candles", "OHLCV bars in chronological order.", candleItem, required: true)
+            .Build();
+    }
+
     private static string SupportedNames => ToolArgs.SupportedTimeFrameNames;
 
     public async Task<string> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)
@@ -74,7 +114,7 @@ internal sealed class GetCandlesTool : IMcpTool
         }
 
         bool completeBarsOnly = ToolArgs.Boolean(arguments, CompleteBarsOnlyArgument) ?? false;
-        bool aggregated = timeFrame is TimeFrame.W1 or TimeFrame.MN1;
+        bool aggregated = TimeFrameAggregator.IsPeriodFrame(timeFrame);
         bool filterByDate = start is not null || end is not null;
         int loadCount = filterByDate ? _limits.MaxCandlesPerRequest : count;
 

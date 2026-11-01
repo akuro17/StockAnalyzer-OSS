@@ -377,28 +377,8 @@ public static class ArimaMath
 
                     if (sampleCount <= kTotal)
                     {
-                        // Fallback to AR only if p > 0, else mean
-                        if (p > 0)
-                        {
-                            Span<double> gammaAR = stackalloc double[p + 1];
-                            for (int k = 0; k <= p; k++)
-                            {
-                                double c = 0.0;
-                                for (int i = 0; i < n - k; i++) c += yTilde[i] * yTilde[i + k];
-                                gammaAR[k] = c / n;
-                            }
-                            Span<double> phiAR = stackalloc double[p];
-                            if (SolveLevinsonDurbin(gammaAR, phiAR, out _))
-                            {
-                                double predDiff = mu;
-                                for (int i = 0; i < p; i++) predDiff += phiAR[i] * yTilde[n - 1 - i];
-                                forecast = Undifference(predDiff, window, d);
-                                return !double.IsNaN(forecast) && !double.IsInfinity(forecast);
-                            }
-                        }
-
-                        forecast = Undifference(mu, window, d);
-                        return true;
+                        forecast = window[^1];
+                        return false;
                     }
 
                     Span<double> ztz = stackalloc double[kTotal * kTotal];
@@ -427,9 +407,8 @@ public static class ArimaMath
                     Span<double> beta = stackalloc double[kTotal];
                     if (!SolveLinearSystem(ztz, zty, beta, kTotal))
                     {
-                        // Fallback to mean on singularity
-                        forecast = Undifference(mu, window, d);
-                        return true;
+                        forecast = window[^1];
+                        return false;
                     }
 
                     // Step 3: Compute 1-step-ahead forecast in differenced space

@@ -8,11 +8,6 @@ namespace StockAnalyzer.McpServer.Tools;
 /// <summary>sa_get_training_status: where one training job is, its latest messages, its metrics, and (when it succeeded) its model (offered only with --enable-execution).</summary>
 internal sealed class GetTrainingStatusTool : IMcpTool
 {
-    private const string Ellipsis = "...";
-    private const string SupervisedKind = "supervised";
-    private const string ReinforcementLearningKind = "reinforcement_learning";
-    private const string PortfolioReinforcementLearningKind = "portfolio_reinforcement_learning";
-
     private readonly ISandboxedExecutionGateway _gateway;
     private readonly ErrorMessageSanitizer _sanitizer;
 
@@ -56,13 +51,7 @@ internal sealed class GetTrainingStatusTool : IMcpTool
     {
         writer.WriteStartObject();
         writer.WriteString(ExecutionToolSupport.JobIdArgument, status.JobId);
-        string kindString = status.Kind switch
-        {
-            TrainingJobKind.ReinforcementLearning => ReinforcementLearningKind,
-            TrainingJobKind.PortfolioReinforcementLearning => PortfolioReinforcementLearningKind,
-            _ => SupervisedKind,
-        };
-        writer.WriteString("kind", kindString);
+        writer.WriteString("kind", ExecutionToolSupport.KindName(status.Kind));
         writer.WriteString("state", status.State.ToString());
         if (status.Stage is null)
         {
@@ -70,7 +59,7 @@ internal sealed class GetTrainingStatusTool : IMcpTool
         }
         else
         {
-            writer.WriteString("stage", Clean(status.Stage, ExecutionLimits.MaxStageChars));
+            writer.WriteString("stage", ExecutionToolSupport.Clean(_sanitizer, status.Stage, ExecutionLimits.MaxStageChars));
         }
 
         writer.WriteNumber("progressPercent", status.ProgressPercent);
@@ -96,7 +85,7 @@ internal sealed class GetTrainingStatusTool : IMcpTool
         writer.WriteStartArray("messages");
         foreach (string message in status.Messages)
         {
-            writer.WriteStringValue(Clean(message, ExecutionLimits.MaxStatusMessageChars));
+            writer.WriteStringValue(ExecutionToolSupport.Clean(_sanitizer, message, ExecutionLimits.MaxStatusMessageChars));
         }
 
         writer.WriteEndArray();
@@ -239,15 +228,4 @@ internal sealed class GetTrainingStatusTool : IMcpTool
         TrainingFailureReason.TrainingFailed => "TRAINING_FAILED",
         _ => throw new ArgumentOutOfRangeException(nameof(reason), reason, "No wire name is defined for this failure reason."),
     };
-
-    // Paths removed first (a known root is replaced alone, so the rest of the path is dropped as well), then cut: the replacement is shorter than a path,
-    // so the limit still holds.
-    private string Clean(string text, int maxChars)
-    {
-        string clean = RestOfRemovedPath.Replace(_sanitizer.Sanitize(text), ErrorMessageSanitizer.Placeholder);
-        return clean.Length > maxChars ? clean[..(maxChars - Ellipsis.Length)] + Ellipsis : clean;
-    }
-
-    private static readonly Regex RestOfRemovedPath = new(
-        Regex.Escape(ErrorMessageSanitizer.Placeholder) + @"[\\/][^\s""']*", RegexOptions.Compiled | RegexOptions.CultureInvariant);
 }

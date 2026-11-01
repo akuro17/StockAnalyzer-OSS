@@ -166,6 +166,7 @@ internal static class McpServerComposition
             var screenerBinder = new ScreenerConditionBinder(catalog, indicatorBinder, screenerCatalog, settings);
             var backtestBinder = new BacktestConditionBinder(catalog, indicatorBinder, settings);
             var templateAdvisor = new ScreenerTemplateAdvisor(catalog);
+            var templateWriter = new TemplateConditionWriter(catalog, screenerCatalog);
             var resolvedWorkspaceSource = services.GetRequiredService<IReadOnlyWorkspaceSource>();
             var groupResolver = services.GetService<ITickerGroupResolver>() ?? new TickerGroupResolver(gateway, resolvedWorkspaceSource);
             SandboxedExecutionSettings? executionSettings = enableExecution ? services.GetRequiredService<SandboxedExecutionSettings>() : null;
@@ -177,6 +178,8 @@ internal static class McpServerComposition
 
             var capabilitiesTool = new GetCapabilitiesTool(catalog, screenerCatalog, executionSettings);
             var settingsTool = new GetSettingsTool(settings);
+            var modelRegistry = services.GetService<IRlModelGenerationRegistry>() as ReadOnlyModelGenerationRegistry ?? new ReadOnlyModelGenerationRegistry();
+
             var tools = new List<IMcpTool>
             {
                 new ListTickersTool(gateway, groupResolver, limits),
@@ -194,6 +197,7 @@ internal static class McpServerComposition
                 new DetectDivergencesTool(gateway, symbols, catalog, indicatorBinder, factory, limits),
                 new OptimizeBacktestTool(gateway, symbols, backtestBinder, limits),
                 new RunWalkForwardTool(gateway, symbols, backtestBinder, limits),
+                new RunPortfolioBacktestTool(gateway, groupResolver, symbols, backtestBinder, limits),
                 new CalculateReverseWatchTool(gateway, symbols, limits),
                 new CalculateChartSeriesTool(gateway, symbols, limits),
                 new CalculateVolumeProfileTool(gateway, symbols, limits),
@@ -205,8 +209,15 @@ internal static class McpServerComposition
                 new ProjectPricePathTool(gateway, symbols, limits),
                 new GetSeasonalityTool(gateway, symbols, limits),
                 new CalculateRelativePerformanceTool(gateway, symbols, sanitizer, limits),
+                new CalculateCrossAssetStatsTool(gateway, symbols, groupResolver, limits),
+                new CalculateMarketBreadthTool(gateway, symbols, groupResolver, limits),
                 new CheckPortfolioRlPreflightTool(symbols, services.GetService<IRlPortfolioService>()),
                 new CheckRlPlaybackPreflightTool(symbols, services.GetService<IRlModelGenerationRegistry>(), sourceFolders: rlSourceFolders),
+                new ListModelsTool(symbols, modelRegistry, limits),
+                new GetModelExplanationTool(gateway, symbols, modelRegistry),
+                new GetSymbolCoverageTool(gateway, limits),
+                new ValidateConditionTreeTool(gateway, screenerBinder, backtestBinder, limits),
+                new GetTemplateDetailTool(gateway, templateWriter),
             };
 
             Action? prepareExecution = null;
@@ -227,10 +238,12 @@ internal static class McpServerComposition
                 tools.Add(new StartTrainingTool(execution, symbols, limits));
                 tools.Add(new GetTrainingStatusTool(execution, sanitizer));
                 tools.Add(new CancelTrainingTool(execution));
+                tools.Add(new ListTrainingJobsTool(execution, sanitizer));
                 tools.Add(new StartRlTrainingTool(execution, symbols));
                 tools.Add(new StartPortfolioRlTrainingTool(execution, symbols));
                 tools.Add(new RunOnnxPredictionTool(execution, gateway, symbols, new MLDataProcessor(), limits, executionSettings));
                 tools.Add(new GetRlPlaybackTool(symbols, services.GetService<IRlModelGenerationRegistry>(), sourceFolders: rlSourceFolders));
+                tools.Add(new GetModelAttentionTool(gateway, symbols, settings: settings, registry: modelRegistry, limits: limits, sanitizer: sanitizer));
             }
 
             var resources = new McpResourceRegistry(new[]

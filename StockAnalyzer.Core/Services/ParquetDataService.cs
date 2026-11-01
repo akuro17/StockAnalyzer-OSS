@@ -254,7 +254,7 @@ public class ParquetDataService : IDataService, IAttestedMonitoringDataSource
                 }
 
                 DateTime? referenceDate = null;
-                if (!includePartialBar && timeFrame is TimeFrame.W1 or TimeFrame.MN1)
+                if (!includePartialBar && TimeFrameAggregator.IsPeriodFrame(timeFrame))
                 {
                     var dailyBasePath = ResolveBasePath(TimeFrame.D1);
                     var dailyFilePath = ResolveFilePath(dailyBasePath, symbol);
@@ -273,7 +273,7 @@ public class ParquetDataService : IDataService, IAttestedMonitoringDataSource
                 var candles = new List<CandleData>();
                 using var command = dbConnection.CreateCommand();
 
-                int fetchLimit = (!includePartialBar && timeFrame is TimeFrame.W1 or TimeFrame.MN1 && count > 0)
+                int fetchLimit = (!includePartialBar && TimeFrameAggregator.IsPeriodFrame(timeFrame) && count > 0)
                     ? checked(count + 1)
                     : count;
 

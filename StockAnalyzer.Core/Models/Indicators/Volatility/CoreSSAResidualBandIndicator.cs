@@ -149,7 +149,7 @@ public class CoreSSAResidualBandIndicator : CoreIndicatorBase
                     {
                         lambdaResidualSum += eigenvalues[sortedIndices[m]];
                     }
-                    sigmaRes = Math.Sqrt(Math.Max(0.0, lambdaResidualSum / (window * k)));
+                    sigmaRes = Math.Sqrt(Math.Max(0.0, lambdaResidualSum / (l * k)));
                 }
                 else
                 {

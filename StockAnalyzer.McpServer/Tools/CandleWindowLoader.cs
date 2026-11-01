@@ -1,5 +1,6 @@
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.ReadOnly;
+using StockAnalyzer.Core.Services;
 
 namespace StockAnalyzer.McpServer.Tools;
 
@@ -19,7 +20,7 @@ internal sealed class CandleWindowLoader
     /// </summary>
     public async Task<(List<CandleData> Bars, bool DroppedLeadingBar)> LoadAsync(string symbol, TimeFrame timeFrame, int count, CancellationToken cancellationToken)
     {
-        bool aggregated = timeFrame is TimeFrame.W1 or TimeFrame.MN1;
+        bool aggregated = TimeFrameAggregator.IsPeriodFrame(timeFrame);
         int request = aggregated ? count + 1 : count;
         List<CandleData> bars = (await _gateway.GetCandlesAsync(symbol, timeFrame, request, cancellationToken).ConfigureAwait(false)).ToList();
         if (bars.Count > count)

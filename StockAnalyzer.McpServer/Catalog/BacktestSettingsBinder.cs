@@ -105,9 +105,123 @@ internal static class BacktestSettingsBinder
         decimal? takeProfit = ReadNumber(risk, RiskArgument, "takeProfitRatio");
         CheckRatio(stopLoss, "stopLossRatio");
         CheckRatio(takeProfit, "takeProfitRatio");
-        var settings = new BacktestRiskManagementSettings { StopLossPercent = stopLoss, TakeProfitPercent = takeProfit };
+
+        DynamicExitConfiguration? dynamicExits = null;
+        if (given.TryGetProperty("dynamicExits", out JsonElement dynamicExitsElement))
+        {
+            ConditionJson.RequireObject(dynamicExitsElement, $"{RiskArgument}.dynamicExits");
+            dynamicExits = BindDynamicExits(dynamicExitsElement, RiskArgument);
+        }
+
+        var settings = new BacktestRiskManagementSettings
+        {
+            StopLossPercent = stopLoss,
+            TakeProfitPercent = takeProfit,
+            DynamicExits = dynamicExits,
+        };
         BacktestConditionValidator.ValidateRiskManagement(settings);
         return settings.IsEnabled ? settings : null;
+    }
+
+    private static readonly string[] DynamicExitKeys = { "maxHoldingBars", "atrStop", "atrTarget", "trailingStop" };
+    private static readonly string[] AtrExitKeys = { "period", "multiple" };
+    private static readonly string[] TrailingExitKeys = { "mode", "period", "multiple", "ratio" };
+
+    private static DynamicExitConfiguration? BindDynamicExits(JsonElement? element, string objectName)
+    {
+        if (element is not { ValueKind: JsonValueKind.Object } given)
+        {
+            return null;
+        }
+
+        string path = $"{objectName}.dynamicExits";
+        ConditionJson.RejectUnknownKeys(given, path, DynamicExitKeys);
+
+        int? maxHoldingBars = ReadInteger(given, path, "maxHoldingBars");
+        if (maxHoldingBars is < 1)
+        {
+            throw new ToolException(ToolErrorCodes.InvalidArgument, "'maxHoldingBars' must be >= 1.", $"{path}.maxHoldingBars");
+        }
+
+        AtrExitParameters? atrStop = null;
+        if (given.TryGetProperty("atrStop", out JsonElement atrStopElement))
+        {
+            string p = $"{path}.atrStop";
+            ConditionJson.RequireObject(atrStopElement, p);
+            ConditionJson.RejectUnknownKeys(atrStopElement, p, AtrExitKeys);
+            int period = ReadInteger(atrStopElement, p, "period") ?? throw new ToolException(ToolErrorCodes.InvalidArgument, "'period' is required.", $"{p}.period");
+            if (period < 1) throw new ToolException(ToolErrorCodes.InvalidArgument, "'period' must be >= 1.", $"{p}.period");
+            decimal multiple = ReadNumber(atrStopElement, p, "multiple") ?? throw new ToolException(ToolErrorCodes.InvalidArgument, "'multiple' is required.", $"{p}.multiple");
+            if (multiple <= 0m) throw new ToolException(ToolErrorCodes.InvalidArgument, "'multiple' must be > 0.", $"{p}.multiple");
+            atrStop = new AtrExitParameters { Period = period, Multiple = multiple };
+        }
+
+        AtrExitParameters? atrTarget = null;
+        if (given.TryGetProperty("atrTarget", out JsonElement atrTargetElement))
+        {
+            string p = $"{path}.atrTarget";
+            ConditionJson.RequireObject(atrTargetElement, p);
+            ConditionJson.RejectUnknownKeys(atrTargetElement, p, AtrExitKeys);
+            int period = ReadInteger(atrTargetElement, p, "period") ?? throw new ToolException(ToolErrorCodes.InvalidArgument, "'period' is required.", $"{p}.period");
+            if (period < 1) throw new ToolException(ToolErrorCodes.InvalidArgument, "'period' must be >= 1.", $"{p}.period");
+            decimal multiple = ReadNumber(atrTargetElement, p, "multiple") ?? throw new ToolException(ToolErrorCodes.InvalidArgument, "'multiple' is required.", $"{p}.multiple");
+            if (multiple <= 0m) throw new ToolException(ToolErrorCodes.InvalidArgument, "'multiple' must be > 0.", $"{p}.multiple");
+            atrTarget = new AtrExitParameters { Period = period, Multiple = multiple };
+        }
+
+        TrailingExitParameters? trailingStop = null;
+        if (given.TryGetProperty("trailingStop", out JsonElement trailingElement))
+        {
+            string p = $"{path}.trailingStop";
+            ConditionJson.RequireObject(trailingElement, p);
+            ConditionJson.RejectUnknownKeys(trailingElement, p, TrailingExitKeys);
+            if (!trailingElement.TryGetProperty("mode", out JsonElement modeElement) || modeElement.ValueKind != JsonValueKind.String)
+            {
+                throw new ToolException(ToolErrorCodes.InvalidArgument, "'mode' is required and must be a string.", $"{p}.mode");
+            }
+            TrailingExitMode mode = ConditionJson.ParseEnum<TrailingExitMode>(modeElement, $"{p}.mode", Enum.GetNames<TrailingExitMode>());
+            int? period = ReadInteger(trailingElement, p, "period");
+            decimal? multiple = ReadNumber(trailingElement, p, "multiple");
+            decimal? ratio = ReadNumber(trailingElement, p, "ratio");
+            if (mode == TrailingExitMode.AtrMultiple)
+            {
+                if (trailingElement.TryGetProperty("ratio", out _)) throw new ToolException(ToolErrorCodes.InvalidArgument, "'ratio' is not allowed for AtrMultiple mode.", $"{p}.ratio");
+                if (period is null or < 1) throw new ToolException(ToolErrorCodes.InvalidArgument, "'period' must be >= 1 for AtrMultiple mode.", $"{p}.period");
+                if (multiple is null or <= 0m) throw new ToolException(ToolErrorCodes.InvalidArgument, "'multiple' must be > 0 for AtrMultiple mode.", $"{p}.multiple");
+            }
+            else if (mode == TrailingExitMode.Ratio)
+            {
+                if (trailingElement.TryGetProperty("period", out _)) throw new ToolException(ToolErrorCodes.InvalidArgument, "'period' is not allowed for Ratio mode.", $"{p}.period");
+                if (trailingElement.TryGetProperty("multiple", out _)) throw new ToolException(ToolErrorCodes.InvalidArgument, "'multiple' is not allowed for Ratio mode.", $"{p}.multiple");
+                if (ratio is null or <= 0m or >= 1m) throw new ToolException(ToolErrorCodes.InvalidArgument, "'ratio' must satisfy 0 < ratio < 1 for Ratio mode.", $"{p}.ratio");
+            }
+            trailingStop = new TrailingExitParameters
+            {
+                Mode = mode,
+                Period = period,
+                Multiple = multiple,
+                Ratio = ratio,
+            };
+        }
+
+        var config = new DynamicExitConfiguration
+        {
+            MaxHoldingBars = maxHoldingBars,
+            AtrStop = atrStop,
+            AtrTarget = atrTarget,
+            TrailingStop = trailingStop,
+        };
+
+        try
+        {
+            BacktestConditionValidator.ValidateDynamicExits(config);
+        }
+        catch (ArgumentOutOfRangeException ex)
+        {
+            throw new ToolException(ToolErrorCodes.InvalidArgument, ex.Message.Split(Environment.NewLine)[0], path);
+        }
+
+        return config.IsEnabled ? config : null;
     }
 
     /// <summary>

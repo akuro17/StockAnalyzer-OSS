@@ -257,6 +257,17 @@ public sealed record TrainingJobStatus(
     EphemeralPortfolioRlRequest? PortfolioRlRequest = null,
     EphemeralPortfolioRlResult? PortfolioRlResult = null);
 
+/// <summary>
+/// A summary of a training job in the current session. Excludes model internals and request details.
+/// </summary>
+public sealed record TrainingJobSummary(
+    string JobId,
+    TrainingJobKind Kind,
+    TrainingJobState State,
+    string? Stage,
+    TimeSpan Elapsed,
+    DateTimeOffset StartedUtc);
+
 /// <summary>Another job cannot start: the allowed number of running jobs is reached.</summary>
 public sealed class ExecutionBusyException() : InvalidOperationException("The allowed number of running training jobs is reached.");
 

@@ -430,34 +430,153 @@ public abstract class CoreIndicatorBase : ICoreIndicator
             return IndicatorResult.Empty();
         }
 
+        int n = series.Count;
         decimal baselineVal = series[firstValidIdx]!.Value;
-        var syntheticCandles = new List<CoreCandleData>(series.Count);
-        var baseTime = DateTime.Today;
-        for (int i = 0; i < series.Count; i++)
+
+        // Legacy full-length fill path
+        IIndicatorResult ExecuteLegacyPath()
         {
-            decimal val = series[i] ?? baselineVal;
-            syntheticCandles.Add(new CoreCandleData(baseTime.AddDays(i), val, val, val, val, 0));
+            ClearInstanceSeriesProperties();
+
+            var fullSynthetic = new List<CoreCandleData>(n);
+            var baseTime = DateTime.Today;
+            for (int i = 0; i < n; i++)
+            {
+                decimal val = series[i] ?? baselineVal;
+                fullSynthetic.Add(new CoreCandleData(baseTime.AddDays(i), val, val, val, val, 0));
+            }
+
+            var legacyResult = CalculateCore(fullSynthetic);
+            if (firstValidIdx > 0 && legacyResult.IsSuccessful)
+            {
+                var sanitizedSeries = new Dictionary<string, IReadOnlyList<decimal?>>(StringComparer.OrdinalIgnoreCase);
+                foreach (var seriesName in legacyResult.SeriesNamesList)
+                {
+                    var originalList = legacyResult.GetSeries(seriesName);
+                    var sList = new List<decimal?>(originalList.Count);
+                    for (int i = 0; i < originalList.Count; i++)
+                    {
+                        sList.Add(i < firstValidIdx ? null : originalList[i]);
+                    }
+                    sanitizedSeries[seriesName] = sList;
+                }
+
+                SyncInstanceSeriesProperties(sanitizedSeries);
+
+                return IndicatorResult.Success(sanitizedSeries, legacyResult.CustomData, legacyResult.SignalProvider);
+            }
+
+            return legacyResult;
+        }
+
+        // F == 0: Execute legacy path directly (100% backward equivalence)
+        if (firstValidIdx == 0)
+        {
+            return ExecuteLegacyPath();
+        }
+
+        // F > 0: Valid-slice path
+        int sliceLength = n - firstValidIdx;
+        var syntheticCandles = new List<CoreCandleData>(sliceLength);
+        var today = DateTime.Today;
+
+        for (int k = 0; k < sliceLength; k++)
+        {
+            int originalIdx = firstValidIdx + k;
+            decimal val = series[originalIdx] ?? baselineVal;
+            syntheticCandles.Add(new CoreCandleData(today.AddDays(originalIdx), val, val, val, val, 0));
         }
 
         var result = CalculateCore(syntheticCandles);
-        if (firstValidIdx > 0 && result.IsSuccessful)
+        if (!result.IsSuccessful)
         {
-            var sanitizedSeries = new Dictionary<string, IReadOnlyList<decimal?>>(StringComparer.OrdinalIgnoreCase);
-            foreach (var seriesName in result.SeriesNamesList)
-            {
-                var originalList = result.GetSeries(seriesName);
-                var sList = new List<decimal?>(originalList.Count);
-                for (int i = 0; i < originalList.Count; i++)
-                {
-                    sList.Add(i < firstValidIdx ? null : originalList[i]);
-                }
-                sanitizedSeries[seriesName] = sList;
-            }
-
-            return IndicatorResult.Success(sanitizedSeries, result.CustomData, result.SignalProvider);
+            ClearInstanceSeriesProperties();
+            return result;
         }
 
-        return result;
+        // Fallback to legacy path if CustomData or SignalProvider is present (index-aligned payloads must not shift)
+        if (result.CustomData != null || result.SignalProvider != null)
+        {
+            return ExecuteLegacyPath();
+        }
+
+        // Defensive check: verify all series match sliceLength
+        foreach (var seriesName in result.SeriesNamesList)
+        {
+            var originalList = result.GetSeries(seriesName);
+            if (originalList == null || originalList.Count != sliceLength)
+            {
+                return ExecuteLegacyPath();
+            }
+        }
+
+        // Pad each series with F nulls to restore full length n
+        var paddedSeries = new Dictionary<string, IReadOnlyList<decimal?>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var seriesName in result.SeriesNamesList)
+        {
+            var originalList = result.GetSeries(seriesName);
+            var paddedList = new List<decimal?>(n);
+            for (int i = 0; i < firstValidIdx; i++)
+            {
+                paddedList.Add(null);
+            }
+            paddedList.AddRange(originalList);
+            paddedSeries[seriesName] = paddedList;
+        }
+
+        SyncInstanceSeriesProperties(paddedSeries);
+
+        return IndicatorResult.Success(paddedSeries, null, null);
+    }
+
+    private PropertyInfo[] GetCachedProperties()
+    {
+        var type = GetType();
+        if (!_propertyCache.TryGetValue(type, out var properties))
+        {
+            properties = type.GetProperties(BindingFlags.Public | BindingFlags.Instance);
+            _propertyCache.TryAdd(type, properties);
+        }
+        return properties;
+    }
+
+    private void ClearInstanceSeriesProperties()
+    {
+        _values.Clear();
+        var properties = GetCachedProperties();
+        foreach (var prop in properties)
+        {
+            if (prop.Name != nameof(Values) &&
+                prop.GetValue(this) is List<decimal?> list)
+            {
+                list.Clear();
+            }
+        }
+    }
+
+    private void SyncInstanceSeriesProperties(IReadOnlyDictionary<string, IReadOnlyList<decimal?>> seriesMap)
+    {
+        if (seriesMap.TryGetValue(IndicatorResult.MainSeriesName, out var mainPadded))
+        {
+            _values.Clear();
+            _values.AddRange(mainPadded);
+        }
+
+        var properties = GetCachedProperties();
+        foreach (var prop in properties)
+        {
+            if (prop.Name == nameof(Values))
+            {
+                continue;
+            }
+
+            if (seriesMap.TryGetValue(prop.Name, out var paddedList) &&
+                prop.GetValue(this) is List<decimal?> list)
+            {
+                list.Clear();
+                list.AddRange(paddedList);
+            }
+        }
     }
 
     /// <summary>
@@ -604,12 +723,7 @@ public abstract class CoreIndicatorBase : ICoreIndicator
             series[IndicatorResult.MainSeriesName] = _values;
         }
 
-        var type = GetType();
-        if (!_propertyCache.TryGetValue(type, out var properties))
-        {
-            properties = type.GetProperties(BindingFlags.Public | BindingFlags.Instance);
-            _propertyCache.TryAdd(type, properties);
-        }
+        var properties = GetCachedProperties();
 
         foreach (var prop in properties)
         {

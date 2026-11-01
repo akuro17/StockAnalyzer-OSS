@@ -33,7 +33,7 @@ public class ScreenerSprint2Tests
     #region ADX Wilder Smoothing Tests
 
     [Fact]
-    public void CoreAdx_WarmupLength_MatchesPeriodMinusOne()
+    public void CoreAdx_WarmupLength_MatchesWilderStandard()
     {
         var indicator = new CoreAdxIndicator { Period = 14 };
         var candles = CreateTestCandles(50);
@@ -45,25 +45,26 @@ public class ScreenerSprint2Tests
         Assert.Equal(50, indicator.PlusDI.Count);
         Assert.Equal(50, indicator.MinusDI.Count);
 
-        // Indices 0 to Period - 2 (0..12) should be null
+        // PlusDI and MinusDI start at Period - 1 (index 13)
         for (int i = 0; i < 13; i++)
         {
-            Assert.Null(indicator.Values[i]);
             Assert.Null(indicator.PlusDI[i]);
             Assert.Null(indicator.MinusDI[i]);
         }
-
-        // Index Period - 1 (13) must be non-null
-        Assert.NotNull(indicator.Values[13]);
-        Assert.NotNull(indicator.PlusDI[13]);
-        Assert.NotNull(indicator.MinusDI[13]);
-
-        // Subsequent bars should also be non-null
-        for (int i = 14; i < 50; i++)
+        for (int i = 13; i < 50; i++)
         {
-            Assert.NotNull(indicator.Values[i]);
             Assert.NotNull(indicator.PlusDI[i]);
             Assert.NotNull(indicator.MinusDI[i]);
+        }
+
+        // ADX values start at 2 * Period - 2 (index 26) per Wilder standard
+        for (int i = 0; i < 26; i++)
+        {
+            Assert.Null(indicator.Values[i]);
+        }
+        for (int i = 26; i < 50; i++)
+        {
+            Assert.NotNull(indicator.Values[i]);
         }
     }
 

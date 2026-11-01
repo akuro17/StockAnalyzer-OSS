@@ -487,7 +487,7 @@ public sealed class McpCommandLineTests : IDisposable
 
     // ---- WP-3: the execution tools in the real executable --------------------------------------------------------------------
 
-    private static readonly string[] ExecutionToolNames = { "sa_start_training", "sa_get_training_status", "sa_cancel_training", "sa_run_onnx_prediction", "sa_start_rl_training", "sa_start_portfolio_rl_training", "sa_get_rl_playback" };
+    private static readonly string[] ExecutionToolNames = { "sa_start_training", "sa_get_training_status", "sa_cancel_training", "sa_run_onnx_prediction", "sa_start_rl_training", "sa_start_portfolio_rl_training", "sa_get_rl_playback", "sa_get_model_attention", "sa_list_training_jobs" };
 
     [Fact]
     public async Task ChildProcess_HelpListsTheExecutionToolsOnlyWhenTheyAreEnabled()

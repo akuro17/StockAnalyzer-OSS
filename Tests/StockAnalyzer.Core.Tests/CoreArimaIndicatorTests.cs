@@ -192,4 +192,33 @@ public class CoreArimaIndicatorTests
         Assert.Equal(10, result.MainValues.Count);
         Assert.All(result.MainValues, Assert.Null);
     }
+
+    [Fact]
+    public void Calculate_DegreesOfFreedomDeficit_OutputsLastPriceWithoutException()
+    {
+        // Run 2b (T2.4): When parameters cause degrees-of-freedom deficit (Period=20, P=5, D=0, Q=5),
+        // EstimateArimaForecast returns false and window[^1]. CoreArimaIndicator must succeed and output
+        // the last observed price for every valid bar.
+        var indicator = new CoreArimaIndicator();
+        indicator.Configure(new CoreArimaParameter { Period = 20, P = 5, D = 0, Q = 5 });
+
+        var candles = GenerateCandles(30, startPrice: 100m, seed: 999);
+        var result = indicator.Calculate(candles);
+
+        Assert.True(result.IsSuccessful);
+        Assert.Equal(30, result.MainValues.Count);
+
+        // Indices 0..18 (warmup: 19 bars) must be null
+        for (int i = 0; i < 19; i++)
+        {
+            Assert.Null(result.MainValues[i]);
+        }
+
+        // Indices 19..29 must equal the respective candle's Close price (fallback)
+        for (int i = 19; i < 30; i++)
+        {
+            Assert.NotNull(result.MainValues[i]);
+            Assert.Equal(candles[i].Close, result.MainValues[i]!.Value);
+        }
+    }
 }

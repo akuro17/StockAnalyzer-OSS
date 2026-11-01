@@ -154,7 +154,7 @@ internal sealed class RunScreenerTool : IMcpTool
     {
         TimeFrame timeFrame = arguments.TryGetProperty(TimeFrameArgument, out _) ? ToolArgs.SupportedTimeFrame(arguments, TimeFrameArgument) : ScreenerTimeFrame;
         DateOnly? asOf = ToolArgs.Date(arguments, AsOfDateArgument);
-        bool isPeriodFrame = timeFrame is TimeFrame.W1 or TimeFrame.MN1;
+        bool isPeriodFrame = TimeFrameAggregator.IsPeriodFrame(timeFrame);
         bool completeBarsOnly = ToolArgs.Boolean(arguments, CompleteBarsOnlyArgument) ?? ScreenerBarSelection.DefaultCompleteBarsOnly;
 
         // The plain latest-daily-bar scan keeps its own path (unchanged); a date or a weekly / monthly frame reads a selection of bars built from the daily history.

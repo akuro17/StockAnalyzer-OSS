@@ -59,6 +59,35 @@ internal sealed class ListTickersTool : IMcpTool
         .String(GroupIdArgument, "Guid of a ticker group from sa_list_ticker_groups. When given, lists only members of that group.")
         .Build();
 
+    public string? OutputSchemaJson => OutputSchema;
+
+    private static readonly string OutputSchema = BuildOutputSchema();
+
+    private static string BuildOutputSchema()
+    {
+        var tickerItem = ToolSchema.Object()
+            .String("symbol", "Ticker symbol (canonical form).", required: true)
+            .Boolean("hasMetadata", "True when stored metadata exists.");
+
+        foreach (string field in TickerMetadataJson.SummaryFields)
+        {
+            tickerItem.String(TickerMetadataJson.JsonName(field), $"Stored {field}.");
+        }
+
+        return ToolSchema.Object()
+            .String("groupId", "Identifier of the ticker group.")
+            .String("groupKind", "Kind of the ticker group.")
+            .Integer("groupUnregisteredMemberCount", "Member count of unregistered tickers in the group.")
+            .StringArray("groupUnknownRuleFields", "Unknown rule fields found in dynamic rule definitions.")
+            .Integer("totalCount", "Total number of tickers matching the criteria.", required: true)
+            .Integer("offset", "Paging offset applied.", required: true)
+            .Integer("limit", "Page size limit applied.", required: true)
+            .Integer("returnedCount", "Number of tickers returned in this page.", required: true)
+            .Boolean("hasMore", "True when more tickers remain after this page.", required: true)
+            .ObjectArray("tickers", "The matching tickers for this page.", tickerItem, required: true)
+            .Build();
+    }
+
     public async Task<string> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)
     {
         long offset = ToolArgs.Integer(arguments, OffsetArgument) ?? 0;

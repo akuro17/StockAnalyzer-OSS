@@ -8,8 +8,17 @@ internal sealed class ToolSchema
 {
     private readonly List<(string Name, Action<Utf8JsonWriter> Write)> _properties = new();
     private readonly List<string> _required = new();
+    private readonly bool _additionalProperties;
 
-    public static ToolSchema Object() => new();
+    public ToolSchema(bool additionalProperties = false)
+    {
+        _additionalProperties = additionalProperties;
+    }
+
+    public static ToolSchema Object() => new(false);
+
+    /// <summary>An object schema that allows additional properties.</summary>
+    public static ToolSchema OpenObject() => new(true);
 
     public ToolSchema String(string name, string description, bool required = false, IEnumerable<string>? allowedValues = null)
     {
@@ -30,6 +39,17 @@ internal sealed class ToolSchema
             }
         });
     }
+
+    /// <summary>A string property that can also be null in the JSON response.</summary>
+    public ToolSchema NullableString(string name, string description, bool required = false)
+        => Add(name, required, writer =>
+        {
+            writer.WriteStartArray("type");
+            writer.WriteStringValue("string");
+            writer.WriteStringValue("null");
+            writer.WriteEndArray();
+            writer.WriteString("description", description);
+        });
 
     /// <summary>
     /// <paramref name="defaultValue"/>, <paramref name="minimum"/> and <paramref name="maximum"/> are optional machine-readable hints
@@ -171,7 +191,7 @@ internal sealed class ToolSchema
             writer.WriteEndArray();
         }
 
-        writer.WriteBoolean("additionalProperties", false);
+        writer.WriteBoolean("additionalProperties", _additionalProperties);
     }
 
     private ToolSchema Add(string name, bool required, Action<Utf8JsonWriter> write)

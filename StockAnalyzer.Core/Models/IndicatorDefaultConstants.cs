@@ -483,6 +483,7 @@ public static class IndicatorDefaultConstants
     public const int CointegrationSpreadZScorePeriod = 20;
     public const int CointegrationSpreadMinPeriod = 5;
     public const decimal CointegrationSpreadEpsilon = 1e-12m;
+    public const double HalfLifeLogEpsilon = 1e-12;
     public const decimal CointegrationSpreadCriticalValue5Pct = -3.37m;
     public static readonly IndicatorColor CointegrationSpreadColor = new(255, 0, 150, 136);       // Teal #009688
     public static readonly IndicatorColor CointegrationSpreadZScoreColor = new(255, 255, 167, 38); // Orange #FFA726

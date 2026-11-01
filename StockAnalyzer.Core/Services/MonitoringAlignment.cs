@@ -30,7 +30,7 @@ public static class MonitoringAlignment
 
     private static DateTimeOffset NormalizeKey(DateTime timestamp, TimeFrame timeFrame)
     {
-        if (timeFrame is TimeFrame.W1 or TimeFrame.MN1 && timestamp.TimeOfDay == TimeSpan.Zero)
+        if (TimeFrameAggregator.IsPeriodFrame(timeFrame) && timestamp.TimeOfDay == TimeSpan.Zero)
             return PredictionLogService.Utc(TimeFrameAggregator.PeriodStart(timestamp, timeFrame));
         return PredictionLogService.Utc(timestamp);
     }

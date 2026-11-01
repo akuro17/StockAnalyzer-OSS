@@ -46,6 +46,9 @@ public interface IReadOnlyStockAnalyzerGateway
     /// <summary>Last write time of the stored time series of <paramref name="symbol"/>, or null.</summary>
     Task<DateTimeOffset?> GetTimeSeriesLastUpdatedAsync(string symbol, CancellationToken cancellationToken = default);
 
+    /// <summary>Stored history coverage summary (available bar counts and earliest/latest dates across supported timeframes) for <paramref name="symbol"/>.</summary>
+    Task<SymbolCoverage> GetCoverageAsync(string symbol, CancellationToken cancellationToken = default);
+
     /// <summary>
     /// Calculates the indicators on a thread-pool thread. The returned task is the underlying calculation itself:
     /// the pipeline has no cancellation token, so a caller that stops waiting (timeout, cancellation) leaves the

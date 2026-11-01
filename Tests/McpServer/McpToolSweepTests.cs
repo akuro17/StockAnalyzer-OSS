@@ -8,6 +8,7 @@ using StockAnalyzer.Core.Models.Portfolio;
 using StockAnalyzer.Core.Models.Screener;
 using StockAnalyzer.Core.Models.Templates;
 using StockAnalyzer.Core.ReadOnly;
+using StockAnalyzer.Core.Services.ReinforcementLearning;
 using StockAnalyzer.McpServer;
 using StockAnalyzer.McpServer.Limits;
 using StockAnalyzer.McpServer.Protocol;
@@ -31,8 +32,10 @@ public sealed class McpToolSweepTests : IDisposable
 
     private readonly ReadOnlyDataTreeFixture _fixture = ReadOnlyDataTreeFixture.Create(Days, "msft", "7203.T");
     private readonly string _templateRoot = TestDataIsolationBootstrap.NewTempDirectory("McpSweepTemplates");
+    private readonly string _modelRoot = TestDataIsolationBootstrap.NewTempDirectory("McpSweepModels");
     private readonly List<McpServerRuntime> _runtimes = new();
-    private readonly Guid _templateId = Guid.NewGuid();
+    private static readonly Guid SweepTemplateId = Guid.NewGuid();
+    private readonly Guid _templateId = SweepTemplateId;
 
     public McpToolSweepTests()
     {
@@ -54,6 +57,26 @@ public sealed class McpToolSweepTests : IDisposable
 
         // The file the application's own template service would rename and rewrite when it reads: the server must leave it alone.
         File.WriteAllText(Path.Combine(_templateRoot, "indicator_templates.json"), "[]");
+
+        string dummyModelId = "sweep_dummy_model";
+        string dummyDir = Path.Combine(_modelRoot, dummyModelId);
+        Directory.CreateDirectory(dummyDir);
+        File.WriteAllText(Path.Combine(dummyDir, "manifest.json"), JsonSerializer.Serialize(new
+        {
+            schemaVersion = 1,
+            modelId = dummyModelId,
+            modelFile = "dummy.onnx",
+            modelHash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            requiredSidecars = Array.Empty<object>(),
+            contractHash = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            evaluationRevision = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            targetType = "classification",
+            timeframe = "daily",
+            horizon = 5,
+            classOrder = "Up,Down,Neutral",
+            score = 0.5
+        }));
+        File.WriteAllText(Path.Combine(_modelRoot, "active.json"), $"{{\"activeId\":\"{dummyModelId}\"}}");
     }
 
     private string TemplateFolder => Path.Combine(_templateRoot, "Screener");
@@ -68,6 +91,8 @@ public sealed class McpToolSweepTests : IDisposable
         _fixture.Dispose();
         try { Directory.Delete(_templateRoot, recursive: true); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { /* best-effort */ }
+        try { Directory.Delete(_modelRoot, recursive: true); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { /* best-effort */ }
     }
 
     private async Task<McpMessageDispatcher> StartAsync()
@@ -81,7 +106,12 @@ public sealed class McpToolSweepTests : IDisposable
             ["MarketDataSettings:TickerListPath"] = _fixture.Settings.TickerListPath,
         };
 
-        McpServerRuntime runtime = McpServerComposition.Create(new ConfigurationBuilder().AddInMemoryCollection(values).Build(), new LogSink(new StringWriter()), TemplateFolder);
+        var rlRegistry = new ReadOnlyModelGenerationRegistry(_modelRoot);
+        McpServerRuntime runtime = McpServerComposition.Create(
+            new ConfigurationBuilder().AddInMemoryCollection(values).Build(),
+            new LogSink(new StringWriter()),
+            TemplateFolder,
+            rlRegistry: rlRegistry);
         _runtimes.Add(runtime);
         await runtime.Dispatcher.DispatchAsync(McpTestSupport.InitializeMessage, CancellationToken.None);
         return runtime.Dispatcher;
@@ -124,8 +154,16 @@ public sealed class McpToolSweepTests : IDisposable
         ("sa_project_price_path", """{"symbol":"MSFT","timeFrame":"D1","method":"Arima"}"""),
         ("sa_get_seasonality", """{"symbol":"MSFT","timeFrame":"D1"}"""),
         ("sa_calculate_relative_performance", """{"symbol":"MSFT","timeFrame":"D1","comparisonSymbols":["7203.T"]}"""),
+        ("sa_calculate_cross_asset_stats", """{"symbols":["MSFT","7203.T"],"timeFrame":"D1"}"""),
+        ("sa_calculate_market_breadth", """{"symbols":["MSFT","7203.T"],"timeFrame":"D1"}"""),
+        ("sa_run_portfolio_backtest", """{"symbols":["MSFT","7203.T"],"conditions":{"entryLong":""" + Entry + ""","exitLong":""" + Exit + "}}"),
         ("sa_check_portfolio_rl_preflight", """{"symbols":["MSFT","7203.T"]}"""),
         ("sa_check_rl_playback_preflight", """{"modelId":"active","symbol":"MSFT"}"""),
+        ("sa_list_models", """{"kind":"All","limit":5}"""),
+        ("sa_get_model_explanation", """{"modelId":"active"}"""),
+        ("sa_get_symbol_coverage", """{"symbols":["MSFT","7203.T"]}"""),
+        ("sa_validate_condition_tree", """{"kind":"screener","conditionTree":""" + HighClose + "}"),
+        ("sa_get_template_detail", $$$"""{"templateType":"screener","templateId":"{{{SweepTemplateId}}}"}"""),
     };
 
     /// <summary>Every argument position that carries a symbol or a template id; the slot is replaced with each corpus entry.</summary>
@@ -154,8 +192,16 @@ public sealed class McpToolSweepTests : IDisposable
         ("sa_get_seasonality", """{"symbol":"@@","timeFrame":"D1"}"""),
         ("sa_calculate_relative_performance", """{"symbol":"@@","timeFrame":"D1"}"""),
         ("sa_calculate_relative_performance", """{"symbol":"MSFT","timeFrame":"D1","comparisonSymbols":["@@"]}"""),
+        ("sa_calculate_cross_asset_stats", """{"symbols":["@@","MSFT"],"timeFrame":"D1"}"""),
+        ("sa_calculate_cross_asset_stats", """{"symbols":["MSFT","7203.T"],"benchmark":"@@","timeFrame":"D1"}"""),
+        ("sa_calculate_market_breadth", """{"symbols":["@@","MSFT"],"timeFrame":"D1"}"""),
+        ("sa_run_portfolio_backtest", """{"symbols":["@@","MSFT"],"conditions":{"entryLong":""" + Entry + ""","exitLong":""" + Exit + "}}"),
         ("sa_check_portfolio_rl_preflight", """{"symbols":["@@","MSFT"]}"""),
         ("sa_check_rl_playback_preflight", """{"modelId":"active","symbol":"@@"}"""),
+        ("sa_list_models", """{"symbol":"@@"}"""),
+        ("sa_get_model_explanation", """{"modelId":"active","symbol":"@@"}"""),
+        ("sa_get_symbol_coverage", """{"symbols":["@@"]}"""),
+        ("sa_get_template_detail", """{"templateType":"screener","templateId":"@@"}"""),
     };
 
     /// <summary>Raw values that can reach a file name or the file system: separators, drives, parent segments, control characters, empty and over-long text.</summary>
@@ -350,6 +396,7 @@ public sealed class McpToolSweepTests : IDisposable
             ("sa_list_tickers", $"{{\"limit\":{limits.MaxTickersPerPage + 1}}}", "limit"),
             ("sa_get_candles", $"{{{Frame},\"count\":{limits.MaxCandlesPerRequest + 1}}}", "count"),
             ("sa_get_ticker_metadata", $"{{\"symbols\":[{Symbols(limits.MaxSymbolsPerMetadataCall + 1)}]}}", "symbols"),
+            ("sa_get_symbol_coverage", $"{{\"symbols\":[{Symbols(limits.MaxSymbolsPerMetadataCall + 1)}]}}", "symbols"),
             ("sa_calculate_indicators", $"{{{Frame},\"indicators\":{Indicators},\"lookbackBars\":{limits.MaxCandlesPerRequest + 1}}}", "lookbackBars"),
             ("sa_calculate_indicators", $"{{{Frame},\"indicators\":{Indicators},\"outputTailCount\":{limits.MaxOutputTailBars + 1}}}", "outputTailCount"),
             ("sa_calculate_indicators", $"{{{Frame},\"indicators\":[{Many(limits.MaxIndicatorsPerCall + 1)}]}}", "indicators"),
@@ -378,6 +425,14 @@ public sealed class McpToolSweepTests : IDisposable
             ("sa_analyze_cycles", $"{{{Frame},\"rangeBars\":{limits.MaxCandlesPerRequest + 1}}}", "rangeBars"),
             ("sa_project_price_path", $"{{{Frame},\"method\":\"Arima\",\"horizonBars\":{limits.MaxProjectionBars + 1}}}", "horizonBars"),
             ("sa_get_seasonality", $"{{{Frame},\"years\":{limits.MaxSeasonalityYears + 1}}}", "years"),
+            ("sa_calculate_cross_asset_stats", $"{{\"symbols\":[{Symbols(limits.MaxCrossAssetSymbols + 1)}]}}", "symbols"),
+            ("sa_calculate_cross_asset_stats", $"{{\"symbols\":[\"MSFT\",\"AAPL\"],\"lookbackBars\":{limits.MaxCandlesPerRequest + 1}}}", "lookbackBars"),
+            ("sa_calculate_market_breadth", $"{{\"symbols\":[{Symbols(limits.MaxBreadthSymbols + 1)}]}}", "symbols"),
+            ("sa_calculate_market_breadth", $"{{\"lookbackBars\":{limits.MaxCandlesPerRequest + 1}}}", "lookbackBars"),
+            ("sa_calculate_market_breadth", $"{{\"outputTailCount\":{limits.MaxOutputTailBars + 1}}}", "outputTailCount"),
+            ("sa_calculate_market_breadth", $"{{\"maBars\":{limits.MaxCandlesPerRequest + 1}}}", "maBars"),
+            ("sa_run_portfolio_backtest", $"{{\"symbols\":[{Symbols(limits.MaxPortfolioBacktestSymbols + 1)}],\"conditions\":{{\"entryLong\":{Entry},\"exitLong\":{Exit}}}}}", "symbols"),
+            ("sa_list_models", $"{{\"limit\":{limits.MaxListedModels + 1}}}", "limit"),
             // 32-bit and 64-bit overflow must be a refusal as well, never a wrap-around or an exception.
             ("sa_get_candles", $"{{{Frame},\"count\":2147483648}}", "count"),
             ("sa_list_tickers", "{\"limit\":9223372036854775807}", "limit"),
@@ -417,6 +472,8 @@ public sealed class McpToolSweepTests : IDisposable
     [InlineData("sa_detect_divergences", """{"symbol":"MSFT","timeFrame":"D1","shortMaPeriod":-1}""")]
     [InlineData("sa_project_price_path", """{"symbol":"MSFT","timeFrame":"D1","method":"Arima","arimaP":4294967320}""")]
     [InlineData("sa_get_seasonality", """{"symbol":"MSFT","timeFrame":"D1","startMonth":4294967320}""")]
+    [InlineData("sa_list_models", """{"limit":-1}""")]
+    [InlineData("sa_list_models", """{"offset":-1}""")]
     public async Task ANonsenseNumberIsRefusedAndNeverBecomesAnInternalError(string tool, string arguments)
     {
         var dispatcher = await StartAsync();

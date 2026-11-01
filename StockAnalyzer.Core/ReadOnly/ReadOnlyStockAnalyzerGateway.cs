@@ -86,6 +86,59 @@ public sealed class ReadOnlyStockAnalyzerGateway : IReadOnlyStockAnalyzerGateway
     public async Task<DateTimeOffset?> GetTimeSeriesLastUpdatedAsync(string symbol, CancellationToken cancellationToken = default)
         => await _marketData.GetTimeSeriesLastUpdatedAsync(RequireCanonical(symbol), cancellationToken).ConfigureAwait(false);
 
+    public async Task<SymbolCoverage> GetCoverageAsync(string symbol, CancellationToken cancellationToken = default)
+    {
+        string canonical = RequireCanonical(symbol);
+        var tickers = await GetAvailableTickersAsync(cancellationToken).ConfigureAwait(false);
+        bool inList = tickers.Contains(canonical, StringComparer.OrdinalIgnoreCase);
+
+        TickerMetadata? metadata = null;
+        try
+        {
+            metadata = await GetStoredTickerMetadataAsync(canonical, cancellationToken).ConfigureAwait(false);
+        }
+        catch (DataUnavailableException)
+        {
+            // Unreadable stored metadata treated as null
+        }
+
+        DateTimeOffset? lastUpdated = await GetTimeSeriesLastUpdatedAsync(canonical, cancellationToken).ConfigureAwait(false);
+
+        var timeFrames = new List<TimeFrameCoverage>();
+        var manager = new TimeFrameManager(_dataService);
+
+        foreach (TimeFrame tf in ReadOnlyGatewayContract.SupportedTimeFrames)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            IReadOnlyList<CandleData> candles;
+            try
+            {
+                candles = await manager.GetCandlesAsync(canonical, tf, 0, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                candles = Array.Empty<CandleData>();
+            }
+
+            if (candles.Count > 0)
+            {
+                timeFrames.Add(new TimeFrameCoverage(
+                    tf,
+                    candles.Count,
+                    candles[0].Timestamp,
+                    candles[^1].Timestamp));
+            }
+        }
+
+        bool found = inList && timeFrames.Count > 0;
+        return new SymbolCoverage(
+            canonical,
+            found,
+            metadata is not null,
+            lastUpdated,
+            timeFrames);
+    }
+
     public Task<Dictionary<string, IIndicatorResult>> CalculateIndicatorsAsync(
         IReadOnlyList<CoreCandleData> candles,
         IEnumerable<CoreIndicatorSettings> settings,

@@ -337,6 +337,15 @@ public class TimeFrameAggregatorTests
     }
 
     [Fact]
+    public void IsPeriodFrame_IsTrueForExactlyTheFramesBuiltByPeriod()
+    {
+        foreach (TimeFrame frame in Enum.GetValues<TimeFrame>())
+        {
+            Assert.Equal(frame is TimeFrame.W1 or TimeFrame.MN1, TimeFrameAggregator.IsPeriodFrame(frame));
+        }
+    }
+
+    [Fact]
     public void PeriodStart_And_GetPeriodKey_AreStrictlyEquivelentAcross35Years()
     {
         // Tests 1995-01-01 through 2030-12-31 (13,149 days), verifying:

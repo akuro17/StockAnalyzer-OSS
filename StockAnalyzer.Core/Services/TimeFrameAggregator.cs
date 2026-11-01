@@ -14,6 +14,12 @@ namespace StockAnalyzer.Core.Services;
 public static class TimeFrameAggregator
 {
     /// <summary>
+    /// True for the frames built from daily bars by period (W1, MN1): a bar covers an ISO week or a calendar month, is dated by the first trading day
+    /// (aggregated) or the period start (stored files), and can be a partial period. The one definition of this set for callers that branch on it.
+    /// </summary>
+    public static bool IsPeriodFrame(Models.TimeFrame timeFrame) => timeFrame is Models.TimeFrame.W1 or Models.TimeFrame.MN1;
+
+    /// <summary>
     /// The last calendar day of the period a bar belongs to: the Sunday of its ISO week (W1), the last day of its month (MN1), or the bar's own date
     /// (any other frame). <paramref name="barTimestamp"/> is the bar's timestamp, which for W1 and MN1 is the first trading day of the period.
     /// A period is complete once the data (or an as-of date) reaches this day.
@@ -64,7 +70,7 @@ public static class TimeFrameAggregator
     /// True when a W1 or MN1 bar's period ends after the reference date (e.g. the latest stored daily bar).
     /// </summary>
     public static bool IsPartialPeriod(DateTime barTimestamp, Models.TimeFrame timeFrame, DateTime referenceDate)
-        => timeFrame is Models.TimeFrame.W1 or Models.TimeFrame.MN1
+        => IsPeriodFrame(timeFrame)
             && PeriodEnd(barTimestamp, timeFrame) > referenceDate.Date;
 
     /// <summary>

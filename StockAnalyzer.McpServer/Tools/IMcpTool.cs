@@ -16,6 +16,12 @@ internal interface IMcpTool
     /// <summary>JSON Schema of the arguments: an object with <c>properties</c>, optional <c>required</c> and <c>additionalProperties: false</c>.</summary>
     string InputSchemaJson { get; }
 
+    /// <summary>
+    /// Optional JSON Schema of the structured output this tool returns on success.
+    /// Default is null (tool does not declare an output schema).
+    /// </summary>
+    string? OutputSchemaJson => null;
+
     /// <summary>True for tools that use the longer time limit.</summary>
     bool IsHeavy { get; }
 

@@ -41,8 +41,8 @@ public class CoreCoppockCurveIndicator : CoreIndicatorBase
            decimal longBase = priceSeries[i - LongRocPeriod] ?? 0m;
            decimal shortBase = priceSeries[i - ShortRocPeriod] ?? 0m;
            decimal current = priceSeries[i] ?? 0m;
-           decimal rocLong = (current - longBase) / longBase * 100;
-           decimal rocShort = (current - shortBase) / shortBase * 100;
+           decimal rocLong = longBase == 0m ? 0m : (current - longBase) / longBase * 100m;
+           decimal rocShort = shortBase == 0m ? 0m : (current - shortBase) / shortBase * 100m;
            rocSum.Add(rocLong + rocShort);
         }
 

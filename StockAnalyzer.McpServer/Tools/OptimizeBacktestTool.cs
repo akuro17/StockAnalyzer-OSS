@@ -85,7 +85,7 @@ internal sealed class OptimizeBacktestTool : IMcpTool
         .String(OutOfSampleArgument, "Optional yyyy-MM-dd: rank on the days before it and also run the returned combinations from it to the end.")
         .String(TimeFrameArgument, $"Time frame of the bars ({string.Join(", ", ReadOnlyGatewayContract.SupportedBacktestTimeFrames)}). Default {ReadOnlyGatewayContract.BacktestTimeFrame}.", allowedValues: ReadOnlyGatewayContract.SupportedBacktestTimeFrames.Select(t => t.ToString()).ToArray())
         .FreeObject(BacktestSettingsBinder.AccountArgument, "Capital, cost, sizing and margin settings, as for sa_run_backtest; numbers may be placeholders.")
-        .FreeObject(BacktestSettingsBinder.RiskArgument, "{stopLossRatio, takeProfitRatio}, as for sa_run_backtest; numbers may be placeholders.")
+        .FreeObject(BacktestSettingsBinder.RiskArgument, "{stopLossRatio, takeProfitRatio, dynamicExits}, as for sa_run_backtest; numbers may be placeholders.")
         .FreeObject(BacktestSettingsBinder.ReportArgument, "Report settings, as for sa_run_backtest; numbers may be placeholders.")
         .Boolean(SymbolResolver.AllowUnregisteredArgument, "Accept a symbol that is not in the ticker list but has stored bars. Default false.")
         .Build();

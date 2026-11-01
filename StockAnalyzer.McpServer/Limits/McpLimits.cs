@@ -66,6 +66,24 @@ public sealed class McpLimits
 
     public int MaxSecondarySymbolsPerCall { get; set; } = 4;
 
+    /// <summary>
+    /// Most symbols one sa_calculate_cross_asset_stats call may analyze; more is LIMIT_EXCEEDED (the list is never cut).
+    /// Standard value: 50.
+    /// </summary>
+    public int MaxCrossAssetSymbols { get; set; } = 50;
+
+    /// <summary>
+    /// Most symbols one sa_calculate_market_breadth call may analyze; more is LIMIT_EXCEEDED (the list is never cut).
+    /// Standard value: 500.
+    /// </summary>
+    public int MaxBreadthSymbols { get; set; } = 500;
+
+    /// <summary>
+    /// Most symbols one sa_run_portfolio_backtest call may analyze; more is LIMIT_EXCEEDED (the list is never cut).
+    /// Standard value: 50.
+    /// </summary>
+    public int MaxPortfolioBacktestSymbols { get; set; } = 50;
+
     /// <summary>Most different comparison symbols (the primary symbol not counted) one relative-performance call aligns; more is LIMIT_EXCEEDED (never cut). Standard value = the chart's limit (the aligner's default, WatchlistConstants.MaxRelativePerformanceTargets).</summary>
     public int MaxComparisonTargets { get; set; } = WatchlistConstants.MaxRelativePerformanceTargets;
 
@@ -153,4 +171,10 @@ public sealed class McpLimits
     /// Standard value: 50.
     /// </summary>
     public int MaxSeasonalityYears { get; set; } = 50;
+
+    /// <summary>
+    /// Most model generations sa_list_models returns (limit).
+    /// Standard value: 100.
+    /// </summary>
+    public int MaxListedModels { get; set; } = 100;
 }

@@ -295,6 +295,12 @@ public sealed class RunBacktestToolTests : IDisposable
     [InlineData("""{"takeProfitRatio":-0.1}""", "riskManagement.takeProfitRatio")]
     [InlineData("""{"stopLossRatio":"5%"}""", "riskManagement.stopLossRatio")]
     [InlineData("""{"trailing":0.1}""", "riskManagement.trailing")]
+    [InlineData("""{"dynamicExits":{"unknown":1}}""", "riskManagement.dynamicExits.unknown")]
+    [InlineData("""{"dynamicExits":{"maxHoldingBars":0}}""", "riskManagement.dynamicExits.maxHoldingBars")]
+    [InlineData("""{"dynamicExits":{"atrStop":{"period":0,"multiple":1}}}""", "riskManagement.dynamicExits.atrStop.period")]
+    [InlineData("""{"dynamicExits":{"atrStop":{"period":14,"multiple":0}}}""", "riskManagement.dynamicExits.atrStop.multiple")]
+    [InlineData("""{"dynamicExits":{"trailingStop":{"mode":"Invalid"}}}""", "riskManagement.dynamicExits.trailingStop.mode")]
+    [InlineData("""{"dynamicExits":{"trailingStop":{"mode":"Ratio","ratio":1.5}}}""", "riskManagement.dynamicExits.trailingStop.ratio")]
     public async Task AnInvalidRiskSettingIsRejectedNamingTheValue(string risk, string parameter)
     {
         var dispatcher = await StartAsync();
@@ -620,5 +626,57 @@ public sealed class RunBacktestToolTests : IDisposable
         Assert.Contains("sqn", written);
         Assert.Contains("annualizedSharpe", written);
         Assert.Contains("totalTrades", written);
+    }
+
+    [Fact]
+    public async Task DynamicExits_EchoesInEffectiveSettings_AndTradesIncludeExitReasonAndStopLevel()
+    {
+        var dispatcher = await StartAsync();
+
+        string dynamicExitsArg = ",\"riskManagement\":{\"dynamicExits\":{\"maxHoldingBars\":15,\"atrStop\":{\"period\":14,\"multiple\":2.0},\"atrTarget\":{\"period\":14,\"multiple\":3.0},\"trailingStop\":{\"mode\":\"AtrMultiple\",\"period\":14,\"multiple\":2.0}}}";
+        JsonElement result = Result(await RunAsync(dispatcher, Conditions, Period + dynamicExitsArg));
+
+        JsonElement settings = result.GetProperty("effectiveSettings");
+        Assert.True(settings.TryGetProperty("riskManagement", out JsonElement riskMgmt));
+        Assert.True(riskMgmt.TryGetProperty("dynamicExits", out JsonElement dynExits));
+
+        Assert.Equal(15, dynExits.GetProperty("maxHoldingBars").GetInt32());
+        Assert.Equal(14, dynExits.GetProperty("atrStop").GetProperty("period").GetInt32());
+        Assert.Equal(2.0m, dynExits.GetProperty("atrStop").GetProperty("multiple").GetDecimal());
+        Assert.Equal(14, dynExits.GetProperty("atrTarget").GetProperty("period").GetInt32());
+        Assert.Equal(3.0m, dynExits.GetProperty("atrTarget").GetProperty("multiple").GetDecimal());
+        Assert.Equal("AtrMultiple", dynExits.GetProperty("trailingStop").GetProperty("mode").GetString());
+        Assert.Equal(14, dynExits.GetProperty("trailingStop").GetProperty("period").GetInt32());
+        Assert.Equal(2.0m, dynExits.GetProperty("trailingStop").GetProperty("multiple").GetDecimal());
+
+        JsonElement trades = result.GetProperty("trades");
+        Assert.True(trades.GetProperty("totalTrades").GetInt32() > 0);
+        JsonElement firstTrade = trades.GetProperty("items")[0];
+        Assert.True(firstTrade.TryGetProperty("exitReason", out _));
+        Assert.True(firstTrade.TryGetProperty("stopLevelAtExit", out _));
+    }
+
+    [Fact]
+    public async Task DynamicExits_CrossModeParameters_ReturnsInvalidArgument()
+    {
+        var dispatcher = await StartAsync();
+
+        // 1. Ratio provided under AtrMultiple mode
+        string atrWithRatio = ",\"riskManagement\":{\"dynamicExits\":{\"trailingStop\":{\"mode\":\"AtrMultiple\",\"period\":14,\"multiple\":2.0,\"ratio\":0.05}}}";
+        using JsonDocument err1 = await RunAsync(dispatcher, Conditions, Period + atrWithRatio);
+        Assert.Equal("INVALID_ARGUMENT", Code(err1));
+        Assert.Equal("riskManagement.dynamicExits.trailingStop.ratio", Param(err1));
+
+        // 2. Period provided under Ratio mode
+        string ratioWithPeriod = ",\"riskManagement\":{\"dynamicExits\":{\"trailingStop\":{\"mode\":\"Ratio\",\"ratio\":0.05,\"period\":14}}}";
+        using JsonDocument err2 = await RunAsync(dispatcher, Conditions, Period + ratioWithPeriod);
+        Assert.Equal("INVALID_ARGUMENT", Code(err2));
+        Assert.Equal("riskManagement.dynamicExits.trailingStop.period", Param(err2));
+
+        // 3. Multiple provided under Ratio mode
+        string ratioWithMultiple = ",\"riskManagement\":{\"dynamicExits\":{\"trailingStop\":{\"mode\":\"Ratio\",\"ratio\":0.05,\"multiple\":2.0}}}";
+        using JsonDocument err3 = await RunAsync(dispatcher, Conditions, Period + ratioWithMultiple);
+        Assert.Equal("INVALID_ARGUMENT", Code(err3));
+        Assert.Equal("riskManagement.dynamicExits.trailingStop.multiple", Param(err3));
     }
 }

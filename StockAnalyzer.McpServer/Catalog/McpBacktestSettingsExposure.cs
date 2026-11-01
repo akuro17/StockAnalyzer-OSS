@@ -58,6 +58,7 @@ internal static class McpBacktestSettingsExposure
         new(typeof(BacktestConfiguration), nameof(BacktestConfiguration.LiquidationPenaltyRatio), AccountSection, "liquidationPenaltyRatio"),
         new(typeof(BacktestRiskManagementSettings), nameof(BacktestRiskManagementSettings.StopLossPercent), RiskSection, "stopLossRatio"),
         new(typeof(BacktestRiskManagementSettings), nameof(BacktestRiskManagementSettings.TakeProfitPercent), RiskSection, "takeProfitRatio"),
+        new(typeof(BacktestRiskManagementSettings), nameof(BacktestRiskManagementSettings.DynamicExits), RiskSection, "dynamicExits"),
         new(typeof(BacktestReportDefaults), nameof(BacktestReportDefaults.AnnualRiskFreeRate), ReportSection, "annualRiskFreeRate"),
         new(typeof(BacktestReportDefaults), nameof(BacktestReportDefaults.AnnualMAR), ReportSection, "annualMar"),
         // The tool runs the daily frame only, so of the per-frame period counts only the daily one can take effect.

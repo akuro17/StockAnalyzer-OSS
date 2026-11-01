@@ -44,6 +44,9 @@ public interface ISandboxedExecutionGateway
     /// <exception cref="JobNotFoundException">No job has this id.</exception>
     TrainingJobStatus GetStatus(string jobId);
 
+    /// <summary>Lists training jobs tracked in the current session, up to <see cref="ExecutionLimits.MaxTrackedJobs"/>.</summary>
+    IReadOnlyList<TrainingJobSummary> ListJobs();
+
     /// <summary>Asks a job to stop. A job that already ended is left as it is; the current state is returned.</summary>
     /// <exception cref="JobNotFoundException">No job has this id.</exception>
     TrainingJobState Cancel(string jobId);

@@ -43,33 +43,7 @@ public class CoreAdxrIndicator : CoreIndicatorBase
 
         var (_, _, dxList) = IndicatorCalculationHelper.CalculateWilderDmiSeries(candles, Period);
 
-        var adxList = new List<decimal?>(n);
-        decimal prevAdx = 0m;
-
-        for (int i = 0; i < n; i++)
-        {
-            if (i < seedIndex)
-            {
-                adxList.Add(null);
-            }
-            else if (i == seedIndex)
-            {
-                decimal sumDx = 0m;
-                for (int k = Period - 1; k <= seedIndex; k++)
-                {
-                    sumDx += dxList[k] ?? 0m;
-                }
-                prevAdx = sumDx / Period;
-                adxList.Add(prevAdx);
-            }
-            else
-            {
-                decimal dx = dxList[i] ?? 0m;
-                decimal adx = (prevAdx * (Period - 1) + dx) / Period;
-                prevAdx = adx;
-                adxList.Add(adx);
-            }
-        }
+        var adxList = IndicatorCalculationHelper.CalculateWilderAdxSeries(dxList, Period);
 
         for (int i = 0; i < n; i++)
         {

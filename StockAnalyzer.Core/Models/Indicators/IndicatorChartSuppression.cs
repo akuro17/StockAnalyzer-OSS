@@ -67,6 +67,7 @@ public static class IndicatorChartSuppression
             [IndicatorType.CointegrationSpread] = new HashSet<string>(StringComparer.Ordinal)
             {
                 nameof(CoreCointegrationSpreadIndicator.Intercept),
+                nameof(CoreCointegrationSpreadIndicator.HalfLife),
             },
             [IndicatorType.Donchian] = new HashSet<string>(StringComparer.Ordinal)
             {

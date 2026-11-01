@@ -8,6 +8,15 @@ using StockAnalyzer.McpServer.Execution;
 using StockAnalyzer.McpServer.Limits;
 using StockAnalyzer.McpServer.Protocol;
 using StockAnalyzer.McpServer.Tools;
+using StockAnalyzer.Core.Models;
+using StockAnalyzer.Core.Models.Analysis;
+using StockAnalyzer.Core.Models.Indicators;
+using StockAnalyzer.Core.Models.Portfolio;
+using StockAnalyzer.Core.Models.Templates;
+using StockAnalyzer.Core.ReadOnly;
+using StockAnalyzer.Core.Services;
+using StockAnalyzer.Core.Services.Screener;
+using StockAnalyzer.Core.Services.Backtest.Evaluation;
 
 namespace StockAnalyzer.Tests.McpServer;
 
@@ -132,4 +141,56 @@ internal static class McpTestSupport
             await Task.Delay(10);
         }
     }
+}
+
+/// <summary>
+/// A no-op implementation of <see cref="IReadOnlyStockAnalyzerGateway"/> that returns empty/null results or throws for unused members.
+/// Can be derived or used directly in MCP tool tests.
+/// </summary>
+internal class EmptyReadOnlyStockAnalyzerGateway : IReadOnlyStockAnalyzerGateway
+{
+    public virtual Task<IReadOnlyList<string>> GetAvailableTickersAsync(CancellationToken cancellationToken = default)
+        => Task.FromResult<IReadOnlyList<string>>(Array.Empty<string>());
+
+    public virtual Task<IReadOnlyList<CandleData>> GetCandlesAsync(string symbol, TimeFrame timeFrame, int count, CancellationToken cancellationToken = default)
+        => Task.FromResult<IReadOnlyList<CandleData>>(Array.Empty<CandleData>());
+
+    public virtual Task<IReadOnlyList<CandleData>> GetCandlesUpToAsync(string symbol, TimeFrame timeFrame, DateOnly endDate, int count, CancellationToken cancellationToken = default)
+        => Task.FromResult<IReadOnlyList<CandleData>>(Array.Empty<CandleData>());
+
+    public virtual Task<TickerMetadata?> GetStoredTickerMetadataAsync(string symbol, CancellationToken cancellationToken = default)
+        => Task.FromResult<TickerMetadata?>(null);
+
+    public virtual Task<DateTimeOffset?> GetTimeSeriesLastUpdatedAsync(string symbol, CancellationToken cancellationToken = default)
+        => Task.FromResult<DateTimeOffset?>(null);
+
+    public virtual Task<SymbolCoverage> GetCoverageAsync(string symbol, CancellationToken cancellationToken = default)
+        => Task.FromResult(new SymbolCoverage(symbol, false, false, null, Array.Empty<TimeFrameCoverage>()));
+
+    public virtual Task<Dictionary<string, IIndicatorResult>> CalculateIndicatorsAsync(IReadOnlyList<CoreCandleData> candles, IEnumerable<CoreIndicatorSettings> settings, IReadOnlyDictionary<string, IReadOnlyList<CoreCandleData?>>? secondaryCandlesBySymbol = null)
+        => Task.FromResult(new Dictionary<string, IIndicatorResult>());
+
+    public virtual ReverseWatchCurveData? CalculateReverseWatch(IReadOnlyList<CoreCandleData> candles, int period, string symbol, bool isMaBased = true, bool isLogScaleVolume = false, int dataCount = 0)
+        => null;
+
+    public virtual Task<IReadOnlyList<string>> RunScreenerAsync(IReadOnlyList<string> symbols, IScreeningCondition condition, TimeFrame timeFrame, CancellationToken cancellationToken = default)
+        => Task.FromResult<IReadOnlyList<string>>(Array.Empty<string>());
+
+    public virtual Task<ScreenerTemplateListing> ListScreenerTemplatesAsync(CancellationToken cancellationToken = default)
+        => Task.FromResult(new ScreenerTemplateListing(Array.Empty<ScreenerIndicatorTemplate>(), 0));
+
+    public virtual Task<ScreenerIndicatorTemplate?> GetScreenerTemplateAsync(Guid id, CancellationToken cancellationToken = default)
+        => Task.FromResult<ScreenerIndicatorTemplate?>(null);
+
+    public virtual Task<BacktestConditionTemplateListing> ListBacktestConditionTemplatesAsync(CancellationToken cancellationToken = default)
+        => Task.FromResult(new BacktestConditionTemplateListing(Array.Empty<BacktestConditionTemplate>(), 0));
+
+    public virtual Task<BacktestConditionTemplate?> GetBacktestConditionTemplateAsync(Guid id, CancellationToken cancellationToken = default)
+        => Task.FromResult<BacktestConditionTemplate?>(null);
+
+    public virtual Task<IReadOnlyList<string>> RunScreenerTemplateAsync(IReadOnlyList<string> symbols, ScreenerIndicatorTemplate template, TimeFrame timeFrame, CancellationToken cancellationToken = default)
+        => Task.FromResult<IReadOnlyList<string>>(Array.Empty<string>());
+
+    public virtual Task<BacktestEvaluationArtifact> RunBacktestAsync(BacktestRunSnapshot snapshot, CancellationToken cancellationToken = default)
+        => throw new NotImplementedException();
 }
