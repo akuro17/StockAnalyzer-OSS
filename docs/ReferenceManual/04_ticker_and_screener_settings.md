@@ -39,39 +39,36 @@ This document specifies user settings for the Ticker List grid navigation, autop
 
 ## 2. Standard Ticker Columns Catalog (`WatchlistColumnRegistry`)
 
-When customizing column visibility, column order, or column templates (`ColumnTemplate`), reference the canonical column IDs defined in `WatchlistColumnRegistry`:
+When customizing column visibility, column order, or column templates (`ColumnTemplate` / `TickerListVisibleColumns`), reference the **`MemberName`** (the property identifier used in JSON configurations), NOT the `HeaderKey` (which is the localization resource key):
 
-| Column ID | Display Name | Category | Description |
-|---|---|---|---|
-| `Col_Select` | Select | Basic | Row selection checkbox for batch operations |
-| `Col_Symbol` | Symbol | Basic | Ticker symbol (e.g. `"AAPL"`) |
-| `Col_Name` | Name | Basic | Full company official name |
-| `Col_Sector` | Sector | Basic | GICS sector classification |
-| `Col_Industry` | Industry | Basic | GICS industry group classification |
-| `Col_Open` | Open | PriceVolume | Current day open price |
-| `Col_High` | High | PriceVolume | Current day high price |
-| `Col_Low` | Low | PriceVolume | Current day low price |
-| `Col_Price` | Close | PriceVolume | Latest close / market price |
-| `Col_Change` | Change | PriceVolume | Absolute price change vs previous close |
-| `Col_ChangePercent`| Change% | PriceVolume | Percentage change vs previous close |
-| `Col_Volume` | Volume | PriceVolume | Trading volume in shares |
-| `Col_MarketCap` | Market Cap | Fundamental | Total company market capitalization |
-| `Col_PE` | P/E | Fundamental | Price-to-Earnings ratio |
-| `Col_DividendYield`| Div Yield | Fundamental | Indicated annual dividend yield (%) |
-| `Col_Note` | Notes | Basic | User-entered note or strategy comment |
-| `Col_Reminder` | Reminder | Basic | User-entered scheduled alert or reminder |
-| `Col_Long` | Long | Strategy | Target or actual Long entry price |
-| `Col_ExitLong` | TP Long | Strategy | Long take-profit target price |
-| `Col_StopLossLong`| SL Long | Strategy | Long stop-loss trigger price |
-| `Col_Short` | Short | Strategy | Target or actual Short entry price |
-| `Col_ExitShort` | TP Short | Strategy | Short take-profit target price |
-| `Col_StopLossShort`| SL Short | Strategy | Short stop-loss trigger price |
-| `Col_IsLong` | IsLong | Signals | Active Long condition signal flag |
-| `Col_IsTPLong` | IsTP Long | Signals | Active Take-Profit Long signal flag |
-| `Col_IsSLLong` | IsSL Long | Signals | Active Stop-Loss Long signal flag |
-| `Col_IsShort` | IsShort | Signals | Active Short condition signal flag |
-| `Col_IsTPShort` | IsTP Short | Signals | Active Take-Profit Short signal flag |
-| `Col_IsSLShort` | IsSL Short | Signals | Active Stop-Loss Short signal flag |
+| MemberName (JSON ID) | HeaderKey (Resource) | Display Name | Category | Description |
+|---|---|---|---|---|
+| `IsChecked` | `Col_Select` | Select | Basic | Row selection checkbox for batch operations |
+| `Symbol` | `Col_Symbol` | Symbol | Basic | Ticker symbol (e.g. `"AAPL"`) |
+| `Name` | `Col_Name` | Name | Basic | Full company official name |
+| `Sector` | `Col_Sector` | Sector | Basic | GICS sector classification |
+| `Industry` | `Col_Industry` | Industry | Basic | GICS industry group classification |
+| `Open` | `Col_Open` | Open | PriceVolume | Current day open price |
+| `High` | `Col_High` | High | PriceVolume | Current day high price |
+| `Low` | `Col_Low` | Low | PriceVolume | Current day low price |
+| `Close` | `Col_Price` | Close | PriceVolume | Latest close / market price |
+| `Change` | `Col_Change` | Change | PriceVolume | Absolute price change vs previous close |
+| `ChangePercent` | `Col_Ratio` | Change % | PriceVolume | Percentage price change vs previous close |
+| `Volume` | `Col_Volume` | Volume | PriceVolume | Trading volume in shares |
+| `MarketCap` | `Col_MarketCap` | Market Cap | Financial | Total company market capitalization |
+| `TrailingPE` | `Col_TrailingPE` | Trailing P/E | Valuation | Price-to-Earnings ratio (TTM) |
+| `ForwardPE` | `Col_ForwardPE` | Forward P/E | Valuation | Price-to-Earnings forecasted next 12M |
+| `PriceToBook` | `Col_PriceToBook` | P/B Ratio | Valuation | Price-to-Book ratio |
+| `DividendYield` | `Col_DividendYield` | Div Yield | Ratio | Indicated annual dividend yield (%) |
+| `ReturnOnEquity` | `Col_ReturnOnEquity` | ROE | Ratio | Return on Equity (%) |
+| `ReturnOnAssets` | `Col_ReturnOnAssets` | ROA | Ratio | Return on Assets (%) |
+| `GrossMargins` | `Col_GrossMargins` | Gross Margin | Ratio | Gross profit margin (%) |
+| `OperatingMargins` | `Col_OperatingMargins` | Operating Margin | Ratio | Operating income margin (%) |
+| `ProfitMargins` | `Col_ProfitMargins` | Profit Margin | Ratio | Net profit margin (%) |
+| `Beta` | `Col_Beta` | Beta | Financial | Systematic risk / volatility relative to index |
+| `FiftyTwoWeekHigh` | `Col_FiftyTwoWeekHigh` | 52W High | Financial | Highest price in last 52 weeks |
+| `FiftyTwoWeekLow` | `Col_FiftyTwoWeekLow` | 52W Low | Financial | Lowest price in last 52 weeks |
+| `AverageVolume` | `Col_AverageVolume` | Avg Volume | Financial | 3-month average daily volume |
 
 ---
 
@@ -107,9 +104,9 @@ The Scatter Plot tool correlates technical indicators and price metrics across a
 | Property | Type | Required | Description |
 |---|---|---|---|
 | `CategoryType` | `integer` or `string` | Yes | Category discriminator: **`0` = `Indicator`**, **`1` = `Column`**, **`2` = `Criteria`**. |
-| `IndicatorType` | `integer` or `string` | If Indicator | Valid `IndicatorType` (Ordinal or Name, e.g. `34` or `"RSI"`, `0` or `"SMA"`, `104` or `"ROC"`). See `09_indicator_catalog.md`. |
+| `IndicatorType` | `integer` or `string` | If Indicator | Valid `IndicatorType` (Ordinal or Name, e.g. `34` or `"RSI"`, `0` or `"SMA"`, `62` or `"ROC"`). See `09_indicator_catalog.md`. |
 | `OutputName` | `string` | Optional | Output series name (defaults to `"Main"`). Multi-line indicators can specify `"Signal"`, `"Histogram"`, `"UpperBand"`, etc. |
-| `TimeFrame` | `integer` or `string` | Optional | Analysis timeframe (`1` / `"D1"`, `7` / `"W1"`, `8` / `"MN1"`). |
+| `TimeFrame` | `integer` or `string` | Optional | Analysis timeframe (`6` / `"D1"`, `7` / `"W1"`, `8` / `"MN1"`). Daily is `6`. |
 | `Offset` | `integer` | Optional | Historical bar lookback offset ($[-n]$ bars prior to latest bar; range `[0, MaxOffset]`, default `0`). |
 | `CustomDisplayName`| `string?` | Optional | Custom display alias rendered on scatter chart axes. |
 | `Parameters` | `object` | Optional | Dictionary of parameter values for the indicator (e.g. `{"Period": 14}`). |
@@ -127,7 +124,7 @@ The Scatter Plot tool correlates technical indicators and price metrics across a
         "IndicatorType": 34,
         "OutputName": "Main",
         "CustomDisplayName": "RSI 14",
-        "TimeFrame": 1,
+        "TimeFrame": 6,
         "Offset": 0,
         "Parameters": {
           "Period": 14
@@ -138,7 +135,7 @@ The Scatter Plot tool correlates technical indicators and price metrics across a
       "Id": "8e7d6c5b-4a3f-2e1d-0c9b-8a7f6e5d4c3b",
       "Source": {
         "CategoryType": 0,
-        "IndicatorType": 104,
+        "IndicatorType": 62,
         "OutputName": "Main",
         "CustomDisplayName": "ROC 20 (W1)",
         "TimeFrame": 7,

@@ -22,7 +22,7 @@
 | `Name` | `string` | Yes | `"Default Profile"` | Profile display name. |
 | `LastModified` | `string (ISO 8601)` | Yes | `Current UTC` | Timestamp of last user workspace modification. |
 | `SelectedTicker` | `string?` | Optional | `"AAPL"` | Active selected symbol across synchronized views. |
-| `SelectedTimeframe` | `string?` or `integer` | Optional | `"D1"` (1) | Active timeframe (Ordinal or string, e.g. `1` or `"D1"`). |
+| `SelectedTimeframe` | `string?` | Optional | `"Daily"` | Active timeframe. MUST be a `TimeframeType` member name string: `"M1"`, `"M5"`, `"M15"`, `"H1"`, `"H4"`, `"Daily"`, `"Weekly"`, `"Monthly"` (case-insensitive). Do NOT use integers or `"D1"`. |
 | `MaxCandleCount` | `integer` | Optional | `200` | Number of historical bars loaded on chart initialization. |
 | `ChartType` | `string?` | Optional | `"Candlestick"` | Primary chart visualization type string (must match `ChartType` member names: `"Candlestick"`, `"OHLCBar"`, `"HeikinAshi"`, `"Line"`, `"Area"`, `"Dot"`, `"Renko"`, `"Kagi"`, `"PointAndFigure"`, `"ThreeLineBreak"`, `"ReverseWatch"`, `"RelativePerformance"`, `"Invisible"`). |
 | `IsMainWindowVisible` | `boolean` | Optional | `true` | Visibility state of primary chart window. |
@@ -74,16 +74,20 @@ The workspace manages four perimeter dock panels surrounding the central chart a
 
 ### Valid Tab Identifiers (`TabRegistry`)
 
-When assigning tab strings inside `PanelTabIds`, use only the following recognized system IDs:
-- `"Tab_Chart"`: Main candlestick & technical analysis chart.
-- `"Tab_Tickers"`: Ticker list, watchlists, and portfolio browser.
-- `"Tab_Screener"`: Real-time condition screener.
-- `"Tab_Backtest"`: Strategy backtesting and performance analytics.
-- `"Tab_Analysis"`: Scatter plot, correlation matrix, and seasonality curves.
-- `"Tab_Training"`: AI model training wizard & RL hyperparameter tuning.
-- `"Tab_Settings"`: Application settings and environment configuration.
-- `"PanelChart_{Guid}"`: Secondary detached/floating chart panes.
+When assigning tab strings inside `PanelTabIds`, use only the following registered IDs (these are the `TabRegistry` IDs, NOT the `Tab_*` localization keys). Keys of `PanelTabIds` MUST be `"Left"`, `"Right"`, `"Top"`, `"Bottom"`:
+- `"Chart"`: Main candlestick & technical analysis chart.
+- `"TickerList"`: Ticker list, watchlists and filters.
+- `"DataWindow"`: Data window (values under cursor).
+- `"DrawingTools"`: Drawing tool sidebar.
+- `"PortfolioSummary"`: Portfolio summary.
+- `"Allocation"`: Portfolio allocation panel.
+- `"SeasonalityChart"`: Seasonality chart.
+- `"NoteTimeline"`: Notes timeline.
+- `"DrawingObjects"`: Drawing objects list.
+- `"ScatterPlot"` / `"ScatterAnalysis"`: Scatter plot analysis.
+- `"PanelChart_{integer}"`: Additional chart panels (suffix is a numeric panel id, e.g. `"PanelChart_2"`).
 
+Backtest, Screener, Training and Settings are separate windows/dialogs, NOT tab IDs.
 ---
 
 ## 4. Active Indicators Schema (`CoreIndicatorSettings`)
@@ -175,7 +179,7 @@ Stored in the root array `WatchlistProfiles`:
   "Name": "Default Profile",
   "LastModified": "2026-11-02T07:00:00Z",
   "SelectedTicker": "AAPL",
-  "SelectedTimeframe": "D1",
+  "SelectedTimeframe": "Daily",
   "MaxCandleCount": 200,
   "ChartType": "Candlestick",
   "IsMainWindowVisible": true,
@@ -198,9 +202,9 @@ Stored in the root array `WatchlistProfiles`:
     "Bottom": 0
   },
   "PanelTabIds": {
-    "Left": [ "Tab_Tickers" ],
-    "Right": [ "Tab_Analysis" ],
-    "Bottom": [ "Tab_Screener" ]
+    "Left": [ "TickerList" ],
+    "Right": [ "ScatterPlot" ],
+    "Bottom": [ "PortfolioSummary" ]
   },
   "ThemeSettings": {
     "ChartBackground": "#181A20",

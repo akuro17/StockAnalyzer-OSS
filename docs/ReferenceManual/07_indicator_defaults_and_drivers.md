@@ -124,7 +124,7 @@ Stores registered indicators specifically used as dynamic lookback drivers. Adap
 [
   {
     "Id": "d2e3f4a5-6789-01bc-def1-2345678901de",
-    "TypeEnum": 51,
+    "TypeEnum": 29,
     "DisplayName": "Volatility Driver SD(20)",
     "IsEnabled": false,
     "IsOverlay": false,

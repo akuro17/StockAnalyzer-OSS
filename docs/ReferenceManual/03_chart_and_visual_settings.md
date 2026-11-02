@@ -79,10 +79,10 @@ This document specifies the individual settings files controlling chart renderin
 - **`scatterHeatmapThresholdPercent`** (`number`, default `2.0`): Percent return threshold for heatmap saturation.
 
 #### Backtest Equity Curve Styling
-- **`equityColorMode`** (`integer`, enum: `0` = Single [uniform color], `1` = PreviousBar [bar-by-bar delta], `2` = Drawdown [color changes when underwater]).
-- **`equityLineColor`** (`string`, Hex, default `"#FF007ACC"`): Line color for Single mode.
-- **`equityUpColor`** (`string`, Hex, default `"#FF4CAF50"`): Upward color for PreviousBar/Drawdown mode.
-- **`equityDownColor`** (`string`, Hex, default `"#FFF44336"`): Downward/underwater color.
+- **`backtestEquityColorMode`** (`integer`, enum: `0` = Single [uniform color], `1` = PreviousBar [bar-by-bar delta], `2` = Drawdown [color changes when underwater]).
+- **`backtestEquityLineColor`** (`string`, Hex, default `"#FF007ACC"`): Line color for Single mode.
+- **`backtestEquityUpColor`** (`string`, Hex, default `"#FF4CAF50"`): Upward color for PreviousBar/Drawdown mode.
+- **`backtestEquityDownColor`** (`string`, Hex, default `"#FFF44336"`): Downward/underwater color.
 
 ### Complete Reference Example (`user_chart_settings.json`)
 
@@ -137,10 +137,10 @@ This document specifies the individual settings files controlling chart renderin
   "seasonalityStartMonth": 1,
   "seasonalityYearsToOverlay": 10,
   "scatterHeatmapThresholdPercent": 2.0,
-  "equityColorMode": 0,
-  "equityLineColor": "#FF007ACC",
-  "equityUpColor": "#FF4CAF50",
-  "equityDownColor": "#FFF44336"
+  "backtestEquityColorMode": 0,
+  "backtestEquityLineColor": "#FF007ACC",
+  "backtestEquityUpColor": "#FF4CAF50",
+  "backtestEquityDownColor": "#FFF44336"
 }
 ```
 

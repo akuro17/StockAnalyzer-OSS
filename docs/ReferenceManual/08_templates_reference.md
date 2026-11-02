@@ -15,7 +15,7 @@ Every template inherits from `TemplateBase` and includes these top-level fields:
 |---|---|---|---|
 | `Id` | `string (GUID)` | Yes | Unique immutable identity for this template. |
 | `Name` | `string` | Yes | Human-readable template display name. |
-| `TemplateType` | `integer` or `string` | Yes | Discriminator matching `TemplateType` (`0` = `Indicator`, `1` = `Column`, `2` = `Feature`, `3` = `Filter`, `4` = `Theme`, `5` = `Screener`, `6` = `BacktestCondition`). |
+| `TemplateType` | `integer` or `string` | Yes | Discriminator matching `TemplateType` (`0` = `Indicator`, `1` = `Column`, `4` = `Filter`, `6` = `Theme`, `7` = `Feature`, `10` = `Screener`, `11` = `BacktestCondition`). String names (e.g. `"Indicator"`, `"Filter"`) or integer ordinals are both accepted. |
 | `SchemaVersion` | `integer` | Yes | Version number for backwards-compatibility migrations. |
 | `Description` | `string?` | Optional | User description or documentation text. |
 | `CreatedAt` | `string (ISO 8601)` | Yes | Creation timestamp in UTC with `Z` suffix. |
@@ -85,7 +85,7 @@ Every template inherits from `TemplateBase` and includes these top-level fields:
 ### 3.2. Column Layout Template (`TemplateType.Column` / `1`)
 - **Storage Path**: `Data/Templates/Column/{guid}.json`
 - **Model**: `StockAnalyzer.Core.Models.Templates.ColumnTemplate`
-- **Purpose**: Stores custom visible column sets for the Ticker List grid.
+- **Purpose**: Stores custom visible column sets for the Ticker List grid. Note: `ColumnNames` stores `MemberName` strings (e.g. `"Symbol"`, `"Close"`, `"ChangePercent"`), not localization header keys.
 
 ```json
 {
@@ -97,18 +97,18 @@ Every template inherits from `TemplateBase` and includes these top-level fields:
   "CreatedAt": "2026-11-02T00:00:00Z",
   "UpdatedAt": "2026-11-02T00:00:00Z",
   "ColumnNames": [
-    "Col_Symbol",
-    "Col_Name",
-    "Col_Price",
-    "Col_ChangePercent",
-    "Col_Volume"
+    "Symbol",
+    "Name",
+    "Close",
+    "ChangePercent",
+    "Volume"
   ]
 }
 ```
 
 ---
 
-### 3.3. Filter Condition Template (`TemplateType.Filter` / `3`)
+### 3.3. Filter Condition Template (`TemplateType.Filter` / `4`)
 - **Storage Path**: `Data/Templates/Filter/{guid}.json`
 - **Model**: `StockAnalyzer.Core.Models.Templates.FilterTemplate`
 - **Purpose**: Saves reusable boolean filter rule trees (`FilterSettings`) for screener scans.
@@ -117,7 +117,7 @@ Every template inherits from `TemplateBase` and includes these top-level fields:
 {
   "Id": "33333333-4444-5555-6666-777777777777",
   "Name": "Tech Sector Tag Filter",
-  "TemplateType": 3,
+  "TemplateType": 4,
   "SchemaVersion": 1,
   "Description": "Filters symbols belonging to Technology sector",
   "CreatedAt": "2026-11-02T00:00:00Z",
@@ -150,7 +150,7 @@ Every template inherits from `TemplateBase` and includes these top-level fields:
 
 ---
 
-### 3.4. Screener Indicator Template (`TemplateType.Screener` / `5`)
+### 3.4. Screener Indicator Template (`TemplateType.Screener` / `10`)
 - **Storage Path**: `Data/Templates/Screener/{guid}.json`
 - **Model**: `StockAnalyzer.Core.Models.Templates.ScreenerIndicatorTemplate`
 - **Schema Version**: `2` (`CurrentSchemaVersion = 2`)
@@ -160,7 +160,7 @@ Every template inherits from `TemplateBase` and includes these top-level fields:
 {
   "Id": "44444444-5555-6666-7777-888888888888",
   "Name": "RSI Oversold Screener",
-  "TemplateType": 5,
+  "TemplateType": 10,
   "SchemaVersion": 2,
   "Description": "Daily RSI below 30 threshold",
   "CreatedAt": "2026-11-02T00:00:00Z",
@@ -176,13 +176,13 @@ Every template inherits from `TemplateBase` and includes these top-level fields:
         "IndicatorType": 34,
         "OutputName": "Main",
         "CustomDisplayName": "RSI(14)",
-        "TimeFrame": 1,
+        "TimeFrame": 6,
         "Offset": 0,
         "Parameters": {
           "Period": 14
         }
       },
-      "Operator": 1,
+      "Operator": 2,
       "TargetMode": 0,
       "RightNumericValue": 30.0,
       "RightStringValue": "",
@@ -191,7 +191,7 @@ Every template inherits from `TemplateBase` and includes these top-level fields:
         "IndicatorType": 0,
         "OutputName": "Main",
         "CustomDisplayName": "",
-        "TimeFrame": 1,
+        "TimeFrame": 6,
         "Offset": 0,
         "Parameters": {}
       }
@@ -202,7 +202,7 @@ Every template inherits from `TemplateBase` and includes these top-level fields:
 
 ---
 
-### 3.5. Theme Template (`TemplateType.Theme` / `4`)
+### 3.5. Theme Template (`TemplateType.Theme` / `6`)
 - **Storage Path**: `Data/Templates/Theme/{guid}.json`
 - **Model**: `StockAnalyzer.Core.Models.Templates.ThemeTemplate`
 - **Purpose**: Saves comprehensive custom color schemes (`ThemeColors`).
@@ -211,7 +211,7 @@ Every template inherits from `TemplateBase` and includes these top-level fields:
 {
   "Id": "55555555-6666-7777-8888-999999999999",
   "Name": "Nord Dark Preset",
-  "TemplateType": 4,
+  "TemplateType": 6,
   "SchemaVersion": 1,
   "Description": "Cool arctic-inspired color palette",
   "CreatedAt": "2026-11-02T00:00:00Z",
@@ -252,7 +252,7 @@ Every template inherits from `TemplateBase` and includes these top-level fields:
 
 ---
 
-### 3.6. Machine Learning Feature Specification Template (`TemplateType.Feature` / `2`)
+### 3.6. Machine Learning Feature Specification Template (`TemplateType.Feature` / `7`)
 - **Storage Path**: `Data/Templates/Feature/{guid}.json`
 - **Model**: `StockAnalyzer.Core.Models.Templates.FeatureSpecTemplate`
 - **Purpose**: Defines feature channel combinations for model training runs.
@@ -261,7 +261,7 @@ Every template inherits from `TemplateBase` and includes these top-level fields:
 {
   "Id": "66666666-7777-8888-9999-000000000000",
   "Name": "Price + Momentum Channels",
-  "TemplateType": 2,
+  "TemplateType": 7,
   "SchemaVersion": 1,
   "Description": "Close price with RSI and SMA channels",
   "CreatedAt": "2026-11-02T00:00:00Z",
@@ -269,14 +269,14 @@ Every template inherits from `TemplateBase` and includes these top-level fields:
   "Spec": {
     "Channels": [
       {
-        "Kind": "price",
+        "Kind": 0,
         "Price": 0,
         "Indicator": null,
         "Params": {},
         "Normalization": 1
       },
       {
-        "Kind": "indicator",
+        "Kind": 1,
         "Price": null,
         "Indicator": 34,
         "Params": {
@@ -291,15 +291,15 @@ Every template inherits from `TemplateBase` and includes these top-level fields:
 
 | `FeatureChannel` Property | Type | Description |
 |---|---|---|
-| `Kind` | `string` (required) | Discriminator string: `"price"` or `"indicator"`. |
-| `Price` | `integer?` | Price type when `Kind == "price"` (`0`=Close, `1`=Open, `2`=High, `3`=Low). |
-| `Indicator` | `integer?` or `string?` | Indicator type when `Kind == "indicator"` (`34` or `"RSI"`, `0` or `"SMA"`, etc.). |
+| `Kind` | `integer` or `string` | Discriminator: `0` = `price`, `1` = `indicator`. |
+| `Price` | `integer?` | Price type when `Kind == 0` (`0`=Close, `1`=Open, `2`=High, `3`=Low). |
+| `Indicator` | `integer?` or `string?` | Indicator type when `Kind == 1` (`34` or `"RSI"`, `0` or `"SMA"`, etc.). |
 | `Params` | `object` | String-to-string dictionary of parameters (e.g. `{"Period": "14"}`). |
 | `Normalization` | `integer` or `string` | Normalization mode: `0` = `None`, `1` = `WindowMinMax`, `2` = `WindowZScore`. |
 
 ---
 
-### 3.7. Backtest Condition Strategy Template (`TemplateType.BacktestCondition` / `6`)
+### 3.7. Backtest Condition Strategy Template (`TemplateType.BacktestCondition` / `11`)
 - **Storage Path**: `Data/Templates/BacktestCondition/{guid}.json`
 - **Model**: `StockAnalyzer.Core.Models.Templates.BacktestConditionTemplate`
 - **Purpose**: Complete backtest condition tree and risk management rules.
@@ -308,7 +308,7 @@ Every template inherits from `TemplateBase` and includes these top-level fields:
 {
   "Id": "77777777-8888-9999-0000-111111111111",
   "Name": "RSI Oversold Entry Strategy",
-  "TemplateType": 6,
+  "TemplateType": 11,
   "SchemaVersion": 1,
   "Description": "RSI < 30 entry with 3% stop loss and 10% take profit",
   "CreatedAt": "2026-11-02T00:00:00Z",
@@ -330,13 +330,10 @@ Every template inherits from `TemplateBase` and includes these top-level fields:
                 "Period": 14
               }
             },
-            "Operator": 1,
+            "Operator": 2,
             "TargetMode": 0,
             "RightNumericValue": 30.0,
-            "Right": null,
-            "LogicalOperator": 0,
-            "Role": 0,
-            "Position": 0
+            "Right": null
           },
           "Children": []
         }
@@ -349,8 +346,8 @@ Every template inherits from `TemplateBase` and includes these top-level fields:
     "ReverseShort": { "Kind": 1, "Operator": 0, "Children": [] }
   },
   "RiskManagement": {
-    "StopLossPercent": 3.0,
-    "TakeProfitPercent": 10.0
+    "StopLossPercent": 0.03,
+    "TakeProfitPercent": 0.10
   }
 }
 ```

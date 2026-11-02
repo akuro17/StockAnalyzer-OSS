@@ -11,6 +11,8 @@ using StockAnalyzer.Core.Models.Settings;
 using StockAnalyzer.Core.Models.Templates;
 using StockAnalyzer.Core.Serialization;
 using StockAnalyzer.Core.Services;
+using StockAnalyzer.Core.Services.Backtest.Configuration;
+using StockAnalyzer.Core.Services.Backtest.Reporting;
 using StockAnalyzer.Core.Theme;
 using StockAnalyzer.TestSupport;
 using Xunit;
@@ -165,7 +167,7 @@ public sealed class ReferenceManualJsonParityTests
     {
         var doc = ReadDoc("06_backtest_configuration.md");
         var blocks = ExtractJsonBlocks(doc);
-        Assert.True(blocks.Count >= 2);
+        Assert.True(blocks.Count >= 5);
 
         var jsonOptions = new JsonSerializerOptions
         {
@@ -180,6 +182,8 @@ public sealed class ReferenceManualJsonParityTests
         Assert.Equal(1, config1.SchemaVersion);
         Assert.Single(config1.ConditionEntries);
         Assert.Null(config1.ConditionTree);
+        var validation1 = BacktestConfigurationManager.ValidateDeserializedConfiguration(config1, 500);
+        Assert.Equal(BacktestConfigurationLoadStatus.Loaded, validation1.Status);
 
         // Example B: SchemaVersion 2 (Condition tree)
         string schema2Json = blocks[1];
@@ -189,6 +193,30 @@ public sealed class ReferenceManualJsonParityTests
         Assert.Empty(config2.ConditionEntries);
         Assert.NotNull(config2.ConditionTree);
         Assert.Single(config2.ConditionTree.EntryLong.Children);
+        var validation2 = BacktestConfigurationManager.ValidateDeserializedConfiguration(config2, 500);
+        Assert.Equal(BacktestConfigurationLoadStatus.Loaded, validation2.Status);
+
+        // Example 3: backtest_default_settings.json
+        string defaultSettingsJson = blocks[2];
+        var defaultSettings = JsonSerializer.Deserialize<BacktestDefaultSettings>(defaultSettingsJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        Assert.NotNull(defaultSettings);
+        Assert.Equal(2, defaultSettings.SchemaVersion);
+        var validatedDefaults = BacktestDefaultSettings.SnapshotValidated(defaultSettings);
+        Assert.NotNull(validatedDefaults);
+
+        // Example 4: backtest_column_settings.json
+        string colSettingsJson = blocks[3];
+        var colSettings = JsonSerializer.Deserialize<BacktestColumnSettings>(colSettingsJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        Assert.NotNull(colSettings);
+        Assert.NotEmpty(colSettings.TradeVisibleColumns);
+        Assert.NotEmpty(colSettings.MetricVisibleNames);
+
+        // Example 5: backtest_report_settings.json
+        string reportDefaultsJson = blocks[4];
+        var reportDefaults = JsonSerializer.Deserialize<BacktestReportDefaults>(reportDefaultsJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        Assert.NotNull(reportDefaults);
+        var validatedReport = BacktestReportDefaults.SnapshotValidated(reportDefaults);
+        Assert.NotNull(validatedReport);
     }
 
     [Fact]
@@ -236,31 +264,44 @@ public sealed class ReferenceManualJsonParityTests
         var colTemplate = JsonSerializer.Deserialize<ColumnTemplate>(blocks[1], jsonOptions);
         Assert.NotNull(colTemplate);
         Assert.Equal(5, colTemplate.ColumnNames.Count);
+        Assert.Equal("Symbol", colTemplate.ColumnNames[0]);
+        Assert.Equal("Name", colTemplate.ColumnNames[1]);
+        Assert.Equal("Close", colTemplate.ColumnNames[2]);
+        Assert.Equal("ChangePercent", colTemplate.ColumnNames[3]);
+        Assert.Equal("Volume", colTemplate.ColumnNames[4]);
 
         // 3. FilterTemplate
         var filterTemplate = JsonSerializer.Deserialize<FilterTemplate>(blocks[2], jsonOptions);
         Assert.NotNull(filterTemplate);
+        Assert.Equal(TemplateType.Filter, filterTemplate.TemplateType);
         Assert.Single(filterTemplate.RootSettings.Rules);
 
         // 4. ScreenerIndicatorTemplate
         var screenerTemplate = JsonSerializer.Deserialize<ScreenerIndicatorTemplate>(blocks[3], jsonOptions);
         Assert.NotNull(screenerTemplate);
+        Assert.Equal(TemplateType.Screener, screenerTemplate.TemplateType);
         Assert.Single(screenerTemplate.Entries);
 
         // 5. ThemeTemplate
         var themeTemplate = JsonSerializer.Deserialize<ThemeTemplate>(blocks[4], jsonOptions);
         Assert.NotNull(themeTemplate);
+        Assert.Equal(TemplateType.Theme, themeTemplate.TemplateType);
         Assert.True(themeTemplate.Colors.IsDark);
 
         // 6. FeatureSpecTemplate
         var featureTemplate = JsonSerializer.Deserialize<FeatureSpecTemplate>(blocks[5], jsonOptions);
         Assert.NotNull(featureTemplate);
+        Assert.Equal(TemplateType.Feature, featureTemplate.TemplateType);
         Assert.Equal(2, featureTemplate.Spec.Channels.Count);
 
         // 7. BacktestConditionTemplate
         var btTemplate = JsonSerializer.Deserialize<BacktestConditionTemplate>(blocks[6], jsonOptions);
         Assert.NotNull(btTemplate);
+        Assert.Equal(TemplateType.BacktestCondition, btTemplate.TemplateType);
         Assert.NotNull(btTemplate.ConditionTree.EntryLong);
+        Assert.NotNull(btTemplate.RiskManagement);
+        Assert.Equal(0.03m, btTemplate.RiskManagement.StopLossPercent);
+        Assert.Equal(0.10m, btTemplate.RiskManagement.TakeProfitPercent);
     }
 
     [Fact]
