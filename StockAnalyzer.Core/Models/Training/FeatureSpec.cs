@@ -49,6 +49,7 @@ public enum ChannelNormalization : byte
 }
 
 /// <summary>Discriminates the two <see cref="FeatureChannel"/> shapes for JSON round-tripping.</summary>
+[System.Text.Json.Serialization.JsonConverter(typeof(FeatureChannelKindJsonConverter))]
 public enum FeatureChannelKind : byte
 {
     /// <summary>A raw price series; <see cref="FeatureChannel.Price"/> is set.</summary>

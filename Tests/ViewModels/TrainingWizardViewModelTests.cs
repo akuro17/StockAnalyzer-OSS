@@ -858,6 +858,47 @@ public class TrainingWizardViewModelTests : IDisposable
     }
 
     [Fact]
+    public async Task DeployToModelsAsync_WhenModelDisplayNameIsSet_PersistsCustomDisplayName()
+    {
+        var tempFile = Path.Combine(Path.GetTempPath(), "annot_" + Guid.NewGuid().ToString("N") + ".json");
+        var annotService = new ModelMetadataAnnotationService(tempFile);
+        var market = new DummyMarketDataProvider("AAPL");
+        var mockOnnx = Path.Combine(Path.GetTempPath(), "artifacts", "model.onnx");
+        var mockMetrics = Path.Combine(Path.GetTempPath(), "artifacts", "model.onnx.metrics.json");
+        var orchestrator = new FakeTrainingOrchestrator
+        {
+            ResultToReturn = new TrainingRunResult
+            {
+                RunId = "run-annot",
+                Success = true,
+                ExitCode = 0,
+                OnnxArtifactPath = mockOnnx,
+                MetricsArtifactPath = mockMetrics,
+            },
+        };
+        var deployment = new FakeModelDeploymentService();
+        var vm = new TrainingWizardViewModel(
+            orchestrator: orchestrator,
+            modelDeploymentService: deployment,
+            marketDataProvider: market,
+            tickerStore: DefaultStore(),
+            modelMetadataAnnotationService: annotService);
+        await WaitForInitializationAsync(vm);
+        vm.Horizon = 5;
+        vm.ModelDisplayName = "Custom Wizard Predictor";
+        await vm.StartTrainingCommand.ExecuteAsync(null);
+
+        await vm.DeployToModelsCommand.ExecuteAsync(null);
+
+        var key = new StockAnalyzer.Core.Models.Training.ModelMetadataKey(
+            StockAnalyzer.Core.Models.Training.ModelArtifactKind.Prediction,
+            "test-generation");
+        var annotation = annotService.GetAnnotation(key);
+        Assert.NotNull(annotation);
+        Assert.Equal("Custom Wizard Predictor", annotation.CustomDisplayName);
+    }
+
+    [Fact]
     public async Task DeployToModelsAsync_WhenRegistryIndicatesNotActive_ShowsNotActivatedMessage()
     {
         var market = new DummyMarketDataProvider("AAPL");

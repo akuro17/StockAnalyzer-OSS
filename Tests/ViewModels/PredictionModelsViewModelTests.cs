@@ -466,6 +466,9 @@ public class PredictionModelsViewModelTests
         /// <summary>How often a confirmation was asked (the model list asks nothing: activating and removing a model are the owner's decision).</summary>
         public int ConfirmCalls { get; private set; }
         public string? LastStartDirectory { get; private set; }
+        public string? NextInputResult { get; set; }
+        public int InputCalls { get; private set; }
+        public string? LastInputDefault { get; private set; }
 
         public static (IDialogService Service, OpenFileDialogProxy Probe) Create(string? pickedPath)
         {
@@ -481,6 +484,13 @@ public class PredictionModelsViewModelTests
             {
                 ConfirmCalls++;
                 return Task.FromResult(true);
+            }
+
+            if (targetMethod?.Name == nameof(IDialogService.ShowInputAsync))
+            {
+                InputCalls++;
+                LastInputDefault = args?.Length > 2 ? (string?)args[2] : null;
+                return Task.FromResult(NextInputResult);
             }
 
             if (targetMethod?.Name != nameof(IDialogService.ShowOpenFileDialogAsync)) throw new NotSupportedException(targetMethod?.Name);
@@ -1394,5 +1404,147 @@ public class PredictionModelsViewModelTests
         Assert.NotEqual(first, registry.ActiveId);
         Assert.Equal(registry.ActiveId, vm.Generations.Single(g => g.IsActive).ModelId);   // the check box is ticked
         Assert.Equal(LocalizationManager.Instance["Settings_ModelGenerations_Activated"], vm.GenerationStatusMessage);
+    });
+
+    [Fact]
+    public Task RenameSelectedGeneration_WhenCancelled_LeavesStateUnchanged() => WithAddFromFileRig(async (root, registry, create, count) =>
+    {
+        var (vm, dialog) = create(CopyRegistrableFixture(root, 1));
+        using var _ = vm;
+        await vm.AddGenerationFromFileCommand.ExecuteAsync(null);
+
+        var annotService = new ModelMetadataAnnotationService(Path.Combine(root, "model_annotations.json"));
+        using var testVm = new PredictionModelsViewModel(
+            new FakePredictionSettingsManager(),
+            modelRegistry: registry,
+            dialogService: (IDialogService)(object)dialog,
+            annotationService: annotService);
+
+        await testVm.GenerationGroupingTask;
+
+        var targetRow = Assert.Single(testVm.GenerationRows.Where(r => r.IsItem));
+        testVm.SelectedGeneration = targetRow.Summary;
+
+        dialog.NextInputResult = null; // User cancelled
+        await testVm.RenameSelectedGenerationCommand.ExecuteAsync(null);
+
+        var rowAfter = Assert.Single(testVm.GenerationRows.Where(r => r.IsItem));
+        Assert.Equal(targetRow.ModelFile, rowAfter.DisplayName);
+    });
+
+    [Fact]
+    public Task RenameSelectedGeneration_WhenGivenCustomName_UpdatesDisplayNameAndPersists() => WithAddFromFileRig(async (root, registry, create, count) =>
+    {
+        var (vm, dialog) = create(CopyRegistrableFixture(root, 1));
+        using var _ = vm;
+        await vm.AddGenerationFromFileCommand.ExecuteAsync(null);
+
+        var annotFilePath = Path.Combine(root, "model_annotations.json");
+        var annotService = new ModelMetadataAnnotationService(annotFilePath);
+        using var testVm = new PredictionModelsViewModel(
+            new FakePredictionSettingsManager(),
+            modelRegistry: registry,
+            dialogService: (IDialogService)(object)dialog,
+            annotationService: annotService);
+
+        await testVm.GenerationGroupingTask;
+
+        var targetRow = Assert.Single(testVm.GenerationRows.Where(r => r.IsItem));
+        testVm.SelectedGeneration = targetRow.Summary;
+
+        dialog.NextInputResult = "Custom Model v1";
+        await testVm.RenameSelectedGenerationCommand.ExecuteAsync(null);
+
+        var rowAfter = Assert.Single(testVm.GenerationRows.Where(r => r.IsItem));
+        Assert.Equal("Custom Model v1", rowAfter.DisplayName);
+        Assert.Contains("Custom Model v1", rowAfter.Tooltip);
+        Assert.Contains(targetRow.ModelFile, rowAfter.Tooltip);
+        Assert.Contains(targetRow.Summary!.ModelId, rowAfter.Tooltip);
+
+        // Clear custom name
+        dialog.NextInputResult = "";
+        await testVm.RenameSelectedGenerationCommand.ExecuteAsync(null);
+
+        var rowCleared = Assert.Single(testVm.GenerationRows.Where(r => r.IsItem));
+        Assert.Equal(targetRow.ModelFile, rowCleared.DisplayName);
+    });
+
+    [Fact]
+    public Task RenameSelectedGeneration_WhenNameTooLong_SetsLocalizedLengthError() => WithAddFromFileRig(async (root, registry, create, count) =>
+    {
+        var (vm, dialog) = create(CopyRegistrableFixture(root, 1));
+        using var _ = vm;
+        await vm.AddGenerationFromFileCommand.ExecuteAsync(null);
+
+        var annotService = new ModelMetadataAnnotationService(Path.Combine(root, "model_annotations.json"));
+        using var testVm = new PredictionModelsViewModel(
+            new FakePredictionSettingsManager(),
+            modelRegistry: registry,
+            dialogService: (IDialogService)(object)dialog,
+            annotationService: annotService);
+
+        await testVm.GenerationGroupingTask;
+        var targetRow = Assert.Single(testVm.GenerationRows.Where(r => r.IsItem));
+        testVm.SelectedGeneration = targetRow.Summary;
+
+        dialog.NextInputResult = new string('A', 129);
+        await testVm.RenameSelectedGenerationCommand.ExecuteAsync(null);
+
+        Assert.Equal(LocalizationManager.Instance["Model_Rename_LengthError"], testVm.GenerationStatusMessage);
+        Assert.DoesNotContain("Parameter", testVm.GenerationStatusMessage);
+    });
+
+    [Fact]
+    public Task RenameSelectedGeneration_WhenNameContainsControlChars_SetsLocalizedInvalidCharError() => WithAddFromFileRig(async (root, registry, create, count) =>
+    {
+        var (vm, dialog) = create(CopyRegistrableFixture(root, 1));
+        using var _ = vm;
+        await vm.AddGenerationFromFileCommand.ExecuteAsync(null);
+
+        var annotService = new ModelMetadataAnnotationService(Path.Combine(root, "model_annotations.json"));
+        using var testVm = new PredictionModelsViewModel(
+            new FakePredictionSettingsManager(),
+            modelRegistry: registry,
+            dialogService: (IDialogService)(object)dialog,
+            annotationService: annotService);
+
+        await testVm.GenerationGroupingTask;
+        var targetRow = Assert.Single(testVm.GenerationRows.Where(r => r.IsItem));
+        testVm.SelectedGeneration = targetRow.Summary;
+
+        dialog.NextInputResult = "Model\u0007Name";
+        await testVm.RenameSelectedGenerationCommand.ExecuteAsync(null);
+
+        Assert.Equal(LocalizationManager.Instance["Model_Rename_InvalidCharError"], testVm.GenerationStatusMessage);
+        Assert.DoesNotContain("Parameter", testVm.GenerationStatusMessage);
+    });
+
+    [Fact]
+    public Task RenameSelectedGeneration_CanRenameRequiresBothDialogAndAnnotationServices() => WithAddFromFileRig(async (root, registry, create, count) =>
+    {
+        var (vm, dialog) = create(CopyRegistrableFixture(root, 1));
+        using var _ = vm;
+        await vm.AddGenerationFromFileCommand.ExecuteAsync(null);
+
+        // Missing annotation service
+        using var noAnnotVm = new PredictionModelsViewModel(
+            new FakePredictionSettingsManager(),
+            modelRegistry: registry,
+            dialogService: (IDialogService)(object)dialog,
+            annotationService: null);
+        await noAnnotVm.GenerationGroupingTask;
+        noAnnotVm.SelectedGeneration = Assert.Single(noAnnotVm.GenerationRows.Where(r => r.IsItem)).Summary;
+        Assert.False(noAnnotVm.RenameSelectedGenerationCommand.CanExecute(null));
+
+        // Missing dialog service
+        var annotService = new ModelMetadataAnnotationService(Path.Combine(root, "model_annotations.json"));
+        using var noDialogVm = new PredictionModelsViewModel(
+            new FakePredictionSettingsManager(),
+            modelRegistry: registry,
+            dialogService: null,
+            annotationService: annotService);
+        await noDialogVm.GenerationGroupingTask;
+        noDialogVm.SelectedGeneration = Assert.Single(noDialogVm.GenerationRows.Where(r => r.IsItem)).Summary;
+        Assert.False(noDialogVm.RenameSelectedGenerationCommand.CanExecute(null));
     });
 }

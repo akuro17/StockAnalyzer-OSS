@@ -55,10 +55,16 @@ Defines an ensemble of multiple trained ONNX model generations combining their c
 
 ### Invariants & Validation Constraints
 - **Member Count**: Between 1 and 10 members (`MaximumMembers = 10`).
-- **Distinct Models**: `ModelId` strings must be unique within the members list.
-- **Weights**: Each `Weight` must be finite and $\ge 0$.
+- **Distinct Models**: `ModelId` strings must be unique within the members list and refer to an actual trained model generation under `Data/Models/`.
+- **Weights**: Each `Weight` must be a finite floating-point number $\ge 0.0$.
 - **Sum of Weights**: Weights must sum to $1.0$ within a floating-point tolerance of $1 \times 10^{-4}$ ($| \sum w_i - 1.0 | \le 0.0001$).
-- **Compatibility**: All model generations in an ensemble must share identical target classification definitions (same timeframe, prediction horizon, label set, and neutral threshold).
+- **Strict Model Compatibility**: All model generations in an ensemble must share identical target classification contracts (verified via ONNX model metadata):
+  - **`Timeframe`**: Must be identical across all members (e.g. all `"D1"`).
+  - **`Horizon`**: Must be identical prediction step count (e.g. all `5`).
+  - **`Labels`**: Set of output class labels must match (e.g. `["Down", "Neutral", "Up"]`).
+  - **`NeutralThreshold`**: Price change percentage boundary for Neutral classification must match.
+  - **`PriceAdjustment`**: Adjusted vs unadjusted price baseline contract must match.
+  *(Note: Model architecture, window size, and hidden layer dimensions can vary between members; each member preprocesses its input tensor according to its own specification before the ensemble combines their posterior probability vectors).*
 
 ### Reference Example
 ```json

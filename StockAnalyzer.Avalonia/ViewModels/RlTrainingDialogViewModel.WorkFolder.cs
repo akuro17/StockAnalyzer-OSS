@@ -2,6 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.Input;
+using StockAnalyzer.Avalonia.Services;
+using StockAnalyzer.Avalonia.ViewModels.Dialogs;
+using StockAnalyzer.Core.Models.Training;
 
 namespace StockAnalyzer.Avalonia.ViewModels;
 
@@ -15,11 +18,14 @@ public sealed partial class RlTrainingDialogViewModel
 
     public bool SelectedModelHasNoWorkFolder => SelectedGeneration is { } generation && _modelsWithoutWorkFolder.Contains(generation.ModelId);
     public bool CanRemoveSelectedModel => Editable && _dialogService is not null && SelectedModelHasNoWorkFolder;
+    public bool CanRenameSelectedModel => Editable && HasSelectedModel && _dialogService is not null && _modelMetadataAnnotationService is not null;
 
     private void NotifyRemoveModel()
     {
         OnPropertyChanged(nameof(SelectedModelHasNoWorkFolder)); OnPropertyChanged(nameof(CanRemoveSelectedModel));
+        OnPropertyChanged(nameof(CanRenameSelectedModel));
         RemoveSelectedModelCommand.NotifyCanExecuteChanged();
+        RenameSelectedModelCommand.NotifyCanExecuteChanged();
     }
 
     [RelayCommand(CanExecute = nameof(CanRemoveSelectedModel))]
@@ -40,5 +46,31 @@ public sealed partial class RlTrainingDialogViewModel
         catch (Exception error) { if (!_disposed) SetErrorMessage(error); }
         finally { EndOperation(); }
         await RefreshGenerationsAsync();
+    }
+
+    [RelayCommand(CanExecute = nameof(CanRenameSelectedModel))]
+    private async Task RenameSelectedModelAsync()
+    {
+        if (!CanRenameSelectedModel || SelectedGeneration is not { } generation || _dialogService is null || _modelMetadataAnnotationService is null || _disposed) return;
+        var key = new ModelMetadataKey(ModelArtifactKind.ReinforcementLearning, generation.ModelId);
+        var (changed, statusMessage) = await ModelRenameDialogHelper.PromptAndRenameAsync(
+            _dialogService,
+            _modelMetadataAnnotationService,
+            key,
+            _localization.GetString).ConfigureAwait(true);
+
+        if (_disposed) return;
+
+        if (statusMessage is not null)
+        {
+            Message = statusMessage;
+        }
+
+        if (changed)
+        {
+            RebuildChoices();
+            OnPropertyChanged(nameof(SelectedModelDisplay));
+            NotifyUi();
+        }
     }
 }

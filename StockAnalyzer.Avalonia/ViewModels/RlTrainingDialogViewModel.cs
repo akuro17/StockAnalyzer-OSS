@@ -11,6 +11,7 @@ using StockAnalyzer.Avalonia.Common;
 using StockAnalyzer.Core.Models.Backtest.Configuration;
 using StockAnalyzer.Core.Models.Backtest.Engine;
 using StockAnalyzer.Core.Models.ReinforcementLearning;
+using StockAnalyzer.Core.Models.Training;
 using StockAnalyzer.Core.Services.Backtest.Configuration;
 using StockAnalyzer.Core.Services;
 using StockAnalyzer.Core.Services.ReinforcementLearning;
@@ -29,6 +30,7 @@ public sealed partial class RlTrainingDialogViewModel : ObservableObject, IDispo
     private readonly StockAnalyzer.Core.Interfaces.ILocalizationService _localization;
     private readonly IRlModelArchiveService _archiveService;
     private readonly IDialogService? _dialogService;
+    private readonly IModelMetadataAnnotationService? _modelMetadataAnnotationService;
     private CancellationTokenSource? _jobCts;
     private long _directionRevision, _recoveryRevision, _blocksRevision;
     private RlDialogBlocks? _blockEvidence;
@@ -129,11 +131,13 @@ public sealed partial class RlTrainingDialogViewModel : ObservableObject, IDispo
     public RlTrainingDialogViewModel(IRlTrainingService training, IRlModelGenerationRegistry registry, IQValueService q,
         IBacktestDefaultSettingsManager defaults, ChartViewModel chart, StockAnalyzer.Core.Interfaces.ILocalizationService localization,
         IDispatcherService? dispatcher = null, RlDialogDataService? data = null, IDialogService? dialogService = null,
-        IRlModelArchiveService? archiveService = null, IStoredPeriodAdvisor? periodAdvisor = null, TimeProvider? clock = null)
+        IRlModelArchiveService? archiveService = null, IStoredPeriodAdvisor? periodAdvisor = null, TimeProvider? clock = null,
+        IModelMetadataAnnotationService? modelMetadataAnnotationService = null)
     {
         _localization = localization; _training = training; _registry = registry; _defaults = defaults; _chart = chart;
         _dispatcher = dispatcher; _data = data ?? new(registry, q); _capabilities = registry.Capabilities; Symbol = chart.Symbol;
         _dialogService = dialogService;
+        _modelMetadataAnnotationService = modelMetadataAnnotationService;
         _archiveService = archiveService ?? new RlModelArchiveService();
         StorageAvailable = _capabilities.Storage;
         if (!StorageAvailable) ArtifactsState = RlDialogLoadState.Unsupported;

@@ -1,15 +1,16 @@
-# 02. Workspace Configuration (`workspace.json`)
+# 02. Workspace Configuration (`default_workspace.json`)
 
 ## 1. File Specification
 
 | Attribute | Detail |
 |---|---|
-| **File Location** | `Data/Config/workspace.json` (canonical SSoT: `LayoutConstants.DefaultWorkspaceFileName`) |
-| **Path Resolver** | `PathDiscovery.ResolveConfigPath("workspace.json")` |
+| **Default File Location** | `Data/Config/default_workspace.json` (canonical SSoT: `LayoutConstants.DefaultWorkspaceFileName`) |
+| **User Workspaces Location** | `Data/Workspace/{guid}.json` (managed via Workspace Manager) |
+| **Path Resolver** | `PathDiscovery.ResolveConfigPath(LayoutConstants.DefaultWorkspaceFileName)` |
 | **Managing Class** | `StockAnalyzer.Core.Services.WorkspaceSerializationService` (`IWorkspaceSerializationService`) |
 | **Model Class** | `StockAnalyzer.Core.Models.Settings.WorkspaceSettings` |
 | **Current Schema Version** | `2` (`CurrentSchemaVersion = 2`) |
-| **Serialization Format** | JSON (UTF-8, polymorphic type resolver for indicators) |
+| **Serialization Format** | JSON (UTF-8, polymorphic type resolver for indicators via `WorkspacePolymorphicResolver`) |
 
 ---
 
@@ -21,16 +22,36 @@
 | `Name` | `string` | Yes | `"Default Profile"` | Profile display name. |
 | `LastModified` | `string (ISO 8601)` | Yes | `Current UTC` | Timestamp of last user workspace modification. |
 | `SelectedTicker` | `string?` | Optional | `"AAPL"` | Active selected symbol across synchronized views. |
-| `SelectedTimeframe` | `string?` | Optional | `"D1"` | Active timeframe (`"D1"`, `"W1"`, `"MN1"`). |
+| `SelectedTimeframe` | `string?` or `integer` | Optional | `"D1"` (1) | Active timeframe (Ordinal or string, e.g. `1` or `"D1"`). |
 | `MaxCandleCount` | `integer` | Optional | `200` | Number of historical bars loaded on chart initialization. |
-| `ChartType` | `string?` | Optional | `"Candle"` | Primary chart visualization type (`"Candle"`, `"Ohlc"`, `"HeikinAshi"`, `"Line"`, `"Area"`, `"Dot"`). |
+| `ChartType` | `string?` | Optional | `"Candlestick"` | Primary chart visualization type string (must match `ChartType` member names: `"Candlestick"`, `"OHLCBar"`, `"HeikinAshi"`, `"Line"`, `"Area"`, `"Dot"`, `"Renko"`, `"Kagi"`, `"PointAndFigure"`, `"ThreeLineBreak"`, `"ReverseWatch"`, `"RelativePerformance"`, `"Invisible"`). |
 | `IsMainWindowVisible` | `boolean` | Optional | `true` | Visibility state of primary chart window. |
 | `IsSubWindowVisible` | `boolean` | Optional | `true` | Visibility state of secondary indicator pane window. |
 | `ThemeSettings` | `object` | Optional | `{}` | Key-value overrides for chart colors (decoupled hex strings). |
+| `Indicators` | `array of CoreIndicatorSettings` | Optional | `[]` | Active technical indicators configured on the chart. |
+| `WatchlistProfiles` | `array of WatchlistProfile` | Optional | `[]` | Saved watchlist and portfolio groups. |
+
+### `ChartType` Values
+
+| Ordinal | Member Name | Description |
+|---|---|---|
+| `0` | `Candlestick` | Standard Japanese candlestick chart |
+| `1` | `HeikinAshi` | Smoothed average-bar Heikin-Ashi |
+| `2` | `Line` | Close-price continuous line |
+| `3` | `Area` | Shaded area under close-price curve |
+| `4` | `Dot` | Discrete price marker dots |
+| `5` | `Renko` | Constant brick-size trend chart |
+| `6` | `Kagi` | Vertical swing reversal chart |
+| `7` | `PointAndFigure` | Classical X and O box-reversal chart |
+| `8` | `ThreeLineBreak` | Multi-bar high/low breakout blocks |
+| `9` | `OHLCBar` | Western Open-High-Low-Close bar |
+| `10` | `ReverseWatch` | Volume vs. price phase-quadrant curve |
+| `11` | `RelativePerformance`| Multi-symbol normalized percentage baseline comparison |
+| `12` | `Invisible` | Hidden price layer (indicator/drawing canvas only) |
 
 ---
 
-## 3. Dock Panel Layout Properties
+## 3. Dock Panel Layout Properties & Tab Identifiers
 
 The workspace manages four perimeter dock panels surrounding the central chart area:
 
@@ -51,6 +72,18 @@ The workspace manages four perimeter dock panels surrounding the central chart a
 | `PanelSelectedTabIndices` | `object` | `{}` | Selected tab index per panel key (`"Left"`, `"Right"`, `"Top"`, `"Bottom"`). |
 | `PanelTabIds` | `object` | `{}` | Array of tab identifier strings hosted in each panel. |
 
+### Valid Tab Identifiers (`TabRegistry`)
+
+When assigning tab strings inside `PanelTabIds`, use only the following recognized system IDs:
+- `"Tab_Chart"`: Main candlestick & technical analysis chart.
+- `"Tab_Tickers"`: Ticker list, watchlists, and portfolio browser.
+- `"Tab_Screener"`: Real-time condition screener.
+- `"Tab_Backtest"`: Strategy backtesting and performance analytics.
+- `"Tab_Analysis"`: Scatter plot, correlation matrix, and seasonality curves.
+- `"Tab_Training"`: AI model training wizard & RL hyperparameter tuning.
+- `"Tab_Settings"`: Application settings and environment configuration.
+- `"PanelChart_{Guid}"`: Secondary detached/floating chart panes.
+
 ---
 
 ## 4. Active Indicators Schema (`CoreIndicatorSettings`)
@@ -59,14 +92,19 @@ Stored in the root array `Indicators`:
 
 ```json
 {
-  "Id": "00000000-0000-0000-0000-000000000000",
-  "Type": "SimpleMovingAverage",
-  "Name": "SMA(20)",
-  "IsVisible": true,
-  "TimeFrame": "D1",
-  "PanelIndex": 0,
+  "Id": "00000000-0000-0000-0000-000000000001",
+  "TypeEnum": 0,
+  "DisplayName": "SMA(20)",
+  "IsEnabled": true,
+  "IsOverlay": true,
+  "OverlayPanelId": null,
   "Color": "#FFFF0000",
-  "Parameters": {
+  "Thickness": 1.5,
+  "Style": 0,
+  "Offset": 0,
+  "PriceSource": 0,
+  "ParameterObject": {
+    "$type": "CoreSmaParameter",
     "Period": 20
   }
 }
@@ -74,14 +112,18 @@ Stored in the root array `Indicators`:
 
 | Property | Type | Description |
 |---|---|---|
-| `Id` | `string (GUID)` | Unique instance identifier for this indicator on the chart. |
-| `Type` | `string (Enum)` | Name of the registered indicator type matching `IndicatorType` enum (e.g. `"SimpleMovingAverage"`, `"RelativeStrengthIndex"`, `"BollingerBands"`). |
-| `Name` | `string` | Display label rendered in chart legend. |
-| `IsVisible` | `boolean` | Toggle for rendering calculation outputs on the viewport. |
-| `TimeFrame` | `string (Enum)` | Dedicated timeframe if calculating multi-timeframe overlays (e.g. `"D1"`, `"W1"`, `"MN1"`). |
-| `PanelIndex` | `integer` | `0` renders on the primary price chart; `1`, `2`, ... render in dedicated sub-chart panes below. |
+| `Id` | `string (GUID)` | Unique instance identifier for this indicator instance. |
+| `TypeEnum` | `integer` or `string` | Indicator type enum (Ordinal `0` or `"SMA"`, `34` or `"RSI"`, `33` or `"BB"`, etc. See `09_indicator_catalog.md`). |
+| `DisplayName` | `string` | Display label rendered on chart and legends. |
+| `IsEnabled` | `boolean` | Toggle for rendering calculation outputs on the viewport. |
+| `IsOverlay` | `boolean` | `true` renders directly over the price chart; `false` renders in a sub-chart pane. |
+| `OverlayPanelId` | `string?` | Optional sub-panel grouping ID for non-overlay indicators. |
 | `Color` | `string (Hex)` | Primary stroke color encoded as 8-character ARGB Hex (`#AARRGGBB`). |
-| `Parameters` | `object` | Dictionary of indicator-specific parameters (e.g. `Period`, `Multiplier`, `StandardDeviations`). |
+| `Thickness` | `number` | Line stroke width in DIPs (default `1.5`). |
+| `Style` | `integer` | Line style enum (`0` = Solid, `1` = Dash, `2` = Dot, `3` = DashDot). |
+| `Offset` | `integer` | Bar displacement shift (default `0`). |
+| `PriceSource` | `integer` | Price calculation source (`0` = Close, `1` = Open, `2` = High, `3` = Low, `4` = Median, `5` = Typical, `6` = Weighted). |
+| `ParameterObject` | `object` | Polymorphic parameter object. MUST include `"$type"` property naming the concrete parameter class (e.g. `"$type": "CoreSmaParameter"`). See `09_indicator_catalog.md`. |
 
 ---
 
@@ -89,17 +131,43 @@ Stored in the root array `Indicators`:
 
 Stored in the root array `WatchlistProfiles`:
 
-| Property | Type | Description |
-|---|---|---|
-| `Id` | `string (GUID)` | Unique identifier of the watchlist profile. |
-| `Name` | `string` | Human-readable title of the watchlist (e.g. `"Core Tech"`, `"Dividend Yield"`). |
-| `Color` | `string (Hex)` | Accent badge color encoded as `#AARRGGBB` (e.g. `"#FF336699"`). |
-| `Tickers` | `array of string` | List of ticker symbols belonging to this profile (e.g. `["AAPL", "MSFT", "NVDA"]`). |
-| `IsPortfolio` | `boolean` | `true` if this profile is linked to the portfolio tracking engine. |
+```json
+{
+  "Id": "c3d4e5f6-a7b8-9012-cdef-123456789012",
+  "Name": "Megacap Growth",
+  "Color": "#FF2B579A",
+  "IsPortfolio": false,
+  "Items": [
+    {
+      "Ticker": "AAPL",
+      "AddedAtUtc": "2026-11-02T00:00:00Z"
+    },
+    {
+      "Ticker": "MSFT",
+      "AddedAtUtc": "2026-11-02T00:00:00Z"
+    }
+  ]
+}
+```
+
+| Property | Type | Required | Description |
+|---|---|---|---|
+| `Id` | `string (GUID)` | Yes | Unique identifier of the watchlist profile (must not be empty GUID). |
+| `Name` | `string` | Yes | Human-readable title of the watchlist (max 64 characters). |
+| `Color` | `string (Hex)` | Yes | Accent badge color encoded as `#AARRGGBB` (e.g. `"#FF336699"`). |
+| `IsPortfolio` | `boolean` | Yes | `true` if this profile is managed as a portfolio position set. |
+| `Items` | `array of WatchlistItem` | Yes | Ordered items enrolled in this profile. |
+
+### `WatchlistItem` Properties
+
+| Property | Type | Required | Description |
+|---|---|---|---|
+| `Ticker` | `string` | Yes | Stock ticker symbol (automatically normalized to uppercase, e.g. `"AAPL"`). |
+| `AddedAtUtc` | `string (ISO 8601)` | Yes | Enrolled timestamp. MUST have zero UTC offset (`Z` suffix, e.g. `"2026-11-02T00:00:00Z"`). |
 
 ---
 
-## 6. Complete Reference Example
+## 6. Complete Reference Example (`default_workspace.json`)
 
 ```json
 {
@@ -109,7 +177,7 @@ Stored in the root array `WatchlistProfiles`:
   "SelectedTicker": "AAPL",
   "SelectedTimeframe": "D1",
   "MaxCandleCount": 200,
-  "ChartType": "Candle",
+  "ChartType": "Candlestick",
   "IsMainWindowVisible": true,
   "IsSubWindowVisible": true,
   "LeftPanelWidth": 240.0,
@@ -126,40 +194,50 @@ Stored in the root array `WatchlistProfiles`:
   "IsBottomPanelPinned": true,
   "PanelSelectedTabIndices": {
     "Left": 0,
-    "Right": 1,
+    "Right": 0,
     "Bottom": 0
   },
   "PanelTabIds": {
-    "Left": [ "TickersTab", "WatchlistTab" ],
-    "Right": [ "DrawingPropertiesTab", "AnalysisTab" ],
-    "Bottom": [ "LogViewerTab", "ScreenerTab" ]
+    "Left": [ "Tab_Tickers" ],
+    "Right": [ "Tab_Analysis" ],
+    "Bottom": [ "Tab_Screener" ]
   },
   "ThemeSettings": {
-    "ChartBackground": "#FAEABB",
-    "GridLineColor": "#D3D3D3"
+    "ChartBackground": "#181A20",
+    "GridLineColor": "#2A2E39"
   },
   "Indicators": [
     {
       "Id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-      "Type": "SimpleMovingAverage",
-      "Name": "SMA(20)",
-      "IsVisible": true,
-      "TimeFrame": "D1",
-      "PanelIndex": 0,
+      "TypeEnum": 0,
+      "DisplayName": "SMA(20)",
+      "IsEnabled": true,
+      "IsOverlay": true,
+      "OverlayPanelId": null,
       "Color": "#FFFF0000",
-      "Parameters": {
+      "Thickness": 1.5,
+      "Style": 0,
+      "Offset": 0,
+      "PriceSource": 0,
+      "ParameterObject": {
+        "$type": "CoreSmaParameter",
         "Period": 20
       }
     },
     {
       "Id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
-      "Type": "RelativeStrengthIndex",
-      "Name": "RSI(14)",
-      "IsVisible": true,
-      "TimeFrame": "D1",
-      "PanelIndex": 1,
+      "TypeEnum": 34,
+      "DisplayName": "RSI(14)",
+      "IsEnabled": true,
+      "IsOverlay": false,
+      "OverlayPanelId": "SubPanel_Rsi",
       "Color": "#FF0000FF",
-      "Parameters": {
+      "Thickness": 1.5,
+      "Style": 0,
+      "Offset": 0,
+      "PriceSource": 0,
+      "ParameterObject": {
+        "$type": "CoreRsiParameter",
         "Period": 14
       }
     }
@@ -169,8 +247,17 @@ Stored in the root array `WatchlistProfiles`:
       "Id": "c3d4e5f6-a7b8-9012-cdef-123456789012",
       "Name": "Megacap Growth",
       "Color": "#FF2B579A",
-      "Tickers": [ "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA" ],
-      "IsPortfolio": false
+      "IsPortfolio": false,
+      "Items": [
+        {
+          "Ticker": "AAPL",
+          "AddedAtUtc": "2026-11-02T00:00:00Z"
+        },
+        {
+          "Ticker": "MSFT",
+          "AddedAtUtc": "2026-11-02T00:00:00Z"
+        }
+      ]
     }
   ]
 }

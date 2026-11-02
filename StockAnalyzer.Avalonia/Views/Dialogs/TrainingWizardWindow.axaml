@@ -244,6 +244,7 @@
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="Auto"/>
                                         <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
                                     </Grid.RowDefinitions>
 
                                     <!-- Row 0: Prediction Type | Framework -->
@@ -298,6 +299,15 @@
                                                 </DataTemplate>
                                             </ComboBox.ItemTemplate>
                                         </ComboBox>
+                                    </StackPanel>
+
+                                    <!-- Row 2: Model Display Name (Optional) -->
+                                    <StackPanel Grid.Row="2" Grid.ColumnSpan="2" Spacing="6">
+                                        <TextBlock Text="{l:Localize TrainingWizard_CustomDisplayName}" Classes="fieldLabel"/>
+                                        <TextBox Text="{Binding ModelDisplayName, Mode=TwoWay}"
+                                                 Watermark="{l:Localize TrainingWizard_CustomDisplayName_Watermark}"
+                                                 MaxLength="128"
+                                                 Height="36"/>
                                     </StackPanel>
                                 </Grid>
                             </StackPanel>

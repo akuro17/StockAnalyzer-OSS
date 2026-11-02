@@ -200,12 +200,19 @@ internal sealed class TrainingFeatureModeJsonConverter : JsonConverter<Predictio
 internal sealed class FeatureChannelKindJsonConverter : JsonConverter<FeatureChannelKind>
 {
     public override FeatureChannelKind Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
-        => reader.GetString()?.Trim().ToLowerInvariant() switch
+    {
+        if (reader.TokenType == JsonTokenType.Number)
+        {
+            return (FeatureChannelKind)reader.GetByte();
+        }
+
+        return reader.GetString()?.Trim().ToLowerInvariant() switch
         {
             "price" => FeatureChannelKind.Price,
             "indicator" => FeatureChannelKind.Indicator,
             var other => throw new JsonException($"Unknown feature channel kind '{other}'."),
         };
+    }
 
     public override void Write(Utf8JsonWriter writer, FeatureChannelKind value, JsonSerializerOptions options)
         => writer.WriteStringValue(value switch

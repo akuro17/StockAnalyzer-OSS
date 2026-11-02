@@ -12,6 +12,10 @@ This document specifies the individual settings files controlling chart renderin
 | **Managing Class** | `StockAnalyzer.Core.Services.ChartSettingsManager` (`IChartSettingsManager`) |
 | **Model Class** | `StockAnalyzer.Core.Models.Settings.GlobalChartSettings` |
 | **Schema Version** | `1` (`SchemaVersion = 1`) |
+| **Serialization Naming Policy** | `JsonNamingPolicy.CamelCase` (**All property names MUST be camelCase**) |
+
+> [!IMPORTANT]
+> `ChartSettingsManager` serializes and deserializes using strict `camelCase` property naming. Writing PascalCase keys (e.g. `"DefaultStrokeThickness"`) will cause properties to be ignored, falling back to default values.
 
 ### Key Properties & Numerical Bounds
 
@@ -24,7 +28,7 @@ This document specifies the individual settings files controlling chart renderin
 - **`smartGuidesEnabled`** (`boolean`, default `true`): Magnet/alignment snap guides.
 - **`smartGuideSnapDistance`** (`number`, default `8.0`): Distance threshold for snapping.
 - **`controlPointHideTimeoutSeconds`** (`integer`, default `5`, range `[1, 60]`): Idle duration before deselecting handles.
-- **`drawingToolContinuationMode`** (`string`, enum: `"ReturnToPointer"`, `"ContinuousDrawing"`): Interaction after placing a shape.
+- **`drawingToolContinuationMode`** (`string` or `integer`, enum: `"ReturnToPointer"` [0], `"ContinuousDrawing"` [1]): Interaction after placing a shape.
 
 #### Standard Price Visuals (Candle / OHLC / Heikin / Line / Area / Dot)
 - **`candlestickBullishColor`** / **`candlestickBearishColor`** / **`candlestickNeutralColor`** (`string`, Hex): Candle body colors.
@@ -33,11 +37,11 @@ This document specifies the individual settings files controlling chart renderin
 - **`lineColor`** / **`areaBaseColor`** (`string`, Hex): Line chart and area fill base colors.
 - **`showLineMarkers`** / **`showAreaMarkers`** (`boolean`, default `false`): Data point marker dots.
 - **`dotBaseRadius`** (`number`, default `3.0`): Dot chart point radius.
-- **`dotShape`** (`string`, enum: `"Circle"`, `"Square"`, `"Diamond"`): Dot geometric symbol.
-- **`dotPriceType`** (`string`, enum: `"Close"`, `"Open"`, `"High"`, `"Low"`): Target price field.
+- **`dotShape`** (`string` or `integer`, enum: `"Circle"` [0], `"Square"` [1], `"Diamond"` [2]): Dot geometric symbol.
+- **`dotPriceType`** (`string` or `integer`, enum: `"Close"` [0], `"Open"` [1], `"High"` [2], `"Low"` [3]): Target price field.
 
 #### Renko Chart
-- **`renkoSizingMode`** (`string`, enum: `"AutoAtr"`, `"FixedValue"`, `"Percentage"`): Brick size calculation mode.
+- **`renkoSizingMode`** (`string` or `integer`, enum: `"AutoAtr"` [0], `"FixedValue"` [1], `"Percentage"` [2]): Brick size calculation mode.
 - **`renkoBrickSize`** (`decimal`, default `1.0`): Absolute size in price units (when FixedValue).
 - **`renkoBrickPercent`** (`decimal`, default `1.0`): Percentage brick size (when Percentage).
 - **`renkoAtrPeriod`** (`integer`, default `14`): ATR lookback period (when AutoAtr).
@@ -47,14 +51,14 @@ This document specifies the individual settings files controlling chart renderin
 - **`renkoShowGhostProjections`** (`boolean`, default `false`): Next-brick threshold projection guides.
 
 #### Kagi Chart
-- **`kagiReversalMode`** (`string`, enum: `"AutoAtr"`, `"FixedValue"`, `"Percentage"`): Reversal threshold mode.
+- **`kagiReversalMode`** (`string` or `integer`, enum: `"AutoAtr"` [0], `"FixedValue"` [1], `"Percentage"` [2]): Reversal threshold mode.
 - **`kagiReversalAmount`** (`decimal`, default `1.0`): Reversal amount in price units.
 - **`kagiReversalPercent`** (`decimal`, default `1.0`): Reversal amount in percent.
 - **`kagiAtrPeriod`** (`integer`, default `14`) & **`kagiAtrMultiplier`** (`decimal`, default `1.0`).
 - **`kagiLineThickness`** (`number`, default `1.0`): Normal line thickness (Yang thick line is doubled).
 
 #### Point & Figure (PnF)
-- **`pnfSizingMode`** (`string`, enum: `"AutoAtr"`, `"FixedValue"`, `"Percentage"`).
+- **`pnfSizingMode`** (`string` or `integer`, enum: `"AutoAtr"` [0], `"FixedValue"` [1], `"Percentage"` [2]).
 - **`pnfBoxSize`** (`decimal`, default `1.0`) / **`pnfBoxPercent`** (`decimal`, default `1.0`).
 - **`pnfReversal`** (`integer`, default `3`): Box count reversal threshold (standard 3-box reversal).
 - **`pnfShowDoubleBreakout`** / **`pnfShowTripleBreakout`** / **`pnfShowTrendlineBreakout`** (`boolean`): Classical PnF chart pattern overlays.
@@ -74,6 +78,72 @@ This document specifies the individual settings files controlling chart renderin
 - **`seasonalityYearColor1`** .. **`seasonalityYearColor10`** (`string`, Hex): Per-year overlay trace colors.
 - **`scatterHeatmapThresholdPercent`** (`number`, default `2.0`): Percent return threshold for heatmap saturation.
 
+#### Backtest Equity Curve Styling
+- **`equityColorMode`** (`integer`, enum: `0` = Single [uniform color], `1` = PreviousBar [bar-by-bar delta], `2` = Drawdown [color changes when underwater]).
+- **`equityLineColor`** (`string`, Hex, default `"#FF007ACC"`): Line color for Single mode.
+- **`equityUpColor`** (`string`, Hex, default `"#FF4CAF50"`): Upward color for PreviousBar/Drawdown mode.
+- **`equityDownColor`** (`string`, Hex, default `"#FFF44336"`): Downward/underwater color.
+
+### Complete Reference Example (`user_chart_settings.json`)
+
+```json
+{
+  "defaultStrokeThickness": 1.5,
+  "drawingDefaultColor": "#FFFF0000",
+  "drawingHandleColor": "#FF0000FF",
+  "anchorPointColor": "#FFFF8000",
+  "drawingFontSize": 12.0,
+  "smartGuidesEnabled": true,
+  "smartGuideSnapDistance": 8.0,
+  "controlPointHideTimeoutSeconds": 5,
+  "candlestickBullishColor": "#FF4CAF50",
+  "candlestickBearishColor": "#FFF44336",
+  "candlestickNeutralColor": "#FF787B86",
+  "ohlcBullishColor": "#FF4CAF50",
+  "ohlcBearishColor": "#FFF44336",
+  "heikinBullishColor": "#FF4CAF50",
+  "heikinBearishColor": "#FFF44336",
+  "lineColor": "#FF007ACC",
+  "areaBaseColor": "#4D007ACC",
+  "showLineMarkers": false,
+  "showAreaMarkers": false,
+  "dotBaseRadius": 3.0,
+  "dotShape": 0,
+  "dotPriceType": 0,
+  "renkoSizingMode": 0,
+  "renkoBrickSize": 1.0,
+  "renkoBrickPercent": 1.0,
+  "renkoAtrPeriod": 14,
+  "renkoAtrMultiplier": 1.0,
+  "renkoReversal": 2,
+  "renkoShowMultiWavePatterns": false,
+  "renkoShowGhostProjections": false,
+  "kagiReversalMode": 0,
+  "kagiReversalAmount": 1.0,
+  "kagiReversalPercent": 1.0,
+  "kagiAtrPeriod": 14,
+  "kagiAtrMultiplier": 1.0,
+  "kagiLineThickness": 1.0,
+  "pnfSizingMode": 0,
+  "pnfBoxSize": 1.0,
+  "pnfBoxPercent": 1.0,
+  "pnfReversal": 3,
+  "pnfShowDoubleBreakout": false,
+  "pnfShowTripleBreakout": false,
+  "pnfShowTrendlineBreakout": false,
+  "threeLineBreakBullishColor": "#FF4CAF50",
+  "threeLineBreakBearishColor": "#FFF44336",
+  "threeLineBreakShowGhostProjections": false,
+  "seasonalityStartMonth": 1,
+  "seasonalityYearsToOverlay": 10,
+  "scatterHeatmapThresholdPercent": 2.0,
+  "equityColorMode": 0,
+  "equityLineColor": "#FF007ACC",
+  "equityUpColor": "#FF4CAF50",
+  "equityDownColor": "#FFF44336"
+}
+```
+
 ---
 
 ## 2. Theme Customization (`user_theme.json`)
@@ -82,22 +152,57 @@ This document specifies the individual settings files controlling chart renderin
 |---|---|
 | **File Location** | `Data/Config/user_theme.json` |
 | **Managing Class** | `StockAnalyzer.Core.Theme.ThemeManager` (`IThemeManager`) |
+| **Root DTO Class** | `ThemePersistenceData` (`Mode`, `Colors`) |
+| **Color Model Class** | `StockAnalyzer.Core.Theme.ThemeColors` |
 
 Stores user-customized palette overrides for the active theme.
 
+> [!NOTE]
+> The root JSON object is `ThemePersistenceData`, which wraps `Mode` and `Colors`. Note that color property names inside `Colors` do NOT have a `Color` suffix (e.g. `GridLine`, `AxisText`, `Bullish`, NOT `GridLineColor`).
+
+### Complete Reference Example (`user_theme.json`)
+
 ```json
 {
-  "ChartBackground": "#1E1E1E",
-  "GridLineColor": "#2D2D30",
-  "AxisTextColor": "#CCCCCC",
-  "CrosshairColor": "#808080",
-  "BullishColor": "#26A69A",
-  "BearishColor": "#EF5350",
-  "NeutralColor": "#787B86",
-  "VolumeUpColor": "#4D26A69A",
-  "VolumeDownColor": "#4DEF5350"
+  "Mode": 1,
+  "Colors": {
+    "ChartBackground": "#FF181A20",
+    "GridLine": "#FF2A2E39",
+    "AxisText": "#FF787B86",
+    "Crosshair": "#FF758696",
+    "CrosshairLineAlpha": "#A0758696",
+    "CrosshairText": "#FF758696",
+    "ZeroLine": "#FF444444",
+    "Bullish": "#FF4CAF50",
+    "Bearish": "#FFF44336",
+    "BullishWick": "#FF4CAF50",
+    "BearishWick": "#FFF44336",
+    "VolumeUp": "#FF4CAF50",
+    "VolumeDown": "#FFF44336",
+    "SemanticPlus": "#FF4CAF50",
+    "SemanticMinus": "#FFF44336",
+    "SemanticNeutral": "#FFE0E0E0",
+    "HeaderBackground": "#B41E1E1E",
+    "VolumeProfileBorder": "#64C8C8C8",
+    "GeometricLabelText": "#C8C8C8C8",
+    "ShellBackground": "#FF181A20",
+    "ShellText": "#FFE0E0E0",
+    "ShellSecondaryText": "#FFBAC2CE",
+    "ShellAccent": "#FF648CFF",
+    "ShellBorder": "#FF363A45",
+    "ButtonBackground": "#FF007ACC",
+    "ButtonText": "#FFFFFFFF",
+    "ButtonHover": "#FF1C97EA",
+    "ButtonPressed": "#FF005A9E",
+    "ControlBackground": "#FF2A2E39",
+    "ControlBackgroundHover": "#FF363A45",
+    "ControlBackgroundPressed": "#FF444444",
+    "IsDark": true
+  }
 }
 ```
+
+- **`Mode`** (`integer`, enum `AppThemeMode`): `0` = Light, `1` = Dark, `2` = System.
 
 ---
 

@@ -1,6 +1,6 @@
 # 07. Indicator Defaults & Driver Settings
 
-This document covers custom indicator configuration files, source indicator pipelines, and dynamic period drivers.
+This document covers custom indicator configuration files, source indicator pipelines, and dynamic period drivers. All three files serialize as JSON lists of `CoreIndicatorSettings` using `WorkspacePolymorphicResolver`.
 
 ---
 
@@ -11,44 +11,54 @@ This document covers custom indicator configuration files, source indicator pipe
 | **File Location** | `Data/IndicatorDefaults/user_indicator_defaults.json` |
 | **Path Resolver** | `PathDiscovery.ResolveIndicatorDefaultsPath("user_indicator_defaults.json")` |
 | **Managing Class** | `StockAnalyzer.Core.Services.IndicatorUserDefaultService` (`IIndicatorUserDefaultService`) |
-| **Root Type** | `Dictionary<IndicatorType, CoreIndicatorSettings>` |
+| **On-Disk Root Type**| `List<CoreIndicatorSettings>` (**JSON Array `[ ... ]`**) |
+| **In-Memory Type** | `Dictionary<IndicatorType, CoreIndicatorSettings>` (mapped by `TypeEnum`) |
+| **Serialization** | `WorkspacePolymorphicResolver` (requires `"$type"` in `ParameterObject`) |
 
-Whenever a user adds a new indicator to a chart or screener, StockAnalyzer checks this dictionary for user-customized defaults before falling back to built-in system constants.
+Whenever a user adds a new indicator to a chart or screener, `IndicatorUserDefaultService` checks this collection for user-customized defaults before falling back to built-in system defaults.
 
-### Invariants & Color Serialization
-- Keys represent valid `IndicatorType` values (e.g. `"SimpleMovingAverage"`, `"RelativeStrengthIndex"`).
-- Color values use `IndicatorColorJsonConverter` which serializes colors as 8-character ARGB Hex strings (`#AARRGGBB`).
+> [!IMPORTANT]
+> The on-disk file is serialized as a **JSON Array of `CoreIndicatorSettings`** (`[ ... ]`), NOT a JSON dictionary/object. During `LoadUserDefaultsAsync()`, the service deserializes the array and indexes each entry by its `TypeEnum` into an in-memory dictionary.
 
-### Reference Example
+### Reference Example (`user_indicator_defaults.json`)
+
 ```json
-{
-  "SimpleMovingAverage": {
+[
+  {
     "Id": "00000000-0000-0000-0000-000000000001",
-    "Type": "SimpleMovingAverage",
-    "Name": "SMA Default",
-    "IsVisible": true,
-    "TimeFrame": "D1",
-    "PanelIndex": 0,
+    "TypeEnum": 0,
+    "DisplayName": "SMA(25)",
+    "IsEnabled": true,
+    "IsOverlay": true,
+    "OverlayPanelId": null,
     "Color": "#FFFF8000",
-    "Parameters": {
+    "Thickness": 1.5,
+    "Style": 0,
+    "Offset": 0,
+    "PriceSource": 0,
+    "ParameterObject": {
+      "$type": "CoreSmaParameter",
       "Period": 25
     }
   },
-  "RelativeStrengthIndex": {
+  {
     "Id": "00000000-0000-0000-0000-000000000002",
-    "Type": "RelativeStrengthIndex",
-    "Name": "RSI Default",
-    "IsVisible": true,
-    "TimeFrame": "D1",
-    "PanelIndex": 1,
+    "TypeEnum": 34,
+    "DisplayName": "RSI(14)",
+    "IsEnabled": true,
+    "IsOverlay": false,
+    "OverlayPanelId": "SubPanel_Rsi",
     "Color": "#FF9933CC",
-    "Parameters": {
-      "Period": 14,
-      "OverboughtLevel": 70.0,
-      "OversoldLevel": 30.0
+    "Thickness": 1.5,
+    "Style": 0,
+    "Offset": 0,
+    "PriceSource": 0,
+    "ParameterObject": {
+      "$type": "CoreRsiParameter",
+      "Period": 14
     }
   }
-}
+]
 ```
 
 ---
@@ -61,27 +71,33 @@ Whenever a user adds a new indicator to a chart or screener, StockAnalyzer check
 | **Path Resolver** | `PathDiscovery.ResolveSourceIndicatorsPath("source_indicators.json")` |
 | **Managing Class** | `StockAnalyzer.Core.Services.SourceIndicatorService` (`ISourceIndicatorService`) |
 | **Underlying Store** | `StockAnalyzer.Core.Services.IndicatorListStore` |
-| **Root Type** | `List<CoreIndicatorSettings>` |
+| **On-Disk Root Type**| `List<CoreIndicatorSettings>` (**JSON Array `[ ... ]`**) |
 
-Defines registered "Source Indicators" that compute intermediate numerical series. Higher-order composite indicators can consume these registered outputs instead of raw OHLCV prices.
+Defines registered "Source Indicators" that compute intermediate numerical series. Higher-order composite indicators (Indicator-on-Indicator) can consume these registered outputs by setting `SourceIndicatorId` to the source indicator's `Id`.
 
 ### Load State & Corruption Safety
 Managed by `IndicatorListStore`:
 - If unreadable due to file lock or transient I/O issues, the service remains in the `Unloaded` state and forbids writing to prevent truncating existing definitions.
 - If corrupt JSON is detected, the broken file is backed up to `source_indicators.json.corrupted` before starting with an empty store.
 
-### Reference Example
+### Reference Example (`source_indicators.json`)
+
 ```json
 [
   {
     "Id": "c1d2e3f4-5678-90ab-cdef-1234567890cd",
-    "Type": "ExponentialMovingAverage",
-    "Name": "Fast Baseline EMA",
-    "IsVisible": false,
-    "TimeFrame": "D1",
-    "PanelIndex": 0,
+    "TypeEnum": 1,
+    "DisplayName": "Fast Baseline EMA",
+    "IsEnabled": false,
+    "IsOverlay": true,
+    "OverlayPanelId": null,
     "Color": "#FF336699",
-    "Parameters": {
+    "Thickness": 1.5,
+    "Style": 0,
+    "Offset": 0,
+    "PriceSource": 0,
+    "ParameterObject": {
+      "$type": "CoreEmaParameter",
       "Period": 12
     }
   }
@@ -98,22 +114,28 @@ Managed by `IndicatorListStore`:
 | **Path Resolver** | `PathDiscovery.ResolveDynamicPeriodDriversPath("dynamic_period_drivers.json")` |
 | **Managing Class** | `StockAnalyzer.Core.Services.DynamicPeriodDriverService` (`IDynamicPeriodDriverService`) |
 | **Underlying Store** | `StockAnalyzer.Core.Services.IndicatorListStore` |
-| **Root Type** | `List<CoreIndicatorSettings>` |
+| **On-Disk Root Type**| `List<CoreIndicatorSettings>` (**JSON Array `[ ... ]`**) |
 
-Stores registered indicators specifically used as dynamic lookback drivers. Adaptive indicators (such as variable-period moving averages, adaptive bands, or cyclical oscillators) bind to a driver indicator's output value to dynamically adjust their own lookback periods per bar.
+Stores registered indicators specifically used as dynamic lookback drivers. Adaptive indicators (such as variable-period moving averages, adaptive bands, or cyclical oscillators) bind to a driver indicator's output value via `DynamicPeriodIndicatorId` to dynamically modulate their own lookback periods on a bar-by-bar basis.
 
-### Reference Example
+### Reference Example (`dynamic_period_drivers.json`)
+
 ```json
 [
   {
     "Id": "d2e3f4a5-6789-01bc-def1-2345678901de",
-    "Type": "StandardDeviation",
-    "Name": "Volatility Driver SD(20)",
-    "IsVisible": false,
-    "TimeFrame": "D1",
-    "PanelIndex": 0,
+    "TypeEnum": 51,
+    "DisplayName": "Volatility Driver SD(20)",
+    "IsEnabled": false,
+    "IsOverlay": false,
+    "OverlayPanelId": null,
     "Color": "#FFCC6600",
-    "Parameters": {
+    "Thickness": 1.5,
+    "Style": 0,
+    "Offset": 0,
+    "PriceSource": 0,
+    "ParameterObject": {
+      "$type": "CoreStandardDeviationParameter",
       "Period": 20
     }
   }

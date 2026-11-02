@@ -47,7 +47,14 @@
                              AutomationProperties.Name="{l:Localize Settings_RlPlayback_Title}">
                         <ListBox.ItemTemplate>
                             <DataTemplate x:DataType="vm:RlModelOption">
-                                <TextBlock Text="{Binding Name}" FontSize="{DynamicResource DetailFontSize}" TextWrapping="Wrap"/>
+                                <TextBlock Text="{Binding Name}" FontSize="{DynamicResource DetailFontSize}" TextWrapping="Wrap">
+                                    <TextBlock.ContextMenu>
+                                        <ContextMenu>
+                                            <MenuItem Header="{l:Localize Settings_ModelGenerations_Rename}"
+                                                      Command="{Binding $parent[UserControl].((dvm:RlPlaybackViewModel)DataContext).RenameSelectedModelCommand}"/>
+                                        </ContextMenu>
+                                    </TextBlock.ContextMenu>
+                                </TextBlock>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
@@ -55,6 +62,9 @@
                         <Button Classes="accent" Content="{l:Localize Settings_ModelGenerations_Refresh}"
                                 Command="{Binding RefreshCommand}"
                                 AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.PlaybackRefresh}"/>
+                        <Button Classes="accent" Content="{l:Localize Settings_ModelGenerations_Rename}"
+                                Command="{Binding RenameSelectedModelCommand}"
+                                IsEnabled="{Binding CanRenameSelectedModel}"/>
                         <Button Classes="accent" Content="{l:Localize Rl.Ui.RemoveModel}"
                                 Command="{Binding RemoveSelectedModelCommand}"
                                 IsVisible="{Binding SelectedModelHasNoWorkFolder}"

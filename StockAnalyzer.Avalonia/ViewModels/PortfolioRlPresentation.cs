@@ -101,7 +101,7 @@ public static class PortfolioRlPresentation
     public const int RunIdPrefixLength = 8;
 
     /// <summary>One line of the base-run list: when it was made, which run, and the period of its data (or why that period is unknown).</summary>
-    public static string BaseRun(RlPortfolioBaseRunInfo info, ILocalizationService localization)
+    public static string BaseRun(RlPortfolioBaseRunInfo info, ILocalizationService localization, string? customDisplayName = null)
     {
         string period = info.Period.Status switch
         {
@@ -110,8 +110,9 @@ public static class PortfolioRlPresentation
             RlBasePeriodStatus.Ambiguous => localization.GetString("Prl.Transfer.PeriodAmbiguous"),
             _ => localization.GetString("Prl.Transfer.PeriodUnknown"),
         };
-        return string.Format(CultureInfo.CurrentCulture, localization.GetString("Prl.Transfer.BaseRow"),
+        string formatted = string.Format(CultureInfo.CurrentCulture, localization.GetString("Prl.Transfer.BaseRow"),
             info.CreatedUtc.UtcDateTime.ToString(TimeFormat, CultureInfo.InvariantCulture), info.RunId.ToString("N")[..RunIdPrefixLength], period);
+        return !string.IsNullOrWhiteSpace(customDisplayName) ? $"[{customDisplayName.Trim()}] " + formatted : formatted;
     }
 
     /// <summary>One entry of the panel choice: the panel's id, its symbols (and how many are held out) and the period of its data.</summary>
@@ -120,7 +121,7 @@ public static class PortfolioRlPresentation
             panel.PeriodStartInclusive.ToString(DateFormat, CultureInfo.InvariantCulture), panel.PeriodEndExclusive.ToString(DateFormat, CultureInfo.InvariantCulture));
 
     /// <summary>One entry of the comparison lists: when the run was made, how it was made, which run, and which panel (leading hash digits) it used.</summary>
-    public static string ComparableRun(RlPortfolioComparableRun run, ILocalizationService localization)
+    public static string ComparableRun(RlPortfolioComparableRun run, ILocalizationService localization, string? customDisplayName = null)
     {
         string kind = localization.GetString(run.Kind switch
         {
@@ -128,8 +129,9 @@ public static class PortfolioRlPresentation
             RlPortfolioTransferContract.ZeroShotKind => "Prl.Compare.Kind.ZeroShot",
             _ => "Prl.Compare.Kind.Scratch",
         });
-        return string.Format(CultureInfo.CurrentCulture, localization.GetString("Prl.Compare.Row"), run.CreatedUtc.UtcDateTime.ToString(TimeFormat, CultureInfo.InvariantCulture),
+        string formatted = string.Format(CultureInfo.CurrentCulture, localization.GetString("Prl.Compare.Row"), run.CreatedUtc.UtcDateTime.ToString(TimeFormat, CultureInfo.InvariantCulture),
             kind, run.RunId.ToString("N")[..RunIdPrefixLength], run.UniverseSha256[..RunIdPrefixLength]);
+        return !string.IsNullOrWhiteSpace(customDisplayName) ? $"[{customDisplayName.Trim()}] " + formatted : formatted;
     }
 
     /// <summary>

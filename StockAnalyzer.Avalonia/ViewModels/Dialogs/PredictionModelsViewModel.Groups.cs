@@ -16,8 +16,10 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
     /// </summary>
     public sealed class GenerationRow
     {
+        private readonly string? _displayName;
+
         private GenerationRow(ModelGenerationSummary? summary, string headerText, string? groupKey, bool notBetterThanGuessing, double? reachShare, float reachThreshold,
-            double? reachUpperBound)
+            double? reachUpperBound, string? displayName = null)
         {
             Summary = summary;
             HeaderText = headerText;
@@ -26,11 +28,12 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
             ReachShare = reachShare;
             ReachThreshold = reachThreshold;
             ReachUpperBound = reachUpperBound;
+            _displayName = displayName;
         }
 
         public static GenerationRow Header(string text) => new(null, text, null, false, null, 0f, null);
         public static GenerationRow Item(ModelGenerationSummary summary, string? groupKey, bool notBetterThanGuessing = false, double? reachShare = null,
-            float reachThreshold = 0f, double? reachUpperBound = null) => new(summary, string.Empty, groupKey, notBetterThanGuessing, reachShare, reachThreshold, reachUpperBound);
+            float reachThreshold = 0f, double? reachUpperBound = null, string? displayName = null) => new(summary, string.Empty, groupKey, notBetterThanGuessing, reachShare, reachThreshold, reachUpperBound, displayName);
 
         /// <summary>The share of held-out windows whose top probability reaches <see cref="ReachThreshold"/> (see <see cref="ModelConfidenceReach"/>); null when not known.</summary>
         public double? ReachShare { get; }
@@ -58,6 +61,7 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
         public bool IsItem => Summary is not null;
         public bool IsActive => Summary?.IsActive == true;
         public string ModelFile => Summary?.ModelFile ?? string.Empty;
+        public string DisplayName => !string.IsNullOrWhiteSpace(_displayName) ? _displayName : ModelFile;
         public string TargetType => Summary?.TargetType ?? string.Empty;
         public string Timeframe => Summary?.Timeframe ?? string.Empty;
         public int Horizon => Summary?.Horizon ?? 0;
@@ -65,16 +69,32 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
         public double Score => Summary?.Score ?? 0;
 
         /// <summary>Everything the row shows, one fact per line, for the hover tip (the row itself is cut off when a file name is long); null for a header.</summary>
-        public string? Tooltip => Summary is null ? null : string.Join("\n", new[]
+        public string? Tooltip
         {
-            Line("Settings_ModelGenerations_Tip_File", Summary.ModelFile),
-            Line("Settings_ModelGenerations_Tip_Target", Summary.TargetType),
-            Line("Settings_ModelGenerations_Tip_Timeframe", Summary.Timeframe),
-            Line("Settings_ModelGenerations_Tip_Horizon", Summary.Horizon),
-            Line("Settings_ModelGenerations_Tip_Score", Summary.MetricName, Summary.Score),
-            LocalizationManager.Instance[Summary.IsActive ? "Settings_ModelGenerations_Tip_Active" : "Settings_ModelGenerations_Tip_NotActive"],
-        }.Concat(NotBetterThanGuessing ? new[] { LocalizationManager.Instance["Settings_ModelGenerations_Tip_Quality"] } : Array.Empty<string>())
-            .Concat(HasReach ? new[] { ReachText } : Array.Empty<string>()));
+            get
+            {
+                if (Summary is null) return null;
+                var list = new List<string>();
+                if (!string.IsNullOrWhiteSpace(_displayName) && !string.Equals(_displayName, Summary.ModelFile, StringComparison.Ordinal))
+                {
+                    list.Add(Line("Settings_ModelGenerations_Tip_DisplayName", _displayName));
+                    list.Add(Line("Settings_ModelGenerations_Tip_File", Summary.ModelFile));
+                    list.Add(Line("Settings_ModelGenerations_Tip_Id", Summary.ModelId));
+                }
+                else
+                {
+                    list.Add(Line("Settings_ModelGenerations_Tip_File", Summary.ModelFile));
+                }
+                list.Add(Line("Settings_ModelGenerations_Tip_Target", Summary.TargetType));
+                list.Add(Line("Settings_ModelGenerations_Tip_Timeframe", Summary.Timeframe));
+                list.Add(Line("Settings_ModelGenerations_Tip_Horizon", Summary.Horizon));
+                list.Add(Line("Settings_ModelGenerations_Tip_Score", Summary.MetricName, Summary.Score));
+                list.Add(LocalizationManager.Instance[Summary.IsActive ? "Settings_ModelGenerations_Tip_Active" : "Settings_ModelGenerations_Tip_NotActive"]);
+                if (NotBetterThanGuessing) list.Add(LocalizationManager.Instance["Settings_ModelGenerations_Tip_Quality"]);
+                if (HasReach) list.Add(ReachText);
+                return string.Join("\n", list);
+            }
+        }
 
         private static string Line(string key, params object[] arguments) =>
             string.Format(System.Globalization.CultureInfo.CurrentCulture, LocalizationManager.Instance[key], arguments);
@@ -138,11 +158,14 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
             UpdateAddEnsembleMemberAvailability();
         }
 
+        private string ResolveDisplayName(string modelId, string fallbackFile)
+            => _annotationService?.ResolveDisplayName(modelId, fallbackFile) ?? fallbackFile;
+
         /// <summary>The flat list right away, then the same list with group headers once the generations' ensemble contracts are read.</summary>
         private void RebuildGenerationRows()
         {
             var summaries = Generations.ToArray();
-            ReplaceRows(summaries.Select(s => GenerationRow.Item(s, null)));
+            ReplaceRows(summaries.Select(s => GenerationRow.Item(s, null, displayName: ResolveDisplayName(s.ModelId, s.ModelFile))));
             var revision = ++_groupingRevision;
             var registry = _modelRegistry;
             if (registry is null || summaries.Length == 0) { GenerationGroupingTask = Task.CompletedTask; return; }
@@ -207,7 +230,7 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
             {
                 yield return GenerationRow.Header(GroupHeader(group.First().Compatibility!, group.Count()));
                 foreach (var member in group.OrderBy(d => d.Summary.ModelFile, StringComparer.Ordinal).ThenBy(d => d.Summary.ModelId, StringComparer.Ordinal))
-                    yield return GenerationRow.Item(member.Summary, group.Key, member.NotBetter, member.Reach, reachThreshold, member.ReachUpper);
+                    yield return GenerationRow.Item(member.Summary, group.Key, member.NotBetter, member.Reach, reachThreshold, member.ReachUpper, displayName: ResolveDisplayName(member.Summary.ModelId, member.Summary.ModelFile));
             }
 
             var others = described.Where(d => d.Compatibility is null)
@@ -215,7 +238,7 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
             if (others.Length == 0) yield break;
             yield return GenerationRow.Header(string.Format(System.Globalization.CultureInfo.CurrentCulture,
                 LocalizationManager.Instance["Settings_ModelGenerations_Group_NotCapable"], others.Length));
-            foreach (var other in others) yield return GenerationRow.Item(other.Summary, null, other.NotBetter, other.Reach, reachThreshold, other.ReachUpper);
+            foreach (var other in others) yield return GenerationRow.Item(other.Summary, null, other.NotBetter, other.Reach, reachThreshold, other.ReachUpper, displayName: ResolveDisplayName(other.Summary.ModelId, other.Summary.ModelFile));
         }
 
         private static string GroupHeader(EnsembleCompatibility group, int count)

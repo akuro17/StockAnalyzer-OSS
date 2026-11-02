@@ -12,6 +12,7 @@ using StockAnalyzer.Avalonia.Services;
 using StockAnalyzer.Core.Execution;
 using StockAnalyzer.Core.Interfaces;
 using StockAnalyzer.Core.Models.ReinforcementLearning;
+using StockAnalyzer.Core.Models.Training;
 using StockAnalyzer.Core.Services;
 using StockAnalyzer.Core.Services.ReinforcementLearning;
 
@@ -31,6 +32,7 @@ public sealed partial class RlPlaybackViewModel : ViewModelBase, IDisposable
     private readonly ILocalizationService _localization;
     private readonly IDispatcherService _dispatcher;
     private readonly IDialogService? _dialogService;
+    private readonly IModelMetadataAnnotationService? _annotationService;
     private readonly HashSet<string> _invalidEditors = new(StringComparer.Ordinal);
     private IReadOnlyList<RlGeneration> _generations = Array.Empty<RlGeneration>();
     /// <summary>Registered models whose work folder is gone: labelled in the list, removable with <see cref="RemoveSelectedModelCommand"/>.</summary>
@@ -64,13 +66,16 @@ public sealed partial class RlPlaybackViewModel : ViewModelBase, IDisposable
     public bool HasSelectedModel => SelectedModelOption is not null;
     public bool SelectedModelHasNoWorkFolder => SelectedModelOption is { } option && _modelsWithoutWorkFolder.Contains(option.Generation.ModelId);
     public bool CanRemoveSelectedModel => Operation == RlDialogOperation.Idle && _dialogService is not null && SelectedModelHasNoWorkFolder;
+    public bool CanRenameSelectedModel => Operation == RlDialogOperation.Idle && SelectedModelOption is not null && _dialogService is not null && _annotationService is not null;
     public bool ShowEmpty => ModelsState == RlDialogLoadState.Loaded && ModelOptions.Count == 0;
     public bool ShowModelsCaption => ModelsState is RlDialogLoadState.Loading or RlDialogLoadState.Failed;
     public bool ShowBlocksCaption => BlocksState != RlDialogLoadState.Loaded;
     public bool HasStatus => !string.IsNullOrEmpty(StatusMessage);
     public string ModelsDisplay => RlUiDisplay.LoadCaption(ModelsState, ModelOptions.Count, _localization);
     public string BlocksDisplay => RlUiDisplay.LoadCaption(BlocksState, BlockOptions.Count, _localization);
-    public string SelectedModelDisplay => SelectedModelOption is { } option ? RlUiDisplay.Generation(option.Generation, _localization) : "";
+    public string SelectedModelDisplay => SelectedModelOption is { } option
+        ? RlUiDisplay.Generation(option.Generation, _localization, _annotationService?.ResolveDisplayName(new ModelMetadataKey(ModelArtifactKind.ReinforcementLearning, option.Generation.ModelId), string.Empty))
+        : "";
     public bool DecisionEditorValid => !_invalidEditors.Contains(DecisionField);
 
     public bool CanShowOnChart => Operation == RlDialogOperation.Idle && ModelsState == RlDialogLoadState.Loaded
@@ -79,9 +84,11 @@ public sealed partial class RlPlaybackViewModel : ViewModelBase, IDisposable
         && Decision >= 0 && Decision <= MaximumDecision && DecisionEditorValid && Free?.IsBusy != true;
 
     public RlPlaybackViewModel(IRlModelGenerationRegistry registry, RlDialogDataService data, IRlReplayTarget target,
-        ILocalizationService localization, IDispatcherService dispatcher, RlFreeReplayViewModel? free = null, IDialogService? dialogService = null)
+        ILocalizationService localization, IDispatcherService dispatcher, RlFreeReplayViewModel? free = null, IDialogService? dialogService = null,
+        IModelMetadataAnnotationService? annotationService = null)
     {
         _registry = registry; _data = data; _target = target; _localization = localization; _dispatcher = dispatcher; _dialogService = dialogService;
+        _annotationService = annotationService;
         Free = free;
         if (free is not null)
         {
@@ -133,6 +140,39 @@ public sealed partial class RlPlaybackViewModel : ViewModelBase, IDisposable
         string message = StatusMessage;
         await RefreshAsync();
         if (!_disposed) StatusMessage = message;
+    }
+
+    /// <summary>Prompts to rename the selected model: changes custom display name and persists via annotation service.</summary>
+    [RelayCommand(CanExecute = nameof(CanRenameSelectedModel))]
+    private async Task RenameSelectedModelAsync()
+    {
+        if (!CanRenameSelectedModel || SelectedModelOption is not { } option || _dialogService is null || _annotationService is null || _disposed) return;
+        var key = new ModelMetadataKey(ModelArtifactKind.ReinforcementLearning, option.Generation.ModelId);
+        var (changed, statusMessage) = await ModelRenameDialogHelper.PromptAndRenameAsync(
+            _dialogService,
+            _annotationService,
+            key,
+            _localization.GetString).ConfigureAwait(true);
+
+        if (_disposed) return;
+
+        if (statusMessage is not null)
+        {
+            StatusMessage = statusMessage;
+        }
+
+        if (changed)
+        {
+            string? selectedId = SelectedModelOption?.Generation.ModelId;
+            _rebuilding = true;
+            try
+            {
+                RebuildModelOptions();
+                SelectedModelOption = ModelOptions.FirstOrDefault(o => o.Generation.ModelId == selectedId);
+            }
+            finally { _rebuilding = false; }
+            NotifyState();
+        }
     }
 
     [RelayCommand]
@@ -390,7 +430,11 @@ public sealed partial class RlPlaybackViewModel : ViewModelBase, IDisposable
     {
         ModelOptions.Clear();
         foreach (var generation in _generations)
-            ModelOptions.Add(new RlModelOption(generation, RlUiDisplay.ModelLabel(generation, _modelsWithoutWorkFolder.Contains(generation.ModelId), _localization)));
+        {
+            string? customName = _annotationService?.ResolveDisplayName(
+                new ModelMetadataKey(ModelArtifactKind.ReinforcementLearning, generation.ModelId), string.Empty);
+            ModelOptions.Add(new RlModelOption(generation, RlUiDisplay.ModelLabel(generation, _modelsWithoutWorkFolder.Contains(generation.ModelId), _localization, customName)));
+        }
     }
 
     private void RebuildBlockOptions()
@@ -445,6 +489,7 @@ public sealed partial class RlPlaybackViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(HasSelectedModel));
         OnPropertyChanged(nameof(SelectedModelHasNoWorkFolder));
         OnPropertyChanged(nameof(CanRemoveSelectedModel));
+        OnPropertyChanged(nameof(CanRenameSelectedModel));
         OnPropertyChanged(nameof(ShowEmpty));
         OnPropertyChanged(nameof(ShowModelsCaption));
         OnPropertyChanged(nameof(ShowBlocksCaption));
@@ -454,6 +499,7 @@ public sealed partial class RlPlaybackViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(DecisionEditorValid));
         ShowOnChartCommand.NotifyCanExecuteChanged();
         RemoveSelectedModelCommand.NotifyCanExecuteChanged();
+        RenameSelectedModelCommand.NotifyCanExecuteChanged();
         ResetToDefaultCommand.NotifyCanExecuteChanged();
     }
 

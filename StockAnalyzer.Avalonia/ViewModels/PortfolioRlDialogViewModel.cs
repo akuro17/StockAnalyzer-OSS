@@ -9,11 +9,14 @@ using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using StockAnalyzer.Avalonia.Services;
+using StockAnalyzer.Avalonia.ViewModels.Dialogs;
 using StockAnalyzer.Avalonia.ViewModels.TickerList;
 using StockAnalyzer.Core.Interfaces;
 using StockAnalyzer.Core.Models.Backtest.Engine;
 using StockAnalyzer.Core.Models.ReinforcementLearning;
 using StockAnalyzer.Core.Models.Settings;
+using StockAnalyzer.Core.Models.Training;
+using StockAnalyzer.Core.Services;
 using StockAnalyzer.Core.Services.Backtest.Configuration;
 using StockAnalyzer.Core.Services.ReinforcementLearning;
 using StockAnalyzer.Core.Services.StoredPeriod;
@@ -114,6 +117,8 @@ public sealed partial class PortfolioRlDialogViewModel : ObservableObject, IDisp
     private RlSourceResolution? _resolution;
     private RlPanelStartDecision? _decision;
     private readonly TimeProvider _clock;
+    private readonly IDialogService? _dialogService;
+    private readonly IModelMetadataAnnotationService? _annotationService;
     private bool _applyingSuggestion;
     /// <summary>The optional stored-period source of the end date; without it the end stays the last confirmed day of the calendar.</summary>
     private readonly IStoredPeriodAdvisor? _periodAdvisor;
@@ -200,11 +205,13 @@ public sealed partial class PortfolioRlDialogViewModel : ObservableObject, IDisp
     /// <param name="transfer">The stored-model seam; null hides every transfer control and the dialog only trains from scratch.</param>
     public PortfolioRlDialogViewModel(IRlPortfolioService service, ITickerSourceResolver resolver, ITickerStateStore store,
         IBacktestDefaultSettingsManager defaults, ILocalizationService localization, TimeProvider? clock = null, IRlPortfolioTransferService? transfer = null,
-        IStoredPeriodAdvisor? periodAdvisor = null)
+        IStoredPeriodAdvisor? periodAdvisor = null, IDialogService? dialogService = null, IModelMetadataAnnotationService? annotationService = null)
     {
         _transfer = transfer;
         _periodAdvisor = periodAdvisor;
         _clock = clock ?? TimeProvider.System;
+        _dialogService = dialogService;
+        _annotationService = annotationService;
         _service = service ?? throw new ArgumentNullException(nameof(service));
         _resolver = resolver ?? throw new ArgumentNullException(nameof(resolver));
         _store = store ?? throw new ArgumentNullException(nameof(store));
@@ -245,6 +252,7 @@ public sealed partial class PortfolioRlDialogViewModel : ObservableObject, IDisp
     public bool ShowFreeze => TransferActive && RunKind == PortfolioRunKind.FineTune;
     public bool NoBaseRuns => TransferActive && BaseRuns.Count == 0;
     public bool BaseSelectionEditable => Editable && TransferActive;
+    public bool CanRenameBaseRun => BaseSelectionEditable && SelectedBaseRun is not null && _dialogService is not null && _annotationService is not null;
     public bool IsScratchRun { get => RunKind == PortfolioRunKind.Scratch; set { if (value) RunKind = PortfolioRunKind.Scratch; } }
     public bool IsFineTuneRun { get => RunKind == PortfolioRunKind.FineTune; set { if (value) RunKind = PortfolioRunKind.FineTune; } }
     public bool IsEvaluateBaseRun { get => RunKind == PortfolioRunKind.EvaluateBase; set { if (value) RunKind = PortfolioRunKind.EvaluateBase; } }
@@ -403,7 +411,11 @@ public sealed partial class PortfolioRlDialogViewModel : ObservableObject, IDisp
         var keepB = SelectedRunB?.RunId;
         ComparableRuns.Clear();
         foreach (var run in _runInfos.OrderByDescending(r => r.CreatedUtc).ThenBy(r => r.RunId))
-            ComparableRuns.Add(new PortfolioComparableRunRow(run.RunId, PortfolioRlPresentation.ComparableRun(run, _localization), run.UniverseSha256, run.CalendarSha256));
+        {
+            string? customName = _annotationService?.ResolveDisplayName(
+                new ModelMetadataKey(ModelArtifactKind.PortfolioReinforcementLearning, run.RunId.ToString("N")), string.Empty);
+            ComparableRuns.Add(new PortfolioComparableRunRow(run.RunId, PortfolioRlPresentation.ComparableRun(run, _localization, customName), run.UniverseSha256, run.CalendarSha256));
+        }
         SelectedRunA = keepA is { } a ? ComparableRuns.FirstOrDefault(r => r.RunId == a) : null;       // a changed selection rebuilds the reference list itself
         RenderReferenceRuns();
         SelectedRunB = keepB is { } b ? ReferenceRuns.FirstOrDefault(r => r.RunId == b) : null;
@@ -442,8 +454,9 @@ public sealed partial class PortfolioRlDialogViewModel : ObservableObject, IDisp
     private void NotifyTransfer()
     {
         OnPropertyChanged(nameof(ShowBaseSelection)); OnPropertyChanged(nameof(ShowFreeze)); OnPropertyChanged(nameof(NoBaseRuns));
-        OnPropertyChanged(nameof(BaseSelectionEditable)); OnPropertyChanged(nameof(AdmissionRejected)); OnPropertyChanged(nameof(AdmissionMessage));
+        OnPropertyChanged(nameof(BaseSelectionEditable)); OnPropertyChanged(nameof(CanRenameBaseRun)); OnPropertyChanged(nameof(AdmissionRejected)); OnPropertyChanged(nameof(AdmissionMessage));
         OnPropertyChanged(nameof(IsScratchRun)); OnPropertyChanged(nameof(IsFineTuneRun)); OnPropertyChanged(nameof(IsEvaluateBaseRun));
+        RenameSelectedBaseRunCommand.NotifyCanExecuteChanged();
     }
 
     /// <summary>
@@ -508,9 +521,41 @@ public sealed partial class PortfolioRlDialogViewModel : ObservableObject, IDisp
     {
         var keep = SelectedBaseRun?.RunId;
         BaseRuns.Clear();
-        foreach (var info in _baseInfos) BaseRuns.Add(new PortfolioBaseRunRow(info.RunId, PortfolioRlPresentation.BaseRun(info, _localization)));
+        foreach (var info in _baseInfos)
+        {
+            string? customName = _annotationService?.ResolveDisplayName(
+                new ModelMetadataKey(ModelArtifactKind.PortfolioReinforcementLearning, info.RunId.ToString("N")), string.Empty);
+            BaseRuns.Add(new PortfolioBaseRunRow(info.RunId, PortfolioRlPresentation.BaseRun(info, _localization, customName)));
+        }
         SelectedBaseRun = keep is { } id ? BaseRuns.FirstOrDefault(r => r.RunId == id) : null;     // a changed selection re-enters the admission itself
         NotifyTransfer();
+    }
+
+    /// <summary>Renames the selected base run: updates custom display name and persists via annotation service.</summary>
+    [RelayCommand(CanExecute = nameof(CanRenameBaseRun))]
+    private async Task RenameSelectedBaseRunAsync()
+    {
+        if (!CanRenameBaseRun || SelectedBaseRun is not { } baseRun || _dialogService is null || _annotationService is null || _disposed) return;
+        var key = new ModelMetadataKey(ModelArtifactKind.PortfolioReinforcementLearning, baseRun.RunId.ToString("N"));
+        var (changed, statusMessage) = await ModelRenameDialogHelper.PromptAndRenameAsync(
+            _dialogService,
+            _annotationService,
+            key,
+            _localization.GetString).ConfigureAwait(true);
+
+        if (_disposed) return;
+
+        if (statusMessage is not null)
+        {
+            Message = statusMessage;
+        }
+
+        if (changed)
+        {
+            RenderBaseRuns();
+            RenderComparableRuns();
+            NotifyTransfer();
+        }
     }
 
     // ---- partition of the short-history evaluation ----
@@ -888,8 +933,8 @@ public sealed partial class PortfolioRlDialogViewModel : ObservableObject, IDisp
         OnPropertyChanged(nameof(CanRecalculateStart)); RecalculateStartCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(CanStart)); OnPropertyChanged(nameof(Editable)); OnPropertyChanged(nameof(HasUnavailableSymbols)); OnPropertyChanged(nameof(HasSymbols));
         OnPropertyChanged(nameof(StartBlockerDisplay)); OnPropertyChanged(nameof(HasStartBlocker));
-        OnPropertyChanged(nameof(PartitionEditable)); OnPropertyChanged(nameof(BaseSelectionEditable)); OnPropertyChanged(nameof(HoldoutPercentEditable));
-        StartCommand.NotifyCanExecuteChanged(); CancelCommand.NotifyCanExecuteChanged();
+        OnPropertyChanged(nameof(PartitionEditable)); OnPropertyChanged(nameof(BaseSelectionEditable)); OnPropertyChanged(nameof(CanRenameBaseRun)); OnPropertyChanged(nameof(HoldoutPercentEditable));
+        StartCommand.NotifyCanExecuteChanged(); CancelCommand.NotifyCanExecuteChanged(); RenameSelectedBaseRunCommand.NotifyCanExecuteChanged();
     }
 
     private void LocaleChanged(object? sender, EventArgs e)

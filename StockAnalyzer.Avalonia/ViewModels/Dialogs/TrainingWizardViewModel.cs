@@ -128,6 +128,7 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
     private readonly IMessenger _messenger = WeakReferenceMessenger.Default;
     private readonly ITrainingOrchestrator? _orchestrator;
     private readonly IModelDeploymentService? _modelDeploymentService;
+    private readonly IModelMetadataAnnotationService? _modelMetadataAnnotationService;
     private readonly IModelGenerationRegistry? _modelRegistry;
     private readonly IEnsembleSettingsManager? _ensembleSettings;
     private readonly IExperimentLogService? _experimentLogService;
@@ -675,6 +676,10 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
     [NotifyPropertyChangedFor(nameof(HasRegisteredEnsemble))]
     private EnsembleRegistration? _registeredEnsemble;
 
+    /// <summary>Optional user-defined display name for the model when deployed.</summary>
+    [ObservableProperty]
+    private string _modelDisplayName = string.Empty;
+
     public bool HasRegisteredEnsemble => RegisteredEnsemble is not null;
 
     partial void OnLastResultChanged(TrainingRunResult? value) => RegisteredEnsemble = null;
@@ -708,9 +713,11 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
         ITickerStateStore? tickerStore = null, IMessenger? messenger = null,
         IModelGenerationRegistry? modelRegistry = null,
         IStoredPeriodAdvisor? periodAdvisor = null, TimeProvider? clock = null, ITrainingResourceSettings? resourceSettings = null,
-        IStockAnalyzerSettings? settings = null)
+        IStockAnalyzerSettings? settings = null,
+        IModelMetadataAnnotationService? modelMetadataAnnotationService = null)
     {
         _settings = settings;
+        _modelMetadataAnnotationService = modelMetadataAnnotationService;
         ConfigurePeriod(periodAdvisor, clock);
         ConfigureSufficiency(resourceSettings);
         _messenger = messenger ?? WeakReferenceMessenger.Default;
@@ -1546,6 +1553,22 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
             }
 
             var generation = await _modelDeploymentService.RegisterGenerationAsync(onnxPath, result.MetricsArtifactPath).ConfigureAwait(true);
+            if (!string.IsNullOrWhiteSpace(ModelDisplayName) && _modelMetadataAnnotationService is not null)
+            {
+                try
+                {
+                    await _modelMetadataAnnotationService.SetCustomDisplayNameAsync(
+                        new StockAnalyzer.Core.Models.Training.ModelMetadataKey(
+                            StockAnalyzer.Core.Models.Training.ModelArtifactKind.Prediction,
+                            generation.ModelId),
+                        ModelDisplayName.Trim(),
+                        reason: "Initial training name").ConfigureAwait(true);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to persist initial display name for model {ModelId}", generation.ModelId);
+                }
+            }
             var evaluation = ReadEvaluation(result.MetricsArtifactPath);   // the metrics file is read once for the lines below
             _messenger.Send(new PredictionConfigurationChangedMessage()); // the registration activates the generation when it may
             // Without the registry the wizard cannot tell whether the generation became active, so it states no reason for a missing activation (the application always

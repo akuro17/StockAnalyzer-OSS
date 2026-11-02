@@ -59,7 +59,11 @@ Health checking and audit database settings (`PredictionMonitoringSettings`).
 - **`HealthEvaluationIntervalSeconds`** (`integer`, default `60`): Model drift and health re-evaluation cadence.
 - **`AttestedManifestMaxBytes`** (`integer`, default `67108864` [64 MiB]): Maximum allowed size for attested evidence manifests.
 - **`AttestedWorkingCopyRetentionMinutes`** (`integer`, default `60`): Retention lifespan for working verification copies.
-- **`AttestedSources`** (`array of string`): Trusted external evidence source URLs or identifiers.
+- **`AttestedSources`** (`array of AttestedSourceEnrollment`): Enrolled forecast symbols for producer-attested verification streams (empty `[]` disables attested monitoring). Each element contains:
+  - `Symbol` (`string`, required): Forecast ticker symbol (e.g. `"AAPL"`).
+  - `Timeframe` (`string (Enum)`: `"Daily"`, `"Weekly"`, `"Monthly"`, `"H1"`, `"H4"`): Evaluation interval.
+  - `ProviderId` (`string`, required): Identifier of external forecast provider.
+  - `InstrumentId` (`string`, required): Producer instrument ID (matching `<InstrumentId>.attest.json` sidecar).
 
 ### `Python`
 Python IPC and virtual environment configuration (`PythonSettings`).
@@ -175,14 +179,24 @@ Reinforcement learning multi-asset portfolio training defaults (`RlPortfolioSett
 - **`MaxSymbols`** (`integer`, default `50`, max `100`): Maximum concurrent symbols in portfolio environment.
 - **`HoldoutPercent`** (`integer`, default `25`, range `[10, 50]`): Out-of-sample evaluation split.
 - **`MaxWeightPercent`** (`integer`, default `100`, range `[1, 100]`): Maximum allocation per asset.
-- **`PartitionMode`** (`string`, enum: `"Ratio"`, `"FixedBars"`): Dataset splitting strategy.
+- **`PartitionMode`** (`string`, enum: `"Ratio"` [0], `"BlockCount"` [1]): Dataset splitting strategy. `"Ratio"` uses 3:1:1 calendar split; `"BlockCount"` aligns contiguous blocks back from recent history.
 - **`MinimumTrainBars`** (`integer`, default `192`): Minimum bars required for training segment.
 - **`MinimumValidationBars`** (`integer`, default `192`): Minimum bars required for validation segment.
 - **`MinimumTestBars`** (`integer`, default `192`): Minimum bars required for testing segment.
 
 ---
 
-## 3. Complete Reference Example
+## 3. Cross-Field Constraints & Validation Invariants
+
+When creating or modifying `appsettings.json`, the configuration validator checks the following relational constraints at startup:
+- **`PythonPackageCheck`**: `UpdateCheckRequestTimeoutSeconds` MUST be strictly less than `UpdateCheckTimeoutSeconds` (`UpdateCheckRequestTimeoutSeconds < UpdateCheckTimeoutSeconds`).
+- **`Backtest`**: `MaxConditionTreeNodes` MUST be greater than or equal to `MaxConditionTreeDepth` (`MaxConditionTreeNodes >= MaxConditionTreeDepth`).
+- **`Screener`**: `MaxFilterTreeNodes` MUST be greater than or equal to `MaxFilterTreeDepth` (`MaxFilterTreeNodes >= MaxFilterTreeDepth`).
+- **`PatternRecognition`**: `MaxWindow` MUST be strictly greater than `MinWindow` (`MaxWindow > MinWindow`), and `DefaultThreshold` MUST satisfy $0.0 < \text{DefaultThreshold} \le 1.0$.
+
+---
+
+## 4. Complete Reference Example
 
 ```json
 {
@@ -227,7 +241,14 @@ Reinforcement learning multi-asset portfolio training defaults (`RlPortfolioSett
     "HealthEvaluationIntervalSeconds": 60,
     "AttestedManifestMaxBytes": 67108864,
     "AttestedWorkingCopyRetentionMinutes": 60,
-    "AttestedSources": []
+    "AttestedSources": [
+      {
+        "Symbol": "AAPL",
+        "Timeframe": "Daily",
+        "ProviderId": "provider_prod_1",
+        "InstrumentId": "NASDAQ_AAPL"
+      }
+    ]
   },
   "Python": {
     "PythonPath": null,

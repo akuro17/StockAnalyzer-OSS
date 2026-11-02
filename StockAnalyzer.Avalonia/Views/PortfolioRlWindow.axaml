@@ -394,13 +394,19 @@
               </StackPanel>
               <StackPanel Spacing="{x:Static ui:PrlUiLayout.LabelGap}" IsVisible="{Binding ShowBaseSelection}">
                 <TextBlock Classes="label" Text="{l:Localize Prl.Transfer.Base}" />
-                <ComboBox ItemsSource="{Binding BaseRuns}" SelectedItem="{Binding SelectedBaseRun, Mode=TwoWay}" HorizontalAlignment="Stretch"
-                          FontSize="{DynamicResource BaseFontSize}" IsEnabled="{Binding BaseSelectionEditable}"
-                          AutomationProperties.AutomationId="{x:Static ui:PrlUiConstants.BaseRun}" AutomationProperties.Name="{l:Localize Prl.Transfer.Base}">
-                  <ComboBox.ItemTemplate>
-                    <DataTemplate x:DataType="vm:PortfolioBaseRunRow"><TextBlock Classes="value" Text="{Binding Text}" /></DataTemplate>
-                  </ComboBox.ItemTemplate>
-                </ComboBox>
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                  <ComboBox Grid.Column="0" ItemsSource="{Binding BaseRuns}" SelectedItem="{Binding SelectedBaseRun, Mode=TwoWay}" HorizontalAlignment="Stretch"
+                            FontSize="{DynamicResource BaseFontSize}" IsEnabled="{Binding BaseSelectionEditable}"
+                            AutomationProperties.AutomationId="{x:Static ui:PrlUiConstants.BaseRun}" AutomationProperties.Name="{l:Localize Prl.Transfer.Base}">
+                    <ComboBox.ItemTemplate>
+                      <DataTemplate x:DataType="vm:PortfolioBaseRunRow"><TextBlock Classes="value" Text="{Binding Text}" /></DataTemplate>
+                    </ComboBox.ItemTemplate>
+                  </ComboBox>
+                  <Button Grid.Column="1" Classes="action" Content="{l:Localize Settings_ModelGenerations_Rename}"
+                          Command="{Binding RenameSelectedBaseRunCommand}"
+                          IsEnabled="{Binding CanRenameBaseRun}"
+                          VerticalAlignment="Center" />
+                </Grid>
                 <TextBlock Classes="diagnostic" Text="{l:Localize Prl.Transfer.NoBases}" IsVisible="{Binding NoBaseRuns}" />
                 <CheckBox IsChecked="{Binding FreezeEncoder}" IsVisible="{Binding ShowFreeze}"
                           AutomationProperties.AutomationId="{x:Static ui:PrlUiConstants.FreezeEncoder}" AutomationProperties.Name="{l:Localize Prl.Transfer.Freeze}">

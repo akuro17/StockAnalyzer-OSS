@@ -467,11 +467,18 @@
                   <TextBlock Classes="value" Text="{Binding ModelsDisplay}"
                              IsVisible="{Binding !HasModels}"
                              VerticalAlignment="Center" Height="36" />
-                  <Button Classes="action" Content="{l:Localize Rl.Ui.RemoveModel}"
-                          Command="{Binding RemoveSelectedModelCommand}"
-                          IsVisible="{Binding SelectedModelHasNoWorkFolder}"
-                          AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.RemoveModel}"
-                          HorizontalAlignment="Left" />
+                  <StackPanel Orientation="Horizontal" Spacing="4">
+                    <Button Classes="action" Content="{l:Localize Settings_ModelGenerations_Rename}"
+                            Command="{Binding RenameSelectedModelCommand}"
+                            IsEnabled="{Binding CanRenameSelectedModel}"
+                            IsVisible="{Binding HasSelectedModel}"
+                            HorizontalAlignment="Left" />
+                    <Button Classes="action" Content="{l:Localize Rl.Ui.RemoveModel}"
+                            Command="{Binding RemoveSelectedModelCommand}"
+                            IsVisible="{Binding SelectedModelHasNoWorkFolder}"
+                            AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.RemoveModel}"
+                            HorizontalAlignment="Left" />
+                  </StackPanel>
                 </StackPanel>
 
                 <!-- Col 1: Active Model Field Unit -->

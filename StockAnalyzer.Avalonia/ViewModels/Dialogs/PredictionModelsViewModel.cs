@@ -26,6 +26,7 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
         private readonly IModelGenerationRegistry? _modelRegistry;
         private readonly IMessenger _messenger = WeakReferenceMessenger.Default;
         private readonly IDialogService? _dialogService;
+        private readonly IModelMetadataAnnotationService? _annotationService;
 
         private bool _sendingConfigurationChange;
 
@@ -62,6 +63,7 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
         private string? _generationStatusMessage;
 
         [ObservableProperty]
+        [NotifyCanExecuteChangedFor(nameof(RenameSelectedGenerationCommand))]
         private bool _isBusy;
 
         public ObservableCollection<ModelGenerationSummary> Generations { get; } = new();
@@ -69,6 +71,7 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
             ? LocalizationManager.Instance["Settings_ModelGenerations_LegacyUnverified"] : null;
 
         [ObservableProperty]
+        [NotifyCanExecuteChangedFor(nameof(RenameSelectedGenerationCommand))]
         private ModelGenerationSummary? _selectedGeneration;
 
         [ObservableProperty]
@@ -106,12 +109,14 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
             ICurrentPredictionHealthService? currentHealth = null,
             IModelExplainabilityService? explainabilityService = null, IMessenger? messenger = null,
             IDialogService? dialogService = null,
-            IPredictionRunTarget? predictionRunTarget = null, IStockAnalyzerSettings? settings = null)
+            IPredictionRunTarget? predictionRunTarget = null, IStockAnalyzerSettings? settings = null,
+            IModelMetadataAnnotationService? annotationService = null)
         {
             _predictionRunTarget = predictionRunTarget;
             _settings = settings;
             _messenger = messenger ?? WeakReferenceMessenger.Default;
             _dialogService = dialogService;
+            _annotationService = annotationService;
             _predictionSettingsManager = predictionSettingsManager;
             _predictionSettingsManager.PropertyChanged += OnPredictionSettingsChanged;
             Explainability = new ModelExplainabilityViewModel(explainabilityService, analysisDispatcher, logger);
@@ -416,6 +421,44 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
             {
                 await _predictionRunTarget.RunAsync(default);
                 return await _modelRegistry!.RemoveAsync(modelId);
+            }
+        }
+
+        private bool CanRenameSelectedGeneration() => SelectedGeneration is not null && !IsBusy && _dialogService is not null && _annotationService is not null;
+
+        /// <summary>
+        /// Renames the selected model: prompts the user via dialog.
+        /// Cancellation (null) leaves state untouched.
+        /// Empty/whitespace clears the custom display name.
+        /// Valid input sets the custom display name and persists it.
+        /// </summary>
+        [RelayCommand(CanExecute = nameof(CanRenameSelectedGeneration))]
+        private async Task RenameSelectedGenerationAsync()
+        {
+            if (SelectedGeneration is not { } selected || IsBusy || _dialogService is null || _annotationService is null) return;
+
+            IsBusy = true;
+            try
+            {
+                var key = new ModelMetadataKey(ModelArtifactKind.Prediction, selected.ModelId);
+                var (changed, statusMessage) = await ModelRenameDialogHelper.PromptAndRenameAsync(
+                    _dialogService,
+                    _annotationService,
+                    key).ConfigureAwait(true);
+
+                if (statusMessage is not null)
+                {
+                    GenerationStatusMessage = statusMessage;
+                }
+
+                if (changed)
+                {
+                    RebuildGenerationRows();
+                }
+            }
+            finally
+            {
+                IsBusy = false;
             }
         }
 

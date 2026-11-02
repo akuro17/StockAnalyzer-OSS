@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using StockAnalyzer.Avalonia.Services;
 using StockAnalyzer.Core.Models.ReinforcementLearning;
+using StockAnalyzer.Core.Models.Training;
 using StockAnalyzer.Core.Services;
 using StockAnalyzer.Core.Services.ReinforcementLearning;
 
@@ -169,7 +170,9 @@ public sealed partial class RlTrainingDialogViewModel
     public bool HasActiveId => ModelsState == RlDialogLoadState.Loaded && ActiveId is not null;
     public bool ActiveUnavailable => SelectedGeneration?.Target == RlContinuousContract.Target || (SelectedGeneration is null && UseContinuousPolicy)
         ? _continuousUnavailable : _directionUnavailable;
-    public string SelectedModelDisplay => SelectedGeneration is { } g ? RlUiDisplay.Generation(g, _localization) : "";
+    public string SelectedModelDisplay => SelectedGeneration is { } g
+        ? RlUiDisplay.Generation(g, _localization, _modelMetadataAnnotationService?.ResolveDisplayName(new ModelMetadataKey(ModelArtifactKind.ReinforcementLearning, g.ModelId), string.Empty))
+        : "";
     private string LoadCaption(RlDialogLoadState state, int count) => RlUiDisplay.LoadCaption(state, count, _localization);
     private bool ValidCosts() { try { _ = Costs(); return true; } catch (Exception e) when (e is ArgumentException or OverflowException) { return false; } }
     private bool ValidPolicy() { try { DraftPolicy().Validate(); return true; } catch (Exception e) when (e is ArgumentException or OverflowException) { return false; } }
@@ -223,6 +226,7 @@ public sealed partial class RlTrainingDialogViewModel
             ActivateCommand.NotifyCanExecuteChanged(); CancelCommand.NotifyCanExecuteChanged();
             InspectRecoveryCommand.NotifyCanExecuteChanged(); InspectArtifactsCommand.NotifyCanExecuteChanged(); InspectCheckpointsCommand.NotifyCanExecuteChanged();
             NotifyCheckpointCommands(); CleanupArtifactsCommand.NotifyCanExecuteChanged(); RecoverPointerCommand.NotifyCanExecuteChanged(); RemoveSelectedModelCommand.NotifyCanExecuteChanged();
+            RenameSelectedModelCommand.NotifyCanExecuteChanged();
         }
         finally { _notifyingUi = false; }
     }
@@ -241,7 +245,8 @@ public sealed partial class RlTrainingDialogViewModel
         nameof(CanConfirmResume), nameof(CanConfirmAbandon), nameof(ResumeConfirmTooltip), nameof(AbandonConfirmTooltip),
         nameof(InspectCheckpointsTooltip), nameof(RecoveryStatusBadgeDisplay),
         nameof(InspectRecoveryTooltip), nameof(RecoverPointerTooltip),
-        nameof(HasGenerationScatterPoints), nameof(GenerationComparisonSummary), nameof(SelectedModelHasNoWorkFolder), nameof(CanRemoveSelectedModel)
+        nameof(HasGenerationScatterPoints), nameof(GenerationComparisonSummary), nameof(SelectedModelHasNoWorkFolder), nameof(CanRemoveSelectedModel),
+        nameof(CanRenameSelectedModel)
     };
     // The daily frame reuses its existing localized training-timeframe name; a contract value without one is shown as its identifier.
     private string FixedTimeframeDisplay()
@@ -279,7 +284,9 @@ public sealed partial class RlTrainingDialogViewModel
             ModelOptions.Clear(); DirectionOptions.Clear();
             foreach (var generation in Generations)
             {
-                var option = new RlModelOption(generation, RlUiDisplay.ModelLabel(generation, _modelsWithoutWorkFolder.Contains(generation.ModelId), _localization));
+                string? customName = _modelMetadataAnnotationService?.ResolveDisplayName(
+                    new ModelMetadataKey(ModelArtifactKind.ReinforcementLearning, generation.ModelId), string.Empty);
+                var option = new RlModelOption(generation, RlUiDisplay.ModelLabel(generation, _modelsWithoutWorkFolder.Contains(generation.ModelId), _localization, customName));
                 ModelOptions.Add(option);
                 if (generation.Target == RlFiles.Target) DirectionOptions.Add(option);
             }

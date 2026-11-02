@@ -39,13 +39,20 @@ public static class RlUiDisplay
         RlDialogLoadState.Loaded => "Rl.Checkpoint.Verified", _ => "Rl.Ui.Load.Unloaded"
     });
     /// <summary>Summary of one stored generation: target and symbol, identifier, validation and final mean return.</summary>
-    public static string Generation(RlGeneration g, ILocalizationService text) => Target(g.Target, text) + " · " + g.Symbol + Environment.NewLine
-        + text.GetString("Rl.Ui.Field.Identifier") + ": " + g.ModelId + Environment.NewLine
-        + text.GetString("Rl.Ui.Field.ValidationMeanReturn") + ": " + g.ValidationReturn.ToString("P" + RlContract.DisplayDecimals, System.Globalization.CultureInfo.CurrentCulture) + Environment.NewLine
-        + text.GetString("Rl.Ui.Field.FinalMeanReturn") + ": " + g.OosReturn.ToString("P" + RlContract.DisplayDecimals, System.Globalization.CultureInfo.CurrentCulture);
+    public static string Generation(RlGeneration g, ILocalizationService text, string? customDisplayName = null)
+    {
+        string prefix = !string.IsNullOrWhiteSpace(customDisplayName) ? $"[{customDisplayName.Trim()}] " : string.Empty;
+        return prefix + Target(g.Target, text) + " · " + g.Symbol + Environment.NewLine
+            + text.GetString("Rl.Ui.Field.Identifier") + ": " + g.ModelId + Environment.NewLine
+            + text.GetString("Rl.Ui.Field.ValidationMeanReturn") + ": " + g.ValidationReturn.ToString("P" + RlContract.DisplayDecimals, System.Globalization.CultureInfo.CurrentCulture) + Environment.NewLine
+            + text.GetString("Rl.Ui.Field.FinalMeanReturn") + ": " + g.OosReturn.ToString("P" + RlContract.DisplayDecimals, System.Globalization.CultureInfo.CurrentCulture);
+    }
     /// <summary>List label of one stored model: target, symbol, identifier, and a marker when its work folder is gone.</summary>
-    public static string ModelLabel(RlGeneration g, bool withoutWorkFolder, ILocalizationService text)
-        => Target(g.Target, text) + " · " + g.Symbol + " · " + g.ModelId + (withoutWorkFolder ? " · " + text.GetString("Rl.Ui.NoWorkFolder") : "");
+    public static string ModelLabel(RlGeneration g, bool withoutWorkFolder, ILocalizationService text, string? customDisplayName = null)
+    {
+        string prefix = !string.IsNullOrWhiteSpace(customDisplayName) ? $"[{customDisplayName.Trim()}] " : string.Empty;
+        return prefix + Target(g.Target, text) + " · " + g.Symbol + " · " + g.ModelId + (withoutWorkFolder ? " · " + text.GetString("Rl.Ui.NoWorkFolder") : "");
+    }
     /// <summary>Confirmation text of the model removal; says so when the model is the active one.</summary>
     public static string RemoveModelQuestion(string modelId, bool isActive, ILocalizationService text)
     {
