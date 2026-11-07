@@ -283,7 +283,7 @@
                         <PathIcon Data="M120-240v-80h720v80H120Zm0-200v-80h720v80H120Zm0-200v-80h720v80H120Z" Width="{DynamicResource Note.ActionIconButtonSize}" Height="{DynamicResource Note.ActionIconButtonSize}"/>
                         <Button.Flyout>
                             <MenuFlyout>
-                                <MenuItem Header="{l:Localize Note_EditButton}" Command="{Binding EditCommand}"/>
+                                <MenuItem Header="{l:Localize Note_EditButton}" Command="{Binding EditCommand}" ToolTip.Tip="{Binding StorageDisabledToolTip}" ToolTip.ShowOnDisabled="True"/>
                                 <MenuItem Header="{Binding PinButtonLabel}" Command="{Binding TogglePinnedCommand}"/>
                                 <MenuItem Header="{l:Localize Note_DeleteButton}" Command="{Binding DeleteCommand}"/>
                             </MenuFlyout>

@@ -76,12 +76,13 @@ public static class ScatterMetricEligibility
     /// <summary>
     /// True when the metric <paramref name="side"/> can be read on another time frame than Day: an Indicator (the Price items included) is computed from
     /// the bars of its time frame, and so is a Column that names a bar value (Open, High, Low, Close, Volume, Change, Change %). A fundamental Column belongs
-    /// to the ticker, not to a bar, so it stays on Day.
+    /// to the ticker, not to a bar, so it stays on Day. An Indicator that reads the daily bars of a comparison symbol
+    /// (<see cref="ScreenerComparisonSymbols.NeedsDailyComparisonBars"/>) stays on Day too; clearing an optional comparison symbol (Correlation, CrossCorrelation) frees the choice again.
     /// </summary>
     public static bool AllowsTimeFrameChoice(ScreenerIndicatorSideConfig? side)
         => side?.CategoryType switch
         {
-            ScreenerItemCategoryType.Indicator => true,
+            ScreenerItemCategoryType.Indicator => !ScreenerComparisonSymbols.NeedsDailyComparisonBars(side),
             ScreenerItemCategoryType.Column => ScreenerValueExtractor.IsCandleValueColumn(side),
             _ => false,
         };

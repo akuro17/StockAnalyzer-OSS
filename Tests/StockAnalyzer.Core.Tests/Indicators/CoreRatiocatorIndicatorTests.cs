@@ -145,11 +145,13 @@ public class CoreRatiocatorIndicatorTests
         var primaryCloses = new decimal[] { 100m, 120m, 150m };
         var primaryCandles = CreateTestCandles(primaryCloses);
 
+        // Dated like the primary bars (CreateTestCandles starts on 2020-01-01): the comparison bars are paired with the primary bars by date.
+        DateTime start = primaryCandles[0].Timestamp;
         var benchmarkCandles = new List<CoreCandleData?>
         {
-            new CoreCandleData(DateTime.Today, 50m, 50m, 50m, 50m, 1000),
+            new CoreCandleData(start, 50m, 50m, 50m, 50m, 1000),
             null,
-            new CoreCandleData(DateTime.Today.AddDays(2), 50m, 50m, 50m, 50m, 1000)
+            new CoreCandleData(start.AddDays(2), 50m, 50m, 50m, 50m, 1000)
         };
 
         var indicator = new CoreRatiocatorIndicator();
@@ -180,14 +182,14 @@ public class CoreRatiocatorIndicatorTests
     }
 
     [Fact]
-    public void Calculate_WithDifferentLengthSeries_AlignsFromEnd()
+    public void Calculate_WithShorterSecondaryThatCoversTheLastDates_PairsByDate()
     {
-        // Primary has 4 bars, secondary has 2 bars -> last 2 bars should align
+        // Primary has 4 bars (2020-01-01 .. 01-04); the secondary has 2 bars dated on the LAST two primary days (01-03, 01-04) -> those two bars pair by date.
         var primaryCloses = new decimal[] { 80m, 90m, 100m, 120m };
         var benchmarkCloses = new decimal[] { 50m, 60m };
 
         var primaryCandles = CreateTestCandles(primaryCloses);
-        var benchmarkCandles = CreateTestCandles(benchmarkCloses);
+        var benchmarkCandles = CreateTestCandles(benchmarkCloses).Select(c => c with { Timestamp = c.Timestamp.AddDays(2) }).ToList();
 
         var indicator = new CoreRatiocatorIndicator();
         indicator.CalculationMode = RatiocatorCalculationMode.RawRatio;

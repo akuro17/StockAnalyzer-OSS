@@ -17,6 +17,9 @@ public static class ModelAnalysisContract
     public const int SchemaVersion = 1;
     public const int RegimeCount = 3;
     public const int VolatilityBars = 20;
+
+    /// <summary>The status of an analysis part (regime, importance) that was fitted and can be used.</summary>
+    public const string AvailableStatus = "available";
     public const int StandardizationDdof = 0;
     public const int Seed = 42;
     public const int Initializations = 10;
@@ -112,7 +115,7 @@ public sealed record ModelAnalysis(int SchemaVersion, string ModelSha256, string
             fitCount = checked(fitCount + fit.SampleCount);
         }
         Require(fitCount == Regime.FitSampleCount && Regime.FitPeriods.Select(p => p.Symbol).Distinct().Count() == Regime.FitPeriods.Length);
-        if (Regime.Status == "available")
+        if (Regime.Status == ModelAnalysisContract.AvailableStatus)
         {
             Require(Regime.FitSampleCount >= Regime.K && FinitePair(Regime.Mean) && FinitePair(Regime.Std)
                 && Regime.Std.All(s => s >= 0) && !Regime.Centroids.IsDefault && Regime.Centroids.Length == Regime.K
@@ -135,17 +138,17 @@ public sealed record ModelAnalysis(int SchemaVersion, string ModelSha256, string
         else Require(Regime.Status == "insufficient_training_observations" && Regime.Mean.IsDefaultOrEmpty
             && Regime.Std.IsDefaultOrEmpty && Regime.Centroids.IsDefaultOrEmpty && Regime.UnscaledCentroids.IsDefaultOrEmpty);
         Require(!Importance.Values.IsDefault && Importance.Values.All(v => v is not null && double.IsFinite(v.Value)));
-        if (Importance.Status == "available")
+        if (Importance.Status == ModelAnalysisContract.AvailableStatus)
             Require(Importance.Values.Select(v => v.Channel).SequenceEqual(BaseChannels));
         else Require(Importance.Values.IsEmpty);
         if (Importance.Method == "split_gain")
             Require(metadata.GetValueOrDefault("target_type") == "classification"
-                && Importance.Status is "available" or "zero_total_gain" && Importance.Unit == "relative_gain_percent"
+                && Importance.Status is ModelAnalysisContract.AvailableStatus or "zero_total_gain" && Importance.Unit == "relative_gain_percent"
                 && Importance.Population == "training" && Importance.SelectedIteration > 0
                 && Importance.Values.All(v => v.Value >= 0 && v.Value <= 100)
-                && (Importance.Status != "available" || Math.Abs(Importance.Values.Sum(v => v.Value) - 100) <= ModelAnalysisContract.ValidationTolerance));
+                && (Importance.Status != ModelAnalysisContract.AvailableStatus || Math.Abs(Importance.Values.Sum(v => v.Value) - 100) <= ModelAnalysisContract.ValidationTolerance));
         else if (Importance.Method == "grouped_permutation")
-            Require(metadata.GetValueOrDefault("target_type") == "classification" && Importance.Status == "available"
+            Require(metadata.GetValueOrDefault("target_type") == "classification" && Importance.Status == ModelAnalysisContract.AvailableStatus
                 && Importance.Unit == "accuracy_percentage_points" && Importance.Population == "inner_validation"
                 && Importance.Metric == "classification_accuracy" && Importance.Repeats == ModelAnalysisContract.PermutationRepeats
                 && Importance.Seed == ModelAnalysisContract.Seed && Importance.BaselineAccuracy is >= 0 and <= 1

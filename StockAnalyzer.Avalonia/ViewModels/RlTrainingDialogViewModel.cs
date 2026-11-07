@@ -52,7 +52,7 @@ public sealed partial class RlTrainingDialogViewModel : ObservableObject, IDispo
     public bool ShowShortHistoryOption => !UseContinuousPolicy;
     [ObservableProperty] private RlPointerRecovery? _recoveryPreview;
     [ObservableProperty] private string _recoveryDisplay = "";
-    public bool CanRecover => Editable && HasRecoveryCandidate;
+    public bool CanRecover => Editable && IsStorageWritable && HasRecoveryCandidate;
     [ObservableProperty] private RlGeneration? _selectedDirectionGeneration;
     [ObservableProperty] private string _directionTemporalDisplay = "";
     public string TemporalStatusDisplay => _localization.GetString("Rl.Temporal." +
@@ -132,8 +132,10 @@ public sealed partial class RlTrainingDialogViewModel : ObservableObject, IDispo
         IBacktestDefaultSettingsManager defaults, ChartViewModel chart, StockAnalyzer.Core.Interfaces.ILocalizationService localization,
         IDispatcherService? dispatcher = null, RlDialogDataService? data = null, IDialogService? dialogService = null,
         IRlModelArchiveService? archiveService = null, IStoredPeriodAdvisor? periodAdvisor = null, TimeProvider? clock = null,
-        IModelMetadataAnnotationService? modelMetadataAnnotationService = null)
+        IModelMetadataAnnotationService? modelMetadataAnnotationService = null,
+        StockAnalyzer.Core.Common.IDataStorageState? dataStorageState = null)
     {
+        _storageGate = new StorageFeatureGate(dataStorageState);
         _localization = localization; _training = training; _registry = registry; _defaults = defaults; _chart = chart;
         _dispatcher = dispatcher; _data = data ?? new(registry, q); _capabilities = registry.Capabilities; Symbol = chart.Symbol;
         _dialogService = dialogService;

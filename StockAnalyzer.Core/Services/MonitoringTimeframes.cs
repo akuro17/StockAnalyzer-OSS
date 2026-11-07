@@ -3,7 +3,7 @@ using StockAnalyzer.Core.Models;
 namespace StockAnalyzer.Core.Services;
 
 /// <summary>The one definition of the timeframes prediction monitoring supports, legacy and producer-attested (daily, weekly, monthly bars).</summary>
-internal static class MonitoringTimeframes
+public static class MonitoringTimeframes
 {
     public static bool IsSupported(TimeframeType timeframe) =>
         timeframe is TimeframeType.Daily or TimeframeType.Weekly or TimeframeType.Monthly;

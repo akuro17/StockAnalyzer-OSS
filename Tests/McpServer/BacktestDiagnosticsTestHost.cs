@@ -1,6 +1,7 @@
 using System.IO;
 using System.Text.Json;
 using Microsoft.Extensions.Configuration;
+using StockAnalyzer.Core.ReadOnly;
 using StockAnalyzer.Core.Tests.TestHelpers;
 using StockAnalyzer.McpServer;
 using StockAnalyzer.McpServer.Protocol;
@@ -41,6 +42,10 @@ internal sealed class BacktestDiagnosticsTestHost : IDisposable
     }
 
     public async Task<McpMessageDispatcher> StartAsync(params (string Key, string Value)[] overrides)
+        => await StartWithGatewayAsync(null, overrides);
+
+    /// <summary>As <see cref="StartAsync"/>, with the gateway wrapped (a test-only seam of the composition, e.g. <see cref="OverflowThrowingGateway"/>).</summary>
+    public async Task<McpMessageDispatcher> StartWithGatewayAsync(Func<IReadOnlyStockAnalyzerGateway, IReadOnlyStockAnalyzerGateway>? gatewayWrapper, params (string Key, string Value)[] overrides)
     {
         var values = new Dictionary<string, string?>
         {
@@ -56,7 +61,7 @@ internal sealed class BacktestDiagnosticsTestHost : IDisposable
         }
 
         IConfiguration configuration = new ConfigurationBuilder().AddInMemoryCollection(values).Build();
-        McpServerRuntime runtime = McpServerComposition.Create(configuration, new LogSink(new StringWriter()));
+        McpServerRuntime runtime = McpServerComposition.Create(configuration, new LogSink(new StringWriter()), gatewayWrapper: gatewayWrapper);
         _runtimes.Add(runtime);
         await runtime.Dispatcher.DispatchAsync(McpTestSupport.InitializeMessage, CancellationToken.None);
         return runtime.Dispatcher;

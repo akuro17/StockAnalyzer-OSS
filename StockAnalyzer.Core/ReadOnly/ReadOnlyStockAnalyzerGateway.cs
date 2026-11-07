@@ -14,7 +14,7 @@ using StockAnalyzer.Core.Services.Screener;
 namespace StockAnalyzer.Core.ReadOnly;
 
 /// <inheritdoc />
-public sealed class ReadOnlyStockAnalyzerGateway : IReadOnlyStockAnalyzerGateway
+public sealed class ReadOnlyStockAnalyzerGateway : IReadOnlyStockAnalyzerGateway, ICancellableIndicatorCalculation
 {
     private readonly IReadOnlyMarketDataSource _marketData;
     private readonly IDataService _dataService;
@@ -105,9 +105,34 @@ public sealed class ReadOnlyStockAnalyzerGateway : IReadOnlyStockAnalyzerGateway
         DateTimeOffset? lastUpdated = await GetTimeSeriesLastUpdatedAsync(canonical, cancellationToken).ConfigureAwait(false);
 
         var timeFrames = new List<TimeFrameCoverage>();
-        var manager = new TimeFrameManager(_dataService);
+        var unreadable = new List<TimeFrame>();
 
-        foreach (TimeFrame tf in ReadOnlyGatewayContract.SupportedTimeFrames)
+        // Weekly and monthly bars are aggregated from the daily file, so the daily file decides all of them. A data service that can tell a missing
+        // file from an unreadable one is asked once: no file means no bars in any time frame, an unreadable file makes every time frame unreadable
+        // (and the file is not touched again), and a file that was read is not read a second time.
+        IDataService barSource = _dataService;
+        IReadOnlyList<TimeFrame> toRead = ReadOnlyGatewayContract.SupportedTimeFrames;
+        if (_dataService is IDataReadStatusSource statusSource)
+        {
+            DataReadResult daily = await statusSource.LoadCandlesWithStatusAsync(canonical, TimeFrame.D1, 0, cancellationToken).ConfigureAwait(false);
+            switch (daily.Status)
+            {
+                case DataReadStatus.FileMissing:
+                    toRead = Array.Empty<TimeFrame>();
+                    break;
+                case DataReadStatus.Unreadable:
+                    unreadable.AddRange(ReadOnlyGatewayContract.SupportedTimeFrames);
+                    toRead = Array.Empty<TimeFrame>();
+                    break;
+                default:
+                    barSource = new LoadedDailyDataService(daily.Candles);
+                    break;
+            }
+        }
+
+        var manager = new TimeFrameManager(barSource);
+
+        foreach (TimeFrame tf in toRead)
         {
             cancellationToken.ThrowIfCancellationRequested();
             IReadOnlyList<CandleData> candles;
@@ -117,7 +142,9 @@ public sealed class ReadOnlyStockAnalyzerGateway : IReadOnlyStockAnalyzerGateway
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                candles = Array.Empty<CandleData>();
+                // Stored but unreadable is not "no data": name the time frame, keep the other time frames and say nothing about the cause.
+                unreadable.Add(tf);
+                continue;
             }
 
             if (candles.Count > 0)
@@ -136,7 +163,28 @@ public sealed class ReadOnlyStockAnalyzerGateway : IReadOnlyStockAnalyzerGateway
             found,
             metadata is not null,
             lastUpdated,
-            timeFrames);
+            timeFrames)
+        {
+            UnreadableTimeFrames = unreadable,
+        };
+    }
+
+    /// <summary>Answers daily requests from bars that were already read, so aggregating them needs no second read of the file.</summary>
+    private sealed class LoadedDailyDataService : IDataService
+    {
+        private readonly IReadOnlyList<CandleData> _daily;
+
+        public LoadedDailyDataService(IReadOnlyList<CandleData> daily) => _daily = daily;
+
+        public Task<IReadOnlyList<CandleData>> LoadCandlesAsync(string symbol, TimeFrame timeFrame, int count = 100)
+        {
+            if (timeFrame != TimeFrame.D1)
+            {
+                return Task.FromResult<IReadOnlyList<CandleData>>(Array.Empty<CandleData>());
+            }
+
+            return Task.FromResult<IReadOnlyList<CandleData>>(count > 0 && _daily.Count > count ? _daily.Skip(_daily.Count - count).ToList() : _daily);
+        }
     }
 
     public Task<Dictionary<string, IIndicatorResult>> CalculateIndicatorsAsync(
@@ -144,6 +192,16 @@ public sealed class ReadOnlyStockAnalyzerGateway : IReadOnlyStockAnalyzerGateway
         IEnumerable<CoreIndicatorSettings> settings,
         IReadOnlyDictionary<string, IReadOnlyList<CoreCandleData?>>? secondaryCandlesBySymbol = null)
         => Task.Run(() => _pipeline.CalculateIndicatorsAsync(candles, settings, secondaryCandlesBySymbol));
+
+    /// <inheritdoc />
+    public Task<Dictionary<string, IIndicatorResult>> CalculateIndicatorsAsync(
+        IReadOnlyList<CoreCandleData> candles,
+        IEnumerable<CoreIndicatorSettings> settings,
+        IReadOnlyDictionary<string, IReadOnlyList<CoreCandleData?>>? secondaryCandlesBySymbol,
+        CancellationToken cancellationToken)
+        => Task.Run(() => _pipeline is ICancellableIndicatorCalculation cancellable
+            ? cancellable.CalculateIndicatorsAsync(candles, settings, secondaryCandlesBySymbol, cancellationToken)
+            : _pipeline.CalculateIndicatorsAsync(candles, settings, secondaryCandlesBySymbol));
 
     public ReverseWatchCurveData? CalculateReverseWatch(
         IReadOnlyList<CoreCandleData> candles,
@@ -404,6 +462,7 @@ public sealed class ReadOnlyStockAnalyzerGateway : IReadOnlyStockAnalyzerGateway
             }
             catch (Exception ex) when (!token.IsCancellationRequested)
             {
+                BacktestBatchFailure.Tag(ex, index);
                 failures[index] = ExceptionDispatchInfo.Capture(ex);
                 int observed = Volatile.Read(ref lowestFailedIndex);
                 while (index < observed)
@@ -447,13 +506,21 @@ public sealed class ReadOnlyStockAnalyzerGateway : IReadOnlyStockAnalyzerGateway
             ? _backtestPreparation.PrepareAsync(canonicalSnapshot, cancellationToken)
             : _backtestPreparation.PrepareAsync(canonicalSnapshot, sharedBars, cancellationToken)).ConfigureAwait(false);
         return await Task.Run(
-            () => _backtestEvaluation.Evaluate(
-                prepared.Input,
-                prepared.Configuration,
-                prepared.StrategySpecification,
-                prepared.ReportOptions,
-                samplingEvidence: null,
-                cancellationToken),
+            () => snapshot.CaptureArithmeticFailures
+                ? _backtestEvaluation.EvaluateCapturingArithmeticFailures(
+                    prepared.Input,
+                    prepared.Configuration,
+                    prepared.StrategySpecification,
+                    prepared.ReportOptions,
+                    samplingEvidence: null,
+                    cancellationToken)
+                : _backtestEvaluation.Evaluate(
+                    prepared.Input,
+                    prepared.Configuration,
+                    prepared.StrategySpecification,
+                    prepared.ReportOptions,
+                    samplingEvidence: null,
+                    cancellationToken),
             cancellationToken).ConfigureAwait(false);
     }
 

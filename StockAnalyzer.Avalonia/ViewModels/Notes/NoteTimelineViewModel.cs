@@ -192,8 +192,10 @@ public sealed partial class NoteTimelineItemViewModel : ObservableObject
         NoteImageDisplayMode imageDisplayMode = NotesSettingsConstants.DefaultImageDisplayMode,
         int maxRenderedThumbnails = NotesSettingsConstants.DefaultMaxRenderedThumbnails,
         INoteSelectionTarget? selectionTarget = null,
-        IndicatorColor? highlightColor = null)
+        IndicatorColor? highlightColor = null,
+        StockAnalyzer.Avalonia.Services.StorageFeatureGate? storageGate = null)
     {
+        _storageGate = storageGate ?? new StockAnalyzer.Avalonia.Services.StorageFeatureGate(null);
         Note = note;
         HighlightColor = highlightColor ?? IndicatorColor.FromUInt(NotesSettingsConstants.DefaultHighlightColorArgb);
         _selectionTarget = selectionTarget;
@@ -557,7 +559,15 @@ public sealed partial class NoteTimelineItemViewModel : ObservableObject
     [RelayCommand]
     private Task DeleteAsync() => _onDeleteRequested(this);
 
-    [RelayCommand]
+    // Read-only mode (the Data folder is not writable): a Note cannot be saved, so the commands that open the compose panel stay disabled
+    // instead of letting the user type text that can only be lost.
+    private readonly StockAnalyzer.Avalonia.Services.StorageFeatureGate _storageGate;
+
+    public bool IsStorageWritable => _storageGate.IsAvailable;
+
+    public string? StorageDisabledToolTip => _storageGate.DisabledToolTip;
+
+    [RelayCommand(CanExecute = nameof(IsStorageWritable))]
     private void Edit() => _onEditRequested(this);
 
     [RelayCommand]
@@ -593,7 +603,7 @@ public sealed partial class NoteTimelineItemViewModel : ObservableObject
     private void OpenDetail() => _onOpenDetailRequested(this);
 
     /// <summary>Quoting a deletion tombstone has no product meaning (spec: reply/quote on a deletion trace is always disallowed) - the only restriction on Quote, unlike Reply, which is otherwise available on any live Note regardless of thread position.</summary>
-    private bool CanExecuteQuote() => !IsTombstone;
+    private bool CanExecuteQuote() => !IsTombstone && IsStorageWritable;
 
     /// <summary>Opens the inline compose panel pre-linked to quote this Note (spec section 6: Quote). No-op when the owning ViewModel did not supply a handler.</summary>
     [RelayCommand(CanExecute = nameof(CanExecuteQuote))]
@@ -603,7 +613,7 @@ public sealed partial class NoteTimelineItemViewModel : ObservableObject
     /// never available on a deletion tombstone (spec: only the last article of the thread may be replied
     /// to; reply/quote on a deletion trace is always disallowed) - combined here rather than baked into <see cref="CanReply"/> itself, so
     /// <see cref="CanReply"/> stays the pure "is this the current end of its branch" structural fact.</summary>
-    private bool CanExecuteReply() => CanReply && !IsTombstone;
+    private bool CanExecuteReply() => CanReply && !IsTombstone && IsStorageWritable;
 
     /// <summary>Opens the inline compose panel pre-linked to reply to this Note (spec section 6: Reply Chain). No-op when the owning ViewModel did not supply a handler.</summary>
     [RelayCommand(CanExecute = nameof(CanExecuteReply))]
@@ -965,8 +975,10 @@ public partial class NoteTimelineViewModel : ViewModelBase, IDisposable, INoteSe
         OrphanedAttachmentScanResultHolder orphanedAttachmentHolder,
         INotesSettingsManager notesSettingsManager,
         IExternalFileOpener? fileOpener = null,
-        ILogger<NoteTimelineViewModel>? logger = null)
+        ILogger<NoteTimelineViewModel>? logger = null,
+        StockAnalyzer.Core.Common.IDataStorageState? dataStorageState = null)
     {
+        _storageGate = new StockAnalyzer.Avalonia.Services.StorageFeatureGate(dataStorageState);
         _noteRepository = noteRepository;
         _schemaInitializer = schemaInitializer;
         _cacheSynchronizer = cacheSynchronizer;
@@ -990,6 +1002,7 @@ public partial class NoteTimelineViewModel : ViewModelBase, IDisposable, INoteSe
         // timeline until some unrelated action (search text, editing a Note) happened to trigger
         // another RefreshAsync.
         _notesSettingsManager.PropertyChanged += OnNotesSettingsManagerPropertyChanged;
+        LocalizationManager.Instance.LocaleChanged += OnLocaleChangedForButtonToolTips;
 
         // Default selection = "All Tickers" (fix request #2): no ticker-scope constraint.
         _selectedScopeNode = _tickerStateStore.Groups.FirstOrDefault(n => n is AllTickersNode);
@@ -1333,15 +1346,27 @@ public partial class NoteTimelineViewModel : ViewModelBase, IDisposable, INoteSe
     /// <see cref="OpenOrphanedFilesAsync"/> are now the toolbar's two separate icon+count entry
     /// points, replacing the old single "Trash" button) and refreshes the timeline afterward, in
     /// case a restore happened while it was open.</summary>
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(IsStorageWritable))]
     private async Task OpenTrashAsync()
     {
         await _dialogService.ShowNoteTrashDialogAsync(NoteTrashInitialTab.Deleted);
         await RefreshAsync();
     }
 
+    // Read-only mode (the Data folder is not writable): the notes database is off, so the trash dialog would only open empty. The two buttons
+    // show the reason instead of their usual tooltip while disabled; the usual tooltip is re-read when the language changes.
+    public string TrashButtonToolTip => StorageDisabledToolTip ?? LocalizationManager.Instance["Note_TrashButton_Tooltip"];
+
+    public string OrphanedButtonToolTip => StorageDisabledToolTip ?? LocalizationManager.Instance["Note_OrphanedButton_Tooltip"];
+
+    private void OnLocaleChangedForButtonToolTips(object? sender, EventArgs e)
+    {
+        OnPropertyChanged(nameof(TrashButtonToolTip));
+        OnPropertyChanged(nameof(OrphanedButtonToolTip));
+    }
+
     /// <summary>Opens the trash dialog to its "Orphaned Files" tab (fix request).</summary>
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(IsStorageWritable))]
     private async Task OpenOrphanedFilesAsync()
     {
         await _dialogService.ShowNoteTrashDialogAsync(NoteTrashInitialTab.Orphaned);
@@ -1422,6 +1447,10 @@ public partial class NoteTimelineViewModel : ViewModelBase, IDisposable, INoteSe
 
     private async Task RefreshCoreAsync(CancellationToken ct)
     {
+        // Read-only mode (the Data folder is not writable): the notes database is not opened at all (NoteDatabaseConnectionManager is built
+        // unavailable), so the timeline stays empty; the banner and the disabled "new note" button say why.
+        if (!_storageGate.IsAvailable) return;
+
         if (!_schemaInitialized)
         {
             await _schemaInitializer.InitializeAsync(ct).ConfigureAwait(false);
@@ -1687,7 +1716,8 @@ public partial class NoteTimelineViewModel : ViewModelBase, IDisposable, INoteSe
             imageDisplayMode: _notesSettingsManager.ImageDisplayMode,
             maxRenderedThumbnails: _notesSettingsManager.MaxRenderedThumbnails,
             selectionTarget: this,
-            highlightColor: _notesSettingsManager.HighlightColor);
+            highlightColor: _notesSettingsManager.HighlightColor,
+            storageGate: _storageGate);
         item.PropertyChanged += OnItemPropertyChanged;
         return item;
     }
@@ -1701,8 +1731,15 @@ public partial class NoteTimelineViewModel : ViewModelBase, IDisposable, INoteSe
     }
 
     /// <summary>Opens the inline compose panel for a brand-new Note (spec section 4.7's dialog-based flow is a separate entry point; this is the timeline's own "+" affordance).</summary>
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(IsStorageWritable))]
     private void BeginCreate() => EditingNote = _editorFactory();
+
+    // Read-only mode (the Data folder is not writable): see NoteTimelineItemViewModel; the same gate is handed to every card it builds.
+    private readonly StockAnalyzer.Avalonia.Services.StorageFeatureGate _storageGate;
+
+    public bool IsStorageWritable => _storageGate.IsAvailable;
+
+    public string? StorageDisabledToolTip => _storageGate.DisabledToolTip;
 
     [RelayCommand]
     private void CancelEdit() => EditingNote = null;
@@ -1940,6 +1977,8 @@ public partial class NoteTimelineViewModel : ViewModelBase, IDisposable, INoteSe
         {
             _notesSettingsManager.PropertyChanged -= OnNotesSettingsManagerPropertyChanged;
         }
+
+        LocalizationManager.Instance.LocaleChanged -= OnLocaleChangedForButtonToolTips;
 
         GC.SuppressFinalize(this);
     }

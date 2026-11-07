@@ -19,4 +19,12 @@ public sealed record SymbolCoverage(
     bool Found,
     bool HasMetadata,
     DateTimeOffset? TimeSeriesLastUpdated,
-    IReadOnlyList<TimeFrameCoverage> TimeFrames);
+    IReadOnlyList<TimeFrameCoverage> TimeFrames)
+{
+    /// <summary>
+    /// The time frames whose stored bars could not be read (the load failed for any reason other than cancellation). They are not in
+    /// <see cref="TimeFrames"/>, so "nothing stored" (absent from both lists) differs from "stored but unreadable" (listed here).
+    /// Carries no exception text.
+    /// </summary>
+    public IReadOnlyList<TimeFrame> UnreadableTimeFrames { get; init; } = Array.Empty<TimeFrame>();
+}

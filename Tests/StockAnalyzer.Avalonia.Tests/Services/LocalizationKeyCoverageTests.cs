@@ -216,6 +216,34 @@ public class LocalizationKeyCoverageTests
     }
 
     /// <summary>
+    /// <c>ScreenerViewModel</c> resolves its status messages from code (<c>LocalizationManager.Instance["..."]</c>), which the XAML scan never sees. The four messages of a scan
+    /// of indicators that compare two symbols (a refusal, or a comparison symbol without bars) are the ones this was added for; the literal keys are scanned from the source,
+    /// so keys added later are covered without editing this test.
+    /// </summary>
+    [Fact]
+    public void ScreenerViewModel_CodeReferencedLocalizationKeys_ResolveInEveryLocale()
+    {
+        var source = File.ReadAllText(
+            Path.Combine(TestSolution.Root, "StockAnalyzer.Avalonia", "ViewModels", "ScreenerViewModel.cs"));
+
+        var keys = InstanceKeyPattern.Matches(source)
+            .Select(m => m.Groups[1].Value)
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(k => k, StringComparer.Ordinal)
+            .ToList();
+
+        // Sentinels: the scan itself must work, and the two-symbol messages must be part of it.
+        Assert.True(keys.Count >= 6, $"Expected to scan >=6 Instance[\"...\"] keys from ScreenerViewModel.cs, found {keys.Count}.");
+        Assert.Contains("Screener_Status_TwoTickerOnlyDaily", keys);
+        Assert.Contains("Screener_Status_TwoTickerWithOtherFrames", keys);
+        Assert.Contains("Screener_Status_TwoTickerTooManySymbols", keys);
+        Assert.Contains("Screener_Status_ComparisonSymbolMissing", keys);
+        Assert.Contains("Screener_Status_TwoTickerNeedsSymbol", keys);
+
+        AssertKeysResolveInEveryLocale(keys, "ScreenerViewModel.cs");
+    }
+
+    /// <summary>
     /// <see cref="StockAnalyzer.Avalonia.ViewModels.IndicatorRegistrationViewModel"/> resolves header and
     /// navigation titles by calling <c>ILocalizationService.GetString("...")</c> from code, which the XAML
     /// scan never sees. This scans the view model source for literal keys so keys added later are covered.

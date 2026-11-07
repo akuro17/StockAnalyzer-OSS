@@ -244,6 +244,42 @@ public sealed class CalculateVolumeProfileToolTests : IDisposable
         Assert.Equal(100m, bins[0].GetProperty("priceLow").GetDecimal());
         Assert.Equal(100m, bins[0].GetProperty("priceHigh").GetDecimal());
         Assert.Equal(Days * 1000, bins[0].GetProperty("volume").GetInt64());
+        Assert.Equal(Days * 1000, result.GetProperty("totalBarVolume").GetInt64());
+        Assert.Equal(0, result.GetProperty("truncatedVolume").GetInt64());
+    }
+
+    [Theory]
+    [InlineData(30)]
+    [InlineData(45)]
+    [InlineData(48)]
+    public async Task VolumeProfile_VolumeBasis_ReportsHowMuchVolumeTheWholeUnitSplitDropped(int binCount)
+    {
+        var dispatcher = await StartAsync();
+        JsonElement result = Result(await CallAsync(dispatcher, $",\"basis\":\"Volume\",\"binCount\":{binCount}"));
+
+        // Reference: the same bars through the Core distribution. Each bar's volume is split in whole units over the touched bins.
+        List<CoreCandleData> candles = Candles();
+        List<VolumeBin> expectedBins = VolumeAnalysis.CalculateProfile(candles, binCount, VolumeDistributionMode.Proportional);
+        long expectedTotal = candles.Sum(c => c.Volume);
+        long expectedProfile = expectedBins.Sum(b => b.TotalVolume);
+        Assert.True(expectedTotal - expectedProfile > 0, "the fixture drops no volume; the check would be vacuous");
+
+        Assert.Equal(expectedTotal, result.GetProperty("totalBarVolume").GetInt64());
+        Assert.Equal(expectedProfile, result.GetProperty("profileVolume").GetInt64());
+        Assert.Equal(expectedTotal - expectedProfile, result.GetProperty("truncatedVolume").GetInt64());
+        // The reported bins are the profile: they add up to profileVolume, and the distribution itself is unchanged.
+        Assert.Equal(expectedProfile, result.GetProperty("bins").EnumerateArray().Sum(b => b.GetProperty("volume").GetInt64()));
+    }
+
+    [Fact]
+    public async Task VolumeProfile_TimeAtPriceBasis_CountsBarsAndLosesNothing()
+    {
+        var dispatcher = await StartAsync();
+        JsonElement result = Result(await CallAsync(dispatcher, ",\"basis\":\"TimeAtPrice\",\"binCount\":20"));
+
+        Assert.Equal(Days, result.GetProperty("totalBarVolume").GetInt64());
+        Assert.Equal(Days, result.GetProperty("profileVolume").GetInt64());
+        Assert.Equal(0, result.GetProperty("truncatedVolume").GetInt64());
     }
 
     [Fact]

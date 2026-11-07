@@ -306,7 +306,7 @@
                                         <TextBlock Text="{l:Localize TrainingWizard_CustomDisplayName}" Classes="fieldLabel"/>
                                         <TextBox Text="{Binding ModelDisplayName, Mode=TwoWay}"
                                                  Watermark="{l:Localize TrainingWizard_CustomDisplayName_Watermark}"
-                                                 MaxLength="128"
+                                                 MaxLength="{Binding MaxModelDisplayNameLength}"
                                                  Height="36"/>
                                     </StackPanel>
                                 </Grid>

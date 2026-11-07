@@ -899,6 +899,17 @@ public class TrainingWizardViewModelTests : IDisposable
     }
 
     [Fact]
+    public void TheModelDisplayNameBoxTakesItsLimitFromTheMetadataServiceAndTheWindowDoesNotHardcodeIt()
+    {
+        var vm = new TrainingWizardViewModel(tickerStore: DefaultStore());
+
+        Assert.Equal(IModelMetadataAnnotationService.MaxDisplayNameLength, vm.MaxModelDisplayNameLength);
+        string window = File.ReadAllText(Path.Combine(StockAnalyzer.TestSupport.TestRepositoryRoot.Find(), "StockAnalyzer.Avalonia", "Views", "Dialogs", "TrainingWizardWindow.axaml"));
+        Assert.Contains("MaxLength=\"{Binding MaxModelDisplayNameLength}\"", window, StringComparison.Ordinal);
+        Assert.DoesNotContain($"MaxLength=\"{IModelMetadataAnnotationService.MaxDisplayNameLength}\"", window, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task DeployToModelsAsync_WhenRegistryIndicatesNotActive_ShowsNotActivatedMessage()
     {
         var market = new DummyMarketDataProvider("AAPL");

@@ -782,11 +782,45 @@ public partial class ScreenerViewModel : ViewModelBase, IDisposable
              return;
         }
 
+        // Indicators that compare two symbols need the comparison symbols' bars. What the condition asks for is judged before anything starts, so a refusal changes nothing
+        // on screen (the previous result stays) and calls no service. A side that names no comparison symbol (Price vs Volume) asks for nothing.
+        var condition = new ScreenerConditionTreeCondition(conditionTree);
+        ScreenerComparisonRequirement comparison = ScreenerComparisonSymbols.Inspect(condition);
+        if (comparison.OffDailySide is { } offDailySide)
+        {
+            // The comparison symbol's bars are daily: a two-symbol side on weekly or monthly bars has no value.
+            StatusMessage = string.Format(LocalizationManager.Instance["Screener_Status_TwoTickerOnlyDaily"], offDailySide.DisplayName);
+            _ = ScheduleStatusResetAsync();
+            return;
+        }
+
+        if (comparison.SymbolRequiredSide is { } symbolRequiredSide)
+        {
+            // A type that cannot give a value without a comparison symbol (every two-symbol type but Correlation and CrossCorrelation) would match nothing, silently.
+            StatusMessage = string.Format(LocalizationManager.Instance["Screener_Status_TwoTickerNeedsSymbol"], symbolRequiredSide.DisplayName);
+            _ = ScheduleStatusResetAsync();
+            return;
+        }
+
+        if (comparison.Symbols.Count > 0 && ScreenerSideFrames.UsesNonDailyBars(condition))
+        {
+            // A scan in which a side reads weekly or monthly bars is given no comparison bars.
+            StatusMessage = LocalizationManager.Instance["Screener_Status_TwoTickerWithOtherFrames"];
+            _ = ScheduleStatusResetAsync();
+            return;
+        }
+
+        if (comparison.Symbols.Count > WatchlistConstants.MaxRelativePerformanceTargets)
+        {
+            // The same most the chart aligns for the two-symbol indicators of one view.
+            StatusMessage = string.Format(LocalizationManager.Instance["Screener_Status_TwoTickerTooManySymbols"], WatchlistConstants.MaxRelativePerformanceTargets);
+            _ = ScheduleStatusResetAsync();
+            return;
+        }
+
         _statusResetCts?.Cancel();
         IsScanning = true;
         StatusMessage = "Scanning...";
-        Results.Clear();
-        ResultItems.Clear();
         var scanCts = new CancellationTokenSource();
         _cts = scanCts;
 
@@ -803,7 +837,23 @@ public partial class ScreenerViewModel : ViewModelBase, IDisposable
 
         try
         {
-            var condition = new ScreenerConditionTreeCondition(conditionTree);
+            // The comparison symbols' bars are read once, here inside the try so that every way out (a symbol without bars, a failure, a cancel) goes through the finally that
+            // clears IsScanning. A symbol without bars stops the scan before the previous result is cleared: a missing input is told, never turned into "no match".
+            IScreenerSecondaryCandles? secondary = null;
+            if (comparison.Symbols.Count > 0)
+            {
+                IScreenerSecondaryCandles loaded = await _screenerService.LoadComparisonCandlesAsync(comparison.Spellings, TimeFrame.D1, condition, scanCts.Token);
+                secondary = loaded;
+                List<string> missing = comparison.Symbols.Where(symbol => loaded.Get(symbol) is null).ToList();
+                if (missing.Count > 0)
+                {
+                    StatusMessage = string.Format(LocalizationManager.Instance["Screener_Status_ComparisonSymbolMissing"], string.Join(", ", missing));
+                    return;
+                }
+            }
+
+            Results.Clear();
+            ResultItems.Clear();
 
             // A condition whose enabled sides all read daily bars is the unchanged plain scan. Otherwise every side reads the bars of its own frame, built the way the chart and the
             // MCP Screener build them (daily history aggregated to the frame, an unfinished last period left out unless asked for), not from the stored weekly/monthly files.
@@ -813,7 +863,10 @@ public partial class ScreenerViewModel : ViewModelBase, IDisposable
             List<string> hits;
             if (!ScreenerSideFrames.UsesNonDailyBars(condition))
             {
-                hits = await _screenerService.ScreenAsync(TargetSymbols.ToList(), condition, TimeFrame.D1, progress, scanCts.Token);
+                // Without comparison bars the original form is called, so a service that knows only that form (and every scan with no two-symbol side) is unaffected.
+                hits = secondary is null
+                    ? await _screenerService.ScreenAsync(TargetSymbols.ToList(), condition, TimeFrame.D1, progress, scanCts.Token)
+                    : await _screenerService.ScreenAsync(TargetSymbols.ToList(), condition, TimeFrame.D1, secondary, progress, scanCts.Token);
             }
             else
             {
@@ -1025,7 +1078,8 @@ public partial class ScreenerViewModel : ViewModelBase, IDisposable
                                         }
                                         else
                                         {
-                                            decimal? val = _valueExtractor.ExtractValueNullable(displayConfig, valueBars);
+                                            // The comparison bars the scan used (null when the condition names no comparison symbol): the value shown is the one the condition read.
+                                            decimal? val = _valueExtractor.ExtractValueNullable(displayConfig, valueBars, default, secondary);
                                             item.DynamicIndicatorValues[memberKey] = val;
                                         }
                                     }

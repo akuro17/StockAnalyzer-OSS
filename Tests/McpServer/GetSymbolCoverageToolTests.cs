@@ -100,6 +100,45 @@ public sealed class GetSymbolCoverageToolTests : IDisposable
     }
 
     [Fact]
+    public async Task AReadableSymbolHasNoUnreadableTimeFrames_AndAnUnregisteredOneHasNone()
+    {
+        var dispatcher = await StartAsync();
+
+        using JsonDocument response = (await McpTestSupport.CallAsync(dispatcher, "sa_get_symbol_coverage", """{"symbols":["MSFT","UNKNOWN999"]}"""))!;
+        Assert.False(McpTestSupport.IsError(response));
+
+        foreach (JsonElement item in McpTestSupport.Structured(response).GetProperty("results").EnumerateArray())
+        {
+            Assert.Equal(JsonValueKind.Array, item.GetProperty("unreadableTimeFrames").ValueKind);
+            Assert.Equal(0, item.GetProperty("unreadableTimeFrames").GetArrayLength());
+        }
+    }
+
+    [Fact]
+    public async Task AnUnreadableDailyFileIsNamedPerTimeFrame_NotReportedAsNoData_AndOtherSymbolsAreUnaffected()
+    {
+        // Weekly and monthly bars are built from the daily file, so a daily file that cannot be read makes all three unreadable.
+        string brokenFile = Directory.GetFiles(_fixture.DailyDirectory).Single(f => Path.GetFileName(f).Contains("7203", StringComparison.OrdinalIgnoreCase));
+        File.WriteAllText(brokenFile, "this is not a parquet file");
+        var dispatcher = await StartAsync();
+
+        using JsonDocument response = (await McpTestSupport.CallAsync(dispatcher, "sa_get_symbol_coverage", """{"symbols":["7203-T","MSFT"]}"""))!;
+        Assert.False(McpTestSupport.IsError(response), McpTestSupport.Structured(response).ToString());
+
+        JsonElement results = McpTestSupport.Structured(response).GetProperty("results");
+        JsonElement broken = results[0];
+        Assert.Equal("7203-T", broken.GetProperty("symbol").GetString());
+        Assert.False(broken.GetProperty("found").GetBoolean());
+        Assert.Equal(0, broken.GetProperty("timeFrames").GetArrayLength());
+        Assert.Equal(new[] { "D1", "W1", "MN1" }, broken.GetProperty("unreadableTimeFrames").EnumerateArray().Select(e => e.GetString()!).ToArray());
+        Assert.DoesNotContain(Path.GetFileName(brokenFile), broken.ToString(), StringComparison.OrdinalIgnoreCase);
+
+        JsonElement healthy = results[1];
+        Assert.True(healthy.GetProperty("found").GetBoolean());
+        Assert.Equal(0, healthy.GetProperty("unreadableTimeFrames").GetArrayLength());
+    }
+
+    [Fact]
     public async Task UnregisteredSymbolReturnsFoundFalseWithoutFailingTool()
     {
         var dispatcher = await StartAsync();

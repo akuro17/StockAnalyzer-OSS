@@ -21,6 +21,8 @@ public class DataWindowViewModelTests : IDisposable
     private ChartViewModel _chartViewModel;
     private DataWindowViewModel _sut;
     private readonly IMessenger _messenger;
+    // One dispatcher for both view models: its lock serializes the callbacks that finish on a pool thread (comparison data, indicator results) with the test thread, as the UI thread does in production.
+    private readonly SynchronousDispatcherService _dispatcher = new();
 
     public DataWindowViewModelTests()
     {
@@ -37,7 +39,7 @@ public class DataWindowViewModelTests : IDisposable
             null!, // marketStructureService
             new StockAnalyzer.Core.Theme.ThemeManager(),
             new StockAnalyzer.Avalonia.Services.MockChartSettingsManager(),
-            new SynchronousDispatcherService(),
+            _dispatcher,
             null,  // predictionService
             null!, // analysisPipelineService
             null,  // marketDataProvider
@@ -45,7 +47,7 @@ public class DataWindowViewModelTests : IDisposable
             null,  // comparisonDataAligner
             messenger: messenger
         );
-        _sut = new DataWindowViewModel(_chartViewModel, messenger, new SynchronousDispatcherService());
+        _sut = new DataWindowViewModel(_chartViewModel, messenger, _dispatcher);
     }
 
     public void Dispose() => CultureInfo.CurrentCulture = _previousCulture;
@@ -138,25 +140,28 @@ public class DataWindowViewModelTests : IDisposable
             ChartSymbol = "AAPL" 
         });
 
-        // 2. Act
-        _sut.Receive(message);
+        // 2. Act and 3. Assert as the UI thread would: a comparison-data or indicator callback that finishes on a pool thread
+        // (ChartType = RelativePerformance starts one) rewrites IndicatorItems, and must not run between the act and the asserts.
+        _dispatcher.Run(() =>
+        {
+            _sut.Receive(message);
 
-        // 3. Assert
-        Assert.False(_sut.IsOpenVisible);
-        Assert.False(_sut.IsHighVisible);
-        
-        // Items should be COMP and AAPL
-        Assert.Equal(2, _sut.IndicatorItems.Count);
-        
-        var compItem = _sut.IndicatorItems.FirstOrDefault(i => i.Name == "COMP");
-        Assert.NotNull(compItem);
-        Assert.Equal("-2.000%", compItem.Value);
-        // Correct color check
-        Assert.NotEqual(IndicatorColor.Transparent, compItem.Color);
+            Assert.False(_sut.IsOpenVisible);
+            Assert.False(_sut.IsHighVisible);
 
-        var primaryItem = _sut.IndicatorItems.FirstOrDefault(i => i.Name == "AAPL");
-        Assert.NotNull(primaryItem);
-        Assert.Equal("+5.000%", primaryItem.Value);
+            // Items should be COMP and AAPL
+            Assert.Equal(2, _sut.IndicatorItems.Count);
+
+            var compItem = _sut.IndicatorItems.FirstOrDefault(i => i.Name == "COMP");
+            Assert.NotNull(compItem);
+            Assert.Equal("-2.000%", compItem.Value);
+            // Correct color check
+            Assert.NotEqual(IndicatorColor.Transparent, compItem.Color);
+
+            var primaryItem = _sut.IndicatorItems.FirstOrDefault(i => i.Name == "AAPL");
+            Assert.NotNull(primaryItem);
+            Assert.Equal("+5.000%", primaryItem.Value);
+        });
     }
 
     [Fact]
@@ -240,6 +245,58 @@ public class DataWindowViewModelTests : IDisposable
         var oscChild = parentItem.Children[2];
         Assert.Equal("FFT Cycle Oscillator", oscChild.Name);
         Assert.Equal("0.450", oscChild.Value);
+    }
+
+    [Fact]
+    public void UpdateIndicatorItems_WithGranvilleLaw_ShowsTheMovingAverageAndTheSignalsSeries()
+    {
+        // Owner decision 2026-11-05: the data window shows the GranvilleLaw series "Signals" (a value the user reads) next to its moving average.
+        var granville = DefaultCoreIndicatorSettings.GetDefault().First(s => s.TypeEnum == IndicatorType.GranvilleLaw);
+        granville.IsEnabled = true;
+        var candles = new List<CoreCandleData> { new CoreCandleData(new DateTime(2026, 1, 1), 100m, 110m, 90m, 105m, 1000) };
+        _chartViewModel.Candles = candles;
+        var indicatorResult = StockAnalyzer.Core.Models.Indicators.IndicatorResult.Success(new Dictionary<string, IReadOnlyList<decimal?>>
+        {
+            { "MA", new decimal?[] { 101.5m } },
+            { "Signals", new decimal?[] { 3m } },
+        });
+        _chartViewModel.Indicators.Clear();
+        _chartViewModel.Indicators.Add(granville);
+        _chartViewModel.IndicatorResults = new Dictionary<string, StockAnalyzer.Core.Models.Indicators.IIndicatorResult> { { granville.Id, indicatorResult } };
+
+        _sut.Receive(new CrosshairPositionChangedMessage(new CrosshairPositionData { CandleIndex = 0, HoveredCandle = candles[0], ChartSymbol = "TEST" }));
+
+        Assert.Single(_sut.IndicatorItems);
+        var parent = _sut.IndicatorItems[0];
+        Assert.True(parent.HasChildren);
+        Assert.Equal(new[] { "101.500", "3.000" }, parent.Children.Select(c => c.Value).ToArray());
+    }
+
+    [Fact]
+    public void UpdateIndicatorItems_LeavesTheDirectionalSignalSeriesOutOfTheDataWindow()
+    {
+        var oscillator = DefaultCoreIndicatorSettings.GetDefault().First(s => s.TypeEnum == IndicatorType.PrimeNumberOscillator);
+        oscillator.IsEnabled = true;
+        var candles = new List<CoreCandleData> { new CoreCandleData(new DateTime(2026, 1, 1), 100m, 110m, 90m, 105m, 1000) };
+        _chartViewModel.Candles = candles;
+        var indicatorResult = StockAnalyzer.Core.Models.Indicators.IndicatorResult.Success(new Dictionary<string, IReadOnlyList<decimal?>>
+        {
+            { "Main", new decimal?[] { 0.15m } },
+            { "BuySignals", new decimal?[] { 3000m } },
+            { "SellSignals", new decimal?[] { 3100m } },
+        });
+        _chartViewModel.Indicators.Clear();
+        _chartViewModel.Indicators.Add(oscillator);
+        _chartViewModel.IndicatorResults = new Dictionary<string, StockAnalyzer.Core.Models.Indicators.IIndicatorResult> { { oscillator.Id, indicatorResult } };
+
+        _sut.Receive(new CrosshairPositionChangedMessage(new CrosshairPositionData { CandleIndex = 0, HoveredCandle = candles[0], ChartSymbol = "TEST" }));
+
+        // The indicator may be shown as one row or as a folder; either way the value of the Main series is there and the two signal values are not.
+        Assert.Single(_sut.IndicatorItems);
+        var item = _sut.IndicatorItems[0];
+        string[] shown = item.HasChildren ? item.Children.Select(c => c.Value).ToArray() : new[] { item.Value };
+        Assert.Contains("0.150", shown);
+        Assert.DoesNotContain(shown, v => v.Contains("3,000") || v.Contains("3,100") || v.Contains("3000") || v.Contains("3100"));
     }
 
     [Fact]

@@ -32,7 +32,7 @@ internal sealed class RunWalkForwardTool : IMcpTool
     private const string Minimize = BacktestSweep.Minimize;
 
     /// <summary>No upper bound beyond what an int holds for minInSampleTrades (the schema only has a minimum; a count above any trade count simply makes every combination ineligible).</summary>
-    private const int NoUpperBound = int.MaxValue;
+    private const int NoUpperBound = BacktestSweep.NoUpperBound;
 
     private const string ModeList = "List";
     private const string StatusNoBars = nameof(WalkForwardWindowStatus.NoInSampleBars);
@@ -63,8 +63,9 @@ internal sealed class RunWalkForwardTool : IMcpTool
         $"A window has a status: Evaluated, or isInsufficientData with {StatusNoBars} (the in-sample part holds no stored bar), {StatusNoTrades} (no combination made minInSampleTrades trades there, for example near the start of the stored history, where an indicator has no earlier bars to start from) or {StatusNoValidObjective} (some combination traded enough but none has a Valid objective); such a window has no best combination, is not run out of sample and is left out of the aggregate. " +
         $"{StatusNoOutOfSampleBars} means the best combination exists but the out-of-sample part holds no stored bar: its oos values are null and the window is not used for the out-of-sample means. " +
         "Every run lets its indicators start on the stored bars before its first day, so a window is too short for its indicators only where the stored history itself begins. The tool cannot see how many bars an indicator needs before it is defined, so that case shows up only as few or no trades. " +
-        "aggregate (null when no window was evaluated) has meanIsObjective and meanOosObjective (simple means over the evaluated windows whose value is Valid), meanIsBarSharpe, meanOosBarSharpe and barSharpeEfficiency = meanOosBarSharpe / meanIsBarSharpe, " +
+        "aggregate (null when no window was evaluated) has meanIsObjective and meanOosObjective (simple means over the evaluated windows whose value is Valid; isObjectiveWindowCount and oosObjectiveWindowCount say how many windows each mean has, they can differ), meanIsBarSharpe, meanOosBarSharpe and barSharpeEfficiency = meanOosBarSharpe / meanIsBarSharpe, " +
         "taken over the windows in which both BarSharpe values are Valid (barSharpeWindowCount); it is null, with barSharpeEfficiencyReason, when no window qualifies or meanIsBarSharpe is not greater than 0. There is no threshold on the denominator. " +
+        "Each window also has positiveInfinityCombinationCount (in-sample runs whose objective is infinite, for example a profit factor without a losing trade: not eligible, counted only); a warning names windows whose out-of-sample ranges overlap, because those bars count more than once in the aggregate. " +
         "No deflated Sharpe ratio, probability of backtest overfitting or shuffled confidence interval is computed. " +
         $"The cost grows with windows x combinations x in-sample bars; a call that runs out of time ({_limits.HeavyToolTimeoutSeconds} s) or is cancelled returns an error, never a partial result. The tool never changes anything and never fetches data.";
 
@@ -115,7 +116,7 @@ internal sealed class RunWalkForwardTool : IMcpTool
     private readonly record struct PlannedWindow(int Index, DateOnly InSampleStart, DateOnly InSampleEnd, DateOnly OutOfSampleStart, DateOnly OutOfSampleEnd);
 
     /// <summary>The result of one window; <see cref="Best"/> is the grid index of the best in-sample combination, or -1.</summary>
-    private sealed record WindowResult(PlannedWindow Window, string Status, int Best, SweepRun? InSample, SweepRun? OutOfSample, decimal? InSampleObjective, decimal? OutOfSampleObjective);
+    private sealed record WindowResult(PlannedWindow Window, string Status, int Best, SweepRun? InSample, SweepRun? OutOfSample, decimal? InSampleObjective, decimal? OutOfSampleObjective, int PositiveInfinityCount);
 
     public async Task<string> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)
     {
@@ -192,30 +193,36 @@ internal sealed class RunWalkForwardTool : IMcpTool
             }
         }
 
-        SweepRun[] inSampleRuns = await _sweep.RunAsync(resolved.Symbol, timeFrame, bound, inSampleItems, cancellationToken).ConfigureAwait(false);
+        // The items are window-major: item i is combination (i % combinations) of window (i / combinations).
+        string DescribeInSample(int item) => $"window {planned[item / grid.CombinationCount].Index} in-sample part ({Date(planned[item / grid.CombinationCount].InSampleStart)} to {Date(planned[item / grid.CombinationCount].InSampleEnd)}), {BacktestSweep.DescribeCombination(grid, item % grid.CombinationCount)}";
+        SweepRun[] inSampleRuns = await _sweep.RunAsync(resolved.Symbol, timeFrame, bound, inSampleItems, objective, DescribeInSample, cancellationToken).ConfigureAwait(false);
 
         var selections = new WalkForwardWindowSelection[planned.Count];
+        var infiniteCounts = new int[planned.Count];
         for (int w = 0; w < planned.Count; w++)
         {
-            InSampleOutcome[] outcomes = inSampleRuns
-                .Skip(w * grid.CombinationCount)
-                .Take(grid.CombinationCount)
+            SweepRun[] windowRuns = inSampleRuns.Skip(w * grid.CombinationCount).Take(grid.CombinationCount).ToArray();
+            InSampleOutcome[] outcomes = windowRuns
                 .Select(run => new InSampleOutcome(run.NoEvaluatedBars, run.Report?.TotalTrades, BacktestSweep.ValidValue(run.Report, objective)))
                 .ToArray();
             selections[w] = WalkForwardWindowSelector.Select(outcomes, minimize, minInSampleTrades);
+            infiniteCounts[w] = windowRuns.Count(run => BacktestSweep.IsPositiveInfinity(run.Report, objective));
         }
 
         var outOfSampleItems = new List<SweepItem>();
+        var outOfSampleWindows = new List<int>();
         for (int w = 0; w < planned.Count; w++)
         {
             if (selections[w].BestIndex >= 0)
             {
                 outOfSampleItems.Add(new SweepItem(selections[w].BestIndex, planned[w].OutOfSampleStart, planned[w].OutOfSampleEnd));
+                outOfSampleWindows.Add(w);
             }
         }
 
+        string DescribeOutOfSample(int item) => $"window {planned[outOfSampleWindows[item]].Index} out-of-sample part ({Date(planned[outOfSampleWindows[item]].OutOfSampleStart)} to {Date(planned[outOfSampleWindows[item]].OutOfSampleEnd)}), {BacktestSweep.DescribeCombination(grid, outOfSampleItems[item].Combination)}";
         SweepRun[] outOfSampleRuns = outOfSampleItems.Count > 0
-            ? await _sweep.RunAsync(resolved.Symbol, timeFrame, bound, outOfSampleItems, cancellationToken).ConfigureAwait(false)
+            ? await _sweep.RunAsync(resolved.Symbol, timeFrame, bound, outOfSampleItems, objective, DescribeOutOfSample, cancellationToken).ConfigureAwait(false)
             : Array.Empty<SweepRun>();
 
         var results = new List<WindowResult>(planned.Count);
@@ -225,14 +232,14 @@ internal sealed class RunWalkForwardTool : IMcpTool
             WalkForwardWindowSelection selection = selections[w];
             if (selection.BestIndex < 0)
             {
-                results.Add(new WindowResult(planned[w], selection.Status.ToString(), -1, null, null, null, null));
+                results.Add(new WindowResult(planned[w], selection.Status.ToString(), -1, null, null, null, null, infiniteCounts[w]));
                 continue;
             }
 
             SweepRun inSampleRun = inSampleRuns[(w * grid.CombinationCount) + selection.BestIndex];
             SweepRun? outOfSampleRun = outOfSampleRuns[next++] is { NoEvaluatedBars: false } run ? run : null;
             string status = (outOfSampleRun is null ? WalkForwardWindowStatus.NoOutOfSampleBars : WalkForwardWindowStatus.Evaluated).ToString();
-            results.Add(new WindowResult(planned[w], status, selection.BestIndex, inSampleRun, outOfSampleRun, selection.BestObjective, BacktestSweep.ValidValue(outOfSampleRun?.Report, objective)));
+            results.Add(new WindowResult(planned[w], status, selection.BestIndex, inSampleRun, outOfSampleRun, selection.BestObjective, BacktestSweep.ValidValue(outOfSampleRun?.Report, objective), infiniteCounts[w]));
         }
 
         var warnings = new List<string>(resolved.Warnings);
@@ -243,11 +250,38 @@ internal sealed class RunWalkForwardTool : IMcpTool
             warnings.Add("No window could be evaluated, so there is no aggregate; check the objective, the ranges and the dates.");
         }
 
+        if (BacktestSweep.PositiveInfinityWarning(infiniteCounts.Sum(), objective, "in-sample run(s) over all windows") is { } infiniteWarning)
+        {
+            warnings.Add(infiniteWarning);
+        }
+
+        if (FirstOutOfSampleOverlap(planned) is { } overlap)
+        {
+            warnings.Add($"The out-of-sample ranges of window {overlap.First} and window {overlap.Second} overlap, so the same bars count more than once in the aggregate; the windows are still evaluated as given.");
+        }
+
         return ToolJson.Build(writer => Write(
             writer, resolved.Symbol, timeFrame, objective, minimize, hasList ? ModeList : mode.ToString(), grid, results, firstDay, lastDay, hasGenerator ? barCount : null, minInSampleTrades, warnings));
     }
 
     // ---- windows -----------------------------------------------------------------------------------------------------------------------
+
+    /// <summary>The first pair of windows (by index) whose out-of-sample date ranges share a day, or null. Only the out-of-sample parts matter: a later in-sample part containing an earlier out-of-sample part is normal walk-forward.</summary>
+    private static (int First, int Second)? FirstOutOfSampleOverlap(IReadOnlyList<PlannedWindow> windows)
+    {
+        for (int a = 0; a < windows.Count; a++)
+        {
+            for (int b = a + 1; b < windows.Count; b++)
+            {
+                if (windows[a].OutOfSampleStart <= windows[b].OutOfSampleEnd && windows[b].OutOfSampleStart <= windows[a].OutOfSampleEnd)
+                {
+                    return (windows[a].Index, windows[b].Index);
+                }
+            }
+        }
+
+        return null;
+    }
 
     private static int ReadBars(JsonElement generator, string key)
     {
@@ -400,6 +434,7 @@ internal sealed class RunWalkForwardTool : IMcpTool
         writer.WriteEndObject();
         writer.WriteString("status", result.Status);
         writer.WriteBoolean("isInsufficientData", result.Best < 0);
+        writer.WriteNumber("positiveInfinityCombinationCount", result.PositiveInfinityCount);
 
         if (result.Best >= 0)
         {
@@ -451,6 +486,8 @@ internal sealed class RunWalkForwardTool : IMcpTool
         writer.WriteNumber("evaluatedWindowCount", evaluated.Length);
         ToolJson.WriteNullableNumber(writer, "meanIsObjective", OptimizationRanking.Mean(isObjectives));
         ToolJson.WriteNullableNumber(writer, "meanOosObjective", OptimizationRanking.Mean(oosObjectives));
+        writer.WriteNumber("isObjectiveWindowCount", isObjectives.Length);
+        writer.WriteNumber("oosObjectiveWindowCount", oosObjectives.Length);
         ToolJson.WriteNullableNumber(writer, "meanIsBarSharpe", efficiency.MeanInSampleBarSharpe);
         ToolJson.WriteNullableNumber(writer, "meanOosBarSharpe", efficiency.MeanOutOfSampleBarSharpe);
         writer.WriteNumber("barSharpeWindowCount", efficiency.WindowCount);

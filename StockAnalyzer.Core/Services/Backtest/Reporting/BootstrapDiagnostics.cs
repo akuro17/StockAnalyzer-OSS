@@ -9,6 +9,9 @@ public sealed class BootstrapDiagnostics
     public const string PartialRunReason = "NotComputedPartial";
     public const string LegacyEntryPointReason = "LegacyEntryPoint";
 
+    /// <summary>The report was generated with <c>ComputeAdjustedSortinoBootstrap = false</c>: the bootstrap was not run.</summary>
+    public const string NotRequestedReason = "NotRequested";
+
     public int MethodVersion { get; }
     public int? EffectiveBlockLength { get; }
     public int? ValidReplicates { get; }

@@ -205,8 +205,10 @@ public sealed partial class PortfolioRlDialogViewModel : ObservableObject, IDisp
     /// <param name="transfer">The stored-model seam; null hides every transfer control and the dialog only trains from scratch.</param>
     public PortfolioRlDialogViewModel(IRlPortfolioService service, ITickerSourceResolver resolver, ITickerStateStore store,
         IBacktestDefaultSettingsManager defaults, ILocalizationService localization, TimeProvider? clock = null, IRlPortfolioTransferService? transfer = null,
-        IStoredPeriodAdvisor? periodAdvisor = null, IDialogService? dialogService = null, IModelMetadataAnnotationService? annotationService = null)
+        IStoredPeriodAdvisor? periodAdvisor = null, IDialogService? dialogService = null, IModelMetadataAnnotationService? annotationService = null,
+        StockAnalyzer.Core.Common.IDataStorageState? dataStorageState = null)
     {
+        _storageGate = new StockAnalyzer.Avalonia.Services.StorageFeatureGate(dataStorageState);
         _transfer = transfer;
         _periodAdvisor = periodAdvisor;
         _clock = clock ?? TimeProvider.System;
@@ -252,7 +254,7 @@ public sealed partial class PortfolioRlDialogViewModel : ObservableObject, IDisp
     public bool ShowFreeze => TransferActive && RunKind == PortfolioRunKind.FineTune;
     public bool NoBaseRuns => TransferActive && BaseRuns.Count == 0;
     public bool BaseSelectionEditable => Editable && TransferActive;
-    public bool CanRenameBaseRun => BaseSelectionEditable && SelectedBaseRun is not null && _dialogService is not null && _annotationService is not null;
+    public bool CanRenameBaseRun => BaseSelectionEditable && IsStorageWritable && SelectedBaseRun is not null && _dialogService is not null && _annotationService is not null;
     public bool IsScratchRun { get => RunKind == PortfolioRunKind.Scratch; set { if (value) RunKind = PortfolioRunKind.Scratch; } }
     public bool IsFineTuneRun { get => RunKind == PortfolioRunKind.FineTune; set { if (value) RunKind = PortfolioRunKind.FineTune; } }
     public bool IsEvaluateBaseRun { get => RunKind == PortfolioRunKind.EvaluateBase; set { if (value) RunKind = PortfolioRunKind.EvaluateBase; } }
@@ -697,7 +699,11 @@ public sealed partial class PortfolioRlDialogViewModel : ObservableObject, IDisp
     /// <summary>The data a run needs is ready: the stored panel after its check, or the data check of the symbols and the period.</summary>
     private bool DataGateOpen => UseStoredPanel ? StoredPanelState == PortfolioStoredPanelState.Ready
         : PreflightState == RlDialogLoadState.Loaded && _decision is { CanStart: true } && PeriodValid;
-    public bool CanStart => !_disposed && !IsBusy && DataGateOpen && CostsValid && MinimumBarsValid && PercentsValid && TransferGateOpen;
+    // Read-only mode (the Data folder is not writable): a run only produces a stored model, so it is refused up front.
+    private readonly StockAnalyzer.Avalonia.Services.StorageFeatureGate _storageGate;
+    public bool IsStorageWritable => _storageGate.IsAvailable;
+    public string? StorageDisabledToolTip => _storageGate.DisabledToolTip;
+    public bool CanStart => !_disposed && !IsBusy && IsStorageWritable && DataGateOpen && CostsValid && MinimumBarsValid && PercentsValid && TransferGateOpen;
     /// <summary>
     /// One short blocking reason for the footer, taken from the messages the window already has (the Start-gate decision, the period, costs, percent and
     /// minimum-bars messages, the stored-panel and base-run admission); empty when a start is possible, while a run is active and while a data check is only
@@ -707,7 +713,9 @@ public sealed partial class PortfolioRlDialogViewModel : ObservableObject, IDisp
     {
         get
         {
-            if (!Editable || CanStart) return "";
+            if (!Editable) return "";
+            if (!IsStorageWritable) return StorageDisabledToolTip ?? "";
+            if (CanStart) return "";
             foreach (string reason in new[] { PeriodMessage, BlockerText, CostsMessage, PercentMessage, MinimumBarsMessage })
                 if (!string.IsNullOrEmpty(reason)) return reason;
             if (UseStoredPanel && StoredPanelState == PortfolioStoredPanelState.Failed) return StoredPanelMessage;

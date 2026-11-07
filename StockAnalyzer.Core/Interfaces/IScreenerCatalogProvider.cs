@@ -21,6 +21,14 @@ public interface IScreenerCatalogProvider
     IReadOnlyList<ScreenerCatalogItem> GetCatalogItems(IIndicatorFactory? indicatorFactory = null);
 
     /// <summary>
+    /// The catalog of the Screener itself (the Screener tab and the MCP screener): <see cref="GetCatalogItems"/> plus the indicators that compare two symbols and that the
+    /// Screener evaluates although the Backtest refuses them (<c>ScreenerIndicatorEligibility</c>). The Backtest selection and the Scatter registration keep using
+    /// <see cref="GetCatalogItems"/>, whose result is unchanged. A provider written before this member existed answers with <see cref="GetCatalogItems"/>.
+    /// </summary>
+    /// <param name="indicatorFactory">Optional indicator factory for dynamic settings generation.</param>
+    IReadOnlyList<ScreenerCatalogItem> GetCatalogItemsForScreener(IIndicatorFactory? indicatorFactory = null) => GetCatalogItems(indicatorFactory);
+
+    /// <summary>
     /// Gets default indicator settings for a specified indicator type.
     /// </summary>
     /// <param name="type">The indicator type.</param>

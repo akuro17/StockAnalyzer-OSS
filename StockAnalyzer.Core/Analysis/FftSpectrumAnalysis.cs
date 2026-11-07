@@ -147,7 +147,10 @@ public static class FftSpectrumAnalysis
                 double re = spectrumRe[k];
                 double im = spectrumIm[k];
 
-                double magnitude = (2.0 / n) * Math.Sqrt(re * re + im * im);
+                // Single-sided amplitude: 2/n because the mirrored bin carries the other half, except the Nyquist bin of an even n (period 2 bars),
+                // which has no mirrored partner. Same rule as FftProjectionAnalysis (owner decision D-9 = A).
+                double scaleFactor = (n % 2 == 0 && k == halfN) ? (1.0 / n) : (2.0 / n);
+                double magnitude = scaleFactor * Math.Sqrt(re * re + im * im);
                 double power = magnitude * magnitude;
                 double phase = Math.Atan2(im, re);
 

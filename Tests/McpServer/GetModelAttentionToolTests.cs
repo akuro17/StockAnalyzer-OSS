@@ -283,6 +283,114 @@ public sealed class GetModelAttentionToolTests : IDisposable
         Assert.DoesNotContain(_tempDir, json, StringComparison.OrdinalIgnoreCase);
     }
 
+    private void WriteManifest(string modelId, string timeframe)
+    {
+        string modelSubDir = Path.Combine(_modelDir, modelId);
+        Directory.CreateDirectory(modelSubDir);
+        File.WriteAllText(Path.Combine(modelSubDir, "manifest.json"), JsonSerializer.Serialize(new
+        {
+            schemaVersion = 1,
+            modelId,
+            modelFile = "m.onnx",
+            modelHash = "a",
+            requiredSidecars = Array.Empty<object>(),
+            contractHash = "b",
+            evaluationRevision = "c",
+            targetType = "classification",
+            timeframe,
+            horizon = 5,
+            classOrder = "Up,Down",
+            score = 0.5
+        }));
+    }
+
+    private static AttentionResult ReadyResult(string modelId, string timeframe)
+    {
+        var key = new AttentionRequestKey(modelId, "7203-T", timeframe, new DateTime(2026, 1, 9), 0);
+        var snapshot = new AttentionSnapshot(
+            key,
+            Heads: 2,
+            ImmutableArray.Create(new DateTime(2026, 1, 2), new DateTime(2026, 1, 9)),
+            ImmutableArray.Create(0.4f, 0.6f),
+            ImmutableArray.Create(0.6666667f, 1.0f));
+        return AttentionResult.Ready(snapshot);
+    }
+
+    [Theory]
+    [InlineData("daily", TimeFrame.D1, "Daily")]
+    [InlineData("weekly", TimeFrame.W1, "Weekly")]
+    [InlineData("monthly", TimeFrame.MN1, "Monthly")]
+    [InlineData("Weekly", TimeFrame.W1, "Weekly")]
+    public async Task TheBarsAreReadInTheModelsOwnTimeFrame_AndTheKeyNamesTheFetchedFrame(string manifestTimeframe, TimeFrame expectedFrame, string expectedKeyFrame)
+    {
+        string modelId = "test_attn_frame_" + manifestTimeframe.ToLowerInvariant();
+        WriteManifest(modelId, manifestTimeframe);
+        var registry = new ReadOnlyModelGenerationRegistry(_modelDir);
+        var gateway = new MockGatewayWithCandles(candleCount: 10);
+        var attention = new MockAttentionService(ReadyResult(modelId, manifestTimeframe));
+        var tool = new GetModelAttentionTool(gateway, new SymbolResolver(gateway), registry: registry, attentionService: attention);
+
+        using var doc = JsonDocument.Parse($"{{\"modelId\":\"{modelId}\",\"symbol\":\"7203-T\"}}");
+        _ = await tool.InvokeAsync(doc.RootElement, CancellationToken.None);
+
+        Assert.Equal(new[] { (expectedFrame, false) }, gateway.Requests);
+        Assert.NotNull(attention.LastKey);
+        Assert.Equal(expectedKeyFrame, attention.LastKey!.Timeframe);
+    }
+
+    [Fact]
+    public async Task AnAsOfDateUsesTheAsOfReadInTheModelsOwnTimeFrame()
+    {
+        string modelId = "test_attn_frame_asof";
+        WriteManifest(modelId, "weekly");
+        var registry = new ReadOnlyModelGenerationRegistry(_modelDir);
+        var gateway = new MockGatewayWithCandles(candleCount: 10);
+        var tool = new GetModelAttentionTool(gateway, new SymbolResolver(gateway), registry: registry, attentionService: new MockAttentionService(ReadyResult(modelId, "weekly")));
+
+        using var doc = JsonDocument.Parse($"{{\"modelId\":\"{modelId}\",\"symbol\":\"7203-T\",\"asOfDate\":\"2026-01-09\"}}");
+        _ = await tool.InvokeAsync(doc.RootElement, CancellationToken.None);
+
+        Assert.Equal(new[] { (TimeFrame.W1, true) }, gateway.Requests);
+    }
+
+    [Fact]
+    public async Task AMonthlyModelWithTooFewMonthlyBarsIsInsufficientMarketData_EvenWhenDailyBarsWouldSuffice()
+    {
+        string modelId = "test_attn_few_monthly";
+        WriteManifest(modelId, "monthly");
+        var registry = new ReadOnlyModelGenerationRegistry(_modelDir);
+        var gateway = new MockGatewayWithCandles(candleCount: 1); // below AttentionContract.MinWindow
+        var tool = new GetModelAttentionTool(gateway, new SymbolResolver(gateway), registry: registry, attentionService: new MockAttentionService(ReadyResult(modelId, "monthly")));
+
+        using var doc = JsonDocument.Parse($"{{\"modelId\":\"{modelId}\",\"symbol\":\"7203-T\"}}");
+        var ex = await Assert.ThrowsAsync<ToolException>(() => tool.InvokeAsync(doc.RootElement, CancellationToken.None));
+
+        Assert.Equal(ToolErrorCodes.InsufficientMarketData, ex.Code);
+        Assert.Equal(new[] { (TimeFrame.MN1, false) }, gateway.Requests);
+    }
+
+    [Theory]
+    [InlineData("H1")]
+    [InlineData("hourly")]
+    [InlineData("")]
+    [InlineData("1")]
+    [InlineData("6")]
+    public async Task AModelTimeFrameTheServerCannotRead_IsUnsupportedTimeFrame_BeforeAnyBarIsRead(string manifestTimeframe)
+    {
+        string modelId = "test_attn_bad_frame";
+        WriteManifest(modelId, manifestTimeframe);
+        var registry = new ReadOnlyModelGenerationRegistry(_modelDir);
+        var gateway = new MockGatewayWithCandles(candleCount: 10);
+        var tool = new GetModelAttentionTool(gateway, new SymbolResolver(gateway), registry: registry, attentionService: new MockAttentionService(ReadyResult(modelId, "daily")));
+
+        using var doc = JsonDocument.Parse($"{{\"modelId\":\"{modelId}\",\"symbol\":\"7203-T\"}}");
+        var ex = await Assert.ThrowsAsync<ToolException>(() => tool.InvokeAsync(doc.RootElement, CancellationToken.None));
+
+        Assert.Equal(ToolErrorCodes.UnsupportedTimeFrame, ex.Code);
+        Assert.Equal("modelId", ex.Parameter);
+        Assert.Empty(gateway.Requests);
+    }
+
     private sealed class MockGatewayWithCandles : EmptyReadOnlyStockAnalyzerGateway
     {
         private readonly int _candleCount;
@@ -295,11 +403,20 @@ public sealed class GetModelAttentionToolTests : IDisposable
         public override Task<IReadOnlyList<string>> GetAvailableTickersAsync(CancellationToken cancellationToken = default)
             => Task.FromResult<IReadOnlyList<string>>(new[] { "7203-T", "MSFT" });
 
+        /// <summary>Every time frame the tool asked for, in order, and whether the as-of overload was used.</summary>
+        public List<(TimeFrame Frame, bool AsOf)> Requests { get; } = new();
+
         public override Task<IReadOnlyList<CandleData>> GetCandlesAsync(string symbol, TimeFrame timeFrame, int count, CancellationToken cancellationToken = default)
-            => Task.FromResult<IReadOnlyList<CandleData>>(GenerateCandles(Math.Min(count, _candleCount)));
+        {
+            Requests.Add((timeFrame, false));
+            return Task.FromResult<IReadOnlyList<CandleData>>(GenerateCandles(Math.Min(count, _candleCount)));
+        }
 
         public override Task<IReadOnlyList<CandleData>> GetCandlesUpToAsync(string symbol, TimeFrame timeFrame, DateOnly endDate, int count, CancellationToken cancellationToken = default)
-            => Task.FromResult<IReadOnlyList<CandleData>>(GenerateCandles(Math.Min(count, _candleCount)));
+        {
+            Requests.Add((timeFrame, true));
+            return Task.FromResult<IReadOnlyList<CandleData>>(GenerateCandles(Math.Min(count, _candleCount)));
+        }
 
         private static List<CandleData> GenerateCandles(int n)
         {
@@ -322,10 +439,18 @@ public sealed class GetModelAttentionToolTests : IDisposable
             _result = result;
         }
 
+        public AttentionRequestKey? LastKey { get; private set; }
+
         public Task<AttentionResult> ComputeAsync(AttentionRequestKey key, IReadOnlyList<CandleData> history, CancellationToken cancellationToken = default)
-            => Task.FromResult(_result);
+        {
+            LastKey = key;
+            return Task.FromResult(_result);
+        }
 
         public Task<AttentionResult> ComputeMemberAsync(AttentionRequestKey key, IReadOnlyList<CandleData> history, CancellationToken cancellationToken = default)
-            => Task.FromResult(_result);
+        {
+            LastKey = key;
+            return Task.FromResult(_result);
+        }
     }
 }

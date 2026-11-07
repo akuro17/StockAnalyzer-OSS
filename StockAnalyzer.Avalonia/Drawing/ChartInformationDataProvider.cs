@@ -148,7 +148,7 @@ public static class ChartInformationDataProvider
                 var validSeries = new List<string>();
                 foreach (var n in seriesNames)
                 {
-                    if (n == "BullishSignals" || n == "BearishSignals" || n == "BuySignals" || n == "SellSignals")
+                    if (IndicatorSeriesNames.IsDirectionalSignalSeries(n))
                         continue;
 
                     bool isMainExplicitlyMapped = indicator.SeriesColors != null && indicator.SeriesColors.Any(sc => sc.TargetSeries.Contains("Main"));

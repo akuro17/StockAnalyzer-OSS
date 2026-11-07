@@ -640,6 +640,16 @@ public class ScatterMetricEvaluatorTests
     {
         public ConcurrentQueue<(ScreenerIndicatorSideConfig? Config, IReadOnlyList<CandleData> Candles)> Calls { get; } = new();
 
+        /// <summary>The calls that came through the 4-argument overload (the one that carries the comparison-symbol bars), also counted in <see cref="Calls"/>.</summary>
+        public ConcurrentQueue<(ScreenerIndicatorSideConfig? Config, IScreenerSecondaryCandles? Secondary)> SecondaryCalls { get; } = new();
+
+        public decimal? ExtractValueNullable(ScreenerIndicatorSideConfig? config, IReadOnlyList<CandleData> candles, TickerMetadata metadata, IScreenerSecondaryCandles? secondary)
+        {
+            SecondaryCalls.Enqueue((config, secondary));
+            Calls.Enqueue((config, candles));
+            return Extractor.ExtractValueNullable(config, candles, metadata, secondary);
+        }
+
         public decimal ExtractValue(ScreenerIndicatorSideConfig? config, IReadOnlyList<CoreCandleData> candles) => Extractor.ExtractValue(config, candles);
 
         public decimal ExtractValue(ScreenerIndicatorSideConfig? config, IReadOnlyList<CandleData> candles, TickerMetadata metadata = default)
@@ -715,5 +725,251 @@ public class ScatterMetricEvaluatorTests
         Assert.Equal(1, loads);
         Assert.Equal(Required(longSma), data.RequestedCounts["AAA"]);
         Assert.Same(recorder.Calls.ElementAt(0).Candles, recorder.Calls.ElementAt(1).Candles);
+    }
+
+    // ===== S-1: a metric that compares two symbols reads the daily bars of its comparison symbol =====
+
+    private const string Benchmark = "SPY";
+
+    private static ScatterMetricDefinition Compared(IndicatorType type, string? comparisonSymbol, TimeFrame frame = TimeFrame.D1)
+    {
+        ScatterMetricDefinition metric = comparisonSymbol is null
+            ? ScatterMetricTestKit.Indicator(type)
+            : ScatterMetricTestKit.Indicator(type, 0, null, ("ComparisonSymbol", comparisonSymbol));
+        return ScatterMetricTestKit.OnFrame(metric, frame);
+    }
+
+    /// <summary>The value the Screener's extractor gives for <paramref name="metric"/> when it is handed the comparison symbol's bars (the oracle).</summary>
+    private static async Task<double> DirectWithSecondary(ScatterMetricDefinition metric, IReadOnlyList<CandleData> bars, FakeDataService data, params string[] comparisonSymbols)
+    {
+        ScreenerSecondaryCandles secondary = await ScreenerSecondaryCandles.LoadAsync(data, comparisonSymbols, TimeFrame.D1, 0, CancellationToken.None);
+        return (double)Extractor.ExtractValueNullable(metric.Source, bars, default, secondary)!.Value;
+    }
+
+    [Theory]
+    [InlineData(IndicatorType.Correlation)]
+    [InlineData(IndicatorType.CrossCorrelation)]
+    public async Task ADayTwoTickerMetric_GetsTheValueTheExtractorGivesWithTheComparisonSymbolsBars(IndicatorType type)
+    {
+        var series = Series("AAA", Benchmark);
+        var data = new FakeDataService(series);
+        ScatterMetricDefinition x = Compared(type, Benchmark);
+
+        // Before the change the evaluator handed the extractor no comparison bars, so this metric was NaN for every ticker.
+        Assert.Null(Extractor.ExtractValueNullable(x.Source, series["AAA"], default));
+        double expected = await DirectWithSecondary(x, series["AAA"], new FakeDataService(series), Benchmark);
+
+        var result = await Create(data).ComputeAsync(new[] { "AAA" }, x, Sma(), CancellationToken.None);
+
+        Assert.True(double.IsFinite(result.Items[0].X));
+        Assert.Equal(expected, result.Items[0].X);
+        Assert.Equal(1, result.ValidCount);
+        Assert.Empty(result.MissingComparisonSymbols);
+    }
+
+    [Fact]
+    public async Task TheComparisonSymbolIsLoadedOncePerCall_NotOncePerTicker_AsDailyBars()
+    {
+        var series = Series("AAA", "BBB", "CCC", Benchmark);
+        int benchmarkLoads = 0;
+        var data = new FakeDataService(series, beforeLoad: symbol =>
+        {
+            if (symbol == Benchmark)
+            {
+                Interlocked.Increment(ref benchmarkLoads);
+            }
+
+            return Task.CompletedTask;
+        });
+
+        await Create(data).ComputeAsync(new[] { "AAA", "BBB", "CCC" }, Compared(IndicatorType.Correlation, Benchmark), Sma(), CancellationToken.None);
+
+        Assert.Equal(1, benchmarkLoads);
+        Assert.Equal(TimeFrame.D1, Assert.Single(data.RequestedCountsByFrame.Where(pair => pair.Key.Symbol == Benchmark)).Key.Frame);
+    }
+
+    [Fact]
+    public async Task ASecondCallLoadsTheComparisonSymbolAgain_NothingIsCachedBetweenCalls()
+    {
+        var series = Series("AAA", Benchmark);
+        int benchmarkLoads = 0;
+        var data = new FakeDataService(series, beforeLoad: symbol =>
+        {
+            if (symbol == Benchmark)
+            {
+                Interlocked.Increment(ref benchmarkLoads);
+            }
+
+            return Task.CompletedTask;
+        });
+        ScatterMetricEvaluator evaluator = Create(data);
+
+        await evaluator.ComputeAsync(new[] { "AAA" }, Compared(IndicatorType.Correlation, Benchmark), Sma(), CancellationToken.None);
+        await evaluator.ComputeAsync(new[] { "AAA" }, Compared(IndicatorType.Correlation, Benchmark), Sma(), CancellationToken.None);
+
+        Assert.Equal(2, benchmarkLoads);
+    }
+
+    [Fact]
+    public async Task TwoMetricsThatNameTheSameInstrumentInTwoSpellings_ShareOneLoad()
+    {
+        var series = Series("AAA");
+        var withDot = ScatterMetricTestKit.Bars(BarCount, seed: 77);
+        var map = series.ToDictionary(pair => pair.Key, pair => pair.Value);
+        map["7203.T"] = withDot;
+        int loads = 0;
+        var data = new FakeDataService(map, beforeLoad: symbol =>
+        {
+            if (symbol.StartsWith("7203", StringComparison.Ordinal))
+            {
+                Interlocked.Increment(ref loads);
+            }
+
+            return Task.CompletedTask;
+        });
+
+        var result = await Create(data).ComputeAsync(
+            new[] { "AAA" },
+            Compared(IndicatorType.Correlation, "7203.T"),
+            Compared(IndicatorType.CrossCorrelation, "7203-T"),
+            CancellationToken.None);
+
+        Assert.Equal(1, loads);
+        Assert.DoesNotContain("7203-T", data.RequestedCounts.Keys);
+        Assert.True(double.IsFinite(result.Items[0].X));
+        Assert.True(double.IsFinite(result.Items[0].Y));
+        Assert.Empty(result.MissingComparisonSymbols);
+    }
+
+    [Fact]
+    public async Task ABlankSymbolCorrelation_OnWeek_KeepsItsOldValueAndNeverReceivesComparisonBars()
+    {
+        List<CandleData> weekly = Weekly(LongWeekBars, WeekSeed);
+        IReadOnlyList<CandleData> daily = Series("AAA")["AAA"];
+        var data = new FakeDataService(Frames(("AAA", TimeFrame.D1, daily), ("AAA", TimeFrame.W1, weekly)));
+        var recorder = new RecordingExtractor();
+        ScatterMetricDefinition x = Compared(IndicatorType.Correlation, null, TimeFrame.W1);
+
+        var result = await Create(data, extractor: recorder).ComputeAsync(new[] { "AAA" }, x, Sma(), CancellationToken.None);
+
+        Assert.Equal(DirectOnFrame(x, weekly), result.Items[0].X);
+        Assert.Empty(recorder.SecondaryCalls);
+        Assert.Empty(result.MissingComparisonSymbols);
+        Assert.DoesNotContain(Benchmark, data.RequestedCounts.Keys);
+    }
+
+    [Fact]
+    public async Task AComparisonSymbolWithoutBars_IsNamedInTheResult_AndEveryPointOfThatMetricIsInvalid()
+    {
+        var series = Series("AAA", "BBB");
+        var data = new FakeDataService(series);
+
+        var result = await Create(data).ComputeAsync(new[] { "AAA", "BBB" }, Compared(IndicatorType.Correlation, "ZZZZ"), Sma(), CancellationToken.None);
+
+        Assert.Equal(new[] { "ZZZZ" }, result.MissingComparisonSymbols);
+        Assert.All(result.Items, item => Assert.True(double.IsNaN(item.X)));
+        Assert.All(result.Items, item => Assert.True(double.IsFinite(item.Y)));
+        Assert.Equal(0, result.ValidCount);
+        Assert.Equal(0, result.FailedCount);
+        Assert.Equal(2, result.TotalCount);
+    }
+
+    [Fact]
+    public async Task OnlyTheSymbolWithoutBarsIsNamed_WhenTwoComparisonSymbolsAreUsed()
+    {
+        var series = Series("AAA", Benchmark);
+        var data = new FakeDataService(series);
+
+        var result = await Create(data).ComputeAsync(
+            new[] { "AAA" },
+            Compared(IndicatorType.Correlation, Benchmark),
+            Compared(IndicatorType.CrossCorrelation, "ZZZZ"),
+            CancellationToken.None);
+
+        Assert.Equal(new[] { "ZZZZ" }, result.MissingComparisonSymbols);
+        Assert.True(double.IsFinite(result.Items[0].X));
+        Assert.True(double.IsNaN(result.Items[0].Y));
+    }
+
+    [Fact]
+    public async Task MetricsThatDoNotCompareTwoSymbols_LoadNothingExtra_AndStayOnTheThreeArgumentCall()
+    {
+        var series = Series("AAA");
+        var data = new FakeDataService(series);
+        var recorder = new RecordingExtractor();
+
+        var result = await Create(data, extractor: recorder).ComputeAsync(new[] { "AAA" }, Rsi(), Sma(), CancellationToken.None);
+
+        Assert.Equal(new[] { "AAA" }, data.RequestedCounts.Keys);
+        Assert.Empty(recorder.SecondaryCalls);
+        Assert.Equal(Direct(Rsi(), series["AAA"]), result.Items[0].X);
+        Assert.Equal(Direct(Sma(), series["AAA"]), result.Items[0].Y);
+        Assert.Empty(result.MissingComparisonSymbols);
+    }
+
+    [Fact]
+    public async Task ADayTwoTickerMetric_NextToAWeekMetric_GetsTheComparisonBars_AndTheWeekMetricDoesNot()
+    {
+        List<CandleData> weekly = Weekly(LongWeekBars, WeekSeed);
+        var daily = Series("AAA", Benchmark);
+        var byFrame = Frames(("AAA", TimeFrame.D1, daily["AAA"]), ("AAA", TimeFrame.W1, weekly), (Benchmark, TimeFrame.D1, daily[Benchmark]));
+        var data = new FakeDataService(byFrame);
+        var recorder = new RecordingExtractor();
+        ScatterMetricDefinition x = Compared(IndicatorType.Correlation, Benchmark);
+        ScatterMetricDefinition y = ScatterMetricTestKit.OnFrame(Sma(), TimeFrame.W1);
+
+        var result = await Create(data, extractor: recorder).ComputeAsync(new[] { "AAA" }, x, y, CancellationToken.None);
+
+        (ScreenerIndicatorSideConfig? Config, IScreenerSecondaryCandles? Secondary) call = Assert.Single(recorder.SecondaryCalls);
+        Assert.Same(x.Source, call.Config);
+        Assert.NotNull(call.Secondary!.Get(Benchmark));
+        Assert.Equal(2, recorder.Calls.Count);
+        Assert.Equal(DirectOnFrame(y, weekly), result.Items[0].Y);
+        // Only the Day metric decides how many comparison bars are read: its own requirement, in Day bars.
+        Assert.Equal(Required(x), data.RequestedCountsByFrame[(Benchmark, TimeFrame.D1)]);
+    }
+
+    [Fact]
+    public async Task TheComparisonBarsAreLoadedWithTheLargerRequirementOfTheTwoDayMetrics()
+    {
+        var series = Series("AAA", Benchmark);
+        var data = new FakeDataService(series);
+        ScatterMetricDefinition x = Compared(IndicatorType.Correlation, Benchmark);
+        ScatterMetricDefinition longSma = Sma(period: 400);
+        Assert.True(Required(longSma) > Required(x), "the test needs the two requirements to differ");
+
+        await Create(data).ComputeAsync(new[] { "AAA" }, x, longSma, CancellationToken.None);
+
+        Assert.Equal(Required(longSma), data.RequestedCountsByFrame[(Benchmark, TimeFrame.D1)]);
+        Assert.Equal(Required(longSma), data.RequestedCountsByFrame[("AAA", TimeFrame.D1)]);
+    }
+
+    [Theory]
+    [InlineData(TimeFrame.W1)]
+    [InlineData(TimeFrame.MN1)]
+    public async Task ATwoTickerMetricWithAComparisonSymbolOnWeekOrMonth_IsRefusedBeforeAnythingIsLoaded(TimeFrame frame)
+    {
+        var series = Series("AAA", Benchmark);
+        var data = new FakeDataService(series);
+        var recorder = new RecordingExtractor();
+
+        ArgumentException error = await Assert.ThrowsAsync<ArgumentException>(() =>
+            Create(data, extractor: recorder).ComputeAsync(new[] { "AAA" }, Compared(IndicatorType.Correlation, Benchmark, frame), Sma(), CancellationToken.None));
+
+        Assert.Contains(nameof(ScatterMetricInvalidReason.TwoTickerNeedsDay), error.Message);
+        Assert.Empty(data.RequestedTimeFrames);
+        Assert.Empty(recorder.Calls);
+    }
+
+    [Fact]
+    public async Task NoTickers_ReturnTheEmptyResult_WithoutLoadingTheComparisonSymbol()
+    {
+        var data = new FakeDataService(Series(Benchmark));
+
+        var result = await Create(data).ComputeAsync(Array.Empty<string>(), Compared(IndicatorType.Correlation, Benchmark), Sma(), CancellationToken.None);
+
+        Assert.Empty(result.Items);
+        Assert.Empty(result.MissingComparisonSymbols);
+        Assert.Empty(data.RequestedTimeFrames);
     }
 }

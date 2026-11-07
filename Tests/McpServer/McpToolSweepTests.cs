@@ -152,6 +152,7 @@ public sealed class McpToolSweepTests : IDisposable
         ("sa_detect_chart_patterns", """{"symbol":"MSFT","timeFrame":"D1"}"""),
         ("sa_analyze_cycles", """{"symbol":"MSFT","timeFrame":"D1"}"""),
         ("sa_project_price_path", """{"symbol":"MSFT","timeFrame":"D1","method":"Arima"}"""),
+        ("sa_render_chart_image", """{"symbol":"MSFT","timeFrame":"D1","barCount":3,"overlays":[{"id":"s","type":"SMA","parameters":{"Period":2}}]}"""),
         ("sa_get_seasonality", """{"symbol":"MSFT","timeFrame":"D1"}"""),
         ("sa_calculate_relative_performance", """{"symbol":"MSFT","timeFrame":"D1","comparisonSymbols":["7203.T"]}"""),
         ("sa_calculate_cross_asset_stats", """{"symbols":["MSFT","7203.T"],"timeFrame":"D1"}"""),
@@ -189,6 +190,7 @@ public sealed class McpToolSweepTests : IDisposable
         ("sa_detect_chart_patterns", """{"symbol":"@@","timeFrame":"D1"}"""),
         ("sa_analyze_cycles", """{"symbol":"@@","timeFrame":"D1"}"""),
         ("sa_project_price_path", """{"symbol":"@@","timeFrame":"D1","method":"Arima"}"""),
+        ("sa_render_chart_image", """{"symbol":"@@","timeFrame":"D1","barCount":3}"""),
         ("sa_get_seasonality", """{"symbol":"@@","timeFrame":"D1"}"""),
         ("sa_calculate_relative_performance", """{"symbol":"@@","timeFrame":"D1"}"""),
         ("sa_calculate_relative_performance", """{"symbol":"MSFT","timeFrame":"D1","comparisonSymbols":["@@"]}"""),
@@ -425,6 +427,13 @@ public sealed class McpToolSweepTests : IDisposable
             ("sa_analyze_cycles", $"{{{Frame},\"rangeBars\":{limits.MaxCandlesPerRequest + 1}}}", "rangeBars"),
             ("sa_project_price_path", $"{{{Frame},\"method\":\"Arima\",\"horizonBars\":{limits.MaxProjectionBars + 1}}}", "horizonBars"),
             ("sa_get_seasonality", $"{{{Frame},\"years\":{limits.MaxSeasonalityYears + 1}}}", "years"),
+            ("sa_render_chart_image", $"{{{Frame},\"barCount\":{limits.MaxChartImageBars + 1}}}", "barCount"),
+            ("sa_render_chart_image", $"{{{Frame},\"width\":{limits.MaxChartImageWidth + 1}}}", "width"),
+            ("sa_render_chart_image", $"{{{Frame},\"height\":{limits.MaxChartImageHeight + 1}}}", "height"),
+            ("sa_render_chart_image", $"{{{Frame},\"lookbackBars\":{limits.MaxCandlesPerRequest + 1}}}", "lookbackBars"),
+            ("sa_render_chart_image", $"{{{Frame},\"overlays\":[{Many(limits.MaxImageOverlays + 1)}]}}", "overlays"),
+            ("sa_render_chart_image", $"{{{Frame},\"oscillators\":[{Many(3)}]}}", "oscillators"),
+            ("sa_render_chart_image", $"{{{Frame},\"markers\":[{string.Join(",", Enumerable.Repeat("{\"date\":\"2020-01-02\",\"side\":\"Buy\"}", limits.MaxImageMarkers + 1))}]}}", "markers"),
             ("sa_calculate_cross_asset_stats", $"{{\"symbols\":[{Symbols(limits.MaxCrossAssetSymbols + 1)}]}}", "symbols"),
             ("sa_calculate_cross_asset_stats", $"{{\"symbols\":[\"MSFT\",\"AAPL\"],\"lookbackBars\":{limits.MaxCandlesPerRequest + 1}}}", "lookbackBars"),
             ("sa_calculate_market_breadth", $"{{\"symbols\":[{Symbols(limits.MaxBreadthSymbols + 1)}]}}", "symbols"),
@@ -440,6 +449,8 @@ public sealed class McpToolSweepTests : IDisposable
             ("sa_detect_chart_patterns", $"{{{Frame},\"dtwMinWindow\":4294967320}}", "dtwMinWindow"),
             ("sa_project_price_path", $"{{{Frame},\"method\":\"Arima\",\"horizonBars\":4294967320}}", "horizonBars"),
             ("sa_get_seasonality", $"{{{Frame},\"years\":4294967320}}", "years"),
+            ("sa_render_chart_image", $"{{{Frame},\"barCount\":2147483648}}", "barCount"),
+            ("sa_render_chart_image", $"{{{Frame},\"width\":4294967320}}", "width"),
         }.Select(call => new object[] { call.Tool, call.Arguments, call.Parameter });
     }
 

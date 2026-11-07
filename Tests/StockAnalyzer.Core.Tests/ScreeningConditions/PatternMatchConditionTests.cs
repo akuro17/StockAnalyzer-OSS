@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.ScreeningConditions;
@@ -90,7 +91,7 @@ public class PatternMatchConditionTests
 
         public Task<PatternRecognitionResult> DetectAsync(
             IReadOnlyList<CandleData> candles, int minWindow, int maxWindow, int windowStep,
-            double threshold, int warpingRadius, double shortSpanPenaltyAlpha)
+            double threshold, int warpingRadius, double shortSpanPenaltyAlpha, CancellationToken cancellationToken)
         {
             LastArguments = (minWindow, maxWindow, windowStep, threshold);
             return Task.FromResult(PatternRecognitionResult.Success(Array.Empty<DetectedPattern>()));

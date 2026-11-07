@@ -23,6 +23,7 @@ using StockAnalyzer.Core.Services.Analysis;
 using StockAnalyzer.Core.Services.Backtest.Engine;
 using StockAnalyzer.Core.Services.Backtest.Evaluation;
 using StockAnalyzer.Core.Services.Backtest.Reporting;
+using StockAnalyzer.Core.Tests.Services;
 using StockAnalyzer.Core.Tests.TestHelpers;
 using StockAnalyzer.TestSupport;
 using Xunit;
@@ -50,15 +51,16 @@ public sealed class ReadOnlyGatewayTests : IDisposable
 
     private IOptions<MarketDataSettings> MarketDataOptions => Options.Create(_fixture.Settings);
 
-    private ReadOnlyStockAnalyzerGateway CreateGateway()
+    private ReadOnlyStockAnalyzerGateway CreateGateway(Func<ParquetDataService, IDataService>? decorateDataService = null, IAnalysisPipelineService pipeline = null)
     {
         var source = new ParquetReadOnlyMarketDataSource(new ParquetMarketDataProvider(_db, UnavailablePythonService.Instance, MarketDataOptions));
-        var dataService = new ParquetDataService(_db, MarketDataOptions);
+        var parquet = new ParquetDataService(_db, MarketDataOptions);
+        IDataService dataService = decorateDataService is null ? parquet : decorateDataService(parquet);
         var screener = new ScreenerService(dataService, new PythonIpcTestSettingsBase(), new IMarketDataProvider[] { new ReadOnlyMetadataMarketDataProvider(source) });
         return new ReadOnlyStockAnalyzerGateway(
             source,
             dataService,
-            new AnalysisPipelineService(pythonService: null, indicatorFactory: IndicatorFactory.Default),
+            pipeline ?? new AnalysisPipelineService(pythonService: null, indicatorFactory: IndicatorFactory.Default),
             screener,
             new FileReadOnlyTemplateSource(TemplateDirectory),
             new ScreenerTemplateEvaluator(screener),
@@ -298,6 +300,176 @@ public sealed class ReadOnlyGatewayTests : IDisposable
     }
 
     [Fact]
+    public async Task GetCoverage_NamesTheTimeFramesWhoseBarsCannotBeRead_AndKeepsTheOtherSymbolsIntact()
+    {
+        // Weekly and monthly bars are aggregated from the daily file, so an unreadable daily load makes all three time frames unreadable.
+        var gateway = CreateGateway(parquet => new ThrowingDataService(parquet, symbol => symbol == Toyota.Replace('.', '-'), new IOException("disk gone")));
+
+        SymbolCoverage broken = await gateway.GetCoverageAsync(Toyota);
+        SymbolCoverage healthy = await gateway.GetCoverageAsync(Msft);
+
+        Assert.False(broken.Found);
+        Assert.Empty(broken.TimeFrames);
+        Assert.Equal(new[] { TimeFrame.D1, TimeFrame.W1, TimeFrame.MN1 }, broken.UnreadableTimeFrames);
+
+        Assert.True(healthy.Found);
+        Assert.Empty(healthy.UnreadableTimeFrames);
+        Assert.Contains(healthy.TimeFrames, c => c.TimeFrame == TimeFrame.D1 && c.BarCount == 20);
+    }
+
+    [Theory]
+    [InlineData(ParquetDataServiceLoadCharacterizationTests.Kind.Corrupt)]
+    [InlineData(ParquetDataServiceLoadCharacterizationTests.Kind.ZeroBytes)]
+    public async Task GetCoverage_AnUnreadableDailyFileNamesAllThreeTimeFrames_AndTheOtherSymbolIsUnaffected(ParquetDataServiceLoadCharacterizationTests.Kind kind)
+    {
+        ParquetDataServiceLoadCharacterizationTests.Prepare(kind, Path.Combine(_fixture.DailyDirectory, "7203-T.parquet"));
+        var gateway = CreateGateway();
+
+        SymbolCoverage broken = await gateway.GetCoverageAsync(Toyota);
+        SymbolCoverage healthy = await gateway.GetCoverageAsync(Msft);
+
+        Assert.False(broken.Found);
+        Assert.Empty(broken.TimeFrames);
+        Assert.Equal(new[] { TimeFrame.D1, TimeFrame.W1, TimeFrame.MN1 }, broken.UnreadableTimeFrames);
+        Assert.True(healthy.Found);
+        Assert.Empty(healthy.UnreadableTimeFrames);
+    }
+
+    [Theory]
+    [InlineData(ParquetDataServiceLoadCharacterizationTests.Kind.Missing)]
+    [InlineData(ParquetDataServiceLoadCharacterizationTests.Kind.HeaderOnly)]
+    public async Task GetCoverage_AMissingFileAndAFileWithoutRowsAreNoDataNotUnreadable(ParquetDataServiceLoadCharacterizationTests.Kind kind)
+    {
+        ParquetDataServiceLoadCharacterizationTests.Prepare(kind, Path.Combine(_fixture.DailyDirectory, "7203-T.parquet"));
+
+        SymbolCoverage coverage = await CreateGateway().GetCoverageAsync(Toyota);
+
+        Assert.False(coverage.Found);
+        Assert.Empty(coverage.TimeFrames);
+        Assert.Empty(coverage.UnreadableTimeFrames);
+    }
+
+    [Fact]
+    public async Task GetCoverage_AReadableSymbolHasTheSameCoverageWithAndWithoutTheReadStatus()
+    {
+        SymbolCoverage withStatus = await CreateGateway().GetCoverageAsync(Msft);
+        SymbolCoverage plain = await CreateGateway(parquet => new PlainDataService(parquet)).GetCoverageAsync(Msft);
+
+        Assert.True(withStatus.Found);
+        Assert.Equal(plain.TimeFrames, withStatus.TimeFrames);
+        Assert.Equal(plain.UnreadableTimeFrames, withStatus.UnreadableTimeFrames);
+        Assert.Equal(plain.Found, withStatus.Found);
+    }
+
+    [Theory]
+    [InlineData(ParquetDataServiceLoadCharacterizationTests.Kind.Valid, 1)]
+    [InlineData(ParquetDataServiceLoadCharacterizationTests.Kind.Corrupt, 1)]
+    [InlineData(ParquetDataServiceLoadCharacterizationTests.Kind.Missing, 1)]
+    public async Task GetCoverage_TheDailyFileIsReadOnceNoMatterHowManyTimeFramesAreBuiltFromIt(ParquetDataServiceLoadCharacterizationTests.Kind kind, int expectedDailyReads)
+    {
+        ParquetDataServiceLoadCharacterizationTests.Prepare(kind, Path.Combine(_fixture.DailyDirectory, "MSFT.parquet"));
+        CountingStatusDataService counting = null;
+        var gateway = CreateGateway(parquet => counting = new CountingStatusDataService(parquet));
+
+        _ = await gateway.GetCoverageAsync(Msft);
+
+        Assert.Equal(expectedDailyReads, counting!.DailyReads);
+    }
+
+    [Fact]
+    public async Task GetCoverage_CancellationFromTheStatusReadIsNeverReportedAsUnreadable()
+    {
+        var gateway = CreateGateway(parquet => new CancellingStatusDataService(parquet));
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => gateway.GetCoverageAsync(Msft));
+    }
+
+    [Fact]
+    public async Task GetCoverage_ASymbolWithNothingStoredHasNoUnreadableTimeFrames()
+    {
+        var coverage = await CreateGateway().GetCoverageAsync("NOSUCH");
+
+        Assert.False(coverage.Found);
+        Assert.Empty(coverage.TimeFrames);
+        Assert.Empty(coverage.UnreadableTimeFrames);
+    }
+
+    [Fact]
+    public async Task GetCoverage_CancellationIsNeverReportedAsUnreadable()
+    {
+        var gateway = CreateGateway(parquet => new ThrowingDataService(parquet, _ => true, new OperationCanceledException()));
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => gateway.GetCoverageAsync(Msft));
+    }
+
+    /// <summary>A data service that wraps the real one and does not offer the read status, as every wrapping data service does.</summary>
+    private sealed class PlainDataService : IDataService
+    {
+        private readonly IDataService _inner;
+
+        public PlainDataService(IDataService inner) => _inner = inner;
+
+        public Task<IReadOnlyList<CandleData>> LoadCandlesAsync(string symbol, TimeFrame timeFrame, int count = 100)
+            => _inner.LoadCandlesAsync(symbol, timeFrame, count);
+    }
+
+    /// <summary>Counts every read of the daily file, whichever entry point asks for it.</summary>
+    private sealed class CountingStatusDataService : IDataService, IDataReadStatusSource
+    {
+        private readonly ParquetDataService _inner;
+
+        public CountingStatusDataService(ParquetDataService inner) => _inner = inner;
+
+        public int DailyReads { get; private set; }
+
+        public Task<IReadOnlyList<CandleData>> LoadCandlesAsync(string symbol, TimeFrame timeFrame, int count = 100)
+        {
+            if (timeFrame == TimeFrame.D1) DailyReads++;
+            return _inner.LoadCandlesAsync(symbol, timeFrame, count);
+        }
+
+        public Task<DataReadResult> LoadCandlesWithStatusAsync(string symbol, TimeFrame timeFrame, int count, CancellationToken cancellationToken = default)
+        {
+            if (timeFrame == TimeFrame.D1) DailyReads++;
+            return _inner.LoadCandlesWithStatusAsync(symbol, timeFrame, count, cancellationToken);
+        }
+    }
+
+    private sealed class CancellingStatusDataService : IDataService, IDataReadStatusSource
+    {
+        private readonly IDataService _inner;
+
+        public CancellingStatusDataService(IDataService inner) => _inner = inner;
+
+        public Task<IReadOnlyList<CandleData>> LoadCandlesAsync(string symbol, TimeFrame timeFrame, int count = 100)
+            => _inner.LoadCandlesAsync(symbol, timeFrame, count);
+
+        public Task<DataReadResult> LoadCandlesWithStatusAsync(string symbol, TimeFrame timeFrame, int count, CancellationToken cancellationToken = default)
+            => Task.FromException<DataReadResult>(new OperationCanceledException());
+    }
+
+    /// <summary>Delegates to the real data service except for the symbols selected, where the load fails with the exception given.</summary>
+    private sealed class ThrowingDataService : IDataService
+    {
+        private readonly IDataService _inner;
+        private readonly Func<string, bool> _fails;
+        private readonly Exception _error;
+
+        public ThrowingDataService(IDataService inner, Func<string, bool> fails, Exception error)
+        {
+            _inner = inner;
+            _fails = fails;
+            _error = error;
+        }
+
+        public Task<IReadOnlyList<CandleData>> LoadCandlesAsync(string symbol, TimeFrame timeFrame, int count = 100)
+            => _fails(symbol) ? Task.FromException<IReadOnlyList<CandleData>>(_error) : _inner.LoadCandlesAsync(symbol, timeFrame, count);
+
+        public Task<IReadOnlyList<CandleData>> LoadCandlesAsync(string symbol, TimeFrame timeFrame, int count, bool includePartialBar, CancellationToken cancellationToken = default)
+            => _fails(symbol) ? Task.FromException<IReadOnlyList<CandleData>>(_error) : _inner.LoadCandlesAsync(symbol, timeFrame, count, includePartialBar, cancellationToken);
+    }
+
+    [Fact]
     public async Task GetStoredTickerMetadata_IsNullWhenNothingIsStored()
     {
         Assert.Null(await CreateGateway().GetStoredTickerMetadataAsync(Msft));
@@ -350,6 +522,107 @@ public sealed class ReadOnlyGatewayTests : IDisposable
 
         Assert.True(actual["sma"].IsSuccessful);
         Assert.Equal(expected["sma"].MainValues, actual["sma"].MainValues);
+    }
+
+    private static List<CoreIndicatorSettings> OneSma() => new() { new CoreIndicatorSettings { Id = "sma", IsEnabled = true, TypeEnum = IndicatorType.SMA, ParameterObject = new CoreSmaParameter { Period = 5 } } };
+
+#nullable enable
+    /// <summary>A pipeline that offers only the plain interface (like the chart's fakes): the gateway has no token to give it.</summary>
+    private class PlainOnlyPipeline : IAnalysisPipelineService
+    {
+        private readonly AnalysisPipelineService _real = new(pythonService: null, indicatorFactory: IndicatorFactory.Default);
+
+        public int PlainCalls { get; private set; }
+
+        public Dictionary<string, IIndicatorResult> CalculateIndicators(IReadOnlyList<CoreCandleData> candles, IEnumerable<CoreIndicatorSettings> settings, IReadOnlyDictionary<string, IReadOnlyList<CoreCandleData?>>? secondaryCandlesBySymbol = null)
+            => _real.CalculateIndicators(candles, settings, secondaryCandlesBySymbol);
+
+        public Task<Dictionary<string, IIndicatorResult>> CalculateIndicatorsAsync(IReadOnlyList<CoreCandleData> candles, IEnumerable<CoreIndicatorSettings> settings, IReadOnlyDictionary<string, IReadOnlyList<CoreCandleData?>>? secondaryCandlesBySymbol = null)
+        {
+            PlainCalls++;
+            return ((IAnalysisPipelineService)_real).CalculateIndicatorsAsync(candles, settings, secondaryCandlesBySymbol);
+        }
+
+        public ReverseWatchCurveData? CalculateReverseWatch(IReadOnlyList<CoreCandleData> candles, int period, string symbol, bool isMaBased = true, bool isLogScaleVolume = false, int dataCount = 0)
+            => _real.CalculateReverseWatch(candles, period, symbol, isMaBased, isLogScaleVolume, dataCount);
+
+        public decimal CalculateAtr(IReadOnlyList<CoreCandleData> candles, int period) => _real.CalculateAtr(candles, period);
+    }
+
+    /// <summary>A pipeline that also offers the token-aware call and records which of the two it was asked.</summary>
+    private sealed class TokenAwarePipeline : PlainOnlyPipeline, ICancellableIndicatorCalculation
+    {
+        private readonly AnalysisPipelineService _aware = new(pythonService: null, indicatorFactory: IndicatorFactory.Default);
+
+        public List<CancellationToken> Tokens { get; } = new();
+
+        public Task<Dictionary<string, IIndicatorResult>> CalculateIndicatorsAsync(IReadOnlyList<CoreCandleData> candles, IEnumerable<CoreIndicatorSettings> settings, IReadOnlyDictionary<string, IReadOnlyList<CoreCandleData?>>? secondaryCandlesBySymbol, CancellationToken cancellationToken)
+        {
+            Tokens.Add(cancellationToken);
+            return _aware.CalculateIndicatorsAsync(candles, settings, secondaryCandlesBySymbol, cancellationToken);
+        }
+    }
+#nullable restore
+
+    [Fact]
+    public void TheGatewayOffersTheTokenAwareCalculation()
+    {
+        Assert.IsAssignableFrom<ICancellableIndicatorCalculation>(CreateGateway());
+    }
+
+    [Fact]
+    public async Task ATokenAwarePipelineGetsTheCallersToken_AndTheResultEqualsThePlainCall()
+    {
+        var pipeline = new TokenAwarePipeline();
+        var gateway = CreateGateway(pipeline: pipeline);
+        var candles = (await gateway.GetCandlesAsync(Msft, TimeFrame.D1, 20)).Select(ToCore).ToList();
+        using var source = new CancellationTokenSource();
+
+        var aware = await ((ICancellableIndicatorCalculation)gateway).CalculateIndicatorsAsync(candles, OneSma(), null, source.Token);
+        var plain = await gateway.CalculateIndicatorsAsync(candles, OneSma());
+
+        Assert.Equal(source.Token, Assert.Single(pipeline.Tokens));
+        Assert.Equal(1, pipeline.PlainCalls);
+        Assert.Equal(plain["sma"].MainValues, aware["sma"].MainValues);
+    }
+
+    [Fact]
+    public async Task ACancelledTokenStopsTheGatewayCalculationWithoutAResult()
+    {
+        var gateway = CreateGateway();
+        var candles = (await gateway.GetCandlesAsync(Msft, TimeFrame.D1, 20)).Select(ToCore).ToList();
+        using var cancelled = new CancellationTokenSource();
+        cancelled.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => ((ICancellableIndicatorCalculation)gateway).CalculateIndicatorsAsync(candles, OneSma(), null, cancelled.Token));
+    }
+
+    [Fact]
+    public async Task APipelineWithoutTheTokenAwareCallIsCalledPlainAndTheTokenIsIgnored()
+    {
+        var pipeline = new PlainOnlyPipeline();
+        var gateway = CreateGateway(pipeline: pipeline);
+        var candles = (await gateway.GetCandlesAsync(Msft, TimeFrame.D1, 20)).Select(ToCore).ToList();
+        using var cancelled = new CancellationTokenSource();
+        cancelled.Cancel();
+
+        var result = await ((ICancellableIndicatorCalculation)gateway).CalculateIndicatorsAsync(candles, OneSma(), null, cancelled.Token);
+
+        Assert.Equal(1, pipeline.PlainCalls);
+        Assert.True(result["sma"].IsSuccessful);
+    }
+
+    [Fact]
+    public async Task ThePlainGatewayCallStillUsesThePlainPipelineCall()
+    {
+        var pipeline = new TokenAwarePipeline();
+        var gateway = CreateGateway(pipeline: pipeline);
+        var candles = (await gateway.GetCandlesAsync(Msft, TimeFrame.D1, 20)).Select(ToCore).ToList();
+
+        await gateway.CalculateIndicatorsAsync(candles, OneSma());
+
+        Assert.Equal(1, pipeline.PlainCalls);
+        Assert.Empty(pipeline.Tokens);
     }
 
     [Fact]

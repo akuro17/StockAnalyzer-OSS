@@ -221,6 +221,14 @@ public class ScreenerService : IScreenerService, IScreenerServiceFactory
         });
     }
 
+    public async Task<IScreenerSecondaryCandles> LoadComparisonCandlesAsync(
+        IReadOnlyList<string> spellings,
+        TimeFrame timeFrame,
+        IScreeningCondition condition,
+        CancellationToken ct)
+        => await ScreenerSecondaryCandles.LoadForSpellingsAsync(
+            _dataService, spellings, timeFrame, ScreenerHistoryRequirements.GetRequiredCandleCount(condition), ct).ConfigureAwait(false);
+
     /// <summary>The stored metadata of <paramref name="symbol"/> from the first market-data provider; best effort: no provider or a failing read gives the empty metadata.</summary>
     private async Task<TickerMetadata> LoadMetadataAsync(string symbol)
     {

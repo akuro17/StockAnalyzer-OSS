@@ -225,6 +225,47 @@ public sealed class FilterTickersToolTests : IDisposable
         Assert.Equal(0, result.GetProperty("totalMatchCount").GetInt32());
     }
 
+    // ---- the result is today's snapshot: a date argument is refused with a hint to sa_run_screener -------------------------------------
+
+    [Theory]
+    [InlineData("asOfDate")]
+    [InlineData("endDate")]
+    public async Task ADateArgument_IsRefusedWithAHintThatNamesSaRunScreenerAndItsAsOfDate(string argument)
+    {
+        var dispatcher = await StartAsync();
+
+        using var response = await CallAsync(dispatcher, $$"""{"symbols":["MSFT"],"rules":[{{CloseAbove100}}],"{{argument}}":"2024-12-18"}""");
+
+        AssertError(response, "INVALID_ARGUMENT", argument);
+        string hint = McpTestSupport.Structured(response).GetProperty("hint").GetString()!;
+        Assert.Contains("sa_run_screener", hint, StringComparison.Ordinal);
+        Assert.Contains("asOfDate", hint, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task TheDateHintAppliesToTopLevelNamesOnly()
+    {
+        var dispatcher = await StartAsync();
+
+        using var response = await CallAsync(dispatcher, """{"symbols":["MSFT"],"rules":[{"field":"Close","operator":">","value":"100","asOfDate":"2024-12-18"}]}""");
+
+        AssertError(response, "INVALID_ARGUMENT", "rules[0].asOfDate");
+        Assert.Contains("tools/list", McpTestSupport.Structured(response).GetProperty("hint").GetString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task TheDescriptionSaysTheResultIsASnapshotOfToday()
+    {
+        var dispatcher = await StartAsync();
+        using JsonDocument list = JsonDocument.Parse((await dispatcher.DispatchAsync("""{"jsonrpc":"2.0","id":9,"method":"tools/list"}""", CancellationToken.None))!);
+
+        string description = list.RootElement.GetProperty("result").GetProperty("tools").EnumerateArray()
+            .Single(t => t.GetProperty("name").GetString() == "sa_filter_tickers").GetProperty("description").GetString()!;
+
+        Assert.Contains("snapshot of today's stored data", description, StringComparison.Ordinal);
+        Assert.Contains("sa_run_screener with asOfDate", description, StringComparison.Ordinal);
+    }
+
     // ---- groups, parity with a saved filter -------------------------------------------------------------------------------------------
 
     [Fact]

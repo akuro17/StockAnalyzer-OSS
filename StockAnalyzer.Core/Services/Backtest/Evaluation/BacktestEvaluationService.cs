@@ -17,6 +17,20 @@ public interface IBacktestEvaluationService
         BacktestReportOptions reportOptions,
         SamplingEvidence? samplingEvidence = null,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// <see cref="Evaluate"/>, except that an OverflowException raised by the ENGINE's own decimal arithmetic becomes an artifact whose run status is Failed and
+    /// whose <see cref="BacktestEvaluationArtifact.RunDiagnostic"/> says where (owner decision D-8 = C; the engine's G3 diagnostic entry point). The default
+    /// implementation has no such capability and behaves exactly like <see cref="Evaluate"/>.
+    /// </summary>
+    BacktestEvaluationArtifact EvaluateCapturingArithmeticFailures(
+        BacktestInput input,
+        BacktestConfiguration configuration,
+        BacktestStrategySpecification strategySpecification,
+        BacktestReportOptions reportOptions,
+        SamplingEvidence? samplingEvidence = null,
+        CancellationToken cancellationToken = default)
+        => Evaluate(input, configuration, strategySpecification, reportOptions, samplingEvidence, cancellationToken);
 }
 
 /// <summary>Owns the complete run-to-audit-artifact path and provides no arbitrary-result injection point.</summary>
@@ -46,6 +60,25 @@ public sealed class BacktestEvaluationService : IBacktestEvaluationService
         BacktestReportOptions reportOptions,
         SamplingEvidence? samplingEvidence = null,
         CancellationToken cancellationToken = default)
+        => EvaluateCore(input, configuration, strategySpecification, reportOptions, samplingEvidence, captureArithmeticFailures: false, cancellationToken);
+
+    public BacktestEvaluationArtifact EvaluateCapturingArithmeticFailures(
+        BacktestInput input,
+        BacktestConfiguration configuration,
+        BacktestStrategySpecification strategySpecification,
+        BacktestReportOptions reportOptions,
+        SamplingEvidence? samplingEvidence = null,
+        CancellationToken cancellationToken = default)
+        => EvaluateCore(input, configuration, strategySpecification, reportOptions, samplingEvidence, captureArithmeticFailures: true, cancellationToken);
+
+    private BacktestEvaluationArtifact EvaluateCore(
+        BacktestInput input,
+        BacktestConfiguration configuration,
+        BacktestStrategySpecification strategySpecification,
+        BacktestReportOptions reportOptions,
+        SamplingEvidence? samplingEvidence,
+        bool captureArithmeticFailures,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(input);
         ArgumentNullException.ThrowIfNull(configuration);
@@ -67,7 +100,20 @@ public sealed class BacktestEvaluationService : IBacktestEvaluationService
             _samplingTrustPolicy,
             cancellationToken);
 
-        BacktestResult result = _engine.Run(input, configuration, strategy, cancellationToken);
+        // Opt-in (D-8): the engine's G3 diagnostic entry point turns an engine arithmetic failure into a Failed result plus a diagnostic. An engine that does not
+        // offer it (or the default call) runs exactly as before.
+        BacktestRunDiagnostic? runDiagnostic = null;
+        BacktestResult result;
+        if (captureArithmeticFailures && _engine is IBacktestDiagnosticEngine diagnosticEngine)
+        {
+            BacktestDiagnosedRun diagnosed = diagnosticEngine.RunWithDiagnostics(input, configuration, strategy, cancellationToken);
+            result = diagnosed.Result;
+            runDiagnostic = diagnosed.Diagnostic;
+        }
+        else
+        {
+            result = _engine.Run(input, configuration, strategy, cancellationToken);
+        }
         cancellationToken.ThrowIfCancellationRequested();
 
         BacktestReport? report = null;
@@ -92,7 +138,7 @@ public sealed class BacktestEvaluationService : IBacktestEvaluationService
         }
         else
         {
-            runFingerprint = fingerprintBuilder.Seal(result);
+            runFingerprint = fingerprintBuilder.Seal(result, runDiagnostic);
             bootstrapDiagnostics = BootstrapDiagnostics.NotComputed(BootstrapDiagnostics.PartialRunReason);
             ratioDrawdown = DrawdownEpisodeResult.Partial();
             amountDrawdown = DrawdownEpisodeResult.Partial();
@@ -128,7 +174,8 @@ public sealed class BacktestEvaluationService : IBacktestEvaluationService
             sampling,
             ratioDrawdown,
             amountDrawdown,
-            reportIdentity);
+            reportIdentity,
+            runDiagnostic);
     }
 
     private static void ValidateContext(BacktestInput input, BacktestReportOptions options)

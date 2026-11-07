@@ -16,11 +16,23 @@ internal static class AsOfCandleWindow
     /// <paramref name="count"/> of them (all of them when <paramref name="count"/> is not positive). Empty when no day is on or before the date.
     /// </summary>
     public static IReadOnlyList<CandleData> Build(IReadOnlyList<CandleData> daily, DateOnly endDate, TimeFrame timeFrame, int count)
-    {
-        // A series the date cuts nothing from is read as it is (the usual scan: the as-of date is today or the latest stored day); only a cut makes a copy.
-        IReadOnlyList<CandleData> dailyUpToDate = IsDatedOnOrBefore(daily, endDate)
+        => BuildFromCut(CutAt(daily, endDate), timeFrame, count);
+
+    /// <summary>
+    /// The days of <paramref name="daily"/> dated on or before <paramref name="endDate"/>. A series the date cuts nothing from is returned as it is (the usual scan: the as-of date is today or
+    /// the latest stored day); only a cut makes a copy. A caller that builds several time frames from one symbol cuts once here and builds each frame with <see cref="BuildFromCut"/>.
+    /// </summary>
+    public static IReadOnlyList<CandleData> CutAt(IReadOnlyList<CandleData> daily, DateOnly endDate)
+        => IsDatedOnOrBefore(daily, endDate)
             ? daily
             : daily.Where(bar => DateOnly.FromDateTime(bar.Timestamp) <= endDate).ToList();
+
+    /// <summary>
+    /// The bars of <paramref name="timeFrame"/> built from <paramref name="dailyUpToDate"/> (already cut by <see cref="CutAt"/>), the latest <paramref name="count"/> of them (all of them when
+    /// <paramref name="count"/> is not positive).
+    /// </summary>
+    public static IReadOnlyList<CandleData> BuildFromCut(IReadOnlyList<CandleData> dailyUpToDate, TimeFrame timeFrame, int count)
+    {
         IReadOnlyList<CandleData> upToDate = TimeFrameAggregator.Aggregate(dailyUpToDate, timeFrame);
         return count > 0 && upToDate.Count > count ? upToDate.Skip(upToDate.Count - count).ToList() : upToDate;
     }

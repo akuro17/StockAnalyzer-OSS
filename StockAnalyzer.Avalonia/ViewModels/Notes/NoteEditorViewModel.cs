@@ -36,6 +36,12 @@ public partial class NoteEditorViewModel : ViewModelBase
     private readonly INotesSettingsManager _notesSettingsManager;
     private readonly ILogger<NoteEditorViewModel>? _logger;
 
+    // Read-only mode (the Data folder is not writable): the timeline does not open the editor then; this keeps Save from running if it is opened anyway.
+    private readonly StockAnalyzer.Avalonia.Services.StorageFeatureGate _storageGate;
+
+    /// <summary>The reason Save is disabled in read-only mode; null while saving is possible.</summary>
+    public string? StorageDisabledToolTip => _storageGate.DisabledToolTip;
+
     private Guid? _editingNoteId;
     private DateTime _originalCreatedAt;
     private string? _originalRelatedTicker;
@@ -88,8 +94,10 @@ public partial class NoteEditorViewModel : ViewModelBase
         IMarketDataProvider marketDataProvider,
         IDispatcherService dispatcherService,
         INotesSettingsManager notesSettingsManager,
-        ILogger<NoteEditorViewModel>? logger = null)
+        ILogger<NoteEditorViewModel>? logger = null,
+        StockAnalyzer.Core.Common.IDataStorageState? dataStorageState = null)
     {
+        _storageGate = new StockAnalyzer.Avalonia.Services.StorageFeatureGate(dataStorageState);
         _noteRepository = noteRepository;
         _attachmentRepository = attachmentRepository;
         _cacheSynchronizer = cacheSynchronizer;
@@ -211,7 +219,7 @@ public partial class NoteEditorViewModel : ViewModelBase
         }
     }
 
-    private bool CanSave() => !string.IsNullOrWhiteSpace(Body);
+    private bool CanSave() => !string.IsNullOrWhiteSpace(Body) && _storageGate.IsAvailable;
 
     /// <summary>
     /// Extracts hashtags and URLs directly from Body (both are auto-derived, spec sections 3.1 and

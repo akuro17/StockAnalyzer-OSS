@@ -95,7 +95,8 @@ internal sealed class ListModelsTool : IMcpTool
         {
             throw new ToolException(ToolErrorCodes.InvalidArgument, $"Argument '{OffsetArgument}' must not be negative.", OffsetArgument);
         }
-        int offset = checked((int)offsetLong);
+        // An offset past any list is an empty page, not an arithmetic failure: the echo keeps the requested value, the skip is clamped.
+        int skip = (int)Math.Min(offsetLong, int.MaxValue);
 
         int limit = ToolArgs.PositiveWithin(arguments, LimitArgument, _limits.MaxListedModels, _limits.MaxListedModels);
 
@@ -114,9 +115,9 @@ internal sealed class ListModelsTool : IMcpTool
 
         List<ModelCatalogEntry> matched = filtered.ToList();
         int totalCount = matched.Count;
-        List<ModelCatalogEntry> page = matched.Skip(offset).Take(limit).ToList();
+        List<ModelCatalogEntry> page = matched.Skip(skip).Take(limit).ToList();
         int returnedCount = page.Count;
-        bool hasMore = offset + returnedCount < totalCount;
+        bool hasMore = (long)skip + returnedCount < totalCount;
 
         string? activeSupervisedId = _registry.ActiveId;
         string? activeRlId = _registry.RlActiveId;
@@ -124,7 +125,7 @@ internal sealed class ListModelsTool : IMcpTool
         return ToolJson.Build(writer => Write(
             writer,
             totalCount,
-            offset,
+            offsetLong,
             limit,
             returnedCount,
             hasMore,
@@ -136,7 +137,7 @@ internal sealed class ListModelsTool : IMcpTool
     private static void Write(
         Utf8JsonWriter writer,
         int totalCount,
-        int offset,
+        long offset,
         int limit,
         int returnedCount,
         bool hasMore,
@@ -178,7 +179,8 @@ internal sealed class ListModelsTool : IMcpTool
             writer.WriteEndArray();
 
             writer.WriteString("timeFrame", m.Timeframe);
-            writer.WriteString("createdAt", m.CreatedAt.ToString("o"));
+            writer.WriteString("createdAt", ToolJson.FormatTimestampUtc(m.CreatedAt));
+            writer.WriteString("createdAtSource", m.CreatedAtSource);
             writer.WriteBoolean("isActive", m.IsActive);
 
             writer.WriteStartObject("contract");
@@ -186,6 +188,12 @@ internal sealed class ListModelsTool : IMcpTool
             writer.WriteNumber("horizonBars", m.HorizonBars);
             writer.WriteString("targetType", m.TargetType);
             writer.WriteNumber("classCount", m.ClassCount);
+            // Descriptive attributes that do not apply (or are unknown) are left out, never null: trainingMode is supervised only, architecture reinforcement learning only.
+            if (m.TrainingMode is not null)
+            {
+                writer.WriteString("trainingMode", m.TrainingMode);
+            }
+
             if (m.Architecture is not null)
             {
                 writer.WriteString("architecture", m.Architecture);

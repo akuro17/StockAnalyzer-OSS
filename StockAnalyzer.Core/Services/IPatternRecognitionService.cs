@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using StockAnalyzer.Core.Models;
 
@@ -13,5 +14,6 @@ public interface IPatternRecognitionService
         int windowStep = ChartConstants.PatternRecognitionDefaultWindowStep,
         double threshold = ChartConstants.PatternRecognitionDefaultThreshold,
         int warpingRadius = ChartConstants.DtwDefaultWarpingRadius,
-        double shortSpanPenaltyAlpha = ChartConstants.DtwShortSpanPenaltyAlpha);
+        double shortSpanPenaltyAlpha = ChartConstants.DtwShortSpanPenaltyAlpha,
+        CancellationToken cancellationToken = default);
 }

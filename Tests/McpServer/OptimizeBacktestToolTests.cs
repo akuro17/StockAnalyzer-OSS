@@ -208,6 +208,18 @@ public sealed class OptimizeBacktestToolTests : IDisposable
         Assert.Equal(0, result.GetProperty("validCombinationCount").GetInt32());
         Assert.Equal(3, result.GetProperty("invalidCombinationCount").GetInt32());
         Assert.Contains(result.GetProperty("warnings").EnumerateArray(), w => w.GetString()!.Contains("profitFactor"));
+        // Why they are invalid: every combination had no losing trade (PositiveInfinity), and the text says so.
+        Assert.Equal(3, result.GetProperty("positiveInfinityCombinationCount").GetInt32());
+        Assert.Contains(result.GetProperty("warnings").EnumerateArray(), w => w.GetString()!.Contains("no losing trade") && w.GetString()!.StartsWith("3 combination(s)", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task AValidObjectiveHasNoPositiveInfinityCountAndNoSuchWarning()
+    {
+        var (_, result) = await OptimizeOkAsync(Args(Conditions(Param), PeriodRanges("3", "5")));
+
+        Assert.Equal(0, result.GetProperty("positiveInfinityCombinationCount").GetInt32());
+        Assert.False(result.TryGetProperty("warnings", out JsonElement warnings) && warnings.EnumerateArray().Any(w => w.GetString()!.Contains("no losing trade")));
     }
 
     [Fact]
@@ -334,6 +346,23 @@ public sealed class OptimizeBacktestToolTests : IDisposable
         Assert.Equal(neighbors.Length, sensitivity.GetProperty("neighborCount").GetInt32());
         Assert.Equal(neighbors.Sum() / neighbors.Length, sensitivity.GetProperty("neighborMean").GetDecimal());
         Assert.Equal(neighbors.Min(), sensitivity.GetProperty("neighborMin").GetDecimal());
+        Assert.Equal(neighbors.Max(), sensitivity.GetProperty("neighborMax").GetDecimal());
+    }
+
+    [Fact]
+    public async Task NeighborMaxIsTheHighestNeighbourValueAlsoWhenMinimizing()
+    {
+        // Minimize: the best is the lowest value, so the neighbours are all at or above it; neighborMax is still the highest of them (the worst the neighbourhood does).
+        var (_, all) = await OptimizeOkAsync(Args(Conditions(Param), PeriodRanges(), extra: ",\"topK\":10,\"objectiveDirection\":\"Minimize\""));
+        Dictionary<decimal, decimal> byPeriod = all.GetProperty("ranking").EnumerateArray().ToDictionary(Period, e => e.GetProperty("objectiveValue").GetDecimal());
+        JsonElement best = all.GetProperty("ranking")[0];
+        decimal bestPeriod = Period(best);
+        decimal[] neighbors = new[] { bestPeriod - 1, bestPeriod + 1 }.Where(byPeriod.ContainsKey).Select(p => byPeriod[p]).ToArray();
+
+        JsonElement sensitivity = best.GetProperty("sensitivity");
+
+        Assert.Equal(neighbors.Max(), sensitivity.GetProperty("neighborMax").GetDecimal());
+        Assert.True(sensitivity.GetProperty("neighborMin").GetDecimal() >= best.GetProperty("objectiveValue").GetDecimal());
     }
 
     [Fact]
@@ -346,6 +375,178 @@ public sealed class OptimizeBacktestToolTests : IDisposable
         Assert.Equal(1, first.GetProperty("sensitivity").GetProperty("neighborCount").GetInt32());
         Assert.Equal(1, lone.GetProperty("combinationCount").GetInt32());
         Assert.Equal(JsonValueKind.Null, lone.GetProperty("ranking")[0].GetProperty("sensitivity").ValueKind);
+    }
+
+    // ---- minTrades (owner decision D-5 = A: default 1) ---------------------------------------------------------------------------------------
+
+    // 2024-02-01 .. 2024-03-15 (44 days): SMA(3) trades, SMA(103) is not defined yet on any of these bars (the sine data starts on 2024-01-01), so it never trades.
+    private const string ShortPeriod = ",\"startDate\":\"2024-02-01\",\"endDate\":\"2024-03-15\"";
+
+    [Fact]
+    public async Task ACombinationWithoutTradesIsNotRankedByDefaultAndIsWhenMinTradesIsZero()
+    {
+        string ranges = PeriodRanges("3", "103", "100");
+        var (_, byDefault) = await OptimizeOkAsync(Args(Conditions(Param), ranges, "totalReturn", period: ShortPeriod));
+        var (_, withZero) = await OptimizeOkAsync(Args(Conditions(Param), ranges, "totalReturn", ",\"minTrades\":0", ShortPeriod));
+
+        Assert.Equal(1, byDefault.GetProperty("minTrades").GetInt32());
+        Assert.Equal(2, byDefault.GetProperty("combinationCount").GetInt32());
+        Assert.Equal(1, byDefault.GetProperty("validCombinationCount").GetInt32());
+        Assert.Equal(1, byDefault.GetProperty("invalidCombinationCount").GetInt32());
+        Assert.Equal(1, byDefault.GetProperty("belowMinTradesCombinationCount").GetInt32());
+        JsonElement only = Assert.Single(byDefault.GetProperty("ranking").EnumerateArray());
+        Assert.Equal(3m, Period(only));
+        Assert.True(only.GetProperty("totalTrades").GetInt32() >= 1);
+        // the neighbour of SMA(3) is the SMA(103) combination: not eligible, so it is not part of the sensitivity
+        Assert.Equal(JsonValueKind.Null, only.GetProperty("sensitivity").ValueKind);
+        Assert.Contains(byDefault.GetProperty("warnings").EnumerateArray(), w => w.GetString()!.Contains("belowMinTradesCombinationCount"));
+
+        Assert.Equal(0, withZero.GetProperty("minTrades").GetInt32());
+        Assert.Equal(0, withZero.GetProperty("belowMinTradesCombinationCount").GetInt32());
+        Assert.Equal(0, withZero.GetProperty("invalidCombinationCount").GetInt32());
+        JsonElement[] ranked = withZero.GetProperty("ranking").EnumerateArray().ToArray();
+        Assert.Equal(2, ranked.Length);
+        Assert.Equal(0, ranked.Single(e => Period(e) == 103m).GetProperty("totalTrades").GetInt32());
+        Assert.Equal(1, ranked.Single(e => Period(e) == 3m).GetProperty("sensitivity").GetProperty("neighborCount").GetInt32());
+    }
+
+    [Fact]
+    public async Task WhenEveryCombinationIsBelowMinTradesTheRankingIsEmptyAndItIsNotAnError()
+    {
+        // The only combination (SMA(103)) never trades in the period. With an out-of-sample date the out-of-sample part is simply not run.
+        var (_, result) = await OptimizeOkAsync(Args(Conditions(Param), PeriodRanges("103", "103"), "totalReturn", ",\"outOfSampleStartDate\":\"2024-03-01\"", ",\"startDate\":\"2024-02-01\",\"endDate\":\"2024-03-15\""));
+
+        Assert.Equal(0, result.GetProperty("ranking").GetArrayLength());
+        Assert.Equal(1, result.GetProperty("combinationCount").GetInt32());
+        Assert.Equal(1, result.GetProperty("belowMinTradesCombinationCount").GetInt32());
+        Assert.Equal(1, result.GetProperty("invalidCombinationCount").GetInt32());
+        Assert.Equal(0, result.GetProperty("validCombinationCount").GetInt32());
+        Assert.Contains(result.GetProperty("warnings").EnumerateArray(), w => w.GetString()!.Contains("minTrades = 1") && w.GetString()!.Contains("ranking is empty"));
+    }
+
+    [Fact]
+    public async Task AHigherMinTradesThanAnyCombinationMadeLeavesAnEmptyRankingWithoutAnError()
+    {
+        var (_, all) = await OptimizeOkAsync(Args(Conditions(Param), PeriodRanges("3", "5"), "totalReturn", ",\"topK\":3"));
+        int most = all.GetProperty("ranking").EnumerateArray().Max(e => e.GetProperty("totalTrades").GetInt32());
+
+        var (_, raised) = await OptimizeOkAsync(Args(Conditions(Param), PeriodRanges("3", "5"), "totalReturn", $",\"minTrades\":{most + 1}"));
+
+        Assert.Equal(0, raised.GetProperty("ranking").GetArrayLength());
+        Assert.Equal(3, raised.GetProperty("belowMinTradesCombinationCount").GetInt32());
+        Assert.Equal(3, raised.GetProperty("invalidCombinationCount").GetInt32());
+        Assert.Equal(most + 1, raised.GetProperty("minTrades").GetInt32());
+    }
+
+    [Fact]
+    public async Task ANegativeOrFractionalMinTradesIsInvalid()
+    {
+        McpMessageDispatcher dispatcher = await _host.StartAsync();
+
+        foreach (string value in new[] { "-1", "1.5" })
+        {
+            using JsonDocument response = await OptimizeAsync(dispatcher, Args(Conditions(Param), PeriodRanges("3", "5"), extra: $",\"minTrades\":{value}"));
+            Assert.Equal("INVALID_ARGUMENT", BacktestDiagnosticsTestHost.Code(response));
+            Assert.Equal("minTrades", BacktestDiagnosticsTestHost.Param(response));
+        }
+    }
+
+    [Fact]
+    public async Task TheSchemaListsMinTradesWithTheDefaultOfTheLimits()
+    {
+        McpMessageDispatcher dispatcher = await _host.StartAsync();
+
+        using JsonDocument list = JsonDocument.Parse(await dispatcher.DispatchAsync("""{"jsonrpc":"2.0","id":5,"method":"tools/list"}""", CancellationToken.None) ?? "{}");
+        JsonElement tool = list.RootElement.GetProperty("result").GetProperty("tools").EnumerateArray().Single(t => t.GetProperty("name").GetString() == "sa_optimize_backtest");
+        JsonElement minTrades = tool.GetProperty("inputSchema").GetProperty("properties").GetProperty("minTrades");
+
+        Assert.Equal(1, minTrades.GetProperty("default").GetInt32());
+        Assert.Equal(0, minTrades.GetProperty("minimum").GetInt32());
+        Assert.Contains("minTrades", tool.GetProperty("description").GetString());
+    }
+
+    // ---- the adjusted-Sortino bootstrap is left out of the sweep unless it is the objective (owner decision D-6 = A) ---------------------------
+
+    [Fact]
+    public async Task AnAdjustedSortinoObjectiveStillGetsItsBootstrapValueAndEqualsTheIndividualBacktest()
+    {
+        const string objective = "annualizedSortinoAutocorrelationAdjusted";
+        var (dispatcher, result) = await OptimizeOkAsync(Args(Conditions(Param), PeriodRanges("3", "5"), objective, ",\"topK\":3"));
+
+        JsonElement ranking = result.GetProperty("ranking");
+        Assert.True(ranking.GetArrayLength() > 0, "the bootstrap metric must be computed when it is the objective");
+        foreach (JsonElement entry in ranking.EnumerateArray())
+        {
+            string literal = Period(entry).ToString(CultureInfo.InvariantCulture);
+            JsonElement report = Ok(await RunAsync(dispatcher, Conditions(literal), BacktestDiagnosticsTestHost.Period)).GetProperty("report");
+            Assert.Equal(Metric(report, objective), entry.GetProperty("objectiveValue").GetDecimal());
+        }
+    }
+
+    [Fact]
+    public async Task AnotherObjectiveRanksTheSameWhetherOrNotTheBootstrapRuns()
+    {
+        // The sweep leaves the bootstrap out for annualizedSharpe; the individual backtests (which compute it) give the same objective and metrics.
+        var (dispatcher, result) = await OptimizeOkAsync(Args(Conditions(Param), PeriodRanges("3", "6"), "annualizedSharpe", ",\"topK\":4"));
+
+        Assert.Equal(4, result.GetProperty("ranking").GetArrayLength());
+        foreach (JsonElement entry in result.GetProperty("ranking").EnumerateArray())
+        {
+            string literal = Period(entry).ToString(CultureInfo.InvariantCulture);
+            JsonElement report = Ok(await RunAsync(dispatcher, Conditions(literal), BacktestDiagnosticsTestHost.Period)).GetProperty("report");
+            Assert.Equal(Metric(report, "annualizedSharpe"), entry.GetProperty("objectiveValue").GetDecimal());
+            Assert.Equal(Metric(report, "totalPnL"), entry.GetProperty("metrics").GetProperty("totalPnL").GetProperty("value").GetDecimal());
+        }
+    }
+
+    // ---- engine arithmetic failure (owner decision D-8 = C) ----------------------------------------------------------------------------------
+
+    // Combination 0 sizes 1 share (fine); combinations 1 and 2 size 4e27+1 and 8e27+1 shares: about 4e29 against the decimal limit of 7.9e28.
+    private const string QuantityRange = """{"name":"qty","start":1,"end":8000000000000000000000000001,"step":4000000000000000000000000000}""";
+    private const string QuantityAccount = ",\"account\":{\"sizingModel\":\"FixedQuantity\",\"sizingParameter\":{\"$param\":\"qty\"}}";
+
+    [Fact]
+    public async Task AnOverflowingCombination_IsTheArithmeticErrorNamingTheLowestOneWithItsParameters_WhateverTheThreadCount()
+    {
+        string arguments = Args(Conditions(Param), Ranges(Range("period", "5", "5", "1"), QuantityRange), extra: QuantityAccount);
+        McpMessageDispatcher sequential = await _host.StartAsync(("OptimizationDegreeOfParallelism", "1"));
+        McpMessageDispatcher parallel = await _host.StartAsync(("OptimizationDegreeOfParallelism", "8"));
+
+        using JsonDocument one = await OptimizeAsync(sequential, arguments);
+        using JsonDocument many = await OptimizeAsync(parallel, arguments);
+
+        Assert.Equal("BACKTEST_ARITHMETIC_OVERFLOW", BacktestDiagnosticsTestHost.Code(one));
+        string message = McpTestSupport.Structured(one).GetProperty("message").GetString()!;
+        Assert.Contains("combination 1 (period=5, qty=4000000000000000000000000001)", message, StringComparison.Ordinal);
+        Assert.Contains("sizingParameter 4000000000000000000000000001", message, StringComparison.Ordinal);
+        Assert.Contains("MSFT", message, StringComparison.Ordinal);
+        Assert.Equal(message, McpTestSupport.Structured(many).GetProperty("message").GetString()); // the reported failure does not depend on the threads
+    }
+
+    // A batch failure that carries no usable item index (a gateway or batch other than the real one, or an out-of-range index) must not be pinned on a combination: the
+    // text says the failing run is unknown. The grid below has 3 combinations, so index 3 is out of range.
+    [Theory]
+    [InlineData(null)]
+    [InlineData(-1)]
+    [InlineData(3)]
+    public async Task AnOverflowWithoutAUsableIndex_NamesNoCombination(int? index)
+    {
+        McpMessageDispatcher dispatcher = await _host.StartWithGatewayAsync(inner => OverflowThrowingGateway.Create(inner, index));
+
+        using JsonDocument response = await OptimizeAsync(dispatcher, Args(Conditions(Param), Ranges(Range("period", "5", "5", "1"), Range("qty", "1", "3", "1")), extra: QuantityAccount));
+
+        Assert.Equal("BACKTEST_ARITHMETIC_OVERFLOW", BacktestDiagnosticsTestHost.Code(response));
+        string message = McpTestSupport.Structured(response).GetProperty("message").GetString()!;
+        Assert.Equal("The backtest of MSFT overflowed decimal arithmetic for one of the runs.", message);
+    }
+
+    [Fact]
+    public async Task AGridWithoutOverflowIsUnchanged()
+    {
+        var (_, result) = await OptimizeOkAsync(Args(Conditions(Param), Ranges(Range("period", "5", "5", "1"), Range("qty", "1", "3", "1")), extra: QuantityAccount));
+
+        Assert.Equal(3, result.GetProperty("combinationCount").GetInt32());
+        Assert.Equal(3, result.GetProperty("validCombinationCount").GetInt32());
     }
 
     // ---- refusals --------------------------------------------------------------------------------------------------------------------------------

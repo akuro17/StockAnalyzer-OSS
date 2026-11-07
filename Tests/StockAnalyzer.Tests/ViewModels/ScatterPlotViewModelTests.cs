@@ -73,6 +73,7 @@ public sealed class ScatterPlotViewModelTests
             "Scatter_Status_OutsideFixedRange" => "{0} outside",
             "Scatter_Status_Evaluated" => "{0}/{1} valid",
             "Scatter_Status_EvaluatedWithFailures" => "{0}/{1} valid, {2} failed",
+            "Scatter_Status_ComparisonSymbolMissing" => "no bars: {0}",
             _ => key,
         };
     }
@@ -114,6 +115,9 @@ public sealed class ScatterPlotViewModelTests
         /// <summary>How many tickers the result reports as failed.</summary>
         public int FailedCount { get; set; }
 
+        /// <summary>The comparison symbols the result reports as having no daily bars.</summary>
+        public IReadOnlyList<string> MissingComparisonSymbols { get; set; } = Array.Empty<string>();
+
         public async Task<ScatterEvaluationResult> ComputeAsync(
             IReadOnlyList<string> tickers, ScatterMetricDefinition x, ScatterMetricDefinition y, CancellationToken ct)
         {
@@ -147,6 +151,7 @@ public sealed class ScatterPlotViewModelTests
                 FailedCount = FailedCount,
                 XFixedRange = FixedRangeOf(x),
                 YFixedRange = FixedRangeOf(y),
+                MissingComparisonSymbols = MissingComparisonSymbols,
             };
         }
     }
@@ -1031,6 +1036,44 @@ public sealed class ScatterPlotViewModelTests
         Assert.EndsWith("1 outside", vm.StatusMessage);
         Assert.Equal(3, vm.Dataset!.Points.Count);
         Assert.Equal(3, vm.AnalysisResult!.ValidPointCount);
+    }
+
+    [Fact]
+    public async Task AMissingComparisonSymbol_IsNamedInTheStatus_AfterTheCounts()
+    {
+        var evaluator = new TestEvaluator { MissingComparisonSymbols = new[] { "ZZZZ", "QQQQ" } };
+        using var vm = CreateViewModel(evaluator: evaluator, metrics: new[] { MetricA, MetricB });
+
+        await vm.UpdateFromTickersAsync(new[] { "AAPL", "MSFT", "GOOGL" });
+
+        Assert.Equal("3/3 valid (N = 3) / no bars: ZZZZ, QQQQ", vm.StatusMessage);
+    }
+
+    [Fact]
+    public async Task WithoutAMissingComparisonSymbol_TheStatusIsUnchanged()
+    {
+        using var vm = CreateViewModel(metrics: new[] { MetricA, MetricB });
+
+        await vm.UpdateFromTickersAsync(new[] { "AAPL", "MSFT", "GOOGL" });
+
+        Assert.Equal("3/3 valid (N = 3)", vm.StatusMessage);
+        Assert.DoesNotContain("no bars", vm.StatusMessage);
+    }
+
+    [Fact]
+    public async Task TheMissingSymbolSentence_FollowsTheOutsideFixedRangeSentence()
+    {
+        var evaluator = new TestEvaluator
+        {
+            FixedRangeOf = d => d.Label == "Metric A" ? new AxisRange(0, 100) : null,
+            XValue = i => i == 1 ? 150.0 : i * 10.0,
+            MissingComparisonSymbols = new[] { "ZZZZ" },
+        };
+        using var vm = CreateViewModel(evaluator: evaluator, metrics: new[] { MetricA, MetricB });
+
+        await vm.UpdateFromTickersAsync(new[] { "AAPL", "MSFT", "GOOGL" });
+
+        Assert.EndsWith("1 outside / no bars: ZZZZ", vm.StatusMessage);
     }
 
     // ===== Gear button command =====

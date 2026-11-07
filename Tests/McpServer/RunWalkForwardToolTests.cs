@@ -358,6 +358,45 @@ public sealed class RunWalkForwardToolTests : IDisposable
             Assert.Equal("NoValidInSampleObjective", w.GetProperty("status").GetString());
         });
         Assert.Equal(JsonValueKind.Null, result.GetProperty("aggregate").ValueKind);
+        // Why: all six periods had no losing trade (PositiveInfinity), per window and as one warning.
+        Assert.Equal(6, result.GetProperty("windows")[0].GetProperty("positiveInfinityCombinationCount").GetInt32());
+        Assert.Contains(result.GetProperty("warnings").EnumerateArray(), w => w.GetString()!.StartsWith("6 in-sample run(s)", StringComparison.Ordinal) && w.GetString()!.Contains("no losing trade"));
+    }
+
+    [Fact]
+    public async Task AValidObjectiveHasZeroPositiveInfinityCountsAndNoSuchWarning()
+    {
+        var (_, result) = await WalkOkAsync(Args(Listed((Day(50), Day(199), Day(200), Day(260))), objective: "totalReturn"));
+
+        Assert.Equal(0, result.GetProperty("windows")[0].GetProperty("positiveInfinityCombinationCount").GetInt32());
+        Assert.False(result.TryGetProperty("warnings", out JsonElement warnings) && warnings.EnumerateArray().Any(w => w.GetString()!.Contains("no losing trade")));
+    }
+
+    [Fact]
+    public async Task TheAggregateSaysHowManyWindowsEachObjectiveMeanHas()
+    {
+        var (_, all) = await WalkOkAsync(Args(Listed((Day(50), Day(199), Day(200), Day(260)), (Day(120), Day(259), Day(261), Day(330))), objective: "totalReturn"));
+        var (_, partial) = await WalkOkAsync(Args(Listed((Day(50), Day(199), Day(200), Day(260)), (Day(50), Day(199), Day(500), Day(520))), objective: "totalReturn"));
+
+        JsonElement allAggregate = all.GetProperty("aggregate");
+        Assert.Equal(2, allAggregate.GetProperty("isObjectiveWindowCount").GetInt32());
+        Assert.Equal(2, allAggregate.GetProperty("oosObjectiveWindowCount").GetInt32());
+        // The second window has no out-of-sample bar: the in-sample mean has 2 windows, the out-of-sample mean 1 (the two means are over different window sets).
+        JsonElement partialAggregate = partial.GetProperty("aggregate");
+        Assert.Equal(2, partialAggregate.GetProperty("evaluatedWindowCount").GetInt32());
+        Assert.Equal(2, partialAggregate.GetProperty("isObjectiveWindowCount").GetInt32());
+        Assert.Equal(1, partialAggregate.GetProperty("oosObjectiveWindowCount").GetInt32());
+    }
+
+    [Fact]
+    public async Task OverlappingOutOfSampleRangesAreWarnedAboutAndDisjointOnesAreNot()
+    {
+        var (_, overlapping) = await WalkOkAsync(Args(Listed((Day(50), Day(199), Day(200), Day(260)), (Day(60), Day(209), Day(210), Day(300))), objective: "totalReturn"));
+        var (_, disjoint) = await WalkOkAsync(Args(Listed((Day(50), Day(199), Day(200), Day(260)), (Day(60), Day(259), Day(261), Day(300))), objective: "totalReturn"));
+
+        Assert.Contains(overlapping.GetProperty("warnings").EnumerateArray(), w => w.GetString()!.Contains("window 0 and window 1") && w.GetString()!.Contains("overlap"));
+        Assert.Equal(2, overlapping.GetProperty("evaluatedWindowCount").GetInt32()); // the windows are still evaluated as given
+        Assert.False(disjoint.TryGetProperty("warnings", out JsonElement warnings) && warnings.EnumerateArray().Any(w => w.GetString()!.Contains("overlap")));
     }
 
     [Fact]
@@ -376,6 +415,39 @@ public sealed class RunWalkForwardToolTests : IDisposable
         Assert.Equal(JsonValueKind.Null, aggregate.GetProperty("meanOosObjective").ValueKind);
         Assert.Equal(JsonValueKind.Null, aggregate.GetProperty("barSharpeEfficiency").ValueKind);
         Assert.NotEqual(JsonValueKind.Null, aggregate.GetProperty("meanIsObjective").ValueKind);
+    }
+
+    // ---- engine arithmetic failure (owner decision D-8 = C) ----------------------------------------------------------------------------------
+
+    [Fact]
+    public async Task AnOverflowingCombination_IsTheArithmeticErrorNamingTheWindowThePartAndTheCombination()
+    {
+        const string quantityRange = """{"name":"qty","start":1,"end":8000000000000000000000000001,"step":4000000000000000000000000000}""";
+        string ranges = "[" + """{"name":"period","start":5,"end":5,"step":1}""" + "," + quantityRange + "]";
+        string account = ",\"account\":{\"sizingModel\":\"FixedQuantity\",\"sizingParameter\":{\"$param\":\"qty\"}}";
+        McpMessageDispatcher dispatcher = await _host.StartAsync();
+
+        using JsonDocument response = await WalkAsync(dispatcher, Args(Listed((Day(50), Day(199), Day(200), Day(260)), (Day(120), Day(259), Day(260), Day(330))), ranges, extra: account));
+
+        Assert.Equal("BACKTEST_ARITHMETIC_OVERFLOW", BacktestDiagnosticsTestHost.Code(response));
+        string message = McpTestSupport.Structured(response).GetProperty("message").GetString()!;
+        Assert.Contains($"window 0 in-sample part ({Day(50)} to {Day(199)}), combination 1 (period=5, qty=4000000000000000000000000001)", message, StringComparison.Ordinal);
+        Assert.Contains("MSFT", message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(-1)]
+    [InlineData(1)] // one window, one combination: the only valid index is 0
+    public async Task AnOverflowWithoutAUsableIndex_NamesNeitherTheWindowNorTheCombination(int? index)
+    {
+        McpMessageDispatcher dispatcher = await _host.StartWithGatewayAsync(inner => OverflowThrowingGateway.Create(inner, index));
+        string ranges = "[" + """{"name":"period","start":5,"end":5,"step":1}""" + "]";
+
+        using JsonDocument response = await WalkAsync(dispatcher, Args(Listed((Day(50), Day(199), Day(200), Day(260))), ranges));
+
+        Assert.Equal("BACKTEST_ARITHMETIC_OVERFLOW", BacktestDiagnosticsTestHost.Code(response));
+        Assert.Equal("The backtest of MSFT overflowed decimal arithmetic for one of the runs.", McpTestSupport.Structured(response).GetProperty("message").GetString());
     }
 
     // ---- minimum in-sample trades (owner decision 2026-10-30) --------------------------------------------------------------------------------------

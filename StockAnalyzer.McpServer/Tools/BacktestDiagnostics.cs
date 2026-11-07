@@ -169,7 +169,7 @@ internal sealed class BacktestDiagnostics
     }
 
     /// <summary>Runs one part; an arithmetic failure leaves the part out and records why (the other parts and the finished backtest are kept).</summary>
-    private static T Isolate<T>(ImmutableArray<(string Part, string Reason)>.Builder unavailable, string part, Func<T> calculation, T fallback)
+    internal static T Isolate<T>(ImmutableArray<(string Part, string Reason)>.Builder unavailable, string part, Func<T> calculation, T fallback)
     {
         try
         {
@@ -219,19 +219,27 @@ internal sealed class BacktestDiagnostics
             writer.WriteEndObject();
         }
 
-        if (!_unavailable.IsEmpty)
-        {
-            writer.WriteStartArray(UnavailableKey);
-            foreach ((string part, string reason) in _unavailable)
-            {
-                writer.WriteStartObject();
-                writer.WriteString("part", part);
-                writer.WriteString("reason", reason);
-                writer.WriteEndObject();
-            }
+        WriteUnavailable(writer, _unavailable);
+    }
 
-            writer.WriteEndArray();
+    /// <summary>Writes <c>diagnosticsUnavailable[{part, reason}]</c> as a property of the enclosing object; nothing when no part failed (shared with the portfolio tool).</summary>
+    internal static void WriteUnavailable(Utf8JsonWriter writer, ImmutableArray<(string Part, string Reason)> unavailable)
+    {
+        if (unavailable.IsDefaultOrEmpty)
+        {
+            return;
         }
+
+        writer.WriteStartArray(UnavailableKey);
+        foreach ((string part, string reason) in unavailable)
+        {
+            writer.WriteStartObject();
+            writer.WriteString("part", part);
+            writer.WriteString("reason", reason);
+            writer.WriteEndObject();
+        }
+
+        writer.WriteEndArray();
     }
 
     private static void WritePeriods(Utf8JsonWriter writer, string name, ImmutableArray<PeriodicReturn> periods)

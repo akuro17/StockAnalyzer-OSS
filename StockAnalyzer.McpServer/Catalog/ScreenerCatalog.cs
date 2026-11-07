@@ -28,7 +28,7 @@ internal sealed class ScreenerCatalog
 
     public ScreenerCatalog(IScreenerCatalogProvider catalogProvider, IIndicatorFactory factory)
     {
-        _items = new Lazy<Items>(() => Items.Build(catalogProvider.GetCatalogItems(factory)));
+        _items = new Lazy<Items>(() => Items.Build(catalogProvider.GetCatalogItemsForScreener(factory)));
     }
 
     /// <summary>Columns a condition can use, in catalogue order. A text column (Sector, Industry, Region, Name, Tag) is compared with text, every other one with a number.</summary>

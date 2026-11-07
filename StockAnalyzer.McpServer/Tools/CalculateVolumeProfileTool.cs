@@ -29,7 +29,9 @@ internal sealed class CalculateVolumeProfileTool : IMcpTool
     private const string BinCountArgument = "binCount";
     private const string ValueAreaPercentArgument = "valueAreaPercent";
 
-    private static readonly string[] SupportedBases = { "Volume", "TimeAtPrice" };
+    private const string VolumeBasis = "Volume";
+    private const string TimeAtPriceBasis = "TimeAtPrice";
+    private static readonly string[] SupportedBases = { VolumeBasis, TimeAtPriceBasis };
 
     private readonly IReadOnlyStockAnalyzerGateway _gateway;
     private readonly SymbolResolver _symbols;
@@ -49,6 +51,8 @@ internal sealed class CalculateVolumeProfileTool : IMcpTool
     public string Description =>
         "Calculates price-level volume distribution (Volume Profile) or residence time distribution (Time-at-Price) " +
         "over a specified lookback range, deriving Point of Control (POC), Value Area High (VAH), and Value Area Low (VAL). " +
+        "The volume of a bar is split equally over the bins its range touches, in whole units, so the bins can add up to slightly less than the bars: " +
+        "totalBarVolume (the bars), profileVolume (the bins) and truncatedVolume (the difference) show by how much; with basis TimeAtPrice the unit is bars. " +
         "Operates strictly read-only and respects causal as-of dates.";
 
     public bool IsHeavy => false;
@@ -61,7 +65,7 @@ internal sealed class CalculateVolumeProfileTool : IMcpTool
         .String(TimeFrameArgument, $"Time frame of the bars ({ToolArgs.SupportedTimeFrameNames}).", required: true, allowedValues: Enum.GetNames<TimeFrame>())
         .String(EndDateArgument, $"Last date to include ({ToolJson.DateFormat}). If specified, bars up to this date are evaluated.")
         .Integer(LookbackArgument, $"Stored bars loaded up to endDate, newest last. Default and maximum {_limits.MaxCandlesPerRequest}.", defaultValue: _limits.MaxCandlesPerRequest, minimum: 1, maximum: _limits.MaxCandlesPerRequest)
-        .String(BasisArgument, "Calculation basis: 'Volume' (distributes traded volume across touched bins) or 'TimeAtPrice' (distributes bar residence time). Default Volume.", allowedValues: SupportedBases)
+        .String(BasisArgument, $"Calculation basis: '{VolumeBasis}' (distributes traded volume across touched bins) or '{TimeAtPriceBasis}' (distributes bar residence time). Default {VolumeBasis}.", allowedValues: SupportedBases)
         .Integer(RangeBarsArgument, $"Number of trailing bars from the loaded window to calculate profile over. Default uses all loaded bars (at most {_limits.MaxCandlesPerRequest}).", defaultValue: _limits.MaxCandlesPerRequest, minimum: 1, maximum: _limits.MaxCandlesPerRequest)
         .Integer(BinCountArgument, $"Number of vertical price bins (2..{_limits.MaxVolumeProfileBins}). Default {ChartConstants.DefaultVolumeProfileRowSize}.", defaultValue: ChartConstants.DefaultVolumeProfileRowSize, minimum: 2, maximum: _limits.MaxVolumeProfileBins)
         .Number(ValueAreaPercentArgument, $"Target fraction of total profile volume inside the value area (0.0 < valueAreaPercent <= 1.0). Default {ChartConstants.DefaultValueAreaPercent}.")
@@ -81,12 +85,12 @@ internal sealed class CalculateVolumeProfileTool : IMcpTool
         DateOnly? endDate = ToolArgs.Date(arguments, EndDateArgument);
         int lookback = ToolArgs.PositiveWithin(arguments, LookbackArgument, _limits.MaxCandlesPerRequest, _limits.MaxCandlesPerRequest);
 
-        string rawBasis = ToolArgs.String(arguments, BasisArgument) ?? "Volume";
+        string rawBasis = ToolArgs.String(arguments, BasisArgument) ?? VolumeBasis;
         if (!SupportedBases.Contains(rawBasis, StringComparer.OrdinalIgnoreCase))
         {
-            throw new ToolException(ToolErrorCodes.InvalidArgument, $"{BasisArgument} must be 'Volume' or 'TimeAtPrice'.", BasisArgument);
+            throw new ToolException(ToolErrorCodes.InvalidArgument, $"{BasisArgument} must be '{VolumeBasis}' or '{TimeAtPriceBasis}'.", BasisArgument);
         }
-        string basis = rawBasis.Equals("TimeAtPrice", StringComparison.OrdinalIgnoreCase) ? "TimeAtPrice" : "Volume";
+        string basis = rawBasis.Equals(TimeAtPriceBasis, StringComparison.OrdinalIgnoreCase) ? TimeAtPriceBasis : VolumeBasis;
 
         int binCount = ToolArgs.PositiveWithin(arguments, BinCountArgument, ChartConstants.DefaultVolumeProfileRowSize, _limits.MaxVolumeProfileBins);
         if (binCount < 2)
@@ -152,7 +156,7 @@ internal sealed class CalculateVolumeProfileTool : IMcpTool
         {
             // Range 0 edge case: degenerate to single bin
             long totalVolume = 0;
-            if (basis == "TimeAtPrice")
+            if (basis == TimeAtPriceBasis)
             {
                 totalVolume = coreSubset.Count;
             }
@@ -186,7 +190,7 @@ internal sealed class CalculateVolumeProfileTool : IMcpTool
         }
         else
         {
-            if (basis == "TimeAtPrice")
+            if (basis == TimeAtPriceBasis)
             {
                 bins = TimeAtPriceAnalysis.CalculateProfile(coreSubset, binCount, PriceType.Close);
                 (vah, val) = TimeAtPriceAnalysis.CalculateValueArea(bins, valueAreaPercent);
@@ -209,6 +213,30 @@ internal sealed class CalculateVolumeProfileTool : IMcpTool
             }
         }
 
+        // How much of the input the bins hold. Volume is split in whole units over the touched bins, so the remainder of each bar is dropped; the
+        // profile values themselves are unchanged (owner decision D-5 = A: show the difference, do not change the distribution).
+        long totalBarVolume = 0;
+        long profileVolume = 0;
+        checked
+        {
+            if (basis == TimeAtPriceBasis)
+            {
+                totalBarVolume = coreSubset.Count;
+            }
+            else
+            {
+                for (int i = 0; i < coreSubset.Count; i++)
+                {
+                    totalBarVolume += coreSubset[i].Volume;
+                }
+            }
+
+            for (int i = 0; i < bins.Count; i++)
+            {
+                profileVolume += bins[i].TotalVolume;
+            }
+        }
+
         return ToolJson.Build(writer =>
         {
             writer.WriteStartObject();
@@ -226,6 +254,9 @@ internal sealed class CalculateVolumeProfileTool : IMcpTool
             writer.WriteNumber("priceMax", maxPrice);
             writer.WriteString("basis", basis);
             writer.WriteNumber("binCount", bins.Count);
+            writer.WriteNumber("totalBarVolume", totalBarVolume);
+            writer.WriteNumber("profileVolume", profileVolume);
+            writer.WriteNumber("truncatedVolume", totalBarVolume - profileVolume);
 
             writer.WriteStartArray("bins");
             foreach (var b in bins)

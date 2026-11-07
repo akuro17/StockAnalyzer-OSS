@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using StockAnalyzer.Core.MathUtils;
 using StockAnalyzer.Core.Models;
@@ -55,7 +56,8 @@ public class PatternRecognitionService : IPatternRecognitionService
         int windowStep = ChartConstants.PatternRecognitionDefaultWindowStep,
         double threshold = ChartConstants.PatternRecognitionDefaultThreshold,
         int warpingRadius = ChartConstants.DtwDefaultWarpingRadius,
-        double shortSpanPenaltyAlpha = ChartConstants.DtwShortSpanPenaltyAlpha)
+        double shortSpanPenaltyAlpha = ChartConstants.DtwShortSpanPenaltyAlpha,
+        CancellationToken cancellationToken = default)
     {
         if (candles == null || candles.Count < minWindow)
         {
@@ -89,13 +91,18 @@ public class PatternRecognitionService : IPatternRecognitionService
             try
             {
                 return PatternRecognitionResult.Success(
-                    Detect(close, minWindow, maxWindow, windowStep, threshold, warpingRadius, shortSpanPenaltyAlpha));
+                    Detect(close, minWindow, maxWindow, windowStep, threshold, warpingRadius, shortSpanPenaltyAlpha, cancellationToken));
+            }
+            catch (OperationCanceledException)
+            {
+                // A cancelled scan is not a failed detection: the caller's token decides, so the cancellation reaches the caller unchanged.
+                throw;
             }
             catch (Exception ex)
             {
                 return PatternRecognitionResult.Failure(ex.Message);
             }
-        });
+        }, cancellationToken);
     }
 
     private static List<DetectedPattern> Detect(
@@ -105,7 +112,8 @@ public class PatternRecognitionService : IPatternRecognitionService
         int windowStep,
         double threshold,
         int warpingRadius,
-        double shortSpanPenaltyAlpha)
+        double shortSpanPenaltyAlpha,
+        CancellationToken cancellationToken)
     {
         int n = close.Length;
         int count = PatternTemplates.Count;
@@ -129,6 +137,8 @@ public class PatternRecognitionService : IPatternRecognitionService
 
             for (int start = 0; start + w <= n; start += windowStep)
             {
+                // One check per window position: a position costs six DTW alignments, far more than the check.
+                cancellationToken.ThrowIfCancellationRequested();
                 var segment = new ReadOnlySpan<double>(close, start, w);
                 Span<double> z = zSegment.AsSpan(0, w);
                 if (!ZNormalization.TryNormalize(segment, z))

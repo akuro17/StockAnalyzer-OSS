@@ -51,6 +51,13 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
     private readonly IMessenger _messenger;
     private readonly IDispatcherService _dispatcherService;
     private readonly IDialogService _dialogService;
+    private readonly StorageFeatureGate _storageGate;
+
+    /// <summary>Read-only mode (the Data folder is not writable): sync and "add ticker" write below Data and the master ticker list, so they stay disabled.</summary>
+    public bool IsStorageWritable => _storageGate.IsAvailable;
+
+    /// <summary>The reason shown on the disabled sync / add-ticker commands; null while they are available.</summary>
+    public string? StorageDisabledToolTip => _storageGate.DisabledToolTip;
     private readonly ITickerImportService _tickerImportService;
     private readonly ILogger<TickerListViewModel> _logger;
     private readonly StockAnalyzer.Core.Services.IChartSettingsManager? _chartSettingsManager;
@@ -1092,8 +1099,10 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
         StockAnalyzer.Core.Services.IBacktestRunPreparationService? backtestRunPreparationService = null,
         StockAnalyzer.Core.Services.Backtest.Evaluation.IBacktestEvaluationService? backtestEvaluationService = null,
         StockAnalyzer.Core.Services.Backtest.Configuration.IBacktestDefaultSettingsManager? backtestDefaultSettingsManager = null,
-        StockAnalyzer.Avalonia.Services.IBacktestSettingsCoordinator? backtestSettingsCoordinator = null)
+        StockAnalyzer.Avalonia.Services.IBacktestSettingsCoordinator? backtestSettingsCoordinator = null,
+        StockAnalyzer.Core.Common.IDataStorageState? dataStorageState = null)
     {
+        _storageGate = new StorageFeatureGate(dataStorageState);
         ToastService = toastService;
         _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<TickerListViewModel>.Instance;
 
@@ -1491,9 +1500,17 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
         return item;
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(IsStorageWritable))]
     private async Task DeleteFromMasterList()
     {
+        // Read-only mode (the Data folder is not writable): BulkRemove on the All Tickers node calls this method directly, so the command's CanExecute
+        // alone is not enough. Say why before any confirmation instead of failing after it.
+        if (!IsStorageWritable)
+        {
+            await _dialogService.ShowAlertAsync(LocalizationManager.Instance["Dialog_Error"] ?? "Error", StorageDisabledToolTip ?? string.Empty);
+            return;
+        }
+
         var items = DisplayItems.Where(x => x.IsChecked).ToList();
         
         // Use selected item as fallback if no checkboxes are active
@@ -1511,7 +1528,18 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
         if (await _dialogService.ShowConfirmationAsync(title, message))
         {
             var symbols = items.Select(x => x.Symbol).ToList();
-            await _marketDataProvider.RemoveTickersAsync(symbols);
+            try
+            {
+                await _marketDataProvider.RemoveTickersAsync(symbols);
+            }
+            catch (Exception ex)
+            {
+                // The master ticker list could not be written (permissions, a locked file): report it like AddTickerToMaster does and stop
+                // before the cascade, so no watchlist loses a ticker that is still in the master list.
+                _logger.LogError(ex, "Failed to remove {Count} ticker(s) from the master list", symbols.Count);
+                await _dialogService.ShowAlertAsync(LocalizationManager.Instance["Dialog_Error"] ?? "Error", ex.Message);
+                return;
+            }
 
             // Cascade deletion to all watchlists/portfolios
             await Task.Run(() => _watchlistManager.RemoveTickersFromAllProfiles(symbols));
@@ -1606,7 +1634,7 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
         }
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(IsStorageWritable))]
     private async Task BulkImport()
     {
         await BulkImportAsync(null, null);
@@ -2015,7 +2043,7 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
         }
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(IsStorageWritable))]
     private async Task SyncSelectedTickers()
     {
         var selectedSymbols = DisplayItems
@@ -2072,7 +2100,7 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
         }
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(IsStorageWritable))]
     private async Task SyncGroup(TickerGroupNode? node)
     {
         if (node == null) return;
@@ -2092,7 +2120,7 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
         await RunSyncSessionAsync(symbols, _syncCts.Token);
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(IsStorageWritable))]
     private async Task AddTickerToMaster()
     {
         var targetProfileId = SelectedWatchlist?.Id ?? AllTickersId;

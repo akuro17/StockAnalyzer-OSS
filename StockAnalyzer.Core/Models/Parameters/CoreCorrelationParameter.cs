@@ -54,6 +54,9 @@ public class CoreCorrelationParameter : CoreIndicatorParameterBase, ICrossTicker
         set => SetProperty(ref _calculationMode, value);
     }
 
+    // Explicit on purpose: a public property would be read as a user parameter by the reflection-based parameter readers.
+    bool ICrossTickerParameter.ComparisonSymbolOptional => true;
+
     public override string GetDisplayName(string type)
     {
         string modeSuffix = CalculationMode == CorrelationCalculationMode.LogReturn ? ", Return" : string.Empty;

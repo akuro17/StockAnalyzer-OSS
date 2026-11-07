@@ -150,7 +150,8 @@ public class ParquetMarketDataProvider : IMarketDataProvider
         DuckDBConnectionManager dbManager, 
         IPythonService pythonService,
         IOptions<MarketDataSettings> settings,
-        ILogger<ParquetMarketDataProvider>? logger = null)
+        ILogger<ParquetMarketDataProvider>? logger = null,
+        Common.IDataStorageState? dataStorageState = null)
     {
         _dbManager = dbManager;
         _pythonService = pythonService;
@@ -168,7 +169,7 @@ public class ParquetMarketDataProvider : IMarketDataProvider
         }
         
         // Ensure default tickers.json exists
-        if (!string.IsNullOrEmpty(_tickerListPath) && !File.Exists(_tickerListPath))
+        if (!string.IsNullOrEmpty(_tickerListPath) && !File.Exists(_tickerListPath) && Common.DataStorageGuard.IsWritable(dataStorageState))
         {
             try
             {
@@ -192,19 +193,24 @@ public class ParquetMarketDataProvider : IMarketDataProvider
         var monthlyPath = Common.PathDiscovery.ResolveDataPath(settings.Value.MonthlyDataPath, "Data/Monthly");
 
         // Ensure directories exist or can be created during initialization
-        foreach (var path in new[] { _baseDataPath, weeklyPath, monthlyPath, _metadataPath })
+        // Read-only mode (the data folder is not writable): nothing can be created, so no folder is. The provider then serves what already
+        // exists (a missing folder reads as "no data") and every write fails on its own write, which the UI has disabled up front.
+        if (Common.DataStorageGuard.IsWritable(dataStorageState))
         {
-            if (!Directory.Exists(path))
+            foreach (var path in new[] { _baseDataPath, weeklyPath, monthlyPath, _metadataPath })
             {
-                try 
+                if (!Directory.Exists(path))
                 {
-                    Directory.CreateDirectory(path);
-                    _logger.LogInformation("Created missing data directory: {Path}", path);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogCritical(ex, "Failed to initialize ParquetMarketDataProvider: Cannot create directory {Path}", path);
-                    throw;
+                    try
+                    {
+                        Directory.CreateDirectory(path);
+                        _logger.LogInformation("Created missing data directory: {Path}", path);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogCritical(ex, "Failed to initialize ParquetMarketDataProvider: Cannot create directory {Path}", path);
+                        throw;
+                    }
                 }
             }
         }

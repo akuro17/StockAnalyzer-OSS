@@ -34,8 +34,15 @@ public class TemplateService : ITemplateService, IDisposable
     {
     }
 
-    public TemplateService(ILogger<TemplateService>? logger)
+    private readonly StockAnalyzer.Core.Common.IDataStorageState? _dataStorageState;
+
+    /// <summary>Names of the template writes in <see cref="StockAnalyzer.Core.Common.DataStorageReadOnlyException.Operation"/>.</summary>
+    public const string SaveOperation = "TemplateSave";
+    public const string DeleteOperation = "TemplateDelete";
+
+    public TemplateService(ILogger<TemplateService>? logger, StockAnalyzer.Core.Common.IDataStorageState? dataStorageState = null)
     {
+        _dataStorageState = dataStorageState;
         _logger = logger ?? NullLogger<TemplateService>.Instance;
         _jsonOptions = new JsonSerializerOptions
         {
@@ -154,6 +161,7 @@ public class TemplateService : ITemplateService, IDisposable
     /// <inheritdoc />
     public async Task SaveAsync<T>(T template) where T : TemplateBase
     {
+        StockAnalyzer.Core.Common.DataStorageGuard.ThrowIfReadOnly(_dataStorageState, SaveOperation);
         if (template == null) throw new ArgumentNullException(nameof(template));
         if (string.IsNullOrWhiteSpace(template.Name)) throw new ArgumentException("Template name cannot be empty.", nameof(template));
         if (template.Id == Guid.Empty) throw new ArgumentException("Template ID must be a non-empty GUID.", nameof(template));
@@ -208,6 +216,7 @@ public class TemplateService : ITemplateService, IDisposable
     /// <inheritdoc />
     public async Task<bool> DeleteAsync(TemplateType type, Guid id)
     {
+        StockAnalyzer.Core.Common.DataStorageGuard.ThrowIfReadOnly(_dataStorageState, DeleteOperation);
         await EnsureMigratedAsync().ConfigureAwait(false);
 
         var filePath = PathDiscovery.ResolveTemplatePath(type, $"{id}.json");

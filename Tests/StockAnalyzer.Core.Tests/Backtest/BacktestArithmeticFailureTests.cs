@@ -51,6 +51,17 @@ public class BacktestArithmeticFailureTests
     }
 
     [Fact]
+    public void ABarFailure_CarriesTheTimestampOfTheFailingBar_AndThePreparationFailureCarriesNone()
+    {
+        ImmutableArray<CandleData> bars = ImmutableArray.Create(Flat(0, 100m), Flat(1, Huge));
+
+        BacktestDiagnosedRun run = Diagnose(bars, Script(new Dictionary<int, StrategyOrderRequest> { [0] = Req(SignalType.LongEntry) }));
+
+        BacktestRunDiagnostic diagnostic = Assert.IsType<BacktestRunDiagnostic>(run.Diagnostic);
+        Assert.Equal(bars[1].Timestamp, diagnostic.BarTimestamp);
+    }
+
+    [Fact]
     public void EntryNotionalOverflow_FailsAtItsBar_KeepsTheCommittedPrefix_AndLegacyRunStillThrows()
     {
         // Long entry (Q=3) fills at bar 1's Open 5e28: 3 * 5e28 overflows while sizing the entry notional.
@@ -196,6 +207,7 @@ public class BacktestArithmeticFailureTests
         BacktestRunDiagnostic diagnostic = Assert.IsType<BacktestRunDiagnostic>(run.Diagnostic);
         Assert.Equal(BacktestRunPhase.Preparation, diagnostic.Phase);
         Assert.Null(diagnostic.BarIndex);
+        Assert.Null(diagnostic.BarTimestamp);
         Assert.Equal(BacktestArithmeticOperation.Unknown, diagnostic.Operation);
         Assert.Empty(run.Result.Orders);
         Assert.Empty(run.Result.EquityPoints);

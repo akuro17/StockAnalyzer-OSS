@@ -41,6 +41,12 @@ internal static class OptimizationObjectives
 
     public static IReadOnlyList<string> Names { get; } = All.Select(metric => metric.Name).ToArray();
 
+    /// <summary>The report metrics whose value comes from the adjusted-Sortino bootstrap (the one expensive part of a report); an objective that is not one of them lets a sweep run skip it.</summary>
+    private static readonly string[] BootstrapMetrics = { nameof(BacktestReport.AnnualizedSortinoAutocorrelationAdjusted) };
+
+    /// <summary>True when ranking by <paramref name="objective"/> needs the adjusted-Sortino bootstrap, so a sweep run must compute it (owner decision D-6 = A).</summary>
+    public static bool NeedsAdjustedSortinoBootstrap(ObjectiveMetric objective) => BootstrapMetrics.Contains(objective.PropertyName, StringComparer.Ordinal);
+
     /// <summary>The metric of <paramref name="report"/> named by its <see cref="BacktestReport"/> property, whether or not it is offered as an objective.</summary>
     /// <exception cref="ArgumentException">The report has no such metric property.</exception>
     public static MetricValue? ReadMetric(BacktestReport report, string propertyName)

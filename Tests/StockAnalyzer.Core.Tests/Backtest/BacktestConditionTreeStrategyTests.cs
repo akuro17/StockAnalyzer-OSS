@@ -19,8 +19,8 @@ namespace StockAnalyzer.Core.Tests.Backtest;
 public class BacktestConditionTreeStrategyTests
 {
     /// <summary>Fingerprint of <see cref="ListBuiltStrategy_FingerprintIsByteIdenticalToTheGoldenCapturedBeforeThisChange"/>'s run, captured from the list-built strategy BEFORE any Phase 3 production edit.</summary>
-    /// <remarks>Re-pinned when the run-fingerprint SchemaVersion became 2 (all 20 configuration properties encoded): the strategy-manifest bytes are unchanged, only the configuration block and the schema version differ. SchemaVersion 1 value: 8D9D2AFC6C5F5FDDB29049C517E3CF7DB7BA3B3553016A000358DCC235AC3198.</remarks>
-    private const string LegacyGoldenFingerprint = "88472DB8D3955A1FCF82A047D55B311A6BE4163DB583054EA0769737DA4054F8";
+    /// <remarks>Re-pinned when the run-fingerprint SchemaVersion became 2 (all 20 configuration properties encoded): the strategy-manifest bytes are unchanged, only the configuration block and the schema version differ. SchemaVersion 1 value: 8D9D2AFC6C5F5FDDB29049C517E3CF7DB7BA3B3553016A000358DCC235AC3198. Re-pinned again for BacktestExecutionSemantics.Version 4 (stale risk-exit orders are cancelled: 3 of the stop-loss orders of this run were stale bounces, which changes two trades of the run).</remarks>
+    private const string LegacyGoldenFingerprint = "DB232ADEF2BE427776E394EECD3F32F185BED94C56097C7F3CC18B46BBAA4E1D";
 
     private static BacktestConditionEntry[] LegacyEntries() => new[]
     {

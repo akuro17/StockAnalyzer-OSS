@@ -125,6 +125,12 @@ public sealed class BacktestEvaluationArtifact
     public int RiskExecutionMode => LegacyRiskExecutionMode;
     public EvaluationContentIdentity ReportIdentity { get; }
 
+    /// <summary>
+    /// Where the engine's arithmetic failed, for a run that was evaluated with arithmetic-failure capture (owner decision D-8 = C) and ended Failed; null in every other
+    /// artifact. Not part of the evaluation archive (a Failed artifact of the MCP path is never archived); the run fingerprint already seals it.
+    /// </summary>
+    public BacktestRunDiagnostic? RunDiagnostic { get; }
+
     internal BacktestEvaluationArtifact(
         BacktestResult result,
         BacktestReport? report,
@@ -134,7 +140,8 @@ public sealed class BacktestEvaluationArtifact
         SamplingQualification sampling,
         DrawdownEpisodeResult ratioDrawdown,
         DrawdownEpisodeResult amountDrawdown,
-        EvaluationContentIdentity reportIdentity)
+        EvaluationContentIdentity reportIdentity,
+        BacktestRunDiagnostic? runDiagnostic = null)
     {
         Result = result;
         Report = report;
@@ -146,6 +153,7 @@ public sealed class BacktestEvaluationArtifact
         RatioDrawdown = ratioDrawdown;
         AmountDrawdown = amountDrawdown;
         ReportIdentity = reportIdentity;
+        RunDiagnostic = runDiagnostic;
     }
 }
 

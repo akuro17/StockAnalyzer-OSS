@@ -46,6 +46,9 @@ internal static class VerificationParameters
     /// <summary>Seed used by single-seed scenarios (determinism, poison).</summary>
     public const int PrimarySeed = 20260919;
 
+    /// <summary>Seed of the comparison symbol's random walk in the two-ticker indicator causality test (another series than <see cref="PrimarySeed"/>, same calendar).</summary>
+    public const int SecondarySeed = 20260920;
+
     /// <summary>SMA period of the real-indicator strategy used by determinism and poison tests.</summary>
     public const int SmaPeriod = 5;
 

@@ -127,7 +127,10 @@ public class ScreenerIndicatorGroup
                 IndicatorType.Egarch,
                 IndicatorType.EngleGrangerTest, IndicatorType.WilderSmoothing,
                 IndicatorType.Variance, IndicatorType.VaR, IndicatorType.CVaR,
-                IndicatorType.HiddenMarkovModel, IndicatorType.ARIMA
+                IndicatorType.HiddenMarkovModel, IndicatorType.ARIMA,
+                // The two-symbol indicators the Screener evaluates besides Correlation (see ScreenerIndicatorEligibility); the Backtest does not offer them.
+                IndicatorType.RollingBeta, IndicatorType.RollingAlpha, IndicatorType.RollingRSquared,
+                IndicatorType.CointegrationSpread, IndicatorType.PairRatio, IndicatorType.PairSpread, IndicatorType.Ratiocator
             }, "Indicator", "ScreenerGroup_Math"),
 
             new("Chart", new[]

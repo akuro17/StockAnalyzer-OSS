@@ -27,7 +27,7 @@ public sealed partial class RlTrainingDialogViewModel
     private RlArtifactPreview? _artifactPreview;
     private long _artifactRevision;
     
-    public bool CanCleanupArtifacts => Editable && CleanupConfirmed && ArtifactsState == RlDialogLoadState.Loaded && _savedPolicy?.IsComplete == true && ValidRetentionEditors && DraftPolicy() == _artifactPreview?.Policy && _artifactPreview?.Entries.Any(e => e.Candidate) == true;
+    public bool CanCleanupArtifacts => Editable && IsStorageWritable && CleanupConfirmed && ArtifactsState == RlDialogLoadState.Loaded && _savedPolicy?.IsComplete == true && ValidRetentionEditors && DraftPolicy() == _artifactPreview?.Policy && _artifactPreview?.Entries.Any(e => e.Candidate) == true;
     private void InvalidateArtifactReview()
     {
         NextRevision(ref _artifactRevision); _artifactPreview = null; _lastCleanupResult = null; CleanupConfirmed = false; ArtifactRows.Clear(); ArtifactsState = StorageAvailable ? RlDialogLoadState.Unloaded : RlDialogLoadState.Unsupported;

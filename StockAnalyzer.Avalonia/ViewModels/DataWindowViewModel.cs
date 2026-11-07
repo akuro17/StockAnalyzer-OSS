@@ -1188,7 +1188,7 @@ public partial class DataWindowViewModel : ViewModelBase,
                     {
                         foreach (var n in seriesNames)
                         {
-                            if (n == "BullishSignals" || n == "BearishSignals" || n == "BuySignals" || n == "SellSignals")
+                            if (IndicatorSeriesNames.IsDirectionalSignalSeries(n))
                                 continue;
                             
                             if (IndicatorChartSuppression.IsDataWindowSuppressed(indicator.TypeEnum, n))

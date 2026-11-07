@@ -126,5 +126,8 @@ public enum MetricReason
     NoWinningTrades = 18,
 
     /// <summary>A loss-side metric (average/largest loss) is undefined because no closed trade has ClosedNet &lt; 0.</summary>
-    NoLosingTrades = 19
+    NoLosingTrades = 19,
+
+    /// <summary>The caller asked for a report without this metric (an internal sweep run whose objective does not read it); the value was never computed. Append-only.</summary>
+    NotRequested = 20
 }

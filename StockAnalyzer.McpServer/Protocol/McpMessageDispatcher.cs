@@ -31,15 +31,18 @@ internal sealed class McpMessageDispatcher
     private readonly McpToolRegistry _registry;
     private readonly ToolExecutor _executor;
     private readonly McpResourceRegistry? _resources;
+    private readonly ClientIdentity? _identity;
     private bool _initialized;
 
     /// <param name="resources">The resources to serve; null serves none (the capability is then not declared and resources/* are unknown methods).</param>
-    public McpMessageDispatcher(LogSink log, McpToolRegistry registry, ToolExecutor executor, McpResourceRegistry? resources = null)
+    /// <param name="identity">Receives <c>clientInfo.name</c> when the client initializes; null keeps no label.</param>
+    public McpMessageDispatcher(LogSink log, McpToolRegistry registry, ToolExecutor executor, McpResourceRegistry? resources = null, ClientIdentity? identity = null)
     {
         _log = log;
         _registry = registry;
         _executor = executor;
         _resources = resources;
+        _identity = identity;
     }
 
     /// <summary>Handles one line and waits for a deferred call, so the result is the single response line (or null).</summary>
@@ -195,6 +198,7 @@ internal sealed class McpMessageDispatcher
 
         string negotiated = McpProtocolVersions.Negotiate(requested.GetString()!);
         _initialized = true;
+        _identity?.Set(clientName.GetString() ?? string.Empty);
         _log.Info($"Initialized for client '{clientName.GetString()}' with protocol {negotiated}.");
 
         AssemblyName assembly = typeof(McpMessageDispatcher).Assembly.GetName();
@@ -245,11 +249,11 @@ internal sealed class McpMessageDispatcher
                     outputSchema.WriteTo(writer);
                 }
                 writer.WriteStartObject("annotations");
-                // Execution tools start work in the temporary sandbox: not read-only, and a repeated call is not the same call.
-                bool execution = registered.Tool.IsExecution;
-                writer.WriteBoolean("readOnlyHint", !execution);
+                // A tool that starts work (execution) or changes in-memory state is not read-only, and a repeated call is not the same call.
+                bool readOnly = registered.Tool.IsReadOnly;
+                writer.WriteBoolean("readOnlyHint", readOnly);
                 writer.WriteBoolean("destructiveHint", false);
-                writer.WriteBoolean("idempotentHint", !execution);
+                writer.WriteBoolean("idempotentHint", readOnly);
                 writer.WriteBoolean("openWorldHint", false);
                 writer.WriteEndObject();
                 writer.WriteEndObject();

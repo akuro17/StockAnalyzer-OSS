@@ -44,6 +44,7 @@ public class ViewLocator : IDataTemplate
         [typeof(ThreeLineBreakSettingsViewModel)] = typeof(Views.Dialogs.Chart.ThreeLineBreakSettingsView),
         [typeof(RelativePerformanceSettingsViewModel)] = typeof(Views.Dialogs.Chart.RelativePerformanceSettingsView),
         [typeof(ReverseWatchSettingsViewModel)] = typeof(Views.Dialogs.Chart.ReverseWatchSettingsView),
+        [typeof(McpServerSettingsViewModel)] = typeof(McpServerSettingsView),
     };
 
     public Control? Build(object? param)

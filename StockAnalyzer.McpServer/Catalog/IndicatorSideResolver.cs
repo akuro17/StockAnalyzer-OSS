@@ -4,6 +4,7 @@ using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Indicators;
 using StockAnalyzer.Core.Models.Parameters;
 using StockAnalyzer.Core.Services.Backtest.Engine;
+using StockAnalyzer.Core.Services.Screener;
 using StockAnalyzer.McpServer.Tools;
 using static StockAnalyzer.McpServer.Catalog.ConditionJson;
 
@@ -68,7 +69,7 @@ internal sealed class IndicatorSideResolver
                     $"Series of {entry.Type}: {string.Join(", ", entry.OutputSeriesNames)}.");
         }
 
-        BacktestIndicatorViolationReason reason = BacktestIndicatorEligibility.Check(type, series);
+        BacktestIndicatorViolationReason reason = ScreenerIndicatorEligibility.Check(type, series);
         if (reason != BacktestIndicatorViolationReason.None)
         {
             throw new ToolException(

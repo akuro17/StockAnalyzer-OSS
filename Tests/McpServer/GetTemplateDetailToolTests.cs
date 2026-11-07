@@ -272,6 +272,79 @@ public sealed class GetTemplateDetailToolTests
         Assert.Equal(100m, exitLongLeaf.Comparison.RightNumericValue);
     }
 
+    [Theory]
+    [InlineData(0.05, 0.15)]
+    [InlineData(0.05, null)]
+    [InlineData(null, 0.2)]
+    [InlineData(0.0, 0.0)]
+    public async Task RoundTrip_BacktestRiskManagement_BindsToTheSameSettingsAsTheSavedTemplate(double? stopLoss, double? takeProfit)
+    {
+        // The risk part of a saved template is written as the riskManagement argument; read back through the argument binder it must
+        // mean what the template means (a ratio of the entry price) or both must be refused for the same reason.
+        var (tool, gateway, _, _) = CreateEnvironment();
+        var templateId = Guid.NewGuid();
+        var risk = new BacktestRiskManagementSettingsDto
+        {
+            StopLossPercent = stopLoss is null ? null : (decimal)stopLoss.Value,
+            TakeProfitPercent = takeProfit is null ? null : (decimal)takeProfit.Value,
+        };
+        gateway.BacktestTemplates[templateId] = new BacktestConditionTemplate
+        {
+            Id = templateId,
+            Name = "RiskRoundTrip",
+            RiskManagement = risk,
+            ConditionTree = new BacktestConditionTreeDto
+            {
+                ExitLong = new BacktestConditionNodeDto
+                {
+                    Kind = BacktestConditionNodeKind.Group,
+                    Operator = LogicalOperator.And,
+                    Children = new List<BacktestConditionNodeDto>
+                    {
+                        new()
+                        {
+                            Kind = BacktestConditionNodeKind.Leaf,
+                            Comparison = new BacktestConditionEntryDto
+                            {
+                                Left = new BacktestConditionSideDto { IndicatorType = IndicatorType.Price, PriceSource = PriceType.Close },
+                                Operator = ComparisonOperator.LessThan,
+                                TargetMode = RightHandTargetMode.NumericValue,
+                                RightNumericValue = 100m,
+                            },
+                        },
+                    },
+                },
+            },
+        };
+
+        string json = await tool.InvokeAsync(JsonDocument.Parse(JsonSerializer.Serialize(new { templateType = "backtestCondition", templateId = templateId.ToString() })).RootElement, CancellationToken.None);
+        using JsonDocument detail = JsonDocument.Parse(json);
+        Assert.False(detail.RootElement.TryGetProperty("unconvertibleEntries", out JsonElement lost) && lost.GetArrayLength() > 0);
+
+        string arguments = detail.RootElement.TryGetProperty("riskManagement", out JsonElement written)
+            ? $"{{\"riskManagement\":{written.GetRawText()}}}"
+            : "{}";
+        using JsonDocument argumentDocument = JsonDocument.Parse(arguments);
+
+        static (string Outcome, decimal? Stop, decimal? Take) Run(Func<BacktestRiskManagementSettings?> bind)
+        {
+            try
+            {
+                BacktestRiskManagementSettings? bound = bind();
+                return ("ok", bound?.StopLossPercent, bound?.TakeProfitPercent);
+            }
+            catch (ToolException error)
+            {
+                return (error.Code, null, null);
+            }
+        }
+
+        var fromTemplate = Run(() => BacktestSettingsBinder.FromTemplate(risk));
+        var fromArgument = Run(() => BacktestSettingsBinder.Bind(argumentDocument.RootElement).RiskManagement);
+
+        Assert.Equal(fromTemplate, fromArgument);
+    }
+
     [Fact]
     public async Task ScreenerTemplate_WithDisabledEntries_ReportsUnconvertibleEntries()
     {

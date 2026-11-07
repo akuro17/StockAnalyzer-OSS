@@ -47,6 +47,9 @@ internal sealed class CalculateCrossAssetStatsTool : IMcpTool
         $"Calculates cross-asset return statistics across 2 to {_limits.MaxCrossAssetSymbols} symbols: " +
         "correlation matrix, sample covariance matrix (N-1 degrees of freedom), and benchmark Beta, Alpha, and R2. " +
         "Aligns bars using an inner join on common trading dates. " +
+        "With timeFrame W1 or MN1 the bars are matched by period. " +
+        $"{ReturnStatistics.PeriodStartDateNote} " +
+        "multiBarReturnCount counts the common dates whose returns cover different holding periods because a market traded on a day another was closed. " +
         "Supports returnBasis 'SimpleReturn' (default) or 'LogReturn'. Read-only.";
 
     public bool IsHeavy => false;
@@ -150,7 +153,7 @@ internal sealed class CalculateCrossAssetStatsTool : IMcpTool
         }
 
         // 5. Calculate Cross-Asset Statistics (external benchmark passed separately)
-        CrossAssetStatsResult result = ReturnStatistics.Calculate(universeDict, canonicalBenchmark, includeCovariance, returnBasis, benchmarkCandles);
+        CrossAssetStatsResult result = ReturnStatistics.Calculate(universeDict, canonicalBenchmark, includeCovariance, returnBasis, benchmarkCandles, timeFrame);
 
         if (result.CommonDateCount < ReturnStatistics.MinCommonDates)
         {
@@ -181,6 +184,7 @@ internal sealed class CalculateCrossAssetStatsTool : IMcpTool
             writer.WriteEndArray();
 
             writer.WriteNumber("commonDateCount", result.CommonDateCount);
+            writer.WriteNumber("multiBarReturnCount", result.MultiBarReturnCount);
             if (result.StartDate.HasValue)
             {
                 writer.WriteString("startDate", ToolJson.FormatDate(result.StartDate.Value));

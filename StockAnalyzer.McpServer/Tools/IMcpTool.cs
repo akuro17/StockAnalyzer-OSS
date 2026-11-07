@@ -29,6 +29,18 @@ internal interface IMcpTool
     bool IsExecution => false;
 
     /// <summary>
+    /// True (the default) when a call takes the single tool turn, so it runs alone. A tool that returns False runs beside other calls and is bounded only by its time
+    /// limit; that is for a tool that mostly waits for other participants and must not stop every other tool (the discussion board's bounded read).
+    /// </summary>
+    bool UsesExecutionTurn => true;
+
+    /// <summary>
+    /// True (the default for every tool that does not start work) when a call changes nothing and a repeated call is the same call. Written to the tool's
+    /// <c>readOnlyHint</c> and <c>idempotentHint</c> annotations. A tool that changes in-memory state without being an execution tool returns False.
+    /// </summary>
+    bool IsReadOnly => !IsExecution;
+
+    /// <summary>
     /// An optional compact JSON object string illustrating valid, copy-pasteable arguments for this tool. Default is null.
     /// When non-null, must be a single-line minified JSON object containing all required properties and valid ranges.
     /// </summary>

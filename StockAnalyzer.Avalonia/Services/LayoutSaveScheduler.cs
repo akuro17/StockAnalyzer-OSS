@@ -49,6 +49,13 @@ public sealed class LayoutSaveScheduler : ILayoutSaveScheduler
     {
         if (_isDisposed) return;
 
+        // While the workspace file is protected (restore anomaly) no reason, not even Shutdown, may write over it.
+        if (_stateStore.AutoSaveLock != AutoSaveLock.None)
+        {
+            _logger.LogDebug("Save request ignored. Automatic saving is locked: {Lock}", _stateStore.AutoSaveLock);
+            return;
+        }
+
         // Ignore requests from states other than Ready, except during Shutdown when immediate save is permitted.
         if (_stateStore.LifecycleState != WorkspaceLifecycleState.Ready && reason != LayoutChangeReason.Shutdown)
         {

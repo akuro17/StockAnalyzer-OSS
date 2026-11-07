@@ -1,6 +1,8 @@
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
+using StockAnalyzer.Core.MathUtils;
 
 namespace StockAnalyzer.Core.Analysis;
 
@@ -307,35 +309,56 @@ public static class SsaDecompositionEngine
                 0, 0.0, 0.0, true);
         }
 
-        Span<double> processed = stackalloc double[n];
-        Detrend(input, processed, mode, out double slope, out double intercept);
+        // Short series live on the stack; longer ones are rented so the stack use stays bounded (MathBufferLimits).
+        // Detrend overwrites all n elements, so the unzeroed rented array is never read before it is written.
+        double[]? rentedProcessed = null;
+        Span<double> processed = (n <= MathBufferLimits.StackAllocThreshold)
+            ? stackalloc double[n]
+            : (rentedProcessed = ArrayPool<double>.Shared.Rent(n)).AsSpan(0, n);
 
-        int l = Math.Clamp(embeddingDimension, 2, Math.Max(2, n / 2));
-        int k = n - l + 1;
-        if (k < 2)
-        {
-            return new SsaDecompositionResult(
-                Array.Empty<double>(),
-                Array.Empty<double>(),
-                new double[0, 0],
-                Array.Empty<double>(),
-                Array.Empty<int>(),
-                0, slope, intercept, true);
-        }
-
-        // Check if series is completely flat / degenerate
+        double slope;
+        double intercept;
+        int l;
+        int k;
         bool isDegenerate = true;
-        for (int i = 0; i < n; i++)
+        double[,] sMatrix;
+        try
         {
-            if (Math.Abs(processed[i]) > DegenerateSeriesEpsilon)
+            Detrend(input, processed, mode, out slope, out intercept);
+
+            l = Math.Clamp(embeddingDimension, 2, Math.Max(2, n / 2));
+            k = n - l + 1;
+            if (k < 2)
             {
-                isDegenerate = false;
-                break;
+                return new SsaDecompositionResult(
+                    Array.Empty<double>(),
+                    Array.Empty<double>(),
+                    new double[0, 0],
+                    Array.Empty<double>(),
+                    Array.Empty<int>(),
+                    0, slope, intercept, true);
+            }
+
+            // Check if series is completely flat / degenerate
+            for (int i = 0; i < n; i++)
+            {
+                if (Math.Abs(processed[i]) > DegenerateSeriesEpsilon)
+                {
+                    isDegenerate = false;
+                    break;
+                }
+            }
+
+            sMatrix = new double[l, l];
+            BuildLagCovarianceMatrix(processed, l, k, sMatrix);
+        }
+        finally
+        {
+            if (rentedProcessed != null)
+            {
+                ArrayPool<double>.Shared.Return(rentedProcessed);
             }
         }
-
-        double[,] sMatrix = new double[l, l];
-        BuildLagCovarianceMatrix(processed, l, k, sMatrix);
 
         double[] eigenvalues = new double[l];
         double[,] eigenvectors = new double[l, l];
@@ -485,29 +508,43 @@ public static class SsaDecompositionEngine
             return double.NaN;
         }
 
-        Span<double> processed = stackalloc double[n];
-        Detrend(input, processed, detrendMode, out double slope, out double intercept);
+        double[]? rentedProcessed = null;
+        Span<double> processed = (n <= MathBufferLimits.StackAllocThreshold)
+            ? stackalloc double[n]
+            : (rentedProcessed = ArrayPool<double>.Shared.Rent(n)).AsSpan(0, n);
 
-        int r = Math.Clamp(numComponents, 1, Math.Min(l - 1, k));
-
-        // At endpoint t = n - 1 (row = l - 1, col = k - 1):
-        // reconstructed[n - 1] = sum_{m=0}^{r-1} U[l-1, m] * V_m[k-1]
-        // where V_m[k-1] = sum_{row=0}^{l-1} processed[row + k - 1] * U[row, m]
-        double endpointDetrended = 0.0;
-        for (int m = 0; m < r; m++)
+        try
         {
-            int eigIdx = decomp.SortedIndices[m];
-            double uLast = decomp.Eigenvectors[l - 1, eigIdx];
+            Detrend(input, processed, detrendMode, out double slope, out double intercept);
 
-            double vLast = 0.0;
-            for (int row = 0; row < l; row++)
+            int r = Math.Clamp(numComponents, 1, Math.Min(l - 1, k));
+
+            // At endpoint t = n - 1 (row = l - 1, col = k - 1):
+            // reconstructed[n - 1] = sum_{m=0}^{r-1} U[l-1, m] * V_m[k-1]
+            // where V_m[k-1] = sum_{row=0}^{l-1} processed[row + k - 1] * U[row, m]
+            double endpointDetrended = 0.0;
+            for (int m = 0; m < r; m++)
             {
-                vLast += processed[row + k - 1] * decomp.Eigenvectors[row, eigIdx];
+                int eigIdx = decomp.SortedIndices[m];
+                double uLast = decomp.Eigenvectors[l - 1, eigIdx];
+
+                double vLast = 0.0;
+                for (int row = 0; row < l; row++)
+                {
+                    vLast += processed[row + k - 1] * decomp.Eigenvectors[row, eigIdx];
+                }
+
+                endpointDetrended += uLast * vLast;
             }
 
-            endpointDetrended += uLast * vLast;
+            return endpointDetrended + (intercept + slope * (n - 1));
         }
-
-        return endpointDetrended + (intercept + slope * (n - 1));
+        finally
+        {
+            if (rentedProcessed != null)
+            {
+                ArrayPool<double>.Shared.Return(rentedProcessed);
+            }
+        }
     }
 }

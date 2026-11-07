@@ -25,16 +25,22 @@ internal sealed class FakeTool : IMcpTool
 {
     private readonly Func<JsonElement, CancellationToken, Task<string>> _invoke;
 
-    public FakeTool(string name, Func<JsonElement, CancellationToken, Task<string>> invoke, string? schemaJson = null, bool isHeavy = false, bool isExecution = false)
+    public FakeTool(string name, Func<JsonElement, CancellationToken, Task<string>> invoke, string? schemaJson = null, bool isHeavy = false, bool isExecution = false, bool usesExecutionTurn = true, bool? isReadOnly = null)
     {
         Name = name;
         _invoke = invoke;
         InputSchemaJson = schemaJson ?? ToolSchema.Object().Build();
         IsHeavy = isHeavy;
         IsExecution = isExecution;
+        UsesExecutionTurn = usesExecutionTurn;
+        IsReadOnly = isReadOnly ?? !isExecution;
     }
 
     public bool IsExecution { get; }
+
+    public bool UsesExecutionTurn { get; }
+
+    public bool IsReadOnly { get; }
 
     public string Name { get; }
 

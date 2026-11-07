@@ -5,6 +5,7 @@ using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Analysis;
+using StockAnalyzer.Core.Services;
 using StockAnalyzer.Core.Services.Analysis;
 
 namespace StockAnalyzer.Avalonia.ViewModels.Dialogs;
@@ -79,11 +80,25 @@ public sealed class ScatterMetricDraftItem : ObservableObject, IDisposable
     /// </summary>
     public string? FixedTimeFrameReason { get; init; }
 
-    /// <summary>True when the time frame can be chosen: an Indicator, a Price source or a Column that names a bar value (<see cref="ScatterMetricEligibility.AllowsTimeFrameChoice"/>).</summary>
+    /// <summary>
+    /// The reason the time frame cannot be chosen for an indicator that compares two symbols and names a comparison symbol (the comparison symbol's bars are daily, so the metric
+    /// is Day only; clearing an optional comparison symbol frees the choice), already localized. Set by the window's view model when it creates the item.
+    /// </summary>
+    public string? TwoTickerTimeFrameReason { get; init; }
+
+    /// <summary>
+    /// True when the time frame can be chosen: an Indicator, a Price source or a Column that names a bar value (<see cref="ScatterMetricEligibility.AllowsTimeFrameChoice"/>);
+    /// not an Indicator that reads the daily bars of a comparison symbol.
+    /// </summary>
     public bool IsTimeFrameEditable => ScatterMetricEligibility.AllowsTimeFrameChoice(Definition.Source);
 
-    /// <summary>The tooltip of the time frame box: null while it can be chosen, otherwise the reason it cannot (shown on the disabled box).</summary>
-    public string? TimeFrameToolTip => IsTimeFrameEditable ? null : FixedTimeFrameReason;
+    /// <summary>
+    /// The tooltip of the time frame box: null while it can be chosen, otherwise the reason it cannot (shown on the disabled box): the two-ticker reason when the metric
+    /// reads a comparison symbol's daily bars, else the fundamental-Column reason.
+    /// </summary>
+    public string? TimeFrameToolTip => IsTimeFrameEditable
+        ? null
+        : ScreenerComparisonSymbols.NeedsDailyComparisonBars(Definition.Source) ? TwoTickerTimeFrameReason : FixedTimeFrameReason;
 
     /// <summary>The time frame the metric is read on. A time frame that cannot be chosen, is not supported or is the current one changes nothing.</summary>
     public TimeFrame TimeFrame
@@ -200,6 +215,11 @@ public sealed class ScatterMetricDraftItem : ObservableObject, IDisposable
             Definition.Source.Parameters[pair.Key] = pair.Value;
         }
 
+        // A comparison symbol typed or cleared changes whether the time frame can be chosen. Nothing is changed for the user: a Week or Month already chosen stays (the shared
+        // validation then refuses the metric and Add / OK stop with the invalid-metric message); the box only shows the stored frame, disabled, with the reason.
+        OnPropertyChanged(nameof(IsTimeFrameEditable));
+        OnPropertyChanged(nameof(TimeFrameToolTip));
+        OnPropertyChanged(nameof(TimeFrame));
         RaiseEdited();
     }
 

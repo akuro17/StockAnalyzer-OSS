@@ -148,7 +148,10 @@ public class FftEngineCharacterizationTests
                 continue;
             }
 
-            double magnitude = (2.0 / n) * Math.Sqrt(re[k] * re[k] + im[k] * im[k]);
+            // Expectation updated with owner decision D-9 = A (2026-11-04): the Nyquist bin of an even n has no mirrored partner and uses 1/n, as the
+            // projection reference below already did. This reference used 2/n for every bin, which pinned the Nyquist bin at twice its amplitude.
+            double scale = (n % 2 == 0 && k == n / 2) ? (1.0 / n) : (2.0 / n);
+            double magnitude = scale * Math.Sqrt(re[k] * re[k] + im[k] * im[k]);
             double phase = Math.Atan2(im[k], re[k]);
             bins.Add(new BinSnapshot(k, period, magnitude, magnitude * magnitude, phase));
         }

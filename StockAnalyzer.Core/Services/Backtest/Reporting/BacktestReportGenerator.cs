@@ -207,7 +207,13 @@ public sealed class BacktestReportGenerator : IBacktestReportGenerator, ICancell
         MetricValue annualizedSortinoAutocorrelationAdjusted;
         ConfidenceInterval? adjustedSortinoInterval;
         BootstrapDiagnostics bootstrapDiagnostics;
-        if (sampling?.Status == SamplingStatus.Rejected)
+        if (!options.ComputeAdjustedSortinoBootstrap)
+        {
+            annualizedSortinoAutocorrelationAdjusted = MetricValue.NonValid(MetricStatus.NotApplicable, MetricUnit.Dimensionless, MetricReason.NotRequested);
+            adjustedSortinoInterval = null;
+            bootstrapDiagnostics = BootstrapDiagnostics.NotComputed(BootstrapDiagnostics.NotRequestedReason);
+        }
+        else if (sampling?.Status == SamplingStatus.Rejected)
         {
             BootstrapMetricComputation computation =
                 RiskAdjustedMetricsCalculator.ComputeQualifiedAnnualizedSortinoAutocorrelationAdjusted(

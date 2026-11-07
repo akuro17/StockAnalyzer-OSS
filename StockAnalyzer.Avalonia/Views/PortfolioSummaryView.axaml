@@ -205,8 +205,8 @@
                                   SelectedItem="{Binding SelectedPosition}">
                             <DataGrid.ContextMenu>
                                 <ContextMenu ZIndex="99">
-                                    <MenuItem x:Name="MenuItemAddPosition" Header="Add Transactions" Click="OnAddTransactionMenuClick"/>
-                                    <MenuItem x:Name="MenuItemExitPosition" Header="{l:Localize Portfolio_Menu_ExitPosition}" Click="OnExitPositionMenuClick"/>
+                                    <MenuItem x:Name="MenuItemAddPosition" Header="Add Transactions" IsEnabled="{Binding $parent[UserControl].DataContext.IsStorageWritable}" ToolTip.Tip="{Binding $parent[UserControl].DataContext.StorageDisabledToolTip}" ToolTip.ShowOnDisabled="True" Click="OnAddTransactionMenuClick"/>
+                                    <MenuItem x:Name="MenuItemExitPosition" Header="{l:Localize Portfolio_Menu_ExitPosition}" IsEnabled="{Binding $parent[UserControl].DataContext.IsStorageWritable}" ToolTip.Tip="{Binding $parent[UserControl].DataContext.StorageDisabledToolTip}" ToolTip.ShowOnDisabled="True" Click="OnExitPositionMenuClick"/>
                                 </ContextMenu>
                             </DataGrid.ContextMenu>
                             <DataGrid.Columns>
@@ -345,9 +345,9 @@
                                   BorderBrush="{DynamicResource Brush.Border.Primary}">
                             <DataGrid.ContextMenu>
                                 <ContextMenu ZIndex="99">
-                                    <MenuItem x:Name="MenuItemAdd" Header="Add Transactions" Click="OnAddTransactionMenuClick"/>
-                                    <MenuItem x:Name="MenuItemEdit" Header="Edit Transaction" Click="OnEditTransactionMenuClick"/>
-                                    <MenuItem x:Name="MenuItemDelete" Header="Delete Transaction" Click="OnDeleteTransactionMenuClick"/>
+                                    <MenuItem x:Name="MenuItemAdd" Header="Add Transactions" IsEnabled="{Binding $parent[UserControl].DataContext.IsStorageWritable}" ToolTip.Tip="{Binding $parent[UserControl].DataContext.StorageDisabledToolTip}" ToolTip.ShowOnDisabled="True" Click="OnAddTransactionMenuClick"/>
+                                    <MenuItem x:Name="MenuItemEdit" Header="Edit Transaction" IsEnabled="{Binding $parent[UserControl].DataContext.IsStorageWritable}" ToolTip.Tip="{Binding $parent[UserControl].DataContext.StorageDisabledToolTip}" ToolTip.ShowOnDisabled="True" Click="OnEditTransactionMenuClick"/>
+                                    <MenuItem x:Name="MenuItemDelete" Header="Delete Transaction" IsEnabled="{Binding $parent[UserControl].DataContext.IsStorageWritable}" ToolTip.Tip="{Binding $parent[UserControl].DataContext.StorageDisabledToolTip}" ToolTip.ShowOnDisabled="True" Click="OnDeleteTransactionMenuClick"/>
                                 </ContextMenu>
                             </DataGrid.ContextMenu>
                             <DataGrid.Columns>

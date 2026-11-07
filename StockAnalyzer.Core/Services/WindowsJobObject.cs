@@ -15,7 +15,7 @@ namespace StockAnalyzer.Core.Services;
 /// explicit Process.Kill(entireProcessTree: true).
 /// </summary>
 [SupportedOSPlatform("windows")]
-internal sealed class WindowsJobObjectHandle : SafeHandleZeroOrMinusOneIsInvalid
+public sealed class WindowsJobObjectHandle : SafeHandleZeroOrMinusOneIsInvalid
 {
     public WindowsJobObjectHandle(IntPtr handle) : base(true)
     {
@@ -28,7 +28,7 @@ internal sealed class WindowsJobObjectHandle : SafeHandleZeroOrMinusOneIsInvalid
     private static extern bool CloseHandle(IntPtr hObject);
 }
 
-internal static class WindowsJobObject
+public static class WindowsJobObject
 {
     /// <summary>
     /// Creates a new Job Object with JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE and assigns

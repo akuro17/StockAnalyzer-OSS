@@ -83,6 +83,8 @@ public partial class SettingsViewModel : ViewModelBase, IDisposable
                 SettingsConstants.Keys.Python => _serviceProvider.GetRequiredService<PythonSettingsViewModel>(),
                 SettingsConstants.Keys.AIPredictions => _serviceProvider.GetRequiredService<AIPredictionsSettingsViewModel>(),
                 SettingsConstants.Keys.Backtest => _serviceProvider.GetRequiredService<BacktestSettingsViewModel>(),
+                SettingsConstants.Keys.McpServer => _serviceProvider.GetRequiredService<McpServerSettingsViewModel>(),
+                SettingsConstants.Keys.BacktestMcpServer => _serviceProvider.GetRequiredService<McpServerSettingsViewModel>(),
                 SettingsConstants.Keys.TrainingWizard => _serviceProvider.GetRequiredService<TrainingResourceSettingsViewModel>(),
                 SettingsConstants.Keys.Tickers => _serviceProvider.GetRequiredService<TickersSettingsViewModel>(),
                 SettingsConstants.Keys.Notes =>_serviceProvider.GetRequiredService<NotesSettingsViewModel>(),

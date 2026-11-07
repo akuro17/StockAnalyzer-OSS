@@ -1,4 +1,5 @@
 using System.Text;
+using StockAnalyzer.Core.Discussion;
 using StockAnalyzer.Core.Execution;
 using StockAnalyzer.McpServer;
 using StockAnalyzer.McpServer.CommandLine;
@@ -35,9 +36,13 @@ Console.CancelKeyPress += (_, eventArgs) =>
 McpServerRuntime runtime;
 try
 {
-    runtime = McpServerComposition.Create(McpServerComposition.LoadConfiguration(AppContext.BaseDirectory), log, enableExecution: commandLine.EnableExecution);
+    runtime = McpServerComposition.Create(
+        McpServerComposition.LoadConfiguration(AppContext.BaseDirectory),
+        log,
+        enableExecution: commandLine.EnableExecution,
+        enableDiscussion: commandLine.EnableDiscussion);
 }
-catch (Exception error) when (error is McpLimitsException or ExecutionLimitsException){
+catch (Exception error) when (error is McpLimitsException or ExecutionLimitsException or DiscussionLimitsException){
     log.Error($"Invalid configuration: {error.Message}");
     return McpCommandLine.ExitInvalidConfiguration;
 }

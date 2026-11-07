@@ -196,7 +196,7 @@
     <!-- ToolBarButton styles removed: replaced by DrawingToolSidebar -->
 
 
-    <Grid RowDefinitions="Auto,*,Auto">
+    <Grid RowDefinitions="Auto,*,Auto,Auto">
         <!-- HEADER -->
         <Border Grid.Row="0" Background="{DynamicResource Brush.Background.Header}" BorderBrush="{DynamicResource Brush.Border}" BorderThickness="0,0,0,1" Padding="0,2">
             <!-- Menu Area with Inline Load Button and Chart Type -->
@@ -238,6 +238,7 @@
                     <MenuItem Header="{l:Localize Menu_Tools}" AutomationProperties.AutomationId="Menu_Tools">
                         <MenuItem Header="{l:Localize Menu_Screener}" AutomationProperties.AutomationId="Menu_Screener" Command="{Binding OpenScreenerCommand}"/>
                         <MenuItem Header="{l:Localize Menu_Backtest}" AutomationProperties.AutomationId="Menu_Backtest" Command="{Binding OpenBacktestWindowCommand}"/>
+                        <MenuItem Header="{l:Localize Menu_McpServer}" AutomationProperties.AutomationId="Menu_McpServer" Command="{Binding StartMcpServerCommand}"/>
                         <MenuItem Header="{l:Localize Menu_ModelTraining}" AutomationProperties.AutomationId="{x:Static rlui:ToolsMenuUiConstants.ModelTraining}">
                             <MenuItem Header="{l:Localize Menu_TrainingWizard}" AutomationProperties.AutomationId="Menu_TrainingWizard" Command="{Binding OpenTrainingWizardCommand}"/>
                             <MenuItem Header="{l:Localize Rl.Title}" Command="{Binding OpenRlTrainingCommand}" AutomationProperties.AutomationId="{x:Static rlui:RlUiConstants.Menu}"/>
@@ -248,7 +249,7 @@
                             <MenuItem Header="{l:Localize Settings_RlPlayback}" Command="{Binding OpenRlPlaybackCommand}" AutomationProperties.AutomationId="{x:Static rlui:RlUiConstants.PlaybackMenu}"/>
                         </MenuItem>
                         <MenuItem Header="{l:Localize Menu_AddChartPanel}" Command="{Binding AddPanelChartCommand}"/>
-                        <MenuItem Header="{l:Localize TickerList_AddTicker}" AutomationProperties.AutomationId="Menu_AddTicker" Command="{Binding TickerListViewModel.AddTickerToMasterCommand}"/>
+                        <MenuItem Header="{l:Localize TickerList_AddTicker}" AutomationProperties.AutomationId="Menu_AddTicker" Command="{Binding TickerListViewModel.AddTickerToMasterCommand}" ToolTip.Tip="{Binding TickerListViewModel.StorageDisabledToolTip}" ToolTip.ShowOnDisabled="True"/>
                         <Separator/>
                         <MenuItem Header="{l:Localize Menu_ThemeSettings}" AutomationProperties.AutomationId="Menu_ThemeSettings" Command="{Binding OpenThemeSettingsCommand}"/>
                         <MenuItem Header="{l:Localize Menu_IndicatorSettings}" AutomationProperties.AutomationId="Menu_IndicatorSettings" Command="{Binding OpenSettingsCommand}"/>
@@ -685,8 +686,51 @@
             </Border>
         </Grid>
 
+        <!-- STATUS BANNER: persistent messages (e.g. automatic workspace saving is stopped). Several items may show at once. -->
+        <Border Grid.Row="2"
+                AutomationProperties.AutomationId="StatusBanner"
+                Background="{DynamicResource Brush.Background.Tertiary}"
+                IsVisible="{Binding StatusBanner.HasItems}">
+            <ItemsControl ItemsSource="{Binding StatusBanner.Items}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:StatusBannerItem">
+                        <Border Classes="bannerItem" Classes.error="{Binding IsError}" Padding="8,4" BorderThickness="0,0,0,1"
+                                ToolTip.Tip="{Binding ToolTip}"
+                                AutomationProperties.AutomationId="StatusBanner_Item">
+                            <Border.Styles>
+                                <Style Selector="Border.bannerItem">
+                                    <Setter Property="BorderBrush" Value="{DynamicResource Brush.Semantic.Warning}"/>
+                                </Style>
+                                <Style Selector="Border.bannerItem.error">
+                                    <Setter Property="BorderBrush" Value="{DynamicResource Brush.Semantic.Error}"/>
+                                </Style>
+                            </Border.Styles>
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBlock Grid.Column="0" Text="{Binding Text}" TextWrapping="Wrap" VerticalAlignment="Center"
+                                           Foreground="{DynamicResource Brush.Text.Primary}"
+                                           FontSize="{DynamicResource HelperFontSize}"/>
+                                <ItemsControl Grid.Column="1" ItemsSource="{Binding Actions}" Margin="8,0,0,0">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <StackPanel Orientation="Horizontal" Spacing="6"/>
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:StatusBannerAction">
+                                            <Button Content="{Binding Text}" Command="{Binding Command}"
+                                                    FontSize="{DynamicResource HelperFontSize}"/>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </Border>
+
         <!-- STATUS BAR -->
-        <Border Grid.Row="2" Background="{DynamicResource Brush.Background.Tertiary}" Padding="5"
+        <Border Grid.Row="3" Background="{DynamicResource Brush.Background.Tertiary}" Padding="5"
                 IsVisible="{Binding OrphanedAttachmentNoticeText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
             <Grid ColumnDefinitions="*,Auto">
                 <Button Grid.Column="1"

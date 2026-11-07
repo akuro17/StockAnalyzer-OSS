@@ -58,42 +58,10 @@ public sealed class RunBacktestBatchTests : IDisposable
         _fixture.Dispose();
     }
 
-    private ReadOnlyStockAnalyzerGateway CreateGateway()
-    {
-        var source = new ParquetReadOnlyMarketDataSource(new ParquetMarketDataProvider(_db, UnavailablePythonService.Instance, Options.Create(_fixture.Settings)));
-        var screener = new ScreenerService(_data, new PythonIpcTestSettingsBase(), new IMarketDataProvider[] { new ReadOnlyMetadataMarketDataProvider(source) });
-        return new ReadOnlyStockAnalyzerGateway(
-            source,
-            _data,
-            new AnalysisPipelineService(pythonService: null, indicatorFactory: IndicatorFactory.Default),
-            screener,
-            new FileReadOnlyTemplateSource(Path.Combine(_fixture.Root, "Templates", "Screener")),
-            new ScreenerTemplateEvaluator(screener),
-            new BacktestRunPreparationService(_data),
-            new BacktestEvaluationService(new BacktestEngine(IndicatorFactory.Default), new BacktestReportGenerator(), new NoSamplingEvidenceTrustPolicy()));
-    }
+    private ReadOnlyStockAnalyzerGateway CreateGateway() => SmaCrossBacktestKit.CreateGateway(_data, _db, _fixture);
 
     private static BacktestRunSnapshot Snapshot(string symbol, int smaPeriod, ExecutionModel model = ExecutionModel.Legacy)
-    {
-        BacktestConditionSide Close() => new() { IndicatorType = IndicatorType.Price, PriceSource = PriceType.Close, OutputName = IndicatorResult.MainSeriesName };
-        BacktestConditionSide Sma() => new() { IndicatorType = IndicatorType.SMA, Parameters = new CoreSmaParameter { Period = smaPeriod }, OutputName = IndicatorResult.MainSeriesName };
-        BacktestConditionGroup Group(ComparisonOperator op) => new(LogicalOperator.And, ImmutableArray.Create<IBacktestConditionNode>(new BacktestConditionLeaf(
-            new BacktestConditionEntry { Left = Close(), Operator = op, TargetMode = RightHandTargetMode.Indicator, Right = Sma() })));
-        var tree = new BacktestConditionTree(
-            Group(ComparisonOperator.GreaterThan), BacktestConditionGroup.EmptyAnd, Group(ComparisonOperator.LessThan),
-            BacktestConditionGroup.EmptyAnd, BacktestConditionGroup.EmptyAnd, BacktestConditionGroup.EmptyAnd);
-        return new BacktestRunSnapshot(
-            symbol, TimeFrame.D1, Start, End,
-            new BacktestConfiguration
-            {
-                InitialCapital = BacktestDefaults.InitialCapital,
-                SizingModel = BacktestDefaults.SizingModel,
-                SizingParameter = BacktestDefaults.SizingParameter,
-                ExecutionModel = model,
-            },
-            ImmutableArray<BacktestConditionEntry>.Empty, null, ImmutableArray<StrategyIndicatorRequest>.Empty, BacktestReportDefaults.BuiltIn,
-            BacktestDefaults.BootstrapSeed, BacktestDefaults.BootstrapIterations, tree);
-    }
+        => SmaCrossBacktestKit.Snapshot(symbol, smaPeriod, Start, End, BacktestDefaults.BootstrapIterations, model);
 
     private static List<BacktestRunSnapshot> Grid(string symbol = Msft) => SmaPeriods.Select(p => Snapshot(symbol, p)).ToList();
 
@@ -178,6 +146,126 @@ public sealed class RunBacktestBatchTests : IDisposable
             AssertSameArtifact(await gateway.RunBacktestAsync(snapshots[i]), batch[i], $"item {i}");
         }
     }
+
+    // ---- the adjusted-Sortino bootstrap can be left out of a sweep run (owner decision D-6 = A) --------------------------------------------
+
+    [Fact]
+    public async Task SkippingTheBootstrapChangesOnlyTheAdjustedSortinoAndTheReportIdentity()
+    {
+        var gateway = CreateGateway();
+        BacktestRunSnapshot full = Snapshot(Msft, 5);
+        BacktestRunSnapshot skipped = full with { ComputeAdjustedSortinoBootstrap = false };
+
+        BacktestEvaluationArtifact withBootstrap = await gateway.RunBacktestAsync(full);
+        BacktestEvaluationArtifact without = await gateway.RunBacktestAsync(skipped);
+        BacktestEvaluationArtifact viaBatch = (await gateway.RunBacktestBatchAsync(new[] { skipped }, degreeOfParallelism: 1)).Single();
+
+        // control: the normal run computes it (so the skip is what removes it)
+        Assert.Equal(MetricStatus.Valid, withBootstrap.Report!.AnnualizedSortinoAutocorrelationAdjusted.Status);
+        Assert.NotNull(withBootstrap.Report.AnnualizedSortinoAutocorrelationAdjustedConfidenceInterval);
+        Assert.True(withBootstrap.BootstrapDiagnostics.ExecutedReplicates > 0);
+
+        MetricValue adjusted = without.Report!.AnnualizedSortinoAutocorrelationAdjusted;
+        Assert.Equal(MetricStatus.NotApplicable, adjusted.Status);
+        Assert.Equal(MetricReason.NotRequested, adjusted.Reason);
+        Assert.Null(adjusted.Value);
+        Assert.Null(without.Report.AnnualizedSortinoAutocorrelationAdjustedConfidenceInterval);
+        Assert.Equal(BootstrapDiagnostics.NotRequestedReason, without.BootstrapDiagnostics.Reason);
+        Assert.Equal(0, without.BootstrapDiagnostics.ExecutedReplicates);
+
+        // the run itself and its identity are untouched; every other metric is identical
+        Assert.Equal(withBootstrap.RunFingerprint.Sha256, without.RunFingerprint.Sha256);
+        Assert.Equal(Convert.ToHexString(withBootstrap.Result.ReproducibilityHash), Convert.ToHexString(without.Result.ReproducibilityHash));
+        Assert.Equal(withBootstrap.Result.Trades.Length, without.Result.Trades.Length);
+        Assert.True(withBootstrap.Result.Trades.Length > 0);
+        foreach (System.Reflection.PropertyInfo property in typeof(BacktestReport).GetProperties().Where(p => p.PropertyType == typeof(MetricValue) && p.Name != nameof(BacktestReport.AnnualizedSortinoAutocorrelationAdjusted)))
+        {
+            Assert.Equal(property.GetValue(withBootstrap.Report), property.GetValue(without.Report));
+        }
+
+        // the report identity tells the two kinds of run apart, and the batch path equals the single path
+        Assert.NotEqual(withBootstrap.ReportIdentity.Sha256, without.ReportIdentity.Sha256);
+        Assert.Equal(without.ReportIdentity.Sha256, viaBatch.ReportIdentity.Sha256);
+    }
+
+    [Fact]
+    public async Task TheDefaultSnapshotStillComputesTheBootstrap()
+    {
+        var gateway = CreateGateway();
+
+        BacktestEvaluationArtifact artifact = await gateway.RunBacktestAsync(Snapshot(Msft, 5));
+
+        Assert.True(Snapshot(Msft, 5).ComputeAdjustedSortinoBootstrap);
+        Assert.Equal(MetricStatus.Valid, artifact.Report!.AnnualizedSortinoAutocorrelationAdjusted.Status);
+    }
+
+
+    // ---- arithmetic failure capture (owner decision D-8 = C) ------------------------------------------------------------------------------
+
+    /// <summary>A position of 1e27 shares overflows decimal at the first entry (about 1e29 against a limit of 7.9e28).</summary>
+    private static BacktestRunSnapshot Overflowing(string symbol, bool capture)
+    {
+        BacktestRunSnapshot normal = Snapshot(symbol, 5);
+        return normal with
+        {
+            Configuration = new BacktestConfiguration
+            {
+                InitialCapital = BacktestDefaults.InitialCapital,
+                SizingModel = PositionSizingModel.FixedQuantity,
+                SizingParameter = 1e27m,
+                ExecutionModel = ExecutionModel.Legacy,
+            },
+            CaptureArithmeticFailures = capture,
+        };
+    }
+
+    [Fact]
+    public async Task WithCapture_AnEngineOverflowIsAFailedArtifactWithTheWhereOfTheFailure()
+    {
+        var gateway = CreateGateway();
+
+        BacktestEvaluationArtifact artifact = await gateway.RunBacktestAsync(Overflowing(Msft, capture: true));
+
+        Assert.Equal(RunStatus.Failed, artifact.RunStatus);
+        BacktestRunDiagnostic diagnostic = Assert.IsType<BacktestRunDiagnostic>(artifact.RunDiagnostic);
+        Assert.Equal(BacktestDiagnosticCode.ArithmeticOverflow, diagnostic.Code);
+        Assert.Equal(BacktestRunPhase.Bar, diagnostic.Phase);
+        Assert.NotNull(diagnostic.BarIndex);
+        Assert.NotNull(diagnostic.BarTimestamp);
+        Assert.Null(artifact.Report);
+        Assert.True(artifact.RunFingerprint.IsAvailable); // sealed together with the diagnostic
+    }
+
+    [Fact]
+    public async Task WithoutCapture_TheSameOverflowStillThrows_AndAnOrdinaryRunHasNoDiagnostic()
+    {
+        var gateway = CreateGateway();
+
+        await Assert.ThrowsAsync<OverflowException>(() => gateway.RunBacktestAsync(Overflowing(Msft, capture: false)));
+        BacktestEvaluationArtifact ordinary = await gateway.RunBacktestAsync(Snapshot(Msft, 5) with { CaptureArithmeticFailures = true });
+
+        Assert.Equal(RunStatus.Completed, ordinary.RunStatus);
+        Assert.Null(ordinary.RunDiagnostic);
+        Assert.Equal((await gateway.RunBacktestAsync(Snapshot(Msft, 5))).RunFingerprint.Sha256, ordinary.RunFingerprint.Sha256); // the flag changes nothing of a run that does not overflow
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(4)]
+    public async Task TheBatchFailureIsTheLowestIndexAndCarriesIt_WhateverTheThreadCount(int threads)
+    {
+        var gateway = CreateGateway();
+        var snapshots = new List<BacktestRunSnapshot>
+        {
+            Snapshot(Msft, 5), Overflowing(Msft, capture: false), Snapshot(Msft, 6), Overflowing(Toyota, capture: false),
+        };
+
+        OverflowException error = await Assert.ThrowsAsync<OverflowException>(() => gateway.RunBacktestBatchAsync(snapshots, threads));
+
+        Assert.Equal(1, BacktestBatchFailure.ItemIndexOf(error));
+        Assert.Null(BacktestBatchFailure.ItemIndexOf(new OverflowException("not from a batch")));
+    }
+
 
     // ---- the stored bars are read once per batch ----------------------------------------------------------------------------------------
 

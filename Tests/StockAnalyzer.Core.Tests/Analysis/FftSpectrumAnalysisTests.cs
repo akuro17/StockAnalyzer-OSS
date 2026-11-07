@@ -116,4 +116,50 @@ public class FftSpectrumAnalysisTests
         Assert.Equal(targetPeriod, result.DominantPeriod, precision: 4);
         Assert.Equal(60, result.SampleCount);
     }
+
+    [Fact]
+    public void CalculateSpectrum_EvenSampleCount_NyquistBinHasTheTrueAmplitude()
+    {
+        // x_i = +-10 alternating is a pure Nyquist wave (period 2 bars, k = n/2) of amplitude 10. The single-sided spectrum scale is 2/n for every bin
+        // except this one, which has no mirrored partner and uses 1/n (as FftProjectionAnalysis does); the old 2/n gave 20.
+        int n = 100;
+        var samples = Enumerable.Range(0, n).Select(i => i % 2 == 0 ? 10.0 : -10.0).ToArray();
+
+        var result = FftSpectrumAnalysis.CalculateSpectrum(samples, applyDetrend: false, applyHanningWindow: false);
+
+        Assert.NotNull(result.DominantBin);
+        Assert.Equal(n / 2, result.DominantBin!.BinIndex);
+        Assert.Equal(2.0, result.DominantPeriod, 9);
+        Assert.Equal(10.0, result.DominantBin.Magnitude, 9);
+        Assert.Equal(100.0, result.DominantBin.Power, 9);
+    }
+
+    [Fact]
+    public void CalculateSpectrum_ANyquistWaveSmallerThanARealCycle_IsNotTheDominantPeriod()
+    {
+        // A cycle of 10 bars with amplitude 1.5 and a Nyquist wave with amplitude 1.0: with the old 2/n the Nyquist bin read 2.0 and won.
+        int n = 100;
+        var samples = Enumerable.Range(0, n)
+            .Select(i => 1.5 * Math.Sin(2.0 * Math.PI * i / 10.0) + (i % 2 == 0 ? 1.0 : -1.0))
+            .ToArray();
+
+        var result = FftSpectrumAnalysis.CalculateSpectrum(samples, applyDetrend: false, applyHanningWindow: false);
+
+        Assert.Equal(10.0, result.DominantPeriod, 9);
+        Assert.Equal(1.5, result.DominantBin!.Magnitude, 9);
+        Assert.Equal(1.0, result.Bins.Single(b => b.BinIndex == n / 2).Magnitude, 9);
+    }
+
+    [Fact]
+    public void CalculateSpectrum_OddSampleCount_KeepsTheTwoOverNScale()
+    {
+        // Odd n has no Nyquist bin: every bin keeps 2/n, so a pure cosine on bin 5 of 101 samples keeps its amplitude exactly.
+        int n = 101;
+        var samples = Enumerable.Range(0, n).Select(i => 7.0 * Math.Cos(2.0 * Math.PI * 5 * i / n)).ToArray();
+
+        var result = FftSpectrumAnalysis.CalculateSpectrum(samples, applyDetrend: false, applyHanningWindow: false);
+
+        Assert.Equal(5, result.DominantBin!.BinIndex);
+        Assert.Equal(7.0, result.DominantBin.Magnitude, 9);
+    }
 }

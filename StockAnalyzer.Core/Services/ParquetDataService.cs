@@ -17,7 +17,7 @@ namespace StockAnalyzer.Core.Services;
 /// <summary>
 /// Data service that loads market data from Parquet files using DuckDB.
 /// </summary>
-public class ParquetDataService : IDataService, IAttestedMonitoringDataSource
+public class ParquetDataService : IDataService, IAttestedMonitoringDataSource, IDataReadStatusSource
 {
     /// <summary>Optional source-authored BOOLEAN attestation; absent/null/false is unknown.</summary>
     public const string FinalityColumn = "is_final";
@@ -227,6 +227,10 @@ public class ParquetDataService : IDataService, IAttestedMonitoringDataSource
     public async Task<IReadOnlyList<CandleData>> LoadCandlesAsync(string symbol, TimeFrame timeFrame, int count = 100)
         => await LoadCandlesAsync(symbol, timeFrame, count, includePartialBar: true, CancellationToken.None).ConfigureAwait(false);
 
+    /// <summary>
+    /// Unchanged contract: every failure, cancellation included, is logged and answered with an empty list, so a caller cannot tell a missing file
+    /// from an unreadable one (see <see cref="LoadCandlesWithStatusAsync"/> for that). Only an unsupported time frame still throws.
+    /// </summary>
     public async Task<IReadOnlyList<CandleData>> LoadCandlesAsync(
         string symbol,
         TimeFrame timeFrame,
@@ -234,13 +238,36 @@ public class ParquetDataService : IDataService, IAttestedMonitoringDataSource
         bool includePartialBar,
         CancellationToken cancellationToken = default)
     {
+        try
+        {
+            return (await ReadCandlesAsync(symbol, timeFrame, count, includePartialBar, cancellationToken).ConfigureAwait(false)).Candles;
+        }
+        catch (OperationCanceledException ex)
+        {
+            _logger.LogError(ex, "Failed to load candles from Parquet for {Symbol}", symbol);
+            return Array.Empty<CandleData>();
+        }
+    }
+
+    /// <inheritdoc />
+    public Task<DataReadResult> LoadCandlesWithStatusAsync(string symbol, TimeFrame timeFrame, int count, CancellationToken cancellationToken = default)
+        => ReadCandlesAsync(symbol, timeFrame, count, includePartialBar: true, cancellationToken);
+
+    /// <summary>The one read behind both public loads. Cancellation propagates; any other failure is logged once and reported as <see cref="DataReadStatus.Unreadable"/>.</summary>
+    private async Task<DataReadResult> ReadCandlesAsync(
+        string symbol,
+        TimeFrame timeFrame,
+        int count,
+        bool includePartialBar,
+        CancellationToken cancellationToken)
+    {
         var basePath = ResolveBasePath(timeFrame);
 
         var filePath = ResolveFilePath(basePath, symbol);
         if (filePath == null)
         {
             _logger.LogDebug("Parquet file not found for symbol {Symbol} in {BasePath}", symbol, basePath);
-            return Array.Empty<CandleData>();
+            return new DataReadResult(DataReadStatus.FileMissing, Array.Empty<CandleData>());
         }
 
         try
@@ -315,13 +342,17 @@ public class ParquetDataService : IDataService, IAttestedMonitoringDataSource
                 }
 
                 _logger.LogInformation("Loaded {Count} candles for {Symbol} from {FilePath}", candles.Count, symbol, filePath);
-                return candles;
+                return new DataReadResult(DataReadStatus.Read, candles);
             }
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to load candles from Parquet for {Symbol}", symbol);
-            return Array.Empty<CandleData>();
+            return new DataReadResult(DataReadStatus.Unreadable, Array.Empty<CandleData>());
         }
     }
 

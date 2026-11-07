@@ -22,7 +22,7 @@ public class WorkspaceSerializationService : IWorkspaceSerializationService, IDi
     private readonly ILogger<WorkspaceSerializationService> _logger;
     private readonly SemaphoreSlim _semaphore = new SemaphoreSlim(1, 1);
 
-    private static readonly JsonSerializerOptions SharedJsonOptions = new()
+    internal static readonly JsonSerializerOptions SharedJsonOptions = new()
     {
         WriteIndented = true,
         TypeInfoResolver = WorkspacePolymorphicResolver.CreateResolver(),

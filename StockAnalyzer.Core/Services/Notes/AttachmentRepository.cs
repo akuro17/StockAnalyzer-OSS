@@ -50,7 +50,11 @@ public sealed class AttachmentRepository
         _connectionManager = connectionManager;
         _logger = logger ?? NullLogger<AttachmentRepository>.Instance;
         _attachmentsDirectory = Path.Combine(Path.GetDirectoryName(connectionManager.DatabasePath)!, "Attachments");
-        Directory.CreateDirectory(_attachmentsDirectory);
+        // An unavailable manager (read-only data folder) means the notes feature is off for this run: no folder is created.
+        if (connectionManager.IsAvailable)
+        {
+            Directory.CreateDirectory(_attachmentsDirectory);
+        }
     }
 
     /// <summary>

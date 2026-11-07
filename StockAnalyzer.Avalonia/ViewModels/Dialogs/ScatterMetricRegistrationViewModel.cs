@@ -69,6 +69,7 @@ public sealed partial class ScatterMetricRegistrationViewModel : ViewModelBase, 
     private readonly int _maxOffset;
     private readonly int _debounceMilliseconds;
     private readonly string _timeFrameFixedReason;
+    private readonly string _timeFrameTwoTickerReason;
     private readonly List<ScreenerCatalogItem> _offeredItems;
     private IReadOnlyList<ScatterMetricDefinition> _baseline = Array.Empty<ScatterMetricDefinition>();
     private CancellationTokenSource? _searchDebounce;
@@ -102,6 +103,7 @@ public sealed partial class ScatterMetricRegistrationViewModel : ViewModelBase, 
             .Select(frame => new ScatterTimeFrameOption(frame, TimeFrameName(frame)))
             .ToList();
         _timeFrameFixedReason = _localization.GetString("ScatterMetric_Tip_TimeFrameFixedDay");
+        _timeFrameTwoTickerReason = _localization.GetString("ScatterMetric_Tip_TimeFrameTwoTickerDay");
 
         _offeredItems = _catalogProvider.GetCatalogItems(_indicatorFactory).Where(ScatterMetricEligibility.IsEligible).ToList();
         Draft.CollectionChanged += (_, _) =>
@@ -443,6 +445,7 @@ public sealed partial class ScatterMetricRegistrationViewModel : ViewModelBase, 
         return new ScatterMetricDraftItem(new ScatterMetricDefinition { Source = source }, settings, outputs, _maxOffset, catalogItem.DisplayName)
         {
             FixedTimeFrameReason = _timeFrameFixedReason,
+            TwoTickerTimeFrameReason = _timeFrameTwoTickerReason,
         };
     }
 
@@ -470,6 +473,7 @@ public sealed partial class ScatterMetricRegistrationViewModel : ViewModelBase, 
         return new ScatterMetricDraftItem(definition, settings, outputs, _maxOffset)
         {
             FixedTimeFrameReason = _timeFrameFixedReason,
+            TwoTickerTimeFrameReason = _timeFrameTwoTickerReason,
         };
     }
 

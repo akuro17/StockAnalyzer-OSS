@@ -26,13 +26,13 @@ public sealed partial class RlTrainingDialogViewModel
     public bool CheckpointAvailable => _capabilities.Checkpoints && _training is IRlResumableTrainingService;
     public bool CanPause => !_disposed && Operation == RlDialogOperation.Training && UseContinuousPolicy
         && _jobCts is { IsCancellationRequested: false } && _pauseCts is { IsCancellationRequested: false };
-    public bool CanResumeCheckpoint => Editable && HasResumeSelection && ResumeConfirmed && SelectedCheckpoint?.Review.Verified == true && CheckpointAvailable;
-    public bool CanAbandonCheckpoint => Editable && HasAbandonSelection && AbandonConfirmed && SelectedCheckpoint is not null && CheckpointAvailable;
+    public bool CanResumeCheckpoint => Editable && IsStorageWritable && HasResumeSelection && ResumeConfirmed && SelectedCheckpoint?.Review.Verified == true && CheckpointAvailable;
+    public bool CanAbandonCheckpoint => Editable && IsStorageWritable && HasAbandonSelection && AbandonConfirmed && SelectedCheckpoint is not null && CheckpointAvailable;
     public bool CanConfirmResume => Editable && HasResumeSelection;
     public bool CanConfirmAbandon => Editable && HasAbandonSelection;
     public bool CanExportCheckpoint => Editable && SelectedCheckpoint is not null;
     public bool CanExportGeneration => Editable && SelectedGeneration is not null;
-    public bool CanImportGeneration => Editable && StorageAvailable && _dialogService is not null;
+    public bool CanImportGeneration => Editable && IsStorageWritable && StorageAvailable && _dialogService is not null;
     private const string GenerationImportStagingPrefix = "StockAnalyzer_GenerationImport_";
 
     public string InspectCheckpointsTooltip => _localization.GetString("Rl.Ui.Tooltip.InspectCheckpointsHelp");

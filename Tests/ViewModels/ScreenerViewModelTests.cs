@@ -11,6 +11,7 @@ using StockAnalyzer.Core.Services;
 using StockAnalyzer.Core.Models.Watchlist;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Portfolio;
+using StockAnalyzer.Core.Models.Indicators;
 using StockAnalyzer.Core.Services.Screener;
 using StockAnalyzer.Avalonia.ViewModels.Watchlist;
 
@@ -713,5 +714,413 @@ public class ScreenerViewModelTests
         Assert.StartsWith("Error:", vm.StatusMessage, StringComparison.Ordinal);
         Assert.Empty(vm.Results);
         Assert.Empty(service.PlainScans);
+    }
+
+    // ---- indicators that compare two symbols (Correlation, CrossCorrelation) ---------------------------------------------------------------
+
+    private const decimal CorrelationMarker = 0.5m;
+
+    /// <summary>
+    /// The plain scan (matches AAA) plus the two members a scan of two-symbol indicators uses: loading the comparison symbols' bars and the scan that is given them. The bars it
+    /// serves are real <see cref="CoreCandleData"/> for the symbols in <see cref="Available"/> (any spelling of the same instrument); every call is recorded.
+    /// </summary>
+    private sealed class ComparisonScreenerService : PlainScreenerService, IScreenerService
+    {
+        public List<(string[] Spellings, TimeFrame Frame)> Loads { get; } = new();
+        public List<IScreenerSecondaryCandles> SecondaryScans { get; } = new();
+        public string[] Available { get; set; } = { "SPY" };
+        public Exception? LoadFails { get; set; }
+        public IScreenerSecondaryCandles? Carrier { get; private set; }
+
+        public Task<List<string>> ScreenAsync(List<string> symbols, IScreeningCondition condition, TimeFrame timeFrame, IScreenerSecondaryCandles? secondary, IProgress<int> progress, CancellationToken ct)
+        {
+            Assert.NotNull(secondary); // the 6-argument form is only called with a set; without one the tab keeps the 5-argument form
+            SecondaryScans.Add(secondary!);
+            return Task.FromResult(new List<string> { "AAA" });
+        }
+
+        public Task<IScreenerSecondaryCandles> LoadComparisonCandlesAsync(IReadOnlyList<string> spellings, TimeFrame timeFrame, IScreeningCondition condition, CancellationToken ct)
+        {
+            Loads.Add((spellings.ToArray(), timeFrame));
+            if (LoadFails != null)
+            {
+                throw LoadFails;
+            }
+
+            var bars = new Dictionary<string, IReadOnlyList<CoreCandleData?>>(StringComparer.OrdinalIgnoreCase);
+            foreach (string spelling in spellings.Where(s => Available.Any(a => StockAnalyzer.Core.Common.SymbolHelper.IsSameSymbol(a, s))))
+            {
+                bars[spelling] = new CoreCandleData?[] { new CoreCandleData(new DateTime(2024, 1, 31), 1m, 1m, 1m, 1m, 1) };
+            }
+
+            Carrier = new ScreenerSecondaryCandles(bars);
+            return Task.FromResult(Carrier);
+        }
+    }
+
+    /// <summary>A value extractor that returns <see cref="CorrelationMarker"/> for every indicator side and records the comparison set each call was given.</summary>
+    private sealed class SecondaryRecordingExtractor : IScreenerValueExtractor
+    {
+        public List<IScreenerSecondaryCandles?> Seen { get; } = new();
+
+        public decimal ExtractValue(ScreenerIndicatorSideConfig? config, IReadOnlyList<CoreCandleData> candles) => 0m;
+
+        public decimal ExtractValue(ScreenerIndicatorSideConfig? config, IReadOnlyList<CandleData> candles, TickerMetadata metadata = default) => 0m;
+
+        public decimal? ExtractValueNullable(ScreenerIndicatorSideConfig? config, IReadOnlyList<CandleData> candles, TickerMetadata metadata = default)
+        {
+            Seen.Add(null);
+            return CorrelationMarker;
+        }
+
+        public decimal? ExtractValueNullable(ScreenerIndicatorSideConfig? config, IReadOnlyList<CandleData> candles, TickerMetadata metadata, IScreenerSecondaryCandles? secondary)
+        {
+            Seen.Add(secondary);
+            return CorrelationMarker;
+        }
+    }
+
+    private static ScreenerIndicatorSideConfig CorrelationSide(string? symbol, TimeFrame frame = TimeFrame.D1)
+    {
+        var side = new ScreenerIndicatorSideConfig
+        {
+            IndicatorType = IndicatorType.Correlation,
+            CategoryType = ScreenerItemCategoryType.Indicator,
+            TimeFrame = frame,
+            Parameters = new Dictionary<string, object> { ["Period"] = 20 },
+        };
+        if (symbol != null)
+        {
+            side.Parameters["ComparisonSymbol"] = symbol;
+        }
+
+        return side;
+    }
+
+    private static async Task<(ScreenerViewModel Vm, ComparisonScreenerService Service, SecondaryRecordingExtractor Extractor)> TwoSymbolScreenerAsync(params ScreenerIndicatorEntry[] entries)
+    {
+        var service = new ComparisonScreenerService();
+        var extractor = new SecondaryRecordingExtractor();
+        var market = new DummyMarketDataProvider(new List<string> { "AAA", "BBB" });
+        market.Candles["AAA"] = new[]
+        {
+            new CandleData(new DateTime(2024, 1, 30), 100m, 100m, 100m, 100m, 5),
+            new CandleData(new DateTime(2024, 1, 31), DailyClose, DailyClose, DailyClose, DailyClose, 5),
+        };
+        var vm = new ScreenerViewModel(service, null, market, null, valueExtractor: extractor);
+        foreach (ScreenerIndicatorEntry entry in entries)
+        {
+            vm.IndicatorRegistrationViewModel.RegisteredEntries.Add(entry);
+        }
+
+        await vm.LoadTargetSourcesAsync();
+        await vm.UpdateTargetSymbolsAsync(vm.SelectedTargetSource);
+        return (vm, service, extractor);
+    }
+
+    private static void Replace(ScreenerViewModel vm, params ScreenerIndicatorEntry[] entries)
+    {
+        vm.IndicatorRegistrationViewModel.RegisteredEntries.Clear();
+        foreach (ScreenerIndicatorEntry entry in entries)
+        {
+            vm.IndicatorRegistrationViewModel.RegisteredEntries.Add(entry);
+        }
+    }
+
+    private static string Text(string key, params object[] args) => string.Format(LocalizationManager.Instance[key], args);
+
+    [Fact]
+    public async Task ANamedComparisonSymbolIsLoadedOnceAndTheScanIsGivenItsBars()
+    {
+        (ScreenerViewModel vm, ComparisonScreenerService service, _) = await TwoSymbolScreenerAsync(Entry(CorrelationSide("spy")));
+
+        await vm.ScanCommand.ExecuteAsync(null);
+
+        (string[] spellings, TimeFrame frame) = Assert.Single(service.Loads);
+        Assert.Equal(new[] { "SPY" }, spellings);
+        Assert.Equal(TimeFrame.D1, frame);
+        Assert.Same(service.Carrier, Assert.Single(service.SecondaryScans));
+        Assert.Empty(service.PlainScans); // the 5-argument form is not used when there are comparison bars
+        Assert.Equal(new[] { "AAA" }, vm.Results.ToArray());
+        Assert.False(vm.IsScanning);
+    }
+
+    [Fact]
+    public async Task WithoutANamedComparisonSymbolTheScanIsTheUnchangedPlainScanAndNothingIsLoaded()
+    {
+        (ScreenerViewModel vm, ComparisonScreenerService service, _) = await TwoSymbolScreenerAsync(Entry(CorrelationSide(null)));
+
+        await vm.ScanCommand.ExecuteAsync(null);
+
+        Assert.Equal(new[] { TimeFrame.D1 }, service.PlainScans);
+        Assert.Empty(service.Loads);
+        Assert.Empty(service.SecondaryScans);
+        Assert.Equal(new[] { "AAA" }, vm.Results.ToArray());
+    }
+
+    [Fact]
+    public async Task ADisabledConditionNeverCausesALoad()
+    {
+        (ScreenerViewModel vm, ComparisonScreenerService service, _) = await TwoSymbolScreenerAsync(
+            Entry(PriceSide("Close", TimeFrame.D1)),
+            Entry(CorrelationSide("SPY"), enabled: false));
+
+        await vm.ScanCommand.ExecuteAsync(null);
+
+        Assert.Empty(service.Loads);
+        Assert.Equal(new[] { TimeFrame.D1 }, service.PlainScans);
+    }
+
+    [Fact]
+    public async Task TwoSpellingsOfOneInstrumentAreOneLoadWithBothSpellings()
+    {
+        (ScreenerViewModel vm, ComparisonScreenerService service, _) = await TwoSymbolScreenerAsync(Entry(CorrelationSide("7203.T")), Entry(CorrelationSide("7203-T")));
+        service.Available = new[] { "7203.T" };
+
+        await vm.ScanCommand.ExecuteAsync(null);
+
+        (string[] spellings, _) = Assert.Single(service.Loads);
+        Assert.Equal(new[] { "7203.T", "7203-T" }, spellings);
+        Assert.Single(service.SecondaryScans);
+        Assert.Equal(new[] { "AAA" }, vm.Results.ToArray());
+    }
+
+    [Theory]
+    [InlineData(TimeFrame.W1, "SPY")]
+    [InlineData(TimeFrame.MN1, "SPY")]
+    [InlineData(TimeFrame.W1, null)]
+    public async Task ATwoSymbolSideOnWeeklyOrMonthlyBarsIsRefusedBeforeAnythingIsReadAndThePreviousResultStays(TimeFrame frame, string? symbol)
+    {
+        (ScreenerViewModel vm, ComparisonScreenerService service, _) = await TwoSymbolScreenerAsync(Entry(PriceSide("Close", TimeFrame.D1)));
+        await vm.ScanCommand.ExecuteAsync(null);
+        Assert.Equal(new[] { "AAA" }, vm.Results.ToArray());
+        Replace(vm, Entry(CorrelationSide(symbol, frame)));
+
+        await vm.ScanCommand.ExecuteAsync(null);
+
+        Assert.Equal(Text("Screener_Status_TwoTickerOnlyDaily", "Correlation"), vm.StatusMessage);
+        Assert.Equal(new[] { "AAA" }, vm.Results.ToArray());
+        Assert.Single(service.PlainScans); // only the first scan
+        Assert.Empty(service.Loads);
+        Assert.Empty(service.SecondaryScans);
+        Assert.False(vm.IsScanning);
+    }
+
+    [Fact]
+    public async Task ANamedComparisonSymbolTogetherWithAWeeklySideIsRefusedBeforeAnythingIsRead()
+    {
+        (ScreenerViewModel vm, ComparisonScreenerService service, _) = await TwoSymbolScreenerAsync(
+            Entry(CorrelationSide("SPY")),
+            Entry(PriceSide("Close", TimeFrame.W1)));
+
+        await vm.ScanCommand.ExecuteAsync(null);
+
+        Assert.Equal(Text("Screener_Status_TwoTickerWithOtherFrames"), vm.StatusMessage);
+        Assert.Empty(service.Loads);
+        Assert.Empty(service.PlainScans);
+        Assert.Empty(service.SecondaryScans);
+        Assert.Empty(vm.Results);
+        Assert.False(vm.IsScanning);
+    }
+
+    [Fact]
+    public async Task ABlankDailyTwoSymbolSideMayBeCombinedWithAWeeklySide()
+    {
+        // Price vs Volume needs no comparison bars: the combination keeps running as the side-frames scan.
+        (ScreenerViewModel vm, _, _) = await TwoSymbolScreenerAsync(Entry(CorrelationSide(null)), Entry(PriceSide("Close", TimeFrame.W1)));
+
+        await vm.ScanCommand.ExecuteAsync(null);
+
+        Assert.NotEqual(Text("Screener_Status_TwoTickerWithOtherFrames"), vm.StatusMessage);
+        Assert.NotEqual(Text("Screener_Status_TwoTickerOnlyDaily", "Correlation"), vm.StatusMessage);
+        // It reached the side-frames scan, which this fake (like every plain service) refuses loudly: the combination was not refused by the tab.
+        Assert.StartsWith("Error:", vm.StatusMessage, StringComparison.Ordinal);
+    }
+
+    // ---- a type that NEEDS a comparison symbol, with none typed (G-1 / G1-T5) ---------------------------------------------------------
+
+    /// <summary>A two-symbol side of a type that cannot give a value without a comparison symbol (the first one the registry has; today RollingBeta and its kin).</summary>
+    private static ScreenerIndicatorSideConfig RequiredTypeSide(string? symbol, TimeFrame frame = TimeFrame.D1)
+    {
+        IndicatorType type = IndicatorFactory.Default.GetRegisteredTypes()
+            .Where(t => IndicatorFactory.CreateStatic(t) is ICrossTickerIndicator && !ScreenerComparisonSymbols.IsComparisonSymbolOptional(t))
+            .OrderBy(t => t.ToString(), StringComparer.Ordinal)
+            .First();
+        var side = new ScreenerIndicatorSideConfig
+        {
+            IndicatorType = type,
+            CategoryType = ScreenerItemCategoryType.Indicator,
+            OutputName = IndicatorResult.MainSeriesName,
+            TimeFrame = frame,
+            Parameters = new Dictionary<string, object>(),
+        };
+        if (symbol != null)
+        {
+            side.Parameters["ComparisonSymbol"] = symbol;
+        }
+
+        return side;
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task ARequiredTypeWithoutAComparisonSymbolIsRefusedBeforeAnythingIsReadAndThePreviousResultStays(string? symbol)
+    {
+        (ScreenerViewModel vm, ComparisonScreenerService service, _) = await TwoSymbolScreenerAsync(Entry(PriceSide("Close", TimeFrame.D1)));
+        await vm.ScanCommand.ExecuteAsync(null);
+        Assert.Equal(new[] { "AAA" }, vm.Results.ToArray());
+        ScreenerIndicatorSideConfig side = RequiredTypeSide(symbol);
+        Replace(vm, Entry(side));
+
+        await vm.ScanCommand.ExecuteAsync(null);
+
+        Assert.Equal(Text("Screener_Status_TwoTickerNeedsSymbol", side.DisplayName), vm.StatusMessage);
+        Assert.Contains(side.IndicatorType.ToString(), vm.StatusMessage, StringComparison.Ordinal);
+        Assert.Equal(new[] { "AAA" }, vm.Results.ToArray());
+        Assert.Single(service.PlainScans); // only the first scan
+        Assert.Empty(service.Loads);
+        Assert.Empty(service.SecondaryScans);
+        Assert.False(vm.IsScanning);
+    }
+
+    [Fact]
+    public async Task ARequiredTypeWithAComparisonSymbolIsLoadedAndScannedLikeCorrelation()
+    {
+        (ScreenerViewModel vm, ComparisonScreenerService service, _) = await TwoSymbolScreenerAsync(Entry(RequiredTypeSide("SPY")));
+
+        await vm.ScanCommand.ExecuteAsync(null);
+
+        (string[] spellings, _) = Assert.Single(service.Loads);
+        Assert.Equal(new[] { "SPY" }, spellings);
+        Assert.Single(service.SecondaryScans);
+        Assert.NotEqual(Text("Screener_Status_TwoTickerNeedsSymbol", RequiredTypeSide("SPY").DisplayName), vm.StatusMessage);
+    }
+
+    [Fact]
+    public async Task TheDailyQuestionComesFirst_ThenTheMissingSymbol_ThenTheOtherFrames()
+    {
+        // A required side without a symbol on weekly bars: the frame is the first fault.
+        (ScreenerViewModel vm, ComparisonScreenerService service, _) = await TwoSymbolScreenerAsync(Entry(RequiredTypeSide(null, TimeFrame.W1)));
+        await vm.ScanCommand.ExecuteAsync(null);
+        Assert.Equal(Text("Screener_Status_TwoTickerOnlyDaily", RequiredTypeSide(null).DisplayName), vm.StatusMessage);
+
+        // Daily and without a symbol, next to a weekly side: the missing symbol is named before the frame mix is judged.
+        Replace(vm, Entry(RequiredTypeSide(null)), Entry(PriceSide("Close", TimeFrame.W1)), Entry(CorrelationSide("SPY")));
+        await vm.ScanCommand.ExecuteAsync(null);
+        Assert.Equal(Text("Screener_Status_TwoTickerNeedsSymbol", RequiredTypeSide(null).DisplayName), vm.StatusMessage);
+
+        Assert.Empty(service.Loads);
+        Assert.Empty(service.PlainScans);
+        Assert.Empty(service.SecondaryScans);
+        Assert.False(vm.IsScanning);
+    }
+
+    [Fact]
+    public async Task ADisabledRequiredSideWithoutASymbolDoesNotStopTheScan()
+    {
+        (ScreenerViewModel vm, ComparisonScreenerService service, _) = await TwoSymbolScreenerAsync(
+            Entry(PriceSide("Close", TimeFrame.D1)),
+            Entry(RequiredTypeSide(null), enabled: false));
+
+        await vm.ScanCommand.ExecuteAsync(null);
+
+        Assert.Single(service.PlainScans);
+        Assert.NotEqual(Text("Screener_Status_TwoTickerNeedsSymbol", RequiredTypeSide(null).DisplayName), vm.StatusMessage);
+    }
+
+    [Fact]
+    public async Task MoreThanTheMostComparisonSymbolsIsRefusedBeforeAnythingIsRead()
+    {
+        int most = WatchlistConstants.MaxRelativePerformanceTargets;
+        ScreenerIndicatorEntry[] entries = Enumerable.Range(1, most + 1).Select(i => Entry(CorrelationSide($"S{i:D2}"))).ToArray();
+        (ScreenerViewModel vm, ComparisonScreenerService service, _) = await TwoSymbolScreenerAsync(entries);
+
+        await vm.ScanCommand.ExecuteAsync(null);
+
+        Assert.Equal(Text("Screener_Status_TwoTickerTooManySymbols", most), vm.StatusMessage);
+        Assert.Empty(service.Loads);
+        Assert.Empty(service.SecondaryScans);
+        Assert.False(vm.IsScanning);
+    }
+
+    [Fact]
+    public async Task TheMostComparisonSymbolsIsStillAccepted()
+    {
+        int most = WatchlistConstants.MaxRelativePerformanceTargets;
+        ScreenerIndicatorEntry[] entries = Enumerable.Range(1, most).Select(i => Entry(CorrelationSide($"S{i:D2}"))).ToArray();
+        (ScreenerViewModel vm, ComparisonScreenerService service, _) = await TwoSymbolScreenerAsync(entries);
+        service.Available = Enumerable.Range(1, most).Select(i => $"S{i:D2}").ToArray();
+
+        await vm.ScanCommand.ExecuteAsync(null);
+
+        Assert.Equal(most, Assert.Single(service.Loads).Spellings.Length);
+        Assert.Single(service.SecondaryScans);
+    }
+
+    [Fact]
+    public async Task ASymbolWithoutBarsStopsTheScanNamingEveryMissingSymbolAndLeavesThePreviousResultAndTheScanFlag()
+    {
+        (ScreenerViewModel vm, ComparisonScreenerService service, _) = await TwoSymbolScreenerAsync(Entry(PriceSide("Close", TimeFrame.D1)));
+        await vm.ScanCommand.ExecuteAsync(null);
+        Assert.Equal(new[] { "AAA" }, vm.Results.ToArray());
+        Replace(vm, Entry(CorrelationSide("SPY")), Entry(CorrelationSide("ZZZZ")), Entry(CorrelationSide("YYYY")));
+
+        await vm.ScanCommand.ExecuteAsync(null);
+
+        Assert.Equal(Text("Screener_Status_ComparisonSymbolMissing", "ZZZZ, YYYY"), vm.StatusMessage);
+        Assert.Equal(new[] { "AAA" }, vm.Results.ToArray()); // the previous result is untouched
+        Assert.Single(vm.ResultItems);
+        Assert.Empty(service.SecondaryScans);
+        Assert.Single(service.PlainScans); // only the first scan
+        Assert.False(vm.IsScanning);
+        Assert.True(vm.IsNotScanning);
+
+        // the tab is not stuck: the next scan runs
+        Replace(vm, Entry(PriceSide("Close", TimeFrame.D1)));
+        await vm.ScanCommand.ExecuteAsync(null);
+        Assert.Equal(2, service.PlainScans.Count);
+        Assert.False(vm.IsScanning);
+    }
+
+    [Fact]
+    public async Task AFailureWhileLoadingTheComparisonBarsLeavesThePreviousResultAndTheScanFlag()
+    {
+        (ScreenerViewModel vm, ComparisonScreenerService service, _) = await TwoSymbolScreenerAsync(Entry(PriceSide("Close", TimeFrame.D1)));
+        await vm.ScanCommand.ExecuteAsync(null);
+        Replace(vm, Entry(CorrelationSide("SPY")));
+        service.LoadFails = new InvalidOperationException("boom");
+
+        await vm.ScanCommand.ExecuteAsync(null);
+
+        Assert.StartsWith("Error:", vm.StatusMessage, StringComparison.Ordinal);
+        Assert.Equal(new[] { "AAA" }, vm.Results.ToArray());
+        Assert.Empty(service.SecondaryScans);
+        Assert.False(vm.IsScanning);
+    }
+
+    [Fact]
+    public async Task TheResultColumnOfATwoSymbolSideIsReadWithTheSameComparisonBarsTheScanUsed()
+    {
+        (ScreenerViewModel vm, ComparisonScreenerService service, SecondaryRecordingExtractor extractor) = await TwoSymbolScreenerAsync(Entry(CorrelationSide("SPY")));
+
+        await vm.ScanCommand.ExecuteAsync(null);
+
+        WatchlistColumnMetadata column = IndicatorColumn(vm);
+        WatchlistItemViewModel item = Assert.Single(vm.ResultItems);
+        Assert.Equal(CorrelationMarker, item.DynamicIndicatorValues[column.MemberName]);
+        Assert.Same(service.Carrier, Assert.Single(extractor.Seen));
+        Assert.Same(service.Carrier, Assert.Single(service.SecondaryScans));
+    }
+
+    [Fact]
+    public async Task APlainScanGivesTheResultColumnNoComparisonBars()
+    {
+        (ScreenerViewModel vm, _, SecondaryRecordingExtractor extractor) = await TwoSymbolScreenerAsync(Entry(PriceSide("Close", TimeFrame.D1)));
+
+        await vm.ScanCommand.ExecuteAsync(null);
+
+        Assert.Null(Assert.Single(extractor.Seen));
     }
 }

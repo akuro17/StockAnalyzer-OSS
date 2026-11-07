@@ -48,7 +48,17 @@ internal sealed class RequestedIndicator
     /// <summary>The bars of <see cref="OwnTimeFrame"/> the indicator is calculated on, set by the tool once they are loaded; null while <see cref="OwnTimeFrame"/> is null.</summary>
     public IReadOnlyList<CandleData>? OwnBars { get; set; }
 
-    public string Path => $"indicators[{Index}]";
+    /// <summary>The path that names this indicator in errors when the binder set one (for example <c>overlays[0]</c>); null means <c>indicators[Index]</c>.</summary>
+    public string? PathName { get; init; }
+
+    public string Path => PathName ?? $"indicators[{Index}]";
+
+    /// <summary>The keys of an indicator item that carry the indicator's type and its inputs; the last part of an error path (<c>overlays[0].sourceIndicatorId</c>).</summary>
+    public const string TypeKey = "type";
+
+    public const string SourceKey = "sourceIndicatorId";
+
+    public const string DynamicKey = "dynamicPeriodIndicatorId";
 }
 
 /// <summary>
@@ -77,8 +87,8 @@ internal sealed class IndicatorChainPlan
         foreach (RequestedIndicator request in requests)
         {
             edges[request.Id] = new List<string>();
-            Reference(request, request.SourceId, request.SourceSeries, "sourceIndicatorId", "sourceOutputSeriesName", byId, asked, edges, isSource: true);
-            Reference(request, request.DynamicId, request.DynamicSeries, "dynamicPeriodIndicatorId", "dynamicPeriodOutputSeriesName", byId, asked, edges, isSource: false);
+            Reference(request, request.SourceId, request.SourceSeries, RequestedIndicator.SourceKey, "sourceOutputSeriesName", byId, asked, edges, isSource: true);
+            Reference(request, request.DynamicId, request.DynamicSeries, RequestedIndicator.DynamicKey, "dynamicPeriodOutputSeriesName", byId, asked, edges, isSource: false);
         }
 
         RejectCycles(requests, byId, edges);
@@ -106,6 +116,46 @@ internal sealed class IndicatorChainPlan
         var byId = requests.ToDictionary(r => r.Id, StringComparer.Ordinal);
         return NonCausalSeries(request, byId, new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal));
     }
+
+    /// <summary>
+    /// Why an indicator looks ahead, for a tool that refuses such indicators: <see cref="Argument"/> is the key of the request that carries the cause (<c>type</c> when the
+    /// indicator itself looks ahead, <c>sourceIndicatorId</c> or <c>dynamicPeriodIndicatorId</c> when its input does) and <see cref="Origin"/> is the indicator at the end of the
+    /// chain whose own series look ahead.
+    /// </summary>
+    internal sealed record NonCausalCause(string Argument, RequestedIndicator Origin);
+
+    /// <summary>
+    /// The cause that makes <paramref name="request"/> look ahead, or null when it does not (the same rule as <see cref="NonCausalSeries(RequestedIndicator, IReadOnlyList{RequestedIndicator})"/>).
+    /// The indicator's own series are checked first, then its source input, then its dynamic-period input. <see cref="Apply"/> must have run (it rejects cycles).
+    /// </summary>
+    public NonCausalCause? NonCausalCauseOf(RequestedIndicator request, IReadOnlyList<RequestedIndicator> requests)
+    {
+        var byId = requests.ToDictionary(r => r.Id, StringComparer.Ordinal);
+        return CauseOf(request, byId, new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal));
+    }
+
+    private NonCausalCause? CauseOf(RequestedIndicator request, Dictionary<string, RequestedIndicator> byId, Dictionary<string, IReadOnlyList<string>> memo)
+    {
+        if (request.Entry.NonCausalSeries.Count > 0)
+        {
+            return new NonCausalCause(RequestedIndicator.TypeKey, request);
+        }
+
+        if (UsesNonCausalInput(request, request.SourceId, request.SourceSeries, byId, memo))
+        {
+            return new NonCausalCause(RequestedIndicator.SourceKey, OriginOf(byId[request.SourceId!], byId, memo));
+        }
+
+        if (UsesNonCausalInput(request, request.DynamicId, request.DynamicSeries, byId, memo))
+        {
+            return new NonCausalCause(RequestedIndicator.DynamicKey, OriginOf(byId[request.DynamicId!], byId, memo));
+        }
+
+        return null;
+    }
+
+    private RequestedIndicator OriginOf(RequestedIndicator upstream, Dictionary<string, RequestedIndicator> byId, Dictionary<string, IReadOnlyList<string>> memo)
+        => CauseOf(upstream, byId, memo)?.Origin ?? upstream;
 
     private IReadOnlyList<string> NonCausalSeries(RequestedIndicator request, Dictionary<string, RequestedIndicator> byId, Dictionary<string, IReadOnlyList<string>> memo)
     {

@@ -59,6 +59,19 @@ public sealed class FindSupportResistanceToolTests : IDisposable
     private static async Task<JsonDocument> CallAsync(McpMessageDispatcher dispatcher, string extra = "", string symbol = Symbol, string timeFrame = "D1")
         => (await McpTestSupport.CallAsync(dispatcher, "sa_find_support_resistance", $"{{\"symbol\":\"{symbol}\",\"timeFrame\":\"{timeFrame}\"{extra}}}"))!;
 
+    private static List<decimal> NoisyCloses()
+    {
+        var generator = new DeterministicNoise(99);
+        var closes = new List<decimal>(Days);
+        for (int i = 0; i < Days; i++)
+        {
+            double noise = generator.NextCentered();
+            closes.Add(Math.Round((decimal)(100.0 + (10.0 * Math.Sin(i / 5.0)) + (4.0 * noise)), 2));
+        }
+
+        return closes;
+    }
+
     private static JsonElement Result(JsonDocument response)
     {
         Assert.False(McpTestSupport.IsError(response), McpTestSupport.Structured(response).ToString());
@@ -133,6 +146,46 @@ public sealed class FindSupportResistanceToolTests : IDisposable
             double curStrength = levels[i].GetProperty("strengthScore").GetDouble();
             Assert.True(prevStrength >= curStrength);
         }
+    }
+
+    [Theory]
+    [InlineData("", 0.5)]
+    [InlineData(",\"clusterTolerance\":2.0", 2.0)]
+    public async Task FindSupportResistance_StructuralPivots_ReportsTheScaleTheLevelsWereClusteredOn(string extra, double multiplier)
+    {
+        // The pure sine of the shared fixture is reconstructed almost exactly (sigma sits on the 1e-8 floor), so use a noisy series.
+        List<decimal> closes = NoisyCloses();
+        ParquetFixtureBuilder.SeedDailyOhlcvFromCloses(_fixture.DailyDirectory, Symbol, closes);
+        var dispatcher = await StartAsync();
+        JsonElement result = Result(await CallAsync(dispatcher, ",\"mode\":\"StructuralPivots\",\"embeddingDimension\":15" + extra));
+
+        var date = new DateTime(2024, 1, 1);
+        var expected = SsaSupportResistanceEngine.Calculate(
+            closes.Select(c => (double)c).ToArray(),
+            Enumerable.Range(0, Days).Select(i => date.AddDays(i)).ToArray(),
+            mode: SsaSupportResistanceMode.StructuralPivots,
+            embeddingDimension: 15,
+            clusterTolerance: (decimal)multiplier,
+            currentPrice: (double)closes[^1]);
+
+        decimal sigma = result.GetProperty("residualStdDev").GetDecimal();
+        decimal tolerance = result.GetProperty("effectiveClusterTolerance").GetDecimal();
+        Assert.Equal((decimal)expected.ResidualStdDev, sigma);
+        Assert.True(sigma > 0.01m, $"sigma {sigma} is too small for the tolerance relation to be visible");
+        Assert.Equal((decimal)SsaSupportResistanceEngine.EffectiveClusterTolerance(multiplier, expected.ResidualStdDev), tolerance);
+        // clusterTolerance is a multiplier of sigma, not a price: the reported tolerance in price units is multiplier x sigma.
+        Assert.Equal((double)sigma * multiplier, (double)tolerance, precision: 9);
+    }
+
+    [Fact]
+    public async Task FindSupportResistance_DynamicEnvelopes_ReportsSigmaButNoClusterTolerance()
+    {
+        ParquetFixtureBuilder.SeedDailyOhlcvFromCloses(_fixture.DailyDirectory, Symbol, NoisyCloses());
+        var dispatcher = await StartAsync();
+        JsonElement result = Result(await CallAsync(dispatcher, ",\"mode\":\"DynamicEnvelopes\""));
+
+        Assert.True(result.GetProperty("residualStdDev").GetDecimal() > 0m);
+        Assert.Equal(JsonValueKind.Null, result.GetProperty("effectiveClusterTolerance").ValueKind);
     }
 
     [Fact]

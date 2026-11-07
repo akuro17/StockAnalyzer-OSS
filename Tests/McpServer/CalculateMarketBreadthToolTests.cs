@@ -167,4 +167,28 @@ public sealed class CalculateMarketBreadthToolTests : IDisposable
 
         Assert.Equal("INVALID_ARGUMENT", error.GetProperty("code").GetString());
     }
+
+    [Theory]
+    [InlineData(39, 19)]
+    [InlineData(19, 19)]
+    public async Task McClellanFastNotBelowSlow_ReturnsInvalidArgument(int fast, int slow)
+    {
+        McpMessageDispatcher dispatcher = await StartAsync();
+        string args = $$"""{"symbols":["{{Sym1}}","{{Sym2}}"],"mcClellanFast":{{fast}},"mcClellanSlow":{{slow}}}""";
+        JsonElement error = await CallExpectingErrorAsync(dispatcher, args);
+
+        Assert.Equal("INVALID_ARGUMENT", error.GetProperty("code").GetString());
+        Assert.Equal("mcClellanFast", error.GetProperty("param").GetString());
+    }
+
+    [Fact]
+    public async Task McClellanFastBelowSlow_IsAccepted()
+    {
+        McpMessageDispatcher dispatcher = await StartAsync();
+        string args = $$"""{"symbols":["{{Sym1}}","{{Sym2}}"],"mcClellanFast":5,"mcClellanSlow":10}""";
+
+        JsonElement result = await CallAsync(dispatcher, args);
+
+        Assert.True(result.GetProperty("dateCount").GetInt32() > 0);
+    }
 }

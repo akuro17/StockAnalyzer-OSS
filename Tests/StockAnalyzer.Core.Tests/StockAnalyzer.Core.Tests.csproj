@@ -19,6 +19,7 @@
     <Compile Include="..\TestDataIsolationBootstrap.cs" Link="TestDataIsolationBootstrap.cs" />
     <Compile Include="..\TestRepositoryRoot.cs" Link="TestRepositoryRoot.cs" />
     <Compile Include="..\ReadOnlyDataTreeFixture.cs" Link="ReadOnlyDataTreeFixture.cs" />
+    <Compile Include="..\ReadOnlyDataRootFixture.cs" Link="ReadOnlyDataRootFixture.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Assets\*.onnx" CopyToOutputDirectory="PreserveNewest" />

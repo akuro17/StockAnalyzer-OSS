@@ -42,4 +42,17 @@ public interface IWorkspaceCoordinator
     /// Captures the current active workspace state into a WorkspaceSettings instance on the UI thread asynchronously.
     /// </summary>
     Task<StockAnalyzer.Core.Models.Settings.WorkspaceSettings> CaptureCurrentWorkspaceAsync();
+
+    /// <summary>
+    /// True while automatic saving of the default workspace file is blocked because its restore was incomplete.
+    /// While true, <see cref="SaveActiveWorkspaceAsync"/> without a path and <see cref="ForceSaveSync"/> write nothing;
+    /// a save to an explicit path is not affected.
+    /// </summary>
+    bool IsAutoSaveLocked { get; }
+
+    /// <summary>
+    /// The user's explicit "save the current state" decision: writes the current state to the default workspace file and,
+    /// only after that write succeeded, lifts the lock. Returns false (lock unchanged) when nothing was written.
+    /// </summary>
+    Task<bool> SaveCurrentStateAndUnlockAsync();
 }

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Indicators;
+using StockAnalyzer.Core.Services;
 
 namespace StockAnalyzer.Core.MathUtils;
 
@@ -38,6 +39,13 @@ public sealed class CrossAssetStatsResult
     public IReadOnlyList<BetaAlphaEntry> BetaAlpha { get; init; } = Array.Empty<BetaAlphaEntry>();
     public IReadOnlyList<ExcludedSymbolInfo> ExcludedSymbols { get; init; } = Array.Empty<ExcludedSymbolInfo>();
     public IReadOnlyList<string> Notes { get; init; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Number of common return dates whose returns do not cover the same holding period in every series: for at least one series the previous bar
+    /// of its own is not the previous common date (a market traded on a day another market was closed). 0 when fewer than
+    /// <see cref="ReturnStatistics.MinCommonDates"/> dates are common. Diagnostic only; the statistics use these returns unchanged.
+    /// </summary>
+    public int MultiBarReturnCount { get; init; }
 }
 
 /// <summary>
@@ -61,13 +69,19 @@ public static class ReturnStatistics
     /// <param name="includeCovariance">True to include the sample covariance matrix in the result.</param>
     /// <param name="returnBasis">"SimpleReturn" (default) or "LogReturn".</param>
     /// <param name="benchmarkCandles">Optional external benchmark candles when benchmarkSymbol is not in symbolCandles.</param>
+    /// <param name="timeFrame">
+    /// Time frame of the bars. D1 (default) matches bars by their exact date. For W1 and MN1 the bars of different markets are matched by the
+    /// period they belong to (<see cref="TimeFrameAggregator.PeriodStart"/>: the Monday of the ISO week, the 1st of the month), because a bar is dated by
+    /// its first trading day and two markets with different holidays date the same period differently; the dates of the result are those period starts.
+    /// </param>
     /// <returns>CrossAssetStatsResult containing matrices and benchmark regressions.</returns>
     public static CrossAssetStatsResult Calculate(
         IReadOnlyDictionary<string, IReadOnlyList<CandleData>> symbolCandles,
         string? benchmarkSymbol = null,
         bool includeCovariance = false,
         string returnBasis = SimpleReturnBasis,
-        IReadOnlyList<CandleData>? benchmarkCandles = null)
+        IReadOnlyList<CandleData>? benchmarkCandles = null,
+        TimeFrame timeFrame = TimeFrame.D1)
     {
         ArgumentNullException.ThrowIfNull(symbolCandles);
 
@@ -80,9 +94,13 @@ public static class ReturnStatistics
             "Sample covariance uses Bessel's correction (N-1 degrees of freedom).",
             "Survival bias notice: calculations are performed on currently stored tickers."
         };
+        if (TimeFrameAggregator.IsPeriodFrame(timeFrame))
+        {
+            notes.Add(PeriodStartDateNote);
+        }
 
         // 1. Calculate return series for each symbol
-        var returnsBySymbol = new Dictionary<string, Dictionary<DateTime, decimal>>(StringComparer.OrdinalIgnoreCase);
+        var returnsBySymbol = new Dictionary<string, SymbolReturns>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var (symbol, candles) in symbolCandles)
         {
@@ -92,8 +110,8 @@ public static class ReturnStatistics
                 continue;
             }
 
-            var dailyReturns = ComputeReturns(candles, isLogReturn);
-            if (dailyReturns.Count == 0)
+            var dailyReturns = ComputeReturns(candles, isLogReturn, timeFrame);
+            if (dailyReturns.Returns.Count == 0)
             {
                 excludedSymbols.Add(new ExcludedSymbolInfo(symbol, "No valid positive price returns"));
                 continue;
@@ -113,23 +131,24 @@ public static class ReturnStatistics
         }
 
         // Benchmark handling: resolve returns from universe symbols if present, or from benchmarkCandles if external
-        Dictionary<DateTime, decimal>? benchmarkReturns = null;
+        SymbolReturns? benchmarkSeries = null;
         if (!string.IsNullOrWhiteSpace(benchmarkSymbol))
         {
             if (returnsBySymbol.TryGetValue(benchmarkSymbol, out var r))
             {
-                benchmarkReturns = r;
+                benchmarkSeries = r;
             }
             else if (benchmarkCandles != null && benchmarkCandles.Count >= 2)
             {
-                var rBench = ComputeReturns(benchmarkCandles, isLogReturn);
-                if (rBench.Count > 0)
+                var rBench = ComputeReturns(benchmarkCandles, isLogReturn, timeFrame);
+                if (rBench.Returns.Count > 0)
                 {
-                    benchmarkReturns = rBench;
+                    benchmarkSeries = rBench;
                 }
             }
         }
 
+        Dictionary<DateTime, decimal>? benchmarkReturns = benchmarkSeries?.Returns;
         bool hasBenchmark = benchmarkReturns != null;
         if (!string.IsNullOrWhiteSpace(benchmarkSymbol) && !hasBenchmark)
         {
@@ -153,7 +172,7 @@ public static class ReturnStatistics
 
         foreach (string sym in universeSymbols)
         {
-            var dates = returnsBySymbol[sym].Keys;
+            var dates = returnsBySymbol[sym].Returns.Keys;
             if (commonDatesSet == null)
             {
                 commonDatesSet = new HashSet<DateTime>(dates);
@@ -189,6 +208,25 @@ public static class ReturnStatistics
         DateTime startDate = commonDates[0];
         DateTime endDate = commonDates[^1];
 
+        var joinedSeries = new List<SymbolReturns>(universeSymbols.Count + 1);
+        foreach (string sym in universeSymbols)
+        {
+            joinedSeries.Add(returnsBySymbol[sym]);
+        }
+
+        if (benchmarkSeries != null && !joinedSeries.Contains(benchmarkSeries))
+        {
+            joinedSeries.Add(benchmarkSeries);
+        }
+
+        int multiBarReturnCount = CountMultiBarPairs(commonDates, joinedSeries);
+        if (multiBarReturnCount > 0)
+        {
+            notes.Add(
+                $"{multiBarReturnCount} of {T} common return dates combine returns over different holding periods: a market traded on a day another market was closed, " +
+                "so its return covers fewer bars than the other. They are used unchanged in the correlation, covariance, beta and alpha.");
+        }
+
         // 4. Build aligned vectors and compute means in decimal
         int N = universeSymbols.Count;
         var alignedReturns = new decimal[N][];
@@ -199,7 +237,7 @@ public static class ReturnStatistics
         for (int i = 0; i < N; i++)
         {
             string sym = universeSymbols[i];
-            var dict = returnsBySymbol[sym];
+            var dict = returnsBySymbol[sym].Returns;
             var r = new decimal[T];
             decimal sum = 0m;
 
@@ -383,14 +421,47 @@ public static class ReturnStatistics
             CovarianceMatrix = covMatrix,
             BetaAlpha = betaAlphaList,
             ExcludedSymbols = excludedSymbols,
-            Notes = notes
+            Notes = notes,
+            MultiBarReturnCount = multiBarReturnCount
         };
     }
 
-    private static Dictionary<DateTime, decimal> ComputeReturns(IReadOnlyList<CandleData> candles, bool isLogReturn)
+    /// <summary>Stated in the notes of a W1/MN1 result: the dates of the result are calendar period starts, not the first trading day of single-symbol tools.</summary>
+    public const string PeriodStartDateNote =
+        "With timeFrame W1 or MN1 the dates of this tool are calendar period starts (the Monday of the ISO week, the 1st of the month), " +
+        "so that holidays of different markets do not change them. Single-symbol tools date a W1 or MN1 bar by the first trading day of the period; " +
+        "the two labels differ after a holiday.";
+
+    /// <summary>The return of each date of a series and, for each of those dates, the date of the series' own previous bar.</summary>
+    private sealed record SymbolReturns(Dictionary<DateTime, decimal> Returns, Dictionary<DateTime, DateTime> PreviousBarDate);
+
+    /// <summary>
+    /// Counts the common dates c_j whose returns do not span the same holding period in every series. A return always spans one bar of its own series,
+    /// so the bar count cannot show it; instead, for j &gt;= 1 the date is counted when some series' previous bar is not the previous common date c_(j-1)
+    /// (that series traded on a day not every series traded, and the previous common date is never later than any series' previous bar);
+    /// for j = 0 there is no previous common date and it is counted when the series' previous bars are not all the same date.
+    /// </summary>
+    private static int CountMultiBarPairs(IReadOnlyList<DateTime> commonDates, IReadOnlyList<SymbolReturns> series)
+    {
+        int count = 0;
+        for (int j = 0; j < commonDates.Count; j++)
+        {
+            DateTime date = commonDates[j];
+            DateTime reference = j == 0 ? series[0].PreviousBarDate[date] : commonDates[j - 1];
+            if (series.Any(s => s.PreviousBarDate[date] != reference))
+            {
+                count++;
+            }
+        }
+
+        return count;
+    }
+
+    private static SymbolReturns ComputeReturns(IReadOnlyList<CandleData> candles, bool isLogReturn, TimeFrame timeFrame)
     {
         var returns = new Dictionary<DateTime, decimal>();
-        if (candles == null || candles.Count < 2) return returns;
+        var previousBarDate = new Dictionary<DateTime, DateTime>();
+        if (candles == null || candles.Count < 2) return new SymbolReturns(returns, previousBarDate);
 
         var sorted = candles.OrderBy(c => c.Timestamp).ToList();
         var prices = new List<decimal?>(sorted.Count);
@@ -407,10 +478,12 @@ public static class ReturnStatistics
         {
             if (returnList[i].HasValue)
             {
-                returns[sorted[i].Timestamp.Date] = returnList[i]!.Value;
+                DateTime key = TimeFrameAggregator.PeriodMatchDate(sorted[i].Timestamp, timeFrame);
+                returns[key] = returnList[i]!.Value;
+                previousBarDate[key] = TimeFrameAggregator.PeriodMatchDate(sorted[i - 1].Timestamp, timeFrame);
             }
         }
 
-        return returns;
+        return new SymbolReturns(returns, previousBarDate);
     }
 }

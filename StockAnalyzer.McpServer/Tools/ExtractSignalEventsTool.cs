@@ -232,7 +232,9 @@ internal sealed class ExtractSignalEventsTool : IMcpTool
             bool isTrue = series[i];
             if (!isTrue) continue;
 
-            if (eventMode == FirstTrueBarOfRunMode && i > evaluationStartIndex && series[i - 1])
+            // A run starts where the condition turns true in the whole series: the bar before the evaluation window (warm-up bars are evaluated too)
+            // decides, so the result does not depend on startDate (owner decision D-8 = A).
+            if (eventMode == FirstTrueBarOfRunMode && i > 0 && series[i - 1])
             {
                 // Consecutive match, skip in FirstTrueBarOfRunMode
                 continue;

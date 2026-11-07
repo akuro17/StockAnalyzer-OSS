@@ -83,6 +83,21 @@ public partial class App : Application, IDisposable, IThemeVariantDispatcher
                 if (Services == null)
                 {
                     var services = new ServiceCollection();
+
+                    // Decided ONCE and BEFORE the container exists: settings managers resolve their folders in their constructors.
+                    // The status is fixed for this run (a permission fix is picked up by restarting).
+                    var dataStorage = StockAnalyzer.Core.Common.DataStorageProbe.Evaluate(
+                        StockAnalyzer.Core.Common.PathDiscovery.ResolveDataRootWithoutCreating());
+                    if (!dataStorage.IsWritable)
+                    {
+                        Serilog.Log.Warning(
+                            "The Data folder is not writable ({Reason}); starting in read-only mode. Folder: {DataRoot}. {Detail}",
+                            dataStorage.Reason,
+                            StockAnalyzer.Core.Common.ExceptionSanitizer.Sanitize(dataStorage.DataRoot),
+                            dataStorage.Detail);
+                    }
+                    services.AddSingleton<StockAnalyzer.Core.Common.IDataStorageState>(new StockAnalyzer.Core.Common.DataStorageState(dataStorage));
+
                     services.AddCommonServices(config);
                     services.AddViewModels();
                     services.AddSingleton<IThemeVariantDispatcher>(this);
@@ -218,6 +233,11 @@ public partial class App : Application, IDisposable, IThemeVariantDispatcher
 
                 desktop.ShutdownRequested += (sender, args) =>
                 {
+                    try
+                    {
+                        Services?.GetService<Services.IMcpServerProcessService>()?.StopServer();
+                    }
+                    catch { }
                     Dispose();
                 };
 
@@ -268,12 +288,15 @@ public partial class App : Application, IDisposable, IThemeVariantDispatcher
                 // while the window is already shown, and its consumers (the lifetime, the charts of the default workspace) start after it.
                 _ = StartMonitoringAndWorkspaceAsync(mainViewModel);
 
+                // Read-only mode (the Data folder is not writable): the notes database is off for this run, so neither background pass below starts.
+                bool notesStorageWritable = StockAnalyzer.Core.Common.DataStorageGuard.IsWritable(Services.GetService<StockAnalyzer.Core.Common.IDataStorageState>());
+
                 // Ticker Note spec section 4.5: detect (never auto-delete) orphaned attachment
                 // files once per launch, in the background so it never delays startup. The result
                 // is stashed in OrphanedAttachmentScanResultHolder for the trash dialog's "Orphaned
                 // Files" tab; a status-bar notice is only raised when there's actually something to
                 // report (MainWindowViewModel.Receive(OrphanedAttachmentsDetectedMessage)).
-                _ = Task.Run(async () =>
+                if (notesStorageWritable) _ = Task.Run(async () =>
                 {
                     try
                     {
@@ -299,7 +322,7 @@ public partial class App : Application, IDisposable, IThemeVariantDispatcher
                 // More cut happens at display time). Caches written by the earlier truncated-preview format are
                 // converted exactly once (a persistent marker records it; a partly failed pass is retried on the
                 // next start), off the UI thread. Its wall time is logged so its cost stays observable.
-                _ = Task.Run(async () =>
+                if (notesStorageWritable) _ = Task.Run(async () =>
                 {
                     var logger = (Microsoft.Extensions.Logging.ILogger?)Services.GetService<Microsoft.Extensions.Logging.ILogger<App>>()
                         ?? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;

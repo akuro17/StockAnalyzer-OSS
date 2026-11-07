@@ -1,6 +1,7 @@
 using System;
 using System.Text.Json;
 using StockAnalyzer.Core.Common;
+using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Services;
 using StockAnalyzer.Core.Services.ReinforcementLearning;
 
@@ -15,6 +16,46 @@ internal static class RegisteredModelResolver
     public const string ModelIdArgument = "modelId";
 
     public readonly record struct ResolvedModel(string RequestedId, string ResolvedId, ModelGenerationManifest Manifest);
+
+    /// <summary>The time frame a model was trained on, as the prediction type the analysis services name it and as the core chart time frame the bars are read in.</summary>
+    public readonly record struct ModelTimeFrame(TimeframeType Type, TimeFrame Frame);
+
+    /// <summary>
+    /// Reads the time frame the manifest names (<c>daily</c>, <c>weekly</c>, <c>monthly</c>; case does not matter). False for anything else,
+    /// including an intraday name and a bare number (an enum parser would accept both). The supported set is the one of
+    /// <see cref="MonitoringTimeframes"/>, so the mapping to the core time frame is not repeated here.
+    /// </summary>
+    public static bool TryGetTimeFrame(ModelGenerationManifest manifest, out ModelTimeFrame result)
+    {
+        ArgumentNullException.ThrowIfNull(manifest);
+        result = default;
+        string? text = manifest.Timeframe?.Trim();
+        if (string.IsNullOrEmpty(text)
+            || !Enum.TryParse(text, ignoreCase: true, out TimeframeType type)
+            || !string.Equals(type.ToString(), text, StringComparison.OrdinalIgnoreCase)
+            || !MonitoringTimeframes.IsSupported(type))
+        {
+            return false;
+        }
+
+        result = new ModelTimeFrame(type, MonitoringTimeframes.ToCoreTimeFrame(type));
+        return true;
+    }
+
+    /// <summary>Like <see cref="TryGetTimeFrame"/>, but a time frame the server cannot read is <c>UNSUPPORTED_TIMEFRAME</c> on <paramref name="parameterName"/>.</summary>
+    public static ModelTimeFrame RequireTimeFrame(ModelGenerationManifest manifest, string parameterName = ModelIdArgument)
+    {
+        if (TryGetTimeFrame(manifest, out ModelTimeFrame frame))
+        {
+            return frame;
+        }
+
+        throw new ToolException(
+            ToolErrorCodes.UnsupportedTimeFrame,
+            "The model was trained on a time frame this server cannot read.",
+            parameterName,
+            "Use a model trained on daily, weekly or monthly bars.");
+    }
 
     public static ResolvedModel Resolve(
         ReadOnlyModelGenerationRegistry registry,

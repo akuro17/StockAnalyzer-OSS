@@ -250,12 +250,57 @@ public sealed class ExtractSignalEventsToolTests : IDisposable
 
         JsonElement everyTrueResult = Result(await ExtractAsync(dispatcher, alwaysTrue, Period + ",\"eventMode\":\"EveryTrueBar\""));
         JsonElement firstTrueResult = Result(await ExtractAsync(dispatcher, alwaysTrue, Period + ",\"eventMode\":\"FirstTrueBarOfRun\""));
+        JsonElement firstTrueWholeHistory = Result(await ExtractAsync(dispatcher, alwaysTrue, ",\"eventMode\":\"FirstTrueBarOfRun\""));
 
         int everyCount = everyTrueResult.GetProperty("eventCount").GetInt32();
         int firstCount = firstTrueResult.GetProperty("eventCount").GetInt32();
 
         Assert.True(everyCount > 1);
-        Assert.Equal(1, firstCount); // Since it is always true on every bar, only the first bar is emitted
+        // Owner decision D-8 = A (2026-11-04): a run starts where the condition turns true in the whole series. The condition is true on every bar, so
+        // the run began on the first stored bar, before the 2024-03-01 window; the window holds no run start. (Before D-8 the first bar of the window
+        // was emitted as a run start, which made the result depend on startDate; this expectation was 1.)
+        Assert.Equal(0, firstCount);
+
+        // Without a startDate the first stored bar is the only run start.
+        Assert.Equal(1, firstTrueWholeHistory.GetProperty("eventCount").GetInt32());
+        Assert.Equal(0, firstTrueWholeHistory.GetProperty("events")[0].GetProperty("barIndex").GetInt32());
+    }
+
+    private const string RisingAverage = """{"left":{"indicator":"SMA","parameters":{"Period":20}},"comparison":"GreaterThan","right":120}""";
+
+    private static (int BarIndex, DateTime Timestamp) OnlyEvent(JsonElement result)
+    {
+        Assert.Equal(1, result.GetProperty("eventCount").GetInt32());
+        JsonElement e = result.GetProperty("events")[0];
+        return (e.GetProperty("barIndex").GetInt32(), DateTime.Parse(e.GetProperty("timestamp").GetString()!, System.Globalization.CultureInfo.InvariantCulture));
+    }
+
+    [Fact]
+    public async Task FirstTrueBarOfRun_StartDateInsideARunDoesNotCreateAnEvent_AndStartDateBeforeTheRunDoesNotMoveIt()
+    {
+        var dispatcher = await StartAsync();
+        const string firstTrue = ",\"eventMode\":\"FirstTrueBarOfRun\"";
+
+        // Where the run starts, from the unbounded call.
+        (int runStartBar, DateTime runStart) = OnlyEvent(Result(await ExtractAsync(dispatcher, RisingAverage, firstTrue)));
+        Assert.True(runStartBar > 30, "the SMA must need warm-up bars for the check to mean anything");
+        string Date(DateTime d) => d.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+
+        // Any startDate on or before the run start reports the same single run start.
+        foreach (int daysBefore in new[] { 0, 1, 25 })
+        {
+            string start = $",\"startDate\":\"{Date(runStart.AddDays(-daysBefore))}\"";
+            Assert.Equal((runStartBar, runStart), OnlyEvent(Result(await ExtractAsync(dispatcher, RisingAverage, firstTrue + start))));
+        }
+
+        // A startDate inside the run: the condition was already true on the previous bar, so there is no run start in the window ...
+        string insideRun = $",\"startDate\":\"{Date(runStart.AddDays(10))}\"";
+        JsonElement inside = Result(await ExtractAsync(dispatcher, RisingAverage, firstTrue + insideRun));
+        Assert.Equal(0, inside.GetProperty("eventCount").GetInt32());
+
+        // ... while EveryTrueBar still reports the bars of that run.
+        JsonElement every = Result(await ExtractAsync(dispatcher, RisingAverage, ",\"eventMode\":\"EveryTrueBar\"" + insideRun));
+        Assert.True(every.GetProperty("eventCount").GetInt32() > 0);
     }
 
     [Fact]

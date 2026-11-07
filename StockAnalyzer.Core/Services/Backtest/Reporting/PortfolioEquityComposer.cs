@@ -17,7 +17,8 @@ public sealed record CompositePortfolioResult(
     RankedDrawdownEpisode? WorstEpisode,
     int PooledTradeCount,
     decimal? PooledWinRate,
-    ImmutableArray<EquityPoint> CompositeEquityPoints);
+    ImmutableArray<EquityPoint> CompositeEquityPoints,
+    string? DrawdownUnavailableReason = null);
 
 /// <summary>
 /// Input for a single symbol sleeve passed to <see cref="PortfolioEquityComposer.Compose"/>.
@@ -196,11 +197,26 @@ public static class PortfolioEquityComposer
         decimal totalReturn = allocatedTotal > 0m ? (finalEquity - allocatedTotal) / allocatedTotal : 0m;
 
         DateTime effectiveInitialTimestamp = initialTimestamp ?? dates[0];
-        ImmutableArray<RankedDrawdownEpisode> episodes = DrawdownEpisodeEnumerator.Enumerate(
-            allocatedTotal,
-            effectiveInitialTimestamp,
-            compositePoints,
-            1);
+        // An arithmetic failure of the drawdown (a ratio against a tiny running high, a non-finite ratio) must not lose the composite equity and the pooled
+        // statistics: the reason is returned (the same reason codes as the single backtest's diagnosticsUnavailable) and the drawdown figures stay empty.
+        ImmutableArray<RankedDrawdownEpisode> episodes = ImmutableArray<RankedDrawdownEpisode>.Empty;
+        string? drawdownUnavailableReason = null;
+        try
+        {
+            episodes = DrawdownEpisodeEnumerator.Enumerate(
+                allocatedTotal,
+                effectiveInitialTimestamp,
+                compositePoints,
+                1);
+        }
+        catch (OverflowException)
+        {
+            drawdownUnavailableReason = BacktestDiagnosticReasons.ArithmeticOverflow;
+        }
+        catch (ArithmeticException)
+        {
+            drawdownUnavailableReason = BacktestDiagnosticReasons.NonFiniteResult;
+        }
 
         RankedDrawdownEpisode? worstEpisode = episodes.Length > 0 ? episodes[0] : null;
         decimal maxDrawdownRatio = worstEpisode?.DepthRatio ?? 0m;
@@ -213,6 +229,7 @@ public static class PortfolioEquityComposer
             WorstEpisode: worstEpisode,
             PooledTradeCount: pooledTradeCount,
             PooledWinRate: pooledWinRate,
-            CompositeEquityPoints: compositePoints);
+            CompositeEquityPoints: compositePoints,
+            DrawdownUnavailableReason: drawdownUnavailableReason);
     }
 }

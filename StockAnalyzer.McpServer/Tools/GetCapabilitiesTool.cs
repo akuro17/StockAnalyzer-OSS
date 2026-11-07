@@ -41,6 +41,7 @@ internal sealed class GetCapabilitiesTool : IMcpTool
         "A parameter has min and max from the indicator's hard range (CoreParameterRange) and, where the chart input is narrower, guiMin and guiMax. " +
         "isCrossTicker marks an indicator that compares two symbols: it needs its ComparisonSymbol parameter and is accepted by sa_calculate_indicators and sa_run_screener, not by sa_run_backtest. " +
         "backtestEligibility is Allowed, NonCausal (the value at a bar depends on later bars) or SynchronousCalculationUnsupported; nonCausalSeries lists the series that look ahead. " +
+        "With details each indicator also has screenerEligibility, the same three values for the screener (sa_run_screener): the indicators that compare two symbols are Allowed there although the backtest refuses them. " +
         "Unregistered types are defined in the product but cannot be calculated (isRegistered false). " +
         "unit is null because no indicator output unit is stored in the application; unitUndefined lists those types. " +
         "includeScreenerCatalog adds the names sa_run_screener accepts besides indicators: columns (isText true for the text columns; unavailableColumns lists table columns no condition can read reliably), criteria (patterns) and price sources, with the comparison and group operator names, " +
@@ -76,6 +77,7 @@ internal sealed class GetCapabilitiesTool : IMcpTool
             .String("displayName", "Display name.", required: true)
             .String("category", "Indicator category.")
             .String("backtestEligibility", "Backtest eligibility.")
+            .String("screenerEligibility", "Screener eligibility (details only): Allowed, NonCausal or SynchronousCalculationUnsupported; differs from backtestEligibility for the indicators that compare two symbols.")
             .NullableString("unit", "Unit of measurement.")
             .Boolean("isCrossTicker", "True when indicator compares two symbols.")
             .StringArray("outputSeriesNames", "Output series names.")
@@ -379,6 +381,11 @@ internal sealed class GetCapabilitiesTool : IMcpTool
 
         if (details && entry.IsRegistered)
         {
+            if (entry.ScreenerEligibility is not null)
+            {
+                writer.WriteString("screenerEligibility", entry.ScreenerEligibility);
+            }
+
             writer.WriteBoolean("isCrossTicker", entry.IsCrossTicker);
             WriteStrings(writer, "outputSeriesNames", entry.OutputSeriesNames);
             WriteStrings(writer, "nonCausalSeries", entry.NonCausalSeries);

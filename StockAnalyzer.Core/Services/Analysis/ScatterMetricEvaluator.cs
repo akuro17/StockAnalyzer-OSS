@@ -81,6 +81,12 @@ public sealed class ScatterMetricEvaluator : IScatterMetricEvaluator
         bool needsMetadata = x.Source.CategoryType == ScreenerItemCategoryType.Column || y.Source.CategoryType == ScreenerItemCategoryType.Column;
         IMarketDataProvider? metadataProvider = needsMetadata ? _marketDataProviders.FirstOrDefault() : null;
 
+        // A Day metric that compares two symbols reads the DAILY bars of its comparison symbol: read once per call (not per ticker, not cached between calls) and
+        // shared by every ticker. A Week or Month metric never gets them (the bars it is evaluated over are weekly or monthly); validation refuses such a metric first.
+        ComparisonBars comparison = await LoadComparisonBarsAsync(x, y, ct).ConfigureAwait(false);
+        IScreenerSecondaryCandles? xSecondary = comparison.For(x);
+        IScreenerSecondaryCandles? ySecondary = comparison.For(y);
+
         // Each ticker writes its own slot, so the order of the result does not depend on thread scheduling.
         double[] xs = new double[tickers.Count];
         double[] ys = new double[tickers.Count];
@@ -121,8 +127,8 @@ public sealed class ScatterMetricEvaluator : IScatterMetricEvaluator
                 }
 
                 // Both reads happen with no await in between.
-                decimal? xv = xEmpty ? null : _extractor.ExtractValueNullable(xSource, xCandles!, metadata);
-                decimal? yv = yEmpty ? null : _extractor.ExtractValueNullable(ySource, yCandles!, metadata);
+                decimal? xv = xEmpty ? null : Extract(xSource, xCandles!, metadata, xSecondary);
+                decimal? yv = yEmpty ? null : Extract(ySource, yCandles!, metadata, ySecondary);
 
                 // The only decimal -> double conversion of the evaluation: the scatter plots in double data coordinates.
                 xs[index] = xv is null ? double.NaN : (double)xv.Value;
@@ -156,7 +162,46 @@ public sealed class ScatterMetricEvaluator : IScatterMetricEvaluator
             FailedCount = failed,
             XFixedRange = xRange,
             YFixedRange = yRange,
+            MissingComparisonSymbols = comparison.Missing,
         };
+    }
+
+    /// <summary>The 3-argument call the evaluator always made, or the 4-argument call when this metric was handed comparison-symbol bars.</summary>
+    private decimal? Extract(ScreenerIndicatorSideConfig source, IReadOnlyList<CandleData> candles, TickerMetadata metadata, IScreenerSecondaryCandles? secondary)
+        => secondary is null
+            ? _extractor.ExtractValueNullable(source, candles, metadata)
+            : _extractor.ExtractValueNullable(source, candles, metadata, secondary);
+
+    /// <summary>
+    /// The comparison-symbol bars of the Day metrics: one load per call of every instrument the Day metrics name (<see cref="ScreenerComparisonSymbols.Inspect(IEnumerable{ScreenerIndicatorSideConfig?})"/>),
+    /// <see cref="TimeFrame.D1"/>, with the larger of the two Day metrics' Screener requirements (0 = all history when either asks for it: the rule of <see cref="LoadPlan.Create"/>).
+    /// </summary>
+    private async Task<ComparisonBars> LoadComparisonBarsAsync(ScatterMetricDefinition x, ScatterMetricDefinition y, CancellationToken ct)
+    {
+        ScatterMetricDefinition[] dayMetrics = new[] { x, y }.Where(metric => metric.Source.TimeFrame == TimeFrame.D1).ToArray();
+        ScreenerComparisonRequirement requirement = ScreenerComparisonSymbols.Inspect(dayMetrics.Select(metric => metric.Source));
+        if (requirement.Spellings.Count == 0)
+        {
+            return ComparisonBars.None;
+        }
+
+        int count = dayMetrics.Any(metric => RequiredCount(metric) == 0) ? 0 : dayMetrics.Max(RequiredCount);
+        IScreenerSecondaryCandles secondary = await ScreenerSecondaryCandles
+            .LoadForSpellingsAsync(_dataService, requirement.Spellings, TimeFrame.D1, count, ct)
+            .ConfigureAwait(false);
+        string[] missing = requirement.Symbols.Where(symbol => secondary.Get(symbol) is null).ToArray();
+        return new ComparisonBars(secondary, missing);
+    }
+
+    /// <summary>The comparison-symbol bars of one call and the symbols without bars. <see cref="For"/> hands the bars only to a Day metric that needs them.</summary>
+    private sealed record ComparisonBars(IScreenerSecondaryCandles? Secondary, IReadOnlyList<string> Missing)
+    {
+        public static ComparisonBars None { get; } = new(null, Array.Empty<string>());
+
+        public IScreenerSecondaryCandles? For(ScatterMetricDefinition metric)
+            => Secondary is not null && metric.Source.TimeFrame == TimeFrame.D1 && ScreenerComparisonSymbols.NeedsDailyComparisonBars(metric.Source)
+                ? Secondary
+                : null;
     }
 
     private void EnsureValid(ScatterMetricDefinition metric, string parameterName)

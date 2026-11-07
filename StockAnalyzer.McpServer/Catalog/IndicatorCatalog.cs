@@ -3,6 +3,7 @@ using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Indicators;
 using StockAnalyzer.Core.Services;
 using StockAnalyzer.Core.Services.Backtest.Engine;
+using StockAnalyzer.Core.Services.Screener;
 
 namespace StockAnalyzer.McpServer.Catalog;
 
@@ -20,7 +21,8 @@ internal sealed record IndicatorCatalogEntry(
     IReadOnlyList<IndicatorParameterDescriptor> Parameters,
     bool IsCrossTicker,
     IReadOnlyList<string> NonCausalSeries,
-    string? Unit);
+    string? Unit,
+    string? ScreenerEligibility = null);
 
 /// <summary>
 /// The indicator catalogue, built once from the indicator registry, the default settings the Screener uses, the output-series
@@ -73,7 +75,8 @@ internal sealed class IndicatorCatalog
                 settings?.ParameterObject is { } parameters ? IndicatorParameterReader.Read(parameters) : Array.Empty<IndicatorParameterDescriptor>(),
                 factory.Create(type) is ICrossTickerIndicator,
                 series.Where(name => BacktestIndicatorEligibility.Check(type, name) == BacktestIndicatorViolationReason.NonCausal).ToArray(),
-                null)); // The codebase holds no machine-readable output unit per indicator; the unit is not invented (D15-A).
+                null, // The codebase holds no machine-readable output unit per indicator; the unit is not invented (D15-A).
+                EligibilityName(ScreenerIndicatorEligibility.Check(type, null))));
         }
 
         return entries;

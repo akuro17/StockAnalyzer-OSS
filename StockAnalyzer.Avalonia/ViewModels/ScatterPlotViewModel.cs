@@ -655,6 +655,12 @@ public partial class ScatterPlotViewModel : ViewModelBase,
                         status += " / " + FormatStatus("Scatter_Status_OutsideFixedRange", outsideFixedRange);
                     }
 
+                    // A metric whose comparison symbol has no stored daily bars is empty for every ticker: say which symbol, instead of only a low valid count.
+                    if (metricResult.MissingComparisonSymbols.Count > 0)
+                    {
+                        status += " / " + FormatStatus("Scatter_Status_ComparisonSymbolMissing", string.Join(", ", metricResult.MissingComparisonSymbols));
+                    }
+
                     StatusMessage = status;
                     IsLoading = false;
                 });

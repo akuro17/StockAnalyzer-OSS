@@ -206,12 +206,14 @@ internal static partial class RlContinuousParity
         var exit = result.Fills.Single(f => f.BarIndex == trade.ExitBar && f.Side == OrderSide.Sell);
         decimal gross = trade.Quantity * (exit.Price - entry.Price);
         decimal high = entry.Price, low = entry.Price;
-        // T16 enters at Open. The market exit observes its fill only; a stop exit observes that bar's extremes too.
+        // T16 enters at Open. The exit bar is added by the engine's single excursion rule (TradeExcursionBounds): a market exit and an exit at the Open
+        // observe the fill only; a stop / liquidation drops the prices beyond the fill that are certain to come after the exit. "Exited at the Open" is
+        // read from the RAW fill price (the sell fill price plus the recorded slippage per unit).
         for (int i = trade.EntryBar; i < trade.ExitBar; i++)
         { high = Math.Max(high, bars[i].High); low = Math.Min(low, bars[i].Low); }
-        if (trade.IsForcedLiquidation || result.Orders.Single(o => o.OrderId == exit.OrderId).Type != OrderType.Market)
-        { high = Math.Max(high, bars[trade.ExitBar].High); low = Math.Min(low, bars[trade.ExitBar].Low); }
-        high = Math.Max(high, exit.Price); low = Math.Min(low, exit.Price);
+        OrderType? exitType = trade.IsForcedLiquidation ? null : result.Orders.Single(o => o.OrderId == exit.OrderId).Type;
+        bool exitedAtOpen = exit.Quantity > 0m && exit.Price + (exit.SlippageAmount / exit.Quantity) == bars[trade.ExitBar].Open;
+        (high, low) = TradeExcursionBounds.ExtendByExitBar(high, low, trade.Side, bars[trade.ExitBar], exit.Price, exitType, trade.IsForcedLiquidation, exitedAtOpen);
         if (trade.EntryTime != entry.FillTime || trade.ExitTime != exit.FillTime
             || trade.Quantity != entry.Quantity || trade.Quantity != exit.Quantity
             || trade.EntryPrice != entry.Price || trade.ExitPrice != exit.Price

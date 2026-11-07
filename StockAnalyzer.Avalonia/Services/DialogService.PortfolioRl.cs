@@ -30,7 +30,8 @@ public partial class DialogService
                     transfer: _serviceProvider.GetRequiredService<IRlPortfolioTransferService>(),
                     periodAdvisor: _serviceProvider.GetService<StockAnalyzer.Core.Services.StoredPeriod.IStoredPeriodAdvisor>(),
                     dialogService: this,
-                    annotationService: _serviceProvider.GetService<StockAnalyzer.Core.Services.IModelMetadataAnnotationService>());
+                    annotationService: _serviceProvider.GetService<StockAnalyzer.Core.Services.IModelMetadataAnnotationService>(),
+                    dataStorageState: _serviceProvider.GetService<StockAnalyzer.Core.Common.IDataStorageState>());
                 var window = new PortfolioRlWindow { DataContext = vm, Icon = desktop.MainWindow.Icon };
                 window.Opened += async (_, _) => await vm.InitializeAsync();
                 window.Closing += (_, _) => vm.Dispose();

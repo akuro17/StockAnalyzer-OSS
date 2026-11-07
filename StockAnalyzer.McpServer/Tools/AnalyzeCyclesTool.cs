@@ -14,7 +14,7 @@ namespace StockAnalyzer.McpServer.Tools;
 
 /// <summary>
 /// sa_analyze_cycles: analyzes cyclical price components and dominant frequency peaks
-/// using pure Fast Fourier Transform (FFT) spectrum analysis in a strictly causal, prefix-invariant manner.
+/// using pure Fast Fourier Transform (FFT) spectrum analysis, causal as of endDate.
 /// </summary>
 internal sealed class AnalyzeCyclesTool : IMcpTool
 {
@@ -44,7 +44,7 @@ internal sealed class AnalyzeCyclesTool : IMcpTool
 
     public string Description =>
         "Analyzes cyclical price components and dominant frequencies using pure Fast Fourier Transform (FFT) spectrum analysis. " +
-        "Output periods are in bars. Strictly causal and prefix-invariant: historical cycles never depend on future bars.";
+        "Output periods are in bars. Causal as of endDate: the spectrum is computed only from bars dated on or before endDate, so later bars never change it.";
 
     public bool IsHeavy => false;
 

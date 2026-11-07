@@ -35,6 +35,11 @@ public enum ScatterMetricInvalidReason
     UnknownIndicator,
     /// <summary>The indicator or the chosen output series carries data of later bars (look-ahead), or has no synchronous output.</summary>
     NotAllowedIndicator,
+    /// <summary>
+    /// An indicator that compares two symbols and reads the DAILY bars of its comparison symbol (<see cref="ScreenerComparisonSymbols.NeedsDailyComparisonBars"/>) on Week or
+    /// Month. Appended last: no earlier member changed its number.
+    /// </summary>
+    TwoTickerNeedsDay,
 }
 
 /// <summary>
@@ -110,9 +115,15 @@ public static class ScatterMetricRules
             return ScatterMetricInvalidReason.UnknownIndicator;
         }
 
-        return BacktestIndicatorEligibility.IsAllowed(source.IndicatorType, source.OutputName)
-            ? ScatterMetricInvalidReason.None
-            : ScatterMetricInvalidReason.NotAllowedIndicator;
+        if (!BacktestIndicatorEligibility.IsAllowed(source.IndicatorType, source.OutputName))
+        {
+            return ScatterMetricInvalidReason.NotAllowedIndicator;
+        }
+
+        // The comparison symbol's bars are daily: a Week or Month metric would be matched against them by the weekly stamp date and give a wrong value silently.
+        return source.TimeFrame != TimeFrame.D1 && ScreenerComparisonSymbols.NeedsDailyComparisonBars(source)
+            ? ScatterMetricInvalidReason.TwoTickerNeedsDay
+            : ScatterMetricInvalidReason.None;
     }
 
     /// <summary>

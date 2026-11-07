@@ -94,9 +94,14 @@ public sealed class ToolInfrastructureTests
             "EXECUTION_BUSY", "JOB_NOT_FOUND", "ARTIFACT_NOT_FOUND", "PYTHON_ENV_MISSING",
             // Added with the path-length check of the sandbox (decision 3-A of the MCP decisions program).
             "SANDBOX_PATH_TOO_LONG",
+            // Added with the arithmetic-failure handling of the backtest tools (owner decision D-8 = C, 2026-11-04).
+            "BACKTEST_ARITHMETIC_OVERFLOW",
+            // Added with the discussion board (--enable-discussion), appended at the end in this order.
+            "DISCUSSION_NOT_FOUND", "DISCUSSION_CLOSED", "PARTICIPANT_NOT_JOINED", "NOT_YOUR_TURN", "RATE_LIMITED", "HUB_RESET", "HUB_UNAVAILABLE",
         };
 
         Assert.Equal(expected.OrderBy(c => c), ToolErrorCodes.All.OrderBy(c => c));
+        Assert.Equal(expected.TakeLast(7), ToolErrorCodes.All.TakeLast(7)); // appended at the END, in the documented order
         Assert.DoesNotContain("INDICATOR_NOT_AVAILABLE_HEADLESS", ToolErrorCodes.All);
     }
 
@@ -111,6 +116,47 @@ public sealed class ToolInfrastructureTests
         string sanitized = new ErrorMessageSanitizer(Array.Empty<string?>()).Sanitize(text);
 
         Assert.Equal("Cannot read <path> now", sanitized);
+    }
+
+    [Theory]
+    [InlineData("Cannot read /opt/app/data/7203.parquet now")]
+    [InlineData("Cannot read /srv/data/7203.parquet now")]
+    [InlineData("Cannot read /etc/stockanalyzer/app.yaml now")]
+    [InlineData("Cannot read /mnt/nas/Data/MSFT.parquet now")]
+    [InlineData("Cannot read /media/usb/Data/MSFT.parquet now")]
+    [InlineData("Cannot read /usr/lib/onnx/libx.so now")]
+    [InlineData("Cannot read /root/.cache/m.onnx now")]
+    [InlineData("Cannot read /proc/1/status now")]
+    [InlineData("Cannot read /run/user/1000/x.sock now")]
+    [InlineData("Cannot read /var/lib/sa/m.onnx now")]
+    [InlineData("Cannot read file:///i:/stock/tickers.json now")]
+    [InlineData("Cannot read file:///opt/app/x.json now")]
+    public void UnixAndFileUriPathShapesAreReplaced(string text)
+    {
+        Assert.Equal("Cannot read <path> now", new ErrorMessageSanitizer(Array.Empty<string?>()).Sanitize(text));
+    }
+
+    [Theory]
+    [InlineData("Cannot read \"/opt/app/m.onnx\" now", "Cannot read \"<path>\" now")]
+    [InlineData("Cannot read path=/opt/app/m.onnx now", "Cannot read path=<path> now")]
+    [InlineData("see (/srv/data/x.parquet)", "see (<path>")]
+    public void APathInsideQuotesOrAfterAnEqualsSignIsReplacedWhereItStarts(string text, string expected)
+    {
+        Assert.Equal(expected, new ErrorMessageSanitizer(Array.Empty<string?>()).Sanitize(text));
+    }
+
+    [Theory]
+    [InlineData("P/E or EV/EBITDA ratio")]
+    [InlineData("pair 7203.T/9984.T is not registered")]
+    [InlineData("date 2024/01/05 is not a trading day")]
+    [InlineData("Choose buy/sell or Up/Down/Neutral")]
+    [InlineData("rate 1/2 and 3/4 of the window")]
+    [InlineData("the /etc folder")]
+    [InlineData("opt/app is relative")]
+    [InlineData("Use sa_get_candles with timeFrame D1/W1/MN1")]
+    public void OrdinaryTextWithSlashesIsLeftAlone(string text)
+    {
+        Assert.Equal(text, new ErrorMessageSanitizer(Array.Empty<string?>()).Sanitize(text));
     }
 
     [Fact]

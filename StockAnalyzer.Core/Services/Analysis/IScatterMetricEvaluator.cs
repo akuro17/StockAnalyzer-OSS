@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -28,6 +29,12 @@ public sealed record ScatterEvaluationResult
 
     /// <summary>The fixed value range of the Y metric, or null when the metric has none.</summary>
     public AxisRange? YFixedRange { get; init; }
+
+    /// <summary>
+    /// The comparison symbols (one spelling per instrument, as the metrics name them, upper case) of a Day metric that compares two symbols and for which no daily bars are
+    /// stored. Such a metric has no value for any ticker. Empty when every comparison symbol has bars, or when no metric names one.
+    /// </summary>
+    public IReadOnlyList<string> MissingComparisonSymbols { get; init; } = Array.Empty<string>();
 }
 
 /// <summary>

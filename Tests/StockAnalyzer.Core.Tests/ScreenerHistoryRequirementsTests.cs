@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Text.Json;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Indicators;
+using StockAnalyzer.Core.Models.Parameters;
 using StockAnalyzer.Core.Models.Portfolio;
 using StockAnalyzer.Core.Models.Screener;
 using StockAnalyzer.Core.Services;
@@ -229,6 +231,122 @@ public class ScreenerHistoryRequirementsTests
             (ScreenerHistoryRequirements.UnknownConditionPeriod * IndicatorDefaultConstants.EmaConvergenceMultiplier) + ScreenerHistoryRequirements.HistoryMarginBars,
             ScreenerHistoryRequirements.GetRequiredCandleCount(condition));
         Assert.Equal(1100, ScreenerHistoryRequirements.GetRequiredCandleCount(condition));
+    }
+
+    // ===== G-1 / G1-T2: a Ratiocator in NormalizedRatio mode takes its base (R_0) from the FIRST bar it is given, so it needs the whole stored history =====
+
+    private static ScreenerIndicatorEntry RatiocatorEntry(string key, object? mode, RightHandTargetMode targetMode = RightHandTargetMode.NumericValue)
+    {
+        var parameters = new Dictionary<string, object> { { "ComparisonSymbol", "SPY" }, { "LookbackPeriod", 20 } };
+        if (mode is not null)
+        {
+            parameters[key] = mode;
+        }
+
+        return new ScreenerIndicatorEntry
+        {
+            LeftHand = new ScreenerIndicatorSideConfig { IndicatorType = IndicatorType.Ratiocator, Parameters = parameters },
+            TargetMode = targetMode,
+        };
+    }
+
+    private static object JsonValue(string json) => JsonDocument.Parse(json).RootElement.Clone();
+
+    public static IEnumerable<object?[]> NormalizedRatioForms()
+    {
+        yield return new object?[] { "CalculationMode", RatiocatorCalculationMode.NormalizedRatio };
+        yield return new object?[] { "CalculationMode", "NormalizedRatio" };
+        yield return new object?[] { "CalculationMode", "normalizedratio" };
+        yield return new object?[] { "calculationmode", "NORMALIZEDRATIO" };
+        yield return new object?[] { "CalculationMode", " NormalizedRatio " };
+        yield return new object?[] { "CalculationMode", JsonValue("\"NormalizedRatio\"") };
+        yield return new object?[] { "CalculationMode", 1 };
+        yield return new object?[] { "CalculationMode", 1L };
+        yield return new object?[] { "CalculationMode", JsonValue("1") };
+        yield return new object?[] { "CalculationMode", "1" };
+    }
+
+    public static IEnumerable<object?[]> OtherModes()
+    {
+        yield return new object?[] { "CalculationMode", RatiocatorCalculationMode.RollingRatio };
+        yield return new object?[] { "CalculationMode", RatiocatorCalculationMode.RawRatio };
+        yield return new object?[] { "CalculationMode", "RollingRatio" };
+        yield return new object?[] { "CalculationMode", "RawRatio" };
+        yield return new object?[] { "CalculationMode", JsonValue("\"RollingRatio\"") };
+        yield return new object?[] { "CalculationMode", 0 };
+        yield return new object?[] { "CalculationMode", 2 };
+        yield return new object?[] { "CalculationMode", JsonValue("2") };
+        yield return new object?[] { "CalculationMode", "not a mode" };
+        yield return new object?[] { "CalculationMode", true };
+        yield return new object?[] { "LookbackPeriod", 1 };
+        yield return new object?[] { "OtherKey", "NormalizedRatio" };
+    }
+
+    [Theory]
+    [MemberData(nameof(NormalizedRatioForms))]
+    public void GetRequiredCandleCount_RatiocatorInNormalizedRatioMode_NeedsTheWholeHistory_InEverySavedForm(string key, object mode)
+    {
+        ScreenerIndicatorEntry entry = RatiocatorEntry(key, mode);
+
+        Assert.Equal(0, ScreenerHistoryRequirements.GetRequiredCandleCount(entry));
+        Assert.True(ScreenerHistoryRequirements.RequiresFullHistory(entry));
+    }
+
+    [Theory]
+    [MemberData(nameof(OtherModes))]
+    public void GetRequiredCandleCount_RatiocatorInAnotherModeOrWithoutAMode_KeepsTheOrdinaryCount(string key, object mode)
+    {
+        ScreenerIndicatorEntry entry = RatiocatorEntry(key, mode);
+
+        Assert.True(ScreenerHistoryRequirements.GetRequiredCandleCount(entry) > 0);
+        Assert.False(ScreenerHistoryRequirements.RequiresFullHistory(entry));
+    }
+
+    [Fact]
+    public void GetRequiredCandleCount_RatiocatorWithoutAnyModeParameter_KeepsTheOrdinaryCount()
+    {
+        ScreenerIndicatorEntry entry = RatiocatorEntry("CalculationMode", null);
+
+        Assert.Equal(ScreenerHistoryRequirements.DefaultStandardCandleCount, ScreenerHistoryRequirements.GetRequiredCandleCount(entry));
+        Assert.False(ScreenerHistoryRequirements.RequiresFullHistory(entry));
+    }
+
+    [Fact]
+    public void GetRequiredCandleCount_ANormalizedRatioOnTheRightSideOrInATree_NeedsTheWholeHistory()
+    {
+        ScreenerIndicatorEntry right = new()
+        {
+            LeftHand = new ScreenerIndicatorSideConfig { IndicatorType = IndicatorType.SMA, Parameters = new Dictionary<string, object> { { "Period", 20 } } },
+            TargetMode = RightHandTargetMode.Indicator,
+            RightHand = RatiocatorEntry("CalculationMode", "NormalizedRatio").LeftHand,
+        };
+        Assert.Equal(0, ScreenerHistoryRequirements.GetRequiredCandleCount(right));
+
+        // The right side is only read when the entry compares against an indicator.
+        right.TargetMode = RightHandTargetMode.NumericValue;
+        Assert.Equal(ScreenerHistoryRequirements.DefaultStandardCandleCount, ScreenerHistoryRequirements.GetRequiredCandleCount(right));
+
+        var tree = new ScreenerConditionTreeCondition(new ScreenerConditionGroup(
+            LogicalOperator.And,
+            ImmutableArray.Create<IScreenerConditionNode>(
+                new ScreenerConditionLeaf(RatiocatorEntry("CalculationMode", RatiocatorCalculationMode.RollingRatio)),
+                new ScreenerConditionLeaf(RatiocatorEntry("CalculationMode", RatiocatorCalculationMode.NormalizedRatio)))));
+        Assert.Equal(0, ScreenerHistoryRequirements.GetRequiredCandleCount(tree));
+    }
+
+    [Fact]
+    public void GetRequiredCandleCount_OnlyRatiocatorIsAffected_AnotherTypeWithTheSameParameterKeepsItsCount()
+    {
+        var entry = new ScreenerIndicatorEntry
+        {
+            LeftHand = new ScreenerIndicatorSideConfig
+            {
+                IndicatorType = IndicatorType.PairRatio,
+                Parameters = new Dictionary<string, object> { { "CalculationMode", "NormalizedRatio" } },
+            },
+        };
+
+        Assert.Equal(ScreenerHistoryRequirements.DefaultStandardCandleCount, ScreenerHistoryRequirements.GetRequiredCandleCount(entry));
     }
 
     [Theory]

@@ -212,4 +212,30 @@ public sealed class AnalyzeMarketStructureToolTests : IDisposable
         // timeFrame required
         Assert.Equal("INVALID_ARGUMENT", ErrorCode(await McpTestSupport.CallAsync(dispatcher, "sa_analyze_market_structure", $"{{\"symbol\":\"{Symbol}\"}}")!));
     }
+
+    [Theory]
+    [InlineData(",\"leftStrength\":2")]
+    [InlineData(",\"rightStrength\":9")]
+    [InlineData(",\"leftStrength\":2,\"rightStrength\":9")]
+    public async Task MarketStructure_StrengthGiven_WarnsThatItIsIgnored_AndDoesNotChangeTheResult(string strengthArguments)
+    {
+        var dispatcher = await StartAsync();
+        string baseline = Result(await CallAsync(dispatcher, ",\"zigzagThresholdPercent\":3.0,\"outputTailCount\":100")).GetProperty("pivots").ToString();
+        JsonElement result = Result(await CallAsync(dispatcher, ",\"zigzagThresholdPercent\":3.0,\"outputTailCount\":100" + strengthArguments));
+
+        string[] warnings = result.GetProperty("warnings").EnumerateArray().Select(w => w.GetString()!).ToArray();
+        Assert.Contains(StockAnalyzer.McpServer.Tools.AnalyzeMarketStructureTool.IgnoredStrengthWarning, warnings);
+        // Non-vacuity: the fixture produces pivots, so equal output is a real statement, and the strengths really are not read.
+        Assert.NotEqual("[]", baseline);
+        Assert.Equal(baseline, result.GetProperty("pivots").ToString());
+    }
+
+    [Fact]
+    public async Task MarketStructure_StrengthNotGiven_HasNoWarning()
+    {
+        var dispatcher = await StartAsync();
+        JsonElement result = Result(await CallAsync(dispatcher, ",\"zigzagThresholdPercent\":3.0"));
+
+        Assert.False(result.TryGetProperty("warnings", out _));
+    }
 }

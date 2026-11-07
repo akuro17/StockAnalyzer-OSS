@@ -1,6 +1,8 @@
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
+using StockAnalyzer.Core.MathUtils;
 using StockAnalyzer.Core.Models;
 
 namespace StockAnalyzer.Core.Analysis;
@@ -203,18 +205,63 @@ public static class SsaSupportResistanceEngine
         double slope = decomp.Slope;
         double intercept = decomp.Intercept;
 
-        Span<double> processed = stackalloc double[n];
-        SsaDecompositionEngine.Detrend(sampleArray, processed, detrendMode, out _, out _);
-
         double cumulativeVariance = 0.0;
         for (int m = 0; m < r; m++)
         {
             cumulativeVariance += decomp.ComponentEnergies[m];
         }
 
-        // 3. In-Sample Signal Reconstruction via Diagonal Averaging
+        // 3. In-Sample Signal Reconstruction via Diagonal Averaging, and the Separability Score (both read the
+        // detrended series). Short series live on the stack, longer ones are rented so the stack use stays bounded
+        // (MathBufferLimits). Detrend overwrites all n elements, so the unzeroed rented array is never read unwritten.
         double[] reconstructed = new double[n];
-        SsaDecompositionEngine.ReconstructGroup(processed, l, k, decomp.SortedIndices.AsSpan(0, r), decomp.Eigenvectors, reconstructed);
+        double separabilityScore = 100.0;
+        double[]? rentedProcessed = null;
+        Span<double> processed = (n <= MathBufferLimits.StackAllocThreshold)
+            ? stackalloc double[n]
+            : (rentedProcessed = ArrayPool<double>.Shared.Rent(n)).AsSpan(0, n);
+        try
+        {
+            SsaDecompositionEngine.Detrend(sampleArray, processed, detrendMode, out _, out _);
+            SsaDecompositionEngine.ReconstructGroup(processed, l, k, decomp.SortedIndices.AsSpan(0, r), decomp.Eigenvectors, reconstructed);
+
+            if (r > 1)
+            {
+                double[] allRecon = new double[r * n];
+                for (int m = 0; m < r; m++)
+                {
+                    int eigIdx = decomp.SortedIndices[m];
+                    Span<int> singleIdx = stackalloc int[1] { eigIdx };
+                    SsaDecompositionEngine.ReconstructGroup(processed, l, k, singleIdx, decomp.Eigenvectors, allRecon.AsSpan(m * n, n));
+                }
+                // r * r doubles: r can reach the embedding dimension (an MCP argument), so the matrix is pooled above the stackalloc threshold.
+                // ComputeWCorrelationMatrix writes every element, so the unzeroed rented array is never read unwritten.
+                int wCorrLength = r * r;
+                double[]? rentedWCorr = null;
+                Span<double> wCorr = (wCorrLength <= MathBufferLimits.StackAllocThreshold)
+                    ? stackalloc double[wCorrLength]
+                    : (rentedWCorr = ArrayPool<double>.Shared.Rent(wCorrLength)).AsSpan(0, wCorrLength);
+                try
+                {
+                    SsaDiagnostics.ComputeWCorrelationMatrix(allRecon, r, n, l, wCorr);
+                    separabilityScore = SsaDiagnostics.ComputeSeparabilityScore(wCorr, r);
+                }
+                finally
+                {
+                    if (rentedWCorr != null)
+                    {
+                        ArrayPool<double>.Shared.Return(rentedWCorr);
+                    }
+                }
+            }
+        }
+        finally
+        {
+            if (rentedProcessed != null)
+            {
+                ArrayPool<double>.Shared.Return(rentedProcessed);
+            }
+        }
 
         // Center curve: \tilde{x}_t = reconstructed[t] + (intercept + slope * t)
         var centerPoints = new List<Point>(n);
@@ -234,22 +281,6 @@ public static class SsaSupportResistanceEngine
             sumSqErr += diff * diff;
         }
         double residualStdDev = Math.Max(MinClusterToleranceEpsilon, Math.Sqrt(sumSqErr / n));
-
-        // Separability Score
-        double separabilityScore = 100.0;
-        if (r > 1)
-        {
-            double[] allRecon = new double[r * n];
-            for (int m = 0; m < r; m++)
-            {
-                int eigIdx = decomp.SortedIndices[m];
-                Span<int> singleIdx = stackalloc int[1] { eigIdx };
-                SsaDecompositionEngine.ReconstructGroup(processed, l, k, singleIdx, decomp.Eigenvectors, allRecon.AsSpan(m * n, n));
-            }
-            Span<double> wCorr = stackalloc double[r * r];
-            SsaDiagnostics.ComputeWCorrelationMatrix(allRecon, r, n, l, wCorr);
-            separabilityScore = SsaDiagnostics.ComputeSeparabilityScore(wCorr, r);
-        }
 
         // Stability nu2
         double nu2 = 0.0;
@@ -373,6 +404,13 @@ public static class SsaSupportResistanceEngine
     }
 
     /// <summary>
+    /// The price distance within which two extrema are merged into one level (StructuralPivots mode): the clusterTolerance multiplier times the
+    /// residual standard deviation of the reconstruction, never below <see cref="MinClusterToleranceEpsilon"/>. The one definition, also reported by the MCP tool.
+    /// </summary>
+    public static double EffectiveClusterTolerance(double clusterToleranceMultiplier, double residualStdDev)
+        => Math.Max(MinClusterToleranceEpsilon, clusterToleranceMultiplier * residualStdDev);
+
+    /// <summary>
     /// Mode 1: Plateau-safe local extrema extraction and 1D clustering into horizontal levels.
     /// </summary>
     private static void ComputeStructuralPivots(
@@ -428,7 +466,7 @@ public static class SsaSupportResistanceEngine
             }
         }
 
-        double deltaCluster = Math.Max(MinClusterToleranceEpsilon, clusterToleranceMultiplier * residualStdDev);
+        double deltaCluster = EffectiveClusterTolerance(clusterToleranceMultiplier, residualStdDev);
 
         // 3. Cluster peak candidates into Resistance levels with formatted labels
         var clusteredPeaks = ClusterExtrema(peakCandidates, deltaCluster, n, timestamps, isResistance: true);

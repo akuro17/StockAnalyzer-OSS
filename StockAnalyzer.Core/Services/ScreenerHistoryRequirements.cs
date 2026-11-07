@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text.Json;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Indicators;
+using StockAnalyzer.Core.Models.Parameters;
 using StockAnalyzer.Core.Models.Screener;
 using StockAnalyzer.Core.Models.ScreeningConditions;
 
@@ -119,8 +120,65 @@ public static class ScreenerHistoryRequirements
             }
         }
 
+        // A Ratiocator in NormalizedRatio mode takes its base (R_0) from the first valid bar it is given: with a history cut at a length that depends on the other
+        // conditions of the scan, its value would depend on them. The whole stored history makes the value a property of the stored data alone.
+        return type == IndicatorType.Ratiocator && NamesNormalizedRatioMode(side.Parameters);
+    }
+
+    private static readonly string RatiocatorModeParameterName = nameof(CoreRatiocatorParameter.CalculationMode);
+
+    /// <summary>
+    /// True when <paramref name="parameters"/> holds a <c>CalculationMode</c> (the key is not case-sensitive) that means
+    /// <see cref="RatiocatorCalculationMode.NormalizedRatio"/>, in any form a side keeps it in: the enum value, its name (any case, trimmed; a numeric text counts as the
+    /// number), a JSON string, or the number of the member (an integer, a JSON number). A value that is none of these is another mode or not a mode.
+    /// </summary>
+    private static bool NamesNormalizedRatioMode(IReadOnlyDictionary<string, object>? parameters)
+    {
+        if (parameters == null)
+        {
+            return false;
+        }
+
+        foreach (KeyValuePair<string, object> parameter in parameters)
+        {
+            if (!string.Equals(parameter.Key, RatiocatorModeParameterName, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            switch (parameter.Value)
+            {
+                case RatiocatorCalculationMode mode:
+                    return mode == RatiocatorCalculationMode.NormalizedRatio;
+                case string text:
+                    return IsNormalizedRatioText(text);
+                case JsonElement { ValueKind: JsonValueKind.String } element:
+                    return IsNormalizedRatioText(element.GetString());
+                case JsonElement { ValueKind: JsonValueKind.Number } element:
+                    return element.TryGetInt64(out long number) && number == (long)RatiocatorCalculationMode.NormalizedRatio;
+                case bool:
+                    return false;
+                case IConvertible convertible:
+                    try
+                    {
+                        return convertible.ToDecimal(System.Globalization.CultureInfo.InvariantCulture) == (decimal)RatiocatorCalculationMode.NormalizedRatio;
+                    }
+                    catch (Exception ex) when (ex is FormatException or InvalidCastException or OverflowException)
+                    {
+                        return false;
+                    }
+                default:
+                    return false;
+            }
+        }
+
         return false;
     }
+
+    private static bool IsNormalizedRatioText(string? text)
+        => !string.IsNullOrWhiteSpace(text)
+           && Enum.TryParse(text.Trim(), ignoreCase: true, out RatiocatorCalculationMode mode)
+           && mode == RatiocatorCalculationMode.NormalizedRatio;
 
     private static int GetMaxPeriod(IScreeningCondition condition)
     {

@@ -114,6 +114,13 @@ public sealed class BacktestReportOptions
     }
 
     /// <summary>
+    /// False leaves <see cref="BacktestReport.AnnualizedSortinoAutocorrelationAdjusted"/> (and its confidence interval) uncomputed - <c>NotApplicable / NotRequested</c> - and skips the
+    /// bootstrap, which is most of the CPU time of a report. Default true (every normal run). Set only by internal sweeps (sa_optimize_backtest, sa_run_walk_forward) whose objective
+    /// is not that metric (owner decision D-6 = A, 2026-11-04); it changes the report identity of those runs, never their trades, fills or run fingerprint.
+    /// </summary>
+    public bool ComputeAdjustedSortinoBootstrap { get; init; } = true;
+
+    /// <summary>
     /// Optional (owner decision G5): the run's identity frozen BEFORE the run from the very input/configuration/strategy the engine received
     /// (<see cref="BacktestRunFingerprintBuilder.Freeze"/>). The generator seals it with the result - which checks the configuration and strategy name only and
     /// cannot verify the source bars, so the owned evaluation service, not this option, is what prevents a foreign result - and
@@ -203,6 +210,7 @@ public sealed class BacktestReportOptions
             AnnualMAR = AnnualMAR,
             BootstrapSeed = BootstrapSeed,
             BootstrapIterations = BootstrapIterations,
+            ComputeAdjustedSortinoBootstrap = ComputeAdjustedSortinoBootstrap,
             RunFingerprintBuilder = builder,
         };
     }

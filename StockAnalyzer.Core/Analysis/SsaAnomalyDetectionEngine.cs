@@ -1,6 +1,8 @@
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
+using StockAnalyzer.Core.MathUtils;
 using StockAnalyzer.Core.Models;
 
 namespace StockAnalyzer.Core.Analysis;
@@ -189,12 +191,60 @@ public static class SsaAnomalyDetectionEngine
         }
 
         // 3. Reconstruct normal structural components in detrended domain
-        Span<double> processed = stackalloc double[n];
-        SsaDecompositionEngine.Detrend(cleanSamples, processed, detrendMode, out double slope, out double intercept);
-
+        // The detrended series is read by the reconstruction and by the Separability Score. Short series live on the
+        // stack, longer ones are rented so the stack use stays bounded (MathBufferLimits). Detrend overwrites all n
+        // elements, so the unzeroed rented array is never read unwritten.
         int[] selectedComponentIndices = decomp.SortedIndices.Take(r).ToArray();
         double[] reconstructedDetrended = new double[n];
-        SsaDecompositionEngine.ReconstructGroup(processed, l, k, selectedComponentIndices, decomp.Eigenvectors, reconstructedDetrended);
+        double slope;
+        double intercept;
+        double separabilityScore = 100.0;
+        double[]? rentedProcessed = null;
+        Span<double> processed = (n <= MathBufferLimits.StackAllocThreshold)
+            ? stackalloc double[n]
+            : (rentedProcessed = ArrayPool<double>.Shared.Rent(n)).AsSpan(0, n);
+        try
+        {
+            SsaDecompositionEngine.Detrend(cleanSamples, processed, detrendMode, out slope, out intercept);
+            SsaDecompositionEngine.ReconstructGroup(processed, l, k, selectedComponentIndices, decomp.Eigenvectors, reconstructedDetrended);
+
+            if (r > 1)
+            {
+                double[] allRecon = new double[r * n];
+                for (int m = 0; m < r; m++)
+                {
+                    int eigIdx = decomp.SortedIndices[m];
+                    Span<int> singleIdx = stackalloc int[1] { eigIdx };
+                    SsaDecompositionEngine.ReconstructGroup(processed, l, k, singleIdx, decomp.Eigenvectors, allRecon.AsSpan(m * n, n));
+                }
+                // r * r doubles: r can reach the embedding dimension, so the matrix is pooled above the stackalloc threshold.
+                // ComputeWCorrelationMatrix writes every element, so the unzeroed rented array is never read unwritten.
+                int wCorrLength = r * r;
+                double[]? rentedWCorr = null;
+                Span<double> wCorr = (wCorrLength <= MathBufferLimits.StackAllocThreshold)
+                    ? stackalloc double[wCorrLength]
+                    : (rentedWCorr = ArrayPool<double>.Shared.Rent(wCorrLength)).AsSpan(0, wCorrLength);
+                try
+                {
+                    SsaDiagnostics.ComputeWCorrelationMatrix(allRecon, r, n, l, wCorr);
+                    separabilityScore = SsaDiagnostics.ComputeSeparabilityScore(wCorr, r);
+                }
+                finally
+                {
+                    if (rentedWCorr != null)
+                    {
+                        ArrayPool<double>.Shared.Return(rentedWCorr);
+                    }
+                }
+            }
+        }
+        finally
+        {
+            if (rentedProcessed != null)
+            {
+                ArrayPool<double>.Shared.Return(rentedProcessed);
+            }
+        }
 
         // 4. Restore original price scale: \tilde{x}_t = \tilde{y}_t + (\alpha + \beta * t)
         double[] reconstructed = new double[n];
@@ -235,21 +285,7 @@ public static class SsaAnomalyDetectionEngine
             }
         }
 
-        // 6. Separability Score
-        double separabilityScore = 100.0;
-        if (r > 1)
-        {
-            double[] allRecon = new double[r * n];
-            for (int m = 0; m < r; m++)
-            {
-                int eigIdx = decomp.SortedIndices[m];
-                Span<int> singleIdx = stackalloc int[1] { eigIdx };
-                SsaDecompositionEngine.ReconstructGroup(processed, l, k, singleIdx, decomp.Eigenvectors, allRecon.AsSpan(m * n, n));
-            }
-            Span<double> wCorr = stackalloc double[r * r];
-            SsaDiagnostics.ComputeWCorrelationMatrix(allRecon, r, n, l, wCorr);
-            separabilityScore = SsaDiagnostics.ComputeSeparabilityScore(wCorr, r);
-        }
+        // 6. Separability Score is computed together with the reconstruction above (same scratch series).
 
         // 7. Hysteresis State Machine with Direct Reversal
         var intervals = new List<SsaAnomalyInterval>();

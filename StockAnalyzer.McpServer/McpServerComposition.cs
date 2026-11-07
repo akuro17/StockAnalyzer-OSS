@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using StockAnalyzer.Core.Common;
+using StockAnalyzer.Core.Discussion;
 using StockAnalyzer.Core.Execution;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Indicators;
@@ -17,6 +18,7 @@ using StockAnalyzer.McpServer.Limits;
 using StockAnalyzer.McpServer.Protocol;
 using StockAnalyzer.McpServer.Resources;
 using StockAnalyzer.McpServer.Tools;
+using StockAnalyzer.McpServer.Tools.Discussion;
 
 namespace StockAnalyzer.McpServer;
 
@@ -58,10 +60,19 @@ internal static class McpServerComposition
 
     /// <summary>The same file the GUI reads, next to the executable; it is optional, every value has a default.</summary>
     public static IConfiguration LoadConfiguration(string baseDirectory)
-        => new ConfigurationBuilder()
+    {
+        var builder = new ConfigurationBuilder()
             .SetBasePath(baseDirectory)
-            .AddJsonFile(ConfigurationFileName, optional: true, reloadOnChange: false)
-            .Build();
+            .AddJsonFile(ConfigurationFileName, optional: true, reloadOnChange: false);
+
+        string userSettingsPath = PathDiscovery.ResolveConfigPathWithoutCreating(Core.Models.Settings.McpServerSettings.UserConfigFileName);
+        if (File.Exists(userSettingsPath))
+        {
+            builder.AddJsonFile(userSettingsPath, optional: true, reloadOnChange: false);
+        }
+
+        return builder.Build();
+    }
 
     /// <summary>
     /// The "RlPortfolio" section (defaults when absent), checked at start-up against the same limits as the GUI. A value outside the standard band runs and is
@@ -96,6 +107,11 @@ internal static class McpServerComposition
     /// <param name="executionGateway">Only for tests: the gateway the execution tools use instead of the real one.</param>
     /// <param name="workspaceSource">Only for tests: the workspace source used instead of reading the application's default workspace file.</param>
     /// <param name="rlRegistry">Only for tests: the RL model registry used instead of the application's default registry.</param>
+    /// <param name="gatewayWrapper">Only for tests: wraps the read-only gateway every data tool uses (a decorator that forwards the calls and changes a result).</param>
+    /// <param name="enableDiscussion">Offer the discussion tools (<c>--enable-discussion</c>) and record every tool call in the command log; without it neither exists and the discussion settings are never read. The board itself is built when the first discussion tool is called.</param>
+    /// <param name="discussionGateway">Only for tests: the gateway the discussion tools use instead of the real board.</param>
+    /// <param name="timeProvider">Only for tests: the clock of the board and the command log.</param>
+    /// <param name="commandLog">Only for tests: the command log instead of the real one.</param>
     public static McpServerRuntime Create(
         IConfiguration configuration,
         LogSink log,
@@ -104,7 +120,12 @@ internal static class McpServerComposition
         bool enableExecution = false,
         ISandboxedExecutionGateway? executionGateway = null,
         IReadOnlyWorkspaceSource? workspaceSource = null,
-        IRlModelGenerationRegistry? rlRegistry = null)
+        IRlModelGenerationRegistry? rlRegistry = null,
+        Func<IReadOnlyStockAnalyzerGateway, IReadOnlyStockAnalyzerGateway>? gatewayWrapper = null,
+        bool enableDiscussion = false,
+        IDiscussionGateway? discussionGateway = null,
+        TimeProvider? timeProvider = null,
+        ICommandLog? commandLog = null)
     {
         McpLimits limits = configuration.GetSection(McpLimits.SectionName).Get<McpLimits>() ?? new McpLimits();
         McpLimitsContract.Validate(limits);
@@ -118,6 +139,27 @@ internal static class McpServerComposition
             // The gateway's information log (job ids and states) goes to standard error; the orchestrator's own log is not routed anywhere.
             collection.AddSingleton<ILogger<SandboxedExecutionGateway>>(new LogSinkLogger<SandboxedExecutionGateway>(log));
             collection.AddStockAnalyzerSandboxedExecution(configuration);
+        }
+
+        if (enableDiscussion)
+        {
+            // Test replacements are registered first: the registration below only fills what is still missing.
+            if (timeProvider is not null)
+            {
+                collection.AddSingleton(timeProvider);
+            }
+
+            if (commandLog is not null)
+            {
+                collection.AddSingleton(commandLog);
+            }
+
+            if (discussionGateway is not null)
+            {
+                collection.AddSingleton(discussionGateway);
+            }
+
+            collection.AddStockAnalyzerDiscussion(configuration, log.Info, log.Error, McpDisclaimerConstants.ResearchNotAdvice);
         }
 
         // The portfolio preflight reads the same configured market-data folders as the other tools (not only the fixed Data folders).
@@ -155,7 +197,12 @@ internal static class McpServerComposition
             var sanitizer = new ErrorMessageSanitizer(KnownRoots(marketData));
             // The replay tools read the same configured market-data folders as the other data tools (not only the fixed Data folders).
             RlLocalSourceFolders rlSourceFolders = RlLocalSourceFolders.FromSettings(marketData);
-            var gateway = services.GetRequiredService<IReadOnlyStockAnalyzerGateway>();
+            IReadOnlyStockAnalyzerGateway gateway = services.GetRequiredService<IReadOnlyStockAnalyzerGateway>();
+            if (gatewayWrapper is not null)
+            {
+                gateway = gatewayWrapper(gateway);
+            }
+
             var factory = services.GetRequiredService<IIndicatorFactory>();
             var catalogProvider = new ScreenerCatalogProvider();
             var catalog = new IndicatorCatalog(factory, catalogProvider);
@@ -174,6 +221,12 @@ internal static class McpServerComposition
             {
                 throw new ExecutionLimitsException(
                     $"{SandboxedExecutionSettings.SectionName}:{nameof(SandboxedExecutionSettings.MaxPredictionBars)} is {executionSettings.MaxPredictionBars}; it must be at most {McpLimits.SectionName}:{nameof(McpLimits.MaxCandlesPerRequest)} ({limits.MaxCandlesPerRequest}).");
+            }
+
+            DiscussionSettings? discussionSettings = enableDiscussion ? services.GetRequiredService<DiscussionSettings>() : null;
+            if (discussionSettings is not null)
+            {
+                DiscussionSettingsValidator.ValidateAgainstHost(discussionSettings, limits.MaxResponseBytes, limits.ToolTimeoutSeconds);
             }
 
             var capabilitiesTool = new GetCapabilitiesTool(catalog, screenerCatalog, executionSettings);
@@ -200,6 +253,7 @@ internal static class McpServerComposition
                 new RunPortfolioBacktestTool(gateway, groupResolver, symbols, backtestBinder, limits),
                 new CalculateReverseWatchTool(gateway, symbols, limits),
                 new CalculateChartSeriesTool(gateway, symbols, limits),
+                new RenderChartImageTool(gateway, symbols, catalog, indicatorBinder, new IndicatorChainPlan(factory), limits),
                 new CalculateVolumeProfileTool(gateway, symbols, limits),
                 new AnalyzeMarketStructureTool(gateway, symbols, limits),
                 new FindSupportResistanceTool(gateway, symbols, limits),
@@ -246,6 +300,25 @@ internal static class McpServerComposition
                 tools.Add(new GetModelAttentionTool(gateway, symbols, settings: settings, registry: modelRegistry, limits: limits, sanitizer: sanitizer));
             }
 
+            ClientIdentity? identity = null;
+            IToolCallObserver? observer = null;
+            McpToolRegistry? registryOfTools = null; // the analysis snapshot tool looks tools up by name, and is itself one of them
+            if (discussionSettings is not null)
+            {
+                identity = new ClientIdentity();
+                observer = new CommandLogObserver(services.GetRequiredService<ICommandLog>());
+                IDiscussionGateway board = new DeferredDiscussionGateway(services);
+                tools.Add(new DiscussionCreateTool(board, identity));
+                tools.Add(new DiscussionJoinTool(board, identity));
+                tools.Add(new DiscussionLeaveTool(board, identity));
+                tools.Add(new DiscussionPostTool(board, identity, discussionSettings));
+                tools.Add(new DiscussionReadTool(board, identity, discussionSettings));
+                tools.Add(new DiscussionStatusTool(board, identity));
+                tools.Add(new DiscussionCloseTool(board, identity));
+                tools.Add(new DiscussionAttachAnalysisTool(board, identity, () => registryOfTools!));
+                tools.Add(new DiscussionGetAnalysisTool(board, identity));
+            }
+
             var resources = new McpResourceRegistry(new[]
             {
                 new McpResource(
@@ -269,7 +342,8 @@ internal static class McpServerComposition
             });
 
             var registry = new McpToolRegistry(tools);
-            var dispatcher = new McpMessageDispatcher(log, registry, new ToolExecutor(limits, sanitizer, log), resources);
+            registryOfTools = registry;
+            var dispatcher = new McpMessageDispatcher(log, registry, new ToolExecutor(limits, sanitizer, log, observer), resources, identity);
             return new McpServerRuntime(services, limits, dispatcher, registry, prepareExecution);
         }
         catch

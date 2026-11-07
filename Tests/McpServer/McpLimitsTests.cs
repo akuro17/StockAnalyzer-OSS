@@ -52,6 +52,15 @@ public class McpLimitsTests
         Assert.Equal(100, limits.MaxProjectionBars);
         Assert.Equal(50, limits.MaxSeasonalityYears);
         Assert.Equal(100, limits.MaxListedModels);
+        Assert.Equal(1920, limits.MaxChartImageWidth);
+        Assert.Equal(1200, limits.MaxChartImageHeight);
+        Assert.Equal(1200, limits.DefaultChartImageWidth);
+        Assert.Equal(800, limits.DefaultChartImageHeight);
+        Assert.Equal(500, limits.MaxChartImageBars);
+        Assert.Equal(200, limits.DefaultChartImageBars);
+        Assert.Equal(5, limits.MaxImageOverlays);
+        Assert.Equal(50, limits.MaxImageMarkers);
+        Assert.Equal(200, limits.MaxImageBarsListed);
         Assert.Equal(WatchlistConstants.MaxRelativePerformanceTargets, limits.MaxComparisonTargets);
         Assert.Equal(1, McpLimitsContract.MaxConcurrentToolCalls);
     }
@@ -125,6 +134,24 @@ public class McpLimitsTests
         { nameof(McpLimits.MaxBreadthSymbols), 5001 },
         { nameof(McpLimits.MaxListedModels), 0 },
         { nameof(McpLimits.MaxListedModels), 1001 },
+        { nameof(McpLimits.MaxChartImageWidth), 319 },
+        { nameof(McpLimits.MaxChartImageWidth), 4097 },
+        { nameof(McpLimits.MaxChartImageHeight), 239 },
+        { nameof(McpLimits.MaxChartImageHeight), 4097 },
+        { nameof(McpLimits.DefaultChartImageWidth), 319 },
+        { nameof(McpLimits.DefaultChartImageWidth), 1921 },
+        { nameof(McpLimits.DefaultChartImageHeight), 239 },
+        { nameof(McpLimits.DefaultChartImageHeight), 1201 },
+        { nameof(McpLimits.MaxChartImageBars), 0 },
+        { nameof(McpLimits.MaxChartImageBars), 5001 },
+        { nameof(McpLimits.DefaultChartImageBars), 0 },
+        { nameof(McpLimits.DefaultChartImageBars), 501 },
+        { nameof(McpLimits.MaxImageOverlays), 0 },
+        { nameof(McpLimits.MaxImageOverlays), 17 },
+        { nameof(McpLimits.MaxImageMarkers), -1 },
+        { nameof(McpLimits.MaxImageMarkers), 501 },
+        { nameof(McpLimits.MaxImageBarsListed), -1 },
+        { nameof(McpLimits.MaxImageBarsListed), 5001 },
     };
 
     [Theory]
@@ -153,6 +180,38 @@ public class McpLimitsTests
             Assert.Throws<McpLimitsException>(() => McpLimitsContract.Validate(new McpLimits { MaxOutputTailBars = 20, DefaultOutputTailBars = 21 })).Key);
         Assert.Equal(nameof(McpLimits.DefaultTickerPageSize),
             Assert.Throws<McpLimitsException>(() => McpLimitsContract.Validate(new McpLimits { MaxTickersPerPage = 50, DefaultTickerPageSize = 51 })).Key);
+    }
+
+    [Fact]
+    public void TheImageLimitsAreRelatedAndTheBarLimitInForceFollowsTheRequestWindow_WithoutRefusingASmallRequestLimit()
+    {
+        Assert.Equal(nameof(McpLimits.DefaultChartImageWidth),
+            Assert.Throws<McpLimitsException>(() => McpLimitsContract.Validate(new McpLimits { MaxChartImageWidth = 800, DefaultChartImageWidth = 801 })).Key);
+        Assert.Equal(nameof(McpLimits.DefaultChartImageHeight),
+            Assert.Throws<McpLimitsException>(() => McpLimitsContract.Validate(new McpLimits { MaxChartImageHeight = 600, DefaultChartImageHeight = 601 })).Key);
+        Assert.Equal(nameof(McpLimits.DefaultChartImageBars),
+            Assert.Throws<McpLimitsException>(() => McpLimitsContract.Validate(new McpLimits { MaxChartImageBars = 100, DefaultChartImageBars = 101 })).Key);
+
+        Assert.Equal(500, McpLimitsContract.EffectiveMaxChartImageBars(new McpLimits()));
+        Assert.Equal(200, McpLimitsContract.EffectiveDefaultChartImageBars(new McpLimits()));
+
+        // MaxCandlesPerRequest = 1 is a valid configuration (the edge test above): it starts, and the image never asks for more bars than a request can read.
+        var one = new McpLimits { MaxCandlesPerRequest = 1, DefaultCandleCount = 1, MaxOutputTailBars = 1, DefaultOutputTailBars = 1 };
+        McpLimitsContract.Validate(one);
+        Assert.Equal(1, McpLimitsContract.EffectiveMaxChartImageBars(one));
+        Assert.Equal(1, McpLimitsContract.EffectiveDefaultChartImageBars(one));
+    }
+
+    [Theory]
+    [InlineData(320, 240, 1, 1, 0, 0)]
+    [InlineData(4096, 4096, 5000, 16, 500, 5000)]
+    public void TheEdgesOfTheImageBandsAreAccepted(int width, int height, int bars, int overlays, int markers, int listed)
+    {
+        McpLimitsContract.Validate(new McpLimits
+        {
+            MaxChartImageWidth = width, DefaultChartImageWidth = width, MaxChartImageHeight = height, DefaultChartImageHeight = height,
+            MaxChartImageBars = bars, DefaultChartImageBars = bars, MaxImageOverlays = overlays, MaxImageMarkers = markers, MaxImageBarsListed = listed,
+        });
     }
 
     [Fact]

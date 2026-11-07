@@ -131,8 +131,9 @@ public sealed class McpLimits
     public int MaxWalkForwardWindows { get; set; } = 8;
 
     /// <summary>
-    /// The fewest in-sample trades a combination needs to be the best one of a walk-forward window when the call does not say (minInSampleTrades). 1: a
-    /// combination that never traded has an objective such as totalReturn 0 that says nothing about the strategy (owner decision 2026-10-30).
+    /// The fewest trades a combination needs to be the best one of a walk-forward window (minInSampleTrades) or to be ranked by sa_optimize_backtest (minTrades)
+    /// when the call does not say. 1: a combination that never traded has an objective such as totalReturn 0 that says nothing about the strategy
+    /// (owner decisions 2026-10-30 and D-5 = A, 2026-11-04).
     /// </summary>
     public int DefaultMinInSampleTrades { get; set; } = 1;
 
@@ -177,4 +178,40 @@ public sealed class McpLimits
     /// Standard value: 100.
     /// </summary>
     public int MaxListedModels { get; set; } = 100;
+
+    /// <summary>
+    /// Widest image one sa_render_chart_image call may ask for (width, pixels); more is LIMIT_EXCEEDED. The native image buffer is width x height x 4 bytes
+    /// (at most 4096 x 4096 x 4 = 64 MiB inside the bands). Standard value: 1920.
+    /// </summary>
+    public int MaxChartImageWidth { get; set; } = 1920;
+
+    /// <summary>Tallest image one sa_render_chart_image call may ask for (height, pixels); more is LIMIT_EXCEEDED. Standard value: 1200.</summary>
+    public int MaxChartImageHeight { get; set; } = 1200;
+
+    /// <summary>The image width in pixels when sa_render_chart_image is called without width. Standard value: 1200.</summary>
+    public int DefaultChartImageWidth { get; set; } = 1200;
+
+    /// <summary>The image height in pixels when sa_render_chart_image is called without height. Standard value: 800.</summary>
+    public int DefaultChartImageHeight { get; set; } = 800;
+
+    /// <summary>
+    /// Most bars one sa_render_chart_image image may draw (barCount); more is LIMIT_EXCEEDED. The limit in force never exceeds
+    /// <see cref="MaxCandlesPerRequest"/> (<see cref="McpLimitsContract.EffectiveMaxChartImageBars"/>). Standard value: 500.
+    /// </summary>
+    public int MaxChartImageBars { get; set; } = 500;
+
+    /// <summary>The number of bars sa_render_chart_image draws when the call does not say (barCount). Standard value: 200 (as <see cref="DefaultCandleCount"/>).</summary>
+    public int DefaultChartImageBars { get; set; } = 200;
+
+    /// <summary>Most overlay indicators (drawn on the price panel) one sa_render_chart_image call may name; more is LIMIT_EXCEEDED. Standard value: 5.</summary>
+    public int MaxImageOverlays { get; set; } = 5;
+
+    /// <summary>Most buy/sell markers one sa_render_chart_image call may name; more is LIMIT_EXCEEDED. Standard value: 50.</summary>
+    public int MaxImageMarkers { get; set; } = 50;
+
+    /// <summary>
+    /// Most bars the structured result of sa_render_chart_image lists (the pixel positions of the drawn bars); the bars left out are counted
+    /// (barsOmittedCount) and never silently dropped. Standard value: 200.
+    /// </summary>
+    public int MaxImageBarsListed { get; set; } = 200;
 }

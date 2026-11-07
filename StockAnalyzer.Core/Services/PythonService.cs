@@ -45,11 +45,18 @@ namespace StockAnalyzer.Core.Services
         public System.Action<System.IProgress<string>>? SetupProgressStarted { get; set; }
         public System.Action? SetupProgressFinished { get; set; }
 
+        /// <summary>Name of the update pipeline in <see cref="DataStorageReadOnlyException.Operation"/>.</summary>
+        public const string UpdatePipelineOperation = "UpdatePipeline";
+
+        private readonly Common.IDataStorageState? _dataStorageState;
+
         public PythonService(
             IStockAnalyzerSettings settings,
             ILogger<PythonService>? logger = null,
-            ITimeFrameParquetGenerator? timeframeGenerator = null)
+            ITimeFrameParquetGenerator? timeframeGenerator = null,
+            Common.IDataStorageState? dataStorageState = null)
         {
+            _dataStorageState = dataStorageState;
             _settings = settings;
             _logger = logger ?? NullLogger<PythonService>.Instance;
             _timeframeGenerator = timeframeGenerator;
@@ -390,6 +397,9 @@ namespace StockAnalyzer.Core.Services
 
         public async Task RunUpdatePipelineAsync(string? symbol = null, IProgress<int>? progress = null, bool forceMetadata = false, CancellationToken ct = default)
         {
+            // The pipeline writes the market data below Data\ (and update_daily.py the master ticker list): refuse before any process starts.
+            Common.DataStorageGuard.ThrowIfReadOnly(_dataStorageState, UpdatePipelineOperation);
+
             if (!string.IsNullOrEmpty(symbol) && (!AttestedFileNames.IsPlain(symbol) || symbol.Contains(' ') || symbol.StartsWith('-')))
                 throw new ArgumentException($"Invalid ticker symbol '{symbol}'.", nameof(symbol));
 
@@ -574,6 +584,8 @@ namespace StockAnalyzer.Core.Services
 
         public async Task RunUpdatePipelineAsync(string? symbol, SyncSessionConfig config, IProgress<int>? progress = null, CancellationToken ct = default)
         {
+            Common.DataStorageGuard.ThrowIfReadOnly(_dataStorageState, UpdatePipelineOperation);
+
             if (config.DelayMinSeconds < 1.0m || config.DelayMinSeconds > 60.0m)
                 throw new ArgumentOutOfRangeException(nameof(config.DelayMinSeconds), "DelayMinSeconds must be in range [1.0, 60.0].");
             if (config.DelayMaxSeconds < 1.0m || config.DelayMaxSeconds > 60.0m)

@@ -266,6 +266,9 @@ public static class GeometricPatternDetector
             return null;
         }
 
+        // endIndex is moved to the breakout bar below; the pivot it started from stays available to callers.
+        int lastPivotIndex = endIndex;
+
         // Formation Process Validation (FR-60-7-01):
         // Skip formations that do not span enough bars to be visually meaningful before expensive regression.
         int span = endIndex - startIndex;
@@ -436,7 +439,8 @@ public static class GeometricPatternDetector
             candles[startIndex].Time,
             candles[endIndex].Time)
         {
-            IsBrokenOut = breakoutFound
+            IsBrokenOut = breakoutFound,
+            LastPivotIndex = lastPivotIndex
         };
     }
 

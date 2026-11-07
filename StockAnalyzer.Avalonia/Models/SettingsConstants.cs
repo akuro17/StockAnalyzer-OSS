@@ -16,6 +16,9 @@ public static class SettingsConstants
     public const int UI_AnimationStandardMs = 300;
     public const int UI_WorkspaceSaveThrottleMs = 500;
 
+    /// <summary>Most warnings the workspace-restore details dialog lists; the rest are summarised as a count (a display cap, not a tunable).</summary>
+    public const int UI_MaxRestoreWarningsListed = 20;
+
     public static class Keys
     {
         public const string Theme = "Theme";
@@ -23,6 +26,8 @@ public static class SettingsConstants
         public const string Python = "Python";
         public const string AIPredictions = "AIPredictions";
         public const string Backtest = "Backtest";
+        public const string McpServer = "McpServer";
+        public const string BacktestMcpServer = "Backtest.McpServer";
         public const string TrainingWizard = "TrainingWizard";
         public const string Tickers = "Tickers";
         public const string Notes = "Notes";
@@ -57,6 +62,7 @@ public static class SettingsConstants
         new(Keys.Python, "Settings_Python", "SettingsPythonIcon"),
         new(Keys.AIPredictions, "Settings_AIPredictions", "SettingsAdvIcon"),
         new(Keys.Backtest, "Settings_Backtest", "SettingsBacktestIcon"),
+        new(Keys.McpServer, "Settings_McpServer", "SettingsBacktestIcon"),
         new(Keys.TrainingWizard, "Settings_TrainingWizard", "SettingsAdvIcon"),
         new(Keys.Tickers, "Settings_Tickers", "SettingsTickersIcon"),
         new(Keys.Notes, "Settings_Notes", "SettingsNotesIcon"),

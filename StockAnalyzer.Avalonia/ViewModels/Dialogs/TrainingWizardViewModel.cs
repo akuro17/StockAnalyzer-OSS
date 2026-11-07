@@ -680,6 +680,9 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
     [ObservableProperty]
     private string _modelDisplayName = string.Empty;
 
+    /// <summary>The longest display name the model metadata accepts (the limit of <see cref="IModelMetadataAnnotationService"/>); the wizard's input box enforces it.</summary>
+    public int MaxModelDisplayNameLength => IModelMetadataAnnotationService.MaxDisplayNameLength;
+
     public bool HasRegisteredEnsemble => RegisteredEnsemble is not null;
 
     partial void OnLastResultChanged(TrainingRunResult? value) => RegisteredEnsemble = null;
@@ -714,8 +717,10 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
         IModelGenerationRegistry? modelRegistry = null,
         IStoredPeriodAdvisor? periodAdvisor = null, TimeProvider? clock = null, ITrainingResourceSettings? resourceSettings = null,
         IStockAnalyzerSettings? settings = null,
-        IModelMetadataAnnotationService? modelMetadataAnnotationService = null)
+        IModelMetadataAnnotationService? modelMetadataAnnotationService = null,
+        StockAnalyzer.Core.Common.IDataStorageState? dataStorageState = null)
     {
+        _storageGate = new StorageFeatureGate(dataStorageState);
         _settings = settings;
         _modelMetadataAnnotationService = modelMetadataAnnotationService;
         ConfigurePeriod(periodAdvisor, clock);
@@ -1121,8 +1126,12 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
         FeaturePicker.BuildFeatureSpec()?.Channels.All(c => c.Normalization == ChannelNormalization.None) == true;
     private bool ComposedSpecValid() => !UseComposedFeatures || FeaturePicker.BuildFeatureSpec() is not null;
 
+    // Read-only mode (the Data folder is not writable): a trained model can only be registered below Data, so the run is refused before it starts.
+    private readonly StorageFeatureGate _storageGate;
+
     private bool CanStartTraining() =>
         !IsTraining && !IsDeploying
+        && _storageGate.IsAvailable
         && TransferControlsValid()
         && _orchestrator is not null
         && (SelectedTargetType != TargetType.Regression || SelectedFramework == TrainingFramework.PyTorch)
@@ -1154,6 +1163,7 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
         {
             if (IsTraining || IsDeploying) return "";
             var text = LocalizationManager.Instance;
+            if (!_storageGate.IsAvailable) return _storageGate.DisabledToolTip ?? "";
             if (!CheckpointPathValid()) return text["TrainingWizard_Start_CheckpointPath"];
             if (!ParentModelValid()) return text["TrainingWizard_Start_ParentModel"];
             if (!FreezePathsValid()) return text["TrainingWizard_Start_FreezePaths"];
@@ -1475,7 +1485,7 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
         _runCts.Cancel();
     }
 
-    private bool CanDeployToModels() => !IsTraining && !IsDeploying && _modelDeploymentService is not null
+    private bool CanDeployToModels() => !IsTraining && !IsDeploying && _storageGate.IsAvailable && _modelDeploymentService is not null
         && LastResult is { Success: true, OnnxArtifactPath: not null, MetricsArtifactPath: not null };
 
     [RelayCommand(CanExecute = nameof(CanDeployToModels))]

@@ -13,6 +13,9 @@ internal static class ToolJson
     /// <summary>The date-time format of stored times: as stored, no offset and no Z (stored bar times are not UTC-qualified).</summary>
     public const string DateTimeFormat = "yyyy-MM-ddTHH:mm:ss";
 
+    /// <summary>A moment in UTC with a fixed 24-character shape (milliseconds always written, even when zero), so the text sorts in time order.</summary>
+    public const string TimestampUtcFormat = "yyyy-MM-dd'T'HH:mm:ss.fff'Z'";
+
     public static string Build(Action<Utf8JsonWriter> write)
     {
         using var stream = new MemoryStream();
@@ -51,6 +54,8 @@ internal static class ToolJson
     }
 
     public static string FormatDate(DateTime value) => value.ToString(DateFormat, CultureInfo.InvariantCulture);
+
+    public static string FormatTimestampUtc(DateTimeOffset value) => value.UtcDateTime.ToString(TimestampUtcFormat, CultureInfo.InvariantCulture);
 
     public static string FormatDateTime(DateTime value) => value.ToString(DateTimeFormat, CultureInfo.InvariantCulture);
 }

@@ -70,7 +70,21 @@ internal sealed class FilterTickersTool : IMcpTool
         "Matches are sorted by symbol (ordinal, ascending) and paged with offset and limit. includeFields adds those columns to each returned match (null when the value is not available). " +
         "Without rules and screener the whole universe is returned. " +
         $"Without {SymbolResolver.AllowUnregisteredArgument}, symbols that are not in the ticker list are counted in universe.unregisteredCount and left out. " +
-        $"{SymbolResolver.AllowUnregisteredArgument} true evaluates the listed symbols that are not in the ticker list but have stored daily bars (named in warnings); a listed symbol without stored bars is SYMBOL_NOT_FOUND. It applies to symbols only, not to groupId or the whole-list universe.";
+        $"{SymbolResolver.AllowUnregisteredArgument} true evaluates the listed symbols that are not in the ticker list but have stored daily bars (named in warnings); a listed symbol without stored bars is SYMBOL_NOT_FOUND. It applies to symbols only, not to groupId or the whole-list universe. " +
+        $"{SnapshotNotice}";
+
+    /// <summary>The one sentence that says the result is today's snapshot (used in the description; the hint of a date argument says the same in other words).</summary>
+    private const string SnapshotNotice =
+        "The result is a snapshot of today's stored data (the latest stored bars and the stored metadata), not of a past date: do not use it to build the universe of an analysis dated in the past; for that use sa_run_screener with asOfDate, which refuses snapshot columns.";
+
+    private const string DateArgumentHint =
+        "sa_filter_tickers evaluates the latest stored bars and the stored metadata and has no date argument; to filter on a past date use sa_run_screener with 'asOfDate' (bar columns only).";
+
+    public IReadOnlyDictionary<string, string>? MisnamedArgumentHints { get; } = new Dictionary<string, string>(StringComparer.Ordinal)
+    {
+        ["asOfDate"] = DateArgumentHint,
+        ["endDate"] = DateArgumentHint,
+    };
 
     // The Screener condition can read long histories of up to MaxScreenerSymbols symbols, so the tool gets the longer time limit of sa_run_screener.
     public bool IsHeavy => true;

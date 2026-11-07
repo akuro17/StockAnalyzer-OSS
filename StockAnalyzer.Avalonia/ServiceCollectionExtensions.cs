@@ -70,6 +70,8 @@ public static class ServiceCollectionExtensions
         
         // Register Workspace Coordinator and Options
         services.Configure<WorkspaceCoordinatorOptions>(configuration.GetSection("Workspace"));
+        services.AddSingleton<Core.Services.IWorkspaceTolerantReader, Core.Services.WorkspaceTolerantReader>();
+        services.AddSingleton<Core.Common.CorruptFilePreserver>();
         services.AddSingleton<IWorkspaceCoordinator, WorkspaceCoordinator>();
 
 
@@ -183,8 +185,12 @@ public static class ServiceCollectionExtensions
                 sp.GetRequiredService<Core.Services.ReinforcementLearning.RlArtifactSettings>());
             return registry;
         });
-        services.AddSingleton<Core.Services.IModelGenerationRegistry>(sp => sp.GetRequiredService<Core.Services.ModelGenerationRegistry>());
-        services.AddSingleton<Core.Services.ReinforcementLearning.IRlModelGenerationRegistry>(sp => sp.GetRequiredService<Core.Services.ModelGenerationRegistry>());
+        // Read-only mode (the Data folder is not writable): the writable store cannot even take its coordination lock, so the application is given the
+        // existing zero-mutation registry instead (it reads what is stored; every mutation is refused and the UI has disabled them up front).
+        // The concrete ModelGenerationRegistry above is only built on the writable path.
+        services.AddSingleton<Core.Services.ReinforcementLearning.ReadOnlyModelGenerationRegistry>();
+        services.AddSingleton<Core.Services.IModelGenerationRegistry>(sp => Core.Common.DataStorageGuard.IsWritable(sp.GetService<Core.Common.IDataStorageState>()) ? sp.GetRequiredService<Core.Services.ModelGenerationRegistry>() : sp.GetRequiredService<Core.Services.ReinforcementLearning.ReadOnlyModelGenerationRegistry>());
+        services.AddSingleton<Core.Services.ReinforcementLearning.IRlModelGenerationRegistry>(sp => Core.Common.DataStorageGuard.IsWritable(sp.GetService<Core.Common.IDataStorageState>()) ? sp.GetRequiredService<Core.Services.ModelGenerationRegistry>() : sp.GetRequiredService<Core.Services.ReinforcementLearning.ReadOnlyModelGenerationRegistry>());
         services.AddSingleton<Core.Services.ReinforcementLearning.IRlTrainingService, Core.Services.ReinforcementLearning.RlTrainingService>();
         services.AddSingleton<Core.Services.ReinforcementLearning.QValueService>();
         services.AddSingleton<Core.Services.ReinforcementLearning.RlDialogDataService>();
@@ -309,6 +315,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<Core.Services.Backtest.Configuration.IBacktestColumnSettingsManager, Core.Services.Backtest.Configuration.BacktestColumnSettingsManager>();
         services.AddSingleton<Core.Services.IBacktestRunPreparationService, Core.Services.BacktestRunPreparationService>();
         services.AddSingleton<Services.IBacktestSettingsCoordinator, Services.BacktestSettingsCoordinator>();
+        services.AddSingleton<Services.IMcpServerSettingsManager, Services.McpServerSettingsManager>();
+        services.AddSingleton<Services.IMcpServerProcessService, Services.McpServerProcessService>();
         services.AddTransient<ViewModels.Backtest.BacktestIndicatorSelectionViewModel>();
         services.AddTransient<ViewModels.Backtest.BacktestResultsViewModel>();
         services.AddTransient<ViewModels.Backtest.BacktestWindowViewModel>();
@@ -370,6 +378,7 @@ public static class ServiceCollectionExtensions
         services.AddTransient<StockAnalyzer.Avalonia.ViewModels.Dialogs.NotesSettingsViewModel>();
         services.AddTransient<StockAnalyzer.Avalonia.ViewModels.Dialogs.TickersSettingsViewModel>();
         services.AddTransient<StockAnalyzer.Avalonia.ViewModels.Dialogs.BacktestSettingsViewModel>();
+        services.AddTransient<StockAnalyzer.Avalonia.ViewModels.Dialogs.McpServerSettingsViewModel>();
         services.AddTransient<StockAnalyzer.Avalonia.ViewModels.Dialogs.ChartGeneralSettingsViewModel>();
         services.AddTransient<StockAnalyzer.Avalonia.ViewModels.Dialogs.SettingsViewModel>();
         services.AddSingleton<StockAnalyzer.Avalonia.ViewModels.Dialogs.PlaceholderSettingsViewModel>();

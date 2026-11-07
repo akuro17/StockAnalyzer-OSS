@@ -62,6 +62,50 @@ internal sealed class DetectCandlePatternsTool : IMcpTool
         .Boolean(SymbolResolver.AllowUnregisteredArgument, "Accept a symbol that is not in the ticker list but has stored bars. Default false.")
         .Build();
 
+    /// <summary>
+    /// Evaluates the pattern set as of each of the trailing <paramref name="windowBars"/> bars (the bars up to and including
+    /// that bar) and returns the matches plus the patterns of the final bar. The detector only reads the end of the sequence it
+    /// is given, so each evaluation sees a zero-copy prefix view of one array instead of a fresh copy of the prefix; the
+    /// final bar is the last evaluation of the scan, so its result is reused instead of being detected a second time.
+    /// </summary>
+    internal static (List<(int Index, DateTime Date, CandlePatternType Pattern)> Matches, List<string> Latest) Scan(
+        IReadOnlyList<CandleData> loaded,
+        int windowBars,
+        bool excludePatternBars,
+        bool requireTrend)
+    {
+        var matches = new List<(int Index, DateTime Date, CandlePatternType Pattern)>();
+        var latest = new List<string>();
+        if (loaded.Count == 0)
+        {
+            return (matches, latest);
+        }
+
+        CandleData[] bars = loaded as CandleData[] ?? loaded.ToArray();
+        int startIdx = Math.Max(0, bars.Length - windowBars);
+        int lastIdx = bars.Length - 1;
+
+        for (int i = startIdx; i < bars.Length; i++)
+        {
+            var detected = CandlePatternDetector.DetectPatterns(new ArraySegment<CandleData>(bars, 0, i + 1), excludePatternBars, requireTrend);
+            foreach (var p in detected)
+            {
+                if (p == CandlePatternType.None)
+                {
+                    continue;
+                }
+
+                matches.Add((i, bars[i].Timestamp, p));
+                if (i == lastIdx)
+                {
+                    latest.Add(p.ToString());
+                }
+            }
+        }
+
+        return (matches, latest);
+    }
+
     public async Task<string> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)
     {
         bool allowUnregistered = ToolArgs.Boolean(arguments, SymbolResolver.AllowUnregisteredArgument) ?? false;
@@ -103,26 +147,7 @@ internal sealed class DetectCandlePatternsTool : IMcpTool
             }
         }
 
-        var patternMatches = new List<(int Index, DateTime Date, CandlePatternType Pattern)>();
-        int startIdx = Math.Max(0, loaded.Count - windowBars);
-
-        for (int i = startIdx; i < loaded.Count; i++)
-        {
-            var slice = loaded.GetRange(0, i + 1);
-            var detected = CandlePatternDetector.DetectPatterns(slice, excludePatternBars, requireTrend);
-            foreach (var p in detected)
-            {
-                if (p != CandlePatternType.None)
-                {
-                    patternMatches.Add((i, loaded[i].Timestamp, p));
-                }
-            }
-        }
-
-        var latestDetected = CandlePatternDetector.DetectPatterns(loaded, excludePatternBars, requireTrend)
-            .Where(p => p != CandlePatternType.None)
-            .Select(p => p.ToString())
-            .ToList();
+        var (patternMatches, latestDetected) = Scan(loaded, windowBars, excludePatternBars, requireTrend);
 
         return ToolJson.Build(writer =>
         {

@@ -194,8 +194,10 @@ public partial class PortfolioSummaryViewModel : ViewModelBase, IDisposable, IRe
         IDialogService dialogService,
         Func<EditTransactionDialogViewModel> dialogViewModelFactory,
         IDesignTimeDetector designTimeDetector,
-        ILocalizationService localizationService)
+        ILocalizationService localizationService,
+        StockAnalyzer.Core.Common.IDataStorageState? dataStorageState = null)
     {
+        _storageGate = new StockAnalyzer.Avalonia.Services.StorageFeatureGate(dataStorageState);
         _portfolioManager = portfolioManager ?? throw new ArgumentNullException(nameof(portfolioManager));
         _marketDataProvider = marketDataProvider ?? throw new ArgumentNullException(nameof(marketDataProvider));
         _dispatcherService = dispatcherService ?? throw new ArgumentNullException(nameof(dispatcherService));
@@ -763,7 +765,7 @@ public partial class PortfolioSummaryViewModel : ViewModelBase, IDisposable, IRe
     }
 
 
-    [CommunityToolkit.Mvvm.Input.RelayCommand]
+    [CommunityToolkit.Mvvm.Input.RelayCommand(CanExecute = nameof(IsStorageWritable))]
     private async Task AddTransactionAsync(string typeStr)
     {
         if (Enum.TryParse<TransactionType>(typeStr, out var type))
@@ -773,6 +775,14 @@ public partial class PortfolioSummaryViewModel : ViewModelBase, IDisposable, IRe
     }
 
     public string? PrefillTicker { get; set; }
+
+    // Read-only mode (the Data folder is not writable): a transaction cannot be stored, so the commands that record, change or remove one stay disabled.
+    private readonly StockAnalyzer.Avalonia.Services.StorageFeatureGate _storageGate;
+
+    public bool IsStorageWritable => _storageGate.IsAvailable;
+
+    /// <summary>The reason the transaction commands are disabled; null while they are available.</summary>
+    public string? StorageDisabledToolTip => _storageGate.DisabledToolTip;
 
     private async Task OpenAddTransactionDialogAsync(TransactionType type)
     {
@@ -837,7 +847,7 @@ public partial class PortfolioSummaryViewModel : ViewModelBase, IDisposable, IRe
         }
     }
 
-    [CommunityToolkit.Mvvm.Input.RelayCommand]
+    [CommunityToolkit.Mvvm.Input.RelayCommand(CanExecute = nameof(IsStorageWritable))]
     private async Task ExitPositionAsync(PortfolioPositionViewModel position)
     {
         if (position == null) return;
@@ -906,7 +916,7 @@ public partial class PortfolioSummaryViewModel : ViewModelBase, IDisposable, IRe
         }
     }
 
-    [CommunityToolkit.Mvvm.Input.RelayCommand]
+    [CommunityToolkit.Mvvm.Input.RelayCommand(CanExecute = nameof(IsStorageWritable))]
     private async Task EditTransactionAsync(Transaction transaction)
     {
         if (transaction == null) return;
@@ -981,7 +991,7 @@ public partial class PortfolioSummaryViewModel : ViewModelBase, IDisposable, IRe
         }
     }
 
-    [CommunityToolkit.Mvvm.Input.RelayCommand]
+    [CommunityToolkit.Mvvm.Input.RelayCommand(CanExecute = nameof(IsStorageWritable))]
     private async Task DeleteTransactionAsync(Transaction transaction)
     {
         if (transaction == null) return;
@@ -1036,7 +1046,7 @@ public partial class PortfolioSummaryViewModel : ViewModelBase, IDisposable, IRe
         }
     }
 
-    [CommunityToolkit.Mvvm.Input.RelayCommand]
+    [CommunityToolkit.Mvvm.Input.RelayCommand(CanExecute = nameof(IsStorageWritable))]
     private async Task DeleteTransactionsAsync(IEnumerable<Transaction> transactions)
     {
         if (transactions == null) return;

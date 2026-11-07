@@ -21,6 +21,7 @@ public class TickerSyncService : ITickerSyncService
     private readonly ITimeFrameManager? _timeFrameManager;
     private readonly IMessenger _messenger;
     private readonly ILogger<TickerSyncService> _logger;
+    private readonly StorageFeatureGate _storageGate;
 
     public TickerSyncService(
         IPythonService pythonService,
@@ -29,8 +30,10 @@ public class TickerSyncService : ITickerSyncService
         IMarketDataProvider? marketDataProvider = null,
         ITimeFrameManager? timeFrameManager = null,
         IMessenger? messenger = null,
-        ILogger<TickerSyncService>? logger = null)
+        ILogger<TickerSyncService>? logger = null,
+        StockAnalyzer.Core.Common.IDataStorageState? dataStorageState = null)
     {
+        _storageGate = new StorageFeatureGate(dataStorageState);
         _pythonService = pythonService;
         _dialogService = dialogService;
         _dispatcherService = dispatcherService;
@@ -43,6 +46,15 @@ public class TickerSyncService : ITickerSyncService
     public Task SyncSingleTickerAsync(string symbol, Func<Task>? onSyncedAsync = null)
     {
         if (string.IsNullOrEmpty(symbol)) return Task.CompletedTask;
+
+        // The callers are buttons of other windows (chart sync, ticker notes) that do not know the storage state: refuse here, before the
+        // progress window opens, and say why instead of letting every item fail with a write error.
+        if (!_storageGate.IsAvailable)
+        {
+            return _dialogService.ShowAlertAsync(
+                LocalizationManager.Instance["Dialog_Error"] ?? "Error",
+                _storageGate.DisabledToolTip ?? string.Empty);
+        }
 
         var syncSession = _dialogService.CreateMultiSyncProgressSession();
         var vm = syncSession.ViewModel;

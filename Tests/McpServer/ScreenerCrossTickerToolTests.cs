@@ -262,7 +262,12 @@ public sealed class ScreenerCrossTickerToolTests : IDisposable
     [InlineData("""{"left":{"indicator":"Correlation","parameters":{"ComparisonSymbol":"a/b"}},"comparison":"GreaterThan","right":0}""", "INVALID_ARGUMENT", "conditionTree.left.parameters.ComparisonSymbol")]
     [InlineData("""{"left":{"indicator":"Correlation","parameters":{"ComparisonSymbol":"NOPE"}},"comparison":"GreaterThan","right":0}""", "SYMBOL_NOT_FOUND", "conditionTree.left.parameters.ComparisonSymbol")]
     [InlineData("""{"operator":"And","children":[{"left":{"price":"Close"},"comparison":"GreaterThan","right":0},{"left":{"price":"Close"},"comparison":"GreaterThan","right":{"indicator":"Correlation","parameters":{"ComparisonSymbol":"NOPE"}}}]}""", "SYMBOL_NOT_FOUND", "conditionTree.children[1].right.parameters.ComparisonSymbol")]
-    [InlineData("""{"left":{"indicator":"Ratiocator","parameters":{"ComparisonSymbol":"DDD"}},"comparison":"GreaterThan","right":0}""", "INVALID_ARGUMENT", "conditionTree.left.indicator")]
+    // The seven types that need a comparison symbol (formerly refused as a type) are evaluated now, so the fault they can have is the same as Correlation's: no symbol.
+    [InlineData("""{"left":{"indicator":"Ratiocator"},"comparison":"GreaterThan","right":0}""", "INVALID_ARGUMENT", "conditionTree.left.parameters.ComparisonSymbol")]
+    [InlineData("""{"left":{"indicator":"RollingBeta","parameters":{"ComparisonSymbol":"  "}},"comparison":"GreaterThan","right":0}""", "INVALID_ARGUMENT", "conditionTree.left.parameters.ComparisonSymbol")]
+    [InlineData("""{"left":{"indicator":"PairRatio","parameters":{"ComparisonSymbol":"NOPE"}},"comparison":"GreaterThan","right":0}""", "SYMBOL_NOT_FOUND", "conditionTree.left.parameters.ComparisonSymbol")]
+    // A look-ahead indicator is still refused as a type.
+    [InlineData("""{"left":{"indicator":"ZigZag"},"comparison":"GreaterThan","right":0}""", "INVALID_ARGUMENT", "conditionTree.left.indicator")]
     public async Task AFaultyTwoSymbolSideIsRejectedWithTheCodeAndThePathOfTheFault(string conditionJson, string code, string parameter)
     {
         McpMessageDispatcher dispatcher = await StartAsync();

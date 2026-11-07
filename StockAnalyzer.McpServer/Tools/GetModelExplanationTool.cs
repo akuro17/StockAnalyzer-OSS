@@ -24,6 +24,12 @@ internal sealed class GetModelExplanationTool : IMcpTool
 
     private const int MinimumCandlesForRegime = ModelAnalysisContract.VolatilityBars + 1;
 
+    // Why no regime was assigned (regimeReason). Fixed words, tested in this order; the key is null when a regime was assigned.
+    private const string ReasonAnalysisUnavailable = "analysis_unavailable";
+    private const string ReasonTimeframeMismatch = "timeframe_mismatch";
+    private const string ReasonInsufficientBars = "insufficient_bars";
+    private const string ReasonNotAssignable = "not_assignable";
+
     private readonly ReadOnlyModelGenerationRegistry _registry;
     private readonly IReadOnlyStockAnalyzerGateway _gateway;
     private readonly SymbolResolver _symbols;
@@ -48,7 +54,11 @@ internal sealed class GetModelExplanationTool : IMcpTool
 
     public string Description =>
         "Loads offline explanation (Shapley values, partial dependence) and temperature calibration " +
-        "for a registered model generation. Optionally assigns the market regime when symbol is provided. " +
+        "for a registered model generation. Optionally assigns the market regime when symbol is provided, on bars of the model's own time frame; " +
+        "regimeReason names why none was assigned (null when one was). " +
+        "The explanation, calibration and regime centroids are fixed artefacts of the training run: asOfDate only selects the bars used for the regime. " +
+        "pointInTime gives dataEnd (the last prediction anchor of the training run, null when unknown) and horizonBars (bars of the model's time frame): " +
+        "the labels of the last anchor reach horizonBars bars beyond dataEnd, and asOfBeforeDataEnd is true when asOfDate < dataEnd (null when unknown, never false then). " +
         "Zero-mutation; contains no file paths.";
 
     public bool IsHeavy => false;
@@ -63,7 +73,7 @@ internal sealed class GetModelExplanationTool : IMcpTool
 
     public async Task<string> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)
     {
-        var (modelIdRaw, resolvedModelId, _) = RegisteredModelResolver.Resolve(_registry, arguments, ModelIdArgument);
+        var (modelIdRaw, resolvedModelId, manifest) = RegisteredModelResolver.Resolve(_registry, arguments, ModelIdArgument);
 
         ModelExplanationLoad explanationLoad = await _explainabilityService.LoadExplanationAsync(resolvedModelId, cancellationToken).ConfigureAwait(false);
         ModelCalibrationLoad calibrationLoad = await _explainabilityService.LoadCalibrationAsync(resolvedModelId, cancellationToken).ConfigureAwait(false);
@@ -75,25 +85,21 @@ internal sealed class GetModelExplanationTool : IMcpTool
             throw new ToolException(ToolErrorCodes.InvalidArgument, $"Argument '{AsOfDateArgument}' requires '{SymbolArgument}' to be specified.", AsOfDateArgument);
         }
 
+        string? resolvedSymbol = rawSymbol is null
+            ? null
+            : await _symbols.ResolveAsync(rawSymbol, SymbolArgument, cancellationToken).ConfigureAwait(false);
+
+        // Read once, with or without a symbol: the training period belongs to the model, not to the symbol asked about.
+        ModelAnalysisSnapshot? analysis = await TryLoadAnalysisAsync(resolvedModelId, cancellationToken).ConfigureAwait(false);
+
         RegimeAssignment? regimeAssignment = null;
-        string? resolvedSymbol = null;
-        if (rawSymbol is not null)
+        string? regimeReason = null;
+        if (resolvedSymbol is not null)
         {
-            resolvedSymbol = await _symbols.ResolveAsync(rawSymbol, SymbolArgument, cancellationToken).ConfigureAwait(false);
-
-            ModelAnalysisSnapshot? snapshot = await _analysisService.LoadAsync(resolvedModelId, cancellationToken).ConfigureAwait(false);
-            if (snapshot is not null)
-            {
-                IReadOnlyList<CandleData> candles = asOf.HasValue
-                    ? await _gateway.GetCandlesUpToAsync(resolvedSymbol, TimeFrame.D1, asOf.Value, MinimumCandlesForRegime, cancellationToken).ConfigureAwait(false)
-                    : await _gateway.GetCandlesAsync(resolvedSymbol, TimeFrame.D1, MinimumCandlesForRegime, cancellationToken).ConfigureAwait(false);
-
-                if (candles.Count >= MinimumCandlesForRegime)
-                {
-                    regimeAssignment = _analysisService.Assign(snapshot, candles, TimeframeType.Daily);
-                }
-            }
+            (regimeAssignment, regimeReason) = await AssignRegimeAsync(analysis, resolvedSymbol, manifest, asOf, cancellationToken).ConfigureAwait(false);
         }
+
+        var pointInTime = new PointInTime(LastTrainingAnchor(analysis), manifest.Horizon, asOf);
 
         return ToolJson.Build(writer => Write(
             writer,
@@ -101,8 +107,70 @@ internal sealed class GetModelExplanationTool : IMcpTool
             resolvedModelId,
             explanationLoad,
             calibrationLoad,
+            pointInTime,
             regimeAssignment,
+            regimeReason,
             resolvedSymbol is not null));
+    }
+
+    /// <summary>
+    /// What the explanation, the calibration and the regime centroids rest on. <c>DataEnd</c> is the last prediction anchor of any symbol of the
+    /// training run (null when there is no analysis); the labels of that anchor reach <c>HorizonBars</c> bars further, in the model's time frame.
+    /// </summary>
+    private readonly record struct PointInTime(DateTime? DataEnd, int HorizonBars, DateOnly? AsOf);
+
+    private static DateTime? LastTrainingAnchor(ModelAnalysisSnapshot? analysis)
+        => analysis is null || analysis.Analysis.Periods.IsDefaultOrEmpty ? null : analysis.Analysis.Periods.Max(p => p.AnchorEnd);
+
+    /// <summary>
+    /// The analysis is optional: a sidecar that is missing, cannot be verified or cannot be read means "no analysis", never a failed call, and its
+    /// message (which may carry a path) is dropped. Only cancellation passes through.
+    /// </summary>
+    private async Task<ModelAnalysisSnapshot?> TryLoadAnalysisAsync(string modelId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _analysisService.LoadAsync(modelId, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Assigns the regime on bars of the model's own time frame. When none is assigned the reason is the first that applies, in the order of
+    /// the constants below; the first two are known before any bar is read. They repeat three of the checks of
+    /// <see cref="IModelAnalysisService.Assign"/>, which is shared with the chart and stays unchanged; a test keeps the two in step.
+    /// </summary>
+    private async Task<(RegimeAssignment? Assignment, string? Reason)> AssignRegimeAsync(
+        ModelAnalysisSnapshot? snapshot,
+        string symbol,
+        ModelGenerationManifest manifest,
+        DateOnly? asOf,
+        CancellationToken cancellationToken)
+    {
+        if (snapshot is null || snapshot.Analysis.Regime.Status != ModelAnalysisContract.AvailableStatus)
+        {
+            return (null, ReasonAnalysisUnavailable);
+        }
+
+        if (!RegisteredModelResolver.TryGetTimeFrame(manifest, out RegisteredModelResolver.ModelTimeFrame modelFrame)
+            || !snapshot.Analysis.Timeframe.Equals(modelFrame.Type.ToString(), StringComparison.OrdinalIgnoreCase))
+        {
+            return (null, ReasonTimeframeMismatch);
+        }
+
+        IReadOnlyList<CandleData> candles = asOf.HasValue
+            ? await _gateway.GetCandlesUpToAsync(symbol, modelFrame.Frame, asOf.Value, MinimumCandlesForRegime, cancellationToken).ConfigureAwait(false)
+            : await _gateway.GetCandlesAsync(symbol, modelFrame.Frame, MinimumCandlesForRegime, cancellationToken).ConfigureAwait(false);
+        if (candles.Count < MinimumCandlesForRegime)
+        {
+            return (null, ReasonInsufficientBars);
+        }
+
+        RegimeAssignment? assignment = _analysisService.Assign(snapshot, candles, modelFrame.Type);
+        return assignment is null ? (null, ReasonNotAssignable) : (assignment, null);
     }
 
     private static void Write(
@@ -111,7 +179,9 @@ internal sealed class GetModelExplanationTool : IMcpTool
         string resolvedModelId,
         ModelExplanationLoad explanationLoad,
         ModelCalibrationLoad calibrationLoad,
+        PointInTime pointInTime,
         RegimeAssignment? regime,
+        string? regimeReason,
         bool symbolRequested)
     {
         writer.WriteStartObject();
@@ -296,6 +366,34 @@ internal sealed class GetModelExplanationTool : IMcpTool
         }
         writer.WriteEndObject();
 
+        // Point in time: the explanation is a fixed artefact of the training run and does not follow asOfDate.
+        writer.WriteStartObject("pointInTime");
+        writer.WriteBoolean("explanationIsStatic", true);
+        if (pointInTime.DataEnd is { } dataEnd)
+        {
+            writer.WriteString("dataEnd", ToolJson.FormatDate(dataEnd));
+        }
+        else
+        {
+            writer.WriteNull("dataEnd");
+        }
+
+        writer.WriteNumber("horizonBars", pointInTime.HorizonBars);
+        if (pointInTime.AsOf is { } asOf)
+        {
+            // Strictly before the last anchor. Unknown stays null: false would read as "no overlap".
+            if (pointInTime.DataEnd is { } end)
+            {
+                writer.WriteBoolean("asOfBeforeDataEnd", asOf < DateOnly.FromDateTime(end));
+            }
+            else
+            {
+                writer.WriteNull("asOfBeforeDataEnd");
+            }
+        }
+
+        writer.WriteEndObject();
+
         // Regime
         if (symbolRequested)
         {
@@ -309,6 +407,15 @@ internal sealed class GetModelExplanationTool : IMcpTool
             else
             {
                 writer.WriteNull("regime");
+            }
+
+            if (regimeReason is not null)
+            {
+                writer.WriteString("regimeReason", regimeReason);
+            }
+            else
+            {
+                writer.WriteNull("regimeReason");
             }
         }
 

@@ -154,5 +154,62 @@ namespace StockAnalyzer.Tests.Services
 
             Assert.Equal(0, saveCount);
         }
+
+        // ---- D-3' Run C: automatic-save lock ----
+
+        private static WorkspaceRestoreIssue LockIssue() =>
+            new(WorkspaceRestoreIssueKind.PartialRestore, null, System.Array.Empty<StockAnalyzer.Core.Models.Settings.WorkspaceLoadWarning>());
+
+        private static LayoutStateStore ReadyStore()
+        {
+            var store = new LayoutStateStore();
+            store.LifecycleState = WorkspaceLifecycleState.LoadingWorkspace;
+            store.LifecycleState = WorkspaceLifecycleState.Ready;
+            return store;
+        }
+
+        [Theory]
+        [InlineData(LayoutChangeReason.PanelResized)]
+        [InlineData(LayoutChangeReason.Shutdown)]
+        public async Task AutoSaveLock_Locked_NoReasonSchedulesASave(LayoutChangeReason reason)
+        {
+            var store = ReadyStore();
+            store.EngageAutoSaveLock(LockIssue());
+            var scheduler = new LayoutSaveScheduler(store, null, 50);
+            int saveCount = 0;
+            scheduler.RegisterSaveAction(() =>
+            {
+                Interlocked.Increment(ref saveCount);
+                return Task.CompletedTask;
+            });
+
+            scheduler.RequestSave(reason);
+
+            await Task.Delay(200);
+
+            Assert.Equal(0, saveCount);
+        }
+
+        [Fact]
+        public async Task AutoSaveLock_ReleasedAfterwards_SavesAreScheduledAgain()
+        {
+            var store = ReadyStore();
+            store.EngageAutoSaveLock(LockIssue());
+            var scheduler = new LayoutSaveScheduler(store, null, 50);
+            int saveCount = 0;
+            scheduler.RegisterSaveAction(() =>
+            {
+                Interlocked.Increment(ref saveCount);
+                return Task.CompletedTask;
+            });
+            scheduler.RequestSave(LayoutChangeReason.PanelResized);
+            store.ReleaseAutoSaveLock();
+
+            scheduler.RequestSave(LayoutChangeReason.PanelResized);
+
+            await Task.Delay(250);
+
+            Assert.Equal(1, saveCount);
+        }
     }
 }

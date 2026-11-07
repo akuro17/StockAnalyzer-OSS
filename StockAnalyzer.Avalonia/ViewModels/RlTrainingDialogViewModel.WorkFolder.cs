@@ -17,8 +17,8 @@ public sealed partial class RlTrainingDialogViewModel
     private IReadOnlySet<string> _modelsWithoutWorkFolder = new HashSet<string>();
 
     public bool SelectedModelHasNoWorkFolder => SelectedGeneration is { } generation && _modelsWithoutWorkFolder.Contains(generation.ModelId);
-    public bool CanRemoveSelectedModel => Editable && _dialogService is not null && SelectedModelHasNoWorkFolder;
-    public bool CanRenameSelectedModel => Editable && HasSelectedModel && _dialogService is not null && _modelMetadataAnnotationService is not null;
+    public bool CanRemoveSelectedModel => Editable && IsStorageWritable && _dialogService is not null && SelectedModelHasNoWorkFolder;
+    public bool CanRenameSelectedModel => Editable && IsStorageWritable && HasSelectedModel && _dialogService is not null && _modelMetadataAnnotationService is not null;
 
     private void NotifyRemoveModel()
     {

@@ -24,17 +24,33 @@ public sealed class NoteDatabaseConnectionManager
 
     public string DatabasePath { get; }
 
+    /// <summary>Name of the notes database in <see cref="DataStorageReadOnlyException.Operation"/>.</summary>
+    public const string DatabaseOperation = "NoteDatabase";
+
+    private readonly IDataStorageState? _dataStorageState;
+
+    /// <summary>False when the data folder is read-only: the notes database cannot be opened and the notes feature is off for this run.</summary>
+    public bool IsAvailable => DataStorageGuard.IsWritable(_dataStorageState);
+
     /// <param name="logger">Optional logger; falls back to <see cref="NullLogger{T}"/>.</param>
     /// <param name="notesDirectoryOverride">
     /// Optional explicit directory for the database file, bypassing <see cref="PathDiscovery"/>.
     /// Intended for test isolation so tests never touch the production Data\Notes folder.
     /// </param>
-    public NoteDatabaseConnectionManager(ILogger<NoteDatabaseConnectionManager>? logger = null, string? notesDirectoryOverride = null)
+    /// <param name="dataStorageState">
+    /// Optional; when the data folder is read-only the manager is built <em>unavailable</em>: no folder is created, and every <see cref="OpenConnectionAsync"/> refuses with
+    /// <see cref="DataStorageReadOnlyException"/> (the notes feature is switched off, the application still starts). Null means writable.
+    /// </param>
+    public NoteDatabaseConnectionManager(ILogger<NoteDatabaseConnectionManager>? logger = null, string? notesDirectoryOverride = null, IDataStorageState? dataStorageState = null)
     {
         _logger = logger ?? NullLogger<NoteDatabaseConnectionManager>.Instance;
+        _dataStorageState = dataStorageState;
 
         var notesDirectory = notesDirectoryOverride ?? PathDiscovery.ResolveDataPath(null, "Data/Notes");
-        Directory.CreateDirectory(notesDirectory);
+        if (IsAvailable)
+        {
+            Directory.CreateDirectory(notesDirectory);
+        }
 
         DatabasePath = Path.Combine(notesDirectory, "notes.db");
         _connectionString = new SqliteConnectionStringBuilder
@@ -52,6 +68,7 @@ public sealed class NoteDatabaseConnectionManager
     /// </summary>
     public async Task<SqliteConnection> OpenConnectionAsync(CancellationToken ct = default)
     {
+        DataStorageGuard.ThrowIfReadOnly(_dataStorageState, DatabaseOperation);
         var connection = new SqliteConnection(_connectionString);
         await connection.OpenAsync(ct).ConfigureAwait(false);
 

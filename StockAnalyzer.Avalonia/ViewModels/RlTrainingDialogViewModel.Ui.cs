@@ -104,7 +104,11 @@ public sealed partial class RlTrainingDialogViewModel
         || StorageAvailable && !ValidRetentionEditors
         || IsDateOrderInvalid;
     public string InputStatusDisplay => _localization.GetString("Rl.Ui.Status.InvalidInput");
-    public bool CanTrain => Editable && StartInputsValid();
+    // Read-only mode (the Data folder is not writable): every command that trains, registers, activates, imports or removes a model is refused up front.
+    private readonly StorageFeatureGate _storageGate;
+    public bool IsStorageWritable => _storageGate.IsAvailable;
+    public string? StorageDisabledToolTip => _storageGate.DisabledToolTip;
+    public bool CanTrain => Editable && IsStorageWritable && StartInputsValid();
     /// <summary>The input part of <see cref="CanTrain"/>: the cost editors, the frozen job draft (symbol, dates, costs, direction model) and, when storage is offered, the retention editors and policy.</summary>
     private bool StartInputsValid() => ValidCostEditors && ValidJobDraft()
         && (!StorageAvailable || ValidRetentionEditors && ValidPolicy());
@@ -128,7 +132,7 @@ public sealed partial class RlTrainingDialogViewModel
         return RlStartBlocker.InputInvalid;
     }
     /// <summary>One short blocking reason for the footer; empty when a start is possible and while an operation runs (the run-status strip speaks then).</summary>
-    public string StartBlockerDisplay => !Editable ? "" : CurrentStartBlocker() switch
+    public string StartBlockerDisplay => !Editable ? "" : !IsStorageWritable ? StorageDisabledToolTip ?? "" : CurrentStartBlocker() switch
     {
         RlStartBlocker.None => "",
         RlStartBlocker.DateOrderInvalid => _localization.GetString("Rl.Ui.Guide.InvalidDateOrder"),
@@ -146,11 +150,11 @@ public sealed partial class RlTrainingDialogViewModel
         && DateOnly.TryParseExact(EndDateExclusive, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var e)
         && s >= e;
     public string DateValidationDisplay => _localization.GetString("Rl.Ui.Guide.InvalidDateOrder");
-    public bool CanSaveRetention => Editable && StorageAvailable && ValidRetentionEditors && ValidPolicy();
+    public bool CanSaveRetention => Editable && IsStorageWritable && StorageAvailable && ValidRetentionEditors && ValidPolicy();
     public bool CanInspectRecovery => Editable && RecoveryAvailable;
     public bool CanInspectArtifacts => Editable && StorageAvailable;
     public bool CanInspectCheckpoints => Editable && CheckpointAvailable;
-    public bool CanActivate => Editable && ShowActivate && ModelsState == RlDialogLoadState.Loaded;
+    public bool CanActivate => Editable && IsStorageWritable && ShowActivate && ModelsState == RlDialogLoadState.Loaded;
     private bool ValidCostEditors => !CostEditors.Any(_invalidEditors.Contains);
     private bool ValidRetentionEditors => !RetentionEditors.Any(_invalidEditors.Contains);
     private static readonly string[] CostEditors = { nameof(InitialCapital), nameof(CommissionFlat), nameof(CommissionPerUnit), nameof(SlippageRatio), nameof(LiquidationPenaltyRatio) };

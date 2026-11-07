@@ -64,7 +64,9 @@ internal sealed class DetectDivergencesTool : IMcpTool
     public string Description =>
         "Detects technical divergences between price swings and an indicator (e.g. RSI, MACD), " +
         "and moving-average crossovers (Golden Cross / Dead Cross) using the application's DivergenceCrossDetector. " +
-        "Outputs exact pivot timestamps, indices, price values, and indicator values without inventing ad-hoc strength scores.";
+        "Outputs exact pivot timestamps, indices, price values, and indicator values without inventing ad-hoc strength scores. " +
+        "A divergence event's triggerIndex/timestamp is the bar of its second price pivot; a swing pivot is only known after pivotOrder further bars, " +
+        "so the divergence is available from confirmedAtIndex/confirmedAtTime (the later of the two second pivots plus pivotOrder), not from the trigger bar.";
 
     public bool IsHeavy => false;
 
@@ -243,9 +245,13 @@ internal sealed class DetectDivergencesTool : IMcpTool
 
         foreach (DivergenceSignal d in divergences)
         {
-            // Event occurs when the second pivot is confirmed; filter by evaluation window
+            // The window filter stays on the position of the second price pivot (triggerIndex). A swing pivot needs pivotOrder
+            // bars on its right, so the divergence can only be known at the later of the two second pivots plus pivotOrder;
+            // that bar is reported as confirmedAtIndex. Detection runs on the bars loaded up to endDate only, so it never
+            // exceeds evaluationEndIndex.
             if (d.PriceEndIndex >= evaluationStartIndex && d.PriceEndIndex <= evaluationEndIndex)
             {
+                int confirmedAtIndex = Math.Max(d.PriceEndIndex, d.IndicatorEndIndex) + pivotOrder;
                 events.Add(new DetectedSignalEvent(
                     Kind: "Divergence",
                     SignalType: d.Type.ToString(),
@@ -266,7 +272,10 @@ internal sealed class DetectDivergencesTool : IMcpTool
                     IndicatorEndValue: d.IndicatorEndValue,
                     CrossIndex: null,
                     ShortValue: null,
-                    LongValue: null));
+                    LongValue: null,
+                    ConfirmedAtIndex: confirmedAtIndex,
+                    ConfirmedAtTime: ToolJson.FormatDateTime(loadedBars[confirmedAtIndex].Timestamp),
+                    ConfirmationLagBars: confirmedAtIndex - d.PriceEndIndex));
             }
         }
 
@@ -308,7 +317,10 @@ internal sealed class DetectDivergencesTool : IMcpTool
                             IndicatorEndValue: null,
                             CrossIndex: c.CrossIndex,
                             ShortValue: c.ShortValue,
-                            LongValue: c.LongValue));
+                            LongValue: c.LongValue,
+                            ConfirmedAtIndex: null,
+                            ConfirmedAtTime: null,
+                            ConfirmationLagBars: null));
                     }
                 }
             }
@@ -357,6 +369,10 @@ internal sealed class DetectDivergencesTool : IMcpTool
                     writer.WriteString("indicatorEndTime", ev.IndicatorEndTime);
                     writer.WriteNumber("indicatorStartValue", ev.IndicatorStartValue!.Value);
                     writer.WriteNumber("indicatorEndValue", ev.IndicatorEndValue!.Value);
+
+                    writer.WriteNumber("confirmedAtIndex", ev.ConfirmedAtIndex!.Value);
+                    writer.WriteString("confirmedAtTime", ev.ConfirmedAtTime);
+                    writer.WriteNumber("confirmationLagBars", ev.ConfirmationLagBars!.Value);
                 }
                 else if (ev.Kind == "Cross")
                 {
@@ -431,5 +447,8 @@ internal sealed class DetectDivergencesTool : IMcpTool
         decimal? IndicatorEndValue,
         int? CrossIndex,
         decimal? ShortValue,
-        decimal? LongValue);
+        decimal? LongValue,
+        int? ConfirmedAtIndex,
+        string? ConfirmedAtTime,
+        int? ConfirmationLagBars);
 }

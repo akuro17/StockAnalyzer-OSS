@@ -7,7 +7,7 @@ internal abstract record McpCommand
     {
     }
 
-    /// <summary>The stdio session (no arguments, or only <see cref="McpCommandLine.EnableExecutionToken"/>).</summary>
+    /// <summary>The stdio session (no arguments, or only <see cref="McpCommandLine.EnableExecutionToken"/> and <see cref="McpCommandLine.EnableDiscussionToken"/>).</summary>
     public sealed record Run : McpCommand;
 
     /// <summary>Print the help and exit; <paramref name="ToolName"/> is null for the overview.</summary>
@@ -19,7 +19,7 @@ internal abstract record McpCommand
     public sealed record Invalid(string Message) : McpCommand;
 }
 
-internal sealed record McpCommandLineResult(McpCommand Command, bool EnableExecution);
+internal sealed record McpCommandLineResult(McpCommand Command, bool EnableExecution, bool EnableDiscussion = false);
 
 /// <summary>
 /// Reads the command-line arguments. A pure function: it touches no stream and starts nothing, so it can run before the
@@ -30,6 +30,7 @@ internal static class McpCommandLine
     public const string HelpToken = "--help";
     public const string VersionToken = "--version";
     public const string EnableExecutionToken = "--enable-execution";
+    public const string EnableDiscussionToken = "--enable-discussion";
 
     /// <summary>Exit code of a normal end.</summary>
     public const int ExitOk = 0;
@@ -52,6 +53,7 @@ internal static class McpCommandLine
         bool help = false;
         bool version = false;
         bool enableExecution = false;
+        bool enableDiscussion = false;
         string? toolName = null;
         int processed = 0;
 
@@ -90,6 +92,10 @@ internal static class McpCommandLine
             {
                 enableExecution = true;
             }
+            else if (string.Equals(token, EnableDiscussionToken, StringComparison.Ordinal))
+            {
+                enableDiscussion = true;
+            }
             else
             {
                 return Invalid(token);
@@ -99,7 +105,7 @@ internal static class McpCommandLine
         }
 
         McpCommand command = version ? new McpCommand.Version() : help ? new McpCommand.Help(toolName) : new McpCommand.Run();
-        return new McpCommandLineResult(command, enableExecution);
+        return new McpCommandLineResult(command, enableExecution, enableDiscussion);
     }
 
     /// <summary>The one-line message for an argument that is not accepted; an over-long token is cut so the line stays short.</summary>

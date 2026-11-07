@@ -1,4 +1,5 @@
 using System.Text.Json;
+using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.ReadOnly;
 using StockAnalyzer.McpServer.Limits;
 
@@ -6,7 +7,7 @@ namespace StockAnalyzer.McpServer.Tools;
 
 /// <summary>
 /// Retrieves stored bar counts, earliest and latest bar timestamps across supported time frames (D1, W1, MN1),
-/// and metadata status for the requested symbols without loading full candle datasets.
+/// and metadata status for the requested symbols. The stored history is read to count it; a time frame that cannot be read is listed apart.
 /// </summary>
 internal sealed class GetSymbolCoverageTool : IMcpTool
 {
@@ -26,6 +27,7 @@ internal sealed class GetSymbolCoverageTool : IMcpTool
     public string Description =>
         "Retrieves time-series data coverage (stored bar counts, earliest and latest timestamps across D1, W1, MN1) " +
         "and metadata status for the given symbols. Duplicate symbols are returned once. " +
+        "A time frame whose stored bars could not be read is named in unreadableTimeFrames, not reported as having no data. " +
         $"At most {_limits.MaxSymbolsPerMetadataCall} symbols per call. Read-only.";
 
     public string InputSchemaJson => ToolSchema.Object()
@@ -101,6 +103,13 @@ internal sealed class GetSymbolCoverageTool : IMcpTool
                     writer.WriteString("earliestTimestamp", ToolJson.FormatDate(tf.EarliestTimestamp));
                     writer.WriteString("latestTimestamp", ToolJson.FormatDate(tf.LatestTimestamp));
                     writer.WriteEndObject();
+                }
+                writer.WriteEndArray();
+
+                writer.WriteStartArray("unreadableTimeFrames");
+                foreach (TimeFrame unreadable in coverage.UnreadableTimeFrames)
+                {
+                    writer.WriteStringValue(unreadable.ToString());
                 }
                 writer.WriteEndArray();
 

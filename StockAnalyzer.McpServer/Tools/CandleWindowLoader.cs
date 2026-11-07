@@ -38,4 +38,27 @@ internal sealed class CandleWindowLoader
     /// </summary>
     public async Task<List<CandleData>> LoadUpToAsync(string symbol, TimeFrame timeFrame, DateOnly endDate, int count, CancellationToken cancellationToken)
         => (await _gateway.GetCandlesUpToAsync(symbol, timeFrame, endDate, count, cancellationToken).ConfigureAwait(false)).ToList();
+
+    /// <summary>
+    /// The date the bars are known up to: <paramref name="end"/>, but never later than the last stored daily bar; null when nothing is stored.
+    /// A weekly or monthly period is complete only once this date reaches its last calendar day. Call it BEFORE the bars are read: a Sync can replace the stored
+    /// file between the two reads, and a reference date read after the bars could be later than the data behind them (a week would then look complete).
+    /// Read first, it is never later, so the flag can only err towards "partial".
+    /// </summary>
+    public async Task<DateTime?> ReferenceDateAsync(string symbol, DateOnly? end, CancellationToken cancellationToken)
+    {
+        IReadOnlyList<CandleData> latest = await _gateway.GetCandlesAsync(symbol, TimeFrame.D1, 1, cancellationToken).ConfigureAwait(false);
+        if (latest.Count == 0)
+        {
+            return null;
+        }
+
+        return TimeFrameAggregator.ReferenceDate(latest[^1].Timestamp, end);
+    }
+
+    /// <summary>True when the last of <paramref name="bars"/> is a W1 or MN1 bar whose period ends after <paramref name="referenceDate"/> (false for no bar or no reference date).</summary>
+    public static bool IsLastBarPartial(IReadOnlyList<CandleData> bars, TimeFrame timeFrame, DateTime? referenceDate)
+        => bars.Count > 0
+            && referenceDate is { } reference
+            && TimeFrameAggregator.IsPartialPeriod(bars[^1].Timestamp, timeFrame, reference);
 }

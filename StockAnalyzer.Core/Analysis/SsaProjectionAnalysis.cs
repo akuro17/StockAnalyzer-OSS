@@ -1,6 +1,8 @@
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
+using StockAnalyzer.Core.MathUtils;
 using StockAnalyzer.Core.Models;
 
 namespace StockAnalyzer.Core.Analysis;
@@ -179,9 +181,6 @@ public static class SsaProjectionAnalysis
         double slope = decomp.Slope;
         double intercept = decomp.Intercept;
 
-        Span<double> processed = stackalloc double[n];
-        SsaDecompositionEngine.Detrend(sampleArray, processed, detrendMode, out _, out _);
-
         var componentList = new List<SsaComponentInfo>(r);
         double cumulativeVariance = 0.0;
         for (int m = 0; m < r; m++)
@@ -193,8 +192,33 @@ public static class SsaProjectionAnalysis
         }
 
         // 3. In-Sample Signal Reconstruction via Diagonal Averaging (Hankelization)
+        // The detrended series is only needed for the reconstruction and the residuals; short series live on the stack,
+        // longer ones are rented so the stack use stays bounded (MathBufferLimits). Detrend overwrites all n elements.
         double[] reconstructed = new double[n];
-        SsaDecompositionEngine.ReconstructGroup(processed, l, k, decomp.SortedIndices.AsSpan(0, r), decomp.Eigenvectors, reconstructed);
+        double sumSqErr = 0.0;
+        double[]? rentedProcessed = null;
+        Span<double> processed = (n <= MathBufferLimits.StackAllocThreshold)
+            ? stackalloc double[n]
+            : (rentedProcessed = ArrayPool<double>.Shared.Rent(n)).AsSpan(0, n);
+        try
+        {
+            SsaDecompositionEngine.Detrend(sampleArray, processed, detrendMode, out _, out _);
+            SsaDecompositionEngine.ReconstructGroup(processed, l, k, decomp.SortedIndices.AsSpan(0, r), decomp.Eigenvectors, reconstructed);
+
+            // Compute in-sample residuals
+            for (int t = 0; t < n; t++)
+            {
+                double diff = processed[t] - reconstructed[t];
+                sumSqErr += diff * diff;
+            }
+        }
+        finally
+        {
+            if (rentedProcessed != null)
+            {
+                ArrayPool<double>.Shared.Return(rentedProcessed);
+            }
+        }
 
         // Build in-sample reconstructed points list: P~_t = reconstructed[t] + Trend(t)
         var reconstructedPoints = new List<Point>(n);
@@ -204,13 +228,7 @@ public static class SsaProjectionAnalysis
             reconstructedPoints.Add(new Point((double)timestamps[t].Ticks, reconPrice));
         }
 
-        // Compute in-sample residuals and residual standard deviation
-        double sumSqErr = 0.0;
-        for (int t = 0; t < n; t++)
-        {
-            double diff = processed[t] - reconstructed[t];
-            sumSqErr += diff * diff;
-        }
+        // Residual standard deviation
         double residualStdDev = Math.Sqrt(sumSqErr / n);
         double minStdDev = Math.Max(0.001, Math.Abs(samples[^1]) * 0.001);
         if (residualStdDev < minStdDev)

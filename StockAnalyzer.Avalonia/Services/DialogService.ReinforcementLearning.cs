@@ -30,7 +30,8 @@ public partial class DialogService
                     _serviceProvider.GetRequiredService<RlDialogDataService>(),
                     dialogService: this,
                     periodAdvisor: _serviceProvider.GetService<StockAnalyzer.Core.Services.StoredPeriod.IStoredPeriodAdvisor>(),
-                    modelMetadataAnnotationService: _serviceProvider.GetService<StockAnalyzer.Core.Services.IModelMetadataAnnotationService>());
+                    modelMetadataAnnotationService: _serviceProvider.GetService<StockAnalyzer.Core.Services.IModelMetadataAnnotationService>(),
+                    dataStorageState: _serviceProvider.GetService<StockAnalyzer.Core.Common.IDataStorageState>());
                 var window = new RlTrainingWindow { DataContext = vm, Icon = desktop.MainWindow.Icon };
                 window.Opened += async (_, _) => await vm.InitializeAsync();
                 window.Closing += (_, _) => vm.Dispose();

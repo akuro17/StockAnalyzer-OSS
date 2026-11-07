@@ -31,8 +31,9 @@ public sealed record RankedDrawdownEpisode(
 /// <see cref="DrawdownSeriesCalculator"/> (spec §5.4) to every episode instead of only the deepest one: an episode starts at a peak
 /// (a bar whose equity is at least every earlier equity; equal highs move the peak to the latest) followed by a lower bar, the trough is the
 /// FIRST index of the maximal depth inside the episode, and recovery is the first later bar with equity at least the peak (null when it never
-/// happens). Depth is ranked on the same double ratio series the evaluation artifact uses, so rank 1 equals that artifact's
-/// <c>RatioDrawdown.Episode</c> down to PeakIndex/TroughIndex/RecoveryIndex; ties on depth rank the earlier peak first.
+/// happens). Depth is ranked on the exact decimal ratio (the evaluation artifact ranks on a double series; the two orders differ only when
+/// two depths round to the same double), so rank 1 equals that artifact's <c>RatioDrawdown.Episode</c> down to PeakIndex/TroughIndex/RecoveryIndex
+/// on every practical path; ties on depth rank the earlier peak first.
 /// </summary>
 public static class DrawdownEpisodeEnumerator
 {
@@ -61,9 +62,11 @@ public static class DrawdownEpisodeEnumerator
         }
 
         ImmutableArray<decimal> equity = equityBuilder.MoveToImmutable();
-        ImmutableArray<double> depth = DrawdownSeriesCalculator.ComputeDrawdownRatioSeries(equity);
+        // Called for its validation only: a non-finite ratio throws the ArithmeticException the diagnostics report as NonFiniteResult. The troughs and
+        // the ranking below are decided on the exact decimal equity, so two depths that round to the same double are still ordered correctly.
+        _ = DrawdownSeriesCalculator.ComputeDrawdownRatioSeries(equity);
 
-        var found = new List<(double Depth, int Peak, int Trough, int? Recovery)>();
+        var found = new List<(decimal Depth, int Peak, int Trough, int? Recovery)>();
         int peak = 0;
         int i = 1;
         while (i < equity.Length)
@@ -75,17 +78,18 @@ public static class DrawdownEpisodeEnumerator
                 continue;
             }
 
-            // Inside an episode the running high is equity[peak], so depth[] of the whole series is this episode's depth.
+            // Inside an episode the running high is equity[peak], so the deepest bar is the lowest equity (the first one when several are equal).
             int trough = i;
             int j = i + 1;
             while (j < equity.Length && equity[j] < equity[peak])
             {
-                if (depth[j] > depth[trough]) trough = j;
+                if (equity[j] < equity[trough]) trough = j;
                 j++;
             }
 
             int? recovery = j < equity.Length ? j : null;
-            if (depth[trough] > 0d) found.Add((depth[trough], peak, trough, recovery));
+            decimal depthRatio = (equity[peak] - equity[trough]) / equity[peak];
+            if (depthRatio > 0m) found.Add((depthRatio, peak, trough, recovery));
             if (recovery is not { } recovered) break;
             peak = recovered;
             i = recovered + 1;

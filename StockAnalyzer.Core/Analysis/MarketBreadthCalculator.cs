@@ -5,6 +5,7 @@ using System.Linq;
 using StockAnalyzer.Core.MathUtils;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Indicators;
+using StockAnalyzer.Core.Services;
 
 namespace StockAnalyzer.Core.Analysis;
 
@@ -53,6 +54,13 @@ public sealed class MarketBreadthParameters
     public int HighLowBars { get; init; } = MarketBreadthCalculator.DefaultHighLowBars;
     public int? OutputTailCount { get; init; }
     public IReadOnlySet<string>? IncludeSeries { get; init; }
+
+    /// <summary>
+    /// Time frame of the bars. D1 (default) puts bars of different symbols on the same date axis by their exact date. For W1 and MN1 the axis is the
+    /// calendar period start (<see cref="Services.TimeFrameAggregator.PeriodStart"/>), so that bars dated by different first trading days of the same period
+    /// fall on one axis point instead of splitting into two.
+    /// </summary>
+    public TimeFrame TimeFrame { get; init; } = TimeFrame.D1;
 }
 
 /// <summary>
@@ -145,14 +153,14 @@ public static class MarketBreadthCalculator
                 SymbolCount = 0,
                 ExcludedSymbols = excludedSymbols,
                 Series = new MarketBreadthSeries(),
-                Notes = CreateNotes()
+                Notes = CreateNotes(parameters.TimeFrame)
             };
         }
 
         // Union of all dates across all tickers with valid candles (sorted ascending)
         var allDates = validCandlesBySymbol.Values
             .SelectMany(cList => cList)
-            .Select(c => c.Timestamp.Date)
+            .Select(c => TimeFrameAggregator.PeriodMatchDate(c.Timestamp, parameters.TimeFrame))
             .Distinct()
             .OrderBy(d => d)
             .ToList();
@@ -166,7 +174,7 @@ public static class MarketBreadthCalculator
                 SymbolCount = validCandlesBySymbol.Count,
                 ExcludedSymbols = excludedSymbols,
                 Series = new MarketBreadthSeries(),
-                Notes = CreateNotes()
+                Notes = CreateNotes(parameters.TimeFrame)
             };
         }
 
@@ -209,7 +217,7 @@ public static class MarketBreadthCalculator
 
             for (int k = 0; k < candleCount; k++)
             {
-                DateTime d = candles[k].Timestamp.Date;
+                DateTime d = TimeFrameAggregator.PeriodMatchDate(candles[k].Timestamp, parameters.TimeFrame);
                 if (!dateToIndex.TryGetValue(d, out int t))
                     continue;
 
@@ -251,13 +259,21 @@ public static class MarketBreadthCalculator
                     rollingMin.Count > k && rollingMin[k].HasValue)
                 {
                     eligibleHighLowCount[t]++;
-                    if (candles[k].Close >= rollingMax[k]!.Value)
+                    decimal windowHigh = rollingMax[k]!.Value;
+                    decimal windowLow = rollingMin[k]!.Value;
+
+                    // A window in which every close is equal has neither a new high nor a new low; without this guard the symbol would be counted as both
+                    // (owner decision D-10 = A). In any other window a close equal to the extreme still counts (tie rule unchanged).
+                    if (windowHigh > windowLow)
                     {
-                        newHighsCount[t]++;
-                    }
-                    if (candles[k].Close <= rollingMin[k]!.Value)
-                    {
-                        newLowsCount[t]++;
+                        if (candles[k].Close >= windowHigh)
+                        {
+                            newHighsCount[t]++;
+                        }
+                        if (candles[k].Close <= windowLow)
+                        {
+                            newLowsCount[t]++;
+                        }
                     }
                 }
             }
@@ -403,13 +419,22 @@ public static class MarketBreadthCalculator
             SymbolCount = validCandlesBySymbol.Count,
             ExcludedSymbols = excludedSymbols,
             Series = series,
-            Notes = CreateNotes()
+            Notes = CreateNotes(parameters.TimeFrame)
         };
     }
 
-    private static IReadOnlyList<string> CreateNotes() => new[]
+    private static IReadOnlyList<string> CreateNotes(TimeFrame timeFrame)
     {
-        "A/D Line, CVI, and McClellan Summation Index are accumulated from the beginning of the evaluated window.",
-        "Lookback calculations assume survivorship within the provided universe."
-    };
+        var notes = new List<string>
+        {
+            "A/D Line, CVI, and McClellan Summation Index are accumulated from the beginning of the evaluated window.",
+            "Lookback calculations assume survivorship within the provided universe."
+        };
+        if (TimeFrameAggregator.IsPeriodFrame(timeFrame))
+        {
+            notes.Add(ReturnStatistics.PeriodStartDateNote);
+        }
+
+        return notes;
+    }
 }

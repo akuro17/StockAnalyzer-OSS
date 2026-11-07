@@ -68,7 +68,7 @@ namespace StockAnalyzer.Core.Services.Backtest.Engine;
 /// `OrderType.Stop`/`.Limit` with the exact breached threshold price so the engine's existing gap-aware
 /// worse-of/better-of-vs-Open fill rule applies unchanged (Task 8a's finding: no engine change needed).
 /// </summary>
-public sealed class ConditionBasedBacktestStrategy : IBacktestStrategy, IBacktestRiskTieDetector
+public sealed class ConditionBasedBacktestStrategy : IBacktestStrategy, IBacktestRiskTieDetector, IBacktestOrderCancellationStrategy
 {
     private static readonly TimeInForce Gtc = new(true, -1);
 
@@ -108,6 +108,7 @@ public sealed class ConditionBasedBacktestStrategy : IBacktestStrategy, IBacktes
         _reversalShortChain = paths.ReverseShort;
         (IReadOnlyList<StrategyIndicatorRequest> baseRequests, _sideToIndicatorKey) = BuildIndicatorRequests(snapshot);
         _requiredIndicators = AppendDynamicExitIndicators(baseRequests, riskManagement?.DynamicExits);
+        (_atrPeriods, _atrKeys) = BuildAtrKeys(riskManagement?.DynamicExits);
         _riskManagement = riskManagement is null ? null : new BacktestRiskManagementSettings
         {
             StopLossPercent = riskManagement.StopLossPercent,
@@ -126,6 +127,7 @@ public sealed class ConditionBasedBacktestStrategy : IBacktestStrategy, IBacktes
         _longEntryChain = _shortEntryChain = _exitChain = _reversalLongChain = _reversalShortChain = Array.Empty<BacktestConditionEntry>();
         (IReadOnlyList<StrategyIndicatorRequest> baseTreeRequests, _sideToIndicatorKey) = BuildIndicatorRequests(BacktestConditionValidator.ActiveSides(_tree));
         _requiredIndicators = AppendDynamicExitIndicators(baseTreeRequests, riskManagement?.DynamicExits);
+        (_atrPeriods, _atrKeys) = BuildAtrKeys(riskManagement?.DynamicExits);
         _riskManagement = riskManagement is null ? null : new BacktestRiskManagementSettings
         {
             StopLossPercent = riskManagement.StopLossPercent,
@@ -157,6 +159,11 @@ public sealed class ConditionBasedBacktestStrategy : IBacktestStrategy, IBacktes
 
     private readonly List<BacktestWarning> _warnings = new();
     private readonly HashSet<int> _atrWarnedEntryBars = new();
+    private int _levelCheckedEntryBar = -1;
+
+    // The ATR periods the dynamic exits read and their indicator keys, built once: the per-bar code allocates neither a set nor a key string.
+    private readonly int[] _atrPeriods;
+    private readonly string[] _atrKeys;
     private int? _trailingEntryBar;
     private decimal? _activeTrailingStopPrice;
     private decimal? _ratchetedTrailingStopPrice;
@@ -164,15 +171,64 @@ public sealed class ConditionBasedBacktestStrategy : IBacktestStrategy, IBacktes
     private int _lastEvaluatedBar = -1;
     private int _lastSeenBarIndex = -1;
 
+    // The breach order this strategy has just placed (Stop / Limit, GTC): the bar it was submitted at (-1 = none), its type, its level and the side
+    // of the held position. Only an order that really entered the Exit slot is remembered (the slot was free at that Close).
+    private int _breachBar = -1;
+    private OrderType _breachType;
+    private decimal _breachLevel;
+    private bool _breachIsLong;
+
     private void CheckRunBoundary(int currentBarIndex)
     {
         if (currentBarIndex <= _lastSeenBarIndex)
         {
             _warnings.Clear();
             _atrWarnedEntryBars.Clear();
+            _levelCheckedEntryBar = -1;
             ResetTrailingStop();
+            _breachBar = -1;
         }
         _lastSeenBarIndex = currentBarIndex;
+    }
+
+    /// <summary>
+    /// A breach order is submitted at the Close of bar t for bar t+1 and stays pending (GTC) until the price reaches it. When bar t+1 did NOT reach its
+    /// price (the wick of bar t bounced), the order would occupy the single Exit slot for good and every later exit signal of this strategy (stop,
+    /// take-profit, time stop, exit chain) would be dropped. So the order is cancelled at the Close of bar t+1; the engine applies the cancellation at
+    /// Step 1 of bar t+2 and a replacement can be submitted from the Close of bar t+2. An order whose price WAS reached but whose fill was deferred
+    /// (volume participation, price-limit lock) stays pending: that deferral is a documented engine behaviour.
+    /// </summary>
+    public OrderCancellationIntent EvaluateCancellations(StrategyContext context)
+    {
+        int breachBar = _breachBar;
+        _breachBar = -1;
+        if (breachBar < 0 || context.BarIndex != breachBar + 1) return OrderCancellationIntent.None;
+        if (context.PositionSide is null || context.PendingExitOrderId is not { } pendingId) return OrderCancellationIntent.None;
+
+        // Same touch rule the engine fills with (inclusive); whether a level is touched does not depend on the intrabar path.
+        // Exit orders: Long exits are Sell orders (Stop touches downward, Limit upward), Short exits are Buy orders (the opposite).
+        bool sell = _breachIsLong;
+        TouchDirection direction = _breachType == OrderType.Stop
+            ? (sell ? TouchDirection.Downward : TouchDirection.Upward)
+            : (sell ? TouchDirection.Upward : TouchDirection.Downward);
+        CandleData bar = context.Bar;
+        bool reached = FillPathScanner.TryFindTouchPosition(bar.Open, bar.High, bar.Low, bar.Close, _breachLevel, direction) is not null;
+        return reached ? OrderCancellationIntent.None : new OrderCancellationIntent(pendingId, null);
+    }
+
+    private void RememberBreachOrder(StrategyContext context, StrategyOrderRequest order, bool isLong)
+    {
+        decimal? level = order.OrderType == OrderType.Stop ? order.StopPrice : order.LimitPrice;
+        if (context.PendingExitOrderId is not null || level is not { } price)
+        {
+            _breachBar = -1; // the Exit slot is occupied at this Close: this request is dropped by the engine, nothing new is pending
+            return;
+        }
+
+        _breachBar = context.BarIndex;
+        _breachType = order.OrderType;
+        _breachLevel = price;
+        _breachIsLong = isLong;
     }
 
     private void ResetTrailingStop()
@@ -417,6 +473,10 @@ public sealed class ConditionBasedBacktestStrategy : IBacktestStrategy, IBacktes
         {
             PostEvaluateTrailingStopRatchet(context, isLong);
         }
+        else
+        {
+            RememberBreachOrder(context, breachOrder.Value, isLong);
+        }
 
         return breachOrder;
     }
@@ -428,14 +488,8 @@ public sealed class ConditionBasedBacktestStrategy : IBacktestStrategy, IBacktes
         if (_riskManagement?.DynamicExits is { } dynamicExits)
         {
             int signalBar = entryBar - 1;
-            var periods = new HashSet<int>();
-            if (dynamicExits.AtrStop is { } s) periods.Add(s.Period);
-            if (dynamicExits.AtrTarget is { } tg) periods.Add(tg.Period);
-            if (dynamicExits.TrailingStop is { Mode: TrailingExitMode.AtrMultiple, Period: { } tp }) periods.Add(tp);
-
-            foreach (int p in periods)
+            foreach (string key in _atrKeys)
             {
-                string key = AtrKey(p);
                 decimal? atr = signalBar >= 0 ? context.Indicators.ValueAt(key, signalBar) : null;
                 if ((atr is null or <= 0m) && _atrWarnedEntryBars.Add(entryBar))
                 {
@@ -443,9 +497,16 @@ public sealed class ConditionBasedBacktestStrategy : IBacktestStrategy, IBacktes
                         WarningCode.DynamicExitAtrUnavailable,
                         context.BarIndex,
                         context.Bar.Timestamp,
-                        $"Dynamic exit ATR unavailable at bar {context.BarIndex} ({context.Bar.Timestamp:yyyy-MM-dd}): insufficient warm-up or non-positive ATR value."));
+                        FormattableString.Invariant($"Dynamic exit ATR unavailable at bar {context.BarIndex} ({context.Bar.Timestamp:yyyy-MM-dd}): insufficient warm-up or non-positive ATR value.")));
                     break;
                 }
+            }
+
+            // The levels depend only on the entry price and the signal bar's ATR, so they are checked once per entry bar.
+            if (_levelCheckedEntryBar != entryBar)
+            {
+                _levelCheckedEntryBar = entryBar;
+                WarnWhenAtrLevelIsNotPositive(context, dynamicExits, entryBar, entryPrice, isLong);
             }
         }
 
@@ -465,7 +526,7 @@ public sealed class ConditionBasedBacktestStrategy : IBacktestStrategy, IBacktes
                     int signalBar = entryBar - 1;
                     if (trailingStop.Period.HasValue && trailingStop.Multiple.HasValue)
                     {
-                        string key = AtrKey(trailingStop.Period.Value);
+                        string key = KeyOf(trailingStop.Period.Value);
                         decimal? atr = signalBar >= 0 ? context.Indicators.ValueAt(key, signalBar) : null;
                         if (atr is > 0m)
                         {
@@ -518,7 +579,7 @@ public sealed class ConditionBasedBacktestStrategy : IBacktestStrategy, IBacktes
             int signalBar = eb - 1;
             if (trailing.Period.HasValue && trailing.Multiple.HasValue)
             {
-                string key = AtrKey(trailing.Period.Value);
+                string key = KeyOf(trailing.Period.Value);
                 decimal? atr = signalBar >= 0 ? context.Indicators.ValueAt(key, signalBar) : null;
                 if (atr is > 0m)
                 {
@@ -573,11 +634,11 @@ public sealed class ConditionBasedBacktestStrategy : IBacktestStrategy, IBacktes
         if (_riskManagement.DynamicExits?.AtrStop is { } atrStop)
         {
             int signalBar = context.EntryBarIndex.HasValue ? context.EntryBarIndex.Value - 1 : -1;
-            string key = AtrKey(atrStop.Period);
+            string key = KeyOf(atrStop.Period);
             decimal? atr = signalBar >= 0 ? context.Indicators.ValueAt(key, signalBar) : null;
             if (atr is > 0m && atrStop.Multiple > 0m)
             {
-                decimal rawStop = isLong ? entryPrice - (atrStop.Multiple * atr.Value) : entryPrice + (atrStop.Multiple * atr.Value);
+                decimal rawStop = AtrLevel(entryPrice, atrStop.Multiple, atr.Value, below: isLong);
                 if (rawStop > 0m)
                 {
                     atrStopPrice = rawStop;
@@ -637,11 +698,11 @@ public sealed class ConditionBasedBacktestStrategy : IBacktestStrategy, IBacktes
         if (_riskManagement.DynamicExits?.AtrTarget is { } atrTarget)
         {
             int signalBar = context.EntryBarIndex.HasValue ? context.EntryBarIndex.Value - 1 : -1;
-            string key = AtrKey(atrTarget.Period);
+            string key = KeyOf(atrTarget.Period);
             decimal? atr = signalBar >= 0 ? context.Indicators.ValueAt(key, signalBar) : null;
             if (atr is > 0m && atrTarget.Multiple > 0m)
             {
-                decimal rawTarget = isLong ? entryPrice + (atrTarget.Multiple * atr.Value) : entryPrice - (atrTarget.Multiple * atr.Value);
+                decimal rawTarget = AtrLevel(entryPrice, atrTarget.Multiple, atr.Value, below: !isLong);
                 if (rawTarget > 0m)
                 {
                     atrTargetPrice = rawTarget;
@@ -730,17 +791,11 @@ public sealed class ConditionBasedBacktestStrategy : IBacktestStrategy, IBacktes
         IReadOnlyList<StrategyIndicatorRequest> baseRequests,
         DynamicExitConfiguration? dynamicExits)
     {
-        if (dynamicExits is null) return baseRequests;
-
-        var set = new HashSet<int>();
-        if (dynamicExits.AtrStop is { } stop) set.Add(stop.Period);
-        if (dynamicExits.AtrTarget is { } target) set.Add(target.Period);
-        if (dynamicExits.TrailingStop is { Mode: TrailingExitMode.AtrMultiple, Period: { } period }) set.Add(period);
-
-        if (set.Count == 0) return baseRequests;
+        int[] periods = DistinctAtrPeriods(dynamicExits);
+        if (periods.Length == 0) return baseRequests;
 
         var list = new List<StrategyIndicatorRequest>(baseRequests);
-        foreach (int p in set)
+        foreach (int p in periods)
         {
             list.Add(new StrategyIndicatorRequest(
                 AtrKey(p),
@@ -756,6 +811,79 @@ public sealed class ConditionBasedBacktestStrategy : IBacktestStrategy, IBacktes
     }
 
     public static string AtrKey(int period) => $"dynamic_exit_atr_{period}";
+
+    /// <summary>The distinct ATR periods the dynamic exits read (ATR stop, ATR target, ATR-multiple trailing stop), in that order. The single definition for the indicator requests and the per-bar keys.</summary>
+    private static int[] DistinctAtrPeriods(DynamicExitConfiguration? dynamicExits)
+    {
+        if (dynamicExits is null) return Array.Empty<int>();
+
+        var periods = new List<int>(3);
+        if (dynamicExits.AtrStop is { } stop) periods.Add(stop.Period);
+        if (dynamicExits.AtrTarget is { } target && !periods.Contains(target.Period)) periods.Add(target.Period);
+        if (dynamicExits.TrailingStop is { Mode: TrailingExitMode.AtrMultiple, Period: { } period } && !periods.Contains(period)) periods.Add(period);
+        return periods.ToArray();
+    }
+
+    private static (int[] Periods, string[] Keys) BuildAtrKeys(DynamicExitConfiguration? dynamicExits)
+    {
+        int[] periods = DistinctAtrPeriods(dynamicExits);
+        var keys = new string[periods.Length];
+        for (int i = 0; i < periods.Length; i++)
+        {
+            keys[i] = AtrKey(periods[i]);
+        }
+
+        return (periods, keys);
+    }
+
+    /// <summary>The prebuilt indicator key of <paramref name="period"/> (every period the dynamic exits read is in the table; a period outside it falls back to building the key).</summary>
+    private string KeyOf(int period)
+    {
+        for (int i = 0; i < _atrPeriods.Length; i++)
+        {
+            if (_atrPeriods[i] == period) return _atrKeys[i];
+        }
+
+        return AtrKey(period);
+    }
+
+    /// <summary>The raw price level of an ATR exit: <paramref name="multiple"/> x ATR below (<paramref name="below"/>) or above the entry price. The single formula for the thresholds and the warning.</summary>
+    private static decimal AtrLevel(decimal entryPrice, decimal multiple, decimal atr, bool below)
+        => below ? entryPrice - (multiple * atr) : entryPrice + (multiple * atr);
+
+    /// <summary>
+    /// An ATR stop or target whose ATR is positive but whose level is not above zero is dropped by <see cref="ComputeRiskThresholds"/> for the whole trade. This says so once
+    /// per entry bar (<see cref="WarningCode.DynamicExitLevelNonPositive"/>); the ATR-unavailable case has its own code.
+    /// </summary>
+    private void WarnWhenAtrLevelIsNotPositive(StrategyContext context, DynamicExitConfiguration dynamicExits, int entryBar, decimal entryPrice, bool isLong)
+    {
+        int signalBar = entryBar - 1;
+        if (signalBar < 0) return;
+
+        string? what = null;
+        if (dynamicExits.AtrStop is { } stop && stop.Multiple > 0m
+            && context.Indicators.ValueAt(KeyOf(stop.Period), signalBar) is > 0m and { } stopAtr
+            && AtrLevel(entryPrice, stop.Multiple, stopAtr, below: isLong) <= 0m)
+        {
+            what = "ATR stop";
+        }
+
+        if (dynamicExits.AtrTarget is { } target && target.Multiple > 0m
+            && context.Indicators.ValueAt(KeyOf(target.Period), signalBar) is > 0m and { } targetAtr
+            && AtrLevel(entryPrice, target.Multiple, targetAtr, below: !isLong) <= 0m)
+        {
+            // A long's stop and a short's target are the levels below the entry; the other one is above it and always positive, so at most one of the two is dropped.
+            what ??= "ATR target";
+        }
+
+        if (what is null) return;
+
+        _warnings.Add(new BacktestWarning(
+            WarningCode.DynamicExitLevelNonPositive,
+            context.BarIndex,
+            context.Bar.Timestamp,
+            FormattableString.Invariant($"Dynamic exit level not above zero at bar {context.BarIndex} ({context.Bar.Timestamp:yyyy-MM-dd}): the {what} of the trade entered at bar {entryBar} would be at or below zero, so it is switched off for that trade.")));
+    }
 
     private static decimal EnsurePositiveThreshold(decimal value, string name)
         => value > 0m ? value : throw new OverflowException($"{name} threshold rounded to a non-positive decimal value.");

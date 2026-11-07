@@ -75,7 +75,7 @@ internal sealed class ScreenerTemplateAdvisor
         {
             yield return $"{side.IndicatorType} compares two symbols, which is not evaluated in a template that reads weekly or monthly bars (the comparison symbol's bars are daily)";
         }
-        else if (!BacktestIndicatorEligibility.IsAllowed(side.IndicatorType, side.OutputName))
+        else if (!ScreenerIndicatorEligibility.IsAllowed(side.IndicatorType, side.OutputName))
         {
             yield return $"{side.IndicatorType} ({side.OutputName}) looks ahead or cannot be calculated bar by bar";
         }

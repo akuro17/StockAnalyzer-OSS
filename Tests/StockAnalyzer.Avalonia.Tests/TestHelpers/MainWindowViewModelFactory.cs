@@ -37,6 +37,8 @@ internal static class MainWindowViewModelFactory
     /// <param name="workspaceCoordinator">Replaces the mocked coordinator (it is bound to the view model by the constructor).</param>
     /// <param name="serializationService">Replaces the mocked serialization service.</param>
     /// <param name="backtestColumnSettingsManager">Passed to the constructor; omitted means the view model falls back to its own manager.</param>
+    /// <param name="dataStorageState">Passed to the constructor; omitted = writable (no read-only banner).</param>
+    /// <param name="configureLocalization">Runs on the localization mock BEFORE the view model is constructed (a banner built in the constructor reads it).</param>
     internal static MainWindowViewModelParts Create(
         IDispatcherService? dispatcher = null,
         IPanelTabFactory? panelTabFactory = null,
@@ -46,7 +48,9 @@ internal static class MainWindowViewModelFactory
         ILayoutSaveScheduler? layoutSaveScheduler = null,
         IWorkspaceCoordinator? workspaceCoordinator = null,
         IWorkspaceSerializationService? serializationService = null,
-        StockAnalyzer.Core.Services.Backtest.Configuration.IBacktestColumnSettingsManager? backtestColumnSettingsManager = null)
+        StockAnalyzer.Core.Services.Backtest.Configuration.IBacktestColumnSettingsManager? backtestColumnSettingsManager = null,
+        StockAnalyzer.Core.Common.IDataStorageState? dataStorageState = null,
+        Action<Mock<ILocalizationService>>? configureLocalization = null)
     {
         dispatcher ??= new SynchronousDispatcherService();
         panelTabFactory ??= new MockPanelTabFactory();
@@ -56,6 +60,7 @@ internal static class MainWindowViewModelFactory
         var workspaceFacade = new Mock<IWorkspaceViewModelFacade>();
         var themeManager = new Mock<Core.Theme.IThemeManager>();
         var localization = new Mock<ILocalizationService>();
+        configureLocalization?.Invoke(localization);
         var coreServices = new Mock<ICoreServicesFacade>();
         var watchlist = new Mock<IWatchlistManager>();
         watchlist.Setup(w => w.GetAllProfiles()).Returns(new List<StockAnalyzer.Core.Models.Watchlist.WatchlistProfile>());
@@ -112,7 +117,8 @@ internal static class MainWindowViewModelFactory
             serializationService ?? new Mock<IWorkspaceSerializationService>().Object,
             () => new ChartViewModel(),
             containerRegistry: containerRegistry,
-            backtestColumnSettingsManager: backtestColumnSettingsManager);
+            backtestColumnSettingsManager: backtestColumnSettingsManager,
+            dataStorageState: dataStorageState);
 
         return new MainWindowViewModelParts(vm, dialog, localization, tabManager, scheduler, tearOff, store);
     }

@@ -47,7 +47,12 @@ internal sealed class AnalyzeMarketStructureTool : IMcpTool
 
     public string Description =>
         "Analyzes market structure swings and causal trend continuation/reversal shifts (BOS/CHoCH) " +
-        "based on confirmed pivot points. Strictly causal and prefix-invariant: historical shifts never depend on future bars.";
+        "based on confirmed pivot points. Strictly causal and prefix-invariant: historical shifts never depend on future bars. " +
+        "Pivots are zigzag swings of at least zigzagThresholdPercent; leftStrength and rightStrength are accepted but ignored.";
+
+    /// <summary>The warning returned when a call names leftStrength or rightStrength: the detector does not read them.</summary>
+    internal const string IgnoredStrengthWarning =
+        "leftStrength and rightStrength are ignored: swing pivots are defined by zigzagThresholdPercent only, so these values do not change the result.";
 
     public bool IsHeavy => false;
 
@@ -60,8 +65,8 @@ internal sealed class AnalyzeMarketStructureTool : IMcpTool
         .String(EndDateArgument, $"Last date to include ({ToolJson.DateFormat}). If specified, bars up to this date are evaluated.")
         .Integer(LookbackArgument, $"Stored bars loaded up to endDate, newest last. Default and maximum {_limits.MaxCandlesPerRequest}.", defaultValue: _limits.MaxCandlesPerRequest, minimum: 1, maximum: _limits.MaxCandlesPerRequest)
         .Number(ZigZagThresholdArgument, $"Minimum price change percentage to confirm a swing pivot (0.1..50.0). Default {DefaultZigZagThreshold}%.")
-        .Integer(LeftStrengthArgument, $"Fractal pivot strength to the left (>= 1). Default {DefaultStrength}.", defaultValue: DefaultStrength, minimum: 1)
-        .Integer(RightStrengthArgument, $"Fractal pivot strength to the right (>= 1). Default {DefaultStrength}.", defaultValue: DefaultStrength, minimum: 1)
+        .Integer(LeftStrengthArgument, $"Accepted for compatibility and IGNORED: pivots come from zigzagThresholdPercent only, so this value does not change the result (a warning is returned when it is given). Must be >= 1. Default {DefaultStrength}.", defaultValue: DefaultStrength, minimum: 1)
+        .Integer(RightStrengthArgument, $"Accepted for compatibility and IGNORED: pivots come from zigzagThresholdPercent only, so this value does not change the result (a warning is returned when it is given). Must be >= 1. Default {DefaultStrength}.", defaultValue: DefaultStrength, minimum: 1)
         .Integer(TailArgument, $"Maximum number of trailing pivots and shifts to return (1..{_limits.MaxOutputTailBars}). Default {_limits.DefaultOutputTailBars}.", defaultValue: _limits.DefaultOutputTailBars, minimum: 1, maximum: _limits.MaxOutputTailBars)
         .Boolean(SymbolResolver.AllowUnregisteredArgument, "Accept a symbol that is not in the ticker list but has stored bars. Default false.")
         .Build();
@@ -122,6 +127,8 @@ internal sealed class AnalyzeMarketStructureTool : IMcpTool
         {
             rightStrength = DefaultStrength;
         }
+
+        bool strengthGiven = ToolArgs.Integer(arguments, LeftStrengthArgument) is not null || ToolArgs.Integer(arguments, RightStrengthArgument) is not null;
 
         List<CandleData> loaded;
         if (endDate is not null)
@@ -243,12 +250,16 @@ internal sealed class AnalyzeMarketStructureTool : IMcpTool
                 writer.WriteNull("latestShift");
             }
 
-            if (symbolWarnings.Count > 0)
+            if (symbolWarnings.Count > 0 || strengthGiven)
             {
                 writer.WriteStartArray("warnings");
                 foreach (string w in symbolWarnings)
                 {
                     writer.WriteStringValue(w);
+                }
+                if (strengthGiven)
+                {
+                    writer.WriteStringValue(IgnoredStrengthWarning);
                 }
                 writer.WriteEndArray();
             }

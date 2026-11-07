@@ -20,7 +20,7 @@ namespace StockAnalyzer.McpServer.Tools;
 /// <summary>
 /// sa_detect_chart_patterns: detects macro chart patterns (Geometric formations, Harmonic patterns,
 /// Elliott waves, and DTW Waveform matching) on historical candles, strictly filtered by confirmation date.
-/// Strictly causal and prefix-invariant: historical patterns never depend on future bars.
+/// Causal as of endDate (bars after it are never read, patterns confirmed after it are excluded); not prefix-invariant.
 /// </summary>
 internal sealed class DetectChartPatternsTool : IMcpTool
 {
@@ -63,7 +63,9 @@ internal sealed class DetectChartPatternsTool : IMcpTool
 
     public string Description =>
         "Detects macro chart patterns (Geometric formations, Harmonic patterns, Elliott waves, and DTW Waveform matching) " +
-        "on historical candles, strictly filtered by confirmation date. Strictly causal and prefix-invariant: historical patterns never depend on future bars.";
+        "on historical candles, strictly filtered by confirmation date: no pattern confirmed after endDate is returned and bars after endDate are never read. " +
+        "Not prefix-invariant: the set for an earlier endDate is not guaranteed to be the earlier part of the set for a later endDate " +
+        "(Geometric overlap filter and longer-fit replacement, one WaveformMatching occurrence per template).";
 
     public bool IsHeavy => false;
 
@@ -154,6 +156,7 @@ internal sealed class DetectChartPatternsTool : IMcpTool
         int evaluatedBars = loaded.Count;
         int excludedUnconfirmedCount = 0;
         var collected = new List<PatternItem>();
+        var warnings = new List<string>(symbolWarnings);
 
         foreach (string family in requestedFamilies)
         {
@@ -169,7 +172,7 @@ internal sealed class DetectChartPatternsTool : IMcpTool
                     CollectElliottWave(loaded, evaluatedBars, elliottZigZag, collected, ref excludedUnconfirmedCount);
                     break;
                 case "WaveformMatching":
-                    await CollectWaveformMatchingAsync(loaded, evaluatedBars, dtwMinWindow, dtwMaxWindow, dtwWindowStep, dtwThreshold, collected, cancellationToken).ConfigureAwait(false);
+                    await CollectWaveformMatchingAsync(loaded, evaluatedBars, dtwMinWindow, dtwMaxWindow, dtwWindowStep, dtwThreshold, collected, warnings, cancellationToken).ConfigureAwait(false);
                     break;
             }
         }
@@ -231,10 +234,10 @@ internal sealed class DetectChartPatternsTool : IMcpTool
             }
             writer.WriteEndArray();
 
-            if (symbolWarnings.Count > 0)
+            if (warnings.Count > 0)
             {
                 writer.WriteStartArray("warnings");
-                foreach (string w in symbolWarnings)
+                foreach (string w in warnings)
                 {
                     writer.WriteStringValue(w);
                 }
@@ -406,7 +409,16 @@ internal sealed class DetectChartPatternsTool : IMcpTool
 
         foreach (DetectedFormation f in formations)
         {
-            if (!confirmedPivots.TryGetValue(f.EndIndex, out int confirmedIdx) || confirmedIdx >= evaluatedBars)
+            // A formation that has broken out ends on the breakout bar, which is an ordinary bar and never a ZigZag pivot, so the confirmation of the
+            // formation is looked up on its last pivot. It is known from the later of that pivot's confirmation and the breakout bar.
+            if (!confirmedPivots.TryGetValue(f.LastPivotIndex, out int pivotConfirmedIdx))
+            {
+                excludedUnconfirmedCount++;
+                continue;
+            }
+
+            int confirmedIdx = f.IsBrokenOut ? Math.Max(pivotConfirmedIdx, f.EndIndex) : pivotConfirmedIdx;
+            if (confirmedIdx >= evaluatedBars)
             {
                 excludedUnconfirmedCount++;
                 continue;
@@ -472,6 +484,7 @@ internal sealed class DetectChartPatternsTool : IMcpTool
         int windowStep,
         double threshold,
         List<PatternItem> collected,
+        List<string> warnings,
         CancellationToken cancellationToken)
     {
         PatternRecognitionResult dtwResult = await _dtwService.DetectAsync(
@@ -481,10 +494,13 @@ internal sealed class DetectChartPatternsTool : IMcpTool
             windowStep,
             threshold,
             ChartConstants.DtwDefaultWarpingRadius,
-            ChartConstants.DtwShortSpanPenaltyAlpha).ConfigureAwait(false);
+            ChartConstants.DtwShortSpanPenaltyAlpha,
+            cancellationToken).ConfigureAwait(false);
 
         if (!dtwResult.IsSuccessful)
         {
+            // Without this note an empty WaveformMatching answer cannot be told from "no pattern found".
+            warnings.Add($"WaveformMatching could not be evaluated: {dtwResult.ErrorMessage}");
             return;
         }
 

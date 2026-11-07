@@ -193,7 +193,7 @@ public class ChartDataCoordinator
     /// </summary>
     public ViewportManager Viewport { get; } = new();
 
-    private const decimal StandardPricePaddingPx = 10.0m;
+    internal const decimal StandardPricePaddingPx = 10.0m;
 
     #endregion
 

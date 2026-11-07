@@ -196,6 +196,84 @@ public class ScatterMetricRulesTests
             Validate(new ScatterMetricDefinition { Source = new ScreenerIndicatorSideConfig { IndicatorType = type, OutputName = series } }));
     }
 
+    // ----- S-1: a metric that compares two symbols reads the comparison symbol's DAILY bars, so it is Day only -------------------------
+
+    private static ScatterMetricDefinition Compared(IndicatorType type, TimeFrame frame, string? comparisonSymbol, int offset = 0, string? output = null)
+    {
+        ScatterMetricDefinition metric = ScatterMetricTestKit.Indicator(type, offset: offset, output: output);
+        metric.Source.TimeFrame = frame;
+        if (comparisonSymbol != null)
+        {
+            metric.Source.Parameters["ComparisonSymbol"] = comparisonSymbol;
+        }
+
+        return metric;
+    }
+
+    [Fact]
+    public void Validate_TwoTickerNeedsDay_IsTheLastMember_AndNoEarlierMemberChangedItsNumber()
+    {
+        ScatterMetricInvalidReason[] all = Enum.GetValues<ScatterMetricInvalidReason>();
+
+        Assert.Equal(ScatterMetricInvalidReason.TwoTickerNeedsDay, all.Max());
+        Assert.Equal(11, (int)ScatterMetricInvalidReason.TwoTickerNeedsDay);
+        Assert.Equal(10, (int)ScatterMetricInvalidReason.NotAllowedIndicator);
+        Assert.Equal(9, (int)ScatterMetricInvalidReason.UnknownIndicator);
+        Assert.Equal(8, (int)ScatterMetricInvalidReason.TimeFrameNotApplicable);
+        Assert.Equal(0, (int)ScatterMetricInvalidReason.None);
+    }
+
+    [Theory]
+    [InlineData(IndicatorType.Correlation)]
+    [InlineData(IndicatorType.CrossCorrelation)]
+    public void Validate_RefusesATwoTickerMetricWithAComparisonSymbolOnWeekAndMonth(IndicatorType type)
+    {
+        Assert.Equal(ScatterMetricInvalidReason.TwoTickerNeedsDay, Validate(Compared(type, TimeFrame.W1, "SPY")));
+        Assert.Equal(ScatterMetricInvalidReason.TwoTickerNeedsDay, Validate(Compared(type, TimeFrame.MN1, "SPY")));
+    }
+
+    [Theory]
+    [InlineData(IndicatorType.Correlation)]
+    [InlineData(IndicatorType.CrossCorrelation)]
+    public void Validate_AcceptsATwoTickerMetricWithAComparisonSymbolOnDay(IndicatorType type)
+    {
+        Assert.Equal(ScatterMetricInvalidReason.None, Validate(Compared(type, TimeFrame.D1, "SPY")));
+    }
+
+    [Theory]
+    [InlineData(IndicatorType.Correlation)]
+    [InlineData(IndicatorType.CrossCorrelation)]
+    public void Validate_StillAcceptsABlankSymbolTwoTickerMetricOnWeekAndMonth_PriceVersusVolumeIsComputedInItsOwnBars(IndicatorType type)
+    {
+        Assert.Equal(ScatterMetricInvalidReason.None, Validate(Compared(type, TimeFrame.W1, null)));
+        Assert.Equal(ScatterMetricInvalidReason.None, Validate(Compared(type, TimeFrame.MN1, "  ")));
+    }
+
+    [Fact]
+    public void Validate_TwoTickerNeedsDay_IsJudgedAfterTheOffsetAndAfterTheEligibility()
+    {
+        // The Offset is judged first.
+        Assert.Equal(ScatterMetricInvalidReason.OffsetOutOfRange, Validate(Compared(IndicatorType.Correlation, TimeFrame.W1, "SPY", offset: MaxOffset + 1)));
+
+        // A type the Screener cannot compute is refused as such, not as a time frame problem (it never reaches the Day check).
+        ScatterMetricDefinition blocked = new() { Source = Compared(IndicatorType.RollingBeta, TimeFrame.W1, "SPY", output: IndicatorResult.MainSeriesName).Source };
+        Assert.Equal(ScatterMetricInvalidReason.NotAllowedIndicator, Validate(blocked));
+
+        // An unknown type is refused first.
+        Assert.Equal(ScatterMetricInvalidReason.UnknownIndicator,
+            Validate(Compared(IndicatorType.Correlation, TimeFrame.W1, "SPY"), MaxOffset, new NothingRegisteredFactory()));
+    }
+
+    [Fact]
+    public void Validate_DoesNotApplyTheDayRuleToAMetricThatDoesNotCompareTwoSymbols()
+    {
+        // A stray ComparisonSymbol parameter on an ordinary indicator or on the Price source changes nothing.
+        Assert.Equal(ScatterMetricInvalidReason.None, Validate(Compared(IndicatorType.RSI, TimeFrame.W1, "SPY")));
+        ScatterMetricDefinition price = Compared(IndicatorType.Price, TimeFrame.MN1, "SPY");
+        price.Source.OutputName = "Close";
+        Assert.Equal(ScatterMetricInvalidReason.None, Validate(price));
+    }
+
     [Fact]
     public void DiffersInIdOrContent_DetectsCountIdAndContentChangesOnly()
     {

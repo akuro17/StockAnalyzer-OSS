@@ -38,6 +38,9 @@ internal sealed class BacktestSweep
     public const string Maximize = "Maximize";
     public const string Minimize = "Minimize";
 
+    /// <summary>No upper bound beyond what an int holds for a minimum trade count (the schema only has a minimum; a count above any trade count simply makes every combination ineligible).</summary>
+    public const int NoUpperBound = int.MaxValue;
+
     /// <summary>The settings sections a placeholder may stand in (the conditions are the first one).</summary>
     private static readonly string[] SettingsSections = { BacktestSettingsBinder.AccountArgument, BacktestSettingsBinder.RiskArgument, BacktestSettingsBinder.ReportArgument };
 
@@ -233,8 +236,10 @@ internal sealed class BacktestSweep
     // ---- running and ranking ------------------------------------------------------------------------------------------------------------
 
     /// <summary>Runs the items in one gateway batch (shared bar loads, <see cref="McpLimits.OptimizationDegreeOfParallelism"/> at a time) and keeps only each run's report; results are in item order.</summary>
-    public async Task<SweepRun[]> RunAsync(string symbol, TimeFrame timeFrame, BoundCombinations bound, IReadOnlyList<SweepItem> items, CancellationToken cancellationToken)
+    public async Task<SweepRun[]> RunAsync(string symbol, TimeFrame timeFrame, BoundCombinations bound, IReadOnlyList<SweepItem> items, ObjectiveMetric objective, Func<int, string> describeItem, CancellationToken cancellationToken)
     {
+        // The adjusted-Sortino bootstrap is most of the cost of a run; only an objective that reads it needs it (owner decision D-6 = A). Every other metric of the report is unchanged.
+        bool needsBootstrap = OptimizationObjectives.NeedsAdjustedSortinoBootstrap(objective);
         var snapshots = new List<BacktestRunSnapshot>(items.Count);
         foreach (SweepItem item in items)
         {
@@ -251,7 +256,8 @@ internal sealed class BacktestSweep
                 settings.ReportDefaults,
                 settings.BootstrapSeed,
                 settings.BootstrapIterations,
-                bound.Conditions[item.Combination].Tree));
+                bound.Conditions[item.Combination].Tree,
+                ComputeAdjustedSortinoBootstrap: needsBootstrap));
         }
 
         try
@@ -260,6 +266,16 @@ internal sealed class BacktestSweep
                 .RunBacktestBatchAsync(snapshots, _limits.OptimizationDegreeOfParallelism, artifact => new SweepRun(artifact.Report, artifact.Result.IsInsufficientData || artifact.Metadata.SampleCount == 0), cancellationToken)
                 .ConfigureAwait(false);
             return runs.ToArray();
+        }
+        catch (OverflowException error)
+        {
+            // The batch rethrows the failure of the LOWEST index (the one a sequential loop hits first, whatever the thread count) and tags it with that index.
+            int? index = BacktestBatchFailure.ItemIndexOf(error);
+            bool known = index is { } position && position >= 0 && position < items.Count;
+            throw BacktestOverflowReport.ForSweepItem(
+                symbol,
+                known ? describeItem(index!.Value) : BacktestOverflowReport.UnknownRunText,
+                known ? bound.Settings[items[index!.Value].Combination].Configuration : null);
         }
         catch (ArgumentException error)
         {
@@ -288,6 +304,20 @@ internal sealed class BacktestSweep
 
     /// <summary>The value of a metric when it is Valid, otherwise null.</summary>
     public static decimal? ValidValue(MetricValue? metric) => metric is { Status: MetricStatus.Valid } valid ? valid.Value : null;
+
+    /// <summary>"combination 12 (period=5, factor=2)": the combination number and its parameter values, written with the invariant culture.</summary>
+    public static string DescribeCombination(BacktestParameterGrid grid, int combination)
+        => FormattableString.Invariant($"combination {combination} ({string.Join(", ", grid.ValuesAt(combination).Select(pair => $"{pair.Key}={pair.Value}"))})");
+
+    /// <summary>True when the objective of a run is <see cref="MetricStatus.PositiveInfinity"/> (for example a profit factor without a losing trade): not ranked, but not a plain "invalid" either.</summary>
+    public static bool IsPositiveInfinity(BacktestReport? report, ObjectiveMetric objective)
+        => report is not null && objective.Read(report) is { Status: MetricStatus.PositiveInfinity };
+
+    /// <summary>The warning text for runs whose objective is infinite, or null when there are none.</summary>
+    public static string? PositiveInfinityWarning(int count, ObjectiveMetric objective, string runs)
+        => count == 0
+            ? null
+            : $"{count} {runs} had no losing trade, so their {objective.Name} is infinite and they are not ranked (positiveInfinityCombinationCount counts them).";
 
     /// <summary>The objective of a run when it is Valid, otherwise null.</summary>
     public static decimal? ValidValue(BacktestReport? report, ObjectiveMetric objective)

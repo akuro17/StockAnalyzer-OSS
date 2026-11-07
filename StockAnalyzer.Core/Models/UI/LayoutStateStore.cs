@@ -37,6 +37,115 @@ public partial class LayoutStateStore : ObservableObject
         }
     }
 
+    // volatile: the layout save scheduler reads the lock from timer threads while the UI thread changes it.
+    private volatile AutoSaveLock _autoSaveLock = AutoSaveLock.None;
+    private volatile WorkspaceRestoreIssue? _restoreIssue;
+
+    // Every transition below is a read-then-write of both fields ("never downgrade StorageReadOnly" depends on the read), so the transitions
+    // run under this gate; readers stay lock-free. Events are raised after the gate is released.
+    private readonly object _autoSaveGate = new();
+
+    /// <summary>Why automatic saving of the default workspace is blocked; <see cref="Models.UI.AutoSaveLock.None"/> when it is not.</summary>
+    public AutoSaveLock AutoSaveLock => _autoSaveLock;
+
+    /// <summary>
+    /// What went wrong while restoring the workspace file; null when there is no restore problem. It can exist together with
+    /// <see cref="Models.UI.AutoSaveLock.StorageReadOnly"/> (a damaged file found in a read-only installation).
+    /// </summary>
+    public WorkspaceRestoreIssue? RestoreIssue => _restoreIssue;
+
+    /// <summary>
+    /// Blocks automatic saving because the workspace file was not restored completely. The store only holds and announces the state;
+    /// the coordinator decides when to call this. Logs one warning per lock (a repeated call while locked only replaces the issue).
+    /// A <see cref="Models.UI.AutoSaveLock.StorageReadOnly"/> lock is never downgraded: the issue is recorded and the reason stays.
+    /// </summary>
+    public void EngageAutoSaveLock(WorkspaceRestoreIssue issue)
+    {
+        ArgumentNullException.ThrowIfNull(issue);
+
+        bool wasLocked;
+        lock (_autoSaveGate)
+        {
+            wasLocked = _autoSaveLock != AutoSaveLock.None;
+            _restoreIssue = issue;
+            if (_autoSaveLock != AutoSaveLock.StorageReadOnly)
+            {
+                _autoSaveLock = AutoSaveLock.RestoreAnomaly;
+            }
+        }
+
+        if (!wasLocked)
+        {
+            _logger.LogWarning("Automatic workspace saving is locked: {Kind}. The original file is not overwritten until the user saves or loads explicitly.", issue.Kind);
+        }
+
+        OnPropertyChanged(nameof(RestoreIssue));
+        if (!wasLocked)
+        {
+            OnPropertyChanged(nameof(AutoSaveLock));
+        }
+    }
+
+    /// <summary>
+    /// Blocks automatic saving because the persistent data folder is not writable. Final for the life of the process:
+    /// <see cref="ReleaseAutoSaveLock"/> never lifts it. Logs one warning per lock.
+    /// </summary>
+    public void EngageStorageReadOnlyLock()
+    {
+        bool wasLocked;
+        lock (_autoSaveGate)
+        {
+            if (_autoSaveLock == AutoSaveLock.StorageReadOnly)
+            {
+                return;
+            }
+
+            wasLocked = _autoSaveLock != AutoSaveLock.None;
+            _autoSaveLock = AutoSaveLock.StorageReadOnly;
+        }
+
+        if (!wasLocked)
+        {
+            _logger.LogWarning("Automatic workspace saving is locked: the data folder is not writable (read-only mode).");
+        }
+
+        OnPropertyChanged(nameof(AutoSaveLock));
+    }
+
+    /// <summary>
+    /// Lifts the restore-anomaly lock and forgets its issue. Does nothing when there is none. A
+    /// <see cref="Models.UI.AutoSaveLock.StorageReadOnly"/> lock stays (only its recorded restore issue is cleared).
+    /// </summary>
+    public void ReleaseAutoSaveLock()
+    {
+        bool lockLifted;
+        lock (_autoSaveGate)
+        {
+            if (_restoreIssue is null && _autoSaveLock != AutoSaveLock.RestoreAnomaly)
+            {
+                return;
+            }
+
+            lockLifted = _autoSaveLock == AutoSaveLock.RestoreAnomaly;
+            _restoreIssue = null;
+            if (lockLifted)
+            {
+                _autoSaveLock = AutoSaveLock.None;
+            }
+        }
+
+        // Say what actually happened: under StorageReadOnly only the recorded issue goes away and saving stays blocked.
+        _logger.LogInformation(lockLifted
+            ? "Automatic workspace saving is unlocked."
+            : "The recorded workspace restore issue was cleared; automatic workspace saving stays blocked (read-only mode).");
+
+        OnPropertyChanged(nameof(RestoreIssue));
+        if (lockLifted)
+        {
+            OnPropertyChanged(nameof(AutoSaveLock));
+        }
+    }
+
     [ObservableProperty]
     private string? _selectedTicker;
 

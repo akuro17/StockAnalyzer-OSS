@@ -143,6 +143,33 @@ public class DrawdownEpisodeEnumeratorTests
         Assert.Throws<OverflowException>(() => DrawdownEpisodeEnumerator.Enumerate(0.01m, BaseUtc, Points(-70_000_000_000_000_000_000_000_000_000m), 1));
     }
 
+    /// <summary>
+    /// Q17 (Part 2 review): two episodes whose decimal depths differ by 1e-19 round to the SAME double (0.1). The ranking must still be exact in
+    /// decimal, so the reported DepthRatio never increases down the list. E = 1000 | 900.0000000000000001 1000 900 1000.
+    /// </summary>
+    [Fact]
+    public void DepthsThatRoundToTheSameDouble_AreStillRankedByTheExactDecimalDepth()
+    {
+        ImmutableArray<RankedDrawdownEpisode> episodes = All(1000m, 900.0000000000000001m, 1000m, 900m, 1000m);
+
+        Assert.Equal(2, episodes.Length);
+        Assert.Equal(900m, episodes[0].TroughEquity);
+        Assert.Equal(0.1m, episodes[0].DepthRatio);
+        Assert.Equal(900.0000000000000001m, episodes[1].TroughEquity);
+        Assert.True(episodes[0].DepthRatio > episodes[1].DepthRatio);
+        Assert.Equal(new[] { 1, 2 }, episodes.Select(e => e.Rank).ToArray());
+    }
+
+    /// <summary>Inside one episode the trough is the lowest decimal equity, also when two troughs have the same double depth. E = 1000 | 900.0000000000000002 900.0000000000000001 1000.</summary>
+    [Fact]
+    public void TheTroughOfAnEpisode_IsTheLowestDecimalEquity_EvenWhenTheDoubleDepthsTie()
+    {
+        RankedDrawdownEpisode episode = Assert.Single(All(1000m, 900.0000000000000002m, 900.0000000000000001m, 1000m));
+
+        Assert.Equal(2, episode.TroughIndex);
+        Assert.Equal(900.0000000000000001m, episode.TroughEquity);
+    }
+
     [Fact]
     public void InvalidArguments_Throw()
     {

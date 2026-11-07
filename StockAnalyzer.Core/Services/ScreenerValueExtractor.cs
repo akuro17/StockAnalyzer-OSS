@@ -15,6 +15,7 @@ using StockAnalyzer.Core.Models.Screener;
 using StockAnalyzer.Core.Models.ScreeningConditions;
 using StockAnalyzer.Core.Services.Analysis;
 using StockAnalyzer.Core.Services.Backtest.Engine;
+using StockAnalyzer.Core.Services.Screener;
 using StockAnalyzer.Core.Utilities;
 
 namespace StockAnalyzer.Core.Services;
@@ -403,7 +404,7 @@ public class ScreenerValueExtractor : IScreenerValueExtractor
             return null;
         }
 
-        if (!BacktestIndicatorEligibility.IsAllowed(config.IndicatorType, config.OutputName))
+        if (!ScreenerIndicatorEligibility.IsAllowed(config.IndicatorType, config.OutputName))
         {
             Faults.Warn(ScreenerFaultLog.SiteIndicatorCalculate, $"Blocked non-causal indicator or series in screener: {config.IndicatorType} ({config.OutputName}).");
             return null;
@@ -432,7 +433,10 @@ public class ScreenerValueExtractor : IScreenerValueExtractor
                 {
                     try
                     {
-                        var defaultSettings = indicator.GetDefaultSettings();
+                        // The default parameters come from a fresh instance: GetDefaultSettings seeds the parameter object's Period from the instance's
+                        // CURRENT Period, and the cached instance still holds the Period an earlier condition on this thread configured. A side that
+                        // names parameters but no Period would otherwise inherit it.
+                        var defaultSettings = IndicatorFactory.CreateStatic(config.IndicatorType)?.GetDefaultSettings();
                         if (defaultSettings?.ParameterObject != null)
                         {
                             var paramType = defaultSettings.ParameterObject.GetType();

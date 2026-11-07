@@ -93,11 +93,7 @@ public static class PanelValueRangeCalculator
     /// </summary>
     public static bool IsSignalSeries(string seriesName)
     {
-        return seriesName == "BullishSignals" ||
-               seriesName == "BearishSignals" ||
-               seriesName == "BuySignals" ||
-               seriesName == "SellSignals" ||
-               seriesName == "Signals";
+        return IndicatorSeriesNames.IsSignalSeries(seriesName);
     }
 
     /// <summary>

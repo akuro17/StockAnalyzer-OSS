@@ -1,0 +1,417 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:StockAnalyzer.Avalonia.ViewModels.Dialogs"
+             xmlns:l="using:StockAnalyzer.Avalonia.Markup"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="1200"
+             x:Class="StockAnalyzer.Avalonia.Views.Dialogs.McpServerSettingsView"
+             x:DataType="vm:McpServerSettingsViewModel">
+
+    <UserControl.Resources>
+        <x:Double x:Key="McpSettingsInputWidth">150</x:Double>
+        <x:Double x:Key="McpSettingsInputHeight">28</x:Double>
+    </UserControl.Resources>
+
+    <UserControl.Styles>
+        <Style Selector="NumericUpDown.SettingInput">
+            <Setter Property="Width" Value="{StaticResource McpSettingsInputWidth}"/>
+            <Setter Property="Height" Value="{StaticResource McpSettingsInputHeight}"/>
+        </Style>
+        <Style Selector="ToggleSwitch.SettingInput">
+            <Setter Property="HorizontalAlignment" Value="Right"/>
+        </Style>
+    </UserControl.Styles>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Spacing="20" Margin="16">
+
+            <!-- Validation Failure Message -->
+            <TextBlock Text="{Binding ValidationMessage}"
+                       IsVisible="{Binding HasValidationMessage}"
+                       AutomationProperties.AutomationId="McpServerSettings_SaveFailureMessage"
+                       FontSize="{DynamicResource HelperFontSize}"
+                       Foreground="{DynamicResource Brush.Semantic.Error}"
+                       TextWrapping="Wrap"/>
+
+            <!-- Group A: Launch Options & Discussion Mode -->
+            <Border Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="{l:Localize McpServer_GroupA_Title}"
+                               FontSize="{DynamicResource BaseFontSize}"
+                               FontWeight="Bold"
+                               Foreground="{DynamicResource Brush.Accent.Primary}"/>
+
+                    <StackPanel Margin="0,0,0,8">
+                        <Grid RowDefinitions="Auto,Auto" RowSpacing="4">
+                            <TextBlock Text="{l:Localize McpServer_Field_EnableDiscussion}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                            <ToggleSwitch Grid.Row="1"
+                                          Classes="SettingInput"
+                                          IsChecked="{Binding EnableDiscussion}"
+                                          AutomationProperties.AutomationId="McpServerSettings_EnableDiscussion"/>
+                        </Grid>
+                        <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                        <TextBlock Text="{l:Localize McpServer_Desc_EnableDiscussion}"
+                                   FontSize="{DynamicResource HelperFontSize}"
+                                   Foreground="{DynamicResource Brush.Text.Secondary}"
+                                   TextWrapping="Wrap"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Group B: Session & Participant Limits -->
+            <Border Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="{l:Localize McpServer_GroupB_Title}"
+                               FontSize="{DynamicResource BaseFontSize}"
+                               FontWeight="Bold"
+                               Foreground="{DynamicResource Brush.Accent.Primary}"/>
+
+                    <UniformGrid Columns="2">
+                        <!-- MaxActiveSessions -->
+                        <StackPanel Margin="0,0,24,16">
+                            <Grid RowDefinitions="Auto,Auto" RowSpacing="4">
+                                <TextBlock Text="{l:Localize McpServer_Field_MaxActiveSessions}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                <NumericUpDown Grid.Row="1" HorizontalAlignment="Right" Classes="SettingInput"
+                                               Value="{Binding MaxActiveSessions}" Minimum="1" Maximum="16" Increment="1" FormatString="0"
+                                               AutomationProperties.AutomationId="McpServerSettings_MaxActiveSessions"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize McpServer_Desc_MaxActiveSessions}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                            <TextBlock Text="{Binding MaxActiveSessionsError}" IsVisible="{Binding MaxActiveSessionsError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" AutomationProperties.AutomationId="McpServerSettings_Error_MaxActiveSessions" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Semantic.Error}" TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <!-- MaxParticipantsPerSession -->
+                        <StackPanel Margin="0,0,0,16">
+                            <Grid RowDefinitions="Auto,Auto" RowSpacing="4">
+                                <TextBlock Text="{l:Localize McpServer_Field_MaxParticipantsPerSession}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                <NumericUpDown Grid.Row="1" HorizontalAlignment="Right" Classes="SettingInput"
+                                               Value="{Binding MaxParticipantsPerSession}" Minimum="2" Maximum="16" Increment="1" FormatString="0"
+                                               AutomationProperties.AutomationId="McpServerSettings_MaxParticipantsPerSession"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize McpServer_Desc_MaxParticipantsPerSession}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                            <TextBlock Text="{Binding MaxParticipantsPerSessionError}" IsVisible="{Binding MaxParticipantsPerSessionError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" AutomationProperties.AutomationId="McpServerSettings_Error_MaxParticipantsPerSession" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Semantic.Error}" TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <!-- MaxMessagesPerSession -->
+                        <StackPanel Margin="0,0,24,0">
+                            <Grid RowDefinitions="Auto,Auto" RowSpacing="4">
+                                <TextBlock Text="{l:Localize McpServer_Field_MaxMessagesPerSession}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                <NumericUpDown Grid.Row="1" HorizontalAlignment="Right" Classes="SettingInput"
+                                               Value="{Binding MaxMessagesPerSession}" Minimum="10" Maximum="2000" Increment="10" FormatString="0"
+                                               AutomationProperties.AutomationId="McpServerSettings_MaxMessagesPerSession"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize McpServer_Desc_MaxMessagesPerSession}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                            <TextBlock Text="{Binding MaxMessagesPerSessionError}" IsVisible="{Binding MaxMessagesPerSessionError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" AutomationProperties.AutomationId="McpServerSettings_Error_MaxMessagesPerSession" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Semantic.Error}" TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <!-- MaxContextsPerSession -->
+                        <StackPanel>
+                            <Grid RowDefinitions="Auto,Auto" RowSpacing="4">
+                                <TextBlock Text="{l:Localize McpServer_Field_MaxContextsPerSession}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                <NumericUpDown Grid.Row="1" HorizontalAlignment="Right" Classes="SettingInput"
+                                               Value="{Binding MaxContextsPerSession}" Minimum="1" Maximum="100" Increment="1" FormatString="0"
+                                               AutomationProperties.AutomationId="McpServerSettings_MaxContextsPerSession"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize McpServer_Desc_MaxContextsPerSession}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                            <TextBlock Text="{Binding MaxContextsPerSessionError}" IsVisible="{Binding MaxContextsPerSessionError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" AutomationProperties.AutomationId="McpServerSettings_Error_MaxContextsPerSession" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Semantic.Error}" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </UniformGrid>
+                </StackPanel>
+            </Border>
+
+            <!-- Group C: Buffer & Payload Limits -->
+            <Border Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="{l:Localize McpServer_GroupC_Title}"
+                               FontSize="{DynamicResource BaseFontSize}"
+                               FontWeight="Bold"
+                               Foreground="{DynamicResource Brush.Accent.Primary}"/>
+
+                    <UniformGrid Columns="2">
+                        <!-- MaxMessageBytes -->
+                        <StackPanel Margin="0,0,24,16">
+                            <Grid RowDefinitions="Auto,Auto" RowSpacing="4">
+                                <TextBlock Text="{l:Localize McpServer_Field_MaxMessageBytes}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                <NumericUpDown Grid.Row="1" HorizontalAlignment="Right" Classes="SettingInput"
+                                               Value="{Binding MaxMessageBytes}" Minimum="256" Maximum="65536" Increment="1024" FormatString="0"
+                                               AutomationProperties.AutomationId="McpServerSettings_MaxMessageBytes"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize McpServer_Desc_MaxMessageBytes}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                            <TextBlock Text="{Binding MaxMessageBytesError}" IsVisible="{Binding MaxMessageBytesError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" AutomationProperties.AutomationId="McpServerSettings_Error_MaxMessageBytes" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Semantic.Error}" TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <!-- MaxContextBytes -->
+                        <StackPanel Margin="0,0,0,16">
+                            <Grid RowDefinitions="Auto,Auto" RowSpacing="4">
+                                <TextBlock Text="{l:Localize McpServer_Field_MaxContextBytes}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                <NumericUpDown Grid.Row="1" HorizontalAlignment="Right" Classes="SettingInput"
+                                               Value="{Binding MaxContextBytes}" Minimum="1024" Maximum="2097152" Increment="65536" FormatString="0"
+                                               AutomationProperties.AutomationId="McpServerSettings_MaxContextBytes"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize McpServer_Desc_MaxContextBytes}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                            <TextBlock Text="{Binding MaxContextBytesError}" IsVisible="{Binding MaxContextBytesError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" AutomationProperties.AutomationId="McpServerSettings_Error_MaxContextBytes" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Semantic.Error}" TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <!-- MaxTotalBytes -->
+                        <StackPanel Margin="0,0,24,0">
+                            <Grid RowDefinitions="Auto,Auto" RowSpacing="4">
+                                <TextBlock Text="{l:Localize McpServer_Field_MaxTotalBytes}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                <NumericUpDown Grid.Row="1" HorizontalAlignment="Right" Classes="SettingInput"
+                                               Value="{Binding MaxTotalBytes}" Minimum="1048576" Maximum="268435456" Increment="1048576" FormatString="0"
+                                               AutomationProperties.AutomationId="McpServerSettings_MaxTotalBytes"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize McpServer_Desc_MaxTotalBytes}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                            <TextBlock Text="{Binding MaxTotalBytesError}" IsVisible="{Binding MaxTotalBytesError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" AutomationProperties.AutomationId="McpServerSettings_Error_MaxTotalBytes" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Semantic.Error}" TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <!-- MaxPostsPerMinute -->
+                        <StackPanel>
+                            <Grid RowDefinitions="Auto,Auto" RowSpacing="4">
+                                <TextBlock Text="{l:Localize McpServer_Field_MaxPostsPerMinute}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                <NumericUpDown Grid.Row="1" HorizontalAlignment="Right" Classes="SettingInput"
+                                               Value="{Binding MaxPostsPerMinute}" Minimum="1" Maximum="120" Increment="1" FormatString="0"
+                                               AutomationProperties.AutomationId="McpServerSettings_MaxPostsPerMinute"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize McpServer_Desc_MaxPostsPerMinute}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                            <TextBlock Text="{Binding MaxPostsPerMinuteError}" IsVisible="{Binding MaxPostsPerMinuteError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" AutomationProperties.AutomationId="McpServerSettings_Error_MaxPostsPerMinute" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Semantic.Error}" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </UniformGrid>
+                </StackPanel>
+            </Border>
+
+            <!-- Group D: Timeouts & Read Limits -->
+            <Border Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="{l:Localize McpServer_GroupD_Title}"
+                               FontSize="{DynamicResource BaseFontSize}"
+                               FontWeight="Bold"
+                               Foreground="{DynamicResource Brush.Accent.Primary}"/>
+
+                    <UniformGrid Columns="2">
+                        <!-- IdleTimeoutSeconds -->
+                        <StackPanel Margin="0,0,24,16">
+                            <Grid RowDefinitions="Auto,Auto" RowSpacing="4">
+                                <TextBlock Text="{l:Localize McpServer_Field_IdleTimeoutSeconds}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                <NumericUpDown Grid.Row="1" HorizontalAlignment="Right" Classes="SettingInput"
+                                               Value="{Binding IdleTimeoutSeconds}" Minimum="60" Maximum="86400" Increment="60" FormatString="0"
+                                               AutomationProperties.AutomationId="McpServerSettings_IdleTimeoutSeconds"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize McpServer_Desc_IdleTimeoutSeconds}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                            <TextBlock Text="{Binding IdleTimeoutSecondsError}" IsVisible="{Binding IdleTimeoutSecondsError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" AutomationProperties.AutomationId="McpServerSettings_Error_IdleTimeoutSeconds" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Semantic.Error}" TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <!-- MaxSessionAgeSeconds -->
+                        <StackPanel Margin="0,0,0,16">
+                            <Grid RowDefinitions="Auto,Auto" RowSpacing="4">
+                                <TextBlock Text="{l:Localize McpServer_Field_MaxSessionAgeSeconds}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                <NumericUpDown Grid.Row="1" HorizontalAlignment="Right" Classes="SettingInput"
+                                               Value="{Binding MaxSessionAgeSeconds}" Minimum="300" Maximum="86400" Increment="300" FormatString="0"
+                                               AutomationProperties.AutomationId="McpServerSettings_MaxSessionAgeSeconds"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize McpServer_Desc_MaxSessionAgeSeconds}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                            <TextBlock Text="{Binding MaxSessionAgeSecondsError}" IsVisible="{Binding MaxSessionAgeSecondsError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" AutomationProperties.AutomationId="McpServerSettings_Error_MaxSessionAgeSeconds" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Semantic.Error}" TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <!-- ClosedRetentionSeconds -->
+                        <StackPanel Margin="0,0,24,16">
+                            <Grid RowDefinitions="Auto,Auto" RowSpacing="4">
+                                <TextBlock Text="{l:Localize McpServer_Field_ClosedRetentionSeconds}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                <NumericUpDown Grid.Row="1" HorizontalAlignment="Right" Classes="SettingInput"
+                                               Value="{Binding ClosedRetentionSeconds}" Minimum="0" Maximum="3600" Increment="30" FormatString="0"
+                                               AutomationProperties.AutomationId="McpServerSettings_ClosedRetentionSeconds"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize McpServer_Desc_ClosedRetentionSeconds}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                            <TextBlock Text="{Binding ClosedRetentionSecondsError}" IsVisible="{Binding ClosedRetentionSecondsError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" AutomationProperties.AutomationId="McpServerSettings_Error_ClosedRetentionSeconds" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Semantic.Error}" TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <!-- AwaySeconds -->
+                        <StackPanel Margin="0,0,0,16">
+                            <Grid RowDefinitions="Auto,Auto" RowSpacing="4">
+                                <TextBlock Text="{l:Localize McpServer_Field_AwaySeconds}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                <NumericUpDown Grid.Row="1" HorizontalAlignment="Right" Classes="SettingInput"
+                                               Value="{Binding AwaySeconds}" Minimum="10" Maximum="3600" Increment="10" FormatString="0"
+                                               AutomationProperties.AutomationId="McpServerSettings_AwaySeconds"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize McpServer_Desc_AwaySeconds}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                            <TextBlock Text="{Binding AwaySecondsError}" IsVisible="{Binding AwaySecondsError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" AutomationProperties.AutomationId="McpServerSettings_Error_AwaySeconds" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Semantic.Error}" TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <!-- FloorTimeoutSeconds -->
+                        <StackPanel Margin="0,0,24,16">
+                            <Grid RowDefinitions="Auto,Auto" RowSpacing="4">
+                                <TextBlock Text="{l:Localize McpServer_Field_FloorTimeoutSeconds}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                <NumericUpDown Grid.Row="1" HorizontalAlignment="Right" Classes="SettingInput"
+                                               Value="{Binding FloorTimeoutSeconds}" Minimum="10" Maximum="600" Increment="10" FormatString="0"
+                                               AutomationProperties.AutomationId="McpServerSettings_FloorTimeoutSeconds"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize McpServer_Desc_FloorTimeoutSeconds}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                            <TextBlock Text="{Binding FloorTimeoutSecondsError}" IsVisible="{Binding FloorTimeoutSecondsError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" AutomationProperties.AutomationId="McpServerSettings_Error_FloorTimeoutSeconds" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Semantic.Error}" TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <!-- MaxWaitSeconds -->
+                        <StackPanel Margin="0,0,0,16">
+                            <Grid RowDefinitions="Auto,Auto" RowSpacing="4">
+                                <TextBlock Text="{l:Localize McpServer_Field_MaxWaitSeconds}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                <NumericUpDown Grid.Row="1" HorizontalAlignment="Right" Classes="SettingInput"
+                                               Value="{Binding MaxWaitSeconds}" Minimum="0" Maximum="30" Increment="1" FormatString="0"
+                                               AutomationProperties.AutomationId="McpServerSettings_MaxWaitSeconds"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize McpServer_Desc_MaxWaitSeconds}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                            <TextBlock Text="{Binding MaxWaitSecondsError}" IsVisible="{Binding MaxWaitSecondsError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" AutomationProperties.AutomationId="McpServerSettings_Error_MaxWaitSeconds" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Semantic.Error}" TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <!-- DefaultReadLimit -->
+                        <StackPanel Margin="0,0,24,0">
+                            <Grid RowDefinitions="Auto,Auto" RowSpacing="4">
+                                <TextBlock Text="{l:Localize McpServer_Field_DefaultReadLimit}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                <NumericUpDown Grid.Row="1" HorizontalAlignment="Right" Classes="SettingInput"
+                                               Value="{Binding DefaultReadLimit}" Minimum="1" Maximum="200" Increment="5" FormatString="0"
+                                               AutomationProperties.AutomationId="McpServerSettings_DefaultReadLimit"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize McpServer_Desc_DefaultReadLimit}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                            <TextBlock Text="{Binding DefaultReadLimitError}" IsVisible="{Binding DefaultReadLimitError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" AutomationProperties.AutomationId="McpServerSettings_Error_DefaultReadLimit" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Semantic.Error}" TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <!-- MaxReadLimit -->
+                        <StackPanel>
+                            <Grid RowDefinitions="Auto,Auto" RowSpacing="4">
+                                <TextBlock Text="{l:Localize McpServer_Field_MaxReadLimit}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                <NumericUpDown Grid.Row="1" HorizontalAlignment="Right" Classes="SettingInput"
+                                               Value="{Binding MaxReadLimit}" Minimum="1" Maximum="200" Increment="5" FormatString="0"
+                                               AutomationProperties.AutomationId="McpServerSettings_MaxReadLimit"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize McpServer_Desc_MaxReadLimit}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                            <TextBlock Text="{Binding MaxReadLimitError}" IsVisible="{Binding MaxReadLimitError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" AutomationProperties.AutomationId="McpServerSettings_Error_MaxReadLimit" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Semantic.Error}" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </UniformGrid>
+                </StackPanel>
+            </Border>
+
+            <!-- Group E: Audit & Command Logging -->
+            <Border Background="{DynamicResource Brush.Background.Secondary}"
+                    BorderBrush="{DynamicResource Brush.Border.Primary}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="{l:Localize McpServer_GroupE_Title}"
+                               FontSize="{DynamicResource BaseFontSize}"
+                               FontWeight="Bold"
+                               Foreground="{DynamicResource Brush.Accent.Primary}"/>
+
+                    <UniformGrid Columns="2">
+                        <!-- AuditCapacity -->
+                        <StackPanel Margin="0,0,24,16">
+                            <Grid RowDefinitions="Auto,Auto" RowSpacing="4">
+                                <TextBlock Text="{l:Localize McpServer_Field_AuditCapacity}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                <NumericUpDown Grid.Row="1" HorizontalAlignment="Right" Classes="SettingInput"
+                                               Value="{Binding AuditCapacity}" Minimum="100" Maximum="10000" Increment="100" FormatString="0"
+                                               AutomationProperties.AutomationId="McpServerSettings_AuditCapacity"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize McpServer_Desc_AuditCapacity}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                            <TextBlock Text="{Binding AuditCapacityError}" IsVisible="{Binding AuditCapacityError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" AutomationProperties.AutomationId="McpServerSettings_Error_AuditCapacity" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Semantic.Error}" TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <!-- CommandLogCapacity -->
+                        <StackPanel Margin="0,0,0,16">
+                            <Grid RowDefinitions="Auto,Auto" RowSpacing="4">
+                                <TextBlock Text="{l:Localize McpServer_Field_CommandLogCapacity}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                <NumericUpDown Grid.Row="1" HorizontalAlignment="Right" Classes="SettingInput"
+                                               Value="{Binding CommandLogCapacity}" Minimum="100" Maximum="10000" Increment="100" FormatString="0"
+                                               AutomationProperties.AutomationId="McpServerSettings_CommandLogCapacity"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize McpServer_Desc_CommandLogCapacity}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                            <TextBlock Text="{Binding CommandLogCapacityError}" IsVisible="{Binding CommandLogCapacityError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" AutomationProperties.AutomationId="McpServerSettings_Error_CommandLogCapacity" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Semantic.Error}" TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <!-- CommandLogToFile -->
+                        <StackPanel Margin="0,0,24,16">
+                            <Grid RowDefinitions="Auto,Auto" RowSpacing="4">
+                                <TextBlock Text="{l:Localize McpServer_Field_CommandLogToFile}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                <ToggleSwitch Grid.Row="1" Classes="SettingInput"
+                                              IsChecked="{Binding CommandLogToFile}"
+                                              AutomationProperties.AutomationId="McpServerSettings_CommandLogToFile"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize McpServer_Desc_CommandLogToFile}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <!-- CommandLogMaxFileBytes -->
+                        <StackPanel Margin="0,0,0,16">
+                            <Grid RowDefinitions="Auto,Auto" RowSpacing="4">
+                                <TextBlock Text="{l:Localize McpServer_Field_CommandLogMaxFileBytes}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                <NumericUpDown Grid.Row="1" HorizontalAlignment="Right" Classes="SettingInput"
+                                               Value="{Binding CommandLogMaxFileBytes}" Minimum="65536" Maximum="16777216" Increment="262144" FormatString="0"
+                                               AutomationProperties.AutomationId="McpServerSettings_CommandLogMaxFileBytes"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize McpServer_Desc_CommandLogMaxFileBytes}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                            <TextBlock Text="{Binding CommandLogMaxFileBytesError}" IsVisible="{Binding CommandLogMaxFileBytesError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" AutomationProperties.AutomationId="McpServerSettings_Error_CommandLogMaxFileBytes" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Semantic.Error}" TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <!-- CommandLogGenerations -->
+                        <StackPanel Margin="0,0,24,0">
+                            <Grid RowDefinitions="Auto,Auto" RowSpacing="4">
+                                <TextBlock Text="{l:Localize McpServer_Field_CommandLogGenerations}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                <NumericUpDown Grid.Row="1" HorizontalAlignment="Right" Classes="SettingInput"
+                                               Value="{Binding CommandLogGenerations}" Minimum="1" Maximum="8" Increment="1" FormatString="0"
+                                               AutomationProperties.AutomationId="McpServerSettings_CommandLogGenerations"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize McpServer_Desc_CommandLogGenerations}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                            <TextBlock Text="{Binding CommandLogGenerationsError}" IsVisible="{Binding CommandLogGenerationsError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" AutomationProperties.AutomationId="McpServerSettings_Error_CommandLogGenerations" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Semantic.Error}" TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <!-- CommandLogMaxAgeHours -->
+                        <StackPanel>
+                            <Grid RowDefinitions="Auto,Auto" RowSpacing="4">
+                                <TextBlock Text="{l:Localize McpServer_Field_CommandLogMaxAgeHours}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                <NumericUpDown Grid.Row="1" HorizontalAlignment="Right" Classes="SettingInput"
+                                               Value="{Binding CommandLogMaxAgeHours}" Minimum="1" Maximum="168" Increment="1" FormatString="0"
+                                               AutomationProperties.AutomationId="McpServerSettings_CommandLogMaxAgeHours"/>
+                            </Grid>
+                            <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                            <TextBlock Text="{l:Localize McpServer_Desc_CommandLogMaxAgeHours}" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Text.Secondary}" TextWrapping="Wrap"/>
+                            <TextBlock Text="{Binding CommandLogMaxAgeHoursError}" IsVisible="{Binding CommandLogMaxAgeHoursError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" AutomationProperties.AutomationId="McpServerSettings_Error_CommandLogMaxAgeHours" FontSize="{DynamicResource HelperFontSize}" Foreground="{DynamicResource Brush.Semantic.Error}" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </UniformGrid>
+                </StackPanel>
+            </Border>
+
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

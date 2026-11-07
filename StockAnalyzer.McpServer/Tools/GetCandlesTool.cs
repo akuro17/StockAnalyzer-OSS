@@ -14,19 +14,16 @@ internal sealed class GetCandlesTool : IMcpTool
     private const string CountArgument = "count";
     private const string StartDateArgument = "startDate";
     private const string EndDateArgument = "endDate";
-    private const string CompleteBarsOnlyArgument = "completeBarsOnly";
     private const string PriceUnit = "price";
     private const string VolumeUnit = "shares";
     private const string PeriodUnit = "bars";
 
-    private readonly IReadOnlyStockAnalyzerGateway _gateway;
     private readonly CandleWindowLoader _loader;
     private readonly SymbolResolver _symbols;
     private readonly McpLimits _limits;
 
     public GetCandlesTool(IReadOnlyStockAnalyzerGateway gateway, SymbolResolver symbols, McpLimits limits)
     {
-        _gateway = gateway;
         _loader = new CandleWindowLoader(gateway);
         _symbols = symbols;
         _limits = limits;
@@ -56,7 +53,7 @@ internal sealed class GetCandlesTool : IMcpTool
         .Integer(CountArgument, $"Number of bars in the requested time frame. Default {_limits.DefaultCandleCount}, at most {_limits.MaxCandlesPerRequest}.", defaultValue: _limits.DefaultCandleCount, minimum: 1, maximum: _limits.MaxCandlesPerRequest)
         .String(StartDateArgument, $"First date to include ({ToolJson.DateFormat}).")
         .String(EndDateArgument, $"Last date to include ({ToolJson.DateFormat}).")
-        .Boolean(CompleteBarsOnlyArgument, "W1 and MN1 only: drop the last bar when its period has not ended yet (see lastBarPartial). Default false.")
+        .Boolean(PartialBarOutput.CompleteBarsOnlyArgument, "W1 and MN1 only: drop the last bar when its period has not ended yet (see lastBarPartial). Default false.")
         .Build();
 
     public string? OutputSchemaJson => OutputSchema;
@@ -91,10 +88,10 @@ internal sealed class GetCandlesTool : IMcpTool
             .Boolean("filteredByDate", "True when date range filter was applied.", required: true)
             .Boolean("truncatedByLoadCap", "True when load cap truncated history.", required: true)
             .Boolean("droppedLeadingBar", "True when oldest aggregated bar was partial.", required: true)
-            .NullableString("referenceDate", "Reference date for partial bar calculation.")
-            .NullableString("lastBarPeriodEnd", "Period end date for the last bar.")
-            .Boolean("lastBarPartial", "True when the latest bar covers an incomplete period.", required: true)
-            .Boolean("droppedPartialBar", "True when incomplete latest bar was dropped.", required: true)
+            .NullableString(PartialBarOutput.ReferenceDateKey, "Reference date for partial bar calculation.")
+            .NullableString(PartialBarOutput.LastBarPeriodEndKey, "Period end date for the last bar.")
+            .Boolean(PartialBarOutput.LastBarPartialKey, "True when the latest bar covers an incomplete period.", required: true)
+            .Boolean(PartialBarOutput.DroppedPartialBarKey, "True when incomplete latest bar was dropped.", required: true)
             .ObjectArray("candles", "OHLCV bars in chronological order.", candleItem, required: true)
             .Build();
     }
@@ -113,14 +110,14 @@ internal sealed class GetCandlesTool : IMcpTool
             throw new ToolException(ToolErrorCodes.InvalidArgument, $"'{StartDateArgument}' is after '{EndDateArgument}'.", StartDateArgument);
         }
 
-        bool completeBarsOnly = ToolArgs.Boolean(arguments, CompleteBarsOnlyArgument) ?? false;
+        bool completeBarsOnly = ToolArgs.Boolean(arguments, PartialBarOutput.CompleteBarsOnlyArgument) ?? false;
         bool aggregated = TimeFrameAggregator.IsPeriodFrame(timeFrame);
         bool filterByDate = start is not null || end is not null;
         int loadCount = filterByDate ? _limits.MaxCandlesPerRequest : count;
 
         // Read before the bars: a Sync can replace the stored file between the two reads, and a reference date read after the bars could be later than
         // the data behind them (a week would then look complete). Read first, it is never later, so the flag can only err towards "partial".
-        DateTime? referenceDate = aggregated ? await ReferenceDateAsync(symbol, end, cancellationToken).ConfigureAwait(false) : null;
+        DateTime? referenceDate = aggregated ? await _loader.ReferenceDateAsync(symbol, end, cancellationToken).ConfigureAwait(false) : null;
 
         List<CandleData> loaded;
         bool droppedLeadingBar;
@@ -142,14 +139,14 @@ internal sealed class GetCandlesTool : IMcpTool
         }
 
         bool droppedPartialBar = false;
-        if (completeBarsOnly && IsPartial(selected, timeFrame, referenceDate))
+        if (completeBarsOnly && CandleWindowLoader.IsLastBarPartial(selected, timeFrame, referenceDate))
         {
             selected = selected.Take(selected.Count - 1).ToList();
             droppedPartialBar = true;
         }
 
         DateTime? lastBarPeriodEnd = aggregated && selected.Count > 0 ? TimeFrameAggregator.PeriodEnd(selected[^1].Timestamp, timeFrame) : null;
-        bool lastBarPartial = IsPartial(selected, timeFrame, referenceDate);
+        bool lastBarPartial = CandleWindowLoader.IsLastBarPartial(selected, timeFrame, referenceDate);
         int matchedBarCount = selected.Count;
         if (selected.Count > count)
         {
@@ -187,10 +184,7 @@ internal sealed class GetCandlesTool : IMcpTool
             writer.WriteBoolean("filteredByDate", filterByDate);
             writer.WriteBoolean("truncatedByLoadCap", truncatedByLoadCap);
             writer.WriteBoolean("droppedLeadingBar", droppedLeadingBar);
-            WriteDateOrNull(writer, "referenceDate", referenceDate);
-            WriteDateOrNull(writer, "lastBarPeriodEnd", lastBarPeriodEnd);
-            writer.WriteBoolean("lastBarPartial", lastBarPartial);
-            writer.WriteBoolean("droppedPartialBar", droppedPartialBar);
+            PartialBarOutput.Write(writer, referenceDate, lastBarPeriodEnd, lastBarPartial, droppedPartialBar);
             writer.WriteStartArray("candles");
             foreach (CandleData bar in selected)
             {
@@ -207,39 +201,6 @@ internal sealed class GetCandlesTool : IMcpTool
             writer.WriteEndArray();
             writer.WriteEndObject();
         });
-    }
-
-    /// <summary>
-    /// The date the bars are known up to: endDate, but never later than the last stored daily bar; null when nothing is stored.
-    /// A weekly or monthly period is complete only once this date reaches its last calendar day.
-    /// </summary>
-    private async Task<DateTime?> ReferenceDateAsync(string symbol, DateOnly? end, CancellationToken cancellationToken)
-    {
-        IReadOnlyList<CandleData> latest = await _gateway.GetCandlesAsync(symbol, TimeFrame.D1, 1, cancellationToken).ConfigureAwait(false);
-        if (latest.Count == 0)
-        {
-            return null;
-        }
-
-        DateTime lastStored = latest[^1].Timestamp.Date;
-        return end is { } endDate && endDate.ToDateTime(TimeOnly.MinValue) < lastStored ? endDate.ToDateTime(TimeOnly.MinValue) : lastStored;
-    }
-
-    private static bool IsPartial(List<CandleData> bars, TimeFrame timeFrame, DateTime? referenceDate)
-        => bars.Count > 0
-            && referenceDate is { } reference
-            && TimeFrameAggregator.IsPartialPeriod(bars[^1].Timestamp, timeFrame, reference);
-
-    private static void WriteDateOrNull(Utf8JsonWriter writer, string name, DateTime? value)
-    {
-        if (value is { } date)
-        {
-            writer.WriteString(name, ToolJson.FormatDate(date));
-        }
-        else
-        {
-            writer.WriteNull(name);
-        }
     }
 
     private static bool InRange(DateOnly date, DateOnly? start, DateOnly? end)

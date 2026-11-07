@@ -49,6 +49,8 @@ public sealed class ReferenceManualIndicatorCatalog
         return File.Exists(path) ? path : Path.Combine(RepoRoot.Value, "docs", "ReferenceManual", CatalogFileName);
     }
 
+    internal static bool CatalogDocumentExists() => File.Exists(GetCatalogPath());
+
     private static IReadOnlyList<CoreCandleData> BuildSampleCandles()
     {
         var candles = new List<CoreCandleData>(SampleBarCount);
@@ -248,7 +250,7 @@ public sealed class ReferenceManualIndicatorCatalog
         File.WriteAllText(path, regex.Replace(doc, _ => generated));
     }
 
-    [Fact]
+    [CatalogDocumentFact]
     public void Doc09_GeneratedCatalog_IsUpToDateWithCode()
     {
         string doc = File.ReadAllText(GetCatalogPath());
@@ -260,5 +262,21 @@ public sealed class ReferenceManualIndicatorCatalog
         string actual = match.Groups[1].Value.Replace("\r\n", "\n");
         Assert.True(expected == actual,
             $"The generated catalog in {CatalogFileName} is stale. Run: {RegenEnvVar}=1 dotnet test Tests/StockAnalyzer.Core.Tests/StockAnalyzer.Core.Tests.csproj --filter ReferenceManualIndicatorCatalog");
+    }
+}
+
+/// <summary>
+/// A fact that compares the code with docs/OSS/09_indicator_catalog.md. docs/OSS is not tracked in this repository, so a checkout without the document reports the test
+/// as skipped (never as a silent pass, never as a stale catalog).
+/// </summary>
+[AttributeUsage(AttributeTargets.Method)]
+internal sealed class CatalogDocumentFactAttribute : FactAttribute
+{
+    public CatalogDocumentFactAttribute()
+    {
+        if (!ReferenceManualIndicatorCatalog.CatalogDocumentExists())
+        {
+            Skip = "09_indicator_catalog.md is not in this checkout (docs/OSS is untracked); nothing to compare the code with.";
+        }
     }
 }

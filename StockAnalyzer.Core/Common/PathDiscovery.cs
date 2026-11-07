@@ -58,14 +58,15 @@ public static class PathDiscovery
     }
 
     /// <summary>
-    /// Ensures a writable directory exists, degrading through the same three tiers used by every
-    /// <c>Resolve*Path</c> helper: (1) <paramref name="preferredDir"/>; (2)
-    /// <c>%TEMP%/StockAnalyzer/<paramref name="subDirRelativePath"/></c>; (3)
-    /// <c>&lt;BaseDirectory&gt;/<paramref name="subDirRelativePath"/></c>; (4) the bare
-    /// <see cref="AppDomain.BaseDirectory"/>. Returns the first directory that could be created or
-    /// already exists. Consolidates what were four byte-identical fallback blocks.
+    /// Creates <paramref name="preferredDir"/> when it does not exist and returns it. When it cannot be created the
+    /// (not created) path is returned all the same, WITHOUT redirecting to the OS temp folder or the base directory
+    /// (owner decision D-2', 2026-10-30): persistent data lives below <c>Data</c> only. The caller then fails at its own
+    /// write (for example <see cref="UnauthorizedAccessException"/>) and reads see "no file", which the callers already
+    /// handle. The read-only mode is announced separately by <c>DataStorageProbe</c> and the status banner.
+    /// Under UI automation (<see cref="UiTestEnabledEnvironmentVariable"/> = 1) a creation failure is still thrown, because an
+    /// isolated run must never continue on a path that is not its own.
     /// </summary>
-    private static string EnsureDirectoryWithFallback(string preferredDir, string subDirRelativePath)
+    private static string EnsureDirectory(string preferredDir)
     {
         try
         {
@@ -73,45 +74,16 @@ public static class PathDiscovery
             {
                 Directory.CreateDirectory(preferredDir);
             }
-            return preferredDir;
         }
-        catch (Exception)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException or NotSupportedException or ArgumentException)
         {
             if (Environment.GetEnvironmentVariable(UiTestEnabledEnvironmentVariable) == "1")
             {
-                // An isolated UIA run must never fall back to a shared user directory.
                 throw;
             }
-
-            // Fallback strategy: System Temp directory
-            try
-            {
-                var tempDir = Path.Combine(Path.GetTempPath(), TempFolderName, subDirRelativePath);
-                if (!Directory.Exists(tempDir))
-                {
-                    Directory.CreateDirectory(tempDir);
-                }
-                return tempDir;
-            }
-            catch
-            {
-                // Secondary fallback: App domain base directory subfolder
-                var baseSubDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, subDirRelativePath);
-                try
-                {
-                    if (!Directory.Exists(baseSubDir))
-                    {
-                        Directory.CreateDirectory(baseSubDir);
-                    }
-                    return baseSubDir;
-                }
-                catch
-                {
-                    // Ultimate fallback: Just use the base directory directly
-                    return AppDomain.CurrentDomain.BaseDirectory;
-                }
-            }
         }
+
+        return preferredDir;
     }
 
     public static string ResolveDataPath(string? configPath, string defaultFolderName = StockAnalyzer.Core.Models.MarketDataSettings.DefaultDailyDataPath, string? filePattern = null)
@@ -229,6 +201,13 @@ public static class PathDiscovery
 
         return resolvedPath;
     }
+
+    /// <summary>
+    /// The application data root (<c>Data</c>) as <see cref="ResolveDataPathWithoutCreating"/> returns it, without creating anything. The one place that
+    /// names the root for the start-up write probe (<see cref="DataStorageProbe"/>), so no caller spells the folder name itself.
+    /// </summary>
+    public static string ResolveDataRootWithoutCreating(string? baseDirectory = null)
+        => ResolveDataPathWithoutCreating(null, DataFolderName, baseDirectory: baseDirectory);
 
     /// <summary>
     /// Read-only counterpart of <see cref="ResolveDataPath"/>: returns the path that
@@ -378,7 +357,7 @@ public static class PathDiscovery
     {
         fileName = SanitizeFileName(fileName);
         var dataDir = ResolveDataPath(null, "Data");
-        var configDir = EnsureDirectoryWithFallback(Path.Combine(dataDir, "Config"), "Config");
+        var configDir = EnsureDirectory(Path.Combine(dataDir, "Config"));
         return Path.Combine(configDir, fileName);
     }
 
@@ -386,7 +365,7 @@ public static class PathDiscovery
     {
         fileName = SanitizeFileName(fileName);
         var dataDir = ResolveDataPath(null, "Data");
-        var portfolioDir = EnsureDirectoryWithFallback(Path.Combine(dataDir, "Portfolios"), "Portfolios");
+        var portfolioDir = EnsureDirectory(Path.Combine(dataDir, "Portfolios"));
         return Path.Combine(portfolioDir, fileName);
     }
 
@@ -394,7 +373,7 @@ public static class PathDiscovery
     {
         fileName = SanitizeFileName(fileName);
         var dataDir = ResolveDataPath(null, "Data");
-        var backtestDir = EnsureDirectoryWithFallback(Path.Combine(dataDir, "Backtest"), "Backtest");
+        var backtestDir = EnsureDirectory(Path.Combine(dataDir, "Backtest"));
         return Path.Combine(backtestDir, fileName);
     }
 
@@ -402,7 +381,7 @@ public static class PathDiscovery
     {
         fileName = SanitizeFileName(fileName);
         var dataDir = ResolveDataPath(null, "Data");
-        var backtestDir = EnsureDirectoryWithFallback(Path.Combine(dataDir, "Backtest"), "Backtest");
+        var backtestDir = EnsureDirectory(Path.Combine(dataDir, "Backtest"));
         return Path.Combine(backtestDir, fileName);
     }
 
@@ -411,7 +390,7 @@ public static class PathDiscovery
         fileName = SanitizeFileName(fileName);
         var dataDir = ResolveDataPath(null, "Data");
         var reportsSubDir = Path.Combine("Backtest", "Reports");
-        var reportsDir = EnsureDirectoryWithFallback(Path.Combine(dataDir, reportsSubDir), reportsSubDir);
+        var reportsDir = EnsureDirectory(Path.Combine(dataDir, reportsSubDir));
         return Path.Combine(reportsDir, fileName);
     }
 
@@ -419,7 +398,7 @@ public static class PathDiscovery
     {
         fileName = SanitizeFileName(fileName);
         var dataDir = ResolveDataPath(null, "Data");
-        var defaultsDir = EnsureDirectoryWithFallback(Path.Combine(dataDir, "IndicatorDefaults"), "IndicatorDefaults");
+        var defaultsDir = EnsureDirectory(Path.Combine(dataDir, "IndicatorDefaults"));
         return Path.Combine(defaultsDir, fileName);
     }
 
@@ -427,7 +406,7 @@ public static class PathDiscovery
     {
         fileName = SanitizeFileName(fileName);
         var dataDir = ResolveDataPath(null, "Data");
-        var sourceDir = EnsureDirectoryWithFallback(Path.Combine(dataDir, "SourceIndicators"), "SourceIndicators");
+        var sourceDir = EnsureDirectory(Path.Combine(dataDir, "SourceIndicators"));
         return Path.Combine(sourceDir, fileName);
     }
 
@@ -435,7 +414,7 @@ public static class PathDiscovery
     {
         fileName = SanitizeFileName(fileName);
         var dataDir = ResolveDataPath(null, "Data");
-        var driverDir = EnsureDirectoryWithFallback(Path.Combine(dataDir, "DynamicPeriodDrivers"), "DynamicPeriodDrivers");
+        var driverDir = EnsureDirectory(Path.Combine(dataDir, "DynamicPeriodDrivers"));
         return Path.Combine(driverDir, fileName);
     }
 
@@ -443,7 +422,7 @@ public static class PathDiscovery
     {
         var dataDir = ResolveDataPath(null, "Data");
         var subDir = type.HasValue ? Path.Combine("Templates", type.Value.ToString()) : "Templates";
-        return EnsureDirectoryWithFallback(Path.Combine(dataDir, subDir), subDir);
+        return EnsureDirectory(Path.Combine(dataDir, subDir));
     }
 
     public static string ResolveTemplatePath(StockAnalyzer.Core.Models.Templates.TemplateType type, string fileName)
@@ -464,7 +443,7 @@ public static class PathDiscovery
         var sanitizedRunId = SanitizeFileName(runId);
         var dataDir = ResolveDataPath(null, "Data");
         var subDir = Path.Combine("Experiments", sanitizedRunId);
-        return EnsureDirectoryWithFallback(Path.Combine(dataDir, subDir), subDir);
+        return EnsureDirectory(Path.Combine(dataDir, subDir));
     }
 
     /// <summary>
@@ -492,9 +471,8 @@ public static class PathDiscovery
             fileName = DefaultPredictionModelFileName;
         }
 
-        // Same 3-tier degradation as ResolveConfigPath / ResolvePortfolioPath.
-        var modelsDir = EnsureDirectoryWithFallback(
-            Path.Combine(ResolveDataPath(null, "Data"), ModelsFolderName), ModelsFolderName);
+        // Same behaviour as ResolveConfigPath / ResolvePortfolioPath: the folder is created when possible and never redirected.
+        var modelsDir = EnsureDirectory(Path.Combine(ResolveDataPath(null, "Data"), ModelsFolderName));
 
         var dataCandidate = Path.Combine(modelsDir, fileName);
         if (File.Exists(dataCandidate))
@@ -524,8 +502,7 @@ public static class PathDiscovery
     /// <summary>Canonical immutable model generation store under the prediction Models directory.</summary>
     public static string ResolveModelGenerationsDirectory()
     {
-        var modelsDir = EnsureDirectoryWithFallback(
-            Path.Combine(ResolveDataPath(null, DataFolderName), ModelsFolderName), ModelsFolderName);
+        var modelsDir = EnsureDirectory(Path.Combine(ResolveDataPath(null, DataFolderName), ModelsFolderName));
         return Path.Combine(modelsDir, ModelGenerationsFolderName);
     }
 

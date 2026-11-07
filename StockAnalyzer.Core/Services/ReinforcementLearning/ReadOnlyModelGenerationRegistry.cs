@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using StockAnalyzer.Core.Common;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.ReinforcementLearning;
+using StockAnalyzer.Core.Models.Training;
 using StockAnalyzer.Core.Services;
 
 namespace StockAnalyzer.Core.Services.ReinforcementLearning;
@@ -259,9 +260,7 @@ public sealed class ReadOnlyModelGenerationRegistry : IRlModelGenerationRegistry
                     if (TryGetManifest(dirName) is { } manifest)
                     {
                         string manifestPath = Path.Combine(dir, "manifest.json");
-                        DateTimeOffset createdAt = File.Exists(manifestPath)
-                            ? File.GetCreationTimeUtc(manifestPath)
-                            : Directory.GetCreationTimeUtc(dir);
+                        (DateTimeOffset createdAt, string createdAtSource) = ResolveCreatedAt(manifest, manifestPath, dir);
 
                         int windowSize = 0;
                         var symbols = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -308,11 +307,6 @@ public sealed class ReadOnlyModelGenerationRegistry : IRlModelGenerationRegistry
                                 if (windowSize == 0 && doc.RootElement.TryGetProperty("window_size", out var winProp) && winProp.TryGetInt32(out var winVal))
                                 {
                                     windowSize = winVal;
-                                }
-                                if (doc.RootElement.TryGetProperty("created_utc", out var createdProp)
-                                    && DateTimeOffset.TryParse(createdProp.GetString(), out var parsedCreated))
-                                {
-                                    createdAt = parsedCreated;
                                 }
                                 if (doc.RootElement.TryGetProperty("symbols", out var symArray) && symArray.ValueKind == JsonValueKind.Array)
                                 {
@@ -364,12 +358,16 @@ public sealed class ReadOnlyModelGenerationRegistry : IRlModelGenerationRegistry
                             HorizonBars: manifest.Horizon,
                             TargetType: manifest.TargetType,
                             ClassCount: classCount,
-                            Architecture: manifest.TrainingLineage?.Mode,
+                            Architecture: null,
                             Score: manifest.Score,
                             EvaluationRevision: manifest.EvaluationRevision,
                             ValidationReturn: null,
                             OosReturn: null
-                        ));
+                        )
+                        {
+                            TrainingMode = manifest.TrainingLineage?.Mode,
+                            CreatedAtSource = createdAtSource,
+                        });
                     }
                 }
             }
@@ -387,7 +385,7 @@ public sealed class ReadOnlyModelGenerationRegistry : IRlModelGenerationRegistry
                     Kind: "ReinforcementLearning",
                     Symbols: string.IsNullOrWhiteSpace(gen.Symbol) ? Array.Empty<string>() : new[] { gen.Symbol },
                     Timeframe: "daily",
-                    CreatedAt: gen.CreatedUtc,
+                    CreatedAt: TruncateToMilliseconds(gen.CreatedUtc),
                     IsActive: gen.ModelId == rlActive,
                     WindowSize: RlContract.WindowLength,
                     HorizonBars: RlContract.EpisodeHorizon,
@@ -398,7 +396,10 @@ public sealed class ReadOnlyModelGenerationRegistry : IRlModelGenerationRegistry
                     EvaluationRevision: gen.EvaluationRevision,
                     ValidationReturn: gen.ValidationReturn,
                     OosReturn: gen.OosReturn
-                ));
+                )
+                {
+                    CreatedAtSource = CreatedAtSources.Recorded,
+                });
             }
         }
         catch { }
@@ -407,6 +408,33 @@ public sealed class ReadOnlyModelGenerationRegistry : IRlModelGenerationRegistry
             .OrderByDescending(e => e.CreatedAt)
             .ThenBy(e => e.ModelId, StringComparer.Ordinal)
             .ToArray();
+    }
+
+    /// <summary>
+    /// The creation time of a supervised generation, in UTC and cut to the millisecond (the precision of a run identifier, so the order of the
+    /// entries and the order of their formatted times agree). First the start time in the run identifier of the lineage, which a copy of the folder
+    /// does not change; without one, the older of creation and last-write time of the manifest file (or of the folder): a copy gets a new creation time
+    /// but keeps the last-write time, so the older one is the better guess.
+    /// </summary>
+    private static (DateTimeOffset At, string Source) ResolveCreatedAt(ModelGenerationManifest manifest, string manifestPath, string directory)
+    {
+        if (TrainingRunId.TryGetTimestamp(manifest.TrainingLineage?.RunId, out DateTimeOffset started))
+        {
+            return (started, CreatedAtSources.RunId);
+        }
+
+        DateTime stamp = File.Exists(manifestPath)
+            ? Older(File.GetCreationTimeUtc(manifestPath), File.GetLastWriteTimeUtc(manifestPath))
+            : Older(Directory.GetCreationTimeUtc(directory), Directory.GetLastWriteTimeUtc(directory));
+        return (TruncateToMilliseconds(new DateTimeOffset(DateTime.SpecifyKind(stamp, DateTimeKind.Utc))), CreatedAtSources.Filesystem);
+
+        static DateTime Older(DateTime a, DateTime b) => a <= b ? a : b;
+    }
+
+    private static DateTimeOffset TruncateToMilliseconds(DateTimeOffset value)
+    {
+        DateTimeOffset utc = value.ToUniversalTime();
+        return new DateTimeOffset(utc.Ticks - utc.Ticks % TimeSpan.TicksPerMillisecond, TimeSpan.Zero);
     }
 
     public ModelGenerationLease? Acquire(string modelId)

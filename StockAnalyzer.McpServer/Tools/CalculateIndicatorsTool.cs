@@ -8,6 +8,7 @@ using StockAnalyzer.Core.Models.Indicators;
 using StockAnalyzer.Core.Models.Parameters;
 using StockAnalyzer.Core.ReadOnly;
 using StockAnalyzer.Core.Services;
+using StockAnalyzer.Core.Services.Analysis;
 using StockAnalyzer.Core.Services.Backtest.Engine;
 using StockAnalyzer.McpServer.Catalog;
 using StockAnalyzer.McpServer.Limits;
@@ -33,6 +34,9 @@ internal sealed class CalculateIndicatorsTool : IMcpTool
     private const string AlignmentKey = "alignment";
     private const string DerivedType = "Derived";
 
+    /// <summary>The last day before a period starts is the end of the previous period: the day completeBarsOnly true cuts the history at when the last period is running.</summary>
+    private const int DaysBeforePeriodStart = 1;
+
     /// <summary>The alignment of an indicator calculated on a coarser time frame: the value of the last period that had closed when the bar began (<see cref="TimeframeAlignment"/>).</summary>
     internal const string PreviousClosedPeriod = "PreviousClosedPeriod";
 
@@ -43,7 +47,7 @@ internal sealed class CalculateIndicatorsTool : IMcpTool
     private readonly SymbolResolver _symbols;
     private readonly CandleWindowLoader _loader;
     private readonly IndicatorCatalog _catalog;
-    private readonly IndicatorSettingsBinder _binder;
+    private readonly IndicatorRequestBinder _requestBinder;
     private readonly IndicatorChainPlan _chain;
     private readonly ErrorMessageSanitizer _sanitizer;
     private readonly McpLimits _limits;
@@ -61,7 +65,7 @@ internal sealed class CalculateIndicatorsTool : IMcpTool
         _symbols = symbols;
         _loader = new CandleWindowLoader(gateway);
         _catalog = catalog;
-        _binder = binder;
+        _requestBinder = new IndicatorRequestBinder(catalog, binder);
         _chain = chain;
         _sanitizer = sanitizer;
         _limits = limits;
@@ -79,9 +83,12 @@ internal sealed class CalculateIndicatorsTool : IMcpTool
         $"endDate ({ToolJson.DateFormat}, inclusive) ends the calculation at the last bar dated on or before it, so the latest bar and every value are as they were known on that date " +
         "(for W1 and MN1 the daily bars are cut at endDate before the period bars are built; the window is then the latest lookbackBars bars up to endDate); " +
         "comparison symbols are cut at the same date, no bar after it is read, and endDate is echoed in the result only when given. " +
+        $"{PartialBarOutput.CompleteBarsOnlyArgument} (W1 and MN1 only, ignored for D1; not given = the running last period is calculated as before and nothing about it is reported): true calculates on complete periods only, leaving out a running last period ({PartialBarOutput.DroppedPartialBarKey}); " +
+        $"true and false both add {PartialBarOutput.ReferenceDateKey}, {PartialBarOutput.LastBarPeriodEndKey}, {PartialBarOutput.LastBarPartialKey} and {PartialBarOutput.DroppedPartialBarKey}, which work as in sa_get_candles. " +
         "A leading null means the indicator has not accumulated enough bars yet (leadingNullCount counts them over the whole calculated history). " +
         "Some indicators (for example Ichimoku SenkouSpanA and SenkouSpanB) also project values beyond the last bar; those are returned in projectedValues and belong to no bar yet. " +
         "nonCausalSeries lists series whose value at a bar depends on later bars. " +
+        "An indicator with its own timeFrame that lists nonCausalSeries still looks ahead by the indicator's own look-ahead after the alignment, because the alignment only steps back one closed period. " +
         "Indicator on indicator: sourceIndicatorId feeds one output series (sourceOutputSeriesName) of another indicator of the same call as the price input, " +
         "dynamicPeriodIndicatorId feeds one as adaptive periods; one upstream indicator can be asked for one series only. " +
         "Cross-ticker indicators need the ComparisonSymbol parameter. " +
@@ -101,6 +108,8 @@ internal sealed class CalculateIndicatorsTool : IMcpTool
         "mean, stdDev, latest and trendSlope are in the series' own unit, zScoreOfLatest has none and percentileRankOfLatest is a percentage; they are computed over the whole calculated window, not only the returned tail. " +
         "trendBars and the offsets count bars of the call's time frame (an indicator with its own timeFrame is already aligned to those bars); a series listed in nonCausalSeries keeps its look-ahead in its summary and pastValues. " +
         $"{SeriesOutputOptions.LookbackOffsetsArgument} adds pastValues (value k bars before the last calculated bar), {SeriesOutputOptions.IncludeSeriesArgument} false returns only the compact figures (latestValues, summary, pastValues) to save tokens. " +
+        "A call that runs out of time starts no further indicator, but the indicator running at that moment is not interrupted and keeps the server busy until it ends " +
+        "(a heavy type such as HiddenMarkovModel with a large Period can take a long time on its own): ask for few heavy indicators per call. " +
         "Prices are in the instrument's units; the application stores no output unit per indicator (see unitUndefined in sa_get_capabilities).";
 
     public bool IsHeavy => false;
@@ -141,6 +150,7 @@ internal sealed class CalculateIndicatorsTool : IMcpTool
         .Integer(LookbackArgument, $"Stored bars the calculation runs over, newest last. Default and maximum {_limits.MaxCandlesPerRequest}.", defaultValue: _limits.MaxCandlesPerRequest, minimum: 1, maximum: _limits.MaxCandlesPerRequest)
         .Integer(TailArgument, $"Number of trailing bars returned per series. Default {_limits.DefaultOutputTailBars}, at most {_limits.MaxOutputTailBars}.", defaultValue: _limits.DefaultOutputTailBars, minimum: 1, maximum: _limits.MaxOutputTailBars)
         .String(EndDateArgument, $"Last date to include ({ToolJson.DateFormat}). If specified, the latest bar is the last bar dated on or before it. Default: the latest stored bar.")
+        .Boolean(PartialBarOutput.CompleteBarsOnlyArgument, $"W1 and MN1 only (ignored for D1): true leaves out the last bar when its period has not ended yet, false keeps it; either value adds {PartialBarOutput.ReferenceDateKey}, {PartialBarOutput.LastBarPeriodEndKey}, {PartialBarOutput.LastBarPartialKey} and {PartialBarOutput.DroppedPartialBarKey} to the result. Not given: the last bar is kept and nothing about it is reported.")
         .Boolean(SeriesOutputOptions.SummaryArgument, "true adds summary to every returned series of every result (indicators and derived): count, latest, mean, stdDev (population, divisor n), zScoreOfLatest, percentileRankOfLatest, trendSlope, trendBars, all over the whole calculated window. Default false.")
         .Integer(SeriesOutputOptions.TrendBarsArgument, $"Trend window, in bars, of the summary's trendSlope (needs summary true). Default {McpLimitsContract.EffectiveDefaultTrendBars(_limits)}, from {SeriesSummaryStatistics.MinTrendBars} to {McpLimitsContract.EffectiveMaxTrendBars(_limits)}.", defaultValue: McpLimitsContract.EffectiveDefaultTrendBars(_limits), minimum: SeriesSummaryStatistics.MinTrendBars, maximum: McpLimitsContract.EffectiveMaxTrendBars(_limits))
         .IntegerArray(SeriesOutputOptions.LookbackOffsetsArgument, $"Offsets (0 or more, at most {_limits.MaxLookbackOffsets}) of bars before the last calculated bar: adds pastValues with the value of every returned series that many bars back (0 = the last bar). A bar that does not exist or has no value gives null.")
@@ -184,12 +194,17 @@ internal sealed class CalculateIndicatorsTool : IMcpTool
                 $"Set {SeriesOutputOptions.IncludeSeriesArgument} to true, or omit {TailArgument}.");
         }
 
-        List<RequestedIndicator> requests = Bind(indicators, timeFrame);
+        List<RequestedIndicator> requests = _requestBinder.Bind(indicators.EnumerateArray().Select((item, i) => (item, $"{IndicatorsArgument}[{i}]")), timeFrame);
         _chain.Apply(requests);
         IReadOnlyList<DerivedSeriesRequest> derived = arguments.TryGetProperty(DerivedArgument, out JsonElement derivedElement)
             ? DerivedSeriesPlan.Parse(derivedElement, requests, _chain, _limits)
             : Array.Empty<DerivedSeriesRequest>();
         List<string> comparisonSymbols = await ResolveComparisonSymbolsAsync(requests, symbol, allowUnregistered, warnings, cancellationToken).ConfigureAwait(false);
+
+        // completeBarsOnly concerns the bars of the call's own W1 or MN1 frame; given (true or false) it adds the partial-bar keys, not given nothing changes (the answer stays byte-identical).
+        bool? completeBarsOnly = ToolArgs.Boolean(arguments, PartialBarOutput.CompleteBarsOnlyArgument);
+        bool reportPartial = completeBarsOnly is not null && TimeFrameAggregator.IsPeriodFrame(timeFrame);
+        DateTime? referenceDate = reportPartial ? await _loader.ReferenceDateAsync(symbol, endDate, cancellationToken).ConfigureAwait(false) : null;
 
         List<CandleData> loaded;
         bool droppedLeadingBar;
@@ -215,9 +230,33 @@ internal sealed class CalculateIndicatorsTool : IMcpTool
             }
         }
 
+        // The running last period is left out by loading again up to the day before its start: the daily bars are cut first, exactly as an explicit endDate does,
+        // so the comparison symbols and the own-timeFrame bars follow the same cut (a bar dropped after the load would leave the comparison series misaligned).
+        bool droppedPartialBar = false;
+        DateOnly? windowEnd = endDate;
+        if (completeBarsOnly == true && CandleWindowLoader.IsLastBarPartial(loaded, timeFrame, referenceDate))
+        {
+            DateOnly effectiveEnd = DateOnly.FromDateTime(TimeFrameAggregator.PeriodStart(loaded[^1].Timestamp, timeFrame)).AddDays(-DaysBeforePeriodStart);
+            loaded = await _loader.LoadUpToAsync(symbol, timeFrame, effectiveEnd, lookback, cancellationToken).ConfigureAwait(false);
+            droppedLeadingBar = false;
+            droppedPartialBar = true;
+            windowEnd = effectiveEnd;
+            if (loaded.Count == 0)
+            {
+                throw new ToolException(
+                    ToolErrorCodes.InsufficientMarketData,
+                    $"No complete {timeFrame} period is stored for {symbol}.",
+                    PartialBarOutput.CompleteBarsOnlyArgument);
+            }
+        }
+
+        PartialBarReport? partialBars = reportPartial
+            ? new PartialBarReport(completeBarsOnly!.Value, referenceDate, TimeFrameAggregator.PeriodEnd(loaded[^1].Timestamp, timeFrame), CandleWindowLoader.IsLastBarPartial(loaded, timeFrame, referenceDate), droppedPartialBar)
+            : null;
+
         List<CoreCandleData> candles = loaded.Select(ToCore).ToList();
         IReadOnlyDictionary<string, IReadOnlyList<CoreCandleData?>>? secondary =
-            await AlignComparisonAsync(symbol, comparisonSymbols, timeFrame, candles.Count, endDate, warnings, cancellationToken).ConfigureAwait(false);
+            await AlignComparisonAsync(symbol, comparisonSymbols, timeFrame, candles.Count, windowEnd, warnings, cancellationToken).ConfigureAwait(false);
 
         var excluded = new HashSet<string>(
             comparisonSymbols.Where(c => secondary is null || !secondary.ContainsKey(c)),
@@ -227,24 +266,43 @@ internal sealed class CalculateIndicatorsTool : IMcpTool
 
         await LoadOwnBarsAsync(symbol, requests, DateOnly.FromDateTime(loaded[^1].Timestamp), cancellationToken).ConfigureAwait(false);
 
-        // The pipeline cannot be cancelled: the call is awaited without the token so that a calculation that outlives its time limit
-        // keeps the turn until it ends (the executor has already answered EXECUTION_TIMEOUT by then).
+        // The token is checked before each indicator starts (gateway and pipeline), so a call that has run out of time starts no further indicator. An indicator that is
+        // already running is not interrupted: the call is awaited, so that calculation keeps the turn until it ends (the executor has already answered EXECUTION_TIMEOUT by then).
         // The indicators of the call's own bars are one calculation exactly as before; each coarser time frame is one more calculation on its own bars.
         var results = new Dictionary<string, IIndicatorResult>();
         List<RequestedIndicator> ownBarRequests = requests.Where(r => r.OwnTimeFrame is null).ToList();
         if (ownBarRequests.Count > 0)
         {
-            Merge(results, await _gateway.CalculateIndicatorsAsync(candles, ownBarRequests.Select(r => r.Settings).ToList(), secondary).ConfigureAwait(false));
+            Merge(results, await CalculateAsync(candles, ownBarRequests.Select(r => r.Settings).ToList(), secondary, cancellationToken).ConfigureAwait(false));
         }
 
         foreach (IGrouping<TimeFrame, RequestedIndicator> frame in requests.Where(r => r.OwnTimeFrame is not null).GroupBy(r => r.OwnTimeFrame!.Value))
         {
+            // Checkpoint between the calculations: a call cancelled meanwhile starts no further time frame.
+            cancellationToken.ThrowIfCancellationRequested();
             List<CoreCandleData> frameCandles = frame.First().OwnBars!.Select(ToCore).ToList();
-            Merge(results, await _gateway.CalculateIndicatorsAsync(frameCandles, frame.Select(r => r.Settings).ToList(), null).ConfigureAwait(false));
+            Merge(results, await CalculateAsync(frameCandles, frame.Select(r => r.Settings).ToList(), null, cancellationToken).ConfigureAwait(false));
         }
 
-        return ToolJson.Build(writer => WriteResult(writer, symbol, timeFrame, endDate, lookback, loaded, droppedLeadingBar, tail, requests, derived, output, results, warnings, excluded));
+        cancellationToken.ThrowIfCancellationRequested();
+        return ToolJson.Build(writer => WriteResult(writer, symbol, timeFrame, endDate, lookback, loaded, droppedLeadingBar, partialBars, tail, requests, derived, output, results, warnings, excluded));
     }
+
+    /// <summary>
+    /// One calculation through the gateway. A gateway that checks the token between indicators gets it; any other gateway (a fake, a wrapper) is called as before,
+    /// so the call then runs every indicator once it has started.
+    /// </summary>
+    private Task<Dictionary<string, IIndicatorResult>> CalculateAsync(
+        IReadOnlyList<CoreCandleData> candles,
+        IReadOnlyList<CoreIndicatorSettings> settings,
+        IReadOnlyDictionary<string, IReadOnlyList<CoreCandleData?>>? secondary,
+        CancellationToken cancellationToken)
+        => _gateway is ICancellableIndicatorCalculation cancellable
+            ? cancellable.CalculateIndicatorsAsync(candles, settings, secondary, cancellationToken)
+            : _gateway.CalculateIndicatorsAsync(candles, settings, secondary);
+
+    /// <summary>What the call reports about the running last period of its W1 or MN1 bars when <c>completeBarsOnly</c> was given.</summary>
+    private sealed record PartialBarReport(bool CompleteBarsOnly, DateTime? ReferenceDate, DateTime LastBarPeriodEnd, bool LastBarPartial, bool DroppedPartialBar);
 
     private static void Merge(Dictionary<string, IIndicatorResult> into, Dictionary<string, IIndicatorResult> part)
     {
@@ -277,97 +335,6 @@ internal sealed class CalculateIndicatorsTool : IMcpTool
             }
         }
     }
-
-    /// <summary>
-    /// The time frame an indicator is calculated on. Naming the call's own frame is the same as naming none (null); a finer frame is UNSUPPORTED_TIMEFRAME, because the alignment reads
-    /// the previous closed period of a coarser frame and has no meaning for finer bars.
-    /// </summary>
-    private static (TimeFrame? Written, TimeFrame? Own) ReadTimeFrame(JsonElement item, TimeFrame callFrame, string path)
-    {
-        if (!item.TryGetProperty(IndicatorTimeFrameKey, out JsonElement element))
-        {
-            return (null, null);
-        }
-
-        string keyPath = $"{path}.{IndicatorTimeFrameKey}";
-        TimeFrame written = ToolArgs.SupportedTimeFrame(element.GetString()!, keyPath);
-        if (ToolArgs.IsFinerThan(written, callFrame))
-        {
-            throw new ToolException(
-                ToolErrorCodes.UnsupportedTimeFrame,
-                $"An indicator on {written} bars is finer than the call's {callFrame}.",
-                keyPath,
-                $"Give {callFrame} or a coarser time frame, or omit {IndicatorTimeFrameKey}.");
-        }
-
-        return (written, written == callFrame ? null : written);
-    }
-
-    private List<RequestedIndicator> Bind(JsonElement indicators, TimeFrame callFrame)
-    {
-        var requests = new List<RequestedIndicator>();
-        var ids = new HashSet<string>(StringComparer.Ordinal);
-        int index = 0;
-        foreach (JsonElement item in indicators.EnumerateArray())
-        {
-            string path = $"{IndicatorsArgument}[{index}]";
-            string id = item.GetProperty("id").GetString()!;
-            if (string.IsNullOrWhiteSpace(id))
-            {
-                throw new ToolException(ToolErrorCodes.InvalidArgument, "An indicator id must not be empty.", $"{path}.id");
-            }
-
-            if (!ids.Add(id))
-            {
-                throw new ToolException(ToolErrorCodes.InvalidArgument, $"Indicator id '{id}' is used more than once.", $"{path}.id", "Ids must be unique within one call.");
-            }
-
-            string typeName = item.GetProperty("type").GetString()!;
-            IndicatorCatalogEntry entry = _catalog.Find(typeName)
-                ?? throw new ToolException(ToolErrorCodes.UnknownIndicator, $"Unknown indicator type '{typeName}'.", $"{path}.type", "Call sa_get_capabilities to list the type names.");
-            if (!entry.IsRegistered)
-            {
-                throw new ToolException(
-                    ToolErrorCodes.UnknownIndicator,
-                    $"Indicator type '{entry.Type}' is defined but cannot be calculated.",
-                    $"{path}.type",
-                    "Types with isRegistered false in sa_get_capabilities are not available.");
-            }
-
-            PriceType? priceSource = Optional(item, "priceSource") is { } priceName ? Enum.Parse<PriceType>(priceName) : null;
-            item.TryGetProperty("parameters", out JsonElement parameters);
-            CoreIndicatorSettings settings = _binder.Bind(entry, parameters, priceSource, path);
-            (TimeFrame? written, TimeFrame? own) = ReadTimeFrame(item, callFrame, path);
-            if (own is not null && settings.ParameterObject is ICrossTickerParameter)
-            {
-                throw new ToolException(
-                    ToolErrorCodes.InvalidArgument,
-                    $"{entry.Type} compares two symbols, whose bars are matched on the call's time frame, so it cannot have its own {IndicatorTimeFrameKey}.",
-                    $"{path}.{IndicatorTimeFrameKey}",
-                    $"Omit {IndicatorTimeFrameKey} on this indicator (it then uses the call's {callFrame}).");
-            }
-
-            requests.Add(new RequestedIndicator(
-                index,
-                id,
-                entry,
-                settings,
-                Optional(item, "sourceIndicatorId"),
-                Optional(item, "sourceOutputSeriesName"),
-                Optional(item, "dynamicPeriodIndicatorId"),
-                Optional(item, "dynamicPeriodOutputSeriesName"))
-            {
-                WrittenTimeFrame = written,
-                OwnTimeFrame = own,
-            });
-            index++;
-        }
-
-        return requests;
-    }
-
-    private static string? Optional(JsonElement item, string name)
-        => item.TryGetProperty(name, out JsonElement value) ? value.GetString() : null;
 
     /// <summary>
     /// Cross-ticker indicators need a comparison symbol: it must be a stored ticker and is written back in canonical form.
@@ -467,6 +434,7 @@ internal sealed class CalculateIndicatorsTool : IMcpTool
         int lookback,
         List<CandleData> loaded,
         bool droppedLeadingBar,
+        PartialBarReport? partialBars,
         int tail,
         List<RequestedIndicator> requests,
         IReadOnlyList<DerivedSeriesRequest> derived,
@@ -495,6 +463,13 @@ internal sealed class CalculateIndicatorsTool : IMcpTool
         writer.WriteString("earliestCalculatedTimestamp", ToolJson.FormatDate(loaded[0].Timestamp));
         writer.WriteString("latestTimestamp", ToolJson.FormatDate(loaded[^1].Timestamp));
         writer.WriteBoolean("droppedLeadingBar", droppedLeadingBar);
+        if (partialBars is { } partial)
+        {
+            // The same names, types and format as sa_get_candles (PartialBarOutput); written only when completeBarsOnly was given, so an answer without it is unchanged.
+            writer.WriteBoolean(PartialBarOutput.CompleteBarsOnlyArgument, partial.CompleteBarsOnly);
+            PartialBarOutput.Write(writer, partial.ReferenceDate, partial.LastBarPeriodEnd, partial.LastBarPartial, partial.DroppedPartialBar);
+        }
+
         if (output.IncludeSeries)
         {
             writer.WriteStartArray("timestamps");

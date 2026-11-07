@@ -217,7 +217,8 @@ public partial class EditTickerNotesDialogViewModel : ViewModelBase, IDisposable
         _reminder = reminder ?? string.Empty;
         OnApplyCallback = onApplyCallback;
 
-        IndicatorRegistrationViewModel = new IndicatorRegistrationViewModel(indicatorFactory, localizationService: localizationService);
+        // The conditions of a ticker note are evaluated without the bars of a comparison symbol (SignalEvaluationEngine), so the indicators that need one would never fire: not offered here.
+        IndicatorRegistrationViewModel = new IndicatorRegistrationViewModel(indicatorFactory, localizationService: localizationService, offersTwoSymbolIndicatorsOfTheScreener: false);
         // Hide Screener logical join AND/OR buttons and Operator/Mode headers specifically in Dashboard
         IndicatorRegistrationViewModel.IsLogicalJoinVisible = false;
         IndicatorRegistrationViewModel.IsHeaderRowVisible = false;

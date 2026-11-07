@@ -13,6 +13,9 @@ namespace StockAnalyzer.Core.Services;
 /// </summary>
 public static class TimeFrameAggregator
 {
+    /// <summary>Days in an ISO week: the step between the period starts of consecutive W1 periods.</summary>
+    private const int DaysPerWeek = 7;
+
     /// <summary>
     /// True for the frames built from daily bars by period (W1, MN1): a bar covers an ISO week or a calendar month, is dated by the first trading day
     /// (aggregated) or the period start (stored files), and can be a partial period. The one definition of this set for callers that branch on it.
@@ -52,6 +55,32 @@ public static class TimeFrameAggregator
     }
 
     /// <summary>
+    /// The calendar start of the period that lies <paramref name="periodOffset"/> periods after the period of the bar dated
+    /// <paramref name="lastBarTimestamp"/>: the Monday of the ISO week + 7 days per period (W1), the 1st of the month + one month per period (MN1).
+    /// A future period's first trading day is unknown (holidays), so a projection dates its future points by the period start, which is always known.
+    /// Throws NotSupportedException for every frame that is not W1 or MN1; <paramref name="periodOffset"/> must not be negative.
+    /// </summary>
+    public static DateTime FuturePeriodStart(DateTime lastBarTimestamp, Models.TimeFrame timeFrame, int periodOffset)
+    {
+        if (!IsPeriodFrame(timeFrame))
+        {
+            throw new NotSupportedException($"TimeFrame {timeFrame} has no period start; only W1 and MN1 do.");
+        }
+
+        ArgumentOutOfRangeException.ThrowIfNegative(periodOffset);
+        DateTime start = PeriodStart(lastBarTimestamp, timeFrame);
+        return timeFrame == Models.TimeFrame.W1 ? start.AddDays((long)DaysPerWeek * periodOffset) : start.AddMonths(periodOffset);
+    }
+
+    /// <summary>
+    /// The date bars of different symbols are matched by when their series are joined: the bar's own date, or for W1 and MN1 the first calendar day of its
+    /// period (<see cref="PeriodStart"/>), because a W1 or MN1 bar is dated by its first trading day and two markets with different holidays date the same
+    /// period differently. The one definition for the cross-symbol statistics (cross-asset, market breadth).
+    /// </summary>
+    public static DateTime PeriodMatchDate(DateTime barTimestamp, Models.TimeFrame timeFrame)
+        => IsPeriodFrame(timeFrame) ? PeriodStart(barTimestamp, timeFrame) : barTimestamp.Date;
+
+    /// <summary>
     /// The integer period grouping key for a bar: YYYYMMDD (D1), YYYYWW (ISO week, W1), or YYYYMM (MN1).
     /// </summary>
     public static int GetPeriodKey(DateTime barTimestamp, Models.TimeFrame timeFrame)
@@ -72,6 +101,16 @@ public static class TimeFrameAggregator
     public static bool IsPartialPeriod(DateTime barTimestamp, Models.TimeFrame timeFrame, DateTime referenceDate)
         => IsPeriodFrame(timeFrame)
             && PeriodEnd(barTimestamp, timeFrame) > referenceDate.Date;
+
+    /// <summary>
+    /// The date the bars are known up to, the reference date of <see cref="IsPartialPeriod"/>: the as-of date, but never later than the last stored daily bar
+    /// (<paramref name="lastStoredDailyTimestamp"/>); that bar's date when there is no as-of date. The one definition of this rule (sa_get_candles and the Screener bar service).
+    /// </summary>
+    public static DateTime ReferenceDate(DateTime lastStoredDailyTimestamp, DateOnly? asOfDate)
+    {
+        DateTime lastStored = lastStoredDailyTimestamp.Date;
+        return asOfDate is { } asOf && asOf.ToDateTime(TimeOnly.MinValue) < lastStored ? asOf.ToDateTime(TimeOnly.MinValue) : lastStored;
+    }
 
     /// <summary>
     /// Aggregates daily candle data into the specified target timeframe.

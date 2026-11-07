@@ -24,7 +24,7 @@
                 <Border.ContextMenu>
                     <ContextMenu>
                         <MenuItem Header="{l:Localize TickerList_AddTicker}"
-                                  Command="{Binding $parent[UserControl].DataContext.AddTickerToMasterCommand}"/>
+                                  Command="{Binding $parent[UserControl].DataContext.AddTickerToMasterCommand}" ToolTip.Tip="{Binding $parent[UserControl].DataContext.StorageDisabledToolTip}" ToolTip.ShowOnDisabled="True"/>
                         <MenuItem Header="{l:Localize TickerList_AddFilter}"
                                   Command="{Binding $parent[UserControl].DataContext.AddFilterCommand}"
                                   CommandParameter="{Binding}"/>
@@ -42,7 +42,7 @@
                                   IsVisible="{Binding !IsWatchlistCategory}"/>
                         <Separator />
                         <MenuItem Header="{l:Localize TickerList_SyncAll}"
-                                  Command="{Binding $parent[UserControl].DataContext.SyncGroupCommand}"
+                                  Command="{Binding $parent[UserControl].DataContext.SyncGroupCommand}" ToolTip.Tip="{Binding $parent[UserControl].DataContext.StorageDisabledToolTip}" ToolTip.ShowOnDisabled="True"
                                   CommandParameter="{Binding}"/>
                         <Separator />
                         <MenuItem Header="{l:Localize TickerList_ExportData}">
@@ -64,7 +64,7 @@
                 <Border.ContextMenu>
                     <ContextMenu>
                         <MenuItem Header="{l:Localize TickerList_AddTicker}"
-                                  Command="{Binding $parent[UserControl].DataContext.AddTickerToMasterCommand}"/>
+                                  Command="{Binding $parent[UserControl].DataContext.AddTickerToMasterCommand}" ToolTip.Tip="{Binding $parent[UserControl].DataContext.StorageDisabledToolTip}" ToolTip.ShowOnDisabled="True"/>
                         <MenuItem Header="{l:Localize TickerList_AddFilter}"
                                   Command="{Binding $parent[UserControl].DataContext.AddFilterCommand}"
                                   CommandParameter="{Binding}"/>
@@ -79,7 +79,7 @@
                                   Command="{Binding $parent[UserControl].DataContext.AddCustomCategoryCommand}"/>
                         <Separator />
                         <MenuItem Header="{l:Localize TickerList_SyncAll}"
-                                  Command="{Binding $parent[UserControl].DataContext.SyncGroupCommand}"
+                                  Command="{Binding $parent[UserControl].DataContext.SyncGroupCommand}" ToolTip.Tip="{Binding $parent[UserControl].DataContext.StorageDisabledToolTip}" ToolTip.ShowOnDisabled="True"
                                   CommandParameter="{Binding}"/>
                         <Separator />
                         <MenuItem Header="{l:Localize TickerList_ExportData}">
@@ -101,7 +101,7 @@
                 <Border.ContextMenu>
                     <ContextMenu>
                         <MenuItem Header="{l:Localize TickerList_AddTicker}"
-                                  Command="{Binding $parent[UserControl].DataContext.AddTickerToMasterCommand}"/>
+                                  Command="{Binding $parent[UserControl].DataContext.AddTickerToMasterCommand}" ToolTip.Tip="{Binding $parent[UserControl].DataContext.StorageDisabledToolTip}" ToolTip.ShowOnDisabled="True"/>
                         <MenuItem Header="{l:Localize TickerList_AddFilter}"
                                   Command="{Binding $parent[UserControl].DataContext.AddFilterCommand}"
                                   CommandParameter="{Binding}"/>
@@ -114,7 +114,7 @@
                                   CommandParameter="{Binding}"/>
                         <Separator />
                         <MenuItem Header="{l:Localize TickerList_SyncAll}"
-                                  Command="{Binding $parent[UserControl].DataContext.SyncGroupCommand}"
+                                  Command="{Binding $parent[UserControl].DataContext.SyncGroupCommand}" ToolTip.Tip="{Binding $parent[UserControl].DataContext.StorageDisabledToolTip}" ToolTip.ShowOnDisabled="True"
                                   CommandParameter="{Binding}"/>
                         <Separator />
                         <MenuItem Header="{l:Localize TickerList_ExportData}">
@@ -143,7 +143,7 @@
                 <Border.ContextMenu>
                     <ContextMenu>
                         <MenuItem Header="{l:Localize TickerList_AddTicker}"
-                                  Command="{Binding $parent[UserControl].DataContext.AddTickerToMasterCommand}"/>
+                                  Command="{Binding $parent[UserControl].DataContext.AddTickerToMasterCommand}" ToolTip.Tip="{Binding $parent[UserControl].DataContext.StorageDisabledToolTip}" ToolTip.ShowOnDisabled="True"/>
                         <MenuItem Header="{l:Localize TickerList_AddFilter}"
                                   Command="{Binding $parent[UserControl].DataContext.AddFilterCommand}"
                                   CommandParameter="{Binding}"/>
@@ -156,7 +156,7 @@
                                   CommandParameter="{Binding}"/>
                         <Separator />
                         <MenuItem Header="{l:Localize TickerList_SyncAll}"
-                                  Command="{Binding $parent[UserControl].DataContext.SyncGroupCommand}"
+                                  Command="{Binding $parent[UserControl].DataContext.SyncGroupCommand}" ToolTip.Tip="{Binding $parent[UserControl].DataContext.StorageDisabledToolTip}" ToolTip.ShowOnDisabled="True"
                                   CommandParameter="{Binding}"/>
                         <Separator />
                         <MenuItem Header="{l:Localize TickerList_ExportData}">
@@ -213,7 +213,7 @@
                 <Border.ContextMenu>
                     <ContextMenu>
                         <MenuItem Header="{l:Localize TickerList_AddTicker}"
-                                  Command="{Binding $parent[UserControl].DataContext.AddTickerToMasterCommand}"/>
+                                  Command="{Binding $parent[UserControl].DataContext.AddTickerToMasterCommand}" ToolTip.Tip="{Binding $parent[UserControl].DataContext.StorageDisabledToolTip}" ToolTip.ShowOnDisabled="True"/>
                         <MenuItem Header="{l:Localize TickerList_AddFilter}"
                                   Command="{Binding $parent[UserControl].DataContext.AddFilterCommand}"
                                   CommandParameter="{Binding}"/>
@@ -227,7 +227,7 @@
                                   CommandParameter="{Binding}"/>
                         <Separator />
                         <MenuItem Header="{l:Localize TickerList_SyncAll}"
-                                  Command="{Binding $parent[UserControl].DataContext.SyncGroupCommand}"
+                                  Command="{Binding $parent[UserControl].DataContext.SyncGroupCommand}" ToolTip.Tip="{Binding $parent[UserControl].DataContext.StorageDisabledToolTip}" ToolTip.ShowOnDisabled="True"
                                   CommandParameter="{Binding}"/>
                         <Separator />
                         <MenuItem Header="{l:Localize TickerList_ExportData}">
@@ -259,7 +259,7 @@
                 <Border.ContextMenu>
                     <ContextMenu>
                         <MenuItem Header="{l:Localize TickerList_AddTicker}"
-                                  Command="{Binding $parent[UserControl].DataContext.AddTickerToMasterCommand}"/>
+                                  Command="{Binding $parent[UserControl].DataContext.AddTickerToMasterCommand}" ToolTip.Tip="{Binding $parent[UserControl].DataContext.StorageDisabledToolTip}" ToolTip.ShowOnDisabled="True"/>
                         <MenuItem Header="{l:Localize TickerList_AddFilter}"
                                   Command="{Binding $parent[UserControl].DataContext.AddFilterCommand}"
                                   CommandParameter="{Binding}"/>
@@ -272,7 +272,7 @@
                                   CommandParameter="{Binding}"/>
                         <Separator />
                         <MenuItem Header="{l:Localize TickerList_SyncAll}"
-                                  Command="{Binding $parent[UserControl].DataContext.SyncGroupCommand}"
+                                  Command="{Binding $parent[UserControl].DataContext.SyncGroupCommand}" ToolTip.Tip="{Binding $parent[UserControl].DataContext.StorageDisabledToolTip}" ToolTip.ShowOnDisabled="True"
                                   CommandParameter="{Binding}"/>
                         <Separator />
                         <MenuItem Header="{l:Localize TickerList_ExportData}">
@@ -620,7 +620,7 @@
                         <MenuItem Header="{l:Localize TickerList_Columns}" 
                                   Command="{Binding ShowColumnChooserCommand}"/>
                         <MenuItem Header="{l:Localize TickerList_SyncSelected}" 
-                                  Command="{Binding SyncSelectedTickersCommand}"/>
+                                  Command="{Binding SyncSelectedTickersCommand}" ToolTip.Tip="{Binding StorageDisabledToolTip}" ToolTip.ShowOnDisabled="True"/>
                         
                         <Separator />
 
@@ -630,7 +630,7 @@
                                   IsVisible="{Binding !IsAllTickersSelected}"/>
                         <Separator IsVisible="{Binding !IsAllTickersSelected}"/>
                         <MenuItem Header="{l:Localize TickerList_DeleteFromMaster}"
-                                  Command="{Binding DeleteFromMasterListCommand}"/>
+                                  Command="{Binding DeleteFromMasterListCommand}" ToolTip.Tip="{Binding StorageDisabledToolTip}" ToolTip.ShowOnDisabled="True"/>
 
                         <Separator />
 

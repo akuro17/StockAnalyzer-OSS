@@ -299,7 +299,8 @@ public static class NoteTimelineTestFixture
         IMarketDataProvider? marketDataProvider = null,
         IDispatcherService? dispatcherService = null,
         FakeTickerStateStore? tickerStateStore = null,
-        INotesSettingsManager? notesSettingsManager = null)
+        INotesSettingsManager? notesSettingsManager = null,
+        StockAnalyzer.Core.Common.IDataStorageState? dataStorageState = null)
     {
         var connectionManager = new NoteDatabaseConnectionManager(NullLogger<NoteDatabaseConnectionManager>.Instance, tempDir);
         var schemaInitializer = new NoteSchemaInitializer(connectionManager, NullLogger<NoteSchemaInitializer>.Instance);
@@ -313,14 +314,14 @@ public static class NoteTimelineTestFixture
         var resolvedMarketDataProvider = marketDataProvider ?? new FakeMarketDataProvider();
         var resolvedWatchlistManager = watchlistManager ?? new FakeWatchlistManager();
         var resolvedDispatcherService = dispatcherService ?? new StockAnalyzer.Avalonia.Tests.Services.SynchronousDispatcherService();
-        NoteEditorViewModel EditorFactory() => new(noteRepository, attachmentRepository, cacheSynchronizer, resolvedMarketDataProvider, resolvedDispatcherService, resolvedNotesSettingsManager, NullLogger<NoteEditorViewModel>.Instance);
+        NoteEditorViewModel EditorFactory() => new(noteRepository, attachmentRepository, cacheSynchronizer, resolvedMarketDataProvider, resolvedDispatcherService, resolvedNotesSettingsManager, NullLogger<NoteEditorViewModel>.Instance, dataStorageState);
 
         var dialogService = new FakeDialogService();
         var resolvedTickerStateStore = tickerStateStore ?? FakeTickerStateStore.FromProfiles(resolvedWatchlistManager.GetAllProfiles());
         var timeline = new NoteTimelineViewModel(
             noteRepository, schemaInitializer, cacheSynchronizer, EditorFactory, dialogService,
             resolvedWatchlistManager, resolvedMarketDataProvider, attachmentRepository, resolvedDispatcherService, resolvedTickerStateStore,
-            new OrphanedAttachmentScanResultHolder(), resolvedNotesSettingsManager);
+            new OrphanedAttachmentScanResultHolder(), resolvedNotesSettingsManager, dataStorageState: dataStorageState);
         return (timeline, noteRepository, dialogService);
     }
 }

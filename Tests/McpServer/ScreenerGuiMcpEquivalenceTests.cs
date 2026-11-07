@@ -354,6 +354,166 @@ public sealed class ScreenerGuiMcpEquivalenceTests : IDisposable
         Assert.Empty(withoutBars);
     }
 
+    // ---- the two-symbol types the tab offers, run the way the tab runs them (main plan T4) -----------------------------------------------
+
+    /// <summary>The two-symbol types the Screener's one eligibility rule lets through, from the registry (today Correlation and CrossCorrelation).</summary>
+    public static IEnumerable<object[]> TabTwoTickerTypes()
+        => Enum.GetValues<IndicatorType>().Distinct()
+            .Where(type => IndicatorFactory.Default.IsRegistered(type) && IndicatorFactory.Default.Create(type) is ICrossTickerIndicator && !ScreenerIndicatorEligibility.IsTypeBlocked(type))
+            .OrderBy(type => type.ToString(), StringComparer.Ordinal)
+            .Select(type => new object[] { type.ToString() });
+
+    private const string TwoSymbolComparison = "FFF";
+
+    // Every type runs with ITS OWN default parameters plus the comparison symbol (a side that names parameters but no Period takes the type's default Period).
+    private static ScreenerIndicatorSideConfig TwoSymbolSide(IndicatorType type, string comparison)
+    {
+        var parameters = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase) { ["ComparisonSymbol"] = comparison };
+
+        return new ScreenerIndicatorSideConfig { IndicatorType = type, OutputName = FirstOutputSeries(type), Parameters = parameters };
+    }
+
+    /// <summary>The series the registration screen and the MCP binder pick when none is named: the first one of the catalog (Ratiocator: Signal, CointegrationSpread: ZScore, ...).</summary>
+    private static string FirstOutputSeries(IndicatorType type)
+        => new ScreenerCatalogProvider().GetOutputSeriesNames(type, IndicatorFactory.Default).FirstOrDefault() ?? IndicatorResult.MainSeriesName;
+
+    private static string TwoSymbolJson(IndicatorType type, decimal level)
+        => "{\"left\":{\"indicator\":\"" + type + "\",\"outputSeriesName\":\"" + FirstOutputSeries(type) + "\",\"parameters\":{"
+           + "\"ComparisonSymbol\":\"" + TwoSymbolComparison + "\"}},\"comparison\":\"GreaterThan\",\"right\":" + N(level) + "}";
+
+    /// <summary>The tab's calls for a condition that names comparison symbols, in the order of <c>ScreenerViewModel.ScanAsync</c>: what the condition asks for, the comparison bars, the scan given them.</summary>
+    private async Task<(string[] Matched, IScreenerSecondaryCandles Secondary)> TabWithComparisonAsync(IScreeningCondition condition)
+    {
+        IScreenerService screener = _services!.GetRequiredService<IScreenerService>();
+        ScreenerComparisonRequirement requirement = ScreenerComparisonSymbols.Inspect(condition);
+        Assert.NotEmpty(requirement.Symbols);
+        Assert.Null(requirement.OffDailySide);
+        IScreenerSecondaryCandles secondary = await screener.LoadComparisonCandlesAsync(requirement.Spellings, TimeFrame.D1, condition, CancellationToken.None);
+        Assert.All(requirement.Symbols, symbol => Assert.NotNull(secondary.Get(symbol)));
+        List<string> matched = await screener.ScreenAsync(Symbols.OrderBy(s => s, StringComparer.Ordinal).ToList(), condition, TimeFrame.D1, secondary, new Progress<int>(), CancellationToken.None);
+        return (matched.ToArray(), secondary);
+    }
+
+    [Fact]
+    public void TheTabOffersAllNineTwoSymbolTypes()
+    {
+        string[] names = TabTwoTickerTypes().Select(row => (string)row[0]).ToArray();
+
+        IndicatorType[] expected =
+        {
+            IndicatorType.Correlation, IndicatorType.CrossCorrelation, IndicatorType.RollingBeta, IndicatorType.RollingAlpha, IndicatorType.RollingRSquared,
+            IndicatorType.CointegrationSpread, IndicatorType.PairRatio, IndicatorType.PairSpread, IndicatorType.Ratiocator
+        };
+        Assert.Equal(expected.Select(type => type.ToString()).OrderBy(n => n, StringComparer.Ordinal), names.OrderBy(n => n, StringComparer.Ordinal));
+    }
+
+    [Theory]
+    [MemberData(nameof(TabTwoTickerTypes))]
+    public async Task Case7_ATwoSymbolIndicatorRunTheWayTheTabRunsItGivesTheSymbolsOfTheMcpToolInTheSameOrder(string typeName)
+    {
+        await StartAsync();
+        var type = Enum.Parse<IndicatorType>(typeName);
+        ScreenerIndicatorSideConfig side = TwoSymbolSide(type, TwoSymbolComparison);
+        IDataService data = _services!.GetRequiredService<IDataService>();
+        IScreenerSecondaryCandles probe = await ScreenerSecondaryCandles.LoadAsync(data, new[] { TwoSymbolComparison }, TimeFrame.D1, Days, CancellationToken.None);
+
+        // The level separates the symbols: the middle of the values the extractor reads for them. The comparison symbol compared with itself may have no value
+        // (a spread of a series against itself is degenerate), so it is left out of the values; it then never matches.
+        var values = new List<decimal>();
+        foreach (string symbol in Symbols.Where(symbol => symbol != TwoSymbolComparison))
+        {
+            decimal? value = ScreenerValueExtractor.Default.ExtractValueNullable(side, await data.LoadCandlesAsync(symbol, TimeFrame.D1, Days), default, probe);
+            Assert.NotNull(value);
+            values.Add(value!.Value);
+        }
+
+        decimal[] sorted = values.OrderBy(v => v).ToArray();
+        int middle = sorted.Length / 2;
+        Assert.True(sorted[middle - 1] < sorted[middle], $"{type}: the symbols are not separated by value");
+        decimal level = (sorted[middle - 1] + sorted[middle]) / 2m;
+        IScreeningCondition condition = Tree(Leaf(Numeric(side, ComparisonOperator.GreaterThan, level)));
+
+        (string[] fromTab, IScreenerSecondaryCandles secondary) = await TabWithComparisonAsync(condition);
+        string[] fromMcp = await McpAsync(Request(TwoSymbolJson(type, level)));
+
+        Assert.Equal(fromTab, fromMcp); // the same symbols, the same order, the same count
+        Assert.InRange(fromMcp.Length, 1, Symbols.Length - 1);
+        Assert.NotNull(secondary.Get(TwoSymbolComparison));
+    }
+
+    [Theory]
+    [MemberData(nameof(TabTwoTickerTypes))]
+    public async Task Case7_TheResultColumnValueIsTheValueTheScanReadEvenWhenTheScanLoadedFewerBarsThanTheColumn(string typeName)
+    {
+        // The scan loads the history the condition needs; the result column is read from the whole stored history. The value of the latest bar of these indicators
+        // depends on a trailing window only, so both must agree: shown here with real bars, a short history against the whole one, for the same comparison bars.
+        await StartAsync();
+        var type = Enum.Parse<IndicatorType>(typeName);
+        ScreenerIndicatorSideConfig side = TwoSymbolSide(type, TwoSymbolComparison);
+        IDataService data = _services!.GetRequiredService<IDataService>();
+        const int shortHistory = 120;
+
+        IScreenerSecondaryCandles full = await ScreenerSecondaryCandles.LoadAsync(data, new[] { TwoSymbolComparison }, TimeFrame.D1, Days, CancellationToken.None);
+        IScreenerSecondaryCandles shortSet = await ScreenerSecondaryCandles.LoadAsync(data, new[] { TwoSymbolComparison }, TimeFrame.D1, shortHistory, CancellationToken.None);
+        foreach (string symbol in Symbols)
+        {
+            IReadOnlyList<CandleData> wholeBars = await data.LoadCandlesAsync(symbol, TimeFrame.D1, Days);
+            IReadOnlyList<CandleData> shortBars = await data.LoadCandlesAsync(symbol, TimeFrame.D1, shortHistory);
+            Assert.True(shortBars.Count < wholeBars.Count, "the comparison would prove nothing");
+
+            decimal? column = ScreenerValueExtractor.Default.ExtractValueNullable(side, wholeBars, default, full);
+            decimal? scan = ScreenerValueExtractor.Default.ExtractValueNullable(side, shortBars, default, shortSet);
+
+            if (symbol != TwoSymbolComparison)
+            {
+                Assert.NotNull(scan);
+            }
+
+            Assert.True(AgreeToTheHistoryDependenceOfTheOutput(type, column, scan), $"{type} {symbol}: column {column?.ToString() ?? "null"}, scan {scan?.ToString() ?? "null"}");
+        }
+    }
+
+    // The value of a trailing-window output (a correlation, a beta, a spread, a ratio) is the same whatever history is loaded, so the two must be equal. An output smoothed by a
+    // moving average (a type whose parameter object has a SmoothingPeriod: the Ratiocator signal) starts its recursion at the first bar it is given and converges: after 120
+    // bars the two values agree to about the eighth digit, not exactly.
+    private const decimal ConvergedRecursionRelativeTolerance = 0.000001m;
+
+    private static bool AgreeToTheHistoryDependenceOfTheOutput(IndicatorType type, decimal? column, decimal? scan)
+    {
+        if (column == scan)
+        {
+            return true;
+        }
+
+        bool smoothed = IndicatorFactory.CreateStatic(type)?.GetDefaultSettings().ParameterObject?.GetType().GetProperty("SmoothingPeriod") is not null;
+        return smoothed && column is { } whole && scan is { } shortValue && whole != 0m && Math.Abs((whole - shortValue) / whole) < ConvergedRecursionRelativeTolerance;
+    }
+
+    [Fact]
+    public async Task Case7_TwoSpellingsOfOneComparisonSymbolGiveTheResultOfOne()
+    {
+        await StartAsync();
+        ScreenerIndicatorSideConfig upper = TwoSymbolSide(IndicatorType.Correlation, TwoSymbolComparison);
+        ScreenerIndicatorSideConfig lower = TwoSymbolSide(IndicatorType.Correlation, TwoSymbolComparison.ToLowerInvariant());
+        IDataService data = _services!.GetRequiredService<IDataService>();
+        IScreenerSecondaryCandles probe = await ScreenerSecondaryCandles.LoadAsync(data, new[] { TwoSymbolComparison }, TimeFrame.D1, Days, CancellationToken.None);
+        decimal[] sorted = (await Task.WhenAll(Symbols.Select(async symbol =>
+            ScreenerValueExtractor.Default.ExtractValueNullable(upper, await data.LoadCandlesAsync(symbol, TimeFrame.D1, Days), default, probe)!.Value))).OrderBy(v => v).ToArray();
+        decimal level = (sorted[2] + sorted[3]) / 2m;
+
+        (string[] once, _) = await TabWithComparisonAsync(Tree(Leaf(Numeric(upper, ComparisonOperator.GreaterThan, level))));
+        (string[] twice, _) = await TabWithComparisonAsync(Tree(
+            Leaf(Numeric(upper, ComparisonOperator.GreaterThan, level)),
+            Leaf(Numeric(lower, ComparisonOperator.GreaterThan, level))));
+
+        Assert.Equal(once, twice);
+        Assert.InRange(once.Length, 1, Symbols.Length - 1);
+        ScreenerComparisonRequirement requirement = ScreenerComparisonSymbols.Inspect(Tree(
+            Leaf(Numeric(upper, ComparisonOperator.GreaterThan, level)),
+            Leaf(Numeric(lower, ComparisonOperator.GreaterThan, level))));
+        Assert.Equal(new[] { TwoSymbolComparison }, requirement.Spellings); // ignoring case, one spelling
+    }
+
     // ---- sides that read their own time frame (per-side frame plan, T6) ----------------------------------------------------------------------
 
     private static ScreenerIndicatorSideConfig OnFrame(ScreenerIndicatorSideConfig side, TimeFrame frame)

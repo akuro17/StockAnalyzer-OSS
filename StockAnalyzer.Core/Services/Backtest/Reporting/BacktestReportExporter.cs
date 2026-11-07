@@ -24,15 +24,23 @@ public sealed class BacktestReportExporter : IBacktestReportExporter
     private readonly SemaphoreSlim _exportGate = new(1, 1);
     private readonly ILogger<BacktestReportExporter> _logger;
 
-    public BacktestReportExporter(ILogger<BacktestReportExporter>? logger = null)
+    private readonly StockAnalyzer.Core.Common.IDataStorageState? _dataStorageState;
+
+    /// <summary>Name of the default-folder export in <see cref="StockAnalyzer.Core.Common.DataStorageReadOnlyException.Operation"/>.</summary>
+    public const string DefaultFolderExportOperation = "BacktestReportExport";
+
+    public BacktestReportExporter(ILogger<BacktestReportExporter>? logger = null, StockAnalyzer.Core.Common.IDataStorageState? dataStorageState = null)
     {
         _logger = logger ?? NullLogger<BacktestReportExporter>.Instance;
+        _dataStorageState = dataStorageState;
     }
 
     public async Task ExportAsync(BacktestReport report, string fileName)
     {
         ValidateExport(report, fileName);
 
+        // The default folder is below Data; the overloads that take a user-chosen directory are not guarded.
+        StockAnalyzer.Core.Common.DataStorageGuard.ThrowIfReadOnly(_dataStorageState, DefaultFolderExportOperation);
         string path = PathDiscovery.ResolveBacktestReportExportPath(fileName);
         await SaveSerializedAsync(path, report).ConfigureAwait(false);
     }
@@ -51,6 +59,8 @@ public sealed class BacktestReportExporter : IBacktestReportExporter
     public async Task ExportEvaluationAsync(BacktestEvaluationArtifact artifact, string fileName)
     {
         ValidateEvaluationExport(artifact, fileName);
+        // The default folder is below Data; the overloads that take a user-chosen directory are not guarded.
+        StockAnalyzer.Core.Common.DataStorageGuard.ThrowIfReadOnly(_dataStorageState, DefaultFolderExportOperation);
         string path = PathDiscovery.ResolveBacktestReportExportPath(fileName);
         await SaveSerializedAsync(path, new BacktestEvaluationExportEnvelope(artifact)).ConfigureAwait(false);
     }
@@ -68,6 +78,8 @@ public sealed class BacktestReportExporter : IBacktestReportExporter
         ArgumentNullException.ThrowIfNull(trades);
         ValidateFileName(fileName);
 
+        // The default folder is below Data; the overloads that take a user-chosen directory are not guarded.
+        StockAnalyzer.Core.Common.DataStorageGuard.ThrowIfReadOnly(_dataStorageState, DefaultFolderExportOperation);
         string path = PathDiscovery.ResolveBacktestReportExportPath(fileName);
         await SaveTradesCsvAsync(path, trades).ConfigureAwait(false);
     }

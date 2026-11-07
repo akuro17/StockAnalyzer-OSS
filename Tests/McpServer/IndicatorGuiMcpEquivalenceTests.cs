@@ -8,6 +8,7 @@ using StockAnalyzer.Core.Models.Parameters;
 using StockAnalyzer.Core.ReadOnly;
 using StockAnalyzer.Core.Services;
 using StockAnalyzer.Core.Services.Analysis;
+using StockAnalyzer.Core.Services.Screener;
 using StockAnalyzer.McpServer;
 using StockAnalyzer.McpServer.Protocol;
 using StockAnalyzer.McpServer.Tools;
@@ -53,14 +54,39 @@ public sealed class IndicatorGuiMcpEquivalenceTests : IClassFixture<IndicatorGui
         AssertSame(mcp, chart, typeName);
     }
 
-    [Fact]
-    public async Task ATwoTickerIndicatorGivesTheValuesOfTheChartPathForTheSameComparisonSymbol()
-    {
-        Outcome mcp = await _host.McpAsync(IndicatorType.Correlation, parameters: $"{{\"ComparisonSymbol\":\"{Secondary}\"}}");
-        Outcome chart = await _host.ChartAsync(IndicatorType.Correlation, Secondary);
+    /// <summary>
+    /// The two-ticker types the Screener tab offers: those the one eligibility rule of the Screener lets through (<see cref="ScreenerIndicatorEligibility"/>), taken from the
+    /// registry, not from a list of names. That is Correlation, CrossCorrelation and the seven types enabled in G-1 (RollingBeta, RollingAlpha, RollingRSquared,
+    /// CointegrationSpread, PairRatio, PairSpread, Ratiocator); a type enabled later joins this theory without editing it. Tolerance 0: a type that cannot be
+    /// computed on both paths is reported, never loosened.
+    /// </summary>
+    public static IEnumerable<object[]> ScreenerTwoTickerTypes()
+        => RegisteredTypes().Where(type => IsCrossTicker(type) && !ScreenerIndicatorEligibility.IsTypeBlocked(type)).Select(type => new object[] { type.ToString() });
 
-        Assert.True(chart.Successful, "the Correlation case must calculate on the chart path, or it compares nothing");
-        AssertSame(mcp, chart, nameof(IndicatorType.Correlation));
+    [Theory]
+    [MemberData(nameof(ScreenerTwoTickerTypes))]
+    public async Task ATwoTickerIndicatorGivesTheValuesOfTheChartPathForTheSameComparisonSymbol(string typeName)
+    {
+        var type = Enum.Parse<IndicatorType>(typeName);
+
+        Outcome mcp = await _host.McpAsync(type, parameters: $"{{\"ComparisonSymbol\":\"{Secondary}\"}}");
+        Outcome chart = await _host.ChartAsync(type, Secondary);
+
+        Assert.True(chart.Successful, $"the {typeName} case must calculate on the chart path, or it compares nothing");
+        AssertSame(mcp, chart, typeName);
+    }
+
+    [Fact]
+    public void TheScreenerTwoTickerCasesIncludeAllNineTypesOfTheTab()
+    {
+        string[] names = ScreenerTwoTickerTypes().Select(row => (string)row[0]).ToArray();
+
+        IndicatorType[] expected =
+        {
+            IndicatorType.Correlation, IndicatorType.CrossCorrelation, IndicatorType.RollingBeta, IndicatorType.RollingAlpha, IndicatorType.RollingRSquared,
+            IndicatorType.CointegrationSpread, IndicatorType.PairRatio, IndicatorType.PairSpread, IndicatorType.Ratiocator
+        };
+        Assert.Equal(expected.Select(type => type.ToString()).OrderBy(n => n, StringComparer.Ordinal), names.OrderBy(n => n, StringComparer.Ordinal));
     }
 
     [Fact]
@@ -145,6 +171,7 @@ public sealed class IndicatorGuiMcpEquivalenceTests : IClassFixture<IndicatorGui
 
         private readonly ReadOnlyDataTreeFixture _fixture;
         private readonly McpServerRuntime _runtime;
+        private readonly StringWriter _serverLog = new();
         private readonly ServiceProvider _services;
 
         public Host()
@@ -160,7 +187,7 @@ public sealed class IndicatorGuiMcpEquivalenceTests : IClassFixture<IndicatorGui
                 ["MarketDataSettings:MetadataPath"] = _fixture.Settings.MetadataPath,
                 ["MarketDataSettings:TickerListPath"] = _fixture.Settings.TickerListPath,
             }).Build();
-            _runtime = McpServerComposition.Create(configuration, new LogSink(new StringWriter()));
+            _runtime = McpServerComposition.Create(configuration, new LogSink(_serverLog));
             _runtime.Dispatcher.DispatchAsync(McpTestSupport.InitializeMessage, CancellationToken.None).GetAwaiter().GetResult();
             _services = new ServiceCollection().AddStockAnalyzerReadOnlyCore(configuration).BuildServiceProvider();
         }
@@ -197,7 +224,12 @@ public sealed class IndicatorGuiMcpEquivalenceTests : IClassFixture<IndicatorGui
                 _runtime.Dispatcher,
                 "sa_calculate_indicators",
                 $"{{\"symbol\":\"{Primary}\",\"timeFrame\":\"D1\",\"indicators\":[{indicator}],\"outputTailCount\":{Tail}}}"))!;
-            Assert.False(McpTestSupport.IsError(response), $"{type}: " + McpTestSupport.Structured(response));
+            // An INTERNAL_ERROR carries fixed text; the cause is only in the server log, which a one-off failure in a full run would otherwise lose.
+            if (McpTestSupport.IsError(response))
+            {
+                // Built only on failure: the structured text and the whole log are not worth producing for the other calls.
+                Assert.Fail($"{type}: " + McpTestSupport.Structured(response) + Environment.NewLine + "Server log:" + Environment.NewLine + _serverLog);
+            }
             JsonElement result = McpTestSupport.Structured(response).GetProperty("results").GetProperty(Id);
             bool successful = result.GetProperty("isSuccessful").GetBoolean();
             var series = new Dictionary<string, IReadOnlyList<decimal?>>(StringComparer.Ordinal);

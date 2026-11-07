@@ -30,6 +30,7 @@ internal sealed class OptimizeBacktestTool : IMcpTool
     private const string DirectionArgument = BacktestSweep.DirectionArgument;
     private const string TopKArgument = "topK";
     private const string OutOfSampleArgument = "outOfSampleStartDate";
+    private const string MinTradesArgument = "minTrades";
 
     private const string Maximize = BacktestSweep.Maximize;
     private const string Minimize = BacktestSweep.Minimize;
@@ -63,8 +64,10 @@ internal sealed class OptimizeBacktestTool : IMcpTool
         $"The combinations are numbered from 0 in the order of parameterRanges, the first range changing slowest. At most {_limits.MaxOptimizationParameters} ranges and {_limits.MaxOptimizationCombinations} combinations (the product of the value counts); more is LIMIT_EXCEEDED, the grid is never thinned. " +
         $"objective is the name of a report metric as sa_run_backtest writes it (call sa_get_capabilities for the list: {string.Join(", ", OptimizationObjectives.Names)}); no new formula is defined. " +
         "Only combinations whose objective has status Valid are ranked: the best value first (objectiveDirection Maximize, the default, or Minimize, for example for maxDrawdown), equal values in combination order; the others are counted in invalidCombinationCount. If none is Valid the ranking is empty (not an error). " +
+        $"minTrades (default {_limits.DefaultMinInSampleTrades}) is the fewest trades a combination must make in the ranked period to be eligible: a combination without trades has an objective (for example totalReturn 0) that says nothing, so it is not ranked; the ones left out are counted in belowMinTradesCombinationCount and in invalidCombinationCount, and minTrades is echoed. 0 ranks them. " +
         $"topK (1 to {_limits.MaxOptimizationTopK}) is the number of ranked combinations returned. " +
-        "sensitivity of a ranked combination looks at the neighbours that differ in one parameter by one step (up to two per parameter): neighborCount is how many of them have a Valid objective, neighborMean and neighborMin are over those; it is null when none has. " +
+        "sensitivity of a ranked combination looks at the neighbours that differ in one parameter by one step (up to two per parameter): neighborCount is how many of them have a Valid objective, neighborMean, neighborMin and neighborMax are over those; it is null when none has. " +
+        "positiveInfinityCombinationCount is how many combinations had an infinite objective (for example a profit factor without a losing trade): they are not ranked and are part of invalidCombinationCount. " +
         "outOfSampleStartDate (yyyy-MM-dd) splits the period: the combinations are ranked on startDate to the day before it, and each returned combination is also run on that date to endDate (outOfSample: objectiveValue and the metric status). " +
         "symbol, timeFrame (D1, W1 or MN1), startDate, endDate, account, riskManagement, report and allowUnregistered mean what they mean for sa_run_backtest. " +
         "A call that runs out of time or is cancelled returns an error, never a partial ranking. The tool never changes anything and never fetches data.";
@@ -80,6 +83,7 @@ internal sealed class OptimizeBacktestTool : IMcpTool
         .String(SymbolArgument, "The symbol to test (a ticker from sa_list_tickers).", required: true)
         .FreeObject(ConditionsArgument, "The conditions of sa_run_backtest with {\"$param\": name} placeholders where numbers go.", required: true))
         .Integer(TopKArgument, $"How many ranked combinations to return. Default and maximum {_limits.MaxOptimizationTopK}.", defaultValue: _limits.MaxOptimizationTopK, minimum: 1, maximum: _limits.MaxOptimizationTopK)
+        .Integer(MinTradesArgument, $"The fewest trades a combination must make (in the ranked period) to be ranked. Default {_limits.DefaultMinInSampleTrades}; 0 also ranks a combination that never traded.", defaultValue: _limits.DefaultMinInSampleTrades, minimum: 0)
         .String(StartArgument, "First evaluated day, yyyy-MM-dd. Default: the start of the stored history.")
         .String(EndArgument, "Last evaluated day, yyyy-MM-dd. Default: the latest stored bar.")
         .String(OutOfSampleArgument, "Optional yyyy-MM-dd: rank on the days before it and also run the returned combinations from it to the end.")
@@ -105,6 +109,7 @@ internal sealed class OptimizeBacktestTool : IMcpTool
         ObjectiveMetric objective = OptimizationObjectives.Resolve(ToolArgs.String(arguments, ObjectiveArgument)!, ObjectiveArgument);
         bool minimize = string.Equals(ToolArgs.String(arguments, DirectionArgument), Minimize, StringComparison.Ordinal);
         int topK = ToolArgs.PositiveWithin(arguments, TopKArgument, _limits.MaxOptimizationTopK, _limits.MaxOptimizationTopK);
+        int minTrades = ToolArgs.NonNegativeWithin(arguments, MinTradesArgument, _limits.DefaultMinInSampleTrades, BacktestSweep.NoUpperBound);
         CheckOutOfSampleAgainstRequested(outOfSampleStart, requestedStart, requestedEnd);
 
         BacktestParameterGrid grid = _sweep.ReadGrid(arguments.GetProperty(BacktestParameterGrid.RangesArgument));
@@ -132,26 +137,42 @@ internal sealed class OptimizeBacktestTool : IMcpTool
 
         DateOnly inSampleEnd = outOfSampleStart is { } cut ? cut.AddDays(-1) : effectiveEnd;
         SweepRun[] inSample = await _sweep.RunAsync(
-            symbol, timeFrame, bound, Enumerable.Range(0, grid.CombinationCount).Select(index => new SweepItem(index, effectiveStart, inSampleEnd)).ToList(), cancellationToken).ConfigureAwait(false);
+            symbol, timeFrame, bound, Enumerable.Range(0, grid.CombinationCount).Select(index => new SweepItem(index, effectiveStart, inSampleEnd)).ToList(), objective,
+            index => BacktestSweep.DescribeCombination(grid, index), cancellationToken).ConfigureAwait(false);
 
-        decimal?[] objectiveValues = inSample.Select(run => BacktestSweep.ValidValue(run.Report, objective)).ToArray();
+        // A combination with fewer trades than minTrades is not eligible: its objective (for example totalReturn 0 without a trade) says nothing.
+        bool[] belowMinimum = inSample.Select(run => run.Report is { } report && report.TotalTrades < minTrades).ToArray();
+        decimal?[] objectiveValues = inSample.Select((run, index) => belowMinimum[index] ? null : BacktestSweep.ValidValue(run.Report, objective)).ToArray();
+        int belowMinimumCount = belowMinimum.Count(below => below);
         int[] ranked = OptimizationRanking.Rank(objectiveValues, minimize).Take(topK).ToArray();
 
         SweepRun[] outOfSample = outOfSampleStart is { } oosStart && ranked.Length > 0
-            ? await _sweep.RunAsync(symbol, timeFrame, bound, ranked.Select(index => new SweepItem(index, oosStart, effectiveEnd)).ToList(), cancellationToken).ConfigureAwait(false)
+            ? await _sweep.RunAsync(symbol, timeFrame, bound, ranked.Select(index => new SweepItem(index, oosStart, effectiveEnd)).ToList(), objective,
+                position => $"{BacktestSweep.DescribeCombination(grid, ranked[position])} in the out-of-sample part", cancellationToken).ConfigureAwait(false)
             : Array.Empty<SweepRun>();
 
         int valid = objectiveValues.Count(value => value is not null);
+        int infinite = inSample.Count(run => BacktestSweep.IsPositiveInfinity(run.Report, objective));
         var warnings = new List<string>(symbolWarnings);
         warnings.AddRange(bound.Warnings);
         if (valid == 0)
         {
-            warnings.Add($"No combination has a Valid {objective.Name}, so the ranking is empty; try another objective or other ranges.");
+            string cause = belowMinimumCount > 0 ? $" ({belowMinimumCount} combination(s) made fewer than minTrades = {minTrades} trades)" : string.Empty;
+            warnings.Add($"No combination has a Valid {objective.Name}{cause}, so the ranking is empty; try another objective, other ranges or a lower minTrades.");
+        }
+        else if (belowMinimumCount > 0)
+        {
+            warnings.Add($"{belowMinimumCount} combination(s) made fewer than minTrades = {minTrades} trades and are not ranked (belowMinTradesCombinationCount); minTrades 0 ranks them.");
+        }
+
+        if (BacktestSweep.PositiveInfinityWarning(infinite, objective, "combination(s)") is { } infiniteWarning)
+        {
+            warnings.Add(infiniteWarning);
         }
 
         return ToolJson.Build(writer => Write(
             writer, symbol, timeFrame, objective, minimize, grid, inSample, objectiveValues, ranked, outOfSample, effectiveStart, effectiveEnd, inSampleEnd,
-            outOfSampleStart, requestedStart is null || requestedEnd is null, valid, warnings));
+            outOfSampleStart, requestedStart is null || requestedEnd is null, valid, infinite, minTrades, belowMinimumCount, warnings));
     }
 
     // ---- reading and checking the request ----------------------------------------------------------------------------------------------
@@ -193,6 +214,9 @@ internal sealed class OptimizeBacktestTool : IMcpTool
         DateOnly? outOfSampleStart,
         bool datesDefaulted,
         int valid,
+        int infinite,
+        int minTrades,
+        int belowMinimumCount,
         IReadOnlyList<string> warnings)
     {
         writer.WriteStartObject();
@@ -216,6 +240,9 @@ internal sealed class OptimizeBacktestTool : IMcpTool
         writer.WriteNumber("combinationCount", grid.CombinationCount);
         writer.WriteNumber("validCombinationCount", valid);
         writer.WriteNumber("invalidCombinationCount", grid.CombinationCount - valid);
+        writer.WriteNumber("positiveInfinityCombinationCount", infinite);
+        writer.WriteNumber("minTrades", minTrades);
+        writer.WriteNumber("belowMinTradesCombinationCount", belowMinimumCount);
 
         writer.WriteStartArray("ranking");
         for (int position = 0; position < ranked.Length; position++)
@@ -275,6 +302,7 @@ internal sealed class OptimizeBacktestTool : IMcpTool
         writer.WriteStartObject("sensitivity");
         writer.WriteNumber("neighborMean", OptimizationRanking.Mean(neighbors)!.Value);
         writer.WriteNumber("neighborMin", neighbors.Min());
+        writer.WriteNumber("neighborMax", neighbors.Max());
         writer.WriteNumber("neighborCount", neighbors.Length);
         writer.WriteEndObject();
     }

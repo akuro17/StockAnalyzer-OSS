@@ -11,6 +11,7 @@ using StockAnalyzer.Core.ReadOnly;
 using StockAnalyzer.Core.Services;
 using StockAnalyzer.Core.Services.Analysis;
 using StockAnalyzer.Core.Services.Backtest.Engine;
+using StockAnalyzer.Core.Services.Screener;
 using StockAnalyzer.Core.Tests.TestHelpers;
 using StockAnalyzer.McpServer.Catalog;
 using StockAnalyzer.TestSupport;
@@ -30,6 +31,7 @@ public sealed class ScreenerCrossTickerEvaluationTests : IClassFixture<ScreenerC
     private const string Comparison = "BBB";
     private const int Days = 400;
     private const int PastWindowStart = 300;
+    private const int Head = 40;
 
     private readonly Host _host;
 
@@ -46,7 +48,7 @@ public sealed class ScreenerCrossTickerEvaluationTests : IClassFixture<ScreenerC
 
     [Theory]
     [MemberData(nameof(TwoTickerTypes))]
-    public async Task EveryTwoTickerIndicatorGivesTheChartPathsValueOrStaysRefused(string typeName)
+    public async Task EveryTwoTickerIndicatorTheScreenerRuleAllowsGivesTheChartPathsValue_AndAnyItRefusesStaysRefused(string typeName)
     {
         var type = Enum.Parse<IndicatorType>(typeName);
         IReadOnlyList<CandleData> primary = await _host.BarsAsync(Primary);
@@ -56,9 +58,9 @@ public sealed class ScreenerCrossTickerEvaluationTests : IClassFixture<ScreenerC
         string[] seriesNames = IndicatorOutputSeriesResolver.GetDisplayNames(type, IndicatorFactory.Default).ToArray();
         Assert.NotEmpty(seriesNames);
 
-        if (BacktestIndicatorEligibility.IsTypeBlocked(type))
+        if (ScreenerIndicatorEligibility.IsTypeBlocked(type))
         {
-            // The one eligibility rule of the Screener and the Backtest is not widened by this feature.
+            // A type the Screener rule refuses (none of the registered two-ticker types today) gets no value from the extractor either.
             foreach (string series in seriesNames)
             {
                 Assert.Null(ScreenerValueExtractor.Default.ExtractValueNullable(Side(type, settings, series, offset: 0), primary, default, secondary));
@@ -70,7 +72,7 @@ public sealed class ScreenerCrossTickerEvaluationTests : IClassFixture<ScreenerC
         IIndicatorResult? chart = await _host.ChartResultAsync(primary, settings, Comparison);
         Assert.NotNull(chart);
         int compared = 0;
-        foreach (string series in seriesNames.Where(name => BacktestIndicatorEligibility.IsAllowed(type, name)))
+        foreach (string series in seriesNames.Where(name => ScreenerIndicatorEligibility.IsAllowed(type, name)))
         {
             Assert.True(IndicatorOutputSeriesResolver.TryResolveSeries(chart!, type, series, settings.PriceSource, out IReadOnlyList<decimal?> values), $"{type}.{series}");
             foreach (int offset in new[] { 0, 3 })
@@ -89,13 +91,24 @@ public sealed class ScreenerCrossTickerEvaluationTests : IClassFixture<ScreenerC
     }
 
     [Fact]
-    public void TheTypesTheScreenerEvaluatesAndTheTypesItRefusesAreBothPresent()
+    public void EveryTwoTickerTypeIsEvaluatedByTheScreener_WhileTheBacktestStillRefusesTheOnesItAlwaysRefused()
     {
         var types = TwoTickerTypes().Select(row => Enum.Parse<IndicatorType>((string)row[0])).ToArray();
 
         Assert.Contains(IndicatorType.Correlation, types);
-        Assert.Contains(types, type => !BacktestIndicatorEligibility.IsTypeBlocked(type));
+        Assert.True(types.Length >= 9, $"expected at least the nine two-ticker indicators, found {types.Length}");
+        Assert.All(types, type => Assert.True(ScreenerIndicatorEligibility.IsAllowed(type), type.ToString()));
+
+        // The Backtest, the training export and the prediction validation keep their own rule: the seven that need a comparison symbol stay refused there.
         Assert.Contains(types, BacktestIndicatorEligibility.IsTypeBlocked);
+        Assert.Contains(types, type => !BacktestIndicatorEligibility.IsTypeBlocked(type));
+
+        // The Python and placeholder types are not two-ticker indicators and stay refused by the Screener.
+        foreach (IndicatorType type in new[] { IndicatorType.Entropy, IndicatorType.Garch11, IndicatorType.HurstExponent })
+        {
+            Assert.DoesNotContain(type, types);
+            Assert.False(ScreenerIndicatorEligibility.IsAllowed(type), type.ToString());
+        }
     }
 
     // ---- AT-D.2: no set, no change ---------------------------------------------------------------------------------------------------
@@ -138,6 +151,100 @@ public sealed class ScreenerCrossTickerEvaluationTests : IClassFixture<ScreenerC
         Assert.Equal(baseline, wildFuture);
         Assert.NotEqual(baseline, changedInside); // the same edit inside the window is seen, so the two checks above are not vacuous
     }
+
+    // ---- G1-T6: the two symbols do not share a calendar (different holidays): a date-aligned value, or no value, never a positional one ----
+
+    /// <summary>The seven types the Screener enables beyond Correlation and CrossCorrelation (all of them pair the comparison symbol's bars by calendar date).</summary>
+    public static IEnumerable<object[]> DateAlignedSevenTypes()
+        => new[]
+        {
+            IndicatorType.RollingBeta, IndicatorType.RollingAlpha, IndicatorType.RollingRSquared, IndicatorType.CointegrationSpread,
+            IndicatorType.PairRatio, IndicatorType.PairSpread, IndicatorType.Ratiocator
+        }.Select(type => new object[] { type.ToString() });
+
+    [Fact]
+    public void TheSevenTypesAreTheTwoTickerTypesTheBacktestRefuses()
+    {
+        string[] seven = DateAlignedSevenTypes().Select(row => (string)row[0]).OrderBy(n => n, StringComparer.Ordinal).ToArray();
+        string[] blocked = TwoTickerTypes().Select(row => (string)row[0]).Where(n => BacktestIndicatorEligibility.IsTypeBlocked(Enum.Parse<IndicatorType>(n))).OrderBy(n => n, StringComparer.Ordinal).ToArray();
+
+        Assert.Equal(blocked, seven);
+    }
+
+    [Theory]
+    [MemberData(nameof(DateAlignedSevenTypes))]
+    public async Task WhenTheComparisonSymbolHasNoBarOnTheLastDateOfTheEvaluatedSymbolThereIsNoValue(string typeName)
+    {
+        var type = Enum.Parse<IndicatorType>(typeName);
+        IReadOnlyList<CandleData> primary = await _host.BarsAsync(Primary);
+        IReadOnlyList<CoreCandleData?> comparison = ((ScreenerSecondaryCandles)await _host.SecondaryAsync(Comparison)).Get(Comparison)!;
+        DateTime lastDate = primary[^1].Timestamp.Date;
+
+        // Positive control: the whole comparison series gives a value on every series, so a null below is the missing date and nothing else.
+        foreach (string series in AllowedSeries(type))
+        {
+            Assert.NotNull(Value(Side(type, _host.Settings(type, Comparison), series, offset: 0), primary, comparison));
+        }
+
+        IReadOnlyList<CoreCandleData?> holiday = comparison.Where(bar => bar is not { } b || b.Timestamp.Date != lastDate).ToList();
+        Assert.Equal(comparison.Count - 1, holiday.Count);
+        foreach (string series in AllowedSeries(type))
+        {
+            Assert.Null(Value(Side(type, _host.Settings(type, Comparison), series, offset: 0), primary, holiday));
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(DateAlignedSevenTypes))]
+    public async Task WhenTheTwoSymbolsShareNoDateThereIsNoValueAtAnyOffset(string typeName)
+    {
+        var type = Enum.Parse<IndicatorType>(typeName);
+        IReadOnlyList<CandleData> primary = await _host.BarsAsync(Primary);
+        IReadOnlyList<CoreCandleData?> comparison = ((ScreenerSecondaryCandles)await _host.SecondaryAsync(Comparison)).Get(Comparison)!;
+
+        // The same bars, one calendar year later: the lengths are equal, so only a positional pairing would find a value.
+        IReadOnlyList<CoreCandleData?> shifted = comparison.Select(bar => bar is { } b ? b with { Timestamp = b.Timestamp.AddDays(Days * 2) } : bar).ToList();
+        Assert.DoesNotContain(shifted, bar => bar is { } b && primary.Any(p => p.Timestamp.Date == b.Timestamp.Date));
+
+        foreach (string series in AllowedSeries(type))
+        {
+            foreach (int offset in new[] { 0, 1, 5 })
+            {
+                Assert.Null(Value(Side(type, _host.Settings(type, Comparison), series, offset), primary, shifted));
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData(nameof(IndicatorType.PairRatio))]
+    [InlineData(nameof(IndicatorType.PairSpread))]
+    public async Task APointwiseTypeGivesTheValueOfTheSharedDateWhateverElseDiffersInTheCalendar(string typeName)
+    {
+        var type = Enum.Parse<IndicatorType>(typeName);
+        IReadOnlyList<CandleData> primary = await _host.BarsAsync(Primary);
+        IReadOnlyList<CoreCandleData?> comparison = ((ScreenerSecondaryCandles)await _host.SecondaryAsync(Comparison)).Get(Comparison)!;
+        ScreenerIndicatorSideConfig side = Side(type, _host.Settings(type, Comparison), AllowedSeries(type).First(), offset: 0);
+        decimal? full = Value(side, primary, comparison);
+        Assert.NotNull(full);
+
+        // Different holidays: the comparison symbol lacks 40 days at the head and a few days in the middle, and has a bar after the last date of the evaluated
+        // symbol. A pairing by position would shift every later bar and give another value; a pairing by date gives the value of the last date.
+        List<CoreCandleData> bars = comparison.OfType<CoreCandleData>().ToList();
+        DateTime headCut = bars[0].Timestamp.Date.AddDays(Head);
+        HashSet<DateTime> missing = bars.Where(bar => bar.Timestamp.Date >= headCut).Skip(20).Take(60).Where((_, index) => index % 12 == 0).Select(bar => bar.Timestamp.Date).ToHashSet();
+        Assert.NotEmpty(missing);
+        List<CoreCandleData?> differentCalendar = bars
+            .Where(bar => bar.Timestamp.Date >= headCut && !missing.Contains(bar.Timestamp.Date))
+            .Select(bar => (CoreCandleData?)bar)
+            .ToList();
+        differentCalendar.Add(bars[^1] with { Timestamp = primary[^1].Timestamp.AddDays(1) });
+        Assert.NotEqual(comparison.Count, differentCalendar.Count);
+
+        Assert.Equal(full, Value(side, primary, differentCalendar));
+    }
+
+    private static IEnumerable<string> AllowedSeries(IndicatorType type)
+        => IndicatorOutputSeriesResolver.GetDisplayNames(type, IndicatorFactory.Default).Where(name => ScreenerIndicatorEligibility.IsAllowed(type, name));
 
     private static CoreCandleData? Wild(CoreCandleData? bar)
         => bar is { } b ? new CoreCandleData(b.Timestamp, b.Open * 7m, b.High * 7m, b.Low * 7m, b.Close * 7m + 31m, b.Volume) : null;

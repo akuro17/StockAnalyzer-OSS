@@ -161,7 +161,7 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
         {
             barStart.RestoreTo(s);
             runStatus = RunStatus.Failed;
-            runDiagnostic = new BacktestRunDiagnostic(BacktestDiagnosticCode.ArithmeticOverflow, BacktestRunPhase.Bar, currentBar, s.Operation, ex.Message);
+            runDiagnostic = new BacktestRunDiagnostic(BacktestDiagnosticCode.ArithmeticOverflow, BacktestRunPhase.Bar, currentBar, s.Operation, ex.Message, input.Bars[currentBar].Timestamp);
         }
 
         // Task #8 fix: when the loop runs through every bar without an early Insolvent/failure break, a
@@ -935,7 +935,7 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
                 availableVolume -= exitQty;
             }
 
-            CommitExitFill(s, i, bar, outcome);
+            CommitExitFill(s, i, bar, outcome, exitedAtOpen: exitPoint.Position <= FillPathScanner.OpenPoint(bar.Open).Position);
             return false;
         }
 
@@ -1097,7 +1097,7 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
         decimal quantity = Math.Abs(s.Q);
         decimal slippageAmount = FillPricing.ComputeSlippageAmount(fillPrice, rawFillPrice, quantity);
 
-        ClosePosition(s, i, bar, openSide, NoOriginatingOrderId, closingSide, fillPrice, quantity, commission, slippageAmount, isForcedLiquidation: true);
+        ClosePosition(s, i, bar, openSide, NoOriginatingOrderId, closingSide, fillPrice, quantity, commission, slippageAmount, isForcedLiquidation: true, exitedAtOpen: rawFillPrice == bar.Open);
 
         // G6 (owner decision B1): the outcome decides how the superseded pending orders end - Expired(Insolvency) when the liquidation leaves
         // the account insolvent (the run stops), Cancelled when the account survives the loss-cut.
@@ -1121,7 +1121,7 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
     /// (<see cref="ExecuteForcedLiquidation"/>), since both perform the exact same account-state
     /// transition (sections 1.5.4 and 1.5.6) - kept as a single method rather than duplicated inline.
     /// </summary>
-    private static void ClosePosition(RunState s, int i, CandleData bar, TradeSide side, long originatingOrderId, OrderSide fillSide, decimal fillPrice, decimal quantity, decimal commission, decimal slippageAmount, bool isForcedLiquidation, OrderType? orderType = null, string? orderReason = null, decimal? stopPrice = null)
+    private static void ClosePosition(RunState s, int i, CandleData bar, TradeSide side, long originatingOrderId, OrderSide fillSide, decimal fillPrice, decimal quantity, decimal commission, decimal slippageAmount, bool isForcedLiquidation, OrderType? orderType = null, string? orderReason = null, decimal? stopPrice = null, bool exitedAtOpen = false)
     {
         s.Operation = BacktestArithmeticOperation.ExitAccounting;
         decimal realizedPnL = s.Q * (fillPrice - s.EntryPrice);
@@ -1129,18 +1129,8 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
 
         s.Cash = s.Cash + s.HeldMargin + realizedPnL - commission;
 
-        decimal pHigh = s.PositionHigh;
-        decimal pLow = s.PositionLow;
-        if (orderType == OrderType.Market)
-        {
-            pHigh = Math.Max(pHigh, fillPrice);
-            pLow = Math.Min(pLow, fillPrice);
-        }
-        else
-        {
-            pHigh = Math.Max(pHigh, Math.Max(fillPrice, bar.High));
-            pLow = Math.Min(pLow, Math.Min(fillPrice, bar.Low));
-        }
+        // Which prices of the exit bar were held (the single definition shared with the RL trade-ledger check).
+        (decimal pHigh, decimal pLow) = TradeExcursionBounds.ExtendByExitBar(s.PositionHigh, s.PositionLow, side, bar, fillPrice, orderType, isForcedLiquidation, exitedAtOpen);
 
         decimal mfePrice = (side == TradeSide.Long) ? Math.Max(0m, pHigh - s.EntryPrice) : Math.Max(0m, s.EntryPrice - pLow);
         decimal maePrice = (side == TradeSide.Long) ? Math.Max(0m, s.EntryPrice - pLow) : Math.Max(0m, pHigh - s.EntryPrice);
@@ -1229,13 +1219,13 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
     }
 
     /// <summary>Section 1.5.4 exit - never funds-rejected; Cash may legitimately go negative here (feeds Step 9).</summary>
-    private static void CommitExitFill(RunState s, int i, CandleData bar, OrderFillOutcome outcome)
+    private static void CommitExitFill(RunState s, int i, CandleData bar, OrderFillOutcome outcome, bool exitedAtOpen = false)
     {
         BacktestOrder order = s.Orders[s.PendingExitOrderIndex];
         TradeSide side = s.Q > 0m ? TradeSide.Long : TradeSide.Short;
         decimal quantity = Math.Abs(s.Q);
 
-        ClosePosition(s, i, bar, side, order.OrderId, order.Side, outcome.FillPrice, quantity, outcome.Commission, outcome.SlippageAmount, isForcedLiquidation: false, order.Type, order.Reason, order.StopPrice);
+        ClosePosition(s, i, bar, side, order.OrderId, order.Side, outcome.FillPrice, quantity, outcome.Commission, outcome.SlippageAmount, isForcedLiquidation: false, order.Type, order.Reason, order.StopPrice, exitedAtOpen);
 
         s.Orders[s.PendingExitOrderIndex] = order with { Status = OrderStatus.Filled, StopActivated = outcome.StopActivated };
         s.PendingExitOrderIndex = -1;

@@ -46,7 +46,7 @@ public class EnumWireContractTests
             ["NegativeEquityInPeriod"] = 5, ["ZeroPeriod"] = 6, ["NegativeFinalEquity"] = 7, ["RiskDataMissing"] = 8,
             ["AllBreakeven"] = 9, ["DownsideZero"] = 10, ["SampleTooSmall"] = 11, ["ArithmeticOverflow"] = 12,
             ["NonFiniteResult"] = 13, ["UnexpectedZeroDivisor"] = 14, ["SamplingUnverified"] = 15, ["SamplingRejected"] = 16,
-            ["EvaluationCoverageUnverified"] = 17, ["NoWinningTrades"] = 18, ["NoLosingTrades"] = 19,
+            ["EvaluationCoverageUnverified"] = 17, ["NoWinningTrades"] = 18, ["NoLosingTrades"] = 19, ["NotRequested"] = 20,
         },
         Table<MetricReason>());
 

@@ -66,7 +66,7 @@ public sealed class ModelAnalysisService : IModelAnalysisService
     {
         var state = snapshot.Analysis.Regime;
         if (!snapshot.Analysis.Timeframe.Equals(timeframe.ToString(), StringComparison.OrdinalIgnoreCase)
-            || state.Status != "available" || candles.Count <= ModelAnalysisContract.VolatilityBars) return null;
+            || state.Status != ModelAnalysisContract.AvailableStatus || candles.Count <= ModelAnalysisContract.VolatilityBars) return null;
         int first = candles.Count - ModelAnalysisContract.VolatilityBars - 1;
         for (int i = first; i < candles.Count; i++)
             if (candles[i].Close <= 0 || (i > first && candles[i].Timestamp <= candles[i - 1].Timestamp)) return null;

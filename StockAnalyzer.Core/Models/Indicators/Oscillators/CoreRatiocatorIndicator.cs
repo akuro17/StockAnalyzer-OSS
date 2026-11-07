@@ -154,7 +154,9 @@ public class CoreRatiocatorIndicator : CoreIndicatorBase, ICrossTickerIndicator
         {
             if (_secondaryCandles != null && _secondaryCandles.Count > 0)
             {
-                seriesB = PriceDataHelper.ExtractPriceSeries(_secondaryCandles, ComparisonPriceSource);
+                // The comparison symbol's bars are paired with the primary bars by calendar date (no look-ahead, no fill), like every other two-symbol indicator.
+                // The chart and the MCP tools hand over bars already aligned to the primary timeline, for which this is the same series as before.
+                seriesB = PriceDataHelper.ExtractDateAlignedPriceSeries(candles, _secondaryCandles, ComparisonPriceSource);
             }
             else if (_explicitSeriesB != null)
             {

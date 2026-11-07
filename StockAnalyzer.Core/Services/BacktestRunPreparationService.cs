@@ -28,7 +28,9 @@ public sealed record BacktestRunSnapshot(
     BacktestReportDefaults ReportDefaults,
     int BootstrapSeed,
     int BootstrapIterations,
-    BacktestConditionTree? ConditionTree = null);
+    BacktestConditionTree? ConditionTree = null,
+    bool ComputeAdjustedSortinoBootstrap = true,
+    bool CaptureArithmeticFailures = false);
 
 public sealed record PreparedBacktestRun(
     BacktestInput Input,
@@ -206,6 +208,7 @@ public sealed class BacktestRunPreparationService : IBacktestRunPreparationServi
             AnnualMAR = snapshot.ReportDefaults.AnnualMAR,
             BootstrapSeed = snapshot.BootstrapSeed,
             BootstrapIterations = snapshot.BootstrapIterations,
+            ComputeAdjustedSortinoBootstrap = snapshot.ComputeAdjustedSortinoBootstrap,
             RunFingerprintBuilder = BacktestRunFingerprintBuilder.Freeze(input, snapshot.Configuration, strategy),
         };
 

@@ -8,6 +8,7 @@ using StockAnalyzer.Core.Models.Indicators;
 using StockAnalyzer.Core.Models.Screener;
 using StockAnalyzer.Core.Models.Watchlist;
 using StockAnalyzer.Core.Services.Backtest.Engine;
+using StockAnalyzer.Core.Services.Screener;
 
 namespace StockAnalyzer.Core.Services;
 
@@ -21,6 +22,14 @@ public class ScreenerCatalogProvider : IScreenerCatalogProvider
     private readonly ConcurrentDictionary<IndicatorType, CoreIndicatorSettings> _defaultSettingsCache = new();
 
     public IReadOnlyList<ScreenerCatalogItem> GetCatalogItems(IIndicatorFactory? indicatorFactory = null)
+        => BuildCatalogItems(indicatorFactory, BacktestIndicatorEligibility.IsTypeBlocked);
+
+    /// <inheritdoc />
+    public IReadOnlyList<ScreenerCatalogItem> GetCatalogItemsForScreener(IIndicatorFactory? indicatorFactory = null)
+        => BuildCatalogItems(indicatorFactory, ScreenerIndicatorEligibility.IsTypeBlocked);
+
+    /// <summary>The one catalog builder; the two public members differ only in which indicator types they leave out.</summary>
+    private IReadOnlyList<ScreenerCatalogItem> BuildCatalogItems(IIndicatorFactory? indicatorFactory, Func<IndicatorType, bool> isTypeBlocked)
     {
         var items = new List<ScreenerCatalogItem>();
 
@@ -41,7 +50,7 @@ public class ScreenerCatalogProvider : IScreenerCatalogProvider
         var indicatorItems = new List<ScreenerCatalogItem>();
         foreach (var type in knownTypes)
         {
-            if (type == IndicatorType.Price || BacktestIndicatorEligibility.IsTypeBlocked(type))
+            if (type == IndicatorType.Price || isTypeBlocked(type))
             {
                 continue;
             }

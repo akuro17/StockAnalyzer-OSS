@@ -32,7 +32,6 @@ internal sealed class RunScreenerTool : IMcpTool
     private const string MaxMatchesArgument = "maxReturnedMatches";
     private const string AsOfDateArgument = "asOfDate";
     private const string EndDateArgument = "endDate";
-    private const string CompleteBarsOnlyArgument = "completeBarsOnly";
     private const string SortByArgument = "sortBy";
     private const string SortDirectionArgument = "sortDirection";
     private const string SortAscending = "Ascending";
@@ -141,7 +140,7 @@ internal sealed class RunScreenerTool : IMcpTool
         .StringArray(SymbolsArgument, $"Symbols to screen (at most {_limits.MaxScreenerSymbols}); omit to screen every available symbol. Mutually exclusive with groupId.", minItems: 1)
         .String(GroupIdArgument, "Guid of a saved ticker group (from sa_list_ticker_groups) to screen. Mutually exclusive with symbols.")
         .String(TimeFrameArgument, $"Time frame of the bars of every side that names no timeFrame of its own. Supported: {ToolArgs.SupportedTimeFrameNames}. Default {ScreenerTimeFrame}.", allowedValues: Enum.GetNames<TimeFrame>())
-        .Boolean(CompleteBarsOnlyArgument, "W1 and MN1 only (ignored for D1): true (default) evaluates the last complete period when the latest one has not ended; false evaluates the partial period and says so (partialLastBar).")
+        .Boolean(PartialBarOutput.CompleteBarsOnlyArgument, "W1 and MN1 only (ignored for D1): true (default) evaluates the last complete period when the latest one has not ended; false evaluates the partial period and says so (partialLastBar).")
         .FreeObject(SortByArgument, "Rank the matched symbols by one side: {indicator|price|column: name, parameters?, outputSeriesName?, offset?} (the same side object as in conditionTree; not criteria or a text column).")
         .String(SortDirectionArgument, $"{SortDescending} (default: larger value first) or {SortAscending}. Needs sortBy.", allowedValues: new[] { SortDescending, SortAscending })
         .String(AsOfDateArgument, $"Evaluation date ({ToolJson.DateFormat}, inclusive): each symbol is evaluated on its last bar on or before it. Default: the latest stored bar. Columns other than those read from the bars are refused with it.")
@@ -155,7 +154,7 @@ internal sealed class RunScreenerTool : IMcpTool
         TimeFrame timeFrame = arguments.TryGetProperty(TimeFrameArgument, out _) ? ToolArgs.SupportedTimeFrame(arguments, TimeFrameArgument) : ScreenerTimeFrame;
         DateOnly? asOf = ToolArgs.Date(arguments, AsOfDateArgument);
         bool isPeriodFrame = TimeFrameAggregator.IsPeriodFrame(timeFrame);
-        bool completeBarsOnly = ToolArgs.Boolean(arguments, CompleteBarsOnlyArgument) ?? ScreenerBarSelection.DefaultCompleteBarsOnly;
+        bool completeBarsOnly = ToolArgs.Boolean(arguments, PartialBarOutput.CompleteBarsOnlyArgument) ?? ScreenerBarSelection.DefaultCompleteBarsOnly;
 
         // The plain latest-daily-bar scan keeps its own path (unchanged); a date or a weekly / monthly frame reads a selection of bars built from the daily history.
         var source = new BarSource(timeFrame, asOf is not null || timeFrame != ScreenerTimeFrame ? new ScreenerBarSelection(asOf, completeBarsOnly) : null);
@@ -360,7 +359,7 @@ internal sealed class RunScreenerTool : IMcpTool
 
             if (writeCompleteBarsOnly)
             {
-                writer.WriteBoolean("completeBarsOnly", completeBarsOnly);
+                writer.WriteBoolean(PartialBarOutput.CompleteBarsOnlyArgument, completeBarsOnly);
             }
 
             writer.WriteString("universe", isCustom ? "Custom" : "AllAvailable");

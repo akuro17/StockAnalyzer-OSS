@@ -36,16 +36,28 @@ public static class ParquetFixtureBuilder
     /// <summary>Writes a daily OHLCV parquet whose closes are <paramref name="closes"/> (one bar per consecutive day from 2024-01-01; open/high/low derived as in <see cref="SeedDailyOhlcv"/>).</summary>
     public static void SeedDailyOhlcvFromCloses(string dir, string ticker, IReadOnlyList<decimal> closes)
     {
+        var date = new DateTime(2024, 1, 1);
+        var bars = new List<(DateTime Date, decimal Close)>(closes.Count);
+        foreach (decimal close in closes)
+        {
+            bars.Add((date, close));
+            date = date.AddDays(1);
+        }
+
+        SeedDailyOhlcvFromDatedCloses(dir, ticker, bars);
+    }
+
+    /// <summary>Writes a daily OHLCV parquet with one bar on each given date (so a test can leave out holidays); open/high/low are derived as in <see cref="SeedDailyOhlcv"/>.</summary>
+    public static void SeedDailyOhlcvFromDatedCloses(string dir, string ticker, IReadOnlyList<(DateTime Date, decimal Close)> bars)
+    {
         var fixturePath = Path.Combine(dir, $"{ticker}.parquet").Replace("\\", "/");
         var rows = new List<string>();
-        var date = new DateTime(2024, 1, 1);
-        foreach (decimal close in closes)
+        foreach ((DateTime date, decimal close) in bars)
         {
             var open = close - 0.2m;
             var high = close + 0.5m;
             var low = close - 0.5m;
             rows.Add(FormattableString.Invariant($"(DATE '{date:yyyy-MM-dd}', {open}, {high}, {low}, {close}, 1000)"));
-            date = date.AddDays(1);
         }
 
         using var connection = new DuckDBConnection("DataSource=:memory:");

@@ -326,6 +326,72 @@ public class DynamicExitsTests
         Assert.Equal(WarningCode.DynamicExitAtrUnavailable, result.Warnings[0].Code);
     }
 
+    // ATR(2) = 10 at the signal bar (bar 2) and the entry fills at 100 on bar 3 in both scenarios below.
+    private static BacktestResult RunWithNonPositiveLevelScenario(bool isLong, AtrExitParameters? stop, AtrExitParameters? target)
+    {
+        var bars = SyntheticBars.FromTable(
+            (100m, 100m, 100m, 100m),  // 0
+            (100m, 105m, 95m, 100m),   // 1
+            (100m, 105m, 95m, isLong ? 102m : 98m), // 2: signal, ATR(2) = 10
+            (100m, 101m, 98m, 100m),   // 3: entry at 100
+            (100m, 101m, 98m, 100m),   // 4: held
+            (100m, 101m, 98m, 100m));  // 5: held
+        var strategy = new ConditionBasedBacktestStrategy(
+            new[] { isLong ? CloseAbove(101m) : CloseBelow(99m) },
+            new BacktestRiskManagementSettings { DynamicExits = new DynamicExitConfiguration { AtrStop = stop, AtrTarget = target } });
+        return VerificationHarness.Run(VerificationHarness.MakeInput(bars), DefaultConfig(), strategy);
+    }
+
+    [Fact]
+    public void LongAtrStopBelowZero_EmitsOneLevelNonPositiveWarning_AndNeverExits()
+    {
+        // 100 - 11 x 10 = -10: the stop is switched off for the trade; the new code says so (once, although the position is held on three bars).
+        BacktestResult result = RunWithNonPositiveLevelScenario(isLong: true, new AtrExitParameters { Period = 2, Multiple = 11m }, null);
+
+        BacktestWarning warning = Assert.Single(result.Warnings);
+        Assert.Equal(WarningCode.DynamicExitLevelNonPositive, warning.Code);
+        Assert.Equal(3, warning.BarIndex);
+        Assert.Contains("ATR stop", warning.Message);
+        Assert.Empty(result.Trades);
+    }
+
+    [Fact]
+    public void ShortAtrTargetBelowZero_EmitsOneLevelNonPositiveWarning()
+    {
+        // The short's target is 100 - 11 x 10 = -10; its stop (100 + 11 x 10) is fine.
+        BacktestResult result = RunWithNonPositiveLevelScenario(isLong: false, new AtrExitParameters { Period = 2, Multiple = 11m }, new AtrExitParameters { Period = 2, Multiple = 11m });
+
+        BacktestWarning warning = Assert.Single(result.Warnings);
+        Assert.Equal(WarningCode.DynamicExitLevelNonPositive, warning.Code);
+        Assert.Contains("ATR target", warning.Message);
+    }
+
+    [Fact]
+    public void AtrLevelsAboveZero_EmitNoWarning_AndTheCodeIsAppendedAfterTheExistingOnes()
+    {
+        BacktestResult result = RunWithNonPositiveLevelScenario(isLong: true, new AtrExitParameters { Period = 2, Multiple = 1m }, new AtrExitParameters { Period = 2, Multiple = 1m });
+
+        Assert.Empty(result.Warnings);
+        Assert.Equal(5, (int)WarningCode.DynamicExitLevelNonPositive);
+        Assert.Equal(4, (int)WarningCode.DynamicExitAtrUnavailable);
+    }
+
+    [Fact]
+    public void UnavailableAtr_KeepsItsOwnCode_NotTheLevelCode()
+    {
+        // ATR(14) over 6 bars is not defined: code 4 only, no level warning.
+        var bars = SyntheticBars.FromTable(
+            (100m, 101m, 99m, 100m), (100m, 106m, 99m, 105m), (100m, 106m, 99m, 105m), (100m, 106m, 99m, 105m), (100m, 106m, 99m, 105m), (100m, 106m, 99m, 105m));
+        var strategy = new ConditionBasedBacktestStrategy(
+            new[] { CloseAbove(102m) },
+            new BacktestRiskManagementSettings { DynamicExits = new DynamicExitConfiguration { AtrStop = new AtrExitParameters { Period = 14, Multiple = 50m } } });
+
+        BacktestResult result = VerificationHarness.Run(VerificationHarness.MakeInput(bars), DefaultConfig(), strategy);
+
+        Assert.All(result.Warnings, w => Assert.Equal(WarningCode.DynamicExitAtrUnavailable, w.Code));
+        Assert.NotEmpty(result.Warnings);
+    }
+
     [Fact]
     public void TrailingStop_AtrMultiple_RatchetsUpward_AndExitsAtStopLevel()
     {

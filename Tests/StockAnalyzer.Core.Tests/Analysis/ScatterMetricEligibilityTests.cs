@@ -83,6 +83,40 @@ public class ScatterMetricEligibilityTests
         Assert.True(ScatterMetricEligibility.AllowsTimeFrameChoice(ScatterMetricTestKit.Indicator(IndicatorType.Price, output: "Close").Source));
     }
 
+    [Theory]
+    [InlineData(IndicatorType.Correlation)]
+    [InlineData(IndicatorType.CrossCorrelation)]
+    public void AllowsTimeFrameChoice_IsFalseForATwoTickerIndicatorThatNamesASymbol_AndTrueOnceTheSymbolIsCleared(IndicatorType type)
+    {
+        var side = ScatterMetricTestKit.Indicator(type).Source;
+        Assert.True(ScatterMetricEligibility.AllowsTimeFrameChoice(side), "blank symbol: Price vs Volume is computed in the metric's own bars");
+
+        side.Parameters["ComparisonSymbol"] = "SPY";
+        Assert.False(ScatterMetricEligibility.AllowsTimeFrameChoice(side));
+
+        side.Parameters["ComparisonSymbol"] = "   ";
+        Assert.True(ScatterMetricEligibility.AllowsTimeFrameChoice(side));
+    }
+
+    [Fact]
+    public void AllowsTimeFrameChoice_IsFalseForARequiredTwoTickerTypeWhetherOrNotItNamesASymbol()
+    {
+        var side = ScatterMetricTestKit.Indicator(IndicatorType.RollingBeta, output: IndicatorResult.MainSeriesName).Source;
+
+        Assert.False(ScatterMetricEligibility.AllowsTimeFrameChoice(side));
+        side.Parameters["ComparisonSymbol"] = "SPY";
+        Assert.False(ScatterMetricEligibility.AllowsTimeFrameChoice(side));
+    }
+
+    [Fact]
+    public void AllowsTimeFrameChoice_StaysTrueForAnOrdinaryIndicatorWithAStrayComparisonSymbolParameter()
+    {
+        var side = ScatterMetricTestKit.Indicator(IndicatorType.RSI).Source;
+        side.Parameters["ComparisonSymbol"] = "SPY";
+
+        Assert.True(ScatterMetricEligibility.AllowsTimeFrameChoice(side));
+    }
+
     [Fact]
     public void AllowsTimeFrameChoice_IsFalseForNullAndForACriteria()
     {

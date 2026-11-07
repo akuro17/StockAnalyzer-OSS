@@ -21,7 +21,7 @@ public sealed class McpLimitsException : Exception
 /// </summary>
 public static class McpLimitsContract
 {
-    /// <summary>Exactly one tool call executes at a time (the pipeline is not thread-safe per call and calls are not cancellable); not configurable.</summary>
+    /// <summary>Exactly one tool call executes at a time (the pipeline is not thread-safe per call, and a calculation that is already running cannot be interrupted); not configurable.</summary>
     public const int MaxConcurrentToolCalls = 1;
 
     /// <summary>Maximum nesting depth when traversing the group tree (All Tickers / category roots are depth 0); deeper subtrees are truncated.</summary>
@@ -29,6 +29,18 @@ public static class McpLimitsContract
 
     /// <summary>Hard maximum of <see cref="McpLimits.MaxCandlesPerRequest"/>; also the ceiling of every default that is a window length within it.</summary>
     private const int MaxCandlesPerRequestBandMaximum = 50000;
+
+    /// <summary>Hard lower end of <see cref="McpLimits.MaxChartImageWidth"/>: narrower than this, the plot area (after the fixed margins) is too small to hold any bar.</summary>
+    private const int MinChartImageWidthBand = 320;
+
+    /// <summary>Hard lower end of <see cref="McpLimits.MaxChartImageHeight"/>: lower, the volume-only layout does not fit.</summary>
+    private const int MinChartImageHeightBand = 240;
+
+    /// <summary>Hard upper end of an image side: 4096 x 4096 x 4 bytes = 64 MiB of native memory for one image.</summary>
+    private const int MaxChartImageSideBand = 4096;
+
+    /// <summary>Hard upper end of <see cref="McpLimits.MaxChartImageBars"/> and of the listed bars.</summary>
+    private const int MaxChartImageBarsBandMaximum = 5000;
 
     private const int Kibibyte = 1024;
     private const int Mebibyte = 1024 * Kibibyte;
@@ -87,7 +99,25 @@ public static class McpLimitsContract
         Band(nameof(McpLimits.MaxProjectionBars), limits.MaxProjectionBars, 1, 100);
         Band(nameof(McpLimits.MaxSeasonalityYears), limits.MaxSeasonalityYears, (int)SeasonalityChartConstants.MinYearsToOverlay, (int)SeasonalityChartConstants.MaxYearsToOverlay);
         Band(nameof(McpLimits.MaxListedModels), limits.MaxListedModels, 1, 1000);
+        Band(nameof(McpLimits.MaxChartImageWidth), limits.MaxChartImageWidth, MinChartImageWidthBand, MaxChartImageSideBand);
+        Band(nameof(McpLimits.MaxChartImageHeight), limits.MaxChartImageHeight, MinChartImageHeightBand, MaxChartImageSideBand);
+        Band(nameof(McpLimits.DefaultChartImageWidth), limits.DefaultChartImageWidth, MinChartImageWidthBand, limits.MaxChartImageWidth);
+        Band(nameof(McpLimits.DefaultChartImageHeight), limits.DefaultChartImageHeight, MinChartImageHeightBand, limits.MaxChartImageHeight);
+        Band(nameof(McpLimits.MaxChartImageBars), limits.MaxChartImageBars, 1, MaxChartImageBarsBandMaximum);
+        Band(nameof(McpLimits.DefaultChartImageBars), limits.DefaultChartImageBars, 1, limits.MaxChartImageBars);
+        Band(nameof(McpLimits.MaxImageOverlays), limits.MaxImageOverlays, 1, 16);
+        Band(nameof(McpLimits.MaxImageMarkers), limits.MaxImageMarkers, 0, 500);
+        Band(nameof(McpLimits.MaxImageBarsListed), limits.MaxImageBarsListed, 0, MaxChartImageBarsBandMaximum);
     }
+
+    /// <summary>
+    /// The bar limit of an image in force: <see cref="McpLimits.MaxChartImageBars"/>, but never more than a request can read (<see cref="McpLimits.MaxCandlesPerRequest"/>).
+    /// Applied at run time and not as a start-up refusal, because a request limit below the image limit is a valid configuration that must keep starting.
+    /// </summary>
+    public static int EffectiveMaxChartImageBars(McpLimits limits) => Math.Min(limits.MaxChartImageBars, limits.MaxCandlesPerRequest);
+
+    /// <summary>The bar count of an image in force when a call names none: <see cref="McpLimits.DefaultChartImageBars"/> within <see cref="EffectiveMaxChartImageBars"/>.</summary>
+    public static int EffectiveDefaultChartImageBars(McpLimits limits) => Math.Min(limits.DefaultChartImageBars, EffectiveMaxChartImageBars(limits));
 
     /// <summary>
     /// The equity-curve point limit in force: <see cref="McpLimits.MaxEquityCurvePoints"/>, but never more than a full curve of

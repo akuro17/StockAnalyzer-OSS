@@ -36,6 +36,10 @@ internal static class McpBacktestSettingsExposure
 
     private const string SeparateArgumentReason = "Another argument of the tool (or the run itself) supplies it.";
 
+    private const string InternalSweepReason = "Internal: the optimization and walk-forward tools set it from their objective (the adjusted-Sortino bootstrap is computed only when the objective reads it, owner decision D-6); every other tool computes it.";
+
+    private const string InternalArithmeticReason = "Internal: the portfolio tool sets it so that an engine arithmetic failure of one symbol becomes a Failed sleeve with a diagnostic (owner decision D-8 = C); every other caller keeps the exception.";
+
     private const string NotInTheWindowReason = "The Backtest settings window does not offer it; the engine's default is used.";
 
     /// <summary>The classes whose settable properties are classified.</summary>
@@ -91,6 +95,8 @@ internal static class McpBacktestSettingsExposure
         new(typeof(BacktestRunSnapshot), nameof(BacktestRunSnapshot.SelectedIndicators), SeparateArgumentReason),
         new(typeof(BacktestRunSnapshot), nameof(BacktestRunSnapshot.ReportDefaults), SeparateArgumentReason),
         new(typeof(BacktestRunSnapshot), nameof(BacktestRunSnapshot.ConditionTree), SeparateArgumentReason),
+        new(typeof(BacktestRunSnapshot), nameof(BacktestRunSnapshot.ComputeAdjustedSortinoBootstrap), InternalSweepReason),
+        new(typeof(BacktestRunSnapshot), nameof(BacktestRunSnapshot.CaptureArithmeticFailures), InternalArithmeticReason),
     };
 
     /// <summary>The accepted keys of one section, in table order (the argument's own key names, without the section).</summary>

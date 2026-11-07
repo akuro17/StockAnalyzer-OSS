@@ -876,4 +876,19 @@ public class DefaultCoreIndicatorSettingsTests
         Assert.Contains(pp.SeriesColors, c => c.TargetSeries.Contains("S2") && c.Name == "S2");
         Assert.Contains(pp.SeriesColors, c => c.TargetSeries.Contains("S3") && c.Name == "S3");
     }
+
+    [Fact]
+    public void GetDefault_EveryFixedPanelRange_HasAMinimumBelowItsMaximum()
+    {
+        // The AI chart image (and its documentation) rely on this: a fixed range of a registry default is never inverted or empty, and the MCP tools take their
+        // indicator settings from these defaults without setting a range of their own.
+        var settingsWithFixedRange = DefaultCoreIndicatorSettings.GetDefault().Where(s => s.MinValue.HasValue || s.MaxValue.HasValue).ToList();
+
+        Assert.NotEmpty(settingsWithFixedRange);
+        foreach (var setting in settingsWithFixedRange)
+        {
+            Assert.True(setting.MinValue.HasValue && setting.MaxValue.HasValue, $"{setting.TypeEnum}: only one end of the fixed range is set.");
+            Assert.True(setting.MaxValue!.Value > setting.MinValue!.Value, $"{setting.TypeEnum}: fixed range {setting.MinValue}..{setting.MaxValue} is not a range.");
+        }
+    }
 }

@@ -17,6 +17,9 @@ public static class BacktestExecutionSemantics
     /// fill point of a new position) trades at that market price with the liquidation penalty, never at the better threshold price.
     /// 3 = 2 plus strict condition-output resolution: UI aliases for an indicator's primary output are canonicalized to Main,
     /// while an unknown non-primary output is rejected instead of silently falling back to Main.
+    /// 4 = 3 plus the stale risk-exit order rule: a Stop / Limit breach order of the condition-based strategy whose first eligible bar did not reach its
+    /// price is cancelled at that bar's Close (applied at the next Step 1), so it no longer occupies the Exit slot for good; an order whose price was
+    /// reached but whose fill was deferred (volume participation, price-limit lock) is kept.
     /// </summary>
-    public const int Version = 3;
+    public const int Version = 4;
 }

@@ -69,7 +69,7 @@ internal sealed class RunBacktestTool : IMcpTool
         "Omitted values are the Backtest window's factory defaults, not the values saved in the window; the result echoes every effective value. " +
         $"The supported time frames are {string.Join(", ", ReadOnlyGatewayContract.SupportedBacktestTimeFrames)}; the Legacy execution model is used. " +
         $"The result lists the first maxReturnedTrades trades in the order the engine closed them (default and maximum {_limits.MaxReturnedTrades}; totalTrades is the true count) and engine warnings by code. " +
-        "Each trade carries mfePrice and maePrice (largest favourable and adverse excursion from the entry price, in price units, never negative, measured on bar highs and lows so the order inside a bar is unknown, before fees and slippage) and mfePercent and maePercent (the same as percent of the entry price; null when the entry price is not positive), and stopLevelAtExit (stop price threshold at exit when exited via a stop; null otherwise). " +
+        "Each trade carries mfePrice and maePrice (largest favourable and adverse excursion from the entry price, in price units, never negative, measured on bar highs and lows so the order inside a bar is unknown, from the actual fill prices so slippage is already inside them and commissions are not included; prices that are certain to come after the exit are not counted) and mfePercent and maePercent (the same as percent of the entry price; null when the entry price is not positive), and stopLevelAtExit (stop price threshold at exit when exited via a stop; null otherwise). " +
         $"Optional diagnostics, all off by default: includeEquityCurve ({string.Join("|", BacktestDiagnostics.CurveNames)}) adds equityCurve (equity in account currency per evaluated bar, or the last bar of each ISO week or calendar month, with drawdownRatio = equity / running high - 1, at most {McpLimitsContract.EffectiveMaxEquityCurvePoints(_limits)} points, more is LIMIT_EXCEEDED); " +
         $"includeDrawdownEpisodes (0 to {_limits.MaxDrawdownEpisodes}) adds the deepest drawdown episodes (depthRatio, dates, bar counts; recovery fields are null while still underwater); " +
         "includePeriodicReturns adds monthly and yearly returnRatio (period-end equity / previous period-end equity - 1; isPartial marks a period the evaluated dates cut). " +
@@ -196,6 +196,10 @@ internal sealed class RunBacktestTool : IMcpTool
         try
         {
             artifact = await _gateway.RunBacktestAsync(snapshot, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OverflowException)
+        {
+            throw BacktestOverflowReport.ForSingleRun(snapshot.Symbol, snapshot.Configuration);
         }
         catch (ArgumentException error)
         {

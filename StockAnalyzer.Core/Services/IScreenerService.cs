@@ -44,6 +44,19 @@ public interface IScreenerService
     }
 
     /// <summary>
+    /// Reads the bars of the comparison symbols a condition names (<see cref="Models.Screener.ScreenerComparisonRequirement.Spellings"/>), once, for the scan of the overload above.
+    /// The bars come from the same data service and have the same length as the bars of the screened symbols (the history <paramref name="condition"/> needs; 0 = all);
+    /// every spelling of one instrument (<c>7203.T</c> / <c>7203-T</c>) is registered, so each lookup is an exact hit, and an instrument without bars is absent
+    /// (<c>Get</c> returns null for it). A service that does not read them refuses instead of answering with nothing.
+    /// </summary>
+    Task<Models.Screener.IScreenerSecondaryCandles> LoadComparisonCandlesAsync(
+        IReadOnlyList<string> spellings,
+        TimeFrame timeFrame,
+        IScreeningCondition condition,
+        CancellationToken ct)
+        => throw new NotSupportedException($"{GetType().Name} does not load the bars of comparison symbols.");
+
+    /// <summary>
     /// The scan of the overload above over the bars of a <see cref="ScreenerBarSelection"/>: the daily history is aggregated to the weekly or monthly frame the way the chart does
     /// (not read from stored weekly/monthly files), and a last period that has not ended is left out when <see cref="ScreenerBarSelection.CompleteBarsOnly"/>. The answer also names
     /// the symbols without a bar and the partial periods. A service that cannot do this refuses instead of scanning other bars.

@@ -37,6 +37,7 @@ internal sealed class RunPortfolioBacktestTool : IMcpTool
     private const string TimeFrameArgument = "timeFrame";
     private const string MaxTradesPerSymbolArgument = "maxReturnedTradesPerSymbol";
     private const string EquityCurveArgument = BacktestDiagnostics.EquityCurveArgument;
+    private const string CompositeDrawdownPart = "compositeDrawdown";
 
     private static readonly string[] AllowedEquityCurveResolutions = { "None", "Weekly", "Monthly" };
 
@@ -239,7 +240,8 @@ internal sealed class RunPortfolioBacktestTool : IMcpTool
                 settings.ReportDefaults,
                 settings.BootstrapSeed,
                 settings.BootstrapIterations,
-                conditions.Tree);
+                conditions.Tree,
+                CaptureArithmeticFailures: true); // owner decision D-8 = C: one symbol that overflows becomes a Failed sleeve, not a failed call
 
             validSnapshots.Add((i, snapshot));
         }
@@ -255,6 +257,14 @@ internal sealed class RunPortfolioBacktestTool : IMcpTool
                     snapshotsToRun,
                     _limits.OptimizationDegreeOfParallelism,
                     cancellationToken).ConfigureAwait(false);
+            }
+            catch (OverflowException error)
+            {
+                // What is still thrown with capture on: an overflow outside the engine arithmetic (a strategy's own, the report). The batch tags the lowest failing index.
+                int? index = BacktestBatchFailure.ItemIndexOf(error);
+                // Without a valid index the failing symbol is unknown: say so rather than naming the first one.
+                BacktestRunSnapshot? failing = index is { } at && at >= 0 && at < snapshotsToRun.Count ? snapshotsToRun[at] : null;
+                throw BacktestOverflowReport.ForSingleRun(failing?.Symbol, failing?.Configuration);
             }
             catch (ArgumentException error)
             {
@@ -277,17 +287,45 @@ internal sealed class RunPortfolioBacktestTool : IMcpTool
                         "Insufficient data to evaluate backtest.",
                         artifact);
                 }
+                else if (artifact.Result.Status is RunStatus.Failed or RunStatus.Cancelled)
+                {
+                    // The documented vocabulary has "Failed"; the sleeve stays flat cash (D-11b) like a sleeve without data. An engine arithmetic failure (D-8 = C)
+                    // names where it happened; any other Failed/Cancelled run keeps the plain status text.
+                    BacktestRunDiagnostic? diagnostic = artifact.RunDiagnostic;
+                    sleeveHolders[originalIndex] = new SleeveHolder(
+                        symbol,
+                        sleeveCapital,
+                        false,
+                        "Failed",
+                        diagnostic is null ? $"The backtest run ended with status {artifact.Result.Status}." : BacktestOverflowReport.Describe(diagnostic),
+                        artifact,
+                        artifact.Result.Status.ToString(),
+                        diagnostic is { Code: BacktestDiagnosticCode.ArithmeticOverflow });
+                }
                 else
                 {
+                    // A run that went insolvent is kept in the composition at its final equity (its loss is real); runStatus tells it apart from a Completed run.
                     sleeveHolders[originalIndex] = new SleeveHolder(
                         symbol,
                         sleeveCapital,
                         true,
                         "Succeeded",
                         null,
-                        artifact);
+                        artifact,
+                        artifact.Result.Status.ToString());
                 }
             }
+        }
+
+        // D-8 = C: arithmetic failures are tolerated while at least one run finished (Completed or Insolvent; a sleeve without data never counts as finished).
+        // Otherwise the call has no result worth returning and an all-cash "success" would hide the mistake (typically an absurd account setting that hits every symbol).
+        int arithmeticFailureCount = sleeveHolders.Count(h => h.ArithmeticFailure);
+        int finishedCount = sleeveHolders.Count(h => h.RunStatus == nameof(RunStatus.Completed) || h.RunStatus == nameof(RunStatus.Insolvent));
+        if (arithmeticFailureCount >= 1 && finishedCount == 0)
+        {
+            SleeveHolder first = sleeveHolders.First(h => h.ArithmeticFailure);
+            throw BacktestOverflowReport.ForPortfolio(
+                symbolCount, arithmeticFailureCount, sleeveHolders.Count(h => h.Status == "InsufficientData"), first.Symbol, first.Reason ?? "ArithmeticOverflow");
         }
 
         // 9. Compose Portfolio Equity
@@ -307,28 +345,29 @@ internal sealed class RunPortfolioBacktestTool : IMcpTool
         DateTime? effectiveInitialTimestamp = requestedStart is { } s ? RunBacktestTool.ToUtc(s) : null;
         CompositePortfolioResult composite = PortfolioEquityComposer.Compose(totalCapital, sleeveInputs, effectiveInitialTimestamp);
 
+        // A part whose arithmetic fails is left out and named in diagnosticsUnavailable (the same contract as sa_run_backtest); the sleeves stay.
+        ImmutableArray<(string Part, string Reason)>.Builder unavailable = ImmutableArray.CreateBuilder<(string Part, string Reason)>();
+        if (composite.DrawdownUnavailableReason is { } drawdownReason)
+        {
+            unavailable.Add((CompositeDrawdownPart, drawdownReason));
+        }
+
         // Pre-sample and validate equity curve (if requested)
         ImmutableArray<EquityCurvePoint>? sampledCurve = null;
         if (equityCurveResolution is { } resolution && !composite.CompositeEquityPoints.IsEmpty)
         {
-            try
+            ImmutableArray<EquityCurvePoint> curve = BacktestDiagnostics.Isolate(
+                unavailable,
+                BacktestDiagnostics.EquityCurveArgument,
+                () => EquityCurveSampler.Sample(composite.AllocatedTotal, composite.CompositeEquityPoints, resolution),
+                default(ImmutableArray<EquityCurvePoint>));
+            if (!curve.IsDefault)
             {
-                var curve = EquityCurveSampler.Sample(
-                    composite.AllocatedTotal,
-                    composite.CompositeEquityPoints,
-                    resolution);
                 BacktestDiagnostics.EnsureCurveFits(resolution, curve.Length, _limits);
                 sampledCurve = curve;
             }
-            catch (OverflowException)
-            {
-                // Degrades gracefully per Plan 03
-            }
-            catch (ArithmeticException)
-            {
-                // Degrades gracefully per Plan 03
-            }
         }
+        ImmutableArray<(string Part, string Reason)> diagnosticsUnavailable = unavailable.ToImmutable();
 
         // 10. Format Output JSON
         int succeededCount = sleeveHolders.Count(h => h.IsSuccess);
@@ -358,6 +397,8 @@ internal sealed class RunPortfolioBacktestTool : IMcpTool
             // composite
             WriteComposite(writer, composite, equityCurveResolution, sampledCurve);
 
+            BacktestDiagnostics.WriteUnavailable(writer, diagnosticsUnavailable);
+
             // notes
             writer.WriteStartArray("notes");
             writer.WriteStringValue("Independent sleeves model: Capital is equally divided into isolated sleeves with no shared margin or cross-asset position limits.");
@@ -365,6 +406,11 @@ internal sealed class RunPortfolioBacktestTool : IMcpTool
             if (failedCount > 0)
             {
                 writer.WriteStringValue($"{failedCount} sleeve(s) failed or had insufficient data; their allocated capital remains as cash without reallocation.");
+            }
+            int insolventCount = sleeveHolders.Count(h => h.RunStatus == nameof(RunStatus.Insolvent));
+            if (insolventCount > 0)
+            {
+                writer.WriteStringValue($"{insolventCount} sleeve(s) went insolvent during the run (runStatus Insolvent); their final equity stays in the composite and their report metrics are null.");
             }
             foreach (string warning in universeWarnings)
             {
@@ -384,6 +430,11 @@ internal sealed class RunPortfolioBacktestTool : IMcpTool
         if (sleeve.Reason is { } reason)
         {
             writer.WriteString("reason", reason);
+        }
+
+        if (sleeve.RunStatus is { } runStatus)
+        {
+            writer.WriteString("runStatus", runStatus);
         }
 
         writer.WriteNumber("sleeveCapital", sleeve.SleeveCapital);
@@ -451,7 +502,14 @@ internal sealed class RunPortfolioBacktestTool : IMcpTool
         writer.WriteNumber("allocatedTotal", composite.AllocatedTotal);
         writer.WriteNumber("finalEquity", composite.FinalEquity);
         writer.WriteNumber("totalReturn", composite.TotalReturn);
-        writer.WriteNumber("maxDrawdownRatio", composite.MaxDrawdownRatio);
+        if (composite.DrawdownUnavailableReason is null)
+        {
+            writer.WriteNumber("maxDrawdownRatio", composite.MaxDrawdownRatio);
+        }
+        else
+        {
+            writer.WriteNull("maxDrawdownRatio"); // the reason is named in diagnosticsUnavailable
+        }
 
         if (composite.WorstEpisode is { } episode)
         {
@@ -608,5 +666,7 @@ internal sealed class RunPortfolioBacktestTool : IMcpTool
         bool IsSuccess,
         string Status,
         string? Reason,
-        BacktestEvaluationArtifact? Artifact = null);
+        BacktestEvaluationArtifact? Artifact = null,
+        string? RunStatus = null,
+        bool ArithmeticFailure = false);
 }

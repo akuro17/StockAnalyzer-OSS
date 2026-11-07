@@ -100,6 +100,7 @@ The columns of every table are: the setting as it is labelled in the application
 | Framework | Training Wizard > Basic Settings > Model | PyTorch | PyTorch, LightGBM, TensorFlow (Regression: PyTorch only) | Not described in the application. |
 | Architecture | Training Wizard > Basic Settings > Model | lstm (the first architecture of the framework) | PyTorch: lstm, cnn, attn_lstm. LightGBM: gbdt. TensorFlow: lstm, gru, cnn. | Not described in the application. |
 | Storage Location | Training Wizard > Basic Settings > Model | TrainingArtifacts (Save Immediately) | TrainingArtifacts (Save Immediately), %Temp% Sandbox (Save on Deploy Only) | Not described in the application. The option labels say when the result is saved: immediately in the training work folder, or only when you deploy it. |
+| Model Display Name (Optional) | Training Wizard > Basic Settings > Model | empty (no name of your own) | Any text, at most 128 characters. | A name of your own for the model. It is saved when the trained model is registered, and is not used while the field is empty. |
 | Input length (bars) | Training Wizard > Basic Settings > Input shape | 60 | Whole number, at least 1. | Number of past bars of one input window. The minimum number of bars the data must hold is shown below the fields (Minimum bars required: N). |
 | Prediction length (bars) | Training Wizard > Basic Settings > Input shape | 5 | Whole number, at least 1. | Forward label horizon in bars. |
 

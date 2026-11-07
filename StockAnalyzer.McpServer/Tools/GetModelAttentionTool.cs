@@ -67,7 +67,8 @@ internal sealed class GetModelAttentionTool : IMcpTool
 
     public string Description =>
         "Computes attention weights of the prediction over historical bars for a registered model generation. " +
-        "Requires --enable-execution. Zero-mutation; results are not persisted.";
+        "The bars are read in the model's own time frame (D1, W1 or MN1) and, as on the chart, a running last week or month is included; " +
+        "a W1 or MN1 bar is dated by its first trading day. Requires --enable-execution. Zero-mutation; results are not persisted.";
 
     public bool IsHeavy => false;
 
@@ -84,6 +85,7 @@ internal sealed class GetModelAttentionTool : IMcpTool
     public async Task<string> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)
     {
         var (modelIdRaw, resolvedModelId, manifest) = RegisteredModelResolver.Resolve(_registry, arguments, ModelIdArgument);
+        RegisteredModelResolver.ModelTimeFrame modelFrame = RegisteredModelResolver.RequireTimeFrame(manifest, ModelIdArgument);
 
         string? symbolRaw = ToolArgs.String(arguments, SymbolArgument)?.Trim();
         if (string.IsNullOrWhiteSpace(symbolRaw))
@@ -95,8 +97,8 @@ internal sealed class GetModelAttentionTool : IMcpTool
         int requestedBars = Math.Min(_limits.MaxCandlesPerRequest, AttentionContract.MaxWindow);
         DateOnly? asOf = ToolArgs.Date(arguments, AsOfDateArgument);
         IReadOnlyList<CandleData> candles = asOf.HasValue
-            ? await _gateway.GetCandlesUpToAsync(resolvedSymbol, TimeFrame.D1, asOf.Value, requestedBars, cancellationToken).ConfigureAwait(false)
-            : await _gateway.GetCandlesAsync(resolvedSymbol, TimeFrame.D1, requestedBars, cancellationToken).ConfigureAwait(false);
+            ? await _gateway.GetCandlesUpToAsync(resolvedSymbol, modelFrame.Frame, asOf.Value, requestedBars, cancellationToken).ConfigureAwait(false)
+            : await _gateway.GetCandlesAsync(resolvedSymbol, modelFrame.Frame, requestedBars, cancellationToken).ConfigureAwait(false);
 
         if (candles.Count < AttentionContract.MinWindow)
         {
@@ -109,7 +111,7 @@ internal sealed class GetModelAttentionTool : IMcpTool
         var key = new AttentionRequestKey(
             resolvedModelId,
             resolvedSymbol,
-            manifest.Timeframe,
+            modelFrame.Type.ToString(),
             candles[^1].Timestamp,
             0);
 

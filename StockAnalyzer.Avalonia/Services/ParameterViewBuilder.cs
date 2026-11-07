@@ -326,10 +326,7 @@ public class ParameterViewBuilder
                     Padding = new Thickness(6, 2),
                     Margin = new Thickness(12, 0, 0, 0),
                     HorizontalAlignment = HorizontalAlignment.Left,
-                    Watermark = (parameterObject is StockAnalyzer.Core.Models.Parameters.ICrossTickerParameter &&
-                                 parameterObject is not StockAnalyzer.Core.Models.Parameters.CoreCorrelationParameter &&
-                                 parameterObject is not StockAnalyzer.Core.Models.Parameters.CoreCrossCorrelationParameter)
-                                 ? string.Empty : "Price vs Volume",
+                    Watermark = ComparisonSymbolWatermark(parameterObject),
                     ItemTemplate = BuildTickerItemTemplate()
                 };
 
@@ -577,10 +574,7 @@ public class ParameterViewBuilder
                     Height = LayoutConstants.IndicatorFormControlHeight,
                     Padding = new Thickness(6, 2),
                     HorizontalAlignment = HorizontalAlignment.Stretch,
-                    Watermark = (parameterObject is StockAnalyzer.Core.Models.Parameters.ICrossTickerParameter &&
-                                 parameterObject is not StockAnalyzer.Core.Models.Parameters.CoreCorrelationParameter &&
-                                 parameterObject is not StockAnalyzer.Core.Models.Parameters.CoreCrossCorrelationParameter)
-                                 ? string.Empty : "Price vs Volume",
+                    Watermark = ComparisonSymbolWatermark(parameterObject),
                     ItemTemplate = BuildTickerItemTemplate()
                 };
 
@@ -741,6 +735,14 @@ public class ParameterViewBuilder
         catch { }
         return Array.Empty<string>();
     }
+
+    /// <summary>
+    /// The hint of the comparison-symbol box: "Price vs Volume" when a blank symbol is a valid setting (<see cref="ICrossTickerParameter.ComparisonSymbolOptional"/>: Correlation and
+    /// CrossCorrelation) and for every parameter object that is not a two-symbol one; empty when the indicator cannot give a value without a comparison symbol.
+    /// The one definition behind both comparison-symbol boxes of this builder (no type is named here).
+    /// </summary>
+    internal static string ComparisonSymbolWatermark(object parameterObject)
+        => parameterObject is StockAnalyzer.Core.Models.Parameters.ICrossTickerParameter { ComparisonSymbolOptional: false } ? string.Empty : "Price vs Volume";
 
     private static IDataTemplate BuildTickerItemTemplate()
     {

@@ -61,6 +61,7 @@ public partial class MainWindowViewModel : ViewModelBase,
     private readonly IWindowBoundaryService _boundaryService;
     private readonly IWindowManagementService _windowManagement;
     private readonly IDetachedTabManager _detachedTabManager;
+    private readonly StockAnalyzer.Avalonia.Services.IMcpServerProcessService? _mcpServerProcessService;
     private bool _isTearingOff;
     private bool _isExiting;
     private bool _isDisposed;
@@ -240,8 +241,11 @@ public partial class MainWindowViewModel : ViewModelBase,
         ISourceIndicatorService? sourceIndicatorService = null,
         IDynamicPeriodDriverService? dynamicPeriodDriverService = null,
         IContainerRegistry? containerRegistry = null,
-        StockAnalyzer.Core.Services.Backtest.Configuration.IBacktestColumnSettingsManager? backtestColumnSettingsManager = null)
+        StockAnalyzer.Core.Services.Backtest.Configuration.IBacktestColumnSettingsManager? backtestColumnSettingsManager = null,
+        StockAnalyzer.Core.Common.IDataStorageState? dataStorageState = null,
+        StockAnalyzer.Avalonia.Services.IMcpServerProcessService? mcpServerProcessService = null)
     {
+        _mcpServerProcessService = mcpServerProcessService;
         _backtestColumnSettingsManager = backtestColumnSettingsManager;
         _sourceIndicatorService = sourceIndicatorService;
         _dynamicPeriodDriverService = dynamicPeriodDriverService;
@@ -252,6 +256,7 @@ public partial class MainWindowViewModel : ViewModelBase,
         _workspaceCoordinator = workspaceCoordinator ?? throw new ArgumentNullException(nameof(workspaceCoordinator));
         _serializationService = serializationService ?? throw new ArgumentNullException(nameof(serializationService));
         _workspaceCoordinator.Bind(this);
+        ShowStorageReadOnlyBannerIfNeeded(dataStorageState);
 
         _layoutSaveScheduler = layoutSaveScheduler ?? throw new ArgumentNullException(nameof(layoutSaveScheduler));
         _layoutSaveScheduler.RegisterSaveAction(() => _workspaceCoordinator.SaveActiveWorkspaceAsync());
@@ -922,6 +927,29 @@ public partial class MainWindowViewModel : ViewModelBase,
     }
 
     [RelayCommand]
+    private async Task StartMcpServerAsync()
+    {
+        if (_mcpServerProcessService is null)
+        {
+            _logger.LogWarning("IMcpServerProcessService is not available.");
+            return;
+        }
+
+        var result = await _mcpServerProcessService.StartServerAsync();
+        if (!result.Success)
+        {
+            _logger.LogError("Failed to start StockAnalyzer.McpServer: {Message}", result.Message);
+            await _dialogService.ShowAlertAsync(
+                _localizationService.GetString("Menu_McpServer"),
+                result.Message ?? "Failed to start StockAnalyzer.McpServer.");
+        }
+        else
+        {
+            _logger.LogInformation("StockAnalyzer.McpServer started: {Message}", result.Message);
+        }
+    }
+
+    [RelayCommand]
     private async Task OpenTrainingWizardAsync()
     {
         await _dialogService.ShowTrainingWizardDialogAsync();
@@ -960,6 +988,18 @@ public partial class MainWindowViewModel : ViewModelBase,
 
                 // Make this loaded workspace the active default for next startup
                 await _workspaceCoordinator.SaveActiveWorkspaceAsync();
+
+                // Parts that could not be restored keep automatic saving locked (the save above was then skipped): say so instead of "success".
+                if (_stateStore.RestoreIssue is { } loadIssue)
+                {
+                    await _dialogService.ShowAlertAsync(
+                        _localizationService.GetString("Banner_WorkspaceRestore_DetailsTitle"),
+                        string.Format(
+                            _localizationService.GetString("Dialog_WorkspaceLoadPartial"),
+                            filePath,
+                            BuildWorkspaceRestoreDetails(loadIssue)));
+                    return;
+                }
 
                 string successTemplate = _localizationService.GetString("Dialog_WorkspaceLoadSuccess") ?? "Workspace loaded from {0}";
                 await _dialogService.ShowAlertAsync(
@@ -2078,6 +2118,15 @@ public partial class MainWindowViewModel : ViewModelBase,
         
         // Cancel any pending debounced saves to ensure the final Flush is atomic
         _layoutSaveScheduler.Cancel();
+
+        try
+        {
+            _mcpServerProcessService?.StopServer();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error while stopping McpServer during PrepareExit.");
+        }
     }
 
     /// <summary>
@@ -2088,6 +2137,15 @@ public partial class MainWindowViewModel : ViewModelBase,
     {
         try
         {
+            try
+            {
+                _mcpServerProcessService?.StopServer();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Error while stopping McpServer during ForceSaveOnShutdown.");
+            }
+
             // Flush any pending drawing-object saves synchronously first. ChartViewModel.Dispose()
             // has an equivalent flush, but it depends on the DI container's cascading disposal
             // during desktop.ShutdownRequested, which is not always reached (or completed) before
@@ -2245,6 +2303,10 @@ public partial class MainWindowViewModel : ViewModelBase,
             OnPropertyChanged(nameof(RightSelectedTabIndex));
             OnPropertyChanged(nameof(TopSelectedTabIndex));
             OnPropertyChanged(nameof(BottomSelectedTabIndex));
+        }
+        else if (e.PropertyName is nameof(LayoutStateStore.AutoSaveLock) or nameof(LayoutStateStore.RestoreIssue))
+        {
+            RequestWorkspaceRestoreBannerRefresh();
         }
     }
 

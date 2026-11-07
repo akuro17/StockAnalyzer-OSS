@@ -16,6 +16,7 @@ using StockAnalyzer.Core.Models.Parameters;
 using StockAnalyzer.Core.Models.Screener;
 using StockAnalyzer.Core.Services.Backtest.Engine;
 using StockAnalyzer.Core.Services;
+using StockAnalyzer.Core.Services.Screener;
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -69,6 +70,7 @@ public partial class IndicatorRegistrationViewModel : ViewModelBase, IDisposable
     private static readonly ConcurrentDictionary<Type, PropertyInfo[]> _propertyCache = new();
     private readonly IIndicatorFactory? _indicatorFactory;
     private readonly IScreenerCatalogProvider _catalogProvider;
+    private readonly bool _offersTwoSymbolIndicatorsOfTheScreener;
     private readonly ILocalizationService _localizationService;
     private readonly ILogger<IndicatorRegistrationViewModel> _logger;
     private readonly ITemplateService? _templateService;
@@ -488,10 +490,12 @@ public partial class IndicatorRegistrationViewModel : ViewModelBase, IDisposable
         ITemplateService? templateService = null,
         IToastNotificationService? toastService = null,
         StockAnalyzer.Core.Services.IStockAnalyzerSettings? settings = null,
-        IDialogService? dialogService = null)
+        IDialogService? dialogService = null,
+        bool offersTwoSymbolIndicatorsOfTheScreener = true)
     {
         _indicatorFactory = indicatorFactory ?? App.Current?.Services?.GetService<IIndicatorFactory>();
         _catalogProvider = catalogProvider ?? new ScreenerCatalogProvider();
+        _offersTwoSymbolIndicatorsOfTheScreener = offersTwoSymbolIndicatorsOfTheScreener;
         _localizationService = localizationService
             ?? App.Current?.Services?.GetService<ILocalizationService>()
             ?? (LocalizationManager.Instance != null ? new LocalizationService() : NullLocalizationService.Instance);
@@ -593,7 +597,9 @@ public partial class IndicatorRegistrationViewModel : ViewModelBase, IDisposable
     private void BuildCatalog()
     {
         _allCatalogItems.Clear();
-        _allCatalogItems.AddRange(_catalogProvider.GetCatalogItems(_indicatorFactory));
+        _allCatalogItems.AddRange(_offersTwoSymbolIndicatorsOfTheScreener
+            ? _catalogProvider.GetCatalogItemsForScreener(_indicatorFactory)
+            : _catalogProvider.GetCatalogItems(_indicatorFactory));
         ApplyFilters();
     }
 
@@ -1073,6 +1079,46 @@ public partial class IndicatorRegistrationViewModel : ViewModelBase, IDisposable
     }
 
     /// <summary>True (after telling the user) when the template carries an Offset outside the accepted range; the template is then not applied at all.</summary>
+    /// <summary>
+    /// The localized error naming the first template condition that uses an indicator this host does not offer (the Screener-only two-symbol indicators when
+    /// <c>offersTwoSymbolIndicatorsOfTheScreener</c> is false), or null when there is none. The right side counts only when the condition compares against an indicator.
+    /// </summary>
+    private string? FindTemplateIndicatorNotOffered(ScreenerIndicatorTemplate template)
+    {
+        if (_offersTwoSymbolIndicatorsOfTheScreener)
+            return null;
+
+        for (int i = 0; i < template.Entries.Count; i++)
+        {
+            var entry = template.Entries[i];
+            ScreenerIndicatorSideConfig? named = IsScreenerOnlyIndicator(entry.LeftHand) ? entry.LeftHand
+                : entry.TargetMode == RightHandTargetMode.Indicator && IsScreenerOnlyIndicator(entry.RightHand) ? entry.RightHand
+                : null;
+            if (named != null)
+            {
+                return _localizationService.GetFormattedString(
+                    "Screener_Template_IndicatorNotOffered",
+                    "Template not applied: condition {0} uses {1}, which is not available here because it needs the bars of a comparison symbol.",
+                    i + 1, named.IndicatorType.GetDescription());
+            }
+        }
+
+        return null;
+    }
+
+    private static bool IsScreenerOnlyIndicator(ScreenerIndicatorSideConfig? side)
+        => side is { CategoryType: ScreenerItemCategoryType.Indicator } && ScreenerIndicatorEligibility.IsScreenerOnlyType(side.IndicatorType);
+
+    private bool RejectTemplateIndicatorsNotOffered(ScreenerIndicatorTemplate template)
+    {
+        string? violation = FindTemplateIndicatorNotOffered(template);
+        if (violation == null) return false;
+
+        _logger.LogWarning("Cannot apply screener template '{Name}': {Reason}", template.Name, violation);
+        _toastService?.ShowNotification(violation);
+        return true;
+    }
+
     private bool RejectTemplateOffsets(ScreenerIndicatorTemplate template)
     {
         string? violation = FindTemplateOffsetViolation(template);
@@ -1087,7 +1133,7 @@ public partial class IndicatorRegistrationViewModel : ViewModelBase, IDisposable
     private async Task LoadTemplateAsync(ScreenerIndicatorTemplate? template)
     {
         if (_isDisposed || _templateCrud == null || _templateCrud.IsBusy || template == null) return;
-        if (RejectTemplateOffsets(template)) return;
+        if (RejectTemplateOffsets(template) || RejectTemplateIndicatorsNotOffered(template)) return;
 
         bool allFit = true;
         await _templateCrud.ApplyAsync(
@@ -1111,7 +1157,7 @@ public partial class IndicatorRegistrationViewModel : ViewModelBase, IDisposable
     private async Task AppendTemplateAsync(ScreenerIndicatorTemplate? template)
     {
         if (_isDisposed || _templateCrud == null || _templateCrud.IsBusy || template == null) return;
-        if (RejectTemplateOffsets(template)) return;
+        if (RejectTemplateOffsets(template) || RejectTemplateIndicatorsNotOffered(template)) return;
 
         bool allFit = true;
         await _templateCrud.ApplyAsync(

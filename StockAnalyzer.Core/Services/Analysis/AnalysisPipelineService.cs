@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -16,7 +17,7 @@ namespace StockAnalyzer.Core.Services.Analysis;
 /// Default implementation of the Analysis Pipeline Service with DAG dependency resolution
 /// for Indicator-on-Indicator chaining and dynamic adaptive modulation.
 /// </summary>
-public class AnalysisPipelineService : IAnalysisPipelineService
+public class AnalysisPipelineService : IAnalysisPipelineService, ICancellableIndicatorCalculation
 {
     private readonly IReverseWatchAnalysisService _reverseWatchService;
     private readonly IPythonService? _pythonService;
@@ -422,12 +423,22 @@ public class AnalysisPipelineService : IAnalysisPipelineService
         return result;
     }
 
-    public async Task<Dictionary<string, IIndicatorResult>> CalculateIndicatorsAsync(
+    public Task<Dictionary<string, IIndicatorResult>> CalculateIndicatorsAsync(
         IReadOnlyList<CoreCandleData> candles,
         IEnumerable<CoreIndicatorSettings> settings,
         IReadOnlyDictionary<string, IReadOnlyList<CoreCandleData?>>? secondaryCandlesBySymbol = null)
+        => CalculateIndicatorsAsync(candles, settings, secondaryCandlesBySymbol, CancellationToken.None);
 
+    /// <inheritdoc />
+    public async Task<Dictionary<string, IIndicatorResult>> CalculateIndicatorsAsync(
+        IReadOnlyList<CoreCandleData> candles,
+        IEnumerable<CoreIndicatorSettings> settings,
+        IReadOnlyDictionary<string, IReadOnlyList<CoreCandleData?>>? secondaryCandlesBySymbol,
+        CancellationToken cancellationToken)
     {
+        // A cancelled call throws also when there is nothing to calculate; the same check guards every indicator below.
+        cancellationToken.ThrowIfCancellationRequested();
+
         var result = new Dictionary<string, IIndicatorResult>();
         if (candles == null || settings == null || candles.Count == 0) return result;
 
@@ -441,6 +452,10 @@ public class AnalysisPipelineService : IAnalysisPipelineService
 
         foreach (var setting in orderedSettings)
         {
+            // Before an indicator is started, and outside both try blocks below: a cancellation must leave the call, not become a failed result of this indicator.
+            // An indicator that is already running is not interrupted.
+            cancellationToken.ThrowIfCancellationRequested();
+
             if (!setting.TypeEnum.HasValue) continue;
 
             ICoreIndicator? indicator = null;

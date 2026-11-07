@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using StockAnalyzer.Core.MathUtils;
 using StockAnalyzer.Core.Models;
@@ -164,5 +165,33 @@ public class PatternRecognitionServiceTests
 
         Assert.True(result.IsSuccessful);
         Assert.Equal("DoubleBottom", result.Patterns[0].Name);
+    }
+
+    [Fact]
+    public async Task DetectAsync_AlreadyCancelledToken_IsCancelledNotReportedAsFailure()
+    {
+        var candles = CreateTemplateCandles(DoubleBottomTemplate, WindowLength);
+        using var source = new CancellationTokenSource();
+        source.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => CreateService().DetectAsync(candles, WindowLength, WindowLength, 5, 0.5, cancellationToken: source.Token));
+    }
+
+    [Fact]
+    public async Task DetectAsync_CancelledWhileScanning_StopsTheScanAndRethrowsTheCancellation()
+    {
+        // About 1 500 bars with windows of 10..700 bars at every position is hours of work; it can only end promptly through the cancellation check in the scan.
+        var candles = CreateTemplateCandles(DoubleBottomTemplate, 1500);
+        using var source = new CancellationTokenSource();
+
+        Task<PatternRecognitionResult> scan = CreateService().DetectAsync(candles, minWindow: 10, maxWindow: 700, windowStep: 1, cancellationToken: source.Token);
+        await Task.Delay(200);
+        Assert.False(scan.IsCompleted, "the scan finished before it could be cancelled; make the workload larger");
+        source.Cancel();
+
+        Task finished = await Task.WhenAny(scan, Task.Delay(TimeSpan.FromSeconds(30)));
+        Assert.Same(scan, finished);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => scan);
     }
 }

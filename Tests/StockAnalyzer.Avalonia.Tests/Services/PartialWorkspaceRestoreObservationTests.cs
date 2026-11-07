@@ -9,6 +9,7 @@ using Microsoft.Extensions.Options;
 using Moq;
 using StockAnalyzer.Avalonia.Services;
 using StockAnalyzer.Avalonia.Tests.Services;
+using StockAnalyzer.Core.Common;
 using StockAnalyzer.Core.Constants;
 using StockAnalyzer.Core.Interfaces;
 using StockAnalyzer.Core.Models;
@@ -31,16 +32,20 @@ public class PartialWorkspaceRestoreObservationTests : IDisposable
 {
     private readonly ITestOutputHelper _output;
     private readonly string _path = Path.Combine(Path.GetTempPath(), "sa_p2_" + Guid.NewGuid().ToString("N") + ".json");
+    private byte[] _originalBytes = Array.Empty<byte>();
 
     public PartialWorkspaceRestoreObservationTests(ITestOutputHelper output)
     {
         _output = output;
-        File.WriteAllText(_path, "{}"); // InitializeWorkspaceAsync only continues when the file exists
     }
 
     public void Dispose()
     {
         try { File.Delete(_path); } catch (IOException) { }
+        foreach (var copy in Directory.GetFiles(Path.GetDirectoryName(_path)!, CorruptedFile.PreservedSearchPattern(Path.GetFileName(_path))))
+        {
+            try { File.Delete(copy); } catch (IOException) { }
+        }
     }
 
     private static WorkspaceSettings SavedWorkspace() => new()
@@ -87,11 +92,13 @@ public class PartialWorkspaceRestoreObservationTests : IDisposable
     private static List<string> WriteTrace(Mock<IWorkspaceLayoutTarget> target)
         => target.Invocations.Select(Describe).Where(s => s.Length > 0).ToList();
 
-    private async Task<(List<string> Trace, WorkspaceLifecycleState FinalState, Mock<IWorkspaceLayoutTarget> Target)> RunAsync(string failingStage)
+    private async Task<(List<string> Trace, WorkspaceLifecycleState FinalState, Mock<IWorkspaceLayoutTarget> Target, LayoutStateStore Store)> RunAsync(string failingStage)
     {
         var store = new LayoutStateStore();
+        // Stage 1 reads the real file now (D-3'), so the saved workspace must be on disk, written by the real serializer.
+        using (var writer = new WorkspaceSerializationService()) await writer.SaveAsync(SavedWorkspace(), _path);
+        _originalBytes = await File.ReadAllBytesAsync(_path);
         var serialization = new Mock<IWorkspaceSerializationService>();
-        serialization.Setup(s => s.LoadAsync(It.IsAny<string>())).ReturnsAsync(SavedWorkspace());
         var coordinator = new WorkspaceCoordinator(
             store,
             serialization.Object,
@@ -117,7 +124,7 @@ public class PartialWorkspaceRestoreObservationTests : IDisposable
 
         await coordinator.InitializeWorkspaceAsync();
 
-        return (WriteTrace(target), store.LifecycleState, target);
+        return (WriteTrace(target), store.LifecycleState, target, store);
     }
 
     [Theory]
@@ -126,13 +133,21 @@ public class PartialWorkspaceRestoreObservationTests : IDisposable
     [InlineData(nameof(IWorkspaceLayoutTarget.RefreshTickerListNodes))]
     public async Task FailureInOneStage_TraceOfWhatRanWhatWasSkippedAndWhatTheFallbackUndid(string failingStage)
     {
-        var (trace, finalState, target) = await RunAsync(failingStage);
+        var (trace, finalState, target, store) = await RunAsync(failingStage);
 
         _output.WriteLine($"Failing stage: {failingStage}; lifecycle state afterwards: {finalState}");
         for (int i = 0; i < trace.Count; i++) _output.WriteLine($"{i + 1,3}. {trace[i]}");
 
-        // The failure does not escape and the app returns to Ready (so auto-save is enabled again afterwards).
+        // The failure does not escape and the app returns to Ready. D-3' (was: "so auto-save is enabled again afterwards"):
+        // automatic saving is now LOCKED, a copy of the file is kept and the original is untouched, so the half-applied screen
+        // can never be written over the saved workspace (defect F1/F2).
         Assert.Equal(WorkspaceLifecycleState.Ready, finalState);
+        Assert.Equal(AutoSaveLock.RestoreAnomaly, store.AutoSaveLock);
+        Assert.Equal(WorkspaceRestoreIssueKind.RestoreFailed, store.RestoreIssue!.Kind);
+        var copy = Assert.Single(Directory.GetFiles(Path.GetDirectoryName(_path)!, CorruptedFile.PreservedSearchPattern(Path.GetFileName(_path))));
+        Assert.Equal(copy, store.RestoreIssue.PreservedCopyPath);
+        Assert.Equal(_originalBytes, await File.ReadAllBytesAsync(copy));
+        Assert.Equal(_originalBytes, await File.ReadAllBytesAsync(_path)); // the saved workspace on disk is exactly what stage 1 read
 
         // Stages after the failing one never ran.
         string[] stageOrder = { "ApplyPanelTabs()", "RestoreDetachedTabs()", "RefreshTickerListNodes()" };

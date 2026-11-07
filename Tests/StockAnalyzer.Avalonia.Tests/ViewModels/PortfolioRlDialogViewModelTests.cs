@@ -225,14 +225,15 @@ public sealed class PortfolioRlDialogViewModelTests : IDisposable
     private static TimeProvider NoonUtc(DateOnly day) => new ManualTimeProvider(new DateTimeOffset(day.ToDateTime(new TimeOnly(12, 0)), TimeSpan.Zero), TimeZoneInfo.Utc);
 
     private (PortfolioRlDialogViewModel Vm, FakeService Service, FakeResolver Resolver, FakeTickerStateStore Store) Create(string language = "en", Func<DateOnly, DateOnly, PanelPreflight>? preflight = null, TimeProvider? clock = null,
-        RlPortfolioSettings? settings = null, FakeTransfer? transfer = null, StockAnalyzer.Core.Services.StoredPeriod.IStoredPeriodAdvisor? periodAdvisor = null)
+        RlPortfolioSettings? settings = null, FakeTransfer? transfer = null, StockAnalyzer.Core.Services.StoredPeriod.IStoredPeriodAdvisor? periodAdvisor = null,
+        StockAnalyzer.Core.Common.IDataStorageState? dataStorageState = null)
     {
         var service = new FakeService();
         if (settings is not null) service.Settings = settings;
         service.Preflight = (_, start, end, _, _, _) => Task.FromResult((preflight ?? ((s, e) => Pre(true, s, e, Ready(4))))(start, end));
         var resolver = new FakeResolver();
         var store = new FakeTickerStateStore();
-        var vm = new PortfolioRlDialogViewModel(service, resolver, store, new FakeBacktestDefaultSettingsManager(), new JsonLocalization(language), clock, transfer, periodAdvisor);
+        var vm = new PortfolioRlDialogViewModel(service, resolver, store, new FakeBacktestDefaultSettingsManager(), new JsonLocalization(language), clock, transfer, periodAdvisor, dataStorageState: dataStorageState);
         _viewModels.Add(vm);
         return (vm, service, resolver, store);
     }
@@ -341,6 +342,34 @@ public sealed class PortfolioRlDialogViewModelTests : IDisposable
         Assert.True(vm.CanStart);
         Assert.Equal("", vm.BlockerText);
         Assert.Equal(calls, service.PreflightCalls.Count);        // an exclusion tick is a rule change, not a new check
+    }
+
+    // ----- D-2' Run 3b: read-only storage mode -----
+
+    [Fact]
+    public async Task ReadOnlyStorage_CannotStart_EvenWithEveryInputReady_AndTheFooterNamesTheReason()
+    {
+        var (vm, _, _, store) = Create(dataStorageState: StockAnalyzer.TestSupport.TestDataStorageState.StateOf(writable: false));
+        await Loaded(vm, store);
+
+        Assert.False(vm.IsStorageWritable);
+        Assert.False(vm.CanStart);
+        Assert.False(vm.StartCommand.CanExecute(null));
+        Assert.True(vm.HasStartBlocker);
+        Assert.Equal(StockAnalyzer.Avalonia.Services.LocalizationManager.Instance[StockAnalyzer.Avalonia.Services.StorageFeatureGate.DisabledToolTipKey], vm.StartBlockerDisplay);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task NoStateOrWritableStorage_StartsExactlyAsBefore(bool withWritableState)
+    {
+        var (vm, _, _, store) = Create(dataStorageState: withWritableState ? StockAnalyzer.TestSupport.TestDataStorageState.StateOf(writable: true) : null);
+        await Loaded(vm, store);
+
+        Assert.True(vm.IsStorageWritable);
+        Assert.True(vm.CanStart);
+        Assert.False(vm.HasStartBlocker);
     }
 
     [Fact]

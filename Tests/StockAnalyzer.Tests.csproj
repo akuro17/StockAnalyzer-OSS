@@ -54,6 +54,7 @@
 
   <ItemGroup>
     <Compile Include="StockAnalyzer.Core.Tests\TestHelpers\ParquetFixtureBuilder.cs" Link="ParquetFixtureBuilder.cs" />
+    <Compile Include="StockAnalyzer.Core.Tests\TestHelpers\DeterministicNoise.cs" Link="DeterministicNoise.cs" />
   </ItemGroup>
 
   <ItemGroup>

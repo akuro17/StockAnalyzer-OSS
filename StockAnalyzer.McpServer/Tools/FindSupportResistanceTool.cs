@@ -49,7 +49,10 @@ internal sealed class FindSupportResistanceTool : IMcpTool
 
     public string Description =>
         "Extracts support and resistance price levels, hit counts, and strength scores using Singular Spectrum Analysis (SSA). " +
-        "Computes active nearest support/resistance levels and distance ratios relative to the current price. Read-only and causal.";
+        "Computes active nearest support/resistance levels and distance ratios relative to the current price. Read-only. " +
+        "Causal as of endDate (bars after it are never read), but the SSA reconstruction smooths over the whole loaded window including its last bar, " +
+        "so the levels are not prefix-invariant: a level can move when later bars are added. " +
+        "clusterTolerance is a multiplier of residualStdDev; effectiveClusterTolerance is the resulting price distance.";
 
     public bool IsHeavy => false;
 
@@ -66,7 +69,7 @@ internal sealed class FindSupportResistanceTool : IMcpTool
         .Integer(NumComponentsArgument, $"Number of reconstructed SSA components when autoRank is false (>= 1). Default {IndicatorDefaultConstants.SsaAnomalyDefaultNumComponents}.", defaultValue: IndicatorDefaultConstants.SsaAnomalyDefaultNumComponents, minimum: 1)
         .Boolean(AutoRankArgument, "Automatically estimate signal rank via cumulative energy threshold. Default true.")
         .Integer(MaxLevelsArgument, $"Maximum total support and resistance levels to return (1..{_limits.MaxSupportResistanceLevels}). Default {_limits.MaxSupportResistanceLevels}.", defaultValue: _limits.MaxSupportResistanceLevels, minimum: 1, maximum: _limits.MaxSupportResistanceLevels)
-        .Number(ClusterToleranceArgument, "Clustering price tolerance for grouping extrema. Default 0.5.")
+        .Number(ClusterToleranceArgument, "StructuralPivots only: a MULTIPLIER of the residual standard deviation (sigma_res) of the SSA reconstruction, not a price. Extrema closer than clusterTolerance x sigma_res (reported as effectiveClusterTolerance, in price units) are merged into one level. Default 0.5.")
         .Number(MultiplierArgument, $"Volatility multiplier for DynamicEnvelopes mode. Default {IndicatorDefaultConstants.SsaResidualBandDefaultMultiplier}.")
         .Boolean(SymbolResolver.AllowUnregisteredArgument, "Accept a symbol that is not in the ticker list but has stored bars. Default false.")
         .Build();
@@ -221,6 +224,18 @@ internal sealed class FindSupportResistanceTool : IMcpTool
             writer.WriteNumber("barCount", loaded.Count);
             writer.WriteString("mode", ssaMode.ToString());
             writer.WriteNumber("currentPrice", currentPrice);
+
+            // The scale the levels were clustered on: levels closer than effectiveClusterTolerance (price units) are merged.
+            // Only StructuralPivots clusters extrema, so the other modes report null.
+            writer.WriteNumber("residualStdDev", (decimal)result.ResidualStdDev);
+            if (ssaMode == SsaSupportResistanceMode.StructuralPivots)
+            {
+                writer.WriteNumber("effectiveClusterTolerance", (decimal)SsaSupportResistanceEngine.EffectiveClusterTolerance((double)clusterTolerance, result.ResidualStdDev));
+            }
+            else
+            {
+                writer.WriteNull("effectiveClusterTolerance");
+            }
 
             if (result.ActiveSupport.HasValue)
             {

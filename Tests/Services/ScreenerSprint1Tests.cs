@@ -198,6 +198,36 @@ public class ScreenerSprint1Tests
     }
 
     [Fact]
+    public void ScreenerValueExtractor_SideWithParametersButNoPeriod_DoesNotInheritThePeriodOfAnEarlierCondition()
+    {
+        var candles = CreateTestCandles(120);
+        ScreenerIndicatorSideConfig WithoutPeriod() => new()
+        {
+            IndicatorType = IndicatorType.BB,
+            TimeFrame = TimeFrame.D1,
+            OutputName = "MiddleBand",
+            Parameters = new Dictionary<string, object> { { "StdDevMultiplier", 2m } }
+        };
+
+        decimal? expected = new ScreenerValueExtractor().ExtractValueNullable(WithoutPeriod(), candles);
+
+        var shared = new ScreenerValueExtractor();
+        var earlier = new ScreenerIndicatorSideConfig
+        {
+            IndicatorType = IndicatorType.BB,
+            TimeFrame = TimeFrame.D1,
+            OutputName = "MiddleBand",
+            Parameters = new Dictionary<string, object> { { "Period", 60 }, { "StdDevMultiplier", 2m } }
+        };
+        Assert.NotNull(shared.ExtractValueNullable(earlier, candles));
+
+        decimal? actual = shared.ExtractValueNullable(WithoutPeriod(), candles);
+
+        Assert.NotNull(expected);
+        Assert.Equal(expected, actual);
+    }
+
+    [Fact]
     public void ScreenerValueExtractor_BlockedIndicator_ReturnsNullAndRecordsFault()
     {
         var extractor = new ScreenerValueExtractor();

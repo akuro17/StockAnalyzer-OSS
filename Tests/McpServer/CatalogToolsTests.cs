@@ -170,6 +170,45 @@ public sealed class CatalogToolsTests
     }
 
     [Fact]
+    public async Task ScreenerEligibilityIsReportedBesideTheUnchangedBacktestEligibility_AndOnlyTheTwoSymbolTypesDiffer()
+    {
+        // G-1 / G1-T4b: the new field follows the Screener's rule; backtestEligibility is the Backtest's and does not change.
+        IndicatorType[] twoSymbol = BacktestIndicatorEligibility.SynchronousCalculationUnsupportedTypes
+            .Where(type => Factory.IsRegistered(type) && Factory.Create(type) is ICrossTickerIndicator)
+            .ToArray();
+        Assert.Equal(7, twoSymbol.Length);
+
+        string filter = string.Join(",", twoSymbol.Concat(new[] { IndicatorType.RSI, IndicatorType.Correlation, IndicatorType.ZigZag }).Select(type => $"\"{type}\""));
+        using var response = await CallCapabilitiesAsync($$"""{"indicatorTypeFilter":[{{filter}}]}""");
+
+        foreach (IndicatorType type in twoSymbol)
+        {
+            JsonElement entry = Indicator(response, type.ToString());
+            Assert.Equal("SynchronousCalculationUnsupported", entry.GetProperty("backtestEligibility").GetString());
+            Assert.Equal("Allowed", entry.GetProperty("screenerEligibility").GetString());
+            Assert.True(entry.GetProperty("isCrossTicker").GetBoolean());
+        }
+
+        Assert.Equal("NonCausal", Indicator(response, "ZigZag").GetProperty("screenerEligibility").GetString());
+        foreach (string type in new[] { "RSI", "Correlation" })
+        {
+            JsonElement entry = Indicator(response, type);
+            Assert.Equal("Allowed", entry.GetProperty("screenerEligibility").GetString());
+            Assert.Equal(entry.GetProperty("backtestEligibility").GetString(), entry.GetProperty("screenerEligibility").GetString());
+        }
+    }
+
+    [Fact]
+    public async Task TheCompactListKeepsItsFields_TheScreenerEligibilityIsADetail()
+    {
+        using var response = await CallCapabilitiesAsync();
+
+        JsonElement rsi = Indicator(response, "RSI");
+        Assert.True(rsi.TryGetProperty("backtestEligibility", out _));
+        Assert.False(rsi.TryGetProperty("screenerEligibility", out _));
+    }
+
+    [Fact]
     public void EveryRegisteredIndicatorHasSeriesAndWellFormedParameters()
     {
         var knownTypes = new[]

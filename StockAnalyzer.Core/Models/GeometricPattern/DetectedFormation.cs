@@ -41,6 +41,12 @@ public class DetectedFormation
     /// <summary>True if a distinct breakout occurred after the last pivot.</summary>
     public bool IsBrokenOut { get; init; } = true;
 
+    /// <summary>
+    /// Candle index of the last swing pivot the trendlines were fitted to. Equal to <see cref="EndIndex"/> unless the formation has broken out,
+    /// in which case <see cref="EndIndex"/> is the breakout bar (an ordinary bar, not a pivot) and this is the pivot before it.
+    /// </summary>
+    public int LastPivotIndex { get; init; }
+
     /// <summary>The start <see cref="DateTime"/> of the formation.</summary>
     public DateTime StartTime { get; }
 
@@ -63,6 +69,7 @@ public class DetectedFormation
         Type = type;
         StartIndex = startIndex;
         EndIndex = endIndex;
+        LastPivotIndex = endIndex;
         UpperSlope = upperSlope;
         UpperIntercept = upperIntercept;
         LowerSlope = lowerSlope;

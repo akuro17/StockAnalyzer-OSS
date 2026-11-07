@@ -85,7 +85,8 @@ internal sealed class ScreenerBarsDataService : IDataService
         ArgumentOutOfRangeException.ThrowIfNegative(count);
 
         IReadOnlyList<CandleData> daily = await _inner.LoadCandlesAsync(symbol, TimeFrame.D1, 0).ConfigureAwait(false);
-        DateOnly endDate = Selection.AsOfDate ?? DateOnly.MaxValue;
+        // Cut once for all frames: each frame is built from the same days, so a date that cuts the history makes one copy per symbol and not one per frame.
+        IReadOnlyList<CandleData> dailyUpToDate = AsOfCandleWindow.CutAt(daily, Selection.AsOfDate ?? DateOnly.MaxValue);
         var byFrame = new Dictionary<TimeFrame, IReadOnlyList<CandleData>>(frames.Count);
         foreach (TimeFrame frame in frames)
         {
@@ -100,7 +101,7 @@ internal sealed class ScreenerBarsDataService : IDataService
             }
 
             FrameRecord record = _frameRecords.GetOrAdd(frame, static _ => new FrameRecord());
-            IReadOnlyList<CandleData> window = AsOfCandleWindow.Build(daily, endDate, frame, 0);
+            IReadOnlyList<CandleData> window = AsOfCandleWindow.BuildFromCut(dailyUpToDate, frame, 0);
             window = ApplyPartialPeriodRule(symbol, frame, daily, window, record.SkippedPartial, record.EvaluatedPartial);
             if (window.Count == 0)
             {
@@ -187,8 +188,5 @@ internal sealed class ScreenerBarsDataService : IDataService
 
     /// <summary>The date the bars are known up to: the as-of date, but never later than the last stored daily bar (the rule of <c>sa_get_candles</c>).</summary>
     private static DateTime ReferenceDate(IReadOnlyList<CandleData> daily, DateOnly? asOfDate)
-    {
-        DateTime lastStored = daily[^1].Timestamp.Date;
-        return asOfDate is { } asOf && asOf.ToDateTime(TimeOnly.MinValue) < lastStored ? asOf.ToDateTime(TimeOnly.MinValue) : lastStored;
-    }
+        => TimeFrameAggregator.ReferenceDate(daily[^1].Timestamp, asOfDate);
 }

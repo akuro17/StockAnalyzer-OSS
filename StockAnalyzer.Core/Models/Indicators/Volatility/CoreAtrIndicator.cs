@@ -22,18 +22,19 @@ public class CoreAtrIndicator : CoreIndicatorBase
         if (candles.Count < 2) return IndicatorResult.Success(_values);
         _values.Add(null);
 
-        var trList = new List<decimal>();
+        // Only the first Period true ranges are ever averaged (bars 1..Period), so a running sum replaces the list of every true range.
+        decimal firstWindowSum = 0m;
         for (int i = 1; i < candles.Count; i++)
         {
             decimal tr = Math.Max(candles[i].High - candles[i].Low,
                          Math.Max(Math.Abs(candles[i].High - candles[i - 1].Close),
                                   Math.Abs(candles[i].Low - candles[i - 1].Close)));
-            trList.Add(tr);
+            if (i <= Period) firstWindowSum += tr;
 
             if (i < Period) { _values.Add(null); continue; }
 
             if (i == Period)
-                _values.Add(trList.Average());
+                _values.Add(firstWindowSum / Period);
             else
                 _values.Add(((_values[^1]!.Value * (Period - 1)) + tr) / Period);
         }

@@ -290,6 +290,56 @@ public sealed class PortfolioEquityComposerTests
     }
 
     [Fact]
+    public void ADrawdownThatOverflows_ReturnsTheReasonInsteadOfThrowing_AndKeepsTheCompositeEquity()
+    {
+        // Capital 0.01 and an equity of -7e28 on day 0 (back to 0.01 on day 1): the depth (0.01 + 7e28) / 0.01 does not fit a decimal. The composite equity,
+        // the final equity and the pooled statistics are still returned; only the drawdown figures are empty and the reason is named (Q22/Q23).
+        var points = ImmutableArray.Create(Point(0, 0, -70_000_000_000_000_000_000_000_000_000m), Point(1, 1, 0.01m));
+        var sleeve = new SleeveBacktestInput("A", 0.01m, true, null, points, ImmutableArray<BacktestTrade>.Empty);
+
+        CompositePortfolioResult result = PortfolioEquityComposer.Compose(0.01m, new[] { sleeve }, BaseUtc);
+
+        Assert.Equal(BacktestDiagnosticReasons.ArithmeticOverflow, result.DrawdownUnavailableReason);
+        Assert.Null(result.WorstEpisode);
+        Assert.Equal(0m, result.MaxDrawdownRatio);
+        Assert.Equal(2, result.CompositeEquityPoints.Length);
+        Assert.Equal(0.01m, result.FinalEquity);
+    }
+
+    [Fact]
+    public void ANormalRun_HasNoDrawdownUnavailableReason()
+    {
+        var points = ImmutableArray.Create(Point(0, 0, 90000m), Point(1, 1, 110000m));
+        var sleeve = new SleeveBacktestInput("A", 100000m, true, null, points, ImmutableArray<BacktestTrade>.Empty);
+
+        Assert.Null(PortfolioEquityComposer.Compose(100000m, new[] { sleeve }, BaseUtc).DrawdownUnavailableReason);
+    }
+
+    [Fact]
+    public void AnInsolventSleeve_StaysInTheCompositeAtItsFinalEquity_WhileAFailedSleeveWouldHideTheLoss()
+    {
+        // Sleeve A lost everything (final equity 0, forward-filled afterwards); sleeve B gained. Treating A as a failed sleeve (flat cash 500) would show
+        // 1030 instead of 530: this is why an insolvent run is kept as a successful sleeve and only labelled by the tool's runStatus.
+        var insolvent = ImmutableArray.Create(Point(0, 0, 300m), Point(1, 1, 0m));
+        var gaining = ImmutableArray.Create(Point(0, 0, 510m), Point(1, 1, 520m), Point(2, 2, 530m));
+
+        CompositePortfolioResult kept = PortfolioEquityComposer.Compose(1000m, new[]
+        {
+            new SleeveBacktestInput("A", 500m, true, null, insolvent, ImmutableArray<BacktestTrade>.Empty),
+            new SleeveBacktestInput("B", 500m, true, null, gaining, ImmutableArray<BacktestTrade>.Empty),
+        }, BaseUtc);
+        CompositePortfolioResult hidden = PortfolioEquityComposer.Compose(1000m, new[]
+        {
+            new SleeveBacktestInput("A", 500m, false, "Failed", insolvent, ImmutableArray<BacktestTrade>.Empty),
+            new SleeveBacktestInput("B", 500m, true, null, gaining, ImmutableArray<BacktestTrade>.Empty),
+        }, BaseUtc);
+
+        Assert.Equal(530m, kept.FinalEquity);
+        Assert.Equal(-0.47m, kept.TotalReturn);
+        Assert.Equal(1030m, hidden.FinalEquity);
+    }
+
+    [Fact]
     public void ArgumentValidation_RejectsInvalidCapitalOrNullSleeves()
     {
         // Scenario 8: Argument validation

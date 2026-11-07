@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using StockAnalyzer.Core.Analysis;
+using StockAnalyzer.Core.MathUtils;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.ReadOnly;
 using StockAnalyzer.McpServer.Limits;
@@ -57,7 +58,9 @@ internal sealed class CalculateMarketBreadthTool : IMcpTool
         $"Calculates market breadth and internal market structure across a universe of up to {_limits.MaxBreadthSymbols} symbols: " +
         "Advancers, Decliners, Unchanged, A/D Line, A/D Ratio, McClellan Oscillator, Summation Index, " +
         "% Above SMA, New Highs/Lows, TRIN, and CVI. " +
-        "Aligns bars on the union of trading days. Read-only (heavy).";
+        "Aligns bars on the union of trading days. " +
+        "With timeFrame W1 or MN1 the bars are matched by period. " +
+        $"{ReturnStatistics.PeriodStartDateNote} Read-only (heavy).";
 
     public bool IsHeavy => true;
 
@@ -91,6 +94,16 @@ internal sealed class CalculateMarketBreadthTool : IMcpTool
         int adRatioBars = ToolArgs.PositiveWithin(arguments, AdRatioBarsArgument, MarketBreadthCalculator.DefaultAdRatioBars, _limits.MaxCandlesPerRequest);
         int mcClellanFast = ToolArgs.PositiveWithin(arguments, McClellanFastArgument, MarketBreadthCalculator.DefaultMcClellanFast, _limits.MaxCandlesPerRequest);
         int mcClellanSlow = ToolArgs.PositiveWithin(arguments, McClellanSlowArgument, MarketBreadthCalculator.DefaultMcClellanSlow, _limits.MaxCandlesPerRequest);
+        if (mcClellanFast >= mcClellanSlow)
+        {
+            // Fast >= slow would give an oscillator of the opposite sign (or a constant zero); the tool refuses it like sa_detect_divergences does for its moving averages.
+            throw new ToolException(
+                ToolErrorCodes.InvalidArgument,
+                $"{McClellanFastArgument} ({mcClellanFast}) must be strictly less than {McClellanSlowArgument} ({mcClellanSlow}).",
+                McClellanFastArgument,
+                $"Defaults are {MarketBreadthCalculator.DefaultMcClellanFast} and {MarketBreadthCalculator.DefaultMcClellanSlow}; when you set only one of them, keep fast below slow.");
+        }
+
         int maBars = ToolArgs.PositiveWithin(arguments, MaBarsArgument, MarketBreadthCalculator.DefaultMaBars, _limits.MaxCandlesPerRequest);
         int highLowBars = ToolArgs.PositiveWithin(arguments, HighLowBarsArgument, MarketBreadthCalculator.DefaultHighLowBars, _limits.MaxCandlesPerRequest);
 
@@ -144,7 +157,8 @@ internal sealed class CalculateMarketBreadthTool : IMcpTool
             MaBars = maBars,
             HighLowBars = highLowBars,
             OutputTailCount = outputTailCount,
-            IncludeSeries = includeSeriesSet
+            IncludeSeries = includeSeriesSet,
+            TimeFrame = timeFrame
         };
 
         MarketBreadthResult result = MarketBreadthCalculator.Calculate(universeCandles, breadthParams);

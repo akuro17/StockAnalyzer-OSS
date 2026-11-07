@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using StockAnalyzer.Core.Common;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.UI;
 using StockAnalyzer.Core.Models.Settings;
@@ -22,18 +23,30 @@ public sealed class WorkspaceCoordinator : IWorkspaceCoordinator
     private readonly IDispatcherService _dispatcherService;
     private readonly ILogger<WorkspaceCoordinator> _logger;
     private readonly string _defaultWorkspacePath;
-    
+    private readonly IWorkspaceTolerantReader _tolerantReader;
+    private readonly CorruptFilePreserver _filePreserver;
+    private readonly IDataStorageState? _dataStorageState;
+
     private IWorkspaceLayoutTarget? _viewModel;
     private bool _isBound;
- 
+
+    /// <param name="tolerantReader">Stage 1 of the restore; a default reader when omitted.</param>
+    /// <param name="filePreserver">Keeps a copy of a workspace file that is about to be protected; a default preserver when omitted.</param>
+    /// <param name="dataStorageState">When it reports a read-only data folder, start-up locks automatic saving (reason StorageReadOnly); omitted = writable.</param>
     public WorkspaceCoordinator(
         LayoutStateStore stateStore,
         IWorkspaceSerializationService serializationService,
         IWatchlistManager watchlistManager,
         IOptions<WorkspaceCoordinatorOptions> options,
         IDispatcherService dispatcherService,
-        ILogger<WorkspaceCoordinator> logger)
+        ILogger<WorkspaceCoordinator> logger,
+        IWorkspaceTolerantReader? tolerantReader = null,
+        CorruptFilePreserver? filePreserver = null,
+        IDataStorageState? dataStorageState = null)
     {
+        _dataStorageState = dataStorageState;
+        _tolerantReader = tolerantReader ?? new WorkspaceTolerantReader();
+        _filePreserver = filePreserver ?? new CorruptFilePreserver();
         _stateStore = stateStore ?? throw new ArgumentNullException(nameof(stateStore));
         _serializationService = serializationService ?? throw new ArgumentNullException(nameof(serializationService));
         _watchlistManager = watchlistManager ?? throw new ArgumentNullException(nameof(watchlistManager));
@@ -68,38 +81,28 @@ public sealed class WorkspaceCoordinator : IWorkspaceCoordinator
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         try
         {
-            if (!File.Exists(targetPath))
+            // A data folder that cannot be written is decided once at start-up (DataStorageProbe); every default-path save would only fail.
+            if (_dataStorageState is { Current.IsWritable: false })
             {
-                _logger.LogWarning("Workspace settings file not found. Applying default layout.");
-                await _dispatcherService.PostAsync(static coord => { coord.RestoreLayoutSettings(null); return Task.CompletedTask; }, this);
-                return;
+                await _dispatcherService.PostAsync(static store => { store.EngageStorageReadOnlyLock(); return Task.CompletedTask; }, _stateStore).ConfigureAwait(false);
             }
 
-            var settings = await _serializationService.LoadAsync(targetPath).ConfigureAwait(false);
-            if (settings == null)
-            {
-                _logger.LogWarning("Workspace settings was empty or returned null. Applying default layout.");
-                await _dispatcherService.PostAsync(static coord => { coord.RestoreLayoutSettings(null); return Task.CompletedTask; }, this);
-                return;
-            }
-
-            // Dispatch to UI thread to apply settings deterministically
-            await _dispatcherService.PostAsync(static s =>
-            {
-                s.Coord.RestoreAll(s.Settings);
-                return Task.CompletedTask;
-            }, (Coord: this, Settings: settings));
+            // Stage 1: read the file without touching the screen. Stage 2: apply only what stage 1 produced.
+            var read = await _tolerantReader.ReadAsync(targetPath).ConfigureAwait(false);
+            await RestoreFromReadAsync(read, targetPath).ConfigureAwait(false);
 
             stopwatch.Stop();
-            _logger.LogInformation("Workspace successfully restored and applied in {ElapsedMs} ms. Target Path: {Path}", stopwatch.ElapsedMilliseconds, targetPath);
+            _logger.LogInformation("Workspace restoration finished ({Status}) in {ElapsedMs} ms. Target Path: {Path}", read.Status, stopwatch.ElapsedMilliseconds, targetPath);
         }
         catch (Exception ex)
         {
             stopwatch.Stop();
             _logger.LogError(ex, "Workspace restoration pipeline failed in {ElapsedMs} ms. Falling back to default layout.", stopwatch.ElapsedMilliseconds);
-            
-            // Safe fallback guarantee
-            await _dispatcherService.PostAsync(static coord => { coord.RestoreLayoutSettings(null); return Task.CompletedTask; }, this);
+
+            // Whatever went wrong, the file on disk must not be replaced by the fallback screen: keep a copy, lock, then show defaults.
+            var copy = PreserveOriginal(targetPath);
+            await LockAutoSaveAsync(WorkspaceRestoreIssueKind.RestoreFailed, copy, Array.Empty<WorkspaceLoadWarning>()).ConfigureAwait(false);
+            await ApplyDefaultLayoutAsync().ConfigureAwait(false);
         }
         finally
         {
@@ -107,18 +110,136 @@ public sealed class WorkspaceCoordinator : IWorkspaceCoordinator
         }
     }
 
+    /// <summary>Branches on the stage 1 outcome. A file that could not be restored completely is preserved and locks automatic saving.</summary>
+    private async Task RestoreFromReadAsync(WorkspaceLoadResult read, string targetPath)
+    {
+        switch (read.Status)
+        {
+            case WorkspaceReadStatus.Missing:
+                _logger.LogWarning("Workspace settings file not found. Applying default layout.");
+                await ApplyDefaultLayoutAsync().ConfigureAwait(false);
+                return;
+
+            case WorkspaceReadStatus.Empty:
+                _logger.LogWarning("Workspace settings file is empty. Applying default layout.");
+                await ApplyDefaultLayoutAsync().ConfigureAwait(false);
+                return;
+
+            case WorkspaceReadStatus.Unreadable:
+                _logger.LogError("Workspace settings file is unreadable. Applying default layout and protecting the file.");
+                await LockAutoSaveAsync(WorkspaceRestoreIssueKind.PartialRestore, PreserveOriginal(targetPath), read.Warnings).ConfigureAwait(false);
+                await ApplyDefaultLayoutAsync().ConfigureAwait(false);
+                return;
+
+            case WorkspaceReadStatus.NewerSchema:
+                // Nothing is loaded and nothing is copied (the file is valid, only newer); saving would downgrade it.
+                _logger.LogWarning("Workspace settings file was written by a newer version. Applying default layout and protecting the file.");
+                await LockAutoSaveAsync(WorkspaceRestoreIssueKind.NewerSchema, null, read.Warnings).ConfigureAwait(false);
+                await ApplyDefaultLayoutAsync().ConfigureAwait(false);
+                return;
+        }
+
+        var settings = read.Settings!;
+        var warnings = read.Warnings.Concat(WorkspaceSettingsNormalizer.Normalize(settings)).ToList();
+
+        try
+        {
+            // Dispatch to UI thread to apply settings deterministically
+            await _dispatcherService.PostAsync(static s =>
+            {
+                s.Coord.RestoreAll(s.Settings);
+                return Task.CompletedTask;
+            }, (Coord: this, Settings: settings)).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Stage 1 removes data-caused failures; a view-model failure is still possible. No rollback (screen state cannot be snapshotted):
+            // the original is kept and automatic saving is locked so the half-applied screen is never written over it.
+            _logger.LogError(ex, "Applying the workspace to the screen failed. Applying default layout and protecting the file.");
+            await LockAutoSaveAsync(WorkspaceRestoreIssueKind.RestoreFailed, PreserveOriginal(targetPath), warnings).ConfigureAwait(false);
+            await ApplyDefaultLayoutAsync().ConfigureAwait(false);
+            return;
+        }
+
+        if (new WorkspaceLoadResult(read.Status, settings, warnings).RequiresAutoSaveLock)
+        {
+            await LockAutoSaveAsync(WorkspaceRestoreIssueKind.PartialRestore, PreserveOriginal(targetPath), warnings).ConfigureAwait(false);
+        }
+        else if (warnings.Count > 0)
+        {
+            _logger.LogInformation("Workspace restored with {Count} cosmetic normalisation(s); nothing was lost.", warnings.Count);
+        }
+    }
+
+    private Task ApplyDefaultLayoutAsync() =>
+        _dispatcherService.PostAsync(static coord => { coord.RestoreLayoutSettings(null); return Task.CompletedTask; }, this);
+
+    /// <summary>Copies the original file next to itself. Returns the copy's path, or null when none exists (the caller still locks).</summary>
+    private string? PreserveOriginal(string path) =>
+        _filePreserver.TryPreserve(path, out var copy) ? copy : null;
+
+    private Task LockAutoSaveAsync(WorkspaceRestoreIssueKind kind, string? preservedCopyPath, IReadOnlyList<WorkspaceLoadWarning> warnings) =>
+        _dispatcherService.PostAsync(
+            static s => { s.Store.EngageAutoSaveLock(new WorkspaceRestoreIssue(s.Kind, s.Copy, s.Warnings)); return Task.CompletedTask; },
+            (Store: _stateStore, Kind: kind, Copy: preservedCopyPath, Warnings: warnings));
+
+    public bool IsAutoSaveLocked => _stateStore.AutoSaveLock != AutoSaveLock.None;
+
     public async Task SaveActiveWorkspaceAsync(string? customPath = null)
     {
         if (!_isBound || _viewModel == null)
             throw new InvalidOperationException("WorkspaceCoordinator must be bound to IWorkspaceLayoutTarget before saving.");
 
-        if (_stateStore.LifecycleState != WorkspaceLifecycleState.Ready)
+        // Only the default file is protected; a path the user chose explicitly is always written.
+        if (customPath == null && IsAutoSaveLocked)
         {
-            _logger.LogWarning("Workspace save requested but LifecycleState is not Ready. Saving is suspended.");
+            _logger.LogDebug("Default workspace save skipped. Automatic saving is locked: {Lock}", _stateStore.AutoSaveLock);
             return;
         }
 
-        string targetPath = customPath ?? _defaultWorkspacePath;
+        await TrySaveAsync(customPath ?? _defaultWorkspacePath).ConfigureAwait(false);
+    }
+
+    public async Task<bool> SaveCurrentStateAndUnlockAsync()
+    {
+        if (!_isBound || _viewModel == null)
+            throw new InvalidOperationException("WorkspaceCoordinator must be bound to IWorkspaceLayoutTarget before saving.");
+
+        // Nothing can be written below a read-only data folder, and the lock cannot be lifted before a restart.
+        if (_stateStore.AutoSaveLock == AutoSaveLock.StorageReadOnly)
+        {
+            _logger.LogWarning("Saving the current state is not possible: the data folder is not writable.");
+            return false;
+        }
+
+        try
+        {
+            if (!await TrySaveAsync(_defaultWorkspacePath).ConfigureAwait(false))
+            {
+                return false;
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // TrySaveAsync already logged it. The lock stays so the file is not left half-trusted.
+            _logger.LogWarning(ex, "Saving the current state failed; automatic saving stays locked.");
+            return false;
+        }
+
+        // Unlock only after the write succeeded, so a failed save never leaves the file unprotected.
+        await _dispatcherService.PostAsync(static store => { store.ReleaseAutoSaveLock(); return Task.CompletedTask; }, _stateStore);
+        return true;
+    }
+
+    /// <summary>Captures the screen state and writes it to <paramref name="targetPath"/>. False when the lifecycle is not Ready (nothing written).</summary>
+    private async Task<bool> TrySaveAsync(string targetPath)
+    {
+        if (_stateStore.LifecycleState != WorkspaceLifecycleState.Ready)
+        {
+            _logger.LogWarning("Workspace save requested but LifecycleState is not Ready. Saving is suspended.");
+            return false;
+        }
+
         _logger.LogInformation("Capturing active workspace settings. Target Path: {Path}", targetPath);
         
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
@@ -153,6 +274,7 @@ public sealed class WorkspaceCoordinator : IWorkspaceCoordinator
             await _serializationService.SaveAsync(settings, targetPath).ConfigureAwait(false);
             stopwatch.Stop();
             _logger.LogInformation("Workspace atomically saved to disk in {ElapsedMs} ms. Target Path: {Path}", stopwatch.ElapsedMilliseconds, targetPath);
+            return true;
         }
         catch (Exception ex)
         {
@@ -165,6 +287,12 @@ public sealed class WorkspaceCoordinator : IWorkspaceCoordinator
     public void ForceSaveSync(WorkspaceSettings settings)
     {
         if (settings == null) throw new ArgumentNullException(nameof(settings));
+
+        if (IsAutoSaveLocked)
+        {
+            _logger.LogInformation("Shutdown workspace save skipped. Automatic saving is locked: {Lock}", _stateStore.AutoSaveLock);
+            return;
+        }
 
         try
         {
@@ -407,6 +535,13 @@ public sealed class WorkspaceCoordinator : IWorkspaceCoordinator
             throw new InvalidOperationException("WorkspaceCoordinator must be bound to IWorkspaceLayoutTarget before applying layout.");
 
         _logger.LogInformation("Applying pre-loaded workspace settings (SchemaVersion={Version})", settings.SchemaVersion);
+
+        // A file without a watchlist section carries no watchlists; it must not wipe the ones the user has now.
+        // Taken over as a NEW list (never the manager's own list) and BEFORE normalising, so the file's selected
+        // watchlist is validated against the taken-over profiles.
+        settings.WatchlistProfiles ??= _watchlistManager.GetAllProfiles().ToList();
+        var warnings = WorkspaceSettingsNormalizer.Normalize(settings);
+
         _stateStore.LifecycleState = WorkspaceLifecycleState.LoadingWorkspace;
 
         try
@@ -417,9 +552,27 @@ public sealed class WorkspaceCoordinator : IWorkspaceCoordinator
                 return Task.CompletedTask;
             }, (Coord: this, Settings: settings));
         }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // The screen may be half-applied and cannot be rolled back; keep it from ever being auto-saved over the default file.
+            // No preserved copy: the file the user chose is theirs and is untouched.
+            _logger.LogError(ex, "Applying the loaded workspace failed; automatic saving is locked.");
+            await LockAutoSaveAsync(WorkspaceRestoreIssueKind.RestoreFailed, null, warnings);
+            throw;
+        }
         finally
         {
             _stateStore.LifecycleState = WorkspaceLifecycleState.Ready;
+        }
+
+        if (warnings.Any(w => w.Severity == WorkspaceWarningSeverity.Lossy))
+        {
+            await LockAutoSaveAsync(WorkspaceRestoreIssueKind.PartialRestore, null, warnings);
+        }
+        else
+        {
+            // The user replaced the state on purpose and nothing was lost: the screen is trustworthy again.
+            await _dispatcherService.PostAsync(static store => { store.ReleaseAutoSaveLock(); return Task.CompletedTask; }, _stateStore);
         }
     }
 

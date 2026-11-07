@@ -24,6 +24,12 @@ public enum WarningCode
     /// Append-only.
     /// </summary>
     DynamicExitAtrUnavailable = 4,
+
+    /// <summary>
+    /// Emitted when an ATR stop or ATR target was configured and the ATR was available (positive), but the resulting price level at the entry is not above zero
+    /// (for example a long stop of entry - multiple x ATR below zero), so that exit is switched off for the whole trade. One warning per entry bar. Append-only.
+    /// </summary>
+    DynamicExitLevelNonPositive = 5,
 }
 
 /// <summary>

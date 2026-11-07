@@ -9,13 +9,14 @@ using StockAnalyzer.Core.Analysis;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Indicators;
 using StockAnalyzer.Core.ReadOnly;
+using StockAnalyzer.Core.Services;
 using StockAnalyzer.McpServer.Limits;
 
 namespace StockAnalyzer.McpServer.Tools;
 
 /// <summary>
 /// sa_project_price_path: generates multi-step mathematical price projection trajectories
-/// (ARIMA, FFT, SSA, HMM) with confidence intervals in a strictly causal, prefix-invariant manner.
+/// (ARIMA, FFT, SSA, HMM) with lower/upper bands, causal as of endDate.
 /// </summary>
 internal sealed class ProjectPricePathTool : IMcpTool
 {
@@ -54,9 +55,19 @@ internal sealed class ProjectPricePathTool : IMcpTool
 
     public string Name => "sa_project_price_path";
 
+    /// <summary>
+    /// Said in <c>notes</c> (and in the description) for W1 and MN1: the future dates are calendar period starts, not the first trading day that single-symbol tools use.
+    /// </summary>
+    internal const string PeriodStartDateNote =
+        "With timeFrame W1 or MN1 the dates of the projected points are calendar period starts (the Monday of the ISO week, the 1st of the month), " +
+        "so that holidays of future periods do not change them. asOfDate is the label of the last stored bar, which single-symbol tools date by the first trading day of its period; " +
+        "the two labels differ after a holiday, so consecutive dates need not be exactly 7 or 30 days apart.";
+
     public string Description =>
-        $"Generates multi-step mathematical price projection trajectories (ARIMA, FFT, SSA, HMM) with confidence intervals. " +
-        $"{McpDisclaimerConstants.ResearchNotAdvice} Strictly causal and prefix-invariant: projections never depend on future bars.";
+        $"Generates multi-step mathematical price projection trajectories (ARIMA, FFT, SSA, HMM) with lower/upper bands (the projected value plus or minus confidenceMultiplier model standard deviations; " +
+        $"a model-based band, not a statistical confidence interval of the price). " +
+        $"{McpDisclaimerConstants.ResearchNotAdvice} Causal as of endDate: a projection is computed only from bars dated on or before endDate, so later bars never change it. " +
+        $"Future dates of D1 are consecutive calendar days from asOfDate; for W1 and MN1 they are calendar period starts (Monday of each week, 1st of each month). {PeriodStartDateNote}";
 
     public bool IsHeavy => false;
 
@@ -70,7 +81,7 @@ internal sealed class ProjectPricePathTool : IMcpTool
         .Integer(LookbackArgument, $"Stored bars loaded up to endDate, newest last. Default and maximum {_limits.MaxCandlesPerRequest}.", defaultValue: _limits.MaxCandlesPerRequest, minimum: 1, maximum: _limits.MaxCandlesPerRequest)
         .String(MethodArgument, "Projection extrapolation method (Arima, Fft, Ssa, Hmm).", required: true, allowedValues: AllowedMethods)
         .Integer(HorizonBarsArgument, $"Number of forward bars to project (1..{_limits.MaxProjectionBars}). Default {DefaultHorizonBars}.", defaultValue: DefaultHorizonBars, minimum: 1, maximum: _limits.MaxProjectionBars)
-        .Number(ConfidenceMultiplierArgument, $"Confidence band standard deviation multiplier (0.0..5.0). Default {DefaultConfidenceMultiplier}.")
+        .Number(ConfidenceMultiplierArgument, $"Band width in model standard deviations (0.0..5.0); lower/upper = projected value -/+ this many standard deviations. Default {DefaultConfidenceMultiplier}.")
         .Integer(ArimaPArgument, "ARIMA autoregressive order p (0..5). Default 1.", defaultValue: 1, minimum: 0, maximum: 5)
         .Integer(ArimaDArgument, "ARIMA differencing degree d (0..2). Default 1.", defaultValue: 1, minimum: 0, maximum: 2)
         .Integer(ArimaQArgument, "ARIMA moving-average order q (0..5). Default 1.", defaultValue: 1, minimum: 0, maximum: 5)
@@ -247,7 +258,7 @@ internal sealed class ProjectPricePathTool : IMcpTool
                 {
                     writer.WriteStartObject();
                     writer.WriteNumber("barOffset", k);
-                    writer.WriteString("date", ToolJson.FormatDate(new DateTime((long)projectedPoints[k].X)));
+                    writer.WriteString("date", ToolJson.FormatDate(FutureDate(loaded[^1].Timestamp, timeFrame, k, projectedPoints[k])));
                     writer.WriteNumber("value", projectedPoints[k].Y);
 
                     if (k < lowerBandPoints.Count)
@@ -264,6 +275,13 @@ internal sealed class ProjectPricePathTool : IMcpTool
             }
             writer.WriteEndArray();
 
+            if (TimeFrameAggregator.IsPeriodFrame(timeFrame))
+            {
+                writer.WriteStartArray("notes");
+                writer.WriteStringValue(PeriodStartDateNote);
+                writer.WriteEndArray();
+            }
+
             if (symbolWarnings.Count > 0)
             {
                 writer.WriteStartArray("warnings");
@@ -277,6 +295,15 @@ internal sealed class ProjectPricePathTool : IMcpTool
             writer.WriteEndObject();
         });
     }
+
+    /// <summary>
+    /// The date of the projected point at <paramref name="barOffset"/>: the engines step the last bar's date by a fixed span (7 or 30 days), which
+    /// drifts off the calendar for W1 and MN1, so those frames use the calendar period start instead (the value of the point is unaffected).
+    /// </summary>
+    private static DateTime FutureDate(DateTime lastBarTimestamp, TimeFrame timeFrame, int barOffset, Point projectedPoint)
+        => TimeFrameAggregator.IsPeriodFrame(timeFrame)
+            ? TimeFrameAggregator.FuturePeriodStart(lastBarTimestamp, timeFrame, barOffset)
+            : new DateTime((long)projectedPoint.X);
 
     private static int ParseIntWithinRange(JsonElement arguments, string name, int defaultValue, int min, int max)
     {
