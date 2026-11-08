@@ -44,7 +44,7 @@ public static class SyntheticSymbolParser
             return BuildExpression(leftPart, rightPart, SeriesOperation.Add, '+', isSupported: true, out expression);
         }
 
-        if (TryExtractOperator(s, '/', out leftPart, out rightPart))
+        if (TryExtractDivideOperator(s, out leftPart, out rightPart))
         {
             return BuildExpression(leftPart, rightPart, SeriesOperation.Divide, '/', isSupported: true, out expression);
         }
@@ -84,6 +84,71 @@ public static class SyntheticSymbolParser
         leftPart = s.Substring(0, idx);
         rightPart = s.Substring(idx + 1);
         return !string.IsNullOrWhiteSpace(leftPart) && !string.IsNullOrWhiteSpace(rightPart);
+    }
+
+    private static bool TryExtractDivideOperator(string s, out string leftPart, out string rightPart)
+    {
+        leftPart = string.Empty;
+        rightPart = string.Empty;
+
+        int idx = s.IndexOf('/');
+        if (idx < 0)
+        {
+            return false;
+        }
+
+        // Binary expressions require exactly one operator
+        if (s.IndexOf('/', idx + 1) >= 0)
+        {
+            return false;
+        }
+
+        string l = s.Substring(0, idx);
+        string r = s.Substring(idx + 1);
+
+        if (string.IsNullOrWhiteSpace(l) || string.IsNullOrWhiteSpace(r))
+        {
+            return false;
+        }
+
+        // Pattern A: Whitespace before or after slash (e.g. "7203 / 7267", "AAPL / MSFT")
+        if (char.IsWhiteSpace(s[idx - 1]) || char.IsWhiteSpace(s[idx + 1]))
+        {
+            leftPart = l;
+            rightPart = r;
+            return true;
+        }
+
+        // Pattern B: No whitespace around slash (e.g. "7203/7267", "7203-T/7267-T")
+        // To avoid treating relative file paths or path traversal (e.g. "a/b") as division formulas:
+        // Division without whitespace requires:
+        // 1. Both sides must be at least 2 characters (excluding single-character path elements like "a/b")
+        // 2. Both sides must be recognized stock tickers (4-digit Japanese code, exchange suffix, or uppercase ticker)
+        string lTrim = l.Trim();
+        string rTrim = r.Trim();
+        if (lTrim.Length < 2 || rTrim.Length < 2)
+        {
+            return false;
+        }
+
+        bool lIsTicker = TickerHelper.IsFourDigitJapaneseCode(lTrim) ||
+                         lTrim.EndsWith("-T", StringComparison.OrdinalIgnoreCase) ||
+                         lTrim.EndsWith(".T", StringComparison.OrdinalIgnoreCase) ||
+                         (lTrim.All(char.IsAsciiLetterOrDigit) && lTrim.Any(char.IsUpper) && !lTrim.Any(char.IsLower));
+
+        bool rIsTicker = TickerHelper.IsFourDigitJapaneseCode(rTrim) ||
+                         rTrim.EndsWith("-T", StringComparison.OrdinalIgnoreCase) ||
+                         rTrim.EndsWith(".T", StringComparison.OrdinalIgnoreCase) ||
+                         (rTrim.All(char.IsAsciiLetterOrDigit) && rTrim.Any(char.IsUpper) && !rTrim.Any(char.IsLower));
+
+        if (lIsTicker && rIsTicker)
+        {
+            leftPart = l;
+            rightPart = r;
+            return true;
+        }
+
+        return false;
     }
 
     private static bool TryExtractSubtractOperator(string s, out string leftPart, out string rightPart)

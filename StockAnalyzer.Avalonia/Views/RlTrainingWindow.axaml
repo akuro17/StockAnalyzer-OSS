@@ -4,6 +4,7 @@
         xmlns:l="using:StockAnalyzer.Avalonia.Markup"
         xmlns:ui="using:StockAnalyzer.Avalonia.Common"
         xmlns:controls="using:StockAnalyzer.Avalonia.Views.Controls"
+        xmlns:conv="using:StockAnalyzer.Avalonia.Converters"
         x:Class="StockAnalyzer.Avalonia.Views.RlTrainingWindow"
         x:DataType="vm:RlTrainingDialogViewModel"
         AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.Window}"
@@ -21,6 +22,7 @@
   <Window.Resources>
     <!-- Header robot/brain feature icon geometry -->
     <StreamGeometry x:Key="RlWindowIconData">M13,3V9H21V3M13,21H21V11H13M3,21H11V15H3M3,13H11V3H3V13Z</StreamGeometry>
+    <conv:EnumToLocalizedDisplayNameConverter x:Key="EnumToLocalizedDisplayNameConverter" />
   </Window.Resources>
 
   <Window.Styles>
@@ -350,10 +352,20 @@
           <Border Classes="section">
             <StackPanel Spacing="{x:Static ui:RlUiLayout.FieldGap}">
               <TextBlock Classes="heading" Text="{l:Localize Rl.Ui.Section.RunConditions}" />
-              <CheckBox Content="{l:Localize Rl.ContinuousMode}"
-                        IsChecked="{Binding UseContinuousPolicy}"
-                        IsEnabled="{Binding Editable}"
-                        AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.ContinuousMode}" />
+              <!-- Row 1: Continuous Mode (left) | Short history (right, only when offered) -->
+              <Grid ColumnDefinitions="*,*" ColumnSpacing="{x:Static ui:RlUiLayout.ColumnSpacing}">
+                <CheckBox Grid.Column="0" VerticalAlignment="Top"
+                          Content="{l:Localize Rl.ContinuousMode}"
+                          IsChecked="{Binding UseContinuousPolicy}"
+                          IsEnabled="{Binding Editable}"
+                          AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.ContinuousMode}" />
+                <CheckBox Grid.Column="1" VerticalAlignment="Top"
+                          Content="{l:Localize Rl.ShortHistoryOption}"
+                          IsChecked="{Binding UseShortHistory}"
+                          IsEnabled="{Binding Editable}"
+                          IsVisible="{Binding ShowShortHistoryOption}"
+                          AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.ShortHistory}" />
+              </Grid>
 
               <!-- Continuous Policy Options in 2-Column Grid -->
               <Grid RowDefinitions="Auto" ColumnDefinitions="*,*" ColumnSpacing="{x:Static ui:RlUiLayout.ColumnSpacing}" IsVisible="{Binding UseContinuousPolicy}" IsEnabled="{Binding Editable}">
@@ -377,10 +389,29 @@
                 </StackPanel>
               </Grid>
 
-              <!-- Trial run (left) | Short history (right, only when offered) -->
-              <Grid ColumnDefinitions="*,*" ColumnSpacing="{x:Static ui:RlUiLayout.ColumnSpacing}">
-                <CheckBox Grid.Column="0" VerticalAlignment="Top" Content="{l:Localize Rl.Smoke}" IsChecked="{Binding SmokeOnly}" IsEnabled="{Binding Editable}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.Smoke}" />
-                <CheckBox Grid.Column="1" VerticalAlignment="Top" Content="{l:Localize Rl.ShortHistoryOption}" IsChecked="{Binding UseShortHistory}" IsEnabled="{Binding Editable}" IsVisible="{Binding ShowShortHistoryOption}" AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.ShortHistory}" />
+              <!-- Row 2: Trial run (left) | Storage Mode (right) -->
+              <Grid ColumnDefinitions="*,*" ColumnSpacing="{x:Static ui:RlUiLayout.ColumnSpacing}" IsEnabled="{Binding Editable}">
+                <!-- Col 0: Trial run -->
+                <CheckBox Grid.Column="0" VerticalAlignment="Bottom" Margin="0,0,0,2"
+                          Content="{l:Localize Rl.Smoke}"
+                          IsChecked="{Binding SmokeOnly}"
+                          AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.Smoke}" />
+
+                <!-- Col 1: Storage Mode -->
+                <StackPanel Grid.Column="1" Spacing="4">
+                  <TextBlock Classes="label" Text="{l:Localize TrainingWizard_StorageMode}" />
+                  <ComboBox ItemsSource="{Binding AvailableStorageModes}"
+                            SelectedItem="{Binding SelectedStorageMode, Mode=TwoWay}"
+                            HorizontalAlignment="Stretch"
+                            AutomationProperties.AutomationId="{x:Static ui:RlUiConstants.StorageMode}"
+                            AutomationProperties.Name="{l:Localize TrainingWizard_StorageMode}">
+                    <ComboBox.ItemTemplate>
+                      <DataTemplate>
+                        <TextBlock Classes="value" Text="{Binding Converter={StaticResource EnumToLocalizedDisplayNameConverter}}" />
+                      </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                  </ComboBox>
+                </StackPanel>
               </Grid>
             </StackPanel>
           </Border>

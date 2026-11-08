@@ -56,9 +56,9 @@ public sealed class SyntheticSymbolDataService : IDataService, IDataReadStatusSo
         {
             if (timeFrame == TimeFrame.D1)
             {
-                var aligned = await _aligner.AlignAsync(
+                var aligned = await AlignSyntheticAsync(
                     expr.LeftSymbol,
-                    new[] { expr.RightSymbol },
+                    expr.RightSymbol,
                     TimeFrame.D1,
                     count,
                     cancellationToken).ConfigureAwait(false);
@@ -92,9 +92,9 @@ public sealed class SyntheticSymbolDataService : IDataService, IDataReadStatusSo
                     dailyFetchCount = Math.Max(safeCount * 25 + 35, 100);
                 }
 
-                var dailyAligned = await _aligner.AlignAsync(
+                var dailyAligned = await AlignSyntheticAsync(
                     expr.LeftSymbol,
-                    new[] { expr.RightSymbol },
+                    expr.RightSymbol,
                     TimeFrame.D1,
                     dailyFetchCount,
                     cancellationToken).ConfigureAwait(false);
@@ -122,9 +122,9 @@ public sealed class SyntheticSymbolDataService : IDataService, IDataReadStatusSo
                 }
 
                 // Fallback for environments or tests where only period frames (W1/MN1) are present
-                var periodAligned = await _aligner.AlignAsync(
+                var periodAligned = await AlignSyntheticAsync(
                     expr.LeftSymbol,
-                    new[] { expr.RightSymbol },
+                    expr.RightSymbol,
                     timeFrame,
                     count,
                     cancellationToken).ConfigureAwait(false);
@@ -138,9 +138,9 @@ public sealed class SyntheticSymbolDataService : IDataService, IDataReadStatusSo
             }
 
             // Intraday or other timeframes: align directly
-            var directAligned = await _aligner.AlignAsync(
+            var directAligned = await AlignSyntheticAsync(
                 expr.LeftSymbol,
-                new[] { expr.RightSymbol },
+                expr.RightSymbol,
                 timeFrame,
                 count,
                 cancellationToken).ConfigureAwait(false);
@@ -161,6 +161,49 @@ public sealed class SyntheticSymbolDataService : IDataService, IDataReadStatusSo
             _logger.LogWarning(ex, "Failed to load/compute candles for synthetic symbol '{Symbol}'. Returning empty candles.", symbol);
             return Array.Empty<CandleData>();
         }
+    }
+
+    private async Task<ComparisonAlignedData> AlignSyntheticAsync(
+        string leftSymbol,
+        string rightSymbol,
+        TimeFrame timeFrame,
+        int count,
+        CancellationToken cancellationToken)
+    {
+        var aligned = await _aligner.AlignAsync(
+            leftSymbol,
+            new[] { rightSymbol },
+            timeFrame,
+            count,
+            cancellationToken).ConfigureAwait(false);
+
+        if (aligned.Series.ContainsKey(leftSymbol) && aligned.Series.ContainsKey(rightSymbol))
+        {
+            return aligned;
+        }
+
+        // If rightSymbol was excluded (e.g. due to shorter history / leading nulls triggering fragmentation threshold),
+        // try aligning with rightSymbol as the primary base timeline so the overlapping history is captured.
+        try
+        {
+            var reverseAligned = await _aligner.AlignAsync(
+                rightSymbol,
+                new[] { leftSymbol },
+                timeFrame,
+                count,
+                cancellationToken).ConfigureAwait(false);
+
+            if (reverseAligned.Series.ContainsKey(leftSymbol) && reverseAligned.Series.ContainsKey(rightSymbol))
+            {
+                return reverseAligned;
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogDebug(ex, "Reverse alignment for synthetic pair {Right}/{Left} failed.", rightSymbol, leftSymbol);
+        }
+
+        return aligned;
     }
 
     public Task<MonitoringObservation?> LoadMonitoringObservationAsync(

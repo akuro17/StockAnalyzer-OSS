@@ -22,7 +22,7 @@ public sealed partial class RlUiTests
 
     /// <summary>
     /// S3a: the Tab order (document order) equals the visual order of the inputs: Symbol, Start, End | Capital, Flat cost, Unit cost, Slippage, Liquidation |
-    /// Continuous policy, Trial run, Short history | Train. Controls on one row are ordered left to right, rows top to bottom.
+    /// Continuous policy, Short history, Trial run | Train. Controls on one row are ordered left to right, rows top to bottom.
     /// </summary>
     [AvaloniaFact]
     public async Task SettingsDocumentOrderEqualsVisualOrder_BasicThenAdvanced()
@@ -41,7 +41,7 @@ public sealed partial class RlUiTests
             [
                 RlUiConstants.Symbol, RlUiConstants.StartDate, RlUiConstants.EndDate,
                 RlUiConstants.Capital, RlUiConstants.FlatCommission, RlUiConstants.UnitCommission, RlUiConstants.Slippage, RlUiConstants.Liquidation,
-                RlUiConstants.ContinuousMode, RlUiConstants.Smoke, RlUiConstants.ShortHistory, RlUiConstants.Train,
+                RlUiConstants.ContinuousMode, RlUiConstants.ShortHistory, RlUiConstants.Smoke, RlUiConstants.Train,
             ];
             var all = window.GetVisualDescendants().OfType<Control>().ToList();
             var controls = ids.Select(id => all.First(c => AutomationProperties.GetAutomationId(c) == id)).ToArray();

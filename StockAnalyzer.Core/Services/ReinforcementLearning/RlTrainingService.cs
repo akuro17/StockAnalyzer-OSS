@@ -52,6 +52,8 @@ public sealed class RlTrainingService : IRlResumableTrainingService
     private async Task<RlTrainingResult> RunCoreAsync(RlTrainingJob job, bool resumable, RlCheckpointReview? reviewed,
         CancellationToken pauseRequest, IProgress<RlTrainingProgress>? progress, CancellationToken cancellationToken)
     {
+        if (resumable && job.StorageMode == OnnxArtifactStorageMode.Temp)
+            throw new InvalidOperationException("Unavailable: strict continuation requires persistent T16 storage.");
         if (resumable && (job.FrozenDirectionModelId is null || _registry is not ModelGenerationRegistry || _registry.RlArtifactPolicy is null))
             throw new InvalidOperationException("Unavailable: owned T16 storage is required for strict continuation.");
         var activeAttempt = Stopwatch.StartNew();
@@ -70,10 +72,18 @@ public sealed class RlTrainingService : IRlResumableTrainingService
         bool continuous = job.FrozenDirectionModelId is not null;
         bool expanded = RlAllBlockEvaluationContract.IsExpanded(job.EvaluationSpecificationId);
         bool shortHistory = RlShortHistoryEvaluationContract.IsShortHistory(job.ShortHistorySpecificationId);
-        string root =_dataRoot ?? PathDiscovery.ResolveDataPath(null, "Data");
-        using var artifactRun = reviewed is null ? await _registry.BeginRlArtifactRunAsync(runId, root, ct).ConfigureAwait(false)
-            : await ((ModelGenerationRegistry)_registry).ResumeArtifactRunAsync(reviewed, ct).ConfigureAwait(false);
+        bool ephemeral = job.StorageMode == OnnxArtifactStorageMode.Temp;
+        string root = ephemeral
+            ? StockAnalyzer.Core.Execution.EphemeralSandbox.Root
+            : (_dataRoot ?? PathDiscovery.ResolveDataPath(null, "Data"));
+        using var artifactRun = ephemeral
+            ? null
+            : (reviewed is null
+                ? await _registry.BeginRlArtifactRunAsync(runId, root, ct).ConfigureAwait(false)
+                : await ((ModelGenerationRegistry)_registry).ResumeArtifactRunAsync(reviewed, ct).ConfigureAwait(false));
         string directory = artifactRun?.Directory ?? Path.Combine(root, RlFiles.TrainingFolder, RlFiles.RlFolder, runId.ToString("N"));
+        if (ephemeral && !StockAnalyzer.Core.Execution.EphemeralSandbox.IsStrictlyInside(directory))
+            throw new InvalidOperationException("Ephemeral RL run directory must lie strictly inside EphemeralSandbox.Root.");
         Directory.CreateDirectory(directory);
         string sourceDirectory = Path.Combine(directory, RlFiles.SourceFolder);
         var files = new Dictionary<string, string>
@@ -270,7 +280,7 @@ public sealed class RlTrainingService : IRlResumableTrainingService
                 JsonSerializer.SerializeToElement(report, RlFiles.Json), metadata, source, job.Costs);
             RlShortHistoryEvaluation.Validate(JsonSerializer.SerializeToElement(wire, RlFiles.Json),
                 JsonSerializer.SerializeToElement(report, RlFiles.Json), metadata, source);
-            var generation = job.SmokeOnly ? null : await _registry.RegisterRlAsync(directory, ct).ConfigureAwait(false);
+            var generation = (job.SmokeOnly || ephemeral) ? null : await _registry.RegisterRlAsync(directory, ct).ConfigureAwait(false);
             checkpointStore?.Complete();
             if (artifactRun is not null) await artifactRun.FinishAsync(RlArtifactRunState.Completed, generation?.ModelId, ct).ConfigureAwait(false);
             progress?.Report(new(runId, 0, "Complete", job.SmokeOnly ? "Smoke passed; activation prohibited" : "Qualified generation registered; manual activation available", host.Transitions));

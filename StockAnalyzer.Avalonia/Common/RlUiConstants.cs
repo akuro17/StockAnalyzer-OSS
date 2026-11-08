@@ -14,6 +14,9 @@ public static class RlUiConstants
     public const string Slippage = "Rl_SlippageRatio";
     public const string Liquidation = "Rl_LiquidationPenaltyRatio";
     public const string Smoke = "Rl_SmokeOnly";
+    public const string StorageMode = "Rl_StorageMode";
+    public const string StorageModeArtifacts = "Rl_StorageModeArtifacts";
+    public const string StorageModeTemp = "Rl_StorageModeTemp";
     public const string Train = "Rl_Train";
     public const string StorageSettings = "Rl_StorageSettings";
     public const string StorageQuota = "Rl_StorageQuota";

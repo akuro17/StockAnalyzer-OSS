@@ -1,4 +1,5 @@
 using System.Runtime.ExceptionServices;
+using StockAnalyzer.Core.Helpers;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Analysis;
 using StockAnalyzer.Core.Models.Backtest.Engine;
@@ -81,14 +82,42 @@ public sealed class ReadOnlyStockAnalyzerGateway : IReadOnlyStockAnalyzerGateway
     }
 
     public async Task<TickerMetadata?> GetStoredTickerMetadataAsync(string symbol, CancellationToken cancellationToken = default)
-        => await _marketData.TryGetStoredMetadataAsync(RequireCanonical(symbol), cancellationToken).ConfigureAwait(false);
+    {
+        string canonical = RequireCanonical(symbol);
+        if (SyntheticSymbolParser.IsSyntheticExpression(canonical))
+        {
+            return null;
+        }
+
+        return await _marketData.TryGetStoredMetadataAsync(canonical, cancellationToken).ConfigureAwait(false);
+    }
 
     public async Task<DateTimeOffset?> GetTimeSeriesLastUpdatedAsync(string symbol, CancellationToken cancellationToken = default)
-        => await _marketData.GetTimeSeriesLastUpdatedAsync(RequireCanonical(symbol), cancellationToken).ConfigureAwait(false);
+    {
+        string canonical = RequireCanonical(symbol);
+        if (SyntheticSymbolParser.TryParse(canonical, out var expr))
+        {
+            DateTimeOffset? left = await _marketData.GetTimeSeriesLastUpdatedAsync(expr.LeftSymbol, cancellationToken).ConfigureAwait(false);
+            DateTimeOffset? right = await _marketData.GetTimeSeriesLastUpdatedAsync(expr.RightSymbol, cancellationToken).ConfigureAwait(false);
+            if (left is null || right is null)
+            {
+                return left ?? right;
+            }
+
+            return left < right ? left : right;
+        }
+
+        return await _marketData.GetTimeSeriesLastUpdatedAsync(canonical, cancellationToken).ConfigureAwait(false);
+    }
 
     public async Task<SymbolCoverage> GetCoverageAsync(string symbol, CancellationToken cancellationToken = default)
     {
         string canonical = RequireCanonical(symbol);
+        if (SyntheticSymbolParser.TryParse(canonical, out var expr))
+        {
+            return await GetSyntheticCoverageAsync(canonical, cancellationToken).ConfigureAwait(false);
+        }
+
         var tickers = await GetAvailableTickersAsync(cancellationToken).ConfigureAwait(false);
         bool inList = tickers.Contains(canonical, StringComparer.OrdinalIgnoreCase);
 
@@ -166,6 +195,48 @@ public sealed class ReadOnlyStockAnalyzerGateway : IReadOnlyStockAnalyzerGateway
             timeFrames)
         {
             UnreadableTimeFrames = unreadable,
+        };
+    }
+
+    private async Task<SymbolCoverage> GetSyntheticCoverageAsync(string canonical, CancellationToken cancellationToken)
+    {
+        var synthTimeFrames = new List<TimeFrameCoverage>();
+        var synthUnreadable = new List<TimeFrame>();
+        var synthManager = new TimeFrameManager(_dataService);
+
+        foreach (TimeFrame tf in ReadOnlyGatewayContract.SupportedTimeFrames)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            IReadOnlyList<CandleData> candles;
+            try
+            {
+                candles = await synthManager.GetCandlesAsync(canonical, tf, 0, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                synthUnreadable.Add(tf);
+                continue;
+            }
+
+            if (candles.Count > 0)
+            {
+                synthTimeFrames.Add(new TimeFrameCoverage(
+                    tf,
+                    candles.Count,
+                    candles[0].Timestamp,
+                    candles[^1].Timestamp));
+            }
+        }
+
+        DateTimeOffset? synthLastUpdated = await GetTimeSeriesLastUpdatedAsync(canonical, cancellationToken).ConfigureAwait(false);
+        return new SymbolCoverage(
+            canonical,
+            Found: false,
+            HasMetadata: false,
+            synthLastUpdated,
+            synthTimeFrames)
+        {
+            UnreadableTimeFrames = synthUnreadable,
         };
     }
 
@@ -526,6 +597,16 @@ public sealed class ReadOnlyStockAnalyzerGateway : IReadOnlyStockAnalyzerGateway
 
     private static string RequireCanonical(string symbol)
     {
+        if (SyntheticSymbolParser.TryParse(symbol, out var expr))
+        {
+            if (!expr.IsOperatorSupported)
+            {
+                throw new ArgumentException($"Operator '{expr.OperatorChar}' is not supported for custom formula symbols.", nameof(symbol));
+            }
+
+            return expr.CanonicalExpression;
+        }
+
         if (!TickerSymbol.IsWellFormed(symbol))
         {
             throw new ArgumentException("Symbol is not well formed.", nameof(symbol));

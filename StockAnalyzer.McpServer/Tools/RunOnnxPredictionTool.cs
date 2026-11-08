@@ -89,7 +89,7 @@ internal sealed class RunOnnxPredictionTool : IMcpTool
             ValidateArtifactId(artifactId!);
         }
 
-        string symbol = await _symbols.ResolveAsync(ToolArgs.String(arguments, SymbolArgument)!, SymbolArgument, cancellationToken).ConfigureAwait(false);
+        string symbol = await _symbols.ResolveAsync(ToolArgs.String(arguments, SymbolArgument)!, SymbolArgument, cancellationToken, allowSynthetic: false).ConfigureAwait(false);
         DateOnly? asOf = ToolArgs.Date(arguments, AsOfDateArgument);
         int count = ToolArgs.PositiveWithin(arguments, CountArgument, 1, _maxPredictionBars);
 

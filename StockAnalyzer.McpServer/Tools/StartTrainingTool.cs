@@ -71,7 +71,7 @@ internal sealed class StartTrainingTool : IMcpTool
         var symbols = new List<string>(requested.Count);
         for (int index = 0; index < requested.Count; index++)
         {
-            symbols.Add(await _symbols.ResolveAsync(requested[index], $"{TrainingRequestJson.SymbolsArgument}[{index}]", cancellationToken).ConfigureAwait(false));
+            symbols.Add(await _symbols.ResolveAsync(requested[index], $"{TrainingRequestJson.SymbolsArgument}[{index}]", cancellationToken, allowSynthetic: false).ConfigureAwait(false));
         }
 
         DateOnly? start = ToolArgs.Date(arguments, TrainingRequestJson.StartDateArgument);

@@ -68,7 +68,7 @@ internal sealed class CheckPortfolioRlPreflightTool : IMcpTool
         var resolvedSymbols = new List<string>(rawSymbols.Count);
         foreach (string raw in rawSymbols)
         {
-            string resolved = await _symbols.ResolveAsync(raw, SymbolsArgument, cancellationToken).ConfigureAwait(false);
+            string resolved = await _symbols.ResolveAsync(raw, SymbolsArgument, cancellationToken, allowSynthetic: false).ConfigureAwait(false);
             resolvedSymbols.Add(resolved);
         }
 

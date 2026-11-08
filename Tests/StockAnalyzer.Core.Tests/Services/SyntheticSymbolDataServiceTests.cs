@@ -509,5 +509,214 @@ public class SyntheticSymbolDataServiceTests
         Assert.Equal(expectedDailyFetch, capturedFetchCount);
     }
 
+    [Fact]
+    public async Task LoadCandlesAsync_SyntheticPair_WhenRightLegExcludedByPrimaryTimeline_FallsBackToReverseAlignment()
+    {
+        var mockInner = new Mock<IDataService>();
+        var mockAligner = new Mock<IComparisonDataAligner>();
+
+        var ts = new DateTime(2025, 4, 1, 0, 0, 0, DateTimeKind.Utc);
+        var timestamps = new[] { ts };
+
+        var candles2681 = new CandleData?[] { new CandleData(ts, 100m, 110m, 95m, 105m, 1000L) };
+        var candles5016 = new CandleData?[] { new CandleData(ts, 50m, 55m, 45m, 50m, 500L) };
+
+        // 1. Primary alignment: "2681-T" is primary, "5016-T" is excluded (missing from Series dictionary due to fragmentation)
+        var primaryExcludedAligned = new ComparisonAlignedData(
+            "2681-T",
+            timestamps,
+            new Dictionary<string, CandleData?[]>
+            {
+                ["2681-T"] = candles2681,
+            },
+            new[] { "5016-T excluded due to high data fragmentation (53.6% missing)." });
+
+        mockAligner.Setup(a => a.AlignAsync(
+                "2681-T",
+                It.Is<IReadOnlyList<string>>(l => l.Contains("5016-T")),
+                TimeFrame.D1,
+                840,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(primaryExcludedAligned);
+
+        // 2. Reverse alignment: "5016-T" is primary, both legs are present
+        var reverseSuccessAligned = new ComparisonAlignedData(
+            "5016-T",
+            timestamps,
+            new Dictionary<string, CandleData?[]>
+            {
+                ["5016-T"] = candles5016,
+                ["2681-T"] = candles2681,
+            },
+            Array.Empty<string>());
+
+        mockAligner.Setup(a => a.AlignAsync(
+                "5016-T",
+                It.Is<IReadOnlyList<string>>(l => l.Contains("2681-T")),
+                TimeFrame.D1,
+                840,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(reverseSuccessAligned);
+
+        var service = new SyntheticSymbolDataService(mockInner.Object, mockAligner.Object);
+        var candles = await service.LoadCandlesAsync("2681-T / 5016-T", TimeFrame.D1, 840);
+
+        Assert.Single(candles);
+        var candle = candles[0];
+        Assert.Equal(ts, candle.Timestamp);
+        // 105 / 50 = 2.1
+        Assert.Equal(2.1m, candle.Close);
+        Assert.True(candle.IsValid());
+
+        mockAligner.Verify(a => a.AlignAsync("2681-T", It.IsAny<IReadOnlyList<string>>(), TimeFrame.D1, 840, It.IsAny<CancellationToken>()), Times.Once);
+        mockAligner.Verify(a => a.AlignAsync("5016-T", It.IsAny<IReadOnlyList<string>>(), TimeFrame.D1, 840, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task LoadCandlesAsync_SyntheticPair_PeriodFrame_WhenDailyRightLegExcluded_FallsBackToReverseDailyAlignment()
+    {
+        var mockInner = new Mock<IDataService>();
+        var mockAligner = new Mock<IComparisonDataAligner>();
+
+        var ts = new DateTime(2025, 4, 1, 0, 0, 0, DateTimeKind.Utc); // Tuesday
+        var timestamps = new[] { ts };
+
+        var candles2681 = new CandleData?[] { new CandleData(ts, 100m, 110m, 95m, 105m, 1000L) };
+        var candles5016 = new CandleData?[] { new CandleData(ts, 50m, 55m, 45m, 50m, 500L) };
+
+        // 1. Primary daily alignment excludes 5016-T
+        var primaryExcludedAligned = new ComparisonAlignedData(
+            "2681-T",
+            timestamps,
+            new Dictionary<string, CandleData?[]>
+            {
+                ["2681-T"] = candles2681,
+            },
+            new[] { "5016-T excluded due to high data fragmentation." });
+
+        mockAligner.Setup(a => a.AlignAsync(
+                "2681-T",
+                It.Is<IReadOnlyList<string>>(l => l.Contains("5016-T")),
+                TimeFrame.D1,
+                It.IsAny<int>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(primaryExcludedAligned);
+
+        // 2. Reverse daily alignment succeeds
+        var reverseSuccessAligned = new ComparisonAlignedData(
+            "5016-T",
+            timestamps,
+            new Dictionary<string, CandleData?[]>
+            {
+                ["5016-T"] = candles5016,
+                ["2681-T"] = candles2681,
+            },
+            Array.Empty<string>());
+
+        mockAligner.Setup(a => a.AlignAsync(
+                "5016-T",
+                It.Is<IReadOnlyList<string>>(l => l.Contains("2681-T")),
+                TimeFrame.D1,
+                It.IsAny<int>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(reverseSuccessAligned);
+
+        var service = new SyntheticSymbolDataService(mockInner.Object, mockAligner.Object);
+        var candles = await service.LoadCandlesAsync("2681-T / 5016-T", TimeFrame.W1, 10);
+
+        Assert.Single(candles);
+        var candle = candles[0];
+        // Period start Monday of 2025-04-01 is 2025-03-31
+        Assert.Equal(new DateTime(2025, 3, 31, 0, 0, 0, DateTimeKind.Utc), candle.Timestamp);
+        Assert.Equal(2.1m, candle.Close);
+        Assert.True(candle.IsValid());
+    }
+
+    [Fact]
+    public async Task LoadCandlesAsync_SyntheticPair_WithRealAligner_SymmetricBarCountAcrossOrientations()
+    {
+        var mockInner = new Mock<IDataService>();
+
+        var baseDate = new DateTime(2023, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        // Symbol A has 1000 daily bars
+        var candlesA = Enumerable.Range(0, 1000)
+            .Select(i => new CandleData(baseDate.AddDays(i), 100m, 110m, 90m, 100m, 1000L))
+            .ToList();
+
+        // Symbol B has only 300 daily bars (the latest 300 days: from day 700 to 999)
+        var candlesB = Enumerable.Range(700, 300)
+            .Select(i => new CandleData(baseDate.AddDays(i), 50m, 55m, 45m, 50m, 500L))
+            .ToList();
+
+        mockInner.Setup(d => d.LoadCandlesAsync("TICKER-A", TimeFrame.D1, It.IsAny<int>()))
+            .ReturnsAsync((string _, TimeFrame _, int count) =>
+                count > 0 && candlesA.Count > count ? candlesA.TakeLast(count).ToList() : candlesA);
+
+        mockInner.Setup(d => d.LoadCandlesAsync("TICKER-B", TimeFrame.D1, It.IsAny<int>()))
+            .ReturnsAsync((string _, TimeFrame _, int count) =>
+                count > 0 && candlesB.Count > count ? candlesB.TakeLast(count).ToList() : candlesB);
+
+        mockInner.Setup(d => d.LoadCandlesAsync("TICKER-A", TimeFrame.D1, It.IsAny<int>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string s, TimeFrame tf, int count, bool _, CancellationToken _) =>
+                mockInner.Object.LoadCandlesAsync(s, tf, count).Result);
+
+        mockInner.Setup(d => d.LoadCandlesAsync("TICKER-B", TimeFrame.D1, It.IsAny<int>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string s, TimeFrame tf, int count, bool _, CancellationToken _) =>
+                mockInner.Object.LoadCandlesAsync(s, tf, count).Result);
+
+        var realAligner = new ComparisonDataAligner(mockInner.Object);
+        var service = new SyntheticSymbolDataService(mockInner.Object, realAligner);
+
+        // 1. Shorter leg as left leg: TICKER-B / TICKER-A
+        var candlesBOverA = await service.LoadCandlesAsync("TICKER-B / TICKER-A", TimeFrame.D1, 1000);
+        Assert.Equal(300, candlesBOverA.Count);
+
+        // 2. Longer leg as left leg: TICKER-A / TICKER-B
+        // With the fix, reverse alignment activates when TICKER-B is excluded by 1000-bar timeline, yielding 300 bars
+        var candlesAOverB = await service.LoadCandlesAsync("TICKER-A / TICKER-B", TimeFrame.D1, 1000);
+        Assert.Equal(300, candlesAOverB.Count);
+
+        // Verify timestamps match and prices are reciprocal: 100 / 50 = 2.0, 50 / 100 = 0.5 -> 2.0 * 0.5 = 1.0
+        for (int i = 0; i < 300; i++)
+        {
+            Assert.Equal(candlesBOverA[i].Timestamp, candlesAOverB[i].Timestamp);
+            Assert.Equal(2.0m, candlesAOverB[i].Close);
+            Assert.Equal(0.5m, candlesBOverA[i].Close);
+            Assert.Equal(1.0m, candlesAOverB[i].Close * candlesBOverA[i].Close);
+        }
+    }
+
+    [Fact]
+    public async Task LoadCandlesAsync_SyntheticPair_Real2681And5016_BothOrientationsProduce390Candles()
+    {
+        string dailyPath = @"Data\Daily";
+        if (!System.IO.File.Exists(System.IO.Path.Combine(dailyPath, "2681-T.parquet")) || !System.IO.File.Exists(System.IO.Path.Combine(dailyPath, "5016-T.parquet")))
+        {
+            return;
+        }
+
+        using var dbManager = new DuckDBConnectionManager();
+        var settings = Microsoft.Extensions.Options.Options.Create(new MarketDataSettings { DailyDataPath = dailyPath });
+        var parquetService = new ParquetDataService(dbManager, settings);
+        var aligner = new ComparisonDataAligner(parquetService);
+        var service = new SyntheticSymbolDataService(parquetService, aligner);
+
+        // 1. Shorter leg as left leg: 5016-T / 2681-T
+        var candles5016Over2681 = await service.LoadCandlesAsync("5016-T / 2681-T", TimeFrame.D1, 840);
+        Assert.Equal(390, candles5016Over2681.Count);
+
+        // 2. Longer leg as left leg: 2681-T / 5016-T (previously returned 0 candles)
+        var candles2681Over5016 = await service.LoadCandlesAsync("2681-T / 5016-T", TimeFrame.D1, 840);
+        Assert.Equal(390, candles2681Over5016.Count);
+
+        // Verify timestamps match and prices are reciprocal
+        for (int i = 0; i < 390; i++)
+        {
+            Assert.Equal(candles5016Over2681[i].Timestamp, candles2681Over5016[i].Timestamp);
+            decimal product = candles5016Over2681[i].Close * candles2681Over5016[i].Close;
+            Assert.True(Math.Abs(product - 1.0m) < 0.0001m, $"Expected product close to 1.0 at index {i}, got {product}");
+        }
+    }
+
     #endregion
 }

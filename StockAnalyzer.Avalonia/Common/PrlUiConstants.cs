@@ -54,4 +54,7 @@ public static class PrlUiConstants
     public const string Status = "Prl_Status";
     public const string Message = "Prl_Message";
     public const string Result = "Prl_Result";
+    public const string StorageMode = "Prl_StorageMode";
+    public const string StorageModeArtifacts = "Prl_StorageModeArtifacts";
+    public const string StorageModeTemp = "Prl_StorageModeTemp";
 }

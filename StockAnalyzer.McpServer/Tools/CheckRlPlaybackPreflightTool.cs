@@ -66,7 +66,7 @@ internal sealed class CheckRlPlaybackPreflightTool : IMcpTool
         string? resolvedSymbol = null;
         if (rawSymbol is not null)
         {
-            resolvedSymbol = await _symbols.ResolveAsync(rawSymbol, SymbolArgument, cancellationToken).ConfigureAwait(false);
+            resolvedSymbol = await _symbols.ResolveAsync(rawSymbol, SymbolArgument, cancellationToken, allowSynthetic: false).ConfigureAwait(false);
         }
 
         string resolvedModelId = modelIdArg;

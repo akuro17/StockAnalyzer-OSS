@@ -92,7 +92,7 @@ internal sealed class GetModelAttentionTool : IMcpTool
         {
             throw new ToolException(ToolErrorCodes.InvalidArgument, $"Argument '{SymbolArgument}' is required.", SymbolArgument);
         }
-        string resolvedSymbol = await _symbols.ResolveAsync(symbolRaw, SymbolArgument, cancellationToken).ConfigureAwait(false);
+        string resolvedSymbol = await _symbols.ResolveAsync(symbolRaw, SymbolArgument, cancellationToken, allowSynthetic: false).ConfigureAwait(false);
 
         int requestedBars = Math.Min(_limits.MaxCandlesPerRequest, AttentionContract.MaxWindow);
         DateOnly? asOf = ToolArgs.Date(arguments, AsOfDateArgument);

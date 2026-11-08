@@ -19,6 +19,8 @@ public sealed record RlTrainingJob(
     public string? EvaluationSpecificationId { get; init; }
     /// <summary>Opt-in short-history evaluation of the discrete T15 target; mutually exclusive with the all-block id and a frozen direction.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? ShortHistorySpecificationId { get; init; }
+    /// <summary>Destination storage mode of the run; omitted from wire JSON so job identity hashes remain unchanged.</summary>
+    [JsonIgnore] public OnnxArtifactStorageMode StorageMode { get; init; } = OnnxArtifactStorageMode.Artifacts;
 }
 
 public sealed record RlTrainingProgress(Guid RunId, long Sequence, string State, string Message, int CompletedSteps);
@@ -173,6 +175,8 @@ public static class RlTrainingValidation
     public static RlTrainingJob Freeze(RlTrainingJob job)
     {
         ArgumentNullException.ThrowIfNull(job);
+        if (!Enum.IsDefined(job.StorageMode))
+            throw new ArgumentOutOfRangeException(nameof(job), job.StorageMode, "Invalid storage mode.");
         if (string.IsNullOrWhiteSpace(job.Symbol) || job.Symbol.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0
             || job.Symbol.Contains('/') || job.Symbol.Contains('\\'))
             throw new ArgumentException("A safe, explicit symbol is required.", nameof(job));

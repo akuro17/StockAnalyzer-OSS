@@ -22,9 +22,10 @@ namespace StockAnalyzer.Core.Services.ReinforcementLearning;
 /// </summary>
 /// <param name="HoldoutPercent">Holdout share of this run when the dialog changed it; null uses the configured share.</param>
 /// <param name="MaxWeightPercent">Weight cap of this run when the dialog changed it; null uses the configured cap.</param>
+/// <param name="StorageMode">Destination storage mode of the run; defaults to <see cref="OnnxArtifactStorageMode.Artifacts"/>.</param>
 public sealed record RlPortfolioRunRequest(ImmutableArray<string> Symbols, DateOnly Start, DateOnly EndExclusive, bool SymbolHoldout,
     RlPanelEvaluationMode Mode, BacktestConfiguration Costs, bool SmokeOnly, RlPanelPartitionPlan? Plan = null, RlPortfolioTransferInit? Transfer = null,
-    Guid? PanelId = null, int? HoldoutPercent = null, int? MaxWeightPercent = null);
+    Guid? PanelId = null, int? HoldoutPercent = null, int? MaxWeightPercent = null, OnnxArtifactStorageMode StorageMode = OnnxArtifactStorageMode.Artifacts);
 
 /// <summary>The two operations of the portfolio dialog behind one seam, so the view model holds no I/O and tests can drive it with exact preflights.</summary>
 public interface IRlPortfolioService
@@ -137,16 +138,22 @@ public sealed class RlPortfolioService : IRlPortfolioService
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
+        if (!Enum.IsDefined(request.StorageMode))
+            throw new ArgumentOutOfRangeException(nameof(request), "Invalid storage mode.");
         var plan = ResolvePlan(request.Mode, request.Plan);
         var settings = Settings.WithRunOverrides(request.HoldoutPercent, request.MaxWeightPercent);
         _ = RlPortfolioSettingsValidator.Validate(settings, _limits);
-        var store = new RlPortfolioArtifactStore(_dataRoot ?? PathDiscovery.ResolveDataPath(null, "Data"));
+        string configuredDataRoot = _dataRoot ?? PathDiscovery.ResolveDataPath(null, "Data");
+        bool isTemp = request.StorageMode == OnnxArtifactStorageMode.Temp;
+        string outputDataRoot = isTemp ? StockAnalyzer.Core.Execution.EphemeralSandbox.Root : configuredDataRoot;
+        var outputStore = new RlPortfolioArtifactStore(outputDataRoot);
+        var panelLookupStore = isTemp ? new RlPortfolioArtifactStore(configuredDataRoot) : outputStore;
         // A stored panel is only located here; the runner loads and re-verifies it itself (with the plan), like a freshly captured one.
         bool captured = request.PanelId is null;
-        string panelDirectory = request.PanelId is { } stored ? store.ExistingPanelDirectory(stored)
+        string panelDirectory = request.PanelId is { } stored ? panelLookupStore.ExistingPanelDirectory(stored)
             : (await RlPanelSnapshotFactory.PrepareAsync(request.Symbols, request.Start, request.EndExclusive,
-                store.PanelDirectory(Guid.NewGuid()), _limits, settings, request.SymbolHoldout, request.Mode, plan, cancellationToken, _sourceFolders).ConfigureAwait(false)).Directory;
-        var runner = new RlPortfolioTrainingRunner(_gate, _dataRoot);
+                outputStore.PanelDirectory(Guid.NewGuid()), _limits, settings, request.SymbolHoldout, request.Mode, plan, cancellationToken, _sourceFolders).ConfigureAwait(false)).Directory;
+        var runner = new RlPortfolioTrainingRunner(_gate, outputDataRoot, isTemp ? configuredDataRoot : null);
         try
         {
             return await runner.RunAsync(new RlPortfolioTrainingRequest(panelDirectory, request.Costs, settings, request.SmokeOnly, null, request.Mode, plan, request.Transfer),
@@ -155,7 +162,7 @@ public sealed class RlPortfolioService : IRlPortfolioService
         catch (InvalidDataException error) when (captured && RlPortfolioTransferRejection.Is(error))
         {
             // The runner rejected the base before any run folder existed, so the panel captured above for this very attempt is an orphan; the runner never deletes a panel it was handed.
-            _ = store.TryRemoveCapturedPanel(panelDirectory);
+            _ = outputStore.TryRemoveCapturedPanel(panelDirectory);
             throw;
         }
     }

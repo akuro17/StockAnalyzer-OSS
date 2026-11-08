@@ -43,7 +43,7 @@ internal sealed class StartRlTrainingTool : IMcpTool
 
     public async Task<string> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)
     {
-        string symbol = await _symbols.ResolveAsync(ToolArgs.String(arguments, SymbolArgument)!, SymbolArgument, cancellationToken).ConfigureAwait(false);
+        string symbol = await _symbols.ResolveAsync(ToolArgs.String(arguments, SymbolArgument)!, SymbolArgument, cancellationToken, allowSynthetic: false).ConfigureAwait(false);
         DateOnly? start = ToolArgs.Date(arguments, StartDateArgument);
         DateOnly? end = ToolArgs.Date(arguments, EndDateExclusiveArgument);
         if (start >= end)

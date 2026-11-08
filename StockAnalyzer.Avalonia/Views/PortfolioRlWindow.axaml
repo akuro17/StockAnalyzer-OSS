@@ -5,6 +5,7 @@
         xmlns:ui="using:StockAnalyzer.Avalonia.Common"
         xmlns:controls="using:StockAnalyzer.Avalonia.Views.Controls"
         xmlns:node="using:StockAnalyzer.Avalonia.ViewModels.TickerList"
+        xmlns:conv="using:StockAnalyzer.Avalonia.Converters"
         x:Class="StockAnalyzer.Avalonia.Views.PortfolioRlWindow"
         x:DataType="vm:PortfolioRlDialogViewModel"
         AutomationProperties.AutomationId="{x:Static ui:PrlUiConstants.Window}"
@@ -19,6 +20,9 @@
         ExtendClientAreaToDecorationsHint="True"
         ExtendClientAreaTitleBarHeightHint="-1"
         WindowStartupLocation="CenterOwner">
+  <Window.Resources>
+    <conv:EnumToLocalizedDisplayNameConverter x:Key="EnumToLocalizedDisplayNameConverter" />
+  </Window.Resources>
   <Window.Styles>
     <!-- Calendar picker button icon (the default glyph reads as a number); one resource file shared by this window. -->
     <StyleInclude Source="avares://StockAnalyzer.Avalonia/Assets/CalendarDatePickerIcon.axaml" />
@@ -297,6 +301,22 @@
                   <TextBlock Classes="label" Text="{l:Localize Prl.MaxWeight}" />
                   <TextBox Text="{Binding MaxWeightPercentText, Mode=TwoWay}"
                            AutomationProperties.AutomationId="{x:Static ui:PrlUiConstants.MaxWeight}" AutomationProperties.Name="{l:Localize Prl.MaxWeight}" />
+                </StackPanel>
+                <StackPanel Grid.Row="2" Grid.Column="1" Spacing="{x:Static ui:PrlUiLayout.LabelGap}">
+                  <TextBlock Classes="label" Text="{l:Localize TrainingWizard_StorageMode}" />
+                  <ComboBox ItemsSource="{Binding AvailableStorageModes}"
+                            SelectedItem="{Binding SelectedStorageMode, Mode=TwoWay}"
+                            HorizontalAlignment="Stretch"
+                            Height="{x:Static ui:PrlUiLayout.ControlHeight}"
+                            FontSize="{DynamicResource BaseFontSize}"
+                            AutomationProperties.AutomationId="{x:Static ui:PrlUiConstants.StorageMode}"
+                            AutomationProperties.Name="{l:Localize TrainingWizard_StorageMode}">
+                    <ComboBox.ItemTemplate>
+                      <DataTemplate>
+                        <TextBlock Classes="value" Text="{Binding Converter={StaticResource EnumToLocalizedDisplayNameConverter}}" />
+                      </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                  </ComboBox>
                 </StackPanel>
               </Grid>
               <TextBlock Classes="warning" Text="{Binding PercentMessage}" IsVisible="{Binding PercentMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />

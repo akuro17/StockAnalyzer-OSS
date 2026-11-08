@@ -38,9 +38,10 @@ public sealed class RlPortfolioTrainingRunner
     private const string TrainerScript = "training/train_rl_portfolio.py";
     private readonly TrainingJobGate _gate;
     private readonly string? _dataRoot;
+    private readonly string? _baseDataRoot;
 
-    public RlPortfolioTrainingRunner(TrainingJobGate? gate = null, string? dataRoot = null)
-    { _gate = gate ?? new TrainingJobGate(); _dataRoot = dataRoot; }
+    public RlPortfolioTrainingRunner(TrainingJobGate? gate = null, string? dataRoot = null, string? baseDataRoot = null)
+    { _gate = gate ?? new TrainingJobGate(); _dataRoot = dataRoot; _baseDataRoot = baseDataRoot; }
 
     public async Task<RlPortfolioTrainingResult> RunAsync(RlPortfolioTrainingRequest request, IProgress<RlTrainingProgress>? progress = null,
         CancellationToken cancellationToken = default)
@@ -62,10 +63,11 @@ public sealed class RlPortfolioTrainingRunner
         if (slots < panel.Symbols.Length || slots > request.Settings.MaxSymbols || !RlPortfolioResources.Fits(slots, limits, layout))
             throw new ArgumentException($"{RlPortfolioContract.UniverseErrorPrefix} {slots} model slots do not fit {panel.Symbols.Length} symbols and the configured and resource limits.");
         var store = new RlPortfolioArtifactStore(_dataRoot ?? PathDiscovery.ResolveDataPath(null, "Data"));
+        var baseStore = _baseDataRoot is not null ? new RlPortfolioArtifactStore(_baseDataRoot) : store;
         // A fine-tune is admitted before anything is created or started: a base that fails a rule leaves no run folder and no worker.
         string? freezeName = request.Transfer is null ? null : RlPortfolioFreezes.Name(request.Transfer.Freeze);
         DateOnly firstValidation = request.Transfer is null ? default : RlPortfolioTransferAdmission.FirstValidationDate(panel);
-        var baseRun = request.Transfer is null ? null : RlPortfolioTransferAdmission.Admit(store, request.Transfer.BaseRunId, firstValidation, layout);
+        var baseRun = request.Transfer is null ? null : RlPortfolioTransferAdmission.Admit(baseStore, request.Transfer.BaseRunId, firstValidation, layout);
         var identityFields = new { panel.Manifest.UniverseSha256, panel.Manifest.CalendarSha256, costs, slots,
             request.SmokeOnly, request.Mode, contract_hash = layout.ContractHash };
         // A run without a plan keeps its identity byte for byte; a plan adds its method and block counts (the bars it came from do not change the run).

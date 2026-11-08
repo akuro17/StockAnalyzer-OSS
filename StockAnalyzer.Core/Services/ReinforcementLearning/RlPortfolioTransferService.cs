@@ -105,16 +105,20 @@ public sealed class RlPortfolioTransferService : IRlPortfolioTransferService
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(request.Costs);
+        if (!Enum.IsDefined(request.StorageMode))
+            throw new ArgumentOutOfRangeException(nameof(request), "Invalid storage mode.");
         var costs = RlContract.CreateConfiguration(request.Costs);
         var plan = RlPortfolioService.ResolvePlan(Settings, request.Mode, request.Plan);
         var settings = Settings.WithRunOverrides(request.HoldoutPercent, request.MaxWeightPercent);
         _ = RlPortfolioSettingsValidator.Validate(settings, _limits);
-        var store = Store();
+        var baseStore = Store();
+        bool isTemp = request.StorageMode == OnnxArtifactStorageMode.Temp;
+        var outputStore = isTemp ? new RlPortfolioArtifactStore(StockAnalyzer.Core.Execution.EphemeralSandbox.Root) : baseStore;
         // A stored panel (request.PanelId) is loaded and fully re-verified; otherwise a new one is captured, and only then is it this call's own to remove on a rejection.
         bool captured = request.PanelId is null;
         var panel = request.PanelId is { } stored
-            ? await Task.Run(() => RlPanelSnapshot.Load(store.ExistingPanelDirectory(stored), _limits, settings, request.Mode, plan, cancellationToken), cancellationToken).ConfigureAwait(false)
-            : await RlPanelSnapshotFactory.PrepareAsync(request.Symbols, request.Start, request.EndExclusive, store.PanelDirectory(Guid.NewGuid()),
+            ? await Task.Run(() => RlPanelSnapshot.Load(baseStore.ExistingPanelDirectory(stored), _limits, settings, request.Mode, plan, cancellationToken), cancellationToken).ConfigureAwait(false)
+            : await RlPanelSnapshotFactory.PrepareAsync(request.Symbols, request.Start, request.EndExclusive, outputStore.PanelDirectory(Guid.NewGuid()),
                 _limits, settings, request.SymbolHoldout, request.Mode, plan, cancellationToken).ConfigureAwait(false);
 
         // Admission and the slot check come after the capture (the target's first validation date needs its calendar) and before any evaluation.
@@ -124,13 +128,13 @@ public sealed class RlPortfolioTransferService : IRlPortfolioTransferService
         try
         {
             firstValidation = RlPortfolioTransferAdmission.FirstValidationDate(panel);
-            baseRun = RlPortfolioTransferAdmission.Admit(store, baseRunId, firstValidation);
+            baseRun = RlPortfolioTransferAdmission.Admit(baseStore, baseRunId, firstValidation);
             if (panel.SymbolCount > baseRun.MaxSymbols)
                 throw RlPortfolioTransferRejection.Create($"{RlPortfolioTransferContract.ErrorPrefix} the base model has {baseRun.MaxSymbols} slots for {panel.SymbolCount} symbols.");
         }
         catch (InvalidDataException error) when (captured && RlPortfolioTransferRejection.Is(error))
         {
-            _ = store.TryRemoveCapturedPanel(panel.Directory);
+            _ = outputStore.TryRemoveCapturedPanel(panel.Directory);
             throw;
         }
 
@@ -142,7 +146,7 @@ public sealed class RlPortfolioTransferService : IRlPortfolioTransferService
         using var lease = _gate.AcquireIdentity(identity);
 
         var runId = Guid.NewGuid();
-        string directory = store.Begin(runId);
+        string directory = outputStore.Begin(runId);
         try
         {
             // A report that does not follow from its own rows, panel and model is never published.
@@ -166,7 +170,7 @@ public sealed class RlPortfolioTransferService : IRlPortfolioTransferService
                 RlPortfolioPartitionEvidence.Validate(RlPortfolioPartitionEvidence.Read(partitionPath), panel);
                 published.Add(RlPortfolioPartitionEvidence.FileName);
             }
-            await store.PublishAsync(runId, panel.Manifest.UniverseSha256, panel.Manifest.CalendarSha256, published, cancellationToken).ConfigureAwait(false);
+            await outputStore.PublishAsync(runId, panel.Manifest.UniverseSha256, panel.Manifest.CalendarSha256, published, cancellationToken).ConfigureAwait(false);
             return new RlPortfolioZeroShotResult(runId, directory, reportPath, report, panel.Directory, baseRun);
         }
         catch (Exception error)

@@ -201,6 +201,23 @@ public sealed partial class PortfolioRlDialogViewModel : ObservableObject, IDisp
     [ObservableProperty] private PortfolioComparableRunRow? _selectedRunB;
     [ObservableProperty] private string _comparisonMessage = "";
     [ObservableProperty] private string _portfolioAllocationSummary = "";
+    public IReadOnlyList<OnnxArtifactStorageMode> AvailableStorageModes { get; } = Enum.GetValues<OnnxArtifactStorageMode>();
+    [ObservableProperty] private OnnxArtifactStorageMode _selectedStorageMode = OnnxArtifactStorageMode.Artifacts;
+    public bool IsArtifactsStorageMode
+    {
+        get => SelectedStorageMode == OnnxArtifactStorageMode.Artifacts;
+        set { if (value) SelectedStorageMode = OnnxArtifactStorageMode.Artifacts; }
+    }
+    public bool IsTempStorageMode
+    {
+        get => SelectedStorageMode == OnnxArtifactStorageMode.Temp;
+        set { if (value) SelectedStorageMode = OnnxArtifactStorageMode.Temp; }
+    }
+    partial void OnSelectedStorageModeChanged(OnnxArtifactStorageMode value)
+    {
+        OnPropertyChanged(nameof(IsArtifactsStorageMode));
+        OnPropertyChanged(nameof(IsTempStorageMode));
+    }
 
     /// <param name="transfer">The stored-model seam; null hides every transfer control and the dialog only trains from scratch.</param>
     public PortfolioRlDialogViewModel(IRlPortfolioService service, ITickerSourceResolver resolver, ITickerStateStore store,
@@ -1185,13 +1202,14 @@ public sealed partial class PortfolioRlDialogViewModel : ObservableObject, IDisp
         if (kind != PortfolioRunKind.Scratch && (baseRun is null || SelectedBaseRun is null)) return;
         var firstValidation = _admittedValidation;
         var freeze = kind == PortfolioRunKind.FineTune ? (FreezeEncoder ? RlPortfolioFreeze.EncoderFrozen : RlPortfolioFreeze.None) : (RlPortfolioFreeze?)null;
+        var storageMode = SelectedStorageMode;
         var request = panelRow is null
             ? new RlPortfolioRunRequest(decision!.TrainingSymbols, start, end, decision.SymbolHoldout,
                 UseShortHistory ? RlPanelEvaluationMode.ShortHistory : RlPanelEvaluationMode.Standard, costs, SmokeOnly, plan,
-                freeze is { } f ? new RlPortfolioTransferInit(baseRun!.RunId, f) : null, null, HoldoutPercentOverride, MaxWeightPercentOverride)
+                freeze is { } f ? new RlPortfolioTransferInit(baseRun!.RunId, f) : null, null, HoldoutPercentOverride, MaxWeightPercentOverride, storageMode)
             : new RlPortfolioRunRequest(ImmutableArray<string>.Empty, panelRow.Start, panelRow.EndExclusive, panelRow.Holdout,
                 UseShortHistory ? RlPanelEvaluationMode.ShortHistory : RlPanelEvaluationMode.Standard, costs, SmokeOnly, plan,
-                freeze is { } g ? new RlPortfolioTransferInit(baseRun!.RunId, g) : null, panelRow.PanelId, null, MaxWeightPercentOverride);
+                freeze is { } g ? new RlPortfolioTransferInit(baseRun!.RunId, g) : null, panelRow.PanelId, null, MaxWeightPercentOverride, storageMode);
         _refreshCts?.Cancel();
         using var cancel = new CancellationTokenSource();
         _runCts = cancel;
@@ -1227,8 +1245,11 @@ public sealed partial class PortfolioRlDialogViewModel : ObservableObject, IDisp
             OnPropertyChanged(nameof(HasResult));
             Status = "Succeeded"; TechnicalDetails = "";
             Message = string.Format(CultureInfo.CurrentCulture, _localization.GetString("Prl.Result.Saved"), directory);
-            if (kind == PortfolioRunKind.FineTune) _ = LoadBaseRunsAsync();      // the new run holds a complete model: it is a base candidate from now on
-            if (_transfer is not null) { _ = LoadStoredPanelsAsync(); _ = LoadComparableRunsAsync(); }      // a new capture is a stored panel now; the run has a report to compare
+            if (storageMode == OnnxArtifactStorageMode.Artifacts)
+            {
+                if (kind == PortfolioRunKind.FineTune) _ = LoadBaseRunsAsync();      // the new run holds a complete model: it is a base candidate from now on
+                if (_transfer is not null) { _ = LoadStoredPanelsAsync(); _ = LoadComparableRunsAsync(); }      // a new capture is a stored panel now; the run has a report to compare
+            }
         }
         catch (OperationCanceledException) { if (!_disposed) Status = "Cancelled"; }
         catch (Exception e)

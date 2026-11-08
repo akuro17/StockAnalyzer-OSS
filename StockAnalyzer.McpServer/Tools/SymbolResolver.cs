@@ -1,3 +1,4 @@
+using StockAnalyzer.Core.Helpers;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.ReadOnly;
 
@@ -26,9 +27,23 @@ internal sealed class SymbolResolver
     }
 
     /// <summary>Validates the shape of the symbol and returns its canonical form, without a lookup.</summary>
-    public static string Canonical(string symbol, string parameter)
+    public static string Canonical(string symbol, string parameter, bool allowSynthetic = true)
     {
-        if (!TickerSymbol.IsWellFormed(symbol))
+        if (allowSynthetic && SyntheticSymbolParser.TryParse(symbol, out var expr))
+        {
+            if (!expr.IsOperatorSupported)
+            {
+                throw new ToolException(
+                    ToolErrorCodes.InvalidArgument,
+                    $"Operator '{expr.OperatorChar}' is not supported for custom formula symbols.",
+                    parameter,
+                    "Supported operators are '+', '-', '/'. The '*' operator is recognized but execution is not permitted.");
+            }
+
+            return expr.CanonicalExpression;
+        }
+
+        if (!TickerSymbol.IsWellFormed(symbol) || symbol.IndexOfAny(new[] { '+', '/', '*' }) >= 0 || symbol.Trim().Any(char.IsWhiteSpace))
         {
             throw new ToolException(
                 ToolErrorCodes.InvalidArgument,
@@ -41,10 +56,34 @@ internal sealed class SymbolResolver
     }
 
     /// <summary>Canonical symbol that is also in the ticker list; otherwise SYMBOL_NOT_FOUND.</summary>
-    public async Task<string> ResolveAsync(string symbol, string parameter, CancellationToken cancellationToken)
+    public async Task<string> ResolveAsync(string symbol, string parameter, CancellationToken cancellationToken, bool allowSynthetic = true)
     {
-        string canonical = Canonical(symbol, parameter);
+        string canonical = Canonical(symbol, parameter, allowSynthetic);
         IReadOnlyList<string> available = await _gateway.GetAvailableTickersAsync(cancellationToken).ConfigureAwait(false);
+
+        if (allowSynthetic && SyntheticSymbolParser.TryParse(canonical, out var expr))
+        {
+            if (!available.Contains(expr.LeftSymbol, StringComparer.OrdinalIgnoreCase))
+            {
+                throw new ToolException(
+                    ToolErrorCodes.SymbolNotFound,
+                    $"Constituent symbol '{expr.LeftSymbol}' of formula '{canonical}' is not available.",
+                    parameter,
+                    "Call sa_list_tickers to see the available symbols.");
+            }
+
+            if (!available.Contains(expr.RightSymbol, StringComparer.OrdinalIgnoreCase))
+            {
+                throw new ToolException(
+                    ToolErrorCodes.SymbolNotFound,
+                    $"Constituent symbol '{expr.RightSymbol}' of formula '{canonical}' is not available.",
+                    parameter,
+                    "Call sa_list_tickers to see the available symbols.");
+            }
+
+            return canonical;
+        }
+
         if (!available.Contains(canonical, StringComparer.OrdinalIgnoreCase))
         {
             throw new ToolException(ToolErrorCodes.SymbolNotFound, $"Symbol '{canonical}' is not available.", parameter, "Call sa_list_tickers to see the available symbols.");
@@ -54,22 +93,41 @@ internal sealed class SymbolResolver
     }
 
     /// <summary>
-    /// <see cref="ResolveAsync(string, string, CancellationToken)"/> when <paramref name="allowUnregistered"/> is false (the default of every tool);
+    /// <see cref="ResolveAsync(string, string, CancellationToken, bool)"/> when <paramref name="allowUnregistered"/> is false (the default of every tool);
     /// <see cref="ResolveStoredAsync"/> when it is true.
     /// </summary>
-    public async Task<ResolvedSymbol> ResolveAsync(string symbol, string parameter, bool allowUnregistered, CancellationToken cancellationToken)
+    public async Task<ResolvedSymbol> ResolveAsync(string symbol, string parameter, bool allowUnregistered, CancellationToken cancellationToken, bool allowSynthetic = true)
         => allowUnregistered
-            ? await ResolveStoredAsync(symbol, parameter, cancellationToken).ConfigureAwait(false)
-            : new ResolvedSymbol(await ResolveAsync(symbol, parameter, cancellationToken).ConfigureAwait(false), true);
+            ? await ResolveStoredAsync(symbol, parameter, cancellationToken, allowSynthetic).ConfigureAwait(false)
+            : new ResolvedSymbol(await ResolveAsync(symbol, parameter, cancellationToken, allowSynthetic).ConfigureAwait(false), true);
 
     /// <summary>
     /// A symbol in the ticker list, or one that is not listed but has stored daily bars. A symbol that is in neither case is SYMBOL_NOT_FOUND.
     /// Nothing is fetched: only bars already stored are looked at.
     /// </summary>
-    public async Task<ResolvedSymbol> ResolveStoredAsync(string symbol, string parameter, CancellationToken cancellationToken)
+    public async Task<ResolvedSymbol> ResolveStoredAsync(string symbol, string parameter, CancellationToken cancellationToken, bool allowSynthetic = true)
     {
-        string canonical = Canonical(symbol, parameter);
+        string canonical = Canonical(symbol, parameter, allowSynthetic);
         IReadOnlyList<string> available = await _gateway.GetAvailableTickersAsync(cancellationToken).ConfigureAwait(false);
+
+        if (allowSynthetic && SyntheticSymbolParser.TryParse(canonical, out var expr))
+        {
+            bool leftRegistered = available.Contains(expr.LeftSymbol, StringComparer.OrdinalIgnoreCase);
+            if (!leftRegistered)
+            {
+                await RequireStoredBarsAsync(expr.LeftSymbol, parameter, cancellationToken).ConfigureAwait(false);
+            }
+
+            bool rightRegistered = available.Contains(expr.RightSymbol, StringComparer.OrdinalIgnoreCase);
+            if (!rightRegistered)
+            {
+                await RequireStoredBarsAsync(expr.RightSymbol, parameter, cancellationToken).ConfigureAwait(false);
+            }
+
+            await RequireStoredBarsAsync(canonical, parameter, cancellationToken).ConfigureAwait(false);
+            return new ResolvedSymbol(canonical, leftRegistered && rightRegistered);
+        }
+
         if (available.Contains(canonical, StringComparer.OrdinalIgnoreCase))
         {
             return new ResolvedSymbol(canonical, true);

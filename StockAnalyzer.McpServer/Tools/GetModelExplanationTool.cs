@@ -87,7 +87,7 @@ internal sealed class GetModelExplanationTool : IMcpTool
 
         string? resolvedSymbol = rawSymbol is null
             ? null
-            : await _symbols.ResolveAsync(rawSymbol, SymbolArgument, cancellationToken).ConfigureAwait(false);
+            : await _symbols.ResolveAsync(rawSymbol, SymbolArgument, cancellationToken, allowSynthetic: false).ConfigureAwait(false);
 
         // Read once, with or without a symbol: the training period belongs to the model, not to the symbol asked about.
         ModelAnalysisSnapshot? analysis = await TryLoadAnalysisAsync(resolvedModelId, cancellationToken).ConfigureAwait(false);

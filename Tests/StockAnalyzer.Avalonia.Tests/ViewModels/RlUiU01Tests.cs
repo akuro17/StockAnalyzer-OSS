@@ -205,7 +205,9 @@ public sealed partial class RlUiTests
             var groupHeaders = window.GetLogicalDescendants().OfType<TextBlock>().Where(t => t.Classes.Contains("groupHeader")).ToArray();
             Assert.Equal(new[] { "TrainingWizard_Header_BasicSettings", "TrainingWizard_Header_AdvancedSettings", "Rl.Ui.Group.Results" }.Select(k => LocalizationManager.Instance.Get(k)), groupHeaders.Select(t => t.Text));
             Assert.Equal(new[] { false, true, true }, groupHeaders.Select(t => t.Classes.Contains("advancedGroupHeader")));
-            foreach (var combo in window.GetLogicalDescendants().OfType<ComboBox>()) Assert.False(combo.IsVisible);
+            foreach (var combo in window.GetLogicalDescendants().OfType<ComboBox>().Where(c => global::Avalonia.Automation.AutomationProperties.GetAutomationId(c) != RlUiConstants.StorageMode)) Assert.False(combo.IsVisible);
+            var storageCombo = window.GetLogicalDescendants().OfType<ComboBox>().Single(c => global::Avalonia.Automation.AutomationProperties.GetAutomationId(c) == RlUiConstants.StorageMode);
+            Assert.True(storageCombo.IsVisible);
             Assert.False(window.GetLogicalDescendants().OfType<Button>().Single(b => b.Command == vm.TrainCommand).IsEnabled);
             Assert.True(window.GetLogicalDescendants().OfType<Button>().Single(b => b.Command == vm.InspectArtifactsCommand).IsVisible);
             Assert.False(window.GetLogicalDescendants().OfType<Button>().Single(b => b.Command == vm.CancelCommand).IsVisible);

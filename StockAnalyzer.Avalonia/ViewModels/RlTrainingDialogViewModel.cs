@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Globalization;
 using System.IO;
@@ -97,6 +98,23 @@ public sealed partial class RlTrainingDialogViewModel : ObservableObject, IDispo
     [ObservableProperty] private decimal _slippageRatio;
     [ObservableProperty] private decimal _liquidationPenaltyRatio;
     [ObservableProperty] private bool _smokeOnly;
+    public IReadOnlyList<OnnxArtifactStorageMode> AvailableStorageModes { get; } = Enum.GetValues<OnnxArtifactStorageMode>();
+    [ObservableProperty] private OnnxArtifactStorageMode _selectedStorageMode = OnnxArtifactStorageMode.Artifacts;
+    public bool IsArtifactsStorageMode
+    {
+        get => SelectedStorageMode == OnnxArtifactStorageMode.Artifacts;
+        set { if (value) SelectedStorageMode = OnnxArtifactStorageMode.Artifacts; }
+    }
+    public bool IsTempStorageMode
+    {
+        get => SelectedStorageMode == OnnxArtifactStorageMode.Temp;
+        set { if (value) SelectedStorageMode = OnnxArtifactStorageMode.Temp; }
+    }
+    partial void OnSelectedStorageModeChanged(OnnxArtifactStorageMode value)
+    {
+        OnPropertyChanged(nameof(IsArtifactsStorageMode));
+        OnPropertyChanged(nameof(IsTempStorageMode));
+    }
     [ObservableProperty] private bool _isBusy;
     [ObservableProperty] private string _status = "Ready";
     public string StatusDisplay => _pauseCts?.IsCancellationRequested == true && Status != "Paused" && Status != "Cancelled" && Status != "Cancelling"
@@ -259,8 +277,9 @@ public sealed partial class RlTrainingDialogViewModel : ObservableObject, IDispo
     [RelayCommand(CanExecute = nameof(CanTrain))] private async Task TrainAsync()
     {
         if (!CanTrain) return;
+        var storageMode = SelectedStorageMode;
         // The costs of this window apply to this training only (frozen into the job below); the Settings > Backtest defaults are never written from here.
-        if (CanSaveRetention && (_savedPolicy is null || DraftPolicy() != _savedPolicy))
+        if (storageMode == OnnxArtifactStorageMode.Artifacts && CanSaveRetention && (_savedPolicy is null || DraftPolicy() != _savedPolicy))
         {
             try { await SaveArtifactSettingsAsync(); } catch { }
         }
@@ -269,7 +288,8 @@ public sealed partial class RlTrainingDialogViewModel : ObservableObject, IDispo
         var job = RlTrainingValidation.Freeze(new RlTrainingJob(Symbol, start, end, Costs(), SmokeOnly: SmokeOnly)
         { FrozenDirectionModelId = UseContinuousPolicy ? SelectedDirectionGeneration!.ModelId : null,
           EvaluationSpecificationId = UseContinuousPolicy && UseAllCompleteBlocks ? RlAllBlockEvaluationContract.SpecificationId : null,
-          ShortHistorySpecificationId = !UseContinuousPolicy && UseShortHistory ? RlShortHistoryEvaluationContract.SpecificationId : null });
+          ShortHistorySpecificationId = !UseContinuousPolicy && UseShortHistory ? RlShortHistoryEvaluationContract.SpecificationId : null,
+          StorageMode = storageMode });
         using var cancel = new CancellationTokenSource(); using var pause = new CancellationTokenSource();
         _jobCts = cancel; _pauseCts = pause; BeginOperation(RlDialogOperation.Training, cancel); Status = "Preparing"; CompletedSteps = null;
         TotalStepsTarget = job.SmokeOnly
@@ -283,7 +303,7 @@ public sealed partial class RlTrainingDialogViewModel : ObservableObject, IDispo
         {
             cancel.Token.ThrowIfCancellationRequested();
             var progress = new Progress<RlTrainingProgress>(p => ApplyProgress(p, cancel));
-            var result = job.FrozenDirectionModelId is not null && _training is IRlResumableTrainingService resumable
+            var result = storageMode == OnnxArtifactStorageMode.Artifacts && job.FrozenDirectionModelId is not null && _training is IRlResumableTrainingService resumable
                 ? await Task.Run(() => resumable.RunResumableAsync(job, pause.Token, progress, cancel.Token))
                 : await Task.Run(() => _training.RunAsync(job, progress, cancel.Token));
             cancel.Token.ThrowIfCancellationRequested();
@@ -292,7 +312,10 @@ public sealed partial class RlTrainingDialogViewModel : ObservableObject, IDispo
             ProgressPercent = 100.0;
             IsProgressIndeterminate = false;
             ProgressPhaseDisplay = Message;
-            await RefreshGenerationsAsync();
+            if (storageMode == OnnxArtifactStorageMode.Artifacts)
+            {
+                await RefreshGenerationsAsync();
+            }
         }
         catch (RlTrainingPausedException) { if (!_disposed) { Status = RlCheckpointContract.PauseState; Message = _localization.GetString("Rl.Checkpoint.Paused"); } }
         catch (OperationCanceledException) { if (!_disposed) Status = "Cancelled"; }

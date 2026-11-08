@@ -87,7 +87,7 @@ internal sealed class ListModelsTool : IMcpTool
         string? resolvedSymbol = null;
         if (rawSymbol is not null)
         {
-            resolvedSymbol = await _symbols.ResolveAsync(rawSymbol, SymbolArgument, cancellationToken).ConfigureAwait(false);
+            resolvedSymbol = await _symbols.ResolveAsync(rawSymbol, SymbolArgument, cancellationToken, allowSynthetic: false).ConfigureAwait(false);
         }
 
         long offsetLong = ToolArgs.Integer(arguments, OffsetArgument) ?? 0;
