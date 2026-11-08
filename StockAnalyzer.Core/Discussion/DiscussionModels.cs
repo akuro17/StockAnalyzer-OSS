@@ -158,6 +158,42 @@ public sealed record DiscussionJoinResult(string ParticipantToken, string Handle
 
 public sealed record DiscussionLeaveResult(bool AlreadyLeft, DiscussionSessionHeader Session);
 
+/// <summary>
+/// Hard bounds for AI analysis provenance and structured peer interpretation.
+/// Kept separate from <see cref="DiscussionLimits"/> to preserve reflection parity tests.
+/// </summary>
+public static class DiscussionEvidenceLimits
+{
+    public const int MaxAnalysisIntentChars = 128;
+    public const int MaxInterpretationSummaryChars = 500;
+    public const int MaxInterpretationConclusionChars = 1_000;
+    public const int MaxInterpretationListItems = 16;
+    public const int MaxInterpretationItemChars = 500;
+}
+
+/// <summary>
+/// Canonical market direction hypotheses for structured peer interpretation.
+/// </summary>
+public static class DiscussionInterpretationDirection
+{
+    public const string Bullish = "Bullish";
+    public const string Bearish = "Bearish";
+    public const string Neutral = "Neutral";
+}
+
+/// <summary>
+/// Structured peer interpretation of an analysis or discussion turn.
+/// Supports partial input (at least one subfield populated) and tracks which fields were provided.
+/// </summary>
+public sealed record DiscussionInterpretation(
+    string? Summary = null,
+    string? Direction = null,
+    IReadOnlyList<string>? Findings = null,
+    IReadOnlyList<string>? SupportingEvidence = null,
+    IReadOnlyList<string>? CounterEvidence = null,
+    string? Conclusion = null,
+    IReadOnlyList<string>? ProvidedFields = null);
+
 /// <summary>What a participant posts. <see cref="Content"/> is stored byte-exact and is required unless <see cref="Pass"/> is set.</summary>
 public sealed record DiscussionPostRequest(
     string? Content,
@@ -165,9 +201,18 @@ public sealed record DiscussionPostRequest(
     long? ReplyToSequence = null,
     IReadOnlyList<long>? ContextIds = null,
     long? BasedOnSequence = null,
-    string? ClientRequestId = null);
+    string? ClientRequestId = null,
+    DiscussionInterpretation? Interpretation = null);
 
-public sealed record DiscussionPostResult(long Sequence, DateTimeOffset CreatedUtc, long NewerMessages, bool Duplicate, DiscussionFloorInfo? Floor);
+public sealed record DiscussionPostResult(
+    long Sequence,
+    DateTimeOffset CreatedUtc,
+    long NewerMessages,
+    bool Duplicate,
+    DiscussionFloorInfo? Floor,
+    bool HasStructuredInput = false,
+    bool HasInterpretation = false,
+    IReadOnlyList<string>? ProvidedInterpretationFields = null);
 
 /// <summary>One message as a reader sees it. <see cref="DisplayName"/> is the name at join time (an untrusted label); null for server events.</summary>
 public sealed record DiscussionReadMessage(
@@ -178,7 +223,10 @@ public sealed record DiscussionReadMessage(
     string Content,
     long? ReplyToSequence,
     IReadOnlyList<long> ContextIds,
-    DateTimeOffset CreatedUtc);
+    DateTimeOffset CreatedUtc,
+    bool HasStructuredInput = false,
+    bool HasInterpretation = false,
+    DiscussionInterpretation? Interpretation = null);
 
 public sealed record DiscussionReadResult(
     IReadOnlyList<DiscussionReadMessage> Messages,
@@ -188,7 +236,15 @@ public sealed record DiscussionReadResult(
     bool TimedOut,
     DiscussionSessionHeader Session);
 
-public sealed record DiscussionAttachResult(long ContextId, bool Reused, string Sha256, int ResultBytes, long Sequence);
+public sealed record DiscussionAttachResult(
+    long ContextId,
+    bool Reused,
+    string Sha256,
+    int ResultBytes,
+    long Sequence,
+    bool HasAnalysisIntent = false,
+    string? AnalysisIntent = null,
+    string? ProvenanceJson = null);
 
 public sealed record DiscussionAnalysisResult(
     long ContextId,
@@ -199,7 +255,10 @@ public sealed record DiscussionAnalysisResult(
     string? Note,
     DateTimeOffset CreatedUtc,
     int ResultBytes,
-    string ResultJson);
+    string ResultJson,
+    bool HasAnalysisIntent = false,
+    string? AnalysisIntent = null,
+    string? ProvenanceJson = null);
 
 public sealed record DiscussionCloseResult(bool AlreadyClosed, DiscussionSessionState State, DiscussionCloseReason? CloseReason, int MessageCount, DiscussionSessionHeader Session);
 

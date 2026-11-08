@@ -4,6 +4,7 @@ using System.IO;
 using System.IO.Pipes;
 using System.Threading;
 using System.Threading.Tasks;
+using StockAnalyzer.Core.Services;
 
 namespace StockAnalyzer.Core.Discussion;
 
@@ -11,9 +12,9 @@ namespace StockAnalyzer.Core.Discussion;
 /// The listening side of the board (spec 5.12): the process that won the election serves the other servers of its user over a named pipe. One request line and one reply
 /// line per connection. The pipe is current-user only; the requests are checked by the gateway exactly like in-process calls.
 /// <para>
-/// <see cref="TryClaim"/> creates the FIRST instance of the pipe name (<c>FirstPipeInstance</c>): on Windows exactly one process can do that, which is what makes the
-/// election safe. The accept loop starts only after the board exists (<see cref="Start"/>) and always keeps one listening instance: the next one is created before the
-/// accepted connection is served.
+/// <see cref="TryClaim"/> creates the FIRST instance of the pipe name (<c>FirstPipeInstance</c>) on Windows, or acquires an exclusive file lease lock on non-Windows:
+/// exactly one process can do that, which is what makes the election safe across platforms. The accept loop starts only after the board exists (<see cref="Start"/>)
+/// and always keeps one listening instance: the next one is created before the accepted connection is served.
 /// </para>
 /// </summary>
 internal sealed class DiscussionPipeHost : IDisposable
@@ -22,15 +23,17 @@ internal sealed class DiscussionPipeHost : IDisposable
     private readonly CancellationTokenSource _stop = new();
     private readonly object _sync = new();
     private readonly HashSet<NamedPipeServerStream> _open = new();
+    private readonly FileStream? _posixLockStream;
     private NamedPipeServerStream? _first;
     private IDiscussionGateway? _gateway;
     private Task _acceptLoop = Task.CompletedTask;
     private int _disposed;
 
-    private DiscussionPipeHost(string pipeName, NamedPipeServerStream first)
+    private DiscussionPipeHost(string pipeName, NamedPipeServerStream first, FileStream? posixLockStream = null)
     {
         _pipeName = pipeName;
         _first = first;
+        _posixLockStream = posixLockStream;
     }
 
     /// <summary>
@@ -39,20 +42,81 @@ internal sealed class DiscussionPipeHost : IDisposable
     public static DiscussionPipeHost? TryClaim(string pipeName)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(pipeName);
+        if (OperatingSystem.IsWindows())
+        {
+            try
+            {
+                return new DiscussionPipeHost(pipeName, NewInstance(pipeName, first: true));
+            }
+            catch (Exception error) when (error is UnauthorizedAccessException or IOException)
+            {
+                return null;
+            }
+        }
+
+        FileStream? lockStream = null;
         try
         {
-            return new DiscussionPipeHost(pipeName, NewInstance(pipeName, first: true));
+            if (!TryAcquirePosixPipeLock(pipeName, out lockStream))
+            {
+                return null;
+            }
+
+            CleanStalePosixSocket(pipeName);
+            NamedPipeServerStream first = NewInstance(pipeName, first: false);
+            return new DiscussionPipeHost(pipeName, first, lockStream);
         }
         catch (Exception error) when (error is UnauthorizedAccessException or IOException)
         {
+            lockStream?.Dispose();
             return null;
+        }
+        catch
+        {
+            lockStream?.Dispose();
+            throw;
+        }
+    }
+
+    private static bool TryAcquirePosixPipeLock(string pipeName, out FileStream? lockStream)
+    {
+        string lockFilePath = Path.Combine(Path.GetTempPath(), $"{pipeName}.lock");
+        try
+        {
+            lockStream = new FileStream(lockFilePath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None, bufferSize: 1, FileOptions.None);
+            return true;
+        }
+        catch (IOException ex) when (FileLockViolation.IsHeldByAnotherOwner(ex))
+        {
+            lockStream = null;
+            return false;
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
+        {
+            lockStream = null;
+            return false;
+        }
+    }
+
+    private static void CleanStalePosixSocket(string pipeName)
+    {
+        try
+        {
+            string socketPath = Path.Combine(Path.GetTempPath(), $"CoreFxPipe_{pipeName}");
+            if (File.Exists(socketPath))
+            {
+                File.Delete(socketPath);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
         }
     }
 
     private static NamedPipeServerStream NewInstance(string pipeName, bool first)
     {
         PipeOptions options = PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly;
-        if (first)
+        if (first && OperatingSystem.IsWindows())
         {
             options |= PipeOptions.FirstPipeInstance;
         }
@@ -312,25 +376,32 @@ internal sealed class DiscussionPipeHost : IDisposable
             _open.Clear();
         }
 
-        _stop.Cancel();
-        _first?.Dispose();
-        foreach (NamedPipeServerStream stream in open)
-        {
-            try
-            {
-                stream.Dispose();
-            }
-            catch (IOException)
-            {
-            }
-        }
-
         try
         {
-            _acceptLoop.Wait(DiscussionLimits.HubShutdownWaitMs);
+            _stop.Cancel();
+            _first?.Dispose();
+            foreach (NamedPipeServerStream stream in open)
+            {
+                try
+                {
+                    stream.Dispose();
+                }
+                catch (IOException)
+                {
+                }
+            }
+
+            try
+            {
+                _acceptLoop.Wait(DiscussionLimits.HubShutdownWaitMs);
+            }
+            catch (AggregateException)
+            {
+            }
         }
-        catch (AggregateException)
+        finally
         {
+            _posixLockStream?.Dispose();
         }
     }
 }

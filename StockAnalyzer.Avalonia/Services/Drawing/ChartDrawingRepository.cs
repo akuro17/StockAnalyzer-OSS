@@ -323,6 +323,10 @@ public class ChartDrawingRepository : IChartDrawingRepository
     {
         path = string.Empty;
         if (string.IsNullOrWhiteSpace(ticker)) return false;
+        if (StockAnalyzer.Core.Helpers.SyntheticSymbolParser.IsSyntheticExpression(ticker))
+        {
+            return false;
+        }
         var normalized = TickerHelper.NormalizeTicker(ticker);
         // Keyed by the normalized ticker so spelling variants share one entry; the checks below run once per key
         // (GetRevision is called on every pointer press).

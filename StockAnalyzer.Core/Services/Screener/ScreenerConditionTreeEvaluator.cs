@@ -30,8 +30,8 @@ public static class ScreenerConditionTreeEvaluator
     /// <see cref="Evaluate(IScreenerConditionNode, IReadOnlyList{CandleData}, TickerMetadata)"/> with the bars of the comparison symbols the indicators
     /// that compare two tickers read; null keeps them without a value (the Screener tab's rule).
     /// </summary>
-    public static bool Evaluate(IScreenerConditionNode root, IReadOnlyList<CandleData> candles, TickerMetadata metadata, IScreenerSecondaryCandles? secondary)
-        => EvaluateOrAbsent(root, candles, metadata, secondary) ?? false;
+    public static bool Evaluate(IScreenerConditionNode root, IReadOnlyList<CandleData> candles, TickerMetadata metadata, IScreenerSecondaryCandles? secondary, Action<ScreenerIndicatorEntry>? onLeafMet = null)
+        => EvaluateOrAbsent(root, candles, metadata, secondary, onLeafMet) ?? false;
 
     /// <summary>
     /// <see cref="Evaluate(IScreenerConditionNode, IReadOnlyList{CandleData}, TickerMetadata, IScreenerSecondaryCandles?)"/> for a tree whose sides read the bars of their
@@ -39,8 +39,8 @@ public static class ScreenerConditionTreeEvaluator
     /// circuit, an empty or all-absent group (and so an all-absent root) is false. Both evaluations share the one fold below; a test pins that they give the same
     /// answer for the same tree on D1 bars.
     /// </summary>
-    public static bool EvaluateOnBars(IScreenerConditionNode root, IScreenerBarSet bars, TickerMetadata metadata, IScreenerSecondaryCandles? secondary = null)
-        => EvaluateOrAbsentOnBars(root, bars, metadata, secondary) ?? false;
+    public static bool EvaluateOnBars(IScreenerConditionNode root, IScreenerBarSet bars, TickerMetadata metadata, IScreenerSecondaryCandles? secondary = null, Action<ScreenerIndicatorEntry>? onLeafMet = null)
+        => EvaluateOrAbsentOnBars(root, bars, metadata, secondary, onLeafMet) ?? false;
 
     /// <summary>True when <paramref name="node"/>'s subtree contains at least one currently-enabled leaf. Used to reproduce the
     /// previous flat-list guard ("please register at least one condition") that used to gate <c>ScanAsync</c> before any scan ran.</summary>
@@ -101,26 +101,29 @@ public static class ScreenerConditionTreeEvaluator
         public bool IsMet(ScreenerIndicatorEntry entry) => entry.IsMetOnBars(_bars, _metadata, _secondary);
     }
 
-    private static bool? EvaluateOrAbsentOnBars(IScreenerConditionNode node, IScreenerBarSet bars, TickerMetadata metadata, IScreenerSecondaryCandles? secondary)
-        => EvaluateOrAbsent(node, new BarSetLeaf(bars, metadata, secondary));
+    private static bool? EvaluateOrAbsentOnBars(IScreenerConditionNode node, IScreenerBarSet bars, TickerMetadata metadata, IScreenerSecondaryCandles? secondary, Action<ScreenerIndicatorEntry>? onLeafMet = null)
+        => EvaluateOrAbsent(node, new BarSetLeaf(bars, metadata, secondary), onLeafMet);
 
-    private static bool? EvaluateOrAbsent(IScreenerConditionNode node, IReadOnlyList<CandleData> candles, TickerMetadata metadata, IScreenerSecondaryCandles? secondary)
-        => EvaluateOrAbsent(node, new DailyLeaf(candles, metadata, secondary));
+    private static bool? EvaluateOrAbsent(IScreenerConditionNode node, IReadOnlyList<CandleData> candles, TickerMetadata metadata, IScreenerSecondaryCandles? secondary, Action<ScreenerIndicatorEntry>? onLeafMet = null)
+        => EvaluateOrAbsent(node, new DailyLeaf(candles, metadata, secondary), onLeafMet);
 
     /// <summary>The one AND/OR fold. Null means "this subtree contributes nothing" (a disabled leaf, or a group with no active child).</summary>
-    private static bool? EvaluateOrAbsent<TLeaf>(IScreenerConditionNode node, in TLeaf leafEvaluator) where TLeaf : struct, ILeafEvaluator
+    private static bool? EvaluateOrAbsent<TLeaf>(IScreenerConditionNode node, in TLeaf leafEvaluator, Action<ScreenerIndicatorEntry>? onLeafMet = null) where TLeaf : struct, ILeafEvaluator
     {
         switch (node)
         {
             case ScreenerConditionLeaf leaf:
-                return leaf.Entry.IsEnabled ? leafEvaluator.IsMet(leaf.Entry) : null;
+                if (!leaf.Entry.IsEnabled) return null;
+                bool met = leafEvaluator.IsMet(leaf.Entry);
+                if (met) onLeafMet?.Invoke(leaf.Entry);
+                return met;
 
             case ScreenerConditionGroup group:
                 bool isAnd = group.Operator == LogicalOperator.And;
                 bool? result = null;
                 for (int i = 0; i < group.Children.Length; i++)
                 {
-                    bool? child = EvaluateOrAbsent(group.Children[i], in leafEvaluator);
+                    bool? child = EvaluateOrAbsent(group.Children[i], in leafEvaluator, onLeafMet);
                     if (child is null) continue;
                     result = result is null ? child.Value : (isAnd ? (result.Value & child.Value) : (result.Value | child.Value));
                 }

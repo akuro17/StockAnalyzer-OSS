@@ -46,13 +46,14 @@ internal sealed class DiscussionAttachAnalysisTool : IMcpTool
     public bool IsReadOnly => false;
 
     public string? ExampleArgumentsJson =>
-        "{\"sessionId\":\"Sabcdef\",\"participantToken\":\"abcdef.AAAAAAAAAAAAAAAAAAAAAA\",\"tool\":\"sa_calculate_indicators\",\"arguments\":{\"symbol\":\"7203.T\"},\"note\":\"daily RSI\"}";
+        "{\"sessionId\":\"Sabcdef\",\"participantToken\":\"abcdef.AAAAAAAAAAAAAAAAAAAAAA\",\"tool\":\"sa_calculate_indicators\",\"arguments\":{\"symbol\":\"7203.T\"},\"analysisIntent\":\"TrendDetection\",\"note\":\"daily RSI\"}";
 
     public string InputSchemaJson => ToolSchema.Object()
         .String("sessionId", "The discussion.", required: true)
         .String("participantToken", "Your token from sa_discussion_join.", required: true)
         .String("tool", "The analysis tool to run, for example sa_calculate_indicators.", required: true)
         .FreeObject("arguments", "The arguments of that tool, as described by the tool itself (default: none).")
+        .String("analysisIntent", "[Recommended] Purpose or hypothesis of the analysis (e.g. TrendDetection, ReversalDetection, OverboughtOversold, MomentumAnalysis, DivergenceDetection, VolatilityAnalysis, SupportResistance, VolumeStructure, RelativeStrength, RegimeClassification, RiskAssessment).")
         .String("note", $"A short remark shown with the context (at most {DiscussionLimits.NoteMaxChars} characters).")
         .Build();
 
@@ -62,7 +63,20 @@ internal sealed class DiscussionAttachAnalysisTool : IMcpTool
         string token = ToolArgs.String(arguments, "participantToken")!;
         string toolName = ToolArgs.String(arguments, "tool")!;
         string? note = ToolArgs.String(arguments, "note");
+        string? analysisIntent = ToolArgs.String(arguments, "analysisIntent");
         JsonElement innerArguments = arguments.TryGetProperty("arguments", out JsonElement given) && given.ValueKind == JsonValueKind.Object ? given : EmptyArguments;
+
+        string? normalizedIntent = null;
+        if (analysisIntent is not null)
+        {
+            if (!DiscussionEvidenceValidator.TryNormalizeAnalysisIntent(analysisIntent, out normalizedIntent))
+            {
+                throw new ToolException(
+                    ToolErrorCodes.InvalidArgument,
+                    $"analysisIntent must be at most {DiscussionEvidenceLimits.MaxAnalysisIntentChars} characters without control characters.",
+                    "analysisIntent");
+            }
+        }
 
         // P2: stop before the expensive part when the attach could not succeed anyway.
         await DiscussionToolCalls.ExecuteAsync(
@@ -102,6 +116,11 @@ internal sealed class DiscussionAttachAnalysisTool : IMcpTool
             if (note is not null)
             {
                 writer.WriteString("note", note);
+            }
+
+            if (normalizedIntent is not null)
+            {
+                writer.WriteString("analysisIntent", normalizedIntent);
             }
         });
         return await DiscussionToolCalls.ExecuteAsync(_gateway, DiscussionOperations.AttachCommit, _identity, commit, cancellationToken).ConfigureAwait(false);

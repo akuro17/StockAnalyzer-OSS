@@ -1101,7 +1101,21 @@ public partial class ScreenerViewModel : ViewModelBase, IDisposable
                 ResultItems.Add(item);
             }
 
-            UpdateCriteriaFlowItems();
+            var counts = new Dictionary<int, int>();
+            var registeredEntries = IndicatorRegistrationViewModel?.RegisteredEntries;
+            if (registeredEntries != null)
+            {
+                for (int i = 0; i < registeredEntries.Count; i++)
+                {
+                    var entry = registeredEntries[i];
+                    if (entry.IsEnabled)
+                    {
+                        counts[i] = condition.EntryMatchCounts.TryGetValue(entry, out int c) ? c : 0;
+                    }
+                }
+            }
+
+            UpdateCriteriaFlowItems(counts);
 
             StatusMessage = hits.Count > 0
                 ? string.Format(LocalizationManager.Instance["Screener_Status_ScanComplete"], hits.Count)

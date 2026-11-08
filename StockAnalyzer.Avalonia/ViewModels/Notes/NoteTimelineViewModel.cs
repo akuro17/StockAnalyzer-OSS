@@ -175,6 +175,7 @@ public sealed partial class NoteTimelineItemViewModel : ObservableObject
         Action<NoteTimelineItemViewModel>? onReplyRequested = null,
         Note? quotedNotePreview = null,
         bool connectsDownToReplyCard = false,
+        bool connectsUpToParentCard = false,
         int readMoreMaxCharacters = NotesSettingsConstants.DefaultReadMoreMaxCharacters,
         int readMoreMaxLines = NotesSettingsConstants.DefaultReadMoreMaxLines,
         IndicatorColor? urlColor = null,
@@ -230,6 +231,7 @@ public sealed partial class NoteTimelineItemViewModel : ObservableObject
         _onReplyRequested = onReplyRequested;
         QuotedNotePreview = quotedNotePreview;
         ConnectsDownToReplyCard = connectsDownToReplyCard;
+        ConnectsUpToParentCard = connectsUpToParentCard;
 
         ThumbnailLoadTask = (_attachmentRepository is not null && Note.AttachmentIds.Length > 0)
             ? LoadThumbnailsAsync()
@@ -499,6 +501,26 @@ public sealed partial class NoteTimelineItemViewModel : ObservableObject
     /// false in the detail thread's ancestor/reply lists (see
     /// <see cref="NoteTimelineViewModel.LoadDetailThreadAsync"/>), which never show this line.</summary>
     public bool ConnectsDownToReplyCard { get; }
+
+    /// <summary>True when this note is a direct reply to the note immediately preceding it in the same displayed list.</summary>
+    public bool ConnectsUpToParentCard { get; }
+
+    /// <summary>True when this note was created via Reply (has a ParentNoteId).</summary>
+    public bool IsReply => Note.ParentNoteId.HasValue;
+
+    /// <summary>True when this card draws a downward thread connector line (solid to a direct reply, or across collapsed replies).</summary>
+    public bool HasThreadDownConnector => ConnectsDownToReplyCard || HasCollapsedRepliesBelow;
+
+    /// <summary>True when this note participates in a thread structure (as parent, reply, or tombstone) and should display the circular action badge.</summary>
+    public bool HasThreadActionBadge => IsReply || ConnectsDownToReplyCard || HasCollapsedRepliesBelow || IsTombstone;
+
+    /// <summary>StreamGeometry path data for the badge icon: Delete icon for Tombstone, ChatBubble for active thread items.</summary>
+    public string ThreadBadgeIconData => IsTombstone
+        ? StockAnalyzer.Avalonia.Common.SharedIconGeometries.Delete
+        : StockAnalyzer.Avalonia.Common.SharedIconGeometries.ChatBubble;
+
+    /// <summary>True when this is a deletion placeholder (tombstone) badge.</summary>
+    public bool IsTombstoneBadge => IsTombstone;
 
     /// <summary>True when the reply chain below this card was collapsed (Settings &gt; Notes: a
     /// thread exceeding <c>ThreadCollapseThreshold</c> total posts keeps only the first/last
@@ -1612,10 +1634,11 @@ public partial class NoteTimelineViewModel : ViewModelBase, IDisposable, INoteSe
             // omitted from `notes`), so ConnectsDownToReplyCard/HasCollapsedRepliesBelow end up
             // mutually exclusive without extra guard code (sa_implement Task 5).
             var connectsDownToReply = i < notes.Count - 1 && IsReplyOf(notes[i + 1], note);
+            var connectsUpToParent = i > 0 && IsReplyOf(note, notes[i - 1]);
             var collapsedReplyCount = collapsedReplyCountAfterNoteId.TryGetValue(note.Id, out var hiddenCount) ? hiddenCount : 0;
             var isTombstone = tombstoneNoteIds.Contains(note.Id);
             var canReply = leafNoteIds.Contains(note.Id);
-            items.Add(CreateItemViewModel(note, GetExpandedState(note.Id), ResolveQuotedPreview(note, quotedNotesById), connectsDownToReply, collapsedReplyCount, isTombstone, canReply));
+            items.Add(CreateItemViewModel(note, GetExpandedState(note.Id), ResolveQuotedPreview(note, quotedNotesById), connectsDownToReply, collapsedReplyCount, isTombstone, canReply, connectsUpToParent));
         }
         return items;
     }
@@ -1680,7 +1703,7 @@ public partial class NoteTimelineViewModel : ViewModelBase, IDisposable, INoteSe
     /// to pass it either. <paramref name="isTombstone"/>/<paramref name="canReply"/> default to
     /// false/true (an ordinary, repliable live Note) for the same reason. Must be called on the UI
     /// thread (mutates/reads UI-bound state via <c>this</c>).</summary>
-    private NoteTimelineItemViewModel CreateItemViewModel(Note note, bool isExpanded, Note? quotedNotePreview, bool connectsDownToReplyCard = false, int collapsedReplyCount = 0, bool isTombstone = false, bool canReply = true)
+    private NoteTimelineItemViewModel CreateItemViewModel(Note note, bool isExpanded, Note? quotedNotePreview, bool connectsDownToReplyCard = false, int collapsedReplyCount = 0, bool isTombstone = false, bool canReply = true, bool connectsUpToParentCard = false)
     {
         var item = new NoteTimelineItemViewModel(
             note,
@@ -1699,6 +1722,7 @@ public partial class NoteTimelineViewModel : ViewModelBase, IDisposable, INoteSe
             onReplyRequested: HandleReplyRequested,
             quotedNotePreview: quotedNotePreview,
             connectsDownToReplyCard: connectsDownToReplyCard,
+            connectsUpToParentCard: connectsUpToParentCard,
             readMoreMaxCharacters: _notesSettingsManager.ReadMoreMaxCharacters,
             readMoreMaxLines: _notesSettingsManager.ReadMoreMaxLines,
             urlColor: _notesSettingsManager.UrlColor,

@@ -165,6 +165,7 @@ public sealed class McpToolSweepTests : IDisposable
         ("sa_get_symbol_coverage", """{"symbols":["MSFT","7203.T"]}"""),
         ("sa_validate_condition_tree", """{"kind":"screener","conditionTree":""" + HighClose + "}"),
         ("sa_get_template_detail", $$$"""{"templateType":"screener","templateId":"{{{SweepTemplateId}}}"}"""),
+        ("sa_build_template", """{"templateType":"screener","name":"SweepBuild","conditionTree":""" + HighClose + "}"),
     };
 
     /// <summary>Every argument position that carries a symbol or a template id; the slot is replaced with each corpus entry.</summary>
@@ -204,6 +205,7 @@ public sealed class McpToolSweepTests : IDisposable
         ("sa_get_model_explanation", """{"modelId":"active","symbol":"@@"}"""),
         ("sa_get_symbol_coverage", """{"symbols":["@@"]}"""),
         ("sa_get_template_detail", """{"templateType":"screener","templateId":"@@"}"""),
+        ("sa_build_template", """{"templateType":"screener","baseTemplateId":"@@","conditionTree":""" + HighClose + "}"),
     };
 
     /// <summary>Raw values that can reach a file name or the file system: separators, drives, parent segments, control characters, empty and over-long text.</summary>

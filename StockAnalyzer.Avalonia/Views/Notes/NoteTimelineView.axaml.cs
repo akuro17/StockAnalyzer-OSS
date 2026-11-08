@@ -1,6 +1,7 @@
 using System;
 using System.ComponentModel;
 using System.IO;
+using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -188,28 +189,66 @@ public partial class NoteTimelineView : UserControl
         item is NoteScopeSuggestion suggestion ? suggestion.DisplayName : search ?? string.Empty;
 
     /// <summary>Fired whenever the unified search box's text changes, including when the user
-    /// manually deletes it back to empty. Text is only OneWay-bound (View reflects ViewModel state,
-    /// not the reverse), so without this, clearing the box by hand left the last applied Ticker/
-    /// Scope/Tag filter active even though the box looked empty (fix request #6, 5th round).</summary>
+    /// manually deletes it back to empty or types a free-text search term. Handles both suggestion
+    /// clearing and live full-text search.</summary>
     private void SearchSuggestionBox_TextChanged(object? sender, TextChangedEventArgs e)
     {
-        if (sender is AutoCompleteBox { Text: null or "" } && DataContext is NoteTimelineViewModel vm)
+        if (sender is not AutoCompleteBox box || DataContext is not NoteTimelineViewModel vm)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(box.Text))
         {
             vm.ClearActiveSuggestionFilter();
+            vm.SearchText = string.Empty;
+            return;
+        }
+
+        // If the box's text matches the active suggestion's display text (e.g. "Semiconductor", "#earnings"),
+        // leave SearchText empty so we filter by that dimension without restricting note body text.
+        if (string.Equals(box.Text, vm.SearchBoxDisplayText, StringComparison.Ordinal))
+        {
+            vm.SearchText = string.Empty;
+        }
+        else
+        {
+            // Free-text typed by user: update SearchText for live search
+            vm.SearchText = box.Text.Trim();
         }
     }
 
-    /// <summary>Enter key pressed in the unified search box with free-typed text and no suggestion
-    /// picked: treated as a Ticker filter, same normalization as the old Ticker-only AutoCompleteBox
-    /// (fix request #3) - there is no other kind information available from raw typed text.</summary>
+    /// <summary>Enter key pressed in the unified search box: confirms suggestion if selected,
+    /// or resolves typed text into hashtag, known suggestion, ticker chip, or full-text search.</summary>
     private void SearchSuggestionBox_KeyDown(object? sender, KeyEventArgs e)
     {
-        if (sender is not AutoCompleteBox box) return;
+        if (sender is not AutoCompleteBox box || DataContext is not NoteTimelineViewModel vm) return;
         if (e.Key == Key.Enter)
         {
-            if (DataContext is NoteTimelineViewModel vm)
+            var text = box.Text?.Trim();
+            if (!string.IsNullOrEmpty(text))
             {
-                SymbolAutoCompleteInputHelper.ApplyTypedSymbol(box.Text, symbol => vm.SelectSuggestion(NoteScopeSuggestion.ForTicker(symbol)));
+                if (text.StartsWith('#') && text.Length > 1)
+                {
+                    vm.SelectSuggestion(NoteScopeSuggestion.ForHashtag(text[1..]));
+                    vm.SearchText = string.Empty;
+                }
+                else if (vm.AvailableSearchSuggestions.FirstOrDefault(s => string.Equals(s.DisplayName, text, StringComparison.OrdinalIgnoreCase)) is { } match)
+                {
+                    vm.SelectSuggestion(match);
+                    vm.SearchText = string.Empty;
+                }
+                else if (vm.AvailableTickers.Contains(text, StringComparer.OrdinalIgnoreCase) ||
+                         vm.AvailableTickers.Contains(text + ".T", StringComparer.OrdinalIgnoreCase))
+                {
+                    SymbolAutoCompleteInputHelper.ApplyTypedSymbol(text, symbol => vm.SelectSuggestion(NoteScopeSuggestion.ForTicker(symbol)));
+                    vm.SearchText = string.Empty;
+                }
+                else
+                {
+                    // Free-text search
+                    vm.SearchText = text;
+                }
             }
             box.IsDropDownOpen = false;
         }
@@ -222,6 +261,7 @@ public partial class NoteTimelineView : UserControl
         if (sender is AutoCompleteBox { SelectedItem: NoteScopeSuggestion suggestion } && DataContext is NoteTimelineViewModel vm)
         {
             vm.SelectSuggestion(suggestion);
+            vm.SearchText = string.Empty;
         }
     }
 

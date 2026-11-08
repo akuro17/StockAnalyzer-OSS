@@ -30,7 +30,9 @@ public static class DivergenceCrossDetector
         IReadOnlyList<decimal> priceHighs,
         IReadOnlyList<decimal> priceLows,
         IReadOnlyList<decimal?> indicatorValues,
-        int pivotOrder = 5)
+        int pivotOrder = 5,
+        bool causalIndicatorMatching = false,
+        int maxTolerance = 0)
     {
         if (priceHighs == null || priceLows == null || indicatorValues == null)
             return Array.Empty<DivergenceSignal>();
@@ -47,11 +49,13 @@ public static class DivergenceCrossDetector
 
         var signals = new List<DivergenceSignal>();
 
+        int effectiveTolerance = maxTolerance > 0 ? maxTolerance : pivotOrder * 4;
+
         // Detect bearish divergences (comparing highs)
-        DetectHighDivergences(priceSwingHighs, indicatorHighs, signals);
+        DetectHighDivergences(priceSwingHighs, indicatorHighs, signals, causalIndicatorMatching, effectiveTolerance);
 
         // Detect bullish divergences (comparing lows)
-        DetectLowDivergences(priceSwingLows, indicatorLows, signals);
+        DetectLowDivergences(priceSwingLows, indicatorLows, signals, causalIndicatorMatching, effectiveTolerance);
 
         return signals;
     }
@@ -258,7 +262,9 @@ public static class DivergenceCrossDetector
     private static void DetectHighDivergences(
         List<(int Index, decimal Value)> priceHighs,
         List<(int Index, decimal Value)> indicatorHighs,
-        List<DivergenceSignal> signals)
+        List<DivergenceSignal> signals,
+        bool causalIndicatorMatching = false,
+        int maxTolerance = 0)
     {
         if (priceHighs.Count < 2 || indicatorHighs.Count < 2) return;
 
@@ -269,8 +275,8 @@ public static class DivergenceCrossDetector
             var currPrice = priceHighs[pi];
 
             // Find nearest indicator highs to each price high
-            var prevIndHigh = FindNearest(indicatorHighs, prevPrice.Index);
-            var currIndHigh = FindNearest(indicatorHighs, currPrice.Index);
+            var prevIndHigh = causalIndicatorMatching ? FindNearestCausal(indicatorHighs, prevPrice.Index, maxTolerance) : FindNearest(indicatorHighs, prevPrice.Index);
+            var currIndHigh = causalIndicatorMatching ? FindNearestCausal(indicatorHighs, currPrice.Index, maxTolerance) : FindNearest(indicatorHighs, currPrice.Index);
 
             if (prevIndHigh == null || currIndHigh == null) continue;
             if (prevIndHigh.Value.Index == currIndHigh.Value.Index) continue;
@@ -308,7 +314,9 @@ public static class DivergenceCrossDetector
     private static void DetectLowDivergences(
         List<(int Index, decimal Value)> priceLows,
         List<(int Index, decimal Value)> indicatorLows,
-        List<DivergenceSignal> signals)
+        List<DivergenceSignal> signals,
+        bool causalIndicatorMatching = false,
+        int maxTolerance = 0)
     {
         if (priceLows.Count < 2 || indicatorLows.Count < 2) return;
 
@@ -317,8 +325,8 @@ public static class DivergenceCrossDetector
             var prevPrice = priceLows[pi - 1];
             var currPrice = priceLows[pi];
 
-            var prevIndLow = FindNearest(indicatorLows, prevPrice.Index);
-            var currIndLow = FindNearest(indicatorLows, currPrice.Index);
+            var prevIndLow = causalIndicatorMatching ? FindNearestCausal(indicatorLows, prevPrice.Index, maxTolerance) : FindNearest(indicatorLows, prevPrice.Index);
+            var currIndLow = causalIndicatorMatching ? FindNearestCausal(indicatorLows, currPrice.Index, maxTolerance) : FindNearest(indicatorLows, currPrice.Index);
 
             if (prevIndLow == null || currIndLow == null) continue;
             if (prevIndLow.Value.Index == currIndLow.Value.Index) continue;
@@ -371,5 +379,33 @@ public static class DivergenceCrossDetector
         }
 
         return best;
+    }
+
+    /// <summary>
+    /// Finds the nearest pivot to a given bar index that is at or before the target index (causal).
+    /// Prevents future pivots from altering past divergence matching.
+    /// If maxTolerance > 0, skips pivots older than targetIndex - maxTolerance.
+    /// </summary>
+    internal static (int Index, decimal Value)? FindNearestCausal(
+        List<(int Index, decimal Value)> pivots, int targetIndex, int maxTolerance = 0)
+    {
+        if (pivots == null || pivots.Count == 0) return null;
+
+        int effectiveTolerance = maxTolerance > 0 ? maxTolerance : int.MaxValue;
+
+        // Traverse backwards: the first pivot at or before targetIndex is the closest causal pivot.
+        for (int i = pivots.Count - 1; i >= 0; i--)
+        {
+            if (pivots[i].Index > targetIndex)
+            {
+                continue;
+            }
+
+            int dist = targetIndex - pivots[i].Index;
+            // Since pivots are chronologically ordered, any earlier pivot will have a strictly larger distance.
+            return dist <= effectiveTolerance ? pivots[i] : null;
+        }
+
+        return null;
     }
 }

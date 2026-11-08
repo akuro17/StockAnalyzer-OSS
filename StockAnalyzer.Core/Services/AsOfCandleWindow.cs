@@ -33,7 +33,7 @@ internal static class AsOfCandleWindow
     /// </summary>
     public static IReadOnlyList<CandleData> BuildFromCut(IReadOnlyList<CandleData> dailyUpToDate, TimeFrame timeFrame, int count)
     {
-        IReadOnlyList<CandleData> upToDate = TimeFrameAggregator.Aggregate(dailyUpToDate, timeFrame);
+        IReadOnlyList<CandleData> upToDate = TimeFrameAggregator.AggregateToPeriodStart(dailyUpToDate, timeFrame);
         return count > 0 && upToDate.Count > count ? upToDate.Skip(upToDate.Count - count).ToList() : upToDate;
     }
 

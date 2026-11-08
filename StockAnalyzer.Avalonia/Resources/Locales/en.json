@@ -1442,7 +1442,7 @@
   "Note_ReplyButton_Tooltip": "Reply",
   "Note_QuotedNoteDeleted_Placeholder": "The original post was deleted",
   "Note_DeletionTombstone_Placeholder": "This article was deleted",
-  "Note_BackToListButton": "← Back",
+  "Note_BackToListButton": "Back",
   "Note_MoreActionsButton_Tooltip": "More actions",
   "Note_EditButton": "Edit",
   "Note_PinButton": "Pin",

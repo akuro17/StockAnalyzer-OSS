@@ -143,79 +143,8 @@
         <!-- ======================================================== -->
         <!-- COLUMN 2: CENTER COLUMN (Width = *)                       -->
         <!-- ======================================================== -->
-        <Grid Grid.Column="2" RowDefinitions="Auto,*" Margin="4,0,4,0">
-            <!-- ROW 0: ALWAYS FIXED TOP Search & Filter Bar (Standardized 16px bottom margin) -->
-            <Border Grid.Row="0" Classes="PremiumCard" Margin="0,0,0,16" Padding="8">
-                <StackPanel Spacing="6">
-                    <Grid ColumnDefinitions="Auto,Auto,*,Auto" Height="{DynamicResource Note.ActionIconButtonSize}">
-                        <!-- Unified Scope / Ticker / Tag / Hashtag AutoCompleteBox (Just-size: 240px, unified height: 32px matching Back button) -->
-                        <AutoCompleteBox Grid.Column="0" Margin="0,0,8,0" x:Name="SearchSuggestionBox" Width="240" Height="32"
-                                         VerticalAlignment="Center"
-                                         Watermark="{l:Localize Note_SearchSuggestion_Watermark}"
-                                         Text="{Binding SearchBoxDisplayText, Mode=OneWay}"
-                                         ItemsSource="{Binding AvailableSearchSuggestions}"
-                                         FilterMode="Custom"
-                                         KeyDown="SearchSuggestionBox_KeyDown"
-                                         SelectionChanged="SearchSuggestionBox_SelectionChanged"
-                                         BorderBrush="{DynamicResource Brush.Border}"
-                                         BorderThickness="1"
-                                         CornerRadius="6">
-                            <AutoCompleteBox.ItemTemplate>
-                                <StaticResource ResourceKey="SuggestionRowTemplate"/>
-                            </AutoCompleteBox.ItemTemplate>
-                        </AutoCompleteBox>
-
-                        <!-- Search Text Box (Unified to same width: 240px, unified height: 32px) -->
-                        <TextBox Grid.Column="1" Width="240" Height="32" VerticalAlignment="Center"
-                                 Text="{Binding SearchText}" Watermark="{l:Localize Note_SearchText_Watermark}">
-                            <TextBox.InnerLeftContent>
-                                <PathIcon Data="{x:Static c:SharedIconGeometries.Search}"
-                                          Width="14" Height="14" Margin="8,0,0,0" Foreground="{DynamicResource Brush.Text.Tertiary}"/>
-                            </TextBox.InnerLeftContent>
-                        </TextBox>
-
-                        <!-- Back Button (shown only when viewing individual note detail, positioned at far right of search bar row) -->
-                        <Button Grid.Column="3"
-                                Theme="{DynamicResource NoteActionIconButtonStyle}" Classes="NoteActionIcon"
-                                Command="{Binding BackToListCommand}"
-                                IsVisible="{Binding IsDetailVisible}"
-                                ToolTip.Tip="{l:Localize Note_BackToListButton}"
-                                Margin="0"
-                                VerticalAlignment="Center">
-                            <!-- arrow_back icon (Assets\Icons\arrow_back.svg) styled identical to post action buttons (Reply etc.) -->
-                            <PathIcon Data="m313-440 224 224-57 56-320-320 320-320 57 56-224 224h487v80H313Z"
-                                      Width="{DynamicResource Note.ActionIconButtonSize}"
-                                      Height="{DynamicResource Note.ActionIconButtonSize}"/>
-                        </Button>
-                    </Grid>
-
-                    <!-- Filter Chips Row -->
-                    <ItemsControl ItemsSource="{Binding SelectedTickerCodes}"
-                                  IsVisible="{Binding SelectedTickerCodes.Count, Converter={x:Static conv:NumericalConverters.IsGreaterThanZero}}">
-                        <ItemsControl.ItemsPanel>
-                            <ItemsPanelTemplate>
-                                <WrapPanel Orientation="Horizontal"/>
-                            </ItemsPanelTemplate>
-                        </ItemsControl.ItemsPanel>
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate x:DataType="x:String">
-                                <Border Background="{DynamicResource Brush.Background.Secondary}" CornerRadius="4" Padding="6,2" Margin="0,0,6,4">
-                                    <StackPanel Orientation="Horizontal" Spacing="6">
-                                        <TextBlock Text="{Binding}" FontSize="{DynamicResource HelperFontSize}" VerticalAlignment="Center"/>
-                                        <Button Content="{l:Localize Note_RemoveAttachmentButton_Symbol}" Padding="4,0"
-                                                Command="{Binding $parent[ItemsControl].((vm:NoteTimelineViewModel)DataContext).RemoveTickerFilterCommand}"
-                                                CommandParameter="{Binding}"/>
-                                    </StackPanel>
-                                </Border>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                </StackPanel>
-            </Border>
-
-            <!-- ROW 1: Main Content Space (Switches between Timeline, Expansive Composer, and Detail) -->
-            <Panel Grid.Row="1">
-                <!-- VIEW A: Main Timeline Feed -->
+        <Panel Grid.Column="2" Margin="12,0,12,0">
+            <!-- VIEW A: Main Timeline Feed -->
                 <ScrollViewer x:Name="TimelineScrollViewer"
                               Theme="{StaticResource SidebarScrollViewerTheme}" AllowAutoHide="False"
                               VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
@@ -286,8 +215,7 @@
 
                 <!-- VIEW C: Note Detail View -->
                 <views:NoteDetailView IsVisible="{Binding IsDetailVisible}"/>
-            </Panel>
-        </Grid>
+        </Panel>
 
         <!-- Splitter Right -->
         <GridSplitter Grid.Column="3" Width="4" Background="Transparent" ResizeDirection="Columns"/>
@@ -295,7 +223,52 @@
         <!-- ======================================================== -->
         <!-- COLUMN 4: RIGHT COLUMN (Fixed Width = 250px)              -->
         <!-- ======================================================== -->
-        <Border Grid.Column="4" Classes="PremiumCard" Margin="4,0,0,0" Padding="10">
+        <Grid Grid.Column="4" RowDefinitions="Auto,*">
+            <!-- ROW 0: Unified Search & Filter Card -->
+            <Border Grid.Row="0" Classes="PremiumCard" Margin="4,0,0,8" Padding="10">
+                <StackPanel Spacing="8">
+                    <!-- Unified Scope / Ticker / Tag / Hashtag AutoCompleteBox -->
+                    <AutoCompleteBox x:Name="SearchSuggestionBox" Height="30" HorizontalAlignment="Stretch"
+                                     Watermark="{l:Localize Note_SearchSuggestion_Watermark}"
+                                     Text="{Binding SearchBoxDisplayText, Mode=OneWay}"
+                                     ItemsSource="{Binding AvailableSearchSuggestions}"
+                                     FilterMode="Custom"
+                                     KeyDown="SearchSuggestionBox_KeyDown"
+                                     SelectionChanged="SearchSuggestionBox_SelectionChanged"
+                                     BorderBrush="{DynamicResource Brush.Border}"
+                                     BorderThickness="1"
+                                     CornerRadius="6">
+                        <AutoCompleteBox.ItemTemplate>
+                            <StaticResource ResourceKey="SuggestionRowTemplate"/>
+                        </AutoCompleteBox.ItemTemplate>
+                    </AutoCompleteBox>
+
+                    <!-- Filter Chips Row -->
+                    <ItemsControl ItemsSource="{Binding SelectedTickerCodes}"
+                                  IsVisible="{Binding SelectedTickerCodes.Count, Converter={x:Static conv:NumericalConverters.IsGreaterThanZero}}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel Orientation="Horizontal"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="x:String">
+                                <Border Background="{DynamicResource Brush.Background.Secondary}" CornerRadius="4" Padding="6,2" Margin="0,0,4,4">
+                                    <StackPanel Orientation="Horizontal" Spacing="4">
+                                        <TextBlock Text="{Binding}" FontSize="{DynamicResource HelperFontSize}" VerticalAlignment="Center"/>
+                                        <Button Content="{l:Localize Note_RemoveAttachmentButton_Symbol}" Padding="2,0"
+                                                Command="{Binding $parent[ItemsControl].((vm:NoteTimelineViewModel)DataContext).RemoveTickerFilterCommand}"
+                                                CommandParameter="{Binding}"/>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+
+            <!-- ROW 1: Upcoming Catalysts Stream Card -->
+            <Border Grid.Row="1" Classes="PremiumCard" Margin="4,0,0,0" Padding="10">
             <Grid RowDefinitions="Auto,*">
                 <!-- Sidebar Header -->
                 <Grid Grid.Row="0" ColumnDefinitions="Auto,*" Margin="0,0,0,8">
@@ -357,5 +330,6 @@
                 </ScrollViewer>
             </Grid>
         </Border>
+    </Grid>
     </Grid>
 </UserControl>

@@ -46,21 +46,69 @@
         </Style>
     </UserControl.Styles>
 
-    <!-- Root is a StackPanel (not just the PremiumCard Border below) so the reply connector line
-         (fix request #2, 3rd round) can sit OUTSIDE the Border's own Padding - see the comment next
-         to ReplyThreadConnectorLine near the bottom of this file for why that placement matters. -->
-    <StackPanel Spacing="0">
-        <!-- Overrides Border.PremiumCard's (ModernTheme.axaml) 1px border/shadow/8px gap locally rather
-             than editing the shared style (used by 4 other views) - fix request: cards should sit flush
-             against each other with only a hairline border between them, not float as separated boxes
-             with a gap and drop shadow. CornerRadius/BoxShadow are zeroed too: rounded corners and a
-             drop shadow both only make visual sense with a gap between cards, which no longer exists.
-             BorderThickness stays the style's own integer "1" (fix request: a sub-pixel 0.5 value was
-             tried first but rounds away to nothing at standard 1x display scaling and rendered no
-             visible border at all) - 1px is already the thinnest border that reliably renders. -->
-        <Border x:Name="PremiumCardBorder" Classes="PremiumCard" Margin="0" Padding="12" BorderThickness="1" CornerRadius="0" BoxShadow="none"
-                Background="{Binding BodyBackgroundColor, Converter={x:Static conv:RawColorToBrushConverter.Instance}}"
-                IsVisible="{Binding !IsTombstone}">
+    <!-- Root is a 2-Column Grid (Thread Gutter column 36px + Card Content column *) with Margin="0,0,0,12"
+         for standard inter-card spacing. Column 0 contains the vertical continuity line and the
+         circular Quote/Reply/Tombstone action badge. -->
+    <Grid ColumnDefinitions="36,*" Margin="0,0,0,12">
+        <!-- COLUMN 0: Thread Gutter (Badge and vertical connector lines) -->
+        <Grid Grid.Column="0">
+            <!-- Top connector line: connects from top edge of this item down to the action badge -->
+            <Border x:Name="ThreadTopConnectorLine"
+                    Width="2" Height="12"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Top"
+                    Background="{DynamicResource Brush.Border.Primary}"
+                    IsVisible="{Binding ConnectsUpToParentCard}"/>
+
+            <!-- Downward continuous connector line: starts immediately below the badge (Y=36)
+                 and extends past the card bottom into the 12px margin gap to seamlessly meet the next card's top edge -->
+            <Border x:Name="ThreadBottomConnectorLine"
+                    Width="2"
+                    Margin="0,36,0,-12"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Stretch"
+                    Background="{DynamicResource Brush.Border.Primary}"
+                    IsVisible="{Binding HasThreadDownConnector}"/>
+
+            <!-- Circular action badge: 24x24 circle centered at Y=24 (aligning with card header bar) -->
+            <Border x:Name="ThreadActionBadge"
+                    Width="24" Height="24"
+                    CornerRadius="12"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Top"
+                    Margin="0,12,0,0"
+                    IsVisible="{Binding HasThreadActionBadge}">
+                <Panel>
+                    <!-- Normal Reply Badge (Blue background with white speech bubble) -->
+                    <Border CornerRadius="12"
+                            Background="{DynamicResource Brush.Accent.Primary}"
+                            IsVisible="{Binding !IsTombstoneBadge}">
+                        <PathIcon Data="{Binding ThreadBadgeIconData}"
+                                  Width="14" Height="14"
+                                  Foreground="White"
+                                  HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+
+                    <!-- Tombstone Badge (Secondary background with Delete icon) -->
+                    <Border CornerRadius="12"
+                            Background="{DynamicResource Brush.Background.Secondary}"
+                            BorderBrush="{DynamicResource Brush.Border}"
+                            BorderThickness="1"
+                            IsVisible="{Binding IsTombstoneBadge}">
+                        <PathIcon Data="{Binding ThreadBadgeIconData}"
+                                  Width="12" Height="12"
+                                  Foreground="{DynamicResource Brush.Text.Tertiary}"
+                                  HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                </Panel>
+            </Border>
+        </Grid>
+
+        <!-- COLUMN 1: Card Content (PremiumCardBorder / TombstoneBorder) -->
+        <Panel Grid.Column="1">
+            <Border x:Name="PremiumCardBorder" Classes="PremiumCard" Margin="0" Padding="12" BorderThickness="1" CornerRadius="8" BoxShadow="none"
+                    Background="{Binding BodyBackgroundColor, Converter={x:Static conv:RawColorToBrushConverter.Instance}}"
+                    IsVisible="{Binding !IsTombstone}">
             <StackPanel Spacing="8">
 
                 <!-- Header: ticker (blank when RelatedTicker is null, spec 5.2) + created date.
@@ -308,7 +356,7 @@
              IsVisible=False Border, so a second Border sharing that class would make that Single() throw.
              Mirrors the existing QuotedNoteDeletedPlaceholderTextBlock pattern above but for a whole card
              instead of the quote sub-box. -->
-        <Border x:Name="TombstoneBorder" Margin="0" Padding="12" BorderThickness="1" CornerRadius="0" BoxShadow="none"
+        <Border x:Name="TombstoneBorder" Margin="0" Padding="12" BorderThickness="1" CornerRadius="8" BoxShadow="none"
                 Background="{Binding BodyBackgroundColor, Converter={x:Static conv:RawColorToBrushConverter.Instance}}" BorderBrush="{DynamicResource Brush.Border}"
                 IsVisible="{Binding IsTombstone}">
             <TextBlock x:Name="TombstonePlaceholderTextBlock"
@@ -317,74 +365,6 @@
                        Foreground="{Binding BodyTextColor, Converter={x:Static conv:RawColorToBrushConverter.Instance}}"
                        FontSize="{Binding BodyFontSize}"/>
         </Border>
-
-        <!-- Reply thread connector (spec section 6, fix request #2, 3rd round): a short vertical line
-             between this card's Border and the next one, shown whenever the card immediately below this
-             one in the same displayed list is a direct reply to this Note
-             (NoteTimelineItemViewModel.ConnectsDownToReplyCard, computed by
-             NoteTimelineViewModel.BuildThreadedDisplayOrder - the main timeline now groups every reply
-             directly under the Note it replies to, so a reply is never separated from its parent by
-             other posts; a whole reply chain (reply-to-a-reply) reads as an unbroken line of connectors
-             top to bottom). Never shown in the detail thread's ancestor/reply lists (Task B7) - the
-             property defaults to false there by design.
-             Deliberately placed as a SIBLING of the PremiumCard Border above, outside its Padding="12" -
-             a first attempt put this Border as the last child of the inner StackPanel (inside the card's
-             own padding), so even once it rendered with a nonzero DesiredSize, it stopped a full 12px of
-             padding short of the card's own bottom border - it never actually reached the seam between
-             this card and the next one, so it read as a small floating tick mark rather than a line
-             connecting the two cards. Moving it here means it sits directly in the gap the ItemsControl
-             already renders between this NoteCardView and the next, genuinely bridging both card
-             borders. Margin stays modest and all-positive (regression per the 2nd-round Lesson Learned:
-             a Height/Margin combination that nets to <= 0 collapses DesiredSize.Height to 0).
-             sa_minimal_fix (ConnectorLineLength not reflected for non-collapsed threads): Height was
-             hardcoded to 8px, so the Settings > Notes ConnectorLineLength value only ever affected the
-             CollapsedThreadIndicatorLine below (the dotted line at a collapse boundary), never the
-             ordinary solid connector used for the rest of an expanded reply chain. Bound to
-             ConnectorLineLength so the setting controls every inter-card connector, not just the
-             collapsed one. -->
-        <Border x:Name="ReplyThreadConnectorLine"
-                IsVisible="{Binding ConnectsDownToReplyCard}"
-                Width="2" Height="{Binding ConnectorLineLength}" Margin="0,2,0,2"
-                HorizontalAlignment="Center"
-                Background="{DynamicResource Brush.Border.Primary}"/>
-
-        <!-- Collapsed-thread indicator (Settings > Notes, sa_implement Task 5): mutually exclusive
-             with ReplyThreadConnectorLine above (BuildThreadedDisplayOrder never leaves a card both
-             directly connected to its real next reply AND missing replies below it) - a dotted line,
-             in place of the solid connector, for the card immediately before a collapsed segment.
-             EndPoint/StrokeDashArray come from Settings > Notes (ConnectorLineLength/DashLength); by
-             design there is no click-to-expand affordance here (confirmed design decision: the
-             omitted Notes remain reachable via their own individual detail page instead).
-             sa_minimal_fix (LineLength/DashLength appear reversed): EndPoint is bound directly to
-             ConnectorLineLength in real pixel coordinates (via ConnectorLineLengthToEndPointConverter)
-             rather than the original StartPoint="0,0" EndPoint="0,1" Stretch="Fill" + Height binding -
-             Avalonia's Stretch="Fill" scales the Line's entire rendered geometry (including the Pen's
-             StrokeDashArray, which is measured in the pre-stretch unit-length coordinate space) by the
-             same factor used to stretch the 1-unit geometry up to Height px, so a configured 4px dash
-             was actually rendering ~ConnectorLineLength/1 times too long - exactly the "dash longer
-             than the line" symptom reported. Binding EndPoint directly in real pixel coordinates avoids
-             any Stretch transform, so StrokeDashArray renders at its configured pixel length.
-             sa_minimal_fix (ConnectorLineLength not reflected in the gap between cards): the same fix
-             dropped the explicit Width/Height that used to sit alongside Stretch="Fill", on the
-             assumption a Stretch=None Line's DesiredSize would naturally follow its StartPoint/EndPoint
-             geometry - it does not reliably do so for a degenerate (zero-width) vertical line, so the
-             StackPanel only ever reserved this Margin's 4px, and the actually-drawn stroke (which
-             Avalonia renders past a Shape's DesiredSize/clip bounds regardless) just visually overlapped
-             the next card instead of pushing it down - the same "Height/Margin nets to a too-small
-             DesiredSize.Height" pitfall already documented above for ReplyThreadConnectorLine. Restored
-             explicit Width="2" Height="{Binding ConnectorLineLength}" so the StackPanel actually
-             reserves ConnectorLineLength px of layout space; EndPoint keeps the geometry (and thus the
-             Stroke/StrokeDashArray) in real, unstretched pixel coordinates as fixed above. -->
-        <Line x:Name="CollapsedThreadIndicatorLine"
-              IsVisible="{Binding HasCollapsedRepliesBelow}"
-              StartPoint="0,0"
-              EndPoint="{Binding ConnectorLineLength, Converter={StaticResource ConnectorLineLengthToEndPointConverter}}"
-              Width="2" Height="{Binding ConnectorLineLength}"
-              Margin="0,2,0,2"
-              HorizontalAlignment="Center"
-              Stroke="{DynamicResource Brush.Border.Primary}"
-              StrokeThickness="2"
-              StrokeDashArray="{Binding DashLength, Converter={StaticResource DashLengthToStrokeDashArrayConverter}}"
-              ToolTip.Tip="{Binding CollapsedReplyCountTooltip}"/>
-    </StackPanel>
+        </Panel>
+    </Grid>
 </UserControl>

@@ -202,8 +202,8 @@ public sealed class TimeFrameParquetGenerator : ITimeFrameParquetGenerator
         var weeklyTmp = Path.Combine(weeklyFolder, $"{symbol}.{uniqueSuffix}.tmp");
         var monthlyTmp = Path.Combine(monthlyFolder, $"{symbol}.{uniqueSuffix}.tmp");
 
-        var weeklyBars = TimeFrameAggregator.AggregateDailyToWeekly(dailyBars);
-        var monthlyBars = TimeFrameAggregator.AggregateDailyToMonthly(dailyBars);
+        var weeklyBars = TimeFrameAggregator.AggregateToPeriodStart(dailyBars, TimeFrame.W1);
+        var monthlyBars = TimeFrameAggregator.AggregateToPeriodStart(dailyBars, TimeFrame.MN1);
 
         try
         {

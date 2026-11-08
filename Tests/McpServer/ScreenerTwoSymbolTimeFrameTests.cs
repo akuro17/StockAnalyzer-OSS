@@ -77,52 +77,52 @@ public sealed class ScreenerTwoSymbolTimeFrameTests : IDisposable
         Assert.Equal(new[] { "UP" }, Symbols(daily.RootElement));
     }
 
-    // ---- exact date match: a period whose first stored day differs has no value --------------------------------------------------------------
+    // ---- PeriodStart unification: periods whose first trading day differs now share PeriodStart timestamp, matching successfully -----
 
     [Fact]
-    public async Task AWeekWhoseFirstStoredDayDiffersBetweenTheSymbolsHasNoValueAndAWindowThatContainsItDoesNotMatch()
+    public async Task AWeekWhoseFirstStoredDayDiffersBetweenTheSymbolsMatchesUnderPeriodStartUnification()
     {
         ScreenerTestWorld world = World();
         var selection = new ScreenerBarSelection(null, true);
         IReadOnlyList<DateTime> upStamps = (await world.Gateway.GetScreenerBarsAsync("UP", TimeFrame.W1, selection, 5)).Select(bar => bar.Timestamp.Date).ToList();
         IReadOnlyList<DateTime> gapStamps = (await world.Gateway.GetScreenerBarsAsync("GAPW", TimeFrame.W1, selection, 5)).Select(bar => bar.Timestamp.Date).ToList();
-        // the cause: the week of 2025-01-06 is stamped Monday for UP and Tuesday for GAPW (its Monday is not stored)
+        // PeriodStart unification: both UP and GAPW are stamped with Monday 2025-01-06 (PeriodStart of ISO week)
         Assert.Equal(new[] { new DateTime(2024, 12, 30), new DateTime(2025, 1, 6), new DateTime(2025, 1, 13), new DateTime(2025, 1, 20), new DateTime(2025, 1, 27) }, upStamps);
-        Assert.Equal(new[] { new DateTime(2024, 12, 30), new DateTime(2025, 1, 7), new DateTime(2025, 1, 13), new DateTime(2025, 1, 20), new DateTime(2025, 1, 27) }, gapStamps);
+        Assert.Equal(new[] { new DateTime(2024, 12, 30), new DateTime(2025, 1, 6), new DateTime(2025, 1, 13), new DateTime(2025, 1, 20), new DateTime(2025, 1, 27) }, gapStamps);
 
         using JsonDocument outside = await RunAsync("W1", Corr(3, "GAPW", "GreaterThan", "0.99"), "\"UP\""); // weeks 01-13, 01-20, 01-27
         using JsonDocument inside = await RunAsync("W1", Corr(4, "GAPW", "GreaterThan", "0.99"), "\"UP\""); // weeks 01-06 ... 01-27
         using JsonDocument control = await RunAsync("W1", Corr(4, "GAPM", "GreaterThan", "0.99"), "\"UP\""); // GAPM has every Monday: same window, same period
 
         Assert.Equal(new[] { "UP" }, Symbols(outside.RootElement));
-        Assert.Empty(Symbols(inside.RootElement));
+        Assert.Equal(new[] { "UP" }, Symbols(inside.RootElement));
         Assert.Equal(new[] { "UP" }, Symbols(control.RootElement));
-        Assert.False(inside.RootElement.TryGetProperty("warnings", out _)); // nothing tells the client why
+        Assert.False(inside.RootElement.TryGetProperty("warnings", out _));
     }
 
     [Fact]
-    public async Task AMonthWhoseFirstStoredDayDiffersBetweenTheSymbolsHasNoValueAndAWindowThatContainsItDoesNotMatch()
+    public async Task AMonthWhoseFirstStoredDayDiffersBetweenTheSymbolsMatchesUnderPeriodStartUnification()
     {
         using JsonDocument outside = await RunAsync("MN1", Corr(3, "GAPM", "GreaterThan", "0.99"), "\"UP\""); // Nov, Dec, Jan
         using JsonDocument inside = await RunAsync("MN1", Corr(5, "GAPM", "GreaterThan", "0.99"), "\"UP\""); // Sep ... Jan
         using JsonDocument control = await RunAsync("MN1", Corr(5, "GAPW", "GreaterThan", "0.99"), "\"UP\""); // GAPW has the first day of every month
 
         Assert.Equal(new[] { "UP" }, Symbols(outside.RootElement));
-        Assert.Empty(Symbols(inside.RootElement)); // September 2024 is stamped 2024-09-01 for UP and 2024-09-02 for GAPM
+        Assert.Equal(new[] { "UP" }, Symbols(inside.RootElement)); // September 2024 is stamped 2024-09-01 for both UP and GAPM
         Assert.Equal(new[] { "UP" }, Symbols(control.RootElement));
     }
 
     [Fact]
-    public async Task ASymbolWhoseDatesDoNotMatchGetsNoSortValueAndRanksLast()
+    public async Task ASymbolWhoseDatesMatchGetsSortValueAndRanksHigherThanNegativeCorrelation()
     {
         using JsonDocument answer = await RunAsync(
             "W1", """{"left":{"price":"Close"},"comparison":"GreaterThan","right":0}""", "\"GAPW\",\"DOWN\"",
             ",\"sortBy\":{\"indicator\":\"Correlation\",\"parameters\":{\"Period\":4,\"ComparisonSymbol\":\"UP\"}}");
 
         JsonElement ranking = answer.RootElement.GetProperty("ranking");
-        Assert.Equal(new[] { "DOWN", "GAPW" }, ranking.EnumerateArray().Select(e => e.GetProperty("symbol").GetString()!).ToArray());
-        Assert.InRange(ranking[0].GetProperty("sortValue").GetDecimal(), -1.0001m, -0.99m);
-        Assert.Equal(JsonValueKind.Null, ranking[1].GetProperty("sortValue").ValueKind); // GAPW's week of 2025-01-06 is stamped 01-07, UP's 01-06
+        Assert.Equal(new[] { "GAPW", "DOWN" }, ranking.EnumerateArray().Select(e => e.GetProperty("symbol").GetString()!).ToArray());
+        Assert.InRange(ranking[0].GetProperty("sortValue").GetDecimal(), 0.99m, 1.0001m); // GAPW correlates +1 with UP
+        Assert.InRange(ranking[1].GetProperty("sortValue").GetDecimal(), -1.0001m, -0.99m); // DOWN correlates -1 with UP
     }
 
     // ---- the partial-period rule is applied to each symbol on its own ---------------------------------------------------------------------

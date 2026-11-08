@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using StockAnalyzer.Core.Helpers;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Services;
 
@@ -88,7 +89,7 @@ public class TimeFrameManager : ITimeFrameManager
 
             cancellationToken.ThrowIfCancellationRequested();
 
-            var aggregated = TimeFrameAggregator.Aggregate(dailyData, timeFrame);
+            var aggregated = TimeFrameAggregator.AggregateToPeriodStart(dailyData, timeFrame);
             // A period list built from a truncated daily list is only as long as that list allows.
             StoreInCache(cacheKey, aggregated, dailyComplete ? count : Math.Min(count, aggregated.Count), dailyComplete);
 
@@ -122,9 +123,36 @@ public class TimeFrameManager : ITimeFrameManager
             return;
         }
 
-        // Remove all entries for the specified symbol
+        string trimmedSymbol = symbol.Trim();
+        string normTrimmed = TickerHelper.NormalizeTicker(trimmedSymbol);
+        string? canonicalSynthetic = SyntheticSymbolParser.TryParse(trimmedSymbol, out var inputExpr)
+            ? inputExpr.CanonicalExpression
+            : null;
+
+        // Remove all entries for the specified symbol, including synthetic expressions containing it
         var keysToRemove = _cache.Keys
-            .Where(k => k.StartsWith(symbol + ":", StringComparison.OrdinalIgnoreCase))
+            .Where(k =>
+            {
+                if (k.StartsWith(trimmedSymbol + ":", StringComparison.OrdinalIgnoreCase) ||
+                    (!string.IsNullOrEmpty(normTrimmed) && k.StartsWith(normTrimmed + ":", StringComparison.OrdinalIgnoreCase)) ||
+                    (!string.IsNullOrEmpty(canonicalSynthetic) && k.StartsWith(canonicalSynthetic + ":", StringComparison.OrdinalIgnoreCase)))
+                {
+                    return true;
+                }
+
+                int colonIdx = k.LastIndexOf(':');
+                string keySymbol = colonIdx > 0 ? k[..colonIdx] : k;
+
+                if (SyntheticSymbolParser.TryParse(keySymbol, out var expr))
+                {
+                    return string.Equals(expr.LeftSymbol, trimmedSymbol, StringComparison.OrdinalIgnoreCase) ||
+                           string.Equals(expr.RightSymbol, trimmedSymbol, StringComparison.OrdinalIgnoreCase) ||
+                           string.Equals(expr.LeftSymbol, normTrimmed, StringComparison.OrdinalIgnoreCase) ||
+                           string.Equals(expr.RightSymbol, normTrimmed, StringComparison.OrdinalIgnoreCase);
+                }
+
+                return false;
+            })
             .ToList();
 
         foreach (var key in keysToRemove)

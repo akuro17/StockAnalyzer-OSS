@@ -16,11 +16,11 @@ internal static class DiscussionRouterTexts
 
 /// <summary>Switches that exist for tests only; production code never sets either.</summary>
 /// <param name="PipeNameSuffix">Appended to the pipe name, so that a test never meets a real board.</param>
-/// <param name="EnableSharing">False keeps the board in this process alone (the behaviour of every platform other than Windows).</param>
+/// <param name="EnableSharing">False keeps the board in this process alone.</param>
 internal sealed record DiscussionTransportOptions(string? PipeNameSuffix = null, bool EnableSharing = true)
 {
-    /// <summary>The pipe hub is guaranteed on Windows only (decision D-12); elsewhere the board is local and nothing claims sharing.</summary>
-    public bool SharingAvailable => EnableSharing && OperatingSystem.IsWindows();
+    /// <summary>Sharing is available whenever sharing is enabled.</summary>
+    public bool SharingAvailable => EnableSharing;
 }
 
 /// <summary>

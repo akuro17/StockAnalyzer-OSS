@@ -1442,7 +1442,7 @@
   "Note_ReplyButton_Tooltip": "返信",
   "Note_QuotedNoteDeleted_Placeholder": "元の投稿は削除されました",
   "Note_DeletionTombstone_Placeholder": "この記事は削除されました",
-  "Note_BackToListButton": "← 戻る",
+  "Note_BackToListButton": "Back",
   "Note_MoreActionsButton_Tooltip": "その他の操作",
   "Note_EditButton": "編集",
   "Note_PinButton": "固定",

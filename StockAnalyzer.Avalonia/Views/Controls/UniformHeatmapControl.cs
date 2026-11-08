@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Runtime.CompilerServices;
 using Avalonia;
 using Avalonia.Controls;
@@ -340,8 +341,13 @@ public sealed class UniformHeatmapControl : Control, IDisposable
                 }
                 else
                 {
-                    string sign = item.ReturnPercentage >= 0 ? "+" : "";
-                    string returnStr = $"{sign}{item.ReturnPercentage * 100.0:F2}%";
+                    double rounded = Math.Round(item.ReturnPercentage * 100.0, 2, MidpointRounding.AwayFromZero);
+                    string returnStr = rounded switch
+                    {
+                        > 0.0 => $"+{rounded.ToString("F2", CultureInfo.InvariantCulture)}%",
+                        < 0.0 => $"{rounded.ToString("F2", CultureInfo.InvariantCulture)}%",
+                        _ => "0.00%"
+                    };
 
                     // Subtle text shadow for readability
                     canvas.DrawText(returnStr, textX + 1.0f, retY + 1.0f, _shadowTextPaint);

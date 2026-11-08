@@ -351,15 +351,15 @@ public class NoteTimelineView_UnifiedSearchTests
                 var searchBox = view.FindControl<AutoCompleteBox>("SearchSuggestionBox");
                 Assert.NotNull(searchBox);
 
-                // Parent Grid of SearchSuggestionBox is the search bar row
-                var searchBarGrid = (Grid)searchBox!.Parent!;
-                Assert.NotNull(searchBarGrid);
+                // Parent container of SearchSuggestionBox is the search bar stack panel
+                var searchBarContainer = (StackPanel)searchBox!.Parent!;
+                Assert.NotNull(searchBarContainer);
 
                 AvaloniaHeadlessPlatform.ForceRenderTimerTick();
                 Dispatcher.UIThread.RunJobs();
 
-                double normalHeight = searchBarGrid.Bounds.Height;
-                Assert.True(normalHeight > 0, "SearchBar Grid should have measured a non-zero height");
+                double normalHeight = searchBarContainer.Bounds.Height;
+                Assert.True(normalHeight > 0, "SearchBar container should have measured a non-zero height");
 
                 // Navigate to detail view (simulate clicking card timestamp to open individual note)
                 timeline.DisplayedNotes[0].OpenDetailCommand.Execute(null);
@@ -368,7 +368,7 @@ public class NoteTimelineView_UnifiedSearchTests
                 Dispatcher.UIThread.RunJobs();
 
                 Assert.NotNull(timeline.SelectedDetailItem);
-                double detailHeight = searchBarGrid.Bounds.Height;
+                double detailHeight = searchBarContainer.Bounds.Height;
                 Assert.Equal(normalHeight, detailHeight);
 
                 // Navigate back via BackToListCommand
@@ -377,8 +377,53 @@ public class NoteTimelineView_UnifiedSearchTests
                 Dispatcher.UIThread.RunJobs();
 
                 Assert.Null(timeline.SelectedDetailItem);
-                double returnedHeight = searchBarGrid.Bounds.Height;
+                double returnedHeight = searchBarContainer.Bounds.Height;
                 Assert.Equal(normalHeight, returnedHeight);
+            }
+            finally
+            {
+                window.Close();
+            }
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, true); } catch { /* best-effort cleanup */ }
+        }
+    }
+
+    /// <summary>sa_improve: Verifies that the Search & Filter card has only ONE input box (AutoCompleteBox)
+    /// without any secondary TextBox, and typing free-text in it updates SearchText directly.</summary>
+    [AvaloniaFact]
+    public async Task SingleInputContainer_ContainsOnlyOneInputBox_AndDrivesFreeTextSearch()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), "sa_note_single_input_test_" + Guid.NewGuid());
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var (timeline, window, view, _) = await MountViewAsync(tempDir);
+            try
+            {
+                var searchBox = view.FindControl<AutoCompleteBox>("SearchSuggestionBox");
+                Assert.NotNull(searchBox);
+
+                var searchBarContainer = (StackPanel)searchBox!.Parent!;
+                Assert.NotNull(searchBarContainer);
+
+                // Assert there is only one AutoCompleteBox and NO secondary TextBox in the container
+                Assert.Single(searchBarContainer.Children.OfType<AutoCompleteBox>());
+                Assert.Empty(searchBarContainer.Children.OfType<TextBox>());
+
+                // Assert typing free-text drives SearchText
+                searchBox.Text = "revenue growth";
+                AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+                Dispatcher.UIThread.RunJobs();
+                Assert.Equal("revenue growth", timeline.SearchText);
+
+                // Assert clearing box resets SearchText
+                searchBox.Text = string.Empty;
+                AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+                Dispatcher.UIThread.RunJobs();
+                Assert.Equal(string.Empty, timeline.SearchText);
             }
             finally
             {

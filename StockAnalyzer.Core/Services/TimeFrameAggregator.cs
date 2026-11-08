@@ -137,6 +137,65 @@ public static class TimeFrameAggregator
     }
 
     /// <summary>
+    /// Aggregates daily candle data into the specified target timeframe with PeriodStart timestamp
+    /// (Monday for W1, 1st of month for MN1).
+    /// Returns the input unchanged if target is Daily or lower.
+    /// </summary>
+    public static IReadOnlyList<Models.CandleData> AggregateToPeriodStart(
+        IReadOnlyList<Models.CandleData> dailyCandles,
+        Models.TimeFrame targetTimeFrame)
+    {
+        if (dailyCandles == null || dailyCandles.Count == 0)
+        {
+            return Array.Empty<Models.CandleData>();
+        }
+
+        if (!IsPeriodFrame(targetTimeFrame))
+        {
+            return dailyCandles;
+        }
+
+        var barsWithMeta = AggregateWithMetadata(dailyCandles, targetTimeFrame);
+        var result = new Models.CandleData[barsWithMeta.Count];
+        for (int i = 0; i < barsWithMeta.Count; i++)
+        {
+            result[i] = barsWithMeta[i].Candle;
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Aggregates daily candle data into the specified target timeframe, returning both the
+    /// PeriodStart-stamped candle and trading-day metadata (FirstTradingDay, LastTradingDay, ConstituentDailyBarCount).
+    /// </summary>
+    public static IReadOnlyList<Models.AggregatedPeriodBar> AggregateWithMetadata(
+        IReadOnlyList<Models.CandleData> dailyCandles,
+        Models.TimeFrame targetTimeFrame)
+    {
+        if (dailyCandles == null || dailyCandles.Count == 0)
+        {
+            return Array.Empty<Models.AggregatedPeriodBar>();
+        }
+
+        if (!IsPeriodFrame(targetTimeFrame))
+        {
+            var nonPeriodResult = new Models.AggregatedPeriodBar[dailyCandles.Count];
+            for (int i = 0; i < dailyCandles.Count; i++)
+            {
+                var c = dailyCandles[i];
+                nonPeriodResult[i] = new Models.AggregatedPeriodBar(c, c.Timestamp.Date, c.Timestamp, c.Timestamp, 1);
+            }
+            return nonPeriodResult;
+        }
+
+        Func<DateTime, int> periodKeyOf = targetTimeFrame == Models.TimeFrame.W1 ? GetIsoWeekKey : GetMonthKey;
+
+        return IsChronological(dailyCandles)
+            ? AggregateChronologicalWithMetadata(dailyCandles, periodKeyOf, targetTimeFrame)
+            : AggregateByGroupingWithMetadata(dailyCandles, targetTimeFrame);
+    }
+
+    /// <summary>
     /// Aggregates daily candles into weekly candles (ISO 8601 week, Monday start).
     /// </summary>
     public static IReadOnlyList<Models.CandleData> AggregateDailyToWeekly(
@@ -224,6 +283,44 @@ public static class TimeFrameAggregator
         return aggregated;
     }
 
+    private static List<Models.AggregatedPeriodBar> AggregateChronologicalWithMetadata(
+        IReadOnlyList<Models.CandleData> candles,
+        Func<DateTime, int> periodKeyOf,
+        Models.TimeFrame targetTimeFrame)
+    {
+        var aggregated = new List<Models.AggregatedPeriodBar>();
+        var period = new PeriodBuilder();
+        int periodKey = periodKeyOf(candles[0].Timestamp);
+
+        for (int i = 0; i < candles.Count; i++)
+        {
+            int key = periodKeyOf(candles[i].Timestamp);
+            if (key != periodKey)
+            {
+                aggregated.Add(period.BuildWithMetadata(targetTimeFrame));
+                period = new PeriodBuilder();
+                periodKey = key;
+            }
+
+            period.Add(candles[i]);
+        }
+
+        aggregated.Add(period.BuildWithMetadata(targetTimeFrame));
+        return aggregated;
+    }
+
+    private static IReadOnlyList<Models.AggregatedPeriodBar> AggregateByGroupingWithMetadata(
+        IReadOnlyList<Models.CandleData> dailyCandles,
+        Models.TimeFrame targetTimeFrame)
+    {
+        Func<DateTime, int> periodKeyOf = targetTimeFrame == Models.TimeFrame.W1 ? GetIsoWeekKey : GetMonthKey;
+        return dailyCandles
+            .GroupBy(c => periodKeyOf(c.Timestamp))
+            .OrderBy(g => g.Key)
+            .Select(g => AggregateGroupWithMetadata(g, targetTimeFrame))
+            .ToList();
+    }
+
     /// <summary>
     /// The fields of <see cref="AggregateGroup{TKey}"/> built candle by candle: of several candles dated the same calendar day only the last one counts
     /// (the candles arrive in chronological order, so those days are adjacent), and the bar is dated by the first day that counts.
@@ -237,6 +334,7 @@ public static class TimeFrameAggregator
         private decimal _high;
         private decimal _low;
         private long _volume;
+        private int _dayCount;
 
         public void Add(Models.CandleData candle)
         {
@@ -261,6 +359,25 @@ public static class TimeFrameAggregator
                 Volume: _volume);
         }
 
+        public Models.AggregatedPeriodBar BuildWithMetadata(Models.TimeFrame targetTimeFrame)
+        {
+            CountLatestDay();
+            DateTime periodStart = PeriodStart(_firstDay.Timestamp, targetTimeFrame);
+            var candle = new Models.CandleData(
+                Timestamp: periodStart,
+                Open: _firstDay.Open,
+                High: _high,
+                Low: _low,
+                Close: _latestDay.Close,
+                Volume: _volume);
+            return new Models.AggregatedPeriodBar(
+                Candle: candle,
+                PeriodStart: periodStart,
+                FirstTradingDay: _firstDay.Timestamp,
+                LastTradingDay: _latestDay.Timestamp,
+                ConstituentDailyBarCount: _dayCount);
+        }
+
         private void CountLatestDay()
         {
             if (!_hasFirstDay)
@@ -270,13 +387,63 @@ public static class TimeFrameAggregator
                 _high = _latestDay.High;
                 _low = _latestDay.Low;
                 _volume = _latestDay.Volume;
+                _dayCount = 1;
                 return;
             }
 
             _high = Math.Max(_high, _latestDay.High);
             _low = Math.Min(_low, _latestDay.Low);
             _volume = checked(_volume + _latestDay.Volume);
+            _dayCount++;
         }
+    }
+
+    private static Models.AggregatedPeriodBar AggregateGroupWithMetadata<TKey>(
+        IGrouping<TKey, Models.CandleData> group,
+        Models.TimeFrame targetTimeFrame)
+    {
+        var rawCandles = group.OrderBy(c => c.Timestamp).ToList();
+        List<Models.CandleData> candles;
+        bool hasDuplicateDates = false;
+        for (int i = 1; i < rawCandles.Count; i++)
+        {
+            if (rawCandles[i].Timestamp.Date == rawCandles[i - 1].Timestamp.Date)
+            {
+                hasDuplicateDates = true;
+                break;
+            }
+        }
+
+        if (hasDuplicateDates)
+        {
+            var deduplicated = new Dictionary<DateTime, Models.CandleData>();
+            foreach (var raw in rawCandles)
+            {
+                deduplicated[raw.Timestamp.Date] = raw;
+            }
+            candles = deduplicated.Values.OrderBy(c => c.Timestamp).ToList();
+        }
+        else
+        {
+            candles = rawCandles;
+        }
+
+        DateTime periodStart = PeriodStart(candles[0].Timestamp, targetTimeFrame);
+        var candle = new Models.CandleData(
+            Timestamp: periodStart,
+            Open: candles[0].Open,
+            High: candles.Max(c => c.High),
+            Low: candles.Min(c => c.Low),
+            Close: candles[^1].Close,
+            Volume: candles.Sum(c => c.Volume)
+        );
+
+        return new Models.AggregatedPeriodBar(
+            Candle: candle,
+            PeriodStart: periodStart,
+            FirstTradingDay: candles[0].Timestamp,
+            LastTradingDay: candles[^1].Timestamp,
+            ConstituentDailyBarCount: candles.Count);
     }
 
     /// <summary>
@@ -303,9 +470,9 @@ public static class TimeFrameAggregator
         if (hasDuplicateDates)
         {
             var deduplicated = new Dictionary<DateTime, Models.CandleData>();
-            foreach (var candle in rawCandles)
+            foreach (var raw in rawCandles)
             {
-                deduplicated[candle.Timestamp.Date] = candle;
+                deduplicated[raw.Timestamp.Date] = raw;
             }
             candles = deduplicated.Values.OrderBy(c => c.Timestamp).ToList();
         }

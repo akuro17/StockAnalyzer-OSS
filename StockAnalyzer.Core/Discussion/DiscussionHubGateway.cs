@@ -55,7 +55,7 @@ public sealed class DiscussionHubGateway : IDiscussionGateway
                 DiscussionOperations.Create => Create(arguments),
                 DiscussionOperations.Join => Join(arguments),
                 DiscussionOperations.Leave => Leave(arguments),
-                DiscussionOperations.Post => Post(arguments),
+                DiscussionOperations.Post => Post(arguments, document.RootElement),
                 DiscussionOperations.Read => await ReadAsync(arguments, cancellationToken).ConfigureAwait(false),
                 DiscussionOperations.Status => Status(StatusHubPart(arguments), arguments),
                 DiscussionOperations.StatusHubPart => StatusHubPart(arguments),
@@ -219,15 +219,27 @@ public sealed class DiscussionHubGateway : IDiscussionGateway
         });
     }
 
-    private string Post(Arguments arguments)
+    private string Post(Arguments arguments, JsonElement root)
     {
+        DiscussionInterpretation? interpretation = null;
+        if (root.TryGetProperty("interpretation", out JsonElement interp) && interp.ValueKind != JsonValueKind.Null)
+        {
+            if (interp.ValueKind != JsonValueKind.Object)
+            {
+                throw Invalid("interpretation", "interpretation must be an object.");
+            }
+
+            interpretation = ParseInterpretation(interp);
+        }
+
         var request = new DiscussionPostRequest(
             arguments.String("content"),
             arguments.Boolean("pass") ?? false,
             arguments.Integer("replyToSequence"),
             arguments.IntegerArray("contextIds"),
             arguments.Integer("basedOnSequence"),
-            arguments.String("clientRequestId"));
+            arguments.String("clientRequestId"),
+            interpretation);
         DiscussionPostResult posted = _hub.Post(arguments.String("sessionId"), arguments.String("participantToken"), request);
         return Build(writer =>
         {
@@ -237,8 +249,88 @@ public sealed class DiscussionHubGateway : IDiscussionGateway
             writer.WriteNumber("newerMessages", posted.NewerMessages);
             writer.WriteBoolean("duplicate", posted.Duplicate);
             WriteFloor(writer, "floor", posted.Floor);
+            writer.WriteBoolean("hasStructuredInput", posted.HasStructuredInput);
+            writer.WriteBoolean("hasInterpretation", posted.HasInterpretation);
+            writer.WriteStartArray("providedInterpretationFields");
+            if (posted.ProvidedInterpretationFields is not null)
+            {
+                foreach (string field in posted.ProvidedInterpretationFields)
+                {
+                    writer.WriteStringValue(field);
+                }
+            }
+
+            writer.WriteEndArray();
             writer.WriteEndObject();
         });
+    }
+
+    private static DiscussionInterpretation ParseInterpretation(JsonElement interp)
+    {
+        string? summary = null;
+        if (interp.TryGetProperty("summary", out JsonElement s) && s.ValueKind != JsonValueKind.Null)
+        {
+            summary = s.ValueKind == JsonValueKind.String ? s.GetString() : throw Invalid("interpretation.summary", "summary must be a string.");
+        }
+
+        string? direction = null;
+        if (interp.TryGetProperty("direction", out JsonElement d) && d.ValueKind != JsonValueKind.Null)
+        {
+            direction = d.ValueKind == JsonValueKind.String ? d.GetString() : throw Invalid("interpretation.direction", "direction must be a string.");
+        }
+
+        List<string>? findings = null;
+        if (interp.TryGetProperty("findings", out JsonElement f) && f.ValueKind != JsonValueKind.Null)
+        {
+            if (f.ValueKind != JsonValueKind.Array)
+            {
+                throw Invalid("interpretation.findings", "findings must be an array of strings.");
+            }
+
+            findings = new List<string>();
+            foreach (JsonElement item in f.EnumerateArray())
+            {
+                findings.Add(item.ValueKind == JsonValueKind.String ? item.GetString()! : throw Invalid("interpretation.findings", "findings items must be strings."));
+            }
+        }
+
+        List<string>? supporting = null;
+        if (interp.TryGetProperty("supportingEvidence", out JsonElement sup) && sup.ValueKind != JsonValueKind.Null)
+        {
+            if (sup.ValueKind != JsonValueKind.Array)
+            {
+                throw Invalid("interpretation.supportingEvidence", "supportingEvidence must be an array of strings.");
+            }
+
+            supporting = new List<string>();
+            foreach (JsonElement item in sup.EnumerateArray())
+            {
+                supporting.Add(item.ValueKind == JsonValueKind.String ? item.GetString()! : throw Invalid("interpretation.supportingEvidence", "supportingEvidence items must be strings."));
+            }
+        }
+
+        List<string>? counter = null;
+        if (interp.TryGetProperty("counterEvidence", out JsonElement ce) && ce.ValueKind != JsonValueKind.Null)
+        {
+            if (ce.ValueKind != JsonValueKind.Array)
+            {
+                throw Invalid("interpretation.counterEvidence", "counterEvidence must be an array of strings.");
+            }
+
+            counter = new List<string>();
+            foreach (JsonElement item in ce.EnumerateArray())
+            {
+                counter.Add(item.ValueKind == JsonValueKind.String ? item.GetString()! : throw Invalid("interpretation.counterEvidence", "counterEvidence items must be strings."));
+            }
+        }
+
+        string? conclusion = null;
+        if (interp.TryGetProperty("conclusion", out JsonElement c) && c.ValueKind != JsonValueKind.Null)
+        {
+            conclusion = c.ValueKind == JsonValueKind.String ? c.GetString() : throw Invalid("interpretation.conclusion", "conclusion must be a string.");
+        }
+
+        return new DiscussionInterpretation(summary, direction, findings, supporting, counter, conclusion);
     }
 
     private async Task<string> ReadAsync(Arguments arguments, CancellationToken cancellationToken)
@@ -280,6 +372,18 @@ public sealed class DiscussionHubGateway : IDiscussionGateway
 
                 writer.WriteEndArray();
                 writer.WriteString("createdUtc", DiscussionNames.FormatUtc(message.CreatedUtc));
+                writer.WriteBoolean("hasStructuredInput", message.HasStructuredInput);
+                writer.WriteBoolean("hasInterpretation", message.HasInterpretation);
+                if (message.Interpretation is { } interp)
+                {
+                    writer.WritePropertyName("interpretation");
+                    writer.WriteRawValue(DiscussionEvidenceValidator.SerializeInterpretationCanonical(interp), skipInputValidation: true);
+                }
+                else
+                {
+                    writer.WriteNull("interpretation");
+                }
+
                 writer.WriteEndObject();
             }
 
@@ -350,8 +454,9 @@ public sealed class DiscussionHubGateway : IDiscussionGateway
             }
         }
 
+        string? analysisIntent = arguments.String("analysisIntent");
         DiscussionAttachResult attached = _hub.AttachCommit(
-            arguments.String("sessionId"), arguments.String("participantToken"), arguments.String("tool"), canonicalArguments, result, arguments.String("note"));
+            arguments.String("sessionId"), arguments.String("participantToken"), arguments.String("tool"), canonicalArguments, result, arguments.String("note"), analysisIntent);
         return Build(writer =>
         {
             writer.WriteStartObject();
@@ -360,6 +465,14 @@ public sealed class DiscussionHubGateway : IDiscussionGateway
             writer.WriteString("sha256", attached.Sha256);
             writer.WriteNumber("resultBytes", attached.ResultBytes);
             writer.WriteNumber("sequence", attached.Sequence);
+            writer.WriteBoolean("hasAnalysisIntent", attached.HasAnalysisIntent);
+            WriteNullableString(writer, "analysisIntent", attached.AnalysisIntent);
+            if (attached.ProvenanceJson is not null)
+            {
+                writer.WritePropertyName("provenance");
+                writer.WriteRawValue(attached.ProvenanceJson, skipInputValidation: true);
+            }
+
             writer.WriteEndObject();
         });
     }
@@ -381,6 +494,14 @@ public sealed class DiscussionHubGateway : IDiscussionGateway
             WriteNullableString(writer, "note", analysis.Note);
             writer.WriteString("createdUtc", DiscussionNames.FormatUtc(analysis.CreatedUtc));
             writer.WriteNumber("resultBytes", analysis.ResultBytes);
+            writer.WriteBoolean("hasAnalysisIntent", analysis.HasAnalysisIntent);
+            WriteNullableString(writer, "analysisIntent", analysis.AnalysisIntent);
+            if (analysis.ProvenanceJson is not null)
+            {
+                writer.WritePropertyName("provenance");
+                writer.WriteRawValue(analysis.ProvenanceJson, skipInputValidation: true);
+            }
+
             if (includeResult)
             {
                 writer.WritePropertyName("result");

@@ -84,19 +84,20 @@ public class NoteTimelineView_ReplyConnectorLineTests
                 var parentCard = cards.Single(c => ReferenceEquals(c.DataContext, parentItem));
                 var replyCard = cards.Single(c => ReferenceEquals(c.DataContext, replyItem));
 
-                var line = parentCard.FindControl<Border>("ReplyThreadConnectorLine");
+                var line = parentCard.FindControl<Border>("ThreadBottomConnectorLine");
                 Assert.NotNull(line);
                 Assert.True(line!.IsVisible, "connector line must be visible on the real parent card inside the real timeline ItemsControl.");
                 Assert.True(line.DesiredSize.Height > 0, $"connector line DesiredSize.Height must be > 0 (was {line.DesiredSize.Height}).");
                 Assert.True(line.Bounds.Height > 0, $"connector line Bounds.Height must be > 0 (was {line.Bounds.Height}).");
 
-                // Regression guard (3rd round): a passing DesiredSize/Bounds check alone isn't enough -
-                // an earlier version of this fix rendered the line correctly sized but still nested
-                // inside the parent card's own Border.Padding, so it stopped short of the card's
-                // actual bottom edge and never visually reached the seam with the reply card below.
-                // Assert the line's own vertical span sits between the parent card's PremiumCard
-                // Border's bottom edge and the reply card's PremiumCard Border's top edge, proving it
-                // genuinely bridges the two cards rather than floating inside one of them.
+                var badge = parentCard.FindControl<Border>("ThreadActionBadge");
+                Assert.NotNull(badge);
+                Assert.True(badge!.IsVisible, "thread action badge must be visible on the parent card.");
+
+                var replyBadge = replyCard.FindControl<Border>("ThreadActionBadge");
+                Assert.NotNull(replyBadge);
+                Assert.True(replyBadge!.IsVisible, "thread action badge must be visible on the reply card.");
+
                 var parentCardBorder = parentCard.GetVisualDescendants().OfType<Border>().Single(b => b.Classes.Contains("PremiumCard"));
                 var replyCardBorder = replyCard.GetVisualDescendants().OfType<Border>().Single(b => b.Classes.Contains("PremiumCard"));
                 var parentCardBottomY = parentCardBorder.TranslatePoint(new Point(0, parentCardBorder.Bounds.Height), view)!.Value.Y;
@@ -104,8 +105,9 @@ public class NoteTimelineView_ReplyConnectorLineTests
                 var lineTopY = line.TranslatePoint(new Point(0, 0), view)!.Value.Y;
                 var lineBottomY = line.TranslatePoint(new Point(0, line.Bounds.Height), view)!.Value.Y;
 
-                Assert.True(lineTopY >= parentCardBottomY - 1, $"connector line top (Y={lineTopY}) must be at/below the parent card's own bottom edge (Y={parentCardBottomY}), not buried inside its padding.");
-                Assert.True(lineBottomY <= replyCardTopY + 1, $"connector line bottom (Y={lineBottomY}) must be at/above the reply card's top edge (Y={replyCardTopY}).");
+                // The bottom connector line starts below the action badge inside the parent card,
+                // and extends past the parent card's bottom edge across the 12px margin gap to reach the reply card's top edge.
+                Assert.True(lineBottomY >= replyCardTopY - 1, $"connector line bottom (Y={lineBottomY}) must reach or span to the reply card's top edge (Y={replyCardTopY}).");
             }
             finally
             {

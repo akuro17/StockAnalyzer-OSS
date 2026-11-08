@@ -809,12 +809,65 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
         PredictionDisplay = null;
 
         // Security validation to prevent Directory Traversal or injection
-        var decodedSymbol = System.Web.HttpUtility.UrlDecode(value);
-        var regex = new System.Text.RegularExpressions.Regex(@"^[A-Z0-9\-\.]{1,15}$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-        if (!regex.IsMatch(decodedSymbol))
+        string candidateSymbol = value.Trim();
+        if (candidateSymbol.Contains('%'))
         {
-            Symbol = _previousSymbol ?? StockAnalyzer.Core.ChartConstants.DefaultSymbol;
-            throw new System.Security.SecurityException("Invalid symbol format detected.");
+            try
+            {
+                candidateSymbol = Uri.UnescapeDataString(candidateSymbol);
+            }
+            catch (UriFormatException)
+            {
+                // Fallback to raw string if percent-encoding is malformed
+            }
+        }
+
+        if (StockAnalyzer.Core.Helpers.SyntheticSymbolParser.TryParse(candidateSymbol, out var syntheticExpr))
+        {
+            if (!syntheticExpr.IsOperatorSupported)
+            {
+                _logger?.LogWarning("Unsupported operator in synthetic symbol: {Symbol}", candidateSymbol);
+                Symbol = _previousSymbol ?? StockAnalyzer.Core.ChartConstants.DefaultSymbol;
+                return;
+            }
+
+            if (!_isNormalizingSymbol && value != syntheticExpr.CanonicalExpression)
+            {
+                _isNormalizingSymbol = true;
+                try
+                {
+                    Symbol = syntheticExpr.CanonicalExpression;
+                    return;
+                }
+                finally
+                {
+                    _isNormalizingSymbol = false;
+                }
+            }
+        }
+        else
+        {
+            if (!SingleSymbolRegex.IsMatch(candidateSymbol))
+            {
+                _logger?.LogWarning("Invalid symbol format detected: {Symbol}", candidateSymbol);
+                Symbol = _previousSymbol ?? StockAnalyzer.Core.ChartConstants.DefaultSymbol;
+                return;
+            }
+
+            string upperSymbol = candidateSymbol.ToUpperInvariant();
+            if (!_isNormalizingSymbol && value != upperSymbol)
+            {
+                _isNormalizingSymbol = true;
+                try
+                {
+                    Symbol = upperSymbol;
+                    return;
+                }
+                finally
+                {
+                    _isNormalizingSymbol = false;
+                }
+            }
         }
 
         // Broadcast change for title synchronization (Phase 3 remediation).
@@ -849,6 +902,10 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
     private int _lastCandleCount = 0;
     private string? _lastSymbol;
     private string? _previousSymbol;
+    private bool _isNormalizingSymbol;
+    private static readonly System.Text.RegularExpressions.Regex SingleSymbolRegex = new(
+        @"^[A-Z0-9\-\.]{1,15}$",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
     private TimeframeType? _lastTimeFrame;
     private ChartType? _lastChartType;
     private decimal _lastEffectiveSize = 0m;
@@ -2426,6 +2483,10 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
         catch (OperationCanceledException)
         {
             // Timeframe switch or rapid input cancelled this load - expected behavior
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Failed to load data for symbol {Symbol}", Symbol);
         }
         finally
         {

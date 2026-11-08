@@ -317,4 +317,37 @@ public class TimeFrameManagerTests
         // If eviction worked correctly, C might still be cached -> no additional load
         // (depends on eviction order, but we verify A was evicted)
     }
+
+    [Fact]
+    public async Task InvalidateCache_CascadesToSyntheticSymbolsContainingConstituent()
+    {
+        var spy = new SpyDataService();
+        var manager = new TimeFrameManager(spy);
+
+        // Load synthetic expression "AAPL - MSFT" and independent symbol "GOOG"
+        await manager.GetCandlesAsync("AAPL - MSFT", TimeFrame.D1, 10);
+        await manager.GetCandlesAsync("GOOG", TimeFrame.D1, 10);
+        Assert.Equal(2, spy.CallCount);
+
+        // Cached hits
+        await manager.GetCandlesAsync("AAPL - MSFT", TimeFrame.D1, 10);
+        await manager.GetCandlesAsync("GOOG", TimeFrame.D1, 10);
+        Assert.Equal(2, spy.CallCount);
+
+        // Invalidate constituent "AAPL" -> should invalidate "AAPL - MSFT" as well
+        manager.InvalidateCache("AAPL");
+
+        // GOOG should still be cached
+        await manager.GetCandlesAsync("GOOG", TimeFrame.D1, 10);
+        Assert.Equal(2, spy.CallCount);
+
+        // AAPL - MSFT should reload because constituent AAPL was invalidated
+        await manager.GetCandlesAsync("AAPL - MSFT", TimeFrame.D1, 10);
+        Assert.Equal(3, spy.CallCount);
+
+        // Invalidate other constituent "MSFT" -> should also invalidate "AAPL - MSFT"
+        manager.InvalidateCache("MSFT");
+        await manager.GetCandlesAsync("AAPL - MSFT", TimeFrame.D1, 10);
+        Assert.Equal(4, spy.CallCount);
+    }
 }

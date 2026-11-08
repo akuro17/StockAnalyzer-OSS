@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
+using Avalonia.Layout;
 using Avalonia.Styling;
 using Avalonia.Headless.XUnit;
 using Avalonia.Threading;
@@ -136,6 +137,63 @@ public class NoteDetailViewTests
                 Assert.Same(expectedTheme, scrollViewer.Theme);
                 Assert.False(scrollViewer.AllowAutoHide,
                     "the detail page's scrollbar must stay permanently visible (AllowAutoHide=False), not only on hover");
+            }
+            finally
+            {
+                window.Close();
+            }
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, true); } catch { /* best-effort cleanup */ }
+        }
+    }
+
+    /// <summary>sa_improve: Verifies that the Back button ("DetailBackToListButton") is rendered
+    /// at the bottom of the NoteDetailView stack panel (after DetailReplies) and executes
+    /// BackToListCommand when invoked, resetting SelectedDetailItem to null.</summary>
+    [AvaloniaFact]
+    public async Task DetailBackToListButton_RendersAtBottomOfStack_AndExecutesBackToListCommand()
+    {
+        var tempDir = CreateIsolatedTempDirectory();
+        try
+        {
+            var (timeline, noteRepository, _) = await CreateTimelineAsync(tempDir);
+            var note = MakeNote("test note for back button", DateTime.Now);
+            await noteRepository.CreateAsync(note);
+            await timeline.RefreshAsync();
+
+            timeline.DisplayedNotes.Single(n => n.Note.Id == note.Id).OpenDetailCommand.Execute(null);
+            await timeline.DetailThreadLoadTask!;
+
+            var view = new NoteDetailView { DataContext = timeline };
+            var window = new Window { Content = view, Width = 500, Height = 800 };
+            window.Show();
+            AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+            Dispatcher.UIThread.RunJobs();
+            try
+            {
+                var backButton = view.FindControl<Button>("DetailBackToListButton");
+                Assert.NotNull(backButton);
+                Assert.True(backButton.IsVisible);
+                Assert.Equal(HorizontalAlignment.Right, backButton.HorizontalAlignment);
+                Assert.Equal("Back", backButton.Content?.ToString());
+                Assert.Empty(backButton.GetVisualDescendants().OfType<PathIcon>());
+                Assert.DoesNotContain("←", backButton.Content?.ToString() ?? string.Empty);
+
+                // Verify the button sits in the root StackPanel as the last direct child (after DetailReplies ItemsControl)
+                var scrollViewer = (ScrollViewer)view.Content!;
+                var stackPanel = (StackPanel)scrollViewer.Content!;
+                Assert.Same(backButton, stackPanel.Children.Last());
+
+                // Verify Button Command binds to BackToListCommand and executes
+                Assert.NotNull(timeline.SelectedDetailItem);
+                Assert.NotNull(backButton.Command);
+                backButton.Command.Execute(null);
+
+                Assert.Null(timeline.SelectedDetailItem);
+                Assert.Empty(timeline.DetailAncestorChain);
+                Assert.Empty(timeline.DetailReplies);
             }
             finally
             {

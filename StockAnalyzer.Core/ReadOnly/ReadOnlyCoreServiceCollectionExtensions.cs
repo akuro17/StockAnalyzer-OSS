@@ -34,12 +34,17 @@ public static class ReadOnlyCoreServiceCollectionExtensions
         services.AddSingleton<DuckDBConnectionManager>();
         services.AddSingleton(sp => ReadOnlyDataTree.Probe(sp.GetRequiredService<IOptions<MarketDataSettings>>().Value));
 
-        services.AddSingleton<IDataService>(sp => sp.GetRequiredService<ReadOnlyDataTree>().IsComplete
-            ? new ParquetDataService(
-                sp.GetRequiredService<DuckDBConnectionManager>(),
-                sp.GetRequiredService<IOptions<MarketDataSettings>>(),
-                sp.GetService<ILogger<ParquetDataService>>())
-            : new EmptyDataService());
+        services.AddSingleton<IDataService>(sp =>
+        {
+            IDataService inner = sp.GetRequiredService<ReadOnlyDataTree>().IsComplete
+                ? new ParquetDataService(
+                    sp.GetRequiredService<DuckDBConnectionManager>(),
+                    sp.GetRequiredService<IOptions<MarketDataSettings>>(),
+                    sp.GetService<ILogger<ParquetDataService>>())
+                : new EmptyDataService();
+            var aligner = new ComparisonDataAligner(inner, sp.GetService<ILogger<ComparisonDataAligner>>());
+            return new SyntheticSymbolDataService(inner, aligner, sp.GetService<ILogger<SyntheticSymbolDataService>>());
+        });
 
         services.AddSingleton<IReadOnlyMarketDataSource>(sp => sp.GetRequiredService<ReadOnlyDataTree>().IsComplete
             ? new ParquetReadOnlyMarketDataSource(new ParquetMarketDataProvider(

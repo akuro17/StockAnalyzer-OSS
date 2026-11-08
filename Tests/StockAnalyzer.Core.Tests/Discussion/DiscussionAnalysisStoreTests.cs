@@ -275,7 +275,7 @@ public sealed class DiscussionAnalysisStoreTests
         (HubRig rig, string id, string alice, _) = Start();
         using (rig)
         {
-            rig.Hub.AttachCommit(id, alice, Tool, Arguments, Result, "note");
+            DiscussionAttachResult attached = rig.Hub.AttachCommit(id, alice, Tool, Arguments, Result, "note");
             DiscussionDiagnostics stored = rig.Hub.GetDiagnostics();
 
             long expected = Encoding.UTF8.GetByteCount("p1 (Alice) joined") + Encoding.UTF8.GetByteCount("p2 (Bob) joined")
@@ -305,6 +305,127 @@ public sealed class DiscussionAnalysisStoreTests
 
             Assert.Equal(attached.Sha256, context.Sha256);
             Assert.Equal(Result, context.ResultJson);
+        }
+    }
+
+    [Fact]
+    public void ProvenanceIsExtractedAndPreservesPresenceFlagsAndExactDecimals()
+    {
+        (HubRig rig, string id, string alice, _) = Start();
+        using (rig)
+        {
+            const string indicatorArgs = """{"indicators":[{"id":"rsi_14","type":"RSI","parameters":{"period":14}}],"symbol":"7203.T","timeFrame":"D1"}""";
+            const string indicatorResult = """{"asOfDate":"2026-11-06","earliestCalculatedTimestamp":"2026-01-05","latestTimestamp":"2026-11-06","price":12345678901234567890.123456789,"results":{"rsi_14":{"values":[75.5],"warnings":["near upper bound"],"nonCausalSeries":["future_leak"]}}}""";
+
+            DiscussionAttachResult attached = rig.Hub.AttachCommit(
+                id, alice, Tool, indicatorArgs, indicatorResult, "indicator run", analysisIntent: DiscussionAnalysisIntent.OverboughtOversold);
+
+            Assert.True(attached.HasAnalysisIntent);
+            Assert.Equal(DiscussionAnalysisIntent.OverboughtOversold, attached.AnalysisIntent);
+            Assert.NotNull(attached.ProvenanceJson);
+
+            DiscussionAnalysisResult fetched = rig.Hub.GetAnalysis(id, alice, attached.ContextId);
+            Assert.True(fetched.HasAnalysisIntent);
+            Assert.Equal(DiscussionAnalysisIntent.OverboughtOversold, fetched.AnalysisIntent);
+
+            using var doc = System.Text.Json.JsonDocument.Parse(fetched.ProvenanceJson!);
+            var root = doc.RootElement;
+            Assert.Equal("7203.T", root.GetProperty("symbol").GetString());
+            Assert.Equal(new[] { "7203.T" }, root.GetProperty("symbols").EnumerateArray().Select(e => e.GetString()!).ToArray());
+            Assert.Equal("2026-11-06", root.GetProperty("asOfDate").GetString());
+            Assert.Equal("D1", root.GetProperty("timeFrame").GetString());
+            Assert.Equal("2026-01-05", root.GetProperty("dataRange").GetProperty("start").GetString());
+            Assert.Equal("2026-11-06", root.GetProperty("dataRange").GetProperty("end").GetString());
+            Assert.Equal("RSI", root.GetProperty("indicator").GetString());
+            Assert.Equal(new[] { "RSI" }, root.GetProperty("indicators").EnumerateArray().Select(e => e.GetString()!).ToArray());
+            Assert.True(root.GetProperty("hasAnalysisIntent").GetBoolean());
+            Assert.Equal(DiscussionAnalysisIntent.OverboughtOversold, root.GetProperty("analysisIntent").GetString());
+
+            string[] warnings = root.GetProperty("warnings").EnumerateArray().Select(e => e.GetString()!).ToArray();
+            Assert.Contains("rsi_14: near upper bound", warnings);
+            Assert.Contains("rsi_14: non-causal series 'future_leak'", warnings);
+
+            string[] extractedFields = root.GetProperty("extractedFields").EnumerateArray().Select(e => e.GetString()!).ToArray();
+            Assert.Contains("symbol", extractedFields);
+            Assert.Contains("symbols", extractedFields);
+            Assert.Contains("asOfDate", extractedFields);
+            Assert.Contains("timeFrame", extractedFields);
+            Assert.Contains("dataRange", extractedFields);
+            Assert.Contains("indicator", extractedFields);
+            Assert.Contains("indicators", extractedFields);
+            Assert.Contains("parameters", extractedFields);
+            Assert.Contains("analysisIntent", extractedFields);
+            Assert.Contains("warnings", extractedFields);
+
+            var source = root.GetProperty("source");
+            Assert.Equal("server", source.GetProperty("origin").GetString());
+            Assert.Equal(Tool, source.GetProperty("tool").GetString());
+            Assert.Equal("p1", source.GetProperty("attachedBy").GetString());
+            Assert.Equal(attached.Sha256, source.GetProperty("sha256").GetString());
+        }
+    }
+
+    [Fact]
+    public void AnalysisIntentSeparatesContextReuseUnderD21()
+    {
+        (HubRig rig, string id, string alice, string bob) = Start();
+        using (rig)
+        {
+            DiscussionAttachResult first = rig.Hub.AttachCommit(
+                id, alice, Tool, Arguments, Result, null, analysisIntent: DiscussionAnalysisIntent.OverboughtOversold);
+            Assert.False(first.Reused);
+            Assert.Equal(1, first.ContextId);
+
+            DiscussionAttachResult sameIntent = rig.Hub.AttachCommit(
+                id, bob, Tool, Arguments, Result, null, analysisIntent: DiscussionAnalysisIntent.OverboughtOversold);
+            Assert.True(sameIntent.Reused);
+            Assert.Equal(1, sameIntent.ContextId);
+
+            DiscussionAttachResult differentIntent = rig.Hub.AttachCommit(
+                id, bob, Tool, Arguments, Result, null, analysisIntent: DiscussionAnalysisIntent.DivergenceDetection);
+            Assert.False(differentIntent.Reused);
+            Assert.Equal(2, differentIntent.ContextId);
+
+            DiscussionAttachResult noIntent = rig.Hub.AttachCommit(
+                id, alice, Tool, Arguments, Result, null, analysisIntent: null);
+            Assert.False(noIntent.Reused);
+            Assert.Equal(3, noIntent.ContextId);
+        }
+    }
+
+    [Fact]
+    public void StructuredInterpretationAcceptsPartialInputAndRejectsEmptyInput()
+    {
+        (HubRig rig, string id, string alice, _) = Start();
+        using (rig)
+        {
+            var partial = new DiscussionInterpretation(
+                Direction: DiscussionInterpretationDirection.Bearish,
+                SupportingEvidence: new[] { "RSI(14) is 75" });
+
+            DiscussionPostResult post = rig.Hub.Post(id, alice, new DiscussionPostRequest("Looking bearish", Interpretation: partial));
+            Assert.True(post.HasStructuredInput);
+            Assert.True(post.HasInterpretation);
+            Assert.Equal(new[] { "direction", "supportingEvidence" }, post.ProvidedInterpretationFields);
+
+            DiscussionReadMessage read = rig.Transcript(id, alice).Last();
+            Assert.True(read.HasStructuredInput);
+            Assert.True(read.HasInterpretation);
+            Assert.NotNull(read.Interpretation);
+            Assert.Equal(DiscussionInterpretationDirection.Bearish, read.Interpretation!.Direction);
+            Assert.Equal(new[] { "RSI(14) is 75" }, read.Interpretation.SupportingEvidence);
+            Assert.Equal(new[] { "direction", "supportingEvidence" }, read.Interpretation.ProvidedFields);
+
+            var empty = new DiscussionInterpretation();
+            DiscussionException emptyError = HubRig.Refused(() => rig.Hub.Post(id, alice, new DiscussionPostRequest("empty", Interpretation: empty)));
+            Assert.Equal((DiscussionErrorCodes.InvalidArgument, "interpretation"), (emptyError.Code, emptyError.Parameter));
+
+            var invalidDir = new DiscussionInterpretation(Direction: "Moon");
+            DiscussionException dirError = HubRig.Refused(() => rig.Hub.Post(id, alice, new DiscussionPostRequest("invalid dir", Interpretation: invalidDir)));
+            Assert.Equal((DiscussionErrorCodes.InvalidArgument, "interpretation"), (dirError.Code, dirError.Parameter));
+
+            DiscussionDiagnostics diag = rig.Hub.GetDiagnostics();
+            Assert.Equal(diag.RecomputedBytes, diag.TotalBytes);
         }
     }
 }

@@ -137,11 +137,11 @@ public sealed class DiscussionHubGatewayTests : IDisposable
         using JsonDocument read = await OkAsync(DiscussionOperations.Read, $$"""{"sessionId":"{{id}}","participantToken":"{{token}}"}""");
         using JsonDocument closed = await OkAsync(DiscussionOperations.Close, $$"""{"sessionId":"{{id}}","participantToken":"{{token}}"}""");
 
-        Assert.Equal(new[] { "sequence", "createdUtc", "newerMessages", "duplicate", "floor" }, posted.RootElement.EnumerateObject().Select(p => p.Name));
+        Assert.Equal(new[] { "sequence", "createdUtc", "newerMessages", "duplicate", "floor", "hasStructuredInput", "hasInterpretation", "providedInterpretationFields" }, posted.RootElement.EnumerateObject().Select(p => p.Name));
         Assert.Equal(new[] { "messages", "nextAfterSequence", "lastSequence", "hasMore", "timedOut", "session" }, read.RootElement.EnumerateObject().Select(p => p.Name));
         JsonElement message = read.RootElement.GetProperty("messages")[1];
         Assert.Equal(
-            new[] { "sequence", "handle", "displayName", "kind", "origin", "content", "replyToSequence", "contextIds", "createdUtc" },
+            new[] { "sequence", "handle", "displayName", "kind", "origin", "content", "replyToSequence", "contextIds", "createdUtc", "hasStructuredInput", "hasInterpretation", "interpretation" },
             message.EnumerateObject().Select(p => p.Name));
         Assert.Equal(1, message.GetProperty("replyToSequence").GetInt32());
         Assert.Equal(JsonValueKind.Null, read.RootElement.GetProperty("messages")[0].GetProperty("replyToSequence").ValueKind);
@@ -232,12 +232,12 @@ public sealed class DiscussionHubGatewayTests : IDisposable
         using JsonDocument without = await OkAsync(DiscussionOperations.GetAnalysis, $$"""{"sessionId":"{{id}}","participantToken":"{{token}}","contextId":1,"includeResult":false}""");
 
         Assert.True(precheck.RootElement.GetProperty("ok").GetBoolean());
-        Assert.Equal(new[] { "contextId", "reused", "sha256", "resultBytes", "sequence" }, first.RootElement.EnumerateObject().Select(p => p.Name));
+        Assert.Equal(new[] { "contextId", "reused", "sha256", "resultBytes", "sequence", "hasAnalysisIntent", "analysisIntent", "provenance" }, first.RootElement.EnumerateObject().Select(p => p.Name));
         Assert.False(first.RootElement.GetProperty("reused").GetBoolean());
         Assert.True(again.RootElement.GetProperty("reused").GetBoolean());
         Assert.Equal(1, again.RootElement.GetProperty("contextId").GetInt32());
         Assert.Equal(
-            new[] { "contextId", "tool", "arguments", "sha256", "attachedBy", "note", "createdUtc", "resultBytes", "result" },
+            new[] { "contextId", "tool", "arguments", "sha256", "attachedBy", "note", "createdUtc", "resultBytes", "hasAnalysisIntent", "analysisIntent", "provenance", "result" },
             fetched.RootElement.EnumerateObject().Select(p => p.Name));
         Assert.Equal("""{"a":1,"b":2}""", fetched.RootElement.GetProperty("arguments").GetRawText());
         Assert.Equal(Result, fetched.RootElement.GetProperty("result").GetRawText()); // the stored text, character for character

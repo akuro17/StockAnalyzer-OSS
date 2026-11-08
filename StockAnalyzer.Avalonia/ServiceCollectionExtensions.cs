@@ -82,7 +82,11 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<Services.Export.IChartImageExportService, Services.Export.ChartImageExportService>();
         services.AddSingleton<Services.Export.ILayeredChartImageExportService, Services.Export.ChartImageExportService>();
         services.AddSingleton<ITickerSyncService, Services.TickerSyncService>();
-        services.AddSingleton<Core.Services.IDataService, Core.Services.ParquetDataService>();
+        services.AddSingleton<Core.Services.ParquetDataService>();
+        services.AddSingleton<Core.Services.IDataService>(sp => new Core.Services.SyntheticSymbolDataService(
+            sp.GetRequiredService<Core.Services.ParquetDataService>(),
+            sp.GetRequiredService<Core.Services.IComparisonDataAligner>(),
+            sp.GetService<Microsoft.Extensions.Logging.ILogger<Core.Services.SyntheticSymbolDataService>>()));
         services.AddSingleton<Core.Services.ITimeFrameManager, Core.Services.TimeFrameManager>();
         services.AddSingleton<Services.Drawing.IMagnetSnapService, Services.Drawing.MagnetSnapService>();
         services.AddSingleton<Services.Drawing.ISmartGuideService, Services.Drawing.SmartGuideService>();
@@ -242,7 +246,9 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<PredictionOperationsLifetime>();
         services.AddSingleton<Core.Services.IModelDeploymentService, Core.Services.ModelDeploymentService>();
         services.AddSingleton<Core.Services.IExperimentLogService, Core.Services.ExperimentLogService>();
-        services.AddSingleton<Core.Services.IComparisonDataAligner, Core.Services.ComparisonDataAligner>();
+        services.AddSingleton<Core.Services.IComparisonDataAligner>(sp => new Core.Services.ComparisonDataAligner(
+            sp.GetRequiredService<Core.Services.ParquetDataService>(),
+            sp.GetService<Microsoft.Extensions.Logging.ILogger<Core.Services.ComparisonDataAligner>>()));
         services.AddSingleton<Core.Services.Analysis.IAnalysisPipelineService, Core.Services.Analysis.AnalysisPipelineService>();
         services.AddSingleton<Core.Services.SignalOrchestrator>();
         services.AddSingleton<Core.Interfaces.IUserPortfolioRepository, Core.Services.UserPortfolioRepository>();

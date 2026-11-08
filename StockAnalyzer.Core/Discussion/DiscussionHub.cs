@@ -93,9 +93,30 @@ public sealed class DiscussionHub : IDisposable
 
     private sealed record WaiterEntry(string ParticipantHandle, TaskCompletionSource<bool> Signal);
 
-    private sealed record MessageRecord(long Sequence, string? Handle, DiscussionMessageKind Kind, string Content, long? ReplyToSequence, long[] ContextIds, DateTimeOffset CreatedAt);
+    private sealed record MessageRecord(
+        long Sequence,
+        string? Handle,
+        DiscussionMessageKind Kind,
+        string Content,
+        long? ReplyToSequence,
+        long[] ContextIds,
+        DateTimeOffset CreatedAt,
+        DiscussionInterpretation? Interpretation = null,
+        string? InterpretationJson = null);
 
-    private sealed record ContextRecord(long Id, string Tool, string ArgumentsJson, string ResultJson, string Sha256, string AttachedBy, string? Note, DateTimeOffset CreatedAt, long Sequence, int ResultBytes);
+    private sealed record ContextRecord(
+        long Id,
+        string Tool,
+        string ArgumentsJson,
+        string ResultJson,
+        string Sha256,
+        string AttachedBy,
+        string? Note,
+        DateTimeOffset CreatedAt,
+        long Sequence,
+        int ResultBytes,
+        string? AnalysisIntent = null,
+        string? ProvenanceJson = null);
 
     private sealed class Session
     {
@@ -408,11 +429,14 @@ public sealed class DiscussionHub : IDisposable
         string content,
         long? replyTo,
         long[] contextIds,
-        List<TaskCompletionSource<bool>> wake)
+        List<TaskCompletionSource<bool>> wake,
+        DiscussionInterpretation? interpretation = null,
+        string? interpretationJson = null)
     {
-        var message = new MessageRecord(session.Messages.Count + 1, handle, kind, content, replyTo, contextIds, now);
+        var message = new MessageRecord(session.Messages.Count + 1, handle, kind, content, replyTo, contextIds, now, interpretation, interpretationJson);
         session.Messages.Add(message);
-        AddBytes(session, DiscussionText.Utf8Bytes(content));
+        int totalMsgBytes = DiscussionText.Utf8Bytes(content) + (interpretationJson is null ? 0 : DiscussionText.Utf8Bytes(interpretationJson));
+        AddBytes(session, totalMsgBytes);
         WakeReaders(session, wake);
         return message;
     }
@@ -835,6 +859,25 @@ public sealed class DiscussionHub : IDisposable
         bool pass = request.Pass;
         string content;
         int contentBytes;
+        DiscussionInterpretation? interpretation = null;
+        string? interpretationJson = null;
+        int interpretationBytes = 0;
+        if (request.Interpretation is not null)
+        {
+            if (pass)
+            {
+                throw Invalid("pass", "A pass carries no interpretation.");
+            }
+
+            if (!DiscussionEvidenceValidator.TryValidateInterpretation(request.Interpretation, out interpretation, out string? errorReason))
+            {
+                throw Invalid("interpretation", errorReason ?? "interpretation is invalid.");
+            }
+
+            interpretationJson = DiscussionEvidenceValidator.SerializeInterpretationCanonical(interpretation!);
+            interpretationBytes = DiscussionText.Utf8Bytes(interpretationJson);
+        }
+
         if (pass)
         {
             if (session.TurnMode != DiscussionTurnMode.RoundRobin)
@@ -928,7 +971,7 @@ public sealed class DiscussionHub : IDisposable
             throw Limit("messages", $"The discussion holds its maximum of {_settings.MaxMessagesPerSession} messages.", "Close it and start a new one.");
         }
 
-        if (_totalBytes + contentBytes > _settings.MaxTotalBytes)
+        if (_totalBytes + contentBytes + interpretationBytes > _settings.MaxTotalBytes)
         {
             throw Limit("memoryBudget", "The memory budget of the discussion board is used up.", "Close a discussion that is no longer needed.");
         }
@@ -937,7 +980,7 @@ public sealed class DiscussionHub : IDisposable
         long newer = request.BasedOnSequence is { } based ? session.LastSequence - based : 0;
         MessageRecord message = pass
             ? Append(session, now, null, DiscussionMessageKind.Event, content, null, Array.Empty<long>(), op.Wake)
-            : Append(session, now, participant.Handle, DiscussionMessageKind.Message, content, request.ReplyToSequence, contextIds, op.Wake);
+            : Append(session, now, participant.Handle, DiscussionMessageKind.Message, content, request.ReplyToSequence, contextIds, op.Wake, interpretation, interpretationJson);
         if (!pass)
         {
             participant.AcceptedPostTimes.Add(now);
@@ -949,7 +992,10 @@ public sealed class DiscussionHub : IDisposable
             PassFloor(session, participant, now);
         }
 
-        var result = new DiscussionPostResult(message.Sequence, now, newer, false, FloorOf(session, now));
+        bool hasInterpretation = interpretation is not null;
+        bool hasStructured = hasInterpretation || contextIds.Length > 0;
+        IReadOnlyList<string>? providedFields = interpretation?.ProvidedFields;
+        var result = new DiscussionPostResult(message.Sequence, now, newer, false, FloorOf(session, now), hasStructured, hasInterpretation, providedFields);
         if (requestId is not null)
         {
             participant.RecentRequests.Add(new RecentPost(requestId, request.Content ?? string.Empty, pass, request.BasedOnSequence, result));
@@ -1090,7 +1136,20 @@ public sealed class DiscussionHub : IDisposable
             {
                 MessageRecord record = session.Messages[index];
                 string? displayName = record.Handle is null ? null : session.Participants.First(p => p.Handle == record.Handle).DisplayName;
-                messages.Add(new DiscussionReadMessage(record.Sequence, record.Handle, displayName, record.Kind, record.Content, record.ReplyToSequence, record.ContextIds, record.CreatedAt));
+                bool hasInterpretation = record.Interpretation is not null;
+                bool hasStructured = hasInterpretation || record.ContextIds.Length > 0 || record.Kind == DiscussionMessageKind.Analysis;
+                messages.Add(new DiscussionReadMessage(
+                    record.Sequence,
+                    record.Handle,
+                    displayName,
+                    record.Kind,
+                    record.Content,
+                    record.ReplyToSequence,
+                    record.ContextIds,
+                    record.CreatedAt,
+                    hasStructured,
+                    hasInterpretation,
+                    record.Interpretation));
             }
         }
 
@@ -1131,7 +1190,15 @@ public sealed class DiscussionHub : IDisposable
     /// <param name="tool">The registered tool that produced the result (the caller has checked the whitelist).</param>
     /// <param name="canonicalArgumentsJson">The canonical form of the arguments (see <c>DiscussionCanonicalJson</c>).</param>
     /// <param name="resultJson">The tool's result text.</param>
-    public DiscussionAttachResult AttachCommit(string? sessionId, string? participantToken, string? tool, string? canonicalArgumentsJson, string? resultJson, string? note)
+    public DiscussionAttachResult AttachCommit(
+        string? sessionId,
+        string? participantToken,
+        string? tool,
+        string? canonicalArgumentsJson,
+        string? resultJson,
+        string? note,
+        string? analysisIntent = null,
+        string? provenanceJson = null)
     {
         CheckToken(participantToken);
         string hash = string.Empty;
@@ -1146,6 +1213,15 @@ public sealed class DiscussionHub : IDisposable
             byte[] bytes = Encoding.UTF8.GetBytes(resultJson);
             resultBytes = bytes.Length;
             hash = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
+        }
+
+        string? normalizedIntent = null;
+        if (analysisIntent is not null)
+        {
+            if (!DiscussionEvidenceValidator.TryNormalizeAnalysisIntent(analysisIntent, out normalizedIntent))
+            {
+                throw Invalid("analysisIntent", $"analysisIntent must be at most {DiscussionEvidenceLimits.MaxAnalysisIntentChars} characters without control characters.");
+            }
         }
 
         return WithSession(sessionId, op =>
@@ -1195,15 +1271,16 @@ public sealed class DiscussionHub : IDisposable
                 throw Limit("result", $"The result is larger than {_settings.MaxContextBytes} bytes.", "request a narrower window or fewer items");
             }
 
-            // Reuse (D-21): the same tool, the same canonical arguments and the same result. A changed result is never reused.
+            // Reuse (D-21): the same tool, the same canonical arguments, the same result and the same analysisIntent.
             ContextRecord? same = session.Contexts.FirstOrDefault(c =>
                 string.Equals(c.Tool, tool, StringComparison.Ordinal)
                 && string.Equals(c.ArgumentsJson, canonicalArgumentsJson, StringComparison.Ordinal)
-                && string.Equals(c.Sha256, hash, StringComparison.Ordinal));
+                && string.Equals(c.Sha256, hash, StringComparison.Ordinal)
+                && string.Equals(c.AnalysisIntent, normalizedIntent, StringComparison.Ordinal));
             if (same is not null)
             {
                 Touch(session, participant, op.Now);
-                return new DiscussionAttachResult(same.Id, true, same.Sha256, same.ResultBytes, same.Sequence);
+                return new DiscussionAttachResult(same.Id, true, same.Sha256, same.ResultBytes, same.Sequence, same.AnalysisIntent is not null, same.AnalysisIntent, same.ProvenanceJson);
             }
 
             if (session.Contexts.Count >= _settings.MaxContextsPerSession)
@@ -1211,9 +1288,14 @@ public sealed class DiscussionHub : IDisposable
                 throw Limit("contexts", $"The discussion already holds {_settings.MaxContextsPerSession} analysis snapshots.");
             }
 
+            string computedProvenance = provenanceJson ?? DiscussionProvenanceExtractor.ExtractCanonicalJson(
+                tool, canonicalArgumentsJson, resultJson, normalizedIntent, participant.Handle, op.Now, hash, resultBytes);
+
             long id = session.Contexts.Count + 1;
-            string content = $"{participant.Handle} attached context {id} ({tool})" + (note is null ? string.Empty : $": {note}");
-            long payload = resultBytes + DiscussionText.Utf8Bytes(canonicalArgumentsJson) + (note is null ? 0 : DiscussionText.Utf8Bytes(note));
+            string intentSuffix = normalizedIntent is null ? string.Empty : $" [intent={normalizedIntent}]";
+            string content = $"{participant.Handle} attached context {id} ({tool}{intentSuffix})" + (note is null ? string.Empty : $": {note}");
+            long intentBytes = normalizedIntent is null ? 0 : DiscussionText.Utf8Bytes(normalizedIntent);
+            long payload = resultBytes + DiscussionText.Utf8Bytes(canonicalArgumentsJson) + (note is null ? 0 : DiscussionText.Utf8Bytes(note)) + intentBytes;
             if (session.Messages.Count >= _settings.MaxMessagesPerSession)
             {
                 throw Limit("messages", $"The discussion holds its maximum of {_settings.MaxMessagesPerSession} messages.");
@@ -1225,11 +1307,11 @@ public sealed class DiscussionHub : IDisposable
             }
 
             MessageRecord message = Append(session, op.Now, participant.Handle, DiscussionMessageKind.Analysis, content, null, new[] { id }, op.Wake);
-            session.Contexts.Add(new ContextRecord(id, tool, canonicalArgumentsJson, resultJson, hash, participant.Handle, note, op.Now, message.Sequence, resultBytes));
+            session.Contexts.Add(new ContextRecord(id, tool, canonicalArgumentsJson, resultJson, hash, participant.Handle, note, op.Now, message.Sequence, resultBytes, normalizedIntent, computedProvenance));
             AddBytes(session, payload);
             Touch(session, participant, op.Now);
             _audit.Add(DiscussionAuditEvents.ContextAttached, session.Id, participant.Handle, message.Sequence, detail: id.ToString(System.Globalization.CultureInfo.InvariantCulture));
-            return new DiscussionAttachResult(id, false, hash, resultBytes, message.Sequence);
+            return new DiscussionAttachResult(id, false, hash, resultBytes, message.Sequence, normalizedIntent is not null, normalizedIntent, computedProvenance);
         });
     }
 
@@ -1248,7 +1330,18 @@ public sealed class DiscussionHub : IDisposable
             ContextRecord context = session.Contexts[(int)contextId - 1];
             Touch(session, participant, op.Now);
             return new DiscussionAnalysisResult(
-                context.Id, context.Tool, context.ArgumentsJson, context.Sha256, context.AttachedBy, context.Note, context.CreatedAt, context.ResultBytes, context.ResultJson);
+                context.Id,
+                context.Tool,
+                context.ArgumentsJson,
+                context.Sha256,
+                context.AttachedBy,
+                context.Note,
+                context.CreatedAt,
+                context.ResultBytes,
+                context.ResultJson,
+                context.AnalysisIntent is not null,
+                context.AnalysisIntent,
+                context.ProvenanceJson);
         });
     }
 
@@ -1328,8 +1421,9 @@ public sealed class DiscussionHub : IDisposable
             {
                 lock (session.Sync)
                 {
-                    recomputed += session.Messages.Sum(m => (long)DiscussionText.Utf8Bytes(m.Content))
-                        + session.Contexts.Sum(c => (long)c.ResultBytes + DiscussionText.Utf8Bytes(c.ArgumentsJson) + (c.Note is null ? 0 : DiscussionText.Utf8Bytes(c.Note)));
+                    recomputed += session.Messages.Sum(m => (long)DiscussionText.Utf8Bytes(m.Content) + (m.InterpretationJson is null ? 0 : DiscussionText.Utf8Bytes(m.InterpretationJson)))
+                        + session.Contexts.Sum(c => (long)c.ResultBytes + DiscussionText.Utf8Bytes(c.ArgumentsJson) + (c.Note is null ? 0 : DiscussionText.Utf8Bytes(c.Note))
+                            + (c.AnalysisIntent is null ? 0 : DiscussionText.Utf8Bytes(c.AnalysisIntent)));
                     waiters += session.Waiters.Count;
                 }
             }

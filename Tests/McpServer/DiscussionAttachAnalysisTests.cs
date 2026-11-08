@@ -93,7 +93,7 @@ public sealed class DiscussionAttachAnalysisTests : IDisposable
         return McpTestSupport.Structured(joined).GetProperty("participantToken").GetString()!;
     }
 
-    private static string Attach(string id, string token, string tool, string? arguments = null, string? note = null)
+    private static string Attach(string id, string token, string tool, string? arguments = null, string? note = null, string? analysisIntent = null)
     {
         var text = new StringBuilder($$"""{"sessionId":"{{id}}","participantToken":"{{token}}","tool":"{{tool}}" """);
         if (arguments is not null)
@@ -104,6 +104,11 @@ public sealed class DiscussionAttachAnalysisTests : IDisposable
         if (note is not null)
         {
             text.Append($",\"note\":\"{note}\"");
+        }
+
+        if (analysisIntent is not null)
+        {
+            text.Append($",\"analysisIntent\":\"{analysisIntent}\"");
         }
 
         return text.Append('}').ToString();
@@ -441,5 +446,110 @@ public sealed class DiscussionAttachAnalysisTests : IDisposable
         Assert.DoesNotContain("sa_start_training", hint, StringComparison.Ordinal);
         string[] names = hint["Allowed tools: ".Length..^1].Split(", ");
         Assert.Equal(names.OrderBy(n => n, StringComparer.Ordinal), names);
+    }
+
+    [Fact]
+    public async Task AnalysisIntentAndProvenanceAreReturnedAcrossMcpTools()
+    {
+        var fake = Constant(
+            "sa_indicator_stub",
+            """{"symbol":"9984.T","timeFrame":"D1","asOfDate":"2026-11-06","indicator":"RSI","results":[50.0]}""",
+            ToolSchema.Object().Integer("period", "p").Build());
+        Rig rig = await StartAsync(new[] { fake });
+        (string id, string alice, string bob) = await OpenAsync(rig);
+
+        using JsonDocument attached = await CallAsync(
+            rig.Dispatcher,
+            "sa_discussion_attach_analysis",
+            Attach(id, alice, "sa_indicator_stub", """{"period":14}""", "test rsi", analysisIntent: "OverboughtOversold"));
+
+        Assert.False(McpTestSupport.IsError(attached), McpTestSupport.Result(attached).GetRawText());
+        JsonElement attachedStruct = McpTestSupport.Structured(attached);
+        Assert.True(attachedStruct.GetProperty("hasAnalysisIntent").GetBoolean());
+        Assert.Equal("OverboughtOversold", attachedStruct.GetProperty("analysisIntent").GetString());
+
+        JsonElement prov = attachedStruct.GetProperty("provenance");
+        Assert.Equal("9984.T", prov.GetProperty("symbol").GetString());
+        Assert.Equal("2026-11-06", prov.GetProperty("asOfDate").GetString());
+        Assert.Equal("D1", prov.GetProperty("timeFrame").GetString());
+        Assert.Equal("RSI", prov.GetProperty("indicator").GetString());
+        Assert.Equal("OverboughtOversold", prov.GetProperty("analysisIntent").GetString());
+
+        using JsonDocument fetched = await CallAsync(
+            rig.Dispatcher,
+            "sa_discussion_get_analysis",
+            $$"""{"sessionId":"{{id}}","participantToken":"{{bob}}","contextId":1}""");
+
+        Assert.False(McpTestSupport.IsError(fetched), McpTestSupport.Result(fetched).GetRawText());
+        JsonElement fetchedStruct = McpTestSupport.Structured(fetched);
+        Assert.True(fetchedStruct.GetProperty("hasAnalysisIntent").GetBoolean());
+        Assert.Equal("OverboughtOversold", fetchedStruct.GetProperty("analysisIntent").GetString());
+        Assert.Equal("9984.T", fetchedStruct.GetProperty("provenance").GetProperty("symbol").GetString());
+    }
+
+    [Fact]
+    public async Task InvalidAnalysisIntentFailsFastWithInvalidArgument()
+    {
+        var fake = Constant("sa_indicator_stub", "{}");
+        Rig rig = await StartAsync(new[] { fake });
+        (string id, string alice, _) = await OpenAsync(rig);
+
+        string longIntent = new string('a', 129);
+        using JsonDocument failed = await CallAsync(
+            rig.Dispatcher,
+            "sa_discussion_attach_analysis",
+            Attach(id, alice, "sa_indicator_stub", "{}", null, analysisIntent: longIntent));
+
+        Assert.True(McpTestSupport.IsError(failed));
+        Assert.Equal("INVALID_ARGUMENT", McpTestSupport.ErrorCodeOf(failed));
+        Assert.Equal("analysisIntent", McpTestSupport.Structured(failed).GetProperty("param").GetString());
+    }
+
+    [Fact]
+    public async Task PostAndReadSupportStructuredInterpretationAndPresenceFlags()
+    {
+        Rig rig = await StartAsync(Array.Empty<IMcpTool>());
+        (string id, string alice, string bob) = await OpenAsync(rig);
+
+        string postWithTokens = $$"""
+        {
+            "sessionId": "{{id}}",
+            "participantToken": "{{alice}}",
+            "content": "Peer judgment on RSI",
+            "interpretation": {
+                "summary": "Short-term overbought",
+                "direction": "Bearish",
+                "findings": ["RSI above 70"],
+                "supportingEvidence": ["RSI = 75.5"],
+                "counterEvidence": ["25MA trending up"],
+                "conclusion": "Caution advised"
+            }
+        }
+        """;
+
+        using JsonDocument posted = await CallAsync(rig.Dispatcher, "sa_discussion_post", postWithTokens);
+        Assert.False(McpTestSupport.IsError(posted), McpTestSupport.Result(posted).GetRawText());
+        JsonElement postStruct = McpTestSupport.Structured(posted);
+        Assert.True(postStruct.GetProperty("hasStructuredInput").GetBoolean());
+        Assert.True(postStruct.GetProperty("hasInterpretation").GetBoolean());
+        string[] provided = postStruct.GetProperty("providedInterpretationFields").EnumerateArray().Select(e => e.GetString()!).ToArray();
+        Assert.Equal(new[] { "summary", "direction", "findings", "supportingEvidence", "counterEvidence", "conclusion" }, provided);
+
+        using JsonDocument read = await CallAsync(
+            rig.Dispatcher,
+            "sa_discussion_read",
+            $$"""{"sessionId":"{{id}}","participantToken":"{{bob}}","afterSequence":0}""");
+
+        Assert.False(McpTestSupport.IsError(read), McpTestSupport.Result(read).GetRawText());
+        JsonElement messages = McpTestSupport.Structured(read).GetProperty("messages");
+        JsonElement lastMsg = messages[messages.GetArrayLength() - 1];
+        Assert.True(lastMsg.GetProperty("hasStructuredInput").GetBoolean());
+        Assert.True(lastMsg.GetProperty("hasInterpretation").GetBoolean());
+        JsonElement interp = lastMsg.GetProperty("interpretation");
+        Assert.Equal("Short-term overbought", interp.GetProperty("summary").GetString());
+        Assert.Equal("Bearish", interp.GetProperty("direction").GetString());
+        Assert.Equal("Caution advised", interp.GetProperty("conclusion").GetString());
+        Assert.Equal(new[] { "summary", "direction", "findings", "supportingEvidence", "counterEvidence", "conclusion" },
+            interp.GetProperty("providedFields").EnumerateArray().Select(e => e.GetString()!).ToArray());
     }
 }

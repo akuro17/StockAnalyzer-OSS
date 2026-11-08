@@ -23,7 +23,7 @@ namespace StockAnalyzer.Avalonia.Tests.Views.Notes;
 public class NoteTimelineView_ReplyChainWheelScrollTests
 {
     private const double WindowWidth = 900;
-    private const double WindowHeight = 400;
+    private const double WindowHeight = 300;
     private const int ReplyChainLength = 5;
     private const double WheelDeltaY = -3;
 
@@ -60,7 +60,7 @@ public class NoteTimelineView_ReplyChainWheelScrollTests
                 var scrollViewer = view.FindControl<ScrollViewer>("TimelineScrollViewer")!;
                 Assert.True(scrollViewer.Extent.Height > scrollViewer.Viewport.Height, "test setup: content must overflow");
 
-                var line = view.GetVisualDescendants().OfType<Border>().First(b => b.Name == "ReplyThreadConnectorLine" && b.IsVisible);
+                var line = view.GetVisualDescendants().OfType<Border>().First(b => b.Name == "ThreadBottomConnectorLine" && b.IsVisible);
                 var lineOrigin = line.TranslatePoint(new Point(0, 0), window)!.Value;
                 var midY = lineOrigin.Y + line.Bounds.Height / 2;
 

@@ -237,9 +237,11 @@ internal sealed class DetectDivergencesTool : IMcpTool
         var priceLows = loadedBars.Select(b => b.Low).ToList();
         var indicatorValues = indicatorResult.MainValues;
 
+        bool causalIndicatorMatching = ToolArgs.Boolean(arguments, "causalIndicatorMatching") ?? false;
+
         // Run Divergence detection
         IReadOnlyList<DivergenceSignal> divergences = DivergenceCrossDetector.DetectDivergences(
-            priceHighs, priceLows, indicatorValues, pivotOrder);
+            priceHighs, priceLows, indicatorValues, pivotOrder, causalIndicatorMatching);
 
         var events = new List<DetectedSignalEvent>();
 

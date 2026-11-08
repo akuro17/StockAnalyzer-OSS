@@ -59,6 +59,16 @@
                     <StaticResource ResourceKey="NoteCardItemTemplate"/>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
+
+            <!-- Back to List Button (Positioned immediately below the bottom-most rendered note in the thread, aligned right) -->
+            <Button x:Name="DetailBackToListButton"
+                    Theme="{DynamicResource PrimaryButtonStyle}"
+                    Command="{Binding BackToListCommand}"
+                    Content="{l:Localize Note_BackToListButton}"
+                    FontWeight="SemiBold"
+                    HorizontalAlignment="Right"
+                    Margin="0,16,0,24"
+                    Padding="20,8"/>
         </StackPanel>
     </ScrollViewer>
 </UserControl>

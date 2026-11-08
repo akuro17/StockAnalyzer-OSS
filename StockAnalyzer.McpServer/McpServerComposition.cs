@@ -214,6 +214,7 @@ internal static class McpServerComposition
             var backtestBinder = new BacktestConditionBinder(catalog, indicatorBinder, settings);
             var templateAdvisor = new ScreenerTemplateAdvisor(catalog);
             var templateWriter = new TemplateConditionWriter(catalog, screenerCatalog);
+            var templateBuilder = new TemplateStructureBuilder(gateway, screenerBinder, backtestBinder, templateAdvisor, templateWriter, settings);
             var resolvedWorkspaceSource = services.GetRequiredService<IReadOnlyWorkspaceSource>();
             var groupResolver = services.GetService<ITickerGroupResolver>() ?? new TickerGroupResolver(gateway, resolvedWorkspaceSource);
             SandboxedExecutionSettings? executionSettings = enableExecution ? services.GetRequiredService<SandboxedExecutionSettings>() : null;
@@ -272,6 +273,7 @@ internal static class McpServerComposition
                 new GetSymbolCoverageTool(gateway, limits),
                 new ValidateConditionTreeTool(gateway, screenerBinder, backtestBinder, limits),
                 new GetTemplateDetailTool(gateway, templateWriter),
+                new BuildTemplateTool(templateBuilder),
             };
 
             Action? prepareExecution = null;

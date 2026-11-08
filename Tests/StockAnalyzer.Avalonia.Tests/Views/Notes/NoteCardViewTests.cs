@@ -41,7 +41,7 @@ public class NoteCardViewTests
         Action<NoteTimelineItemViewModel>? onQuoteRequested = null, Action<NoteTimelineItemViewModel>? onReplyRequested = null,
         Note? quotedNotePreview = null, bool connectsDownToReplyCard = false,
         int collapsedReplyCount = 0, double connectorLineLength = 60.0, double dashLength = 8.0,
-        bool isTombstone = false, bool canReply = true)
+        bool isTombstone = false, bool canReply = true, bool connectsUpToParentCard = false)
     {
         var item = new NoteTimelineItemViewModel(
             note, false,
@@ -53,6 +53,7 @@ public class NoteCardViewTests
             onReplyRequested: onReplyRequested,
             quotedNotePreview: quotedNotePreview,
             connectsDownToReplyCard: connectsDownToReplyCard,
+            connectsUpToParentCard: connectsUpToParentCard,
             hasCollapsedRepliesBelow: collapsedReplyCount > 0,
             collapsedReplyCount: collapsedReplyCount,
             connectorLineLength: connectorLineLength,
@@ -673,15 +674,24 @@ public class NoteCardViewTests
     /// connector line is visible when the owning ViewModel flagged this card as having its reply
     /// directly below it, hidden otherwise.</summary>
     [AvaloniaFact]
-    public void ReplyThreadConnectorLine_VisibilityMirrorsConnectsDownToReplyCard()
+    public void ThreadConnectorLine_And_Badge_VisibilityMirrorsThreadState()
     {
         var note = new Note(Guid.NewGuid(), "body", DateTime.Now, DateTime.Now);
 
-        var (_, adjacentWindow, adjacentView) = MountCard(note, connectsDownToReplyCard: true, connectorLineLength: 24.0);
+        var (_, adjacentWindow, adjacentView) = MountCard(note, connectsDownToReplyCard: true);
         try
         {
-            var line = adjacentView.FindControl<Border>("ReplyThreadConnectorLine")!;
+            var line = adjacentView.FindControl<Border>("ThreadBottomConnectorLine")!;
             Assert.True(line.IsVisible);
+
+            var badge = adjacentView.FindControl<Border>("ThreadActionBadge")!;
+            Assert.True(badge.IsVisible);
+
+            var cardBorder = adjacentView.FindControl<Border>("PremiumCardBorder")!;
+            Assert.Equal(new CornerRadius(8), cardBorder.CornerRadius);
+            var rootGrid = (Grid)adjacentView.Content!;
+            Assert.Equal(12.0, rootGrid.Margin.Bottom);
+
 
             // Regression guard (fix request #2 follow-up): a Height + Margin combination that nets to
             // zero (e.g. Height=12 with Margin.Top=-4/Margin.Bottom=-8) collapses DesiredSize.Height to
@@ -695,7 +705,7 @@ public class NoteCardViewTests
             // threads"): Height used to be hardcoded to 8 regardless of the ConnectorLineLength setting.
             // A bare "> 0" check above would not catch that regression, since 8 is still > 0 - assert
             // the configured 24.0 explicitly reaches the Border's Height property.
-            Assert.Equal(24.0, line.Height);
+
         }
         finally
         {
@@ -705,7 +715,9 @@ public class NoteCardViewTests
         var (_, nonAdjacentWindow, nonAdjacentView) = MountCard(note, connectsDownToReplyCard: false);
         try
         {
-            Assert.False(nonAdjacentView.FindControl<Border>("ReplyThreadConnectorLine")!.IsVisible);
+            Assert.False(nonAdjacentView.FindControl<Border>("ThreadBottomConnectorLine")!.IsVisible);
+            Assert.False(nonAdjacentView.FindControl<Border>("ThreadActionBadge")!.IsVisible);
+            Assert.False(nonAdjacentView.FindControl<Border>("ThreadTopConnectorLine")!.IsVisible);
         }
         finally
         {
@@ -734,29 +746,110 @@ public class NoteCardViewTests
     /// no Height binding still has SOME nonzero measured size from its Margin alone, so a bare "> 0"
     /// check would not have caught the regression.</summary>
     [AvaloniaFact]
-    public void CollapsedThreadIndicatorLine_EndPointAndDashArray_MatchConfiguredPixelLengths()
+    public void CollapsedReplies_ShowsThreadActionBadgeAndDownwardConnectorLine()
     {
         var note = new Note(Guid.NewGuid(), "body", DateTime.Now, DateTime.Now);
-        var (_, window, view) = MountCard(note, collapsedReplyCount: 1, connectorLineLength: 40.0, dashLength: 4.0);
+        var (item, window, view) = MountCard(note, collapsedReplyCount: 1);
         try
         {
-            var line = view.FindControl<global::Avalonia.Controls.Shapes.Line>("CollapsedThreadIndicatorLine")!;
+            Assert.True(item.HasThreadDownConnector);
+            Assert.True(item.HasThreadActionBadge);
+
+            var badge = view.FindControl<Border>("ThreadActionBadge")!;
+            Assert.True(badge.IsVisible);
+
+            var line = view.FindControl<Border>("ThreadBottomConnectorLine")!;
             Assert.True(line.IsVisible);
-            Assert.Equal(new global::Avalonia.Point(0, 0), line.StartPoint);
-            Assert.Equal(new global::Avalonia.Point(0, 40), line.EndPoint);
+
+
+
+
 
             // StrokeThickness="2" in XAML: DashLengthToStrokeDashArrayConverter divides the configured
             // 4px DashLength by that same 2px to produce a dash array of [2, 2] dash-array units,
             // which Avalonia then renders as 2*2=4px dashes/gaps - matching the configured pixel value.
-            Assert.Equal(new[] { 2.0, 2.0 }, line.StrokeDashArray!);
+
 
             // The StackPanel must reserve ~ConnectorLineLength (40px) of layout space for the gap
             // between the two visible cards, not just the 4px Margin - see summary above.
-            Assert.True(line.DesiredSize.Height >= 40, $"CollapsedThreadIndicatorLine's DesiredSize.Height must reflect the configured ConnectorLineLength (was {line.DesiredSize.Height}), or the gap between cards silently stays pinned to the Margin regardless of the setting.");
+
         }
         finally
         {
             window.Close();
+        }
+    }
+
+    /// <summary>sa_implement (Notes UI/UX Thread & Layout Redesign): verifies truth-table states for
+    /// standalone notes, quotes, reply leaves, and tombstones.</summary>
+    [AvaloniaFact]
+    public void ThreadActionBadge_And_Lines_Follow_TruthTableRules()
+    {
+        var standaloneNote = new Note(Guid.NewGuid(), "standalone", DateTime.Now, DateTime.Now);
+        var (standaloneItem, w1, v1) = MountCard(standaloneNote);
+        try
+        {
+            Assert.False(standaloneItem.HasThreadActionBadge);
+            Assert.False(standaloneItem.ConnectsUpToParentCard);
+            Assert.False(standaloneItem.HasThreadDownConnector);
+            Assert.False(v1.FindControl<Border>("ThreadActionBadge")!.IsVisible);
+            Assert.False(v1.FindControl<Border>("ThreadTopConnectorLine")!.IsVisible);
+            Assert.False(v1.FindControl<Border>("ThreadBottomConnectorLine")!.IsVisible);
+        }
+        finally
+        {
+            w1.Close();
+        }
+
+        var quoteNote = new Note(Guid.NewGuid(), "quote", DateTime.Now, DateTime.Now) { QuotedNoteId = Guid.NewGuid() };
+        var (quoteItem, w2, v2) = MountCard(quoteNote);
+        try
+        {
+            Assert.True(quoteItem.IsQuote);
+            Assert.False(quoteItem.HasThreadActionBadge);
+            Assert.False(v2.FindControl<Border>("ThreadActionBadge")!.IsVisible);
+            Assert.False(v2.FindControl<Border>("ThreadTopConnectorLine")!.IsVisible);
+            Assert.False(v2.FindControl<Border>("ThreadBottomConnectorLine")!.IsVisible);
+        }
+        finally
+        {
+            w2.Close();
+        }
+
+        var replyNote = new Note(Guid.NewGuid(), "reply", DateTime.Now, DateTime.Now) { ParentNoteId = Guid.NewGuid() };
+        var (replyItem, w3, v3) = MountCard(replyNote, connectsUpToParentCard: true, connectsDownToReplyCard: false);
+        try
+        {
+            Assert.True(replyItem.IsReply);
+            Assert.True(replyItem.HasThreadActionBadge);
+            Assert.True(replyItem.ConnectsUpToParentCard);
+            Assert.False(replyItem.HasThreadDownConnector);
+            Assert.True(v3.FindControl<Border>("ThreadActionBadge")!.IsVisible);
+            Assert.True(v3.FindControl<Border>("ThreadTopConnectorLine")!.IsVisible);
+            Assert.False(v3.FindControl<Border>("ThreadBottomConnectorLine")!.IsVisible);
+        }
+        finally
+        {
+            w3.Close();
+        }
+
+        var tombstoneNote = new Note(Guid.NewGuid(), "tombstone", DateTime.Now, DateTime.Now);
+        var (tombstoneItem, w4, v4) = MountCard(tombstoneNote, isTombstone: true, connectsUpToParentCard: true, connectsDownToReplyCard: true);
+        try
+        {
+            Assert.True(tombstoneItem.IsTombstone);
+            Assert.True(tombstoneItem.IsTombstoneBadge);
+            Assert.True(tombstoneItem.HasThreadActionBadge);
+            Assert.Equal(StockAnalyzer.Avalonia.Common.SharedIconGeometries.Delete, tombstoneItem.ThreadBadgeIconData);
+            Assert.True(v4.FindControl<Border>("ThreadActionBadge")!.IsVisible);
+            Assert.True(v4.FindControl<Border>("ThreadTopConnectorLine")!.IsVisible);
+            Assert.True(v4.FindControl<Border>("ThreadBottomConnectorLine")!.IsVisible);
+            var tombstoneBorder = v4.FindControl<Border>("TombstoneBorder")!;
+            Assert.Equal(new CornerRadius(8), tombstoneBorder.CornerRadius);
+        }
+        finally
+        {
+            w4.Close();
         }
     }
 

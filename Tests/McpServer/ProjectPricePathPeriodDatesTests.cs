@@ -95,7 +95,7 @@ public sealed class ProjectPricePathPeriodDatesTests : IDisposable
         JsonElement result = await CallAsync("MN1", method);
 
         DateTime asOf = Date(result, "asOfDate");
-        Assert.NotEqual(1, asOf.Day); // the last bar is labelled by its first trading day: the check below is not vacuous
+        Assert.Equal(1, asOf.Day); // PeriodStart contract: monthly bars are stamped on the 1st of the month
         var firstOfAsOfMonth = new DateTime(asOf.Year, asOf.Month, 1);
 
         JsonElement[] path = result.GetProperty("projectedPath").EnumerateArray().ToArray();
@@ -116,7 +116,7 @@ public sealed class ProjectPricePathPeriodDatesTests : IDisposable
         JsonElement result = await CallAsync("W1", method);
 
         DateTime asOf = Date(result, "asOfDate");
-        Assert.NotEqual(DayOfWeek.Monday, asOf.DayOfWeek); // labelled by the first trading day after the Monday holiday
+        Assert.Equal(DayOfWeek.Monday, asOf.DayOfWeek); // PeriodStart contract: weekly bars are stamped on Monday
         DateTime monday = MondayOf(asOf);
 
         JsonElement[] path = result.GetProperty("projectedPath").EnumerateArray().ToArray();

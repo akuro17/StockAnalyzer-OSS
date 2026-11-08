@@ -66,7 +66,7 @@ This section is generated from the production code (`IndicatorFactory`, each ind
 | `PriceOscillator` | `109` | `(none)` | (no parameters) | `false` | `"Main"` |
 | `RVI` | `110` | `CoreSmaParameter` | `Period` (int, default `10`, range `[1, 1000]`) | `false` | `"Main"`, `"SignalLine"` |
 | `PsychologicalLine` | `125` | `CoreSmaParameter` | `Period` (int, default `12`, range `[1, 1000]`) | `false` | `"Main"` |
-| `MaDeviationRate` | `126` | `CoreSmaParameter` | `Period` (int, default `25`, range `[1, 1000]`) | `false` | `"Main"` |
+| `MaDeviationRate` | `126` | `CoreMaDeviationRateParameter` | `Period` (int, default `25`, range `[1, 1000]`), `MaType` (MovingAverageType, default `7 (SMA)`) | `false` | `"Main"` |
 | `PrimeNumberOscillator` | `142` | `CorePrimeNumberOscillatorParameter` | `ScaleMultiplier` (decimal, default `10.0`, range `[1, 1000]`), `ConsecutiveExtremaPeriods` (int, default `2`, range `[1, 10]`), `LookbackPeriod` (int, default `5`, range `[2, 50]`), `Tolerance` (decimal, default `0.0`, range `[0, 10]`) | `false` | `"Main"`, `"BuySignals"`, `"SellSignals"` |
 | `AdaptiveRSI` | `149` | `CoreAdaptiveRsiParameter` | `WindowSize` (int, default `64`, range `[4, 512]`), `DefaultPeriod` (int, default `14`, range `[2, 100]`), `MinPeriod` (int, default `5`, range `[2, 50]`), `MaxPeriod` (int, default `50`, range `[10, 200]`) | `false` | `"Main"`, `"DominantPeriod"` |
 | `SSACycle` | `159` | `CoreSSACycleParameter` | `WindowSize` (int, default `64`, range `[4, 512]`), `EmbeddingDimension` (int, default `20`, range `[2, 256]`), `DeltaPair` (double, default `0.25`, range `[0.01, 0.5]`) | `false` | `"Main"`, `"Cycle"`, `"InPhase"`, `"Quadrature"`, `"Phase"`, `"DominantPeriod"` |
@@ -235,6 +235,7 @@ Enums are serialized as integers. The member name in parentheses is for readabil
 - **`CrossCorrelationPeakSelectionMode`**: `0` = `MaxCorrelation`, `1` = `MaxAbsoluteCorrelation`
 - **`DisplaySide`**: `0` = `Left`, `1` = `Right`, `2` = `Both`
 - **`HoughNormalizationMode`**: `0` = `Raw`, `1` = `Relative`, `2` = `Log`, `3` = `MinMax`, `4` = `ZScore`
+- **`MovingAverageType`**: `0` = `ALMA`, `1` = `DEMA`, `2` = `EMA`, `3` = `HMA`, `4` = `KAMA`, `5` = `LRMA`, `6` = `LSMA`, `7` = `SMA`, `8` = `SMMA`, `9` = `TEMA`, `10` = `TMA`, `11` = `WMA`, `12` = `ZLEMA`
 - **`PriceType`**: `0` = `Close`, `1` = `Open`, `2` = `High`, `3` = `Low`, `4` = `Median`, `5` = `Midpoint`, `6` = `Typical`, `7` = `Weighted`, `8` = `Average`, `9` = `HeikinAshiOpen`, `10` = `HeikinAshiHigh`, `11` = `HeikinAshiLow`, `12` = `HeikinAshiClose`, `13` = `TrueHigh`, `14` = `TrueLow`
 - **`RatiocatorCalculationMode`**: `0` = `RawRatio`, `1` = `NormalizedRatio`, `2` = `RollingRatio`
 - **`RocDisplayStyle`**: `0` = `Line`, `1` = `Histogram`
