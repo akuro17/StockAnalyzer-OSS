@@ -17,7 +17,8 @@ public class DefaultCoreIndicatorSettingsTests
         // + 1 Ratiocator + 1 RollingRSquared + 1 CointegrationSpread + 1 ClassicPivotPoints + 1 PivotPointsAdvanced
         // + 1 StandardDeviation + 1 MassIndex + 1 Donchian (disabled by default, added 2026-10-20)
         // + 1 PairRatio + 1 PairSpread (disabled by default, added 2026-10-28).
-        Assert.Equal(90, defaults.Count);
+        // + 1 CrossTickerDtw + 1 PACF + 1 RankCorrelation (disabled by default, added 2026-11-09).
+        Assert.Equal(93, defaults.Count);
     }
 
     [Fact]

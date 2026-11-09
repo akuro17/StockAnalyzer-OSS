@@ -79,6 +79,11 @@ public static class IndicatorChartSuppression
             {
                 nameof(CoreSSAResidualBandIndicator.BandWidth),
             },
+            [IndicatorType.CrossTickerDtw] = new HashSet<string>(StringComparer.Ordinal)
+            {
+                nameof(CoreCrossTickerDtwIndicator.NormalizedDistance),
+                nameof(CoreCrossTickerDtwIndicator.SimilarityScore),
+            },
         };
 
     private static readonly IReadOnlyDictionary<IndicatorType, IReadOnlySet<string>> SuppressedDataWindowSeries =

@@ -113,6 +113,9 @@ This section is generated from the production code (`IndicatorFactory`, each ind
 | `CointegrationSpread` | `187` | `CoreCointegrationSpreadParameter` | `Period` (int, default `60`, range `[5, 1000]`), `ZScorePeriod` (int, default `20`, range `[2, 500]`), `ComparisonSymbol` (string, default `""`), `ComparisonPriceSource` (PriceType, default `0 (Close)`), `PriceMode` (CointegrationPriceMode, default `0 (PriceLevel)`) | `false` | `"Main"`, `"ZScore"`, `"HedgeRatio"`, `"Intercept"`, `"ADFStatistic"`, `"HalfLife"` |
 | `PairRatio` | `188` | `CorePairRatioParameter` | `PriceSource` (PriceType, default `0 (Close)`), `ComparisonSymbol` (string, default `""`), `ComparisonPriceSource` (PriceType, default `0 (Close)`) | `false` | `"Main"` |
 | `PairSpread` | `189` | `CorePairSpreadParameter` | `PriceSource` (PriceType, default `0 (Close)`), `ComparisonSymbol` (string, default `""`), `ComparisonPriceSource` (PriceType, default `0 (Close)`) | `false` | `"Main"` |
+| `CrossTickerDtw` | `190` | `CoreCrossTickerDtwParameter` | `Period` (int, default `20`, range `[5, 200]`), `ComparisonSymbol` (string, default `""`), `PriceSource` (PriceType, default `0 (Close)`), `ComparisonPriceSource` (PriceType, default `0 (Close)`), `WarpingRadius` (int, default `3`, range `[-1, 50]`), `OutputMode` (DtwOutputMode, default `0 (Distance)`) | `false` | `"Main"`, `"NormalizedDistance"`, `"SimilarityScore"` |
+| `PACF` | `191` | `CorePacfParameter` | `Period` (int, default `50`, range `[10, 500]`), `Lag` (int, default `1`, range `[1, 50]`), `CalculationMode` (CorrelationCalculationMode, default `0 (PriceLevel)`), `PriceSource` (PriceType, default `0 (Close)`) | `false` | `"Main"`, `"UpperConfidenceBand"`, `"LowerConfidenceBand"` |
+| `RankCorrelation` | `192` | `CoreRankCorrelationParameter` | `Period` (int, default `20`, range `[5, 200]`), `ComparisonSymbol` (string, default `""`), `PriceSource` (PriceType, default `0 (Close)`), `ComparisonPriceSource` (PriceType, default `0 (Close)`), `Method` (RankCorrelationMethod, default `0 (Spearman)`) | `false` | `"Main"` |
 
 ### Category: Trend
 
@@ -234,9 +237,11 @@ Enums are serialized as integers. The member name in parentheses is for readabil
 - **`CorrelationCalculationMode`**: `0` = `PriceLevel`, `1` = `LogReturn`
 - **`CrossCorrelationPeakSelectionMode`**: `0` = `MaxCorrelation`, `1` = `MaxAbsoluteCorrelation`
 - **`DisplaySide`**: `0` = `Left`, `1` = `Right`, `2` = `Both`
+- **`DtwOutputMode`**: `0` = `Distance`, `1` = `Similarity`
 - **`HoughNormalizationMode`**: `0` = `Raw`, `1` = `Relative`, `2` = `Log`, `3` = `MinMax`, `4` = `ZScore`
 - **`MovingAverageType`**: `0` = `ALMA`, `1` = `DEMA`, `2` = `EMA`, `3` = `HMA`, `4` = `KAMA`, `5` = `LRMA`, `6` = `LSMA`, `7` = `SMA`, `8` = `SMMA`, `9` = `TEMA`, `10` = `TMA`, `11` = `WMA`, `12` = `ZLEMA`
 - **`PriceType`**: `0` = `Close`, `1` = `Open`, `2` = `High`, `3` = `Low`, `4` = `Median`, `5` = `Midpoint`, `6` = `Typical`, `7` = `Weighted`, `8` = `Average`, `9` = `HeikinAshiOpen`, `10` = `HeikinAshiHigh`, `11` = `HeikinAshiLow`, `12` = `HeikinAshiClose`, `13` = `TrueHigh`, `14` = `TrueLow`
+- **`RankCorrelationMethod`**: `0` = `Spearman`, `1` = `Kendall`
 - **`RatiocatorCalculationMode`**: `0` = `RawRatio`, `1` = `NormalizedRatio`, `2` = `RollingRatio`
 - **`RocDisplayStyle`**: `0` = `Line`, `1` = `Histogram`
 - **`SsaDetrendMode`**: `0` = `LeastSquaresLinear`, `1` = `EndpointLinear`, `2` = `None`

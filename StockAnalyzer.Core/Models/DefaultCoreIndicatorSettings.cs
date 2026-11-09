@@ -1353,6 +1353,61 @@ public static class DefaultCoreIndicatorSettings
                 Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness, 
                 Style = CoreLineStyle.Solid, 
                 IsOverlay = false 
+            },
+            new CoreIndicatorSettings
+            {
+                TypeEnum = IndicatorType.CrossTickerDtw,
+                Category = CoreIndicatorCategory.Other,
+                IsEnabled = false,
+                ParameterObject = new CoreCrossTickerDtwParameter(),
+                Color = IndicatorDefaultConstants.CrossTickerDtwColor,
+                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness,
+                Style = CoreLineStyle.Solid,
+                IsOverlay = false,
+                MinValue = null,
+                MaxValue = null,
+                IncludeZeroBaseline = true,
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
+                {
+                    new SeriesColorConfig { Name = "CrossTickerDtw", DisplayName = "Cross-Ticker DTW", Color = IndicatorDefaultConstants.CrossTickerDtwColor, TargetSeries = new List<string> { "Main" } }
+                }
+            },
+            new CoreIndicatorSettings
+            {
+                TypeEnum = IndicatorType.PACF,
+                Category = CoreIndicatorCategory.Other,
+                IsEnabled = false,
+                ParameterObject = new CorePacfParameter(),
+                Color = IndicatorDefaultConstants.PacfColor,
+                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness,
+                Style = CoreLineStyle.Solid,
+                IsOverlay = false,
+                MinValue = IndicatorDefaultConstants.PacfMinValue,
+                MaxValue = IndicatorDefaultConstants.PacfMaxValue,
+                IncludeZeroBaseline = true,
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
+                {
+                    new SeriesColorConfig { Name = "PACF", DisplayName = "PACF", Color = IndicatorDefaultConstants.PacfColor, TargetSeries = new List<string> { "Main" } },
+                    new SeriesColorConfig { Name = "ConfidenceBand", DisplayName = "95% Confidence Band", Color = IndicatorDefaultConstants.PacfConfidenceBandColor, TargetSeries = new List<string> { "UpperConfidenceBand", "LowerConfidenceBand" } }
+                }
+            },
+            new CoreIndicatorSettings
+            {
+                TypeEnum = IndicatorType.RankCorrelation,
+                Category = CoreIndicatorCategory.Other,
+                IsEnabled = false,
+                ParameterObject = new CoreRankCorrelationParameter(),
+                Color = IndicatorDefaultConstants.RankCorrelationColor,
+                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness,
+                Style = CoreLineStyle.Solid,
+                IsOverlay = false,
+                MinValue = IndicatorDefaultConstants.RankCorrelationMinValue,
+                MaxValue = IndicatorDefaultConstants.RankCorrelationMaxValue,
+                IncludeZeroBaseline = true,
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
+                {
+                    new SeriesColorConfig { Name = "RankCorrelation", DisplayName = "Rank Correlation", Color = IndicatorDefaultConstants.RankCorrelationColor, TargetSeries = new List<string> { "Main" } }
+                }
             }
         };
     }

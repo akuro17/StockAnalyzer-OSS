@@ -20,9 +20,9 @@ public class ParameterViewBuilderComparisonWatermarkTests
 {
     private const string OptionalHint = "Price vs Volume";
 
-    /// <summary>The rule as it was written before the change (the oracle): the two types were named.</summary>
+    /// <summary>The rule as it was written before the change (the oracle): the types were named.</summary>
     private static string TheRuleBeforeTheChange(object parameterObject)
-        => parameterObject is ICrossTickerParameter && parameterObject is not CoreCorrelationParameter && parameterObject is not CoreCrossCorrelationParameter
+        => parameterObject is ICrossTickerParameter && parameterObject is not CoreCorrelationParameter && parameterObject is not CoreCrossCorrelationParameter && parameterObject is not CoreRankCorrelationParameter
             ? string.Empty
             : OptionalHint;
 

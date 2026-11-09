@@ -47,6 +47,7 @@ public class ScreenerNeedsDailyComparisonBarsTests
     [Theory]
     [InlineData(IndicatorType.Correlation)]
     [InlineData(IndicatorType.CrossCorrelation)]
+    [InlineData(IndicatorType.RankCorrelation)]
     public void IsComparisonSymbolOptional_IsTrueForTheTwoTypesThatAcceptABlankSymbol(IndicatorType type)
     {
         Assert.True(ScreenerComparisonSymbols.IsComparisonSymbolOptional(type));
@@ -57,6 +58,7 @@ public class ScreenerNeedsDailyComparisonBarsTests
     [InlineData(IndicatorType.RollingAlpha)]
     [InlineData(IndicatorType.RollingRSquared)]
     [InlineData(IndicatorType.CointegrationSpread)]
+    [InlineData(IndicatorType.CrossTickerDtw)]
     [InlineData(IndicatorType.PairRatio)]
     [InlineData(IndicatorType.PairSpread)]
     [InlineData(IndicatorType.Ratiocator)]
@@ -80,7 +82,7 @@ public class ScreenerNeedsDailyComparisonBarsTests
     {
         IndicatorType[] optional = TwoTickerTypes().Where(ScreenerComparisonSymbols.IsComparisonSymbolOptional).ToArray();
 
-        Assert.Equal(new[] { IndicatorType.CrossCorrelation, IndicatorType.Correlation }.OrderBy(t => t.ToString(), StringComparer.Ordinal), optional);
+        Assert.Equal(new[] { IndicatorType.CrossCorrelation, IndicatorType.Correlation, IndicatorType.RankCorrelation }.OrderBy(t => t.ToString(), StringComparer.Ordinal), optional);
     }
 
     [Fact]
@@ -88,8 +90,10 @@ public class ScreenerNeedsDailyComparisonBarsTests
     {
         Assert.False(((ICrossTickerParameter)new CoreRollingBetaParameter()).ComparisonSymbolOptional);
         Assert.False(((ICrossTickerParameter)new CoreRatiocatorParameter()).ComparisonSymbolOptional);
+        Assert.False(((ICrossTickerParameter)new CoreCrossTickerDtwParameter()).ComparisonSymbolOptional);
         Assert.True(((ICrossTickerParameter)new CoreCorrelationParameter()).ComparisonSymbolOptional);
         Assert.True(((ICrossTickerParameter)new CoreCrossCorrelationParameter()).ComparisonSymbolOptional);
+        Assert.True(((ICrossTickerParameter)new CoreRankCorrelationParameter()).ComparisonSymbolOptional);
     }
 
     // Reflection-based readers (IndicatorRegistrationViewModel.BuildParameterDictionary, ParameterViewBuilder, the MCP IndicatorSettingsBinder) take every PUBLIC
@@ -100,6 +104,14 @@ public class ScreenerNeedsDailyComparisonBarsTests
     {
         "PriceSource", "Period", "Lag", "EnableDynamicLag", "MinLag", "MaxLag", "Threshold", "LagSmoothingPeriod", "PeakSelectionMode",
         "ComparisonSymbol", "ComparisonPriceSource", "CalculationMode",
+    })]
+    [InlineData(typeof(CoreCrossTickerDtwParameter), new[]
+    {
+        "Period", "ComparisonSymbol", "OutputMode", "WarpingRadius", "PriceSource", "ComparisonPriceSource",
+    })]
+    [InlineData(typeof(CoreRankCorrelationParameter), new[]
+    {
+        "Period", "ComparisonSymbol", "PriceSource", "ComparisonPriceSource", "Method",
     })]
     public void TheOptionalMember_IsNotAPublicProperty_AndTheDeclaredPublicPropertiesAreUnchanged(Type parameterType, string[] expectedDeclared)
     {

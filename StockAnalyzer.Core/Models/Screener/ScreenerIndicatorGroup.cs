@@ -119,6 +119,7 @@ public class ScreenerIndicatorGroup
             {
                 IndicatorType.LinearRegression, IndicatorType.RegressionSlope,
                 IndicatorType.Correlation, IndicatorType.CorrelationProxy,
+                IndicatorType.CrossTickerDtw, IndicatorType.PACF, IndicatorType.RankCorrelation,
                 IndicatorType.ZScore, IndicatorType.FourierTransform,
                 IndicatorType.FFTCycle, IndicatorType.HilbertTransform,
                 IndicatorType.IFFTInstantaneousPhase, IndicatorType.IFFTInstantaneousAmplitude,

@@ -305,7 +305,12 @@ public enum IndicatorType
 
     // Pair Ratio (A / B) and Pair Spread (A - B) of the chart symbol and a comparison symbol
     [Description("Pair Ratio")] PairRatio,
-    [Description("Pair Spread")] PairSpread
+    [Description("Pair Spread")] PairSpread,
+
+    // Batch 1 & 2: Advanced Correlation & Time-Series Suite
+    [Description("Cross-Ticker DTW")] CrossTickerDtw,
+    [Description("Partial Autocorrelation Function")] PACF,
+    [Description("Rank Correlation")] RankCorrelation
 }
 
 public static class IndicatorTypeExtensions

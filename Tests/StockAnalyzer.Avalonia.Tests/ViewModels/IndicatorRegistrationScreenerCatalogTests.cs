@@ -45,7 +45,7 @@ public sealed class IndicatorRegistrationScreenerCatalogTests
         HashSet<IndicatorType> math = OfferedIn(vm, "Math");
 
         Assert.Contains(IndicatorType.Correlation, math);
-        Assert.Equal(7, ScreenerOnlyTypes().Length);
+        Assert.Equal(8, ScreenerOnlyTypes().Length);
         Assert.All(ScreenerOnlyTypes(), type => Assert.Contains(type, math));
     }
 
@@ -80,7 +80,7 @@ public sealed class IndicatorRegistrationScreenerCatalogTests
 
         HashSet<IndicatorType> math = OfferedIn(notes.IndicatorRegistrationViewModel, "Math");
 
-        Assert.Equal(7, ScreenerOnlyTypes().Length);
+        Assert.Equal(8, ScreenerOnlyTypes().Length);
         Assert.All(ScreenerOnlyTypes(), type => Assert.DoesNotContain(type, math));
         Assert.Contains(IndicatorType.Correlation, math);
     }

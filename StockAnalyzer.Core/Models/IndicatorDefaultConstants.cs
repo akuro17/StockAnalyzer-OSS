@@ -502,5 +502,25 @@ public static class IndicatorDefaultConstants
     public static readonly IndicatorColor ClassicPivotPointsS1Color = new(255, 102, 187, 106);   // Green 400 #66BB6A
     public static readonly IndicatorColor ClassicPivotPointsS2Color = new(255, 67, 160, 71);     // Green 600 #43A047
     public static readonly IndicatorColor ClassicPivotPointsS3Color = new(255, 27, 94, 32);      // Green 900 #1B5E20
+
+    // === Cross-Ticker DTW ===
+    public const int CrossTickerDtwDefaultPeriod = 20;
+    public const int CrossTickerDtwDefaultWarpingRadius = 3;
+    public const decimal CrossTickerDtwMinValue = 0.0m;
+    public static readonly IndicatorColor CrossTickerDtwColor = new(255, 86, 180, 233); // Okabe-Ito Sky Blue #56B4E9
+
+    // === Partial Autocorrelation Function (PACF) ===
+    public const int PacfDefaultPeriod = 50;
+    public const int PacfDefaultLag = 1;
+    public const decimal PacfMinValue = -1.0m;
+    public const decimal PacfMaxValue = 1.0m;
+    public static readonly IndicatorColor PacfColor = new(255, 0, 114, 178); // Okabe-Ito Blue #0072B2
+    public static readonly IndicatorColor PacfConfidenceBandColor = new(255, 230, 159, 0); // Okabe-Ito Orange #E69F00
+
+    // === Rank Correlation ===
+    public const int RankCorrelationDefaultPeriod = 20;
+    public const decimal RankCorrelationMinValue = -1.0m;
+    public const decimal RankCorrelationMaxValue = 1.0m;
+    public static readonly IndicatorColor RankCorrelationColor = new(255, 0, 158, 115); // Okabe-Ito Bluish Green #009E73
 }
 
