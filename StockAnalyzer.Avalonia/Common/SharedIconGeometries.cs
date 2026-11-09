@@ -48,4 +48,10 @@ public static class SharedIconGeometries
 
     /// <summary>Speech/chat bubble glyph used for thread action badges in the Notes timeline feed.</summary>
     public const string ChatBubble = "M240-400h480v-80H240v80Zm0-120h480v-80H240v80Zm0-120h480v-80H240v80Zm-80 400q-33 0-56.5-23.5T80-320v-480q0-33 23.5-56.5T160-880h640q33 0 56.5 23.5T880-800v720L720-240H160Z";
+
+    /// <summary>Pin glyph for pinned panel state.</summary>
+    public const string Pin = "M16,12V4H17V2H7V4H8V12L6,14V16H11.2V22H12.8V16H18V14L16,12Z";
+
+    /// <summary>Pin off / unpinned glyph for auto-collapse panel state.</summary>
+    public const string PinOff = "M2,5.27L3.28,4L20,20.72L18.73,22L12.8,16.07V22H11.2V16H6V14L8,12V11.27L2,5.27M16,12L18,14V16H17.82L8,6.18V4H7V2H17V4H16V12Z";
 }

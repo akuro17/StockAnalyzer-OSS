@@ -245,7 +245,8 @@ public class ChartBaseControl : Control, ICustomHitTest
         // Initialize InteractionController with DI service if available (Design-time fallback)
         var services = (Application.Current as App)?.Services;
         var strokeCapacity = services?.GetService<StockAnalyzer.Core.Services.IStockAnalyzerSettings>()?.DrawingInteraction.MaxStrokeSamples;
-        _freehandAdapter = strokeCapacity.HasValue ? new FreehandPointerAdapter(strokeCapacity.Value) : new FreehandPointerAdapter();
+        var presetService = services?.GetService<Services.IDrawingToolPresetService>() ?? Services.DrawingToolPresetService.Shared;
+        _freehandAdapter = strokeCapacity.HasValue ? new FreehandPointerAdapter(strokeCapacity.Value, presetService) : new FreehandPointerAdapter(presetService: presetService);
         var magnetService = services?.GetService<Services.Drawing.IMagnetSnapService>();
         var dialogService = services?.GetService<Services.IDialogService>();
         var smartGuideService = services?.GetService<Services.Drawing.ISmartGuideService>();
@@ -262,8 +263,12 @@ public class ChartBaseControl : Control, ICustomHitTest
         _pipeline = new ChartRenderPipeline(indicatorRenderer);
         
         _interactionController = (magnetService != null && dialogService != null)
-            ? new ChartInteractionController(magnetService, dialogService, smartGuideService) 
-            : new ChartInteractionController();
+            ? new ChartInteractionController(magnetService, dialogService, smartGuideService, presetService) 
+            : new ChartInteractionController(
+                new Services.Drawing.MagnetSnapService(),
+                new Services.DialogService(),
+                new Services.Drawing.SmartGuideService(),
+                presetService);
         _interactionController.LayeredScene = _layeredScene;
 
         // Resolve IPythonService for Coordinator (Phase 2 Component Coupling Fix)

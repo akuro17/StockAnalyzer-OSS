@@ -45,7 +45,8 @@ public partial class ChartViewModel
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (_isDisposed || revision != _rlChartRevision) return;
-            if (_drawingRepository is not null && _drawingsOwnerSymbol is not null)
+            if (_drawingRepository is not null && _drawingsOwnerSymbol is not null
+                && !StockAnalyzer.Core.Helpers.SyntheticSymbolParser.IsSyntheticExpression(_drawingsOwnerSymbol))
             {
                 var outgoing = ObjectManager.GetSnapshot();
                 if (!IsDrawingsStale() && ShouldPersistDrawingsSnapshot(outgoing))
@@ -59,7 +60,7 @@ public partial class ChartViewModel
                 _loadCts?.Cancel(); ++_predictionRequestId; CurrentPrediction = null; PredictionDisplay = null; ClearModelAnalysis();
                 Symbol = snapshot.Symbol; SelectedTimeFrame = TimeframeType.Daily;
                 ReloadDrawingsFromRepository(Symbol, SelectedTimeFrame);
-                _drawingsOwnerSymbol = Symbol; _drawingsOwnerTimeFrame = SelectedTimeFrame; UpdateDrawingCoordinator();
+                _drawingsOwnerSymbol = Symbol; _drawingsOwnerTimeFrame = SelectedTimeFrame; _hasLeftSyntheticOwner = false; UpdateDrawingCoordinator();
                 Candles = snapshot.Account.MarketWindow.Select(b => new CoreCandleData(b.Timestamp, b.Open, b.High, b.Low, b.Close, b.Volume)).ToArray(); DataRevision++;
                 _extendedCalculationCandles = null; IndicatorResults = null;
                 CurrentPrice = Candles[^1].Close; VisibleStartIndex = 0;

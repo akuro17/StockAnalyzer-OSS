@@ -22,6 +22,10 @@
         ExtendClientAreaToDecorationsHint="True"
         ExtendClientAreaTitleBarHeightHint="-1"
         behaviors:WindowPersistenceBehavior.PersistenceEnabled="True"
+        DragDrop.AllowDrop="True"
+        DragDrop.DragOver="OnIndicatorDragOver"
+        DragDrop.DragLeave="OnIndicatorDragLeave"
+        DragDrop.Drop="OnIndicatorDrop"
         Background="{DynamicResource Brush.Background.Primary}">
 
     <Window.KeyBindings>
@@ -48,6 +52,21 @@
         </Style>
         <Style Selector="Button.navCategory:pointerover">
             <Setter Property="Background" Value="{DynamicResource Brush.Background.Hover}"/>
+        </Style>
+
+        <!-- Drop indicator styles for dragging active indicators (reordering) -->
+        <Style Selector="Border.IndicatorRow">
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="BorderThickness" Value="0"/>
+        </Style>
+        <Style Selector="Border.IndicatorRow.DropBefore">
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Accent.Primary}"/>
+            <Setter Property="BorderThickness" Value="0,1,0,0"/>
+        </Style>
+        <Style Selector="Border.IndicatorRow.DropAfter">
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Accent.Primary}"/>
+            <Setter Property="BorderThickness" Value="0,0,0,1"/>
         </Style>
     </Window.Styles>
 
@@ -138,70 +157,190 @@
                             <!-- Divider line under tabs -->
                             <Border DockPanel.Dock="Top" Height="1" Background="{DynamicResource Brush.Border.Primary}" Margin="0,4,0,4"/>
 
-                            <!-- Active Indicator List -->
-                            <ListBox Background="Transparent"
-                                     AutomationProperties.AutomationId="Settings_ActiveIndicatorList"
-                                     BorderThickness="0"
-                                     Margin="5"
-                                     Padding="{DynamicResource ListScrollGutter}"
-                                     ScrollViewer.AllowAutoHide="False"
-                                     ScrollViewer.VerticalScrollBarVisibility="Auto"
-                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                                     ItemsSource="{Binding Indicators}"
-                                     SelectedItem="{Binding SelectedIndicator}">
-                                <ListBox.ItemTemplate>
-                                    <DataTemplate x:DataType="models:CoreIndicatorSettings">
-                                        <Grid ColumnDefinitions="Auto,*,Auto,Auto" Margin="2" Background="Transparent">
-                                            <Grid.ContextMenu>
-                                                <ContextMenu>
-                                                    <MenuItem Header="{l:Localize Menu_TurnOffIndicator}" 
-                                                              Command="{Binding $parent[ListBox].((vm:IndicatorSettingsDialogViewModel)DataContext).TurnOffIndicatorCommand}"
-                                                              CommandParameter="{Binding}"/>
-                                                    <MenuItem Header="{l:Localize Menu_TurnOffAll}" 
-                                                              Command="{Binding $parent[ListBox].((vm:IndicatorSettingsDialogViewModel)DataContext).TurnOffAllIndicatorsCommand}"/>
-                                                    <Separator/>
-                                                    <MenuItem Header="{l:Localize Menu_RemoveIndicator}" 
-                                                              Command="{Binding $parent[ListBox].((vm:IndicatorSettingsDialogViewModel)DataContext).RemoveIndicatorCommand}"
-                                                              CommandParameter="{Binding}"/>
-                                                    <MenuItem Header="{l:Localize Menu_RemoveAll}" 
-                                                              Command="{Binding $parent[ListBox].((vm:IndicatorSettingsDialogViewModel)DataContext).RemoveAllIndicatorsCommand}"/>
-                                                </ContextMenu>
-                                            </Grid.ContextMenu>
-                                            <CheckBox Grid.Column="0"
-                                                      IsChecked="{Binding IsEnabled}"
-                                                      VerticalAlignment="Center"
-                                                      Margin="0,0,5,0"/>
-                                            <TextBlock Grid.Column="1"
-                                                       Text="{Binding DisplayName}"
-                                                       Foreground="{DynamicResource Brush.Text.Primary}"
-                                                       VerticalAlignment="Center"
-                                                       TextTrimming="CharacterEllipsis"/>
-                                            <!-- Error Indicator -->
-                                            <TextBlock Grid.Column="2"
-                                                       Text="⚠️"
-                                                       Foreground="Red"
-                                                       VerticalAlignment="Center"
-                                                       Margin="5,0"
-                                                       IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                                                       ToolTip.Tip="{Binding ErrorMessage}"/>
-                                            <!-- Delete Button -->
-                                            <Button Grid.Column="3"
-                                                    Command="{Binding $parent[ListBox].((vm:IndicatorSettingsDialogViewModel)DataContext).RemoveIndicatorCommand}"
-                                                    CommandParameter="{Binding}"
-                                                    Theme="{DynamicResource PrimaryButtonStyle}"
-                                                    Foreground="{DynamicResource Brush.Button.Text}"
-                                                    Width="24" Height="24"
-                                                    Padding="0"
-                                                    Margin="4,0,0,0"
-                                                    ToolTip.Tip="{l:Localize Btn_Delete}"
-                                                    VerticalAlignment="Center"
-                                                    HorizontalAlignment="Right">
-                                                <PathIcon Data="{x:Static c:SharedIconGeometries.Delete}" Width="12" Height="12" Foreground="{Binding $parent[Button].Foreground}"/>
-                                            </Button>
-                                        </Grid>
-                                    </DataTemplate>
-                                </ListBox.ItemTemplate>
-                            </ListBox>
+                            <!-- Active Indicators (Dual-list: Base Indicators & Sub-Window Panel) -->
+                            <Grid RowDefinitions="*,Auto">
+                                <!-- Base Indicators (Main Window) Section -->
+                                <DockPanel Grid.Row="0">
+                                    <Border DockPanel.Dock="Top" Margin="8,4,8,2">
+                                        <TextBlock Text="{l:Localize Settings_BaseIndicatorHeader}"
+                                                   FontSize="{DynamicResource BaseFontSize}"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource Brush.Text.Secondary}"/>
+                                    </Border>
+                                    <ListBox Background="Transparent"
+                                             AutomationProperties.AutomationId="Settings_ActiveIndicatorList"
+                                             BorderThickness="0"
+                                             Margin="4,2,4,4"
+                                             Padding="{DynamicResource ListScrollGutter}"
+                                             ScrollViewer.AllowAutoHide="False"
+                                             ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                             ItemsSource="{Binding BaseIndicators}"
+                                             SelectedItem="{Binding SelectedBaseIndicator}">
+                                        <ListBox.Styles>
+                                            <Style Selector="ListBoxItem">
+                                                <Setter Property="Padding" Value="0"/>
+                                                <Setter Property="MinHeight" Value="0"/>
+                                                <Setter Property="Margin" Value="0,1"/>
+                                                <Setter Property="CornerRadius" Value="4"/>
+                                            </Style>
+                                        </ListBox.Styles>
+                                        <ListBox.ItemTemplate>
+                                            <DataTemplate x:DataType="models:CoreIndicatorSettings">
+                                                <Border Classes="IndicatorRow"
+                                                        Background="Transparent"
+                                                        PointerPressed="OnIndicatorRowPointerPressed"
+                                                        PointerMoved="OnIndicatorRowPointerMoved"
+                                                        PointerReleased="OnIndicatorRowPointerReleased"
+                                                        PointerCaptureLost="OnIndicatorRowPointerCaptureLost">
+                                                    <Grid ColumnDefinitions="Auto,*,Auto,Auto" Margin="4,1" Background="Transparent">
+                                                        <Grid.ContextMenu>
+                                                            <ContextMenu>
+                                                                <MenuItem Header="{l:Localize Menu_TurnOffIndicator}" 
+                                                                          Command="{Binding $parent[ListBox].((vm:IndicatorSettingsDialogViewModel)DataContext).TurnOffIndicatorCommand}"
+                                                                          CommandParameter="{Binding}"/>
+                                                                <MenuItem Header="{l:Localize Menu_TurnOffAll}" 
+                                                                          Command="{Binding $parent[ListBox].((vm:IndicatorSettingsDialogViewModel)DataContext).TurnOffAllIndicatorsCommand}"/>
+                                                                <Separator/>
+                                                                <MenuItem Header="{l:Localize Menu_RemoveIndicator}" 
+                                                                          Command="{Binding $parent[ListBox].((vm:IndicatorSettingsDialogViewModel)DataContext).RemoveIndicatorCommand}"
+                                                                          CommandParameter="{Binding}"/>
+                                                                <MenuItem Header="{l:Localize Menu_RemoveAll}" 
+                                                                          Command="{Binding $parent[ListBox].((vm:IndicatorSettingsDialogViewModel)DataContext).RemoveAllIndicatorsCommand}"/>
+                                                            </ContextMenu>
+                                                        </Grid.ContextMenu>
+                                                        <CheckBox Grid.Column="0"
+                                                                  IsChecked="{Binding IsEnabled}"
+                                                                  VerticalAlignment="Center"
+                                                                  Margin="0,0,5,0"/>
+                                                        <TextBlock Grid.Column="1"
+                                                                   Text="{Binding DisplayName}"
+                                                                   Foreground="{DynamicResource Brush.Text.Primary}"
+                                                                   VerticalAlignment="Center"
+                                                                   TextTrimming="CharacterEllipsis"/>
+                                                        <!-- Error Indicator -->
+                                                        <TextBlock Grid.Column="2"
+                                                                   Text="⚠️"
+                                                                   Foreground="Red"
+                                                                   VerticalAlignment="Center"
+                                                                   Margin="5,0"
+                                                                   IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                                                   ToolTip.Tip="{Binding ErrorMessage}"/>
+                                                        <!-- Delete Button -->
+                                                        <Button Grid.Column="3"
+                                                                Command="{Binding $parent[ListBox].((vm:IndicatorSettingsDialogViewModel)DataContext).RemoveIndicatorCommand}"
+                                                                CommandParameter="{Binding}"
+                                                                Theme="{DynamicResource PrimaryButtonStyle}"
+                                                                Foreground="{DynamicResource Brush.Button.Text}"
+                                                                Width="24" Height="24"
+                                                                Padding="0"
+                                                                Margin="4,0,0,0"
+                                                                ToolTip.Tip="{l:Localize Btn_Delete}"
+                                                                VerticalAlignment="Center"
+                                                                HorizontalAlignment="Right">
+                                                            <PathIcon Data="{x:Static c:SharedIconGeometries.Delete}" Width="12" Height="12" Foreground="{Binding $parent[Button].Foreground}"/>
+                                                        </Button>
+                                                    </Grid>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ListBox.ItemTemplate>
+                                    </ListBox>
+                                </DockPanel>
+
+                                <!-- Sub-Window Panel Section (Active only when sub-window indicators exist) -->
+                                <Border Grid.Row="1"
+                                        Margin="0,6,0,0"
+                                        AutomationProperties.AutomationId="Settings_SubWindowPanelSection"
+                                        IsVisible="{Binding HasSubWindowIndicators}">
+                                    <DockPanel MaxHeight="250">
+                                        <Border DockPanel.Dock="Top" Height="1" Background="{DynamicResource Brush.Border.Primary}" Margin="0,0,0,6"/>
+                                        <Border DockPanel.Dock="Top" Margin="8,2,8,2">
+                                            <TextBlock Text="{l:Localize Settings_SubWindowIndicatorHeader}"
+                                                       FontSize="{DynamicResource BaseFontSize}"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource Brush.Text.Secondary}"/>
+                                        </Border>
+                                        <ListBox Background="Transparent"
+                                                 AutomationProperties.AutomationId="Settings_SubWindowIndicatorList"
+                                                 BorderThickness="0"
+                                                 Margin="4,2,4,4"
+                                                 Padding="{DynamicResource ListScrollGutter}"
+                                                 ScrollViewer.AllowAutoHide="False"
+                                                 ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                                 ItemsSource="{Binding SubWindowIndicators}"
+                                                 SelectedItem="{Binding SelectedSubWindowIndicator}">
+                                            <ListBox.Styles>
+                                                <Style Selector="ListBoxItem">
+                                                    <Setter Property="Padding" Value="0"/>
+                                                    <Setter Property="MinHeight" Value="0"/>
+                                                    <Setter Property="Margin" Value="0,1"/>
+                                                    <Setter Property="CornerRadius" Value="4"/>
+                                                </Style>
+                                            </ListBox.Styles>
+                                            <ListBox.ItemTemplate>
+                                                <DataTemplate x:DataType="models:CoreIndicatorSettings">
+                                                    <Border Classes="IndicatorRow"
+                                                            Background="Transparent"
+                                                            PointerPressed="OnIndicatorRowPointerPressed"
+                                                            PointerMoved="OnIndicatorRowPointerMoved"
+                                                            PointerReleased="OnIndicatorRowPointerReleased"
+                                                            PointerCaptureLost="OnIndicatorRowPointerCaptureLost">
+                                                        <Grid ColumnDefinitions="Auto,*,Auto,Auto" Margin="4,1" Background="Transparent">
+                                                            <Grid.ContextMenu>
+                                                                <ContextMenu>
+                                                                    <MenuItem Header="{l:Localize Menu_TurnOffIndicator}" 
+                                                                              Command="{Binding $parent[ListBox].((vm:IndicatorSettingsDialogViewModel)DataContext).TurnOffIndicatorCommand}"
+                                                                              CommandParameter="{Binding}"/>
+                                                                    <MenuItem Header="{l:Localize Menu_TurnOffAll}" 
+                                                                              Command="{Binding $parent[ListBox].((vm:IndicatorSettingsDialogViewModel)DataContext).TurnOffAllIndicatorsCommand}"/>
+                                                                    <Separator/>
+                                                                    <MenuItem Header="{l:Localize Menu_RemoveIndicator}" 
+                                                                              Command="{Binding $parent[ListBox].((vm:IndicatorSettingsDialogViewModel)DataContext).RemoveIndicatorCommand}"
+                                                                              CommandParameter="{Binding}"/>
+                                                                    <MenuItem Header="{l:Localize Menu_RemoveAll}" 
+                                                                              Command="{Binding $parent[ListBox].((vm:IndicatorSettingsDialogViewModel)DataContext).RemoveAllIndicatorsCommand}"/>
+                                                                </ContextMenu>
+                                                            </Grid.ContextMenu>
+                                                            <CheckBox Grid.Column="0"
+                                                                      IsChecked="{Binding IsEnabled}"
+                                                                      VerticalAlignment="Center"
+                                                                      Margin="0,0,5,0"/>
+                                                            <TextBlock Grid.Column="1"
+                                                                       Text="{Binding DisplayName}"
+                                                                       Foreground="{DynamicResource Brush.Text.Primary}"
+                                                                       VerticalAlignment="Center"
+                                                                       TextTrimming="CharacterEllipsis"/>
+                                                            <!-- Error Indicator -->
+                                                            <TextBlock Grid.Column="2"
+                                                                       Text="⚠️"
+                                                                       Foreground="Red"
+                                                                       VerticalAlignment="Center"
+                                                                       Margin="5,0"
+                                                                       IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                                                       ToolTip.Tip="{Binding ErrorMessage}"/>
+                                                            <!-- Delete Button -->
+                                                            <Button Grid.Column="3"
+                                                                    Command="{Binding $parent[ListBox].((vm:IndicatorSettingsDialogViewModel)DataContext).RemoveIndicatorCommand}"
+                                                                    CommandParameter="{Binding}"
+                                                                    Theme="{DynamicResource PrimaryButtonStyle}"
+                                                                    Foreground="{DynamicResource Brush.Button.Text}"
+                                                                    Width="24" Height="24"
+                                                                    Padding="0"
+                                                                    Margin="4,0,0,0"
+                                                                    ToolTip.Tip="{l:Localize Btn_Delete}"
+                                                                    VerticalAlignment="Center"
+                                                                    HorizontalAlignment="Right">
+                                                                <PathIcon Data="{x:Static c:SharedIconGeometries.Delete}" Width="12" Height="12" Foreground="{Binding $parent[Button].Foreground}"/>
+                                                            </Button>
+                                                        </Grid>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ListBox.ItemTemplate>
+                                        </ListBox>
+                                    </DockPanel>
+                                </Border>
+                            </Grid>
                         </DockPanel>
                     </Border>
 

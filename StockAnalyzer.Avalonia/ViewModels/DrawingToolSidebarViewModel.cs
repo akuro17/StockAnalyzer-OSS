@@ -68,6 +68,9 @@ public partial class DrawingToolSidebarViewModel : ViewModelBase, IDisposable
     private bool _isObjectsPanelOpen;
 
     [ObservableProperty]
+    private bool _isPresetPanelOpen;
+
+    [ObservableProperty]
     private bool _showFavoritesPalette;
 
     [ObservableProperty]
@@ -119,10 +122,10 @@ public partial class DrawingToolSidebarViewModel : ViewModelBase, IDisposable
 
     public void OpenCategory(DrawingToolCategoryViewModel category)
     {
-        // Mirrors ToggleObjectsPanel()'s reverse direction: opening a category flyout must close
-        // the Layer Management panel too, since both occupy the same sidebar slot and the Objects
-        // panel would otherwise stay visible on top of it, blocking the flyout from being seen.
+        // Mirrors ToggleObjectsPanel()'s and TogglePresetPanel()'s reverse direction: opening a category flyout
+        // must close side panels, since all occupy the same sidebar slot.
         IsObjectsPanelOpen = false;
+        IsPresetPanelOpen = false;
 
         if (ExpandedCategory != null && ExpandedCategory != category)
         {
@@ -242,6 +245,11 @@ public partial class DrawingToolSidebarViewModel : ViewModelBase, IDisposable
             ExpandedCategory.IsExpanded = false;
             ExpandedCategory = null;
         }
+
+        if (DrawingObjectsViewModel?.IsPinned == true)
+        {
+            IsPresetPanelOpen = true;
+        }
     }
 
     /// <summary>
@@ -288,6 +296,43 @@ public partial class DrawingToolSidebarViewModel : ViewModelBase, IDisposable
     }
 
     /// <summary>
+    /// Auto-closes the flyout and, if unpinned, auto-collapses open side panels on sidebar pointer exit.
+    /// </summary>
+    [RelayCommand]
+    private void AutoCloseFromPointerExit()
+    {
+        CloseFlyout();
+        if (DrawingObjectsViewModel?.IsPinned != true)
+        {
+            IsPresetPanelOpen = false;
+            IsObjectsPanelOpen = false;
+        }
+    }
+
+    /// <summary>
+    /// Toggles visibility of the drawing tool pre-configuration panel.
+    /// </summary>
+    [RelayCommand]
+    private void TogglePresetPanel()
+    {
+        IsPresetPanelOpen = !IsPresetPanelOpen;
+        if (IsPresetPanelOpen)
+        {
+            CloseFlyout();
+            IsObjectsPanelOpen = false;
+        }
+    }
+
+    /// <summary>
+    /// Explicitly closes the drawing tool pre-configuration panel.
+    /// </summary>
+    [RelayCommand]
+    private void ClosePresetPanel()
+    {
+        IsPresetPanelOpen = false;
+    }
+
+    /// <summary>
     /// Toggles visibility of the drawing objects / layer management panel.
     /// </summary>
     [RelayCommand]
@@ -297,6 +342,7 @@ public partial class DrawingToolSidebarViewModel : ViewModelBase, IDisposable
         if (IsObjectsPanelOpen)
         {
             CloseFlyout();
+            IsPresetPanelOpen = false;
             DrawingObjectsViewModel?.SyncFromManager();
         }
     }

@@ -46,7 +46,7 @@ public partial class DrawingToolSidebar : UserControl
         if (DataContext is DrawingToolSidebarViewModel vm)
         {
             if (vm.IsIconDropDownOpen) return;
-            vm.CloseFlyoutCommand.Execute(null);
+            vm.AutoCloseFromPointerExitCommand.Execute(null);
         }
     }
 }

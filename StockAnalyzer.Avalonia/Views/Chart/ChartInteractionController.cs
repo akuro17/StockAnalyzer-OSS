@@ -460,15 +460,18 @@ public class ChartInteractionController
 
     private readonly Common.CrosshairPositionData _crosshairData = new();
     private readonly Common.CrosshairPositionChangedMessage _crosshairMessage;
+    private readonly Services.IDrawingToolPresetService _presetService;
 
     public ChartInteractionController(
         Services.Drawing.IMagnetSnapService magnetSnapService,
         IDialogService dialogService,
-        Services.Drawing.ISmartGuideService? smartGuideService = null)
+        Services.Drawing.ISmartGuideService? smartGuideService = null,
+        Services.IDrawingToolPresetService? presetService = null)
     {
         _magnetSnapService = magnetSnapService;
         _dialogService = dialogService;
         _smartGuideService = smartGuideService ?? new Services.Drawing.SmartGuideService();
+        _presetService = presetService ?? Services.DrawingToolPresetService.Shared;
         _crosshairMessage = new Common.CrosshairPositionChangedMessage(_crosshairData);
         RulerRenderer.RubberBandAction = RenderRubberBand;
     }
@@ -479,7 +482,8 @@ public class ChartInteractionController
     public ChartInteractionController() : this(
         new Services.Drawing.MagnetSnapService(),
         new DialogService(),
-        new Services.Drawing.SmartGuideService())
+        new Services.Drawing.SmartGuideService(),
+        Services.DrawingToolPresetService.Shared)
     {
     }
 
@@ -706,6 +710,7 @@ public class ChartInteractionController
                     if (existing == null)
                     {
                         var infoObj = new StockAnalyzer.Avalonia.Drawing.Objects.InformationObject();
+                        _presetService.ApplyPresetToNewObject(DrawingTool.Information, infoObj);
                         infoObj.Snapshot = ChartInformationDataProvider.Extract(viewModel, chartPoint.Time, chartPoint.Price);
                         if (viewModel.DrawingEditCoordinator != null)
                         {
@@ -1059,6 +1064,7 @@ public class ChartInteractionController
     {
         int panelIndex = _activePanelIndex;
         var textObj = new TextObject(chartPoint, "Text") { PanelIndex = panelIndex };
+        _presetService.ApplyPresetToNewObject(DrawingTool.Text, textObj);
 
         void AddAction()
         {
@@ -2844,6 +2850,7 @@ public class ChartInteractionController
         if (behavior.RequiredSteps == 1)
         {
             var obj = behavior.CreateObject(chartPoint, candles);
+            _presetService.ApplyPresetToNewObject(tool, obj);
             if (obj is StockAnalyzer.Avalonia.Drawing.StepBadgeObject badge)
             {
                 badge.StepNumber = ActiveStepIndex;
@@ -2904,6 +2911,7 @@ public class ChartInteractionController
             if (!IsDrawingNewShape)
             {
                 var obj = behavior.CreateObject(chartPoint, candles);
+                _presetService.ApplyPresetToNewObject(tool, obj);
                 StartDrawingInternal(obj, behavior);
                 DrawingStep = 1;
             }
@@ -2922,6 +2930,7 @@ public class ChartInteractionController
         if (!IsDrawingNewShape)
         {
             var obj = behavior.CreateObject(chartPoint, candles);
+            _presetService.ApplyPresetToNewObject(tool, obj);
             StartDrawingInternal(obj, behavior);
             if (!behavior.FinishesOnRelease) 
             {
@@ -2960,6 +2969,7 @@ public class ChartInteractionController
         if (!IsDrawingNewShape)
         {
             var obj = behavior.CreateObject(chartPoint, candles);
+            _presetService.ApplyPresetToNewObject(DrawingTool.BarPattern, obj);
             StartDrawingInternal(obj, behavior);
             DrawingStep = 1;
         }

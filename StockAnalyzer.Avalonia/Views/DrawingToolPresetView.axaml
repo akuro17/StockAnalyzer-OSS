@@ -1,0 +1,201 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:StockAnalyzer.Avalonia.ViewModels"
+             xmlns:controls="using:StockAnalyzer.Avalonia.Views.Controls"
+             xmlns:c="using:StockAnalyzer.Avalonia.Common"
+             xmlns:l="clr-namespace:StockAnalyzer.Avalonia.Markup;assembly=StockAnalyzer.Avalonia"
+             x:Class="StockAnalyzer.Avalonia.Views.DrawingToolPresetView"
+             x:DataType="vm:DrawingObjectsViewModel">
+
+    <UserControl.Styles>
+        <Style Selector="Button.HeaderIconBtn">
+            <Setter Property="Width" Value="26"/>
+            <Setter Property="Height" Value="26"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        <Style Selector="Button.HeaderIconBtn:pointerover">
+            <Setter Property="Background" Value="{DynamicResource Brush.Toolbar.Hover}"/>
+        </Style>
+        <Style Selector="Button.HeaderIconBtn:disabled">
+            <Setter Property="Opacity" Value="0.3"/>
+        </Style>
+
+        <Style Selector="Border.SettingsCard">
+            <Setter Property="Background" Value="{DynamicResource Brush.Background.Secondary}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border.Primary}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="10,8"/>
+        </Style>
+    </UserControl.Styles>
+
+    <Grid RowDefinitions="Auto,*">
+        <!-- Top Header: Title, Active Tool Name, and Pin Toggle Button -->
+        <Border Grid.Row="0"
+                Background="{DynamicResource Brush.Background.Tertiary}"
+                BorderBrush="{DynamicResource Brush.Border.Primary}"
+                BorderThickness="0,0,0,1"
+                Padding="8,8">
+            <Grid ColumnDefinitions="Auto,Auto,*,Auto" Height="26">
+                <!-- Tool Icon Glyph -->
+                <TextBlock Grid.Column="0"
+                           Text="{Binding ActiveToolIcon}"
+                           FontSize="{DynamicResource BaseFontSize}"
+                           VerticalAlignment="Center"
+                           Margin="0,0,6,0"
+                           IsVisible="{Binding HasConfigurableActiveTool}"/>
+                <!-- Section Title -->
+                <TextBlock Grid.Column="1"
+                           Text="{l:Localize Objects_ToolPreset_Header}"
+                           FontWeight="SemiBold"
+                           FontSize="{DynamicResource DetailFontSize}"
+                           Foreground="{DynamicResource Brush.Text.Secondary}"
+                           VerticalAlignment="Center"
+                           Margin="0,0,6,0"/>
+                <!-- Active Tool Display Name -->
+                <TextBlock Grid.Column="2"
+                           Text="{Binding ActiveToolDisplayName}"
+                           FontWeight="Bold"
+                           FontSize="{DynamicResource DetailFontSize}"
+                           Foreground="{DynamicResource Brush.Text.Primary}"
+                           VerticalAlignment="Center"
+                           TextTrimming="CharacterEllipsis"/>
+                <!-- Pin Toggle Button -->
+                <ToggleButton Grid.Column="3"
+                              Width="26" Height="26"
+                              Padding="3"
+                              CornerRadius="4"
+                              IsChecked="{Binding IsPinned, Mode=TwoWay}"
+                              ToolTip.Tip="{Binding PinButtonToolTip}"
+                              AutomationProperties.AutomationId="DrawingPreset_PinButton"
+                              Background="Transparent"
+                              BorderThickness="0">
+                    <ToggleButton.Styles>
+                        <Style Selector="ToggleButton:checked /template/ ContentPresenter">
+                            <Setter Property="Background" Value="{DynamicResource Brush.Selection}"/>
+                        </Style>
+                        <Style Selector="ToggleButton:checked PathIcon">
+                            <Setter Property="Foreground" Value="{DynamicResource Brush.Accent.Primary}"/>
+                        </Style>
+                        <Style Selector="ToggleButton:not(:checked) PathIcon">
+                            <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Secondary}"/>
+                        </Style>
+                    </ToggleButton.Styles>
+                    <PathIcon Data="{Binding PinIconGeometry}"
+                              Width="14" Height="14"/>
+                </ToggleButton>
+            </Grid>
+        </Border>
+
+        <!-- Body: Property Configuration or Placeholder -->
+        <Border Grid.Row="1" Padding="8,8">
+            <Grid>
+                <!-- Placeholder when no configurable drawing tool is active -->
+                <TextBlock Text="{l:Localize Objects_ToolPreset_NoConfigurableTool}"
+                           FontSize="{DynamicResource HelperFontSize}"
+                           Foreground="{DynamicResource Brush.Text.Tertiary}"
+                           TextWrapping="Wrap"
+                           Margin="4,6"
+                           IsVisible="{Binding !HasConfigurableActiveTool}"/>
+
+                <!-- Configurable Tool Property Editors -->
+                <ScrollViewer Theme="{StaticResource SidebarScrollViewerTheme}"
+                              AllowAutoHide="False"
+                              VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled"
+                              IsVisible="{Binding HasConfigurableActiveTool}">
+                    <StackPanel Spacing="10" Margin="0,0,4,0">
+                        <!-- Section: General Settings -->
+                        <TextBlock Text="{l:Localize Objects_ToolPreset_General}"
+                                   FontWeight="SemiBold"
+                                   FontSize="{DynamicResource DetailFontSize}"
+                                   Foreground="{DynamicResource Brush.Text.Secondary}"
+                                   Margin="0,2,0,0"/>
+
+                        <!-- Common Style Controls inside SettingsCard -->
+                        <Border Classes="SettingsCard">
+                            <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto">
+                                <!-- Row 0: Color -->
+                                <TextBlock Grid.Row="0" Grid.Column="0"
+                                           Text="{l:Localize Param_Color}"
+                                           FontSize="{DynamicResource DetailFontSize}"
+                                           Foreground="{DynamicResource Brush.Text.Secondary}"
+                                           VerticalAlignment="Center"
+                                           Margin="0,0,8,6"/>
+                                <ColorPicker Grid.Row="0" Grid.Column="1"
+                                             Color="{Binding ActiveToolPresetColor, Mode=TwoWay}"
+                                             Width="{StaticResource SettingColorWidth}"
+                                             Height="{StaticResource SettingColorHeight}"
+                                             HorizontalAlignment="Left"
+                                             Margin="0,0,0,6"/>
+
+                                <!-- Row 1: Line Thickness -->
+                                <TextBlock Grid.Row="1" Grid.Column="0"
+                                           Text="{l:Localize Param_Thickness}"
+                                           FontSize="{DynamicResource DetailFontSize}"
+                                           Foreground="{DynamicResource Brush.Text.Secondary}"
+                                           VerticalAlignment="Center"
+                                           Margin="0,0,8,6"
+                                           IsVisible="{Binding IsActiveToolThicknessSupported}"/>
+                                <Grid Grid.Row="1" Grid.Column="1"
+                                      ColumnDefinitions="*,Auto"
+                                      Margin="0,0,0,6"
+                                      IsVisible="{Binding IsActiveToolThicknessSupported}">
+                                    <Slider Grid.Column="0"
+                                            Minimum="0.5" Maximum="10.0"
+                                            TickFrequency="0.5" IsSnapToTickEnabled="True"
+                                            Value="{Binding ActiveToolPresetThickness, Mode=TwoWay}"
+                                            VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Column="1"
+                                               Text="{Binding ActiveToolPresetThickness, StringFormat='{}{0:0.0}px'}"
+                                               FontSize="{DynamicResource HelperFontSize}"
+                                               Foreground="{DynamicResource Brush.Text.Primary}"
+                                               VerticalAlignment="Center"
+                                               Margin="6,0,0,0" Width="36"/>
+                                </Grid>
+
+                                <!-- Row 2: Stroke Style -->
+                                <TextBlock Grid.Row="2" Grid.Column="0"
+                                           Text="{l:Localize Setting_StrokeStyle}"
+                                           FontSize="{DynamicResource DetailFontSize}"
+                                           Foreground="{DynamicResource Brush.Text.Secondary}"
+                                           VerticalAlignment="Center"
+                                           Margin="0,0,8,0"
+                                           IsVisible="{Binding IsActiveToolStrokeStyleSupported}"/>
+                                <ComboBox Grid.Row="2" Grid.Column="1"
+                                          SelectedIndex="{Binding ActiveToolPresetStrokeStyleIndex, Mode=TwoWay}"
+                                          FontSize="{DynamicResource DetailFontSize}"
+                                          HorizontalAlignment="Stretch"
+                                          IsVisible="{Binding IsActiveToolStrokeStyleSupported}">
+                                    <ComboBoxItem Content="{l:Localize Enum_DrawingStrokeStyle_Solid}"/>
+                                    <ComboBoxItem Content="{l:Localize Enum_DrawingStrokeStyle_Dash}"/>
+                                    <ComboBoxItem Content="{l:Localize Enum_DrawingStrokeStyle_Dot}"/>
+                                </ComboBox>
+                            </Grid>
+                        </Border>
+
+                        <!-- Section: Specific Settings (Direct in-preset editing for active tool's specific parameters) -->
+                        <StackPanel Spacing="6" IsVisible="{Binding HasActiveToolSpecificSettings}" Margin="0,4,0,0">
+                            <TextBlock Text="{l:Localize Objects_ToolPreset_Specific}"
+                                       FontWeight="SemiBold"
+                                       FontSize="{DynamicResource DetailFontSize}"
+                                       Foreground="{DynamicResource Brush.Text.Secondary}"
+                                       Margin="0,2,0,0"/>
+
+                            <!-- Dynamic Tool-Specific Parameter Controls (Direct in-preset editing) -->
+                            <controls:DynamicDrawingSettingsView
+                                ParameterObject="{Binding ActiveToolTemplateObject}"
+                                HiddenParameterTags="{Binding PresetHiddenParameterTags}"/>
+                        </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

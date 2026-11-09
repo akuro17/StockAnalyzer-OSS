@@ -16,10 +16,9 @@ public static class ChartLayoutExtensions
     public const int OutsidePanelsIndex = -2;
 
     /// <summary>
-    /// Constant representing the reserved-but-empty volume band (<see cref="Renderers.ChartLayoutContext.VolumeArea"/>).
-    /// It is a visible chart region but NOT a drawing surface: the volume histogram is drawn as a
-    /// normal sub-window indicator (in <see cref="Renderers.ChartLayoutContext.PanelAreas"/>), so this
-    /// band carries no drawing objects and pointer interaction there must not be treated as main-chart.
+    /// Constant representing the historical reserved volume band (<see cref="Renderers.ChartLayoutContext.VolumeArea"/>).
+    /// The standalone volume area has been integrated into sub-window indicator panels (<see cref="Renderers.ChartLayoutContext.PanelAreas"/>);
+    /// this constant is retained for backwards compatibility.
     /// </summary>
     public const int VolumeAreaPanelIndex = -3;
 

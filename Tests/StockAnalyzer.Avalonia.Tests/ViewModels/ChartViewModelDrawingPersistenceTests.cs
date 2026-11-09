@@ -360,4 +360,87 @@ public class ChartViewModelDrawingPersistenceTests : IDisposable
             Assert.Equal(PanelKey.Main, reloaded.Layers[ChartDrawingContextType.Standard][0].Panel);
         });
     }
+
+    [Fact]
+    public async Task SyntheticSymbol_DrawingCommitAndPersistCurrentDrawings_KeepsDrawingInMemoryAndDoesNotSave()
+    {
+        const string syntheticSymbol = "7203-T / 7267-T";
+        _sut.Symbol = syntheticSymbol;
+        await ChartViewModelTestWaits.AwaitLoadsAsync(_sut);
+
+        var trendLine = new TrendLineObject(
+            new ChartPoint(new DateTime(2024, 1, 1), 10m),
+            new ChartPoint(new DateTime(2024, 1, 2), 12m));
+
+        Assert.NotNull(_sut.DrawingEditCoordinator);
+        var result = _sut.DrawingEditCoordinator!.ExecuteEdit(
+            StockAnalyzer.Core.Models.Drawing.DrawingOperationKind.Add,
+            () => _sut.ObjectManager.AddObject(trendLine));
+
+        Assert.True(result.IsSuccess);
+        _sut.PersistCurrentDrawings();
+
+        Assert.Single(_sut.ObjectManager.Objects);
+        Assert.True(_sut.DrawingEditCoordinator.CanUndo);
+        Assert.Null(_sharedRepository.Load(syntheticSymbol, TimeframeType.Daily));
+    }
+
+    [Fact]
+    public async Task SyntheticSymbol_SameKeyReload_PreservesTransientDrawingsInMemory()
+    {
+        const string syntheticSymbol = "7203-T / 7267-T";
+        _sut.Symbol = syntheticSymbol;
+        await ChartViewModelTestWaits.AwaitLoadsAsync(_sut);
+
+        var trendLine = new TrendLineObject(
+            new ChartPoint(new DateTime(2024, 1, 1), 10m),
+            new ChartPoint(new DateTime(2024, 1, 2), 12m));
+
+        Assert.NotNull(_sut.DrawingEditCoordinator);
+        var result = _sut.DrawingEditCoordinator!.ExecuteEdit(
+            StockAnalyzer.Core.Models.Drawing.DrawingOperationKind.Add,
+            () => _sut.ObjectManager.AddObject(trendLine));
+        Assert.True(result.IsSuccess);
+        Assert.Single(_sut.ObjectManager.Objects);
+
+        _ = _sut.LoadDataCommand.ExecuteAsync(null);
+        await ChartViewModelTestWaits.AwaitLoadsAsync(_sut);
+
+        Assert.Single(_sut.ObjectManager.Objects);
+        Assert.True(_sut.DrawingEditCoordinator.CanUndo);
+        Assert.Null(_sharedRepository.Load(syntheticSymbol, TimeframeType.Daily));
+    }
+
+    [Fact]
+    public async Task SyntheticSymbol_SwitchingAwayAndBack_DiscardsTransientDrawingsAndResetsHistory()
+    {
+        const string syntheticSymbol = "7203-T / 7267-T";
+        _sut.Symbol = syntheticSymbol;
+        await ChartViewModelTestWaits.AwaitLoadsAsync(_sut);
+
+        var trendLine = new TrendLineObject(
+            new ChartPoint(new DateTime(2024, 1, 1), 10m),
+            new ChartPoint(new DateTime(2024, 1, 2), 12m));
+
+        Assert.NotNull(_sut.DrawingEditCoordinator);
+        var result = _sut.DrawingEditCoordinator!.ExecuteEdit(
+            StockAnalyzer.Core.Models.Drawing.DrawingOperationKind.Add,
+            () => _sut.ObjectManager.AddObject(trendLine));
+        Assert.True(result.IsSuccess);
+        Assert.Single(_sut.ObjectManager.Objects);
+
+        _sut.Symbol = TickerA;
+        await ChartViewModelTestWaits.AwaitLoadsAsync(_sut);
+        Assert.Empty(_sut.ObjectManager.Objects);
+
+        _sut.Symbol = syntheticSymbol;
+        await ChartViewModelTestWaits.AwaitLoadsAsync(_sut);
+
+        Assert.Empty(_sut.ObjectManager.Objects);
+        Assert.NotNull(_sut.DrawingEditCoordinator);
+        Assert.False(_sut.DrawingEditCoordinator!.CanUndo);
+
+        _sut.FlushPendingDrawings();
+        Assert.Null(_sharedRepository.Load(syntheticSymbol, TimeframeType.Daily));
+    }
 }

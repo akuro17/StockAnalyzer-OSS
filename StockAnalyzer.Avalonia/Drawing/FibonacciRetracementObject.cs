@@ -1,10 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using Avalonia;
 using Avalonia.Media;
 using SkiaSharp;
 using StockAnalyzer.Avalonia.Common;
-
+using StockAnalyzer.Core.Constants;
 using StockAnalyzer.Core.Models;
 
 namespace StockAnalyzer.Avalonia.Drawing;
@@ -17,7 +18,14 @@ public class FibonacciRetracementObject : RelativeGeometricRenderer, IDrawingCal
     private static readonly float[] ExtensionLevels = { -3.236f, -1.618f, -0.618f, -0.272f, 0f, 0.236f, 0.382f, 0.5f, 0.618f, 0.786f, 1.0f, 1.272f, 1.618f, 2.618f, 4.236f };
     private static readonly int[] FibSequence = { 0, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233 };
 
+    [Category("Parameters")]
+    [DisplayName("Show Extensions")]
+    [ParameterTag(DrawingParameterTags.Analysis)]
     public bool ShowExtensions { get; set; } = false;
+
+    [Category("Parameters")]
+    [DisplayName("Extend Mode")]
+    [ParameterTag(DrawingParameterTags.Analysis)]
     public FibonacciRetracementExtendMode ExtendMode { get; set; } = FibonacciRetracementExtendMode.Default;
 
     public IReadOnlyList<float> Levels => ShowExtensions ? ExtensionLevels : DefaultLevels;

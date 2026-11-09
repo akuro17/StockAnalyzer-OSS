@@ -19,15 +19,22 @@ public sealed class FreehandPointerAdapter
     private DrawingEditToken? _activeEditToken;
     private IDrawingEditCoordinator? _activeCoordinator;
     private ICoordinateTransform? _frozenTransform;
+    private readonly Services.IDrawingToolPresetService _presetService;
 
-    public FreehandPointerAdapter(int capacity = DrawingInteractionLimits.MaxStrokeSamples)
+    public FreehandPointerAdapter(
+        int capacity = DrawingInteractionLimits.MaxStrokeSamples,
+        Services.IDrawingToolPresetService? presetService = null)
     {
         _controller = new FreehandInputController(capacity);
+        _presetService = presetService ?? Services.DrawingToolPresetService.Shared;
     }
 
-    public FreehandPointerAdapter(FreehandInputController controller)
+    public FreehandPointerAdapter(
+        FreehandInputController controller,
+        Services.IDrawingToolPresetService? presetService = null)
     {
         _controller = controller ?? throw new ArgumentNullException(nameof(controller));
+        _presetService = presetService ?? Services.DrawingToolPresetService.Shared;
     }
 
     /// <summary>
@@ -126,6 +133,7 @@ public sealed class FreehandPointerAdapter
                         Thickness = 12.0,
                         PanelIndex = panelIndex
                     };
+                    _presetService.ApplyPresetToNewObject(DrawingTool.Highlighter, highlighter);
                     highlighter.Points.Capacity = _controller.Capacity;
                     highlighter.Points.Add(chartPoint);
                     PreviewObject = highlighter;
@@ -139,6 +147,7 @@ public sealed class FreehandPointerAdapter
                         Thickness = strokeThickness,
                         PanelIndex = panelIndex
                     };
+                    _presetService.ApplyPresetToNewObject(DrawingTool.Freehand, freehand);
                     freehand.Points.Capacity = _controller.Capacity;
                     freehand.Points.Add(chartPoint);
                     PreviewObject = freehand;

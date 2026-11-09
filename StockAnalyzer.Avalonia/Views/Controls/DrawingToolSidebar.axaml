@@ -125,20 +125,36 @@
                     </ItemsControl>
                 </ScrollViewer>
 
-                <!-- Bottom: Drawing Objects / Layer Manager Toggle Button -->
+                <!-- Bottom: Drawing Tool Settings & Drawing Objects / Layer Manager -->
                 <Border Grid.Row="1"
                         BorderBrush="{DynamicResource Brush.Border}"
                         BorderThickness="0,1,0,0"
                         Padding="0,4">
-                    <Button Classes="CategoryButton"
-                            Classes.selected="{Binding IsObjectsPanelOpen}"
-                            Command="{Binding ToggleObjectsPanelCommand}"
-                            ToolTip.Tip="{l:Localize Objects_TabTitle}"
-                            HorizontalAlignment="Left">
-                        <PathIcon Data="{x:Static c:SharedIconGeometries.Layer}"
-                                  Width="18" Height="18"
-                                  Foreground="{DynamicResource Brush.Text.Primary}"/>
-                    </Button>
+                    <StackPanel Orientation="Vertical" Spacing="2">
+                        <!-- Tool Settings Toggle Button (New item directly above Layers Panel) -->
+                        <Button Classes="CategoryButton"
+                                Classes.selected="{Binding IsPresetPanelOpen}"
+                                Command="{Binding TogglePresetPanelCommand}"
+                                ToolTip.Tip="{l:Localize Objects_ToolPreset_Header}"
+                                AutomationProperties.AutomationId="DrawingSidebar_PresetButton"
+                                HorizontalAlignment="Left">
+                            <PathIcon Data="{x:Static c:SharedIconGeometries.Settings}"
+                                      Width="18" Height="18"
+                                      Foreground="{DynamicResource Brush.Text.Primary}"/>
+                        </Button>
+
+                        <!-- Drawing Objects / Layer Manager Toggle Button -->
+                        <Button Classes="CategoryButton"
+                                Classes.selected="{Binding IsObjectsPanelOpen}"
+                                Command="{Binding ToggleObjectsPanelCommand}"
+                                ToolTip.Tip="{l:Localize Objects_TabTitle}"
+                                AutomationProperties.AutomationId="DrawingSidebar_LayersButton"
+                                HorizontalAlignment="Left">
+                            <PathIcon Data="{x:Static c:SharedIconGeometries.Layer}"
+                                      Width="18" Height="18"
+                                      Foreground="{DynamicResource Brush.Text.Primary}"/>
+                        </Button>
+                    </StackPanel>
                 </Border>
             </Grid>
         </Border>
@@ -262,6 +278,18 @@
                     </ItemsControl>
                 </ScrollViewer>
             </Grid>
+        </Border>
+
+        <!-- Right: Drawing Tool Pre-Settings Panel -->
+        <Border Grid.Column="1"
+                IsVisible="{Binding IsPresetPanelOpen}"
+                Background="{DynamicResource Brush.Background.Primary}"
+                BorderBrush="{DynamicResource Brush.Border}"
+                BorderThickness="0,0,1,0"
+                Width="300"
+                MinWidth="280"
+                MaxWidth="380">
+            <views:DrawingToolPresetView DataContext="{Binding DrawingObjectsViewModel}"/>
         </Border>
 
         <!-- Right: Drawing Objects Manager Panel (visible when Objects button is toggled) -->

@@ -73,7 +73,7 @@ public class PanelLayoutEnumeratorTests
     }
 
     [Fact]
-    public void Volume_IsAlwaysTheFirstPanel_WhileOtherPanelsKeepRegistrationOrder()
+    public void Volume_FollowsRegistrationOrder_LikeAllSubWindowIndicators()
     {
         var settings = new List<CoreIndicatorSettings>
         {
@@ -85,8 +85,28 @@ public class PanelLayoutEnumeratorTests
         var hits = Walk(settings, isSubWindowVisible: true);
 
         Assert.Equal(
-            new[] { new PanelHit(0, "volume", 0), new PanelHit(1, "macd", 0), new PanelHit(2, "cci", 0) },
+            new[] { new PanelHit(0, "macd", 0), new PanelHit(1, "volume", 0), new PanelHit(2, "cci", 0) },
             hits);
+    }
+
+    [Fact]
+    public void CountPanels_MatchesWalkCount()
+    {
+        var settings = new List<CoreIndicatorSettings>
+        {
+            new() { Id = "sma", IsEnabled = true, IsOverlay = true, TypeEnum = IndicatorType.SMA },
+            Sub("macd", IndicatorType.MACD),
+            Sub("volume", IndicatorType.Volume),
+            Sub("rsi1", IndicatorType.RSI, panelGroup: "GroupA"),
+            Sub("rsi2", IndicatorType.RSI, panelGroup: "GroupA"),
+            new() { Id = "vp", IsEnabled = true, IsOverlay = false, TypeEnum = IndicatorType.VolumeProfile },
+        };
+
+        int count = PanelLayoutEnumerator.CountPanels(settings, isSubWindowVisible: true);
+        var hits = Walk(settings, isSubWindowVisible: true);
+
+        Assert.Equal(hits.Count, count);
+        Assert.Equal(3, count); // macd (0), volume (1), GroupA (2)
     }
 
     [Fact]

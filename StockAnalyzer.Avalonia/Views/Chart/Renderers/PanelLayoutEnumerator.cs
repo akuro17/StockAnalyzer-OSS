@@ -21,7 +21,7 @@ namespace StockAnalyzer.Avalonia.Views.Chart.Renderers;
 /// </summary>
 public static class PanelLayoutEnumerator
 {
-    /// <param name="panelIndex">Sub-window panel index, starting at 0 with Volume when enabled; all remaining panels follow <see cref="ChartDataSnapshot.IndicatorSettings"/> order.</param>
+    /// <param name="panelIndex">Sub-window panel index allocated in <paramref name="indicatorSettings"/> order.</param>
     /// <param name="primarySetting">The indicator that caused this panel to be allocated (the first group member, for grouped panels).</param>
     /// <param name="panelGroup">
     /// Non-null when the panel is shared by an <see cref="CoreIndicatorSettings.OverlayPanelId"/> group:
@@ -34,6 +34,52 @@ public static class PanelLayoutEnumerator
         CoreIndicatorSettings primarySetting,
         IReadOnlyList<CoreIndicatorSettings>? panelGroup,
         TState state);
+
+    /// <summary>
+    /// Counts the total number of sub-window panels allocated for the given indicators.
+    /// Uses the exact same allocation rules as <see cref="ForEachPanel{TState}"/>.
+    /// </summary>
+    public static int CountPanels(IReadOnlyList<CoreIndicatorSettings>? indicatorSettings, bool isSubWindowVisible = true)
+    {
+        if (indicatorSettings == null || !isSubWindowVisible || indicatorSettings.Count == 0) return 0;
+
+        int panelCount = 0;
+        HashSet<string>? seenGroups = null;
+
+        for (int i = 0; i < indicatorSettings.Count; i++)
+        {
+            var setting = indicatorSettings[i];
+            var placement = IndicatorPlacementResolver.Resolve(setting, isSubWindowVisible);
+
+            switch (placement)
+            {
+                case IndicatorPlacement.GranvilleMainAndSubWindow:
+                    panelCount++;
+                    break;
+
+                case IndicatorPlacement.SubWindowPanel:
+                    string? groupId = setting.OverlayPanelId;
+                    if (!string.IsNullOrEmpty(groupId))
+                    {
+                        seenGroups ??= new HashSet<string>();
+                        if (seenGroups.Add(groupId))
+                        {
+                            panelCount++;
+                        }
+                    }
+                    else
+                    {
+                        panelCount++;
+                    }
+                    break;
+
+                default:
+                    break;
+            }
+        }
+
+        return panelCount;
+    }
 
     /// <summary>
     /// Invokes <paramref name="callback"/> once per allocated sub-window panel, in ascending panel-index order.
@@ -54,25 +100,9 @@ public static class PanelLayoutEnumerator
         seenGroupsScratch.Clear();
         int panelIndex = 0;
 
-        CoreIndicatorSettings? volume = null;
         for (int i = 0; i < indicatorSettings.Count; i++)
         {
             var setting = indicatorSettings[i];
-            if (setting.TypeEnum == IndicatorType.Volume
-                && string.IsNullOrEmpty(setting.OverlayPanelId)
-                && IndicatorPlacementResolver.Resolve(setting, isSubWindowVisible) == IndicatorPlacement.SubWindowPanel)
-            {
-                volume = setting;
-                callback(panelIndex, volume, null, state);
-                panelIndex++;
-                break;
-            }
-        }
-
-        for (int i = 0; i < indicatorSettings.Count; i++)
-        {
-            var setting = indicatorSettings[i];
-            if (ReferenceEquals(setting, volume)) continue;
             var placement = IndicatorPlacementResolver.Resolve(setting, isSubWindowVisible);
 
             switch (placement)

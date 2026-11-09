@@ -90,6 +90,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<Core.Services.ITimeFrameManager, Core.Services.TimeFrameManager>();
         services.AddSingleton<Services.Drawing.IMagnetSnapService, Services.Drawing.MagnetSnapService>();
         services.AddSingleton<Services.Drawing.ISmartGuideService, Services.Drawing.SmartGuideService>();
+        services.AddSingleton<Services.IDrawingToolPresetService>(Services.DrawingToolPresetService.Shared);
         services.AddTransient<Services.VolumeProfileViewportCoordinator>();
         services.AddTransient<Services.TimeAtPriceViewportCoordinator>();
 

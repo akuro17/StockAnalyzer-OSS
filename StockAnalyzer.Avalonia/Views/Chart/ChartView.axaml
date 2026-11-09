@@ -110,6 +110,8 @@
 
                 <ToggleButton IsChecked="{Binding IsSubWindowVisible}"
                                Margin="2,0" Padding="4" Height="30" VerticalAlignment="Center"
+                               IsVisible="{Binding HasActiveSubWindowIndicators}"
+                               IsEnabled="{Binding HasActiveSubWindowIndicators}"
                                Content="{l:Localize Chart_SubChartToggle}"
                                Theme="{DynamicResource ChartToggleButtonStyle}"/>
             </StackPanel>

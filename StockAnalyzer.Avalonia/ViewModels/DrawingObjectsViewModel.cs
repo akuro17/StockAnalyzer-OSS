@@ -3,13 +3,17 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
+using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using StockAnalyzer.Avalonia.Common;
 using StockAnalyzer.Avalonia.Drawing;
 using StockAnalyzer.Avalonia.Services;
 using StockAnalyzer.Avalonia.Services.Drawing;
+using StockAnalyzer.Core.Constants;
 using StockAnalyzer.Core.Models.Drawing;
 using StockAnalyzer.Core.Services;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace StockAnalyzer.Avalonia.ViewModels;
 
@@ -20,11 +24,16 @@ namespace StockAnalyzer.Avalonia.ViewModels;
 /// </summary>
 public partial class DrawingObjectsViewModel : ViewModelBase, IDisposable
 {
+    private static Geometry? _pinGeometry;
+    private static Geometry? _pinOffGeometry;
+    private static readonly Dictionary<DrawingTool, (string Icon, string NameKey)> ToolMetaMap = InitializeToolMetaMap();
+
     private ChartViewModel? _chartViewModel;
     private ChartObjectManager? _directObjectManager;
     private IDrawingLayerService? _directLayerService;
     private readonly IDispatcherService _dispatcherService;
     private readonly IDialogService? _dialogService;
+    private readonly IDrawingToolPresetService _presetService;
     private DrawingMoveAxisMode _fallbackMoveAxisMode = DrawingMoveAxisMode.XY;
     private bool _isSyncing;
 
@@ -32,6 +41,116 @@ public partial class DrawingObjectsViewModel : ViewModelBase, IDisposable
     // pass (any notification / sync / link operation invalidates it) instead of once per row and command.
     private List<LinkCandidate>? _linkCandidateCache;
     private bool _suppressSelectedNotifications;
+
+    [ObservableProperty]
+    private bool _isPinned;
+
+    [ObservableProperty]
+    private bool _isPropertySectionExpanded = true;
+
+    [ObservableProperty]
+    private IChartObject? _activeToolTemplateObject;
+
+    [ObservableProperty]
+    private string _activeToolDisplayName = string.Empty;
+
+    [ObservableProperty]
+    private string _activeToolIcon = string.Empty;
+
+    [ObservableProperty]
+    private bool _hasConfigurableActiveTool;
+
+    [ObservableProperty]
+    private Color _activeToolPresetColor = Colors.Yellow;
+
+    [ObservableProperty]
+    private double _activeToolPresetThickness = 1.5;
+
+    [ObservableProperty]
+    private int _activeToolPresetStrokeStyleIndex;
+
+    [ObservableProperty]
+    private bool _isActiveToolThicknessSupported = true;
+
+    [ObservableProperty]
+    private bool _isActiveToolStrokeStyleSupported = true;
+
+    public IReadOnlyList<DrawingStrokeStyle> AvailableStrokeStyles { get; } = new[]
+    {
+        DrawingStrokeStyle.Solid,
+        DrawingStrokeStyle.Dash,
+        DrawingStrokeStyle.Dot
+    };
+
+    public IReadOnlyCollection<string> PresetHiddenParameterTags { get; } = new[]
+    {
+        DrawingParameterTags.Common,
+        DrawingParameterTags.Geometry
+    };
+
+    public Geometry? PinIconGeometry => IsPinned
+        ? (_pinGeometry ??= SafeParseGeometry(SharedIconGeometries.Pin))
+        : (_pinOffGeometry ??= SafeParseGeometry(SharedIconGeometries.PinOff));
+
+    private static Geometry? SafeParseGeometry(string data)
+    {
+        try
+        {
+            return Geometry.Parse(data);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    public string PinButtonToolTip => IsPinned
+        ? LocalizationManager.Instance["Objects_ToolPreset_Unpin"]
+        : LocalizationManager.Instance["Objects_ToolPreset_Pin"];
+
+    public string ExpandButtonToolTip => IsPropertySectionExpanded
+        ? LocalizationManager.Instance["Objects_ToolPreset_Collapse"]
+        : LocalizationManager.Instance["Objects_ToolPreset_Expand"];
+
+    public string ExpandButtonGlyph => IsPropertySectionExpanded ? "▲" : "▼";
+
+    private IDrawingSettingsPanelRegistry? _panelRegistry;
+    public IDrawingSettingsPanelRegistry? PanelRegistry => _panelRegistry ??= ((global::Avalonia.Application.Current as App)?.Services?.GetService<IDrawingSettingsPanelRegistry>() ?? new DrawingSettingsPanelRegistry());
+
+    public Action OnPresetParameterChangedCallback => () =>
+    {
+        if (_chartViewModel != null && HasConfigurableActiveTool)
+        {
+            _presetService.NotifyPresetModified(_chartViewModel.CurrentTool);
+        }
+    };
+
+    public bool HasActiveToolSpecificSettings
+    {
+        get
+        {
+            if (ActiveToolTemplateObject == null) return false;
+            var metadata = DrawingParameterViewBuilder.GetOrReflectMetadata(ActiveToolTemplateObject.GetType());
+            if (metadata.Count == 0) return false;
+            var hiddenSet = PresetHiddenParameterTags != null && PresetHiddenParameterTags.Count > 0
+                ? new HashSet<string>(PresetHiddenParameterTags, StringComparer.OrdinalIgnoreCase)
+                : null;
+            return metadata.Any(m => hiddenSet == null || !m.Tags.Any(t => hiddenSet.Contains(t)));
+        }
+    }
+
+    private static Dictionary<DrawingTool, (string Icon, string NameKey)> InitializeToolMetaMap()
+    {
+        var map = new Dictionary<DrawingTool, (string Icon, string NameKey)>();
+        foreach (var cat in DrawingToolCategoryService.GetCategories())
+        {
+            foreach (var tool in cat.Tools)
+            {
+                map[tool.Tool] = (tool.Icon, tool.NameKey);
+            }
+        }
+        return map;
+    }
 
     public ObservableCollection<DrawingObjectItemViewModel> Items { get; } = new();
     public ObservableCollection<DrawingLayerItemViewModel> Layers { get; } = new();
@@ -135,12 +254,14 @@ public partial class DrawingObjectsViewModel : ViewModelBase, IDisposable
         IDispatcherService dispatcherService, 
         IDialogService? dialogService = null, 
         StockAnalyzer.Avalonia.Services.Drawing.IIconDrawingService? iconDrawingService = null,
-        IDrawingLayerService? layerService = null)
+        IDrawingLayerService? layerService = null,
+        IDrawingToolPresetService? presetService = null)
     {
         _dispatcherService = dispatcherService ?? throw new ArgumentNullException(nameof(dispatcherService));
         _dialogService = dialogService;
         _iconDrawingService = iconDrawingService;
         _directLayerService = layerService;
+        _presetService = presetService ?? DrawingToolPresetService.Shared;
         if (_directLayerService != null)
         {
             _directLayerService.LayerStateChanged += OnLayerStateChanged;
@@ -152,8 +273,9 @@ public partial class DrawingObjectsViewModel : ViewModelBase, IDisposable
         IDispatcherService dispatcherService, 
         IDialogService? dialogService = null, 
         StockAnalyzer.Avalonia.Services.Drawing.IIconDrawingService? iconDrawingService = null,
-        IDrawingLayerService? layerService = null)
-        : this(dispatcherService, dialogService, iconDrawingService, layerService)
+        IDrawingLayerService? layerService = null,
+        IDrawingToolPresetService? presetService = null)
+        : this(dispatcherService, dialogService, iconDrawingService, layerService, presetService)
     {
         SetChartViewModel(chartViewModel);
     }
@@ -163,8 +285,9 @@ public partial class DrawingObjectsViewModel : ViewModelBase, IDisposable
         IDispatcherService dispatcherService, 
         IDialogService? dialogService = null, 
         StockAnalyzer.Avalonia.Services.Drawing.IIconDrawingService? iconDrawingService = null,
-        IDrawingLayerService? layerService = null)
-        : this(dispatcherService, dialogService, iconDrawingService, layerService)
+        IDrawingLayerService? layerService = null,
+        IDrawingToolPresetService? presetService = null)
+        : this(dispatcherService, dialogService, iconDrawingService, layerService, presetService)
     {
         SetObjectManager(objectManager);
     }
@@ -224,6 +347,7 @@ public partial class DrawingObjectsViewModel : ViewModelBase, IDisposable
 
         SyncFromManager();
         NotifyMoveModeProperties();
+        UpdateActiveToolPreset();
         UndoCommand.NotifyCanExecuteChanged();
         RedoCommand.NotifyCanExecuteChanged();
     }
@@ -303,12 +427,135 @@ public partial class DrawingObjectsViewModel : ViewModelBase, IDisposable
         {
             NotifyMoveModeProperties();
         }
+        else if (e.PropertyName == nameof(ChartViewModel.CurrentTool))
+        {
+            UpdateActiveToolPreset();
+        }
         else if (e.PropertyName == nameof(ChartViewModel.DrawingEditCoordinator))
         {
             HookCoordinator();
             UndoCommand.NotifyCanExecuteChanged();
             RedoCommand.NotifyCanExecuteChanged();
         }
+    }
+
+    [RelayCommand]
+    private void TogglePin()
+    {
+        IsPinned = !IsPinned;
+        if (IsPinned)
+        {
+            IsPropertySectionExpanded = true;
+        }
+        OnPropertyChanged(nameof(PinIconGeometry));
+        OnPropertyChanged(nameof(PinButtonToolTip));
+        OnPropertyChanged(nameof(ExpandButtonToolTip));
+        OnPropertyChanged(nameof(ExpandButtonGlyph));
+    }
+
+    [RelayCommand]
+    private void TogglePropertySection()
+    {
+        if (!IsPinned)
+        {
+            IsPropertySectionExpanded = !IsPropertySectionExpanded;
+            OnPropertyChanged(nameof(ExpandButtonGlyph));
+            OnPropertyChanged(nameof(ExpandButtonToolTip));
+        }
+    }
+
+    partial void OnActiveToolPresetColorChanged(Color value)
+    {
+        if (_activeToolTemplateObject != null && _chartViewModel != null && HasConfigurableActiveTool)
+        {
+            _activeToolTemplateObject.Color = value;
+            DrawingThemeContext.SetDefaultColor(new SkiaSharp.SKColor(value.R, value.G, value.B, value.A));
+            _presetService.NotifyPresetModified(_chartViewModel.CurrentTool);
+        }
+    }
+
+    partial void OnActiveToolPresetThicknessChanged(double value)
+    {
+        if (_activeToolTemplateObject != null && _chartViewModel != null && HasConfigurableActiveTool)
+        {
+            double clamped = Math.Clamp(value, 0.5, 50.0);
+            _activeToolTemplateObject.Thickness = clamped;
+            _presetService.NotifyPresetModified(_chartViewModel.CurrentTool);
+        }
+    }
+
+    partial void OnActiveToolPresetStrokeStyleIndexChanged(int value)
+    {
+        if (_activeToolTemplateObject is RelativeGeometricRenderer renderer && _chartViewModel != null && HasConfigurableActiveTool)
+        {
+            renderer.StrokeStyle = (DrawingStrokeStyle)Math.Clamp(value, 0, 2);
+            _presetService.NotifyPresetModified(_chartViewModel.CurrentTool);
+        }
+    }
+
+    public void UpdateActiveToolPreset()
+    {
+        var tool = _chartViewModel?.CurrentTool ?? DrawingTool.Pointer;
+        if (tool is DrawingTool.Pointer or DrawingTool.Eraser or DrawingTool.Ruler or DrawingTool.Eyedropper)
+        {
+            HasConfigurableActiveTool = false;
+            ActiveToolTemplateObject = null;
+            ActiveToolDisplayName = string.Empty;
+            ActiveToolIcon = string.Empty;
+            OnPropertyChanged(nameof(CanOpenActiveToolSettings));
+            OnPropertyChanged(nameof(HasActiveToolSpecificSettings));
+            OpenActiveToolSettingsCommand.NotifyCanExecuteChanged();
+            return;
+        }
+
+        var preset = _presetService.GetOrCreatePresetObject(tool);
+        if (preset == null)
+        {
+            HasConfigurableActiveTool = false;
+            ActiveToolTemplateObject = null;
+            ActiveToolDisplayName = string.Empty;
+            ActiveToolIcon = string.Empty;
+            OnPropertyChanged(nameof(CanOpenActiveToolSettings));
+            OnPropertyChanged(nameof(HasActiveToolSpecificSettings));
+            OpenActiveToolSettingsCommand.NotifyCanExecuteChanged();
+            return;
+        }
+
+        HasConfigurableActiveTool = true;
+        ActiveToolTemplateObject = preset;
+
+        if (ToolMetaMap.TryGetValue(tool, out var meta))
+        {
+            ActiveToolIcon = meta.Icon;
+            ActiveToolDisplayName = LocalizationManager.Instance[meta.NameKey];
+        }
+        else
+        {
+            ActiveToolIcon = string.Empty;
+            ActiveToolDisplayName = tool.ToString();
+        }
+
+        _activeToolPresetColor = preset.Color;
+        OnPropertyChanged(nameof(ActiveToolPresetColor));
+
+        _activeToolPresetThickness = preset.Thickness > 0 ? preset.Thickness : DrawingThemeContext.DefaultStrokeThickness;
+        OnPropertyChanged(nameof(ActiveToolPresetThickness));
+
+        if (preset is RelativeGeometricRenderer renderer)
+        {
+            IsActiveToolStrokeStyleSupported = true;
+            _activeToolPresetStrokeStyleIndex = (int)renderer.StrokeStyle;
+            OnPropertyChanged(nameof(ActiveToolPresetStrokeStyleIndex));
+        }
+        else
+        {
+            IsActiveToolStrokeStyleSupported = false;
+        }
+
+        IsActiveToolThicknessSupported = true;
+        OnPropertyChanged(nameof(CanOpenActiveToolSettings));
+        OnPropertyChanged(nameof(HasActiveToolSpecificSettings));
+        OpenActiveToolSettingsCommand.NotifyCanExecuteChanged();
     }
 
     private void OnManagerChanged()
@@ -951,6 +1198,33 @@ public partial class DrawingObjectsViewModel : ViewModelBase, IDisposable
             }
             _chartViewModel?.RequestRender(RenderReason.DataChanged);
             SyncFromManager();
+        }
+    }
+
+    public bool CanOpenActiveToolSettings => HasConfigurableActiveTool && ActiveToolTemplateObject != null;
+
+    [RelayCommand(CanExecute = nameof(CanOpenActiveToolSettings))]
+    public async Task OpenActiveToolSettingsAsync()
+    {
+        if (ActiveToolTemplateObject == null || _chartViewModel == null) return;
+        var dialogService = (global::Avalonia.Application.Current as App)?.Services?.GetService<IDialogService>();
+        if (dialogService == null) return;
+
+        var tool = _chartViewModel.CurrentTool;
+        var result = await dialogService.ShowDrawingSettingsDialogAsync(
+            ActiveToolTemplateObject,
+            onApply: obj =>
+            {
+                UpdateActiveToolPreset();
+                _presetService.NotifyPresetModified(tool);
+            },
+            coordinator: _chartViewModel.DrawingEditCoordinator,
+            candles: _chartViewModel.Candles);
+
+        if (result == DrawingSettingsResult.Changed)
+        {
+            UpdateActiveToolPreset();
+            _presetService.NotifyPresetModified(tool);
         }
     }
 

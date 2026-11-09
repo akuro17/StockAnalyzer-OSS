@@ -68,6 +68,8 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
     // Repository revision of the drawings file this instance last loaded or saved for the current owner key.
     // A different repository revision means another tab persisted in the meantime (this instance is stale).
     private long _drawingsBaseRevision;
+    private Services.Drawing.DrawingDocumentSession? _syntheticDrawingSession;
+    private bool _hasLeftSyntheticOwner;
     private readonly Dictionary<ChartDrawingContextType, List<DrawingLayerRecord>> _contextLayersStore = new();
     private ChartDrawingContextType _currentContextType = ChartDrawingContextType.Standard;
     private readonly IMessenger _messenger;
@@ -363,6 +365,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(EffectiveIsSubWindowVisible))]
     [NotifyPropertyChangedFor(nameof(IsDisplayOff))]
+    [NotifyPropertyChangedFor(nameof(HasActiveSubWindowIndicators))]
     private bool _canToggleIndicators = false; // Safe default; set from ChartTypeCapabilitiesRegistry in OnChartTypeChanged
 
     private void VerifyStateInvariants()
@@ -410,6 +413,14 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
     // Effective visibility determines if the indicator sub-window should be rendered.
     // If the chart type supports indicators, we honor the user preference.
     public bool EffectiveIsSubWindowVisible => CanToggleIndicators ? IsSubWindowVisible : false;
+
+    /// <summary>
+    /// Indicates whether at least one active, enabled sub-window indicator is present
+    /// and supported by the current chart type. Used to dynamically show/enable the Sub-Chart toggle button.
+    /// </summary>
+    public bool HasActiveSubWindowIndicators =>
+        CanToggleIndicators &&
+        Views.Chart.Renderers.PanelLayoutEnumerator.CountPanels(Indicators, isSubWindowVisible: true) > 0;
 
     IReadOnlyList<string> IChartRenderSettings.ComparisonTargets => ComparisonTargets;
     SeriesColorIndex IChartRenderSettings.SeriesColorIndex => SeriesColorIndex;
@@ -723,6 +734,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
 
         _drawingEditCoordinator?.Dispose();
         _drawingEditCoordinator = null;
+        _syntheticDrawingSession = null;
 
         FlushPendingDrawings();
 
@@ -882,6 +894,11 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
             if (_isDisposed) return;
             _messenger.Send(new ChartSymbolChangedMessage(this, value));
         });
+
+        if (_drawingsOwnerSymbol != null && !string.Equals(_drawingsOwnerSymbol, value, StringComparison.OrdinalIgnoreCase))
+        {
+            _hasLeftSyntheticOwner = true;
+        }
 
         _previousSymbol = value;
 
@@ -1319,12 +1336,20 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
             }
         }
         
+        OnPropertyChanged(nameof(HasActiveSubWindowIndicators));
         CalculateIndicatorsAsync();
         RequestRender(RenderReason.DataChanged); // Force immediate layout sync
     }
 
     private void IndicatorSetting_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
+        if (e.PropertyName == nameof(CoreIndicatorSettings.IsEnabled) ||
+            e.PropertyName == nameof(CoreIndicatorSettings.IsOverlay) ||
+            e.PropertyName == nameof(CoreIndicatorSettings.OverlayPanelId))
+        {
+            OnPropertyChanged(nameof(HasActiveSubWindowIndicators));
+        }
+
         // Only trigger full recalculation for mathematical parameter changes.
         // Visual-only property changes (Color, Thickness, Style) do NOT need action here.
         // Rendering for visual changes is handled by:
@@ -1665,7 +1690,22 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
         if (string.IsNullOrWhiteSpace(Symbol)) return;
 
         var key = new DrawingDocumentKey(Symbol, SelectedTimeFrame);
-        var session = _sessionStore?.GetOrCreate(key) ?? new Services.Drawing.DrawingDocumentSession(key);
+        bool isSynthetic = StockAnalyzer.Core.Helpers.SyntheticSymbolParser.IsSyntheticExpression(Symbol);
+        Services.Drawing.DrawingDocumentSession session;
+        if (isSynthetic)
+        {
+            if (_syntheticDrawingSession == null || _syntheticDrawingSession.Key != key)
+            {
+                _syntheticDrawingSession = new Services.Drawing.DrawingDocumentSession(key);
+            }
+            session = _syntheticDrawingSession;
+        }
+        else
+        {
+            _syntheticDrawingSession = null;
+            session = _sessionStore?.GetOrCreate(key) ?? new Services.Drawing.DrawingDocumentSession(key);
+        }
+
         var history = session.GetOrCreateHistory(_currentContextType);
 
         _drawingEditCoordinator = new Services.Drawing.DrawingEditCoordinator(
@@ -1674,7 +1714,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
             session,
             LayerService,
             candlesProvider: () => Candles,
-            sessionStore: _sessionStore,
+            sessionStore: isSynthetic ? null : _sessionStore,
             beforeMutation: () => RefreshDrawingsIfStale());
 
         _drawingEditCoordinator.CommitSucceeded += (_, _) => PersistCurrentDrawings();
@@ -1692,6 +1732,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
     public void PersistCurrentDrawings()
     {
         if (_drawingRepository == null || _drawingsOwnerSymbol == null) return;
+        if (StockAnalyzer.Core.Helpers.SyntheticSymbolParser.IsSyntheticExpression(_drawingsOwnerSymbol)) return;
         var snapshot = ObjectManager.GetSnapshot();
         if (!ShouldPersistDrawingsSnapshot(snapshot)) return;
 
@@ -1720,6 +1761,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
 
     private bool IsDrawingsStale() =>
         _drawingRepository != null && _drawingsOwnerSymbol != null &&
+        !StockAnalyzer.Core.Helpers.SyntheticSymbolParser.IsSyntheticExpression(_drawingsOwnerSymbol) &&
         _drawingRepository.GetRevision(_drawingsOwnerSymbol, _drawingsOwnerTimeFrame) != _drawingsBaseRevision;
 
     private Services.Drawing.ChartDrawingPayload BuildDrawingsPayload(Dictionary<ChartDrawingContextType, List<IChartObject>> snapshot)
@@ -1749,6 +1791,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
         ObjectManager.Clear();
         _contextLayersStore.Clear();
         _drawingsHasEverBeenNonEmptyForOwner = false;
+        _syntheticDrawingSession = null;
 
         if (_drawingRepository != null)
         {
@@ -1810,6 +1853,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
     public void FlushPendingDrawings()
     {
         if (_drawingRepository == null || _drawingsOwnerSymbol == null) return;
+        if (StockAnalyzer.Core.Helpers.SyntheticSymbolParser.IsSyntheticExpression(_drawingsOwnerSymbol)) return;
         if (IsDrawingsStale()) return; // holds no unsaved edits; must not overwrite the newer file
         var snapshot = ObjectManager.GetSnapshot();
         if (!ShouldPersistDrawingsSnapshot(snapshot)) return;
@@ -2355,7 +2399,16 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
             // the previously-displayed symbol+timeframe are saved (Day/Week/Monthly are independent
             // sets, per drawing persistence design), all in-memory contexts are cleared, and any
             // drawings previously saved for the new symbol+timeframe are restored.
-            if (_drawingRepository != null && _drawingsOwnerSymbol != null)
+            bool isOutgoingSynthetic = _drawingsOwnerSymbol != null &&
+                StockAnalyzer.Core.Helpers.SyntheticSymbolParser.IsSyntheticExpression(_drawingsOwnerSymbol);
+            bool isIncomingSynthetic = StockAnalyzer.Core.Helpers.SyntheticSymbolParser.IsSyntheticExpression(Symbol);
+            bool isSameSyntheticOwner = isIncomingSynthetic &&
+                !_hasLeftSyntheticOwner &&
+                _drawingsOwnerSymbol != null &&
+                string.Equals(_drawingsOwnerSymbol, Symbol, StringComparison.OrdinalIgnoreCase) &&
+                _drawingsOwnerTimeFrame == SelectedTimeFrame;
+
+            if (_drawingRepository != null && _drawingsOwnerSymbol != null && !isOutgoingSynthetic)
             {
                 var outgoingSnapshot = ObjectManager.GetSnapshot();
                 // A stale instance holds no unsaved edits (every edit persists on commit), so it must not write
@@ -2369,11 +2422,19 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
                 }
             }
 
-            ReloadDrawingsFromRepository(Symbol, SelectedTimeFrame);
+            if (!isSameSyntheticOwner)
+            {
+                ReloadDrawingsFromRepository(Symbol, SelectedTimeFrame);
 
-            _drawingsOwnerSymbol = Symbol;
-            _drawingsOwnerTimeFrame = SelectedTimeFrame;
-            UpdateDrawingCoordinator();
+                _drawingsOwnerSymbol = Symbol;
+                _drawingsOwnerTimeFrame = SelectedTimeFrame;
+                _hasLeftSyntheticOwner = false;
+                UpdateDrawingCoordinator();
+            }
+            else if (_drawingEditCoordinator == null)
+            {
+                UpdateDrawingCoordinator();
+            }
             // ----------------------------------------------------
 
             // Optimization: Start AI model loading in background as soon as we know we are loading data

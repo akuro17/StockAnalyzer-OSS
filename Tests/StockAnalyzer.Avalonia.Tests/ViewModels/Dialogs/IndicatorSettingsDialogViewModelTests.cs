@@ -5,6 +5,8 @@ using System.Threading.Tasks;
 using Moq;
 using StockAnalyzer.Avalonia.Services;
 using StockAnalyzer.Avalonia.ViewModels.Dialogs;
+using StockAnalyzer.Avalonia.ViewModels.Backtest;
+using StockAnalyzer.Avalonia.Views.Dialogs;
 using StockAnalyzer.Core.Interfaces;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Indicators;
@@ -721,5 +723,91 @@ public class IndicatorSettingsDialogViewModelTests : IDisposable
         vm.SelectedTemplate = null;
 
         Assert.Empty(vm.SelectedTemplateIndicatorNames);
+    }
+
+    [Fact]
+    public void Initialize_SeparatesBaseAndSubWindowIndicators_AndSetsHasSubWindowIndicators()
+    {
+        var vm = CreateViewModel();
+        var sma = new CoreIndicatorSettings { Id = "sma", TypeEnum = IndicatorType.SMA, IsOverlay = true, IsEnabled = true };
+        var ema = new CoreIndicatorSettings { Id = "ema", TypeEnum = IndicatorType.EMA, IsOverlay = true, IsEnabled = true };
+        var rsi = new CoreIndicatorSettings { Id = "rsi", TypeEnum = IndicatorType.RSI, IsOverlay = false, IsEnabled = true };
+        var macd = new CoreIndicatorSettings { Id = "macd", TypeEnum = IndicatorType.MACD, IsOverlay = false, IsEnabled = true };
+
+        vm.Initialize(new[] { sma, rsi, ema, macd });
+
+        Assert.Equal(2, vm.BaseIndicators.Count);
+        Assert.Equal("sma", vm.BaseIndicators[0].Id);
+        Assert.Equal("ema", vm.BaseIndicators[1].Id);
+
+        Assert.Equal(2, vm.SubWindowIndicators.Count);
+        Assert.Equal("rsi", vm.SubWindowIndicators[0].Id);
+        Assert.Equal("macd", vm.SubWindowIndicators[1].Id);
+
+        Assert.True(vm.HasSubWindowIndicators);
+        Assert.Equal(4, vm.Indicators.Count);
+    }
+
+    [Fact]
+    public void Initialize_WithOnlyBaseIndicators_HasSubWindowIndicatorsIsFalse()
+    {
+        var vm = CreateViewModel();
+        var sma = new CoreIndicatorSettings { Id = "sma", TypeEnum = IndicatorType.SMA, IsOverlay = true, IsEnabled = true };
+
+        vm.Initialize(new[] { sma });
+
+        Assert.Single(vm.BaseIndicators);
+        Assert.Empty(vm.SubWindowIndicators);
+        Assert.False(vm.HasSubWindowIndicators);
+    }
+
+    [Fact]
+    public void MoveIndicator_ReordersWithinPartition_AndSyncsMasterIndicators()
+    {
+        var vm = CreateViewModel();
+        var sma1 = new CoreIndicatorSettings { Id = "sma1", TypeEnum = IndicatorType.SMA, IsOverlay = true, IsEnabled = true };
+        var sma2 = new CoreIndicatorSettings { Id = "sma2", TypeEnum = IndicatorType.SMA, IsOverlay = true, IsEnabled = true };
+        var sma3 = new CoreIndicatorSettings { Id = "sma3", TypeEnum = IndicatorType.SMA, IsOverlay = true, IsEnabled = true };
+        var rsi = new CoreIndicatorSettings { Id = "rsi", TypeEnum = IndicatorType.RSI, IsOverlay = false, IsEnabled = true };
+
+        vm.Initialize(new[] { sma1, sma2, sma3, rsi });
+
+        // Move sma1 after sma3 in BaseIndicators
+        var targetSma1 = vm.BaseIndicators[0];
+        var targetSma3 = vm.BaseIndicators[2];
+        var result = vm.MoveIndicator(targetSma1, targetSma3, ConditionDropPlacement.After);
+
+        Assert.Equal(ConditionMoveResult.Moved, result);
+        Assert.Equal("sma2", vm.BaseIndicators[0].Id);
+        Assert.Equal("sma3", vm.BaseIndicators[1].Id);
+        Assert.Equal("sma1", vm.BaseIndicators[2].Id);
+
+        // Verify master Indicators order: [...BaseIndicators, ...SubWindowIndicators]
+        Assert.Equal(new[] { "sma2", "sma3", "sma1", "rsi" }, new[] { vm.Indicators[0].Id, vm.Indicators[1].Id, vm.Indicators[2].Id, vm.Indicators[3].Id });
+    }
+
+    [Fact]
+    public void MoveIndicator_AcrossPartitions_IsRejected()
+    {
+        var vm = CreateViewModel();
+        var sma = new CoreIndicatorSettings { Id = "sma", TypeEnum = IndicatorType.SMA, IsOverlay = true, IsEnabled = true };
+        var rsi = new CoreIndicatorSettings { Id = "rsi", TypeEnum = IndicatorType.RSI, IsOverlay = false, IsEnabled = true };
+
+        vm.Initialize(new[] { sma, rsi });
+
+        var result = vm.MoveIndicator(vm.BaseIndicators[0], vm.SubWindowIndicators[0], ConditionDropPlacement.After);
+        Assert.Equal(ConditionMoveResult.Rejected, result);
+    }
+
+    [Theory]
+    [InlineData(10.0, 40.0, ConditionDropPlacement.Before)]
+    [InlineData(30.0, 40.0, ConditionDropPlacement.After)]
+    [InlineData(20.0, 40.0, ConditionDropPlacement.After)]
+    [InlineData(5.0, 0.0, ConditionDropPlacement.After)]
+    [InlineData(double.NaN, 40.0, ConditionDropPlacement.After)]
+    public void IndicatorListDragGesture_GetRowPlacement_CalculatesCorrectly(double y, double height, ConditionDropPlacement expected)
+    {
+        var actual = IndicatorListDragGesture.GetRowPlacement(y, height);
+        Assert.Equal(expected, actual);
     }
 }

@@ -67,6 +67,37 @@ public class DrawingParameterViewBuilder
         { "General", 110 }
     };
 
+    public static readonly HashSet<string> ExcludedBasePropertyNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        // Identity & Core Infrastructure
+        "Id",
+        "Points",
+        "IsSelected",
+        "SkiaColor",
+        "IsVisible",
+        "IsLocked",
+        "ZIndex",
+        "Name",
+        "CustomName",
+        "ParentPanelId",
+        "LinkGroupId",
+        "IsLinkParent",
+        "AnchorPointIndex",
+        "PanelIndex",
+        "Type",
+        "Priority",
+        "IsMoveAxisModeExplicit",
+        "IsEditing",
+        "SyncId",
+
+        // General Style Settings (managed by General section)
+        "Color",
+        "Thickness",
+        "MoveAxisMode",
+        "StrokeStyle",
+        "Alpha"
+    };
+
     public static IReadOnlyList<PropertyMetadata> GetOrReflectMetadata(Type type)
     {
         return _metadataCache.GetOrAdd(type, t =>
@@ -78,8 +109,14 @@ public class DrawingParameterViewBuilder
 
             foreach (var prop in properties)
             {
-                // Skip internal infrastructure properties using SSoT
-                if (DrawingParameterTags.IgnoredPropertyNames.Contains(prop.Name))
+                if (prop.GetIndexParameters().Length > 0)
+                {
+                    continue;
+                }
+
+                // Skip internal infrastructure and general style properties using SSoT
+                if (DrawingParameterTags.IgnoredPropertyNames.Contains(prop.Name) ||
+                    ExcludedBasePropertyNames.Contains(prop.Name))
                 {
                     continue;
                 }
@@ -96,10 +133,10 @@ public class DrawingParameterViewBuilder
                 var tagAttrs = prop.GetCustomAttributes<ParameterTagAttribute>().Select(a => a.Tag).ToList();
                 var dataType = prop.GetCustomAttribute<DataTypeAttribute>();
 
-                // Include if any metadata attribute exists
-                if (display == null && displayAttr == null && range == null && coreRange == null && categoryAttr == null && tagAttrs.Count == 0)
+                if (display == null && displayAttr == null)
                 {
-                    continue;
+                    var formatted = System.Text.RegularExpressions.Regex.Replace(prop.Name, "(\\B[A-Z])", " $1");
+                    display = new DisplayNameAttribute(formatted);
                 }
 
                 int order = displayAttr?.GetOrder() ?? int.MaxValue;

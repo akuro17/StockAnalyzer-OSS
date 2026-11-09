@@ -37,31 +37,15 @@ public abstract class ChartLayoutProviderBase : IChartLayoutProvider
         var marginLeft = ChartTheme.MarginLeft;
         var marginRight = customMarginRight ?? ChartTheme.MarginRight;
 
-        bool showVolume = SupportsVolume && showIndicators && isMainWindowVisible;
-
         var layoutBaseHeight = Math.Max(0, bounds.Height - actualMarginTop - actualMarginBottom);
         var chartWidth = Math.Max(0, bounds.Width - marginLeft - marginRight);
         
-        // Count panels
+        // Count panels using SSoT PanelLayoutEnumerator
         int panelCount = 0;
         if (indicators != null && SupportsIndicators && showIndicators)
         {
-            var standardIndicators = indicators.Where(i => i.IsEnabled && !i.IsOverlay && i.TypeEnum != IndicatorType.GranvilleLaw && i.TypeEnum != IndicatorType.VolumeProfile);
-            int standalone = standardIndicators.Count(i => string.IsNullOrEmpty(i.OverlayPanelId));
-
-            int grouped = standardIndicators
-                .Where(i => !string.IsNullOrEmpty(i.OverlayPanelId))
-                .Select(i => i.OverlayPanelId)
-                .Distinct()
-                .Count();
-
-            panelCount = standalone + grouped;
-            
-            panelCount += indicators.Count(i => 
-                i.IsEnabled &&
-                i.TypeEnum == IndicatorType.GranvilleLaw && 
-                i.ParameterObject is CoreGranvilleLawParameter p && 
-                p.ShowSubWindowBar);
+            IReadOnlyList<CoreIndicatorSettings> settingsList = indicators as IReadOnlyList<CoreIndicatorSettings> ?? indicators.ToList();
+            panelCount = PanelLayoutEnumerator.CountPanels(settingsList, isSubWindowVisible: true);
         }
 
         // Calculate heights
@@ -92,23 +76,9 @@ public abstract class ChartLayoutProviderBase : IChartLayoutProvider
         double standardMainHeight;
         double volumeHeight;
 
-        if (!isMainWindowVisible)
-        {
-             standardMainHeight = 0;
-             volumeHeight = 0;
-        }
-        else if (showVolume)
-        {
-            standardMainHeight = remainingHeight * ChartTheme.MainChartHeightRatio;
-            volumeHeight = remainingHeight * ChartTheme.VolumeChartHeightRatio;
-        }
-        else
-        {
-            // Case 1: Indicators OFF -> Main takes full space, Volume = 0
-            // Case 2: FX/Compact Chart -> Volume = 0
-            standardMainHeight = remainingHeight;
-            volumeHeight = 0;
-        }
+        // Intermediate Volume Area is abolished; Volume renders in PanelAreas as a standard sub-window indicator.
+        standardMainHeight = isMainWindowVisible ? remainingHeight : 0;
+        volumeHeight = 0;
 
         // 固定物理座標
         double actualMainY = bounds.Y + actualMarginTop;

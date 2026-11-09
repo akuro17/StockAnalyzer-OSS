@@ -10,6 +10,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using StockAnalyzer.Avalonia.Common;
 using StockAnalyzer.Avalonia.Services;
+using StockAnalyzer.Avalonia.ViewModels.Backtest;
 using StockAnalyzer.Avalonia.ViewModels.Dialogs.Common;
 using StockAnalyzer.Core.Interfaces;
 using StockAnalyzer.Core.Models;
@@ -82,7 +83,66 @@ public partial class IndicatorSettingsDialogViewModel : ViewModelBase, IRecipien
 
     partial void OnSelectedIndicatorChanged(CoreIndicatorSettings? value)
     {
+        SyncSelectionFromMaster(value);
         UpdateReferenceOptions();
+    }
+
+    partial void OnSelectedBaseIndicatorChanged(CoreIndicatorSettings? value)
+    {
+        if (_isSyncingSelection || value == null) return;
+        _isSyncingSelection = true;
+        try
+        {
+            SelectedSubWindowIndicator = null;
+            SelectedIndicator = value;
+        }
+        finally
+        {
+            _isSyncingSelection = false;
+        }
+    }
+
+    partial void OnSelectedSubWindowIndicatorChanged(CoreIndicatorSettings? value)
+    {
+        if (_isSyncingSelection || value == null) return;
+        _isSyncingSelection = true;
+        try
+        {
+            SelectedBaseIndicator = null;
+            SelectedIndicator = value;
+        }
+        finally
+        {
+            _isSyncingSelection = false;
+        }
+    }
+
+    private void SyncSelectionFromMaster(CoreIndicatorSettings? value)
+    {
+        if (_isSyncingSelection) return;
+        _isSyncingSelection = true;
+        try
+        {
+            if (value == null)
+            {
+                SelectedBaseIndicator = null;
+                SelectedSubWindowIndicator = null;
+            }
+            else if (IsBaseIndicator(value))
+            {
+                SelectedBaseIndicator = value;
+                SelectedSubWindowIndicator = null;
+            }
+            else
+            {
+                SelectedSubWindowIndicator = value;
+                SelectedBaseIndicator = null;
+            }
+        }
+        finally
+        {
+            _isSyncingSelection = false;
+        }
     }
 
     /// <summary>
@@ -146,11 +206,14 @@ public partial class IndicatorSettingsDialogViewModel : ViewModelBase, IRecipien
                     }
                 }
 
+                ReclassifyIndicator(SelectedIndicator);
+
                 OnPropertyChanged();
                 OnPropertyChanged(nameof(SelectedOverlayPanelOption));
                 OnPropertyChanged(nameof(ShowPanelSelector));
                 OnPropertyChanged(nameof(IsPriceTypeEnabled));
                 OnPropertyChanged(nameof(PriceTypeToolTip));
+                OnPropertyChanged(nameof(HasSubWindowIndicators));
             }
         }
     }
@@ -332,6 +395,119 @@ public partial class IndicatorSettingsDialogViewModel : ViewModelBase, IRecipien
     public IToastNotificationService ToastService { get; }
 
     public ObservableCollection<CoreIndicatorSettings> Indicators { get; } = new();
+
+    /// <summary>
+    /// Registered indicators that render on the Main Window (IsOverlay == true).
+    /// </summary>
+    public ObservableCollection<CoreIndicatorSettings> BaseIndicators { get; } = new();
+
+    /// <summary>
+    /// Registered indicators that render in Sub-Window panels (IsOverlay == false).
+    /// </summary>
+    public ObservableCollection<CoreIndicatorSettings> SubWindowIndicators { get; } = new();
+
+    [ObservableProperty]
+    private CoreIndicatorSettings? _selectedBaseIndicator;
+
+    [ObservableProperty]
+    private CoreIndicatorSettings? _selectedSubWindowIndicator;
+
+    private bool _isSyncingSelection;
+
+    /// <summary>
+    /// Whether there is at least one registered sub-window indicator.
+    /// Controls the dynamic visibility of the Sub-Window Panel section in the Active tab.
+    /// </summary>
+    public bool HasSubWindowIndicators => SubWindowIndicators.Count > 0;
+
+    /// <summary>
+    /// Classification predicate for whether an indicator belongs to Base Indicators (Main Window)
+    /// vs Sub-Window Panel indicators.
+    /// </summary>
+    public static bool IsBaseIndicator(CoreIndicatorSettings setting) => setting.IsOverlay;
+
+    /// <summary>
+    /// Synchronizes the master Indicators collection with the concatenated order of
+    /// BaseIndicators followed by SubWindowIndicators, and notifies HasSubWindowIndicators.
+    /// </summary>
+    private void SyncMasterIndicatorsFromPartitions()
+    {
+        var targetList = BaseIndicators.Concat(SubWindowIndicators).ToList();
+        if (!Indicators.SequenceEqual(targetList))
+        {
+            Indicators.Clear();
+            foreach (var item in targetList)
+            {
+                Indicators.Add(item);
+            }
+        }
+        OnPropertyChanged(nameof(HasSubWindowIndicators));
+    }
+
+    /// <summary>
+    /// Reclassifies an indicator between BaseIndicators and SubWindowIndicators if its IsOverlay
+    /// state has changed, maintaining master list synchronization.
+    /// </summary>
+    private void ReclassifyIndicator(CoreIndicatorSettings indicator)
+    {
+        bool isBase = IsBaseIndicator(indicator);
+        bool inBase = BaseIndicators.Contains(indicator);
+        bool inSub = SubWindowIndicators.Contains(indicator);
+
+        if (isBase && !inBase)
+        {
+            if (inSub) SubWindowIndicators.Remove(indicator);
+            BaseIndicators.Add(indicator);
+            SyncMasterIndicatorsFromPartitions();
+            SyncSelectionFromMaster(indicator);
+            OnPropertyChanged(nameof(ShowPanelSelector));
+            OnPropertyChanged(nameof(HasSubWindowIndicators));
+        }
+        else if (!isBase && !inSub)
+        {
+            if (inBase) BaseIndicators.Remove(indicator);
+            SubWindowIndicators.Add(indicator);
+            SyncMasterIndicatorsFromPartitions();
+            SyncSelectionFromMaster(indicator);
+            OnPropertyChanged(nameof(ShowPanelSelector));
+            OnPropertyChanged(nameof(HasSubWindowIndicators));
+        }
+    }
+
+    /// <summary>
+    /// Moves an indicator within its partition (BaseIndicators or SubWindowIndicators).
+    /// Cross-partition moves and inside drops are rejected.
+    /// </summary>
+    public ConditionMoveResult MoveIndicator(CoreIndicatorSettings? source, CoreIndicatorSettings? target, ConditionDropPlacement placement)
+    {
+        if (source == null || target == null || placement == ConditionDropPlacement.Inside)
+            return ConditionMoveResult.Rejected;
+
+        if (source.IsOverlay != target.IsOverlay)
+            return ConditionMoveResult.Rejected;
+
+        if (!Indicators.Contains(source) || !Indicators.Contains(target))
+            return ConditionMoveResult.Rejected;
+
+        var partition = source.IsOverlay ? BaseIndicators : SubWindowIndicators;
+        int oldIndex = partition.IndexOf(source);
+        int targetIndex = partition.IndexOf(target);
+
+        if (oldIndex < 0 || targetIndex < 0)
+            return ConditionMoveResult.Rejected;
+
+        int rawIndex = placement == ConditionDropPlacement.Before ? targetIndex : targetIndex + 1;
+        int newIndex = oldIndex < rawIndex ? rawIndex - 1 : rawIndex;
+        newIndex = Math.Clamp(newIndex, 0, partition.Count - 1);
+
+        if (oldIndex == newIndex)
+            return ConditionMoveResult.Unchanged;
+
+        partition.Move(oldIndex, newIndex);
+        SyncMasterIndicatorsFromPartitions();
+        SyncSelectionFromMaster(source);
+        return ConditionMoveResult.Moved;
+    }
 
     /// <summary>
     /// All available indicator catalog items for the Library grid.
@@ -534,6 +710,8 @@ public partial class IndicatorSettingsDialogViewModel : ViewModelBase, IRecipien
     public void Initialize(IEnumerable<CoreIndicatorSettings> currentIndicators)
     {
         if (_isDisposed) return;
+        BaseIndicators.Clear();
+        SubWindowIndicators.Clear();
         Indicators.Clear();
         if (currentIndicators != null)
         {
@@ -547,10 +725,20 @@ public partial class IndicatorSettingsDialogViewModel : ViewModelBase, IRecipien
                 {
                     clone.UpdateDisplayName();
                 }
-                Indicators.Add(clone);
+
+                if (IsBaseIndicator(clone))
+                {
+                    BaseIndicators.Add(clone);
+                }
+                else
+                {
+                    SubWindowIndicators.Add(clone);
+                }
             }
         }
         
+        SyncMasterIndicatorsFromPartitions();
+
         if (Indicators.Any())
         {
             SelectedIndicator = Indicators.First();
@@ -883,7 +1071,15 @@ public partial class IndicatorSettingsDialogViewModel : ViewModelBase, IRecipien
         }
         newSettings.DisplayName = LibraryIndicatorPreviewName;
 
-        Indicators.Add(newSettings);
+        if (IsBaseIndicator(newSettings))
+        {
+            BaseIndicators.Add(newSettings);
+        }
+        else
+        {
+            SubWindowIndicators.Add(newSettings);
+        }
+        SyncMasterIndicatorsFromPartitions();
         SelectedIndicator = newSettings;
 
         ToastService.ShowNotification($"{newSettings.DisplayName} {LocalizationManager.Instance["Msg_Added"] ?? "Added"}");
@@ -948,7 +1144,15 @@ public partial class IndicatorSettingsDialogViewModel : ViewModelBase, IRecipien
             newSettings.UseShortName = UseShortName;
             newSettings.UpdateDisplayName();
 
-            Indicators.Add(newSettings);
+            if (IsBaseIndicator(newSettings))
+            {
+                BaseIndicators.Add(newSettings);
+            }
+            else
+            {
+                SubWindowIndicators.Add(newSettings);
+            }
+            SyncMasterIndicatorsFromPartitions();
             SelectedIndicator = newSettings;
             
             ToastService.ShowNotification($"{newSettings.DisplayName} {LocalizationManager.Instance["Msg_Added"] ?? "Added"}");
@@ -962,12 +1166,43 @@ public partial class IndicatorSettingsDialogViewModel : ViewModelBase, IRecipien
     [RelayCommand]
     private void RemoveIndicator(CoreIndicatorSettings? settings)
     {
-        if (settings != null && Indicators.Contains(settings))
+        if (settings != null)
         {
-            Indicators.Remove(settings);
-            if (SelectedIndicator == settings)
+            bool removed = false;
+            if (BaseIndicators.Contains(settings))
             {
-                SelectedIndicator = Indicators.FirstOrDefault();
+                BaseIndicators.Remove(settings);
+                removed = true;
+            }
+            else if (SubWindowIndicators.Contains(settings))
+            {
+                SubWindowIndicators.Remove(settings);
+                removed = true;
+            }
+
+            if (removed)
+            {
+                // Cascade reset: if any remaining indicator referenced the removed indicator as SourceIndicatorId,
+                // reset its SourceIndicatorId and restore its default IsOverlay if needed.
+                foreach (var ind in BaseIndicators.Concat(SubWindowIndicators).ToList())
+                {
+                    if (ind.SourceIndicatorId == settings.Id)
+                    {
+                        ind.SourceIndicatorId = null;
+                        if (ind.TypeEnum.HasValue)
+                        {
+                            var def = GetEffectiveDefaultSettings(ind.TypeEnum.Value);
+                            ind.IsOverlay = def.IsOverlay;
+                            ReclassifyIndicator(ind);
+                        }
+                    }
+                }
+
+                SyncMasterIndicatorsFromPartitions();
+                if (SelectedIndicator == settings)
+                {
+                    SelectedIndicator = Indicators.FirstOrDefault();
+                }
             }
         }
     }
@@ -993,8 +1228,11 @@ public partial class IndicatorSettingsDialogViewModel : ViewModelBase, IRecipien
     [RelayCommand]
     private void RemoveAllIndicators()
     {
+        BaseIndicators.Clear();
+        SubWindowIndicators.Clear();
         Indicators.Clear();
         SelectedIndicator = null;
+        OnPropertyChanged(nameof(HasSubWindowIndicators));
     }
 
     [RelayCommand]
@@ -1195,11 +1433,20 @@ public partial class IndicatorSettingsDialogViewModel : ViewModelBase, IRecipien
                 }
 
                 // Atomically replace current indicators.
-                Indicators.Clear();
+                BaseIndicators.Clear();
+                SubWindowIndicators.Clear();
                 foreach (var ind in newClones)
                 {
-                    Indicators.Add(ind);
+                    if (IsBaseIndicator(ind))
+                    {
+                        BaseIndicators.Add(ind);
+                    }
+                    else
+                    {
+                        SubWindowIndicators.Add(ind);
+                    }
                 }
+                SyncMasterIndicatorsFromPartitions();
 
                 SelectedIndicator = Indicators.FirstOrDefault();
                 return Task.CompletedTask;
@@ -1233,8 +1480,16 @@ public partial class IndicatorSettingsDialogViewModel : ViewModelBase, IRecipien
                 // Append to current indicators without clearing.
                 foreach (var ind in newClones)
                 {
-                    Indicators.Add(ind);
+                    if (IsBaseIndicator(ind))
+                    {
+                        BaseIndicators.Add(ind);
+                    }
+                    else
+                    {
+                        SubWindowIndicators.Add(ind);
+                    }
                 }
+                SyncMasterIndicatorsFromPartitions();
 
                 if (newClones.Any())
                 {
