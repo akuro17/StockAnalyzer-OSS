@@ -2,6 +2,7 @@ using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.ScreeningConditions;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Text;
 
@@ -69,20 +70,21 @@ public static class SqlConditionTranslator
 
     private static string TranslateRsiToColumn(RsiOversoldCondition condition)
     {
-        var periodField = typeof(RsiOversoldCondition).GetField("_period", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-        var thresholdField = typeof(RsiOversoldCondition).GetField("_threshold", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-
-        int period = (int)(periodField?.GetValue(condition) ?? 14);
-        decimal threshold = (decimal)(thresholdField?.GetValue(condition) ?? 30m);
+        int period = condition.Period;
+        decimal threshold = condition.Threshold;
 
         // Calculate RSI using window functions on the _diff column from raw_data
+        // Algebraic single-division simplification: RSI = 100 * AG / (AG + AL) with (AG + AL <= 1e-12) guard
+        string avgLoss = $"AVG(CASE WHEN _diff < 0 THEN -_diff ELSE 0 END) OVER (PARTITION BY filename ORDER BY date ROWS BETWEEN {period - 1} PRECEDING AND CURRENT ROW)";
+        string avgGain = $"AVG(CASE WHEN _diff > 0 THEN _diff ELSE 0 END) OVER (PARTITION BY filename ORDER BY date ROWS BETWEEN {period - 1} PRECEDING AND CURRENT ROW)";
+
         return $@"
             (
-                100 - (100 / (1 + 
-                    (AVG(CASE WHEN _diff > 0 THEN _diff ELSE 0 END) OVER (PARTITION BY filename ORDER BY date ROWS BETWEEN {period - 1} PRECEDING AND CURRENT ROW)) / 
-                    NULLIF(AVG(CASE WHEN _diff < 0 THEN -_diff ELSE 0 END) OVER (PARTITION BY filename ORDER BY date ROWS BETWEEN {period - 1} PRECEDING AND CURRENT ROW), 0)
-                ))
-            ) < {threshold}";
+                CASE 
+                    WHEN ({avgGain} + {avgLoss}) <= 1e-12 THEN 50.0
+                    ELSE (100.0 * ({avgGain})) / ({avgGain} + {avgLoss})
+                END
+            ) < {threshold.ToString(CultureInfo.InvariantCulture)}";
     }
 
     public static string Translate(ScreeningCriteria criteria)
@@ -113,11 +115,8 @@ public static class SqlConditionTranslator
 
     private static string TranslateRsi(RsiOversoldCondition condition)
     {
-        var periodField = typeof(RsiOversoldCondition).GetField("_period", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-        var thresholdField = typeof(RsiOversoldCondition).GetField("_threshold", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-
-        int period = (int)(periodField?.GetValue(condition) ?? 14);
-        decimal threshold = (decimal)(thresholdField?.GetValue(condition) ?? 30m);
+        int period = condition.Period;
+        decimal threshold = condition.Threshold;
 
         // Single file mode (original implementation)
         return $@"
@@ -138,14 +137,21 @@ public static class SqlConditionTranslator
             ),
             a_gl AS (
                 SELECT 
+                    rn,
                     AVG(gain) OVER (ORDER BY rn ROWS BETWEEN {period - 1} PRECEDING AND CURRENT ROW) as ag,
                     AVG(loss) OVER (ORDER BY rn ROWS BETWEEN {period - 1} PRECEDING AND CURRENT ROW) as al
                 FROM g_l
             )
-            SELECT (100 - (100 / (1 + ag / NULLIF(al, 0)))) 
+            SELECT (
+                CASE 
+                    WHEN (ag + al) <= 1e-12 THEN 50.0
+                    ELSE (100.0 * ag) / (ag + al)
+                END
+            ) 
             FROM a_gl 
-            ORDER BY 1 DESC 
+            WHERE rn > {period}
+            ORDER BY rn DESC 
             LIMIT 1
-        ) < {threshold}";
+        ) < {threshold.ToString(CultureInfo.InvariantCulture)}";
     }
 }

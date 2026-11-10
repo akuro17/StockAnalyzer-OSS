@@ -227,7 +227,7 @@ public class ColumnChooserAppliedMessage
 }
 
 /// <summary>
-/// Published by a Note card's "チャートを見る" (view chart) action (spec section 6.2). The main
+/// Published by a Note card's "View Chart" action (spec §6.2). The main
 /// chart should switch to <see cref="Ticker"/>, load <see cref="Timeframe"/>, and once data is
 /// available, jump to and center on <see cref="AnchorDate"/> via
 /// <c>ChartViewModel.JumpToAnchorDate</c>.

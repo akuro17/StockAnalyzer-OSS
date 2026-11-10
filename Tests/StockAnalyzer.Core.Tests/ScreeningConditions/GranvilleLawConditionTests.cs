@@ -38,8 +38,9 @@ namespace StockAnalyzer.Core.Tests.ScreeningConditions
         {
             var parameter = new CoreGranvilleLawParameter { MaPeriod = 5, SlopePeriod = 2 };
             var candles = CreateFlatCandles(6, 100m);
-            candles.Add(new CandleData(DateTime.Today.AddDays(6), 90m, 90m, 90m, 90m, 100)); // Price drops below MA
-            candles.Add(new CandleData(DateTime.Today.AddDays(7), 110m, 110m, 110m, 110m, 100)); // Price breaks above MA
+            var startDate = new DateTime(2023, 1, 1);
+            candles.Add(new CandleData(startDate.AddDays(6), 90m, 90m, 90m, 90m, 100)); // Price drops below MA
+            candles.Add(new CandleData(startDate.AddDays(7), 110m, 110m, 110m, 110m, 100)); // Price breaks above MA
             
             // Expected signal: Buy1 on the last candle
 
@@ -59,8 +60,9 @@ namespace StockAnalyzer.Core.Tests.ScreeningConditions
         {
             var parameter = new CoreGranvilleLawParameter { MaPeriod = 5, SlopePeriod = 2 };
             var candles = CreateFlatCandles(6, 100m);
-            candles.Add(new CandleData(DateTime.Today.AddDays(6), 110m, 110m, 110m, 110m, 100)); // Price rises above MA
-            candles.Add(new CandleData(DateTime.Today.AddDays(7), 90m, 90m, 90m, 90m, 100)); // Price breaks below MA
+            var startDate = new DateTime(2023, 1, 1);
+            candles.Add(new CandleData(startDate.AddDays(6), 110m, 110m, 110m, 110m, 100)); // Price rises above MA
+            candles.Add(new CandleData(startDate.AddDays(7), 90m, 90m, 90m, 90m, 100)); // Price breaks below MA
             
             // Expected signal: Sell1 on the last candle
 

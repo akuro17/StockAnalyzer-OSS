@@ -47,6 +47,8 @@ public partial class ReverseWatchCurveWindow : Window
         
         _chartPanel.PointerMoved += OnPointerMoved;
         _chartPanel.PointerExited += OnPointerExited;
+
+        Closed += (s, e) => _chartPanel.Dispose();
     }
 
     /// <summary>
@@ -214,9 +216,19 @@ public partial class ReverseWatchCurveWindow : Window
     /// Using a child Control ensures Bounds and pointer coordinates
     /// are in the same local coordinate space (fixes DPI/offset issues).
     /// </summary>
-    private sealed class ChartPanel : Control
+    private sealed class ChartPanel : Control, IDisposable
     {
         private readonly ReverseWatchCurveWindow _owner;
+        private readonly SKPaint _bgPaint = new() { Style = SKPaintStyle.Fill };
+        private readonly SKPaint _gridPaint = new() { StrokeWidth = 0.5f, Style = SKPaintStyle.Stroke, IsAntialias = true };
+        private readonly SKPaint _axisPaint = new() { StrokeWidth = 1f, Style = SKPaintStyle.Stroke, IsAntialias = true };
+        private readonly SKPaint _textPaint = new() { IsAntialias = true };
+        private readonly SKFont _textFont = new(SKTypeface.Default, 12);
+        private readonly SKPaint _pointPaint = new() { IsAntialias = true };
+        private readonly SKPaint _pathPaint = new() { StrokeWidth = 1.5f, Style = SKPaintStyle.Stroke, IsAntialias = true };
+        private readonly SKPath _curvePath = new();
+        private readonly SKPaint _hoverPaint = new() { StrokeWidth = 2f, Style = SKPaintStyle.Stroke, IsAntialias = true };
+        private bool _disposed;
 
         public ChartPanel(ReverseWatchCurveWindow owner)
         {
@@ -230,20 +242,43 @@ public partial class ReverseWatchCurveWindow : Window
             ClipToBounds = true;
         }
 
+        public void Dispose()
+        {
+            if (_disposed) return;
+            _disposed = true;
+            _bgPaint.Dispose();
+            _gridPaint.Dispose();
+            _axisPaint.Dispose();
+            _textPaint.Dispose();
+            _textFont.Dispose();
+            _pointPaint.Dispose();
+            _pathPaint.Dispose();
+            _curvePath.Dispose();
+            _hoverPaint.Dispose();
+        }
+
+        protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+        {
+            base.OnDetachedFromVisualTree(e);
+            Dispose();
+        }
+
         public override void Render(DrawingContext context)
         {
             base.Render(context);
-            if (_owner._data != null && _owner._data.Points.Count > 0)
+            if (!_disposed && _owner._data != null && _owner._data.Points.Count > 0)
             {
                 var renderScaling = TopLevel.GetTopLevel(this)?.RenderScaling ?? 1.0;
-                var themeManager = App.Current.Services?.GetService<IThemeManager>();
+                var themeManager = App.Current?.Services?.GetService<IThemeManager>();
                 var themeColors = themeManager?.CurrentTheme ?? ThemeColors.Dark;
                 // Bounds are in logical pixels. Using Size to ignore any Control X/Y layout offsets
                 // since Skia canvas (Inner operation) is strictly Local Coordinates.
                 var logicalBounds = new global::Avalonia.Rect(new global::Avalonia.Point(0, 0), Bounds.Size);
                 
                 context.Custom(new ChartDrawOperation(
-                    logicalBounds, _owner._data, _owner._hoveredPoint, _owner._mousePosition, themeColors, renderScaling));
+                    logicalBounds, _owner._data, _owner._hoveredPoint, _owner._mousePosition, themeColors,
+                    _bgPaint, _gridPaint, _axisPaint, _textPaint, _textFont, _pointPaint, _pathPaint, _curvePath, _hoverPaint,
+                    renderScaling));
             }
         }
     }
@@ -258,6 +293,15 @@ public partial class ReverseWatchCurveWindow : Window
         private readonly ReverseWatchCurvePoint? _hoveredPoint;
         private readonly global::Avalonia.Point _mousePosition;
         private readonly ThemeColors _themeColors;
+        private readonly SKPaint _bgPaint;
+        private readonly SKPaint _gridPaint;
+        private readonly SKPaint _axisPaint;
+        private readonly SKPaint _textPaint;
+        private readonly SKFont _textFont;
+        private readonly SKPaint _pointPaint;
+        private readonly SKPaint _pathPaint;
+        private readonly SKPath _curvePath;
+        private readonly SKPaint _hoverPaint;
         private readonly double _renderScaling;
 
         private const float MARGIN = 60f;
@@ -265,20 +309,33 @@ public partial class ReverseWatchCurveWindow : Window
         private const float POINT_RADIUS = 4f;
         private const float HOVER_POINT_RADIUS = 6f;
 
-        public ChartDrawOperation(global::Avalonia.Rect bounds, ReverseWatchCurveData data, 
+        public ChartDrawOperation(
+            global::Avalonia.Rect bounds, ReverseWatchCurveData data, 
             ReverseWatchCurvePoint? hoveredPoint, global::Avalonia.Point mousePosition, 
-            ThemeColors themeColors, double renderScaling = 1.0)
+            ThemeColors themeColors,
+            SKPaint bgPaint, SKPaint gridPaint, SKPaint axisPaint, SKPaint textPaint, SKFont textFont,
+            SKPaint pointPaint, SKPaint pathPaint, SKPath curvePath, SKPaint hoverPaint,
+            double renderScaling = 1.0)
         {
             _bounds = bounds;
             _data = data;
             _hoveredPoint = hoveredPoint;
             _mousePosition = mousePosition;
             _themeColors = themeColors;
+            _bgPaint = bgPaint;
+            _gridPaint = gridPaint;
+            _axisPaint = axisPaint;
+            _textPaint = textPaint;
+            _textFont = textFont;
+            _pointPaint = pointPaint;
+            _pathPaint = pathPaint;
+            _curvePath = curvePath;
+            _hoverPaint = hoverPaint;
             _renderScaling = renderScaling;
         }
 
         public global::Avalonia.Rect Bounds => _bounds;
-        public void Dispose() { }
+        public void Dispose() { /* Managed by ChartPanel */ }
         public bool Equals(ICustomDrawOperation? other) => false;
         public override bool Equals(object? obj) => Equals(obj as ICustomDrawOperation);
         public override int GetHashCode() => _bounds.GetHashCode();
@@ -305,10 +362,8 @@ public partial class ReverseWatchCurveWindow : Window
             var logicalWidth = (float)_bounds.Width;
             var logicalHeight = (float)_bounds.Height;
 
-            using (var bgPaint = new SKPaint { Color = _themeColors.RwChartBackground.ToSkColor(), Style = SKPaintStyle.Fill })
-            {
-                canvas.DrawRect(0, 0, logicalWidth, logicalHeight, bgPaint);
-            }
+            _bgPaint.Color = _themeColors.RwChartBackground.ToSkColor();
+            canvas.DrawRect(0, 0, logicalWidth, logicalHeight, _bgPaint);
             
             var chartWidth = logicalWidth - 2 * MARGIN;
             var chartHeight = logicalHeight - 2 * MARGIN - TIME_AXIS_HEIGHT;
@@ -354,13 +409,7 @@ public partial class ReverseWatchCurveWindow : Window
 
         private void DrawGrid(SKCanvas canvas, float width, float height)
         {
-            using var gridPaint = new SKPaint
-            {
-                Color = _themeColors.RwGridLine.ToSkColor(),
-                StrokeWidth = 0.5f,
-                Style = SKPaintStyle.Stroke,
-                IsAntialias = true
-            };
+            _gridPaint.Color = _themeColors.RwGridLine.ToSkColor();
 
             var chartWidth = width - 2 * MARGIN;
             var chartHeight = height - 2 * MARGIN - TIME_AXIS_HEIGHT;
@@ -368,88 +417,71 @@ public partial class ReverseWatchCurveWindow : Window
             for (int i = 1; i < 5; i++)
             {
                 var x = MARGIN + chartWidth * i / 5;
-                canvas.DrawLine(x, MARGIN, x, height - MARGIN - TIME_AXIS_HEIGHT, gridPaint);
+                canvas.DrawLine(x, MARGIN, x, height - MARGIN - TIME_AXIS_HEIGHT, _gridPaint);
             }
 
             for (int i = 1; i < 5; i++)
             {
                 var y = MARGIN + chartHeight * i / 5;
-                canvas.DrawLine(MARGIN, y, width - MARGIN, y, gridPaint);
+                canvas.DrawLine(MARGIN, y, width - MARGIN, y, _gridPaint);
             }
         }
 
         private void DrawAxes(SKCanvas canvas, float width, float height)
         {
-            using var axisPaint = new SKPaint
-            {
-                Color = _themeColors.RwAxisLine.ToSkColor(),
-                StrokeWidth = 1,
-                IsAntialias = true
-            };
-            using var textPaint = new SKPaint
-            {
-                Color = _themeColors.RwAxisText.ToSkColor(),
-                IsAntialias = true
-            };
-            using var textFont = new SKFont(SKTypeface.Default, 12);
+            _axisPaint.Color = _themeColors.RwAxisLine.ToSkColor();
+            _textPaint.Color = _themeColors.RwAxisText.ToSkColor();
 
             var axisY = height - MARGIN - TIME_AXIS_HEIGHT;
-            canvas.DrawLine(MARGIN, axisY, width - MARGIN, axisY, axisPaint);
-            canvas.DrawLine(MARGIN, MARGIN, MARGIN, axisY, axisPaint);
+            canvas.DrawLine(MARGIN, axisY, width - MARGIN, axisY, _axisPaint);
+            canvas.DrawLine(MARGIN, MARGIN, MARGIN, axisY, _axisPaint);
 
             // X axis label
             var xLabel = "Volume Average";
-            var xLabelWidth = textPaint.MeasureText(xLabel);
-            canvas.DrawText(xLabel, (width - xLabelWidth) / 2, height - 5, textFont, textPaint);
+            var xLabelWidth = _textPaint.MeasureText(xLabel);
+            canvas.DrawText(xLabel, (width - xLabelWidth) / 2, height - 5, _textFont, _textPaint);
 
             // Y axis label (rotated)
             canvas.Save();
             canvas.RotateDegrees(-90, 15, height / 2);
             var yLabel = "Price Average";
-            var yLabelWidth = textPaint.MeasureText(yLabel);
-            canvas.DrawText(yLabel, 15, height / 2 + yLabelWidth / 2, textFont, textPaint);
+            var yLabelWidth = _textPaint.MeasureText(yLabel);
+            canvas.DrawText(yLabel, 15, height / 2 + yLabelWidth / 2, _textFont, _textPaint);
             canvas.Restore();
 
             // Price scale labels
             var minPriceText = _data.Bounds.MinPrice.ToString("N0");
             var maxPriceText = _data.Bounds.MaxPrice.ToString("N0");
-            canvas.DrawText(minPriceText, MARGIN + 5, axisY - 5, textFont, textPaint);
-            canvas.DrawText(maxPriceText, MARGIN + 5, MARGIN + 15, textFont, textPaint);
+            canvas.DrawText(minPriceText, MARGIN + 5, axisY - 5, _textFont, _textPaint);
+            canvas.DrawText(maxPriceText, MARGIN + 5, MARGIN + 15, _textFont, _textPaint);
 
-            DrawColorLegend(canvas, width, textFont, textPaint);
+            DrawColorLegend(canvas, width, _textFont, _textPaint);
         }
 
         private void DrawTimeAxis(SKCanvas canvas, float width, float height)
         {
-            using var textPaint = new SKPaint
-            {
-                Color = _themeColors.RwAxisText.ToSkColor(),
-                IsAntialias = true
-            };
-            using var textFont = new SKFont(SKTypeface.Default, 12);
+            _textPaint.Color = _themeColors.RwAxisText.ToSkColor();
 
             var axisY = height - MARGIN - TIME_AXIS_HEIGHT;
             
             var minVolText = _data.Bounds.MinVolume.ToString("N0");
             var maxVolText = _data.Bounds.MaxVolume.ToString("N0");
-            canvas.DrawText(minVolText, MARGIN, axisY + 14, textFont, textPaint);
-            var maxVolWidth = textPaint.MeasureText(maxVolText);
-            canvas.DrawText(maxVolText, width - MARGIN - maxVolWidth, axisY + 14, textFont, textPaint);
+            canvas.DrawText(minVolText, MARGIN, axisY + 14, _textFont, _textPaint);
+            var maxVolWidth = _textPaint.MeasureText(maxVolText);
+            canvas.DrawText(maxVolText, width - MARGIN - maxVolWidth, axisY + 14, _textFont, _textPaint);
 
             var dateY = height - MARGIN + 10;
             var startDate = _data.Points[0].Date.ToString("MM/dd");
             var endDate = _data.Points[^1].Date.ToString("MM/dd");
 
-            canvas.DrawText($"Start: {startDate}", MARGIN + 5, dateY, textFont, textPaint);
+            canvas.DrawText($"Start: {startDate}", MARGIN + 5, dateY, _textFont, _textPaint);
             var endDateText = $"End: {endDate}";
-            var endDateWidth = textPaint.MeasureText(endDateText);
-            canvas.DrawText(endDateText, width - MARGIN - endDateWidth - 5, dateY, textFont, textPaint);
+            var endDateWidth = _textPaint.MeasureText(endDateText);
+            canvas.DrawText(endDateText, width - MARGIN - endDateWidth - 5, dateY, _textFont, _textPaint);
         }
 
         private void DrawColorLegend(SKCanvas canvas, float width, SKFont textFont, SKPaint textPaint)
         {
-            using var pointPaint = new SKPaint { IsAntialias = true };
-
             var legendX = width - 120;
             var legendY = 50f;
 
@@ -466,23 +498,16 @@ public partial class ReverseWatchCurveWindow : Window
 
             for (int i = 0; i < colors.Length; i++)
             {
-                pointPaint.Color = colors[i];
-                canvas.DrawCircle(legendX + 20 + i * 16, legendY - 4, 5, pointPaint);
+                _pointPaint.Color = colors[i];
+                canvas.DrawCircle(legendX + 20 + i * 16, legendY - 4, 5, _pointPaint);
             }
         }
 
         private void DrawCurve(SKCanvas canvas, ScaleContext scale)
         {
-            using var pointPaint = new SKPaint { IsAntialias = true };
-            using var pathPaint = new SKPaint
-            {
-                Color = _themeColors.RwCurvePath.ToSkColor(),
-                StrokeWidth = 1.5f,
-                Style = SKPaintStyle.Stroke,
-                IsAntialias = true
-            };
+            _pathPaint.Color = _themeColors.RwCurvePath.ToSkColor();
 
-            using var path = new SKPath();
+            _curvePath.Reset();
             var pointCount = _data.Points.Count;
             var maxIndex = Math.Max(pointCount - 1, 1);
 
@@ -491,30 +516,24 @@ public partial class ReverseWatchCurveWindow : Window
                 var point = _data.Points[i];
                 var coords = ToScreenCoordinates(point, scale);
 
-                if (i == 0) path.MoveTo(coords.X, coords.Y);
-                else path.LineTo(coords.X, coords.Y);
+                if (i == 0) _curvePath.MoveTo(coords.X, coords.Y);
+                else _curvePath.LineTo(coords.X, coords.Y);
 
                 var colorRatio = (float)i / maxIndex;
-                pointPaint.Color = SKColor.FromHsv(240 * (1 - colorRatio), 80, 80);
-                canvas.DrawCircle(coords.X, coords.Y, POINT_RADIUS, pointPaint);
+                _pointPaint.Color = SKColor.FromHsv(240 * (1 - colorRatio), 80, 80);
+                canvas.DrawCircle(coords.X, coords.Y, POINT_RADIUS, _pointPaint);
             }
-            canvas.DrawPath(path, pathPaint);
+            canvas.DrawPath(_curvePath, _pathPaint);
         }
 
         private void DrawHoverPoint(SKCanvas canvas, ScaleContext scale)
         {
             if (_hoveredPoint == null) return;
             
-            using var hoverPaint = new SKPaint
-            {
-                Color = _themeColors.RwHoverPoint.ToSkColor(),
-                StrokeWidth = 2,
-                Style = SKPaintStyle.Stroke,
-                IsAntialias = true
-            };
+            _hoverPaint.Color = _themeColors.RwHoverPoint.ToSkColor();
             
             var coords = ToScreenCoordinates(_hoveredPoint, scale);
-            canvas.DrawCircle(coords.X, coords.Y, HOVER_POINT_RADIUS, hoverPaint);
+            canvas.DrawCircle(coords.X, coords.Y, HOVER_POINT_RADIUS, _hoverPaint);
         }
 
         private static ScreenCoordinates ToScreenCoordinates(ReverseWatchCurvePoint point, ScaleContext scale)

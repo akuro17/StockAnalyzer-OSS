@@ -113,7 +113,7 @@ class StockDataProvider:
                 except Exception as e:
                     logging.error(f"Index retry download failed for {index_symbol}: {e}")
                     return None
-            if df_raw.empty:
+            if df_raw is None or df_raw.empty:
                 logging.warning(f"yfinance returned empty data for {symbol}")
                 return None
 

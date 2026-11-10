@@ -338,6 +338,15 @@ namespace StockAnalyzer.Core.Services
 
             // 2. Notify Python to expect data
             var response = await _processManager.SendCommandAsync("prepare_data_transfer", new { size = arrowBytes.Length });
+
+            using (var doc = System.Text.Json.JsonDocument.Parse(response))
+            {
+                if (!doc.RootElement.TryGetProperty("status", out var statusProp) || statusProp.GetString() != "ready")
+                {
+                    string errorMsg = doc.RootElement.TryGetProperty("error", out var errProp) ? errProp.GetString() ?? response : response;
+                    throw new InvalidOperationException($"Python data transfer preparation rejected: {errorMsg}");
+                }
+            }
             
             // 3. Send raw bytes
             await _processManager.SendBinaryDataAsync(arrowBytes);
@@ -437,8 +446,11 @@ namespace StockAnalyzer.Core.Services
                         RedirectStandardOutput = true,
                         RedirectStandardError = true,
                         CreateNoWindow = true,
+                        StandardOutputEncoding = System.Text.Encoding.UTF8,
+                        StandardErrorEncoding = System.Text.Encoding.UTF8,
                         WorkingDirectory = System.IO.Path.GetDirectoryName(resolvedScriptPath)
                     };
+                    startInfo.EnvironmentVariables["PYTHONIOENCODING"] = "utf-8";
 
                     startInfo.ArgumentList.Add("-u");
                     startInfo.ArgumentList.Add(resolvedScriptPath);
@@ -455,49 +467,59 @@ namespace StockAnalyzer.Core.Services
                     LogSyncActivity($"Starting process: {pythonExe} {string.Join(" ", startInfo.ArgumentList)}");
                     
                     var combinedOutput = new RollingLogBuffer(500);
-                    using var process = new System.Diagnostics.Process { StartInfo = startInfo };
-                    
-                    process.OutputDataReceived += (s, e) =>
-                    {
-                        if (string.IsNullOrEmpty(e.Data)) return;
-                        combinedOutput.AppendLine(e.Data);
-                        if (e.Data.StartsWith("PROGRESS:"))
-                        {
-                            if (int.TryParse(e.Data.Substring(9), out int p)) progress?.Report(p);
-                        }
-                    };
-                    process.ErrorDataReceived += (s, e) =>
-                    {
-                        if (!string.IsNullOrEmpty(e.Data)) 
-                        {
-                            combinedOutput.AppendLine("[STDERR] " + e.Data);
-                            LogSyncActivity($"[Python ERR] {e.Data}", LogLevel.Debug);
-                        }
-                    };
-
-                    using var reg = linkedToken.Register(() => 
-                    {
-                        try { if (!process.HasExited) process.Kill(true); } catch { }
-                    });
 
                     await _resiliencePipeline.ExecuteAsync(async innerCt => 
                     {
+                        using var process = new System.Diagnostics.Process { StartInfo = startInfo };
+                        
+                        process.OutputDataReceived += (s, e) =>
+                        {
+                            if (string.IsNullOrEmpty(e.Data)) return;
+                            combinedOutput.AppendLine(e.Data);
+                            if (e.Data.StartsWith("PROGRESS:"))
+                            {
+                                if (int.TryParse(e.Data.Substring(9), out int p)) progress?.Report(p);
+                            }
+                        };
+                        process.ErrorDataReceived += (s, e) =>
+                        {
+                            if (!string.IsNullOrEmpty(e.Data)) 
+                            {
+                                combinedOutput.AppendLine("[STDERR] " + e.Data);
+                                LogSyncActivity($"[Python ERR] {e.Data}", LogLevel.Debug);
+                            }
+                        };
+
+                        using var reg = innerCt.Register(() => 
+                        {
+                            try { if (!process.HasExited) process.Kill(entireProcessTree: true); } catch { }
+                        });
+
                         process.Start();
+                        using var jobHandle = WindowsJobObject.TryAssign(process);
                         process.BeginOutputReadLine();
                         process.BeginErrorReadLine();
 
-                        await process.WaitForExitAsync(innerCt);
+                        try
+                        {
+                            await process.WaitForExitAsync(innerCt);
+                        }
+                        catch
+                        {
+                            try { if (!process.HasExited) process.Kill(entireProcessTree: true); } catch { }
+                            throw;
+                        }
+
+                        LogSyncActivity($"Process exited with code {process.ExitCode}");
+
+                        if (process.ExitCode != 0)
+                        {
+                            var errorLogs = combinedOutput.ToString();
+                            throw new Exception($"Update pipeline failed with exit code {process.ExitCode}.{Environment.NewLine}Logs:{Environment.NewLine}{errorLogs}");
+                        }
                     }, linkedToken);
 
-                    LogSyncActivity($"Process exited with code {process.ExitCode}");
-
                     string? timeframeFailure = await GenerateTimeFramesAsync(symbol, progress, linkedToken).ConfigureAwait(false);
-
-                    if (process.ExitCode != 0)
-                    {
-                        var errorLogs = combinedOutput.ToString();
-                        throw new Exception($"Update pipeline failed with exit code {process.ExitCode}.{Environment.NewLine}Logs:{Environment.NewLine}{errorLogs}");
-                    }
 
                     if (timeframeFailure != null)
                     {
@@ -632,8 +654,11 @@ namespace StockAnalyzer.Core.Services
                         RedirectStandardOutput = true,
                         RedirectStandardError = true,
                         CreateNoWindow = true,
+                        StandardOutputEncoding = System.Text.Encoding.UTF8,
+                        StandardErrorEncoding = System.Text.Encoding.UTF8,
                         WorkingDirectory = System.IO.Path.GetDirectoryName(resolvedScriptPath)
                     };
+                    startInfo.EnvironmentVariables["PYTHONIOENCODING"] = "utf-8";
 
                     startInfo.ArgumentList.Add("-u");
                     startInfo.ArgumentList.Add(resolvedScriptPath);
@@ -678,64 +703,74 @@ namespace StockAnalyzer.Core.Services
                     LogSyncActivity($"Starting process (Config): {pythonExe} {string.Join(" ", startInfo.ArgumentList)}");
                     
                     var combinedOutput = new RollingLogBuffer(500);
-                    using var process = new System.Diagnostics.Process { StartInfo = startInfo };
-                    
-                    process.OutputDataReceived += (s, e) =>
-                    {
-                        if (string.IsNullOrEmpty(e.Data)) return;
-                        combinedOutput.AppendLine(e.Data);
-                        if (e.Data.StartsWith("PROGRESS:"))
-                        {
-                            if (int.TryParse(e.Data.Substring(9), out int p)) progress?.Report(p);
-                        }
-                    };
-                    process.ErrorDataReceived += (s, e) =>
-                    {
-                        if (!string.IsNullOrEmpty(e.Data)) 
-                        {
-                            combinedOutput.AppendLine("[STDERR] " + e.Data);
-                            LogSyncActivity($"[Python ERR] {e.Data}", LogLevel.Debug);
-                        }
-                    };
 
                     await _resiliencePipeline.ExecuteAsync(async innerCt => 
                     {
+                        using var process = new System.Diagnostics.Process { StartInfo = startInfo };
+                        
+                        process.OutputDataReceived += (s, e) =>
+                        {
+                            if (string.IsNullOrEmpty(e.Data)) return;
+                            combinedOutput.AppendLine(e.Data);
+                            if (e.Data.StartsWith("PROGRESS:"))
+                            {
+                                if (int.TryParse(e.Data.Substring(9), out int p)) progress?.Report(p);
+                            }
+                        };
+                        process.ErrorDataReceived += (s, e) =>
+                        {
+                            if (!string.IsNullOrEmpty(e.Data)) 
+                            {
+                                combinedOutput.AppendLine("[STDERR] " + e.Data);
+                                LogSyncActivity($"[Python ERR] {e.Data}", LogLevel.Debug);
+                            }
+                        };
+
                         process.Start();
+                        using var jobHandle = WindowsJobObject.TryAssign(process);
                         process.BeginOutputReadLine();
                         process.BeginErrorReadLine();
 
-                        var exitTask = process.WaitForExitAsync();
-                        var cancelTask = Task.Delay(-1, innerCt);
-
-                        var completedTask = await Task.WhenAny(exitTask, cancelTask);
-                        if (completedTask == cancelTask)
+                        try
                         {
-                            LogSyncActivity("Cancellation triggered. Waiting up to 5 seconds for graceful exit...");
-                            var delayTask = Task.Delay(5000);
-                            var graceCompletedTask = await Task.WhenAny(exitTask, delayTask);
-                            if (graceCompletedTask == delayTask)
+                            var exitTask = process.WaitForExitAsync();
+                            var cancelTask = Task.Delay(-1, innerCt);
+
+                            var completedTask = await Task.WhenAny(exitTask, cancelTask);
+                            if (completedTask == cancelTask)
                             {
-                                LogSyncActivity("Grace period expired. Forcefully killing process tree...");
-                                try { if (!process.HasExited) process.Kill(true); } catch { }
+                                LogSyncActivity("Cancellation triggered. Waiting up to 5 seconds for graceful exit...");
+                                var delayTask = Task.Delay(5000);
+                                var graceCompletedTask = await Task.WhenAny(exitTask, delayTask);
+                                if (graceCompletedTask == delayTask)
+                                {
+                                    LogSyncActivity("Grace period expired. Forcefully killing process tree...");
+                                    try { if (!process.HasExited) process.Kill(entireProcessTree: true); } catch { }
+                                    await exitTask;
+                                }
+                                throw new OperationCanceledException(innerCt);
+                            }
+                            else
+                            {
                                 await exitTask;
                             }
-                            throw new OperationCanceledException(innerCt);
                         }
-                        else
+                        catch
                         {
-                            await exitTask;
+                            try { if (!process.HasExited) process.Kill(entireProcessTree: true); } catch { }
+                            throw;
+                        }
+
+                        LogSyncActivity($"Process exited with code {process.ExitCode}");
+
+                        if (process.ExitCode != 0)
+                        {
+                            var errorLogs = combinedOutput.ToString();
+                            throw new Exception($"Update pipeline failed with exit code {process.ExitCode}.{Environment.NewLine}Logs:{Environment.NewLine}{errorLogs}");
                         }
                     }, linkedToken);
 
-                    LogSyncActivity($"Process exited with code {process.ExitCode}");
-
                     string? timeframeFailure = await GenerateTimeFramesAsync(symbol, progress, linkedToken).ConfigureAwait(false);
-
-                    if (process.ExitCode != 0)
-                    {
-                        var errorLogs = combinedOutput.ToString();
-                        throw new Exception($"Update pipeline failed with exit code {process.ExitCode}.{Environment.NewLine}Logs:{Environment.NewLine}{errorLogs}");
-                    }
 
                     if (timeframeFailure != null)
                     {
@@ -1069,14 +1104,22 @@ namespace StockAnalyzer.Core.Services
             process.OutputDataReceived += (s, e) => { if (e.Data != null) LogSyncActivity($"[PIP OUT] {e.Data}", LogLevel.Debug); };
             process.ErrorDataReceived += (s, e) => { if (e.Data != null) LogSyncActivity($"[PIP ERR] {e.Data}", LogLevel.Debug); };
 
-            using var reg = ct.Register(() => { try { if (!process.HasExited) process.Kill(true); } catch { } });
+            using var reg = ct.Register(() => { try { if (!process.HasExited) process.Kill(entireProcessTree: true); } catch { } });
 
             await _resiliencePipeline.ExecuteAsync(async innerCt => 
             {
                 process.Start();
                 process.BeginOutputReadLine();
                 process.BeginErrorReadLine();
-                await process.WaitForExitAsync(innerCt);
+                try
+                {
+                    await process.WaitForExitAsync(innerCt);
+                }
+                catch
+                {
+                    try { if (!process.HasExited) process.Kill(entireProcessTree: true); } catch { }
+                    throw;
+                }
             }, ct);
 
             if (process.ExitCode != 0)
@@ -1104,14 +1147,22 @@ namespace StockAnalyzer.Core.Services
             process.OutputDataReceived += (s, e) => { if (e.Data != null) LogSyncActivity($"[PIP OUT] {e.Data}", LogLevel.Debug); };
             process.ErrorDataReceived += (s, e) => { if (e.Data != null) LogSyncActivity($"[PIP ERR] {e.Data}", LogLevel.Debug); };
 
-            using var reg = ct.Register(() => { try { if (!process.HasExited) process.Kill(true); } catch { } });
+            using var reg = ct.Register(() => { try { if (!process.HasExited) process.Kill(entireProcessTree: true); } catch { } });
 
             await _resiliencePipeline.ExecuteAsync(async innerCt => 
             {
                 process.Start();
                 process.BeginOutputReadLine();
                 process.BeginErrorReadLine();
-                await process.WaitForExitAsync(innerCt);
+                try
+                {
+                    await process.WaitForExitAsync(innerCt);
+                }
+                catch
+                {
+                    try { if (!process.HasExited) process.Kill(entireProcessTree: true); } catch { }
+                    throw;
+                }
             }, ct);
 
             if (process.ExitCode != 0)

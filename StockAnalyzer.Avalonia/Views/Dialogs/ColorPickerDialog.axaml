@@ -2,9 +2,10 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:l="clr-namespace:StockAnalyzer.Avalonia.Markup;assembly=StockAnalyzer.Avalonia"
         mc:Ignorable="d" d:DesignWidth="420" d:DesignHeight="500"
         x:Class="StockAnalyzer.Avalonia.Views.Dialogs.ColorPickerDialog"
-        Title="Color Picker"
+        Title="{l:Localize Dialog_ColorPicker_Title}"
         MinWidth="420" MinHeight="500" SizeToContent="WidthAndHeight"
         WindowStartupLocation="CenterOwner"
         CanResize="False"
@@ -17,13 +18,13 @@
 
     <Border BorderBrush="{DynamicResource Brush.Dialog.Border}" BorderThickness="1" Background="{DynamicResource Brush.Dialog.Background}">
         <Grid RowDefinitions="Auto,*,Auto" Margin="15">
-            <TextBlock Text="Color Picker" FontSize="16" FontWeight="Bold" Margin="0,0,0,10" Foreground="Black" />
+            <TextBlock Text="{l:Localize Dialog_ColorPicker_Title}" FontSize="16" FontWeight="Bold" Margin="0,0,0,10" Foreground="Black" />
 
             <ScrollViewer Grid.Row="1">
                 <StackPanel Spacing="10">
                     <!-- Preview -->
                     <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Center">
-                        <TextBlock Text="Preview:" VerticalAlignment="Center" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
+                        <TextBlock Text="{l:Localize Dialog_ColorPicker_Preview}" VerticalAlignment="Center" Foreground="{DynamicResource Brush.Dialog.LabelText}"/>
                         <Border x:Name="ColorPreviewBorder"
                                 Width="60" Height="30"
                                 BorderBrush="{DynamicResource Brush.Dialog.Border}" BorderThickness="1"
@@ -44,8 +45,8 @@
             </ScrollViewer>
 
             <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10" Margin="0,15,0,0">
-                <Button Content="OK" Click="OnOkClick" Width="80" Theme="{StaticResource PrimaryButtonStyle}"/>
-                <Button Content="Cancel" Click="OnCancelClick" Width="80" Theme="{StaticResource SecondaryButtonStyle}"/>
+                <Button Content="{l:Localize Btn_OK}" Click="OnOkClick" Width="80" Theme="{StaticResource PrimaryButtonStyle}"/>
+                <Button Content="{l:Localize Btn_Cancel}" Click="OnCancelClick" Width="80" Theme="{StaticResource SecondaryButtonStyle}"/>
             </StackPanel>
         </Grid>
     </Border>

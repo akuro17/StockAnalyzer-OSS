@@ -63,7 +63,7 @@ public class HighlighterObject : RelativeGeometricRenderer, IAabbDeformableObjec
     public HighlighterObject() : base()
     {
         Color = DrawingThemeContext.DefaultColor;
-        Thickness = 12.0;
+        Thickness = DrawingThemeContext.DefaultHighlighterThickness;
 
         var paint = EnsurePaint();
         paint.StrokeCap = SKStrokeCap.Square;

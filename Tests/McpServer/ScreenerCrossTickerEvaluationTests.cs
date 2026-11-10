@@ -154,25 +154,25 @@ public sealed class ScreenerCrossTickerEvaluationTests : IClassFixture<ScreenerC
 
     // ---- G1-T6: the two symbols do not share a calendar (different holidays): a date-aligned value, or no value, never a positional one ----
 
-    /// <summary>The seven types the Screener enables beyond Correlation and CrossCorrelation (all of them pair the comparison symbol's bars by calendar date).</summary>
-    public static IEnumerable<object[]> DateAlignedSevenTypes()
+    /// <summary>The eight types the Screener enables beyond Correlation and CrossCorrelation (all of them pair the comparison symbol's bars by calendar date).</summary>
+    public static IEnumerable<object[]> DateAlignedEightTypes()
         => new[]
         {
             IndicatorType.RollingBeta, IndicatorType.RollingAlpha, IndicatorType.RollingRSquared, IndicatorType.CointegrationSpread,
-            IndicatorType.PairRatio, IndicatorType.PairSpread, IndicatorType.Ratiocator
+            IndicatorType.PairRatio, IndicatorType.PairSpread, IndicatorType.Ratiocator, IndicatorType.CrossTickerDtw
         }.Select(type => new object[] { type.ToString() });
 
     [Fact]
-    public void TheSevenTypesAreTheTwoTickerTypesTheBacktestRefuses()
+    public void TheEightTypesAreTheTwoTickerTypesTheBacktestRefuses()
     {
-        string[] seven = DateAlignedSevenTypes().Select(row => (string)row[0]).OrderBy(n => n, StringComparer.Ordinal).ToArray();
+        string[] eight = DateAlignedEightTypes().Select(row => (string)row[0]).OrderBy(n => n, StringComparer.Ordinal).ToArray();
         string[] blocked = TwoTickerTypes().Select(row => (string)row[0]).Where(n => BacktestIndicatorEligibility.IsTypeBlocked(Enum.Parse<IndicatorType>(n))).OrderBy(n => n, StringComparer.Ordinal).ToArray();
 
-        Assert.Equal(blocked, seven);
+        Assert.Equal(blocked, eight);
     }
 
     [Theory]
-    [MemberData(nameof(DateAlignedSevenTypes))]
+    [MemberData(nameof(DateAlignedEightTypes))]
     public async Task WhenTheComparisonSymbolHasNoBarOnTheLastDateOfTheEvaluatedSymbolThereIsNoValue(string typeName)
     {
         var type = Enum.Parse<IndicatorType>(typeName);
@@ -195,7 +195,7 @@ public sealed class ScreenerCrossTickerEvaluationTests : IClassFixture<ScreenerC
     }
 
     [Theory]
-    [MemberData(nameof(DateAlignedSevenTypes))]
+    [MemberData(nameof(DateAlignedEightTypes))]
     public async Task WhenTheTwoSymbolsShareNoDateThereIsNoValueAtAnyOffset(string typeName)
     {
         var type = Enum.Parse<IndicatorType>(typeName);

@@ -9,6 +9,7 @@ using System.Text.Json.Serialization;
 using Avalonia.Media;
 using StockAnalyzer.Core.Constants;
 using StockAnalyzer.Core.Models.Drawing;
+using StockAnalyzer.Core.Utils;
 
 namespace StockAnalyzer.Avalonia.Drawing.Serialization;
 
@@ -273,7 +274,7 @@ public static class DrawingDocumentCodec
 
             foreach (var ctx in state.Contexts)
             {
-                if (!Enum.TryParse<ChartDrawingContextType>(ctx.ContextName, out var contextType))
+                if (!StrictEnumValidator.TryParseStrict<ChartDrawingContextType>(ctx.ContextName, out var contextType))
                 {
                     throw new NotSupportedException($"Unknown drawing context type: '{ctx.ContextName}'.");
                 }

@@ -9,6 +9,7 @@ using StockAnalyzer.Core.Execution;
 using StockAnalyzer.Core.Models.ReinforcementLearning;
 using StockAnalyzer.Core.Models.Settings;
 using StockAnalyzer.Core.Services.ReinforcementLearning;
+using StockAnalyzer.Core.Utils;
 
 namespace StockAnalyzer.McpServer.Tools;
 
@@ -89,7 +90,7 @@ internal sealed class CheckPortfolioRlPreflightTool : IMcpTool
 
         string? modeText = ToolArgs.String(arguments, ModeArgument);
         RlPanelEvaluationMode mode = RlPanelEvaluationMode.Standard;
-        if (modeText is not null && !Enum.TryParse(modeText, ignoreCase: true, out mode))
+        if (modeText is not null && !StrictEnumValidator.TryParseStrict(modeText, out mode))
         {
             throw new ToolException(ToolErrorCodes.InvalidArgument, $"Unknown mode '{modeText}'.", ModeArgument);
         }

@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using StockAnalyzer.Core.Discussion;
 using StockAnalyzer.Core.Models.Settings;
+using StockAnalyzer.Core.Services;
 using StockAnalyzer.Avalonia.Services;
 
 namespace StockAnalyzer.Avalonia.ViewModels.Dialogs;
@@ -20,6 +21,7 @@ public partial class McpServerSettingsViewModel : ViewModelBase, ISettingsPageVi
 {
     private readonly IMcpServerSettingsManager _manager;
     private readonly ILogger<McpServerSettingsViewModel> _logger;
+    private readonly IDispatcherService? _dispatcherService;
     private McpServerSettings _snapshot;
     private bool _isApplying;
 
@@ -130,10 +132,12 @@ public partial class McpServerSettingsViewModel : ViewModelBase, ISettingsPageVi
 
     public McpServerSettingsViewModel(
         IMcpServerSettingsManager manager,
-        ILogger<McpServerSettingsViewModel>? logger = null)
+        ILogger<McpServerSettingsViewModel>? logger = null,
+        IDispatcherService? dispatcherService = null)
     {
         _manager = manager ?? throw new ArgumentNullException(nameof(manager));
         _logger = logger ?? NullLogger<McpServerSettingsViewModel>.Instance;
+        _dispatcherService = dispatcherService;
         _snapshot = new McpServerSettings();
 
         LoadTask = LoadAsync();
@@ -145,13 +149,29 @@ public partial class McpServerSettingsViewModel : ViewModelBase, ISettingsPageVi
         {
             var loaded = await _manager.LoadAsync().ConfigureAwait(false);
             _snapshot = loaded.Clone();
-            ApplySettings(_snapshot);
+            DispatchOnUI(() => ApplySettings(_snapshot));
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to load McpServer settings in ViewModel.");
             _snapshot = new McpServerSettings();
-            ApplySettings(_snapshot);
+            DispatchOnUI(() => ApplySettings(_snapshot));
+        }
+    }
+
+    private void DispatchOnUI(Action action)
+    {
+        if (_dispatcherService is not null)
+        {
+            _dispatcherService.Post(action);
+        }
+        else if (global::Avalonia.Threading.Dispatcher.UIThread.CheckAccess())
+        {
+            action();
+        }
+        else
+        {
+            global::Avalonia.Threading.Dispatcher.UIThread.Post(action);
         }
     }
 
@@ -328,13 +348,19 @@ public partial class McpServerSettingsViewModel : ViewModelBase, ISettingsPageVi
             var settings = BuildSettings();
             await _manager.SaveAsync(settings).ConfigureAwait(false);
             _snapshot = settings.Clone();
-            ValidationMessage = string.Empty;
-            OnPropertyChanged(nameof(IsModified));
+            DispatchOnUI(() =>
+            {
+                ValidationMessage = string.Empty;
+                OnPropertyChanged(nameof(IsModified));
+            });
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to save McpServer settings.");
-            ValidationMessage = $"Failed to save settings: {ex.Message}";
+            DispatchOnUI(() =>
+            {
+                ValidationMessage = $"Failed to save settings: {ex.Message}";
+            });
         }
     }
 

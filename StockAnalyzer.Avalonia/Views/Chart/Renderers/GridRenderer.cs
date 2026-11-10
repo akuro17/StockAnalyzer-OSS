@@ -17,6 +17,7 @@ public sealed class GridRenderer : IDisposable
     private readonly SKPaint _zScoreThresholdPaint;
     private readonly SKPaint _textPaint;
     private readonly SKPathEffect _dashEffect;
+    private readonly SKPathEffect _thresholdDashEffect;
 
     public GridRenderer()
     {
@@ -39,13 +40,13 @@ public sealed class GridRenderer : IDisposable
             // Solid line (no PathEffect)
         };
 
-        var thresholdDash = SKPathEffect.CreateDash(new float[] { ChartTheme.ZScoreThresholdDashOn, ChartTheme.ZScoreThresholdDashOff }, 0);
+        _thresholdDashEffect = SKPathEffect.CreateDash(new float[] { ChartTheme.ZScoreThresholdDashOn, ChartTheme.ZScoreThresholdDashOff }, 0);
         _zScoreThresholdPaint = new SKPaint
         {
             StrokeWidth = 1,
             IsAntialias = false,
             Style = SKPaintStyle.Stroke,
-            PathEffect = thresholdDash
+            PathEffect = _thresholdDashEffect
         };
 
         _textPaint = new SKPaint
@@ -407,5 +408,6 @@ public sealed class GridRenderer : IDisposable
         _zScoreThresholdPaint.Dispose();
         _textPaint.Dispose();
         _dashEffect.Dispose();
+        _thresholdDashEffect.Dispose();
     }
 }

@@ -42,6 +42,18 @@ public static class DrawingThemeContext
     private static SKTypeface? _defaultTextTypeface;
     public static SKTypeface DefaultTextTypeface => _defaultTextTypeface ??= (SKFontManager.Default.MatchCharacter('あ') ?? SKTypeface.Default);
     public static double DefaultStrokeThickness { get; private set; } = 1.0;
+    public static double DefaultHighlighterThickness { get; private set; } = 12.0;
+
+    /// <summary>
+    /// SSoT tolerance threshold for screen coordinate geometry calculations (1/20th of a physical screen pixel).
+    /// Protects against single-precision float rounding noise and IEEE 754 1 ULP limitations on 4K/8K displays.
+    /// </summary>
+    public const float ScreenGeometryEpsilon = 0.05f;
+
+    /// <summary>
+    /// Squared screen geometry tolerance threshold (0.05^2 = 0.0025f) for zero-allocation distance-squared comparisons.
+    /// </summary>
+    public const float ScreenGeometryEpsilonSquared = 0.0025f;
     public static bool SmartGuidesEnabled { get; private set; } = StockAnalyzer.Core.Models.Settings.ChartSettingsConstants.DefaultSmartGuidesEnabled;
     public static double SmartGuideSnapDistance { get; private set; } = StockAnalyzer.Core.Models.Settings.ChartSettingsConstants.DefaultSmartGuideSnapDistance;
     public static int ControlPointHideTimeoutMs { get; private set; } = StockAnalyzer.Core.Models.Settings.ChartSettingsConstants.DefaultControlPointHideTimeoutSeconds * 1000;

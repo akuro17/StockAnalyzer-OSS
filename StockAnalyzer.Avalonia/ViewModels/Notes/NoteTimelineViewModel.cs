@@ -150,6 +150,7 @@ public sealed partial class NoteTimelineItemViewModel : ObservableObject
     /// token beyond that limit degrades to rendering nothing, same as the bottom row's own "+N"
     /// fallback for the overflow.</summary>
     private readonly Dictionary<Guid, NoteThumbnailItem> _thumbnailsByAttachmentId = new();
+    private readonly IDispatcherService? _dispatcherService;
 
     internal IReadOnlyDictionary<Guid, NoteThumbnailItem> ThumbnailsByAttachmentId => _thumbnailsByAttachmentId;
 
@@ -194,9 +195,11 @@ public sealed partial class NoteTimelineItemViewModel : ObservableObject
         int maxRenderedThumbnails = NotesSettingsConstants.DefaultMaxRenderedThumbnails,
         INoteSelectionTarget? selectionTarget = null,
         IndicatorColor? highlightColor = null,
-        StockAnalyzer.Avalonia.Services.StorageFeatureGate? storageGate = null)
+        StockAnalyzer.Avalonia.Services.StorageFeatureGate? storageGate = null,
+        IDispatcherService? dispatcherService = null)
     {
         _storageGate = storageGate ?? new StockAnalyzer.Avalonia.Services.StorageFeatureGate(null);
+        _dispatcherService = dispatcherService;
         Note = note;
         HighlightColor = highlightColor ?? IndicatorColor.FromUInt(NotesSettingsConstants.DefaultHighlightColorArgb);
         _selectionTarget = selectionTarget;
@@ -272,7 +275,18 @@ public sealed partial class NoteTimelineItemViewModel : ObservableObject
     private async Task ExpandRemainingThumbnailsAsync()
     {
         await LoadThumbnailsForAsync(Note.AttachmentIds.Skip(MaxRenderedThumbnails), isOverflow: true).ConfigureAwait(false);
-        AllThumbnailsExpanded = true;
+        if (_dispatcherService is not null)
+        {
+            _dispatcherService.Post(() => AllThumbnailsExpanded = true);
+        }
+        else if (global::Avalonia.Threading.Dispatcher.UIThread.CheckAccess())
+        {
+            AllThumbnailsExpanded = true;
+        }
+        else
+        {
+            global::Avalonia.Threading.Dispatcher.UIThread.Post(() => AllThumbnailsExpanded = true);
+        }
     }
 
     private async Task LoadThumbnailsForAsync(IEnumerable<Guid> attachmentIds, bool isOverflow)
@@ -315,7 +329,18 @@ public sealed partial class NoteTimelineItemViewModel : ObservableObject
 
                 if (!shouldExcludeFromBottomRow)
                 {
-                    Thumbnails.Add(thumbnailItem);
+                    if (_dispatcherService is not null)
+                    {
+                        _dispatcherService.Post(() => Thumbnails.Add(thumbnailItem));
+                    }
+                    else if (global::Avalonia.Threading.Dispatcher.UIThread.CheckAccess())
+                    {
+                        Thumbnails.Add(thumbnailItem);
+                    }
+                    else
+                    {
+                        global::Avalonia.Threading.Dispatcher.UIThread.Post(() => Thumbnails.Add(thumbnailItem));
+                    }
                 }
             }
             catch
@@ -1741,7 +1766,8 @@ public partial class NoteTimelineViewModel : ViewModelBase, IDisposable, INoteSe
             maxRenderedThumbnails: _notesSettingsManager.MaxRenderedThumbnails,
             selectionTarget: this,
             highlightColor: _notesSettingsManager.HighlightColor,
-            storageGate: _storageGate);
+            storageGate: _storageGate,
+            dispatcherService: _dispatcherService);
         item.PropertyChanged += OnItemPropertyChanged;
         return item;
     }

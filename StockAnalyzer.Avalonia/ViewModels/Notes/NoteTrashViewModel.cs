@@ -8,6 +8,7 @@ using CommunityToolkit.Mvvm.Input;
 using StockAnalyzer.Avalonia.Services;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Notes;
+using StockAnalyzer.Core.Services;
 using StockAnalyzer.Core.Services.Notes;
 
 namespace StockAnalyzer.Avalonia.ViewModels.Notes;
@@ -69,6 +70,7 @@ public partial class NoteTrashViewModel : ViewModelBase, IDisposable
     private readonly NoteRepository _noteRepository;
     private readonly TickerMetadataNotesCacheSynchronizer _cacheSynchronizer;
     private readonly INotesSettingsManager _notesSettingsManager;
+    private readonly IDispatcherService? _dispatcherService;
     private readonly PropertyChangedEventHandler _notesSettingsChangedHandler;
     private bool _isDisposed;
 
@@ -107,11 +109,13 @@ public partial class NoteTrashViewModel : ViewModelBase, IDisposable
         NoteRepository noteRepository,
         TickerMetadataNotesCacheSynchronizer cacheSynchronizer,
         OrphanedAttachmentScanResultHolder orphanedAttachmentHolder,
-        INotesSettingsManager notesSettingsManager)
+        INotesSettingsManager notesSettingsManager,
+        IDispatcherService? dispatcherService = null)
     {
         _noteRepository = noteRepository;
         _cacheSynchronizer = cacheSynchronizer;
         _notesSettingsManager = notesSettingsManager;
+        _dispatcherService = dispatcherService;
         _bodyFontSize = _notesSettingsManager.BodyFontSize;
         _bodyTextColor = _notesSettingsManager.BodyTextColor;
         _bodyBackgroundColor = _notesSettingsManager.BodyBackgroundColor;
@@ -178,16 +182,32 @@ public partial class NoteTrashViewModel : ViewModelBase, IDisposable
     {
         var deleted = await _noteRepository.GetAllDeletedAsync(ct).ConfigureAwait(false);
 
-        DeletedNotes.Clear();
-        foreach (var note in deleted)
+        void UpdateCollection()
         {
-            DeletedNotes.Add(new NoteTrashItemViewModel(
-                note,
-                HandleRestoreRequestedAsync,
-                HandlePermanentlyDeleteRequestedAsync,
-                _notesSettingsManager.BodyFontSize,
-                _notesSettingsManager.BodyTextColor,
-                _notesSettingsManager.BodyBackgroundColor));
+            DeletedNotes.Clear();
+            foreach (var note in deleted)
+            {
+                DeletedNotes.Add(new NoteTrashItemViewModel(
+                    note,
+                    HandleRestoreRequestedAsync,
+                    HandlePermanentlyDeleteRequestedAsync,
+                    _notesSettingsManager.BodyFontSize,
+                    _notesSettingsManager.BodyTextColor,
+                    _notesSettingsManager.BodyBackgroundColor));
+            }
+        }
+
+        if (_dispatcherService is not null)
+        {
+            _dispatcherService.Post(UpdateCollection);
+        }
+        else if (global::Avalonia.Threading.Dispatcher.UIThread.CheckAccess())
+        {
+            UpdateCollection();
+        }
+        else
+        {
+            global::Avalonia.Threading.Dispatcher.UIThread.Post(UpdateCollection);
         }
     }
 

@@ -61,6 +61,7 @@ public partial class App : Application, IDisposable, IThemeVariantDispatcher
     {
         AvaloniaXamlLoader.Load(this);
         StockAnalyzer.Avalonia.Services.FontSettingsManager.SeedDefaultResources(Resources);
+        System.Runtime.CompilerServices.RuntimeHelpers.RunClassConstructor(typeof(Common.TreeDataGridExtensions).TypeHandle);
     }
 
     public override void OnFrameworkInitializationCompleted()
@@ -430,14 +431,28 @@ public partial class App : Application, IDisposable, IThemeVariantDispatcher
         {
             // Only a lifetime this application started: resolving it here would wait for (or rethrow the failure of) the backend initialisation.
             if (_operations is { } operations)
-                Task.Run(operations.StopAsync).GetAwaiter().GetResult();
+            {
+                try
+                {
+                    Task.Run(operations.StopAsync).Wait(TimeSpan.FromSeconds(5));
+                }
+                catch { }
+            }
             if (Services is IAsyncDisposable asyncDisposable)
             {
-                asyncDisposable.DisposeAsync().AsTask().GetAwaiter().GetResult();
+                try
+                {
+                    Task.Run(() => asyncDisposable.DisposeAsync().AsTask()).Wait(TimeSpan.FromSeconds(5));
+                }
+                catch { }
             }
             else if (Services is IDisposable disposable)
             {
-                disposable.Dispose();
+                try
+                {
+                    disposable.Dispose();
+                }
+                catch { }
             }
             _disposed = true;
             GC.SuppressFinalize(this);

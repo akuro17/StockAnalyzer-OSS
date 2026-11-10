@@ -45,7 +45,7 @@ def update_ticker(provider, symbol, delay=None, start_period=5, full_history=Fal
             if not existing_df.is_empty() and not force_period:
                 last_date = existing_df.select(pl.col("date")).max().item()
                 next_date = last_date + datetime.timedelta(days=1)
-                start_ts = int(datetime.datetime.combine(next_date, datetime.time.min).timestamp())
+                start_ts = int(datetime.datetime.combine(next_date, datetime.time.min, tzinfo=datetime.timezone.utc).timestamp())
                 logging.info(f"{symbol}: Found existing data. Last date: {last_date}. Resuming from {start_ts} ({next_date})")
         except Exception as e:
             logging.error(f"{symbol}: Error reading existing parquet: {e}")
@@ -83,7 +83,7 @@ def update_ticker(provider, symbol, delay=None, start_period=5, full_history=Fal
         # Sanitize existing_df just in case
         existing_df = existing_df.filter(pl.col("date").is_not_null() & pl.col("close").is_not_null())
         if force_period and not full_history:
-            now = datetime.datetime.now()
+            now = datetime.datetime.now(datetime.timezone.utc)
             start_year = now.year - start_period
             cutoff_date = datetime.date(start_year, 1, 1)
             existing_df_before = existing_df.filter(pl.col("date") < cutoff_date)

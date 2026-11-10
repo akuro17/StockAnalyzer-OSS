@@ -11,10 +11,13 @@ public class RsiOversoldCondition : IScreeningCondition
     private readonly int _period;
     private readonly decimal _threshold;
 
+    public int Period => _period;
+    public decimal Threshold => _threshold;
+
     public RsiOversoldCondition(int period = ChartConstants.DefaultRsiPeriod, decimal threshold = ChartConstants.DefaultRsiOversoldThreshold)
     {
-        _period = period;
-        _threshold = threshold;
+        _period = Math.Clamp(period, 2, 250);
+        _threshold = Math.Clamp(threshold, 0.0m, 100.0m);
     }
 
     public override string ToString()
@@ -26,7 +29,7 @@ public class RsiOversoldCondition : IScreeningCondition
     {
         if (candles == null || candles.Count < _period + 1) return false;
 
-        // Calculate simple RSI for screening
+        // Calculate simple RSI for screening using algebraic single-division SSoT
         decimal gains = 0m;
         decimal losses = 0m;
 
@@ -38,9 +41,9 @@ public class RsiOversoldCondition : IScreeningCondition
             else losses += Math.Abs(diff);
         }
 
-        if (losses == 0m) return false;
-        decimal rs = (gains / _period) / (losses / _period);
-        decimal rsi = 100m - (100m / (1m + rs));
+        decimal sum = gains + losses;
+        if (sum <= 1e-12m) return 50.0m < _threshold;
+        decimal rsi = (100.0m * gains) / sum;
 
         return rsi < _threshold;
     }

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Avalonia.Media;
+using Avalonia.Media.Immutable;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using StockAnalyzer.Avalonia.Drawing;
@@ -20,7 +21,21 @@ public partial class DrawingObjectItemViewModel : ViewModelBase
     public ChartObjectType Type => Model.Type;
     public string DisplayName => DrawingObjectDisplayNameHelper.GetDisplayName(Model);
     public Color Color => Model.Color;
-    public IBrush ColorBrush => new SolidColorBrush(Model.Color);
+    private IBrush? _colorBrush;
+    private Color _lastBrushColor;
+    public IBrush ColorBrush
+    {
+        get
+        {
+            var modelColor = Model.Color;
+            if (_colorBrush == null || _lastBrushColor != modelColor)
+            {
+                _lastBrushColor = modelColor;
+                _colorBrush = new ImmutableSolidColorBrush(modelColor);
+            }
+            return _colorBrush;
+        }
+    }
 
     public bool IsIconObject => Model is IconObject;
 

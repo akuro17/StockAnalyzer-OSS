@@ -24,7 +24,7 @@ public static class BezierSplineMath
     public const int DefaultSpiralQuadrants = 16;
     public const int MaxSpiralQuadrants = 64;
     public const float EpsilonSquared = 1e-12f;
-    public const float MinRadius = 1e-4f;
+    public const float MinRadius = DrawingThemeContext.ScreenGeometryEpsilon;
     public const float DefaultMaxRadius = 10000f;
     public const double RootBoundaryTolerance = 1e-4;
 
@@ -838,13 +838,18 @@ public static class BezierSplineMath
     private static SKPathMeasure? t_segmentMeasure;
 
     /// <summary>
-    /// 隣接する制御点ペア(points[i], points[i+1])ごとに、実際に描画される曲線区間の弧長境界
-    /// （パス全体の弧長に対する累積終端位置）と、制御点ペア自体の直線ベクトルの向き（度）を算出する。
-    /// <see cref="BuildCatmullRomSplinePath"/>が生成するパスと1:1で対応するよう、同一の縮退判定
-    /// （<see cref="DistanceSquared"/> &lt; <see cref="EpsilonSquared"/>で当該ペアをスキップ）を用いる。
-    /// Zero-Allocation: 曲線区間の弧長計測にはスレッド静的な使い捨てパス/計測器を再利用する。
+    /// Calculates the cumulative arc-length boundary and directional chord angle (degrees)
+    /// for each adjacent pair of control points (points[i], points[i+1]).
+    /// Uses identical degeneracy criteria to <see cref="BuildCatmullRomSplinePath"/> to maintain 1:1 segment mapping.
+    /// <para>
+    /// NOTE on Direction Angles: The angles returned in <paramref name="destinationDirectionAngles"/> are
+    /// the secant chord angles between adjacent points (atan2(y_{i+1} - y_i, x_{i+1} - x_i)), used primarily
+    /// by <see cref="CurveLineTextObject"/> for upright text orientation flipping (90°–270° range detection),
+    /// distinct from analytical tangent vectors along the continuous spline curve.
+    /// </para>
+    /// Zero-Allocation: Reuses thread-static scratch paths and measures.
     /// </summary>
-    /// <returns>実際に書き込まれた区間数（縮退ペアを除く）。</returns>
+    /// <returns>Number of actual segments written (excluding degenerate pairs).</returns>
     public static int ComputeSegmentArcLengthsAndDirections(
         ReadOnlySpan<SKPoint> points,
         bool isSmooth,
@@ -869,45 +874,56 @@ public static class BezierSplineMath
         float cumulative = 0f;
         int written = 0;
 
-        for (int i = 0; i < count - 1; i++)
+        try
         {
-            SKPoint pCurr = points[i];
-            SKPoint pNext = points[i + 1];
-
-            if (DistanceSquared(pCurr, pNext) < EpsilonSquared)
-                continue;
-
-            float segLength;
-            if (useCubic)
+            for (int i = 0; i < count - 1; i++)
             {
-                SKPoint pPrev = (i == 0)
-                    ? new SKPoint(2f * points[0].X - points[1].X, 2f * points[0].Y - points[1].Y)
-                    : points[i - 1];
+                SKPoint pCurr = points[i];
+                SKPoint pNext = points[i + 1];
 
-                SKPoint pNextNext = (i == count - 2)
-                    ? new SKPoint(2f * points[count - 1].X - points[count - 2].X, 2f * points[count - 1].Y - points[count - 2].Y)
-                    : points[i + 2];
+                if (DistanceSquared(pCurr, pNext) < EpsilonSquared)
+                    continue;
 
-                CalculateControlPoints(pPrev, pCurr, pNext, pNextNext, tension, out var c1, out var c2);
+                float segLength;
+                if (useCubic)
+                {
+                    SKPoint pPrev = (i == 0)
+                        ? new SKPoint(2f * points[0].X - points[1].X, 2f * points[0].Y - points[1].Y)
+                        : points[i - 1];
 
-                scratch!.Reset();
-                scratch.MoveTo(pCurr);
-                scratch.CubicTo(c1, c2, pNext);
-                measure!.SetPath(scratch, false);
-                segLength = measure.Length;
+                    SKPoint pNextNext = (i == count - 2)
+                        ? new SKPoint(2f * points[count - 1].X - points[count - 2].X, 2f * points[count - 1].Y - points[count - 2].Y)
+                        : points[i + 2];
+
+                    CalculateControlPoints(pPrev, pCurr, pNext, pNextNext, tension, out var c1, out var c2);
+
+                    scratch!.Reset();
+                    scratch.MoveTo(pCurr);
+                    scratch.CubicTo(c1, c2, pNext);
+                    measure!.SetPath(scratch, false);
+                    segLength = measure.Length;
+                }
+                else
+                {
+                    segLength = MathF.Sqrt(DistanceSquared(pCurr, pNext));
+                }
+
+                cumulative += segLength;
+                destinationEndArcLengths[written] = cumulative;
+                destinationDirectionAngles[written] = MathF.Atan2(pNext.Y - pCurr.Y, pNext.X - pCurr.X) * MathConstants.RadToDegF;
+                written++;
             }
-            else
-            {
-                segLength = MathF.Sqrt(DistanceSquared(pCurr, pNext));
-            }
 
-            cumulative += segLength;
-            destinationEndArcLengths[written] = cumulative;
-            destinationDirectionAngles[written] = MathF.Atan2(pNext.Y - pCurr.Y, pNext.X - pCurr.X) * MathConstants.RadToDegF;
-            written++;
+            return written;
         }
-
-        return written;
+        finally
+        {
+            if (useCubic && measure != null)
+            {
+                measure.SetPath(null, false);
+                scratch?.Reset();
+            }
+        }
     }
 
     private static void SortClusters(Span<ExtremaLevel> clusters)

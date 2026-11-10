@@ -1,10 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Specialized;
+using System.Globalization;
 using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Models.TreeDataGrid;
+using Avalonia.Controls.Primitives;
 using StockAnalyzer.Avalonia.Services;
 using StockAnalyzer.Core.Models.Watchlist;
 using StockAnalyzer.Avalonia.ViewModels.Watchlist;
@@ -16,6 +18,7 @@ using Microsoft.Extensions.DependencyInjection;
 using StockAnalyzer.Core.Interfaces;
 using StockAnalyzer.Avalonia.ViewModels.Backtest;
 using StockAnalyzer.Avalonia.ViewModels.TickerList;
+using Avalonia.VisualTree;
 
 namespace StockAnalyzer.Avalonia.Common;
 
@@ -85,6 +88,19 @@ public static class TreeDataGridExtensions
         SelectedItemProperty.Changed.AddClassHandler<TreeDataGrid>(OnSelectedItemChanged);
         SortMemberProperty.Changed.AddClassHandler<TreeDataGrid>(OnSortChanged);
         SortDirectionProperty.Changed.AddClassHandler<TreeDataGrid>(OnSortChanged);
+        TreeDataGrid.TemplateAppliedEvent.AddClassHandler<TreeDataGrid>(OnTreeDataGridTemplateApplied);
+    }
+
+    private static readonly ConditionalWeakTable<TreeDataGrid, TreeDataGridScrollSynchronizer> _scrollSynchronizers = new();
+
+    private static void OnTreeDataGridTemplateApplied(TreeDataGrid grid, TemplateAppliedEventArgs e)
+    {
+        if (!_scrollSynchronizers.TryGetValue(grid, out var synchronizer))
+        {
+            synchronizer = new TreeDataGridScrollSynchronizer(grid);
+            _scrollSynchronizers.Add(grid, synchronizer);
+        }
+        synchronizer.AttachParts(e.NameScope);
     }
 
     private class GridLifecycleHandler : IDisposable
@@ -378,18 +394,18 @@ public static class TreeDataGridExtensions
                         var header = meta.MemberName.StartsWith("Indicator_") 
                             ? meta.HeaderKey 
                             : (localizationService?.GetString(meta.HeaderKey) ?? meta.HeaderKey);
-                        double pxWidth = double.TryParse(WatchlistConstants.WidthDefault, out var defW) ? defW : 80;
-                        if (!string.IsNullOrEmpty(meta.Width) && meta.Width != "Auto" && double.TryParse(meta.Width, out var parsedW))
+                        double pxWidth = double.TryParse(WatchlistConstants.WidthDefault, NumberStyles.Float, CultureInfo.InvariantCulture, out var defW) ? defW : 80;
+                        if (!string.IsNullOrEmpty(meta.Width) && meta.Width != "Auto" && double.TryParse(meta.Width, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsedW))
                         {
                             pxWidth = Math.Max(WatchlistConstants.DefaultColumnMinWidth, parsedW);
                         }
                         else
                         {
-                            if (meta.MemberName == "IsChecked" && double.TryParse(WatchlistConstants.WidthSelect, out var wSel)) pxWidth = wSel;
-                            else if (meta.MemberName == "Symbol" && double.TryParse(WatchlistConstants.WidthSymbol, out var wSym)) pxWidth = wSym;
-                            else if (meta.MemberName == "Name" && double.TryParse(WatchlistConstants.WidthName, out var wName)) pxWidth = wName;
-                            else if (meta.MemberName == "Tag" && double.TryParse(WatchlistConstants.WidthTag, out var wTag)) pxWidth = wTag;
-                            else if (meta.MemberName == "Notes" && double.TryParse(WatchlistConstants.WidthNotes, out var wNotes)) pxWidth = wNotes;
+                            if (meta.MemberName == "IsChecked" && double.TryParse(WatchlistConstants.WidthSelect, NumberStyles.Float, CultureInfo.InvariantCulture, out var wSel)) pxWidth = wSel;
+                            else if (meta.MemberName == "Symbol" && double.TryParse(WatchlistConstants.WidthSymbol, NumberStyles.Float, CultureInfo.InvariantCulture, out var wSym)) pxWidth = wSym;
+                            else if (meta.MemberName == "Name" && double.TryParse(WatchlistConstants.WidthName, NumberStyles.Float, CultureInfo.InvariantCulture, out var wName)) pxWidth = wName;
+                            else if (meta.MemberName == "Tag" && double.TryParse(WatchlistConstants.WidthTag, NumberStyles.Float, CultureInfo.InvariantCulture, out var wTag)) pxWidth = wTag;
+                            else if (meta.MemberName == "Notes" && double.TryParse(WatchlistConstants.WidthNotes, NumberStyles.Float, CultureInfo.InvariantCulture, out var wNotes)) pxWidth = wNotes;
                         }
                         var width = new GridLength(pxWidth, GridUnitType.Pixel);
                         
@@ -1426,4 +1442,165 @@ public static class TreeDataGridExtensions
             });
     }
 
+    internal sealed class TreeDataGridScrollSynchronizer : IDisposable
+    {
+        private const string HeaderScrollViewerPartName = "PART_HeaderScrollViewer";
+        private const string RowScrollViewerPartName = "PART_ScrollViewer";
+        private const string VerticalScrollBarPartName = "PART_VerticalScrollBar";
+        private const double LayoutToleranceEpsilon = 0.001;
+
+        private readonly WeakReference<TreeDataGrid> _gridRef;
+        private ScrollViewer? _headerScroll;
+        private ScrollViewer? _rowScroll;
+        private ScrollBar? _verticalScrollBar;
+        private IDisposable? _vbarBoundsSub;
+        private IDisposable? _vbarVisibleSub;
+
+        public TreeDataGridScrollSynchronizer(TreeDataGrid grid)
+        {
+            _gridRef = new WeakReference<TreeDataGrid>(grid);
+            grid.AttachedToVisualTree += OnAttachedToVisualTree;
+            grid.DetachedFromVisualTree += OnDetachedFromVisualTree;
+        }
+
+        public void AttachParts(INameScope nameScope)
+        {
+            DetachSubscriptions();
+
+            _headerScroll = nameScope.Find<ScrollViewer>(HeaderScrollViewerPartName);
+            _rowScroll = nameScope.Find<ScrollViewer>(RowScrollViewerPartName);
+
+            if (_rowScroll != null)
+            {
+                _rowScroll.ScrollChanged += OnRowScrollChanged;
+                _rowScroll.TemplateApplied += OnRowScrollTemplateApplied;
+                ResolveVerticalScrollBar();
+            }
+
+            SynchronizeMargin();
+        }
+
+        private void OnAttachedToVisualTree(object? sender, VisualTreeAttachmentEventArgs e)
+        {
+            if (_gridRef.TryGetTarget(out var grid))
+            {
+                if (_headerScroll == null || _rowScroll == null)
+                {
+                    ReattachFromVisualTree(grid);
+                }
+                SynchronizeMargin();
+            }
+        }
+
+        private void ReattachFromVisualTree(TreeDataGrid grid)
+        {
+            _headerScroll = grid.GetVisualDescendants()
+                .OfType<ScrollViewer>()
+                .FirstOrDefault(sv => sv.Name == HeaderScrollViewerPartName);
+
+            _rowScroll = grid.GetVisualDescendants()
+                .OfType<ScrollViewer>()
+                .FirstOrDefault(sv => sv.Name == RowScrollViewerPartName);
+
+            if (_rowScroll != null)
+            {
+                _rowScroll.ScrollChanged += OnRowScrollChanged;
+                _rowScroll.TemplateApplied += OnRowScrollTemplateApplied;
+                ResolveVerticalScrollBar();
+            }
+        }
+
+        private void OnRowScrollTemplateApplied(object? sender, TemplateAppliedEventArgs e)
+        {
+            ResolveVerticalScrollBar();
+            SynchronizeMargin();
+        }
+
+        private void ResolveVerticalScrollBar()
+        {
+            if (_rowScroll == null || _verticalScrollBar != null) return;
+
+            _verticalScrollBar = _rowScroll.GetVisualDescendants()
+                .OfType<ScrollBar>()
+                .FirstOrDefault(sb => sb.Name == VerticalScrollBarPartName && sb.Orientation == Orientation.Vertical);
+
+            if (_verticalScrollBar != null)
+            {
+                _vbarBoundsSub?.Dispose();
+                _vbarBoundsSub = _verticalScrollBar.GetObservable(Visual.BoundsProperty)
+                    .Subscribe(_ => SynchronizeMargin());
+
+                _vbarVisibleSub?.Dispose();
+                _vbarVisibleSub = _verticalScrollBar.GetObservable(Visual.IsVisibleProperty)
+                    .Subscribe(_ => SynchronizeMargin());
+            }
+        }
+
+        private void OnRowScrollChanged(object? sender, ScrollChangedEventArgs e)
+        {
+            if (_verticalScrollBar == null)
+            {
+                ResolveVerticalScrollBar();
+            }
+            SynchronizeMargin();
+        }
+
+        public void SynchronizeMargin()
+        {
+            if (_headerScroll == null) return;
+
+            double vbarWidth = 0.0;
+            if (_verticalScrollBar != null && _verticalScrollBar.IsVisible && _verticalScrollBar.Bounds.Width > 0)
+            {
+                vbarWidth = _verticalScrollBar.Bounds.Width;
+            }
+
+            var currentMargin = _headerScroll.Margin;
+            if (Math.Abs(currentMargin.Right - vbarWidth) > LayoutToleranceEpsilon)
+            {
+                _headerScroll.Margin = new Thickness(currentMargin.Left, currentMargin.Top, vbarWidth, currentMargin.Bottom);
+
+                // Re-sync horizontal offset immediately to eliminate clamp latency
+                if (_rowScroll != null)
+                {
+                    _headerScroll.Offset = new Vector(_rowScroll.Offset.X, _headerScroll.Offset.Y);
+                }
+            }
+        }
+
+        private void DetachSubscriptions()
+        {
+            _vbarBoundsSub?.Dispose();
+            _vbarBoundsSub = null;
+            _vbarVisibleSub?.Dispose();
+            _vbarVisibleSub = null;
+
+            if (_rowScroll != null)
+            {
+                _rowScroll.ScrollChanged -= OnRowScrollChanged;
+                _rowScroll.TemplateApplied -= OnRowScrollTemplateApplied;
+                _rowScroll = null;
+            }
+
+            _verticalScrollBar = null;
+            _headerScroll = null;
+        }
+
+        private void OnDetachedFromVisualTree(object? sender, VisualTreeAttachmentEventArgs e)
+        {
+            DetachSubscriptions();
+        }
+
+        public void Dispose()
+        {
+            DetachSubscriptions();
+
+            if (_gridRef.TryGetTarget(out var grid))
+            {
+                grid.AttachedToVisualTree -= OnAttachedToVisualTree;
+                grid.DetachedFromVisualTree -= OnDetachedFromVisualTree;
+                _scrollSynchronizers.Remove(grid);
+            }
+        }
+    }
 }

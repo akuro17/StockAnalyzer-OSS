@@ -132,10 +132,12 @@ public sealed class GetModelExplanationToolTests : IDisposable
         Assert.Equal("Available", exp.GetProperty("availability").GetString());
         Assert.Equal(20, exp.GetProperty("windowSize").GetInt32());
         Assert.Equal("daily", exp.GetProperty("timeframe").GetString());
+        Assert.Equal(42, exp.GetProperty("seed").GetInt32());
 
         var cal = root.GetProperty("calibration");
         Assert.Equal("Active", cal.GetProperty("availability").GetString());
         Assert.Equal(1.5, cal.GetProperty("temperature").GetDouble());
+        Assert.Equal("Up,Down,Neutral", cal.GetProperty("classOrder").GetString());
 
         // B-13a compliance: topContributingFeatures must NOT be output
         Assert.False(root.TryGetProperty("topContributingFeatures", out _));
@@ -521,7 +523,8 @@ public sealed class GetModelExplanationToolTests : IDisposable
             BaseChannels: ImmutableArray.Create("open", "high", "low", "close", "volume"),
             OrderedChannels: ImmutableArray.Create("open", "high", "low", "close", "volume"),
             Status: "available",
-            Classes: ImmutableArray.Create("Up", "Down", "Neutral")
+            Classes: ImmutableArray.Create("Up", "Down", "Neutral"),
+            Seed: 42
         );
     }
 

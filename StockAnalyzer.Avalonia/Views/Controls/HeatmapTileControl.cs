@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -18,7 +19,109 @@ using StockAnalyzer.Core.Theme;
 
 namespace StockAnalyzer.Avalonia.Views.Controls;
 
-public class HeatmapTileControl : Control, ICustomDrawOperation
+public readonly record struct TileRenderData(SKRect Rect, int LutIndex, string Ticker, string ReturnText, bool ShouldDrawText);
+public readonly record struct TileBounds(SKRect Rect, string Ticker);
+
+public sealed class HeatmapRenderSnapshot
+{
+    public static readonly HeatmapRenderSnapshot Empty = new(
+        Array.Empty<TileRenderData>(),
+        Array.Empty<SKRect>(),
+        Array.Empty<TileBounds>());
+
+    public TileRenderData[] Tiles { get; }
+    public SKRect[] GroupBorders { get; }
+    public TileBounds[] HitMap { get; }
+
+    public HeatmapRenderSnapshot(
+        TileRenderData[] tiles,
+        SKRect[] groupBorders,
+        TileBounds[] hitMap)
+    {
+        Tiles = tiles;
+        GroupBorders = groupBorders;
+        HitMap = hitMap;
+    }
+}
+
+file sealed class HeatmapDrawOperation : ICustomDrawOperation
+{
+    private readonly global::Avalonia.Rect _bounds;
+    private readonly HeatmapRenderSnapshot _snapshot;
+    private readonly SKPaint[] _fillLut;
+    private readonly SKPaint? _borderPaint;
+    private readonly SKPaint? _textPaint;
+    private readonly SKPaint? _largeTextPaint;
+    private readonly SKPaint? _groupBorderPaint;
+
+    public HeatmapDrawOperation(
+        global::Avalonia.Rect bounds,
+        HeatmapRenderSnapshot snapshot,
+        SKPaint[] fillLut,
+        SKPaint? borderPaint,
+        SKPaint? textPaint,
+        SKPaint? largeTextPaint,
+        SKPaint? groupBorderPaint)
+    {
+        _bounds = bounds;
+        _snapshot = snapshot;
+        _fillLut = fillLut;
+        _borderPaint = borderPaint;
+        _textPaint = textPaint;
+        _largeTextPaint = largeTextPaint;
+        _groupBorderPaint = groupBorderPaint;
+    }
+
+    public global::Avalonia.Rect Bounds => _bounds;
+    public void Dispose() { /* Managed snapshot; native paints are owned and disposed by HeatmapTileControl */ }
+    public bool HitTest(global::Avalonia.Point p) => _bounds.Contains(p);
+    public bool Equals(ICustomDrawOperation? other) =>
+        other is HeatmapDrawOperation op &&
+        ReferenceEquals(_snapshot, op._snapshot) &&
+        _bounds == op._bounds;
+
+    public void Render(ImmediateDrawingContext context)
+    {
+        var leaseFeature = context.TryGetFeature(typeof(ISkiaSharpApiLeaseFeature)) as ISkiaSharpApiLeaseFeature;
+        if (leaseFeature == null) return;
+
+        var tiles = _snapshot.Tiles;
+        if (tiles.Length == 0) return;
+
+        using var lease = leaseFeature.Lease();
+        var canvas = lease.SkCanvas;
+
+        for (int i = 0; i < tiles.Length; i++)
+        {
+            var tile = tiles[i];
+            canvas.DrawRect(tile.Rect, _fillLut[tile.LutIndex]);
+            if (_borderPaint != null)
+            {
+                canvas.DrawRect(tile.Rect, _borderPaint);
+            }
+
+            if (tile.ShouldDrawText && _largeTextPaint != null && _textPaint != null)
+            {
+                canvas.Save();
+                canvas.ClipRect(tile.Rect);
+                canvas.DrawText(tile.Ticker, tile.Rect.Left + 4, tile.Rect.Top + 13, _largeTextPaint);
+                canvas.DrawText(tile.ReturnText, tile.Rect.Left + 4, tile.Rect.Top + 24, _textPaint);
+                canvas.Restore();
+            }
+        }
+
+        if (_groupBorderPaint != null)
+        {
+            var borders = _snapshot.GroupBorders;
+            for (int i = 0; i < borders.Length; i++)
+            {
+                canvas.DrawRect(borders[i], _groupBorderPaint);
+            }
+        }
+    }
+}
+
+public class HeatmapTileControl : Control
 {
     public static readonly StyledProperty<IReadOnlyList<HeatmapEntry>?> EntriesProperty =
         AvaloniaProperty.Register<HeatmapTileControl, IReadOnlyList<HeatmapEntry>?>(nameof(Entries));
@@ -36,13 +139,29 @@ public class HeatmapTileControl : Control, ICustomDrawOperation
     private SKPaint? _groupBorderPaint;
     private ThemeColors? _lastTheme;
 
-    private readonly List<TileBounds> _hitMap = new();
-
-    private record TileBounds(SKRect Rect, string Ticker);
+    private HeatmapRenderSnapshot _currentSnapshot = HeatmapRenderSnapshot.Empty;
+    private IReadOnlyList<HeatmapEntry>? _lastEntries;
+    private Size _lastBoundsSize;
+    private bool _isSnapshotDirty = true;
 
     static HeatmapTileControl()
     {
         AffectsRender<HeatmapTileControl>(EntriesProperty);
+    }
+
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+        if (change.Property == EntriesProperty)
+        {
+            _isSnapshotDirty = true;
+        }
+    }
+
+    public void InvalidateSnapshot()
+    {
+        _isSnapshotDirty = true;
+        InvalidateVisual();
     }
 
     private void InitializePaints(ThemeColors colors)
@@ -95,11 +214,12 @@ public class HeatmapTileControl : Control, ICustomDrawOperation
         );
     }
 
-    private global::Avalonia.Rect _operationBounds;
-
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnDetachedFromVisualTree(e);
+        Volatile.Write(ref _currentSnapshot, HeatmapRenderSnapshot.Empty);
+        _lastEntries = null;
+        _isSnapshotDirty = true;
         for (int i = 0; i <= 100; i++)
         {
             _fillLut[i]?.Dispose();
@@ -122,12 +242,13 @@ public class HeatmapTileControl : Control, ICustomDrawOperation
         var p = e.GetPosition(this);
         var skP = new SKPoint((float)p.X, (float)p.Y);
 
-        // Simple hit test
-        for (int i = 0; i < _hitMap.Count; i++)
+        var snapshot = Volatile.Read(ref _currentSnapshot);
+        var hitMap = snapshot.HitMap;
+        for (int i = 0; i < hitMap.Length; i++)
         {
-            if (_hitMap[i].Rect.Contains(skP.X, skP.Y))
+            if (hitMap[i].Rect.Contains(skP.X, skP.Y))
             {
-                WeakReferenceMessenger.Default.Send(new TickerSelectedMessage(_hitMap[i].Ticker));
+                WeakReferenceMessenger.Default.Send(new TickerSelectedMessage(hitMap[i].Ticker));
                 break;
             }
         }
@@ -135,32 +256,45 @@ public class HeatmapTileControl : Control, ICustomDrawOperation
 
     public override void Render(DrawingContext context)
     {
-        _operationBounds = new global::Avalonia.Rect(Bounds.Size);
-        if (Entries == null || Entries.Count == 0) return;
-        context.Custom(this);
-    }
+        var entries = Entries;
+        if (entries == null || entries.Count == 0 || Bounds.Width <= 0 || Bounds.Height <= 0)
+        {
+            Volatile.Write(ref _currentSnapshot, HeatmapRenderSnapshot.Empty);
+            return;
+        }
 
-    global::Avalonia.Rect ICustomDrawOperation.Bounds => _operationBounds;
-    void IDisposable.Dispose() { }
-    bool IEquatable<ICustomDrawOperation>.Equals(ICustomDrawOperation? other) => ReferenceEquals(this, other);
-    bool ICustomDrawOperation.HitTest(global::Avalonia.Point p) => _operationBounds.Contains(p);
-
-    void ICustomDrawOperation.Render(ImmediateDrawingContext context)
-    {
-        var leaseFeature = context.TryGetFeature(typeof(ISkiaSharpApiLeaseFeature)) as ISkiaSharpApiLeaseFeature;
-        if (leaseFeature == null) return;
-
-        var themeManager = App.Current.Services?.GetService<IThemeManager>();
+        var themeManager = App.Current?.Services?.GetService<IThemeManager>();
         var themeColors = themeManager?.CurrentTheme ?? ThemeColors.Dark;
         InitializePaints(themeColors);
 
-        using var lease = leaseFeature.Lease();
-        var canvas = lease.SkCanvas;
+        if (_isSnapshotDirty || !ReferenceEquals(entries, _lastEntries) || Bounds.Size != _lastBoundsSize || Volatile.Read(ref _currentSnapshot) == HeatmapRenderSnapshot.Empty)
+        {
+            _isSnapshotDirty = false;
+            _lastEntries = entries;
+            _lastBoundsSize = Bounds.Size;
+            var newSnapshot = BuildSnapshot(entries, new SKRect(0, 0, (float)Bounds.Width, (float)Bounds.Height));
+            Volatile.Write(ref _currentSnapshot, newSnapshot);
+        }
 
-        var entries = Entries;
-        if (entries == null || entries.Count == 0) return;
+        var snapshot = Volatile.Read(ref _currentSnapshot);
+        if (snapshot.Tiles.Length > 0)
+        {
+            context.Custom(new HeatmapDrawOperation(
+                new global::Avalonia.Rect(Bounds.Size),
+                snapshot,
+                _fillLut,
+                _borderPaint,
+                _textPaint,
+                _largeTextPaint,
+                _groupBorderPaint));
+        }
+    }
 
-        _hitMap.Clear();
+    private static HeatmapRenderSnapshot BuildSnapshot(IReadOnlyList<HeatmapEntry> entries, SKRect bounds)
+    {
+        var tiles = new List<TileRenderData>(entries.Count);
+        var groupBorders = new List<SKRect>();
+        var hitMap = new List<TileBounds>(entries.Count);
 
         // 1. Hierarchical Grouping (Region > Sector)
         var grouped = entries
@@ -181,10 +315,18 @@ public class HeatmapTileControl : Control, ICustomDrawOperation
             .ToList();
 
         // 2. Proportional Layout Calculation (Slice-and-Dice)
-        LayoutHierarchical(canvas, new SKRect(0, 0, (float)_operationBounds.Width, (float)_operationBounds.Height), grouped, true);
+        LayoutHierarchical(bounds, grouped, true, tiles, groupBorders, hitMap);
+
+        return new HeatmapRenderSnapshot(tiles.ToArray(), groupBorders.ToArray(), hitMap.ToArray());
     }
 
-    private void LayoutHierarchical(SKCanvas canvas, SKRect rect, List<GroupInfo> groups, bool horizontal)
+    private static void LayoutHierarchical(
+        SKRect rect,
+        List<GroupInfo> groups,
+        bool horizontal,
+        List<TileRenderData> tiles,
+        List<SKRect> groupBorders,
+        List<TileBounds> hitMap)
     {
         float totalWeight = groups.Sum(g => g.Weight);
         if (totalWeight <= 0 || rect.Width <= 0 || rect.Height <= 0) return;
@@ -213,23 +355,28 @@ public class HeatmapTileControl : Control, ICustomDrawOperation
             if (g.SubGroups != null)
             {
                 // Recursive call for next level (vertical)
-                LayoutHierarchical(canvas, slice, g.SubGroups, !horizontal);
+                LayoutHierarchical(slice, g.SubGroups, !horizontal, tiles, groupBorders, hitMap);
                 
                 // Draw Region boundary
                 if (!string.IsNullOrEmpty(g.Title))
                 {
-                    canvas.DrawRect(slice, _groupBorderPaint);
+                    groupBorders.Add(slice);
                 }
             }
             else if (g.Tickers != null)
             {
                 // Bottom level (Tickers)
-                LayoutTickers(canvas, slice, g.Tickers, !horizontal);
+                LayoutTickers(slice, g.Tickers, !horizontal, tiles, hitMap);
             }
         }
     }
 
-    private void LayoutTickers(SKCanvas canvas, SKRect rect, List<HeatmapEntry> tickers, bool horizontal)
+    private static void LayoutTickers(
+        SKRect rect,
+        List<HeatmapEntry> tickers,
+        bool horizontal,
+        List<TileRenderData> tiles,
+        List<TileBounds> hitMap)
     {
         float totalWeight = tickers.Sum(t => (float)t.Weight);
         if (totalWeight <= 0) return;
@@ -255,29 +402,12 @@ public class HeatmapTileControl : Control, ICustomDrawOperation
                 currentOffset += h;
             }
 
-            DrawTile(canvas, tile, t);
-        }
-    }
+            hitMap.Add(new TileBounds(tile, t.Ticker));
 
-    private void DrawTile(SKCanvas canvas, SKRect rect, HeatmapEntry entry)
-    {
-        // Add to hit map
-        _hitMap.Add(new TileBounds(rect, entry.Ticker));
-
-        // 1. Fill based on Return
-        float ret = (float)entry.Return;
-        int lutIndex = Math.Clamp((int)((ret + 0.05f) * 1000), 0, 100);
-        canvas.DrawRect(rect, _fillLut[lutIndex]);
-        canvas.DrawRect(rect, _borderPaint);
-
-        // 2. Draw Text (Clipped)
-        if (rect.Width > 35 && rect.Height > 25)
-        {
-            canvas.Save();
-            canvas.ClipRect(rect);
-            canvas.DrawText(entry.Ticker, rect.Left + 4, rect.Top + 13, _largeTextPaint);
-            canvas.DrawText($"{entry.Return:P2}", rect.Left + 4, rect.Top + 24, _textPaint);
-            canvas.Restore();
+            float ret = (float)t.Return;
+            int lutIndex = Math.Clamp((int)((ret + 0.05f) * 1000), 0, 100);
+            bool shouldDrawText = tile.Width > 35 && tile.Height > 25;
+            tiles.Add(new TileRenderData(tile, lutIndex, t.Ticker, $"{t.Return:P2}", shouldDrawText));
         }
     }
 

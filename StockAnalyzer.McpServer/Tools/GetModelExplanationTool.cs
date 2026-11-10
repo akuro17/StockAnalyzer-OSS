@@ -195,6 +195,7 @@ internal sealed class GetModelExplanationTool : IMcpTool
         {
             if (exp.Method is not null) writer.WriteString("method", exp.Method);
             if (exp.OutputSpace is not null) writer.WriteString("outputSpace", exp.OutputSpace);
+            if (exp.Seed.HasValue) writer.WriteNumber("seed", exp.Seed.Value);
             writer.WriteNumber("windowSize", exp.WindowSize);
             writer.WriteString("timeframe", exp.Timeframe);
             writer.WriteString("status", exp.Status);
@@ -334,6 +335,7 @@ internal sealed class GetModelExplanationTool : IMcpTool
         if (calibrationLoad.Reason is not null) writer.WriteString("reason", calibrationLoad.Reason);
         if (calibrationLoad.Calibration is { } cal)
         {
+            if (!string.IsNullOrWhiteSpace(cal.ClassOrder)) writer.WriteString("classOrder", cal.ClassOrder);
             writer.WriteString("method", cal.Method);
             writer.WriteString("score", cal.Score);
             writer.WriteNumber("temperature", cal.Temperature);

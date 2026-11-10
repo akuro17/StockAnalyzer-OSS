@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using StockAnalyzer.Core.Utils;
 
 namespace StockAnalyzer.Core.Models;
 
@@ -346,8 +347,8 @@ public static class IndicatorTypeExtensions
             return false;
         }
 
-        // 1. Try standard member name parsing (case-insensitive)
-        if (Enum.TryParse<IndicatorType>(value, true, out result))
+        // 1. Try strict member name parsing (case-insensitive, rejects numeric strings, zero-boxing)
+        if (StrictEnumValidator.TryParseStrict(value, out result))
         {
             return true;
         }

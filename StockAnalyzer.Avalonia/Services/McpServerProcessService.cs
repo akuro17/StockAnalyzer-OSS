@@ -21,6 +21,7 @@ public class McpServerProcessService : IMcpServerProcessService
     private readonly IMcpServerSettingsManager _settingsManager;
     private readonly ILogger<McpServerProcessService> _logger;
     private readonly object _lock = new();
+    private readonly SemaphoreSlim _startLock = new(1, 1);
 
     private Process? _currentProcess;
     private WindowsJobObjectHandle? _jobHandle;
@@ -93,101 +94,112 @@ public class McpServerProcessService : IMcpServerProcessService
 
     public async Task<McpServerLaunchResult> StartServerAsync(CancellationToken cancellationToken = default)
     {
-        lock (_lock)
-        {
-            if (IsRunning)
-            {
-                _logger.LogInformation("McpServer is already running (PID: {Pid}).", _currentProcess!.Id);
-                return new McpServerLaunchResult(
-                    Success: true,
-                    ProcessId: _currentProcess.Id,
-                    Message: $"McpServer is already running (PID: {_currentProcess.Id}).",
-                    ExecutablePath: ResolveExecutablePath() ?? string.Empty,
-                    Arguments: string.Empty);
-            }
-        }
-
-        string? exePath = ResolveExecutablePath();
-        if (string.IsNullOrWhiteSpace(exePath) || !File.Exists(exePath))
-        {
-            string notFoundMsg = $"StockAnalyzer.McpServer executable not found at: {exePath ?? "(null)"}";
-            _logger.LogError("{Message}", notFoundMsg);
-            return new McpServerLaunchResult(
-                Success: false,
-                ProcessId: null,
-                Message: notFoundMsg,
-                ExecutablePath: exePath ?? string.Empty,
-                Arguments: string.Empty);
-        }
-
-        // Ensure settings are fresh
-        var settings = await _settingsManager.LoadAsync(cancellationToken).ConfigureAwait(false);
-        string arguments = settings.EnableDiscussion ? "--enable-discussion" : string.Empty;
-
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = exePath,
-            Arguments = arguments,
-            WorkingDirectory = Path.GetDirectoryName(exePath) ?? AppContext.BaseDirectory,
-            UseShellExecute = true // Launch with visible console window so user/agents can monitor stdout/stderr
-        };
-
+        await _startLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            Process? process;
-            try
-            {
-                process = Process.Start(startInfo);
-            }
-            catch (Exception ex) when (startInfo.UseShellExecute)
-            {
-                // Fallback to UseShellExecute = false if ShellExecute fails on target platform
-                _logger.LogWarning(ex, "Failed to start with UseShellExecute=true; trying UseShellExecute=false.");
-                startInfo.UseShellExecute = false;
-                startInfo.CreateNoWindow = false;
-                process = Process.Start(startInfo);
-            }
-
-            if (process is null)
-            {
-                string failMsg = "Process.Start returned null for McpServer.";
-                _logger.LogError("{Message}", failMsg);
-                return new McpServerLaunchResult(false, null, failMsg, exePath, arguments);
-            }
-
             lock (_lock)
             {
-                _currentProcess = process;
-                if (OperatingSystem.IsWindows())
+                if (IsRunning)
                 {
-                    try
-                    {
-                        _jobHandle = WindowsJobObject.TryAssign(process);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogWarning(ex, "Failed to assign McpServer process to Windows Job Object.");
-                    }
+                    _logger.LogInformation("McpServer is already running (PID: {Pid}).", _currentProcess!.Id);
+                    return new McpServerLaunchResult(
+                        Success: true,
+                        ProcessId: _currentProcess.Id,
+                        Message: $"McpServer is already running (PID: {_currentProcess.Id}).",
+                        ExecutablePath: ResolveExecutablePath() ?? string.Empty,
+                        Arguments: string.Empty);
                 }
-                process.EnableRaisingEvents = true;
-                process.Exited += OnProcessExited;
             }
 
-            OnPropertyChanged(nameof(IsRunning));
-            OnPropertyChanged(nameof(ProcessId));
+            string? exePath = ResolveExecutablePath();
+            if (string.IsNullOrWhiteSpace(exePath) || !File.Exists(exePath))
+            {
+                string notFoundMsg = $"StockAnalyzer.McpServer executable not found at: {exePath ?? "(null)"}";
+                _logger.LogError("{Message}", notFoundMsg);
+                return new McpServerLaunchResult(
+                    Success: false,
+                    ProcessId: null,
+                    Message: notFoundMsg,
+                    ExecutablePath: exePath ?? string.Empty,
+                    Arguments: string.Empty);
+            }
 
-            _logger.LogInformation("StockAnalyzer.McpServer started successfully (PID: {Pid}, Arguments: '{Args}').", process.Id, arguments);
-            return new McpServerLaunchResult(
-                Success: true,
-                ProcessId: process.Id,
-                Message: $"StockAnalyzer.McpServer started (PID: {process.Id}, Args: '{arguments}').",
-                ExecutablePath: exePath,
-                Arguments: arguments);
+            // Ensure settings are fresh
+            var settings = await _settingsManager.LoadAsync(cancellationToken).ConfigureAwait(false);
+            string arguments = settings.EnableDiscussion ? "--enable-discussion" : string.Empty;
+
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = exePath,
+                Arguments = arguments,
+                WorkingDirectory = Path.GetDirectoryName(exePath) ?? AppContext.BaseDirectory,
+                UseShellExecute = true // Launch with visible console window so user/agents can monitor stdout/stderr
+            };
+
+            try
+            {
+                Process? process;
+                try
+                {
+                    process = Process.Start(startInfo);
+                }
+                catch (Exception ex) when (startInfo.UseShellExecute)
+                {
+                    // Fallback to UseShellExecute = false if ShellExecute fails on target platform
+                    _logger.LogWarning(ex, "Failed to start with UseShellExecute=true; trying UseShellExecute=false.");
+                    startInfo.UseShellExecute = false;
+                    startInfo.CreateNoWindow = false;
+                    process = Process.Start(startInfo);
+                }
+
+                if (process is null)
+                {
+                    string failMsg = "Process.Start returned null for McpServer.";
+                    _logger.LogError("{Message}", failMsg);
+                    return new McpServerLaunchResult(false, null, failMsg, exePath, arguments);
+                }
+
+                lock (_lock)
+                {
+                    _currentProcess = process;
+                    if (OperatingSystem.IsWindows())
+                    {
+                        try
+                        {
+                            _jobHandle = WindowsJobObject.TryAssign(process);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Failed to assign McpServer process to Windows Job Object.");
+                        }
+                    }
+                    process.EnableRaisingEvents = true;
+                    process.Exited += OnProcessExited;
+                }
+
+                DispatchOnUI(() =>
+                {
+                    OnPropertyChanged(nameof(IsRunning));
+                    OnPropertyChanged(nameof(ProcessId));
+                });
+
+                _logger.LogInformation("StockAnalyzer.McpServer started successfully (PID: {Pid}, Arguments: '{Args}').", process.Id, arguments);
+                return new McpServerLaunchResult(
+                    Success: true,
+                    ProcessId: process.Id,
+                    Message: $"StockAnalyzer.McpServer started (PID: {process.Id}, Args: '{arguments}').",
+                    ExecutablePath: exePath,
+                    Arguments: arguments);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to start StockAnalyzer.McpServer from {Path}.", exePath);
+                return new McpServerLaunchResult(false, null, ex.Message, exePath, arguments);
+            }
         }
-        catch (Exception ex)
+        finally
         {
-            _logger.LogError(ex, "Failed to start StockAnalyzer.McpServer from {Path}.", exePath);
-            return new McpServerLaunchResult(false, null, ex.Message, exePath, arguments);
+            _startLock.Release();
         }
     }
 
@@ -224,8 +236,11 @@ public class McpServerProcessService : IMcpServerProcessService
             }
         }
 
-        OnPropertyChanged(nameof(IsRunning));
-        OnPropertyChanged(nameof(ProcessId));
+        DispatchOnUI(() =>
+        {
+            OnPropertyChanged(nameof(IsRunning));
+            OnPropertyChanged(nameof(ProcessId));
+        });
     }
 
     private void OnProcessExited(object? sender, EventArgs e)
@@ -247,9 +262,24 @@ public class McpServerProcessService : IMcpServerProcessService
             catch { }
         }
 
-        OnPropertyChanged(nameof(IsRunning));
-        OnPropertyChanged(nameof(ProcessId));
+        DispatchOnUI(() =>
+        {
+            OnPropertyChanged(nameof(IsRunning));
+            OnPropertyChanged(nameof(ProcessId));
+        });
         _logger.LogInformation("StockAnalyzer.McpServer process has exited.");
+    }
+
+    private static void DispatchOnUI(Action action)
+    {
+        if (global::Avalonia.Threading.Dispatcher.UIThread.CheckAccess())
+        {
+            action();
+        }
+        else
+        {
+            global::Avalonia.Threading.Dispatcher.UIThread.Post(action);
+        }
     }
 
     private void OnCurrentDomainProcessExit(object? sender, EventArgs e)
@@ -268,5 +298,6 @@ public class McpServerProcessService : IMcpServerProcessService
         _isDisposed = true;
         AppDomain.CurrentDomain.ProcessExit -= OnCurrentDomainProcessExit;
         StopServer();
+        _startLock.Dispose();
     }
 }

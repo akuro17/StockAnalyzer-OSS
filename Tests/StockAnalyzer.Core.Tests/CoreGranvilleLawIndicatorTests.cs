@@ -53,11 +53,12 @@ namespace StockAnalyzer.Core.Tests
             indicator.Configure(new CoreGranvilleLawParameter { MaPeriod = 5, SlopePeriod = 2 });
 
             var candles = CreateFlatCandles(6, 100m);
+            var startDate = new DateTime(2023, 1, 1);
             // MA is flat at 100.
             // Bar 6: Price drops to 90 (below MA)
-            candles.Add(new CoreCandleData(DateTime.Today.AddDays(6), 90m, 90m, 90m, 90m, 100));
+            candles.Add(new CoreCandleData(startDate.AddDays(6), 90m, 90m, 90m, 90m, 100));
             // Bar 7: Price breaks above MA to 110
-            candles.Add(new CoreCandleData(DateTime.Today.AddDays(7), 110m, 110m, 110m, 110m, 100));
+            candles.Add(new CoreCandleData(startDate.AddDays(7), 110m, 110m, 110m, 110m, 100));
 
             var result = indicator.Calculate(candles);
             var buySignals = result.GetSeries("Signals").ToList();
@@ -72,11 +73,12 @@ namespace StockAnalyzer.Core.Tests
             indicator.Configure(new CoreGranvilleLawParameter { MaPeriod = 5, SlopePeriod = 2 });
 
             var candles = CreateFlatCandles(6, 100m);
+            var startDate = new DateTime(2023, 1, 1);
             // MA is flat at 100.
             // Bar 6: Price rises to 110 (above MA)
-            candles.Add(new CoreCandleData(DateTime.Today.AddDays(6), 110m, 110m, 110m, 110m, 100));
+            candles.Add(new CoreCandleData(startDate.AddDays(6), 110m, 110m, 110m, 110m, 100));
             // Bar 7: Price breaks below MA to 90
-            candles.Add(new CoreCandleData(DateTime.Today.AddDays(7), 90m, 90m, 90m, 90m, 100));
+            candles.Add(new CoreCandleData(startDate.AddDays(7), 90m, 90m, 90m, 90m, 100));
 
             var result = indicator.Calculate(candles);
             var sellSignals = result.GetSeries("Signals").ToList();

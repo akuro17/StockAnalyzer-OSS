@@ -20,12 +20,28 @@ namespace StockAnalyzer.Avalonia.Drawing;
 /// a natural limiting case of the same geometry (a "半円周"-style angle preset rather than a distinct
 /// shape).
 /// </summary>
-public class EllipseAnnulusObject : IEllipseFamilyObject
+public class EllipseAnnulusObject : IEllipseFamilyObject, IDisposable
 {
     public string? CustomName { get; set; }
     public DrawingMoveAxisMode MoveAxisMode { get; set; } = DrawingMoveAxisMode.XY;
     public bool IsMoveAxisModeExplicit { get; set; } = false;
-    private const float GeometryEpsilon = 1e-4f;
+    private const float GeometryEpsilon = DrawingThemeContext.ScreenGeometryEpsilon;
+
+    private readonly SKPath _cachedRingPath = new();
+    private readonly SKPaint _fillPaint = new() { Style = SKPaintStyle.Fill, IsAntialias = true };
+    private readonly SKPaint _strokePaint = new() { Style = SKPaintStyle.Stroke, StrokeJoin = SKStrokeJoin.Round, IsAntialias = true };
+    private readonly global::Avalonia.Point[] _handlesCache = new global::Avalonia.Point[5];
+    private bool _disposed;
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        _cachedRingPath.Dispose();
+        _fillPaint.Dispose();
+        _strokePaint.Dispose();
+        GC.SuppressFinalize(this);
+    }
 
     public Guid Id { get; } = Guid.NewGuid();
     public ChartObjectType Type => ChartObjectType.EllipseAnnulus;
@@ -117,34 +133,22 @@ public class EllipseAnnulusObject : IEllipseFamilyObject
 
     public void Render(SKCanvas canvas, ICoordinateTransform transform)
     {
-        if (canvas == null || transform == null || Points.Count < 5) return;
+        if (_disposed || canvas == null || transform == null || Points.Count < 5) return;
         if (!TryComputeRing(transform, out var path, out var handles)) return;
 
         if (IsFilled)
         {
-            using var fillPaint = new SKPaint
-            {
-                Style = SKPaintStyle.Fill,
-                IsAntialias = true,
-                BlendMode = BlendMode.ToSkBlendMode(),
-                Color = new SKColor(Color.R, Color.G, Color.B, FillAlpha)
-            };
-            canvas.DrawPath(path, fillPaint);
+            _fillPaint.BlendMode = BlendMode.ToSkBlendMode();
+            _fillPaint.Color = new SKColor(Color.R, Color.G, Color.B, FillAlpha);
+            canvas.DrawPath(path, _fillPaint);
         }
 
         if (Thickness > 0)
         {
-            using var strokePaint = new SKPaint
-            {
-                Color = SkiaColor,
-                StrokeWidth = (float)Thickness,
-                Style = SKPaintStyle.Stroke,
-                StrokeJoin = SKStrokeJoin.Round,
-                BlendMode = SKBlendMode.SrcOver,
-                PathEffect = StrokeStyle.ToSkPathEffect(),
-                IsAntialias = true
-            };
-            canvas.DrawPath(path, strokePaint);
+            _strokePaint.Color = SkiaColor;
+            _strokePaint.StrokeWidth = (float)Thickness;
+            _strokePaint.PathEffect = StrokeStyle.ToSkPathEffect();
+            canvas.DrawPath(path, _strokePaint);
         }
 
         if (IsSelected)
@@ -158,7 +162,7 @@ public class EllipseAnnulusObject : IEllipseFamilyObject
 
     public bool HitTest(global::Avalonia.Point screenPoint, ICoordinateTransform transform, double tolerance = ChartConstants.DefaultHitTestTolerance)
     {
-        if (transform == null || Points.Count < 5) return false;
+        if (_disposed || transform == null || Points.Count < 5) return false;
         if (!TryComputeRing(transform, out var path, out _)) return false;
 
         float x = (float)screenPoint.X;
@@ -185,8 +189,9 @@ public class EllipseAnnulusObject : IEllipseFamilyObject
     /// </summary>
     private bool TryComputeRing(ICoordinateTransform transform, out SKPath path, out global::Avalonia.Point[] handles)
     {
-        path = new SKPath();
-        handles = Array.Empty<global::Avalonia.Point>();
+        _cachedRingPath.Reset();
+        path = _cachedRingPath;
+        handles = _handlesCache;
 
         var s0 = transform.ChartToScreen(Points[0]);
         var s1 = transform.ChartToScreen(Points[1]);
@@ -214,7 +219,11 @@ public class EllipseAnnulusObject : IEllipseFamilyObject
         path.ArcTo(innerRect, sweepEndAngle, -sweep, forceMoveTo: false);
         path.Close();
 
-        handles = new[] { s0, s1, s2, s3, s4 };
+        _handlesCache[0] = s0;
+        _handlesCache[1] = s1;
+        _handlesCache[2] = s2;
+        _handlesCache[3] = s3;
+        _handlesCache[4] = s4;
         return true;
     }
 
