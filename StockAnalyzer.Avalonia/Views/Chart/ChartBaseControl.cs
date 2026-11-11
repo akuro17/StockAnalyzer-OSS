@@ -1335,26 +1335,6 @@ public class ChartBaseControl : Control, ICustomHitTest
 
     }
 
-    private ContextMenu? _indicatorContextMenu;
-
-    private void ShowIndicatorContextMenu(CoreIndicatorSettings indicator, global::Avalonia.Point position)
-    {
-        _indicatorContextMenu?.Close();
-
-        var menu = new ContextMenu();
-        var propertiesItem = new MenuItem
-        {
-            Header = $"{indicator.DisplayName} - {Services.LocalizationManager.Instance["Menu_IndicatorProperties"]}"
-        };
-        propertiesItem.Click += (_, _) =>
-        {
-            _ = ViewModel?.DialogService?.ShowIndicatorPropertiesDialogAsync(indicator, null, ViewModel?.Indicators);
-        };
-        menu.Items.Add(propertiesItem);
-        _indicatorContextMenu = menu;
-        menu.Open(this);
-    }
-
     private void UpdateVolumeProfileCoordinator()
     {
         if (_currentSnapshot?.IndicatorSettings == null)

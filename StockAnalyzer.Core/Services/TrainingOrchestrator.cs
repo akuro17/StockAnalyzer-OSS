@@ -11,6 +11,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using StockAnalyzer.Core.Common;
 using StockAnalyzer.Core.Execution;
 using StockAnalyzer.Core.Models.Training;
 
@@ -151,6 +152,8 @@ public sealed class TrainingOrchestrator : ITrainingOrchestrator
         var ownsPreparedRunDirectory = false;
         RunState? processState = null;
         string? configPath = null;
+        // The temp parquet files this run exported for its Indicator channels; the run owns them, so the final block deletes them.
+        IReadOnlyDictionary<string, string>? ownedIndicatorExports = null;
         var keepEnsembleArtifacts = false;
         try
         {
@@ -194,6 +197,7 @@ public sealed class TrainingOrchestrator : ITrainingOrchestrator
         {
             var indicatorChannelExportPaths = await _indicatorChannelExporter.ExportAsync(
                 config.FeatureSpec, config.Symbols, config.Timeframe, runId, runToken).ConfigureAwait(false);
+            ownedIndicatorExports = indicatorChannelExportPaths;
             config = config with { IndicatorChannelExportPaths = indicatorChannelExportPaths };
         }
 
@@ -350,7 +354,12 @@ public sealed class TrainingOrchestrator : ITrainingOrchestrator
             if (!keepEnsembleArtifacts && processState is not null)
                 DeleteEnsembleArtifacts(processState, runId);
             if (configPath is not null)
-                TryDeleteFile(configPath);
+                BestEffortFile.TryDelete(configPath);
+            if (ownedIndicatorExports is not null)
+            {
+                foreach (var exportedPath in ownedIndicatorExports.Values)
+                    BestEffortFile.TryDelete(exportedPath);
+            }
             if (ownsPreparedRunDirectory && preparedRunDirectory is not null && Directory.Exists(preparedRunDirectory))
             {
                 try { Directory.Delete(preparedRunDirectory, recursive: true); }
@@ -462,25 +471,6 @@ public sealed class TrainingOrchestrator : ITrainingOrchestrator
             return state.LastStdErrLine is { Length: > 0 }
                 ? $"Trainer exited with code {exitCode}: {state.LastStdErrLine}"
                 : $"Trainer exited with code {exitCode}.";
-        }
-    }
-
-    private static void TryDeleteFile(string path)
-    {
-        try
-        {
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
-        }
-        catch (IOException)
-        {
-            // Best-effort cleanup; a leftover temp config file is harmless.
-        }
-        catch (UnauthorizedAccessException)
-        {
-            // Best-effort cleanup; a leftover temp config file is harmless.
         }
     }
 

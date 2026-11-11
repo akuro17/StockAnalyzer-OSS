@@ -163,7 +163,6 @@ public class ChartDataCoordinator
 
     private ChartDataSnapshot _currentSnapshot = ChartDataSnapshot.Empty;
     private ChartType _currentChartType = ChartType.Candlestick;
-    private ChartFamily _previousChartFamily = ChartFamily.TimeSeries;
     private ReverseWatchCurveData? _reverseWatchData;
     private ComparisonAlignedData? _comparisonData;
     private static readonly IReadOnlyList<decimal?> EmptySeries = Array.Empty<decimal?>();
@@ -635,7 +634,6 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
 
         // Update comparison data if applicable
         _comparisonData = viewModel.ComparisonData;
-        _previousChartFamily = GetChartFamily(_currentChartType);
         }
         catch (Exception ex)
         {
@@ -1179,7 +1177,6 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
                     viewModel.SelectedTimeFrame.ToString(),
                     indicatorResults,
                     viewModel.Indicators,
-                    null, // viewModel.Drawings (Legacy)
                     _startIndex,
                     effectiveVisibleCount,
                     paddingTopPx: StandardPricePaddingPx,
@@ -1211,7 +1208,6 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
             viewModel.SelectedTimeFrame.ToString(),
             indicatorResults,
             viewModel.Indicators,
-            null,
             _startIndex,
             effectiveVisibleCount,
             paddingTopPx: StandardPricePaddingPx, 
@@ -1505,7 +1501,6 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
             viewModel.SelectedTimeFrame.ToString(),
             indicatorResults,
             viewModel.Indicators,
-            null, // drawings
             startIndex: _startIndex,
             count: effectiveVisibleCount,
             paddingTopPx: StandardPricePaddingPx, 
@@ -1642,7 +1637,6 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
             viewModel.SelectedTimeFrame.ToString(),
             indicatorResults,
             viewModel.Indicators,
-            null, // drawings
             startIndex: _startIndex,
             count: effectiveVisibleCount,
             paddingTopPx: StandardPricePaddingPx, 
@@ -1866,7 +1860,6 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
             timeframe: viewModel.SelectedTimeFrame.ToString(),
             indicatorResults: indicatorResults,
             indicatorSettings: viewModel.Indicators,
-            drawings: null,
             startIndex: _startIndex,
             count: effectiveVisibleCount,
             paddingTopPx: StandardPricePaddingPx,
@@ -1968,7 +1961,6 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
                     viewModel.SelectedTimeFrame.ToString(),
                     indicatorResults,
                     viewModel.Indicators,
-                    null,
                     _startIndex,
                     effectiveVisibleCount,
                     paddingTopPx: (decimal)layout.MarginTop,
@@ -1996,7 +1988,6 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
             viewModel.SelectedTimeFrame.ToString(),
             indicatorResults,
             viewModel.Indicators,
-            null,
             _startIndex,
             effectiveVisibleCount,
             paddingTopPx: StandardPricePaddingPx,
@@ -2067,7 +2058,6 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
             viewModel.SelectedTimeFrame.ToString(),
             _lastAlignedResults,
             viewModel.Indicators,
-            null, // drawings
             startIndex: _startIndex,
             count: effectiveVisibleCount,
             paddingTopPx: StandardPricePaddingPx, 
@@ -2217,30 +2207,6 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
         return count;
     }
 
-    private int CalculateLatestTlbCount(IReadOnlyList<CoreCandleData> candles)
-    {
-        if (candles.Count == 0) return 0;
-        
-        var lastBlock = candles[^1];
-        bool lastUp = lastBlock.Close >= lastBlock.Open;
-        int count = 0;
-        
-        for (int i = candles.Count - 1; i >= 0; i--)
-        {
-            var block = candles[i];
-            bool isUp = block.Close >= block.Open;
-            if (isUp == lastUp)
-            {
-                count++;
-            }
-            else
-            {
-                break;
-            }
-        }
-        return count;
-    }
-
     private ChartDataSnapshot CreateReverseWatchSnapshot(
         ChartViewModel viewModel,
         IReadOnlyDictionary<string, IIndicatorResult> indicatorResults,
@@ -2270,7 +2236,6 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
             viewModel.SelectedTimeFrame.ToString(),
             indicatorResults,
             viewModel.Indicators,
-            null,
             _startIndex,
             effectiveVisibleCount,
             paddingTopPx: 0, 
@@ -2411,13 +2376,6 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
     // Moved to AnalysisPipelineService
     // private static Dictionary<string, List<decimal?>> CalculateIndicators(...)
 
-
-    private static bool IsValidAdaptationTime(DateTime? time)
-    {
-        if (!time.HasValue) return false;
-        // Safety guard: Reject Year 0001 (Tick contamination) or far future (Extrapolation bug)
-        return time.Value.Year > 1900 && time.Value.Year < 3000;
-    }
 
     private static TimeSpan GetTimeIntervalFromSnapshot(ChartDataSnapshot snapshot)
     {

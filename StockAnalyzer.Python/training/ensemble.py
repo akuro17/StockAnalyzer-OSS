@@ -436,7 +436,7 @@ def evaluate(method: str, n_splits: int, captures: Sequence[Dict[int, FoldRows]]
                                    "fit_rows_sha256": rows_sha256([]), "iterations": 0}
     weights_release = equal_weights(count)
     for k in range(n_splits):
-        keys, y, probs = pooled[k]
+        _, y, probs = pooled[k]
         if method == METHOD_BAGGING:
             weights = equal_weights(count)
             status = "evaluated"

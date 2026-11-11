@@ -5,7 +5,7 @@ description = "Python components for StockAnalyzer (market data fetching, techni
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "yfinance==1.0",
+    "yfinance==1.8.0",
     "pandas==2.3.3",
     "polars==1.39.0",
     "pyarrow==23.0.1"

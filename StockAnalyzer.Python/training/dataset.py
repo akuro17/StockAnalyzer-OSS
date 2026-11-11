@@ -1946,7 +1946,7 @@ def cpcv_fold_data(
     resolved_gap = resolve_purge_gap(window, horizon, gap)
     feature_start = _feature_start_function(feature_mode, feature_spec, lags, window)
     test_set = spec.test_set
-    sym_dates, bounds, built, group_of = _cpcv_group_layout(
+    sym_dates, _, built, group_of = _cpcv_group_layout(
         symbols, dates, groups=spec.groups, feature_mode=feature_mode, window=window, horizon=horizon,
         threshold=threshold, feature_spec=feature_spec, target_type=target_type,
         indicator_export_paths=indicator_export_paths, fixed_zscore=fixed_zscore, lags=lags,

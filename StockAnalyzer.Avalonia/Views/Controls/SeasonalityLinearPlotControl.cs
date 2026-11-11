@@ -35,20 +35,6 @@ public sealed class SeasonalityLinearPlotControl : Control
     private const float OlderTraceStrokeWidth = 1.2f;
     private const byte OlderTraceAlphaStep = 26;
     private const byte MinimumTraceAlpha = 120;
-    private const float LegendMargin = 8f;
-    private const float LegendSwatchSize = 10f;
-    private const float LegendRowHeight = 16f;
-    private const float LegendRowExtraGap = 4f;
-    private const float LegendTextGap = 5f;
-
-    /// <summary>Rows advanced per mouse-wheel notch when scrolling the overflowing in-chart legend (decision D7).</summary>
-    private const float LegendWheelRowsPerNotch = 2f;
-
-    /// <summary>Width (DIP) of the in-chart legend column treated as its wheel-scroll hit region (decision D7).</summary>
-    private const float LegendHitWidth = 160f;
-
-    /// <summary>Alpha for an OFF year's legend row: it stays listed but greyed rather than removed (decision D6).</summary>
-    private const byte LegendDimmedAlpha = 70;
 
     private const uint DefaultGridOpacityPercent = 60u;
 
@@ -98,10 +84,7 @@ public sealed class SeasonalityLinearPlotControl : Control
     private SeasonalityChartResult? _layoutResult;
     private decimal? _layoutRhoStep;
     private SeasonalityLinearPlotLayout _layout;
-    private IReadOnlyList<Color>? _paletteCacheKey;
-    private SKColor[]? _paletteCacheValue;
-    private IReadOnlyList<SeasonalityYearDrawState>? _yearStateCacheKey;
-    private Dictionary<int, SeasonalityYearDrawState>? _yearStateCacheValue;
+    private readonly SeasonalityPlotRenderCache _renderCache = new();
 
     /// <summary>
     /// UI-thread scroll offset (DIP) for the in-chart legend when it overflows the viewport (decision
@@ -202,67 +185,12 @@ public sealed class SeasonalityLinearPlotControl : Control
         set => SetValue(ReturnNeutralColorProperty, value);
     }
 
-    /// <summary>Avalonia colour to Skia colour, byte-for-byte. Matches the palette conversion in <see cref="ResolvePaletteSkColors"/>.</summary>
+    /// <summary>Avalonia colour to Skia colour, byte-for-byte. Matches the palette conversion in <see cref="SeasonalityPlotRenderCache.ResolvePalette"/>.</summary>
     private static SKColor ToSkColor(Color color) => new(color.R, color.G, color.B, color.A);
 
     private float ResolveAxisTextSize() => AxisFontSize > 0d ? (float)AxisFontSize : DefaultLabelTextSize;
 
     private float ResolveLegendTextSize() => LegendFontSize > 0d ? (float)LegendFontSize : DefaultLabelTextSize;
-
-    /// <summary>
-    /// The bound <see cref="YearPalette"/> converted to Skia colours, cached against the list instance
-    /// so a render pass allocates nothing while the palette is unchanged. Null when no palette is set.
-    /// </summary>
-    private SKColor[]? ResolvePaletteSkColors()
-    {
-        IReadOnlyList<Color>? palette = YearPalette;
-        if (palette is null || palette.Count == 0)
-        {
-            return null;
-        }
-
-        if (!ReferenceEquals(palette, _paletteCacheKey) || _paletteCacheValue is null || _paletteCacheValue.Length != palette.Count)
-        {
-            var converted = new SKColor[palette.Count];
-            for (int index = 0; index < palette.Count; index++)
-            {
-                Color color = palette[index];
-                converted[index] = new SKColor(color.R, color.G, color.B, color.A);
-            }
-
-            _paletteCacheKey = palette;
-            _paletteCacheValue = converted;
-        }
-
-        return _paletteCacheValue;
-    }
-
-    /// <summary>
-    /// The bound <see cref="YearDrawStates"/> as a calendar-year lookup, cached against the list
-    /// instance so a render pass allocates nothing while the states are unchanged. Null when unset.
-    /// </summary>
-    private Dictionary<int, SeasonalityYearDrawState>? ResolveYearStateLookup()
-    {
-        IReadOnlyList<SeasonalityYearDrawState>? states = YearDrawStates;
-        if (states is null || states.Count == 0)
-        {
-            return null;
-        }
-
-        if (!ReferenceEquals(states, _yearStateCacheKey) || _yearStateCacheValue is null || _yearStateCacheValue.Count != states.Count)
-        {
-            var map = new Dictionary<int, SeasonalityYearDrawState>(states.Count);
-            for (int index = 0; index < states.Count; index++)
-            {
-                map[states[index].CalendarYear] = states[index];
-            }
-
-            _yearStateCacheKey = states;
-            _yearStateCacheValue = map;
-        }
-
-        return _yearStateCacheValue;
-    }
 
     public override void Render(DrawingContext context)
     {
@@ -297,7 +225,7 @@ public sealed class SeasonalityLinearPlotControl : Control
 
         context.Custom(new SeasonalityLinearDrawOperation(
             this, new Rect(Bounds.Size), result, _layout, GridOpacityPercent ?? DefaultGridOpacityPercent, GridDashed,
-            ResolvePaletteSkColors(), ResolveYearStateLookup(), ResolveAxisTextSize(), ResolveLegendTextSize(), _legendScrollOffset,
+            _renderCache.ResolvePalette(YearPalette), _renderCache.ResolveYearStates(YearDrawStates), ResolveAxisTextSize(), ResolveLegendTextSize(), _legendScrollOffset,
             legendSignColors));
     }
 
@@ -327,29 +255,7 @@ public sealed class SeasonalityLinearPlotControl : Control
     {
         SeasonalityChartResult? result = Result;
         int rowCount = result?.CalendarYears.Count ?? 0;
-        if (rowCount == 0)
-        {
-            return false;
-        }
-
-        float legendTextSize = ResolveLegendTextSize();
-        float rowHeight = Math.Max(LegendRowHeight, legendTextSize + LegendRowExtraGap);
-        float viewportHeight = (float)Bounds.Height - (2f * LegendMargin);
-        float maxScroll = Math.Max(0f, (rowCount * rowHeight) - viewportHeight);
-        if (viewportHeight <= 0f || maxScroll <= 0f)
-        {
-            return false;
-        }
-
-        if (pointer.X < LegendMargin || pointer.X > LegendMargin + LegendHitWidth
-            || pointer.Y < LegendMargin || pointer.Y > LegendMargin + viewportHeight)
-        {
-            return false;
-        }
-
-        float step = rowHeight * LegendWheelRowsPerNotch;
-        float updated = Math.Clamp(_legendScrollOffset - ((float)wheelDelta * step), 0f, maxScroll);
-        if (Math.Abs(updated - _legendScrollOffset) < float.Epsilon)
+        if (!SeasonalityLegendRenderer.TryComputeScrollOffset(rowCount, ResolveLegendTextSize(), Bounds.Height, pointer.X, pointer.Y, wheelDelta, _legendScrollOffset, out float updated))
         {
             return false;
         }
@@ -397,7 +303,7 @@ public sealed class SeasonalityLinearPlotControl : Control
 
         DrawReferenceFrame(canvas, layout, plotLeft, plotRight, plotTop, plotBottom, plotWidth, yScale, theme, gridOpacityPercent, gridDashed, axisTextSize);
         DrawYearTraces(canvas, result, layout, plotLeft, plotBottom, plotWidth, yScale, theme, palette, yearStates);
-        DrawLegend(canvas, layout, bounds, plotRight, theme, palette, yearStates, legendTextSize, legendScrollOffset, legendSignColors);
+        SeasonalityLegendRenderer.Draw(canvas, layout.LegendEntries, bounds, Math.Min((float)bounds.Right, plotRight - AxisLabelGap), theme, palette, yearStates, legendTextSize, legendScrollOffset, legendSignColors, _labelPaint, _legendSwatchPaint);
     }
 
     private void DrawReferenceFrame(
@@ -517,103 +423,6 @@ public sealed class SeasonalityLinearPlotControl : Control
 
             previous = point;
             hasPrevious = true;
-        }
-    }
-
-    private void DrawLegend(
-        SKCanvas canvas,
-        SeasonalityLinearPlotLayout layout,
-        Rect bounds,
-        float plotRight,
-        ThemeColors theme,
-        IReadOnlyList<SKColor>? palette,
-        IReadOnlyDictionary<int, SeasonalityYearDrawState>? yearStates,
-        float legendTextSize,
-        float legendScrollOffset,
-        SeasonalityLegendSignColors legendSignColors)
-    {
-        if (layout.LegendEntries.Length == 0)
-        {
-            return;
-        }
-
-        SKColor textColor = theme.AxisText.ToSkColor();
-        _labelPaint.TextSize = legendTextSize;
-        float rowHeight = Math.Max(LegendRowHeight, legendTextSize + LegendRowExtraGap);
-        float left = (float)bounds.X + LegendMargin;
-        float top = (float)bounds.Y + LegendMargin;
-
-        // Decision D7: the legend never grows past the viewport — it is capped to a scrollable band
-        // and the wheel pans it. Nothing to clip while every row already fits.
-        float viewportHeight = (float)bounds.Height - (2f * LegendMargin);
-        if (viewportHeight <= 0f)
-        {
-            return;
-        }
-
-        float contentHeight = layout.LegendEntries.Length * rowHeight;
-        float maxScroll = Math.Max(0f, contentHeight - viewportHeight);
-        float scroll = Math.Clamp(legendScrollOffset, 0f, maxScroll);
-        // Ensure the legend (and any annual return label) never overlaps or extends past the right Y-axis line
-        float maxRight = Math.Min((float)bounds.Right, plotRight - AxisLabelGap);
-        bool clip = maxScroll > 0f || maxRight < (float)bounds.Right;
-        if (clip)
-        {
-            canvas.Save();
-            canvas.ClipRect(new SKRect(left, top, maxRight, top + viewportHeight));
-        }
-
-        for (int index = 0; index < layout.LegendEntries.Length; index++)
-        {
-            float rowTop = top + (index * rowHeight) - scroll;
-            if (rowTop + rowHeight < top || rowTop > top + viewportHeight)
-            {
-                continue; // scrolled out of the visible band
-            }
-
-            SeasonalityLegendEntry entry = layout.LegendEntries[index];
-
-            // Decision D6: an OFF year is not removed from the legend, only greyed — it stays a
-            // visible re-enable target.
-            bool yearOff = yearStates is not null
-                && yearStates.TryGetValue(entry.CalendarYear, out SeasonalityYearDrawState state)
-                && !state.IsVisible;
-
-            SKColor swatch = SeasonalitySharedAxisFormatting.ResolveYearColor(index, palette, theme);
-            _legendSwatchPaint.Color = yearOff ? swatch.WithAlpha(LegendDimmedAlpha) : swatch;
-            canvas.DrawRect(left, rowTop, LegendSwatchSize, LegendSwatchSize, _legendSwatchPaint);
-
-            float textLeft = left + LegendSwatchSize + LegendTextGap;
-            float baseline = rowTop + LegendSwatchSize;
-            SKColor rowTextColor = yearOff ? textColor.WithAlpha(LegendDimmedAlpha) : textColor;
-
-            if (string.IsNullOrEmpty(entry.AnnualReturnLabel) || legendSignColors.IsUnset)
-            {
-                // No annual value, or the design-time / preview path with no sign colours: one draw in
-                // the plain text colour, exactly as before this feature.
-                string text = string.IsNullOrEmpty(entry.AnnualReturnLabel)
-                    ? entry.Label
-                    : $"{entry.Label}  {entry.AnnualReturnLabel}";
-                _labelPaint.Color = rowTextColor;
-                canvas.DrawText(text, textLeft, baseline, _labelPaint);
-            }
-            else
-            {
-                // Improvement C-2: colour the annual return by its sign with the Data-tab bucket
-                // colours; the year stays in the plain text colour. An OFF year dims both alike.
-                string yearPart = $"{entry.Label}  ";
-                _labelPaint.Color = rowTextColor;
-                canvas.DrawText(yearPart, textLeft, baseline, _labelPaint);
-
-                SKColor signColor = legendSignColors.ForSign(entry.Sign);
-                _labelPaint.Color = yearOff ? signColor.WithAlpha(LegendDimmedAlpha) : signColor;
-                canvas.DrawText(entry.AnnualReturnLabel, textLeft + _labelPaint.MeasureText(yearPart), baseline, _labelPaint);
-            }
-        }
-
-        if (clip)
-        {
-            canvas.Restore();
         }
     }
 

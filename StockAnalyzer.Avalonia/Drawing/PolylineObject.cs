@@ -63,7 +63,7 @@ public class PolylineObject : RelativeGeometricRenderer, IDrawingCalculatedValue
 
         int count = Points.Count;
         SKPoint[]? rented = null;
-        Span<SKPoint> screenPoints = count <= 128
+        Span<SKPoint> screenPoints = count <= DrawingBufferLimits.StackAllocElementThreshold
             ? stackalloc SKPoint[count]
             : (rented = ArrayPool<SKPoint>.Shared.Rent(count)).AsSpan(0, count);
 
@@ -126,7 +126,7 @@ public class PolylineObject : RelativeGeometricRenderer, IDrawingCalculatedValue
         SKPoint skScreenPt = new SKPoint((float)screenPoint.X, (float)screenPoint.Y);
 
         SKPoint[]? rented = null;
-        Span<SKPoint> screenPoints = count <= 128
+        Span<SKPoint> screenPoints = count <= DrawingBufferLimits.StackAllocElementThreshold
             ? stackalloc SKPoint[count]
             : (rented = ArrayPool<SKPoint>.Shared.Rent(count)).AsSpan(0, count);
 
@@ -138,39 +138,9 @@ public class PolylineObject : RelativeGeometricRenderer, IDrawingCalculatedValue
                 screenPoints[i] = new SKPoint((float)p.X, (float)p.Y);
             }
 
-            if (IsSmooth && count >= 3)
-            {
-                for (int i = 0; i < count - 1; i++)
-                {
-                    SKPoint pCurr = screenPoints[i];
-                    SKPoint pNext = screenPoints[i + 1];
-
-                    if (BezierSplineMath.DistanceSquared(pCurr, pNext) < BezierSplineMath.EpsilonSquared)
-                        continue;
-
-                    SKPoint pPrev = (i == 0)
-                        ? new SKPoint(2f * screenPoints[0].X - screenPoints[1].X, 2f * screenPoints[0].Y - screenPoints[1].Y)
-                        : screenPoints[i - 1];
-
-                    SKPoint pNextNext = (i == count - 2)
-                        ? new SKPoint(2f * screenPoints[count - 1].X - screenPoints[count - 2].X, 2f * screenPoints[count - 1].Y - screenPoints[count - 2].Y)
-                        : screenPoints[i + 2];
-
-                    BezierSplineMath.CalculateControlPoints(pPrev, pCurr, pNext, pNextNext, Tension, out var c1, out var c2);
-                    if (BezierSplineMath.HitTestCubicSegment(skScreenPt, pCurr, c1, c2, pNext, tolerance))
-                        return true;
-                }
-                return false;
-            }
-            else
-            {
-                for (int i = 0; i < count - 1; i++)
-                {
-                    if (BezierSplineMath.DistancePointToSegment(skScreenPt, screenPoints[i], screenPoints[i + 1]) <= tolerance)
-                        return true;
-                }
-                return false;
-            }
+            return IsSmooth && count >= 3
+                ? BezierSplineMath.HitTestCatmullRomSpline(skScreenPt, screenPoints, Tension, tolerance)
+                : BezierSplineMath.HitTestPolyline(skScreenPt, screenPoints, tolerance);
         }
         finally
         {

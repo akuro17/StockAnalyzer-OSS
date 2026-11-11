@@ -29,6 +29,7 @@
   <ItemGroup>
     <Compile Include="..\TestDataIsolationBootstrap.cs" Link="TestDataIsolationBootstrap.cs" />
     <Compile Include="..\TestRepositoryRoot.cs" Link="TestRepositoryRoot.cs" />
+    <Compile Include="..\CharacterizationSupport.cs" Link="TestHelpers\CharacterizationSupport.cs" />
     <Compile Include="..\ReadOnlyDataRootFixture.cs" Link="TestHelpers\ReadOnlyDataRootFixture.cs" />
   </ItemGroup>
 

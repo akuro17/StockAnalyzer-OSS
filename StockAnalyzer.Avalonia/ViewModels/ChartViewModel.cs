@@ -1366,15 +1366,11 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
 
     // Chart Settings
     
-    private readonly Dictionary<ChartType, (float Top, float Bottom, float Right)> _chartMargins = new();
-    private bool _isUpdatingMargins;
-
     [ObservableProperty]
     private float _chartMarginTop = StockAnalyzer.Core.ChartConstants.MarginTop;
 
     partial void OnChartMarginTopChanged(float value)
     {
-        SaveCurrentMargins();
         UpdateChartData();
     }
 
@@ -1383,7 +1379,6 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
 
     partial void OnChartMarginBottomChanged(float value)
     {
-        SaveCurrentMargins();
         UpdateChartData();
     }
 
@@ -1392,17 +1387,8 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
 
     partial void OnChartMarginRightChanged(float value)
     {
-        SaveCurrentMargins();
         UpdateChartData();
         RecalculateFutureOffset();
-    }
-
-    private void SaveCurrentMargins()
-    {
-        if (!_isUpdatingMargins && ChartType != ChartType.ReverseWatch)
-        {
-            _chartMargins[ChartType] = (ChartMarginTop, ChartMarginBottom, ChartMarginRight);
-        }
     }
 
     // Chart Type Specific Color Settings
@@ -2727,24 +2713,6 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
         }
         
         RequestRender(RenderReason.DataChanged);
-    }
-
-    private void RestoreMargins(ChartType type)
-    {
-        if (_chartMargins.TryGetValue(type, out var margins))
-        {
-            _isUpdatingMargins = true;
-            try
-            {
-                ChartMarginTop = margins.Top;
-                ChartMarginBottom = margins.Bottom;
-                ChartMarginRight = margins.Right;
-            }
-            finally
-            {
-                _isUpdatingMargins = false;
-            }
-        }
     }
 
     // Trigger update when candles change

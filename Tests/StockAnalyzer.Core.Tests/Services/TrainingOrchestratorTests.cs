@@ -481,7 +481,7 @@ namespace StockAnalyzer.Core.Tests.Services
         }
 
         [Fact]
-        public async Task StartTrainingAsync_ComposedFeaturesWithIndicatorChannel_WritesExportedPathsIntoConfigJson()
+        public async Task StartTrainingAsync_ComposedFeaturesWithIndicatorChannel_WritesExportedPathsIntoConfigJsonAndDeletesThemAfterTheRun()
         {
             const string symbol = "TESTSYM";
             var candles = BuildIndicatorFixtureCandles();
@@ -515,11 +515,49 @@ namespace StockAnalyzer.Core.Tests.Services
                 using var doc = System.Text.Json.JsonDocument.Parse(json);
                 exportedPath = doc.RootElement.GetProperty("indicator_channel_export_paths").GetProperty(symbol).GetString();
                 Assert.False(string.IsNullOrEmpty(exportedPath));
-                Assert.True(File.Exists(exportedPath), $"IndicatorChannelExporter's parquet file should exist at {exportedPath}");
+                // The path named a real file in the OS temp folder while the trainer ran (IndicatorChannelExporterTests proves the file is written);
+                // the run owns it, so it is gone once the run is over.
+                Assert.Equal(Path.GetTempPath().TrimEnd(Path.DirectorySeparatorChar), Path.GetDirectoryName(exportedPath));
+                Assert.False(File.Exists(exportedPath), $"The run must delete its indicator channel export, but {exportedPath} remains.");
             }
             finally
             {
                 if (exportedPath is not null) { try { File.Delete(exportedPath); } catch { /* best-effort cleanup */ } }
+            }
+        }
+
+        [Fact]
+        public async Task StartTrainingAsync_ComposedFeaturesWithIndicatorChannelAndFailingTrainer_DeletesTheExportedFiles()
+        {
+            var symbol = "FAILSYM" + Guid.NewGuid().ToString("N")[..8];
+            var exporter = new IndicatorChannelExporter(
+                new FakeMarketDataProvider(new Dictionary<string, IReadOnlyList<CandleData>> { [symbol] = BuildIndicatorFixtureCandles() }),
+                IndicatorFactory.Default);
+            var orchestrator = new TrainingOrchestrator(new FakePythonService(WriteFakeInterpreter(FailureBatch)), exporter);
+            var config = ValidConfig() with
+            {
+                Symbols = new[] { symbol },
+                FeatureMode = PredictionFeatureMode.ComposedFeatures,
+                FeatureSpec = new FeatureSpec
+                {
+                    Channels = new[] { new FeatureChannel { Kind = FeatureChannelKind.Indicator, Indicator = IndicatorType.SMA } },
+                },
+            };
+            var pattern = $"sa_indicator_channels_*_{symbol}.parquet";
+
+            try
+            {
+                var result = await orchestrator.StartTrainingAsync(config);
+
+                Assert.False(result.Success);
+                Assert.Empty(Directory.GetFiles(Path.GetTempPath(), pattern));
+            }
+            finally
+            {
+                foreach (var leaked in Directory.GetFiles(Path.GetTempPath(), pattern))
+                {
+                    try { File.Delete(leaked); } catch { /* best-effort cleanup */ }
+                }
             }
         }
 

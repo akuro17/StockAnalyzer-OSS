@@ -128,6 +128,10 @@ public class DrawingParameterMetadataTests
         [DisplayName("Is Visible")]
         public bool IsVisible { get; set; } = true;
 
+        [Category("Options")]
+        [DisplayName("Is Filled")]
+        public bool IsFilled { get; set; } = true;
+
         [Category("Text")]
         [DisplayName("Note")]
         [ParameterTag(DrawingParameterTags.Typography)]
@@ -193,7 +197,7 @@ public class DrawingParameterMetadataTests
             .OfType<StackPanel>()
             .SelectMany(p => p.Children.OfType<CheckBox>()));
 
-        Assert.Equal(LocalizationManager.Instance.Get("Param_IsVisible"), ordinaryCheckBox.Content?.ToString());
+        Assert.Equal(LocalizationManager.Instance.Get("Param_IsFilled"), ordinaryCheckBox.Content?.ToString());
     }
 
     [AvaloniaFact]
@@ -352,11 +356,11 @@ public class DrawingParameterMetadataTests
         var trendStack = Assert.IsType<StackPanel>(trendControl);
         var trendLabels = ExtractLabels(trendStack);
 
-        Assert.Contains("Color", trendLabels);
-        Assert.Contains(LocalizationManager.Instance.Get("Param_Thickness"), trendLabels);
-        Assert.Contains("Visible", trendLabels);
-        Assert.Contains("Locked", trendLabels);
-        Assert.Contains("Z-Index", trendLabels);
+        Assert.DoesNotContain("Color", trendLabels);
+        Assert.DoesNotContain(LocalizationManager.Instance.Get("Param_Thickness"), trendLabels);
+        Assert.DoesNotContain("Visible", trendLabels);
+        Assert.DoesNotContain("Locked", trendLabels);
+        Assert.DoesNotContain("Z-Index", trendLabels);
         Assert.Contains("Show Projection", trendLabels);
         Assert.Contains("Projection Columns", trendLabels);
 
@@ -370,7 +374,7 @@ public class DrawingParameterMetadataTests
         var rectStack = Assert.IsType<StackPanel>(rectControl);
         var rectLabels = ExtractLabels(rectStack);
 
-        Assert.Contains("Color", rectLabels);
+        Assert.DoesNotContain("Color", rectLabels);
         Assert.Contains(LocalizationManager.Instance.Get("Param_IsFilled"), rectLabels);
         Assert.Contains("Blend Mode", rectLabels);
 

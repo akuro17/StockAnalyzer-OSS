@@ -259,17 +259,6 @@ public readonly record struct DrawingLinkGroupRecord
 }
 
 /// <summary>
-/// Immutable value representation of a relative ghost candle for BarPatternObject and GhostFeedObject.
-/// </summary>
-public readonly record struct GhostCandleRecord(
-    [property: JsonPropertyName("ticksOffset")] long TicksOffset,
-    [property: JsonPropertyName("open")] decimal Open,
-    [property: JsonPropertyName("high")] decimal High,
-    [property: JsonPropertyName("low")] decimal Low,
-    [property: JsonPropertyName("close")] decimal Close
-);
-
-/// <summary>
 /// Complete persistent record of an individual drawing object.
 /// StyleAndParameters encapsulates all properties outside Points and Identity, guaranteeing deep value copies.
 /// </summary>

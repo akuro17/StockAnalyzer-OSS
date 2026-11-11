@@ -131,11 +131,6 @@ public sealed class ChartDataSnapshot
     public IReadOnlyList<CoreIndicatorSettings> IndicatorSettings { get; }
     
     /// <summary>
-    /// Drawings to render.
-    /// </summary>
-    public IReadOnlyList<DrawingItem> Drawings { get; }
-
-    /// <summary>
     /// Pre-calculated P&F analysis result (signals and trendlines).
     /// </summary>
     public PnfAnalysisResult? PnfAnalysis { get; }
@@ -199,7 +194,6 @@ public sealed class ChartDataSnapshot
         string timeframe = "", 
         IReadOnlyDictionary<string, IIndicatorResult>? indicatorResults = null,
         IEnumerable<CoreIndicatorSettings>? indicatorSettings = null,
-        IEnumerable<DrawingItem>? drawings = null,
         int startIndex = 0, 
         int count = -1,
         decimal paddingTopPx = 0,
@@ -222,7 +216,7 @@ public sealed class ChartDataSnapshot
         PriceScaleType priceScale = PriceScaleType.Linear, ModelAnalysisSnapshot? modelAnalysis = null,
         StockAnalyzer.Core.Models.Training.AttentionSnapshot? attention = null)
         : this(candles.Select(c => new CoreCandleData(c.Date, c.Open, c.High, c.Low, c.Close, c.Volume)),
-               symbol, timeframe, indicatorResults, indicatorSettings, drawings, startIndex, count,
+               symbol, timeframe, indicatorResults, indicatorSettings, startIndex, count,
                paddingTopPx, paddingBottomPx, chartHeightPx, minBrickSize, maxBrickSize, pnfAnalysis,
                multiWaveSignals, allPnfCandles, chartType, threeLineBreakCount, priceRangeCalculator,
                renderingMetadata, comparisonSeries, overrideMinPrice, overrideMaxPrice,
@@ -236,7 +230,6 @@ public sealed class ChartDataSnapshot
         string timeframe = "", 
         IReadOnlyDictionary<string, IIndicatorResult>? indicatorResults = null,
         IEnumerable<CoreIndicatorSettings>? indicatorSettings = null,
-        IEnumerable<DrawingItem>? drawings = null,
         int startIndex = 0, 
         int count = -1,
         decimal paddingTopPx = 0,
@@ -416,7 +409,6 @@ public sealed class ChartDataSnapshot
         IndicatorValues = indValues; // Backward compatibility
 
         IndicatorSettings = indicatorSettings?.ToList().AsReadOnly() ?? new List<CoreIndicatorSettings>().AsReadOnly();
-        Drawings = drawings?.ToList().AsReadOnly() ?? new List<DrawingItem>().AsReadOnly();
 
         // Calculate Scale
         if (overrideMinPrice.HasValue && overrideMaxPrice.HasValue)
@@ -561,7 +553,6 @@ public sealed class ChartDataSnapshot
         string timeframe = "",
         IReadOnlyDictionary<string, IIndicatorResult>? indicatorResults = null,
         IEnumerable<CoreIndicatorSettings>? indicatorSettings = null,
-        IEnumerable<DrawingItem>? drawings = null,
         int startIndex = 0,
         int count = -1,
         decimal paddingTopPx = 0,
@@ -711,7 +702,6 @@ public sealed class ChartDataSnapshot
         IndicatorValues = indValues;
 
         IndicatorSettings = indicatorSettings?.ToList().AsReadOnly() ?? new List<CoreIndicatorSettings>().AsReadOnly();
-        Drawings = drawings?.ToList().AsReadOnly() ?? new List<DrawingItem>().AsReadOnly();
 
         // Phase 4: Include Ghost Projections (MultiWave Targets) in Price Range
         if (multiWaveSignals != null)

@@ -70,7 +70,6 @@ public partial class DialogService : IDialogService
     private double GetBaseFontSize() => _serviceProvider?.GetService<IFontSettingsManager>()?.BaseFontSize ?? FontDefaults.Base;
     private double GetTitleFontSize() => _serviceProvider?.GetService<IFontSettingsManager>()?.TitleFontSize ?? FontDefaults.Title;
     private double GetDetailFontSize() => _serviceProvider?.GetService<IFontSettingsManager>()?.DetailFontSize ?? FontDefaults.Detail;
-    private double GetHelperFontSize() => _serviceProvider?.GetService<IFontSettingsManager>()?.HelperFontSize ?? FontDefaults.Helper;
 
     private static Border CreateStandardHeader(string title, string iconGeometry, double titleFontSize, Window window, IBrush? iconBrush = null)
     {
@@ -1509,7 +1508,6 @@ public partial class DialogService : IDialogService
                         timeframe: chartViewModel.SelectedTimeFrame.ToString(),
                         indicatorResults: chartViewModel.IndicatorResults,
                         indicatorSettings: chartViewModel.Indicators,
-                        drawings: null,
                         startIndex: startIndex,
                         count: visibleCount,
                         allPnfCandles: candles,

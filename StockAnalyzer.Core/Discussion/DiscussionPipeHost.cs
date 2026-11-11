@@ -150,7 +150,8 @@ internal sealed class DiscussionPipeHost : IDisposable
                 }
                 catch (IOException)
                 {
-                    // The client went away while it was being accepted: take the instance down and listen again.
+                    // The client went away while it was being accepted. The replacement is opened first, so the name never has zero instances (a second hub could claim it).
+                    next = TryNewInstance();
                     current.Dispose();
                     continue;
                 }

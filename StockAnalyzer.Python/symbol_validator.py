@@ -1,8 +1,6 @@
 """Ticker symbol validator matching StockAnalyzer.Core.Models.TickerSymbol SSoT."""
 
 from __future__ import annotations
-import os
-from pathlib import Path
 
 MAX_TICKER_LENGTH = 32
 _PARENT_SEGMENT = ".."
@@ -30,10 +28,3 @@ def is_well_formed_ticker(symbol: object) -> bool:
         if ch in _INVALID_CHARS or ord(ch) < 32 or ord(ch) == 127:
             return False
     return True
-
-
-def validate_ticker(symbol: object) -> str:
-    """Validate symbol and return stripped string, or raise ValueError."""
-    if not is_well_formed_ticker(symbol):
-        raise ValueError(f"Invalid or unsafe ticker symbol: {symbol!r}")
-    return str(symbol).strip()

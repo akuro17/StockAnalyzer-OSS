@@ -99,92 +99,70 @@ public static class PriceDataHelper
     /// and optional previous Heikin-Ashi state for HeikinAshi Open/High/Low/Close.
     /// </summary>
     public static decimal ExtractPrice(in CoreCandleData candle, PriceType priceType, decimal? previousClose = null, decimal? prevHaOpen = null, decimal? prevHaClose = null)
-    {
-        if (IsHeikinAshi(priceType))
-        {
-            decimal haOpen, haClose;
-            if (prevHaOpen.HasValue && prevHaClose.HasValue)
-            {
-                haClose = (candle.Open + candle.High + candle.Low + candle.Close) / 4.0m;
-                haOpen = (prevHaOpen.Value + prevHaClose.Value) / 2.0m;
-            }
-            else
-            {
-                haOpen = (candle.Open + candle.Close) / 2.0m;
-                haClose = (candle.Open + candle.High + candle.Low + candle.Close) / 4.0m;
-            }
-
-            return priceType switch
-            {
-                PriceType.HeikinAshiOpen => haOpen,
-                PriceType.HeikinAshiClose => haClose,
-                PriceType.HeikinAshiHigh => Math.Max(candle.High, Math.Max(haOpen, haClose)),
-                PriceType.HeikinAshiLow => Math.Min(candle.Low, Math.Min(haOpen, haClose)),
-                _ => haClose
-            };
-        }
-
-        return priceType switch
-        {
-            PriceType.Close => candle.Close,
-            PriceType.Open => candle.Open,
-            PriceType.High => candle.High,
-            PriceType.Low => candle.Low,
-            PriceType.Median => (candle.High + candle.Low) / 2.0m,
-            PriceType.Midpoint => (candle.Open + candle.Close) / 2.0m,
-            PriceType.Typical => (candle.High + candle.Low + candle.Close) / 3.0m,
-            PriceType.Weighted => (candle.High + candle.Low + 2.0m * candle.Close) / 4.0m,
-            PriceType.Average => (candle.Open + candle.High + candle.Low + candle.Close) / 4.0m,
-            PriceType.TrueHigh => previousClose.HasValue ? Math.Max(candle.High, previousClose.Value) : candle.High,
-            PriceType.TrueLow => previousClose.HasValue ? Math.Min(candle.Low, previousClose.Value) : candle.Low,
-            _ => candle.Close
-        };
-    }
+        => ExtractPriceCore(candle.Open, candle.High, candle.Low, candle.Close, priceType, previousClose, prevHaOpen, prevHaClose);
 
     /// <summary>
     /// Extracts the specified price field for a single CandleData with optional previous close for TrueHigh/TrueLow
     /// and optional previous Heikin-Ashi state for HeikinAshi Open/High/Low/Close.
     /// </summary>
     public static decimal ExtractPrice(in CandleData candle, PriceType priceType, decimal? previousClose = null, decimal? prevHaOpen = null, decimal? prevHaClose = null)
+        => ExtractPriceCore(candle.Open, candle.High, candle.Low, candle.Close, priceType, previousClose, prevHaOpen, prevHaClose);
+
+    /// <summary>
+    /// Single implementation of the price formulas for both candle types (CoreCandleData and CandleData).
+    /// The literals 4.0m / 2.0m are kept as they were: they fix the decimal scale of the result.
+    /// </summary>
+    private static decimal ExtractPriceCore(decimal open, decimal high, decimal low, decimal close, PriceType priceType, decimal? previousClose, decimal? prevHaOpen, decimal? prevHaClose)
     {
         if (IsHeikinAshi(priceType))
         {
-            decimal haOpen, haClose;
-            if (prevHaOpen.HasValue && prevHaClose.HasValue)
-            {
-                haClose = (candle.Open + candle.High + candle.Low + candle.Close) / 4.0m;
-                haOpen = (prevHaOpen.Value + prevHaClose.Value) / 2.0m;
-            }
-            else
-            {
-                haOpen = (candle.Open + candle.Close) / 2.0m;
-                haClose = (candle.Open + candle.High + candle.Low + candle.Close) / 4.0m;
-            }
-
-            return priceType switch
-            {
-                PriceType.HeikinAshiOpen => haOpen,
-                PriceType.HeikinAshiClose => haClose,
-                PriceType.HeikinAshiHigh => Math.Max(candle.High, Math.Max(haOpen, haClose)),
-                PriceType.HeikinAshiLow => Math.Min(candle.Low, Math.Min(haOpen, haClose)),
-                _ => haClose
-            };
+            var (haOpen, haClose) = HeikinAshiStep(open, high, low, close, prevHaOpen, prevHaClose);
+            return SelectHeikinAshiPrice(priceType, high, low, haOpen, haClose);
         }
 
         return priceType switch
         {
-            PriceType.Close => candle.Close,
-            PriceType.Open => candle.Open,
-            PriceType.High => candle.High,
-            PriceType.Low => candle.Low,
-            PriceType.Median => (candle.High + candle.Low) / 2.0m,
-            PriceType.Midpoint => (candle.Open + candle.Close) / 2.0m,
-            PriceType.Typical => (candle.High + candle.Low + candle.Close) / 3.0m,
-            PriceType.Weighted => (candle.High + candle.Low + 2.0m * candle.Close) / 4.0m,
-            PriceType.Average => (candle.Open + candle.High + candle.Low + candle.Close) / 4.0m,
-            PriceType.TrueHigh => previousClose.HasValue ? Math.Max(candle.High, previousClose.Value) : candle.High,
-            PriceType.TrueLow => previousClose.HasValue ? Math.Min(candle.Low, previousClose.Value) : candle.Low,
-            _ => candle.Close
+            PriceType.Close => close,
+            PriceType.Open => open,
+            PriceType.High => high,
+            PriceType.Low => low,
+            PriceType.Median => (high + low) / 2.0m,
+            PriceType.Midpoint => (open + close) / 2.0m,
+            PriceType.Typical => (high + low + close) / 3.0m,
+            PriceType.Weighted => (high + low + 2.0m * close) / 4.0m,
+            PriceType.Average => (open + high + low + close) / 4.0m,
+            PriceType.TrueHigh => previousClose.HasValue ? Math.Max(high, previousClose.Value) : high,
+            PriceType.TrueLow => previousClose.HasValue ? Math.Min(low, previousClose.Value) : low,
+            _ => close
+        };
+    }
+
+    /// <summary>
+    /// One Heikin-Ashi step of the series recursion: with a previous (Open, Close) pair the open is their mean, otherwise (first bar) it is (Open + Close) / 2.
+    /// </summary>
+    private static (decimal haOpen, decimal haClose) HeikinAshiStep(decimal open, decimal high, decimal low, decimal close, decimal? prevHaOpen, decimal? prevHaClose)
+    {
+        if (prevHaOpen.HasValue && prevHaClose.HasValue)
+        {
+            decimal nextClose = (open + high + low + close) / 4.0m;
+            decimal nextOpen = (prevHaOpen.Value + prevHaClose.Value) / 2.0m;
+            return (nextOpen, nextClose);
+        }
+
+        decimal seedOpen = (open + close) / 2.0m;
+        decimal seedClose = (open + high + low + close) / 4.0m;
+        return (seedOpen, seedClose);
+    }
+
+    private static decimal SelectHeikinAshiPrice(PriceType priceType, decimal high, decimal low, decimal haOpen, decimal haClose)
+    {
+        return priceType switch
+        {
+            PriceType.HeikinAshiOpen => haOpen,
+            PriceType.HeikinAshiClose => haClose,
+            PriceType.HeikinAshiHigh => Math.Max(high, Math.Max(haOpen, haClose)),
+            PriceType.HeikinAshiLow => Math.Min(low, Math.Min(haOpen, haClose)),
+            _ => haClose
         };
     }
 
@@ -295,26 +273,8 @@ public static class PriceDataHelper
                 var candle = candles[i];
                 if (candle != null)
                 {
-                    decimal haOpen, haClose;
-                    if (prevHaOpen.HasValue && prevHaClose.HasValue)
-                    {
-                        haClose = (candle.Open + candle.High + candle.Low + candle.Close) / 4.0m;
-                        haOpen = (prevHaOpen.Value + prevHaClose.Value) / 2.0m;
-                    }
-                    else
-                    {
-                        haOpen = (candle.Open + candle.Close) / 2.0m;
-                        haClose = (candle.Open + candle.High + candle.Low + candle.Close) / 4.0m;
-                    }
-
-                    decimal price = priceType switch
-                    {
-                        PriceType.HeikinAshiOpen => haOpen,
-                        PriceType.HeikinAshiClose => haClose,
-                        PriceType.HeikinAshiHigh => Math.Max(candle.High, Math.Max(haOpen, haClose)),
-                        PriceType.HeikinAshiLow => Math.Min(candle.Low, Math.Min(haOpen, haClose)),
-                        _ => haClose
-                    };
+                    var (haOpen, haClose) = HeikinAshiStep(candle.Open, candle.High, candle.Low, candle.Close, prevHaOpen, prevHaClose);
+                    decimal price = SelectHeikinAshiPrice(priceType, candle.High, candle.Low, haOpen, haClose);
 
                     result.Add(price);
                     prevHaOpen = haOpen;
@@ -436,12 +396,7 @@ public static class PriceDataHelper
                     var c = sc;
                     if (isHeikinAshi)
                     {
-                        decimal haClose = (c.Open + c.High + c.Low + c.Close) / 4.0m;
-                        decimal haOpen = (prevHaOpen.HasValue && prevHaClose.HasValue)
-                            ? (prevHaOpen.Value + prevHaClose.Value) / 2.0m
-                            : (c.Open + c.Close) / 2.0m;
-                        prevHaOpen = haOpen;
-                        prevHaClose = haClose;
+                        (prevHaOpen, prevHaClose) = HeikinAshiStep(c.Open, c.High, c.Low, c.Close, prevHaOpen, prevHaClose);
                     }
                     prevClose = c.Close;
                     s++;
@@ -470,19 +425,8 @@ public static class PriceDataHelper
                 decimal price;
                 if (isHeikinAshi)
                 {
-                    decimal haClose = (c.Open + c.High + c.Low + c.Close) / 4.0m;
-                    decimal haOpen = (prevHaOpen.HasValue && prevHaClose.HasValue)
-                        ? (prevHaOpen.Value + prevHaClose.Value) / 2.0m
-                        : (c.Open + c.Close) / 2.0m;
-
-                    price = priceType switch
-                    {
-                        PriceType.HeikinAshiOpen => haOpen,
-                        PriceType.HeikinAshiClose => haClose,
-                        PriceType.HeikinAshiHigh => Math.Max(c.High, Math.Max(haOpen, haClose)),
-                        PriceType.HeikinAshiLow => Math.Min(c.Low, Math.Min(haOpen, haClose)),
-                        _ => haClose
-                    };
+                    var (haOpen, haClose) = HeikinAshiStep(c.Open, c.High, c.Low, c.Close, prevHaOpen, prevHaClose);
+                    price = SelectHeikinAshiPrice(priceType, c.High, c.Low, haOpen, haClose);
 
                     prevHaOpen = haOpen;
                     prevHaClose = haClose;
@@ -532,26 +476,8 @@ public static class PriceDataHelper
             for (int i = 0; i < candles.Count; i++)
             {
                 var candle = candles[i];
-                decimal haOpen, haClose;
-                if (prevHaOpen.HasValue && prevHaClose.HasValue)
-                {
-                    haClose = (candle.Open + candle.High + candle.Low + candle.Close) / 4.0m;
-                    haOpen = (prevHaOpen.Value + prevHaClose.Value) / 2.0m;
-                }
-                else
-                {
-                    haOpen = (candle.Open + candle.Close) / 2.0m;
-                    haClose = (candle.Open + candle.High + candle.Low + candle.Close) / 4.0m;
-                }
-
-                decimal price = priceType switch
-                {
-                    PriceType.HeikinAshiOpen => haOpen,
-                    PriceType.HeikinAshiClose => haClose,
-                    PriceType.HeikinAshiHigh => Math.Max(candle.High, Math.Max(haOpen, haClose)),
-                    PriceType.HeikinAshiLow => Math.Min(candle.Low, Math.Min(haOpen, haClose)),
-                    _ => haClose
-                };
+                var (haOpen, haClose) = HeikinAshiStep(candle.Open, candle.High, candle.Low, candle.Close, prevHaOpen, prevHaClose);
+                decimal price = SelectHeikinAshiPrice(priceType, candle.High, candle.Low, haOpen, haClose);
 
                 result.Add(price);
                 prevHaOpen = haOpen;
@@ -591,26 +517,8 @@ public static class PriceDataHelper
             for (int i = 0; i < candles.Count; i++)
             {
                 var candle = candles[i];
-                decimal haOpen, haClose;
-                if (prevHaOpen.HasValue && prevHaClose.HasValue)
-                {
-                    haClose = (candle.Open + candle.High + candle.Low + candle.Close) / 4.0m;
-                    haOpen = (prevHaOpen.Value + prevHaClose.Value) / 2.0m;
-                }
-                else
-                {
-                    haOpen = (candle.Open + candle.Close) / 2.0m;
-                    haClose = (candle.Open + candle.High + candle.Low + candle.Close) / 4.0m;
-                }
-
-                decimal price = priceType switch
-                {
-                    PriceType.HeikinAshiOpen => haOpen,
-                    PriceType.HeikinAshiClose => haClose,
-                    PriceType.HeikinAshiHigh => Math.Max(candle.High, Math.Max(haOpen, haClose)),
-                    PriceType.HeikinAshiLow => Math.Min(candle.Low, Math.Min(haOpen, haClose)),
-                    _ => haClose
-                };
+                var (haOpen, haClose) = HeikinAshiStep(candle.Open, candle.High, candle.Low, candle.Close, prevHaOpen, prevHaClose);
+                decimal price = SelectHeikinAshiPrice(priceType, candle.High, candle.Low, haOpen, haClose);
 
                 result.Add(price);
                 prevHaOpen = haOpen;
@@ -650,26 +558,8 @@ public static class PriceDataHelper
             for (int i = 0; i < candles.Count; i++)
             {
                 var candle = candles[i];
-                decimal haOpen, haClose;
-                if (prevHaOpen.HasValue && prevHaClose.HasValue)
-                {
-                    haClose = (candle.Open + candle.High + candle.Low + candle.Close) / 4.0m;
-                    haOpen = (prevHaOpen.Value + prevHaClose.Value) / 2.0m;
-                }
-                else
-                {
-                    haOpen = (candle.Open + candle.Close) / 2.0m;
-                    haClose = (candle.Open + candle.High + candle.Low + candle.Close) / 4.0m;
-                }
-
-                decimal price = priceType switch
-                {
-                    PriceType.HeikinAshiOpen => haOpen,
-                    PriceType.HeikinAshiClose => haClose,
-                    PriceType.HeikinAshiHigh => Math.Max(candle.High, Math.Max(haOpen, haClose)),
-                    PriceType.HeikinAshiLow => Math.Min(candle.Low, Math.Min(haOpen, haClose)),
-                    _ => haClose
-                };
+                var (haOpen, haClose) = HeikinAshiStep(candle.Open, candle.High, candle.Low, candle.Close, prevHaOpen, prevHaClose);
+                decimal price = SelectHeikinAshiPrice(priceType, candle.High, candle.Low, haOpen, haClose);
 
                 result.Add(price);
                 prevHaOpen = haOpen;

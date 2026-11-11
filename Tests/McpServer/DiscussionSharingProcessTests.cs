@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using StockAnalyzer.Core.Common;
+using StockAnalyzer.Core.Models.Settings;
 using StockAnalyzer.TestSupport;
 
 namespace StockAnalyzer.Tests.McpServer;
@@ -52,6 +53,13 @@ public sealed class DiscussionSharingProcessTests : IDisposable
         string folder = NewDataRoot();
         using var fixture = ReadOnlyDataTreeFixture.Create(100, tickers.Length > 0 ? tickers : new[] { "msft" });
         CopyDirectory(fixture.Root, folder);
+
+        // The child resolves its ticker list through PathDiscovery.ResolveFilePath, which ignores the isolated data root and would read the
+        // repository's StockAnalyzer.Python/tickers.json; the copied tickers.json is therefore named in the child's own user settings.
+        string configDir = Path.Combine(folder, "Config");
+        Directory.CreateDirectory(configDir);
+        File.WriteAllText(Path.Combine(configDir, McpServerSettings.UserConfigFileName),
+            JsonSerializer.Serialize(new { MarketDataSettings = new { TickerListPath = Path.Combine(folder, "tickers.json") } }));
         return folder;
     }
 

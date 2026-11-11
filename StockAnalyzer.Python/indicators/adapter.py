@@ -1,9 +1,7 @@
 
 import importlib
 import logging
-import os
 import re
-import pandas as pd
 
 _INDICATOR_NAME_REGEX = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
 _RESERVED_INDICATOR_MODULES = frozenset({"adapter", "__init__"})

@@ -2,7 +2,9 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 using StockAnalyzer.Core.Common;
 using StockAnalyzer.Core.Models.Screener;
 using StockAnalyzer.Core.Services;
@@ -21,6 +23,11 @@ public sealed class UserStrategySignalBundlesDirectoryTests : IDisposable
 {
     private const int PollAttempts = 100;
     private const int PollIntervalMilliseconds = 50;
+
+    // Race test: the old file must take clearly longer than SaveDelayMilliseconds to read (measured 2026-11-11: 10000 bundles = median 48 ms, 3000 = 13 ms).
+    private const int BundleCount = 10000;
+    private const int RaceRounds = 10;
+    private const int SaveDelayMilliseconds = 1;
 
     private readonly string _directory = TestDataIsolationBootstrap.NewTempDirectory(TestDataIsolationBootstrap.SignalBundlesFolderName);
     private readonly string? _previous = UserStrategyMetadataRepository.SignalBundlesDirectory;
@@ -129,8 +136,59 @@ public sealed class UserStrategySignalBundlesDirectoryTests : IDisposable
 
     private static string ReadText(string path)
     {
-        try { return File.ReadAllText(path); }
+        // Opened with FileShare.Delete (as the product reader is) so that this poll never blocks the save's File.Replace.
+        try
+        {
+            using var stream = AtomicJsonFile.OpenForRead(path);
+            using var reader = new StreamReader(stream);
+            return reader.ReadToEnd();
+        }
         catch (IOException) { return string.Empty; } // the background save is replacing the file right now
+    }
+
+    [Fact]
+    public void GetSignalBundles_WhileASaveOfTheSameTickerIsQueued_NeverLosesTheSaveNorTheNewerList()
+    {
+        for (int round = 0; round < RaceRounds; round++)
+        {
+            string ticker = $"SIGNAL_DIR_{Guid.NewGuid():N}";
+            string path = Path.Combine(_directory, $"{ticker}.signals.json");
+
+            // The old list is stored by another repository instance, so the reader below starts with an empty cache and must read the file.
+            new UserStrategyMetadataRepository().SaveSignalBundles(ticker, SeedBundles(BundleCount));
+            WaitUntil(() => File.Exists(path) && ReadText(path).Contains($"\"Old{BundleCount - 1}\"", StringComparison.Ordinal));
+            Assert.True(File.Exists(path), $"round {round}: the seed file was not written");
+
+            var repo = new UserStrategyMetadataRepository();
+            using var barrier = new Barrier(2);
+            Task reader = Task.Run(() =>
+            {
+                barrier.SignalAndWait();
+                repo.GetSignalBundles(ticker);
+            });
+
+            barrier.SignalAndWait();
+            Thread.Sleep(SaveDelayMilliseconds);
+            repo.SaveSignalBundles(ticker, new List<BundledSignalCondition> { new("Fresh", SignalTargetType.Long, Array.Empty<ScreenerIndicatorEntry>()) });
+            Assert.True(reader.Wait(TimeSpan.FromSeconds(30)), $"round {round}: the reader did not finish");
+
+            // INV-SB-2: after the save returned, a read never returns an older list.
+            var afterSave = repo.GetSignalBundles(ticker);
+            Assert.True(afterSave.Count == 1 && afterSave[0].Name == "Fresh",
+                $"round {round}: INV-SB-2 broken, the read returned {afterSave.Count} bundle(s), first '{afterSave.FirstOrDefault()?.Name}'");
+
+            // INV-SB-1: the queued write ends with the newest list in the file and no temporary file left.
+            WaitUntil(() => ReadText(path).Contains("\"Fresh\"", StringComparison.Ordinal) && Directory.GetFiles(_directory, $"{ticker}*").Length == 1);
+            Assert.True(ReadText(path).Contains("\"Fresh\"", StringComparison.Ordinal), $"round {round}: INV-SB-1 broken, the file does not hold the saved list");
+            Assert.Equal(new[] { path }, Directory.GetFiles(_directory, $"{ticker}*"));
+        }
+    }
+
+    private static List<BundledSignalCondition> SeedBundles(int count)
+    {
+        var list = new List<BundledSignalCondition>(count);
+        for (int i = 0; i < count; i++) list.Add(new($"Old{i}", SignalTargetType.Long, Array.Empty<ScreenerIndicatorEntry>()));
+        return list;
     }
 
     [Fact]

@@ -27,12 +27,16 @@ namespace StockAnalyzer.Avalonia.Tests.ViewModels;
 public sealed partial class RlUiTests
 {
     [Fact]
-    public void Playback_IsNoLongerASettingsCategoryAndBacktestStaysAboveTrainingWizard()
+    public void Playback_IsNoLongerASettingsCategory_AndBacktestIsListedAboveMcpServerWhichIsAboveTrainingWizard()
     {
         var keys = SettingsConstants.Categories.Select(c => c.Key).ToList();
         Assert.DoesNotContain(SettingsConstants.Categories, c => c.TitleKey == "Settings_RlPlayback");
         Assert.Contains(SettingsConstants.Keys.AIPredictions, keys);
-        Assert.Equal(keys.IndexOf(SettingsConstants.Keys.TrainingWizard) - 1, keys.IndexOf(SettingsConstants.Keys.Backtest));
+        int backtest = keys.IndexOf(SettingsConstants.Keys.Backtest);
+        int mcpServer = keys.IndexOf(SettingsConstants.Keys.McpServer);
+        int trainingWizard = keys.IndexOf(SettingsConstants.Keys.TrainingWizard);
+        Assert.Equal(backtest + 1, mcpServer);
+        Assert.Equal(mcpServer + 1, trainingWizard);
     }
 
     [AvaloniaFact]

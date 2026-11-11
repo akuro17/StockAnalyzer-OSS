@@ -5,6 +5,9 @@ name: Cross-Platform CI
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 # Minimum pip version (security requirement) and Python series (3.13.17+ bundles pip 26.2.2); shared values
 env:
   PIP_MIN_VERSION: '26.2.2'
@@ -21,10 +24,10 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Setup .NET SDK
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
         with:
           dotnet-version: '8.0.x'
 
@@ -45,10 +48,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: '${{ env.PYTHON_VERSION }}'
 

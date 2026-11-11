@@ -137,7 +137,7 @@ public class RangeSplineObject : RelativeGeometricRenderer, IExtremaLevelSupport
         if (count < 2 || transform == null) return;
 
         SKPoint[]? rentedPts = null;
-        Span<SKPoint> screenPoints = count <= 128
+        Span<SKPoint> screenPoints = count <= DrawingBufferLimits.StackAllocElementThreshold
             ? stackalloc SKPoint[count]
             : (rentedPts = ArrayPool<SKPoint>.Shared.Rent(count)).AsSpan(0, count);
 
@@ -394,7 +394,7 @@ public class RangeSplineObject : RelativeGeometricRenderer, IExtremaLevelSupport
         }
 
         SKPoint[]? rentedPts = null;
-        Span<SKPoint> screenPoints = count <= 128
+        Span<SKPoint> screenPoints = count <= DrawingBufferLimits.StackAllocElementThreshold
             ? stackalloc SKPoint[count]
             : (rentedPts = ArrayPool<SKPoint>.Shared.Rent(count)).AsSpan(0, count);
 
@@ -452,7 +452,7 @@ public class RangeSplineObject : RelativeGeometricRenderer, IExtremaLevelSupport
         }
 
         SKPoint[]? rentedPts = null;
-        Span<SKPoint> screenPoints = count <= 128
+        Span<SKPoint> screenPoints = count <= DrawingBufferLimits.StackAllocElementThreshold
             ? stackalloc SKPoint[count]
             : (rentedPts = ArrayPool<SKPoint>.Shared.Rent(count)).AsSpan(0, count);
 

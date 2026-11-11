@@ -1,3 +1,4 @@
+using StockAnalyzer.Core.MathUtils;
 using StockAnalyzer.Core.Models.Parameters;
 
 namespace StockAnalyzer.Core.Models.Indicators.MovingAverages;
@@ -33,37 +34,7 @@ public class CoreLsmaIndicator : CoreIndicatorBase
         }
 
         var priceSeries = PriceDataHelper.ExtractPriceSeries(candles, PriceSource);
-        for (int i = Period - 1; i < candles.Count; i++)
-        {
-            decimal sumX = 0, sumY = 0, sumXy = 0, sumX2 = 0;
-            for (int j = 0; j < Period; j++)
-            {
-                decimal y = priceSeries[i - j] ?? 0m;
-                // For LSMA, the time series is typically reversed, so the most recent data point has the smallest x.
-                decimal x = j;
-
-                sumX += x;
-                sumY += y;
-                sumXy += x * y;
-                sumX2 += x * x;
-            }
-
-            decimal n = Period;
-            decimal denominator = n * sumX2 - sumX * sumX;
-
-            if (denominator == 0)
-            {
-                _values.Add(null);
-                continue;
-            }
-
-            decimal b = (n * sumXy - sumX * sumY) / denominator;
-            decimal a = (sumY - b * sumX) / n;
-
-            // The LSMA value is the endpoint of the regression line.
-            // Since we've reversed the series (x=0 is the current candle), the endpoint is simply 'a'.
-            _values.Add(a);
-        }
+        LinearRegressionEndpoint.AppendEndpoints(priceSeries, Period, _values);
 
         return IndicatorResult.Success(_values);
     }

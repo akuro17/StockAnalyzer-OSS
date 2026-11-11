@@ -302,7 +302,6 @@ public partial class ReverseWatchCurveWindow : Window
         private readonly SKPaint _pathPaint;
         private readonly SKPath _curvePath;
         private readonly SKPaint _hoverPaint;
-        private readonly double _renderScaling;
 
         private const float MARGIN = 60f;
         private const float TIME_AXIS_HEIGHT = 25f;
@@ -331,7 +330,6 @@ public partial class ReverseWatchCurveWindow : Window
             _pathPaint = pathPaint;
             _curvePath = curvePath;
             _hoverPaint = hoverPaint;
-            _renderScaling = renderScaling;
         }
 
         public global::Avalonia.Rect Bounds => _bounds;

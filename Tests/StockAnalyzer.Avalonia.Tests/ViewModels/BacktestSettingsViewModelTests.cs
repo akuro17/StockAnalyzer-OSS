@@ -28,15 +28,17 @@ public class BacktestSettingsViewModelTests
     }
 
     [Fact]
-    public void Category_IsListedImmediatelyAboveTrainingWizard()
+    public void Category_IsListedImmediatelyAboveMcpServer_WhichIsImmediatelyAboveTrainingWizard()
     {
         var keys = SettingsConstants.Categories.Select(c => c.Key).ToList();
 
         int backtest = keys.IndexOf(SettingsConstants.Keys.Backtest);
+        int mcpServer = keys.IndexOf(SettingsConstants.Keys.McpServer);
         int trainingWizard = keys.IndexOf(SettingsConstants.Keys.TrainingWizard);
 
         Assert.True(backtest >= 0);
-        Assert.Equal(trainingWizard - 1, backtest);
+        Assert.Equal(backtest + 1, mcpServer);
+        Assert.Equal(mcpServer + 1, trainingWizard);
     }
 
     [Fact]

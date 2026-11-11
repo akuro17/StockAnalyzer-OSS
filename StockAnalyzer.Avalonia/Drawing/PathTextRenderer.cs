@@ -134,7 +134,7 @@ public static class PathTextRenderer
 
         int length = text.Length;
         float[]? rentedWidths = null;
-        Span<float> widths = length <= 128
+        Span<float> widths = length <= DrawingBufferLimits.StackAllocElementThreshold
             ? stackalloc float[length]
             : (rentedWidths = ArrayPool<float>.Shared.Rent(length)).AsSpan(0, length);
 

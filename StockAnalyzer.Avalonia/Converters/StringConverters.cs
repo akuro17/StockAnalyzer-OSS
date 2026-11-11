@@ -92,21 +92,3 @@ public class SignalStatusColorConverter : IValueConverter
         throw new NotImplementedException();
     }
 }
-
-public class SignalStatusBgConverter : IValueConverter
-{
-    public static readonly SignalStatusBgConverter Instance = new();
-
-    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
-    {
-        var status = value?.ToString();
-        if (status == "PASS" || status == "True") return global::Avalonia.Media.Brush.Parse("#2510B981");
-        if (status == "FAIL" || status == "False") return global::Avalonia.Media.Brush.Parse("#25EF4444");
-        return global::Avalonia.Media.Brush.Parse("#20888888");
-    }
-
-    public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
-    {
-        throw new NotImplementedException();
-    }
-}

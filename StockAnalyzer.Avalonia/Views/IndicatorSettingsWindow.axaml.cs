@@ -57,11 +57,6 @@ namespace StockAnalyzer.Avalonia.Views
             }
         }
 
-        private void Vm_PropertyChanged(object? sender, PropertyChangedEventArgs e)
-        {
-            // Deprecated in favor of RequestClose
-        }
-
         // ===== Indicator List Drag & Drop Reordering =====
 
         private void OnIndicatorRowPointerPressed(object? sender, PointerPressedEventArgs e)

@@ -815,19 +815,4 @@ public class DrawingParameterViewBuilder
             return null;
         }
     }
-
-    private class DecimalToFloatConverter : IValueConverter
-    {
-        public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
-        {
-            if (value is float f) return (decimal)f;
-            return 0m;
-        }
-
-        public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
-        {
-            if (value is decimal d) return (float)d;
-            return 0f;
-        }
-    }
 }

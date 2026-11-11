@@ -264,7 +264,7 @@ public class ClothoidArrowObjectTests
         Assert.Contains("Arrow Head Size", labels);
         Assert.Contains("Arrow Head Angle", labels);
         Assert.Contains("Fill Head", labels);
-        Assert.Contains("Stroke Style", labels);
+        Assert.DoesNotContain("Stroke Style", labels);
         Assert.DoesNotContain("Move Axis Mode", labels);
         Assert.DoesNotContain("Panel Index", labels);
     }

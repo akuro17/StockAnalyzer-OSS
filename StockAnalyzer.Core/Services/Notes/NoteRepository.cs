@@ -471,6 +471,14 @@ public sealed class NoteRepository
         var attachmentsDirectory = Path.Combine(Path.GetDirectoryName(_connectionManager.DatabasePath)!, "Attachments");
         foreach (var fileName in storedFileNames)
         {
+            // The name comes from the database, which can be edited or imported: a name that is not a plain file name (separator, "..", rooted
+            // or UNC path) must never reach Path.Combine, which would let it leave the attachments folder (same rule as AttachmentRepository.TryGetFilePath).
+            if (!AttestedFileNames.IsPlain(fileName))
+            {
+                _logger?.LogWarning("Skipped attachment file {StoredFileName} during permanent delete: not a plain file name.", fileName);
+                continue;
+            }
+
             var filePath = Path.Combine(attachmentsDirectory, fileName);
             try
             {

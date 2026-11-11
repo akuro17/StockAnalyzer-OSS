@@ -141,6 +141,46 @@ public sealed class IndicatorChannelExporterTests
             () => exporter.ExportAsync(IndicatorOnlySpec(), new[] { "TESTSYM" }, TrainingTimeframe.Daily, "run1"));
     }
 
+    [Theory]
+    [InlineData("..\\x")]
+    [InlineData("a/b")]
+    public async Task ExportAsync_NonPlainSymbol_ThrowsArgumentExceptionBeforeTouchingTheMarketDataProvider(string symbol)
+    {
+        // The symbol becomes part of the export file name, so a name that is not a plain file name must be refused before any data is read or file written.
+        var exporter = new IndicatorChannelExporter(new NeverCalledMarketDataProvider(), IndicatorFactory.Default);
+
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => exporter.ExportAsync(IndicatorOnlySpec(), new[] { symbol }, TrainingTimeframe.Daily, "run1"));
+    }
+
+    [Fact]
+    public async Task ExportAsync_WhenALaterSymbolFails_DeletesTheFilesAlreadyWritten()
+    {
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var first = "OKSYM" + suffix;
+        var second = "EMPTYSYM" + suffix;
+        var provider = new FakeMarketDataProvider(new Dictionary<string, IReadOnlyList<CandleData>>
+        {
+            [first] = BuildCandles(30),
+            [second] = new List<CandleData>(),
+        });
+        var exporter = new IndicatorChannelExporter(provider, IndicatorFactory.Default);
+        var runId = "run_" + Guid.NewGuid().ToString("N");
+        var firstExportPath = Path.Combine(Path.GetTempPath(), $"sa_indicator_channels_{runId}_{first}.parquet");
+
+        try
+        {
+            await Assert.ThrowsAsync<InvalidOperationException>(
+                () => exporter.ExportAsync(IndicatorOnlySpec(), new[] { first, second }, TrainingTimeframe.Daily, runId));
+
+            Assert.False(File.Exists(firstExportPath), "A failed export must not leave the files of the symbols it already wrote.");
+        }
+        finally
+        {
+            TryDelete(firstExportPath);
+        }
+    }
+
     [Fact]
     public async Task ExportAsync_NonDefaultParams_ReflectsCustomPeriodInExportedValues()
     {

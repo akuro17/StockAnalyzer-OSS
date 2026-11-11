@@ -799,6 +799,95 @@ public class NoteRepositoryTests
         }
     }
 
+    // A database that was edited or imported can carry any text in Attachments.StoredFileName. The victim sits in the Notes data folder,
+    // one level above Attachments, so a "..\" or an absolute name would reach it if the purge combined the name into a path unchecked.
+    // A null name stands for the absolute path of the victim, which is only known at run time.
+    private static async Task<(string VictimPath, Guid NoteId, Guid AttachmentId)> SeedTrashedNoteWithStoredNameAsync(
+        NoteRepository repository, NoteDatabaseConnectionManager connectionManager, string tempDir, string? storedFileName)
+    {
+        var victimPath = Path.Combine(tempDir, "victim.txt");
+        await File.WriteAllBytesAsync(victimPath, new byte[] { 9, 8, 7 });
+
+        var attachmentId = Guid.NewGuid();
+        using (var connection = await connectionManager.OpenConnectionAsync())
+        {
+            using var command = connection.CreateCommand();
+            command.CommandText = """
+                INSERT INTO Attachments (Id, StoredFileName, OriginalFileName, MimeType, Width, Height, FileSizeBytes, CreatedAt)
+                VALUES ($id, $storedFileName, 'original.jpg', 'image/jpeg', 100, 100, 3, $createdAt);
+                """;
+            command.Parameters.AddWithValue("$id", attachmentId.ToString());
+            command.Parameters.AddWithValue("$storedFileName", storedFileName ?? victimPath);
+            command.Parameters.AddWithValue("$createdAt", DateTime.Now.ToString("o"));
+            await command.ExecuteNonQueryAsync();
+        }
+
+        var note = new Note(Guid.NewGuid(), "note with tampered attachment", DateTime.Now, DateTime.Now)
+        {
+            AttachmentIds = ImmutableArray.Create(attachmentId),
+        };
+        await repository.CreateAsync(note);
+        await repository.SoftDeleteAsync(note.Id);
+        return (victimPath, note.Id, attachmentId);
+    }
+
+    private static async Task<long> CountAttachmentRowsAsync(NoteDatabaseConnectionManager connectionManager, Guid attachmentId)
+    {
+        using var connection = await connectionManager.OpenConnectionAsync();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(*) FROM Attachments WHERE Id = $id;";
+        command.Parameters.AddWithValue("$id", attachmentId.ToString());
+        return (long)(await command.ExecuteScalarAsync())!;
+    }
+
+    [Theory]
+    [InlineData("..\\victim.txt")]
+    [InlineData("../victim.txt")]
+    [InlineData(null)]
+    public async Task PermanentlyDeleteAsync_WithNonPlainStoredFileName_DoesNotDeleteFilesOutsideTheAttachmentsFolder(string? storedFileName)
+    {
+        var tempDir = CreateIsolatedTempDirectory();
+        try
+        {
+            var (repository, connectionManager) = await CreateInitializedRepositoryAsync(tempDir);
+            var (victimPath, noteId, attachmentId) = await SeedTrashedNoteWithStoredNameAsync(repository, connectionManager, tempDir, storedFileName);
+
+            await repository.PermanentlyDeleteAsync(noteId);
+
+            Assert.Equal(new byte[] { 9, 8, 7 }, await File.ReadAllBytesAsync(victimPath));
+            Assert.Null(await repository.GetByIdAsync(noteId));
+            Assert.Equal(0, await CountAttachmentRowsAsync(connectionManager, attachmentId));
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, true); } catch { /* best-effort cleanup */ }
+        }
+    }
+
+    [Theory]
+    [InlineData("..\\victim.txt")]
+    [InlineData("../victim.txt")]
+    [InlineData(null)]
+    public async Task EmptyTrashAsync_WithNonPlainStoredFileName_DoesNotDeleteFilesOutsideTheAttachmentsFolder(string? storedFileName)
+    {
+        var tempDir = CreateIsolatedTempDirectory();
+        try
+        {
+            var (repository, connectionManager) = await CreateInitializedRepositoryAsync(tempDir);
+            var (victimPath, noteId, attachmentId) = await SeedTrashedNoteWithStoredNameAsync(repository, connectionManager, tempDir, storedFileName);
+
+            await repository.EmptyTrashAsync();
+
+            Assert.Equal(new byte[] { 9, 8, 7 }, await File.ReadAllBytesAsync(victimPath));
+            Assert.Null(await repository.GetByIdAsync(noteId));
+            Assert.Equal(0, await CountAttachmentRowsAsync(connectionManager, attachmentId));
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, true); } catch { /* best-effort cleanup */ }
+        }
+    }
+
     [Fact]
     public async Task EmptyTrashAsync_RemovesAllLogicallyDeletedNotes_KeepsActiveOnes()
     {

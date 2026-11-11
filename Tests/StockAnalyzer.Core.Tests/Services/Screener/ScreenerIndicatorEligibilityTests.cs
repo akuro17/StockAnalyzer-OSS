@@ -75,11 +75,11 @@ public sealed class ScreenerIndicatorEligibilityTests
     {
         IndicatorType[] enabled = EnabledByTheScreenerOnly();
 
-        // The seven types of the plan (derived from the registry, then named once as the expectation of the derivation).
+        // The eight types (the seven of the plan and CrossTickerDtw; derived from the registry, then named once as the expectation of the derivation).
         Assert.Equal(
             new[]
             {
-                IndicatorType.CointegrationSpread, IndicatorType.PairRatio, IndicatorType.PairSpread, IndicatorType.Ratiocator,
+                IndicatorType.CointegrationSpread, IndicatorType.CrossTickerDtw, IndicatorType.PairRatio, IndicatorType.PairSpread, IndicatorType.Ratiocator,
                 IndicatorType.RollingAlpha, IndicatorType.RollingBeta, IndicatorType.RollingRSquared,
             }.OrderBy(type => type.ToString(), StringComparer.Ordinal),
             enabled);
@@ -183,12 +183,12 @@ public sealed class ScreenerIndicatorEligibilityTests
     }
 
     [Fact]
-    public void ScreenerOnlyTypes_AreExactlyTheSevenTwoSymbolTypesTheBacktestRefuses()
+    public void ScreenerOnlyTypes_AreExactlyTheEightTwoSymbolTypesTheBacktestRefuses()
     {
         IndicatorType[] expected =
         {
             IndicatorType.RollingBeta, IndicatorType.RollingAlpha, IndicatorType.RollingRSquared, IndicatorType.CointegrationSpread,
-            IndicatorType.PairRatio, IndicatorType.PairSpread, IndicatorType.Ratiocator
+            IndicatorType.PairRatio, IndicatorType.PairSpread, IndicatorType.Ratiocator, IndicatorType.CrossTickerDtw
         };
 
         IndicatorType[] actual = Enum.GetValues<IndicatorType>().Distinct().Where(IndicatorFactory.Default.IsRegistered).Where(ScreenerIndicatorEligibility.IsScreenerOnlyType).ToArray();

@@ -415,44 +415,6 @@ namespace StockAnalyzer.ZeroAllocation
     }
 
     /// <summary>
-    /// Bridge for converting between legacy and zero-allocation data.
-    /// </summary>
-    [Obsolete("IndicatorBridge should use pooled buffers. Use IndicatorBridgePooled for zero-allocation compatibility.", false)]
-    public static class IndicatorBridge
-    {
-        public static List<ZeroAllocCandleData> ToCandleList(IZeroAllocChartDataAdapter adapter)
-        {
-            if (adapter == null) throw new ArgumentNullException(nameof(adapter));
-            
-            int n = adapter.Count;
-            var list = new List<ZeroAllocCandleData>(n);
-
-            var ts = adapter.Timestamps.Span;
-            var opens = adapter.Opens.Span;
-            var highs = adapter.Highs.Span;
-            var lows = adapter.Lows.Span;
-            var closes = adapter.Closes.Span;
-            var volumes = adapter.Volumes.Span;
-
-            for (int i = 0; i < n; i++)
-            {
-                list.Add(new ZeroAllocCandleData(ts[i], opens[i], highs[i], lows[i], closes[i], volumes[i]));
-            }
-
-            return list;
-        }
-
-        public static void Calculate(ZeroAllocLegacyIndicatorBase indicator, IZeroAllocChartDataAdapter adapter)
-        {
-            if (indicator == null) throw new ArgumentNullException(nameof(indicator));
-            if (adapter == null) throw new ArgumentNullException(nameof(adapter));
-
-            var list = ToCandleList(adapter);
-            indicator.Calculate(list);
-        }
-    }
-
-    /// <summary>
     /// Pooled bridge for zero-allocation indicator calculation.
     /// </summary>
     public static class IndicatorBridgePooled
@@ -478,15 +440,6 @@ namespace StockAnalyzer.ZeroAllocation
             }
 
             return pooled;
-        }
-
-        public static void Calculate(ZeroAllocArrayIndicatorBase indicator, IZeroAllocChartDataAdapter adapter)
-        {
-            if (indicator == null) throw new ArgumentNullException(nameof(indicator));
-            if (adapter == null) throw new ArgumentNullException(nameof(adapter));
-
-            using var pooled = ToPooledBuffer(adapter);
-            indicator.Calculate(pooled.Buffer, pooled.Length);
         }
 
         /// <summary>
@@ -552,38 +505,6 @@ namespace StockAnalyzer.ZeroAllocation
             _pooledBuffer = null;
             _disposed = true;
         }
-    }
-
-    /// <summary>
-    /// Unified indicator base for zero-allocation architecture.
-    /// </summary>
-    public abstract class ZeroAllocUnifiedIndicatorBase
-    {
-        protected IZeroAllocChartDataAdapter? _dataAdapter;
-
-        public void Calculate(IZeroAllocChartDataAdapter dataAdapter)
-        {
-            _dataAdapter = dataAdapter ?? throw new ArgumentNullException(nameof(dataAdapter));
-            CalculateCore();
-        }
-
-        protected abstract void CalculateCore();
-    }
-
-    /// <summary>
-    /// Legacy indicator base for list-based calculation.
-    /// </summary>
-    public abstract class ZeroAllocLegacyIndicatorBase
-    {
-        public abstract void Calculate(List<ZeroAllocCandleData> candles);
-    }
-
-    /// <summary>
-    /// Array-based indicator base for zero-allocation calculation.
-    /// </summary>
-    public abstract class ZeroAllocArrayIndicatorBase
-    {
-        public abstract void Calculate(ZeroAllocCandleData[] candles, int length);
     }
 
     /// <summary>

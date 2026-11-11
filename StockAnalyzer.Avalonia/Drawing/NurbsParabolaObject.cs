@@ -73,63 +73,10 @@ public class NurbsParabolaObject : RelativeGeometricRenderer
             new SKPoint((float)s2.X, (float)s2.Y)
         };
 
-        // Bounding box pre-check
-        float minX = Math.Min(pts[0].X, Math.Min(pts[1].X, pts[2].X));
-        float maxX = Math.Max(pts[0].X, Math.Max(pts[1].X, pts[2].X));
-        float minY = Math.Min(pts[0].Y, Math.Min(pts[1].Y, pts[2].Y));
-        float maxY = Math.Max(pts[0].Y, Math.Max(pts[1].Y, pts[2].Y));
-
-        double effectiveTolerance = tolerance + (Thickness / 2.0);
-        if (screenPoint.X < minX - effectiveTolerance || screenPoint.X > maxX + effectiveTolerance ||
-            screenPoint.Y < minY - effectiveTolerance || screenPoint.Y > maxY + effectiveTolerance)
-        {
-            return false;
-        }
-
-        Span<double> knots = stackalloc double[6] { 0, 0, 0, 1, 1, 1 };
         Span<double> weights = stackalloc double[3] { 1.0, 1.0, 1.0 };
-
-        int sampleCount = 40;
-        double dt = 1.0 / (sampleCount - 1);
+        double effectiveTolerance = tolerance + (Thickness / 2.0);
         SKPoint skPt = new SKPoint((float)screenPoint.X, (float)screenPoint.Y);
 
-        if (!NurbsMath.TryEvaluate(0.0, 2, pts, weights, knots, out var prevSample))
-            return false;
-
-        double tolSquared = effectiveTolerance * effectiveTolerance;
-
-        for (int i = 1; i < sampleCount; i++)
-        {
-            double t = i * dt;
-            if (NurbsMath.TryEvaluate(t, 2, pts, weights, knots, out var currSample))
-            {
-                if (DistanceSquaredToSegment(skPt, prevSample, currSample) <= tolSquared)
-                    return true;
-                prevSample = currSample;
-            }
-        }
-
-        return false;
-    }
-
-    private static double DistanceSquaredToSegment(SKPoint p, SKPoint a, SKPoint b)
-    {
-        float dx = b.X - a.X;
-        float dy = b.Y - a.Y;
-        float l2 = dx * dx + dy * dy;
-        if (l2 <= 1e-12f)
-        {
-            float px = p.X - a.X;
-            float py = p.Y - a.Y;
-            return px * px + py * py;
-        }
-
-        float t = ((p.X - a.X) * dx + (p.Y - a.Y) * dy) / l2;
-        t = Math.Clamp(t, 0f, 1f);
-        float projX = a.X + t * dx;
-        float projY = a.Y + t * dy;
-        float dX = p.X - projX;
-        float dY = p.Y - projY;
-        return dX * dX + dY * dY;
+        return NurbsMath.HitTestNurbsCurve(skPt, 2, pts, weights, effectiveTolerance, NurbsMath.ThreePointHitTestSampleCount);
     }
 }

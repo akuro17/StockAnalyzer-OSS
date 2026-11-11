@@ -58,10 +58,6 @@ public class ClothoidArrowObject : RelativeGeometricRenderer, IDrawingCalculated
 
     private const float MinHeadChordPx = 3.0f;
     private const float MaxHeadChordRatio = 0.45f;
-    private const float DashIntervalOn = 6.0f;
-    private const float DashIntervalOff = 4.0f;
-    private const float DotIntervalOn = 2.0f;
-    private const float DotIntervalOff = 3.0f;
 
     private readonly SKPaint _fillPaint;
 

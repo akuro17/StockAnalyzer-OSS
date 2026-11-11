@@ -772,12 +772,6 @@ public class PortfolioManager : IPortfolioManager
         return entries;
     }
 
-    private async Task<decimal> GetStartPriceAsync(IMarketDataProvider provider, string symbol, PerformancePeriod period)
-    {
-        var data = await provider.GetTickersDataAsync(symbol, TimeFrame.D1);
-        return GetStartPriceFromData(data, period);
-    }
-
     /// <summary>
     /// Computes the start price from pre-fetched candle data. Pure in-memory computation, no DB access.
     /// </summary>

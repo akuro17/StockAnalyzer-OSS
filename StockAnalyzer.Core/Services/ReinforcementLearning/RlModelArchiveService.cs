@@ -207,32 +207,12 @@ public sealed class RlModelArchiveService : IRlModelArchiveService
             if (limitFailure is not null)
                 return Failure(destinationDirectory, limitFailure);
 
-            int fileCount = 0;
-            if (manifest is null)
-            {
-                // No manifest: nothing to verify against, imported as GenericKind.
-                foreach (var entry in archive.Entries)
-                {
-                    ct.ThrowIfCancellationRequested();
-                    if (entry.FullName.EndsWith('/') || entry.FullName.EndsWith('\\')) continue;
-                    if (entry.FullName == ManifestEntryName) continue;
-
-                    string destPath = Path.GetFullPath(Path.Combine(targetDir, entry.FullName));
-                    if (!destPath.StartsWith(safeTargetPrefix, pathComparison))
-                        throw EscapesTarget(entry.FullName);
-
-                    Directory.CreateDirectory(Path.GetDirectoryName(destPath)!);
-                    ExtractBounded(entry, destPath, entry.FullName.Replace('\\', '/'));
-                    fileCount++;
-                }
-            }
-            else
-            {
-                var verified = ExtractVerified(archive, manifest, targetDir, safeTargetPrefix, pathComparison, ct);
-                if (verified.Failure is not null)
-                    return Failure(destinationDirectory, verified.Failure);
-                fileCount = verified.FileCount;
-            }
+            // No manifest: nothing to verify against, imported as GenericKind. It still goes through the same staging, collision check and
+            // publish-with-rollback as a verified archive; only the checksum comparison is skipped.
+            var staged = ExtractStaged(archive, manifest, targetDir, safeTargetPrefix, pathComparison, ct);
+            if (staged.Failure is not null)
+                return Failure(destinationDirectory, staged.Failure);
+            int fileCount = staged.FileCount;
 
             string kind = manifest?.ArchiveKind ?? GenericKind;
             string id = manifest?.Id ?? Path.GetFileNameWithoutExtension(sourceZipPath);
@@ -255,13 +235,14 @@ public sealed class RlModelArchiveService : IRlModelArchiveService
     }
 
     /// <summary>
-    /// Extracts every payload entry into a private staging folder, verifies each against
-    /// <see cref="RlArchiveManifest.FileHashes"/> and moves the files into place only when all match.
-    /// The manifest travels inside the same zip, so this detects corruption, not tampering.
+    /// Extracts every payload entry into a private staging folder and moves the files into place only when all of them were extracted;
+    /// a part-way failure restores what was already published. With a manifest, each entry is also verified against
+    /// <see cref="RlArchiveManifest.FileHashes"/> first (the manifest travels inside the same zip, so this detects corruption, not tampering);
+    /// without one (<paramref name="manifest"/> is null) only that checksum comparison is skipped.
     /// </summary>
-    private (int FileCount, Refusal? Failure) ExtractVerified(
+    private (int FileCount, Refusal? Failure) ExtractStaged(
         ZipArchive archive,
-        RlArchiveManifest manifest,
+        RlArchiveManifest? manifest,
         string targetDir,
         string safeTargetPrefix,
         StringComparison pathComparison,
@@ -285,21 +266,26 @@ public sealed class RlModelArchiveService : IRlModelArchiveService
             entries.Add((entry.FullName.Replace('\\', '/'), entry, stagedPath, finalPath));
         }
 
-        var hashes = manifest.FileHashes;
-        if (hashes is null) return (0, new Refusal(RlArchiveImportFailure.MissingFileHashes, null, "Archive manifest has no file hashes."));
-
-        foreach (var item in entries)
+        // Null without a manifest: nothing is listed, so nothing is compared.
+        IReadOnlyDictionary<string, string>? hashes = null;
+        if (manifest is not null)
         {
-            if (!hashes.ContainsKey(item.Key))
-                return (0, new Refusal(RlArchiveImportFailure.EntryNotListed, item.Key, $"Archive entry '{item.Key}' is not listed in the manifest."));
-        }
+            hashes = manifest.FileHashes;
+            if (hashes is null) return (0, new Refusal(RlArchiveImportFailure.MissingFileHashes, null, "Archive manifest has no file hashes."));
 
-        var presentKeys = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var item in entries) presentKeys.Add(item.Key);
-        foreach (string listedKey in hashes.Keys)
-        {
-            if (!presentKeys.Contains(listedKey))
-                return (0, new Refusal(RlArchiveImportFailure.ManifestEntryMissing, listedKey, $"Archive manifest lists '{listedKey}' but the archive does not contain it."));
+            foreach (var item in entries)
+            {
+                if (!hashes.ContainsKey(item.Key))
+                    return (0, new Refusal(RlArchiveImportFailure.EntryNotListed, item.Key, $"Archive entry '{item.Key}' is not listed in the manifest."));
+            }
+
+            var presentKeys = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var item in entries) presentKeys.Add(item.Key);
+            foreach (string listedKey in hashes.Keys)
+            {
+                if (!presentKeys.Contains(listedKey))
+                    return (0, new Refusal(RlArchiveImportFailure.ManifestEntryMissing, listedKey, $"Archive manifest lists '{listedKey}' but the archive does not contain it."));
+            }
         }
 
         // Two entries that resolve to one file (the same name twice, or names that differ only by case on a case-insensitive file system)
@@ -319,7 +305,7 @@ public sealed class RlModelArchiveService : IRlModelArchiveService
                 Directory.CreateDirectory(Path.GetDirectoryName(item.StagedPath)!);
                 ExtractBounded(item.Entry, item.StagedPath, item.Key);
 
-                if (!string.Equals(ContentHash.OfFile(item.StagedPath), hashes[item.Key], StringComparison.OrdinalIgnoreCase))
+                if (hashes is not null && !string.Equals(ContentHash.OfFile(item.StagedPath), hashes[item.Key], StringComparison.OrdinalIgnoreCase))
                     return (0, new Refusal(RlArchiveImportFailure.HashMismatch, item.Key, $"Archive entry '{item.Key}' failed SHA-256 verification."));
             }
 

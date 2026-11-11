@@ -2698,7 +2698,8 @@ public class DrawingSettingsDialogTests
             Assert.Contains("Arrow Head Size", labels);
             Assert.Contains("Arrow Head Angle", labels);
             Assert.Contains("Fill Head", labels);
-            Assert.Contains("Stroke Style", labels);
+            Assert.DoesNotContain("Stroke Style", labels);
+            Assert.True(dialog.FindControl<StackPanel>("StrokeStylePanel")!.IsVisible);
             Assert.DoesNotContain("Move Axis Mode", labels);
             Assert.DoesNotContain("Panel Index", labels);
         }
@@ -2745,7 +2746,8 @@ public class DrawingSettingsDialogTests
 
             Assert.Contains("Zone Strength", labels);
             Assert.Contains("Is Closed Zone", labels);
-            Assert.Contains("Stroke Style", labels);
+            Assert.DoesNotContain("Stroke Style", labels);
+            Assert.True(dialog.FindControl<StackPanel>("StrokeStylePanel")!.IsVisible);
             Assert.True(labels.Contains("Is Filled") || labels.Contains(LocalizationManager.Instance.Get("Param_IsFilled")));
             Assert.Contains("Blend Mode", labels);
             Assert.Contains("Gradient Type", labels);

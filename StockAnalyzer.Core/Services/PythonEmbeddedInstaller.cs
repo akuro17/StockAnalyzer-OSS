@@ -200,6 +200,8 @@ namespace StockAnalyzer.Core.Services
             startInfo.ArgumentList.Add(GetPipScriptName);
 
             using var process = Process.Start(startInfo) ?? throw new InvalidOperationException("Could not start the embedded Python for pip.");
+            // Best effort: if this app is killed abruptly, Windows ends the get-pip child with the job. No-op elsewhere.
+            using var jobHandle = WindowsJobObject.TryAssign(process);
             using var kill = ct.Register(() => { try { if (!process.HasExited) process.Kill(true); } catch { } });
 
             var stdoutTask = process.StandardOutput.ReadToEndAsync();

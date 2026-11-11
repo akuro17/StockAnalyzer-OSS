@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Settings;
@@ -15,6 +16,9 @@ namespace StockAnalyzer.Core.Tests.ReadOnly;
 
 public sealed class ReadOnlyWorkspaceSourceTests : IDisposable
 {
+    // Shorter than the two retry delays of FileReadOnlyWorkspaceSource together (15 + 30 ms), so a reader that meets the lock still succeeds on a later attempt.
+    private const int LockHoldMilliseconds = 20;
+
     private readonly string _tempDirectory;
     private readonly string _workspacePath;
 
@@ -108,15 +112,24 @@ public sealed class ReadOnlyWorkspaceSourceTests : IDisposable
         var serializer = new WorkspaceSerializationService();
         await serializer.SaveAsync(original, _workspacePath);
 
-        // Hold an exclusive lock on the file for ~20ms on a background task while calling LoadAsync
-        var lockTask = Task.Run(async () =>
+        // Hold an exclusive lock on the file for a short time while calling LoadAsync. The lock is taken on a dedicated thread (not the thread pool, which a loaded
+        // test run can starve) and LoadAsync starts only after the lock is held, so the exclusive open can never lose to the reader.
+        var lockHeld = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var lockTask = Task.Factory.StartNew(() =>
         {
-            using var exclusiveStream = new FileStream(_workspacePath, FileMode.Open, FileAccess.Read, FileShare.None);
-            await Task.Delay(20);
-        });
-
-        // Small initial delay so exclusiveStream is opened before LoadAsync's first attempt
-        await Task.Delay(5);
+            try
+            {
+                using var exclusiveStream = new FileStream(_workspacePath, FileMode.Open, FileAccess.Read, FileShare.None);
+                lockHeld.SetResult();
+                Thread.Sleep(LockHoldMilliseconds);
+            }
+            catch (Exception error)
+            {
+                lockHeld.TrySetException(error);
+                throw;
+            }
+        }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+        await lockHeld.Task;
 
         var source = new FileReadOnlyWorkspaceSource(_workspacePath);
         var loaded = await source.LoadAsync();

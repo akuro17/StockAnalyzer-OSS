@@ -28,7 +28,6 @@ public partial class AddTickerViewModel : ViewModelBase, IDisposable
     private readonly IWatchlistManager _watchlistManager;
     private readonly IDispatcherService _dispatcherService;
     private readonly ILogger<AddTickerViewModel> _logger;
-    private readonly Guid _targetProfileId;
     private bool _isDisposed;
     
     private IReadOnlyList<string>? _masterTickers;
@@ -109,7 +108,6 @@ public partial class AddTickerViewModel : ViewModelBase, IDisposable
         _watchlistManager = watchlistManager;
         _dispatcherService = dispatcherService;
         _logger = logger ?? NullLogger<AddTickerViewModel>.Instance;
-        _targetProfileId = targetProfileId == default ? Guid.Empty : targetProfileId;
         
         _ = InitializeAsync();
     }

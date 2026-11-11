@@ -41,7 +41,8 @@ public class NoteTrashViewModelTests
             noteRepository,
             cacheSynchronizer,
             orphanedAttachmentHolder ?? new OrphanedAttachmentScanResultHolder(),
-            resolvedNotesSettingsManager);
+            resolvedNotesSettingsManager,
+            new StockAnalyzer.Avalonia.Tests.Services.SynchronousDispatcherService());
         return (trash, noteRepository);
     }
 

@@ -35,14 +35,14 @@ public sealed class ScreenerCatalogForScreenerTests
         => $"{item.CategoryType}|{item.GroupName}|{item.IndicatorType}|{item.ShortName}|{item.DisplayName}|{item.ColumnMemberName}";
 
     [Fact]
-    public void TheScreenerOnlyTypes_AreTheSevenTwoTickerTypesTheBacktestRefuses()
+    public void TheScreenerOnlyTypes_AreTheEightTwoTickerTypesTheBacktestRefuses()
     {
         IndicatorType[] types = ScreenerOnlyTypes();
 
         Assert.Equal(
             new[]
             {
-                IndicatorType.CointegrationSpread, IndicatorType.PairRatio, IndicatorType.PairSpread, IndicatorType.Ratiocator,
+                IndicatorType.CointegrationSpread, IndicatorType.CrossTickerDtw, IndicatorType.PairRatio, IndicatorType.PairSpread, IndicatorType.Ratiocator,
                 IndicatorType.RollingAlpha, IndicatorType.RollingBeta, IndicatorType.RollingRSquared,
             }.OrderBy(type => type.ToString(), StringComparer.Ordinal),
             types);
@@ -50,7 +50,7 @@ public sealed class ScreenerCatalogForScreenerTests
     }
 
     [Fact]
-    public void GetCatalogItems_StillLeavesOutEveryTypeTheBacktestRefuses_Seven_Included()
+    public void GetCatalogItems_StillLeavesOutEveryTypeTheBacktestRefuses_Eight_Included()
     {
         var offered = Provider.GetCatalogItems(Factory).Where(i => i.CategoryType == ScreenerItemCategoryType.Indicator && i.IndicatorType != IndicatorType.Price)
             .Select(i => i.IndicatorType!.Value).ToHashSet();

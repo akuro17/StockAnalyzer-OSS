@@ -21,10 +21,6 @@ public sealed class ThreeLineBreakRenderer : IChartRenderer, IDisposable, IAxisP
     private readonly SKPaint _borderPaint;
     private readonly SKPaint _textPaint;
 
-    private decimal _reversalPrice;
-    private bool _showReversalPrice;
-    private SKColor _reversalLineColor;
-
     private readonly SKPaint _reversalLinePaint;
     private readonly SKPathEffect _reversalDashEffect;
 
@@ -66,9 +62,6 @@ public sealed class ThreeLineBreakRenderer : IChartRenderer, IDisposable, IAxisP
         _upPaint.Color = config.ThreeLineBreakBullishColor.ToSkColor();
         _downPaint.Color = config.ThreeLineBreakBearishColor.ToSkColor();
         _reversalLinePaint.Color = config.ReversalLineColor.ToSkColor();
-
-        _showReversalPrice = config.ShowReversalPrice;
-        _reversalLineColor = config.ReversalLineColor.ToSkColor();
 
         // Calculate Column Width using Transform
         var t = config.Transform;
@@ -156,8 +149,6 @@ public sealed class ThreeLineBreakRenderer : IChartRenderer, IDisposable, IAxisP
             {
                 reversalPrice = isLastUp ? Math.Min(lastBlock.Open, lastBlock.Close) : Math.Max(lastBlock.Open, lastBlock.Close);
             }
-
-            _reversalPrice = reversalPrice;
 
             if (config.ShowReversalLine)
             {

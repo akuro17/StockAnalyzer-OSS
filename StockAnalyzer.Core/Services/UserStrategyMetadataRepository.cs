@@ -394,7 +394,7 @@ public class UserStrategyMetadataRepository
             }
             if (File.Exists(path))
             {
-                string json = File.ReadAllText(path);
+                string json = AtomicJsonFile.ReadAllText(path);
                 var list = JsonSerializer.Deserialize<List<StockAnalyzer.Core.Models.Screener.BundledSignalCondition>>(json);
                 if (list != null)
                 {
@@ -409,8 +409,8 @@ public class UserStrategyMetadataRepository
                             }
                         }
                     }
-                    _signalBundlesCache[ticker] = list;
-                    return list;
+                    // Add-if-absent: a save that filled the cache while the file was being read keeps its newer list.
+                    return _signalBundlesCache.GetOrAdd(ticker, list);
                 }
             }
         }

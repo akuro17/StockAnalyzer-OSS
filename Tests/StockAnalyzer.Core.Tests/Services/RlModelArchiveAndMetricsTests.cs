@@ -593,4 +593,52 @@ public sealed class RlModelArchiveAndMetricsTests : IDisposable
         Assert.Equal(2, result.FileCount);
         Assert.True(File.Exists(Path.Combine(importDir, "model.onnx")));
     }
+
+    [Fact]
+    public async Task ArchiveService_ImportWithoutManifestThatFailsWhilePublishing_RestoresTheFilesAlreadyReplacedAndLeavesNothingNew()
+    {
+        // Same shape as the verified-archive rollback test: no manifest means no checksum comparison, not no staging, rollback or cleanup.
+        string importDir = Path.Combine(_testRoot, "generic_rollback");
+        Directory.CreateDirectory(importDir);
+        string existing = Path.Combine(importDir, "a.bin");
+        File.WriteAllText(existing, "old content");
+        Directory.CreateDirectory(Path.Combine(importDir, "b.bin"));   // a folder where the second file must go: publishing it fails after a.bin was replaced
+        var payload = new Dictionary<string, byte[]>(StringComparer.Ordinal)
+        {
+            ["a.bin"] = Encoding.UTF8.GetBytes("new content"),
+            ["b.bin"] = Encoding.UTF8.GetBytes("second"),
+        };
+        string zipPath = BuildZip(payload, hashes: null, includeManifest: false);
+
+        var result = await new RlModelArchiveService().ImportArchiveAsync(zipPath, importDir);
+
+        Assert.False(result.Success);
+        Assert.Equal(0, result.FileCount);
+        Assert.Equal("old content", File.ReadAllText(existing));
+        Assert.Equal(new[] { existing }, FilesUnder(importDir));
+        Assert.Empty(Directory.GetDirectories(importDir, ".import-*"));
+    }
+
+    [Fact]
+    public async Task ArchiveService_ImportWithoutManifestAndTheSameEntryNameTwice_IsRejectedWithEntryCollisionAndLeavesNoFiles()
+    {
+        string zipPath = Path.Combine(_testRoot, "generic_duplicate_" + Guid.NewGuid().ToString("N") + ".zip");
+        using (var zipStream = new FileStream(zipPath, FileMode.Create))
+        using (var archive = new ZipArchive(zipStream, ZipArchiveMode.Create))
+        {
+            foreach (string text in new[] { "first", "second" })
+            {
+                using var writer = new StreamWriter(archive.CreateEntry("dup.bin").Open());
+                writer.Write(text);
+            }
+        }
+
+        string importDir = Path.Combine(_testRoot, "generic_duplicate");
+        var result = await new RlModelArchiveService().ImportArchiveAsync(zipPath, importDir);
+
+        Assert.False(result.Success);
+        Assert.Equal(RlArchiveImportFailure.EntryCollision, result.Reason);
+        Assert.Equal("dup.bin", result.ReasonArgument);
+        Assert.Empty(FilesUnder(importDir));
+    }
 }

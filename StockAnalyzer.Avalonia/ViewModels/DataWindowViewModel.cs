@@ -1405,16 +1405,6 @@ public partial class DataWindowViewModel : ViewModelBase,
         }
     }
 
-    private int GetSpecializedOffset()
-    {
-        if (_chartViewModel == null) return 0;
-        if (_chartViewModel.ChartType == ChartType.RelativePerformance)
-        {
-            return _chartViewModel.CurrentSnapshot?.ComparisonSeries?.Count ?? 0;
-        }
-        return 0;
-    }
-
     private void UpdateOrAddItem(int index, string displayName, decimal? val, CoreIndicatorSettings indicator)
     {
         string valStr = val.HasValue ? DisplayFormat.Price(val.Value) : "N/A";

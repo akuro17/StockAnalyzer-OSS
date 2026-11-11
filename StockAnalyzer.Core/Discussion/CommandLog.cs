@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
+using StockAnalyzer.Core.Common;
 
 namespace StockAnalyzer.Core.Discussion;
 
@@ -138,7 +139,7 @@ public sealed class CommandLog : ICommandLog
             {
                 foreach (string path in OwnFiles())
                 {
-                    TryDelete(path);
+                    BestEffortFile.TryDelete(path);
                 }
             }
         }
@@ -229,7 +230,7 @@ public sealed class CommandLog : ICommandLog
         int generations = _settings.CommandLogGenerations;
         if (generations > 1)
         {
-            TryDelete(Generation(generations - 1));
+            BestEffortFile.TryDelete(Generation(generations - 1));
             for (int number = generations - 2; number >= 1; number--)
             {
                 if (File.Exists(Generation(number)))
@@ -246,18 +247,6 @@ public sealed class CommandLog : ICommandLog
         }
 
         OpenCurrent();
-    }
-
-    private static void TryDelete(string path)
-    {
-        try
-        {
-            File.Delete(path);
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-        {
-            // Best effort: the next start-up clean-up removes what is left.
-        }
     }
 
     private static byte[] Serialize(CommandLogEntry entry)

@@ -22,4 +22,8 @@
     <ProjectReference Include="..\..\StockAnalyzer.Core\StockAnalyzer.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Include="..\CharacterizationSupport.cs" Link="CharacterizationSupport.cs" />
+  </ItemGroup>
+
 </Project>

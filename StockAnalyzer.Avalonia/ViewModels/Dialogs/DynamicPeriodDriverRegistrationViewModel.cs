@@ -160,26 +160,7 @@ public partial class DynamicPeriodDriverRegistrationViewModel : ViewModelBase, I
         FilteredCatalogItems.Clear();
         _allCatalogItems.Clear();
 
-        var staticDefaults = DefaultCoreIndicatorSettings.GetDefault();
-        var tempItems = new List<IndicatorCatalogItem>();
-
-        foreach (var type in _indicatorFactory.GetRegisteredTypes())
-        {
-            if (type == IndicatorType.Price) continue;
-
-            var defaultSetting = staticDefaults.FirstOrDefault(s => s.TypeEnum == type);
-            var category = defaultSetting?.Category ?? CoreIndicatorCategory.Other;
-
-            tempItems.Add(new IndicatorCatalogItem
-            {
-                Type = type,
-                DisplayName = type.GetDescription(),
-                ShortName = type.ToString(),
-                Category = category
-            });
-        }
-
-        foreach (var item in tempItems.OrderBy(i => i.ShortName))
+        foreach (var item in IndicatorRegistrationCatalog.BuildItems(_indicatorFactory.GetRegisteredTypes(), DefaultCoreIndicatorSettings.GetDefault()))
         {
             _allCatalogItems.Add(item);
         }
@@ -765,46 +746,7 @@ public partial class DynamicPeriodDriverRegistrationViewModel : ViewModelBase, I
 
     private void UpdatePreviewName()
     {
-        if (EditingSettings == null)
-        {
-            PreviewName = string.Empty;
-            return;
-        }
-
-        if (EditingSettings.TypeEnum == IndicatorType.Price)
-        {
-            PreviewName = UseShortName
-                ? EditingSettings.PriceSource.ToString()
-                : PriceDataHelper.FormatPriceTypeLabel(EditingSettings.PriceSource);
-            return;
-        }
-
-        string baseName = UseShortName
-            ? (EditingSettings.TypeEnum?.ToString() ?? "Unknown")
-            : (EditingSettings.TypeEnum?.GetDescription() ?? "Unknown");
-
-        string formattedName;
-        if (EditingSettings.ParameterObject != null)
-        {
-            string paramName = EditingSettings.ParameterObject.GetDisplayName(baseName);
-            formattedName = UseShortName ? paramName.Replace(" (", "(") : paramName;
-        }
-        else
-        {
-            formattedName = baseName;
-        }
-
-        if (HasMultipleOutputs &&
-            !string.IsNullOrEmpty(SelectedOutput) &&
-            SelectedOutput != IndicatorResult.MainSeriesName &&
-            (AvailableOutputs.Count == 0 || SelectedOutput != AvailableOutputs.FirstOrDefault()))
-        {
-            PreviewName = $"{formattedName} ({SelectedOutput})";
-        }
-        else
-        {
-            PreviewName = formattedName;
-        }
+        PreviewName = IndicatorRegistrationCatalog.FormatPreviewName(EditingSettings, UseShortName, HasMultipleOutputs, SelectedOutput, AvailableOutputs);
     }
 
     private void FireAndForgetSave(CoreIndicatorSettings snapshot)

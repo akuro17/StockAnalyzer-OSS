@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using DuckDB.NET.Data;
 using Microsoft.Extensions.Logging;
+using StockAnalyzer.Core.Common;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Indicators;
 using StockAnalyzer.Core.Models.Training;
@@ -95,6 +96,15 @@ public sealed class IndicatorChannelExporter
                 "reads TimeFrame.D1 in this release.");
         }
 
+        // The symbol becomes part of the export file name: refuse a name that is not a plain file name before any data is read or file written.
+        foreach (var symbol in symbols)
+        {
+            if (!AttestedFileNames.IsPlain(symbol))
+            {
+                throw new ArgumentException($"IndicatorChannelExporter: symbol '{symbol}' is not a plain file name.", nameof(symbols));
+            }
+        }
+
         // Built once per channel here (not per symbol below): FeatureChannelConverter.ResolveParameterObject
         // is reflection-based, and the resulting ParameterObject is safe to reuse across every symbol's
         // IIndicatorFactory.Create call because IIndicator.Configure only reads from it.
@@ -117,51 +127,64 @@ public sealed class IndicatorChannelExporter
         }
 
         var result = new Dictionary<string, string>();
-        foreach (var symbol in symbols)
+        try
         {
-            ct.ThrowIfCancellationRequested();
-
-            var candles = await _marketDataProvider.GetTickersDataAsync(symbol, TimeFrame.D1).ConfigureAwait(false);
-            if (candles.Count == 0)
+            foreach (var symbol in symbols)
             {
-                throw new InvalidOperationException(
-                    $"IndicatorChannelExporter: no candle data available for symbol '{symbol}' (TimeFrame.D1).");
-            }
+                ct.ThrowIfCancellationRequested();
 
-            var coreCandles = candles
-                .Select(c => new CoreCandleData(c.Timestamp, c.Open, c.High, c.Low, c.Close, c.Volume))
-                .ToList();
-
-            var channelValues = new Dictionary<int, IReadOnlyList<decimal?>>();
-            foreach (var (index, channel) in indicatorChannels)
-            {
-                var indicatorType = channel.Indicator!.Value;
-                var indicator = _indicatorFactory.Create(indicatorType, parameterObjects[index])
-                    ?? throw new InvalidOperationException(
-                        $"IndicatorChannelExporter: IIndicatorFactory.Create returned null for registered IndicatorType '{indicatorType}'.");
-
-                var calcResult = indicator.Calculate(coreCandles);
-                if (!calcResult.IsSuccessful)
+                var candles = await _marketDataProvider.GetTickersDataAsync(symbol, TimeFrame.D1).ConfigureAwait(false);
+                if (candles.Count == 0)
                 {
                     throw new InvalidOperationException(
-                        $"IndicatorChannelExporter: indicator '{indicatorType}' calculation failed for symbol '{symbol}': {calcResult.ErrorMessage}");
+                        $"IndicatorChannelExporter: no candle data available for symbol '{symbol}' (TimeFrame.D1).");
                 }
 
-                if (calcResult.MainValues.Count != coreCandles.Count)
+                var coreCandles = candles
+                    .Select(c => new CoreCandleData(c.Timestamp, c.Open, c.High, c.Low, c.Close, c.Volume))
+                    .ToList();
+
+                var channelValues = new Dictionary<int, IReadOnlyList<decimal?>>();
+                foreach (var (index, channel) in indicatorChannels)
                 {
-                    throw new InvalidOperationException(
-                        $"IndicatorChannelExporter: indicator '{indicatorType}' returned {calcResult.MainValues.Count} values " +
-                        $"for {coreCandles.Count} candles of symbol '{symbol}' (expected one value per candle).");
+                    var indicatorType = channel.Indicator!.Value;
+                    var indicator = _indicatorFactory.Create(indicatorType, parameterObjects[index])
+                        ?? throw new InvalidOperationException(
+                            $"IndicatorChannelExporter: IIndicatorFactory.Create returned null for registered IndicatorType '{indicatorType}'.");
+
+                    var calcResult = indicator.Calculate(coreCandles);
+                    if (!calcResult.IsSuccessful)
+                    {
+                        throw new InvalidOperationException(
+                            $"IndicatorChannelExporter: indicator '{indicatorType}' calculation failed for symbol '{symbol}': {calcResult.ErrorMessage}");
+                    }
+
+                    if (calcResult.MainValues.Count != coreCandles.Count)
+                    {
+                        throw new InvalidOperationException(
+                            $"IndicatorChannelExporter: indicator '{indicatorType}' returned {calcResult.MainValues.Count} values " +
+                            $"for {coreCandles.Count} candles of symbol '{symbol}' (expected one value per candle).");
+                    }
+
+                    channelValues[index] = calcResult.MainValues;
                 }
 
-                channelValues[index] = calcResult.MainValues;
+                var exportPath = WriteChannelParquet(symbol, runId, coreCandles, channelValues);
+                result[symbol] = exportPath;
+                _logger?.LogInformation(
+                    "IndicatorChannelExporter: exported {ChannelCount} indicator channel(s) for {Symbol} to {Path}",
+                    channelValues.Count, symbol, exportPath);
+            }
+        }
+        catch
+        {
+            // The caller never receives the map of a failed export, so nobody else can delete these files.
+            foreach (var writtenPath in result.Values)
+            {
+                BestEffortFile.TryDelete(writtenPath);
             }
 
-            var exportPath = WriteChannelParquet(symbol, runId, coreCandles, channelValues);
-            result[symbol] = exportPath;
-            _logger?.LogInformation(
-                "IndicatorChannelExporter: exported {ChannelCount} indicator channel(s) for {Symbol} to {Path}",
-                channelValues.Count, symbol, exportPath);
+            throw;
         }
 
         return result;
@@ -278,7 +301,16 @@ public sealed class IndicatorChannelExporter
                 ) AS t(date, {valueColumnNames})
                 ORDER BY date ASC
             ) TO '{ParquetMarketDataProvider.EscapeDuckDbPath(exportPath)}' (FORMAT PARQUET)";
-        command.ExecuteNonQuery();
+        try
+        {
+            command.ExecuteNonQuery();
+        }
+        catch
+        {
+            // A COPY that fails part-way can leave a partly written file that no result map will name.
+            BestEffortFile.TryDelete(exportPath);
+            throw;
+        }
 
         return exportPath;
     }

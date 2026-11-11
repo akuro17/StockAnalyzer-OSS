@@ -2583,97 +2583,6 @@ public class ChartInteractionController
 
 
 
-    private bool CheckIndicatorHitTest(
-        CoreIndicatorSettings setting, 
-        int index, 
-        global::Avalonia.Point screenPoint, 
-        ICoordinateTransform transform, 
-        ChartLayoutContext layout, 
-        ref int panelIndex, 
-        bool isSubWindowContext, 
-        int? panelIndexOverride,
-        ChartDataSnapshot? snapshot = null)
-    {
-        Rect targetRect;
-        double minVal = 0, maxVal = 100;
-
-        if (isSubWindowContext)
-        {
-            int targetPanelIdx = panelIndexOverride ?? panelIndex;
-            if (targetPanelIdx < layout.PanelAreas.Count)
-            {
-                targetRect = layout.PanelAreas[targetPanelIdx];
-                if (!panelIndexOverride.HasValue) panelIndex++;
-
-                if (snapshot != null)
-                {
-                    // Need to calculate panel range
-                    if (!string.IsNullOrEmpty(setting.OverlayPanelId))
-                    {
-                        var groupMembers = snapshot.IndicatorSettings.Where(s => s.IsEnabled && s.OverlayPanelId == setting.OverlayPanelId).ToList();
-                        var range = Renderers.PanelValueRangeCalculator.CalculateGroup(snapshot, groupMembers);
-                        minVal = (double)range.Min; maxVal = (double)range.Max;
-                    }
-                    else
-                    {
-                        var range = Renderers.PanelValueRangeCalculator.Calculate(snapshot, setting);
-                        minVal = (double)range.Min; maxVal = (double)range.Max;
-                    }
-                }
-            }
-            else
-            {
-                targetRect = layout.ChartArea;
-            }
-        }
-        else
-        {
-            // For main chart overlay, use chartArea and snapshot's price range
-            targetRect = layout.ChartArea;
-            if (snapshot != null)
-            {
-                minVal = (double)snapshot.MinPrice;
-                maxVal = (double)snapshot.MaxPrice;
-            }
-        }
-
-        // If point is outside the Y area of this panel, skip early
-        if (screenPoint.Y < targetRect.Top - 10 || screenPoint.Y > targetRect.Bottom + 10)
-        {
-            return false;
-        }
-
-        // Get value
-        if (snapshot?.IndicatorResults != null && snapshot.IndicatorResults.TryGetValue(setting.Id, out var result))
-        {
-            if (!result.IsSuccessful || index < 0 || index >= result.MainValues.Count) return false;
-            
-            // Check all exported series for this indicator
-            foreach (var seriesName in result.SeriesNames)
-            {
-                var series = result.GetSeries(seriesName);
-                if (series == null || index >= series.Count) continue;
-
-                var val = series[index];
-                if (!val.HasValue) continue;
-
-                // Use price-range linear interpolation for both sub-window and main chart.
-                // This avoids dependency on transform.CanvasHeight which may not match
-                // the actual rendering chart area when sub-window panels exist.
-                double range = maxVal - minVal;
-                if (range == 0) range = 1;
-                double ratio = ((double)val.Value - minVal) / range;
-                double screenY = targetRect.Bottom - (ratio * targetRect.Height);
-
-                if (Math.Abs(screenPoint.Y - screenY) <= 10.0)
-                {
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
-
 
     /// <summary>
     /// Updates the current drawing object with the new mouse position.
@@ -2735,16 +2644,6 @@ public class ChartInteractionController
         }
         
         return false;
-    }
-
-    private void StopDragging()
-    {
-        DraggedObject = null;
-        DraggedHandleIndex = -1;
-        IsDragging = false;
-        LastSnapChartPoint = null;
-        _moveDragAnchorPoints = null;
-        ClearLinkedMoveState();
     }
 
     /// <summary>

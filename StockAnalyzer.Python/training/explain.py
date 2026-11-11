@@ -264,7 +264,7 @@ def explain_arrays(forward: Forward, *, fit_tensor: np.ndarray, validation_tenso
 
 
 def _pool(selected: dict, symbols: list[str], which: int, transform):
-    tensors, names, rows, dates = [], [], [], []
+    tensors, names, rows = [], [], []
     for sym in symbols:
         x, _y, anchors, fit, validation = selected[sym]
         index = (fit, validation)[which]

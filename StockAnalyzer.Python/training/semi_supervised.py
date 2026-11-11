@@ -322,7 +322,7 @@ def run(args: argparse.Namespace, train_model):
     ``args._pseudo_summary`` (written next to the ONNX by :func:`write_sidecar`)."""
     args._collect_validation = True            # I2: train_model hands over its validation probabilities (read only)
     teacher = train_model(args)
-    model, channels, report, date_ranges, scaler = teacher
+    _, _, report, date_ranges, _ = teacher
     teacher_validation = _subset(report)
     summary = dict(
         schema_version=SCHEMA_VERSION, tool=TOOL, tool_version=TOOL_VERSION,

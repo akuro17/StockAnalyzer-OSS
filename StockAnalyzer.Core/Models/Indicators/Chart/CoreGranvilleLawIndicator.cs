@@ -200,27 +200,6 @@ public class CoreGranvilleLawIndicator : CoreIndicatorBase
         }
     }
 
-    /// <summary>
-    /// Calculates MA slope direction over the specified number of bars comparing percentage change vs FlatThreshold.
-    /// Returns positive for rising, negative for falling, 0 for flat.
-    /// </summary>
-    private static decimal CalculateSlopeDirection(decimal[] sma, int index, int slopePeriod, decimal flatThreshold)
-    {
-        if (index < slopePeriod || sma[index - slopePeriod] == 0)
-            return 0;
-
-        decimal currentMa = sma[index];
-        decimal pastMa = sma[index - slopePeriod];
-
-        // Calculate percentage change
-        decimal changePercentage = pastMa != 0 ? (currentMa - pastMa) / pastMa * 100m : 0;
-
-        if (changePercentage > flatThreshold)
-            return 1; // Rising
-        if (changePercentage < -flatThreshold)
-            return -1; // Falling
-        return 0; // Flat
-    }
     private IIndicatorResult CreateResult()
     {
         return IndicatorResult.Success(new Dictionary<string, IReadOnlyList<decimal?>>

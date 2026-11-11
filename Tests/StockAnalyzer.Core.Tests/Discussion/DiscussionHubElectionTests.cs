@@ -19,6 +19,10 @@ namespace StockAnalyzer.Core.Tests.Discussion;
 /// </summary>
 public sealed class DiscussionHubElectionTests : IDisposable
 {
+    private const int ConnectTimeoutMilliseconds = 2000;
+    private const int GapRounds = 200;
+    private const int GapWaitSeconds = 10;
+
     private static readonly string DataFolder = Path.Combine(Path.GetTempPath(), "dhub-election-data");
 
     private readonly List<IDisposable> _disposables = new();
@@ -349,6 +353,68 @@ public sealed class DiscussionHubElectionTests : IDisposable
         Assert.NotNull(second); // two listeners on one name: without the flag two processes could both think they are the hub
     }
 
+    [Fact]
+    public async Task AClientThatLeftBeforeItWasAcceptedNeverFreesTheNameForASecondHub()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        for (int round = 0; round < GapRounds; round++)
+        {
+            string name = DiscussionSharingKey.PipeName(Environment.UserName, DataFolder, NewSuffix());
+            DiscussionPipeHost? host = DiscussionPipeHost.TryClaim(name);
+            Assert.NotNull(host);
+            using var stop = new CancellationTokenSource();
+            int stolen = 0;
+            Task? contender = null;
+            try
+            {
+                // A client that connects and leaves before the accept loop runs (what a probe does): the accept loop must not free the name for a moment.
+                using (var leaver = new NamedPipeClientStream(".", name, PipeDirection.InOut, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly))
+                {
+                    await leaver.ConnectAsync(ConnectTimeoutMilliseconds);
+                }
+
+                contender = Task.Run(() =>
+                {
+                    while (!stop.IsCancellationRequested)
+                    {
+                        using DiscussionPipeHost? second = DiscussionPipeHost.TryClaim(name);
+                        if (second is not null)
+                        {
+                            Interlocked.Increment(ref stolen);
+                        }
+                    }
+                });
+
+                host!.Start(new ScriptedBoard());
+
+                DateTime end = DateTime.UtcNow.AddSeconds(GapWaitSeconds);
+                bool listening = false;
+                while (!listening && DateTime.UtcNow < end)
+                {
+                    listening = await DiscussionPipeClient.ProbeAsync(name, CancellationToken.None);
+                }
+
+                Assert.True(listening, $"round {round}: the host did not listen in time");
+            }
+            finally
+            {
+                stop.Cancel();
+                if (contender is not null)
+                {
+                    await contender;
+                }
+
+                host?.Dispose();
+            }
+
+            Assert.True(stolen == 0, $"round {round}: a second host claimed the name {stolen} time(s) while the first one was listening (INV-HUB-1)");
+        }
+    }
+
     // ---- The wire against a live host --------------------------------------------------------------------------------------------------------
 
     private sealed class ScriptedBoard : IDiscussionGateway
@@ -377,7 +443,7 @@ public sealed class DiscussionHubElectionTests : IDisposable
     private static async Task<byte[]?> RawExchangeAsync(string pipeName, byte[] request, int maxReply = 1 << 20)
     {
         using var client = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
-        await client.ConnectAsync(2000);
+        await client.ConnectAsync(ConnectTimeoutMilliseconds);
         await client.WriteAsync(request);
         await client.FlushAsync();
         using var limit = new CancellationTokenSource(TimeSpan.FromSeconds(10));
@@ -486,7 +552,7 @@ public sealed class DiscussionHubElectionTests : IDisposable
         Array.Fill(huge, (byte)'a');
 
         using var client = new NamedPipeClientStream(".", name, PipeDirection.InOut, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
-        await client.ConnectAsync(2000);
+        await client.ConnectAsync(ConnectTimeoutMilliseconds);
         using var limit = new CancellationTokenSource(TimeSpan.FromSeconds(20));
         Task write = Task.Run(async () =>
         {
@@ -540,12 +606,12 @@ public sealed class DiscussionHubElectionTests : IDisposable
         for (int i = 0; i < 5; i++)
         {
             using var silent = new NamedPipeClientStream(".", name, PipeDirection.InOut, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
-            await silent.ConnectAsync(2000);
+            await silent.ConnectAsync(ConnectTimeoutMilliseconds);
         }
 
         using (var half = new NamedPipeClientStream(".", name, PipeDirection.InOut, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly))
         {
-            await half.ConnectAsync(2000);
+            await half.ConnectAsync(ConnectTimeoutMilliseconds);
             await half.WriteAsync(Encoding.UTF8.GetBytes("""{"wire":1,"op":"re"""));
             await half.FlushAsync();
         }

@@ -53,31 +53,10 @@ namespace StockAnalyzer.Core.Utilities
             int len = candles.Count;
             if (currentPrice <= 0) return ChartConstants.DefaultBoxSize;
 
-            decimal calculatedSize = 0m;
-            if (mode == ChartSizingMode.Fixed)
+            if (!TryResolveNonAtrSize(mode, fixedSize, percentage, currentPrice, out decimal calculatedSize))
             {
-                calculatedSize = fixedSize > 0 ? fixedSize : ChartConstants.DefaultBoxSize;
-            }
-            else if (mode == ChartSizingMode.Percentage)
-            {
-                calculatedSize = currentPrice * (percentage / ChartConstants.PercentageDivisor);
-            }
-            else
-            {
-                bool sufficientlyData = len > atrPeriod;
-                if (sufficientlyData)
-                {
-                    decimal atr = AtrCalculator.Calculate(candles, atrPeriod);
-                    if (atr > 0) calculatedSize = atr * atrMultiplier;
-                }
-
-                if (calculatedSize <= 0)
-                {
-                    if (fallbackMode == AutoFallbackMode.Fixed)
-                        calculatedSize = fixedSize > 0 ? fixedSize : ChartConstants.DefaultBoxSize;
-                    else
-                        calculatedSize = currentPrice * ChartConstants.DefaultFallbackPercentage;
-                }
+                decimal atr = len > atrPeriod ? AtrCalculator.Calculate(candles, atrPeriod) : 0m;
+                calculatedSize = ResolveAtrSize(atr, atrMultiplier, fallbackMode, fixedSize, currentPrice);
             }
 
             return PostProcessCalculatedSize(calculatedSize, roundingMode, currentPrice);
@@ -96,31 +75,10 @@ namespace StockAnalyzer.Core.Utilities
         {
             if (currentPrice <= 0) return ChartConstants.DefaultBoxSize;
 
-            decimal calculatedSize = 0m;
-            if (mode == ChartSizingMode.Fixed)
+            if (!TryResolveNonAtrSize(mode, fixedSize, percentage, currentPrice, out decimal calculatedSize))
             {
-                calculatedSize = fixedSize > 0 ? fixedSize : ChartConstants.DefaultBoxSize;
-            }
-            else if (mode == ChartSizingMode.Percentage)
-            {
-                calculatedSize = currentPrice * (percentage / ChartConstants.PercentageDivisor);
-            }
-            else
-            {
-                bool sufficientlyData = candles.Length > atrPeriod;
-                if (sufficientlyData)
-                {
-                    decimal atr = AtrCalculator.Calculate(candles, atrPeriod);
-                    if (atr > 0) calculatedSize = atr * atrMultiplier;
-                }
-
-                if (calculatedSize <= 0)
-                {
-                    if (fallbackMode == AutoFallbackMode.Fixed)
-                        calculatedSize = fixedSize > 0 ? fixedSize : ChartConstants.DefaultBoxSize;
-                    else
-                        calculatedSize = currentPrice * ChartConstants.DefaultFallbackPercentage;
-                }
+                decimal atr = candles.Length > atrPeriod ? AtrCalculator.Calculate(candles, atrPeriod) : 0m;
+                calculatedSize = ResolveAtrSize(atr, atrMultiplier, fallbackMode, fixedSize, currentPrice);
             }
 
             return PostProcessCalculatedSize(calculatedSize, roundingMode, currentPrice);
@@ -139,34 +97,51 @@ namespace StockAnalyzer.Core.Utilities
         {
             if (currentPrice <= 0) return ChartConstants.DefaultBoxSize;
 
-            decimal calculatedSize = 0m;
-            if (mode == ChartSizingMode.Fixed)
+            if (!TryResolveNonAtrSize(mode, fixedSize, percentage, currentPrice, out decimal calculatedSize))
             {
-                calculatedSize = fixedSize > 0 ? fixedSize : ChartConstants.DefaultBoxSize;
-            }
-            else if (mode == ChartSizingMode.Percentage)
-            {
-                calculatedSize = currentPrice * (percentage / ChartConstants.PercentageDivisor);
-            }
-            else
-            {
-                bool sufficientlyData = candles.Length > atrPeriod;
-                if (sufficientlyData)
-                {
-                    decimal atr = AtrCalculator.Calculate(candles, atrPeriod);
-                    if (atr > 0) calculatedSize = atr * atrMultiplier;
-                }
-
-                if (calculatedSize <= 0)
-                {
-                    if (fallbackMode == AutoFallbackMode.Fixed)
-                        calculatedSize = fixedSize > 0 ? fixedSize : ChartConstants.DefaultBoxSize;
-                    else
-                        calculatedSize = currentPrice * ChartConstants.DefaultFallbackPercentage;
-                }
+                decimal atr = candles.Length > atrPeriod ? AtrCalculator.Calculate(candles, atrPeriod) : 0m;
+                calculatedSize = ResolveAtrSize(atr, atrMultiplier, fallbackMode, fixedSize, currentPrice);
             }
 
             return PostProcessCalculatedSize(calculatedSize, roundingMode, currentPrice);
+        }
+
+        /// <summary>
+        /// Fixed and Percentage sizing, shared by every overload. Returns false (size 0) for any other mode, which the callers resolve from the ATR.
+        /// </summary>
+        private static bool TryResolveNonAtrSize(ChartSizingMode mode, decimal fixedSize, decimal percentage, decimal currentPrice, out decimal size)
+        {
+            if (mode == ChartSizingMode.Fixed)
+            {
+                size = fixedSize > 0 ? fixedSize : ChartConstants.DefaultBoxSize;
+                return true;
+            }
+
+            if (mode == ChartSizingMode.Percentage)
+            {
+                size = currentPrice * (percentage / ChartConstants.PercentageDivisor);
+                return true;
+            }
+
+            size = 0m;
+            return false;
+        }
+
+        /// <summary>
+        /// ATR sizing with the configured fallback; <paramref name="atr"/> is 0 when there are not enough bars. The ATR itself is computed by the
+        /// caller only in this mode, so Fixed and Percentage never pay for it.
+        /// </summary>
+        private static decimal ResolveAtrSize(decimal atr, decimal atrMultiplier, AutoFallbackMode fallbackMode, decimal fixedSize, decimal currentPrice)
+        {
+            decimal size = atr > 0 ? atr * atrMultiplier : 0m;
+            if (size <= 0)
+            {
+                size = fallbackMode == AutoFallbackMode.Fixed
+                    ? (fixedSize > 0 ? fixedSize : ChartConstants.DefaultBoxSize)
+                    : currentPrice * ChartConstants.DefaultFallbackPercentage;
+            }
+
+            return size;
         }
 
         private static decimal PostProcessCalculatedSize(decimal calculatedSize, ChartRoundingMode roundingMode, decimal currentPrice)

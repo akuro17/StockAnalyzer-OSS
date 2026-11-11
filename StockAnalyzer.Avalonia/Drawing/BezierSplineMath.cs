@@ -382,6 +382,51 @@ public static class BezierSplineMath
         return false;
     }
 
+    /// <summary>True when <paramref name="screenPoint"/> is within <paramref name="tolerance"/> pixels of the straight polyline through <paramref name="points"/>.</summary>
+    internal static bool HitTestPolyline(SKPoint screenPoint, ReadOnlySpan<SKPoint> points, double tolerance)
+    {
+        for (int i = 0; i < points.Length - 1; i++)
+        {
+            if (DistancePointToSegment(screenPoint, points[i], points[i + 1]) <= tolerance)
+                return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// True when <paramref name="screenPoint"/> is within <paramref name="tolerance"/> pixels of the Catmull-Rom spline through
+    /// <paramref name="points"/> (at least 3). The end segments use mirrored phantom neighbours, exactly as <see cref="BuildCatmullRomSplinePath"/> draws them.
+    /// </summary>
+    internal static bool HitTestCatmullRomSpline(SKPoint screenPoint, ReadOnlySpan<SKPoint> points, double tension, double tolerance)
+    {
+        int count = points.Length;
+        if (count < 3) return false;
+
+        for (int i = 0; i < count - 1; i++)
+        {
+            SKPoint pCurr = points[i];
+            SKPoint pNext = points[i + 1];
+
+            if (DistanceSquared(pCurr, pNext) < EpsilonSquared)
+                continue;
+
+            SKPoint pPrev = (i == 0)
+                ? new SKPoint(2f * points[0].X - points[1].X, 2f * points[0].Y - points[1].Y)
+                : points[i - 1];
+
+            SKPoint pNextNext = (i == count - 2)
+                ? new SKPoint(2f * points[count - 1].X - points[count - 2].X, 2f * points[count - 1].Y - points[count - 2].Y)
+                : points[i + 2];
+
+            CalculateControlPoints(pPrev, pCurr, pNext, pNextNext, tension, out var c1, out var c2);
+            if (HitTestCubicSegment(screenPoint, pCurr, c1, c2, pNext, tolerance))
+                return true;
+        }
+
+        return false;
+    }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static double DistancePointToSegment(SKPoint p, SKPoint v, SKPoint w)
     {

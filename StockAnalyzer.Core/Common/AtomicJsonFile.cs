@@ -114,6 +114,14 @@ public static class AtomicJsonFile
     internal static FileStream OpenForRead(string filePath)
         => new(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
 
+    /// <summary>Reads the whole file as text through <see cref="OpenForRead"/> (a concurrent <c>File.Replace</c> of a save neither fails nor is blocked). Same encoding rules as <see cref="File.ReadAllText(string)"/>.</summary>
+    internal static string ReadAllText(string filePath)
+    {
+        using var stream = OpenForRead(filePath);
+        using var reader = new StreamReader(stream);
+        return reader.ReadToEnd();
+    }
+
     /// <summary>
     /// Reads and deserializes <paramref name="filePath"/>. Callers are expected to check
     /// <see cref="File.Exists(string)"/> beforehand, since "file absent" typically means

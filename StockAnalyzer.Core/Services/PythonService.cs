@@ -1109,6 +1109,9 @@ namespace StockAnalyzer.Core.Services
             await _resiliencePipeline.ExecuteAsync(async innerCt => 
             {
                 process.Start();
+                // One Job Object per launch attempt (a retry starts the process again): if this app is killed abruptly, Windows closes the
+                // handle and ends the pip child too. Disposed when the attempt ends, i.e. after the process has exited or been killed.
+                using var jobHandle = WindowsJobObject.TryAssign(process);
                 process.BeginOutputReadLine();
                 process.BeginErrorReadLine();
                 try
@@ -1152,6 +1155,9 @@ namespace StockAnalyzer.Core.Services
             await _resiliencePipeline.ExecuteAsync(async innerCt => 
             {
                 process.Start();
+                // One Job Object per launch attempt (a retry starts the process again): if this app is killed abruptly, Windows closes the
+                // handle and ends the pip child too. Disposed when the attempt ends, i.e. after the process has exited or been killed.
+                using var jobHandle = WindowsJobObject.TryAssign(process);
                 process.BeginOutputReadLine();
                 process.BeginErrorReadLine();
                 try

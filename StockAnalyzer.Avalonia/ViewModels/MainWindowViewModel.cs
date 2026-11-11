@@ -2201,17 +2201,6 @@ public partial class MainWindowViewModel : ViewModelBase,
     [System.Text.RegularExpressions.GeneratedRegex(@"PanelChart_(\d+)")]
     private static partial System.Text.RegularExpressions.Regex PanelChartIdRegex();
 
-    private void SyncPanelChartTitle(WorkspaceViewItem item, ChartViewModel vm, long id)
-    {
-        _dispatcherService.Post(() => 
-        {
-            if (item == null) return;
-            string symbol = string.IsNullOrEmpty(vm.Symbol) ? "Chart" : vm.Symbol;
-            string timeframe = vm.SelectedTimeFrame.ToString();
-            item.Title = $"{symbol} ({timeframe}) [{id}]";
-        });
-    }
-
     static MainWindowViewModel()
     {
         // Initialize to thread-safe by default during startup

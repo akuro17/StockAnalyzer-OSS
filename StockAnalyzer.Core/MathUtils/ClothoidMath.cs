@@ -12,7 +12,6 @@ namespace StockAnalyzer.Core.MathUtils;
 public static class ClothoidMath
 {
     private const double MaxAngle = Math.PI / 2.0 - 0.05; // ~87.1 degrees maximum pitch
-    private const double MinAngle = -MaxAngle;
     private const double MaxInitialCurvature = 1.5;
 
     public readonly record struct ClothoidState(
