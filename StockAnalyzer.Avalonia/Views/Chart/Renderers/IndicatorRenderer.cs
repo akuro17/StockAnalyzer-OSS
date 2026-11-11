@@ -708,6 +708,10 @@ public sealed class IndicatorRenderer : IChartRenderer, IDisposable
     public void Dispose()
     {
         _indexIndicatorRenderer.Dispose();
+        _lineRenderer.Dispose();
+        _stepLineRenderer.Dispose();
+        _mssRenderer.Dispose();
+        _ichimokuRenderer.Dispose();
         _subHistPaint.Dispose();
         _subLinePaint.Dispose();
         _subPath.Dispose();

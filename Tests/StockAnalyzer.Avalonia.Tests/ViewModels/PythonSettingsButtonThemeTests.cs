@@ -14,6 +14,8 @@ namespace StockAnalyzer.Avalonia.Tests.ViewModels;
 /// The Python Library Update card of Settings &gt; Python: two buttons laid out like the AI Predictions ONNX card, both with the "accent" class
 /// (Background / Text / Hover / Pressed come from the Settings &gt; Theme Button colours).
 /// </summary>
+// Re-initializes the shared static LocalizationManager.Instance (see LocalizationSharedStateCollection.cs).
+[Collection("LocalizationSharedState")]
 public sealed class PythonSettingsButtonThemeTests
 {
     [AvaloniaFact]

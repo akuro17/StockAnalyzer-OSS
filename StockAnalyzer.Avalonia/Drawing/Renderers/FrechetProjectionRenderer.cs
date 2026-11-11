@@ -4,14 +4,21 @@ using SkiaSharp;
 using StockAnalyzer.Avalonia.Common;
 using StockAnalyzer.Avalonia.Drawing;
 using StockAnalyzer.Avalonia.Drawing.Objects;
+using StockAnalyzer.Avalonia.Views.Chart;
 
 namespace StockAnalyzer.Avalonia.Drawing.Renderers;
 
 public class FrechetProjectionRenderer
 {
+    // Paints and paths shared by all Frechet drawings on this thread (see ProjectionRenderScratch).
+    [ThreadStatic]
+    private static ProjectionRenderScratch? t_scratch;
+
     public void Render(SKCanvas canvas, IChartObject obj, ICoordinateTransform transform, bool isSelected)
     {
         if (obj is not FrechetProjectionObject frechetObj || frechetObj.Points.Count < 2) return;
+
+        var scratch = t_scratch ??= new ProjectionRenderScratch(ChartTheme.FrechetProjectedPathDashLength);
 
         var p1 = transform.ChartToScreen(frechetObj.Points[0]);
         var p2 = transform.ChartToScreen(frechetObj.Points[1]);
@@ -26,28 +33,16 @@ public class FrechetProjectionRenderer
 
         // 1. Draw Selection Range Background Band
         var bandRect = new SKRect(left, clip.Top, right, clip.Bottom);
-        using (var bgPaint = new SKPaint
-        {
-            Color = frechetObj.SkiaFillColor.WithAlpha((byte)(255 * frechetObj.FillOpacity / 100.0)),
-            Style = SKPaintStyle.Fill,
-            IsAntialias = true
-        })
-        {
-            canvas.DrawRect(bandRect, bgPaint);
-        }
+        var fillPaint = scratch.FillPaint;
+        fillPaint.Color = frechetObj.SkiaFillColor.WithAlpha((byte)(255 * frechetObj.FillOpacity / 100.0));
+        canvas.DrawRect(bandRect, fillPaint);
 
         // 2. Draw Vertical Lines at Start (x1) and End (x2)
-        using (var linePaint = new SKPaint
-        {
-            Color = isSelected ? activeColor : activeColor.WithAlpha(180),
-            Style = SKPaintStyle.Stroke,
-            StrokeWidth = isSelected ? (float)frechetObj.Thickness + 1 : (float)frechetObj.Thickness,
-            IsAntialias = false
-        })
-        {
-            canvas.DrawLine(x1, clip.Top, x1, clip.Bottom, linePaint);
-            canvas.DrawLine(x2, clip.Top, x2, clip.Bottom, linePaint);
-        }
+        var linePaint = scratch.RangeLinePaint;
+        linePaint.Color = isSelected ? activeColor : activeColor.WithAlpha(180);
+        linePaint.StrokeWidth = isSelected ? (float)frechetObj.Thickness + 1 : (float)frechetObj.Thickness;
+        canvas.DrawLine(x1, clip.Top, x1, clip.Bottom, linePaint);
+        canvas.DrawLine(x2, clip.Top, x2, clip.Bottom, linePaint);
 
         // 3. Draw Handles on the vertical lines if selected
         if (isSelected)
@@ -63,7 +58,8 @@ public class FrechetProjectionRenderer
             frechetObj.LowerBandPath != null && frechetObj.LowerBandPath.Count > 1 &&
             !frechetObj.IsUnmatched)
         {
-            using var bandPath = new SKPath();
+            var bandPath = scratch.BandPath;
+            bandPath.Reset();
             var firstUpper = frechetObj.UpperBandPath[0];
             var startScreen = transform.ChartToScreen(new ChartPoint(new DateTime((long)firstUpper.X), (decimal)firstUpper.Y));
             bandPath.MoveTo((float)startScreen.X, (float)startScreen.Y);
@@ -83,26 +79,15 @@ public class FrechetProjectionRenderer
             }
             bandPath.Close();
 
-            using (var bandFillPaint = new SKPaint
-            {
-                Color = frechetObj.SkiaFillColor.WithAlpha((byte)(255 * frechetObj.FillOpacity / 100.0)),
-                Style = SKPaintStyle.Fill,
-                IsAntialias = true
-            })
-            {
-                canvas.DrawPath(bandPath, bandFillPaint);
-            }
+            fillPaint.Color = frechetObj.SkiaFillColor.WithAlpha((byte)(255 * frechetObj.FillOpacity / 100.0));
+            canvas.DrawPath(bandPath, fillPaint);
 
-            using var boundaryPaint = new SKPaint
-            {
-                Color = activeColor.WithAlpha(140),
-                Style = SKPaintStyle.Stroke,
-                StrokeWidth = (float)Math.Max(1.0, frechetObj.Thickness * 0.75),
-                IsAntialias = true,
-                PathEffect = SKPathEffect.CreateDash(new float[] { 3, 3 }, 0)
-            };
+            var boundaryPaint = scratch.BoundaryPaint;
+            boundaryPaint.Color = activeColor.WithAlpha(140);
+            boundaryPaint.StrokeWidth = (float)Math.Max(1.0, frechetObj.Thickness * 0.75);
 
-            using var upperPath = new SKPath();
+            var upperPath = scratch.UpperPath;
+            upperPath.Reset();
             upperPath.MoveTo((float)startScreen.X, (float)startScreen.Y);
             for (int i = 1; i < frechetObj.UpperBandPath.Count; i++)
             {
@@ -114,7 +99,8 @@ public class FrechetProjectionRenderer
 
             var firstLower = frechetObj.LowerBandPath[0];
             var lowerStartScreen = transform.ChartToScreen(new ChartPoint(new DateTime((long)firstLower.X), (decimal)firstLower.Y));
-            using var lowerPath = new SKPath();
+            var lowerPath = scratch.LowerPath;
+            lowerPath.Reset();
             lowerPath.MoveTo((float)lowerStartScreen.X, (float)lowerStartScreen.Y);
             for (int i = 1; i < frechetObj.LowerBandPath.Count; i++)
             {
@@ -128,16 +114,12 @@ public class FrechetProjectionRenderer
         // 5. Draw Projected Path
         if (frechetObj.ProjectedPath != null && frechetObj.ProjectedPath.Count > 1 && !frechetObj.IsUnmatched)
         {
-            using var pathPaint = new SKPaint
-            {
-                Color = frechetObj.SkiaColor,
-                Style = SKPaintStyle.Stroke,
-                StrokeWidth = isSelected ? (float)frechetObj.Thickness + 1.5f : (float)frechetObj.Thickness + 0.5f,
-                IsAntialias = true,
-                PathEffect = SKPathEffect.CreateDash(new float[] { 4, 4 }, 0)
-            };
+            var pathPaint = scratch.PathPaint;
+            pathPaint.Color = frechetObj.SkiaColor;
+            pathPaint.StrokeWidth = isSelected ? (float)frechetObj.Thickness + 1.5f : (float)frechetObj.Thickness + 0.5f;
 
-            using var path = new SKPath();
+            var path = scratch.ProjectedPath;
+            path.Reset();
             var firstVal = frechetObj.ProjectedPath[0];
             var startScreen = transform.ChartToScreen(new ChartPoint(new DateTime((long)firstVal.X), (decimal)firstVal.Y));
             path.MoveTo((float)startScreen.X, (float)startScreen.Y);
@@ -167,22 +149,13 @@ public class FrechetProjectionRenderer
                 Math.Max(matchX1, matchX2),
                 clip.Bottom);
 
-            using var highlightPaint = new SKPaint
-            {
-                Color = new SKColor(0, 200, 100, 35),
-                Style = SKPaintStyle.Fill,
-                IsAntialias = false
-            };
+            var highlightPaint = scratch.HighlightFillPaint;
+            highlightPaint.Color = new SKColor(0, 200, 100, 35); // Green with low alpha
             canvas.DrawRect(matchRect, highlightPaint);
 
-            using var borderPaint = new SKPaint
-            {
-                Color = new SKColor(0, 200, 100, 120),
-                Style = SKPaintStyle.Stroke,
-                StrokeWidth = 1,
-                IsAntialias = true,
-                PathEffect = SKPathEffect.CreateDash(new float[] { 4, 4 }, 0)
-            };
+            var borderPaint = scratch.HighlightBorderPaint;
+            borderPaint.Color = new SKColor(0, 200, 100, 120);
+            borderPaint.StrokeWidth = 1;
             canvas.DrawRect(matchRect, borderPaint);
         }
     }

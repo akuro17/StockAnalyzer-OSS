@@ -21,6 +21,35 @@ public static class DeferredComputationRecalculator
     }
 
     /// <summary>
+    /// Like <see cref="TryRecalculate(IChartObject, IReadOnlyList{CoreCandleData})"/>, but the conversion that Harmonic / Elliott /
+    /// GeometricPattern objects need (<see cref="CoreCandleData"/> to <see cref="CandleData"/>) is taken from
+    /// <paramref name="conversionCache"/> when one is given, so repeated calls on the same candle list convert once. All other
+    /// object types behave exactly as in the overload without the cache.
+    /// </summary>
+    internal static bool TryRecalculate(IChartObject obj, IReadOnlyList<CoreCandleData> candles, CandleDataConversionCache? conversionCache)
+    {
+        if (conversionCache == null || candles == null)
+        {
+            return TryRecalculate(obj, candles!);
+        }
+
+        switch (obj)
+        {
+            case HarmonicPatternObject harmonic:
+                harmonic.Recalculate(conversionCache.Get(candles));
+                return true;
+            case AutoElliottWaveObject elliott:
+                elliott.Recalculate(conversionCache.Get(candles));
+                return true;
+            case GeometricPatternObject geometric:
+                geometric.Recalculate(conversionCache.Get(candles));
+                return true;
+            default:
+                return TryRecalculate(obj, candles);
+        }
+    }
+
+    /// <summary>
     /// Recalculates <paramref name="obj"/> using the specified unified calculation context.
     /// </summary>
     public static bool TryRecalculate(IChartObject obj, DrawingCalculationContext context)
@@ -85,13 +114,13 @@ public static class DeferredComputationRecalculator
                 ssaAnomaly.Recalculate(candles);
                 return true;
             case HarmonicPatternObject harmonic:
-                harmonic.Recalculate(ToCandleData(candles));
+                harmonic.Recalculate(CandleDataConverter.ToLazy(candles));
                 return true;
             case AutoElliottWaveObject elliott:
-                elliott.Recalculate(ToCandleData(candles));
+                elliott.Recalculate(CandleDataConverter.ToLazy(candles));
                 return true;
             case GeometricPatternObject geometric:
-                geometric.Recalculate(ToCandleData(candles));
+                geometric.Recalculate(CandleDataConverter.ToLazy(candles));
                 return true;
             case Objects.HoughAutoLinesObject houghAuto:
                 houghAuto.Recalculate(candles);
@@ -117,16 +146,5 @@ public static class DeferredComputationRecalculator
             default:
                 return false;
         }
-    }
-
-    /// <summary>
-    /// Converts CoreCandleData to the older CandleData type that Harmonic/AutoElliottWave/
-    /// GeometricPattern's Recalculate() still takes -- same field-by-field mapping used by
-    /// ChartInteractionController's drag-release path and ChartViewModel's DTW/Harmonic
-    /// region-select path for the same three object types.
-    /// </summary>
-    private static IEnumerable<CandleData> ToCandleData(IReadOnlyList<CoreCandleData> candles)
-    {
-        return candles.Select(c => new CandleData(c.Timestamp, c.Open, c.High, c.Low, c.Close, c.Volume));
     }
 }

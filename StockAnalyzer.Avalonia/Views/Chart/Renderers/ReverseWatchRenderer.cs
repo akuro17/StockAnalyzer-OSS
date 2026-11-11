@@ -20,6 +20,22 @@ public class ReverseWatchRenderer : IChartRenderer
     private const float MARGIN = ChartTheme.ReverseWatchMargin;
     private const float POINT_RADIUS = ChartTheme.ReverseWatchPointRadius;
 
+    /// <summary>
+    /// Number of phase boundary rays (one every 45 degrees). A segment crosses each ray at most once, so it has at most this many
+    /// intersections and at most <c>PhaseBoundaryCount + 2</c> points to draw (start, intersections, end).
+    /// </summary>
+    private const int PhaseBoundaryCount = 8;
+
+    /// <summary>Angle between two neighbouring phase boundary rays, in degrees (360 / <see cref="PhaseBoundaryCount"/> = 45).</summary>
+    private const double PhaseBoundaryStepDegrees = 360.0 / PhaseBoundaryCount;
+
+    /// <summary>Angle of the first phase boundary ray, in degrees: half a step, so the rays bound the sectors (22.5).</summary>
+    private const double PhaseBoundaryStartDegrees = PhaseBoundaryStepDegrees / 2;
+
+    // Screen positions of the curve points, kept between frames (grows, never shrinks). Only the entries from the first rendered
+    // point onwards are written and read in a frame.
+    private SKPoint[] _screenPoints = Array.Empty<SKPoint>();
+
     // --- Cached Skia Objects (ZeroAllocation Optimization) ---
     private readonly SKPaint _gridPaint = new SKPaint { 
         Color = SKColors.Gray.WithAlpha(128), StrokeWidth = 1, IsAntialias = true,
@@ -195,16 +211,16 @@ public class ReverseWatchRenderer : IChartRenderer
         // centerX/centerY are updated to be the Screen Position of the Data Center
         // width/height are the canvas dimensions (for ray length)
 
-        // Draw 8 Boundary Lines radiating from center to edges/corners
+        // Draw PhaseBoundaryCount (8) Boundary Lines radiating from center to edges/corners
         float halfW = width / 2;
         float halfH = height / 2;
         
         // Lines extend beyond chart area to ensure they cover corners
         double len = Math.Max(width, height) * 1.5;
 
-        for (int i = 0; i < 8; i++)
+        for (int i = 0; i < PhaseBoundaryCount; i++)
         {
-            double thetaDeg = 22.5 + i * 45;
+            double thetaDeg = PhaseBoundaryStartDegrees + i * PhaseBoundaryStepDegrees;
             double thetaRad = thetaDeg * MathConstants.DegToRad;
             
             // Standard Math Vector
@@ -249,7 +265,11 @@ public class ReverseWatchRenderer : IChartRenderer
         if (renderCount < 2) return;
 
         // Pre-calculate positions using transform (only for rendered points)
-        var screenPoints = new SKPoint[pointCount];
+        if (_screenPoints.Length < pointCount)
+        {
+            _screenPoints = new SKPoint[pointCount];
+        }
+        var screenPoints = _screenPoints;
         for (int i = startIndex; i < pointCount; i++)
         {
             var point = data.Points[i];
@@ -317,17 +337,18 @@ public class ReverseWatchRenderer : IChartRenderer
     {
         var config = (IReverseWatchRenderConfig)baseConfig;
         // 1. Collect Intersections with 8 phase boundary rays
-        // We use a list of (t, point) tuples
-        var intersections = new List<(float t, SKPoint pt)>();
-        
+        // We use a stack buffer of (t, point) tuples (at most PhaseBoundaryCount entries, see the constant)
+        Span<(float t, SKPoint pt)> intersections = stackalloc (float t, SKPoint pt)[PhaseBoundaryCount];
+        int intersectionCount = 0;
+
         float dx = p2.X - p1.X;
         float dy = p2.Y - p1.Y;
 
-        // Check intersections with all 8 boundaries
-        for (int i = 0; i < 8; i++)
+        // Check intersections with all PhaseBoundaryCount (8) boundaries
+        for (int i = 0; i < PhaseBoundaryCount; i++)
         {
-            // Boundary lines are drawn at 22.5 + i*45 degrees
-            double thetaDeg = 22.5 + i * 45;
+            // Boundary lines are drawn at PhaseBoundaryStartDegrees + i * PhaseBoundaryStepDegrees (22.5 + i * 45)
+            double thetaDeg = PhaseBoundaryStartDegrees + i * PhaseBoundaryStepDegrees;
             double thetaRad = thetaDeg * MathConstants.DegToRad;
 
             double lx = Math.Cos(thetaRad);
@@ -363,20 +384,31 @@ public class ReverseWatchRenderer : IChartRenderer
             // and along the positive ray direction
             if (t > 0.001 && t < 0.999 && u > 0)
             {
-                intersections.Add(((float)t, new SKPoint(p1.X + (float)t * dx, p1.Y + (float)t * dy)));
+                intersections[intersectionCount++] = ((float)t, new SKPoint(p1.X + (float)t * dx, p1.Y + (float)t * dy));
             }
         }
-        
-        // 2. Sort Intersections by t
-        intersections.Sort((a, b) => a.t.CompareTo(b.t));
-        
+
+        // 2. Sort Intersections by t (insertion sort: at most PhaseBoundaryCount entries)
+        for (int a = 1; a < intersectionCount; a++)
+        {
+            var key = intersections[a];
+            int b = a - 1;
+            while (b >= 0 && intersections[b].t > key.t)
+            {
+                intersections[b + 1] = intersections[b];
+                b--;
+            }
+            intersections[b + 1] = key;
+        }
+
         // 3. Draw Sub-segments
-        var pointsToDraw = new List<SKPoint>();
-        pointsToDraw.Add(p1);
-        foreach (var inter in intersections) pointsToDraw.Add(inter.pt);
-        pointsToDraw.Add(p2);
-        
-        for (int k = 0; k < pointsToDraw.Count - 1; k++)
+        Span<SKPoint> pointsToDraw = stackalloc SKPoint[PhaseBoundaryCount + 2];
+        int pointCount = 0;
+        pointsToDraw[pointCount++] = p1;
+        for (int i = 0; i < intersectionCount; i++) pointsToDraw[pointCount++] = intersections[i].pt;
+        pointsToDraw[pointCount++] = p2;
+
+        for (int k = 0; k < pointCount - 1; k++)
         {
             var sp = pointsToDraw[k];
             var ep = pointsToDraw[k+1];

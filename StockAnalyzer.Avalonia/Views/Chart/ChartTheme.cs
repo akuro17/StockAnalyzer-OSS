@@ -63,6 +63,59 @@ public static class ChartTheme
 
     #endregion
 
+    #region Market Structure Shift Settings
+
+    /// <summary>
+    /// Market Structure Shift (BOS/CHoCH) line dash pattern: line length in pixels.
+    /// </summary>
+    public const float MarketStructureDashOn = 5f;
+
+    /// <summary>
+    /// Market Structure Shift (BOS/CHoCH) line dash pattern: space length in pixels.
+    /// </summary>
+    public const float MarketStructureDashOff = 5f;
+
+    /// <summary>
+    /// Market Structure Shift (BOS/CHoCH) line dash pattern: start phase in pixels.
+    /// </summary>
+    public const float MarketStructureDashPhase = 0f;
+
+    /// <summary>
+    /// Font size of the BOS/CHoCH labels (pixels).
+    /// </summary>
+    public const float MarketStructureLabelTextSize = 10f;
+
+    /// <summary>
+    /// Font family of the BOS/CHoCH labels (bold).
+    /// </summary>
+    public const string MarketStructureLabelFontFamily = "Arial";
+
+    #endregion
+
+    #region Projection Drawing Settings
+
+    /// <summary>
+    /// Dash pattern (line = space) of the confidence-band boundary lines of projection drawings, in pixels.
+    /// </summary>
+    public const float ProjectionBandBoundaryDashLength = 3f;
+
+    /// <summary>
+    /// Dash pattern (line = space) of the projected path of Pearson projection drawings, in pixels.
+    /// </summary>
+    public const float PearsonProjectedPathDashLength = 5f;
+
+    /// <summary>
+    /// Dash pattern (line = space) of the projected path of Frechet projection drawings, in pixels.
+    /// </summary>
+    public const float FrechetProjectedPathDashLength = 4f;
+
+    /// <summary>
+    /// Dash pattern (line = space) of the matched-pattern highlight border of projection drawings, in pixels.
+    /// </summary>
+    public const float ProjectionMatchBorderDashLength = 4f;
+
+    #endregion
+
     #region Grid Rendering
 
     /// <summary>

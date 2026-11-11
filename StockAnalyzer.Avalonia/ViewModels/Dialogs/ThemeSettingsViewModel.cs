@@ -210,6 +210,22 @@ public partial class ThemeSettingsViewModel : ViewModelBase, ISettingsPageViewMo
         SyncColorsFromMap(_themeManager.GetCurrentColors());
     }
 
+    // The color a throttled (delayed) update applies. Every call of ApplyColorChange cancels the delayed update of the call before it, so the
+    // update that actually runs is the last call's; it reads these two fields on the UI thread, where they are written. This lets the Post below
+    // carry only `this` as its state (a closure, or a tuple boxed into `object`, would allocate on every throttled update).
+    private ThemeColorKey _pendingColorKey;
+    private IndicatorColor _pendingColor;
+
+    private static readonly SendOrPostCallback PostApplyPendingColor =
+        static state => ((ThemeSettingsViewModel)state!).ApplyPendingColor();
+
+    private void ApplyPendingColor()
+    {
+        if (_isDisposed || _themeManager == null) return;
+
+        _themeManager.UpdateSingleColor(_pendingColorKey, _pendingColor);
+    }
+
     private void ApplyColorChange(ThemeColorKey key, IndicatorColor color)
     {
         if (_themeManager == null) return;
@@ -217,6 +233,8 @@ public partial class ThemeSettingsViewModel : ViewModelBase, ISettingsPageViewMo
         var now = DateTime.UtcNow;
         if (now - _lastUpdate < ThrottleInterval)
         {
+            _pendingColorKey = key;
+            _pendingColor = color;
             _throttleCts?.Cancel();
             _throttleCts = new CancellationTokenSource();
             var token = _throttleCts.Token;
@@ -224,10 +242,7 @@ public partial class ThemeSettingsViewModel : ViewModelBase, ISettingsPageViewMo
             {
                 if (!t.IsCanceled && !_isDisposed && _themeManager != null)
                 {
-                    global::Avalonia.Threading.Dispatcher.UIThread.Post(() =>
-                    {
-                        _themeManager.UpdateSingleColor(key, color);
-                    });
+                    global::Avalonia.Threading.Dispatcher.UIThread.Post(PostApplyPendingColor, this);
                 }
             }, TaskScheduler.Default);
             return;

@@ -46,6 +46,95 @@ public class ScreenerValueExtractor : IScreenerValueExtractor
     // as it is (backlog B2).
     private readonly ConcurrentDictionary<(IndicatorType type, int threadId), ICoreIndicator?> _threadLocalIndicators = new();
 
+    // Default parameter objects, one prototype per indicator type. A prototype is built from a FRESH, never configured instance: GetDefaultSettings seeds
+    // the parameter object's Period from the instance's current Period, so building it from a cached (already configured) instance would carry an earlier
+    // condition's Period into the next one. A prototype is never handed out or modified; callers get a copy (CoreIndicatorParameterBase.Clone, a shallow
+    // MemberwiseClone), which is only a true copy when the parameter type holds nothing but values and strings (checked per type, see IsSafeToCopyShallow).
+    // The cache belongs to this extractor instance (not static), so an extractor sees the indicator registry as it is for that instance.
+    private readonly ConcurrentDictionary<IndicatorType, DefaultParameterPrototype> _defaultParameterPrototypes = new();
+
+    // Reflection metadata only (types never change at run time), so one static cache for all extractors is safe. The key is the parameter TYPE, never a
+    // parameter NAME: the names come from the condition (screen entries and MCP arguments) and an entry per name, a missing one included, would grow
+    // without bound. A null value marks a type with two properties of one name, for which the plain GetProperty lookup (and its exception) is kept.
+    private static readonly ConcurrentDictionary<Type, IReadOnlyDictionary<string, PropertyInfo>?> _parameterPropertiesByType = new();
+
+    private sealed class DefaultParameterPrototype
+    {
+        /// <summary>The prototype parameter object; null when the type has no parameter object or must not be copied shallowly.</summary>
+        public CoreIndicatorParameterBase? Prototype { get; init; }
+
+        /// <summary>True when the type cannot be copied shallowly; every evaluation then builds its default as before (fresh instance + GetDefaultSettings).</summary>
+        public bool UseFreshInstance { get; init; }
+    }
+
+    /// <summary>
+    /// Returns a new default parameter object for <paramref name="type"/> that the caller may modify, or null when the type has none.
+    /// Same result as <c>IndicatorFactory.CreateStatic(type)?.GetDefaultSettings().ParameterObject</c>, without calling it for every condition and symbol.
+    /// A failure while building the prototype propagates to the caller and is not cached.
+    /// </summary>
+    private CoreIndicatorParameterBase? GetDefaultParameterObject(IndicatorType type)
+    {
+        var entry = _defaultParameterPrototypes.GetOrAdd(type, static t =>
+        {
+            var parameters = IndicatorFactory.CreateStatic(t)?.GetDefaultSettings()?.ParameterObject;
+            if (parameters != null && !IsSafeToCopyShallow(parameters.GetType()))
+            {
+                return new DefaultParameterPrototype { UseFreshInstance = true };
+            }
+
+            return new DefaultParameterPrototype { Prototype = parameters };
+        });
+
+        if (entry.UseFreshInstance)
+        {
+            return IndicatorFactory.CreateStatic(type)?.GetDefaultSettings()?.ParameterObject;
+        }
+
+        return entry.Prototype?.Clone();
+    }
+
+    /// <summary>True when every instance field of <paramref name="parameterType"/> (declared or inherited) is a value type, a string, or a delegate (event backing fields, which Clone clears).</summary>
+    private static bool IsSafeToCopyShallow(Type parameterType)
+    {
+        for (var t = parameterType; t != null && t != typeof(object); t = t.BaseType)
+        {
+            foreach (var field in t.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly))
+            {
+                var fieldType = field.FieldType;
+                if (fieldType.IsValueType || fieldType == typeof(string) || typeof(Delegate).IsAssignableFrom(fieldType)) continue;
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>Same result as <c>parameterType.GetProperty(name)</c> (case-sensitive, public instance or static), from a per-type table of the real properties.</summary>
+    private static PropertyInfo? GetParameterProperty(Type parameterType, string name)
+    {
+        var table = _parameterPropertiesByType.GetOrAdd(parameterType, static type => BuildParameterPropertyTable(type));
+        if (table == null)
+        {
+            return parameterType.GetProperty(name);
+        }
+
+        return table.TryGetValue(name, out var property) ? property : null;
+    }
+
+    private static IReadOnlyDictionary<string, PropertyInfo>? BuildParameterPropertyTable(Type type)
+    {
+        var table = new Dictionary<string, PropertyInfo>(StringComparer.Ordinal);
+        foreach (var property in type.GetProperties())
+        {
+            if (!table.TryAdd(property.Name, property))
+            {
+                return null;   // two properties of one name (a hidden member): GetProperty(name) decides, as before
+            }
+        }
+
+        return table;
+    }
+
     public decimal ExtractValue(ScreenerIndicatorSideConfig? config, IReadOnlyList<CoreCandleData> candles)
     {
         return ExtractValue(config, candles, default);
@@ -436,13 +525,15 @@ public class ScreenerValueExtractor : IScreenerValueExtractor
                         // The default parameters come from a fresh instance: GetDefaultSettings seeds the parameter object's Period from the instance's
                         // CURRENT Period, and the cached instance still holds the Period an earlier condition on this thread configured. A side that
                         // names parameters but no Period would otherwise inherit it.
-                        var defaultSettings = IndicatorFactory.CreateStatic(config.IndicatorType)?.GetDefaultSettings();
-                        if (defaultSettings?.ParameterObject != null)
+                        // The default parameter object is a copy of the per-type prototype built once from a fresh instance (see GetDefaultParameterObject),
+                        // which is the same object content as a new GetDefaultSettings() call gives.
+                        var parameterObject = GetDefaultParameterObject(config.IndicatorType);
+                        if (parameterObject != null)
                         {
-                            var paramType = defaultSettings.ParameterObject.GetType();
+                            var paramType = parameterObject.GetType();
                             foreach (var kvp in config.Parameters)
                             {
-                                var prop = paramType.GetProperty(kvp.Key);
+                                var prop = GetParameterProperty(paramType, kvp.Key);
                                 if (prop != null && prop.CanWrite && kvp.Value != null)
                                 {
                                     object? rawValue = kvp.Value;
@@ -459,10 +550,10 @@ public class ScreenerValueExtractor : IScreenerValueExtractor
                                         else if (jsonElem.ValueKind == System.Text.Json.JsonValueKind.True || jsonElem.ValueKind == System.Text.Json.JsonValueKind.False) rawValue = jsonElem.GetBoolean();
                                     }
                                     var val = System.Convert.ChangeType(rawValue, prop.PropertyType);
-                                    prop.SetValue(defaultSettings.ParameterObject, val);
+                                    prop.SetValue(parameterObject, val);
                                 }
                             }
-                            indicator.Configure(defaultSettings.ParameterObject);
+                            indicator.Configure(parameterObject);
                         }
                     }
                     catch (Exception ex) when (ex is not OperationCanceledException and not OutOfMemoryException)

@@ -112,6 +112,36 @@ public static class VolumeAnalysis
     }
 
     /// <summary>
+    /// Index of the Point of Control: the bin with the greatest <see cref="VolumeBin.TotalVolume"/>.
+    /// Tie-break rule: if several bins share the maximum volume, the first one (lowest index, i.e. the lowest price) is returned.
+    /// Returns -1 when <paramref name="bins"/> is null or empty. One pass, no allocation.
+    /// </summary>
+    public static int FindPointOfControlIndex(IReadOnlyList<VolumeBin>? bins)
+    {
+        if (bins == null || bins.Count == 0) return -1;
+
+        int pocIndex = 0;
+        long maxVol = -1;
+        for (int i = 0; i < bins.Count; i++)
+        {
+            if (bins[i].TotalVolume > maxVol)
+            {
+                maxVol = bins[i].TotalVolume;
+                pocIndex = i;
+            }
+        }
+
+        return pocIndex;
+    }
+
+    /// <summary>The Point of Control bin (see <see cref="FindPointOfControlIndex"/>), or null when there are no bins.</summary>
+    public static VolumeBin? FindPointOfControl(IReadOnlyList<VolumeBin>? bins)
+    {
+        int index = FindPointOfControlIndex(bins);
+        return index >= 0 ? bins![index] : null;
+    }
+
+    /// <summary>
     /// Calculates Value Area (typically 70% of volume).
     /// Returns the indices of the bins that comprise the Value Area.
     /// Logic: Start from POC (Point of Control - Max Volume) and expand.
@@ -125,17 +155,8 @@ public static class VolumeAnalysis
         long totalProfileVolume = bins.Sum(b => b.TotalVolume);
         long targetVolume = (long)(totalProfileVolume * valueAreaPercent);
 
-        // Find POC index
-        int pocIndex = 0;
-        long maxVol = -1;
-        for (int i = 0; i < bins.Count; i++)
-        {
-            if (bins[i].TotalVolume > maxVol)
-            {
-                maxVol = bins[i].TotalVolume;
-                pocIndex = i;
-            }
-        }
+        // Find POC index (bins is non-empty here, so the index is >= 0)
+        int pocIndex = FindPointOfControlIndex(bins);
 
         long currentVolume = bins[pocIndex].TotalVolume;
         int upperIndex = pocIndex;

@@ -320,7 +320,9 @@ public sealed class AxisRenderer : IDisposable
     {
         if (step <= 0) return 2;
         // The scale of a decimal (number of digits after the decimal point)
-        int scale = (decimal.GetBits(step)[3] >> 16) & 0x7F;
+        Span<int> bits = stackalloc int[4];
+        decimal.GetBits(step, bits);
+        int scale = (bits[3] >> 16) & 0x7F;
         return Math.Clamp(scale, 0, 6); 
     }
 

@@ -13,12 +13,21 @@ namespace StockAnalyzer.Avalonia.Views.Chart.Renderers;
 /// <summary>
 /// Renders Ichimoku Cloud and Lines.
 /// </summary>
-public class IchimokuRenderer
+public class IchimokuRenderer : IDisposable
 {
     private readonly LineIndicatorRenderer _lineRenderer = new();
     private readonly SKPaint _cloudPaint = new SKPaint { Style = SKPaintStyle.Fill, IsAntialias = true };
     private readonly SKPath _cloudPath = new SKPath();
     private readonly SKPath _cloudPath2 = new SKPath();
+
+    public void Dispose()
+    {
+        _lineRenderer.Dispose();
+        _cloudPaint.Dispose();
+        _cloudPath.Dispose();
+        _cloudPath2.Dispose();
+    }
+
     public void Render(SKCanvas canvas, Rect chartArea, 
         Dictionary<string, IReadOnlyList<decimal?>> series,
         CoreIndicatorSettings setting, 

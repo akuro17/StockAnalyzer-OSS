@@ -14,6 +14,8 @@ namespace StockAnalyzer.Avalonia.Tests;
 /// Implementation task (ToolsMenuAddTicker): the header Tools menu exposes "Add Ticker" right after "Tab Window"
 /// (the action group), above the separator that precedes "Settings".
 /// </summary>
+// Re-initializes the shared static LocalizationManager.Instance (see LocalizationSharedStateCollection.cs).
+[Collection("LocalizationSharedState")]
 public class MainWindowToolsMenuTests
 {
     [AvaloniaFact]

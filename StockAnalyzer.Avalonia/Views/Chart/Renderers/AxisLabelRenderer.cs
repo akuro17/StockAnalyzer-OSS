@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using Avalonia;
 using SkiaSharp;
@@ -20,6 +21,9 @@ public sealed class AxisLabelRenderer : IDisposable
     private readonly SKPaint _arrowPaint;
     private readonly SKFont _labelFont;
     private readonly SKPath _arrowPath = new();
+
+    /// <summary>Largest label count whose two Y buffers of <see cref="ResolveOverlaps"/> are placed on the stack (4 bytes each per label); larger counts rent from <see cref="ArrayPool{T}"/>.</summary>
+    private const int MaxStackLabelCount = 64;
 
     // Reusable list and set to avoid per-frame allocation
     private readonly List<ResolvedLabel> _resolvedLabels = new();
@@ -191,11 +195,34 @@ public sealed class AxisLabelRenderer : IDisposable
     {
         if (labels.Count <= 1) return;
 
+        // The two sweep buffers (one float per label each) come from the stack up to MaxStackLabelCount labels, otherwise from
+        // ArrayPool (SA_RENDERING_PERFORMANCE: a scratch buffer whose length derives from data). The core writes every element of
+        // both buffers before it reads it, so a rented (non-zeroed) array is safe.
+        int labelCount = labels.Count;
+        if (labelCount <= MaxStackLabelCount)
+        {
+            Span<float> stackBuffer = stackalloc float[labelCount * 2];
+            ResolveOverlapsCore(labels, topLimit, bottomLimit, stackBuffer[..labelCount], stackBuffer[labelCount..]);
+            return;
+        }
+
+        float[] rented = ArrayPool<float>.Shared.Rent(labelCount * 2);
+        try
+        {
+            ResolveOverlapsCore(labels, topLimit, bottomLimit, rented.AsSpan(0, labelCount), rented.AsSpan(labelCount, labelCount));
+        }
+        finally
+        {
+            ArrayPool<float>.Shared.Return(rented);
+        }
+    }
+
+    private static void ResolveOverlapsCore(List<ResolvedLabel> labels, float topLimit, float bottomLimit, Span<float> downY, Span<float> upY)
+    {
         float spacing = 2f;
         float totalHeight = ChartTheme.AxisLabelHeight + spacing;
 
         // 1. Top-Down Sweep (Greedy Downward)
-        float[] downY = new float[labels.Count];
         downY[0] = Math.Max(topLimit, labels[0].Y);
         for (int i = 1; i < labels.Count; i++)
         {
@@ -203,7 +230,6 @@ public sealed class AxisLabelRenderer : IDisposable
         }
 
         // 2. Bottom-Up Sweep (Greedy Upward)
-        float[] upY = new float[labels.Count];
         int last = labels.Count - 1;
         upY[last] = Math.Min(bottomLimit, labels[last].Y);
         for (int i = last - 1; i >= 0; i--)

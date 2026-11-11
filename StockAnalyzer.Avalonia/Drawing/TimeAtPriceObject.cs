@@ -165,7 +165,7 @@ public class TimeAtPriceObject : IChartObject, IDisposable, IDrawingCalculatedVa
 
                 var profile = TimeAtPriceAnalysis.CalculateProfile(slice, 50, PriceType);
                 var segVa = TimeAtPriceAnalysis.CalculateValueArea(profile);
-                var pocBin = profile.OrderByDescending(b => b.TotalVolume).FirstOrDefault();
+                var pocBin = VolumeAnalysis.FindPointOfControl(profile);
 
                 var segment = new VolumeProfileSegment
                 {
@@ -219,7 +219,7 @@ public class TimeAtPriceObject : IChartObject, IDisposable, IDrawingCalculatedVa
 
                 var profile = TimeAtPriceAnalysis.CalculateProfile(slice, 50, PriceType);
                 var segVa = TimeAtPriceAnalysis.CalculateValueArea(profile);
-                var pocBin = profile.OrderByDescending(b => b.TotalVolume).FirstOrDefault();
+                var pocBin = VolumeAnalysis.FindPointOfControl(profile);
 
                 var segment = new VolumeProfileSegment
                 {
@@ -273,7 +273,7 @@ public class TimeAtPriceObject : IChartObject, IDisposable, IDrawingCalculatedVa
 
                 var profile = TimeAtPriceAnalysis.CalculateProfile(slice, 50, PriceType);
                 var segVa = TimeAtPriceAnalysis.CalculateValueArea(profile);
-                var pocBin = profile.OrderByDescending(b => b.TotalVolume).FirstOrDefault();
+                var pocBin = VolumeAnalysis.FindPointOfControl(profile);
 
                 var segment = new VolumeProfileSegment
                 {
@@ -301,7 +301,7 @@ public class TimeAtPriceObject : IChartObject, IDisposable, IDrawingCalculatedVa
         }
         else if (range.Count > 0)
         {
-            var pocBin = ProfileData.OrderByDescending(b => b.TotalVolume).FirstOrDefault();
+            var pocBin = VolumeAnalysis.FindPointOfControl(ProfileData);
             Segments.Add(new VolumeProfileSegment
             {
                 StartIndex = startBarIdx,
@@ -586,13 +586,13 @@ public class TimeAtPriceObject : IChartObject, IDisposable, IDrawingCalculatedVa
             }
             else
             {
-                var pocBin = ProfileData.OrderByDescending(b => b.TotalVolume).FirstOrDefault();
+                var pocBin = VolumeAnalysis.FindPointOfControl(ProfileData);
                 pocPrice = pocBin?.Price ?? 0m;
             }
         }
         else
         {
-            var pocBin = ProfileData.OrderByDescending(b => b.TotalVolume).FirstOrDefault();
+            var pocBin = VolumeAnalysis.FindPointOfControl(ProfileData);
             pocPrice = pocBin?.Price ?? 0m;
         }
 

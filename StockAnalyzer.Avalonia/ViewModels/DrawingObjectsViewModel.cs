@@ -114,8 +114,11 @@ public partial class DrawingObjectsViewModel : ViewModelBase, IDisposable
 
     public string ExpandButtonGlyph => IsPropertySectionExpanded ? "▲" : "▼";
 
+    private readonly IDrawingSettingsPanelRegistry? _injectedPanelRegistry;
     private IDrawingSettingsPanelRegistry? _panelRegistry;
-    public IDrawingSettingsPanelRegistry? PanelRegistry => _panelRegistry ??= ((global::Avalonia.Application.Current as App)?.Services?.GetService<IDrawingSettingsPanelRegistry>() ?? new DrawingSettingsPanelRegistry());
+
+    /// <summary>The registry given to the constructor (the container's registry in the application); an empty registry when none was given.</summary>
+    public IDrawingSettingsPanelRegistry? PanelRegistry => _panelRegistry ??= _injectedPanelRegistry ?? new DrawingSettingsPanelRegistry();
 
     public Action OnPresetParameterChangedCallback => () =>
     {
@@ -255,9 +258,11 @@ public partial class DrawingObjectsViewModel : ViewModelBase, IDisposable
         IDialogService? dialogService = null, 
         StockAnalyzer.Avalonia.Services.Drawing.IIconDrawingService? iconDrawingService = null,
         IDrawingLayerService? layerService = null,
-        IDrawingToolPresetService? presetService = null)
+        IDrawingToolPresetService? presetService = null,
+        IDrawingSettingsPanelRegistry? panelRegistry = null)
     {
         _dispatcherService = dispatcherService ?? throw new ArgumentNullException(nameof(dispatcherService));
+        _injectedPanelRegistry = panelRegistry;
         _dialogService = dialogService;
         _iconDrawingService = iconDrawingService;
         _directLayerService = layerService;
@@ -274,8 +279,9 @@ public partial class DrawingObjectsViewModel : ViewModelBase, IDisposable
         IDialogService? dialogService = null, 
         StockAnalyzer.Avalonia.Services.Drawing.IIconDrawingService? iconDrawingService = null,
         IDrawingLayerService? layerService = null,
-        IDrawingToolPresetService? presetService = null)
-        : this(dispatcherService, dialogService, iconDrawingService, layerService, presetService)
+        IDrawingToolPresetService? presetService = null,
+        IDrawingSettingsPanelRegistry? panelRegistry = null)
+        : this(dispatcherService, dialogService, iconDrawingService, layerService, presetService, panelRegistry)
     {
         SetChartViewModel(chartViewModel);
     }
@@ -286,8 +292,9 @@ public partial class DrawingObjectsViewModel : ViewModelBase, IDisposable
         IDialogService? dialogService = null, 
         StockAnalyzer.Avalonia.Services.Drawing.IIconDrawingService? iconDrawingService = null,
         IDrawingLayerService? layerService = null,
-        IDrawingToolPresetService? presetService = null)
-        : this(dispatcherService, dialogService, iconDrawingService, layerService, presetService)
+        IDrawingToolPresetService? presetService = null,
+        IDrawingSettingsPanelRegistry? panelRegistry = null)
+        : this(dispatcherService, dialogService, iconDrawingService, layerService, presetService, panelRegistry)
     {
         SetObjectManager(objectManager);
     }
@@ -1207,11 +1214,10 @@ public partial class DrawingObjectsViewModel : ViewModelBase, IDisposable
     public async Task OpenActiveToolSettingsAsync()
     {
         if (ActiveToolTemplateObject == null || _chartViewModel == null) return;
-        var dialogService = (global::Avalonia.Application.Current as App)?.Services?.GetService<IDialogService>();
-        if (dialogService == null) return;
+        if (_dialogService == null) return;
 
         var tool = _chartViewModel.CurrentTool;
-        var result = await dialogService.ShowDrawingSettingsDialogAsync(
+        var result = await _dialogService.ShowDrawingSettingsDialogAsync(
             ActiveToolTemplateObject,
             onApply: obj =>
             {

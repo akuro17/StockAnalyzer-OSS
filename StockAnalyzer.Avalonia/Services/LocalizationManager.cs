@@ -26,7 +26,8 @@ public sealed class LocalizationManager
     /// </summary>
     public static LocalizationManager Instance => _instance.Value;
     
-    private Dictionary<string, string> _strings = new();
+    // Replaced as a whole by ParseJson and never mutated after publication, so lock-free readers always see a consistent table.
+    private volatile Dictionary<string, string> _strings = new();
     private string _currentLanguage = "en";
     
     /// <summary>
@@ -169,19 +170,28 @@ public sealed class LocalizationManager
     
     private void ParseJson(string json)
     {
-        _strings.Clear();
-        
-        using var document = JsonDocument.Parse(json);
-        foreach (var property in document.RootElement.EnumerateObject())
+        // The table is built privately and published with one reference write: a reader on another thread (for example the chart's
+        // prediction text) sees either the previous complete table or the new complete one, never an empty or half-filled dictionary.
+        // As before, a document that cannot be parsed leaves an empty table.
+        var table = new Dictionary<string, string>();
+        try
         {
-            // Skip metadata properties (those starting with "_")
-            if (property.Name.StartsWith("_"))
-                continue;
-                
-            if (property.Value.ValueKind == JsonValueKind.String)
+            using var document = JsonDocument.Parse(json);
+            foreach (var property in document.RootElement.EnumerateObject())
             {
-                _strings[property.Name] = property.Value.GetString() ?? string.Empty;
+                // Skip metadata properties (those starting with "_")
+                if (property.Name.StartsWith("_"))
+                    continue;
+
+                if (property.Value.ValueKind == JsonValueKind.String)
+                {
+                    table[property.Name] = property.Value.GetString() ?? string.Empty;
+                }
             }
+        }
+        finally
+        {
+            _strings = table;
         }
     }
 }

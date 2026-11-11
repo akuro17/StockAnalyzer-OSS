@@ -11,9 +11,17 @@ namespace StockAnalyzer.Avalonia.Views.Chart.Renderers;
 /// Renders indicators as a Step Line (Horizontal then Vertical).
 /// Used for Renko, PointAndFigure, Kagi, etc.
 /// </summary>
-public class StepLineRenderer
+public class StepLineRenderer : IDisposable
 {
     private readonly SKPaint _paint = new SKPaint { Style = SKPaintStyle.Stroke, IsAntialias = true };
+    private readonly SKPath _path = new SKPath();
+
+    public void Dispose()
+    {
+        _paint.Dispose();
+        _path.Dispose();
+    }
+
     public void Render(SKCanvas canvas, Rect chartArea, 
         IReadOnlyList<decimal?> values, 
         CoreIndicatorSettings setting, 
@@ -28,7 +36,8 @@ public class StepLineRenderer
         _paint.Color = new SKColor(setting.Color.R, setting.Color.G, setting.Color.B, setting.Color.A);
         _paint.StrokeWidth = (float)setting.Thickness;
 
-        using var path = new SKPath();
+        var path = _path;
+        path.Reset();
         bool isStarted = false;
         
         float candleWidth;

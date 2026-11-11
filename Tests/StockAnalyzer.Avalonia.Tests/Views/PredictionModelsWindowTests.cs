@@ -16,6 +16,8 @@ using Xunit;
 namespace StockAnalyzer.Avalonia.Tests.Views;
 
 /// <summary>The Prediction Models window (Tools menu): frame, footer, lifetime of its view model (model-execution separation, T2).</summary>
+// Re-initializes the shared static LocalizationManager.Instance (see LocalizationSharedStateCollection.cs).
+[Collection("LocalizationSharedState")]
 public sealed class PredictionModelsWindowTests
 {
     [AvaloniaFact]

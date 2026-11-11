@@ -11,8 +11,49 @@ namespace StockAnalyzer.Avalonia.Views.Chart.Renderers;
 /// <summary>
 /// Renders Market Structure Shifts (BOS/CHoCH) as distinct horizontal lines with text labels.
 /// </summary>
-public class MarketStructureShiftRenderer
+public sealed class MarketStructureShiftRenderer : IDisposable
 {
+    private readonly SKPaint _bosPaint = new SKPaint { Style = SKPaintStyle.Stroke, IsAntialias = true };
+    private readonly SKPaint _chochPaint = new SKPaint { Style = SKPaintStyle.Stroke, IsAntialias = true };
+    private readonly SKPaint _textPaintBos;
+    private readonly SKPaint _textPaintChoch;
+    private readonly SKPathEffect _dashEffect;
+    private readonly SKTypeface _labelTypeface;
+
+    public MarketStructureShiftRenderer()
+    {
+        _dashEffect = SKPathEffect.CreateDash(
+            new float[] { ChartTheme.MarketStructureDashOn, ChartTheme.MarketStructureDashOff },
+            ChartTheme.MarketStructureDashPhase);
+        _bosPaint.PathEffect = _dashEffect;
+        _chochPaint.PathEffect = _dashEffect;
+
+        _labelTypeface = SKTypeface.FromFamilyName(
+            ChartTheme.MarketStructureLabelFontFamily, SKFontStyleWeight.Bold, SKFontStyleWidth.Normal, SKFontStyleSlant.Upright);
+        _textPaintBos = new SKPaint
+        {
+            TextSize = ChartTheme.MarketStructureLabelTextSize,
+            IsAntialias = true,
+            Typeface = _labelTypeface
+        };
+        _textPaintChoch = new SKPaint
+        {
+            TextSize = ChartTheme.MarketStructureLabelTextSize,
+            IsAntialias = true,
+            Typeface = _labelTypeface
+        };
+    }
+
+    public void Dispose()
+    {
+        _bosPaint.Dispose();
+        _chochPaint.Dispose();
+        _textPaintBos.Dispose();
+        _textPaintChoch.Dispose();
+        _dashEffect.Dispose();
+        _labelTypeface.Dispose();
+    }
+
     public void Render(
         SKCanvas canvas, 
         Rect chartArea, 
@@ -40,28 +81,18 @@ public class MarketStructureShiftRenderer
             }
         }
 
-        using var bosPaint = new SKPaint { Style = SKPaintStyle.Stroke, IsAntialias = true, StrokeWidth = (float)setting.Thickness, Color = bosColor };
-        using var chochPaint = new SKPaint { Style = SKPaintStyle.Stroke, IsAntialias = true, StrokeWidth = (float)setting.Thickness, Color = chochColor };
-        
-        // Optional: Make it dashed
-        bosPaint.PathEffect = SKPathEffect.CreateDash(new float[] { 5, 5 }, 0);
-        chochPaint.PathEffect = SKPathEffect.CreateDash(new float[] { 5, 5 }, 0);
-
-        using var textPaintBos = new SKPaint
-        {
-            Color = bosColor,
-            TextSize = 10f,
-            IsAntialias = true,
-            Typeface = SKTypeface.FromFamilyName("Arial", SKFontStyleWeight.Bold, SKFontStyleWidth.Normal, SKFontStyleSlant.Upright)
-        };
-        
-        using var textPaintChoch = new SKPaint
-        {
-            Color = chochColor,
-            TextSize = 10f,
-            IsAntialias = true,
-            Typeface = SKTypeface.FromFamilyName("Arial", SKFontStyleWeight.Bold, SKFontStyleWidth.Normal, SKFontStyleSlant.Upright)
-        };
+        // Cached paints (dashed via the shared effect): only the per-call width and colors are set here.
+        float strokeWidth = (float)setting.Thickness;
+        _bosPaint.StrokeWidth = strokeWidth;
+        _bosPaint.Color = bosColor;
+        _chochPaint.StrokeWidth = strokeWidth;
+        _chochPaint.Color = chochColor;
+        _textPaintBos.Color = bosColor;
+        _textPaintChoch.Color = chochColor;
+        SKPaint bosPaint = _bosPaint;
+        SKPaint chochPaint = _chochPaint;
+        SKPaint textPaintBos = _textPaintBos;
+        SKPaint textPaintChoch = _textPaintChoch;
 
         decimal range = maxVal - minVal;
         if (range == 0) range = 1;

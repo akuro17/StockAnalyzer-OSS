@@ -51,12 +51,10 @@ public class ChartViewModelTests
         _sut.ChartType = ChartType.RelativePerformance;
 
         // Assert
-        // CalculateComparisonDataAsync runs in a Task.Run and updates via dispatcher.
-        // We wait briefly for the async operation to complete (debounce 150ms + load).
-        await Task.Delay(1500);
-        
-        // This test is expected to pass now.
-        Assert.True(_sut.RenderTrigger > initialTrigger, 
+        // CalculateComparisonDataAsync runs in a Task.Run and publishes through the dispatcher: wait for what it publishes.
+        await WaitUntilAsync(() => _sut.ComparisonData != null, "the comparison data of the chart type change");
+
+        Assert.True(_sut.RenderTrigger > initialTrigger,
             $"RenderTrigger should have incremented. Initial: {initialTrigger}, Current: {_sut.RenderTrigger}");
     }
 
@@ -65,18 +63,50 @@ public class ChartViewModelTests
     {
         // Arrange
         _sut.ChartType = ChartType.RelativePerformance;
-        await Task.Delay(1500); // Wait for initial load
+        await WaitUntilAsync(() => _sut.ComparisonData != null, "the initial comparison data");
+        await WaitUntilRenderTriggerIsQuietAsync();   // the initial calculation has finished rendering: only the next one can move it
         int initialTrigger = _sut.RenderTrigger;
+        var initialData = _sut.ComparisonData;
 
         // Act
         _sut.ComparisonTargets.Add("AAPL");
 
-        // Assert
-        await Task.Delay(1500);
-        
-        // This test is expected to pass now.
-        Assert.True(_sut.RenderTrigger > initialTrigger, 
+        // Assert: every calculation publishes a new aligned snapshot and then requests a render.
+        await WaitUntilAsync(() => !ReferenceEquals(_sut.ComparisonData, initialData) && _sut.RenderTrigger > initialTrigger,
+            "the comparison data recalculated after adding a comparison target");
+
+        Assert.True(_sut.RenderTrigger > initialTrigger,
             $"RenderTrigger should have incremented after adding a comparison target. Initial: {initialTrigger}, Current: {_sut.RenderTrigger}");
+    }
+
+    // The calculations run on the thread pool, whose speed depends on what else the machine does: the tests wait for the observable result,
+    // with a bound that only a hang can reach, instead of sleeping for a guessed time.
+    private static readonly TimeSpan WaitTimeout = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(10);
+    private static readonly TimeSpan QuietWindow = TimeSpan.FromMilliseconds(100);
+
+    private static async Task WaitUntilAsync(Func<bool> condition, string description)
+    {
+        var deadline = DateTime.UtcNow + WaitTimeout;
+        while (!condition())
+        {
+            if (DateTime.UtcNow >= deadline) Assert.Fail($"Timed out after {WaitTimeout.TotalSeconds:0}s waiting for {description}.");
+            await Task.Delay(PollInterval);
+        }
+    }
+
+    private async Task WaitUntilRenderTriggerIsQuietAsync()
+    {
+        var deadline = DateTime.UtcNow + WaitTimeout;
+        int seen = _sut.RenderTrigger;
+        while (true)
+        {
+            await Task.Delay(QuietWindow);
+            int now = _sut.RenderTrigger;
+            if (now == seen) return;
+            if (DateTime.UtcNow >= deadline) Assert.Fail($"RenderTrigger did not settle within {WaitTimeout.TotalSeconds:0}s.");
+            seen = now;
+        }
     }
 
     [Fact]

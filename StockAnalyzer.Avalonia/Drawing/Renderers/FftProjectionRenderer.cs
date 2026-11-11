@@ -165,9 +165,7 @@ public class FftProjectionRenderer
                 Style = SKPaintStyle.Fill
             };
 
-            var periodsStr = string.Join(", ", fftObj.DominantHarmonics.Take(3).Select(h => $"{h.Period:F1}b"));
-            string label = $"FFT Harmonics: {periodsStr}";
-            canvas.DrawText(label, left + 8, clip.Top + 18, textPaint);
+            canvas.DrawText(fftObj.HarmonicsLabel, left + 8, clip.Top + 18, textPaint);
         }
     }
 }

@@ -18,6 +18,8 @@ namespace StockAnalyzer.Avalonia.Tests.ViewModels;
 /// Every plain button of the Prediction Models page (and the one of the Settings > AI Predictions page) takes the theme's Button colours: the "accent" class reads Background / Text / Hover / Pressed from
 /// the Theme page. The add-model-from-file behaviour itself is covered in Tests/ViewModels/PredictionModelsViewModelTests (real registry).
 /// </summary>
+// Re-initializes the shared static LocalizationManager.Instance (see LocalizationSharedStateCollection.cs).
+[Collection("LocalizationSharedState")]
 public sealed class AIPredictionsButtonThemeTests
 {
     [AvaloniaFact]

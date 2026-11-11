@@ -126,6 +126,42 @@ public class FftProjectionObject : IChartObject, IDrawingCalculatedValuesProvide
     // Harmonic components extracted during last calculation
     [System.Text.Json.Serialization.JsonIgnore]
     public IReadOnlyList<FftHarmonicComponent> DominantHarmonics { get; set; } = Array.Empty<FftHarmonicComponent>();
+    /// <summary>Number of dominant harmonics (strongest first) named in <see cref="HarmonicsLabel"/>.</summary>
+    private const int MaxLabelHarmonics = 3;
+
+    private IReadOnlyList<FftHarmonicComponent>? _labelSource;
+    private string _harmonicsLabel = string.Empty;
+
+    /// <summary>
+    /// The header text drawn above the range ("FFT Harmonics: 20.0b, 9.1b, 5.9b"). Built the first time it is read after
+    /// <see cref="DominantHarmonics"/> was replaced, so the renderer does not rebuild it (LINQ + string formatting) on every frame.
+    /// Each period is formatted with one decimal and the invariant culture ("20.0b"), whatever the culture of the machine, so a culture
+    /// change at run time cannot leave a stale format behind. No LINQ: it is built on the render path.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string HarmonicsLabel
+    {
+        get
+        {
+            var harmonics = DominantHarmonics;
+            if (!ReferenceEquals(harmonics, _labelSource))
+            {
+                var label = new System.Text.StringBuilder("FFT Harmonics: ");
+                int shown = Math.Min(harmonics.Count, MaxLabelHarmonics);
+                for (int i = 0; i < shown; i++)
+                {
+                    if (i > 0) label.Append(", ");
+                    label.Append(harmonics[i].Period.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)).Append('b');
+                }
+
+                _harmonicsLabel = label.ToString();
+                _labelSource = harmonics;
+            }
+
+            return _harmonicsLabel;
+        }
+    }
+
     [System.Text.Json.Serialization.JsonIgnore]
     public double ResidualStdDev { get; set; }
 

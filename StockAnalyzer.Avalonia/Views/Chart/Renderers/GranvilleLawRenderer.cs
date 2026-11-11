@@ -17,6 +17,43 @@ namespace StockAnalyzer.Avalonia.Views.Chart.Renderers;
 /// </summary>
 public sealed class GranvilleLawRenderer
 {
+    /// <summary>Highest signal strength per side: signals are +1..+4 (buy) and -1..-4 (sell).</summary>
+    private const int SignalStrengthCount = 4;
+
+    /// <summary>Color slots: indices 0..3 are Buy1..Buy4, indices 4..7 are Sell1..Sell4.</summary>
+    private const int SignalSlotCount = SignalStrengthCount * 2;
+
+    /// <summary>Default slot colors, built once from <see cref="IndicatorDefaultConstants"/> (same values as before).</summary>
+    private static readonly SKColor[] DefaultSlotColors =
+    {
+        ToSkColor(IndicatorDefaultConstants.GranvilleBuy1Color),
+        ToSkColor(IndicatorDefaultConstants.GranvilleBuy2Color),
+        ToSkColor(IndicatorDefaultConstants.GranvilleBuy3Color),
+        ToSkColor(IndicatorDefaultConstants.GranvilleBuy4Color),
+        ToSkColor(IndicatorDefaultConstants.GranvilleSell1Color),
+        ToSkColor(IndicatorDefaultConstants.GranvilleSell2Color),
+        ToSkColor(IndicatorDefaultConstants.GranvilleSell3Color),
+        ToSkColor(IndicatorDefaultConstants.GranvilleSell4Color),
+    };
+
+    private static SKColor ToSkColor(IndicatorColor c) => new SKColor(c.R, c.G, c.B, c.A);
+
+    /// <summary>Slot of a signal in -4..-1 and 1..4 (the caller guarantees the range).</summary>
+    private static int SlotOf(int signal) => signal > 0 ? signal - 1 : SignalStrengthCount + (-signal - 1);
+
+    /// <summary>Resolves the color slot of a signal; false for 0 and for strengths outside 1..4 (nothing is drawn, as before).</summary>
+    internal static bool TrySlotOf(int signal, out int slot)
+    {
+        if (signal >= 1 && signal <= SignalStrengthCount || signal <= -1 && signal >= -SignalStrengthCount)
+        {
+            slot = SlotOf(signal);
+            return true;
+        }
+
+        slot = 0;
+        return false;
+    }
+
     private readonly SKPaint _buyLabelPaint;
     private readonly SKPaint _sellLabelPaint;
     private readonly SKPaint _buyHeatmapPaint;
@@ -71,30 +108,21 @@ public sealed class GranvilleLawRenderer
         var signals = result.GetSeries("Signals");
         if (signals == null) return;
 
-        var colors = new Dictionary<int, SKColor>
-        {
-            { 1, new SKColor(IndicatorDefaultConstants.GranvilleBuy1Color.R, IndicatorDefaultConstants.GranvilleBuy1Color.G, IndicatorDefaultConstants.GranvilleBuy1Color.B, IndicatorDefaultConstants.GranvilleBuy1Color.A) },
-            { 2, new SKColor(IndicatorDefaultConstants.GranvilleBuy2Color.R, IndicatorDefaultConstants.GranvilleBuy2Color.G, IndicatorDefaultConstants.GranvilleBuy2Color.B, IndicatorDefaultConstants.GranvilleBuy2Color.A) },
-            { 3, new SKColor(IndicatorDefaultConstants.GranvilleBuy3Color.R, IndicatorDefaultConstants.GranvilleBuy3Color.G, IndicatorDefaultConstants.GranvilleBuy3Color.B, IndicatorDefaultConstants.GranvilleBuy3Color.A) },
-            { 4, new SKColor(IndicatorDefaultConstants.GranvilleBuy4Color.R, IndicatorDefaultConstants.GranvilleBuy4Color.G, IndicatorDefaultConstants.GranvilleBuy4Color.B, IndicatorDefaultConstants.GranvilleBuy4Color.A) },
-            { -1, new SKColor(IndicatorDefaultConstants.GranvilleSell1Color.R, IndicatorDefaultConstants.GranvilleSell1Color.G, IndicatorDefaultConstants.GranvilleSell1Color.B, IndicatorDefaultConstants.GranvilleSell1Color.A) },
-            { -2, new SKColor(IndicatorDefaultConstants.GranvilleSell2Color.R, IndicatorDefaultConstants.GranvilleSell2Color.G, IndicatorDefaultConstants.GranvilleSell2Color.B, IndicatorDefaultConstants.GranvilleSell2Color.A) },
-            { -3, new SKColor(IndicatorDefaultConstants.GranvilleSell3Color.R, IndicatorDefaultConstants.GranvilleSell3Color.G, IndicatorDefaultConstants.GranvilleSell3Color.B, IndicatorDefaultConstants.GranvilleSell3Color.A) },
-            { -4, new SKColor(IndicatorDefaultConstants.GranvilleSell4Color.R, IndicatorDefaultConstants.GranvilleSell4Color.G, IndicatorDefaultConstants.GranvilleSell4Color.B, IndicatorDefaultConstants.GranvilleSell4Color.A) }
-        };
-        
+        Span<SKColor> colors = stackalloc SKColor[SignalSlotCount];
+        DefaultSlotColors.CopyTo(colors);
+
         if (setting.SeriesColors != null && setting.SeriesColors.Count > 0)
         {
             foreach (var sc in setting.SeriesColors)
             {
-                if (sc.Name == "Buy1") colors[1] = new SKColor(sc.Color.R, sc.Color.G, sc.Color.B, sc.Color.A);
-                else if (sc.Name == "Buy2") colors[2] = new SKColor(sc.Color.R, sc.Color.G, sc.Color.B, sc.Color.A);
-                else if (sc.Name == "Buy3") colors[3] = new SKColor(sc.Color.R, sc.Color.G, sc.Color.B, sc.Color.A);
-                else if (sc.Name == "Buy4") colors[4] = new SKColor(sc.Color.R, sc.Color.G, sc.Color.B, sc.Color.A);
-                else if (sc.Name == "Sell1") colors[-1] = new SKColor(sc.Color.R, sc.Color.G, sc.Color.B, sc.Color.A);
-                else if (sc.Name == "Sell2") colors[-2] = new SKColor(sc.Color.R, sc.Color.G, sc.Color.B, sc.Color.A);
-                else if (sc.Name == "Sell3") colors[-3] = new SKColor(sc.Color.R, sc.Color.G, sc.Color.B, sc.Color.A);
-                else if (sc.Name == "Sell4") colors[-4] = new SKColor(sc.Color.R, sc.Color.G, sc.Color.B, sc.Color.A);
+                if (sc.Name == "Buy1") colors[SlotOf(1)] = new SKColor(sc.Color.R, sc.Color.G, sc.Color.B, sc.Color.A);
+                else if (sc.Name == "Buy2") colors[SlotOf(2)] = new SKColor(sc.Color.R, sc.Color.G, sc.Color.B, sc.Color.A);
+                else if (sc.Name == "Buy3") colors[SlotOf(3)] = new SKColor(sc.Color.R, sc.Color.G, sc.Color.B, sc.Color.A);
+                else if (sc.Name == "Buy4") colors[SlotOf(4)] = new SKColor(sc.Color.R, sc.Color.G, sc.Color.B, sc.Color.A);
+                else if (sc.Name == "Sell1") colors[SlotOf(-1)] = new SKColor(sc.Color.R, sc.Color.G, sc.Color.B, sc.Color.A);
+                else if (sc.Name == "Sell2") colors[SlotOf(-2)] = new SKColor(sc.Color.R, sc.Color.G, sc.Color.B, sc.Color.A);
+                else if (sc.Name == "Sell3") colors[SlotOf(-3)] = new SKColor(sc.Color.R, sc.Color.G, sc.Color.B, sc.Color.A);
+                else if (sc.Name == "Sell4") colors[SlotOf(-4)] = new SKColor(sc.Color.R, sc.Color.G, sc.Color.B, sc.Color.A);
             }
         }
 
@@ -126,8 +154,9 @@ public sealed class GranvilleLawRenderer
             var sig = signals[i];
             int signalVal = sig.HasValue ? (int)sig.Value : 0;
 
-            if (signalVal != 0 && colors.TryGetValue(signalVal, out var color))
+            if (TrySlotOf(signalVal, out int slot))
             {
+                var color = colors[slot];
                 float x;
                 if (transform is GenericCoordinateTransform gct && gct.Mode == ChartAxisMode.Index)
                 {

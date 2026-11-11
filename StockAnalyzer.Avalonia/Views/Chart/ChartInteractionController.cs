@@ -161,6 +161,12 @@ public class ChartInteractionController
     private ChartObjectManager? _activeObjectManager;
 
     /// <summary>
+    /// Candles converted to the older CandleData type for Harmonic / AutoElliottWave / GeometricPattern recalculation, reused while a
+    /// drawing or drag gesture repeats the recalculation on the same candle list. Invalidated whenever a gesture starts or ends.
+    /// </summary>
+    private readonly CandleDataConversionCache _candleDataCache = new();
+
+    /// <summary>
     /// Snapshot of the dragged object's points at the start of a whole-object
     /// (Move) drag. Used as the fixed reference for computing each frame's total
     /// displacement, so Smart Guide corrections never accumulate across frames.
@@ -210,6 +216,7 @@ public class ChartInteractionController
         {
             return false;
         }
+        _candleDataCache.Invalidate();
         DraggedObject = obj;
         DraggedHandleIndex = handleIndex;
         LastDragPoint = point;
@@ -838,6 +845,7 @@ public class ChartInteractionController
             }
             ClearMultiSelectMoveState();
 
+            _candleDataCache.Invalidate();
             DraggedObject = null;
             DraggedHandleIndex = -1;
             _activeSmartGuideLines.Clear();
@@ -894,6 +902,7 @@ public class ChartInteractionController
             ?? viewModel.ObjectManager.InformationObject?.Snapshot;
 
         CancelActiveDragTransaction(viewModel);
+        _candleDataCache.Invalidate();
         DraggedObject = null;
         DraggedHandleIndex = -1;
         _activeSmartGuideLines.Clear();
@@ -1462,6 +1471,7 @@ public class ChartInteractionController
                 {
                     return false;
                 }
+                _candleDataCache.Invalidate();
                 DraggedObject = hitObject;
                 LastDragPoint = point;
                 DraggedHandleIndex = -1;
@@ -1486,6 +1496,7 @@ public class ChartInteractionController
                 {
                     return false;
                 }
+                _candleDataCache.Invalidate();
                 DraggedObject = hitObject;
                 LastDragPoint = point;
                 DraggedHandleIndex = -1;
@@ -2082,7 +2093,7 @@ public class ChartInteractionController
             else if (DraggedObject is not AnchoredVwapObject &&
                      DraggedObject is not FixedRangeVolumeProfileObject &&
                      DraggedObject is not TimeAtPriceObject &&
-                     DeferredComputationRecalculator.TryRecalculate(DraggedObject, snapshot.Candles))
+                     DeferredComputationRecalculator.TryRecalculate(DraggedObject, snapshot.Candles, _candleDataCache))
             {
             }
 
@@ -2605,20 +2616,9 @@ public class ChartInteractionController
         {
             _activeBehavior.UpdatePoint(CurrentDrawingObject, DrawingStep, chartPoint, candles);
 
-            if (DeferredComputationRecalculator.TryRecalculate(CurrentDrawingObject, candles))
-            {
-                // Handled (RegressionTrendObject / RangeSplineObject / FixedRangeVolumeProfileObject)
-            }
-            else if (CurrentDrawingObject is StockAnalyzer.Avalonia.Drawing.Objects.HarmonicPatternObject harmonic)
-            {
-                 var coreCandles = candles.Select(c => new StockAnalyzer.Core.Models.CandleData(c.Timestamp, c.Open, c.High, c.Low, c.Close, c.Volume));
-                 harmonic.Recalculate(coreCandles);
-            }
-            else if (CurrentDrawingObject is StockAnalyzer.Avalonia.Drawing.Objects.AutoElliottWaveObject elliottObj)
-            {
-                 var coreCandles = candles.Select(c => new StockAnalyzer.Core.Models.CandleData(c.Timestamp, c.Open, c.High, c.Low, c.Close, c.Volume));
-                 elliottObj.Recalculate(coreCandles);
-            }
+            // Handled by the SSoT recalculator for every object type it knows (RegressionTrend / RangeSpline / FixedRangeVolumeProfile /
+            // Harmonic / AutoElliottWave / GeometricPattern ...). The result is not needed here: the new shape was updated either way.
+            DeferredComputationRecalculator.TryRecalculate(CurrentDrawingObject, candles, _candleDataCache);
             return true;
         }
 
@@ -2631,13 +2631,11 @@ public class ChartInteractionController
              // Recalculate if needed
              if (CurrentDrawingObject is RegressionTrendObject reg)
              {
-                 var coreCandles = candles.Select(c => new CoreCandleData(c.Timestamp, c.Open, c.High, c.Low, c.Close, c.Volume));
-                 reg.Recalculate(coreCandles);
+                 reg.Recalculate(candles);
              }
              else if (CurrentDrawingObject is RangeSplineObject rangeSpline)
              {
-                 var coreCandles = candles.Select(c => new CoreCandleData(c.Timestamp, c.Open, c.High, c.Low, c.Close, c.Volume));
-                 rangeSpline.Recalculate(coreCandles);
+                 rangeSpline.Recalculate(candles);
              }
              
              return true;
@@ -2652,6 +2650,7 @@ public class ChartInteractionController
     /// </summary>
     public void ResetSnapState()
     {
+        _candleDataCache.Invalidate();
         LastSnapChartPoint = null;
     }
 
@@ -2913,6 +2912,7 @@ public class ChartInteractionController
     private void StartDrawingInternal(IChartObject drawingObject, IDrawingToolBehavior behavior)
     {
         drawingObject.PanelIndex = _activePanelIndex;
+        _candleDataCache.Invalidate();
         CurrentDrawingObject = drawingObject;
         IsDrawingNewShape = true;
         DrawingStep = 0;
@@ -2970,6 +2970,7 @@ public class ChartInteractionController
             }
         }
 
+        _candleDataCache.Invalidate();
         CurrentDrawingObject = null;
         IsDrawingNewShape = false;
         DrawingStep = 0;
@@ -3011,6 +3012,7 @@ public class ChartInteractionController
     public void CancelDrawing()
     {
         CancelActiveDragTransaction();
+        _candleDataCache.Invalidate();
         CurrentDrawingObject = null;
         IsDrawingNewShape = false;
         DrawingStep = 0;
@@ -3204,6 +3206,7 @@ public class ChartInteractionController
     /// <param name="handleIndex">The handle index being dragged (-1 for whole object).</param>
     public void StartDragging(IChartObject obj, int handleIndex = -1)
     {
+        _candleDataCache.Invalidate();
         DraggedObject = obj;
         DraggedHandleIndex = handleIndex;
     }

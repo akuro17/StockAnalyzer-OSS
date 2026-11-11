@@ -44,22 +44,19 @@ public static class DrawingRecalculation
 
         if (obj is StockAnalyzer.Avalonia.Drawing.Objects.HarmonicPatternObject harmonic)
         {
-            harmonic.Recalculate(ToCandleData(context.Candles));
+            harmonic.Recalculate(CandleDataConverter.ToLazy(context.Candles));
         }
         else if (obj is StockAnalyzer.Avalonia.Drawing.Objects.AutoElliottWaveObject elliott)
         {
-            elliott.Recalculate(ToCandleData(context.Candles));
+            elliott.Recalculate(CandleDataConverter.ToLazy(context.Candles));
         }
         else if (obj is StockAnalyzer.Avalonia.Drawing.Objects.GeometricPatternObject geometric)
         {
-            geometric.Recalculate(ToCandleData(context.Candles));
+            geometric.Recalculate(CandleDataConverter.ToLazy(context.Candles));
         }
         else
         {
             DeferredComputationRecalculator.TryRecalculate(obj, context);
         }
     }
-
-    private static IEnumerable<CandleData> ToCandleData(IReadOnlyList<CoreCandleData> candles)
-        => candles.Select(c => new CandleData(c.Timestamp, c.Open, c.High, c.Low, c.Close, c.Volume));
 }

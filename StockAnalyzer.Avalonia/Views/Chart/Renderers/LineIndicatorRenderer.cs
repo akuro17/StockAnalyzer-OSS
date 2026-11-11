@@ -10,9 +10,17 @@ namespace StockAnalyzer.Avalonia.Views.Chart.Renderers;
 /// <summary>
 /// Renders standard indicator lines (Single color or Up/Down colors).
 /// </summary>
-public class LineIndicatorRenderer
+public class LineIndicatorRenderer : IDisposable
 {
     private readonly SKPaint _paint = new SKPaint { Style = SKPaintStyle.Stroke, IsAntialias = true };
+    private readonly SKPath _path = new SKPath();
+
+    public void Dispose()
+    {
+        _paint.Dispose();
+        _path.Dispose();
+    }
+
     public void Render(SKCanvas canvas, Rect chartArea, 
         IReadOnlyList<decimal?> values, 
         CoreIndicatorSettings setting, 
@@ -60,7 +68,8 @@ public class LineIndicatorRenderer
         IReadOnlyList<decimal?> values, int totalCandles, int offset, int startIndex,
         IReadOnlyList<CoreCandleData>? candles, TimeSpan interval, ICoordinateTransform? transform, float candleWidth, float xOffset)
     {
-        using var path = new SKPath();
+        var path = _path;
+        path.Reset();
         bool isStarted = false;
 
         for (int i = 0; i < totalCandles; i++)

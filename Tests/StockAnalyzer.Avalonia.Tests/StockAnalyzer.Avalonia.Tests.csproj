@@ -23,6 +23,7 @@
   <ItemGroup>
     <Compile Include="..\StockAnalyzer.Core.Tests\Services\ManualTimeProvider.cs" Link="TestHelpers\ManualTimeProvider.cs" />
     <Compile Include="..\StockAnalyzer.Core.Tests\Services\CapturingLogger.cs" Link="TestHelpers\CapturingLogger.cs" />
+    <Compile Include="..\StockAnalyzer.Core.Tests\Common\AllocationProbe.cs" Link="TestHelpers\AllocationProbe.cs" />
   </ItemGroup>
 
   <!-- The test-run isolation of the signal-bundle files is one file shared by every test assembly. -->
