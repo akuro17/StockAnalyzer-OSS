@@ -5,6 +5,7 @@ using Avalonia.Media;
 using SkiaSharp;
 using StockAnalyzer.Avalonia.Common;
 using StockAnalyzer.Avalonia.Views.Chart;
+using StockAnalyzer.Core.Drawing.Values;
 using StockAnalyzer.Core.Models;
 
 namespace StockAnalyzer.Avalonia.Drawing;
@@ -164,28 +165,9 @@ public class SineLineObject : IChartObject, IDrawingCalculatedValuesProvider
     {
         if (Points.Count < 2) return Array.Empty<DrawingCalculatedValue>();
 
-        var p1 = Points[0];
-        var p2 = Points[1];
         var color = new IndicatorColor(Color.A, Color.R, Color.G, Color.B);
 
-        double periodSeconds = Math.Abs((p2.Time - p1.Time).TotalSeconds);
-        if (periodSeconds < 1.0) return Array.Empty<DrawingCalculatedValue>();
-
-        double periodDays = periodSeconds / 86400.0;
-        decimal centerPrice = p1.Price;
-        decimal amplitude = Math.Abs(p2.Price - p1.Price);
-
-        double angle = 2.0 * Math.PI * (timestamp - p1.Time).TotalSeconds / periodSeconds;
-        decimal waveOffset = (p2.Price - p1.Price) * (decimal)Math.Sin(angle);
-        decimal sinePrice = centerPrice + waveOffset;
-
-        return new DrawingCalculatedValue[]
-        {
-            new DrawingCalculatedValue("SinePrice", "Sine Price", sinePrice, $"{sinePrice:F3}", color),
-            new DrawingCalculatedValue("CenterPrice", "Center Price", centerPrice, $"{centerPrice:F3}", IndicatorColor.Gray),
-            new DrawingCalculatedValue("Amplitude", "Amplitude", amplitude, $"{amplitude:F3}", IndicatorColor.Gray),
-            new DrawingCalculatedValue("Period", "Wave Period", (decimal)Math.Round(periodDays, 1), $"{periodDays:F1} days", IndicatorColor.Gray)
-        };
+        return SineLineValues.Calculate(Points[0].ToAnchor(), Points[1].ToAnchor(), timestamp, color);
     }
 }
 

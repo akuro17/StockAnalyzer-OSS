@@ -5,6 +5,7 @@ using Avalonia.Media;
 using SkiaSharp;
 using StockAnalyzer.Avalonia.Common;
 using StockAnalyzer.Avalonia.Views.Chart;
+using StockAnalyzer.Core.Drawing.Values;
 using StockAnalyzer.Core.Models;
 
 namespace StockAnalyzer.Avalonia.Drawing;
@@ -35,12 +36,7 @@ public class GannFanObject : IChartObject, IDrawingCalculatedValuesProvider
     // Ratios: Price Units per Time Unit (Slope)
     // 1x1 is 45 degrees (geometrically in square scaling), but here we map units.
     // Standard Gann Angles: 1x8, 1x4, 1x3, 1x2, 1x1, 2x1, 3x1, 4x1, 8x1
-    private readonly (int time, int price)[] _ratios = new[]
-    {
-        (1, 8), (1, 4), (1, 3), (1, 2),
-        (1, 1),
-        (2, 1), (3, 1), (4, 1), (8, 1)
-    };
+    private readonly (int time, int price)[] _ratios = GannFanValues.Ratios.ToArray();
 
     public GannFanObject(ChartPoint start, ChartPoint end)
     {
@@ -200,30 +196,9 @@ public class GannFanObject : IChartObject, IDrawingCalculatedValuesProvider
     {
         if (Points.Count < 2) return Array.Empty<DrawingCalculatedValue>();
 
-        var p1 = Points[0];
-        var p2 = Points[1];
         var color = new IndicatorColor(Color.A, Color.R, Color.G, Color.B);
 
-        double dt = (p2.Time - p1.Time).TotalSeconds;
-        if (Math.Abs(dt) < 1e-4) return Array.Empty<DrawingCalculatedValue>();
-
-        decimal range = Math.Abs(p2.Price - p1.Price);
-        decimal dy = p2.Price - p1.Price;
-        double timeProgress = (timestamp - p1.Time).TotalSeconds / dt;
-
-        var values = new List<DrawingCalculatedValue>(_ratios.Length + 1)
-        {
-            new DrawingCalculatedValue("Range", "Range", range, $"{range:F3}", IndicatorColor.Gray)
-        };
-
-        foreach (var ratio in _ratios)
-        {
-            decimal slopeFactor = (decimal)ratio.price / (decimal)ratio.time;
-            decimal fanPrice = p1.Price + (decimal)timeProgress * dy * slopeFactor;
-            values.Add(new DrawingCalculatedValue($"Gann_{ratio.time}x{ratio.price}", $"Gann {ratio.time}x{ratio.price}", fanPrice, $"{fanPrice:F3}", color));
-        }
-
-        return values;
+        return GannFanValues.Calculate(Points[0].ToAnchor(), Points[1].ToAnchor(), timestamp, color);
     }
 }
 

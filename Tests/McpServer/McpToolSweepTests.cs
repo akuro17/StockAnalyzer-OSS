@@ -148,6 +148,7 @@ public sealed class McpToolSweepTests : IDisposable
         ("sa_calculate_volume_profile", """{"symbol":"MSFT","timeFrame":"D1"}"""),
         ("sa_analyze_market_structure", """{"symbol":"MSFT","timeFrame":"D1"}"""),
         ("sa_find_support_resistance", """{"symbol":"MSFT","timeFrame":"D1"}"""),
+        ("sa_calculate_drawing_values", """{"symbol":"MSFT","timeFrame":"D1","tool":"TrendLine","anchorMode":"RangeEndpoints","anchorBars":2}"""),
         ("sa_detect_candle_patterns", """{"symbol":"MSFT","timeFrame":"D1"}"""),
         ("sa_detect_chart_patterns", """{"symbol":"MSFT","timeFrame":"D1"}"""),
         ("sa_analyze_cycles", """{"symbol":"MSFT","timeFrame":"D1"}"""),
@@ -187,6 +188,7 @@ public sealed class McpToolSweepTests : IDisposable
         ("sa_calculate_volume_profile", """{"symbol":"@@","timeFrame":"D1"}"""),
         ("sa_analyze_market_structure", """{"symbol":"@@","timeFrame":"D1"}"""),
         ("sa_find_support_resistance", """{"symbol":"@@","timeFrame":"D1"}"""),
+        ("sa_calculate_drawing_values", """{"symbol":"@@","timeFrame":"D1","tool":"TrendLine","anchorMode":"RangeEndpoints","anchorBars":2}"""),
         ("sa_detect_candle_patterns", """{"symbol":"@@","timeFrame":"D1"}"""),
         ("sa_detect_chart_patterns", """{"symbol":"@@","timeFrame":"D1"}"""),
         ("sa_analyze_cycles", """{"symbol":"@@","timeFrame":"D1"}"""),
@@ -390,6 +392,7 @@ public sealed class McpToolSweepTests : IDisposable
     {
         var limits = new McpLimits();
         string Symbols(int count) => string.Join(",", Enumerable.Range(0, count).Select(i => $"\"S{i}\""));
+        string EvaluationDates(int count) => string.Join(",", Enumerable.Range(0, count).Select(i => $"\"{new DateTime(2020, 1, 1).AddDays(i):yyyy-MM-dd}\""));
         string Many(int count) => string.Join(",", Enumerable.Range(0, count).Select(i => $"{{\"id\":\"i{i}\",\"type\":\"RSI\"}}"));
         string DerivedMany(int count) => string.Join(",", Enumerable.Range(0, count).Select(i => $"{{\"id\":\"d{i}\",\"op\":\"Add\",\"left\":{{\"ref\":\"i0\"}},\"right\":{{\"constant\":1}}}}"));
         string Rules(int count) => "[" + string.Join(",", Enumerable.Repeat("""{"field":"Close","operator":">","value":"1"}""", count)) + "]";
@@ -423,6 +426,9 @@ public sealed class McpToolSweepTests : IDisposable
             ("sa_calculate_volume_profile", $"{{{Frame},\"binCount\":{limits.MaxVolumeProfileBins + 1}}}", "binCount"),
             ("sa_calculate_volume_profile", $"{{{Frame},\"rangeBars\":{limits.MaxCandlesPerRequest + 1}}}", "rangeBars"),
             ("sa_find_support_resistance", $"{{{Frame},\"maxLevels\":{limits.MaxSupportResistanceLevels + 1}}}", "maxLevels"),
+            ("sa_calculate_drawing_values", $"{{{Frame},\"tool\":\"TrendLine\",\"anchorMode\":\"RangeEndpoints\",\"anchorBars\":2,\"evaluationDates\":[{EvaluationDates(limits.MaxDrawingEvaluationDates + 1)}]}}", "evaluationDates"),
+            ("sa_calculate_drawing_values", $"{{{Frame},\"tool\":\"TrendLine\",\"anchorMode\":\"RangeEndpoints\",\"anchorBars\":{limits.MaxCandlesPerRequest + 1}}}", "anchorBars"),
+            ("sa_calculate_drawing_values", $"{{{Frame},\"tool\":\"TrendLine\",\"anchorMode\":\"RangeEndpoints\",\"anchorBars\":2,\"lookbackBars\":{limits.MaxCandlesPerRequest + 1}}}", "lookbackBars"),
             ("sa_detect_candle_patterns", $"{{{Frame},\"windowBars\":{limits.MaxOutputTailBars + 1}}}", "windowBars"),
             ("sa_detect_chart_patterns", $"{{{Frame},\"maxPatterns\":{limits.MaxReturnedPatterns + 1}}}", "maxPatterns"),
             ("sa_analyze_cycles", $"{{{Frame},\"topBins\":{limits.MaxCycleBins + 1}}}", "topBins"),

@@ -5,6 +5,7 @@ using Avalonia.Media;
 using SkiaSharp;
 using StockAnalyzer.Avalonia.Common;
 using StockAnalyzer.Avalonia.Drawing;
+using StockAnalyzer.Core.Drawing.Values;
 using StockAnalyzer.Core.Models;
 
 namespace StockAnalyzer.Avalonia.Drawing;
@@ -27,7 +28,7 @@ public class FibonacciExpansionObject : IChartObject, IDrawingCalculatedValuesPr
     public int Priority { get; set; } = 0;
     public int AnchorPointIndex { get; set; } = 0;
 
-    private readonly float[] _levels = { 0.618f, 1.0f, 1.618f, 2.618f, 4.236f };
+    private readonly float[] _levels = FibonacciExpansionValues.Levels.ToArray();
 
     public FibonacciExpansionObject(ChartPoint p1, ChartPoint p2, ChartPoint p3)
     {
@@ -173,26 +174,9 @@ public class FibonacciExpansionObject : IChartObject, IDrawingCalculatedValuesPr
     {
         if (Points.Count < 3) return Array.Empty<DrawingCalculatedValue>();
 
-        var p1 = Points[0];
-        var p2 = Points[1];
-        var p3 = Points[2];
         var color = new IndicatorColor(Color.A, Color.R, Color.G, Color.B);
 
-        decimal impulse = p2.Price - p1.Price;
-        decimal absImpulse = Math.Abs(impulse);
-
-        var values = new List<DrawingCalculatedValue>(_levels.Length + 1)
-        {
-            new DrawingCalculatedValue("Impulse", "Impulse Move", absImpulse, $"{absImpulse:F3}", IndicatorColor.Gray)
-        };
-
-        foreach (var level in _levels)
-        {
-            decimal expPrice = p3.Price + impulse * (decimal)level;
-            values.Add(new DrawingCalculatedValue($"Exp_{level:F3}", $"Expansion {level:P1}", expPrice, $"{expPrice:F3}", color));
-        }
-
-        return values;
+        return FibonacciExpansionValues.Calculate(Points[0].ToAnchor(), Points[1].ToAnchor(), Points[2].ToAnchor(), color);
     }
 }
 

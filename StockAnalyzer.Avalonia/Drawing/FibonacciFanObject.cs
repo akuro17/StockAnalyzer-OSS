@@ -5,6 +5,7 @@ using Avalonia.Media;
 using SkiaSharp;
 using StockAnalyzer.Avalonia.Common;
 using StockAnalyzer.Avalonia.Views.Chart;
+using StockAnalyzer.Core.Drawing.Values;
 using StockAnalyzer.Core.Models;
 
 namespace StockAnalyzer.Avalonia.Drawing;
@@ -38,7 +39,7 @@ public class FibonacciFanObject : IChartObject, IDrawingCalculatedValuesProvider
     public int Priority { get; set; } = 0;
     public int AnchorPointIndex { get; set; } = 0;
 
-    private readonly double[] _ratios = { 0.382, 0.5, 0.618, 1.0 }; 
+    private readonly double[] _ratios = FibonacciFanValues.Ratios.ToArray();
 
     public FibonacciFanObject(ChartPoint start, ChartPoint end)
     {
@@ -160,32 +161,9 @@ public class FibonacciFanObject : IChartObject, IDrawingCalculatedValuesProvider
     {
         if (Points.Count < 2) return Array.Empty<DrawingCalculatedValue>();
 
-        var p1 = Points[0];
-        var p2 = Points[1];
         var color = new IndicatorColor(Color.A, Color.R, Color.G, Color.B);
 
-        double dt = (p2.Time - p1.Time).TotalSeconds;
-        if (Math.Abs(dt) < 1e-4) return Array.Empty<DrawingCalculatedValue>();
-
-        decimal range = Math.Abs(p2.Price - p1.Price);
-        decimal totalDyPrice = p2.Price - p1.Price;
-        double timeProgress = (timestamp - p1.Time).TotalSeconds / dt;
-
-        var values = new List<DrawingCalculatedValue>(_ratios.Length + 1)
-        {
-            new DrawingCalculatedValue("Range", "Range", range, $"{range:F3}", IndicatorColor.Gray)
-        };
-
-        foreach (var ratio in _ratios)
-        {
-            decimal targetPriceAtEnd = p1.Price + totalDyPrice * (decimal)ratio;
-            decimal slope = targetPriceAtEnd - p1.Price;
-            decimal linePrice = p1.Price + slope * (decimal)timeProgress;
-
-            values.Add(new DrawingCalculatedValue($"Fan_{ratio:F3}", $"Fan {ratio:P1}", linePrice, $"{linePrice:F3}", color));
-        }
-
-        return values;
+        return FibonacciFanValues.Calculate(Points[0].ToAnchor(), Points[1].ToAnchor(), timestamp, color);
     }
 }
 

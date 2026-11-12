@@ -47,6 +47,7 @@ public class McpLimitsTests
         Assert.Equal(1, limits.DefaultMinInSampleTrades);
         Assert.Equal(200, limits.MaxVolumeProfileBins);
         Assert.Equal(20, limits.MaxSupportResistanceLevels);
+        Assert.Equal(20, limits.MaxDrawingEvaluationDates);
         Assert.Equal(50, limits.MaxCycleBins);
         Assert.Equal(100, limits.MaxReturnedPatterns);
         Assert.Equal(100, limits.MaxProjectionBars);
@@ -122,6 +123,8 @@ public class McpLimitsTests
         { nameof(McpLimits.MaxVolumeProfileBins), 501 },
         { nameof(McpLimits.MaxSupportResistanceLevels), 0 },
         { nameof(McpLimits.MaxSupportResistanceLevels), 101 },
+        { nameof(McpLimits.MaxDrawingEvaluationDates), 0 },
+        { nameof(McpLimits.MaxDrawingEvaluationDates), 501 },
         { nameof(McpLimits.MaxCycleBins), 0 },
         { nameof(McpLimits.MaxCycleBins), 501 },
         { nameof(McpLimits.MaxReturnedPatterns), 0 },

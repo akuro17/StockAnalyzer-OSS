@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using StockAnalyzer.Core.Constants;
+using StockAnalyzer.Core.Drawing.Values;
 using StockAnalyzer.Core.Models;
 
 namespace StockAnalyzer.Avalonia.Drawing;
@@ -88,11 +89,7 @@ public class HorizontalLineObject : IChartObject, IDrawingCalculatedValuesProvid
         if (Points.Count == 0) return Array.Empty<DrawingCalculatedValue>();
 
         var color = new IndicatorColor(Color.A, Color.R, Color.G, Color.B);
-        decimal price = Points[0].Price;
 
-        return new DrawingCalculatedValue[]
-        {
-            new DrawingCalculatedValue("Price", "Price", price, $"{price:F3}", color)
-        };
+        return HorizontalLineValues.Calculate(Points[0].ToAnchor(), color);
     }
 }

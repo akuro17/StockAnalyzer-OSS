@@ -94,6 +94,7 @@ public static class McpLimitsContract
         Band(nameof(McpLimits.DefaultMinInSampleTrades), limits.DefaultMinInSampleTrades, 0, 1000);
         Band(nameof(McpLimits.MaxVolumeProfileBins), limits.MaxVolumeProfileBins, 2, 500);
         Band(nameof(McpLimits.MaxSupportResistanceLevels), limits.MaxSupportResistanceLevels, 1, 100);
+        Band(nameof(McpLimits.MaxDrawingEvaluationDates), limits.MaxDrawingEvaluationDates, 1, 500);
         Band(nameof(McpLimits.MaxCycleBins), limits.MaxCycleBins, 1, 500);
         Band(nameof(McpLimits.MaxReturnedPatterns), limits.MaxReturnedPatterns, 1, 1000);
         Band(nameof(McpLimits.MaxProjectionBars), limits.MaxProjectionBars, 1, 100);

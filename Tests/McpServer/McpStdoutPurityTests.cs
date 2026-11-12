@@ -32,6 +32,7 @@ public sealed class McpStdoutPurityTests
         "sa_get_template_detail",
         "sa_build_template",
         "sa_validate_condition_tree",
+        "sa_calculate_drawing_values",
     };
 
     private const string Entry = """{"left":{"price":"Close"},"comparison":"GreaterThan","right":{"price":"Close","offset":1}}""";
@@ -69,6 +70,7 @@ public sealed class McpStdoutPurityTests
             (56, McpTestSupport.CallMessage(56, "sa_get_template_detail", """{"templateId":"00000000-0000-0000-0000-000000000000"}""")),
             (57, McpTestSupport.CallMessage(57, "sa_validate_condition_tree", """{"kind":"screener","conditionTree":{"left":{"price":"Close"},"operator":">","right":100}}""")),
             (59, McpTestSupport.CallMessage(59, "sa_build_template", """{"templateType":"screener","name":"Purity","conditionTree":{"left":{"price":"Close"},"comparison":"GreaterThan","right":100}}""")),
+            (60, McpTestSupport.CallMessage(60, "sa_calculate_drawing_values", """{"symbol":"NOSUCH","timeFrame":"D1","tool":"TrendLine","anchorMode":"RangeEndpoints","anchorBars":2}""")),
             (19, McpTestSupport.CallMessage(19, "sa_calculate_reverse_watch", """{"symbol":"NOSUCH","timeFrame":"D1"}""")),
             (20, McpTestSupport.CallMessage(20, "sa_get_candles", """{"symbol":"..\\..\\Windows","timeFrame":"D1"}""")),
             (21, McpTestSupport.CallMessage(21, "sa_get_candles", """{"symbol":"MSFT","timeFrame":"D1","count":99999}""")),

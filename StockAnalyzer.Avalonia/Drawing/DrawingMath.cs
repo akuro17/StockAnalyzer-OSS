@@ -1,15 +1,16 @@
 using System;
 using System.Runtime.CompilerServices;
+using StockAnalyzer.Core.Drawing;
 
 namespace StockAnalyzer.Avalonia.Drawing;
 
 /// <summary>
 /// Provides unified mathematical, geometric, and defensive date utilities for drawing tools.
+/// The pure price/time math is defined once in <see cref="DrawingValueMath"/> (StockAnalyzer.Core) so that the GUI drawing objects
+/// and the headless drawing-value calculators cannot drift apart; the members below keep their signatures and forward to it.
 /// </summary>
 public static class DrawingMath
 {
-    private const double Epsilon = 1e-4;
-
     /// <summary>
     /// Linearly interpolates or extrapolates price at the specified timestamp based on two chart points.
     /// </summary>
@@ -25,11 +26,7 @@ public static class DrawingMath
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static decimal InterpolatePrice(DateTime t1, decimal p1, DateTime t2, decimal p2, DateTime timestamp)
     {
-        double dt = (t2 - t1).TotalSeconds;
-        if (Math.Abs(dt) < Epsilon) return p1;
-
-        double ratio = (timestamp - t1).TotalSeconds / dt;
-        return p1 + (decimal)ratio * (p2 - p1);
+        return DrawingValueMath.InterpolatePrice(t1, p1, t2, p2, timestamp);
     }
 
     /// <summary>
@@ -49,10 +46,7 @@ public static class DrawingMath
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static decimal? CalculateSlopePerDay(DateTime t1, decimal p1, DateTime t2, decimal p2)
     {
-        double totalDays = (t2 - t1).TotalDays;
-        if (Math.Abs(totalDays) < Epsilon) return null;
-
-        return (p2 - p1) / (decimal)totalDays;
+        return DrawingValueMath.CalculateSlopePerDay(t1, p1, t2, p2);
     }
 
     /// <summary>
@@ -62,8 +56,7 @@ public static class DrawingMath
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static decimal CalculatePercentageChange(decimal startPrice, decimal endPrice)
     {
-        if (startPrice == 0m) return 0m;
-        return ((endPrice - startPrice) / startPrice) * 100m;
+        return DrawingValueMath.CalculatePercentageChange(startPrice, endPrice);
     }
 
     /// <summary>
@@ -72,28 +65,7 @@ public static class DrawingMath
     /// </summary>
     public static DateTime SafeAddSeconds(DateTime time, double seconds)
     {
-        if (double.IsNaN(seconds)) return time;
-        if (double.IsPositiveInfinity(seconds)) return DateTime.MaxValue;
-        if (double.IsNegativeInfinity(seconds)) return DateTime.MinValue;
-
-        try
-        {
-            if (seconds > 0)
-            {
-                double maxAddSeconds = (DateTime.MaxValue - time).TotalSeconds;
-                if (seconds >= maxAddSeconds) return DateTime.MaxValue;
-            }
-            else if (seconds < 0)
-            {
-                double minAddSeconds = (DateTime.MinValue - time).TotalSeconds;
-                if (seconds <= minAddSeconds) return DateTime.MinValue;
-            }
-            return time.AddSeconds(seconds);
-        }
-        catch (ArgumentOutOfRangeException)
-        {
-            return seconds > 0 ? DateTime.MaxValue : DateTime.MinValue;
-        }
+        return DrawingValueMath.SafeAddSeconds(time, seconds);
     }
 
     /// <summary>

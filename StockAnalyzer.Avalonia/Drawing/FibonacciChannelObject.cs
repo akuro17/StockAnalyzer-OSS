@@ -5,6 +5,7 @@ using Avalonia.Media;
 using SkiaSharp;
 using StockAnalyzer.Avalonia.Common;
 using StockAnalyzer.Avalonia.Drawing;
+using StockAnalyzer.Core.Drawing.Values;
 using StockAnalyzer.Core.Models;
 
 namespace StockAnalyzer.Avalonia.Drawing;
@@ -27,7 +28,7 @@ public class FibonacciChannelObject : IChartObject, IDrawingCalculatedValuesProv
     public int Priority { get; set; } = 0;
     public int AnchorPointIndex { get; set; } = 0;
 
-    private readonly float[] _levels = { 0.0f, 0.618f, 1.0f, 1.618f, 2.618f };
+    private readonly float[] _levels = FibonacciChannelValues.Levels.ToArray();
 
     public FibonacciChannelObject(ChartPoint p1, ChartPoint p2, ChartPoint p3)
     {
@@ -145,31 +146,9 @@ public class FibonacciChannelObject : IChartObject, IDrawingCalculatedValuesProv
     {
         if (Points.Count < 3) return Array.Empty<DrawingCalculatedValue>();
 
-        var p1 = Points[0];
-        var p2 = Points[1];
-        var p3 = Points[2];
         var color = new IndicatorColor(Color.A, Color.R, Color.G, Color.B);
 
-        double dt = (p2.Time - p1.Time).TotalSeconds;
-        if (Math.Abs(dt) < 1e-4) return Array.Empty<DrawingCalculatedValue>();
-
-        decimal basePrice = DrawingMath.InterpolatePrice(p1, p2, timestamp);
-        decimal baseAtP3 = DrawingMath.InterpolatePrice(p1, p2, p3.Time);
-        decimal channelWidth = p3.Price - baseAtP3;
-
-        var values = new List<DrawingCalculatedValue>(_levels.Length + 2)
-        {
-            new DrawingCalculatedValue("BaseLine", "Base Line", basePrice, $"{basePrice:F3}", color),
-            new DrawingCalculatedValue("ChannelWidth", "Channel Width", Math.Abs(channelWidth), $"{Math.Abs(channelWidth):F3}", IndicatorColor.Gray)
-        };
-
-        foreach (var level in _levels)
-        {
-            decimal levelPrice = basePrice + channelWidth * (decimal)level;
-            values.Add(new DrawingCalculatedValue($"Channel_{level:F3}", $"Fib Channel {level:P1}", levelPrice, $"{levelPrice:F3}", color));
-        }
-
-        return values;
+        return FibonacciChannelValues.Calculate(Points[0].ToAnchor(), Points[1].ToAnchor(), Points[2].ToAnchor(), timestamp, color);
     }
 }
 

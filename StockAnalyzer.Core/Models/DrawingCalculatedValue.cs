@@ -1,6 +1,4 @@
-using StockAnalyzer.Core.Models;
-
-namespace StockAnalyzer.Avalonia.Drawing;
+namespace StockAnalyzer.Core.Models;
 
 /// <summary>
 /// Represents a calculated analytical or geometric value produced by a chart drawing tool.

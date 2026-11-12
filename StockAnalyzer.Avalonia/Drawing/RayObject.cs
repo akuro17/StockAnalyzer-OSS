@@ -4,6 +4,7 @@ using Avalonia;
 using Avalonia.Media;
 using SkiaSharp;
 using StockAnalyzer.Avalonia.Common;
+using StockAnalyzer.Core.Drawing.Values;
 using StockAnalyzer.Core.Models;
 
 namespace StockAnalyzer.Avalonia.Drawing;
@@ -70,29 +71,9 @@ public class RayObject : RelativeGeometricRenderer, IDrawingCalculatedValuesProv
     {
         if (Points.Count < 2) return Array.Empty<DrawingCalculatedValue>();
 
-        var p1 = Points[0];
-        var p2 = Points[1];
         var color = new IndicatorColor(Color.A, Color.R, Color.G, Color.B);
 
-        decimal rayPrice = DrawingMath.InterpolatePrice(p1, p2, timestamp);
-
-        var values = new List<DrawingCalculatedValue>();
-
-        string rayPriceText = $"{rayPrice:F3}";
-        if (currentPrice.HasValue)
-        {
-            decimal diff = currentPrice.Value - rayPrice;
-            rayPriceText += $" ({diff:+0.000;-0.000;0.000})";
-        }
-        values.Add(new DrawingCalculatedValue("RayPrice", "Ray Price", rayPrice, rayPriceText, color));
-
-        var slope = DrawingMath.CalculateSlopePerDay(p1, p2);
-        if (slope.HasValue)
-        {
-            values.Add(new DrawingCalculatedValue("Slope", "Slope", slope.Value, $"{slope.Value:+0.000;-0.000;0.000} / day", IndicatorColor.Gray));
-        }
-
-        return values;
+        return RayValues.Calculate(Points[0].ToAnchor(), Points[1].ToAnchor(), timestamp, currentPrice, color);
     }
 }
 

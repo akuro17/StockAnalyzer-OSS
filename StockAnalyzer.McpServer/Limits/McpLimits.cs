@@ -150,6 +150,12 @@ public sealed class McpLimits
     public int MaxSupportResistanceLevels { get; set; } = 20;
 
     /// <summary>
+    /// Most evaluation dates one sa_calculate_drawing_values call may calculate (evaluationDates).
+    /// Standard value: 20.
+    /// </summary>
+    public int MaxDrawingEvaluationDates { get; set; } = 20;
+
+    /// <summary>
     /// Most dominant frequency bins one sa_analyze_cycles call may return (topBins).
     /// Standard value: 50.
     /// </summary>

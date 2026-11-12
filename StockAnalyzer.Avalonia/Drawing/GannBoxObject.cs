@@ -7,6 +7,7 @@ using SkiaSharp;
 using StockAnalyzer.Avalonia.Common;
 using StockAnalyzer.Avalonia.Views.Chart;
 using StockAnalyzer.Core.Constants;
+using StockAnalyzer.Core.Drawing.Values;
 using StockAnalyzer.Core.Models;
 
 namespace StockAnalyzer.Avalonia.Drawing;
@@ -41,7 +42,7 @@ public class GannBoxObject : IChartObject, IDrawingCalculatedValuesProvider
     public int AnchorPointIndex { get; set; } = 0;
 
     // Ratios for grid lines (Standard Gann 8ths)
-    private readonly double[] _gridRatios = { 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875 };
+    private readonly double[] _gridRatios = GannBoxValues.GridRatios.ToArray();
 
     public GannBoxObject(ChartPoint start, ChartPoint end)
     {
@@ -152,31 +153,9 @@ public class GannBoxObject : IChartObject, IDrawingCalculatedValuesProvider
     {
         if (Points.Count < 2) return Array.Empty<DrawingCalculatedValue>();
 
-        var p1 = Points[0];
-        var p2 = Points[1];
         var color = new IndicatorColor(Color.A, Color.R, Color.G, Color.B);
 
-        decimal topPrice = Math.Max(p1.Price, p2.Price);
-        decimal bottomPrice = Math.Min(p1.Price, p2.Price);
-        decimal height = topPrice - bottomPrice;
-        double days = Math.Abs((p2.Time - p1.Time).TotalDays);
-
-        var values = new List<DrawingCalculatedValue>(_gridRatios.Length + 4)
-        {
-            new DrawingCalculatedValue("HighPrice", "Box High", topPrice, $"{topPrice:F3}", color),
-            new DrawingCalculatedValue("LowPrice", "Box Low", bottomPrice, $"{bottomPrice:F3}", color),
-            new DrawingCalculatedValue("Height", "Price Height", height, $"{height:F3}", IndicatorColor.Gray),
-            new DrawingCalculatedValue("Duration", "Time Duration", (decimal)Math.Round(days, 1), $"{days:F1} days", IndicatorColor.Gray)
-        };
-
-        foreach (var ratio in _gridRatios)
-        {
-            decimal levelPrice = bottomPrice + height * (decimal)ratio;
-            int eighths = (int)Math.Round(ratio * 8.0);
-            values.Add(new DrawingCalculatedValue($"Gann_{eighths}_8", $"Level {eighths}/8", levelPrice, $"{levelPrice:F3}", IndicatorColor.Gray));
-        }
-
-        return values;
+        return GannBoxValues.Calculate(Points[0].ToAnchor(), Points[1].ToAnchor(), color);
     }
 }
 

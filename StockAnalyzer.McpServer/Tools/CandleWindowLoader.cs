@@ -7,6 +7,9 @@ namespace StockAnalyzer.McpServer.Tools;
 /// <summary>The one definition of how a window of bars is loaded for a tool (shared by sa_get_candles and sa_calculate_indicators).</summary>
 internal sealed class CandleWindowLoader
 {
+    /// <summary>The last day before a period starts is the end of the previous period: the day completeBarsOnly true cuts the history at when the last period is running.</summary>
+    internal const int DaysBeforePeriodStart = 1;
+
     private readonly IReadOnlyStockAnalyzerGateway _gateway;
 
     public CandleWindowLoader(IReadOnlyStockAnalyzerGateway gateway)
@@ -54,6 +57,18 @@ internal sealed class CandleWindowLoader
         }
 
         return TimeFrameAggregator.ReferenceDate(latest[^1].Timestamp, end);
+    }
+
+    /// <summary>
+    /// The completeBarsOnly true cut: the running last period of <paramref name="loaded"/> (non-empty, ending in a partial W1 or MN1 bar) is left out by loading again up to the
+    /// day before that period starts, so the daily bars are cut exactly as an explicit endDate cuts them. The result may be empty (a history of one running period);
+    /// <c>EffectiveEnd</c> is the date the window was cut at.
+    /// </summary>
+    public async Task<(List<CandleData> Bars, DateOnly EffectiveEnd)> LoadWithoutRunningPeriodAsync(string symbol, TimeFrame timeFrame, IReadOnlyList<CandleData> loaded, int count, CancellationToken cancellationToken)
+    {
+        DateOnly effectiveEnd = DateOnly.FromDateTime(TimeFrameAggregator.PeriodStart(loaded[^1].Timestamp, timeFrame)).AddDays(-DaysBeforePeriodStart);
+        List<CandleData> bars = await LoadUpToAsync(symbol, timeFrame, effectiveEnd, count, cancellationToken).ConfigureAwait(false);
+        return (bars, effectiveEnd);
     }
 
     /// <summary>True when the last of <paramref name="bars"/> is a W1 or MN1 bar whose period ends after <paramref name="referenceDate"/> (false for no bar or no reference date).</summary>

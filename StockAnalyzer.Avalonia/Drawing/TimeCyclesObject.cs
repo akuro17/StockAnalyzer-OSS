@@ -5,6 +5,7 @@ using Avalonia.Media;
 using SkiaSharp;
 using StockAnalyzer.Avalonia.Common;
 using StockAnalyzer.Avalonia.Views.Chart;
+using StockAnalyzer.Core.Drawing.Values;
 using StockAnalyzer.Core.Models;
 
 namespace StockAnalyzer.Avalonia.Drawing;
@@ -176,25 +177,9 @@ public class TimeCyclesObject : IChartObject, IDrawingCalculatedValuesProvider
     {
         if (Points.Count < 2) return Array.Empty<DrawingCalculatedValue>();
 
-        var p1 = Points[0];
-        var p2 = Points[1];
         var color = new IndicatorColor(Color.A, Color.R, Color.G, Color.B);
 
-        double intervalSeconds = Math.Abs((p2.Time - p1.Time).TotalSeconds);
-        if (intervalSeconds < 1.0) return Array.Empty<DrawingCalculatedValue>();
-
-        double intervalDays = intervalSeconds / 86400.0;
-        double elapsedSeconds = (timestamp - p1.Time).TotalSeconds;
-        double cycleProgress = ((elapsedSeconds % intervalSeconds) + intervalSeconds) % intervalSeconds / intervalSeconds;
-        long nextCycleK = (long)Math.Ceiling(elapsedSeconds / intervalSeconds);
-        DateTime nextCycleTime = DrawingMath.SafeAddSeconds(p1.Time, nextCycleK * intervalSeconds);
-
-        return new DrawingCalculatedValue[]
-        {
-            new DrawingCalculatedValue("Period", "Cycle Period", (decimal)Math.Round(intervalDays, 1), $"{intervalDays:F1} days", color),
-            new DrawingCalculatedValue("CycleProgress", "Cycle Phase", (decimal)Math.Round(cycleProgress * 100.0, 1), $"{cycleProgress * 100.0:F1}%", IndicatorColor.Gray),
-            new DrawingCalculatedValue("NextCycle", "Next Cycle", null, nextCycleTime.ToString("yyyy-MM-dd HH:mm"), color)
-        };
+        return TimeCyclesValues.Calculate(Points[0].ToAnchor(), Points[1].ToAnchor(), timestamp, color);
     }
 }
 

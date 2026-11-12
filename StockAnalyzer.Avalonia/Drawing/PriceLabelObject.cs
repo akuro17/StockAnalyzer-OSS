@@ -4,6 +4,7 @@ using Avalonia;
 using Avalonia.Media;
 using SkiaSharp;
 using StockAnalyzer.Avalonia.Common;
+using StockAnalyzer.Core.Drawing.Values;
 using StockAnalyzer.Core.Models;
 
 namespace StockAnalyzer.Avalonia.Drawing;
@@ -263,21 +264,8 @@ public class PriceLabelObject : IChartObject, IDisposable, IDrawingCalculatedVal
         if (Points.Count < 1) return Array.Empty<DrawingCalculatedValue>();
 
         var color = new IndicatorColor(Color.A, Color.R, Color.G, Color.B);
-        decimal price = Points[0].Price;
 
-        var values = new List<DrawingCalculatedValue>(2)
-        {
-            new DrawingCalculatedValue("Price", "Price", price, $"{price:F3}", color)
-        };
-
-        if (currentPrice.HasValue)
-        {
-            decimal diff = currentPrice.Value - price;
-            decimal diffPct = price != 0 ? (diff / price) * 100m : 0m;
-            values.Add(new DrawingCalculatedValue("PriceDiff", "Price Diff", diff, $"{diff:+0.000;-0.000;0.000} ({diffPct:+0.00;-0.00;0.00}%)", IndicatorColor.Gray));
-        }
-
-        return values;
+        return PriceLabelValues.Calculate(Points[0].ToAnchor(), currentPrice, color);
     }
 }
 

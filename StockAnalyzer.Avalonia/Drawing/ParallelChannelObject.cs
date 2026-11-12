@@ -6,6 +6,7 @@ using Avalonia.Media;
 using SkiaSharp;
 using StockAnalyzer.Avalonia.Common;
 using StockAnalyzer.Core.Constants;
+using StockAnalyzer.Core.Drawing.Values;
 using StockAnalyzer.Core.Models;
 
 namespace StockAnalyzer.Avalonia.Drawing;
@@ -216,39 +217,9 @@ public class ParallelChannelObject : IChartObject, IDrawingCalculatedValuesProvi
     {
         if (Points.Count < 3) return Array.Empty<DrawingCalculatedValue>();
 
-        var p1 = Points[0];
-        var p2 = Points[1];
-        var p3 = Points[2];
         var color = new IndicatorColor(Color.A, Color.R, Color.G, Color.B);
 
-        double dt = (p2.Time - p1.Time).TotalSeconds;
-        if (Math.Abs(dt) < 1e-4) return Array.Empty<DrawingCalculatedValue>();
-
-        decimal basePrice = DrawingMath.InterpolatePrice(p1, p2, timestamp);
-        decimal baseAtP3 = DrawingMath.InterpolatePrice(p1, p2, p3.Time);
-        decimal priceOffset = p3.Price - baseAtP3;
-
-        decimal parallelPrice = basePrice + priceOffset;
-        decimal upper = Math.Max(basePrice, parallelPrice);
-        decimal lower = Math.Min(basePrice, parallelPrice);
-        decimal mid = (basePrice + parallelPrice) / 2m;
-        decimal channelWidth = Math.Abs(priceOffset);
-
-        var values = new List<DrawingCalculatedValue>(5)
-        {
-            new DrawingCalculatedValue("UpperLine", "Upper Channel", upper, $"{upper:F3}", color),
-            new DrawingCalculatedValue("Midline", "Midline", mid, $"{mid:F3}", IndicatorColor.Gray),
-            new DrawingCalculatedValue("LowerLine", "Lower Channel", lower, $"{lower:F3}", color),
-            new DrawingCalculatedValue("ChannelWidth", "Channel Width", channelWidth, $"{channelWidth:F3}", IndicatorColor.Gray)
-        };
-
-        var slope = DrawingMath.CalculateSlopePerDay(p1, p2);
-        if (slope.HasValue)
-        {
-            values.Add(new DrawingCalculatedValue("Slope", "Slope", slope.Value, $"{slope.Value:+0.000;-0.000;0.000} / day", IndicatorColor.Gray));
-        }
-
-        return values;
+        return ParallelChannelValues.Calculate(Points[0].ToAnchor(), Points[1].ToAnchor(), Points[2].ToAnchor(), timestamp, color);
     }
 }
 

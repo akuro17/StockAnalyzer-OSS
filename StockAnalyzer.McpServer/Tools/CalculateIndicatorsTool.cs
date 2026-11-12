@@ -34,9 +34,6 @@ internal sealed class CalculateIndicatorsTool : IMcpTool
     private const string AlignmentKey = "alignment";
     private const string DerivedType = "Derived";
 
-    /// <summary>The last day before a period starts is the end of the previous period: the day completeBarsOnly true cuts the history at when the last period is running.</summary>
-    private const int DaysBeforePeriodStart = 1;
-
     /// <summary>The alignment of an indicator calculated on a coarser time frame: the value of the last period that had closed when the bar began (<see cref="TimeframeAlignment"/>).</summary>
     internal const string PreviousClosedPeriod = "PreviousClosedPeriod";
 
@@ -236,8 +233,7 @@ internal sealed class CalculateIndicatorsTool : IMcpTool
         DateOnly? windowEnd = endDate;
         if (completeBarsOnly == true && CandleWindowLoader.IsLastBarPartial(loaded, timeFrame, referenceDate))
         {
-            DateOnly effectiveEnd = DateOnly.FromDateTime(TimeFrameAggregator.PeriodStart(loaded[^1].Timestamp, timeFrame)).AddDays(-DaysBeforePeriodStart);
-            loaded = await _loader.LoadUpToAsync(symbol, timeFrame, effectiveEnd, lookback, cancellationToken).ConfigureAwait(false);
+            (loaded, DateOnly effectiveEnd) = await _loader.LoadWithoutRunningPeriodAsync(symbol, timeFrame, loaded, lookback, cancellationToken).ConfigureAwait(false);
             droppedLeadingBar = false;
             droppedPartialBar = true;
             windowEnd = effectiveEnd;

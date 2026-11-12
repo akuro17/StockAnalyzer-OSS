@@ -6,6 +6,7 @@ using Avalonia.Media;
 using SkiaSharp;
 using StockAnalyzer.Avalonia.Common;
 using StockAnalyzer.Core.Constants;
+using StockAnalyzer.Core.Drawing.Values;
 using StockAnalyzer.Core.Models;
 
 namespace StockAnalyzer.Avalonia.Drawing;
@@ -97,19 +98,8 @@ public class VerticalLineObject : IChartObject, IDrawingCalculatedValuesProvider
         if (Points.Count < 1) return Array.Empty<DrawingCalculatedValue>();
 
         var color = new IndicatorColor(Color.A, Color.R, Color.G, Color.B);
-        var lineTime = Points[0].Time;
 
-        var values = new List<DrawingCalculatedValue>(2)
-        {
-            new DrawingCalculatedValue("LineDate", "Line Date", null, lineTime.ToString("yyyy-MM-dd HH:mm"), color)
-        };
-
-        double offsetDays = (timestamp - lineTime).TotalDays;
-        decimal offsetDaysDec = (decimal)Math.Round(offsetDays, 1);
-        string sign = offsetDays >= 0 ? "+" : "";
-        values.Add(new DrawingCalculatedValue("Offset", "Time Offset", offsetDaysDec, $"{sign}{offsetDays:F1} days", IndicatorColor.Gray));
-
-        return values;
+        return VerticalLineValues.Calculate(Points[0].ToAnchor(), timestamp, color);
     }
 }
 

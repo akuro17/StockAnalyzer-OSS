@@ -41,6 +41,11 @@
     <Compile Remove="StockAnalyzer.Benchmarks\obj\**;StockAnalyzer.Benchmarks\bin\**" />
     <EmbeddedResource Remove="StockAnalyzer.Benchmarks\obj\**;StockAnalyzer.Benchmarks\bin\**" />
     <None Remove="StockAnalyzer.Benchmarks\obj\**;StockAnalyzer.Benchmarks\bin\**" />
+    <!-- The build output of any test project nested in this folder (for example StockAnalyzer.Core.IsolationTests\obj) must never be compiled here:
+         its generated AssemblyInfo files would be a second copy of this project's own and fail with CS0579. Only source files of those folders are kept. -->
+    <Compile Remove="*\obj\**;*\bin\**" />
+    <EmbeddedResource Remove="*\obj\**;*\bin\**" />
+    <None Remove="*\obj\**;*\bin\**" />
     <Compile Remove="Analysis\ReverseWatchAnalysisTests.cs" />
     <Compile Remove="Batch17Tests.cs" />
     <Compile Remove="NonTimeSeries\RenkoImplementationTests.cs" />

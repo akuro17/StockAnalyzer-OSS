@@ -258,6 +258,7 @@ internal static class McpServerComposition
                 new CalculateVolumeProfileTool(gateway, symbols, limits),
                 new AnalyzeMarketStructureTool(gateway, symbols, limits),
                 new FindSupportResistanceTool(gateway, symbols, limits),
+                new CalculateDrawingValuesTool(gateway, symbols, limits),
                 new DetectCandlePatternsTool(gateway, symbols, limits),
                 new DetectChartPatternsTool(gateway, symbols, limits),
                 new AnalyzeCyclesTool(gateway, symbols, limits),

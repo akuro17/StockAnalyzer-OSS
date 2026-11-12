@@ -7,6 +7,7 @@ using Avalonia.Media;
 using SkiaSharp;
 using StockAnalyzer.Avalonia.Common;
 using StockAnalyzer.Core.Constants;
+using StockAnalyzer.Core.Drawing.Values;
 using StockAnalyzer.Core.Models;
 
 namespace StockAnalyzer.Avalonia.Drawing;
@@ -132,14 +133,7 @@ public class TrendLineObject : RelativeGeometricRenderer, IDrawingCalculatedValu
         if (Points.Count < 2) return Array.Empty<DrawingCalculatedValue>();
 
         var color = new IndicatorColor(Color.A, Color.R, Color.G, Color.B);
-        var p1 = Points[0];
-        var p2 = Points[1];
 
-        decimal priceAtTime = DrawingMath.InterpolatePrice(p1, p2, timestamp);
-
-        return new DrawingCalculatedValue[]
-        {
-            new DrawingCalculatedValue("TrendLinePrice", "TrendLine Price", priceAtTime, $"{priceAtTime:F3}", color)
-        };
+        return TrendLineValues.Calculate(Points[0].ToAnchor(), Points[1].ToAnchor(), timestamp, color);
     }
 }

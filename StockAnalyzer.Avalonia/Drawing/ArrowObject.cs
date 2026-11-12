@@ -4,6 +4,7 @@ using Avalonia;
 using Avalonia.Media;
 using SkiaSharp;
 using StockAnalyzer.Avalonia.Common;
+using StockAnalyzer.Core.Drawing.Values;
 using StockAnalyzer.Core.Models;
 
 namespace StockAnalyzer.Avalonia.Drawing;
@@ -93,26 +94,8 @@ public class ArrowObject : RelativeGeometricRenderer, IDrawingCalculatedValuesPr
     {
         if (Points.Count < 2) return Array.Empty<DrawingCalculatedValue>();
 
-        var p1 = Points[0];
-        var p2 = Points[1];
         var color = new IndicatorColor(Color.A, Color.R, Color.G, Color.B);
 
-        decimal arrowPrice = DrawingMath.InterpolatePrice(p1, p2, timestamp);
-
-        var values = new List<DrawingCalculatedValue>();
-        values.Add(new DrawingCalculatedValue("ArrowPrice", "Arrow Price", arrowPrice, $"{arrowPrice:F3}", color));
-
-        decimal priceDelta = p2.Price - p1.Price;
-        string direction = priceDelta > 0 ? "Up (Bullish)" : (priceDelta < 0 ? "Down (Bearish)" : "Neutral");
-        var dirColor = priceDelta > 0 ? IndicatorColor.Bullish : (priceDelta < 0 ? IndicatorColor.Bearish : IndicatorColor.Gray);
-        values.Add(new DrawingCalculatedValue("Direction", "Direction", null, direction, dirColor));
-
-        decimal deltaPct = DrawingMath.CalculatePercentageChange(p1.Price, p2.Price);
-        values.Add(new DrawingCalculatedValue("PriceDelta", "Price Change", priceDelta, $"{priceDelta:+0.000;-0.000;0.000} ({deltaPct:+0.00;-0.00;0.00}%)", dirColor));
-
-        double days = Math.Abs((p2.Time - p1.Time).TotalDays);
-        values.Add(new DrawingCalculatedValue("Duration", "Duration", (decimal)Math.Round(days, 1), $"{days:F1} days", IndicatorColor.Gray));
-
-        return values;
+        return ArrowValues.Calculate(Points[0].ToAnchor(), Points[1].ToAnchor(), timestamp, color);
     }
 }
