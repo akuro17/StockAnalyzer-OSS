@@ -23,6 +23,18 @@ namespace StockAnalyzer.Core.Models.Indicators.Oscillators
             }
         }
 
+        // Same parameter type and initial values as the DefaultCoreIndicatorSettings entry (the naming rule would find none).
+        public override CoreIndicatorSettings GetDefaultSettings()
+        {
+            var settings = base.GetDefaultSettings();
+            settings.ParameterObject = new CorePpoParameter
+            {
+                FastPeriod = IndicatorDefaultConstants.PriceOscillatorFastPeriod,
+                SlowPeriod = IndicatorDefaultConstants.PriceOscillatorSlowPeriod
+            };
+            return settings;
+        }
+
         protected override IIndicatorResult CalculateCore(IReadOnlyList<CoreCandleData> candles)
         {
             if (candles.Count < SlowPeriod) { for (int i = 0; i < candles.Count; i++) _values.Add(null); return IndicatorResult.Success(_values); }

@@ -1,8 +1,10 @@
 using System.Collections.Generic;
 using StockAnalyzer.Core.Models.Indicators;
 using StockAnalyzer.Core.Models.Indicators.Chart;
+using StockAnalyzer.Core.Models.Indicators.Oscillators;
 using StockAnalyzer.Core.Models.Indicators.Statistics;
 using StockAnalyzer.Core.Models.Indicators.Trend;
+using StockAnalyzer.Core.Models.Indicators.Volume;
 using StockAnalyzer.Core.Models.Indicators.Volatility;
 using StockAnalyzer.Core.Models.Parameters;
 
@@ -82,9 +84,26 @@ public static class DefaultCoreIndicatorSettings
                     new SeriesColorConfig { Name = "Lower", DisplayName = "Lower Band", Color = IndicatorDefaultConstants.BollingerBandsColor, TargetSeries = new List<string> { nameof(CoreDonchianChannelIndicator.LowerBand) } }
                 }
             },
-            new CoreIndicatorSettings 
-            { 
-                TypeEnum = IndicatorType.Ichimoku, 
+            new CoreIndicatorSettings
+            {
+                TypeEnum = IndicatorType.Keltner,
+                Category = CoreIndicatorCategory.Volatility,
+                IsEnabled = false,
+                ParameterObject = new CoreKeltnerParameter(),
+                Color = IndicatorDefaultConstants.BollingerMiddleColor,
+                Thickness = IndicatorDefaultConstants.DefaultOverlayThickness,
+                Style = CoreLineStyle.Solid,
+                IsOverlay = true,
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
+                {
+                    new SeriesColorConfig { Name = IndicatorResult.MainSeriesName, DisplayName = "Middle Line", Color = IndicatorDefaultConstants.BollingerMiddleColor, TargetSeries = new List<string> { IndicatorResult.MainSeriesName } },
+                    new SeriesColorConfig { Name = nameof(CoreKeltnerChannelIndicator.UpperBand), DisplayName = "Upper Band", Color = IndicatorDefaultConstants.BollingerBandsColor, TargetSeries = new List<string> { nameof(CoreKeltnerChannelIndicator.UpperBand) } },
+                    new SeriesColorConfig { Name = nameof(CoreKeltnerChannelIndicator.LowerBand), DisplayName = "Lower Band", Color = IndicatorDefaultConstants.BollingerBandsColor, TargetSeries = new List<string> { nameof(CoreKeltnerChannelIndicator.LowerBand) } }
+                }
+            },
+            new CoreIndicatorSettings
+            {
+                TypeEnum = IndicatorType.Ichimoku,
                 Category = CoreIndicatorCategory.Trend, 
                 IsEnabled = false, 
                 ParameterObject = new CoreIchimokuParameter(), 
@@ -251,16 +270,39 @@ public static class DefaultCoreIndicatorSettings
                 TypeEnum = IndicatorType.VWAP,
                 Category = CoreIndicatorCategory.Volume,
                 IsEnabled = false,
-                ParameterObject = null,
+                ParameterObject = new CoreVwapParameter(),
                 PriceSource = PriceType.Typical,
                 Color = IndicatorDefaultConstants.Cyan, // Cyan #00ACC1
                 Thickness = IndicatorDefaultConstants.DefaultOverlayThickness,
                 Style = CoreLineStyle.Solid,
-                IsOverlay = true
+                IsOverlay = true,
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
+                {
+                    new SeriesColorConfig { Name = IndicatorResult.MainSeriesName, DisplayName = "VWAP", Color = IndicatorDefaultConstants.Cyan, TargetSeries = new List<string> { IndicatorResult.MainSeriesName } },
+                    new SeriesColorConfig { Name = CoreVwapIndicator.UpperBandSeriesName, DisplayName = "Upper Band", Color = IndicatorDefaultConstants.BollingerBandsColor, TargetSeries = new List<string> { CoreVwapIndicator.UpperBandSeriesName } },
+                    new SeriesColorConfig { Name = CoreVwapIndicator.LowerBandSeriesName, DisplayName = "Lower Band", Color = IndicatorDefaultConstants.BollingerBandsColor, TargetSeries = new List<string> { CoreVwapIndicator.LowerBandSeriesName } }
+                }
             },
-            new CoreIndicatorSettings 
-            { 
-                TypeEnum = IndicatorType.MarketStructureShift, 
+            new CoreIndicatorSettings
+            {
+                TypeEnum = IndicatorType.AnchoredVWAP,
+                Category = CoreIndicatorCategory.Volume,
+                IsEnabled = false,
+                ParameterObject = new CoreAnchoredVwapParameter(),
+                Color = IndicatorDefaultConstants.Cyan, // Cyan #00ACC1
+                Thickness = IndicatorDefaultConstants.DefaultOverlayThickness,
+                Style = CoreLineStyle.Solid,
+                IsOverlay = true,
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
+                {
+                    new SeriesColorConfig { Name = IndicatorResult.MainSeriesName, DisplayName = "Anchored VWAP", Color = IndicatorDefaultConstants.Cyan, TargetSeries = new List<string> { IndicatorResult.MainSeriesName } },
+                    new SeriesColorConfig { Name = CoreAnchoredVWAPIndicator.UpperBandSeriesName, DisplayName = "Upper Band", Color = IndicatorDefaultConstants.BollingerBandsColor, TargetSeries = new List<string> { CoreAnchoredVWAPIndicator.UpperBandSeriesName } },
+                    new SeriesColorConfig { Name = CoreAnchoredVWAPIndicator.LowerBandSeriesName, DisplayName = "Lower Band", Color = IndicatorDefaultConstants.BollingerBandsColor, TargetSeries = new List<string> { CoreAnchoredVWAPIndicator.LowerBandSeriesName } }
+                }
+            },
+            new CoreIndicatorSettings
+            {
+                TypeEnum = IndicatorType.MarketStructureShift,
                 Category = CoreIndicatorCategory.Trend, 
                 IsEnabled = false, 
                 ParameterObject = new CoreMarketStructureShiftParameter(), 
@@ -1300,12 +1342,29 @@ public static class DefaultCoreIndicatorSettings
                     new SeriesColorConfig { Name = "Values", DisplayName = "Pair Spread (A-B)", Color = IndicatorDefaultConstants.PairSpreadColor, TargetSeries = new List<string> { "Main" } }
                 }
             },
-            new CoreIndicatorSettings 
-            { 
-                TypeEnum = IndicatorType.ClassicPivotPoints, 
-                Category = CoreIndicatorCategory.Chart, 
-                IsEnabled = false, 
-                ParameterObject = null, 
+            new CoreIndicatorSettings
+            {
+                // Values equal what CoreIndicatorBase.GetDefaultSettings() returns for KST (pinned by a test); Signal colour = MACD signal colour (colour table U-01=A).
+                TypeEnum = IndicatorType.KST,
+                Category = CoreIndicatorCategory.Oscillator,
+                IsEnabled = false,
+                ParameterObject = new CoreKstParameter(),
+                Color = IndicatorDefaultConstants.RsiColor,
+                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness,
+                Style = CoreLineStyle.Solid,
+                IsOverlay = false,
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
+                {
+                    new SeriesColorConfig { Name = IndicatorResult.MainSeriesName, DisplayName = "KST", Color = IndicatorDefaultConstants.RsiColor, TargetSeries = new List<string> { IndicatorResult.MainSeriesName } },
+                    new SeriesColorConfig { Name = nameof(CoreKstIndicator.Signal), DisplayName = "Signal Line", Color = IndicatorDefaultConstants.MacdSignalColor, TargetSeries = new List<string> { nameof(CoreKstIndicator.Signal) } }
+                }
+            },
+            new CoreIndicatorSettings
+            {
+                TypeEnum = IndicatorType.ClassicPivotPoints,
+                Category = CoreIndicatorCategory.Chart,
+                IsEnabled = false,
+                ParameterObject = new CoreClassicPivotPointsParameter(),
                 Color = IndicatorDefaultConstants.ClassicPivotPointsPivotColor, 
                 Thickness = IndicatorDefaultConstants.DefaultBandThickness, 
                 Style = CoreLineStyle.Solid, 
@@ -1323,14 +1382,26 @@ public static class DefaultCoreIndicatorSettings
             },
             new CoreIndicatorSettings 
             { 
-                TypeEnum = IndicatorType.PivotPointsAdvanced, 
-                Category = CoreIndicatorCategory.Chart, 
-                IsEnabled = false, 
-                ParameterObject = null, 
-                Color = IndicatorDefaultConstants.ClassicPivotPointsPivotColor, 
-                Thickness = IndicatorDefaultConstants.DefaultBandThickness, 
-                Style = CoreLineStyle.Solid, 
-                IsOverlay = true 
+                TypeEnum = IndicatorType.PivotPointsAdvanced,
+                Category = CoreIndicatorCategory.Chart,
+                IsEnabled = false,
+                ParameterObject = new CorePivotPointsAdvancedParameter(),
+                Color = IndicatorDefaultConstants.ClassicPivotPointsPivotColor,
+                Thickness = IndicatorDefaultConstants.DefaultBandThickness,
+                Style = CoreLineStyle.Solid,
+                IsOverlay = true,
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
+                {
+                    new SeriesColorConfig { Name = "Pivot", DisplayName = "Pivot (P)", Color = IndicatorDefaultConstants.ClassicPivotPointsPivotColor, TargetSeries = new List<string> { CorePivotPointsAdvancedIndicator.PivotSeriesName } },
+                    new SeriesColorConfig { Name = CorePivotPointsAdvancedIndicator.R1SeriesName, DisplayName = "Resistance 1 (R1)", Color = IndicatorDefaultConstants.ClassicPivotPointsR1Color, TargetSeries = new List<string> { CorePivotPointsAdvancedIndicator.R1SeriesName } },
+                    new SeriesColorConfig { Name = CorePivotPointsAdvancedIndicator.R2SeriesName, DisplayName = "Resistance 2 (R2)", Color = IndicatorDefaultConstants.ClassicPivotPointsR2Color, TargetSeries = new List<string> { CorePivotPointsAdvancedIndicator.R2SeriesName } },
+                    new SeriesColorConfig { Name = CorePivotPointsAdvancedIndicator.R3SeriesName, DisplayName = "Resistance 3 (R3)", Color = IndicatorDefaultConstants.ClassicPivotPointsR3Color, TargetSeries = new List<string> { CorePivotPointsAdvancedIndicator.R3SeriesName } },
+                    new SeriesColorConfig { Name = CorePivotPointsAdvancedIndicator.R4SeriesName, DisplayName = "Resistance 4 (R4)", Color = IndicatorDefaultConstants.ClassicPivotPointsR3Color, TargetSeries = new List<string> { CorePivotPointsAdvancedIndicator.R4SeriesName } },
+                    new SeriesColorConfig { Name = CorePivotPointsAdvancedIndicator.S1SeriesName, DisplayName = "Support 1 (S1)", Color = IndicatorDefaultConstants.ClassicPivotPointsS1Color, TargetSeries = new List<string> { CorePivotPointsAdvancedIndicator.S1SeriesName } },
+                    new SeriesColorConfig { Name = CorePivotPointsAdvancedIndicator.S2SeriesName, DisplayName = "Support 2 (S2)", Color = IndicatorDefaultConstants.ClassicPivotPointsS2Color, TargetSeries = new List<string> { CorePivotPointsAdvancedIndicator.S2SeriesName } },
+                    new SeriesColorConfig { Name = CorePivotPointsAdvancedIndicator.S3SeriesName, DisplayName = "Support 3 (S3)", Color = IndicatorDefaultConstants.ClassicPivotPointsS3Color, TargetSeries = new List<string> { CorePivotPointsAdvancedIndicator.S3SeriesName } },
+                    new SeriesColorConfig { Name = CorePivotPointsAdvancedIndicator.S4SeriesName, DisplayName = "Support 4 (S4)", Color = IndicatorDefaultConstants.ClassicPivotPointsS3Color, TargetSeries = new List<string> { CorePivotPointsAdvancedIndicator.S4SeriesName } }
+                }
             },
             new CoreIndicatorSettings 
             { 
@@ -1407,6 +1478,135 @@ public static class DefaultCoreIndicatorSettings
                 SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
                 {
                     new SeriesColorConfig { Name = "RankCorrelation", DisplayName = "Rank Correlation", Color = IndicatorDefaultConstants.RankCorrelationColor, TargetSeries = new List<string> { "Main" } }
+                }
+            },
+            new CoreIndicatorSettings
+            {
+                // Colours by role (decision U-01=A): trend main line = SmaColor, second line = StochDColor.
+                TypeEnum = IndicatorType.ChandelierExit,
+                Category = CoreIndicatorCategory.Trend,
+                IsEnabled = false,
+                ParameterObject = new CoreChandelierExitParameter(),
+                Color = IndicatorDefaultConstants.SmaColor,
+                Thickness = IndicatorDefaultConstants.DefaultOverlayThickness,
+                Style = CoreLineStyle.Solid,
+                IsOverlay = true,
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
+                {
+                    new SeriesColorConfig { Name = IndicatorResult.MainSeriesName, DisplayName = "Long Stop", Color = IndicatorDefaultConstants.SmaColor, TargetSeries = new List<string> { IndicatorResult.MainSeriesName } },
+                    new SeriesColorConfig { Name = nameof(CoreChandelierExitIndicator.ShortStop), DisplayName = "Short Stop", Color = IndicatorDefaultConstants.StochDColor, TargetSeries = new List<string> { nameof(CoreChandelierExitIndicator.ShortStop) } }
+                }
+            },
+            new CoreIndicatorSettings
+            {
+                TypeEnum = IndicatorType.T3,
+                Category = CoreIndicatorCategory.Trend,
+                IsEnabled = false,
+                ParameterObject = new CoreT3Parameter(),
+                Color = IndicatorDefaultConstants.SmaColor,
+                Thickness = IndicatorDefaultConstants.DefaultOverlayThickness,
+                Style = CoreLineStyle.Solid,
+                IsOverlay = true,
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
+                {
+                    new SeriesColorConfig { Name = IndicatorResult.MainSeriesName, DisplayName = "T3", Color = IndicatorDefaultConstants.SmaColor, TargetSeries = new List<string> { IndicatorResult.MainSeriesName } }
+                }
+            },
+            new CoreIndicatorSettings
+            {
+                TypeEnum = IndicatorType.McGinleyDynamic,
+                Category = CoreIndicatorCategory.Trend,
+                IsEnabled = false,
+                ParameterObject = new CoreMcGinleyDynamicParameter(),
+                Color = IndicatorDefaultConstants.SmaColor,
+                Thickness = IndicatorDefaultConstants.DefaultOverlayThickness,
+                Style = CoreLineStyle.Solid,
+                IsOverlay = true,
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
+                {
+                    new SeriesColorConfig { Name = IndicatorResult.MainSeriesName, DisplayName = "McGinley Dynamic", Color = IndicatorDefaultConstants.SmaColor, TargetSeries = new List<string> { IndicatorResult.MainSeriesName } }
+                }
+            },
+            new CoreIndicatorSettings
+            {
+                // Colours by role (decision U-01=A): oscillator main = RsiColor; Signal and Histogram use the MACD item's constants.
+                TypeEnum = IndicatorType.TSI,
+                Category = CoreIndicatorCategory.Oscillator,
+                IsEnabled = false,
+                ParameterObject = new CoreTsiParameter(),
+                Color = IndicatorDefaultConstants.RsiColor,
+                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness,
+                Style = CoreLineStyle.Solid,
+                IsOverlay = false,
+                MinValue = IndicatorDefaultConstants.TsiMinValue,
+                MaxValue = IndicatorDefaultConstants.TsiMaxValue,
+                IncludeZeroBaseline = true,
+                UpColor = IndicatorDefaultConstants.MacdHistogramUpColor,
+                DownColor = IndicatorDefaultConstants.MacdHistogramDownColor,
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
+                {
+                    new SeriesColorConfig { Name = IndicatorResult.MainSeriesName, DisplayName = "TSI", Color = IndicatorDefaultConstants.RsiColor, TargetSeries = new List<string> { IndicatorResult.MainSeriesName } },
+                    new SeriesColorConfig { Name = nameof(CoreTsiIndicator.Signal), DisplayName = "Signal Line", Color = IndicatorDefaultConstants.MacdSignalColor, TargetSeries = new List<string> { nameof(CoreTsiIndicator.Signal) } },
+                    new SeriesColorConfig { Name = nameof(CoreTsiIndicator.Histogram), DisplayName = "Histogram", Color = IndicatorDefaultConstants.MacdHistogramColor, TargetSeries = new List<string> { nameof(CoreTsiIndicator.Histogram) } }
+                }
+            },
+            new CoreIndicatorSettings
+            {
+                // The two lines use the Stochastic definition (%K = StochKColor, %D = StochDColor) and the fixed 0..100 axis is the Stochastic one.
+                // The generic role colours of decision U-01=A (oscillator main = RsiColor, second line = StochDColor) would give %K and %D the same purple,
+                // because RsiColor and StochDColor have the same value (owner correction 2026-11-14).
+                TypeEnum = IndicatorType.StochRSI,
+                Category = CoreIndicatorCategory.Oscillator,
+                IsEnabled = false,
+                ParameterObject = new CoreStochRsiParameter(),
+                Color = IndicatorDefaultConstants.StochKColor,
+                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness,
+                Style = CoreLineStyle.Solid,
+                IsOverlay = false,
+                MinValue = IndicatorDefaultConstants.StochMinValue,
+                MaxValue = IndicatorDefaultConstants.StochMaxValue,
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
+                {
+                    new SeriesColorConfig { Name = IndicatorResult.MainSeriesName, DisplayName = "%K", Color = IndicatorDefaultConstants.StochKColor, TargetSeries = new List<string> { IndicatorResult.MainSeriesName } },
+                    new SeriesColorConfig { Name = nameof(CoreStochRsiIndicator.PercentD), DisplayName = "%D", Color = IndicatorDefaultConstants.StochDColor, TargetSeries = new List<string> { nameof(CoreStochRsiIndicator.PercentD) } }
+                }
+            },
+            new CoreIndicatorSettings
+            {
+                // Colours by role (decision U-01=A): volume main = Cyan; Signal and Histogram use the MACD item's constants.
+                TypeEnum = IndicatorType.KVO,
+                Category = CoreIndicatorCategory.Volume,
+                IsEnabled = false,
+                ParameterObject = new CoreKvoParameter(),
+                Color = IndicatorDefaultConstants.Cyan,
+                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness,
+                Style = CoreLineStyle.Solid,
+                IsOverlay = false,
+                IncludeZeroBaseline = true,
+                UpColor = IndicatorDefaultConstants.MacdHistogramUpColor,
+                DownColor = IndicatorDefaultConstants.MacdHistogramDownColor,
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
+                {
+                    new SeriesColorConfig { Name = IndicatorResult.MainSeriesName, DisplayName = "KVO", Color = IndicatorDefaultConstants.Cyan, TargetSeries = new List<string> { IndicatorResult.MainSeriesName } },
+                    new SeriesColorConfig { Name = nameof(CoreKvoIndicator.Signal), DisplayName = "Signal Line", Color = IndicatorDefaultConstants.MacdSignalColor, TargetSeries = new List<string> { nameof(CoreKvoIndicator.Signal) } },
+                    new SeriesColorConfig { Name = nameof(CoreKvoIndicator.Histogram), DisplayName = "Histogram", Color = IndicatorDefaultConstants.MacdHistogramColor, TargetSeries = new List<string> { nameof(CoreKvoIndicator.Histogram) } }
+                }
+            },
+            new CoreIndicatorSettings
+            {
+                // Colours by role (decision U-01=A): chart/trend main line = SmaColor; the upper and lower lines share the Bollinger bands constant (one "Bands" entry, as in the BB item).
+                TypeEnum = IndicatorType.VolumeProfileLevels,
+                Category = CoreIndicatorCategory.Chart,
+                IsEnabled = false,
+                ParameterObject = new CoreVolumeProfileLevelsParameter(),
+                Color = IndicatorDefaultConstants.SmaColor,
+                Thickness = IndicatorDefaultConstants.DefaultOverlayThickness,
+                Style = CoreLineStyle.Solid,
+                IsOverlay = true,
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
+                {
+                    new SeriesColorConfig { Name = IndicatorResult.MainSeriesName, DisplayName = "POC", Color = IndicatorDefaultConstants.SmaColor, TargetSeries = new List<string> { IndicatorResult.MainSeriesName } },
+                    new SeriesColorConfig { Name = "Bands", DisplayName = "Value Area (VAH/VAL)", Color = IndicatorDefaultConstants.BollingerBandsColor, TargetSeries = new List<string> { nameof(CoreVolumeProfileLevelsIndicator.VAH), nameof(CoreVolumeProfileLevelsIndicator.VAL) } }
                 }
             }
         };

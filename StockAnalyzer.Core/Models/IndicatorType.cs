@@ -311,7 +311,16 @@ public enum IndicatorType
     // Batch 1 & 2: Advanced Correlation & Time-Series Suite
     [Description("Cross-Ticker DTW")] CrossTickerDtw,
     [Description("Partial Autocorrelation Function")] PACF,
-    [Description("Rank Correlation")] RankCorrelation
+    [Description("Rank Correlation")] RankCorrelation,
+
+    // WebAiExpansion plan 03: new price/volume indicators (append-only; ordinals of serialized templates must stay stable).
+    [Description("Chandelier Exit")] ChandelierExit,
+    [Description("T3 Moving Average")] T3,
+    [Description("McGinley Dynamic")] McGinleyDynamic,
+    [Description("True Strength Index")] TSI,
+    [Description("Stochastic RSI")] StochRSI,
+    [Description("Klinger Volume Oscillator")] KVO,
+    [Description("Volume Profile Levels")] VolumeProfileLevels
 }
 
 public static class IndicatorTypeExtensions

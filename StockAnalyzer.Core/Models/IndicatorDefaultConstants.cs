@@ -109,6 +109,9 @@ public static class IndicatorDefaultConstants
     // === Volume Profile ===
     public const int VolumeProfilePeriod = 200;
     public const int VolumeProfileRowCount = 50;
+    /// <summary>Bounds of the row count of the Volume Profile, Time at Price and Volume Profile Levels parameters (one definition for all three).</summary>
+    public const int VolumeProfileMinRowCount = 5;
+    public const int VolumeProfileMaxRowCount = 200;
     public const double VolumeProfileOpacity = 0.3;
     public static readonly IndicatorColor VolumeProfileColor = new(255, 128, 128, 128); // Gray
     public static readonly IndicatorColor VolumeProfileValueAreaColor = new(255, 255, 235, 59); // #FFEB3B (Yellow)
@@ -171,6 +174,32 @@ public static class IndicatorDefaultConstants
     // === Subwindow Indicators ===
     public static readonly IndicatorColor AtrColor = new(255, 171, 71, 188); // Purple #AB47BC
     public static readonly IndicatorColor RocColor = new(255, 171, 71, 188); // Purple #AB47BC
+
+    // === KST (Know Sure Thing) Signal line ===
+    public const int KstSignalPeriod = 9;
+    public const int KstMinSignalPeriod = 1;
+    public const int KstMaxSignalPeriod = 1000;
+
+    // === VWAP (reset period, volume-weighted standard deviation bands) ===
+    public const decimal VwapStdDevMultiplier = 2.0m;
+    public const double VwapMinStdDevMultiplier = 0.1;
+    public const double VwapMaxStdDevMultiplier = 10.0;
+
+    // === Anchored VWAP (date anchor) ===
+    public const string AnchoredVwapDateFormat = "yyyy-MM-dd";
+
+    // === Double to decimal conversion of ln / sqrt results (rule G4): the largest magnitude that surely fits a decimal (7.9228e28) with a one-digit margin ===
+    public const double MaxDoubleToDecimalMagnitude = 7.9e27;
+
+    // === Annualisation of per-bar volatility (opt-in: Annualize default false, so the default output does not depend on the chart time frame) ===
+    public const int PeriodsPerYear = 252;
+    public const int MinPeriodsPerYear = 1;
+    public const int MaxPeriodsPerYear = 366;
+
+    // === Garman-Klass Volatility (opt-in aggregation period) ===
+    public const int GarmanKlassPeriod = 1;
+    public const int GarmanKlassMinPeriod = 1;
+    public const int GarmanKlassMaxPeriod = 1000;
 
     // === Prime Number Bands ===
     public const int PrimeNumberBandsPeriod = 8;
@@ -522,5 +551,62 @@ public static class IndicatorDefaultConstants
     public const decimal RankCorrelationMinValue = -1.0m;
     public const decimal RankCorrelationMaxValue = 1.0m;
     public static readonly IndicatorColor RankCorrelationColor = new(255, 0, 158, 115); // Okabe-Ito Bluish Green #009E73
+
+    // === Period bounds shared by the plan-03 indicators (every period is in bars) ===
+    public const int DefaultPeriodMin = 1;
+    public const int DefaultPeriodMax = 1000;
+
+    // === Chandelier Exit (LeBeau): HH(High, Period) - Multiplier * ATR and LL(Low, Period) + Multiplier * ATR; unit: price-native ===
+    public const int ChandelierExitDefaultPeriod = 22;
+    public const decimal ChandelierExitDefaultMultiplier = 3.0m;
+    public const double ChandelierExitMinMultiplier = 0.1;
+    public const double ChandelierExitMaxMultiplier = 20.0;
+
+    // === T3 moving average (Tillson): six cascaded EMAs combined with the volume factor; unit: price-native ===
+    public const int T3DefaultPeriod = 5;
+    public const decimal T3DefaultVolumeFactor = 0.7m;
+    public const double T3MinVolumeFactor = 0.0;
+    public const double T3MaxVolumeFactor = 1.0;
+    public const int T3EmaStageCount = 6;
+
+    // === McGinley Dynamic: MD = MD_prev + (P - MD_prev) / max(1, k x N x (P / MD_prev)^4); unit: price-native ===
+    public const int McGinleyDefaultPeriod = 14;
+    public const decimal McGinleyDefaultConstant = 0.6m;
+    public const double McGinleyMinConstant = 0.1;
+    public const double McGinleyMaxConstant = 2.0;
+    /// <summary>Above this price ratio P / MD_prev the step is below 1e-17 of MD_prev, so MD is held (also keeps k x N x r^4 inside the decimal range).</summary>
+    public const decimal McGinleyMaxPriceRatio = 1000000m;
+    /// <summary>The smallest allowed divisor of the McGinley step; a smaller k x N x r^4 is raised to this value.</summary>
+    public const decimal McGinleyMinDivisor = 1m;
+
+    // === TSI (True Strength Index, Blau): 100 x EMA(EMA(m, Long), Short) / EMA(EMA(|m|, Long), Short); unit: oscillator [-100, 100] ===
+    public const int TsiDefaultLongPeriod = 25;
+    public const int TsiDefaultShortPeriod = 13;
+    public const int TsiDefaultSignalPeriod = 7;
+    public const decimal TsiMinValue = -100m;
+    public const decimal TsiMaxValue = 100m;
+
+    // === Stochastic RSI (Chande / Kroll; the original range 0..1 is scaled to 0..100 here): 100 x (RSI - min(RSI)) / (max(RSI) - min(RSI)); unit: oscillator [0, 100] ===
+    public const int StochRsiDefaultRsiPeriod = 14;
+    public const int StochRsiDefaultStochPeriod = 14;
+    public const int StochRsiDefaultKPeriod = 3;
+    public const int StochRsiDefaultDPeriod = 3;
+
+    // === KVO (Klinger Volume Oscillator): EMA(VF, Fast) - EMA(VF, Slow), VF = V x |2 x dm / cm - 1| x trend x 100; unit: volume force (volume x 100) ===
+    public const int KvoDefaultFastPeriod = 34;
+    public const int KvoDefaultSlowPeriod = 55;
+    public const int KvoDefaultSignalPeriod = 13;
+    /// <summary>Scale factor of the Klinger volume force (VF = V x |2 x dm / cm - 1| x trend x 100).</summary>
+    public const decimal KvoVolumeForceScale = 100m;
+
+    // === Volume Profile Levels: causal POC / VAH / VAL per bar from the last Period bars; unit: price-native ===
+    // Period and RowCount default to the Volume Profile ones (VolumeProfilePeriod, VolumeProfileRowCount).
+    public const int VolumeProfileLevelsMinPeriod = 2;
+    /// <summary>Default value-area share (0.70); the same value as <c>ChartConstants.DefaultValueAreaPercent</c>.</summary>
+    public const decimal VolumeProfileLevelsDefaultValueAreaPercentage = (decimal)StockAnalyzer.Core.ChartConstants.DefaultValueAreaPercent;
+    public const double VolumeProfileLevelsMinValueAreaPercentage = 0.10;
+    public const double VolumeProfileLevelsMaxValueAreaPercentage = 0.99;
+    /// <summary>Largest bin count whose volume array is taken from the stack; a larger one is rented from the array pool.</summary>
+    public const int VolumeProfileLevelsMaxStackRows = 256;
 }
 

@@ -45,7 +45,7 @@ public static class PanelValueRangeCalculator
                 // Series that are computed and served (screener / export) but intentionally not
                 // charted -- their degree/bar scale must not pollute the charted series' auto-range.
                 // Single source of truth: IndicatorChartSuppression (shared with IndicatorRenderer).
-                if (IndicatorChartSuppression.IsSuppressed(setting.TypeEnum, seriesName)) continue;
+                if (IndicatorChartSuppression.IsSuppressed(setting.TypeEnum, seriesName, setting.ParameterObject)) continue;
 
                 var seriesValues = result.GetSeries(seriesName);
                 if (seriesValues == null) continue;

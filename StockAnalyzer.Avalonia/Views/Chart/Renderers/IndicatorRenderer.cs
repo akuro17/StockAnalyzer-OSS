@@ -212,7 +212,7 @@ public sealed class IndicatorRenderer : IChartRenderer, IDisposable
 
                         // Series computed & served but not charted (degree/bar scale would drown out
                         // the panel's charted -1..1 series). SSoT: IndicatorChartSuppression.
-                        if (IndicatorChartSuppression.IsSuppressed(setting.TypeEnum, seriesName))
+                        if (IndicatorChartSuppression.IsSuppressed(setting.TypeEnum, seriesName, setting.ParameterObject))
                             continue;
 
                         var seriesValues = result.GetSeries(seriesName);
@@ -436,7 +436,7 @@ public sealed class IndicatorRenderer : IChartRenderer, IDisposable
 
                     // Not charted (degree/bar scale would dominate the panel). Same set as the
                     // standard sub-panel path. SSoT: IndicatorChartSuppression.
-                    if (IndicatorChartSuppression.IsSuppressed(setting.TypeEnum, seriesName))
+                    if (IndicatorChartSuppression.IsSuppressed(setting.TypeEnum, seriesName, setting.ParameterObject))
                         continue;
 
                     var values = result.GetSeries(seriesName);
@@ -577,7 +577,7 @@ public sealed class IndicatorRenderer : IChartRenderer, IDisposable
                 // Never draw series that are computed & served (screener) but whose degree/bar
                 // scale would dominate the panel's Y axis and hide its charted -1..1 series.
                 // SSoT: IndicatorChartSuppression (also consulted by PanelValueRangeCalculator).
-                if (IndicatorChartSuppression.IsSuppressed(setting.TypeEnum, seriesName))
+                if (IndicatorChartSuppression.IsSuppressed(setting.TypeEnum, seriesName, setting.ParameterObject))
                     continue;
 
                 var values = result.GetSeries(seriesName);

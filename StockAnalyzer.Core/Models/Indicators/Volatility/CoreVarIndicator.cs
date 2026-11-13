@@ -1,7 +1,7 @@
 using StockAnalyzer.Core.Models.Indicators;
 using System;
+using System.Buffers;
 using System.Collections.Generic;
-using System.Linq;
 using StockAnalyzer.Core.Models.Parameters;
 
 namespace StockAnalyzer.Core.Models.Indicators.Volatility
@@ -10,8 +10,8 @@ namespace StockAnalyzer.Core.Models.Indicators.Volatility
     public class CoreVarIndicator : CoreIndicatorBase
     {
         public override string Name => $"VaR({Period}, {ConfidenceLevel:P})";
-        public int Period { get; set; } = 20;
-        public double ConfidenceLevel { get; set; } = 0.95;
+        public int Period { get; set; } = IndicatorDefaultConstants.VarPeriod;
+        public double ConfidenceLevel { get; set; } = IndicatorDefaultConstants.VarConfidenceLevel;
 
         public override void Configure(CoreIndicatorParameterBase parameters)
         {
@@ -20,6 +20,18 @@ namespace StockAnalyzer.Core.Models.Indicators.Volatility
                 Period = p.Period;
                 ConfidenceLevel = p.ConfidenceLevel;
             }
+        }
+
+        // Same parameter type and initial values as the DefaultCoreIndicatorSettings entry (the naming rule would find none).
+        public override CoreIndicatorSettings GetDefaultSettings()
+        {
+            var settings = base.GetDefaultSettings();
+            settings.ParameterObject = new CoreCVarParameter
+            {
+                Period = IndicatorDefaultConstants.VarPeriod,
+                ConfidenceLevel = IndicatorDefaultConstants.VarConfidenceLevel
+            };
+            return settings;
         }
 
         protected override IIndicatorResult CalculateCore(IReadOnlyList<CoreCandleData> candles)
@@ -35,53 +47,35 @@ namespace StockAnalyzer.Core.Models.Indicators.Volatility
             }
 
             var priceSeries = PriceDataHelper.ExtractPriceSeries(candles, PriceSource);
-            var returns = new decimal?[candles.Count - 1];
+            decimal?[] returns = RollingTailMath.ComputeReturns(priceSeries);
 
-            for (int i = 1; i < candles.Count; i++)
+            // One buffer for every window: on the stack for a short Period, rented from the pool for a long one.
+            decimal[]? rented = null;
+            Span<decimal> buffer = Period <= RollingTailMath.MaxStackWindow
+                ? stackalloc decimal[Period]
+                : (rented = ArrayPool<decimal>.Shared.Rent(Period));
+            try
             {
-                var prev = priceSeries[i - 1];
-                var curr = priceSeries[i];
-                if (!prev.HasValue || !curr.HasValue || prev.Value <= 0m)
+                // The quantile index depends on Period and the confidence level only.
+                int index = (int)Math.Floor((1.0 - ConfidenceLevel) * Period);
+                index = Math.Clamp(index, 0, Period - 1);
+
+                for (int i = 0; i < candles.Count; i++)
                 {
-                    returns[i - 1] = null;
-                }
-                else
-                {
-                    returns[i - 1] = (curr.Value - prev.Value) / prev.Value;
+                    if (i < Period)
+                    {
+                        _values.Add(null);
+                        continue;
+                    }
+
+                    _values.Add(RollingTailMath.TryLoadSortedWindow(returns, i - Period, Period, buffer) ? buffer[index] : null);
                 }
             }
-
-            for (int i = 0; i < candles.Count; i++)
+            finally
             {
-                if (i < Period)
+                if (rented != null)
                 {
-                    _values.Add(null);
-                    continue;
-                }
-
-                bool hasNull = false;
-                var window = new List<decimal>(Period);
-                for (int k = i - Period; k < i; k++)
-                {
-                    var r = returns[k];
-                    if (!r.HasValue)
-                    {
-                        hasNull = true;
-                        break;
-                    }
-                    window.Add(r.Value);
-                }
-
-                if (hasNull)
-                {
-                    _values.Add(null);
-                }
-                else
-                {
-                    window.Sort();
-                    int index = (int)Math.Floor((1.0 - ConfidenceLevel) * Period);
-                    index = Math.Clamp(index, 0, Period - 1);
-                    _values.Add(window[index]);
+                    ArrayPool<decimal>.Shared.Return(rented);
                 }
             }
 

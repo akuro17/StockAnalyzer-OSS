@@ -81,4 +81,21 @@ public abstract class CoreIndicatorParameterBase : System.ComponentModel.INotify
     {
         ErrorsChanged?.Invoke(this, new System.ComponentModel.DataErrorsChangedEventArgs(propertyName));
     }
+
+    /// <summary>
+    /// Range check for <see cref="Validate"/>: throws <see cref="ArgumentOutOfRangeException"/> naming <paramref name="parameterName"/> when
+    /// <paramref name="value"/> is outside [<paramref name="min"/>, <paramref name="max"/>] (both bounds included). Bounds are the same constants the
+    /// <c>CoreParameterRange</c> attribute of the property takes, so the attribute and the check cannot drift apart.
+    /// </summary>
+    protected static void ThrowIfOutOfRange(int value, int min, int max, string parameterName)
+    {
+        if (value < min || value > max) throw new ArgumentOutOfRangeException(parameterName);
+    }
+
+    /// <inheritdoc cref="ThrowIfOutOfRange(int, int, int, string)"/>
+    /// <remarks>The bounds are <c>double</c> because an attribute argument cannot be a <c>decimal</c> constant; they are converted exactly as the existing checks do.</remarks>
+    protected static void ThrowIfOutOfRange(decimal value, double min, double max, string parameterName)
+    {
+        if (value < (decimal)min || value > (decimal)max) throw new ArgumentOutOfRangeException(parameterName);
+    }
 }

@@ -47,6 +47,61 @@ namespace StockAnalyzer.Core.Tests
             Assert.Equal(expectedLastValue, result.MainValues[20].Value, 8);
         }
 
+        // 60 bars without a missing value; deterministic, non-monotonic closes.
+        private static decimal[] SixtyCloses() => Enumerable.Range(0, 60).Select(i => 100m + (i * 7 % 13) + i * 0.5m).ToArray();
+
+        // Independent re-computation of the documented rule: window of Period returns ending at bar b, ascending sort,
+        // index floor((1 - confidence) * Period) clamped to [0, Period - 1], mean of the first index + 1 values.
+        private static decimal? ExpectedCVar(decimal[] closes, int b, int period, double confidence)
+        {
+            if (b < period) return null;
+            var window = new List<decimal>();
+            for (int k = b - period + 1; k <= b; k++) window.Add((closes[k] - closes[k - 1]) / closes[k - 1]);
+            window.Sort();
+            int index = (int)Math.Floor((1 - confidence) * period);
+            index = Math.Clamp(index, 0, period - 1);
+            return window.Take(index + 1).Sum() / (index + 1);
+        }
+
+        [Theory]
+        [InlineData(10, 0.95)]
+        [InlineData(20, 0.95)]
+        [InlineData(15, 0.80)]
+        public void Calculate_WithoutMissingValues_MatchesTheDocumentedRule(int period, double confidence)
+        {
+            var closes = SixtyCloses();
+            var result = new CoreCVarIndicator { Period = period, ConfidenceLevel = confidence }.Calculate(CreateTestCandles(closes));
+
+            Assert.Equal(closes.Length, result.MainValues.Count);
+            for (int b = 0; b < closes.Length; b++)
+            {
+                var expected = ExpectedCVar(closes, b, period, confidence);
+                if (expected is null) { Assert.Null(result.MainValues[b]); continue; }
+                Assert.NotNull(result.MainValues[b]);
+                Assert.Equal(expected.Value, result.MainValues[b]!.Value, 12);
+            }
+        }
+
+        [Fact]
+        public void Calculate_WithAZeroPriceBar_IsNullInEveryWindowThatContainsTheUndefinedReturn()
+        {
+            const int period = 10;
+            const int zeroBar = 30;
+            var closes = SixtyCloses();
+            closes[zeroBar] = 0m;
+            var candles = closes.Select((close, i) => new CoreCandleData(DateTime.Today.AddDays(i), close, close, close, close, 1000)).ToList();
+
+            var result = new CoreCVarIndicator { Period = period, ConfidenceLevel = 0.95 }.Calculate(candles);
+
+            // The return of bar zeroBar + 1 divides by the zero price (undefined); it belongs to the windows ending at zeroBar + 1 .. zeroBar + period.
+            for (int b = 0; b < closes.Length; b++)
+            {
+                bool inUndefinedWindow = b >= zeroBar + 1 && b <= zeroBar + period;
+                if (b < period || inUndefinedWindow) Assert.Null(result.MainValues[b]);
+                else Assert.NotNull(result.MainValues[b]);
+            }
+        }
+
         [Fact]
         public void Calculate_WithNotEnoughData_ReturnsAllNulls()
         {

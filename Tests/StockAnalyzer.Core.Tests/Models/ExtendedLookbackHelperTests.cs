@@ -186,7 +186,8 @@ public class ExtendedLookbackHelperTests
         Assert.Equal(56, ExtendedLookbackHelper.CalculateRequiredLookback(new[] { new CoreIndicatorSettings { IsEnabled = true, ParameterObject = new CoreAdxParameter { Period = 14 } } }));
         Assert.Equal(70, ExtendedLookbackHelper.CalculateRequiredLookback(new[] { new CoreIndicatorSettings { IsEnabled = true, ParameterObject = new CoreAdxrParameter { Period = 14 } } }));
         Assert.Equal(42, ExtendedLookbackHelper.CalculateRequiredLookback(new[] { new CoreIndicatorSettings { IsEnabled = true, ParameterObject = new CoreDmiParameter { Period = 14 } } }));
-        Assert.Equal(45, ExtendedLookbackHelper.CalculateRequiredLookback(new[] { new CoreIndicatorSettings { IsEnabled = true, ParameterObject = new CoreKstParameter() } }));
+        // 45 for Main (ROC 30 + SMA 15) + 8 for the Signal (SignalPeriod 9 - 1); owner-approved 2026-11-13 (plan 02 constraint check M2=A), was 45.
+        Assert.Equal(53, ExtendedLookbackHelper.CalculateRequiredLookback(new[] { new CoreIndicatorSettings { IsEnabled = true, ParameterObject = new CoreKstParameter() } }));
     }
 
     [Fact]

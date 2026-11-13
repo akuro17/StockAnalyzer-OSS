@@ -4,6 +4,8 @@ using Avalonia;
 using Avalonia.Media;
 using SkiaSharp;
 using StockAnalyzer.Avalonia.Common;
+using StockAnalyzer.Core.Drawing;
+using StockAnalyzer.Core.Drawing.Values;
 using StockAnalyzer.Core.Models;
 
 namespace StockAnalyzer.Avalonia.Drawing;
@@ -52,64 +54,49 @@ public class PitchforkObject : IChartObject, IDrawingCalculatedValuesProvider
 
     public SKColor SkiaColor => new SKColor(Color.R, Color.G, Color.B, Color.A);
 
+    /// <summary>Screen positions of the three control points, the median-line anchor and the P2-P3 midpoint.</summary>
+    internal readonly record struct PitchforkScreenShape(
+        global::Avalonia.Point P1,
+        global::Avalonia.Point P2,
+        global::Avalonia.Point P3,
+        global::Avalonia.Point Anchor,
+        global::Avalonia.Point Median);
+
+    // PitchforkKind (Core) has the same members with the same numeric values as PitchforkType; a test pins that.
+    internal static PitchforkKind ToKind(PitchforkType type) => (PitchforkKind)(int)type;
+
+    /// <summary>
+    /// The single screen-geometry definition used by Render and HitTest: anchor and midpoint are computed in chart coordinates
+    /// (<see cref="PitchforkValues"/>) and then projected with the chart transform.
+    /// </summary>
+    internal static PitchforkScreenShape GetScreenShape(PitchforkType type, ChartPoint p1, ChartPoint p2, ChartPoint p3, ICoordinateTransform transform)
+    {
+        DrawingAnchor a1 = p1.ToAnchor();
+        DrawingAnchor a2 = p2.ToAnchor();
+        DrawingAnchor a3 = p3.ToAnchor();
+        DrawingAnchor anchor = PitchforkValues.GetAnchor(ToKind(type), a1, a2);
+        DrawingAnchor median = PitchforkValues.GetMedianPoint(a2, a3);
+
+        return new PitchforkScreenShape(
+            transform.ChartToScreen(p1),
+            transform.ChartToScreen(p2),
+            transform.ChartToScreen(p3),
+            transform.ChartToScreen(new ChartPoint(anchor.Time, anchor.Price)),
+            transform.ChartToScreen(new ChartPoint(median.Time, median.Price)));
+    }
+
     public void Render(SKCanvas canvas, ICoordinateTransform transform)
     {
         if (Points.Count < 3) return;
 
-        var p1 = Points[0];
-        var p2 = Points[1];
-        var p3 = Points[2];
-
-        // 1. Calculate Effective Start Point (Anchor) based on Type
-        // Note: Calculations should ideally be done in Chart/Time/Price space, then projected to Screen.
-        // However, Schiff/Modified Schiff modifications are usually defined in Price/Time terms.
-        
-        // Midpoint of P2-P3 (The Median Point)
-        TimeSpan timeDiffP2P3 = p3.Time - p2.Time;
-        DateTime midTimeP2P3 = p2.Time + timeDiffP2P3 / 2.0; // P2 time + half difference
-        
-        // BUT: Simply averaging Ticks might be inaccurate if trading days are skipped. 
-        // For drawing logic on a chart with gaps, it's safer to use screen coordinates or index-based calculation if available.
-        // ICoordinateTransform usually handles Date -> X. Let's calculate in Screen Space for visual correctness on the chart canvas.
-        
-        global::Avalonia.Point s1 = transform.ChartToScreen(p1);
-        global::Avalonia.Point s2 = transform.ChartToScreen(p2);
-        global::Avalonia.Point s3 = transform.ChartToScreen(p3);
-
-        global::Avalonia.Point anchor = s1;
-
-        if (PitchforkType == PitchforkType.Schiff)
-        {
-            // Schiff: Anchor Y is midpoint of P1.Y and P2.Y?? 
-            // Standard Schiff: Move P1 Y to midpoint of P1-P2 vertical range. Wait.
-            // Definition: "Schiff Median Line: The anchor is moved vertically to the level of the midpoint between the high and low." -> No.
-            // Correct Def: Anchor is moved to (P1.Time, (P1.Price + P2.Price)/2)? OR (P1.Time, (High+Low)/2)?
-            // P2 is High, P3 is Low (usually).
-            // Schiff: Origin is moved vertically to the mid-price of the P1-P2 swing? 
-            // Most common: Anchor X is P1.X. Anchor Y is (P1.Y + P2.Y) / 2? NO.
-            // Actually, Schiff Pitchfork usually calculates the median trend relative to the P1-P2 swing.
-            // Let's check typical usage.
-            // "Schiff Pitchfork": The handle is originating from 50% retracement of the P1-P2 swing price-wise, at the time of P1.
-            // Wait, standard Schiff uses P1 X, and Y = (P1.Y + P2.Y)/2?
-            // Actually, usually it's defined relative to P2 (High) and P3 (Low).
-            // Let's use the most common definition:
-            // Schiff: Origin is (P1.X, (P1.Y + P2.Y) / 2). NO, that depends on if P2 is High or Low.
-            // Let's assume P1=Start, P2=High, P3=Low.
-            // Schiff: Moves anchor Y to 50% of the vertical distance between P1 and P2?
-            // Let's stick to simple "Schiff = Anchor Y is Average(P1.Y, P2.Y)" if that's the swing.
-            // BETTER: Schiff uses the midpoint of the vertical range of the A-B swing.
-            // Let's assume P2 is the B point.
-            anchor = new global::Avalonia.Point(s1.X, (s1.Y + s2.Y) / 2);
-        }
-        else if (PitchforkType == PitchforkType.ModifiedSchiff)
-        {
-            // Modified Schiff: Anchor is midpoint of P1 and P2 (Both X and Y).
-            // i.e., midpoint of the line segment P1-P2.
-            anchor = new global::Avalonia.Point((s1.X + s2.X) / 2, (s1.Y + s2.Y) / 2);
-        }
-
-        // 2. Calculate Midpoint of P2-P3
-        global::Avalonia.Point visibleMidpoint = new global::Avalonia.Point((s2.X + s3.X) / 2, (s2.Y + s3.Y) / 2);
+        // The anchor and the P2-P3 midpoint are decided in chart coordinates (PitchforkValues) and only then projected to the screen,
+        // so the drawn lines agree with the Data-tab values on a logarithmic axis and across non-trading days.
+        var shape = GetScreenShape(PitchforkType, Points[0], Points[1], Points[2], transform);
+        global::Avalonia.Point s1 = shape.P1;
+        global::Avalonia.Point s2 = shape.P2;
+        global::Avalonia.Point s3 = shape.P3;
+        global::Avalonia.Point anchor = shape.Anchor;
+        global::Avalonia.Point visibleMidpoint = shape.Median;
 
         // 3. Draw Median Line (Anchor -> through VisibleMidpoint -> Extend)
         // Vector V = VisibleMidpoint - Anchor
@@ -232,22 +219,12 @@ public class PitchforkObject : IChartObject, IDrawingCalculatedValuesProvider
     {
         if (Points.Count < 3) return false;
 
-        global::Avalonia.Point s1 = transform.ChartToScreen(Points[0]);
-        global::Avalonia.Point s2 = transform.ChartToScreen(Points[1]);
-        global::Avalonia.Point s3 = transform.ChartToScreen(Points[2]);
-
-        global::Avalonia.Point anchor = s1;
-        if (PitchforkType == PitchforkType.Schiff)
-        {
-            anchor = new global::Avalonia.Point(s1.X, (s1.Y + s2.Y) / 2);
-        }
-        else if (PitchforkType == PitchforkType.ModifiedSchiff)
-        {
-            anchor = new global::Avalonia.Point((s1.X + s2.X) / 2, (s1.Y + s2.Y) / 2);
-        }
-
-        // 2. Calculate Midpoint of P2-P3
-        global::Avalonia.Point mid = new global::Avalonia.Point((s2.X + s3.X) / 2, (s2.Y + s3.Y) / 2);
+        var shape = GetScreenShape(PitchforkType, Points[0], Points[1], Points[2], transform);
+        global::Avalonia.Point s1 = shape.P1;
+        global::Avalonia.Point s2 = shape.P2;
+        global::Avalonia.Point s3 = shape.P3;
+        global::Avalonia.Point anchor = shape.Anchor;
+        global::Avalonia.Point mid = shape.Median;
         global::Avalonia.Vector v = mid - anchor;
 
         // Check if point is near Median Line
@@ -295,44 +272,8 @@ public class PitchforkObject : IChartObject, IDrawingCalculatedValuesProvider
     {
         if (Points.Count < 3) return Array.Empty<DrawingCalculatedValue>();
 
-        var p1 = Points[0];
-        var p2 = Points[1];
-        var p3 = Points[2];
         var color = new IndicatorColor(Color.A, Color.R, Color.G, Color.B);
-
-        decimal anchorPrice = p1.Price;
-        DateTime anchorTime = p1.Time;
-
-        if (PitchforkType == PitchforkType.Schiff)
-        {
-            anchorPrice = (p1.Price + p2.Price) / 2m;
-        }
-        else if (PitchforkType == PitchforkType.ModifiedSchiff)
-        {
-            anchorPrice = (p1.Price + p2.Price) / 2m;
-            anchorTime = DrawingMath.SafeAddSeconds(p1.Time, (p2.Time - p1.Time).TotalSeconds / 2.0);
-        }
-
-        decimal midPrice = (p2.Price + p3.Price) / 2m;
-        DateTime midTime = DrawingMath.SafeAddSeconds(p2.Time, (p3.Time - p2.Time).TotalSeconds / 2.0);
-
-        decimal medianLinePrice = DrawingMath.InterpolatePrice(anchorTime, anchorPrice, midTime, midPrice, timestamp);
-
-        decimal offset2 = p2.Price - midPrice;
-        decimal offset3 = p3.Price - midPrice;
-        decimal maxOffset = Math.Max(offset2, offset3);
-        decimal minOffset = Math.Min(offset2, offset3);
-
-        decimal upper = medianLinePrice + maxOffset;
-        decimal lower = medianLinePrice + minOffset;
-
-        return new DrawingCalculatedValue[]
-        {
-            new DrawingCalculatedValue("UpperLine", "Upper Line", upper, $"{upper:F3}", color),
-            new DrawingCalculatedValue("MedianLine", "Median Line", medianLinePrice, $"{medianLinePrice:F3}", color),
-            new DrawingCalculatedValue("LowerLine", "Lower Line", lower, $"{lower:F3}", color),
-            new DrawingCalculatedValue("ForkType", "Type", null, PitchforkType.ToString(), IndicatorColor.Gray)
-        };
+        return PitchforkValues.Calculate(ToKind(PitchforkType), Points[0].ToAnchor(), Points[1].ToAnchor(), Points[2].ToAnchor(), timestamp, color);
     }
 }
 

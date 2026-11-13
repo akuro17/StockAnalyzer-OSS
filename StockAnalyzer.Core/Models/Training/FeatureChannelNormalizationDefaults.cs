@@ -25,6 +25,7 @@ public static class FeatureChannelNormalizationDefaults
         IndicatorType.ADX, IndicatorType.ADXR, IndicatorType.DMI, IndicatorType.Aroon, IndicatorType.Vortex, IndicatorType.CMF, IndicatorType.BOP,
         IndicatorType.ChoppinessIndex, IndicatorType.PsychologicalLine, IndicatorType.EfficiencyRatio,
         IndicatorType.FisherTransform, IndicatorType.CCI,
+        IndicatorType.TSI, IndicatorType.StochRSI,
         // ratios and percentages
         IndicatorType.ROC, IndicatorType.PPO, IndicatorType.PriceOscillator, IndicatorType.TRIX, IndicatorType.BollingerBandsRatio,
         IndicatorType.BandWidth, IndicatorType.NATR, IndicatorType.MaDeviationRate, IndicatorType.VolumeROC, IndicatorType.ZScore,
@@ -41,6 +42,8 @@ public static class FeatureChannelNormalizationDefaults
         IndicatorType.VWAP, IndicatorType.AnchoredVWAP, IndicatorType.RollingVWAP, IndicatorType.ParabolicSAR, IndicatorType.SuperTrend,
         IndicatorType.Highest, IndicatorType.Lowest, IndicatorType.TrueHigh, IndicatorType.TrueLow, IndicatorType.LinearRegression,
         IndicatorType.KalmanFilter, IndicatorType.HilbertTrendline,
+        IndicatorType.ChandelierExit, IndicatorType.T3, IndicatorType.McGinleyDynamic,
+        IndicatorType.VolumeProfileLevels,
     };
 
     /// <summary>The raw price fields (open, high, low, close, ...) are price units.</summary>

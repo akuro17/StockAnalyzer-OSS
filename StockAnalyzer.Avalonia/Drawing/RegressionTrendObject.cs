@@ -36,6 +36,7 @@ public class RegressionTrendObject : IChartObject, IDisposable, IDrawingCalculat
     private RegressionService.RegressionResult _result;
     private DateTime _start;
     private DateTime _end;
+    private DateTime[] _barTimes = Array.Empty<DateTime>();
 
     // Reused across Render() calls (ZeroAllocation Render Loop, SA_RENDERING_PERFORMANCE.md
     // §1) instead of a `new SKPaint`/`new SKPath` per frame. Color-dependent properties are
@@ -154,6 +155,13 @@ public class RegressionTrendObject : IChartObject, IDisposable, IDrawingCalculat
         // 2. Calculate Regression
         var service = new RegressionService();
         _result = service.Calculate(range);
+
+        // Bar times of the regression range, in the order of the fit's x (0 .. Count-1): GetCalculatedValues maps a time to its bar number with them.
+        if (_result.IsValid)
+        {
+            if (_barTimes.Length != _result.Count) _barTimes = new DateTime[_result.Count];
+            for (int i = 0; i < _barTimes.Length; i++) _barTimes[i] = range[i].Timestamp;
+        }
 
         // 3. Sync Points[] to the rendered handle positions (regression-fitted price at
         // _start/_end). Render()/HitTest() draw and hit-test handles at these computed
@@ -341,11 +349,21 @@ public class RegressionTrendObject : IChartObject, IDisposable, IDrawingCalculat
         int x = 0;
         if (_start != _end && _result.Count > 1)
         {
-            double totalSec = (_end - _start).TotalSeconds;
-            if (totalSec != 0)
+            if (timestamp >= _start && timestamp <= _end)
             {
-                double curSec = (timestamp - _start).TotalSeconds;
-                x = (int)Math.Round((curSec / totalSec) * (_result.Count - 1));
+                // Inside the range: the bar number is the position of the newest bar at or before the time (non-trading days do not shift it).
+                int index = Array.BinarySearch(_barTimes, timestamp);
+                if (index < 0) index = ~index - 1;
+                x = Math.Clamp(index, 0, _result.Count - 1);
+            }
+            else
+            {
+                double totalSec = (_end - _start).TotalSeconds;
+                if (totalSec != 0)
+                {
+                    double curSec = (timestamp - _start).TotalSeconds;
+                    x = (int)Math.Round((curSec / totalSec) * (_result.Count - 1));
+                }
             }
         }
 

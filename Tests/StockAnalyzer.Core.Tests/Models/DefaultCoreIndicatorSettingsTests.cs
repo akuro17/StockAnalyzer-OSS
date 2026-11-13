@@ -1,7 +1,9 @@
 using Xunit;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Parameters;
+using System.Collections.Generic;
 using System.Linq;
+using StockAnalyzer.Core.Models.Indicators;
 
 namespace StockAnalyzer.Core.Tests.Models;
 
@@ -18,7 +20,14 @@ public class DefaultCoreIndicatorSettingsTests
         // + 1 StandardDeviation + 1 MassIndex + 1 Donchian (disabled by default, added 2026-10-20)
         // + 1 PairRatio + 1 PairSpread (disabled by default, added 2026-10-28).
         // + 1 CrossTickerDtw + 1 PACF + 1 RankCorrelation (disabled by default, added 2026-11-09).
-        Assert.Equal(93, defaults.Count);
+        // + 1 Keltner (disabled by default, added 2026-11-13).
+        // + 1 KST (disabled by default, added 2026-11-13, plan 02 T1).
+        // + 1 AnchoredVWAP (disabled by default, added 2026-11-13, plan 02 T5).
+        // + 1 ChandelierExit + 1 T3 (disabled by default, added 2026-11-14, plan 03 T1/T2).
+        // + 1 McGinleyDynamic + 1 TSI (disabled by default, added 2026-11-14, plan 03 T3/T4).
+        // + 1 StochRSI + 1 KVO (disabled by default, added 2026-11-14, plan 03 T5/T6).
+        // + 1 VolumeProfileLevels (disabled by default, added 2026-11-14, plan 03 T7).
+        Assert.Equal(103, defaults.Count);
     }
 
     [Fact]
@@ -41,8 +50,7 @@ public class DefaultCoreIndicatorSettingsTests
             IndicatorType.VWAP,
             IndicatorType.TrueHigh, IndicatorType.TrueLow, IndicatorType.TrueRange,
             IndicatorType.Price,
-            IndicatorType.ClassicPivotPoints,
-            IndicatorType.PivotPointsAdvanced
+            IndicatorType.ClassicPivotPoints
         };
         var defaults = DefaultCoreIndicatorSettings.GetDefault()
             .Where(s => !parameterlessTypes.Contains(s.TypeEnum!.Value));
@@ -326,7 +334,10 @@ public class DefaultCoreIndicatorSettingsTests
         var vwap = DefaultCoreIndicatorSettings.GetDefault()
             .First(s => s.TypeEnum == IndicatorType.VWAP);
 
-        Assert.Null(vwap.ParameterObject);
+        // Plan 02 T4: the parameter object exists now (ResetPeriod, ShowBands, StdDevMultiplier); its defaults reproduce the old cumulative VWAP.
+        var parameter = Assert.IsType<CoreVwapParameter>(vwap.ParameterObject);
+        Assert.Equal(VwapResetPeriod.Cumulative, parameter.ResetPeriod);
+        Assert.False(parameter.ShowBands);
         Assert.Equal(PriceType.Typical, vwap.PriceSource);
         Assert.True(vwap.IsOverlay);
         Assert.Equal(CoreIndicatorCategory.Volume, vwap.Category);
@@ -444,20 +455,33 @@ public class DefaultCoreIndicatorSettingsTests
     [Fact]
     public void AutoHeal_WithNullParameterObject_OnTrulyParameterlessType_StaysNull()
     {
-        // Arrange: VWAP has no configurable parameters at all (by design, see
-        // GetDefault_VwapDefaults_ShouldMatchConstants above) - the reflection fallback must also
-        // yield null for it, so AutoHeal must not fabricate a parameter object where none belongs.
-        var legacyVwap = new CoreIndicatorSettings
+        // Arrange: TrueHigh has no configurable parameters at all (it is registered with ParameterObject = null) - the
+        // reflection fallback must also yield null for it, so AutoHeal must not fabricate a parameter object where none
+        // belongs. (This test used VWAP until plan 02 T4 gave VWAP its parameters.)
+        var legacy = new CoreIndicatorSettings
         {
-            TypeEnum = IndicatorType.VWAP,
+            TypeEnum = IndicatorType.TrueHigh,
             ParameterObject = null
         };
 
         // Act
-        DefaultCoreIndicatorSettings.AutoHeal(legacyVwap);
+        DefaultCoreIndicatorSettings.AutoHeal(legacy);
 
         // Assert
-        Assert.Null(legacyVwap.ParameterObject);
+        Assert.Null(legacy.ParameterObject);
+    }
+
+    [Fact]
+    public void AutoHeal_WithNullParameterObject_OnASavedVwap_BackfillsTheCumulativeDefault()
+    {
+        // A VWAP saved before plan 02 T4 has no parameter object; it gets the defaults that reproduce its old output.
+        var legacyVwap = new CoreIndicatorSettings { TypeEnum = IndicatorType.VWAP, ParameterObject = null };
+
+        DefaultCoreIndicatorSettings.AutoHeal(legacyVwap);
+
+        var parameter = Assert.IsType<CoreVwapParameter>(legacyVwap.ParameterObject);
+        Assert.Equal(VwapResetPeriod.Cumulative, parameter.ResetPeriod);
+        Assert.False(parameter.ShowBands);
     }
 
     [Fact]
@@ -860,7 +884,9 @@ public class DefaultCoreIndicatorSettingsTests
         var pp = DefaultCoreIndicatorSettings.GetDefault()
             .First(s => s.TypeEnum == IndicatorType.ClassicPivotPoints);
 
-        Assert.Null(pp.ParameterObject);
+        // Plan 02 T2: the SourcePeriod parameter object exists now; its default (PreviousBar) is the behaviour before the parameter.
+        var parameter = Assert.IsType<CoreClassicPivotPointsParameter>(pp.ParameterObject);
+        Assert.Equal(PivotSourcePeriod.PreviousBar, parameter.SourcePeriod);
         Assert.True(pp.IsOverlay);
         Assert.Equal(CoreIndicatorCategory.Chart, pp.Category);
         Assert.Equal(IndicatorDefaultConstants.ClassicPivotPointsPivotColor.R, pp.Color.R);
@@ -878,6 +904,74 @@ public class DefaultCoreIndicatorSettingsTests
         Assert.Contains(pp.SeriesColors, c => c.TargetSeries.Contains("S3") && c.Name == "S3");
     }
 
+    [Fact]
+    public void KeltnerDefaultSettings_HasKeltnerParameter()
+    {
+        // The instance path (what a catalog/registration dialog uses) must hand out the Keltner parameter class;
+        // the naming rule of the base class looks for CoreKeltnerChannelParameter, which does not exist.
+        var instanceSettings = IndicatorFactory.CreateStatic(IndicatorType.Keltner)!.GetDefaultSettings();
+        var instanceParam = Assert.IsType<CoreKeltnerParameter>(instanceSettings.ParameterObject);
+        Assert.Equal(new CoreKeltnerParameter().EmaPeriod, instanceParam.EmaPeriod);
+
+        var registered = DefaultCoreIndicatorSettings.GetDefault().Single(s => s.TypeEnum == IndicatorType.Keltner);
+        Assert.IsType<CoreKeltnerParameter>(registered.ParameterObject);
+        Assert.Equal(instanceSettings.Category, registered.Category);
+        Assert.Equal(instanceSettings.IsOverlay, registered.IsOverlay);
+        Assert.Equal(instanceSettings.Thickness, registered.Thickness);
+        Assert.Equal(instanceSettings.Style, registered.Style);
+        Assert.Equal(new[] { "Main", "UpperBand", "LowerBand" }, registered.SeriesColors.Select(c => c.TargetSeries.Single()).ToArray());
+    }
+
+    [Fact]
+    public void EveryRegisteredDefault_InstancePathReturnsSameParameterType()
+    {
+        // GetDefault() (static registry) and IndicatorFactory.CreateStatic(type).GetDefaultSettings() (instance path)
+        // must agree on the parameter class, otherwise a dialog opened from the catalog shows "No parameters".
+        var mismatches = new List<string>();
+        foreach (var registered in DefaultCoreIndicatorSettings.GetDefault().Where(s => s.TypeEnum.HasValue && s.ParameterObject != null))
+        {
+            var instance = IndicatorFactory.CreateStatic(registered.TypeEnum!.Value);
+            Assert.NotNull(instance);
+            var instanceType = instance!.GetDefaultSettings().ParameterObject?.GetType();
+            if (instanceType != registered.ParameterObject!.GetType())
+            {
+                mismatches.Add($"{registered.TypeEnum}: registry={registered.ParameterObject.GetType().Name}, instance={instanceType?.Name ?? "null"}");
+            }
+        }
+
+        Assert.True(mismatches.Count == 0, "Parameter type mismatch: " + string.Join("; ", mismatches));
+    }
+
+    // These five indicators build their instance-path default parameter object in an override of GetDefaultSettings() because the naming rule finds no
+    // class for them; the same object is also written in the DefaultCoreIndicatorSettings entry. The type guard above cannot see a drifted initial value,
+    // so every public property is compared here. (TMA, VAMA and LSMA also differ between the registry and the instance path today: Period 20 vs 14/14/25.
+    // That is older than these overrides, changes what users see, and is not part of this guard.)
+    [Theory]
+    [InlineData(IndicatorType.Keltner)]
+    [InlineData(IndicatorType.BandWidth)]
+    [InlineData(IndicatorType.BollingerBandsRatio)]
+    [InlineData(IndicatorType.PriceOscillator)]
+    [InlineData(IndicatorType.VaR)]
+    public void OverriddenInstanceDefault_HasTheSamePropertyValuesAsTheRegistryEntry(IndicatorType type)
+    {
+        var registered = DefaultCoreIndicatorSettings.GetDefault().Single(s => s.TypeEnum == type).ParameterObject;
+        var instance = IndicatorFactory.CreateStatic(type)!.GetDefaultSettings().ParameterObject;
+
+        Assert.NotNull(registered);
+        Assert.NotNull(instance);
+        Assert.Equal(registered!.GetType(), instance!.GetType());
+
+        var differences = new List<string>();
+        foreach (var property in registered.GetType().GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance))
+        {
+            if (!property.CanRead || property.GetIndexParameters().Length > 0) continue;
+            object fromRegistry = property.GetValue(registered);
+            object fromInstance = property.GetValue(instance);
+            if (!Equals(fromRegistry, fromInstance)) differences.Add($"{property.Name}: registry={fromRegistry}, instance={fromInstance}");
+        }
+
+        Assert.True(differences.Count == 0, $"{type}: " + string.Join("; ", differences));
+    }
     [Fact]
     public void GetDefault_EveryFixedPanelRange_HasAMinimumBelowItsMaximum()
     {

@@ -20,12 +20,13 @@ This section is generated from the production code (`IndicatorFactory`, each ind
 
 | IndicatorType | Ordinal | Parameter Class (`"$type"`) | Parameters (Name, Type, Default, Range) | IsOverlay | Output Series Names |
 |---|---|---|---|---|---|
-| `PivotPointsAdvanced` | `67` | `(none)` | (no parameters) | `true` | `"Main"` |
-| `ClassicPivotPoints` | `130` | `(none)` | (no parameters) | `true` | `"Main"`, `"R1"`, `"R2"`, `"R3"`, `"S1"`, `"S2"`, `"S3"` |
+| `PivotPointsAdvanced` | `67` | `CorePivotPointsAdvancedParameter` | `PivotType` (PivotPointType, default `0 (Standard)`), `SourcePeriod` (PivotSourcePeriod, default `0 (PreviousBar)`) | `true` | `"Main"`, `"R1"`, `"R2"`, `"R3"`, `"R4"`, `"S1"`, `"S2"`, `"S3"`, `"S4"` |
+| `ClassicPivotPoints` | `130` | `CoreClassicPivotPointsParameter` | `SourcePeriod` (PivotSourcePeriod, default `0 (PreviousBar)`) | `true` | `"Main"`, `"R1"`, `"R2"`, `"R3"`, `"S1"`, `"S2"`, `"S3"` |
 | `VolumeProfile` | `131` | `CoreVolumeProfileParameter` | `Period` (int, default `200`), `RowCount` (int, default `50`), `Opacity` (double, default `0.3`), `Mode` (VolumeDistributionMode, default `0 (Proportional)`), `Side` (DisplaySide, default `0 (Left)`), `ValueAreaColor` (IndicatorColor?, default `#FFFFEB3B`) | `true` | `"Main"` |
 | `MarketStructureShift` | `138` | `CoreMarketStructureShiftParameter` | `ZigZagThreshold` (decimal, default `5.0`) | `true` | `"BOS_Lines"`, `"CHoCH_Lines"` |
 | `GranvilleLaw` | `140` | `CoreGranvilleLawParameter` | `MaPeriod` (int, default `200`), `SlopePeriod` (int, default `5`), `DeviationThreshold` (decimal, default `10.0`), `BounceTolerance` (decimal, default `0.5`), `FlatThreshold` (decimal, default `0.05`), `ShowSubWindowBar` (bool, default `true`) | `true` | `"MA"`, `"Signals"` |
 | `TimeAtPrice` | `179` | `CoreTimeAtPriceParameter` | `Period` (int, default `200`), `RowCount` (int, default `50`), `PriceType` (PriceType, default `0 (Close)`), `PriceSource` (PriceType, default `0 (Close)`), `Opacity` (double, default `0.3`), `Side` (DisplaySide, default `0 (Left)`), `ValueAreaColor` (IndicatorColor?, default `#FFFFEB3B`) | `true` | `"Main"` |
+| `VolumeProfileLevels` | `199` | `CoreVolumeProfileLevelsParameter` | `Period` (int, default `200`), `RowCount` (int, default `50`), `Mode` (VolumeDistributionMode, default `0 (Proportional)`), `ValueAreaPercentage` (decimal, default `0.7`) | `true` | `"Main"`, `"VAH"`, `"VAL"` |
 
 ### Category: Math
 
@@ -39,8 +40,8 @@ This section is generated from the production code (`IndicatorFactory`, each ind
 |---|---|---|---|---|---|
 | `Momentum` | `16` | `CoreSmaParameter` | `Period` (int, default `10`, range `[1, 1000]`) | `false` | `"Main"` |
 | `SMI` | `17` | `CoreSmiParameter` | `Period` (int, default `14`), `Smooth1` (int, default `5`), `Smooth2` (int, default `3`), `SignalPeriod` (int, default `5`) | `false` | `"Main"`, `"SignalLine"` |
-| `BandWidth` | `18` | `CoreSmaParameter` | `Period` (int, default `20`, range `[1, 1000]`) | `false` | `"Main"` |
-| `BollingerBandsRatio` | `19` | `CoreSmaParameter` | `Period` (int, default `20`, range `[1, 1000]`) | `false` | `"Main"` |
+| `BandWidth` | `18` | `CoreBollingerBandsParameter` | `Period` (int, default `20`, range `[1, 1000]`), `StdDevMultiplier` (decimal, default `2.0`, range `[0.1, 10]`) | `false` | `"Main"` |
+| `BollingerBandsRatio` | `19` | `CoreBollingerBandsParameter` | `Period` (int, default `20`, range `[1, 1000]`), `StdDevMultiplier` (decimal, default `2.0`, range `[0.1, 10]`) | `false` | `"Main"` |
 | `FisherTransform` | `23` | `CoreSmaParameter` | `Period` (int, default `10`, range `[1, 1000]`) | `false` | `"Main"`, `"Signal"` |
 | `UltimateOscillator` | `24` | `CoreUltimateOscillatorParameter` | `Period1` (int, default `7`), `Period2` (int, default `14`), `Period3` (int, default `28`) | `false` | `"Main"` |
 | `RSI` | `34` | `CoreRsiParameter` | `Period` (int, default `14`, range `[1, 1000]`) | `false` | `"Main"` |
@@ -61,9 +62,9 @@ This section is generated from the production code (`IndicatorFactory`, each ind
 | `ConnorsRsi` | `104` | `CoreConnorsRsiParameter` | `RsiPeriod` (int, default `3`), `StreakPeriod` (int, default `2`), `PercentRankPeriod` (int, default `100`) | `false` | `"Main"` |
 | `DeMarker` | `105` | `CoreSmaParameter` | `Period` (int, default `14`, range `[1, 1000]`) | `false` | `"Main"` |
 | `DPO` | `106` | `CoreSmaParameter` | `Period` (int, default `20`, range `[1, 1000]`) | `false` | `"Main"` |
-| `KST` | `107` | `CoreKstParameter` | `Roc1` (int, default `10`), `Roc2` (int, default `15`), `Roc3` (int, default `20`), `Roc4` (int, default `30`), `Sma1` (int, default `10`), `Sma2` (int, default `10`), `Sma3` (int, default `10`), `Sma4` (int, default `15`) | `false` | `"Main"` |
+| `KST` | `107` | `CoreKstParameter` | `Roc1` (int, default `10`), `Roc2` (int, default `15`), `Roc3` (int, default `20`), `Roc4` (int, default `30`), `Sma1` (int, default `10`), `Sma2` (int, default `10`), `Sma3` (int, default `10`), `Sma4` (int, default `15`), `SignalPeriod` (int, default `9`), `ShowSignal` (bool, default `false`) | `false` | `"Main"`, `"Signal"` |
 | `PPO` | `108` | `CorePpoParameter` | `FastPeriod` (int, default `12`), `SlowPeriod` (int, default `26`) | `false` | `"Main"` |
-| `PriceOscillator` | `109` | `(none)` | (no parameters) | `false` | `"Main"` |
+| `PriceOscillator` | `109` | `CorePpoParameter` | `FastPeriod` (int, default `10`), `SlowPeriod` (int, default `20`) | `false` | `"Main"` |
 | `RVI` | `110` | `CoreSmaParameter` | `Period` (int, default `10`, range `[1, 1000]`) | `false` | `"Main"`, `"SignalLine"` |
 | `PsychologicalLine` | `125` | `CoreSmaParameter` | `Period` (int, default `12`, range `[1, 1000]`) | `false` | `"Main"` |
 | `MaDeviationRate` | `126` | `CoreMaDeviationRateParameter` | `Period` (int, default `25`, range `[1, 1000]`), `MaType` (MovingAverageType, default `7 (SMA)`) | `false` | `"Main"` |
@@ -77,6 +78,8 @@ This section is generated from the production code (`IndicatorFactory`, each ind
 | `EfficiencyRatio` | `177` | `CoreEfficiencyRatioParameter` | `Period` (int, default `10`) | `false` | `"Main"` |
 | `ClothoidOscillator` | `180` | `CoreClothoidOscillatorParameter` | `Period` (int, default `14`, range `[4, 200]`), `DecayAlpha` (double, default `1.5`, range `[0, 5]`), `SignalPeriod` (int, default `9`, range `[1, 50]`), `PriceSource` (PriceType, default `0 (Close)`) | `false` | `"Main"`, `"Signal"`, `"Histogram"`, `"RawCurvatureRate"` |
 | `Ratiocator` | `185` | `CoreRatiocatorParameter` | `ComparisonSymbol` (string, default `""`), `ComparisonPriceSource` (PriceType, default `0 (Close)`), `CalculationMode` (RatiocatorCalculationMode, default `2 (RollingRatio)`), `LookbackPeriod` (int, default `20`, range `[1, 1000]`), `SmoothingPeriod` (int, default `10`, range `[0, 1000]`) | `false` | `"Main"`, `"Signal"` |
+| `TSI` | `196` | `CoreTsiParameter` | `LongPeriod` (int, default `25`), `ShortPeriod` (int, default `13`), `SignalPeriod` (int, default `7`) | `false` | `"Main"`, `"Signal"`, `"Histogram"` |
+| `StochRSI` | `197` | `CoreStochRsiParameter` | `RsiPeriod` (int, default `14`), `StochPeriod` (int, default `14`), `KPeriod` (int, default `3`), `DPeriod` (int, default `3`) | `false` | `"Main"`, `"PercentD"` |
 
 ### Category: Other
 
@@ -167,18 +170,21 @@ This section is generated from the production code (`IndicatorFactory`, each ind
 | `HilbertTrendline` | `165` | `CoreHilbertTrendlineParameter` | `DefaultPeriod` (int, default `14`, range `[2, 100]`), `MinPeriod` (int, default `6`, range `[2, 50]`), `MaxPeriod` (int, default `50`, range `[10, 200]`), `SmoothBeta` (decimal, default `0.1`, range `[0.01, 1]`), `DeltaLimit` (decimal, default `3.0`, range `[0.5, 20]`) | `true` | `"Main"` |
 | `VIDYA` | `171` | `CoreVidyaParameter` | `SmoothPeriod` (int, default `9`), `CmoPeriod` (int, default `9`) | `true` | `"Main"` |
 | `ClothoidMovingAverage` | `181` | `CoreClothoidMovingAverageParameter` | `Period` (int, default `20`, range `[2, 500]`), `Offset` (double, default `0.85`, range `[0, 1]`), `Sigma` (double, default `6`, range `[0.5, 20]`), `PriceSource` (PriceType, default `0 (Close)`) | `true` | `"Main"`, `"EffectiveLag"`, `"EffectiveSampleSize"` |
+| `ChandelierExit` | `193` | `CoreChandelierExitParameter` | `Period` (int, default `22`), `Multiplier` (decimal, default `3.0`) | `true` | `"Main"`, `"ShortStop"` |
+| `T3` | `194` | `CoreT3Parameter` | `Period` (int, default `5`), `VolumeFactor` (decimal, default `0.7`) | `true` | `"Main"` |
+| `McGinleyDynamic` | `195` | `CoreMcGinleyDynamicParameter` | `Period` (int, default `14`), `Constant` (decimal, default `0.6`) | `true` | `"Main"` |
 
 ### Category: Volatility
 
 | IndicatorType | Ordinal | Parameter Class (`"$type"`) | Parameters (Name, Type, Default, Range) | IsOverlay | Output Series Names |
 |---|---|---|---|---|---|
-| `VaR` | `26` | `CoreSmaParameter` | `Period` (int, default `20`, range `[1, 1000]`) | `false` | `"Main"` |
+| `VaR` | `26` | `CoreCVarParameter` | `Period` (int, default `20`), `ConfidenceLevel` (double, default `0.95`) | `false` | `"Main"` |
 | `CVaR` | `27` | `CoreCVarParameter` | `Period` (int, default `20`), `ConfidenceLevel` (double, default `0.95`) | `false` | `"Main"` |
 | `Variance` | `28` | `CoreSmaParameter` | `Period` (int, default `20`, range `[1, 1000]`) | `false` | `"Main"` |
 | `StandardDeviation` | `29` | `CoreStandardDeviationParameter` | `Period` (int, default `20`, range `[1, 10000]`), `IsPopulation` (bool, default `false`) | `false` | `"Main"` |
 | `BB` | `33` | `CoreBollingerBandsParameter` | `Period` (int, default `20`, range `[1, 1000]`), `StdDevMultiplier` (decimal, default `2.0`, range `[0.1, 10]`) | `true` | `"Main"`, `"Upper"`, `"Lower"`, `"MiddleBand"`, `"UpperBand"`, `"LowerBand"` |
 | `ATR` | `36` | `CoreAtrParameter` | `Period` (int, default `14`, range `[1, 1000]`) | `false` | `"Main"` |
-| `Keltner` | `50` | `(none)` | (no parameters) | `true` | `"Main"`, `"UpperBand"`, `"LowerBand"` |
+| `Keltner` | `50` | `CoreKeltnerParameter` | `EmaPeriod` (int, default `20`), `AtrPeriod` (int, default `10`), `Multiplier` (decimal, default `2.0`) | `true` | `"Main"`, `"UpperBand"`, `"LowerBand"` |
 | `ChaikinVolatility` | `55` | `CoreChaikinVolatilityParameter` | `Period` (int, default `10`), `RocPeriod` (int, default `10`) | `false` | `"Main"` |
 | `YangZhangVolatility` | `56` | `CoreSmaParameter` | `Period` (int, default `10`, range `[1, 1000]`) | `false` | `"Main"` |
 | `ChoppinessIndex` | `57` | `CoreSmaParameter` | `Period` (int, default `14`, range `[1, 1000]`) | `false` | `"Main"` |
@@ -187,7 +193,7 @@ This section is generated from the production code (`IndicatorFactory`, each ind
 | `Egarch` | `76` | `CoreEgarchParameter` | `Period` (int, default `250`, range `[50, 2000]`), `RefitInterval` (int, default `20`, range `[1, 250]`), `P` (int, default `1`, range `[1, 3]`), `Q` (int, default `1`, range `[1, 3]`), `MaxIterations` (int, default `1000`, range `[50, 20000]`), `MaxSigmaRatio` (decimal, default `50`, range `[2, 100000]`), `MinSigmaRatio` (decimal, default `0.01`, range `[0, 0.5]`) | `false` | `"Main"` |
 | `HistoricalVolatility` | `82` | `CoreSmaParameter` | `Period` (int, default `20`, range `[1, 1000]`) | `false` | `"Main"` |
 | `MassIndex` | `101` | `CoreMassIndexParameter` | `Period` (int, default `25`), `EmaPeriod` (int, default `9`) | `false` | `"Main"` |
-| `GarmanKlassVolatility` | `115` | `(none)` | (no parameters) | `false` | `"Main"` |
+| `GarmanKlassVolatility` | `115` | `CoreGarmanKlassVolatilityParameter` | `Period` (int, default `1`), `Annualize` (bool, default `false`), `PeriodsPerYear` (int, default `252`) | `false` | `"Main"` |
 | `Donchian` | `120` | `CoreSmaParameter` | `Period` (int, default `20`, range `[1, 1000]`) | `true` | `"UpperBand"`, `"Main"`, `"LowerBand"`, `"Position"` |
 | `NATR` | `121` | `CoreSmaParameter` | `Period` (int, default `14`, range `[1, 1000]`) | `false` | `"Main"` |
 | `RviVolatility` | `122` | `CoreSmaParameter` | `Period` (int, default `10`, range `[1, 1000]`) | `false` | `"Main"` |
@@ -208,7 +214,7 @@ This section is generated from the production code (`IndicatorFactory`, each ind
 | `VPT` | `21` | `(none)` | (no parameters) | `false` | `"Main"` |
 | `PVI` | `22` | `(none)` | (no parameters) | `false` | `"Main"` |
 | `OBV` | `37` | `(none)` | (no parameters) | `false` | `"Main"` |
-| `VWAP` | `38` | `(none)` | (no parameters) | `true` | `"Main"` |
+| `VWAP` | `38` | `CoreVwapParameter` | `ResetPeriod` (VwapResetPeriod, default `0 (Cumulative)`), `ShowBands` (bool, default `false`), `StdDevMultiplier` (decimal, default `2.0`) | `true` | `"Main"` |
 | `CMF` | `39` | `CoreSmaParameter` | `Period` (int, default `20`, range `[1, 1000]`) | `false` | `"Main"` |
 | `ChaikinOscillator` | `40` | `CoreChaikinOscillatorParameter` | `FastPeriod` (int, default `3`), `SlowPeriod` (int, default `10`) | `false` | `"Main"` |
 | `EOM` | `41` | `CoreSmaParameter` | `Period` (int, default `14`, range `[1, 1000]`) | `false` | `"Main"` |
@@ -217,12 +223,13 @@ This section is generated from the production code (`IndicatorFactory`, each ind
 | `MFI` | `65` | `CoreSmaParameter` | `Period` (int, default `14`, range `[1, 1000]`) | `false` | `"Main"` |
 | `ForceIndex` | `89` | `(none)` | (no parameters) | `false` | `"Main"` |
 | `NegativeVolumeIndex` | `90` | `(none)` | (no parameters) | `false` | `"Main"` |
-| `AnchoredVWAP` | `114` | `(none)` | (no parameters) | `true` | `"Main"` |
+| `AnchoredVWAP` | `114` | `CoreAnchoredVwapParameter` | `AnchorIndex` (int, default `0`), `AnchorDate` (string, default `""`), `ShowBands` (bool, default `false`), `StdDevMultiplier` (decimal, default `2.0`) | `true` | `"Main"` |
 | `PVT` | `118` | `(none)` | (no parameters) | `false` | `"Main"` |
 | `VolumeMA` | `127` | `CoreSmaParameter` | `Period` (int, default `20`, range `[1, 1000]`) | `false` | `"Main"` |
 | `VolumeROC` | `128` | `CoreSmaParameter` | `Period` (int, default `14`, range `[1, 1000]`) | `false` | `"Main"` |
 | `Volume` | `132` | `(none)` | (no parameters) | `false` | `"Main"` |
 | `RollingVWAP` | `172` | `CoreRollingVwapParameter` | `Period` (int, default `20`, range `[1, 10000]`) | `true` | `"Main"` |
+| `KVO` | `198` | `CoreKvoParameter` | `FastPeriod` (int, default `34`), `SlowPeriod` (int, default `55`), `SignalPeriod` (int, default `13`) | `false` | `"Main"`, `"Signal"`, `"Histogram"` |
 
 ---
 
@@ -240,6 +247,8 @@ Enums are serialized as integers. The member name in parentheses is for readabil
 - **`DtwOutputMode`**: `0` = `Distance`, `1` = `Similarity`
 - **`HoughNormalizationMode`**: `0` = `Raw`, `1` = `Relative`, `2` = `Log`, `3` = `MinMax`, `4` = `ZScore`
 - **`MovingAverageType`**: `0` = `ALMA`, `1` = `DEMA`, `2` = `EMA`, `3` = `HMA`, `4` = `KAMA`, `5` = `LRMA`, `6` = `LSMA`, `7` = `SMA`, `8` = `SMMA`, `9` = `TEMA`, `10` = `TMA`, `11` = `WMA`, `12` = `ZLEMA`
+- **`PivotPointType`**: `0` = `Standard`, `1` = `Fibonacci`, `2` = `Woodie`, `3` = `Camarilla`
+- **`PivotSourcePeriod`**: `0` = `PreviousBar`, `1` = `Week`, `2` = `Month`
 - **`PriceType`**: `0` = `Close`, `1` = `Open`, `2` = `High`, `3` = `Low`, `4` = `Median`, `5` = `Midpoint`, `6` = `Typical`, `7` = `Weighted`, `8` = `Average`, `9` = `HeikinAshiOpen`, `10` = `HeikinAshiHigh`, `11` = `HeikinAshiLow`, `12` = `HeikinAshiClose`, `13` = `TrueHigh`, `14` = `TrueLow`
 - **`RankCorrelationMethod`**: `0` = `Spearman`, `1` = `Kendall`
 - **`RatiocatorCalculationMode`**: `0` = `RawRatio`, `1` = `NormalizedRatio`, `2` = `RollingRatio`
@@ -247,6 +256,7 @@ Enums are serialized as integers. The member name in parentheses is for readabil
 - **`SsaDetrendMode`**: `0` = `LeastSquaresLinear`, `1` = `EndpointLinear`, `2` = `None`
 - **`SsaResidualBandSigmaMode`**: `0` = `ExactDiagonalAverage`, `1` = `FastEigenEnergy`
 - **`VolumeDistributionMode`**: `0` = `Proportional`, `1` = `Full`
+- **`VwapResetPeriod`**: `0` = `Cumulative`, `1` = `Weekly`, `2` = `Monthly`, `3` = `Quarterly`, `4` = `Yearly`
 <!-- END GENERATED CATALOG -->
 
 ---

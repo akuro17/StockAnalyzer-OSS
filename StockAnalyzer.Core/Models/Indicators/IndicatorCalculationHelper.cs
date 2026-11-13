@@ -14,6 +14,13 @@ public static class IndicatorCalculationHelper
     public const decimal BoundedOscillatorNeutral = 50m;
 
     /// <summary>
+    /// A double result of ln / sqrt back to decimal (rule G4): the value only when it is finite and its magnitude is below
+    /// <see cref="IndicatorDefaultConstants.MaxDoubleToDecimalMagnitude"/>, otherwise null. Never throws.
+    /// </summary>
+    public static decimal? ToDecimalOrNull(double value)
+        => double.IsFinite(value) && Math.Abs(value) < IndicatorDefaultConstants.MaxDoubleToDecimalMagnitude ? (decimal)value : null;
+
+    /// <summary>
     /// Calculates Exponential Moving Average (EMA) from a list of decimal values.
     /// </summary>
     /// <param name="prices">List of prices (non-nullable)</param>

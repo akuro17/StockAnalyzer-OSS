@@ -5,6 +5,7 @@ using StockAnalyzer.Core.Models.Indicators.MovingAverages;
 using StockAnalyzer.Core.Models.Indicators.Oscillators;
 using StockAnalyzer.Core.Models.Indicators.Statistics;
 using StockAnalyzer.Core.Models.Indicators.Volatility;
+using StockAnalyzer.Core.Models.Parameters;
 
 namespace StockAnalyzer.Core.Models.Indicators;
 
@@ -14,9 +15,14 @@ namespace StockAnalyzer.Core.Models.Indicators;
 /// chart or sub-panel whose actually-drawn series are price-scaled or bounded to <c>[-1, 1]</c>.
 ///
 /// The chart renderer (<c>IndicatorRenderer</c>), the price panel snapshot (<c>ChartDataSnapshot</c>),
-/// the sub-panel auto-range calculator (<c>PanelValueRangeCalculator</c>), and the inspector
-/// (<c>DataWindowViewModel</c>) all consult this, so the exclusion is defined exactly once
-/// instead of being duplicated per call site.
+/// the sub-panel auto-range calculator (<c>PanelValueRangeCalculator</c>), the AI chart image
+/// (<c>AiChartSeriesSelector</c>) and the inspector (<c>DataWindowViewModel</c>) all consult this, so the
+/// exclusion is defined exactly once instead of being duplicated per call site.
+///
+/// Besides the fixed per-type table, a series can be hidden only while a parameter of its indicator says so
+/// (<c>ParameterDependentSuppressedSeries</c>, for example the KST Signal while <c>ShowSignal</c> is off): the chart,
+/// the sub-panel range and the AI image then leave it out, while the series stays in the indicator result, the
+/// DataWindow, the screener and the backtest. The chart-side callers pass the parameter object of the indicator setting.
 /// </summary>
 public static class IndicatorChartSuppression
 {
@@ -118,13 +124,42 @@ public static class IndicatorChartSuppression
         };
 
     /// <summary>
+    /// A series that is hidden from the chart only while a parameter of its indicator says so (for example a
+    /// "Show ..." switch). The series always stays in the indicator result, the DataWindow and the screener.
+    /// </summary>
+    private readonly record struct ParameterDependentSuppression(string SeriesName, Func<CoreIndicatorParameterBase?, bool> IsHidden);
+
+    // KST Signal: always calculated; drawn only when ShowSignal is on. A missing parameter object means the defaults, so it is hidden too.
+    private static readonly IReadOnlyDictionary<IndicatorType, ParameterDependentSuppression> ParameterDependentSuppressedSeries =
+        new Dictionary<IndicatorType, ParameterDependentSuppression>
+        {
+            [IndicatorType.KST] = new ParameterDependentSuppression(
+                nameof(CoreKstIndicator.Signal),
+                static parameters => parameters is not CoreKstParameter { ShowSignal: true }),
+        };
+
+    /// <summary>
     /// True when <paramref name="seriesName"/> of the given indicator <paramref name="type"/> must
     /// not be drawn on the chart and must be kept out of the sub-panel auto-range. Allocation-free.
+    /// <paramref name="parameters"/> is the parameter object of the indicator setting; it only matters for the series
+    /// that a parameter hides (see <see cref="ParameterDependentSuppression"/>), so every other answer is unchanged.
     /// </summary>
-    public static bool IsSuppressed(IndicatorType? type, string seriesName) =>
-        type is { } t
-        && SuppressedSeries.TryGetValue(t, out IReadOnlySet<string>? set)
-        && set.Contains(seriesName);
+    public static bool IsSuppressed(IndicatorType? type, string seriesName, CoreIndicatorParameterBase? parameters = null)
+    {
+        if (type is not { } t)
+        {
+            return false;
+        }
+
+        if (SuppressedSeries.TryGetValue(t, out IReadOnlySet<string>? set) && set.Contains(seriesName))
+        {
+            return true;
+        }
+
+        return ParameterDependentSuppressedSeries.TryGetValue(t, out ParameterDependentSuppression rule)
+               && string.Equals(rule.SeriesName, seriesName, StringComparison.Ordinal)
+               && rule.IsHidden(parameters);
+    }
 
     /// <summary>
     /// True when <paramref name="seriesName"/> of the given indicator <paramref name="type"/> must

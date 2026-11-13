@@ -29,6 +29,21 @@ public sealed class FeatureChannelNormalizationDefaultsTests
     public void EverythingElse_IsZScoredSoItIsNeverFedRaw(IndicatorType type) =>
         Assert.Equal(ChannelNormalization.WindowZScore, FeatureChannelNormalizationDefaults.ForIndicator(type));
 
+    [Theory]
+    [InlineData(IndicatorType.ChandelierExit)] [InlineData(IndicatorType.T3)] [InlineData(IndicatorType.McGinleyDynamic)]
+    [InlineData(IndicatorType.VolumeProfileLevels)]
+    public void PlanThreePriceUnitIndicators_AreMinMaxScaled(IndicatorType type) =>
+        Assert.Equal(ChannelNormalization.WindowMinMax, FeatureChannelNormalizationDefaults.ForIndicator(type));
+
+    [Theory]
+    [InlineData(IndicatorType.TSI)] [InlineData(IndicatorType.StochRSI)]
+    public void PlanThreeBoundedOscillators_NeedNoNormalization(IndicatorType type) =>
+        Assert.Equal(ChannelNormalization.None, FeatureChannelNormalizationDefaults.ForIndicator(type));
+
+    [Fact]
+    public void Kvo_IsAVolumeForceSeries_SoItStaysZScored() =>
+        Assert.Equal(ChannelNormalization.WindowZScore, FeatureChannelNormalizationDefaults.ForIndicator(IndicatorType.KVO));
+
     [Fact]
     public void EveryIndicatorTypeHasADefault()
     {

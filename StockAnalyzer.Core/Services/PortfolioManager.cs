@@ -737,6 +737,16 @@ public class PortfolioManager : IPortfolioManager
             await Task.Yield();
         }
 
+        // One reference date for every symbol, taken from the stored data (not from the clock): the newest bar date over all symbols.
+        // No stored bar at all -> MinValue; GetStartPriceFromData then returns 0 for every symbol.
+        var referenceDate = DateTime.MinValue;
+        foreach (var data in allTickerData.Values)
+        {
+            if (data is null || data.Count == 0) continue; // a provider answering null means "no data", as GetStartPriceFromData treats it
+            var lastBarDate = data[data.Count - 1].Timestamp.Date;
+            if (lastBarDate > referenceDate) referenceDate = lastBarDate;
+        }
+
         // Second pass: Compute entries from pre-fetched data (no further DB access needed)
         foreach (var symbol in symbols)
         {
@@ -746,7 +756,7 @@ public class PortfolioManager : IPortfolioManager
             if (!latestPrices.TryGetValue(symbol, out var endPrice)) continue;
 
             var metadata = await marketDataProvider.GetMetadataAsync(symbol);
-            var startPrice = GetStartPriceFromData(allTickerData.GetValueOrDefault(symbol), period);
+            var startPrice = GetStartPriceFromData(allTickerData.GetValueOrDefault(symbol), period, referenceDate);
 
             float ret = 0;
             if (startPrice > 0)
@@ -774,13 +784,13 @@ public class PortfolioManager : IPortfolioManager
 
     /// <summary>
     /// Computes the start price from pre-fetched candle data. Pure in-memory computation, no DB access.
+    /// <paramref name="referenceDate"/> is the date of the newest stored bar (decided by the caller), never the current clock.
     /// </summary>
-    private static decimal GetStartPriceFromData(IReadOnlyList<CandleData>? data, PerformancePeriod period)
+    private static decimal GetStartPriceFromData(IReadOnlyList<CandleData>? data, PerformancePeriod period, DateTime referenceDate)
     {
         if (data == null || data.Count == 0) return 0;
 
         int index = -1;
-        var now = DateTime.Now;
         switch (period)
         {
             case PerformancePeriod.OneDay:
@@ -793,17 +803,17 @@ public class PortfolioManager : IPortfolioManager
                 break;
             case PerformancePeriod.MonthToDate:
                 // Last business day of previous month
-                var firstOfMonth = new DateTime(now.Year, now.Month, 1);
+                var firstOfMonth = new DateTime(referenceDate.Year, referenceDate.Month, 1);
                 index = FindNearestIndex(data, firstOfMonth) - 1;
                 break;
             case PerformancePeriod.YearToDate:
                 // Last business day of previous year
-                var firstOfYear = new DateTime(now.Year, 1, 1);
+                var firstOfYear = new DateTime(referenceDate.Year, 1, 1);
                 index = FindNearestIndex(data, firstOfYear) - 1;
                 break;
             case PerformancePeriod.OneYear:
                 // Close on same day 1 year ago (or nearest preceding business day)
-                var yearAgo = now.AddYears(-1);
+                var yearAgo = referenceDate.AddYears(-1);
                 index = FindNearestIndex(data, yearAgo) - 1;
                 break;
         }

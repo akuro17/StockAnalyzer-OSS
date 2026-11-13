@@ -26,9 +26,19 @@ namespace StockAnalyzer.Core.Models.Indicators.Chart
         public List<decimal?> S2 { get; } = new();
         public List<decimal?> S3 { get; } = new();
 
+        /// <summary>
+        /// Bars whose high, low and close give the levels. PreviousBar (default) = the previous bar (original behaviour);
+        /// Week / Month = the last completed ISO week / calendar month, so all bars of a period share the same levels.
+        /// Unit: price-native.
+        /// </summary>
+        public PivotSourcePeriod SourcePeriod { get; set; } = PivotSourcePeriod.PreviousBar;
+
         public override void Configure(CoreIndicatorParameterBase parameters)
         {
-            // Parameterless indicator
+            if (parameters is CoreClassicPivotPointsParameter p)
+            {
+                SourcePeriod = p.SourcePeriod;
+            }
         }
 
         protected override IIndicatorResult CalculateCore(IReadOnlyList<CoreCandleData> candles)
@@ -54,6 +64,24 @@ namespace StockAnalyzer.Core.Models.Indicators.Chart
             S1.Capacity = count;
             S2.Capacity = count;
             S3.Capacity = count;
+
+            if (SourcePeriod != PivotSourcePeriod.PreviousBar)
+            {
+                PivotPeriodHlc?[] sources = PivotSourcePeriodScan.ScanPreviousPeriods(candles, SourcePeriod);
+                for (int i = 0; i < count; i++)
+                {
+                    if (sources[i] is { } source)
+                    {
+                        AddLevels(source.High, source.Low, source.Close);
+                    }
+                    else
+                    {
+                        AddNullLevels();
+                    }
+                }
+
+                return BuildResult();
+            }
 
             if (count < 2)
             {
@@ -81,40 +109,52 @@ namespace StockAnalyzer.Core.Models.Indicators.Chart
             for (int i = 1; i < count; i++)
             {
                 var prevCandle = candles[i - 1];
-                decimal high = prevCandle.High;
-                decimal low = prevCandle.Low;
-                decimal close = prevCandle.Close;
-
-                // Central Pivot Point
-                decimal pivot = (high + low + close) / 3m;
-
-                // Resistance 1 & Support 1
-                decimal r1 = 2m * pivot - low;
-                decimal s1 = 2m * pivot - high;
-
-                // Range
-                decimal diff = high - low;
-
-                // Resistance 2 & Support 2
-                decimal r2 = pivot + diff;
-                decimal s2 = pivot - diff;
-
-                // Resistance 3 (HBOP) & Support 3 (LBOP)
-                // R3 = R1 + (H - L) == 2P - 2L + H == H + 2(P - L)
-                // S3 = S1 - (H - L) == 2P - 2H + L == L - 2(H - P)
-                decimal r3 = r1 + diff;
-                decimal s3 = s1 - diff;
-
-                _values.Add(pivot);
-                R1.Add(r1);
-                R2.Add(r2);
-                R3.Add(r3);
-                S1.Add(s1);
-                S2.Add(s2);
-                S3.Add(s3);
+                AddLevels(prevCandle.High, prevCandle.Low, prevCandle.Close);
             }
 
             return BuildResult();
+        }
+
+        private void AddNullLevels()
+        {
+            _values.Add(null);
+            R1.Add(null);
+            R2.Add(null);
+            R3.Add(null);
+            S1.Add(null);
+            S2.Add(null);
+            S3.Add(null);
+        }
+
+        private void AddLevels(decimal high, decimal low, decimal close)
+        {
+            // Central Pivot Point
+            decimal pivot = (high + low + close) / 3m;
+
+            // Resistance 1 & Support 1
+            decimal r1 = 2m * pivot - low;
+            decimal s1 = 2m * pivot - high;
+
+            // Range
+            decimal diff = high - low;
+
+            // Resistance 2 & Support 2
+            decimal r2 = pivot + diff;
+            decimal s2 = pivot - diff;
+
+            // Resistance 3 (HBOP) & Support 3 (LBOP)
+            // R3 = R1 + (H - L) == 2P - 2L + H == H + 2(P - L)
+            // S3 = S1 - (H - L) == 2P - 2H + L == L - 2(H - P)
+            decimal r3 = r1 + diff;
+            decimal s3 = s1 - diff;
+
+            _values.Add(pivot);
+            R1.Add(r1);
+            R2.Add(r2);
+            R3.Add(r3);
+            S1.Add(s1);
+            S2.Add(s2);
+            S3.Add(s3);
         }
 
         private IIndicatorResult BuildResult()

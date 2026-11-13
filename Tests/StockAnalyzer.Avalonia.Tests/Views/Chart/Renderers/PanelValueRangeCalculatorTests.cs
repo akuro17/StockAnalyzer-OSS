@@ -6,6 +6,7 @@ using StockAnalyzer.Avalonia.Views.Chart;
 using StockAnalyzer.Avalonia.Views.Chart.Renderers;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Indicators;
+using StockAnalyzer.Core.Models.Parameters;
 
 namespace StockAnalyzer.Avalonia.Tests.Views.Chart.Renderers
 {
@@ -59,6 +60,52 @@ namespace StockAnalyzer.Avalonia.Tests.Views.Chart.Renderers
             Assert.True(maxVal <= 1.0m, $"Max value ({maxVal}) should not exceed 1.0 (must not include stock price ~3000).");
             Assert.Equal(-0.22m, minVal);
             Assert.Equal(0.22m, maxVal);
+        }
+
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public void Calculate_ForKst_SignalTakesPartInTheRangeOnlyWhileShowSignalIsOn(bool showSignal)
+        {
+            var setting = new CoreIndicatorSettings
+            {
+                Id = "kst_signal_range",
+                TypeEnum = IndicatorType.KST,
+                IsOverlay = false,
+                ParameterObject = new CoreKstParameter { ShowSignal = showSignal }
+            };
+
+            var result = IndicatorResult.Success(new Dictionary<string, IReadOnlyList<decimal?>>
+            {
+                { "Main", new List<decimal?> { -2m, 0m, 3m, 1m, 2m } },
+                { "Signal", new List<decimal?> { null, null, 500m, 400m, 300m } }
+            });
+            var candles = new List<CoreCandleData>();
+            for (int i = 0; i < 5; i++)
+            {
+                candles.Add(new CoreCandleData(DateTime.Today.AddDays(i), 3000m, 3100m, 2900m, 3050m, 1000));
+            }
+
+            var snapshot = new ChartDataSnapshot(
+                candles: candles,
+                indicatorResults: new Dictionary<string, IIndicatorResult> { { setting.Id, result } },
+                indicatorSettings: new[] { setting },
+                startIndex: 0,
+                count: 5);
+
+            var (minVal, maxVal) = PanelValueRangeCalculator.Calculate(snapshot, setting);
+
+            if (showSignal)
+            {
+                Assert.Equal(-2m - 502m * 0.05m, minVal);
+                Assert.Equal(500m + 502m * 0.05m, maxVal);
+            }
+            else
+            {
+                // Main only: [-2, 3], buffer 5 % of 5 = 0.25
+                Assert.Equal(-2.25m, minVal);
+                Assert.Equal(3.25m, maxVal);
+            }
         }
 
         [Fact]

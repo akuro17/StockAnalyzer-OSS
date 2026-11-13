@@ -19,6 +19,18 @@ public class CoreBollingerBandsRatioIndicator : CoreIndicatorBase
         }
     }
 
+    // Same parameter type and initial values as the DefaultCoreIndicatorSettings entry (the naming rule would find none).
+    public override CoreIndicatorSettings GetDefaultSettings()
+    {
+        var settings = base.GetDefaultSettings();
+        settings.ParameterObject = new CoreBollingerBandsParameter
+        {
+            Period = IndicatorDefaultConstants.BollingerBandsRatioPeriod,
+            StdDevMultiplier = IndicatorDefaultConstants.BollingerBandsRatioStdDevMultiplier
+        };
+        return settings;
+    }
+
     protected override IIndicatorResult CalculateCore(IReadOnlyList<CoreCandleData> candles)
     {
 

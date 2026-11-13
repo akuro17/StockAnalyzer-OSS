@@ -239,7 +239,7 @@ internal sealed class RenderChartImageTool : IMcpImageTool
                         CalculatorHint);
                 }
 
-                IReadOnlyList<AiChartSelectedSeries> selected = AiChartSeriesSelector.Select(type, result, windowStart, drawn);
+                IReadOnlyList<AiChartSelectedSeries> selected = AiChartSeriesSelector.Select(type, result, windowStart, drawn, request.Settings.ParameterObject);
                 if (selected.Count == 0)
                 {
                     notes.Add($"'{request.Id}' ({request.Entry.Type}) has no value to draw in the drawn window (the stored history may be shorter than its warm-up), so it is not drawn.");

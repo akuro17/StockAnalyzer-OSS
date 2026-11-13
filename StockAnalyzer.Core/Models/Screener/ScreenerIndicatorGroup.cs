@@ -63,7 +63,8 @@ public class ScreenerIndicatorGroup
                 IndicatorType.SMMA, IndicatorType.GMA, IndicatorType.Dma,
                 IndicatorType.MESA, IndicatorType.KalmanFilter,
                 IndicatorType.MtfLaggedEma, IndicatorType.MovingAverageCross,
-                IndicatorType.FFTTrendFilter, IndicatorType.VIDYA
+                IndicatorType.FFTTrendFilter, IndicatorType.VIDYA,
+                IndicatorType.ChandelierExit, IndicatorType.T3, IndicatorType.McGinleyDynamic
             }, "Indicator", "ScreenerGroup_Trend"),
 
             new("Oscillator", new[]
@@ -85,7 +86,8 @@ public class ScreenerIndicatorGroup
                 IndicatorType.ElderRay, IndicatorType.ElderImpulse,
                 IndicatorType.MassIndex, IndicatorType.PsychologicalLine,
                 IndicatorType.MaDeviationRate, IndicatorType.QStick,
-                IndicatorType.StructuralDtw, IndicatorType.FrechetOscillator
+                IndicatorType.StructuralDtw, IndicatorType.FrechetOscillator,
+                IndicatorType.TSI, IndicatorType.StochRSI
             }, "Indicator", "ScreenerGroup_Oscillator"),
 
             new("Volume", new[]
@@ -98,7 +100,7 @@ public class ScreenerIndicatorGroup
                 IndicatorType.PVT, IndicatorType.AnchoredVWAP,
                 IndicatorType.RollingVWAP,
                 IndicatorType.Volume, IndicatorType.AmihudIlliquidity,
-                IndicatorType.KylesLambda
+                IndicatorType.KylesLambda, IndicatorType.KVO
             }, "Indicator", "ScreenerGroup_Volume"),
 
             new("Volatility", new[]
@@ -145,7 +147,7 @@ public class ScreenerIndicatorGroup
                 IndicatorType.PointAndFigureOverlay, IndicatorType.ThreeLineBreak,
                 IndicatorType.ThreeLineBreakSignal, IndicatorType.DarvasBox,
                 IndicatorType.DarvasBoxSignal, IndicatorType.VortexSignal,
-                IndicatorType.MarketStructureShift
+                IndicatorType.MarketStructureShift, IndicatorType.VolumeProfileLevels
             }, "Indicator", "ScreenerGroup_Chart"),
 
             // === Column Customization Groups ===

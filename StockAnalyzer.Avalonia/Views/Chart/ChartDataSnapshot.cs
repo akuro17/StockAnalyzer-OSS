@@ -377,7 +377,7 @@ public sealed class ChartDataSnapshot
                          // Skip non-price series from scaling logic
                          if (seriesName == "IsUpTrend") continue;
                          if (PanelValueRangeCalculator.IsSignalSeries(seriesName)) continue;
-                         if (IndicatorChartSuppression.IsSuppressed(setting.TypeEnum, seriesName)) continue;
+                         if (IndicatorChartSuppression.IsSuppressed(setting.TypeEnum, seriesName, setting.ParameterObject)) continue;
 
                          var values = slicedResult.GetSeries(seriesName);
                          if (values == null) continue;
@@ -670,7 +670,7 @@ public sealed class ChartDataSnapshot
                          // Skip non-price series from scaling logic
                          if (seriesName == "IsUpTrend") continue;
                          if (PanelValueRangeCalculator.IsSignalSeries(seriesName)) continue;
-                         if (IndicatorChartSuppression.IsSuppressed(setting.TypeEnum, seriesName)) continue;
+                         if (IndicatorChartSuppression.IsSuppressed(setting.TypeEnum, seriesName, setting.ParameterObject)) continue;
 
                          var values = slicedResult.GetSeries(seriesName);
                          if (values == null) continue;

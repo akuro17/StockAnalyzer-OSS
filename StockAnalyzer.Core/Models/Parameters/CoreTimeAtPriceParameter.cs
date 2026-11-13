@@ -18,7 +18,7 @@ namespace StockAnalyzer.Core.Models.Parameters
         private int _rowCount = 50;
         [DisplayName("Row Count")]
         [Description("Number of vertical price histogram buckets.")]
-        [CoreParameterRange(5, 200)]
+        [CoreParameterRange(IndicatorDefaultConstants.VolumeProfileMinRowCount, IndicatorDefaultConstants.VolumeProfileMaxRowCount)]
         public int RowCount 
         { 
             get => _rowCount; 
@@ -86,9 +86,9 @@ namespace StockAnalyzer.Core.Models.Parameters
             {
                 throw new ArgumentOutOfRangeException(nameof(Period), "Period must be between 0 (All) and 10000.");
             }
-            if (RowCount < 5 || RowCount > 200)
+            if (RowCount < IndicatorDefaultConstants.VolumeProfileMinRowCount || RowCount > IndicatorDefaultConstants.VolumeProfileMaxRowCount)
             {
-                throw new ArgumentOutOfRangeException(nameof(RowCount), "Row Count must be between 5 and 200.");
+                throw new ArgumentOutOfRangeException(nameof(RowCount), $"Row Count must be between {IndicatorDefaultConstants.VolumeProfileMinRowCount} and {IndicatorDefaultConstants.VolumeProfileMaxRowCount}.");
             }
         }
     }

@@ -103,13 +103,41 @@ public class CoreKstParameter : CoreIndicatorParameterBase
         set => SetProperty(ref _sma4, value);
     }
 
+    // Signal line (Pring): SMA of the KST (Main) over SignalPeriod bars. Unit: oscillator (same as Main).
+    private int _signalPeriod = IndicatorDefaultConstants.KstSignalPeriod;
+
+    [DisplayName("Signal Period")]
+    [Description("Period (bars) of the simple moving average of KST that forms the Signal line.")]
+    [Category("Signal")]
+    [CoreParameterRange(IndicatorDefaultConstants.KstMinSignalPeriod, IndicatorDefaultConstants.KstMaxSignalPeriod)]
+    public int SignalPeriod
+    {
+        get => _signalPeriod;
+        set => SetProperty(ref _signalPeriod, value);
+    }
+
+    private bool _showSignal;
+
+    [DisplayName("Show Signal")]
+    [Description("Draw the signal line on the chart. The signal series is always calculated and available to the Data Window, Screener and Backtest.")]
+    [Category("Signal")]
+    public bool ShowSignal
+    {
+        get => _showSignal;
+        set => SetProperty(ref _showSignal, value);
+    }
+
     public override string GetDisplayName(string type) => $"{type}";
 
-    public override int GetRequiredWarmupBars() => Math.Max(Math.Max(Roc1 + Sma1, Roc2 + Sma2), Math.Max(Roc3 + Sma3, Roc4 + Sma4));
+    // Main needs the largest Roc + Sma; the Signal (an SMA of Main over SignalPeriod bars) needs SignalPeriod - 1 more.
+    public override int GetRequiredWarmupBars() =>
+        Math.Max(Math.Max(Roc1 + Sma1, Roc2 + Sma2), Math.Max(Roc3 + Sma3, Roc4 + Sma4)) + Math.Max(0, SignalPeriod - 1);
 
     public override void Validate()
     {
         if (Roc1 <= 0 || Roc2 <= 0 || Roc3 <= 0 || Roc4 <= 0) throw new ArgumentOutOfRangeException("Roc Periods must be positive");
         if (Sma1 <= 0 || Sma2 <= 0 || Sma3 <= 0 || Sma4 <= 0) throw new ArgumentOutOfRangeException("Sma Periods must be positive");
+        if (SignalPeriod < IndicatorDefaultConstants.KstMinSignalPeriod || SignalPeriod > IndicatorDefaultConstants.KstMaxSignalPeriod)
+            throw new ArgumentOutOfRangeException(nameof(SignalPeriod));
     }
 }

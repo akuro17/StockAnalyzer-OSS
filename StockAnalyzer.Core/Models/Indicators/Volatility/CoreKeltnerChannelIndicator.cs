@@ -25,6 +25,14 @@ public class CoreKeltnerChannelIndicator : CoreIndicatorBase
         }
     }
 
+    // The parameter class is CoreKeltnerParameter, not the CoreKeltnerChannelParameter the base-class naming rule looks for.
+    public override CoreIndicatorSettings GetDefaultSettings()
+    {
+        var settings = base.GetDefaultSettings();
+        settings.ParameterObject = new CoreKeltnerParameter();
+        return settings;
+    }
+
     public List<decimal?> UpperBand { get; } = new();
     public List<decimal?> LowerBand { get; } = new();
 

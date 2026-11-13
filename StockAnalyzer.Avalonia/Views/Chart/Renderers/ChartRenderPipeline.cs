@@ -60,6 +60,9 @@ public sealed class ChartRenderPipeline : IDisposable
     private readonly Dictionary<string, int> _assignedPanelIndices = new();
     private readonly Dictionary<int, List<IIndicatorResult>> _panelIndicators = new();
     private readonly Dictionary<int, bool> _panelHasCrossMarkers = new();
+    // Setting of the latest indicator added to each panel; it is the sole indicator's setting
+    // when the panel holds one result (used to skip suppressed series for intra-indicator crosses).
+    private readonly Dictionary<int, CoreIndicatorSettings> _panelLastSettings = new();
     private readonly Dictionary<int, (decimal Min, decimal Max)> _panelRanges = new();
     private readonly List<List<CoreIndicatorSettings>> _overlayGroupListsPool = new();
     private int _overlayGroupListsUsed;
@@ -515,6 +518,7 @@ public sealed class ChartRenderPipeline : IDisposable
         _panelIndicatorListsUsed = 0;
 
         _panelHasCrossMarkers.Clear();
+        _panelLastSettings.Clear();
         _panelRanges.Clear();
 
         // Pre-scan: build overlay group info for grouped panels.
@@ -653,6 +657,7 @@ public sealed class ChartRenderPipeline : IDisposable
                                 _panelIndicators[currentPanelIdx] = inds;
                             }
                             inds.Add(result);
+                            _panelLastSettings[currentPanelIdx] = setting;
                         }
                     }
 
@@ -682,11 +687,15 @@ public sealed class ChartRenderPipeline : IDisposable
                 else if (inds.Count == 1)
                 {
                     // Intra-indicator cross (e.g., MACD vs Signal)
+                    // Series that are not charted (IndicatorChartSuppression, e.g. KST Signal while
+                    // ShowSignal is off) must not take part in a cross: the marker would sit on an invisible line.
                     var ind = inds[0];
-                    if (ind.SeriesNames.Count() >= 2)
+                    _panelLastSettings.TryGetValue(pIdx, out var ownerSetting);
+                    var (shortName, longName) = SelectIntraIndicatorCrossSeries(ind, ownerSetting);
+                    if (shortName != null && longName != null)
                     {
-                        shortSeries = ind.GetSeries(ind.SeriesNames.ElementAt(0));
-                        longSeries = ind.GetSeries(ind.SeriesNames.ElementAt(1));
+                        shortSeries = ind.GetSeries(shortName);
+                        longSeries = ind.GetSeries(longName);
                     }
                 }
 
@@ -732,6 +741,25 @@ public sealed class ChartRenderPipeline : IDisposable
         }
 
         canvas.Restore();
+    }
+
+    /// <summary>
+    /// Picks the first two charted series of one sub-panel indicator for an intra-indicator cross
+    /// (e.g. MACD vs Signal). Series that <see cref="IndicatorChartSuppression"/> hides are skipped so a
+    /// marker never sits on an invisible line. A null <paramref name="setting"/> keeps the type-less rule.
+    /// </summary>
+    internal static (string? ShortName, string? LongName) SelectIntraIndicatorCrossSeries(
+        IIndicatorResult result, CoreIndicatorSettings? setting)
+    {
+        string? shortName = null;
+        foreach (var seriesName in result.SeriesNames)
+        {
+            if (IndicatorChartSuppression.IsSuppressed(setting?.TypeEnum, seriesName, setting?.ParameterObject))
+                continue;
+            if (shortName == null) shortName = seriesName;
+            else return (shortName, seriesName);
+        }
+        return (null, null);
     }
 
     private void RenderSingleIndicatorPass(

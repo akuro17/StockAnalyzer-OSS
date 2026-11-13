@@ -191,6 +191,171 @@ public static class VolumeAnalysis
         return (bins[upperIndex].UpperBound, bins[lowerIndex].LowerBound);
     }
 
+    // ===== Allocation-free counterparts of CalculateProfile / FindPointOfControlIndex / CalculateValueArea (WebAiExpansion plan 03 T7) =====
+    // They apply the SAME rules as the three functions above (price range, bin width, bin bounds, touched-bin test, volume split, tie-break, value-area expansion)
+    // and write into caller-owned storage, so a time series of profile levels needs no per-bar allocation. Equality with the list-based functions is pinned by
+    // VolumeAnalysisSpanTests (every bin volume, POC price, VAH and VAL). The list-based functions are unchanged.
+
+    /// <summary>Lower bound of bin <paramref name="index"/>; the same expression as <see cref="CalculateProfile"/>.</summary>
+    public static decimal BinLowerBound(decimal minPrice, decimal binSize, int index) => minPrice + (index * binSize);
+
+    /// <summary>Upper bound of bin <paramref name="index"/>; the same expression as <see cref="CalculateProfile"/>.</summary>
+    public static decimal BinUpperBound(decimal minPrice, decimal binSize, int index) => minPrice + ((index + 1) * binSize);
+
+    /// <summary>Price (centre) of bin <paramref name="index"/>; the same expression as <see cref="CalculateProfile"/>.</summary>
+    public static decimal BinPrice(decimal minPrice, decimal binSize, int index) =>
+        (BinLowerBound(minPrice, binSize, index) + BinUpperBound(minPrice, binSize, index)) / 2;
+
+    /// <summary>
+    /// Fills <paramref name="binVolumes"/> (its length is the row count) with the volume of each bin of the profile of <paramref name="window"/>, by the rules of
+    /// <see cref="CalculateProfile"/>: price range = lowest Low to highest High, bin width = range / row count (<see cref="ChartConstants.MinBinSize"/> when that is 0),
+    /// a candle touches every bin with UpperBound &gt;= Low and LowerBound &lt;= High, <see cref="VolumeDistributionMode.Proportional"/> gives each touched bin
+    /// volume / touched-bin count (integer division) and <see cref="VolumeDistributionMode.Full"/> the whole volume. The array is cleared first.
+    /// Returns false (and leaves the volumes cleared) when the window is empty or all prices are equal, the cases where <see cref="CalculateProfile"/> returns no bins.
+    /// </summary>
+    public static bool FillProfile(
+        ReadOnlySpan<CoreCandleData> window,
+        Span<decimal> binVolumes,
+        VolumeDistributionMode mode,
+        out decimal minPrice,
+        out decimal binSize)
+    {
+        binVolumes.Clear();
+        minPrice = 0m;
+        binSize = 0m;
+        int rowCount = binVolumes.Length;
+        if (window.Length == 0 || rowCount == 0) return false;
+
+        decimal low = window[0].Low;
+        decimal high = window[0].High;
+        for (int i = 1; i < window.Length; i++)
+        {
+            if (window[i].Low < low) low = window[i].Low;
+            if (window[i].High > high) high = window[i].High;
+        }
+
+        if (low == high) return false;
+
+        minPrice = low;
+        binSize = (high - low) / rowCount;
+        if (binSize == 0) binSize = ChartConstants.MinBinSize;
+
+        for (int c = 0; c < window.Length; c++)
+        {
+            CoreCandleData candle = window[c];
+
+            // The touched bins are contiguous: UpperBound and LowerBound never decrease with the index.
+            int first = IndexEstimate(candle.Low - minPrice, binSize, rowCount) - 1;
+            if (first < 0) first = 0;
+            while (first > 0 && BinUpperBound(minPrice, binSize, first - 1) >= candle.Low) first--;
+            while (first < rowCount - 1 && BinUpperBound(minPrice, binSize, first) < candle.Low) first++;
+            if (BinUpperBound(minPrice, binSize, first) < candle.Low) continue;
+
+            int last = IndexEstimate(candle.High - minPrice, binSize, rowCount) + 1;
+            if (last > rowCount - 1) last = rowCount - 1;
+            while (last < rowCount - 1 && BinLowerBound(minPrice, binSize, last + 1) <= candle.High) last++;
+            while (last >= 0 && BinLowerBound(minPrice, binSize, last) > candle.High) last--;
+            if (last < first) continue;
+
+            long share = mode == VolumeDistributionMode.Proportional ? candle.Volume / (last - first + 1) : candle.Volume;
+            for (int b = first; b <= last; b++) binVolumes[b] += share;
+        }
+
+        return true;
+    }
+
+    /// <summary>The distance in bins, as an int clamped to [0, rowCount] (a plain cast could overflow for a tiny bin width).</summary>
+    private static int IndexEstimate(decimal distance, decimal binSize, int rowCount)
+    {
+        if (distance <= 0m) return 0;
+        decimal bins = distance / binSize;
+        return bins >= rowCount ? rowCount : (int)bins;
+    }
+
+    /// <summary>
+    /// Index of the Point of Control in <paramref name="binVolumes"/>: the bin with the greatest volume; on a tie the first one (lowest index, lowest price), as
+    /// <see cref="FindPointOfControlIndex(IReadOnlyList{VolumeBin}?)"/>. Returns -1 when the span is empty.
+    /// </summary>
+    public static int FindPointOfControlIndexFromVolumes(ReadOnlySpan<decimal> binVolumes)
+    {
+        if (binVolumes.Length == 0) return -1;
+
+        int pocIndex = 0;
+        decimal maxVol = -1m;
+        for (int i = 0; i < binVolumes.Length; i++)
+        {
+            if (binVolumes[i] > maxVol)
+            {
+                maxVol = binVolumes[i];
+                pocIndex = i;
+            }
+        }
+
+        return pocIndex;
+    }
+
+    /// <summary>
+    /// Value Area of a filled profile by the rules of <see cref="CalculateValueArea"/>: start at the Point of Control and extend towards the neighbour with the larger
+    /// volume (upper on a tie) until the covered volume reaches (long)(total x <paramref name="valueAreaPercent"/>) or both neighbours are empty.
+    /// <paramref name="vah"/> is the upper bound of the highest bin included and <paramref name="val"/> the lower bound of the lowest one; (0, 0) for an empty span.
+    /// </summary>
+    public static void ComputeValueArea(
+        ReadOnlySpan<decimal> binVolumes,
+        decimal minPrice,
+        decimal binSize,
+        double valueAreaPercent,
+        out decimal vah,
+        out decimal val)
+    {
+        vah = 0m;
+        val = 0m;
+        int count = binVolumes.Length;
+        if (count == 0) return;
+        if (count == 1)
+        {
+            vah = BinUpperBound(minPrice, binSize, 0);
+            val = BinLowerBound(minPrice, binSize, 0);
+            return;
+        }
+
+        decimal total = 0m;
+        for (int i = 0; i < count; i++) total += binVolumes[i];
+        long targetVolume = (long)((long)total * valueAreaPercent);
+
+        int pocIndex = FindPointOfControlIndexFromVolumes(binVolumes);
+        decimal currentVolume = binVolumes[pocIndex];
+        int upperIndex = pocIndex;
+        int lowerIndex = pocIndex;
+
+        while (currentVolume < targetVolume)
+        {
+            decimal upperVol = (upperIndex + 1 < count) ? binVolumes[upperIndex + 1] : 0m;
+            decimal lowerVol = (lowerIndex - 1 >= 0) ? binVolumes[lowerIndex - 1] : 0m;
+
+            if (upperVol == 0 && lowerVol == 0) break;
+
+            if (upperVol >= lowerVol)
+            {
+                if (upperIndex + 1 < count)
+                {
+                    upperIndex++;
+                    currentVolume += binVolumes[upperIndex];
+                }
+            }
+            else
+            {
+                if (lowerIndex - 1 >= 0)
+                {
+                    lowerIndex--;
+                    currentVolume += binVolumes[lowerIndex];
+                }
+            }
+        }
+
+        vah = BinUpperBound(minPrice, binSize, upperIndex);
+        val = BinLowerBound(minPrice, binSize, lowerIndex);
+    }
+
     /// <summary>
     /// Calculates Anchored VWAP.
     /// </summary>

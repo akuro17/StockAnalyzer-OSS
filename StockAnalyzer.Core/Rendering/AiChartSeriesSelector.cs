@@ -1,4 +1,5 @@
 using StockAnalyzer.Core.Models.Indicators;
+using StockAnalyzer.Core.Models.Parameters;
 
 namespace StockAnalyzer.Core.Rendering;
 
@@ -17,7 +18,7 @@ public static class AiChartSeriesSelector
     /// The drawn series. <paramref name="windowStart"/> is the index of the first drawn bar inside the result and <paramref name="windowCount"/> the number of drawn bars;
     /// a result shorter than the window gives null values for the missing bars. A failed result gives no series.
     /// </summary>
-    public static IReadOnlyList<AiChartSelectedSeries> Select(IndicatorType type, IIndicatorResult result, int windowStart, int windowCount)
+    public static IReadOnlyList<AiChartSelectedSeries> Select(IndicatorType type, IIndicatorResult result, int windowStart, int windowCount, CoreIndicatorParameterBase? parameters = null)
     {
         var selected = new List<AiChartSelectedSeries>();
         if (!result.IsSuccessful || windowCount <= 0)
@@ -32,7 +33,7 @@ public static class AiChartSeriesSelector
                 break;
             }
 
-            if (IsLeftOut(type, name))
+            if (IsLeftOut(type, name, parameters))
             {
                 continue;
             }
@@ -49,12 +50,15 @@ public static class AiChartSeriesSelector
         return selected;
     }
 
-    /// <summary>True for a series name that the image never draws as a line.</summary>
-    public static bool IsLeftOut(IndicatorType type, string seriesName)
+    /// <summary>
+    /// True for a series name that the image never draws as a line. <paramref name="parameters"/> is the parameter object of the indicator, for the series that a parameter hides
+    /// (KST Signal while ShowSignal is off): the image follows the chart, and a left-out series also stays out of the image's value range, which is computed from the chosen series only.
+    /// </summary>
+    public static bool IsLeftOut(IndicatorType type, string seriesName, CoreIndicatorParameterBase? parameters = null)
         => seriesName == IndicatorSeriesNames.UpTrendFlag
            || IndicatorSeriesNames.IsSignalSeries(seriesName)
            || seriesName.Contains("Histogram", StringComparison.OrdinalIgnoreCase)
-           || IndicatorChartSuppression.IsSuppressed(type, seriesName);
+           || IndicatorChartSuppression.IsSuppressed(type, seriesName, parameters);
 
     private static IReadOnlyList<decimal?> Window(IReadOnlyList<decimal?> series, int start, int count)
     {
