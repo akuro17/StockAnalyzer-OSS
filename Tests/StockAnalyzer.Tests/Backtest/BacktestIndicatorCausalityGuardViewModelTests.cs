@@ -35,7 +35,7 @@ public class BacktestIndicatorCausalityGuardViewModelTests
             Item(IndicatorType.VolumeProfile, "VolumeProfile"),
             Item(IndicatorType.TimeAtPrice, "TimeAtPrice"),
             Item(IndicatorType.MarketStructureShift, "MarketStructureShift"),
-            Item(IndicatorType.Garch11, "Garch11"),
+            Item(IndicatorType.PairRatio, "PairRatio"),   // synchronously uncomputable: a two-symbol indicator without a comparison symbol
         };
         var provider = new FakeScreenerCatalogProvider(source, type => type == IndicatorType.Ichimoku
             ? new[] { "Main", "TenkanSen", "KijunSen", "SenkouSpanA", "SenkouSpanB", CoreIchimokuIndicator.ChikouSpanSeriesName }

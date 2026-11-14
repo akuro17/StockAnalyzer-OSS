@@ -201,6 +201,11 @@ public static class IndicatorDefaultConstants
     public const int GarmanKlassMinPeriod = 1;
     public const int GarmanKlassMaxPeriod = 1000;
 
+    // === Range-based volatility estimators (Parkinson, Rogers-Satchell); unit: percentage per bar (annual percentage when Annualize is on) ===
+    public const int RangeVolatilityDefaultPeriod = 20;
+    public const int RangeVolatilityMinPeriod = 2;
+    public const int RangeVolatilityMaxPeriod = 1000;
+
     // === Prime Number Bands ===
     public const int PrimeNumberBandsPeriod = 8;
     public const decimal PrimeNumberBandsScaleMultiplier = 10.0m;
@@ -235,6 +240,42 @@ public static class IndicatorDefaultConstants
     public const double EgarchDefaultMinSigmaRatio = 0.01;      // below it every surveyed block had alpha < 0 (collapse family)
     public const double EgarchMinMinSigmaRatio = 0.0;           // 0 = off
     public const double EgarchMaxMinSigmaRatio = 0.5;
+
+    // === GARCH(1,1) (rolling QMLE with variance targeting; unit: percentage per bar, annual percentage when Annualize is on) ===
+    // The estimation-window, refit and optimizer bounds are the EGARCH ones on purpose (one definition of "rolling conditional-variance estimation"); GARCH(1,1) has 2 free coefficients, EGARCH 5+.
+    public const int Garch11DefaultPeriod = EgarchDefaultPeriod;
+    public const int Garch11MinPeriod = EgarchMinPeriod;
+    public const int Garch11MaxPeriod = EgarchMaxPeriod;
+    public const int Garch11DefaultRefitInterval = EgarchDefaultRefitInterval;
+    public const int Garch11MinRefitInterval = EgarchMinRefitInterval;
+    public const int Garch11MaxRefitInterval = EgarchMaxRefitInterval;
+    public const int Garch11DefaultMaxIterations = EgarchDefaultMaxIterations;
+    public const int Garch11MinMaxIterations = EgarchMinMaxIterations;
+    public const int Garch11MaxMaxIterations = EgarchMaxMaxIterations;
+
+    // === Fixed 0..1 axis shared by the bounded ratio indicators (Hurst, Entropy, SSAEntropy) ===
+    public const decimal UnitIntervalMinValue = 0.0m;
+    public const decimal UnitIntervalMaxValue = 1.0m;
+
+    // === Percentage scale of the volatility estimators (a fraction x 100 = percent) ===
+    public const double PercentScale = 100.0;
+
+    // === Hurst exponent (R/S analysis, regression over halving sub-interval lengths; unit: ratio, dimensionless in [0, 1]) ===
+    public const int HurstDefaultPeriod = 100;           // log returns in the window
+    public const int HurstMinPeriod = 32;                // 32 gives the sub-interval lengths 32, 16, 8: at least three points for the regression
+    public const int HurstMaxPeriod = 2000;
+    public const decimal HurstMinValue = UnitIntervalMinValue;
+    public const decimal HurstMaxValue = UnitIntervalMaxValue;
+
+    // === Shannon entropy of the log returns (equal-width bins, normalised by ln(BinCount); unit: dimensionless in [0, 1]) ===
+    public const int EntropyDefaultPeriod = 30;
+    public const int EntropyMinPeriod = 5;
+    public const int EntropyMaxPeriod = 1000;
+    public const int EntropyDefaultBinCount = 10;
+    public const int EntropyMinBinCount = 2;
+    public const int EntropyMaxBinCount = 100;
+    public const decimal EntropyMinValue = UnitIntervalMinValue;
+    public const decimal EntropyMaxValue = UnitIntervalMaxValue;
 
     // === Fourier Transform ===
     public const int FourierTransformDefaultTargetPeriod = 20;
@@ -377,8 +418,8 @@ public static class IndicatorDefaultConstants
     public const int SsaEntropyDefaultWindowSize = 64;
     public const int SsaEntropyDefaultEmbeddingDimension = 20;
     public static readonly IndicatorColor SsaEntropyColor = new(255, 171, 71, 188); // Purple #AB47BC
-    public const decimal SsaEntropyMinValue = 0.0m;
-    public const decimal SsaEntropyMaxValue = 1.0m;
+    public const decimal SsaEntropyMinValue = UnitIntervalMinValue;
+    public const decimal SsaEntropyMaxValue = UnitIntervalMaxValue;
 
     // === SSA Squeeze ===
     public const int SsaSqueezeDefaultWindowSize = 64;

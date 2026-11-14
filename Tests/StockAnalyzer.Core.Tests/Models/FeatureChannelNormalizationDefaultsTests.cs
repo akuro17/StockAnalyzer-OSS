@@ -44,6 +44,18 @@ public sealed class FeatureChannelNormalizationDefaultsTests
     public void Kvo_IsAVolumeForceSeries_SoItStaysZScored() =>
         Assert.Equal(ChannelNormalization.WindowZScore, FeatureChannelNormalizationDefaults.ForIndicator(IndicatorType.KVO));
 
+    // Plan 04, owner decision 2026-11-14 (Q1=B): the unbounded per-bar percentage volatility estimators are z-scored like EGARCH and HistoricalVolatility;
+    // the two bounded dimensionless complexity measures (Hurst 0..1, normalised entropy 0..1) need no normalization.
+    [Theory]
+    [InlineData(IndicatorType.ParkinsonVolatility)] [InlineData(IndicatorType.RogersSatchellVolatility)] [InlineData(IndicatorType.Garch11)]
+    public void PlanFourVolatilityEstimators_AreZScored(IndicatorType type) =>
+        Assert.Equal(ChannelNormalization.WindowZScore, FeatureChannelNormalizationDefaults.ForIndicator(type));
+
+    [Theory]
+    [InlineData(IndicatorType.HurstExponent)] [InlineData(IndicatorType.Entropy)]
+    public void PlanFourBoundedComplexityMeasures_NeedNoNormalization(IndicatorType type) =>
+        Assert.Equal(ChannelNormalization.None, FeatureChannelNormalizationDefaults.ForIndicator(type));
+
     [Fact]
     public void EveryIndicatorTypeHasADefault()
     {

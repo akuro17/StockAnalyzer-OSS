@@ -90,7 +90,7 @@ namespace StockAnalyzer.Core.Models.Indicators.Volatility
         private IIndicatorResult CalculateAggregated(IReadOnlyList<CoreCandleData> candles)
         {
             int count = candles.Count;
-            double annualFactor = Annualize ? Math.Sqrt(PeriodsPerYear) : 1.0;
+            double annualFactor = IndicatorCalculationHelper.AnnualizationFactor(Annualize, PeriodsPerYear);
 
             // variances[k] is the per-bar variance; valid[k] is false for a non-positive price or a non-finite variance.
             var variances = new double[count];

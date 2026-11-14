@@ -138,28 +138,42 @@ public sealed class DrawingToolPresetService : IDrawingToolPresetService
                     Thickness = DrawingThemeContext.DefaultStrokeThickness
                 };
 
-            default:
-                var behavior = DrawingToolBehaviorRegistry.GetBehavior(tool);
-                var obj = behavior?.CreateObject(default, null);
-                if (obj == null)
+            case DrawingTool.ExtendedLine:
+                // Same object as the Trend Line tool; only the preset's initial ends differ (a user-edited preset wins).
+                var extendedLine = CreateFromBehavior(tool);
+                if (extendedLine is TrendLineObject extendedTrend)
                 {
-                    // Fallback to minimal FreehandObject if behavior is not found
-                    return new FreehandObject
-                    {
-                        Color = DrawingThemeContext.DefaultColor,
-                        Thickness = DrawingThemeContext.DefaultStrokeThickness
-                    };
+                    extendedTrend.ExtendMode = TrendLineObject.ExtendedLineToolDefaultMode;
                 }
+                return extendedLine;
 
-                if (obj.Color.A == 0 && obj.Color.R == 0 && obj.Color.G == 0 && obj.Color.B == 0)
-                {
-                    obj.Color = DrawingThemeContext.DefaultColor;
-                }
-                if (obj.Thickness <= 0)
-                {
-                    obj.Thickness = DrawingThemeContext.DefaultStrokeThickness;
-                }
-                return obj;
+            default:
+                return CreateFromBehavior(tool);
         }
+    }
+
+    private static IChartObject CreateFromBehavior(DrawingTool tool)
+    {
+        var behavior = DrawingToolBehaviorRegistry.GetBehavior(tool);
+        var obj = behavior?.CreateObject(default, null);
+        if (obj == null)
+        {
+            // Fallback to minimal FreehandObject if behavior is not found
+            return new FreehandObject
+            {
+                Color = DrawingThemeContext.DefaultColor,
+                Thickness = DrawingThemeContext.DefaultStrokeThickness
+            };
+        }
+
+        if (obj.Color.A == 0 && obj.Color.R == 0 && obj.Color.G == 0 && obj.Color.B == 0)
+        {
+            obj.Color = DrawingThemeContext.DefaultColor;
+        }
+        if (obj.Thickness <= 0)
+        {
+            obj.Thickness = DrawingThemeContext.DefaultStrokeThickness;
+        }
+        return obj;
     }
 }

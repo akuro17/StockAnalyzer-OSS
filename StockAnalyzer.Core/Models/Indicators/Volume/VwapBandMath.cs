@@ -16,6 +16,33 @@ namespace StockAnalyzer.Core.Models.Indicators.Volume
         internal static decimal? Sqrt(decimal variance) => IndicatorCalculationHelper.ToDecimalOrNull(Math.Sqrt((double)variance));
 
         /// <summary>
+        /// Volume-weighted standard deviation sigma = sqrt(max(0, sum(P^2*V) / sum(V) - vwap^2)), or null when
+        /// <paramref name="sumVolume"/> &lt;= 0, squared sum overflowed, variance subtraction overflows, or sigma is non-finite.
+        /// </summary>
+        internal static decimal? ComputeSigma(decimal vwap, decimal sumPriceSquaredVolume, decimal sumVolume, bool squaredSumOverflowed)
+        {
+            if (squaredSumOverflowed || sumVolume <= 0m)
+            {
+                return null;
+            }
+
+            try
+            {
+                decimal variance = sumPriceSquaredVolume / sumVolume - vwap * vwap;
+                if (variance < 0m)
+                {
+                    variance = 0m;
+                }
+
+                return Sqrt(variance);
+            }
+            catch (OverflowException)
+            {
+                return null;
+            }
+        }
+
+        /// <summary>
         /// The two bands of one bar from the running sums. Returns false (bands null) when there is no VWAP (<paramref name="sumVolume"/> is 0), when the squared sum
         /// has overflowed, when sigma cannot be represented, or when the arithmetic overflows. A variance below 0 (rounding noise) counts as 0.
         /// </summary>
@@ -23,24 +50,13 @@ namespace StockAnalyzer.Core.Models.Indicators.Volume
         {
             upper = 0m;
             lower = 0m;
-            if (vwap is not { } center || squaredSumOverflowed)
+            if (vwap is not { } center || ComputeSigma(center, sumPriceSquaredVolume, sumVolume, squaredSumOverflowed) is not { } sigma)
             {
                 return false;
             }
 
             try
             {
-                decimal variance = sumPriceSquaredVolume / sumVolume - center * center;
-                if (variance < 0m)
-                {
-                    variance = 0m;
-                }
-
-                if (Sqrt(variance) is not { } sigma)
-                {
-                    return false;
-                }
-
                 upper = center + multiplier * sigma;
                 lower = center - multiplier * sigma;
                 return true;

@@ -17,6 +17,7 @@ using StockAnalyzer.Core.Models;
 using StockAnalyzer.Avalonia.ViewModels;
 using StockAnalyzer.Avalonia.Services;
 using StockAnalyzer.Avalonia.Services.Drawing;
+using StockAnalyzer.Avalonia.Drawing.Behaviors;
 using StockAnalyzer.Avalonia.Drawing.Objects;
 using SkiaSharp;
 
@@ -353,7 +354,10 @@ public class ChartInteractionController
         }
         else
         {
-            for (int i = 0; i < selectedObject.Points.Count; i++)
+            int handleCount = selectedObject is ElliottWaveObject manualElliott
+                ? manualElliott.ActivePointCount
+                : selectedObject.Points.Count;
+            for (int i = 0; i < handleCount; i++)
             {
                 var handleScreenPoint = coordinateTransform.ChartToScreen(selectedObject.Points[i]);
                 if (Math.Abs(handleScreenPoint.X - chartPosition.X) <= ChartConstants.HandleClickToleranceScreenPx &&
@@ -583,9 +587,9 @@ public class ChartInteractionController
             {
                 if (_activeBehavior?.RequiredSteps == 0)
                 {
-                    if (CurrentDrawingObject?.Points.Count > 1)
-                        CurrentDrawingObject.Points.RemoveAt(CurrentDrawingObject.Points.Count - 1);
-                    FinishDrawing(viewModel.ObjectManager, viewModel.LayerService, viewModel.DrawingEditCoordinator);
+                    CommitOrCancelVariableShape(viewModel.ObjectManager, viewModel.LayerService, viewModel.DrawingEditCoordinator, dropTrailingPreview: true);
+                    viewModel.CurrentTool = DrawingTool.Pointer;
+                    return true;
                 }
                 else
                 {
@@ -640,9 +644,7 @@ public class ChartInteractionController
             {
                 if (_activeBehavior?.RequiredSteps == 0)
                 {
-                    if (CurrentDrawingObject?.Points.Count > 1)
-                        CurrentDrawingObject.Points.RemoveAt(CurrentDrawingObject.Points.Count - 1);
-                    FinishDrawing(viewModel.ObjectManager, viewModel.LayerService, viewModel.DrawingEditCoordinator);
+                    CommitOrCancelVariableShape(viewModel.ObjectManager, viewModel.LayerService, viewModel.DrawingEditCoordinator, dropTrailingPreview: true);
                 }
                 else if (HandleCancelRequest(viewModel.ObjectManager, viewModel.LayerService, viewModel.DrawingEditCoordinator))
                 {
@@ -1438,7 +1440,10 @@ public class ChartInteractionController
             }
             else
             {
-                for (int i = 0; i < selectedObject.Points.Count; i++)
+                int handleCount = selectedObject is ElliottWaveObject manualElliott
+                    ? manualElliott.ActivePointCount
+                    : selectedObject.Points.Count;
+                for (int i = 0; i < handleCount; i++)
                 {
                     var handleScreenPoint = transform.ChartToScreen(selectedObject.Points[i]);
 
@@ -2191,7 +2196,10 @@ public class ChartInteractionController
                 }
                 else
                 {
-                    for (int p = 0; p < anchorPoints.Count; p++)
+                    int pointCount = dragged is ElliottWaveObject ew
+                        ? Math.Min(anchorPoints.Count, ew.ActivePointCount)
+                        : anchorPoints.Count;
+                    for (int p = 0; p < pointCount; p++)
                     {
                         var sp = transform.ChartToScreen(anchorPoints[p]);
                         if (double.IsNaN(sp.X) || double.IsInfinity(sp.X) || double.IsNaN(sp.Y) || double.IsInfinity(sp.Y)) continue;
@@ -2503,33 +2511,19 @@ public class ChartInteractionController
             return false;
         }
 
-        // Finish variable-point tools (Polyline, CurveLineText, ClothoidArrow, etc.) on double tap
+        // Finish variable-point tools (Polyline, CurveLineText, ClothoidArrow, ElliottWave, etc.) on double tap
         if (IsDrawingNewShape)
         {
              if (viewModel.ObjectManager != null)
              {
                  if (_activeBehavior?.RequiredSteps == 0 && CurrentDrawingObject != null)
                  {
-                     var pts = CurrentDrawingObject.Points;
-                     for (int i = pts.Count - 1; i > 0; i--)
-                     {
-                         if (pts[i].Time == pts[i - 1].Time && pts[i].Price == pts[i - 1].Price)
-                         {
-                             pts.RemoveAt(i);
-                         }
-                     }
-
-                     if (pts.Count < 2)
-                     {
-                         CancelDrawing();
-                         if (ShouldReturnToPointerAfterFinish())
-                         {
-                             viewModel.CurrentTool = DrawingTool.Pointer;
-                         }
-                         return true;
-                     }
+                     CommitOrCancelVariableShape(viewModel.ObjectManager, viewModel.LayerService, viewModel.DrawingEditCoordinator, dropTrailingPreview: false);
                  }
-                 FinishDrawing(viewModel.ObjectManager, viewModel.LayerService, viewModel.DrawingEditCoordinator);
+                 else
+                 {
+                     FinishDrawing(viewModel.ObjectManager, viewModel.LayerService, viewModel.DrawingEditCoordinator);
+                 }
                  if (ShouldReturnToPointerAfterFinish())
                  {
                      viewModel.CurrentTool = DrawingTool.Pointer;
@@ -2734,6 +2728,18 @@ public class ChartInteractionController
             if (CurrentDrawingObject is ClothoidArrowObject existingArrow)
             {
                 existingArrow.AddPoint(chartPoint);
+                return true;
+            }
+            if (CurrentDrawingObject is ElliottWaveObject existingElliott && behavior is ElliottWaveBehavior ewBehavior)
+            {
+                if (ewBehavior.TryAdvanceClick(existingElliott, chartPoint))
+                {
+                    CommitOrCancelVariableShape(objectManager, viewModel?.LayerService, viewModel?.DrawingEditCoordinator, dropTrailingPreview: false);
+                    if (viewModel != null && ShouldReturnToPointerAfterFinish())
+                    {
+                        viewModel.CurrentTool = DrawingTool.Pointer;
+                    }
+                }
                 return true;
             }
         }
@@ -2994,16 +3000,62 @@ public class ChartInteractionController
 
         if (_activeBehavior?.RequiredSteps == 0)
         {
-            if (CurrentDrawingObject.Points.Count > 1)
-            {
-                CurrentDrawingObject.Points.RemoveAt(CurrentDrawingObject.Points.Count - 1);
-            }
-            FinishDrawing(objectManager, layerService, coordinator);
+            CommitOrCancelVariableShape(objectManager, layerService, coordinator, dropTrailingPreview: true);
             return true;
         }
 
         CancelDrawing();
         return true;
+    }
+
+    private void CommitOrCancelVariableShape(
+        ChartObjectManager objectManager,
+        StockAnalyzer.Avalonia.Services.Drawing.IDrawingLayerService? layerService,
+        StockAnalyzer.Avalonia.Services.Drawing.IDrawingEditCoordinator? coordinator,
+        bool dropTrailingPreview)
+    {
+        if (CurrentDrawingObject is ElliottWaveObject manualElliott)
+        {
+            if (ElliottWaveBehavior.PrepareForFinalize(manualElliott, dropTrailingPreview))
+            {
+                FinishDrawing(objectManager, layerService, coordinator);
+            }
+            else
+            {
+                CancelDrawing();
+            }
+            return;
+        }
+
+        if (dropTrailingPreview)
+        {
+            if (CurrentDrawingObject?.Points.Count > 1)
+            {
+                CurrentDrawingObject.Points.RemoveAt(CurrentDrawingObject.Points.Count - 1);
+            }
+            FinishDrawing(objectManager, layerService, coordinator);
+            return;
+        }
+
+        if (CurrentDrawingObject != null)
+        {
+            var pts = CurrentDrawingObject.Points;
+            for (int i = pts.Count - 1; i > 0; i--)
+            {
+                if (pts[i].Time == pts[i - 1].Time && pts[i].Price == pts[i - 1].Price)
+                {
+                    pts.RemoveAt(i);
+                }
+            }
+
+            if (pts.Count < 2)
+            {
+                CancelDrawing();
+                return;
+            }
+        }
+
+        FinishDrawing(objectManager, layerService, coordinator);
     }
 
     /// <summary>
@@ -3349,16 +3401,17 @@ public class ChartInteractionController
             return selectionRect.Intersects(objRect);
         }
 
-        if (obj.Points.Count == 0) return false;
+        int pointCount = obj is ElliottWaveObject ew ? ew.ActivePointCount : obj.Points.Count;
+        if (pointCount == 0) return false;
 
-        if (obj.Points.Count == 1)
+        if (pointCount == 1)
         {
             var pt = transform.ChartToScreen(obj.Points[0]);
             return selectionRect.Contains(pt);
         }
 
         double minX = double.MaxValue, maxX = double.MinValue, minY = double.MaxValue, maxY = double.MinValue;
-        for (int i = 0; i < obj.Points.Count; i++)
+        for (int i = 0; i < pointCount; i++)
         {
             var pt = transform.ChartToScreen(obj.Points[i]);
             if (double.IsNaN(pt.X) || double.IsInfinity(pt.X) || double.IsNaN(pt.Y) || double.IsInfinity(pt.Y)) continue;

@@ -9,16 +9,14 @@ public static class VerticalLineValues
     {
         var lineTime = point.Time;
 
-        var values = new List<DrawingCalculatedValue>(2)
-        {
-            new DrawingCalculatedValue("LineDate", "Line Date", null, lineTime.ToString("yyyy-MM-dd HH:mm", DrawingValueFormat.Culture), color)
-        };
-
         double offsetDays = (timestamp - lineTime).TotalDays;
         decimal offsetDaysDec = (decimal)Math.Round(offsetDays, 1);
         string sign = offsetDays >= 0 ? "+" : "";
-        values.Add(new DrawingCalculatedValue("Offset", "Time Offset", offsetDaysDec, string.Create(DrawingValueFormat.Culture, $"{sign}{offsetDays:F1} days"), IndicatorColor.Gray));
 
-        return values;
+        return new DrawingCalculatedValue[]
+        {
+            new("LineDate", "Line Date", null, lineTime.ToString("yyyy-MM-dd HH:mm", DrawingValueFormat.Culture), color),
+            new("Offset", "Time Offset", offsetDaysDec, string.Create(DrawingValueFormat.Culture, $"{sign}{offsetDays:F1} days"), IndicatorColor.Gray)
+        };
     }
 }

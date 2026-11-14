@@ -6,12 +6,13 @@ using Avalonia.Media;
 using SkiaSharp;
 using StockAnalyzer.Avalonia.Common;
 using StockAnalyzer.Core.Constants;
+using StockAnalyzer.Core.Drawing;
 using StockAnalyzer.Core.Drawing.Values;
 using StockAnalyzer.Core.Models;
 
 namespace StockAnalyzer.Avalonia.Drawing;
 
-public class ParallelChannelObject : IChartObject, IDrawingCalculatedValuesProvider
+public class ParallelChannelObject : IChartObject, IDisposable, IDrawingCalculatedValuesProvider
 {
     public string? CustomName { get; set; }
     public DrawingMoveAxisMode MoveAxisMode { get; set; } = DrawingMoveAxisMode.XY;
@@ -38,17 +39,57 @@ public class ParallelChannelObject : IChartObject, IDrawingCalculatedValuesProvi
     public int PanelIndex { get; set; } = -1;
     public bool IsFilled { get; set; } = true;
 
+    /// <summary>Parallel (default): the opposite edge runs parallel to P1-P2 through P3. FlatOpposite: it is horizontal at P3's price.</summary>
+    [Category("Parameters")]
+    [DisplayName("Channel Mode")]
+    [ParameterTag(DrawingParameterTags.Analysis)]
+    public ChannelMode ChannelMode { get; set; } = ChannelMode.Parallel;
+
+    // Skia resources are created once and only their per-frame values (colour, width, stroke style) are assigned in Render, so a change
+    // of colour / thickness / stroke style in the settings dialog is picked up on the next frame without a new native object.
+    private readonly SKPaint _fillPaint = new SKPaint { Style = SKPaintStyle.Fill };
+    private readonly SKPaint _strokePaint = new SKPaint { Style = SKPaintStyle.Stroke, IsAntialias = true };
+    private readonly SKPaint _centerPaint = new SKPaint { Style = SKPaintStyle.Stroke, IsAntialias = true, StrokeWidth = ChartConstants.ChannelCenterLineStrokeWidth };
+    private readonly SKPathEffect _centerDash = SKPathEffect.CreateDash(new float[] { ChartConstants.ChannelCenterLineDashInterval, ChartConstants.ChannelCenterLineDashInterval }, 0);
+    private readonly SKPath _path = new SKPath();
+
+    // A removed object is disposed at once while a frame that still holds it may render it on another thread (see NativeResourceGate).
+    private readonly NativeResourceGate _gate = new NativeResourceGate();
+
     public ParallelChannelObject(ChartPoint p1, ChartPoint p2, ChartPoint p3)
     {
         Points = new List<ChartPoint> { p1, p2, p3 };
+        _centerPaint.PathEffect = _centerDash;
     }
 
     public SKColor SkiaColor => new SKColor(Color.R, Color.G, Color.B, Color.A);
 
+    public void Dispose()
+    {
+        lock (_gate.SyncRoot)
+        {
+            if (!_gate.TryMarkDisposed()) return;
+            _fillPaint.Dispose();
+            _strokePaint.Dispose();
+            _centerPaint.Dispose();
+            _centerDash.Dispose();
+            _path.Dispose();
+        }
+        GC.SuppressFinalize(this);
+    }
+
     public void Render(SKCanvas canvas, ICoordinateTransform transform)
     {
-        if (Points.Count < 3) return;
+        lock (_gate.SyncRoot)
+        {
+            if (_gate.IsDisposed || Points.Count < 3) return;
+            RenderLocked(canvas, transform);
+        }
+    }
 
+    /// <summary>The drawing itself; runs inside the <see cref="NativeResourceGate"/> lock so the native objects cannot be freed meanwhile.</summary>
+    private void RenderLocked(SKCanvas canvas, ICoordinateTransform transform)
+    {
         var s1 = transform.ChartToScreen(Points[0]);
         var s2 = transform.ChartToScreen(Points[1]);
         var s3 = transform.ChartToScreen(Points[2]);
@@ -59,80 +100,48 @@ public class ParallelChannelObject : IChartObject, IDrawingCalculatedValuesProvi
         // Vertices: s1, s2, s2', s1'
         // Where s1', s2' are on Line 2 with same X as s1, s2 (Visual Vertical alignment)
 
-        // Slope m = dy / dx
-        float dx = (float)(s2.X - s1.X);
-        float dy = (float)(s2.Y - s1.Y);
-
-        // Avoid divide by zero (vertical line)
-        bool isVertical = Math.Abs(dx) < 0.001;
-        
-        global::Avalonia.Point s2_prime, s1_prime;
-
-        if (isVertical)
-        {
-            // If vertical, parallel line is just shifted by (s3.X - s1.X)
-            float xShift = (float)(s3.X - s1.X);
-            s2_prime = new global::Avalonia.Point(s2.X + xShift, s2.Y);
-            s1_prime = new global::Avalonia.Point(s1.X + xShift, s1.Y); 
-        }
-        else
-        {
-            float m = dy / dx;
-            // Line 2 equation: y - y3 = m(x - x3) => y = m(x - x3) + y3
-            
-            // Calc s2_prime (x = s2.X)
-            float y2_prime = m * (float)(s2.X - s3.X) + (float)s3.Y;
-            s2_prime = new global::Avalonia.Point(s2.X, y2_prime);
-
-            // Calc s1_prime (x = s1.X)
-            float y1_prime = m * (float)(s1.X - s3.X) + (float)s3.Y;
-            s1_prime = new global::Avalonia.Point(s1.X, y1_prime);
-        }
+        GetOppositeEdge(transform, s1, s2, s3, out var s1_prime, out var s2_prime);
 
         // Draw Filled Path
-        using var path = new SKPath();
-        path.MoveTo((float)s1.X, (float)s1.Y);
-        path.LineTo((float)s2.X, (float)s2.Y);
-        path.LineTo((float)s2_prime.X, (float)s2_prime.Y);
-        path.LineTo((float)s1_prime.X, (float)s1_prime.Y);
-        path.Close();
+        _path.Reset();
+        _path.MoveTo((float)s1.X, (float)s1.Y);
+        _path.LineTo((float)s2.X, (float)s2.Y);
+        _path.LineTo((float)s2_prime.X, (float)s2_prime.Y);
+        _path.LineTo((float)s1_prime.X, (float)s1_prime.Y);
+        _path.Close();
 
+        var color = SkiaColor;
         if (IsFilled)
         {
-            using var fillPaint = new SKPaint
-            {
-                Color = new SKColor(SkiaColor.Red, SkiaColor.Green, SkiaColor.Blue, 30),
-                Style = SKPaintStyle.Fill
-            };
-            canvas.DrawPath(path, fillPaint);
+            _fillPaint.Color = new SKColor(color.Red, color.Green, color.Blue, ChartConstants.ChannelFillAlpha);
+            canvas.DrawPath(_path, _fillPaint);
         }
 
-        using var strokePaint = new SKPaint
-        {
-            Color = SkiaColor,
-            StrokeWidth = (float)Thickness,
-            Style = SKPaintStyle.Stroke,
-            PathEffect = StrokeStyle.ToSkPathEffect(),
-            IsAntialias = true
-        };
-        canvas.DrawPath(path, strokePaint);
+        _strokePaint.Color = color;
+        _strokePaint.StrokeWidth = (float)Thickness;
+        _strokePaint.PathEffect = StrokeStyle.ToSkPathEffect();
+        canvas.DrawPath(_path, _strokePaint);
 
         // Center dashed line (optional, user req "Center line"?)
         // Prompt 35-2 says "Band and Center line".
         // Parallel Channel usually has a center line.
         // Midpoints: (s1+s1')/2 ...
-        var m1 = new global::Avalonia.Point((s1.X + s1_prime.X) / 2, (s1.Y + s1_prime.Y) / 2);
-        var m2 = new global::Avalonia.Point((s2.X + s2_prime.X) / 2, (s2.Y + s2_prime.Y) / 2);
-        
-        using var centerPaint = new SKPaint
+        global::Avalonia.Point m1, m2;
+        if (ChannelMode == ChannelMode.FlatOpposite)
         {
-            Color = SkiaColor,
-            StrokeWidth = 1,
-            Style = SKPaintStyle.Stroke,
-            PathEffect = SKPathEffect.CreateDash(new float[] { 5, 5 }, 0),
-            IsAntialias = true
-        };
-        canvas.DrawLine((float)m1.X, (float)m1.Y, (float)m2.X, (float)m2.Y, centerPaint);
+            // Data-coordinate midpoints (t1, (p1 + p3) / 2) and (t2, (p2 + p3) / 2), projected through the transform.
+            decimal p3Price = Points[2].Price;
+            m1 = transform.ChartToScreen(new ChartPoint(Points[0].Time, (Points[0].Price + p3Price) / 2m));
+            m2 = transform.ChartToScreen(new ChartPoint(Points[1].Time, (Points[1].Price + p3Price) / 2m));
+        }
+        else
+        {
+            m1 = new global::Avalonia.Point((s1.X + s1_prime.X) / 2, (s1.Y + s1_prime.Y) / 2);
+            m2 = new global::Avalonia.Point((s2.X + s2_prime.X) / 2, (s2.Y + s2_prime.Y) / 2);
+        }
+
+        _centerPaint.Color = color;
+        canvas.DrawLine((float)m1.X, (float)m1.Y, (float)m2.X, (float)m2.Y, _centerPaint);
 
         if (IsSelected)
         {
@@ -153,23 +162,7 @@ public class ParallelChannelObject : IChartObject, IDrawingCalculatedValuesProvi
         var s2 = transform.ChartToScreen(Points[1]);
         var s3 = transform.ChartToScreen(Points[2]);
 
-        // ... Same logic ...
-        float dx = (float)(s2.X - s1.X);
-        float dy = (float)(s2.Y - s1.Y);
-        
-        global::Avalonia.Point s2_prime, s1_prime;
-        // Assume non-vertical for HitTest ease or copy logic
-        if (Math.Abs(dx) < 0.001) {
-             float xShift = (float)(s3.X - s1.X);
-             s2_prime = new global::Avalonia.Point(s2.X + xShift, s2.Y);
-             s1_prime = new global::Avalonia.Point(s1.X + xShift, s1.Y);
-        } else {
-             float m = dy / dx;
-             float y2_prime = m * (float)(s2.X - s3.X) + (float)s3.Y;
-             s2_prime = new global::Avalonia.Point(s2.X, y2_prime);
-             float y1_prime = m * (float)(s1.X - s3.X) + (float)s3.Y;
-             s1_prime = new global::Avalonia.Point(s1.X, y1_prime);
-        }
+        GetOppositeEdge(transform, s1, s2, s3, out var s1_prime, out var s2_prime);
 
         // Check if inside Polygon (s1, s2, s2_prime, s1_prime)
         // Ray casting algorithm or SKPath.Contains
@@ -186,6 +179,46 @@ public class ParallelChannelObject : IChartObject, IDrawingCalculatedValuesProvi
                IsNearLine(s2, s2_prime, screenPoint, tolerance) ||
                IsNearLine(s2_prime, s1_prime, screenPoint, tolerance) ||
                IsNearLine(s1_prime, s1, screenPoint, tolerance);
+    }
+
+    /// <summary>
+    /// Screen end points s1' / s2' of the opposite edge, at the screen X of s1 / s2 (shared by <see cref="Render"/> and <see cref="HitTest"/>).
+    /// <see cref="ChannelMode.Parallel"/>: on the line through s3 with the slope of s1-s2 (screen-space, unchanged original behaviour).
+    /// <see cref="ChannelMode.FlatOpposite"/>: the data points (t1, p3) and (t2, p3) projected through the transform.
+    /// </summary>
+    private void GetOppositeEdge(ICoordinateTransform transform, global::Avalonia.Point s1, global::Avalonia.Point s2, global::Avalonia.Point s3,
+        out global::Avalonia.Point s1Prime, out global::Avalonia.Point s2Prime)
+    {
+        if (ChannelMode == ChannelMode.FlatOpposite)
+        {
+            decimal p3Price = Points[2].Price;
+            s1Prime = transform.ChartToScreen(new ChartPoint(Points[0].Time, p3Price));
+            s2Prime = transform.ChartToScreen(new ChartPoint(Points[1].Time, p3Price));
+            return;
+        }
+
+        // Slope m = dy / dx
+        float dx = (float)(s2.X - s1.X);
+        float dy = (float)(s2.Y - s1.Y);
+
+        // Avoid divide by zero (vertical line)
+        if (Math.Abs(dx) < 0.001)
+        {
+            // If vertical, parallel line is just shifted by (s3.X - s1.X)
+            float xShift = (float)(s3.X - s1.X);
+            s2Prime = new global::Avalonia.Point(s2.X + xShift, s2.Y);
+            s1Prime = new global::Avalonia.Point(s1.X + xShift, s1.Y);
+        }
+        else
+        {
+            float m = dy / dx;
+            // Line 2 equation: y - y3 = m(x - x3) => y = m(x - x3) + y3
+            float y2Prime = m * (float)(s2.X - s3.X) + (float)s3.Y;
+            s2Prime = new global::Avalonia.Point(s2.X, y2Prime);
+
+            float y1Prime = m * (float)(s1.X - s3.X) + (float)s3.Y;
+            s1Prime = new global::Avalonia.Point(s1.X, y1Prime);
+        }
     }
 
     private bool IsNearLine(global::Avalonia.Point p1, global::Avalonia.Point p2, global::Avalonia.Point test, double tolerance)
@@ -219,7 +252,7 @@ public class ParallelChannelObject : IChartObject, IDrawingCalculatedValuesProvi
 
         var color = new IndicatorColor(Color.A, Color.R, Color.G, Color.B);
 
-        return ParallelChannelValues.Calculate(Points[0].ToAnchor(), Points[1].ToAnchor(), Points[2].ToAnchor(), timestamp, color);
+        return ParallelChannelValues.Calculate(Points[0].ToAnchor(), Points[1].ToAnchor(), Points[2].ToAnchor(), timestamp, color, ChannelMode);
     }
 }
 

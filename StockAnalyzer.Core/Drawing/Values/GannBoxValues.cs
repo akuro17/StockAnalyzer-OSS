@@ -17,19 +17,18 @@ public static class GannBoxValues
         decimal height = topPrice - bottomPrice;
         double days = Math.Abs((p2.Time - p1.Time).TotalDays);
 
-        var values = new List<DrawingCalculatedValue>(GridRatiosArray.Length + 4)
-        {
-            new DrawingCalculatedValue("HighPrice", "Box High", topPrice, string.Create(DrawingValueFormat.Culture, $"{topPrice:F3}"), color),
-            new DrawingCalculatedValue("LowPrice", "Box Low", bottomPrice, string.Create(DrawingValueFormat.Culture, $"{bottomPrice:F3}"), color),
-            new DrawingCalculatedValue("Height", "Price Height", height, string.Create(DrawingValueFormat.Culture, $"{height:F3}"), IndicatorColor.Gray),
-            new DrawingCalculatedValue("Duration", "Time Duration", (decimal)Math.Round(days, 1), string.Create(DrawingValueFormat.Culture, $"{days:F1} days"), IndicatorColor.Gray)
-        };
+        var values = new DrawingCalculatedValue[GridRatiosArray.Length + 4];
+        values[0] = new DrawingCalculatedValue("HighPrice", "Box High", topPrice, string.Create(DrawingValueFormat.Culture, $"{topPrice:F3}"), color);
+        values[1] = new DrawingCalculatedValue("LowPrice", "Box Low", bottomPrice, string.Create(DrawingValueFormat.Culture, $"{bottomPrice:F3}"), color);
+        values[2] = new DrawingCalculatedValue("Height", "Price Height", height, string.Create(DrawingValueFormat.Culture, $"{height:F3}"), IndicatorColor.Gray);
+        values[3] = new DrawingCalculatedValue("Duration", "Time Duration", (decimal)Math.Round(days, 1), string.Create(DrawingValueFormat.Culture, $"{days:F1} days"), IndicatorColor.Gray);
 
-        foreach (var ratio in GridRatiosArray)
+        for (int i = 0; i < GridRatiosArray.Length; i++)
         {
+            double ratio = GridRatiosArray[i];
             decimal levelPrice = bottomPrice + height * (decimal)ratio;
             int eighths = (int)Math.Round(ratio * 8.0);
-            values.Add(new DrawingCalculatedValue(string.Create(DrawingValueFormat.Culture, $"Gann_{eighths}_8"), string.Create(DrawingValueFormat.Culture, $"Level {eighths}/8"), levelPrice, string.Create(DrawingValueFormat.Culture, $"{levelPrice:F3}"), IndicatorColor.Gray));
+            values[i + 4] = new DrawingCalculatedValue(string.Create(DrawingValueFormat.Culture, $"Gann_{eighths}_8"), string.Create(DrawingValueFormat.Culture, $"Level {eighths}/8"), levelPrice, string.Create(DrawingValueFormat.Culture, $"{levelPrice:F3}"), IndicatorColor.Gray);
         }
 
         return values;

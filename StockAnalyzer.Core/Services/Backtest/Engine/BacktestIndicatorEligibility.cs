@@ -46,16 +46,14 @@ public static class BacktestIndicatorEligibility
         (IndicatorType.Ichimoku, CoreIchimokuIndicator.ChikouSpanSeriesName));
 
     /// <summary>
-    /// Indicators without a usable synchronous calculation result on default parameters: Python/async-only or placeholder-only, or a two-symbol
-    /// indicator that has no value without a comparison symbol and is therefore not evaluable by the L2 causality test.
+    /// Indicators without a usable synchronous calculation result on default parameters: today only the two-symbol indicators, which have no value
+    /// without a comparison symbol and are therefore not evaluable by the L2 causality test. (Python/async-only or placeholder-only indicators belong
+    /// here too; the former placeholders Garch11, HurstExponent and Entropy are implemented and no longer listed.)
     /// </summary>
     public static IReadOnlyCollection<IndicatorType> SynchronousCalculationUnsupportedTypes { get; } = new[]
     {
         IndicatorType.CointegrationSpread,
         IndicatorType.CrossTickerDtw,
-        IndicatorType.Entropy,
-        IndicatorType.Garch11,
-        IndicatorType.HurstExponent,
         IndicatorType.PairRatio,
         IndicatorType.PairSpread,
         IndicatorType.Ratiocator,

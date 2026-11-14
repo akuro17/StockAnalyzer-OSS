@@ -21,6 +21,13 @@ public static class IndicatorCalculationHelper
         => double.IsFinite(value) && Math.Abs(value) < IndicatorDefaultConstants.MaxDoubleToDecimalMagnitude ? (decimal)value : null;
 
     /// <summary>
+    /// The factor that turns a per-bar volatility into an annual one: sqrt(<paramref name="periodsPerYear"/>) when <paramref name="annualize"/> is true, otherwise 1.
+    /// <paramref name="periodsPerYear"/> is not read while <paramref name="annualize"/> is false. The caller checks the range of <paramref name="periodsPerYear"/>.
+    /// </summary>
+    public static double AnnualizationFactor(bool annualize, int periodsPerYear)
+        => annualize ? Math.Sqrt(periodsPerYear) : 1.0;
+
+    /// <summary>
     /// Calculates Exponential Moving Average (EMA) from a list of decimal values.
     /// </summary>
     /// <param name="prices">List of prices (non-nullable)</param>

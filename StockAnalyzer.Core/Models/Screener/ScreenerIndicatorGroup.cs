@@ -114,21 +114,22 @@ public class ScreenerIndicatorGroup
                 IndicatorType.ChoppinessIndex, IndicatorType.WilliamsVixFix,
                 IndicatorType.GarmanKlassVolatility, IndicatorType.RviVolatility,
                 IndicatorType.Highest, IndicatorType.Lowest, IndicatorType.ExpectedMove,
-                IndicatorType.TrueHigh, IndicatorType.TrueLow, IndicatorType.TrueRange
+                IndicatorType.TrueHigh, IndicatorType.TrueLow, IndicatorType.TrueRange,
+                IndicatorType.ParkinsonVolatility, IndicatorType.RogersSatchellVolatility
             }, "Indicator", "ScreenerGroup_Volatility"),
 
             new("Math", new[]
             {
                 IndicatorType.LinearRegression, IndicatorType.RegressionSlope,
-                IndicatorType.Correlation, IndicatorType.CorrelationProxy,
+                IndicatorType.Correlation,
                 IndicatorType.CrossTickerDtw, IndicatorType.PACF, IndicatorType.RankCorrelation,
                 IndicatorType.ZScore, IndicatorType.FourierTransform,
                 IndicatorType.FFTCycle, IndicatorType.HilbertTransform,
                 IndicatorType.IFFTInstantaneousPhase, IndicatorType.IFFTInstantaneousAmplitude,
                 IndicatorType.IFFTBandPassFilter, IndicatorType.PolarAmplitudeRatio,
                 IndicatorType.PolarPhase, IndicatorType.PolarCycleAngularFrequency,
-                IndicatorType.Egarch,
-                IndicatorType.EngleGrangerTest, IndicatorType.WilderSmoothing,
+                IndicatorType.Egarch, IndicatorType.Garch11, IndicatorType.HurstExponent, IndicatorType.Entropy,
+                IndicatorType.WilderSmoothing,
                 IndicatorType.Variance, IndicatorType.VaR, IndicatorType.CVaR,
                 IndicatorType.HiddenMarkovModel, IndicatorType.ARIMA,
                 // The two-symbol indicators the Screener evaluates besides Correlation (see ScreenerIndicatorEligibility); the Backtest does not offer them.

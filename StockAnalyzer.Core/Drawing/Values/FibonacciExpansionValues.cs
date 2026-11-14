@@ -15,15 +15,14 @@ public static class FibonacciExpansionValues
         decimal impulse = p2.Price - p1.Price;
         decimal absImpulse = Math.Abs(impulse);
 
-        var values = new List<DrawingCalculatedValue>(LevelsArray.Length + 1)
-        {
-            new DrawingCalculatedValue("Impulse", "Impulse Move", absImpulse, string.Create(DrawingValueFormat.Culture, $"{absImpulse:F3}"), IndicatorColor.Gray)
-        };
+        var values = new DrawingCalculatedValue[LevelsArray.Length + 1];
+        values[0] = new DrawingCalculatedValue("Impulse", "Impulse Move", absImpulse, string.Create(DrawingValueFormat.Culture, $"{absImpulse:F3}"), IndicatorColor.Gray);
 
-        foreach (var level in LevelsArray)
+        for (int i = 0; i < LevelsArray.Length; i++)
         {
+            float level = LevelsArray[i];
             decimal expPrice = p3.Price + impulse * (decimal)level;
-            values.Add(new DrawingCalculatedValue(string.Create(DrawingValueFormat.Culture, $"Exp_{level:F3}"), string.Create(DrawingValueFormat.Culture, $"Expansion {level:P1}"), expPrice, string.Create(DrawingValueFormat.Culture, $"{expPrice:F3}"), color));
+            values[i + 1] = new DrawingCalculatedValue(string.Create(DrawingValueFormat.Culture, $"Exp_{level:F3}"), string.Create(DrawingValueFormat.Culture, $"Expansion {level:P1}"), expPrice, string.Create(DrawingValueFormat.Culture, $"{expPrice:F3}"), color);
         }
 
         return values;

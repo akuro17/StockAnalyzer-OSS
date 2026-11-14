@@ -121,5 +121,14 @@ public enum DrawingTool
     ClassicPivotPoints,
     Highlighter,
     StepBadge,
-    Eyedropper
+    Eyedropper,
+
+    // Extended line, cross line, disjoint channel (appended: enum ordinals are persisted/compared, never insert above)
+    ExtendedLine,
+    CrossLine,
+    DisjointChannel,
+
+    // Plan 07 (appended: enum ordinals are persisted/compared, never insert above)
+    DatePriceRange,
+    ElliottWave
 }

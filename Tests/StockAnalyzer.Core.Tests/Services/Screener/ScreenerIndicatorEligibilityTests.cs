@@ -109,20 +109,27 @@ public sealed class ScreenerIndicatorEligibilityTests
     }
 
     [Fact]
-    public void ThePythonAndPlaceholderTypesThatAreNotTwoTicker_StayRefused()
+    public void AnyPythonOrPlaceholderTypeThatIsNotTwoTicker_StaysRefused_AndTheFormerPlaceholdersAreNowAllowed()
     {
-        foreach (IndicatorType type in BacktestIndicatorEligibility.SynchronousCalculationUnsupportedTypes.Where(type => !IsTwoTicker(type)))
+        // Today every type of the unsupported list is a two-symbol type, so the loop below has nothing to check; the expected set is stated explicitly so that adding a
+        // Python/async-only or placeholder type to the list is a conscious change of this array, after which the loop enforces that the Screener refuses it.
+        IndicatorType[] expectedNonTwoTickerUnsupported = Array.Empty<IndicatorType>();
+        IndicatorType[] nonTwoTickerUnsupported = BacktestIndicatorEligibility.SynchronousCalculationUnsupportedTypes.Where(type => !IsTwoTicker(type)).ToArray();
+        Assert.Equal(expectedNonTwoTickerUnsupported, nonTwoTickerUnsupported);
+
+        foreach (IndicatorType type in nonTwoTickerUnsupported)
         {
             Assert.False(ScreenerIndicatorEligibility.IsAllowed(type), type.ToString());
             Assert.True(ScreenerIndicatorEligibility.IsTypeBlocked(type), type.ToString());
             Assert.Equal(BacktestIndicatorViolationReason.SynchronousCalculationUnsupported, ScreenerIndicatorEligibility.Check(type, null));
         }
 
-        // The three the plan names, by name: they are not two-ticker, so the new rule never touches them.
+        // The three former placeholders (implemented by WebAiExpansion plan 04) are not two-ticker and are no longer refused by anybody.
         foreach (IndicatorType type in new[] { IndicatorType.Entropy, IndicatorType.Garch11, IndicatorType.HurstExponent })
         {
             Assert.False(IsTwoTicker(type), type.ToString());
-            Assert.False(ScreenerIndicatorEligibility.IsAllowed(type), type.ToString());
+            Assert.True(ScreenerIndicatorEligibility.IsAllowed(type), type.ToString());
+            Assert.True(BacktestIndicatorEligibility.IsAllowed(type), type.ToString());
         }
     }
 
@@ -159,7 +166,11 @@ public sealed class ScreenerIndicatorEligibilityTests
 
         Assert.Contains(BacktestIndicatorViolationReason.None, answers);
         Assert.Contains(BacktestIndicatorViolationReason.NonCausal, answers);
-        Assert.Contains(BacktestIndicatorViolationReason.SynchronousCalculationUnsupported, answers);
+
+        // The Screener evaluates the two-symbol types, and the three former placeholders (Entropy, Garch11, HurstExponent) are implemented, so no Screener answer is
+        // "synchronous calculation unsupported" any more; that refusal still occurs for the same cases on the Backtest side, which keeps the comparison non-vacuous.
+        var backtestAnswers = Cases().Select(item => BacktestIndicatorEligibility.Check(item.Type, item.Output)).Distinct().ToArray();
+        Assert.Contains(BacktestIndicatorViolationReason.SynchronousCalculationUnsupported, backtestAnswers);
     }
 
     [Fact]
@@ -194,7 +205,7 @@ public sealed class ScreenerIndicatorEligibilityTests
         IndicatorType[] actual = Enum.GetValues<IndicatorType>().Distinct().Where(IndicatorFactory.Default.IsRegistered).Where(ScreenerIndicatorEligibility.IsScreenerOnlyType).ToArray();
 
         Assert.Equal(expected.OrderBy(t => t.ToString(), StringComparer.Ordinal), actual.OrderBy(t => t.ToString(), StringComparer.Ordinal));
-        // Correlation is offered by the Backtest catalog too, Entropy is refused by both: neither is Screener-only.
+        // Correlation and Entropy are offered by the Backtest catalog too: neither is Screener-only.
         Assert.False(ScreenerIndicatorEligibility.IsScreenerOnlyType(IndicatorType.Correlation));
         Assert.False(ScreenerIndicatorEligibility.IsScreenerOnlyType(IndicatorType.Entropy));
     }

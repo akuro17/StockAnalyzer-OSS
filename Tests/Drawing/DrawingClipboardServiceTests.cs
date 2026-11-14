@@ -158,6 +158,35 @@ public class DrawingClipboardServiceTests
     }
 
     [Fact]
+    public async Task TryPasteAsync_OfAHiddenObject_PastesAVisibleObject_AndTheManagerAgrees()
+    {
+        var vm = new ChartViewModel { Symbol = "7203" };
+        vm.UpdateDrawingCoordinator();
+        var clipboard = new InMemoryClipboardService();
+        var transform = new TestCoordinateTransform();
+
+        var t1 = new DateTime(2025, 1, 10);
+        var hidden = new TrendLineObject(new ChartPoint(t1, 100m), new ChartPoint(t1.AddDays(10), 200m)) { IsVisible = false };
+        vm.ObjectManager.AddObject(hidden);
+
+        await DrawingClipboardService.CopyAsync(
+            new List<IChartObject> { hidden },
+            ChartDrawingContextType.Standard,
+            vm.Symbol,
+            vm.SelectedTimeFrame,
+            vm.ObjectManager,
+            clipboard);
+
+        bool success = await DrawingClipboardService.TryPasteAsync(vm, new Point(400, 300), transform, clipboard);
+
+        Assert.True(success);
+        var pasted = vm.ObjectManager.Objects.Single(o => o.Id != hidden.Id);
+        Assert.True(pasted.IsVisible);
+        Assert.True(vm.ObjectManager.IsVisible(pasted.Id) == pasted.IsVisible);
+        Assert.False(vm.ObjectManager.IsVisible(hidden.Id));
+    }
+
+    [Fact]
     public async Task TryPasteAsync_WithLinkGroups_ReconstructsLinkGroupsWithMappedGuids()
     {
         var vm = new ChartViewModel { Symbol = "7203" };

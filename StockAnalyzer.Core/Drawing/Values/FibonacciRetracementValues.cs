@@ -20,17 +20,18 @@ public static class FibonacciRetracementValues
         decimal yDiffPrice = p1.Price - p2.Price;
 
         float[] levels = showExtensions ? ExtensionLevelsArray : DefaultLevelsArray;
-        var values = new List<DrawingCalculatedValue>(levels.Length + 2)
-        {
-            new DrawingCalculatedValue("Range", "Range", range, string.Create(DrawingValueFormat.Culture, $"{range:F3}"), IndicatorColor.Gray)
-        };
+        int count = 1 + levels.Length + (currentPrice.HasValue ? 1 : 0);
+        var values = new DrawingCalculatedValue[count];
+        int index = 0;
+        values[index++] = new DrawingCalculatedValue("Range", "Range", range, string.Create(DrawingValueFormat.Culture, $"{range:F3}"), IndicatorColor.Gray);
 
-        foreach (var level in levels)
+        for (int i = 0; i < levels.Length; i++)
         {
+            float level = levels[i];
             decimal levelPrice = p2.Price + yDiffPrice * (decimal)level;
             string label = string.Create(DrawingValueFormat.Culture, $"Fib {level:P1}");
             string key = string.Create(DrawingValueFormat.Culture, $"Fib_{level:F3}");
-            values.Add(new DrawingCalculatedValue(key, label, levelPrice, string.Create(DrawingValueFormat.Culture, $"{levelPrice:F3}"), color));
+            values[index++] = new DrawingCalculatedValue(key, label, levelPrice, string.Create(DrawingValueFormat.Culture, $"{levelPrice:F3}"), color);
         }
 
         if (currentPrice.HasValue)
@@ -38,8 +39,9 @@ public static class FibonacciRetracementValues
             decimal minDiff = decimal.MaxValue;
             string nearestLabel = string.Empty;
             decimal nearestPrice = 0m;
-            foreach (var level in levels)
+            for (int i = 0; i < levels.Length; i++)
             {
+                float level = levels[i];
                 decimal levelPrice = p2.Price + yDiffPrice * (decimal)level;
                 decimal diff = Math.Abs(currentPrice.Value - levelPrice);
                 if (diff < minDiff)
@@ -51,7 +53,7 @@ public static class FibonacciRetracementValues
             }
             decimal priceDelta = currentPrice.Value - nearestPrice;
             string deltaSign = priceDelta >= 0 ? "+" : "";
-            values.Add(new DrawingCalculatedValue("NearestLevel", "Nearest Level", nearestPrice, string.Create(DrawingValueFormat.Culture, $"{nearestLabel} ({deltaSign}{priceDelta:F3})"), IndicatorColor.FromRgb(255, 215, 0)));
+            values[index] = new DrawingCalculatedValue("NearestLevel", "Nearest Level", nearestPrice, string.Create(DrawingValueFormat.Culture, $"{nearestLabel} ({deltaSign}{priceDelta:F3})"), IndicatorColor.FromRgb(255, 215, 0));
         }
 
         return values;

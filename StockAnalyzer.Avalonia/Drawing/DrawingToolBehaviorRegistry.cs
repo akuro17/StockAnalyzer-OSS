@@ -122,6 +122,19 @@ public static class DrawingToolBehaviorRegistry
         [DrawingTool.ClassicPivotPoints] = new ClassicPivotPointsBehavior(),
         [DrawingTool.Highlighter] = new HighlighterBehavior(),
         [DrawingTool.StepBadge] = new StepBadgeBehavior(),
+
+        // --- Lines (extended line, cross line) ---
+        [DrawingTool.ExtendedLine] = new ExtendedLineBehavior(),
+        [DrawingTool.CrossLine] = new CrossLineBehavior(),
+
+        // --- Channels (disjoint channel) ---
+        [DrawingTool.DisjointChannel] = new DisjointChannelBehavior(),
+
+        // --- Measurement (plan 07) ---
+        [DrawingTool.DatePriceRange] = new DatePriceRangeBehavior(),
+
+        // --- Patterns (plan 07) ---
+        [DrawingTool.ElliottWave] = new ElliottWaveBehavior(),
     };
 
     /// <summary>

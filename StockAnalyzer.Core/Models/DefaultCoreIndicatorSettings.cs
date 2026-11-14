@@ -1608,6 +1608,90 @@ public static class DefaultCoreIndicatorSettings
                     new SeriesColorConfig { Name = IndicatorResult.MainSeriesName, DisplayName = "POC", Color = IndicatorDefaultConstants.SmaColor, TargetSeries = new List<string> { IndicatorResult.MainSeriesName } },
                     new SeriesColorConfig { Name = "Bands", DisplayName = "Value Area (VAH/VAL)", Color = IndicatorDefaultConstants.BollingerBandsColor, TargetSeries = new List<string> { nameof(CoreVolumeProfileLevelsIndicator.VAH), nameof(CoreVolumeProfileLevelsIndicator.VAL) } }
                 }
+            },
+            new CoreIndicatorSettings
+            {
+                // Colours by role (decision U-01=A): volatility main line = RsiColor.
+                TypeEnum = IndicatorType.ParkinsonVolatility,
+                Category = CoreIndicatorCategory.Volatility,
+                IsEnabled = false,
+                ParameterObject = new CoreParkinsonVolatilityParameter(),
+                Color = IndicatorDefaultConstants.RsiColor,
+                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness,
+                Style = CoreLineStyle.Solid,
+                IsOverlay = false,
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
+                {
+                    new SeriesColorConfig { Name = IndicatorResult.MainSeriesName, DisplayName = "Parkinson Volatility", Color = IndicatorDefaultConstants.RsiColor, TargetSeries = new List<string> { IndicatorResult.MainSeriesName } }
+                }
+            },
+            new CoreIndicatorSettings
+            {
+                // Colours by role (decision U-01=A): volatility main line = RsiColor.
+                TypeEnum = IndicatorType.RogersSatchellVolatility,
+                Category = CoreIndicatorCategory.Volatility,
+                IsEnabled = false,
+                ParameterObject = new CoreRogersSatchellVolatilityParameter(),
+                Color = IndicatorDefaultConstants.RsiColor,
+                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness,
+                Style = CoreLineStyle.Solid,
+                IsOverlay = false,
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
+                {
+                    new SeriesColorConfig { Name = IndicatorResult.MainSeriesName, DisplayName = "Rogers-Satchell Volatility", Color = IndicatorDefaultConstants.RsiColor, TargetSeries = new List<string> { IndicatorResult.MainSeriesName } }
+                }
+            },
+            new CoreIndicatorSettings
+            {
+                // Colours by role (decision U-01=A): volatility main line = RsiColor.
+                TypeEnum = IndicatorType.Garch11,
+                Category = CoreIndicatorCategory.Volatility,
+                IsEnabled = false,
+                ParameterObject = new CoreGarch11Parameter(),
+                Color = IndicatorDefaultConstants.RsiColor,
+                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness,
+                Style = CoreLineStyle.Solid,
+                IsOverlay = false,
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
+                {
+                    new SeriesColorConfig { Name = IndicatorResult.MainSeriesName, DisplayName = "GARCH(1,1)", Color = IndicatorDefaultConstants.RsiColor, TargetSeries = new List<string> { IndicatorResult.MainSeriesName } }
+                }
+            },
+            new CoreIndicatorSettings
+            {
+                // Colours by role (decision U-01=A): complexity main line = RsiColor; fixed axis 0..1 (dimensionless).
+                TypeEnum = IndicatorType.HurstExponent,
+                Category = CoreIndicatorCategory.Other,
+                IsEnabled = false,
+                ParameterObject = new CoreHurstExponentParameter(),
+                Color = IndicatorDefaultConstants.RsiColor,
+                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness,
+                Style = CoreLineStyle.Solid,
+                IsOverlay = false,
+                MinValue = IndicatorDefaultConstants.HurstMinValue,
+                MaxValue = IndicatorDefaultConstants.HurstMaxValue,
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
+                {
+                    new SeriesColorConfig { Name = IndicatorResult.MainSeriesName, DisplayName = "Hurst Exponent", Color = IndicatorDefaultConstants.RsiColor, TargetSeries = new List<string> { IndicatorResult.MainSeriesName } }
+                }
+            },
+            new CoreIndicatorSettings
+            {
+                // Colours by role (decision U-01=A): complexity main line = RsiColor; fixed axis 0..1 (normalised entropy).
+                TypeEnum = IndicatorType.Entropy,
+                Category = CoreIndicatorCategory.Other,
+                IsEnabled = false,
+                ParameterObject = new CoreEntropyParameter(),
+                Color = IndicatorDefaultConstants.RsiColor,
+                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness,
+                Style = CoreLineStyle.Solid,
+                IsOverlay = false,
+                MinValue = IndicatorDefaultConstants.EntropyMinValue,
+                MaxValue = IndicatorDefaultConstants.EntropyMaxValue,
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
+                {
+                    new SeriesColorConfig { Name = IndicatorResult.MainSeriesName, DisplayName = "Entropy", Color = IndicatorDefaultConstants.RsiColor, TargetSeries = new List<string> { IndicatorResult.MainSeriesName } }
+                }
             }
         };
     }

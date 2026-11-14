@@ -11,7 +11,7 @@ using StockAnalyzer.Core.Models;
 
 namespace StockAnalyzer.Avalonia.Drawing;
 
-public class HorizontalLineObject : IChartObject, IDrawingCalculatedValuesProvider
+public class HorizontalLineObject : IChartObject, IDisposable, IDrawingCalculatedValuesProvider
 {
     public string? CustomName { get; set; }
     public DrawingMoveAxisMode MoveAxisMode { get; set; } = DrawingMoveAxisMode.XY;
@@ -34,37 +34,54 @@ public class HorizontalLineObject : IChartObject, IDrawingCalculatedValuesProvid
     public int AnchorPointIndex { get; set; } = 0;
     public int PanelIndex { get; set; } = -1;
 
+    private readonly SKPaint _paint = new SKPaint
+    {
+        Style = SKPaintStyle.Stroke,
+        IsAntialias = true
+    };
+
     public HorizontalLineObject(ChartPoint point)
     {
         Points.Add(point);
+    }
+
+    // A removed object is disposed at once while a frame that still holds it may render it on another thread (see NativeResourceGate).
+    private readonly NativeResourceGate _gate = new NativeResourceGate();
+
+    public void Dispose()
+    {
+        lock (_gate.SyncRoot)
+        {
+            if (!_gate.TryMarkDisposed()) return;
+            _paint.Dispose();
+        }
+        GC.SuppressFinalize(this);
     }
 
     public SKColor SkiaColor => new SKColor(Color.R, Color.G, Color.B, Color.A);
 
     public void Render(SKCanvas canvas, ICoordinateTransform transform)
     {
-        if (Points.Count == 0) return;
-
-        var pt = transform.ChartToScreen(Points[0]);
-        float y = (float)pt.Y;
-
-        using var paint = new SKPaint
+        lock (_gate.SyncRoot)
         {
-            Color = SkiaColor,
-            StrokeWidth = (float)Thickness,
-            Style = SKPaintStyle.Stroke,
-            PathEffect = StrokeStyle.ToSkPathEffect(),
-            IsAntialias = true
-        };
+            if (_gate.IsDisposed || Points.Count == 0) return;
 
-        // Use CanvasWidth from the transform to represent the actual chart drawing area
-        // to prevent the line from extending into the Y-axis margin.
-        float width = (float)transform.CanvasWidth;
-        canvas.DrawLine(0, y, width, y, paint);
+            var pt = transform.ChartToScreen(Points[0]);
+            float y = (float)pt.Y;
 
-        if (IsSelected)
-        {
-            SelectionHandleRenderer.Draw(canvas, new global::Avalonia.Point(pt.X, y), AnchorPointIndex == 0 ? DrawingThemeContext.AnchorPointColor : (SKColor?)null, radius: ChartConstants.SelectedHandleRadius);
+            _paint.Color = SkiaColor;
+            _paint.StrokeWidth = (float)Thickness;
+            _paint.PathEffect = StrokeStyle.ToSkPathEffect();
+
+            // Use CanvasWidth from the transform to represent the actual chart drawing area
+            // to prevent the line from extending into the Y-axis margin.
+            float width = (float)transform.CanvasWidth;
+            canvas.DrawLine(0, y, width, y, _paint);
+
+            if (IsSelected)
+            {
+                SelectionHandleRenderer.Draw(canvas, new global::Avalonia.Point(pt.X, y), AnchorPointIndex == 0 ? DrawingThemeContext.AnchorPointColor : (SKColor?)null, radius: ChartConstants.SelectedHandleRadius);
+            }
         }
     }
 

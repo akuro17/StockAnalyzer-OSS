@@ -1,9 +1,12 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
+using System.ComponentModel.DataAnnotations;
 using Avalonia;
 using Avalonia.Media;
 using SkiaSharp;
 using StockAnalyzer.Avalonia.Common;
+using StockAnalyzer.Core.Constants;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Services.Analysis;
 
@@ -32,25 +35,52 @@ public class RegressionTrendObject : IChartObject, IDisposable, IDrawingCalculat
     public int Priority { get; set; } = 0;
     public int AnchorPointIndex { get; set; } = 0;
 
+    private const decimal DefaultStdDevMultiplier = 2.0m;
+    private const double MinStdDevMultiplierRange = 0.1;
+    private const double MaxStdDevMultiplierRange = 10.0;
+    private const decimal MinStdDevMultiplier = (decimal)MinStdDevMultiplierRange;
+    private const decimal MaxStdDevMultiplier = (decimal)MaxStdDevMultiplierRange;
+    private const double MinExtendScreenDeltaX = 0.5;
+
+    private decimal _stdDevMultiplier = DefaultStdDevMultiplier;
+
+    [Category("Parameters")]
+    [DisplayName("StdDev Multiplier")]
+    [Range(MinStdDevMultiplierRange, MaxStdDevMultiplierRange)]
+    [ParameterTag(DrawingParameterTags.Analysis)]
+    public decimal StdDevMultiplier
+    {
+        get => _stdDevMultiplier;
+        set => _stdDevMultiplier = Math.Clamp(value, MinStdDevMultiplier, MaxStdDevMultiplier);
+    }
+
+    [Category("Parameters")]
+    [DisplayName("Extend Right")]
+    [ParameterTag(DrawingParameterTags.Analysis)]
+    public bool ExtendRight { get; set; } = false;
+
     // Regression State
     private RegressionService.RegressionResult _result;
     private DateTime _start;
     private DateTime _end;
     private DateTime[] _barTimes = Array.Empty<DateTime>();
+    private DateTime[] _tailTimes = Array.Empty<DateTime>();
 
     // Reused across Render() calls (ZeroAllocation Render Loop, SA_RENDERING_PERFORMANCE.md
     // §1) instead of a `new SKPaint`/`new SKPath` per frame. Color-dependent properties are
     // refreshed from the current property values on each use since they can change between
     // renders; properties that never change (StrokeWidth/PathEffect/Style) are set once here.
-    private readonly SKPaint _linePaint = new SKPaint { IsAntialias = true };
+    private readonly SKPaint _linePaint = new SKPaint { Style = SKPaintStyle.Stroke, IsAntialias = true };
     private readonly SKPaint _bandPaint = new SKPaint
     {
+        Style = SKPaintStyle.Stroke,
         StrokeWidth = 1,
         IsAntialias = true,
         PathEffect = SKPathEffect.CreateDash(new float[] { 3, 3 }, 0)
     };
     private readonly SKPaint _fillPaint = new SKPaint { Style = SKPaintStyle.Fill };
     private readonly SKPath _fillPath = new SKPath();
+    private readonly SKPath _extendPath = new SKPath();
 
     public RegressionTrendObject(ChartPoint start, ChartPoint end)
     {
@@ -65,6 +95,7 @@ public class RegressionTrendObject : IChartObject, IDisposable, IDrawingCalculat
         _bandPaint.Dispose();
         _fillPaint.Dispose();
         _fillPath.Dispose();
+        _extendPath.Dispose();
         GC.SuppressFinalize(this);
     }
 
@@ -89,9 +120,13 @@ public class RegressionTrendObject : IChartObject, IDisposable, IDrawingCalculat
         // path -- instead of the O(N) `.Where().OrderBy().ToList()` LINQ chain this used to
         // run on every such frame (SA_RENDERING_PERFORMANCE.md "LINQ in Hot Paths").
         var range = new List<CoreCandleData>();
+        int fastTailStartIndex = -1;
+        int fastTotalCount = 0;
+        List<DateTime>? slowTail = null;
         if (candles is IReadOnlyList<CoreCandleData> list)
         {
             int count = list.Count;
+            fastTotalCount = count;
             if (count > 0)
             {
                 // Binary search lower bound (first candle with Timestamp >= start)
@@ -134,6 +169,10 @@ public class RegressionTrendObject : IChartObject, IDisposable, IDrawingCalculat
                     {
                         range.Add(list[i]);
                     }
+                    if (endIndex + 1 < count)
+                    {
+                        fastTailStartIndex = endIndex + 1;
+                    }
                 }
             }
         }
@@ -148,8 +187,14 @@ public class RegressionTrendObject : IChartObject, IDisposable, IDrawingCalculat
                 {
                     range.Add(c);
                 }
+                else if (c.Timestamp > end)
+                {
+                    slowTail ??= new List<DateTime>();
+                    slowTail.Add(c.Timestamp);
+                }
             }
             range.Sort(static (a, b) => a.Timestamp.CompareTo(b.Timestamp));
+            slowTail?.Sort();
         }
 
         // 2. Calculate Regression
@@ -161,6 +206,26 @@ public class RegressionTrendObject : IChartObject, IDisposable, IDrawingCalculat
         {
             if (_barTimes.Length != _result.Count) _barTimes = new DateTime[_result.Count];
             for (int i = 0; i < _barTimes.Length; i++) _barTimes[i] = range[i].Timestamp;
+
+            if (candles is IReadOnlyList<CoreCandleData> tailList && fastTailStartIndex >= 0)
+            {
+                int tailCount = fastTotalCount - fastTailStartIndex;
+                if (_tailTimes.Length != tailCount) _tailTimes = new DateTime[tailCount];
+                for (int i = 0; i < tailCount; i++) _tailTimes[i] = tailList[fastTailStartIndex + i].Timestamp;
+            }
+            else if (slowTail != null && slowTail.Count > 0)
+            {
+                if (_tailTimes.Length != slowTail.Count) _tailTimes = new DateTime[slowTail.Count];
+                for (int i = 0; i < slowTail.Count; i++) _tailTimes[i] = slowTail[i];
+            }
+            else
+            {
+                _tailTimes = Array.Empty<DateTime>();
+            }
+        }
+        else
+        {
+            _tailTimes = Array.Empty<DateTime>();
         }
 
         // 3. Sync Points[] to the rendered handle positions (regression-fitted price at
@@ -256,7 +321,7 @@ public class RegressionTrendObject : IChartObject, IDisposable, IDrawingCalculat
         canvas.DrawLine((float)screenStart.X, (float)screenStart.Y, (float)screenEnd.X, (float)screenEnd.Y, _linePaint);
 
         // StdDev Bands
-        decimal std = _result.StdDev * 2;
+        decimal std = _result.StdDev * StdDevMultiplier;
 
         var pStartUpper = new ChartPoint(_start, yAnalysisStart + std);
         var pEndUpper = new ChartPoint(_end, yAnalysisEnd + std);
@@ -284,6 +349,18 @@ public class RegressionTrendObject : IChartObject, IDisposable, IDrawingCalculat
         _fillPaint.Color = new SKColor(SkiaColor.Red, SkiaColor.Green, SkiaColor.Blue, 30);
         canvas.DrawPath(_fillPath, _fillPaint);
 
+        if (ExtendRight)
+        {
+            float clipRight = canvas.LocalClipBounds.Right;
+            if (!float.IsFinite(clipRight) || clipRight <= 0f)
+            {
+                clipRight = (float)transform.CanvasWidth;
+            }
+            DrawExtendedLine(canvas, transform, _linePaint, screenEnd, 0m, clipRight);
+            DrawExtendedLine(canvas, transform, _bandPaint, sEndUpper, std, clipRight);
+            DrawExtendedLine(canvas, transform, _bandPaint, sEndLower, -std, clipRight);
+        }
+
         // Control-point handles are always shown (not gated by IsSelected), matching the
         // "not enough data yet" fallback above: while placing point 2 during two-click
         // creation the object is never IsSelected (that only becomes true once it joins
@@ -294,6 +371,76 @@ public class RegressionTrendObject : IChartObject, IDisposable, IDrawingCalculat
         // intentional rather than a plain selection affordance.
         SelectionHandleRenderer.Draw(canvas, screenStart, radius: ChartConstants.SelectedHandleRadius);
         SelectionHandleRenderer.Draw(canvas, screenEnd, radius: ChartConstants.SelectedHandleRadius);
+    }
+
+    private void DrawExtendedLine(
+        SKCanvas canvas,
+        ICoordinateTransform transform,
+        SKPaint paint,
+        global::Avalonia.Point rangeEnd,
+        decimal bandOffset,
+        float clipRight)
+    {
+        if (!double.IsFinite(rangeEnd.X) || !double.IsFinite(rangeEnd.Y)) return;
+
+        _extendPath.Reset();
+        _extendPath.MoveTo((float)rangeEnd.X, (float)rangeEnd.Y);
+
+        global::Avalonia.Point prev = rangeEnd;
+        global::Avalonia.Point last = rangeEnd;
+        bool hasSegment = false;
+
+        if (_tailTimes.Length == 0)
+        {
+            if (_barTimes.Length >= 2)
+            {
+                decimal prevPrice = _result.GetValueAt(_result.Count - 2) + bandOffset;
+                prev = transform.ChartToScreen(new ChartPoint(_barTimes[_result.Count - 2], prevPrice));
+            }
+        }
+        else
+        {
+            bool aborted = false;
+            for (int i = 0; i < _tailTimes.Length; i++)
+            {
+                decimal extrapolated = _result.GetValueAt(_result.Count + i) + bandOffset;
+                var pt = transform.ChartToScreen(new ChartPoint(_tailTimes[i], extrapolated));
+                if (!double.IsFinite(pt.X) || !double.IsFinite(pt.Y))
+                {
+                    aborted = true;
+                    break;
+                }
+                _extendPath.LineTo((float)pt.X, (float)pt.Y);
+                prev = last;
+                last = pt;
+                hasSegment = true;
+            }
+            if (aborted)
+            {
+                if (hasSegment) canvas.DrawPath(_extendPath, paint);
+                return;
+            }
+        }
+
+        if (double.IsFinite(prev.X) && double.IsFinite(prev.Y) && double.IsFinite(last.X) && double.IsFinite(last.Y))
+        {
+            double dx = last.X - prev.X;
+            if (dx >= MinExtendScreenDeltaX && clipRight > last.X)
+            {
+                double t = (clipRight - prev.X) / dx;
+                double extY = prev.Y + t * (last.Y - prev.Y);
+                if (double.IsFinite(extY))
+                {
+                    _extendPath.LineTo(clipRight, (float)extY);
+                    hasSegment = true;
+                }
+            }
+        }
+
+        if (hasSegment)
+        {
+            canvas.DrawPath(_extendPath, paint);
+        }
     }
 
     public bool HitTest(global::Avalonia.Point screenPoint, ICoordinateTransform transform, double tolerance = ChartConstants.DefaultHitTestTolerance)
@@ -307,7 +454,7 @@ public class RegressionTrendObject : IChartObject, IDisposable, IDrawingCalculat
          // We can reconstruct the polygon locally and test
         decimal yAnalysisStart = _result.Slope * 0 + _result.Intercept;
         decimal yAnalysisEnd = _result.Slope * (_result.Count - 1) + _result.Intercept;
-        decimal std = _result.StdDev * 2;
+        decimal std = _result.StdDev * StdDevMultiplier;
         
         var pStartUpper = new ChartPoint(_start, yAnalysisStart + std);
         var pEndUpper = new ChartPoint(_end, yAnalysisEnd + std);
@@ -356,6 +503,14 @@ public class RegressionTrendObject : IChartObject, IDisposable, IDrawingCalculat
                 if (index < 0) index = ~index - 1;
                 x = Math.Clamp(index, 0, _result.Count - 1);
             }
+            else if (ExtendRight && _tailTimes.Length > 0 && timestamp > _end && timestamp <= _tailTimes[^1])
+            {
+                // On trailing existing bars when ExtendRight is enabled: j = index + 1 (1-based after range end), so x = (n - 1) + j = n + index.
+                int index = Array.BinarySearch(_tailTimes, timestamp);
+                if (index < 0) index = ~index - 1;
+                index = Math.Clamp(index, 0, _tailTimes.Length - 1);
+                x = _result.Count + index;
+            }
             else
             {
                 double totalSec = (_end - _start).TotalSeconds;
@@ -368,8 +523,9 @@ public class RegressionTrendObject : IChartObject, IDisposable, IDrawingCalculat
         }
 
         decimal center = _result.GetValueAt(x);
-        decimal upper2 = center + (_result.StdDev * 2);
-        decimal lower2 = center - (_result.StdDev * 2);
+        decimal std = _result.StdDev * StdDevMultiplier;
+        decimal upper2 = center + std;
+        decimal lower2 = center - std;
 
         return new DrawingCalculatedValue[]
         {

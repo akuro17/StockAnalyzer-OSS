@@ -206,6 +206,11 @@ public static class ChartConstants
     public const float PolylineLabelOffsetYOdd = 20f;
 
     /// <summary>
+    /// Manual Elliott Wave Object: Vertical offset above/below vertex for wave count labels (pixels).
+    /// </summary>
+    public const float ElliottWaveLabelOffsetY = 12f;
+
+    /// <summary>
     /// Pitchfork Object: Default padding to calculate safe clipping bounds (pixels).
     /// </summary>
     public const float PitchforkBoundsPadding = 50f;
@@ -346,6 +351,23 @@ public static class ChartConstants
     /// TrendLine Projection: Default dash interval for the projection line (pixels).
     /// </summary>
     public const float DefaultTrendProjectionDashInterval = 4f;
+
+    /// <summary>
+    /// Extended line: two anchors closer than this many screen pixels have no direction, so the line is not extended.
+    /// </summary>
+    public const double ExtendedLineMinSpanPixels = 0.5;
+
+    /// <summary>Channel tools (Parallel / Disjoint): alpha (0-255) of the translucent fill.</summary>
+    public const byte ChannelFillAlpha = 30;
+
+    /// <summary>Default alpha (0-255) for translucent drawing shape fills.</summary>
+    public const byte DefaultShapeFillAlpha = 30;
+
+    /// <summary>Channel tools (Parallel / Disjoint): stroke width (pixels) of the dashed center line.</summary>
+    public const float ChannelCenterLineStrokeWidth = 1f;
+
+    /// <summary>Channel tools (Parallel / Disjoint): on and off length (pixels) of the dashed center line.</summary>
+    public const float ChannelCenterLineDashInterval = 5f;
 
     #endregion
     

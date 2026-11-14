@@ -90,10 +90,13 @@ This section is generated from the production code (`IndicatorFactory`, each ind
 | `LinearRegression` | `31` | `CoreSmaParameter` | `Period` (int, default `14`, range `[1, 1000]`) | `true` | `"Main"` |
 | `RegressionSlope` | `32` | `CoreSmaParameter` | `Period` (int, default `14`, range `[1, 1000]`) | `false` | `"Main"` |
 | `WilderSmoothing` | `66` | `CoreSmaParameter` | `Period` (int, default `14`, range `[1, 1000]`) | `true` | `"Main"` |
+| `Garch11` | `68` | `CoreGarch11Parameter` | `Period` (int, default `250`), `RefitInterval` (int, default `20`), `MaxIterations` (int, default `1000`), `Annualize` (bool, default `false`), `PeriodsPerYear` (int, default `252`) | `false` | `"Main"` |
 | `FourierTransform` | `69` | `CoreFourierTransformParameter` | `TargetPeriod` (int, default `20`, range `[2, 500]`) | `false` | `"Main"` |
 | `HilbertTransform` | `70` | `CoreHilbertTransformParameter` | `DefaultPeriod` (int, default `14`, range `[2, 100]`), `MinPeriod` (int, default `6`, range `[2, 50]`), `MaxPeriod` (int, default `50`, range `[10, 200]`), `SmoothBeta` (decimal, default `0.1`, range `[0.01, 1]`), `DeltaLimit` (decimal, default `3.0`, range `[0.5, 20]`) | `false` | `"Main"`, `"InPhase"`, `"Quadrature"` |
+| `HurstExponent` | `81` | `CoreHurstExponentParameter` | `Period` (int, default `100`) | `false` | `"Main"` |
 | `CoppockCurve` | `100` | `CoreCoppockCurveParameter` | `LongRocPeriod` (int, default `14`), `ShortRocPeriod` (int, default `11`), `WmaPeriod` (int, default `10`) | `false` | `"Main"` |
 | `SchaffTrendCycle` | `103` | `CoreSchaffTrendCycleParameter` | `CyclePeriod` (int, default `10`), `ShortPeriod` (int, default `23`), `LongPeriod` (int, default `50`), `SmoothPeriod` (int, default `3`) | `false` | `"Main"` |
+| `Entropy` | `113` | `CoreEntropyParameter` | `Period` (int, default `30`), `BinCount` (int, default `10`) | `false` | `"Main"` |
 | `ZScore` | `116` | `CoreSmaParameter` | `Period` (int, default `20`, range `[1, 1000]`) | `false` | `"Main"` |
 | `KylesLambda` | `117` | `CoreSmaParameter` | `Period` (int, default `20`, range `[1, 1000]`) | `false` | `"Main"` |
 | `StructuralDtw` | `139` | `CoreStructuralDtwParameter` | `Period` (int, default `14`), `Lag` (int, default `14`), `WarpingRadius` (int, default `3`) | `false` | `"Main"` |
@@ -205,6 +208,8 @@ This section is generated from the production code (`IndicatorFactory`, each ind
 | `SSAResidualBand` | `158` | `CoreSSAResidualBandParameter` | `WindowSize` (int, default `64`, range `[4, 512]`), `EmbeddingDimension` (int, default `20`, range `[2, 256]`), `NumComponents` (int, default `2`, range `[1, 100]`), `Multiplier` (decimal, default `2.0`, range `[0.1, 10]`), `SigmaMode` (SsaResidualBandSigmaMode, default `0 (ExactDiagonalAverage)`) | `true` | `"Main"`, `"CenterBand"`, `"UpperBand"`, `"LowerBand"`, `"BandWidth"`, `"Upper"`, `"Lower"`, `"Center"` |
 | `PolarAmplitudeRatio` | `173` | `CorePolarAmplitudeRatioParameter` | `AtrPeriod` (int, default `14`, range `[2, 200]`), `DefaultPeriod` (int, default `14`, range `[2, 100]`), `MinPeriod` (int, default `6`, range `[2, 50]`), `MaxPeriod` (int, default `50`, range `[10, 200]`), `SmoothBeta` (decimal, default `0.1`, range `[0.01, 1]`), `DeltaLimit` (decimal, default `3.0`, range `[0.5, 20]`) | `false` | `"Main"` |
 | `FDI` | `178` | `CoreFDIParameter` | `Period` (int, default `30`), `SmoothingPeriod` (int, default `0`) | `false` | `"Main"` |
+| `ParkinsonVolatility` | `200` | `CoreParkinsonVolatilityParameter` | `Period` (int, default `20`), `Annualize` (bool, default `false`), `PeriodsPerYear` (int, default `252`) | `false` | `"Main"` |
+| `RogersSatchellVolatility` | `201` | `CoreRogersSatchellVolatilityParameter` | `Period` (int, default `20`), `Annualize` (bool, default `false`), `PeriodsPerYear` (int, default `252`) | `false` | `"Main"` |
 
 ### Category: Volume
 

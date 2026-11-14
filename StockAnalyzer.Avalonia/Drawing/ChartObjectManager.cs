@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -43,9 +44,16 @@ public class ChartObjectManager
         = new Dictionary<ChartDrawingContextType, ObjectLinkGroupRegistry>();
     private ObjectLinkGroupRegistry _currentLinks = new ObjectLinkGroupRegistry();
 
+    // Render scope (the render thread walks a snapshot of the list; a removed object is disposed only after the last frame in flight).
+    // _renderScopeLock guards: every structural change of a context list, the snapshot copy, the scope counter and the deferred list.
+    // No callback (Render, Dispose, events) ever runs while it is held.
+    private readonly object _renderScopeLock = new object();
+    private int _activeRenderScopes;
+    private List<IChartObject>? _deferredRetirements;
+
     private readonly HashSet<Guid> _selectedIds = new HashSet<Guid>();
     private readonly HashSet<Guid> _lockedIds = new HashSet<Guid>();
-    private readonly HashSet<Guid> _hiddenIds = new HashSet<Guid>();
+    // Visibility has no separate id set: IChartObject.IsVisible is the single source (ChartObjectVisibilityInvariantTests).
     // Batch notification management
     private int _batchDepth = 0;
     private bool _hasPendingChanged = false;
@@ -203,21 +211,23 @@ public class ChartObjectManager
         _currentContext = newContext;
         _informationObject = null;
         
-        if (!_contextStore.TryGetValue(newContext, out var objects))
+        lock (_renderScopeLock)
         {
-            objects = new List<IChartObject>();
-            _contextStore[newContext] = objects;
+            if (!_contextStore.TryGetValue(newContext, out var objects))
+            {
+                objects = new List<IChartObject>();
+                _contextStore[newContext] = objects;
+            }
+
+            _currentObjects = objects;
         }
-        
-        _currentObjects = objects;
+
         _currentLinks = GetLinkRegistry(newContext);
         RecalculateZIndices();
         _lockedIds.Clear();
-        _hiddenIds.Clear();
         foreach (var obj in _currentObjects)
         {
             if (obj.IsLocked) _lockedIds.Add(obj.Id);
-            if (!obj.IsVisible) _hiddenIds.Add(obj.Id);
         }
         unchecked
         {
@@ -237,7 +247,10 @@ public class ChartObjectManager
         }
 
         chartObject.ZIndex = _currentObjects.Count;
-        _currentObjects.Add(chartObject);
+        lock (_renderScopeLock)
+        {
+            _currentObjects.Add(chartObject);
+        }
         NotifyChanged();
         return true;
     }
@@ -257,10 +270,12 @@ public class ChartObjectManager
         }
 
         IChartObject removedObject = _currentObjects[index];
-        _currentObjects.RemoveAt(index);
+        lock (_renderScopeLock)
+        {
+            _currentObjects.RemoveAt(index);
+        }
         _selectedIds.Remove(id);
         _lockedIds.Remove(id);
-        _hiddenIds.Remove(id);
         _currentLinks.OnObjectRemoved(id);
         RecalculateZIndices();
         NotifyChanged();
@@ -497,9 +512,7 @@ public class ChartObjectManager
     public bool IsVisible(Guid id)
     {
         var obj = _currentObjects.FirstOrDefault(o => o.Id == id);
-        if (obj == null) return false;
-        if (_hiddenIds.Contains(id)) return false;
-        return obj.IsVisible;
+        return obj != null && obj.IsVisible;
     }
 
     /// <summary>
@@ -622,15 +635,60 @@ public class ChartObjectManager
     /// </summary>
     public void RenderPanel(SKCanvas canvas, int panelIndex, ICoordinateTransform transform)
     {
-        var list = _currentObjects;
-        int count = list.Count;
-        for (int i = 0; i < count; i++)
+        // Scope start: copy the list into a pooled array and count the frame in flight in ONE locked step, so a concurrent
+        // RemoveObject either misses the frame (object not in the copy) or sees it (disposal deferred); no gap in between.
+        IChartObject[] snapshot;
+        int count;
+        lock (_renderScopeLock)
         {
-            var obj = list[i];
-            if (obj.PanelIndex == panelIndex && IsVisible(obj.Id))
+            List<IChartObject> list = _currentObjects;
+            count = list.Count;
+            snapshot = ArrayPool<IChartObject>.Shared.Rent(count);
+            list.CopyTo(snapshot, 0);
+            _activeRenderScopes++;
+        }
+
+        try
+        {
+            for (int i = 0; i < count; i++)
             {
-                obj.Render(canvas, transform);
+                IChartObject obj = snapshot[i];
+                // Same rule as IsVisible(id), read from the snapshot object (IsVisible(id) would enumerate the live list).
+                if (obj.PanelIndex == panelIndex && obj.IsVisible)
+                {
+                    obj.Render(canvas, transform);
+                }
             }
+        }
+        finally
+        {
+            EndRenderScope(snapshot, count);
+        }
+    }
+
+    /// <summary>Leaves a render scope (always reached through finally): returns the snapshot and disposes what was removed meanwhile.</summary>
+    private void EndRenderScope(IChartObject[] snapshot, int count)
+    {
+        // Drop the references first: a pooled array must not keep removed objects alive.
+        Array.Clear(snapshot, 0, count);
+        ArrayPool<IChartObject>.Shared.Return(snapshot);
+
+        List<IChartObject>? due = null;
+        lock (_renderScopeLock)
+        {
+            _activeRenderScopes--;
+            if (_activeRenderScopes == 0 && _deferredRetirements != null)
+            {
+                due = _deferredRetirements;
+                _deferredRetirements = null;
+                // An object added back before the frame ended is managed again and must stay alive.
+                due.RemoveAll(IsManaged);
+            }
+        }
+
+        if (due != null)
+        {
+            DisposeAll(due);
         }
     }
 
@@ -649,7 +707,10 @@ public class ChartObjectManager
         int index = _currentObjects.FindIndex(o => o.Id == id);
         if (index < 0 || index >= _currentObjects.Count - 1) return false;
 
-        (_currentObjects[index], _currentObjects[index + 1]) = (_currentObjects[index + 1], _currentObjects[index]);
+        lock (_renderScopeLock)
+        {
+            (_currentObjects[index], _currentObjects[index + 1]) = (_currentObjects[index + 1], _currentObjects[index]);
+        }
         RecalculateZIndices();
         NotifyChanged();
         return true;
@@ -661,7 +722,10 @@ public class ChartObjectManager
         int index = _currentObjects.FindIndex(o => o.Id == id);
         if (index <= 0) return false;
 
-        (_currentObjects[index], _currentObjects[index - 1]) = (_currentObjects[index - 1], _currentObjects[index]);
+        lock (_renderScopeLock)
+        {
+            (_currentObjects[index], _currentObjects[index - 1]) = (_currentObjects[index - 1], _currentObjects[index]);
+        }
         RecalculateZIndices();
         NotifyChanged();
         return true;
@@ -673,9 +737,12 @@ public class ChartObjectManager
         int index = _currentObjects.FindIndex(o => o.Id == id);
         if (index < 0 || index == _currentObjects.Count - 1) return false;
 
-        var obj = _currentObjects[index];
-        _currentObjects.RemoveAt(index);
-        _currentObjects.Add(obj);
+        lock (_renderScopeLock)
+        {
+            var obj = _currentObjects[index];
+            _currentObjects.RemoveAt(index);
+            _currentObjects.Add(obj);
+        }
         RecalculateZIndices();
         NotifyChanged();
         return true;
@@ -687,9 +754,12 @@ public class ChartObjectManager
         int index = _currentObjects.FindIndex(o => o.Id == id);
         if (index <= 0) return false;
 
-        var obj = _currentObjects[index];
-        _currentObjects.RemoveAt(index);
-        _currentObjects.Insert(0, obj);
+        lock (_renderScopeLock)
+        {
+            var obj = _currentObjects[index];
+            _currentObjects.RemoveAt(index);
+            _currentObjects.Insert(0, obj);
+        }
         RecalculateZIndices();
         NotifyChanged();
         return true;
@@ -801,10 +871,8 @@ public class ChartObjectManager
         var obj = _currentObjects.FirstOrDefault(o => o.Id == id);
         if (obj == null) return false;
 
-        bool currentlyVisible = IsVisible(id);
-        if (currentlyVisible)
+        if (obj.IsVisible)
         {
-            _hiddenIds.Add(id);
             obj.IsVisible = false;
             if (obj.IsSelected)
             {
@@ -814,7 +882,6 @@ public class ChartObjectManager
         }
         else
         {
-            _hiddenIds.Remove(id);
             obj.IsVisible = true;
         }
         NotifyChanged();
@@ -855,7 +922,6 @@ public class ChartObjectManager
     {
         using (BeginBatch())
         {
-            _hiddenIds.Clear();
             for (int i = 0; i < _currentObjects.Count; i++)
             {
                 _currentObjects[i].IsVisible = true;
@@ -872,7 +938,6 @@ public class ChartObjectManager
             for (int i = 0; i < _currentObjects.Count; i++)
             {
                 var obj = _currentObjects[i];
-                _hiddenIds.Add(obj.Id);
                 obj.IsVisible = false;
                 if (obj.IsSelected)
                 {
@@ -901,9 +966,11 @@ public class ChartObjectManager
                     }
                     _selectedIds.Remove(obj.Id);
                     _lockedIds.Remove(obj.Id);
-                    _hiddenIds.Remove(obj.Id);
                     _currentLinks.OnObjectRemoved(obj.Id);
-                    _currentObjects.RemoveAt(i);
+                    lock (_renderScopeLock)
+                    {
+                        _currentObjects.RemoveAt(i);
+                    }
                     retiredObjects.Add(obj);
                 }
             }
@@ -920,7 +987,10 @@ public class ChartObjectManager
         foreach (var contextList in _contextStore.Values)
         {
             AddRetiredObjects(retiredObjects, contextList);
-            contextList.Clear();
+            lock (_renderScopeLock)
+            {
+                contextList.Clear();
+            }
         }
         foreach (var registry in _linkRegistries.Values)
         {
@@ -930,7 +1000,6 @@ public class ChartObjectManager
         _informationObject = null;
         _selectedIds.Clear();
         _lockedIds.Clear();
-        _hiddenIds.Clear();
         unchecked
         {
             Revision++;
@@ -1066,12 +1135,18 @@ public class ChartObjectManager
             if (_contextStore.TryGetValue(kv.Key, out var list))
             {
                 AddRetiredObjects(retiredObjects, list);
-                list.Clear();
-                list.AddRange(kv.Value);
+                lock (_renderScopeLock)
+                {
+                    list.Clear();
+                    list.AddRange(kv.Value);
+                }
             }
             else
             {
-                _contextStore[kv.Key] = new List<IChartObject>(kv.Value);
+                lock (_renderScopeLock)
+                {
+                    _contextStore[kv.Key] = new List<IChartObject>(kv.Value);
+                }
             }
 
             // Recalculate Z-indices for every loaded context
@@ -1084,11 +1159,9 @@ public class ChartObjectManager
         _informationObject = null;
         _selectedIds.Clear();
         _lockedIds.Clear();
-        _hiddenIds.Clear();
         foreach (var obj in _currentObjects)
         {
             if (obj.IsLocked) _lockedIds.Add(obj.Id);
-            if (!obj.IsVisible) _hiddenIds.Add(obj.Id);
         }
         unchecked
         {
@@ -1105,20 +1178,60 @@ public class ChartObjectManager
         }
     }
 
-    private void DisposeIfNoLongerManaged(IChartObject chartObject)
+    /// <summary>Whether any context's list still holds the object. Caller holds <see cref="_renderScopeLock"/> when a render thread may run.</summary>
+    private bool IsManaged(IChartObject chartObject)
     {
         foreach (var contextList in _contextStore.Values)
         {
             for (int i = 0; i < contextList.Count; i++)
             {
-                if (ReferenceEquals(contextList[i], chartObject)) return;
+                if (ReferenceEquals(contextList[i], chartObject)) return true;
             }
         }
 
-        if (chartObject is IDisposable disposable)
+        return false;
+    }
+
+    private void DisposeIfNoLongerManaged(IChartObject chartObject)
+    {
+        if (chartObject is not IDisposable disposable) return;
+
+        lock (_renderScopeLock)
         {
-            disposable.Dispose();
+            if (IsManaged(chartObject)) return;
+
+            if (_activeRenderScopes > 0)
+            {
+                // A frame in flight may still hold the object: the last EndRenderScope disposes it.
+                _deferredRetirements ??= new List<IChartObject>();
+                if (!_deferredRetirements.Contains(chartObject))
+                {
+                    _deferredRetirements.Add(chartObject);
+                }
+                return;
+            }
         }
+
+        disposable.Dispose();
+    }
+
+    /// <summary>Disposes every object even when one Dispose throws; the first failure is rethrown afterwards.</summary>
+    private static void DisposeAll(List<IChartObject> objects)
+    {
+        System.Runtime.ExceptionServices.ExceptionDispatchInfo? firstFailure = null;
+        for (int i = 0; i < objects.Count; i++)
+        {
+            try
+            {
+                (objects[i] as IDisposable)?.Dispose();
+            }
+            catch (Exception ex)
+            {
+                firstFailure ??= System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(ex);
+            }
+        }
+
+        firstFailure?.Throw();
     }
 
     private static void AddRetiredObjects(List<IChartObject> retiredObjects, List<IChartObject> objects)

@@ -11,6 +11,17 @@ public sealed class TrendLineBehavior : TwoClickBehavior<TrendLineObject>
         => new TrendLineObject(p, p);
 }
 
+/// <summary>
+/// "Extended Line" tool: the same two-click operation and the same <see cref="TrendLineObject"/> as the Trend Line tool.
+/// Its <see cref="TrendLineObject.ExtendMode"/> starts as <see cref="TrendLineObject.ExtendedLineToolDefaultMode"/> through the
+/// tool preset (<c>DrawingToolPresetService</c>), not here, because a new object receives its preset values right after creation.
+/// </summary>
+public sealed class ExtendedLineBehavior : TwoClickBehavior<TrendLineObject>
+{
+    protected override TrendLineObject CreateInstance(ChartPoint p, IEnumerable<CoreCandleData>? _)
+        => new TrendLineObject(p, p);
+}
+
 public sealed class RayBehavior : TwoClickBehavior<RayObject>
 {
     protected override RayObject CreateInstance(ChartPoint p, IEnumerable<CoreCandleData>? _)
@@ -81,6 +92,24 @@ public sealed class RectangleBehavior : TwoClickBehavior<RectangleObject>
         => new RectangleObject(p, p);
 }
 
+public sealed class DatePriceRangeBehavior : TwoClickBehavior<DatePriceRangeObject>
+{
+    protected override DatePriceRangeObject CreateInstance(ChartPoint p, IEnumerable<CoreCandleData>? candles)
+    {
+        var obj = new DatePriceRangeObject(p, p);
+        obj.Recalculate(ToReadOnlyList(candles));
+        return obj;
+    }
+
+    protected override void OnPointUpdated(DatePriceRangeObject obj, ChartPoint chartPoint, IEnumerable<CoreCandleData>? candles)
+    {
+        obj.Recalculate(ToReadOnlyList(candles));
+    }
+
+    private static IReadOnlyList<CoreCandleData>? ToReadOnlyList(IEnumerable<CoreCandleData>? candles)
+        => candles as IReadOnlyList<CoreCandleData> ?? (candles == null ? null : new List<CoreCandleData>(candles));
+}
+
 public sealed class ClothoidZoneBehavior : TwoClickBehavior<ClothoidZoneObject>
 {
     protected override ClothoidZoneObject CreateInstance(ChartPoint p, IEnumerable<CoreCandleData>? _)
@@ -122,6 +151,12 @@ public sealed class VerticalLineBehavior : ClickToPlaceBehavior<VerticalLineObje
 {
     protected override VerticalLineObject CreateInstance(ChartPoint p, IEnumerable<CoreCandleData>? _)
         => new VerticalLineObject(p);
+}
+
+public sealed class CrossLineBehavior : ClickToPlaceBehavior<CrossLineObject>
+{
+    protected override CrossLineObject CreateInstance(ChartPoint p, IEnumerable<CoreCandleData>? _)
+        => new CrossLineObject(p);
 }
 
 public sealed class GannSquareOfNineBehavior : ClickToPlaceBehavior<GannSquareOfNineObject>

@@ -9,16 +9,14 @@ public static class PriceLabelValues
     {
         decimal price = point.Price;
 
-        var values = new List<DrawingCalculatedValue>(2)
-        {
-            new DrawingCalculatedValue("Price", "Price", price, string.Create(DrawingValueFormat.Culture, $"{price:F3}"), color)
-        };
+        var values = new DrawingCalculatedValue[currentPrice.HasValue ? 2 : 1];
+        values[0] = new DrawingCalculatedValue("Price", "Price", price, string.Create(DrawingValueFormat.Culture, $"{price:F3}"), color);
 
         if (currentPrice.HasValue)
         {
             decimal diff = currentPrice.Value - price;
             decimal diffPct = DrawingValueMath.CalculatePercentageChange(price, currentPrice.Value);
-            values.Add(new DrawingCalculatedValue("PriceDiff", "Price Diff", diff, string.Create(DrawingValueFormat.Culture, $"{diff:+0.000;-0.000;0.000} ({diffPct:+0.00;-0.00;0.00}%)"), IndicatorColor.Gray));
+            values[1] = new DrawingCalculatedValue("PriceDiff", "Price Diff", diff, string.Create(DrawingValueFormat.Culture, $"{diff:+0.000;-0.000;0.000} ({diffPct:+0.00;-0.00;0.00}%)"), IndicatorColor.Gray);
         }
 
         return values;

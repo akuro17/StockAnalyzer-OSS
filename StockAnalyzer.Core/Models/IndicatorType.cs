@@ -100,7 +100,9 @@ public enum IndicatorType
     [Description("GARCH(1,1)")] Garch11,
     [Description("Fourier Transform")] FourierTransform,
     [Description("Hilbert Transform")] HilbertTransform,
-    [Description("Engle-Granger Test")] EngleGrangerTest,
+    [Description("Engle-Granger Test")]
+    [Obsolete("Never implemented. Kept for enum ordinal stability of existing serialized templates; no class is registered in IndicatorFactory.")]
+    EngleGrangerTest,
     
     // Batch 9: Compatible Advanced Indicators
     [Description("McClellan Oscillator")] McClellanOscillator,
@@ -108,9 +110,13 @@ public enum IndicatorType
 
     // Batch 10
     [Description("Murrey Math Lines")] MurreyMath,
-    [Description("Correlation Proxy")] CorrelationProxy,
+    [Description("Correlation Proxy")]
+    [Obsolete("Never implemented. Kept for enum ordinal stability of existing serialized templates; no class is registered in IndicatorFactory.")]
+    CorrelationProxy,
     [Description("EGARCH")] Egarch,
-    [Description("Options Greeks")] Greeks,
+    [Description("Options Greeks")]
+    [Obsolete("Never implemented. Kept for enum ordinal stability of existing serialized templates; no class is registered in IndicatorFactory.")]
+    Greeks,
 
     // Batch 11
     [Description("Renko")] Renko,
@@ -320,7 +326,11 @@ public enum IndicatorType
     [Description("True Strength Index")] TSI,
     [Description("Stochastic RSI")] StochRSI,
     [Description("Klinger Volume Oscillator")] KVO,
-    [Description("Volume Profile Levels")] VolumeProfileLevels
+    [Description("Volume Profile Levels")] VolumeProfileLevels,
+
+    // WebAiExpansion plan 04: range-based volatility estimators (append-only; Garch11, HurstExponent and Entropy keep their existing members).
+    [Description("Parkinson Volatility")] ParkinsonVolatility,
+    [Description("Rogers-Satchell Volatility")] RogersSatchellVolatility
 }
 
 public static class IndicatorTypeExtensions

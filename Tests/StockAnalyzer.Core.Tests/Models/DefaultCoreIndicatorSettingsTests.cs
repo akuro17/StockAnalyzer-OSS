@@ -27,7 +27,10 @@ public class DefaultCoreIndicatorSettingsTests
         // + 1 McGinleyDynamic + 1 TSI (disabled by default, added 2026-11-14, plan 03 T3/T4).
         // + 1 StochRSI + 1 KVO (disabled by default, added 2026-11-14, plan 03 T5/T6).
         // + 1 VolumeProfileLevels (disabled by default, added 2026-11-14, plan 03 T7).
-        Assert.Equal(103, defaults.Count);
+        // + 1 ParkinsonVolatility + 1 RogersSatchellVolatility (disabled by default, added 2026-11-14, plan 04 T1/T2).
+        // + 1 Garch11 (disabled by default, added 2026-11-14, plan 04 T3).
+        // + 1 HurstExponent + 1 Entropy (disabled by default, added 2026-11-14, plan 04 T4/T5).
+        Assert.Equal(108, defaults.Count);
     }
 
     [Fact]

@@ -103,11 +103,11 @@ public sealed class ScreenerCrossTickerEvaluationTests : IClassFixture<ScreenerC
         Assert.Contains(types, BacktestIndicatorEligibility.IsTypeBlocked);
         Assert.Contains(types, type => !BacktestIndicatorEligibility.IsTypeBlocked(type));
 
-        // The Python and placeholder types are not two-ticker indicators and stay refused by the Screener.
+        // The former placeholder types (implemented by WebAiExpansion plan 04) are single-symbol indicators: not in the two-ticker list, allowed everywhere.
         foreach (IndicatorType type in new[] { IndicatorType.Entropy, IndicatorType.Garch11, IndicatorType.HurstExponent })
         {
             Assert.DoesNotContain(type, types);
-            Assert.False(ScreenerIndicatorEligibility.IsAllowed(type), type.ToString());
+            Assert.True(ScreenerIndicatorEligibility.IsAllowed(type), type.ToString());
         }
     }
 

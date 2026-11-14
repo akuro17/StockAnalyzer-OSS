@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using StockAnalyzer.Core.Analysis;
+using StockAnalyzer.Core.MathUtils;
 using StockAnalyzer.Core.Models.Parameters;
 using StockAnalyzer.Core.Services;
 
@@ -113,15 +114,7 @@ public class CoreSSAEntropyIndicator : CoreIndicatorBase
                     continue;
                 }
 
-                double entropy = 0.0;
-                for (int j = 0; j < l; j++)
-                {
-                    double p = eigenvalues[j] / sumEigenvalues;
-                    if (p > 1e-12)
-                    {
-                        entropy -= p * Math.Log(p);
-                    }
-                }
+                double entropy = ShannonEntropyMath.Nats(eigenvalues, sumEigenvalues, ShannonEntropyMath.NegligibleShare);
 
                 double normEntropy = (lnL > 1e-12) ? Math.Clamp(entropy / lnL, 0.0, 1.0) : 0.0;
                 _values.Add(decimal.Round((decimal)normEntropy, 4, MidpointRounding.AwayFromZero));

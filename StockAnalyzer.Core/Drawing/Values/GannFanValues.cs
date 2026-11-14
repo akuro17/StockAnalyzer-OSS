@@ -25,16 +25,15 @@ public static class GannFanValues
         decimal dy = p2.Price - p1.Price;
         double timeProgress = (timestamp - p1.Time).TotalSeconds / dt;
 
-        var values = new List<DrawingCalculatedValue>(RatiosArray.Length + 1)
-        {
-            new DrawingCalculatedValue("Range", "Range", range, string.Create(DrawingValueFormat.Culture, $"{range:F3}"), IndicatorColor.Gray)
-        };
+        var values = new DrawingCalculatedValue[RatiosArray.Length + 1];
+        values[0] = new DrawingCalculatedValue("Range", "Range", range, string.Create(DrawingValueFormat.Culture, $"{range:F3}"), IndicatorColor.Gray);
 
-        foreach (var ratio in RatiosArray)
+        for (int i = 0; i < RatiosArray.Length; i++)
         {
+            var ratio = RatiosArray[i];
             decimal slopeFactor = (decimal)ratio.price / (decimal)ratio.time;
             decimal fanPrice = p1.Price + (decimal)timeProgress * dy * slopeFactor;
-            values.Add(new DrawingCalculatedValue(string.Create(DrawingValueFormat.Culture, $"Gann_{ratio.time}x{ratio.price}"), string.Create(DrawingValueFormat.Culture, $"Gann {ratio.time}x{ratio.price}"), fanPrice, string.Create(DrawingValueFormat.Culture, $"{fanPrice:F3}"), color));
+            values[i + 1] = new DrawingCalculatedValue(string.Create(DrawingValueFormat.Culture, $"Gann_{ratio.time}x{ratio.price}"), string.Create(DrawingValueFormat.Culture, $"Gann {ratio.time}x{ratio.price}"), fanPrice, string.Create(DrawingValueFormat.Culture, $"{fanPrice:F3}"), color);
         }
 
         return values;

@@ -13,7 +13,7 @@ namespace StockAnalyzer.Avalonia.Drawing;
 /// Fibonacci Time Zone Tool
 /// Renders vertical lines at Fibonacci intervals (1, 2, 3, 5, 8...) based on the time difference between Start and End points.
 /// </summary>
-public class FibonacciTimeZoneObject : IChartObject
+public class FibonacciTimeZoneObject : IChartObject, IDisposable
 {
     public string? CustomName { get; set; }
     public DrawingMoveAxisMode MoveAxisMode { get; set; } = DrawingMoveAxisMode.XY;
@@ -39,9 +39,26 @@ public class FibonacciTimeZoneObject : IChartObject
 
     private readonly int[] _fibSequence = { 0, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89 }; // Standard Time Zones
 
+    private readonly SKPaint _paint = new SKPaint
+    {
+        Style = SKPaintStyle.Stroke,
+        IsAntialias = true
+    };
+    private readonly SKPaint _textPaint = new SKPaint
+    {
+        IsAntialias = true
+    };
+
     public FibonacciTimeZoneObject(ChartPoint start, ChartPoint end)
     {
         Points = new List<ChartPoint> { start, end };
+    }
+
+    public void Dispose()
+    {
+        _paint.Dispose();
+        _textPaint.Dispose();
+        GC.SuppressFinalize(this);
     }
 
     public SKColor SkiaColor => new SKColor(Color.R, Color.G, Color.B, Color.A);
@@ -58,20 +75,11 @@ public class FibonacciTimeZoneObject : IChartObject
         // Direction
         double direction = p2.X >= p1.X ? 1.0 : -1.0;
 
-        using var paint = new SKPaint
-        {
-            Color = SkiaColor,
-            StrokeWidth = (float)Thickness,
-            Style = SKPaintStyle.Stroke,
-            IsAntialias = true
-        };
-        
-        using var textPaint = new SKPaint
-        {
-            Color = SkiaColor,
-            IsAntialias = true,
-            TextSize = DrawingThemeContext.DrawingFontSize
-        };
+        _paint.Color = SkiaColor;
+        _paint.StrokeWidth = (float)Thickness;
+
+        _textPaint.Color = SkiaColor;
+        _textPaint.TextSize = DrawingThemeContext.DrawingFontSize;
 
         float canvasHeight = (float)transform.CanvasHeight; // Need height from transform or assumption?
         // ICoordinateTransform usually exposes CanvasHeight or we can infer from large number.
@@ -95,8 +103,8 @@ public class FibonacciTimeZoneObject : IChartObject
             // Optimization: Skip if off-screen (how to know screen bounds? Transform usually knows)
             // if (x < 0 || x > Width) continue; 
             
-            canvas.DrawLine((float)x, 0, (float)x, maxY, paint);
-            canvas.DrawText($"{fib}", (float)x + 2, maxY - 5, textPaint);
+            canvas.DrawLine((float)x, 0, (float)x, maxY, _paint);
+            canvas.DrawText($"{fib}", (float)x + 2, maxY - 5, _textPaint);
         }
 
         if (IsSelected)

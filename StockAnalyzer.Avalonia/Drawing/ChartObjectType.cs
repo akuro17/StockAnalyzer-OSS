@@ -106,5 +106,12 @@ public enum ChartObjectType
     Freehand,
     ClassicPivotPoints,
     Highlighter,
-    StepBadge
+    StepBadge,
+
+    // Cross line, disjoint channel (appended: never insert above)
+    CrossLine,
+    DisjointChannel,
+
+    // Plan 07 (appended: never insert above)
+    DatePriceRange
 }

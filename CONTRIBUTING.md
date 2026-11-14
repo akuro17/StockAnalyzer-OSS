@@ -122,9 +122,9 @@ Key architecture principles and development standards:
 
 ## Indicator Contributions
 
-- Implement it under `StockAnalyzer.Core/` following the `IIndicator` interface.
-- Register it in `IndicatorRegistry` and add the enum value to `IndicatorType`.
-- Add unit tests in `Tests/` using `IndicatorRegistry.TryCreate()` — do **not** create mock stubs for existing types.
+- Implement it under `StockAnalyzer.Core/` following the `ICoreIndicator` interface (derive from `CoreIndicatorBase`).
+- Register it with `[StockAnalyzerIndicator(IndicatorType.X)]` on the class, which `IndicatorFactory` discovers, and append the enum value at the end of `IndicatorType` (the ordinals are serialized).
+- Add unit tests in `Tests/` using `IndicatorFactory.CreateStatic()` — do **not** create mock stubs for existing types.
 - Use real `CandleData` records in tests. See existing batch test files (`Tests/Batch*Tests.cs`) for patterns.
 
 ---

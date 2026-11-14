@@ -180,16 +180,17 @@ public class IndicatorFactoryTests
     [InlineData(IndicatorType.Garch11)]
     [InlineData(IndicatorType.Entropy)]
     [InlineData(IndicatorType.HurstExponent)]
-    public void UnimplementedStubIndicators_AreNotRegisteredInFactoryAndBlockedInCatalog(IndicatorType stubType)
+    public void FormerStubIndicators_AreNowRegisteredInFactoryAndOfferedInCatalog(IndicatorType formerStubType)
     {
+        // WebAiExpansion plan 04 implemented these three (they used to be unregistered placeholders that returned only nulls).
         IIndicatorFactory factory = new IndicatorFactory();
 
-        Assert.False(factory.IsRegistered(stubType));
-        Assert.Null(factory.Create(stubType));
+        Assert.True(factory.IsRegistered(formerStubType));
+        Assert.NotNull(factory.Create(formerStubType));
 
         var catalogProvider = new StockAnalyzer.Core.Services.ScreenerCatalogProvider();
         var catalogItems = catalogProvider.GetCatalogItems(factory);
-        Assert.DoesNotContain(catalogItems, item => item.IndicatorType == stubType);
+        Assert.Contains(catalogItems, item => item.IndicatorType == formerStubType);
     }
 
     [Fact]

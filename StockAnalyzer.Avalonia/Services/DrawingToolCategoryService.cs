@@ -29,7 +29,7 @@ public static class DrawingToolCategoryService
                     new DrawingToolInfo(DrawingTool.Ruler, "\U0001F4CF", "DrawTool_Ruler"),
                 }),
 
-            // 2. Lines & Trend — sorted: 角度, 矢印, カーブトレンド, カテナリー曲線, 水平線, トレンドライン,
+            // 2. Lines & Trend — order: 角度, 矢印, クロソイド矢印, カーブトレンド, カテナリー曲線, 延長線, 十字線, 水平線, トレンドライン,
             //   NURBS円錐曲線(弧), NURBS双曲線, NURBS放物線, NURBS曲線, フリーハンド, 蛍光ペン, ポリライン, レイ, 垂直線
             new DrawingToolCategoryDefinition(
                 NameKey: "DrawCat_Lines",
@@ -41,6 +41,8 @@ public static class DrawingToolCategoryService
                     new DrawingToolInfo(DrawingTool.ClothoidArrow, "\u2935", "DrawTool_ClothoidArrow"),
                     new DrawingToolInfo(DrawingTool.CurveTrend, "\u2312", "DrawTool_CurveTrend"),
                     new DrawingToolInfo(DrawingTool.CatenaryCurve, "\u2312", "DrawTool_CatenaryCurve"),
+                    new DrawingToolInfo(DrawingTool.ExtendedLine, "\u2194", "DrawTool_ExtendedLine"),
+                    new DrawingToolInfo(DrawingTool.CrossLine, "\u253c", "DrawTool_CrossLine"),
                     new DrawingToolInfo(DrawingTool.HorizontalLine, "\u2500", "DrawTool_HorizontalLine"),
                     new DrawingToolInfo(DrawingTool.TrendLine, "\uFF0F", "DrawTool_TrendLine"),
                     new DrawingToolInfo(DrawingTool.NurbsConicArc, "\u2312", "DrawTool_NurbsConic"),
@@ -84,7 +86,7 @@ public static class DrawingToolCategoryService
                     new DrawingToolInfo(DrawingTool.StepBadge, "\u2460", "DrawTool_StepBadge"),
                 }),
 
-            // 5. Channels & Regression — sorted: カーブチャネル, 回帰トレンド, 範囲スプライン, ピッチフォーク, 平行チャネル
+            // 5. Channels & Regression — order: カーブチャネル, 回帰トレンド, 範囲スプライン, ピッチフォーク, 平行チャネル, 独立辺チャネル
             new DrawingToolCategoryDefinition(
                 NameKey: "DrawCat_Channels",
                 Icon: "\u2AFD", // ⫽
@@ -95,6 +97,7 @@ public static class DrawingToolCategoryService
                     new DrawingToolInfo(DrawingTool.RangeSpline, "\u223D", "DrawTool_RangeSpline"),
                     new DrawingToolInfo(DrawingTool.Pitchfork, "\u22D4", "DrawTool_Pitchfork"),
                     new DrawingToolInfo(DrawingTool.ParallelChannel, "\u2AFD", "DrawTool_ParallelChannel"),
+                    new DrawingToolInfo(DrawingTool.DisjointChannel, "\u2AFE", "DrawTool_DisjointChannel"),
                 }),
 
             // 6. Fibonacci Tools — sorted: アーク, エクスパンション, エリプス, サークル, スパイラル, タイムゾーン, チャネル, ファン, リトレースメント
@@ -136,6 +139,7 @@ public static class DrawingToolCategoryService
                 Tools: new[]
                 {
                     new DrawingToolInfo(DrawingTool.AutoElliottWave, "\u223E", "DrawTool_AutoElliottWave"),
+                    new DrawingToolInfo(DrawingTool.ElliottWave, "\u3030", "DrawTool_ElliottWave"),
                     new DrawingToolInfo(DrawingTool.GeometricPattern, "\U0001F4D0", "DrawTool_GeometricPattern"),
                     new DrawingToolInfo(DrawingTool.BarPattern, "\u2016", "DrawTool_BarPattern"),
                     new DrawingToolInfo(DrawingTool.HarmonicPattern, "\u29D6", "DrawTool_HarmonicPattern"),
@@ -180,6 +184,7 @@ public static class DrawingToolCategoryService
                     new DrawingToolInfo(DrawingTool.ShortPosition, "\U0001F7E5", "DrawTool_ShortPosition"),
                     new DrawingToolInfo(DrawingTool.LongPosition, "\U0001F7E9", "DrawTool_LongPosition"),
                     new DrawingToolInfo(DrawingTool.TargetPriceProjection, "\u21F2", "DrawTool_TargetPriceProjection"),
+                    new DrawingToolInfo(DrawingTool.DatePriceRange, "\U0001F4CF", "DrawTool_DatePriceRange"),
                 }),
 
             // 11. Cycles & Volume — sorted: アンカードVWAP, FFTスペクトラム, FFT Cycle Detector, サイクリックライン, サイン波, タイムサイクル, 固定期間出来高プロファイル

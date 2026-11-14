@@ -1837,6 +1837,64 @@ public class DrawingSettingsDialogTests
     }
 
     [AvaloniaFact]
+    public void DrawingSettingsDialog_ActivatesAnchoredVwapPanel_AndPopulatesDynamicBandControls()
+    {
+        var anchor = new ChartPoint(new DateTime(2025, 1, 1), 100m);
+        var vwap = new AnchoredVwapObject(anchor);
+
+        var dialog = new DrawingSettingsDialog(vwap, CreateRegistry());
+        try
+        {
+            dialog.Show();
+            AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+            Dispatcher.UIThread.RunJobs();
+
+            var vwapPanel = dialog.FindControl<StackPanel>("AnchoredVwapPanel");
+            Assert.NotNull(vwapPanel);
+            Assert.True(vwapPanel!.IsVisible);
+
+            var dynamicView = dialog.FindControl<StockAnalyzer.Avalonia.Views.Controls.DynamicDrawingSettingsView>("DynamicSettingsView");
+            Assert.NotNull(dynamicView);
+            Assert.True(dynamicView!.IsVisible);
+
+            var stackPanel = Assert.IsType<StackPanel>(dynamicView.Content);
+            var cards = stackPanel.Children.OfType<Border>().Where(b => b.Classes.Contains("SettingsCard")).ToList();
+            Assert.NotEmpty(cards);
+
+            var controls = cards
+                .Select(b => b.Child)
+                .OfType<StackPanel>()
+                .SelectMany(p => p.Children)
+                .ToList();
+
+            var labels = controls
+                .Select(c => c switch
+                {
+                    CheckBox cb => cb.Content?.ToString(),
+                    Grid g => g.Children.OfType<TextBlock>().FirstOrDefault()?.Text,
+                    _ => null
+                })
+                .Where(t => !string.IsNullOrEmpty(t))
+                .ToList();
+
+            Assert.Contains("Show Band 1", labels);
+            Assert.Contains("Band 1 Multiplier", labels);
+            Assert.Contains("Show Band 2", labels);
+            Assert.Contains("Band 2 Multiplier", labels);
+            Assert.DoesNotContain("Price Source", labels);
+            Assert.DoesNotContain("Move Axis Mode", labels);
+
+            var showBand1Check = Assert.Single(controls.OfType<CheckBox>(), cb => cb.Content?.ToString() == "Show Band 1");
+            showBand1Check.IsChecked = true;
+            Assert.True(vwap.ShowBand1);
+        }
+        finally
+        {
+            dialog.Close();
+        }
+    }
+
+    [AvaloniaFact]
     public void VolumeProfileSettingsPanel_PopulatesCommitsAndRetainsValues()
     {
         var p1 = new ChartPoint(new DateTime(2025, 1, 1), 100m);

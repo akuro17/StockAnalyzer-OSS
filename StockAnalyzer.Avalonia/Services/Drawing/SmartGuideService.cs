@@ -325,7 +325,12 @@ public class SmartGuideService : ISmartGuideService
         double gMinY = double.MaxValue;
         double gMaxY = double.MinValue;
 
-        int ptCount = pts.Count;
+        int ptCount = target is ElliottWaveObject ew ? Math.Min(pts.Count, ew.ActivePointCount) : pts.Count;
+        if (ptCount == 0)
+        {
+            return new TargetAabb(target.Id, false, false, 0, 0, 0, 0, 0, 0);
+        }
+
         for (int p = 0; p < ptCount; p++)
         {
             var sp = transform.ChartToScreen(pts[p]);

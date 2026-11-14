@@ -405,21 +405,29 @@ public class ClassicPivotPointsObject : IChartObject, IDrawingCalculatedValuesPr
         if (!_hasValidData) return Array.Empty<DrawingCalculatedValue>();
 
         var color = new IndicatorColor(Color.A, Color.R, Color.G, Color.B);
-        var list = new List<DrawingCalculatedValue>(9)
-        {
-            new DrawingCalculatedValue("Period", "Period", null, Period.ToString(), color),
-            new DrawingCalculatedValue("ExtendLines", "Extend Lines", null, ExtendMode.ToString(), color)
-        };
+        int count = 2
+            + (_r3.HasValue ? 1 : 0)
+            + (_r2.HasValue ? 1 : 0)
+            + (_r1.HasValue ? 1 : 0)
+            + (_pivot.HasValue ? 1 : 0)
+            + (_s1.HasValue ? 1 : 0)
+            + (_s2.HasValue ? 1 : 0)
+            + (_s3.HasValue ? 1 : 0);
 
-        if (_r3.HasValue) list.Add(new DrawingCalculatedValue("HBOP", "HBOP (R3)", _r3.Value, $"{_r3.Value:F3}", color));
-        if (_r2.HasValue) list.Add(new DrawingCalculatedValue("R2", "R2", _r2.Value, $"{_r2.Value:F3}", color));
-        if (_r1.HasValue) list.Add(new DrawingCalculatedValue("R1", "R1", _r1.Value, $"{_r1.Value:F3}", color));
-        if (_pivot.HasValue) list.Add(new DrawingCalculatedValue("Pivot", "Pivot (P)", _pivot.Value, $"{_pivot.Value:F3}", color));
-        if (_s1.HasValue) list.Add(new DrawingCalculatedValue("S1", "S1", _s1.Value, $"{_s1.Value:F3}", color));
-        if (_s2.HasValue) list.Add(new DrawingCalculatedValue("S2", "S2", _s2.Value, $"{_s2.Value:F3}", color));
-        if (_s3.HasValue) list.Add(new DrawingCalculatedValue("LBOP", "LBOP (S3)", _s3.Value, $"{_s3.Value:F3}", color));
+        var values = new DrawingCalculatedValue[count];
+        int index = 0;
+        values[index++] = new DrawingCalculatedValue("Period", "Period", null, Period.ToString(), color);
+        values[index++] = new DrawingCalculatedValue("ExtendLines", "Extend Lines", null, ExtendMode.ToString(), color);
 
-        return list;
+        if (_r3.HasValue) values[index++] = new DrawingCalculatedValue("HBOP", "HBOP (R3)", _r3.Value, $"{_r3.Value:F3}", color);
+        if (_r2.HasValue) values[index++] = new DrawingCalculatedValue("R2", "R2", _r2.Value, $"{_r2.Value:F3}", color);
+        if (_r1.HasValue) values[index++] = new DrawingCalculatedValue("R1", "R1", _r1.Value, $"{_r1.Value:F3}", color);
+        if (_pivot.HasValue) values[index++] = new DrawingCalculatedValue("Pivot", "Pivot (P)", _pivot.Value, $"{_pivot.Value:F3}", color);
+        if (_s1.HasValue) values[index++] = new DrawingCalculatedValue("S1", "S1", _s1.Value, $"{_s1.Value:F3}", color);
+        if (_s2.HasValue) values[index++] = new DrawingCalculatedValue("S2", "S2", _s2.Value, $"{_s2.Value:F3}", color);
+        if (_s3.HasValue) values[index] = new DrawingCalculatedValue("LBOP", "LBOP (S3)", _s3.Value, $"{_s3.Value:F3}", color);
+
+        return values;
     }
 
     public void Dispose()

@@ -28,6 +28,31 @@ public static class PitchforkValues
     public static DrawingAnchor GetMedianPoint(DrawingAnchor p2, DrawingAnchor p3)
         => new(MidTime(p2.Time, p3.Time), (p2.Price + p3.Price) / 2m);
 
+    /// <summary>
+    /// Base point Q(f) = M + f * (P2 - M) of a parallel line at multiplier <paramref name="factor"/> in chart coordinates
+    /// (ticks for time, decimal for price). Q(1) = P2 and Q(-1) = P3.
+    /// </summary>
+    public static DrawingAnchor GetParallelAnchor(DrawingAnchor p2, DrawingAnchor median, decimal factor)
+    {
+        long deltaTicks = p2.Time.Ticks - median.Time.Ticks;
+        decimal scaledTicks = factor * deltaTicks;
+        long targetTicks = ClampTicks(median.Time.Ticks + (long)Math.Round(scaledTicks, MidpointRounding.AwayFromZero));
+        decimal targetPrice = median.Price + factor * (p2.Price - median.Price);
+        return new DrawingAnchor(new DateTime(targetTicks, median.Time.Kind), targetPrice);
+    }
+
+    /// <summary>Translates <paramref name="origin"/> by the median-line vector (M - A) in chart coordinates.</summary>
+    public static DrawingAnchor OffsetByMedianVector(DrawingAnchor origin, DrawingAnchor anchor, DrawingAnchor median)
+    {
+        long deltaTicks = median.Time.Ticks - anchor.Time.Ticks;
+        long targetTicks = ClampTicks(origin.Time.Ticks + deltaTicks);
+        decimal targetPrice = origin.Price + (median.Price - anchor.Price);
+        return new DrawingAnchor(new DateTime(targetTicks, origin.Time.Kind), targetPrice);
+    }
+
+    private static long ClampTicks(long ticks)
+        => Math.Clamp(ticks, DateTime.MinValue.Ticks, DateTime.MaxValue.Ticks);
+
     public static IReadOnlyList<DrawingCalculatedValue> Calculate(PitchforkKind kind, DrawingAnchor p1, DrawingAnchor p2, DrawingAnchor p3, DateTime timestamp, IndicatorColor color)
     {
         DrawingAnchor anchor = GetAnchor(kind, p1, p2);

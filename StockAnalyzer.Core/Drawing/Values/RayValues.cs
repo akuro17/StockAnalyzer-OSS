@@ -9,20 +9,19 @@ public static class RayValues
     {
         decimal rayPrice = DrawingValueMath.InterpolatePrice(p1.Time, p1.Price, p2.Time, p2.Price, timestamp);
 
-        var values = new List<DrawingCalculatedValue>();
-
         string rayPriceText = string.Create(DrawingValueFormat.Culture, $"{rayPrice:F3}");
         if (currentPrice.HasValue)
         {
             decimal diff = currentPrice.Value - rayPrice;
             rayPriceText += string.Create(DrawingValueFormat.Culture, $" ({diff:+0.000;-0.000;0.000})");
         }
-        values.Add(new DrawingCalculatedValue("RayPrice", "Ray Price", rayPrice, rayPriceText, color));
 
         var slope = DrawingValueMath.CalculateSlopePerDay(p1.Time, p1.Price, p2.Time, p2.Price);
+        var values = new DrawingCalculatedValue[slope.HasValue ? 2 : 1];
+        values[0] = new DrawingCalculatedValue("RayPrice", "Ray Price", rayPrice, rayPriceText, color);
         if (slope.HasValue)
         {
-            values.Add(new DrawingCalculatedValue("Slope", "Slope", slope.Value, string.Create(DrawingValueFormat.Culture, $"{slope.Value:+0.000;-0.000;0.000} / day"), IndicatorColor.Gray));
+            values[1] = new DrawingCalculatedValue("Slope", "Slope", slope.Value, string.Create(DrawingValueFormat.Culture, $"{slope.Value:+0.000;-0.000;0.000} / day"), IndicatorColor.Gray);
         }
 
         return values;

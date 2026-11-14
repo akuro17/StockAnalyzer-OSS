@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Indicators;
+using StockAnalyzer.Core.Models.Indicators.Volume;
 
 namespace StockAnalyzer.Core.Analysis;
 
@@ -390,6 +391,61 @@ public static class VolumeAnalysis
                 {
                     result.Add((candle.Timestamp, price));
                 }
+            }
+        }
+        finally
+        {
+            ArrayPool<decimal>.Shared.Return(prices);
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Calculates Anchored VWAP alongside the volume-weighted standard deviation at each bar
+    /// via <see cref="VwapBandMath"/> (null while cumulative volume is 0 or on overflow).
+    /// </summary>
+    public static List<(DateTime Time, decimal Vwap, decimal? StdDev)> CalculateAnchoredVwapWithDeviation(
+        IEnumerable<CoreCandleData> candles,
+        PriceType priceType = PriceType.Typical)
+    {
+        var candleList = candles as IReadOnlyList<CoreCandleData> ?? candles.ToList();
+        var result = new List<(DateTime Time, decimal Vwap, decimal? StdDev)>(candleList.Count);
+        decimal cumulativePV = 0;
+        long cumulativeVol = 0;
+        decimal cumulativePSV = 0;
+        bool squaredSumOverflowed = false;
+
+        decimal[] prices = ArrayPool<decimal>.Shared.Rent(candleList.Count);
+        try
+        {
+            PriceDataHelper.FillPrices(candleList, 0, prices.AsSpan(0, candleList.Count), priceType);
+
+            for (int i = 0; i < candleList.Count; i++)
+            {
+                var candle = candleList[i];
+                decimal price = prices[i];
+                cumulativePV += price * candle.Volume;
+                cumulativeVol += candle.Volume;
+
+                if (!squaredSumOverflowed)
+                {
+                    try
+                    {
+                        cumulativePSV += price * price * candle.Volume;
+                    }
+                    catch (OverflowException)
+                    {
+                        squaredSumOverflowed = true;
+                    }
+                }
+
+                decimal vwap = cumulativeVol > 0 ? cumulativePV / cumulativeVol : price;
+                decimal? stdDev = cumulativeVol > 0
+                    ? VwapBandMath.ComputeSigma(vwap, cumulativePSV, cumulativeVol, squaredSumOverflowed)
+                    : null;
+
+                result.Add((candle.Timestamp, vwap, stdDev));
             }
         }
         finally

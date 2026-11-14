@@ -19,18 +19,17 @@ public static class FibonacciFanValues
         decimal totalDyPrice = p2.Price - p1.Price;
         double timeProgress = (timestamp - p1.Time).TotalSeconds / dt;
 
-        var values = new List<DrawingCalculatedValue>(RatiosArray.Length + 1)
-        {
-            new DrawingCalculatedValue("Range", "Range", range, string.Create(DrawingValueFormat.Culture, $"{range:F3}"), IndicatorColor.Gray)
-        };
+        var values = new DrawingCalculatedValue[RatiosArray.Length + 1];
+        values[0] = new DrawingCalculatedValue("Range", "Range", range, string.Create(DrawingValueFormat.Culture, $"{range:F3}"), IndicatorColor.Gray);
 
-        foreach (var ratio in RatiosArray)
+        for (int i = 0; i < RatiosArray.Length; i++)
         {
+            double ratio = RatiosArray[i];
             decimal targetPriceAtEnd = p1.Price + totalDyPrice * (decimal)ratio;
             decimal slope = targetPriceAtEnd - p1.Price;
             decimal linePrice = p1.Price + slope * (decimal)timeProgress;
 
-            values.Add(new DrawingCalculatedValue(string.Create(DrawingValueFormat.Culture, $"Fan_{ratio:F3}"), string.Create(DrawingValueFormat.Culture, $"Fan {ratio:P1}"), linePrice, string.Create(DrawingValueFormat.Culture, $"{linePrice:F3}"), color));
+            values[i + 1] = new DrawingCalculatedValue(string.Create(DrawingValueFormat.Culture, $"Fan_{ratio:F3}"), string.Create(DrawingValueFormat.Culture, $"Fan {ratio:P1}"), linePrice, string.Create(DrawingValueFormat.Culture, $"{linePrice:F3}"), color);
         }
 
         return values;

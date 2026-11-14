@@ -43,13 +43,53 @@ public class ScreenerDefaultParameterCacheParityTests
     //   3. This header records the date, the added types and the old -> new hash.
     // A re-pin that changes any line of an existing type (the two earlier re-pins above) still needs the owner's approval one by one.
     // Backlog: a per-type hash structure that needs no re-pin at all is registered in docs/ja/Future_Improvements.md (2026-11-14, ScreenerDefaultParameterCacheParityTests per-type fingerprint).
-    private const string PinnedFingerprint = "A866361BC174797D09B617299A3FCC9E02AEAF1E2BAFC15AE64E13F4BB635718";
+    // FOURTH re-pin, 2026-11-14 (WebAiExpansion plan 04, Run 4; NOT purely additive, OWNER-APPROVED one by one 2026-11-14, answer Q2' = A): A866361B...5718 -> 26491E7E...8511.
+    //   Added types: ParkinsonVolatility and RogersSatchellVolatility (10 lines, 5 variants each).
+    //   Changed lines of EXISTING types: the 15 lines of Garch11, HurstExponent and Entropy (3 types x 5 variants). They were enum members since before plan 03, with a placeholder class that
+    //   returned only nulls, so their lines were part of every earlier pin as "<type>|<variant>|null"; plan 04 implemented them and the lines now carry the values. NO other line changed.
+    //   This is why the standing rule's condition 1 cannot be met by REMOVING those types: a type that already exists as an enum member is not "added" (docs/ja/memo/lessons.md,
+    //   lessons_webai_expansion_20261114_0005). The proof is kept permanently instead: with the two new types removed and the lines of the three former placeholders put back to
+    //   their old "null", the report hashes to the plan-03 pin A866361B...5718 (ValuesOfTheTypesBeforePlanFourAreUnchanged) and, with the seven plan-03 types removed as well, to the pin
+    //   before plan 03, A5D5430A...C7FE (ValuesOfTheTypesBeforePlanThreeAreUnchanged); so every type that existed before plan 04, the seven plan-03 types included, still gives its old values.
+    //   Every value of the five plan-04 types equals a standalone calculation (ThePlanFourTypesGiveTheValueOfAStandaloneCalculation_WithoutAndWithAPeriod).
+    private const string PinnedFingerprint = "26491E7E99D7935E28E356601D3ECC3D34533A75F3299C0ECC66C18F00028511";
+
+    /// <summary>The fingerprint of the report before plan 04 (the pin at plan 03 completion), reproduced by <see cref="HashWithoutNewTypes"/>.</summary>
+    private const string FingerprintBeforePlanFour = "A866361BC174797D09B617299A3FCC9E02AEAF1E2BAFC15AE64E13F4BB635718";
 
     /// <summary>The fingerprint of the report without the lines of the types added by plan 03 (the pin before them).</summary>
     private const string FingerprintBeforePlanThree = "A5D5430A03AB40446FE8EB92DAA52262574C3F8A5D49B73F14B3BA4DCA14C7FE";
 
     private static readonly string[] PlanThreeTypes = { "ChandelierExit", "T3", "McGinleyDynamic", "TSI", "StochRSI", "KVO", "VolumeProfileLevels" };
 
+    /// <summary>The types plan 04 added to the enum (their lines did not exist before).</summary>
+    private static readonly string[] PlanFourNewTypes = { "ParkinsonVolatility", "RogersSatchellVolatility" };
+
+    /// <summary>The enum members that existed before plan 03 with a placeholder class (always null) and were implemented by plan 04; only their VALUES changed.</summary>
+    private static readonly string[] FormerPlaceholderTypes = { "Garch11", "HurstExponent", "Entropy" };
+
+    /// <summary>The value text of a former placeholder in every pin before plan 04 (what <c>BuildReport</c> wrote for a calculation without a result).</summary>
+    private const string FormerPlaceholderValue = NoValueText;
+
+    /// <summary>What <see cref="BuildReport"/> writes for a calculation without a value (and wrote for the placeholders in every pin before plan 04).</summary>
+    private const string NoValueText = "null";
+
+    /// <summary>
+    /// The report as it was before the listed types existed: the lines of <paramref name="removedTypes"/> are dropped and the lines of the former placeholders are put back to their
+    /// old value. Every other line is the current one, so the hash returns to an old pin only if no line of any other type changed.
+    /// </summary>
+    private static string HashWithoutNewTypes(params string[][] removedTypes)
+    {
+        var removed = removedTypes.SelectMany(types => types).ToHashSet();
+        var lines = BuildReport().Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Where(line => !removed.Contains(line.Split('|')[0]))
+            .Select(line =>
+            {
+                string[] parts = line.Split('|');
+                return FormerPlaceholderTypes.Contains(parts[0]) ? $"{parts[0]}|{parts[1]}|{FormerPlaceholderValue}" : line;
+            });
+        return Fingerprint(string.Join("\n", lines) + "\n");
+    }
     private static List<CoreCandleData> Candles(int count)
     {
         var candles = new List<CoreCandleData>();
@@ -88,7 +128,7 @@ public class ScreenerDefaultParameterCacheParityTests
                 try
                 {
                     var value = extractor.ExtractValueNullable(config, candles);
-                    text = value.HasValue ? value.Value.ToString(CultureInfo.InvariantCulture) : "null";
+                    text = value.HasValue ? value.Value.ToString(CultureInfo.InvariantCulture) : NoValueText;
                 }
                 catch (Exception ex)
                 {
@@ -117,10 +157,69 @@ public class ScreenerDefaultParameterCacheParityTests
     [Fact]
     public void ValuesOfTheTypesBeforePlanThreeAreUnchanged()
     {
-        var kept = BuildReport().Split('\n', StringSplitOptions.RemoveEmptyEntries).Where(line => !PlanThreeTypes.Contains(line.Split('|')[0]));
-        string report = string.Join("\n", kept) + "\n";
+        // Without the seven plan-03 types and the two plan-04 types, and with the three former placeholders as they were: the pin before plan 03.
+        Assert.Equal(FingerprintBeforePlanThree, HashWithoutNewTypes(PlanThreeTypes, PlanFourNewTypes));
+    }
 
-        Assert.Equal(FingerprintBeforePlanThree, Fingerprint(report));
+    [Fact]
+    public void ValuesOfTheTypesBeforePlanFourAreUnchanged_ThePlanThreeTypesIncluded()
+    {
+        // Only the two plan-04 types are removed (the seven plan-03 types stay in the check) and the three former placeholders are put back to null:
+        // the pin at plan 03 completion. Anything else that moved while plan 04 was built makes this fail.
+        Assert.Equal(FingerprintBeforePlanFour, HashWithoutNewTypes(PlanFourNewTypes));
+    }
+
+    // Plan 04 re-pin condition 2: every value of a plan-04 line equals a standalone calculation of the same indicator. A Period outside the range of the indicator's parameter
+    // object makes its Configure throw; the screener then keeps the defaults (ScreenerValueExtractor, "best effort parameter configuration fallback"), so the standalone
+    // calculation uses the default Period in that case.
+    private static int PeriodOrDefault(int? period, int min, int max, int defaultPeriod) => period.HasValue && period.Value >= min && period.Value <= max ? period.Value : defaultPeriod;
+
+    private static decimal? StandaloneLastValue(IndicatorType type, int? period, IReadOnlyList<CoreCandleData> candles) => type switch
+    {
+        IndicatorType.ParkinsonVolatility => new StockAnalyzer.Core.Models.Indicators.Volatility.CoreParkinsonVolatilityIndicator
+        {
+            Period = PeriodOrDefault(period, IndicatorDefaultConstants.RangeVolatilityMinPeriod, IndicatorDefaultConstants.RangeVolatilityMaxPeriod, IndicatorDefaultConstants.RangeVolatilityDefaultPeriod)
+        }.Calculate(candles).MainValues[^1],
+        IndicatorType.RogersSatchellVolatility => new StockAnalyzer.Core.Models.Indicators.Volatility.CoreRogersSatchellVolatilityIndicator
+        {
+            Period = PeriodOrDefault(period, IndicatorDefaultConstants.RangeVolatilityMinPeriod, IndicatorDefaultConstants.RangeVolatilityMaxPeriod, IndicatorDefaultConstants.RangeVolatilityDefaultPeriod)
+        }.Calculate(candles).MainValues[^1],
+        IndicatorType.Garch11 => new StockAnalyzer.Core.Models.Indicators.Advanced.CoreGarch11Indicator
+        {
+            Period = PeriodOrDefault(period, IndicatorDefaultConstants.Garch11MinPeriod, IndicatorDefaultConstants.Garch11MaxPeriod, IndicatorDefaultConstants.Garch11DefaultPeriod)
+        }.Calculate(candles).MainValues[^1],
+        IndicatorType.HurstExponent => new StockAnalyzer.Core.Models.Indicators.Advanced.CoreHurstExponentIndicator
+        {
+            Period = PeriodOrDefault(period, IndicatorDefaultConstants.HurstMinPeriod, IndicatorDefaultConstants.HurstMaxPeriod, IndicatorDefaultConstants.HurstDefaultPeriod)
+        }.Calculate(candles).MainValues[^1],
+        IndicatorType.Entropy => new StockAnalyzer.Core.Models.Indicators.Advanced.CoreEntropyIndicator
+        {
+            Period = PeriodOrDefault(period, IndicatorDefaultConstants.EntropyMinPeriod, IndicatorDefaultConstants.EntropyMaxPeriod, IndicatorDefaultConstants.EntropyDefaultPeriod)
+        }.Calculate(candles).MainValues[^1],
+        _ => throw new ArgumentOutOfRangeException(nameof(type)),
+    };
+
+    [Theory]
+    [InlineData(IndicatorType.ParkinsonVolatility)]
+    [InlineData(IndicatorType.RogersSatchellVolatility)]
+    [InlineData(IndicatorType.Garch11)]
+    [InlineData(IndicatorType.HurstExponent)]
+    [InlineData(IndicatorType.Entropy)]
+    public void ThePlanFourTypesGiveTheValueOfAStandaloneCalculation_WithoutAndWithAPeriod(IndicatorType type)
+    {
+        var candles = Candles(300);
+        var extractor = new ScreenerValueExtractor();
+
+        foreach (int? period in new int?[] { null, 7, 9 })
+        {
+            var parameters = period.HasValue ? new Dictionary<string, object> { ["Period"] = period.Value } : new Dictionary<string, object>();
+            decimal? screener = extractor.ExtractValueNullable(new ScreenerIndicatorSideConfig { IndicatorType = type, Parameters = parameters }, candles);
+
+            decimal? standalone = StandaloneLastValue(type, period, candles);
+
+            Assert.NotNull(standalone);
+            Assert.Equal(standalone, screener);
+        }
     }
 
     [Theory]

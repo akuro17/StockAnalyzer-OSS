@@ -19,16 +19,15 @@ public static class FibonacciChannelValues
         decimal baseAtP3 = DrawingValueMath.InterpolatePrice(p1.Time, p1.Price, p2.Time, p2.Price, p3.Time);
         decimal channelWidth = p3.Price - baseAtP3;
 
-        var values = new List<DrawingCalculatedValue>(LevelsArray.Length + 2)
-        {
-            new DrawingCalculatedValue("BaseLine", "Base Line", basePrice, string.Create(DrawingValueFormat.Culture, $"{basePrice:F3}"), color),
-            new DrawingCalculatedValue("ChannelWidth", "Channel Width", Math.Abs(channelWidth), string.Create(DrawingValueFormat.Culture, $"{Math.Abs(channelWidth):F3}"), IndicatorColor.Gray)
-        };
+        var values = new DrawingCalculatedValue[LevelsArray.Length + 2];
+        values[0] = new DrawingCalculatedValue("BaseLine", "Base Line", basePrice, string.Create(DrawingValueFormat.Culture, $"{basePrice:F3}"), color);
+        values[1] = new DrawingCalculatedValue("ChannelWidth", "Channel Width", Math.Abs(channelWidth), string.Create(DrawingValueFormat.Culture, $"{Math.Abs(channelWidth):F3}"), IndicatorColor.Gray);
 
-        foreach (var level in LevelsArray)
+        for (int i = 0; i < LevelsArray.Length; i++)
         {
+            float level = LevelsArray[i];
             decimal levelPrice = basePrice + channelWidth * (decimal)level;
-            values.Add(new DrawingCalculatedValue(string.Create(DrawingValueFormat.Culture, $"Channel_{level:F3}"), string.Create(DrawingValueFormat.Culture, $"Fib Channel {level:P1}"), levelPrice, string.Create(DrawingValueFormat.Culture, $"{levelPrice:F3}"), color));
+            values[i + 2] = new DrawingCalculatedValue(string.Create(DrawingValueFormat.Culture, $"Channel_{level:F3}"), string.Create(DrawingValueFormat.Culture, $"Fib Channel {level:P1}"), levelPrice, string.Create(DrawingValueFormat.Culture, $"{levelPrice:F3}"), color);
         }
 
         return values;

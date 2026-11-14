@@ -80,6 +80,9 @@ public static class DeferredComputationRecalculator
             case FftSpectrumObject fft:
                 fft.Recalculate(candles);
                 return true;
+            case DatePriceRangeObject dpr:
+                dpr.Recalculate(candles);
+                return true;
             case Objects.KalmanFilterProjectionObject kalman:
                 kalman.Recalculate(candles);
                 return true;
