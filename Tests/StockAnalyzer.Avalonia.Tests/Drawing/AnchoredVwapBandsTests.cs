@@ -226,22 +226,141 @@ public sealed class AnchoredVwapBandsTests
             new[] { "AnchorDate", "AnchoredVWAP", "Upper1", "Lower1", "Upper2", "Lower2" },
             both.GetCalculatedValues(query).Select(v => v.Key).ToArray());
 
-        // Band texts use DrawingValueFormat.Culture regardless of calling thread culture.
+        // Every text of the list (the date and all numbers, bands or not) uses DrawingValueFormat.Culture regardless of the calling thread culture.
+        foreach (string cultureName in new[] { "fr-FR", "de-DE" })
+        {
+            AssertTextsAreCultureFixed(both, query, cultureName, expectedItems: 6);
+            AssertTextsAreCultureFixed(onlyBand1, query, cultureName, expectedItems: 4);
+            AssertTextsAreCultureFixed(onlyBand2, query, cultureName, expectedItems: 4);
+        }
+    }
+
+    [Fact]
+    public void GetCalculatedValues_WithoutBands_UsesTheFixedCultureForTheDateAndTheVwap()
+    {
+        using var plain = new AnchoredVwapObject(new ChartPoint(T0.AddDays(5), 100m));
+        plain.Recalculate(BuildParityCandles());
+
+        foreach (string cultureName in new[] { "fr-FR", "de-DE" })
+        {
+            AssertTextsAreCultureFixed(plain, T0.AddDays(30), cultureName, expectedItems: 2);
+        }
+    }
+
+    /// <summary>AnchorDate is "yyyy/MM/dd" with a literal '/' (the custom-format '/' would be the culture's date separator, '.' in de-DE); every other item is a number with '.'.</summary>
+    private static void AssertTextsAreCultureFixed(AnchoredVwapObject obj, DateTime query, string cultureName, int expectedItems)
+    {
         var previousCulture = CultureInfo.CurrentCulture;
         try
         {
-            CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("fr-FR");
-            var frValues = both.GetCalculatedValues(query);
-            for (int i = 2; i < frValues.Count; i++)
+            CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo(cultureName);
+            var values = obj.GetCalculatedValues(query);
+
+            Assert.Equal(expectedItems, values.Count);
+            Assert.Equal(obj.Points[0].Time.ToString("yyyy/MM/dd", CultureInfo.GetCultureInfo("en-US")), values[0].FormattedText);
+            Assert.Contains('/', values[0].FormattedText);
+            for (int i = 1; i < values.Count; i++)
             {
-                Assert.Contains('.', frValues[i].FormattedText);
-                Assert.DoesNotContain(',', frValues[i].FormattedText);
+                Assert.Contains('.', values[i].FormattedText);
+                Assert.DoesNotContain(',', values[i].FormattedText);
             }
         }
         finally
         {
             CultureInfo.CurrentCulture = previousCulture;
         }
+    }
+
+    // ---- HitTest of the bands (WebAiPeerReview plan T5; owner decision E-3 = a: only the displayed bands) ----
+
+    private const int ProbeBar = 30;
+    private const double MinBandSeparationPx = 20.0;   // the centre line and the band must be far enough apart for a probe to tell them apart
+
+    private static AnchoredVwapObject CreateBanded(bool showBand1, bool showBand2)
+    {
+        var obj = new AnchoredVwapObject(new ChartPoint(T0, 100m))
+        {
+            ShowBand1 = showBand1,
+            ShowBand2 = showBand2,
+            Band1Multiplier = 1.0m,
+            Band2Multiplier = 2.0m
+        };
+        obj.Recalculate(BuildParityCandles());
+        return obj;
+    }
+
+    /// <summary>Screen position of bar <see cref="ProbeBar"/> of the band line VWAP + signedMultiplier x sigma.</summary>
+    private static global::Avalonia.Point BandPoint(ICoordinateTransform transform, decimal signedMultiplier, int bar = ProbeBar)
+    {
+        var series = VolumeAnalysis.CalculateAnchoredVwapWithDeviation(BuildParityCandles());
+        var (time, vwap, stdDev) = series[bar];
+        return transform.ChartToScreen(new ChartPoint(time, vwap + signedMultiplier * stdDev!.Value));
+    }
+
+    [Fact]
+    public void HitTest_DisplayedBandsAreHit_HiddenBandsAreNot()
+    {
+        var transform = CreateTransform();
+        global::Avalonia.Point upper2 = BandPoint(transform, 2.0m);
+        global::Avalonia.Point lower1 = BandPoint(transform, -1.0m);
+        global::Avalonia.Point centre = BandPoint(transform, 0m);
+        Assert.True(Math.Abs(upper2.Y - centre.Y) > MinBandSeparationPx && Math.Abs(lower1.Y - centre.Y) > MinBandSeparationPx, "the test data must separate the lines");
+
+        using var both = CreateBanded(showBand1: true, showBand2: true);
+        using var only1 = CreateBanded(showBand1: true, showBand2: false);
+        using var only2 = CreateBanded(showBand1: false, showBand2: true);
+        using var none = CreateBanded(showBand1: false, showBand2: false);
+
+        Assert.True(both.HitTest(upper2, transform));
+        Assert.True(both.HitTest(lower1, transform));
+
+        Assert.True(only2.HitTest(upper2, transform));
+        Assert.False(only2.HitTest(lower1, transform));   // Band 1 is not displayed
+
+        Assert.True(only1.HitTest(lower1, transform));
+        Assert.False(only1.HitTest(upper2, transform));   // Band 2 is not displayed
+
+        Assert.False(none.HitTest(upper2, transform));
+        Assert.False(none.HitTest(lower1, transform));
+        Assert.True(none.HitTest(centre, transform));     // the centre line is unchanged
+    }
+
+    [Fact]
+    public void HitTest_FarFromEveryDisplayedLine_IsNotHit()
+    {
+        var transform = CreateTransform();
+        using var both = CreateBanded(showBand1: true, showBand2: true);
+        global::Avalonia.Point upper2 = BandPoint(transform, 2.0m);
+
+        Assert.False(both.HitTest(new global::Avalonia.Point(upper2.X, upper2.Y - 40), transform));   // beyond the outer band
+        Assert.False(both.HitTest(new global::Avalonia.Point(Width - 1, 5), transform));
+    }
+
+    [Fact]
+    public void HitTest_BarsWithoutStdDev_DoNotBreakTheBandTest()
+    {
+        // Zero volume until bar 2: sigma is null for bars 0 and 1, so those bars have no band point.
+        var candles = new List<CoreCandleData>
+        {
+            new(T0, 100m, 100m, 100m, 100m, 0),
+            new(T0.AddDays(1), 102m, 102m, 102m, 102m, 0),
+            new(T0.AddDays(2), 104m, 104m, 104m, 104m, 100),
+            new(T0.AddDays(3), 110m, 110m, 110m, 110m, 100),
+            new(T0.AddDays(4), 116m, 116m, 116m, 116m, 100)
+        };
+        using var obj = new AnchoredVwapObject(new ChartPoint(T0, 100m)) { ShowBand2 = true, Band2Multiplier = 2.0m };
+        obj.Recalculate(candles);
+        var transform = CreateTransform();
+        var series = VolumeAnalysis.CalculateAnchoredVwapWithDeviation(candles);
+        Assert.Null(series[0].StdDev);
+        Assert.Null(series[1].StdDev);
+
+        // A band vertex of a bar that has sigma is hit; a point at the position bar 1 would have (no sigma, no band point) is not.
+        var onBar4 = transform.ChartToScreen(new ChartPoint(series[4].Time, series[4].Vwap + 2m * series[4].StdDev!.Value));
+        Assert.True(obj.HitTest(onBar4, transform));
+
+        var wouldBeBar1 = transform.ChartToScreen(new ChartPoint(series[1].Time, series[1].Vwap + 40m));
+        Assert.False(obj.HitTest(wouldBeBar1, transform));
     }
 
     [AvaloniaFact]

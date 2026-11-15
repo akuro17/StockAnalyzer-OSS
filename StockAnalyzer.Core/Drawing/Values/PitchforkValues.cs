@@ -7,6 +7,8 @@ namespace StockAnalyzer.Core.Drawing.Values;
 /// median point to the screen, so the drawn lines, the hit area and these values share one definition.
 /// Anchor: Andrews = P1; Schiff = (P1 time, mean of P1 and P2 price); Modified Schiff = (mid time of P1 and P2, mean of P1 and P2 price).
 /// Median point = (mid time of P2 and P3, mean of P2 and P3 price). Mid time = first time + half the calendar seconds between the two times.
+/// Values at a time t: MedianLine = the straight line through the anchor and the median point; UpperLine and LowerLine = the prices at t of the lines through P2 and P3
+/// parallel to the median line (the larger of the two is UpperLine, so UpperLine &gt;= LowerLine whichever of P2 and P3 was clicked higher).
 /// </summary>
 public static class PitchforkValues
 {
@@ -49,10 +51,12 @@ public static class PitchforkValues
         DrawingAnchor anchor = GetAnchor(kind, p1, p2);
         DrawingAnchor median = GetMedianPoint(p2, p3);
 
-        decimal medianLinePrice = DrawingValueMath.InterpolatePrice(anchor.Time, anchor.Price, median.Time, median.Price, timestamp);
+        decimal medianLinePrice = MedianPriceAt(anchor, median, timestamp);
 
-        decimal offset2 = p2.Price - median.Price;
-        decimal offset3 = p3.Price - median.Price;
+        // The outer lines pass through P2 and P3 parallel to the median line: the vertical distance of each to the median line is constant and is
+        // measured at the time of its own control point (not at the time of the median point).
+        decimal offset2 = p2.Price - MedianPriceAt(anchor, median, p2.Time);
+        decimal offset3 = p3.Price - MedianPriceAt(anchor, median, p3.Time);
         decimal maxOffset = Math.Max(offset2, offset3);
         decimal minOffset = Math.Min(offset2, offset3);
 
@@ -67,6 +71,10 @@ public static class PitchforkValues
             new DrawingCalculatedValue("ForkType", "Type", null, kind.ToString(), IndicatorColor.Gray)
         };
     }
+
+    /// <summary>Price of the median line (the straight line through the anchor and the median point, extrapolated, never clamped) at <paramref name="time"/>.</summary>
+    private static decimal MedianPriceAt(DrawingAnchor anchor, DrawingAnchor median, DateTime time)
+        => DrawingValueMath.InterpolatePrice(anchor.Time, anchor.Price, median.Time, median.Price, time);
 
     private static DateTime MidTime(DateTime first, DateTime second)
         => DrawingValueMath.SafeAddSeconds(first, (second - first).TotalSeconds / 2.0);

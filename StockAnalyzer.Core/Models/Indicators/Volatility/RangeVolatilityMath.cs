@@ -21,19 +21,37 @@ public static class RangeVolatilityMath
     {
         ArgumentNullException.ThrowIfNull(v);
         ArgumentNullException.ThrowIfNull(valid);
+
+        var result = new List<decimal?>(v.Length);
+        Rolling(v, valid, period, annualize, periodsPerYear, result);
+        return result;
+    }
+
+    /// <summary>
+    /// The same series as <see cref="Rolling(double[], bool[], int, bool, int)"/>, written into <paramref name="output"/> (cleared first; exactly
+    /// <paramref name="v"/>.Length items are appended), so a caller that owns the list and borrows the two work spans allocates nothing here.
+    /// <c>v[k]</c> is read only when <c>valid[k]</c> is true, so a borrowed buffer needs only <paramref name="valid"/> to be initialised.
+    /// </summary>
+    /// <exception cref="ArgumentNullException"><paramref name="output"/> is null.</exception>
+    /// <exception cref="ArgumentException"><paramref name="valid"/> and <paramref name="v"/> differ in length.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="period"/> is below 1, or <paramref name="annualize"/> is true and <paramref name="periodsPerYear"/> is below 1.</exception>
+    public static void Rolling(ReadOnlySpan<double> v, ReadOnlySpan<bool> valid, int period, bool annualize, int periodsPerYear, List<decimal?> output)
+    {
+        ArgumentNullException.ThrowIfNull(output);
         if (valid.Length != v.Length) throw new ArgumentException("v and valid must have the same length.", nameof(valid));
         if (period < 1) throw new ArgumentOutOfRangeException(nameof(period));
         if (annualize && periodsPerYear < 1) throw new ArgumentOutOfRangeException(nameof(periodsPerYear));
 
         int count = v.Length;
         double annualFactor = IndicatorCalculationHelper.AnnualizationFactor(annualize, periodsPerYear);
-        var result = new List<decimal?>(count);
+        output.Clear();
+        if (output.Capacity < count) output.Capacity = count;
 
         for (int i = 0; i < count; i++)
         {
             if (i < period - 1)
             {
-                result.Add(null);
+                output.Add(null);
                 continue;
             }
 
@@ -52,14 +70,12 @@ public static class RangeVolatilityMath
 
             if (!windowValid)
             {
-                result.Add(null);
+                output.Add(null);
                 continue;
             }
 
             double sigma = Math.Sqrt(Math.Max(0.0, sum / period));
-            result.Add(IndicatorCalculationHelper.ToDecimalOrNull(sigma * annualFactor * IndicatorDefaultConstants.PercentScale));
+            output.Add(IndicatorCalculationHelper.ToDecimalOrNull(sigma * annualFactor * IndicatorDefaultConstants.PercentScale));
         }
-
-        return result;
     }
 }

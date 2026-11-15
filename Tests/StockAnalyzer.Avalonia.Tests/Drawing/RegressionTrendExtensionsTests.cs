@@ -10,6 +10,7 @@ using StockAnalyzer.Avalonia.Drawing;
 using StockAnalyzer.Avalonia.Services;
 using StockAnalyzer.Core.Constants;
 using StockAnalyzer.Core.Models;
+using StockAnalyzer.Core.Tests.Common;
 using Xunit;
 using Point = Avalonia.Point;
 
@@ -225,6 +226,232 @@ public sealed class RegressionTrendExtensionsTests
         canvas.Clear(SKColors.Black);
         obj.Render(canvas, compressed);
         Assert.DoesNotContain(Enumerable.Range(0, 600), y => bitmap.GetPixel(750, y).Red > 0);
+    }
+
+    // ---- HitTest of the right extension (WebAiPeerReview plan T4; owner decision E-2 = a: the three extension lines only) ----
+
+    private const int HitRangeBars = 8;
+    private const double NearTolerance = 5.0;   // ChartConstants.DefaultHitTestTolerance
+
+    /// <summary>Rising closes with an alternating +-10 offset: the regression has a StdDev of about 10, so the +-2 StdDev lines are about 20 px apart from the centre line.</summary>
+    private static List<CoreCandleData> BuildNoisyCandles(int totalBars)
+    {
+        var candles = new List<CoreCandleData>(totalBars);
+        for (int i = 0; i < totalBars; i++)
+        {
+            decimal close = 200m + i * 0.5m + (i % 2 == 0 ? 10m : -10m);
+            candles.Add(new CoreCandleData(Epoch.AddDays(i), close, close, close, close, 1000));
+        }
+
+        return candles;
+    }
+
+    /// <summary>Straight lines of the regression on the PixelCoordinateTransform (x = days since the epoch, y = price): centre, +2 StdDev, -2 StdDev.</summary>
+    private sealed record HitLines(decimal Intercept, decimal Slope, decimal Band)
+    {
+        public Point On(double day, int line)
+        {
+            decimal price = Intercept + Slope * (decimal)day + line * Band;
+            return new Point(day, (double)price);
+        }
+    }
+
+    private static HitLines LinesOf(RegressionTrendObject obj, DateTime start)
+        => new(GetValue(obj, start, "RegressionCenter"), GetValue(obj, start, "Slope"), GetValue(obj, start, "StdDev") * obj.StdDevMultiplier);
+
+    private static RegressionTrendObject CreateForHitTest(List<CoreCandleData> candles, bool extendRight)
+    {
+        var obj = new RegressionTrendObject(new ChartPoint(candles[0].Timestamp, 0m), new ChartPoint(candles[HitRangeBars - 1].Timestamp, 0m))
+        {
+            ExtendRight = extendRight
+        };
+        obj.Recalculate(candles);
+        return obj;
+    }
+
+    [Fact]
+    public void HitTest_ExtendRight_HitsTheThreeExtensionLines_BetweenTrailingBars_AndOnTheClipSegment()
+    {
+        var candles = BuildNoisyCandles(15);   // bars 8..14 trail the range
+        var transform = new PixelCoordinateTransform();
+        using var obj = CreateForHitTest(candles, extendRight: true);
+        HitLines lines = LinesOf(obj, candles[0].Timestamp);
+
+        Assert.True((double)lines.Band > 3 * NearTolerance, "the test data must separate the three lines");
+
+        foreach (int line in new[] { 0, 1, -1 })
+        {
+            Assert.True(obj.HitTest(lines.On(11.5, line), transform), $"between trailing bars, line {line}");
+            Assert.True(obj.HitTest(lines.On(8.0, line), transform), $"at the first trailing bar, line {line}");
+            Assert.True(obj.HitTest(lines.On(14.0, line), transform), $"at the last trailing bar, line {line}");
+            Assert.True(obj.HitTest(lines.On(300.0, line), transform), $"on the segment to the right edge, line {line}");
+        }
+    }
+
+    [Fact]
+    public void HitTest_ExtendRight_EndsAtTheRightEdgeOfThePlotArea_NotOfTheWholeCanvas()
+    {
+        const double PlotAreaWidth = 200;   // narrower than the 800 px canvas: the price axis is beside the plot area, where Render draws nothing
+        var candles = BuildNoisyCandles(15);
+        var transform = new PixelCoordinateTransform(viewportWidth: PlotAreaWidth);
+        using var obj = CreateForHitTest(candles, extendRight: true);
+        HitLines lines = LinesOf(obj, candles[0].Timestamp);
+
+        foreach (int line in new[] { 0, 1, -1 })
+        {
+            Assert.True(obj.HitTest(lines.On(150.0, line), transform), $"inside the plot area, line {line}");
+            Assert.False(obj.HitTest(lines.On(300.0, line), transform), $"beyond the plot area (still inside the canvas), line {line}");
+        }
+    }
+
+    [Fact]
+    public void HitTest_ExtendRight_False_DoesNotHitTheSamePoints()
+    {
+        var candles = BuildNoisyCandles(15);
+        var transform = new PixelCoordinateTransform();
+        using var extended = CreateForHitTest(candles, extendRight: true);
+        using var plain = CreateForHitTest(candles, extendRight: false);
+        HitLines lines = LinesOf(plain, candles[0].Timestamp);
+
+        foreach (int line in new[] { 0, 1, -1 })
+        {
+            Assert.True(extended.HitTest(lines.On(11.5, line), transform));
+            Assert.False(plain.HitTest(lines.On(11.5, line), transform), $"line {line} between trailing bars");
+            Assert.False(plain.HitTest(lines.On(300.0, line), transform), $"line {line} on the segment to the right edge");
+        }
+    }
+
+    [Fact]
+    public void HitTest_ExtendRight_IgnoresPointsAwayFromTheLines_AndTheBandInteriorBeyondTheRange()
+    {
+        var candles = BuildNoisyCandles(15);
+        var transform = new PixelCoordinateTransform();
+        using var obj = CreateForHitTest(candles, extendRight: true);
+        HitLines lines = LinesOf(obj, candles[0].Timestamp);
+
+        Point onCentre = lines.On(11.5, 0);
+        Assert.False(obj.HitTest(new Point(onCentre.X, onCentre.Y + 60), transform));                 // far below every line
+        Assert.False(obj.HitTest(new Point(onCentre.X, onCentre.Y - (double)lines.Band * 3), transform));     // far above every line
+        Assert.False(obj.HitTest(new Point(onCentre.X, onCentre.Y + (double)lines.Band / 2), transform));     // inside the extended band, half a band from each line
+        Assert.False(obj.HitTest(new Point(790, 0), transform));                                       // right of the segment end, off the lines
+    }
+
+    [Fact]
+    public void HitTest_InsideTheRange_IsUnchangedByExtendRight()
+    {
+        var candles = BuildNoisyCandles(15);
+        var transform = new PixelCoordinateTransform();
+        using var extended = CreateForHitTest(candles, extendRight: true);
+        using var plain = CreateForHitTest(candles, extendRight: false);
+        HitLines lines = LinesOf(plain, candles[0].Timestamp);
+
+        foreach (double day in new[] { 1.0, 3.5, 6.0 })
+        {
+            Point inside = lines.On(day, 0);
+            Assert.True(plain.HitTest(inside, transform));
+            Assert.True(extended.HitTest(inside, transform));
+        }
+
+        Assert.False(plain.HitTest(new Point(3.5, 5000), transform));
+        Assert.False(extended.HitTest(new Point(3.5, 5000), transform));
+    }
+
+    [Fact]
+    public void HitTest_ExtendRight_WithNoTrailingBars_HitsTheLineToTheRightEdge()
+    {
+        var candles = BuildNoisyCandles(HitRangeBars);   // the range covers every bar: the extension starts from the last two bars
+        var transform = new PixelCoordinateTransform();
+        using var obj = CreateForHitTest(candles, extendRight: true);
+        using var plain = CreateForHitTest(candles, extendRight: false);
+        HitLines lines = LinesOf(obj, candles[0].Timestamp);
+
+        foreach (int line in new[] { 0, 1, -1 })
+        {
+            Assert.True(obj.HitTest(lines.On(40.0, line), transform), $"line {line}");
+            Assert.False(plain.HitTest(lines.On(40.0, line), transform), $"line {line} without ExtendRight");
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void HitTest_AllocatesNothing_WhetherThePointIsInsideTheRange_OnTheExtension_OrAway(bool extendRight)
+    {
+        var candles = BuildNoisyCandles(15);
+        var transform = new PixelCoordinateTransform();
+        using var obj = CreateForHitTest(candles, extendRight);
+        HitLines lines = LinesOf(obj, candles[0].Timestamp);
+
+        foreach (Point probe in new[] { lines.On(3.5, 0), lines.On(11.5, 1), lines.On(300.0, -1), new Point(790, 5) })
+        {
+            _ = obj.HitTest(probe, transform);   // warm-up (JIT, caches)
+            long bytes = AllocationProbe.InCollectionFreeWindow(() => obj.HitTest(probe, transform));
+            Assert.Equal(0, bytes);
+        }
+    }
+
+    // ---- Band item names (WebAiPeerReview plan T8; owner decision E-5 = a) ----
+
+    private static string BandNameOf(RegressionTrendObject obj, DateTime time, string key)
+        => Assert.Single(obj.GetCalculatedValues(time), v => v.Key == key).Label;
+
+    [Theory]
+    [InlineData("2.0", "+2σ Band", "-2σ Band")]
+    [InlineData("1.5", "+1.5σ Band", "-1.5σ Band")]
+    [InlineData("0.25", "+0.25σ Band", "-0.25σ Band")]
+    [InlineData("10", "+10σ Band", "-10σ Band")]
+    [InlineData("100", "+10σ Band", "-10σ Band")]      // clamped to the maximum
+    [InlineData("0.01", "+0.1σ Band", "-0.1σ Band")]   // clamped to the minimum
+    public void BandNames_FollowTheMultiplier_AndTheDefaultStaysTwoSigma(string multiplier, string expectedUpper, string expectedLower)
+    {
+        var candles = BuildCandles(10);
+        using var obj = new RegressionTrendObject(new ChartPoint(candles[0].Timestamp, 0m), new ChartPoint(candles[5].Timestamp, 0m));
+        obj.Recalculate(candles);
+
+        if (multiplier != "2.0")
+        {
+            obj.StdDevMultiplier = decimal.Parse(multiplier, System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        Assert.Equal(expectedUpper, BandNameOf(obj, candles[3].Timestamp, "RegressionUpper2"));
+        Assert.Equal(expectedLower, BandNameOf(obj, candles[3].Timestamp, "RegressionLower2"));
+    }
+
+    [Fact]
+    public void BandNames_AreIndependentOfTheThreadCulture_AndKeepKeysAndOrder()
+    {
+        var candles = BuildCandles(10);
+        using var obj = new RegressionTrendObject(new ChartPoint(candles[0].Timestamp, 0m), new ChartPoint(candles[5].Timestamp, 0m));
+        obj.Recalculate(candles);
+
+        var previous = System.Globalization.CultureInfo.CurrentCulture;
+        try
+        {
+            System.Globalization.CultureInfo.CurrentCulture = System.Globalization.CultureInfo.GetCultureInfo("fr-FR");
+            obj.StdDevMultiplier = 1.5m;
+            var values = obj.GetCalculatedValues(candles[3].Timestamp);
+
+            Assert.Equal(new[] { "RegressionCenter", "RegressionUpper2", "RegressionLower2", "Slope", "StdDev" }, values.Select(v => v.Key).ToArray());
+            Assert.Equal("+1.5σ Band", values[1].Label);
+            Assert.Equal("-1.5σ Band", values[2].Label);
+        }
+        finally
+        {
+            System.Globalization.CultureInfo.CurrentCulture = previous;
+        }
+    }
+
+    [Fact]
+    public void HitTest_ExtendRight_TinyScreenDeltaX_DoesNotThrow_AndHasNoClipSegment()
+    {
+        var candles = BuildNoisyCandles(15);
+        using var obj = CreateForHitTest(candles, extendRight: true);
+
+        var compressed = new GenericCoordinateTransform(ChartAxisMode.Time, 800, 600);
+        compressed.UpdateRange(Epoch, Epoch.AddDays(50000), 80m, 400m);
+
+        // Fifteen bars span less than 2 px here (dx per bar < 0.5): no segment is added up to the right edge.
+        Assert.False(obj.HitTest(new Point(750, 300), compressed));
     }
 
     [AvaloniaFact]

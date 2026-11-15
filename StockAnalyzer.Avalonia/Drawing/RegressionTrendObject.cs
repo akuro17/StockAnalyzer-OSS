@@ -7,6 +7,7 @@ using Avalonia.Media;
 using SkiaSharp;
 using StockAnalyzer.Avalonia.Common;
 using StockAnalyzer.Core.Constants;
+using StockAnalyzer.Core.Drawing;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Services.Analysis;
 
@@ -44,6 +45,11 @@ public class RegressionTrendObject : IChartObject, IDisposable, IDrawingCalculat
 
     private decimal _stdDevMultiplier = DefaultStdDevMultiplier;
 
+    // Display names of the two band items of the Data tab ("+2σ Band" / "-2σ Band" for the default multiplier). Built once per multiplier change,
+    // so GetCalculatedValues allocates no string for them.
+    private string _upperBandName = BandName('+', DefaultStdDevMultiplier);
+    private string _lowerBandName = BandName('-', DefaultStdDevMultiplier);
+
     [Category("Parameters")]
     [DisplayName("StdDev Multiplier")]
     [Range(MinStdDevMultiplierRange, MaxStdDevMultiplierRange)]
@@ -51,8 +57,17 @@ public class RegressionTrendObject : IChartObject, IDisposable, IDrawingCalculat
     public decimal StdDevMultiplier
     {
         get => _stdDevMultiplier;
-        set => _stdDevMultiplier = Math.Clamp(value, MinStdDevMultiplier, MaxStdDevMultiplier);
+        set
+        {
+            _stdDevMultiplier = Math.Clamp(value, MinStdDevMultiplier, MaxStdDevMultiplier);
+            _upperBandName = BandName('+', _stdDevMultiplier);
+            _lowerBandName = BandName('-', _stdDevMultiplier);
+        }
     }
+
+    /// <summary>The band item name: sign, multiplier with at most two decimals, then "σ Band"; formatted with <see cref="DrawingValueFormat.Culture"/> so the decimal separator is always ".".</summary>
+    private static string BandName(char sign, decimal multiplier)
+        => string.Create(DrawingValueFormat.Culture, $"{sign}{multiplier:0.##}σ Band");
 
     [Category("Parameters")]
     [DisplayName("Extend Right")]
@@ -381,10 +396,85 @@ public class RegressionTrendObject : IChartObject, IDisposable, IDrawingCalculat
         decimal bandOffset,
         float clipRight)
     {
-        if (!double.IsFinite(rangeEnd.X) || !double.IsFinite(rangeEnd.Y)) return;
+        var sink = new PathSink(_extendPath);
+        if (WalkExtendedLine(transform, rangeEnd, bandOffset, clipRight, ref sink))
+        {
+            canvas.DrawPath(_extendPath, paint);
+        }
+    }
 
-        _extendPath.Reset();
-        _extendPath.MoveTo((float)rangeEnd.X, (float)rangeEnd.Y);
+    /// <summary>Receives the screen points of one extension polyline in order (Render draws them, HitTest measures the distance to them).</summary>
+    private interface IExtendedPointSink
+    {
+        void Begin(global::Avalonia.Point start);
+
+        void Next(global::Avalonia.Point point);
+    }
+
+    /// <summary>Render side: builds the polyline in the reused path.</summary>
+    private readonly struct PathSink : IExtendedPointSink
+    {
+        private readonly SKPath _path;
+
+        public PathSink(SKPath path) => _path = path;
+
+        public void Begin(global::Avalonia.Point start)
+        {
+            _path.Reset();
+            _path.MoveTo((float)start.X, (float)start.Y);
+        }
+
+        public void Next(global::Avalonia.Point point) => _path.LineTo((float)point.X, (float)point.Y);
+    }
+
+    /// <summary>HitTest side: tracks whether the target is within the tolerance of a segment of the polyline. No allocation.</summary>
+    private struct HitSink : IExtendedPointSink
+    {
+        private readonly SKPoint _target;
+        private readonly double _tolerance;
+        private SKPoint _previous;
+
+        public HitSink(global::Avalonia.Point target, double tolerance)
+        {
+            _target = new SKPoint((float)target.X, (float)target.Y);
+            _tolerance = tolerance;
+            _previous = default;
+            IsHit = false;
+        }
+
+        public bool IsHit { get; private set; }
+
+        public void Begin(global::Avalonia.Point start) => _previous = new SKPoint((float)start.X, (float)start.Y);
+
+        public void Next(global::Avalonia.Point point)
+        {
+            var current = new SKPoint((float)point.X, (float)point.Y);
+            if (!IsHit && BezierSplineMath.DistancePointToSegment(_target, _previous, current) <= _tolerance)
+            {
+                IsHit = true;
+            }
+
+            _previous = current;
+        }
+    }
+
+    /// <summary>
+    /// The one definition of an extension polyline (Render and HitTest use it): from the screen point of the range end through the screen point of every
+    /// trailing existing bar (value = regression extrapolation + <paramref name="bandOffset"/>), then, when the last two points are at least
+    /// <see cref="MinExtendScreenDeltaX"/> apart in X and the last one is left of <paramref name="clipRight"/>, on the straight line through them to
+    /// X = <paramref name="clipRight"/>. With no trailing bar the previous point is the projection of the second-last range bar. A non-finite projected point
+    /// ends the walk (nothing is added after it). Returns false when nothing but the start point exists (no segment).
+    /// </summary>
+    private bool WalkExtendedLine<TSink>(
+        ICoordinateTransform transform,
+        global::Avalonia.Point rangeEnd,
+        decimal bandOffset,
+        float clipRight,
+        ref TSink sink) where TSink : struct, IExtendedPointSink
+    {
+        if (!double.IsFinite(rangeEnd.X) || !double.IsFinite(rangeEnd.Y)) return false;
+
+        sink.Begin(rangeEnd);
 
         global::Avalonia.Point prev = rangeEnd;
         global::Avalonia.Point last = rangeEnd;
@@ -400,25 +490,19 @@ public class RegressionTrendObject : IChartObject, IDisposable, IDrawingCalculat
         }
         else
         {
-            bool aborted = false;
             for (int i = 0; i < _tailTimes.Length; i++)
             {
                 decimal extrapolated = _result.GetValueAt(_result.Count + i) + bandOffset;
                 var pt = transform.ChartToScreen(new ChartPoint(_tailTimes[i], extrapolated));
                 if (!double.IsFinite(pt.X) || !double.IsFinite(pt.Y))
                 {
-                    aborted = true;
-                    break;
+                    return hasSegment;
                 }
-                _extendPath.LineTo((float)pt.X, (float)pt.Y);
+
+                sink.Next(pt);
                 prev = last;
                 last = pt;
                 hasSegment = true;
-            }
-            if (aborted)
-            {
-                if (hasSegment) canvas.DrawPath(_extendPath, paint);
-                return;
             }
         }
 
@@ -431,29 +515,56 @@ public class RegressionTrendObject : IChartObject, IDisposable, IDrawingCalculat
                 double extY = prev.Y + t * (last.Y - prev.Y);
                 if (double.IsFinite(extY))
                 {
-                    _extendPath.LineTo(clipRight, (float)extY);
+                    sink.Next(new global::Avalonia.Point(clipRight, extY));
                     hasSegment = true;
                 }
             }
         }
 
-        if (hasSegment)
+        return hasSegment;
+    }
+
+    /// <summary>True when <paramref name="screenPoint"/> is within <paramref name="tolerance"/> of one of the three extension lines (centre, upper, lower band).</summary>
+    private bool HitTestExtension(global::Avalonia.Point screenPoint, ICoordinateTransform transform, double tolerance)
+    {
+        // Same end points as Render: the screen points of the range end for the centre line and the two band lines.
+        decimal yAnalysisEnd = _result.GetValueAt(_result.Count - 1);
+        decimal std = _result.StdDev * StdDevMultiplier;
+
+        // The right edge: the width of the plot area. Render ends the extension at the right edge of its canvas clip, which in the chart is the plot area
+        // (ChartRenderPipeline clips to the chart area), not the whole canvas (CanvasWidth also covers the price axis beside it).
+        float clipRight = (float)transform.ViewportWidth;
+        if (!float.IsFinite(clipRight) || clipRight <= 0f)
         {
-            canvas.DrawPath(_extendPath, paint);
+            clipRight = 0f;   // not > last.X for any finite point: no segment up to the right edge
         }
+
+        return HitTestExtensionLine(screenPoint, transform, yAnalysisEnd, 0m, clipRight, tolerance)
+               || HitTestExtensionLine(screenPoint, transform, yAnalysisEnd + std, std, clipRight, tolerance)
+               || HitTestExtensionLine(screenPoint, transform, yAnalysisEnd - std, -std, clipRight, tolerance);
+    }
+
+    private bool HitTestExtensionLine(
+        global::Avalonia.Point screenPoint,
+        ICoordinateTransform transform,
+        decimal rangeEndPrice,
+        decimal bandOffset,
+        float clipRight,
+        double tolerance)
+    {
+        global::Avalonia.Point rangeEnd = transform.ChartToScreen(new ChartPoint(_end, rangeEndPrice));
+        var sink = new HitSink(screenPoint, tolerance);
+        WalkExtendedLine(transform, rangeEnd, bandOffset, clipRight, ref sink);
+        return sink.IsHit;
     }
 
     public bool HitTest(global::Avalonia.Point screenPoint, ICoordinateTransform transform, double tolerance = ChartConstants.DefaultHitTestTolerance)
     {
         if (!_result.IsValid) return false;
         
-        // Similar bounding box + path contains logic
-         // For simplicity, just check distance to Center Line?
-         // Or check if inside Band?
-         
-         // We can reconstruct the polygon locally and test
-        decimal yAnalysisStart = _result.Slope * 0 + _result.Intercept;
-        decimal yAnalysisEnd = _result.Slope * (_result.Count - 1) + _result.Intercept;
+        // The hit area is the band polygon of Render (and, with ExtendRight, the three extension lines), rebuilt from the regression result.
+        decimal yAnalysisStart = _result.GetValueAt(0);
+        decimal yAnalysisEnd = _result.GetValueAt(_result.Count - 1);
         decimal std = _result.StdDev * StdDevMultiplier;
         
         var pStartUpper = new ChartPoint(_start, yAnalysisStart + std);
@@ -466,14 +577,11 @@ public class RegressionTrendObject : IChartObject, IDisposable, IDrawingCalculat
         var s3 = transform.ChartToScreen(pEndLower);
         var s4 = transform.ChartToScreen(pStartLower);
         
-        using var path = new SKPath();
-        path.MoveTo((float)s1.X, (float)s1.Y);
-        path.LineTo((float)s2.X, (float)s2.Y);
-        path.LineTo((float)s3.X, (float)s3.Y);
-        path.LineTo((float)s4.X, (float)s4.Y);
-        path.Close();
-        
-        return path.Contains((float)screenPoint.X, (float)screenPoint.Y);
+        // The band polygon (same vertex order as the fill in Render); no native path is created for a hit test.
+        if (DrawingHitTestMath.PolygonContains(screenPoint, s1, s2, s3, s4)) return true;
+
+        // The extension to the right (only the three lines count, not the band between them: the fill is not extended either).
+        return ExtendRight && HitTestExtension(screenPoint, transform, tolerance);
     }
 
     public void Translate(TimeSpan timeDelta, decimal priceDelta)
@@ -530,8 +638,8 @@ public class RegressionTrendObject : IChartObject, IDisposable, IDrawingCalculat
         return new DrawingCalculatedValue[]
         {
             new DrawingCalculatedValue("RegressionCenter", "Regression Center", center, $"{center:F3}", color),
-            new DrawingCalculatedValue("RegressionUpper2", "+2σ Band", upper2, $"{upper2:F3}", color),
-            new DrawingCalculatedValue("RegressionLower2", "-2σ Band", lower2, $"{lower2:F3}", color),
+            new DrawingCalculatedValue("RegressionUpper2", _upperBandName, upper2, $"{upper2:F3}", color),
+            new DrawingCalculatedValue("RegressionLower2", _lowerBandName, lower2, $"{lower2:F3}", color),
             new DrawingCalculatedValue("Slope", "Slope", _result.Slope, $"{_result.Slope:F4}", color),
             new DrawingCalculatedValue("StdDev", "StdDev", _result.StdDev, $"{_result.StdDev:F3}", IndicatorColor.Gray)
         };

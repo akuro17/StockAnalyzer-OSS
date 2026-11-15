@@ -8,6 +8,7 @@ using StockAnalyzer.Avalonia.Drawing;
 using StockAnalyzer.Avalonia.Models;
 using StockAnalyzer.Avalonia.Services.Drawing;
 using StockAnalyzer.Avalonia.Services.Export;
+using StockAnalyzer.Avalonia.Tests.Drawing;
 using StockAnalyzer.Avalonia.Views.Chart;
 using StockAnalyzer.Avalonia.Views.Chart.Renderers;
 using StockAnalyzer.Core.Models;
@@ -259,6 +260,67 @@ public class ChartImageExportServiceTests
         var mid = f.Transform.ChartToScreen(new ChartPoint(
             f.Snapshot.Candles[9].Timestamp, 110m));
         return bitmap.GetPixel((int)Math.Round(mid.X), (int)Math.Round(mid.Y));
+    }
+
+    /// <summary>
+    /// A removal while the export renders from its scene (D-3): the object is neither disposed under the render nor drawn after its disposal; it is disposed
+    /// when the render's scope ends. The scene is registered with the manager the way the export dialog registers it.
+    /// </summary>
+    private static (RenderLifetimeSpy Remover, RenderLifetimeSpy Target, LayeredDrawingScene Scene) AddRemovalDuringRender(
+        LayeredFixture f, Action<RenderLifetimeSpy>? afterRemoval = null)
+    {
+        var target = new RenderLifetimeSpy();
+        RenderLifetimeSpy? remover = null;
+        remover = new RenderLifetimeSpy(onRender: () =>
+        {
+            Assert.True(f.Manager.RemoveObject(target.Id));
+            afterRemoval?.Invoke(target);
+        });
+        foreach (var added in new[] { remover, target })
+        {
+            Assert.True(f.Manager.AddObject(added));
+            f.Layers.AddObjectToLayer(added.Id, StockAnalyzer.Core.Models.Drawing.PanelKey.Main, f.LowerLayerId);
+        }
+
+        return (remover, target, BuildScene(f));
+    }
+
+    [Fact]
+    public async Task RenderLayeredChartImageAsync_HoldsTheRenderScope_SoARemovalDuringTheRenderIsDisposedAfterIt()
+    {
+        var f = CreateLayeredFixture();
+        int disposesInsideTheRender = -1;
+        var (_, target, scene) = AddRemovalDuringRender(f, removed => disposesInsideTheRender = removed.DisposeCount);
+        using var registration = f.Manager.AttachRetirementListener(scene);
+
+        await RenderLayered(f, f.Manager, scene);
+
+        Assert.Equal(0, disposesInsideTheRender);
+        Assert.False(target.RenderedAfterDispose);
+        Assert.Equal(1, target.DisposeCount);
+    }
+
+    [Fact]
+    public async Task RenderLayeredChartImageAsync_ThatFails_StillLeavesTheRenderScope()
+    {
+        var f = CreateLayeredFixture();
+        var (_, target, scene) = AddRemovalDuringRender(f, _ => throw new InvalidOperationException("render failure injected by the test"));
+        using var registration = f.Manager.AttachRetirementListener(scene);
+
+        try
+        {
+            await RenderLayered(f, f.Manager, scene);
+        }
+        catch (Exception)
+        {
+            // Whether the pipeline lets the failure out is not under test; the scope is.
+        }
+
+        Assert.Equal(1, target.DisposeCount);   // disposed when the scope ended, in the finally
+        var later = new RenderLifetimeSpy();
+        Assert.True(f.Manager.AddObject(later));
+        Assert.True(f.Manager.RemoveObject(later.Id));
+        Assert.Equal(1, later.DisposeCount);    // no scope is left behind: nothing is deferred any more
     }
 
     [Fact]

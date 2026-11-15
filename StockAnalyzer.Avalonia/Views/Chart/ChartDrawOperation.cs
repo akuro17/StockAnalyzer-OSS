@@ -102,6 +102,10 @@ internal sealed class ChartDrawOperation : ICustomDrawOperation
 
     public void Render(ImmediateDrawingContext context)
     {
+        // One frame in flight: entered before the pipeline reads any scene array and left in the compiler's finally (using), so an exception while drawing
+        // cannot leave the counter up. A drawing object the manager removes meanwhile is disposed when this scope ends, not under the frame.
+        using var renderScope = _objectManager.BeginRenderScope();
+
         var feature = context.TryGetFeature(typeof(ISkiaSharpApiLeaseFeature)) as ISkiaSharpApiLeaseFeature;
 
         if (feature == null)

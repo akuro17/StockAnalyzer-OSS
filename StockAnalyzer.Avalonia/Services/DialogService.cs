@@ -1588,6 +1588,13 @@ public partial class DialogService : IDialogService
                     layeredScene = null;
                 }
 
+                // The snapshot scene keeps references to the live drawing objects for as long as the dialog renders it (previews and the export run on
+                // background threads), so it must hear about every removal like the scene of the chart does (D-3). Released with the dialog, also
+                // when creating the view model fails (using declaration; a null resource is allowed).
+                using IDisposable? sceneRetirementBinding = layeredScene != null
+                    ? chartViewModel.ObjectManager.AttachRetirementListener(layeredScene)
+                    : null;
+
                 var vm = new ExportChartImageDialogViewModel(
                     snapshot,
                     layout,

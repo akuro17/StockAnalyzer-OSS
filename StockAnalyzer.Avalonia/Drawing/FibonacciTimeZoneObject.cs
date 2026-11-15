@@ -15,6 +15,12 @@ namespace StockAnalyzer.Avalonia.Drawing;
 /// </summary>
 public class FibonacciTimeZoneObject : IChartObject, IDisposable
 {
+    /// <summary>Distance in pixels from the bottom edge of the chart to the label baseline.</summary>
+    private const float LabelBottomMargin = 5f;
+
+    /// <summary>Distance in pixels from a vertical line to the left of its label.</summary>
+    private const float LabelLeftMargin = 2f;
+
     public string? CustomName { get; set; }
     public DrawingMoveAxisMode MoveAxisMode { get; set; } = DrawingMoveAxisMode.XY;
     public bool IsMoveAxisModeExplicit { get; set; } = false;
@@ -81,20 +87,15 @@ public class FibonacciTimeZoneObject : IChartObject, IDisposable
         _textPaint.Color = SkiaColor;
         _textPaint.TextSize = DrawingThemeContext.DrawingFontSize;
 
-        float canvasHeight = (float)transform.CanvasHeight; // Need height from transform or assumption?
-        // ICoordinateTransform usually exposes CanvasHeight or we can infer from large number.
-        // Let's use specific DrawLine with full height if possible. 
-        // transform.CanvasHeight is available in LinearCoordinateTransform implementation but interface?
-        // Let's assume passed clip bounds or standard large value if interface doesn't have it.
-        // Checking interface previously... ViewFile showed it might have CanvasWidth/Height.
-        
-        // Let's check ICoordinateTransform in next step to be sure, but for now assuming it has properties or we draw huge.
-        // safely:
-        float maxY = 10000; 
-        if (transform is StockAnalyzer.Avalonia.Drawing.LinearCoordinateTransform lct)
+        // The vertical extent of the chart: the transform's own height (every ICoordinateTransform has it; the main chart uses GenericCoordinateTransform),
+        // else the clip of the canvas; with neither there is nothing to draw on.
+        float maxY = (float)transform.CanvasHeight;
+        if (!float.IsFinite(maxY) || maxY <= 0f)
         {
-             maxY = (float)lct.CanvasHeight;
+            maxY = canvas.LocalClipBounds.Bottom;
         }
+
+        if (!float.IsFinite(maxY) || maxY <= 0f) return;
 
         foreach (var fib in _fibSequence)
         {
@@ -104,7 +105,7 @@ public class FibonacciTimeZoneObject : IChartObject, IDisposable
             // if (x < 0 || x > Width) continue; 
             
             canvas.DrawLine((float)x, 0, (float)x, maxY, _paint);
-            canvas.DrawText($"{fib}", (float)x + 2, maxY - 5, _textPaint);
+            canvas.DrawText($"{fib}", (float)x + LabelLeftMargin, maxY - LabelBottomMargin, _textPaint);
         }
 
         if (IsSelected)

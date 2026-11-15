@@ -645,7 +645,7 @@ public sealed class RunScreenerToolTests : IDisposable
         var ex = Assert.Throws<ToolException>(() => binder.Bind(JsonDocument.Parse(treeJson).RootElement, "t"));
 
         Assert.Equal(ToolErrorCodes.InvalidIndicatorParameter, ex.Code);
-        Assert.Equal(expectedParam, ex.Param);
+        Assert.Equal(expectedParam, ex.Parameter);
     }
 
     [Fact]
@@ -657,7 +657,7 @@ public sealed class RunScreenerToolTests : IDisposable
         var template = new StockAnalyzer.Core.Models.Templates.ScreenerIndicatorTemplate
         {
             Name = "EmptyBreadth",
-            Entries =
+            Entries = new List<StockAnalyzer.Core.Models.Screener.ScreenerIndicatorEntry>
             {
                 new StockAnalyzer.Core.Models.Screener.ScreenerIndicatorEntry
                 {
@@ -668,9 +668,9 @@ public sealed class RunScreenerToolTests : IDisposable
                         IndicatorType = IndicatorType.MarketBreadth,
                         OutputName = IndicatorResult.MainSeriesName
                     },
-                    Comparison = StockAnalyzer.Core.Models.Screener.ScreenerComparisonOperator.GreaterThan,
-                    TargetMode = StockAnalyzer.Core.Models.Screener.RightHandTargetMode.FixedValue,
-                    FixedValue = 50m
+                    Operator = StockAnalyzer.Core.Models.Screener.ComparisonOperator.GreaterThan,
+                    TargetMode = StockAnalyzer.Core.Models.Screener.RightHandTargetMode.NumericValue,
+                    RightNumericValue = 50m
                 }
             }
         };

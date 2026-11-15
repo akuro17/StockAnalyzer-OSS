@@ -11,7 +11,7 @@ namespace StockAnalyzer.Avalonia.Drawing;
 /// Enforces identical object evaluation sequence between forward rendering (0..N-1) and
 /// backward hit-testing (N-1..0) per S06 and G4.
 /// </summary>
-public sealed class LayeredDrawingScene
+public sealed class LayeredDrawingScene : IRenderSceneRetirementListener
 {
     public readonly struct PanelSceneEntry
     {
@@ -91,6 +91,46 @@ public sealed class LayeredDrawingScene
             _cachedDocumentRevision = -1;
             _cachedPanelMapRevision = -1;
             _panelCache.Clear();
+        }
+    }
+
+    /// <summary>
+    /// The manager has removed these objects and will dispose them: they are dropped from every panel array at once (the arrays are replaced, never edited,
+    /// because a frame may be walking the old one under the render scope). The cached revisions stay as they are, so the next
+    /// <c>UpdateScene</c>
+    /// with a newer revision rebuilds as usual. Allocates, but only when objects are removed, never per frame.
+    /// </summary>
+    public void OnObjectsRetired(IReadOnlyList<IChartObject> retiredObjects)
+    {
+        ArgumentNullException.ThrowIfNull(retiredObjects);
+        if (retiredObjects.Count == 0) return;
+
+        var retired = new HashSet<IChartObject>(retiredObjects, ReferenceEqualityComparer.Instance);
+        lock (_cacheLock)
+        {
+            if (_panelCache.Count == 0) return;
+
+            var panels = new List<PanelKey>(_panelCache.Keys);
+            for (int p = 0; p < panels.Count; p++)
+            {
+                PanelSceneEntry[] entries = _panelCache[panels[p]];
+                int kept = 0;
+                for (int i = 0; i < entries.Length; i++)
+                {
+                    if (!retired.Contains(entries[i].Object)) kept++;
+                }
+
+                if (kept == entries.Length) continue;
+
+                var next = new PanelSceneEntry[kept];
+                int write = 0;
+                for (int i = 0; i < entries.Length; i++)
+                {
+                    if (!retired.Contains(entries[i].Object)) next[write++] = entries[i];
+                }
+
+                _panelCache[panels[p]] = next;
+            }
         }
     }
 

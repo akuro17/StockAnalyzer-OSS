@@ -2,6 +2,7 @@ using System.IO;
 using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using StockAnalyzer.Core.Constants;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Indicators;
 using StockAnalyzer.Core.Models.Parameters;
@@ -19,7 +20,7 @@ namespace StockAnalyzer.Tests.McpServer;
 /// <summary>
 /// T3 (B1): for every registered indicator that does not compare two tickers, <c>sa_calculate_indicators</c> must give the values the chart's path gives
 /// for the indicator's default settings, compared exactly (tolerance 0, same count, same order). The chart side is built from the services the chart
-/// uses, with explicit values: the default settings of <see cref="ScreenerCatalogProvider"/>, the bars of <see cref="TimeFrameManager"/> (count = the
+/// uses, with explicit values (a universe-breadth type also compared, with the built-in All Tickers group, in its own case): the default settings of <see cref="ScreenerCatalogProvider"/>, the bars of <see cref="TimeFrameManager"/> (count = the
 /// bars the tool reports it calculated over), and <see cref="IAnalysisPipelineService.CalculateIndicatorsAsync"/>. The types come from the registry,
 /// so a new indicator is compared without touching this file. Two-ticker indicators are compared in their own case (<c>Correlation</c> against a
 /// second stored symbol, aligned as the chart aligns it). Not covered: the chart view model's own property wiring (no UI is created here).
@@ -39,8 +40,19 @@ public sealed class IndicatorGuiMcpEquivalenceTests : IClassFixture<IndicatorGui
         _host = host;
     }
 
+    /// <summary>
+    /// The types calculated from one ticker alone. Two other kinds are compared in their own cases: the two-ticker types (<see cref="ScreenerTwoTickerTypes"/>) and the
+    /// universe-breadth types (<see cref="UniverseBreadthTypes"/>), which both need an input the default settings do not carry (a ComparisonSymbol, a UniverseGroupId)
+    /// and which the tool refuses without it (INVALID_INDICATOR_PARAMETER). Responsibilities for the universe-breadth types: the refusal is tested in
+    /// <c>CalculateIndicatorsToolTests.UniverseBreadthWithoutValidUniverseGroupId_ReturnsInvalidIndicatorParameter</c>, the calculation with an injected universe in
+    /// <c>AnalysisPipelineUniverseBreadthTests</c> (Core.Tests), and the equality of the tool and the chart path for a valid group in the case below.
+    /// </summary>
     public static IEnumerable<object[]> SingleTickerTypes()
-        => RegisteredTypes().Where(type => !IsCrossTicker(type)).Select(type => new object[] { type.ToString() });
+        => RegisteredTypes().Where(type => !IsCrossTicker(type) && !IsUniverseBreadth(type)).Select(type => new object[] { type.ToString() });
+
+    /// <summary>The universe-breadth types, taken from the registry through the one eligibility rule, not from a list of names.</summary>
+    public static IEnumerable<object[]> UniverseBreadthTypes()
+        => RegisteredTypes().Where(IsUniverseBreadth).Select(type => new object[] { type.ToString() });
 
     [Theory]
     [MemberData(nameof(SingleTickerTypes))]
@@ -76,6 +88,34 @@ public sealed class IndicatorGuiMcpEquivalenceTests : IClassFixture<IndicatorGui
         AssertSame(mcp, chart, typeName);
     }
 
+    /// <summary>
+    /// A universe-breadth type given the built-in All Tickers group (<see cref="TickerGroupIds.AllTickers"/>, which every data tree has, here the fixture's two symbols)
+    /// gives the tool and the chart path the same values. Tolerance 0, as in the other cases; a difference is reported, not loosened.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(UniverseBreadthTypes))]
+    public async Task AUniverseBreadthIndicatorGivesTheValuesOfTheChartPathForTheSameGroup(string typeName)
+    {
+        var type = Enum.Parse<IndicatorType>(typeName);
+        string groupId = TickerGroupIds.AllTickers.ToString("D");
+
+        Outcome mcp = await _host.McpAsync(type, parameters: $"{{\"UniverseGroupId\":\"{groupId}\"}}");
+        Outcome chart = await _host.ChartAsync(type, secondarySymbol: null, universeGroupId: groupId);
+
+        Assert.True(chart.Successful, $"the {typeName} case must calculate on the chart path, or it compares nothing");
+        AssertSame(mcp, chart, typeName);
+    }
+
+    [Fact]
+    public void TheUniverseBreadthCasesCoverTheTwoTypesOfTheRegistry()
+    {
+        string[] names = UniverseBreadthTypes().Select(row => (string)row[0]).ToArray();
+
+        Assert.Equal(
+            new[] { nameof(IndicatorType.MarketBreadth), nameof(IndicatorType.McClellanOscillator) }.OrderBy(n => n, StringComparer.Ordinal),
+            names.OrderBy(n => n, StringComparer.Ordinal));
+    }
+
     [Fact]
     public void TheScreenerTwoTickerCasesIncludeAllElevenTypesOfTheTab()
     {
@@ -95,9 +135,11 @@ public sealed class IndicatorGuiMcpEquivalenceTests : IClassFixture<IndicatorGui
     {
         int compared = SingleTickerTypes().Count();
         int twoTicker = RegisteredTypes().Count(IsCrossTicker);
+        int universeBreadth = UniverseBreadthTypes().Count();
 
-        Assert.Equal(RegisteredTypes().Count(), compared + twoTicker);
-        Assert.True(compared > 0 && twoTicker > 0);
+        Assert.Equal(RegisteredTypes().Count(), compared + twoTicker + universeBreadth);
+        Assert.True(compared > 0 && twoTicker > 0 && universeBreadth > 0);
+        Assert.Empty(RegisteredTypes().Where(type => IsCrossTicker(type) && IsUniverseBreadth(type))); // the three kinds are disjoint
         Assert.Contains(RegisteredTypes(), type => type == IndicatorType.Correlation && IsCrossTicker(type));
     }
 
@@ -160,6 +202,8 @@ public sealed class IndicatorGuiMcpEquivalenceTests : IClassFixture<IndicatorGui
     }
 
     private static bool IsCrossTicker(IndicatorType type) => IndicatorFactory.Default.Create(type) is ICrossTickerIndicator;
+
+    private static bool IsUniverseBreadth(IndicatorType type) => ScreenerIndicatorEligibility.IsUniverseBreadthType(type);
 
     /// <summary>What one side reports: whether it gave values, and the last <see cref="Tail"/> values of every output series.</summary>
     public sealed record Outcome(bool Successful, IReadOnlyDictionary<string, IReadOnlyList<decimal?>> Series);
@@ -246,7 +290,7 @@ public sealed class IndicatorGuiMcpEquivalenceTests : IClassFixture<IndicatorGui
         }
 
         /// <summary>The chart's side: the bars the tool calculated over, the default settings, the pipeline, the comparison symbol aligned as the chart aligns it.</summary>
-        public async Task<Outcome> ChartAsync(IndicatorType type, string? secondarySymbol)
+        public async Task<Outcome> ChartAsync(IndicatorType type, string? secondarySymbol, string? universeGroupId = null)
         {
             int barCount = await CalculatedBarCountAsync();
             IIndicatorFactory factory = _services.GetRequiredService<IIndicatorFactory>();
@@ -258,6 +302,11 @@ public sealed class IndicatorGuiMcpEquivalenceTests : IClassFixture<IndicatorGui
 
             CoreIndicatorSettings settings = new ScreenerCatalogProvider().GetDefaultSettings(type, factory)!;
             settings.IsEnabled = true; // what adding an indicator to the chart does
+            if (universeGroupId is not null)
+            {
+                ((IUniverseBreadthParameter)settings.ParameterObject!).UniverseGroupId = universeGroupId;
+            }
+
             IReadOnlyDictionary<string, IReadOnlyList<CoreCandleData?>>? secondary = null;
             if (secondarySymbol is not null)
             {

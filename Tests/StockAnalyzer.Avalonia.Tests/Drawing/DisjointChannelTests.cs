@@ -130,38 +130,6 @@ public sealed class DisjointChannelTests
         Assert.Equal(new[] { p1, cursor1, cursor2, cursor3 }, obj.Points.ToArray());
     }
 
-    // ---------------- Geometry helpers ----------------
-
-    [Fact]
-    public void Midpoint_UsesIntegerTickMeanAndPriceMean()
-    {
-        var a = new ChartPoint(new DateTime(1001), 100m);
-        var b = new ChartPoint(new DateTime(1002), 101m);
-
-        var mid = DisjointChannelObject.Midpoint(a, b);
-
-        Assert.Equal(1001L, mid.Time.Ticks);   // (1001 + 1002) / 2 = 1001 (integer division)
-        Assert.Equal(100.5m, mid.Price);
-    }
-
-    [Fact]
-    public void PolygonContains_InsideOutsideAndCrossedQuadrilateral()
-    {
-        var a = new Point(0, 0);
-        var b = new Point(10, 0);
-        var c = new Point(10, 10);
-        var d = new Point(0, 10);
-
-        Assert.True(DisjointChannelObject.PolygonContains(new Point(5, 5), a, b, c, d));
-        Assert.False(DisjointChannelObject.PolygonContains(new Point(15, 5), a, b, c, d));
-        Assert.False(DisjointChannelObject.PolygonContains(new Point(5, -1), a, b, c, d));
-
-        // Crossed quadrilateral (bow tie): a-b-d-c. The two lobes are inside, the pinch sides outside.
-        Assert.True(DisjointChannelObject.PolygonContains(new Point(5, 1), a, b, d, c));
-        Assert.True(DisjointChannelObject.PolygonContains(new Point(5, 9), a, b, d, c));
-        Assert.False(DisjointChannelObject.PolygonContains(new Point(1, 5), a, b, d, c));
-    }
-
     // ---------------- Values ----------------
 
     [Fact]
@@ -352,6 +320,59 @@ public sealed class DisjointChannelTests
 
         Assert.True(filled.HitTest(new Point(200, 130), transform));    // interior
         Assert.False(unfilled.HitTest(new Point(200, 130), transform));
+    }
+
+    // ---------------- Center line on the Mid value (owner decision D-2 = B, 2026-11-16) ----------------
+
+    /// <summary>
+    /// Edge 1 = (0,100)-(400,100); edge 2 = (80,100)-(480,300), slope 0.5. The center line is (40,90)-(440,190)
+    /// (it was (40,100)-(440,200) when it joined the midpoints of P1/P3 and of P2/P4).
+    /// </summary>
+    private static DisjointChannelObject SkewedChannel()
+        => new(PixelCoordinateTransform.Chart(0, 100), PixelCoordinateTransform.Chart(400, 100),
+               PixelCoordinateTransform.Chart(80, 100), PixelCoordinateTransform.Chart(480, 300))
+        {
+            IsFilled = false,
+            Color = Colors.White,
+            Thickness = 2
+        };
+
+    [Fact]
+    public void CenterLine_OfEdgesWithDifferentTimeRanges_LiesOnTheMidValue_NotOnTheOldMidpointLine()
+    {
+        var transform = new PixelCoordinateTransform();
+        using var obj = SkewedChannel();
+
+        Assert.True(obj.HitTest(new Point(240, 140), transform));    // on the new center line (y = 90 + 0.25 (x - 40))
+        Assert.False(obj.HitTest(new Point(240, 150), transform));   // where the old center line passed
+    }
+
+    [Fact]
+    public void CenterLine_IsDrawnOnTheMidValue_NotOnTheOldMidpointLine()
+    {
+        using var obj = SkewedChannel();
+        using SKBitmap bitmap = RenderBitmap(obj);
+
+        // The center line is dashed: some sample along it must be drawn; none along the old line (10 px apart, parallel to the new one).
+        bool onNewLine = Enumerable.Range(150, 250).Any(x => IsDrawn(bitmap, x, (int)Math.Round(90 + 0.25 * (x - 40))));
+        bool onOldLine = Enumerable.Range(150, 250).Any(x => IsDrawn(bitmap, x, (int)Math.Round(100 + 0.25 * (x - 40))));
+        Assert.True(onNewLine);
+        Assert.False(onOldLine);
+    }
+
+    [Fact]
+    public void CenterLine_ValueAtAnyTime_EqualsTheMidItemOfTheDataTab()
+    {
+        using var obj = SkewedChannel();
+        var (start, end) = DisjointChannelValues.GetCenterLine(obj.Points[0].ToAnchor(), obj.Points[1].ToAnchor(), obj.Points[2].ToAnchor(), obj.Points[3].ToAnchor());
+
+        foreach (double x in new[] { 40.0, 100.0, 240.0, 440.0, 600.0 })
+        {
+            DateTime t = PixelCoordinateTransform.Chart(x, 0).Time;
+            decimal onLine = DrawingValueMath.InterpolatePrice(start.Time, start.Price, end.Time, end.Price, t);
+            decimal mid = obj.GetCalculatedValues(t).Single(v => v.Key == "Mid").NumericValue!.Value;
+            Assert.Equal(mid, onLine, 6);
+        }
     }
 
     // ---------------- Translate / persistence ----------------

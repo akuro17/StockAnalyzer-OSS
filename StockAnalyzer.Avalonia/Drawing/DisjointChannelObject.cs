@@ -11,8 +11,8 @@ using StockAnalyzer.Core.Models;
 namespace StockAnalyzer.Avalonia.Drawing;
 
 /// <summary>
-/// Disjoint channel: two independent edges. Edge 1 is P1-P2, edge 2 is P3-P4, the center line joins the midpoint of P1/P3
-/// to the midpoint of P2/P4 (data coordinates), and the fill is the polygon P1, P2, P4, P3. Edges are not extended.
+/// Disjoint channel: two independent edges. Edge 1 is P1-P2, edge 2 is P3-P4, the center line lies on the straight line of the Mid value
+/// (<see cref="DisjointChannelValues.GetCenterLine"/>), and the fill is the polygon P1, P2, P4, P3. Edges are not extended.
 /// </summary>
 public class DisjointChannelObject : IChartObject, IDisposable, IDrawingCalculatedValuesProvider
 {
@@ -79,11 +79,15 @@ public class DisjointChannelObject : IChartObject, IDisposable, IDrawingCalculat
     }
 
     /// <summary>
-    /// Center line end points in data coordinates: the midpoint of P1/P3 and of P2/P4. The time is the integer mean of the two
-    /// tick counts, the price the mean of the two prices.
+    /// Screen end points of the center line (shared by Render and HitTest). The end points are defined in data coordinates by
+    /// <see cref="DisjointChannelValues.GetCenterLine"/> (the same definition as the Mid value) and projected with the chart transform.
     /// </summary>
-    internal static ChartPoint Midpoint(ChartPoint a, ChartPoint b)
-        => new ChartPoint(new DateTime((a.Time.Ticks + b.Time.Ticks) / 2, a.Time.Kind), (a.Price + b.Price) / 2m);
+    private void GetCenterLineScreen(ICoordinateTransform transform, out global::Avalonia.Point c1, out global::Avalonia.Point c2)
+    {
+        var (start, end) = DisjointChannelValues.GetCenterLine(Points[0].ToAnchor(), Points[1].ToAnchor(), Points[2].ToAnchor(), Points[3].ToAnchor());
+        c1 = transform.ChartToScreen(new ChartPoint(start.Time, start.Price));
+        c2 = transform.ChartToScreen(new ChartPoint(end.Time, end.Price));
+    }
 
     public void Render(SKCanvas canvas, ICoordinateTransform transform)
     {
@@ -101,8 +105,7 @@ public class DisjointChannelObject : IChartObject, IDisposable, IDrawingCalculat
         var s2 = transform.ChartToScreen(Points[1]);
         var s3 = transform.ChartToScreen(Points[2]);
         var s4 = transform.ChartToScreen(Points[3]);
-        var c1 = transform.ChartToScreen(Midpoint(Points[0], Points[2]));
-        var c2 = transform.ChartToScreen(Midpoint(Points[1], Points[3]));
+        GetCenterLineScreen(transform, out var c1, out var c2);
 
         var color = SkiaColor;
 
@@ -146,8 +149,7 @@ public class DisjointChannelObject : IChartObject, IDisposable, IDrawingCalculat
         var s2 = transform.ChartToScreen(Points[1]);
         var s3 = transform.ChartToScreen(Points[2]);
         var s4 = transform.ChartToScreen(Points[3]);
-        var c1 = transform.ChartToScreen(Midpoint(Points[0], Points[2]));
-        var c2 = transform.ChartToScreen(Midpoint(Points[1], Points[3]));
+        GetCenterLineScreen(transform, out var c1, out var c2);
 
         // Distance to a segment: the shared BezierSplineMath definition (one definition for all drawing objects).
         var target = ToSkPoint(screenPoint);
@@ -155,28 +157,10 @@ public class DisjointChannelObject : IChartObject, IDisposable, IDrawingCalculat
         if (BezierSplineMath.DistancePointToSegment(target, ToSkPoint(s3), ToSkPoint(s4)) <= tolerance) return true;
         if (BezierSplineMath.DistancePointToSegment(target, ToSkPoint(c1), ToSkPoint(c2)) <= tolerance) return true;
 
-        return IsFilled && PolygonContains(screenPoint, s1, s2, s4, s3);
+        return IsFilled && DrawingHitTestMath.PolygonContains(screenPoint, s1, s2, s4, s3);
     }
 
     private static SKPoint ToSkPoint(global::Avalonia.Point p) => new SKPoint((float)p.X, (float)p.Y);
-
-    /// <summary>Even-odd point-in-quadrilateral test (no allocation; also correct for a crossed quadrilateral).</summary>
-    internal static bool PolygonContains(global::Avalonia.Point p, global::Avalonia.Point a, global::Avalonia.Point b, global::Avalonia.Point c, global::Avalonia.Point d)
-    {
-        bool inside = false;
-        if (EdgeCrossesRay(p, d, a)) inside = !inside;
-        if (EdgeCrossesRay(p, a, b)) inside = !inside;
-        if (EdgeCrossesRay(p, b, c)) inside = !inside;
-        if (EdgeCrossesRay(p, c, d)) inside = !inside;
-        return inside;
-    }
-
-    private static bool EdgeCrossesRay(global::Avalonia.Point p, global::Avalonia.Point from, global::Avalonia.Point to)
-    {
-        if ((from.Y > p.Y) == (to.Y > p.Y)) return false;
-        double xAtY = from.X + (p.Y - from.Y) / (to.Y - from.Y) * (to.X - from.X);
-        return p.X < xAtY;
-    }
 
     public void Translate(TimeSpan timeDelta, decimal priceDelta)
     {

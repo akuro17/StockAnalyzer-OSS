@@ -181,6 +181,7 @@ public class ChartBaseControl : Control, ICustomHitTest
     
     // Drawing State - Delegated to ChartInteractionController (Phase 3.5)
     private readonly StockAnalyzer.Avalonia.Drawing.LayeredDrawingScene _layeredScene = new();
+    private IDisposable? _sceneRetirementBinding;
     private long _lastLayerRevision = -1;
     private long _lastObjectRevision = -1;
     private int _lastPanelRevision = -1;
@@ -462,6 +463,12 @@ public class ChartBaseControl : Control, ICustomHitTest
 
     private void OnViewModelChanged(ChartViewModel? oldVm, ChartViewModel? newVm)
     {
+        // The scene keeps references to the objects of the manager between frames, so the manager must tell it about every removal before it disposes
+        // (D-3). Bound for as long as this control has this view model (not only while attached: the control is cached across tab switches, and a frame
+        // queued before a detach may still draw the scene). The old binding goes first, so an old manager never reaches the scene again.
+        _sceneRetirementBinding?.Dispose();
+        _sceneRetirementBinding = newVm?.ObjectManager.AttachRetirementListener(_layeredScene);
+
         SubscribeToViewModel(newVm);
         _pipeline.PrepareRlHud(newVm?.RlPresentation, (float)RlFontSize);
 

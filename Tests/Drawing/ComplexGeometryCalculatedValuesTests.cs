@@ -62,9 +62,11 @@ public class ComplexGeometryCalculatedValuesTests
         var median = Assert.Single(values, v => v.Key == "MedianLine");
         var lower = Assert.Single(values, v => v.Key == "LowerLine");
 
-        Assert.Equal(160m, upper.NumericValue);
-        Assert.Equal(150m, median.NumericValue);
-        Assert.Equal(140m, lower.NumericValue);
+        // The outer lines are the lines through P2 and P3 parallel to the median line (slope 50 / 6 per day): at the median point's time
+        // they are 150 +- 26.667 (WebAiPeerReview plan, owner decision D-1 = A). Prices are not exact decimals: compare to 9 digits.
+        Assert.Equal(176.666666667m, upper.NumericValue!.Value, 9);
+        Assert.Equal(150m, median.NumericValue!.Value, 9);
+        Assert.Equal(123.333333333m, lower.NumericValue!.Value, 9);
 
         Assert.DoesNotContain(values, v => v.Key.Contains("P1") || v.Key.Contains("P2") || v.Key.Contains("P3"));
 

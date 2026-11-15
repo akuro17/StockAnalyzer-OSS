@@ -165,15 +165,8 @@ public class ParallelChannelObject : IChartObject, IDisposable, IDrawingCalculat
         GetOppositeEdge(transform, s1, s2, s3, out var s1_prime, out var s2_prime);
 
         // Check if inside Polygon (s1, s2, s2_prime, s1_prime)
-        // Ray casting algorithm or SKPath.Contains
-        using var path = new SKPath();
-        path.MoveTo((float)s1.X, (float)s1.Y);
-        path.LineTo((float)s2.X, (float)s2.Y);
-        path.LineTo((float)s2_prime.X, (float)s2_prime.Y);
-        path.LineTo((float)s1_prime.X, (float)s1_prime.Y);
-        path.Close();
-
-        return path.Contains((float)screenPoint.X, (float)screenPoint.Y) || 
+        // Same polygon as the fill in Render; no native path is created for a hit test.
+        return DrawingHitTestMath.PolygonContains(screenPoint, s1, s2, s2_prime, s1_prime) ||
                // Or near lines
                IsNearLine(s1, s2, screenPoint, tolerance) ||
                IsNearLine(s2, s2_prime, screenPoint, tolerance) ||

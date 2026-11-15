@@ -88,6 +88,9 @@ public class AnchoredVwapObject : IChartObject, IDisposable, IDrawingCalculatedV
     public List<(DateTime Time, decimal Price)> VwapCurve { get; private set; } = new List<(DateTime, decimal)>();
     private readonly List<decimal?> _stdDevCurve = new();
 
+    /// <summary>Text of the AnchorDate value; formatted with <see cref="DrawingValueFormat.Culture"/> (en-US, so the '/' stays a '/').</summary>
+    private const string AnchorDateFormat = "yyyy/MM/dd";
+
     private readonly SKPaint _paint = new SKPaint
     {
         IsAntialias = true,
@@ -277,6 +280,47 @@ public class AnchoredVwapObject : IChartObject, IDisposable, IDrawingCalculatedV
         }
     }
 
+    /// <summary>
+    /// The one definition of a valid band point (Render and HitTest): bar <paramref name="index"/> of the curve at VWAP + <paramref name="signedMultiplier"/> x sigma,
+    /// projected with the transform. False when the bar has no sigma or the projected point is not finite; such a bar ends the current sub-path.
+    /// </summary>
+    private bool TryProjectBandPoint(ICoordinateTransform transform, int index, decimal signedMultiplier, out global::Avalonia.Point screen)
+    {
+        screen = default;
+        if (_stdDevCurve[index] is not { } sigma) return false;
+
+        var vwapPoint = VwapCurve[index];
+        decimal bandPrice = vwapPoint.Price + signedMultiplier * sigma;
+        screen = transform.ChartToScreen(new ChartPoint(vwapPoint.Time, bandPrice));
+        return double.IsFinite(screen.X) && double.IsFinite(screen.Y);
+    }
+
+    /// <summary>True when <paramref name="screenPoint"/> is within <paramref name="tolerance"/> of the band line VWAP + <paramref name="signedMultiplier"/> x sigma.</summary>
+    private bool HitTestBandCurve(global::Avalonia.Point screenPoint, ICoordinateTransform transform, decimal signedMultiplier, double tolerance)
+    {
+        global::Avalonia.Point previous = default;
+        bool hasPrevious = false;
+
+        for (int i = 0; i < VwapCurve.Count; i++)
+        {
+            if (!TryProjectBandPoint(transform, i, signedMultiplier, out var current))
+            {
+                hasPrevious = false;
+                continue;
+            }
+
+            if (hasPrevious && HitTestHelper.IsPointNearLine(screenPoint, previous, current, tolerance))
+            {
+                return true;
+            }
+
+            previous = current;
+            hasPrevious = true;
+        }
+
+        return false;
+    }
+
     private void DrawBandCurve(SKCanvas canvas, ICoordinateTransform transform, decimal signedMultiplier)
     {
         _path.Reset();
@@ -285,17 +329,7 @@ public class AnchoredVwapObject : IChartObject, IDisposable, IDrawingCalculatedV
 
         for (int i = 0; i < count; i++)
         {
-            decimal? std = _stdDevCurve[i];
-            if (std is not { } sigma)
-            {
-                hasSegmentPoint = false;
-                continue;
-            }
-
-            var vwapPoint = VwapCurve[i];
-            decimal bandPrice = vwapPoint.Price + signedMultiplier * sigma;
-            var screenPt = transform.ChartToScreen(new ChartPoint(vwapPoint.Time, bandPrice));
-            if (!double.IsFinite(screenPt.X) || !double.IsFinite(screenPt.Y))
+            if (!TryProjectBandPoint(transform, i, signedMultiplier, out var screenPt))
             {
                 hasSegmentPoint = false;
                 continue;
@@ -344,6 +378,22 @@ public class AnchoredVwapObject : IChartObject, IDisposable, IDrawingCalculatedV
                 }
             }
             p1 = p2;
+        }
+
+        // 3. The displayed bands (a hidden band is not hit): same tolerance as the centre curve.
+        if ((ShowBand1 || ShowBand2) && _stdDevCurve.Count == VwapCurve.Count)
+        {
+            if (ShowBand1
+                && (HitTestBandCurve(screenPoint, transform, Band1Multiplier, tolerance) || HitTestBandCurve(screenPoint, transform, -Band1Multiplier, tolerance)))
+            {
+                return true;
+            }
+
+            if (ShowBand2
+                && (HitTestBandCurve(screenPoint, transform, Band2Multiplier, tolerance) || HitTestBandCurve(screenPoint, transform, -Band2Multiplier, tolerance)))
+            {
+                return true;
+            }
         }
 
         return false;
@@ -397,15 +447,15 @@ public class AnchoredVwapObject : IChartObject, IDisposable, IDrawingCalculatedV
         {
             return new DrawingCalculatedValue[]
             {
-                new DrawingCalculatedValue("AnchorDate", "Anchor Date", null, Points[0].Time.ToString("yyyy/MM/dd"), IndicatorColor.Gray),
-                new DrawingCalculatedValue("AnchoredVWAP", "Anchored VWAP", vwapPrice, $"{vwapPrice:F3}", color)
+                new DrawingCalculatedValue("AnchorDate", "Anchor Date", null, Points[0].Time.ToString(AnchorDateFormat, DrawingValueFormat.Culture), IndicatorColor.Gray),
+                new DrawingCalculatedValue("AnchoredVWAP", "Anchored VWAP", vwapPrice, string.Create(DrawingValueFormat.Culture, $"{vwapPrice:F3}"), color)
             };
         }
 
         int extraCount = (ShowBand1 ? 2 : 0) + (ShowBand2 ? 2 : 0);
         var values = new DrawingCalculatedValue[2 + extraCount];
-        values[0] = new DrawingCalculatedValue("AnchorDate", "Anchor Date", null, Points[0].Time.ToString("yyyy/MM/dd"), IndicatorColor.Gray);
-        values[1] = new DrawingCalculatedValue("AnchoredVWAP", "Anchored VWAP", vwapPrice, $"{vwapPrice:F3}", color);
+        values[0] = new DrawingCalculatedValue("AnchorDate", "Anchor Date", null, Points[0].Time.ToString(AnchorDateFormat, DrawingValueFormat.Culture), IndicatorColor.Gray);
+        values[1] = new DrawingCalculatedValue("AnchoredVWAP", "Anchored VWAP", vwapPrice, string.Create(DrawingValueFormat.Culture, $"{vwapPrice:F3}"), color);
 
         decimal? stdDev = _stdDevCurve.Count == VwapCurve.Count ? _stdDevCurve[matchedIndex] : null;
         int writeIdx = 2;

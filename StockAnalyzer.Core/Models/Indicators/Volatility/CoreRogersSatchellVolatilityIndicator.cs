@@ -1,3 +1,4 @@
+using System.Buffers;
 using StockAnalyzer.Core.Models.Parameters;
 
 namespace StockAnalyzer.Core.Models.Indicators.Volatility;
@@ -41,30 +42,43 @@ public class CoreRogersSatchellVolatilityIndicator : CoreIndicatorBase
         _values.Clear();
 
         int count = candles.Count;
-        var contribution = new double[count];
-        var valid = new bool[count];
-        for (int k = 0; k < count; k++)
+
+        // Borrowed work arrays (SA_RENDERING_PERFORMANCE section 1): longer than count, and not zeroed. Only the first count items are used, and
+        // valid is cleared; contribution[k] is read only where valid[k] is true, so it needs no clearing.
+        double[] contribution = ArrayPool<double>.Shared.Rent(count);
+        bool[] valid = ArrayPool<bool>.Shared.Rent(count);
+        try
         {
-            CoreCandleData candle = candles[k];
-            if (candle.Open <= 0m || candle.High <= 0m || candle.Low <= 0m || candle.Close <= 0m)
+            Array.Clear(valid, 0, count);
+            for (int k = 0; k < count; k++)
             {
-                continue;
+                CoreCandleData candle = candles[k];
+                if (candle.Open <= 0m || candle.High <= 0m || candle.Low <= 0m || candle.Close <= 0m)
+                {
+                    continue;
+                }
+
+                double open = (double)candle.Open;
+                double high = (double)candle.High;
+                double low = (double)candle.Low;
+                double close = (double)candle.Close;
+
+                double v = Math.Log(high / close) * Math.Log(high / open) + Math.Log(low / close) * Math.Log(low / open);
+                if (double.IsFinite(v))
+                {
+                    contribution[k] = v;
+                    valid[k] = true;
+                }
             }
 
-            double open = (double)candle.Open;
-            double high = (double)candle.High;
-            double low = (double)candle.Low;
-            double close = (double)candle.Close;
-
-            double v = Math.Log(high / close) * Math.Log(high / open) + Math.Log(low / close) * Math.Log(low / open);
-            if (double.IsFinite(v))
-            {
-                contribution[k] = v;
-                valid[k] = true;
-            }
+            RangeVolatilityMath.Rolling(contribution.AsSpan(0, count), valid.AsSpan(0, count), Period, Annualize, PeriodsPerYear, _values);
+        }
+        finally
+        {
+            ArrayPool<bool>.Shared.Return(valid);
+            ArrayPool<double>.Shared.Return(contribution);
         }
 
-        _values.AddRange(RangeVolatilityMath.Rolling(contribution, valid, Period, Annualize, PeriodsPerYear));
         return IndicatorResult.Success(_values);
     }
 }

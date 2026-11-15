@@ -51,6 +51,9 @@ public class ChartObjectManager
     private int _activeRenderScopes;
     private List<IChartObject>? _deferredRetirements;
 
+    // Render scenes that keep references to the objects between frames (LayeredDrawingScene). Copy-on-write: replaced under _renderScopeLock, read without it.
+    private IRenderSceneRetirementListener[] _retirementListeners = Array.Empty<IRenderSceneRetirementListener>();
+
     private readonly HashSet<Guid> _selectedIds = new HashSet<Guid>();
     private readonly HashSet<Guid> _lockedIds = new HashSet<Guid>();
     // Visibility has no separate id set: IChartObject.IsVisible is the single source (ChartObjectVisibilityInvariantTests).
@@ -279,7 +282,7 @@ public class ChartObjectManager
         _currentLinks.OnObjectRemoved(id);
         RecalculateZIndices();
         NotifyChanged();
-        DisposeIfNoLongerManaged(removedObject);
+        DisposeRetiredObjects(new List<IChartObject>(1) { removedObject });
         return true;
     }
 
@@ -673,22 +676,130 @@ public class ChartObjectManager
         Array.Clear(snapshot, 0, count);
         ArrayPool<IChartObject>.Shared.Return(snapshot);
 
-        List<IChartObject>? due = null;
-        lock (_renderScopeLock)
-        {
-            _activeRenderScopes--;
-            if (_activeRenderScopes == 0 && _deferredRetirements != null)
-            {
-                due = _deferredRetirements;
-                _deferredRetirements = null;
-                // An object added back before the frame ended is managed again and must stay alive.
-                due.RemoveAll(IsManaged);
-            }
-        }
-
+        List<IChartObject>? due = LeaveRenderScopeAndTakeDue();
         if (due != null)
         {
             DisposeAll(due);
+        }
+    }
+
+    /// <summary>The one place that counts a frame out: decrements the counter and, for the last frame in flight, hands over what was removed meanwhile.</summary>
+    private List<IChartObject>? LeaveRenderScopeAndTakeDue()
+    {
+        lock (_renderScopeLock)
+        {
+            // A scope is left exactly once. A counter that went below zero would hide a frame in flight later, so it is never allowed to.
+            System.Diagnostics.Debug.Assert(_activeRenderScopes > 0, "A render scope was left more often than it was entered.");
+            if (_activeRenderScopes > 0)
+            {
+                _activeRenderScopes--;
+            }
+
+            if (_activeRenderScopes == 0 && _deferredRetirements != null)
+            {
+                List<IChartObject> due = _deferredRetirements;
+                _deferredRetirements = null;
+                // An object added back before the frame ended is managed again and must stay alive.
+                due.RemoveAll(IsManaged);
+                return due;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Counts one frame in flight that renders from references it keeps outside this manager (the layered scene): an object removed while the scope is
+    /// open is disposed when the last open scope ends, not at once. Enter it <b>before</b> the frame reads any scene array and leave it in a
+    /// <c>finally</c> (a <c>using</c> does that): a scope that is never left defers every later disposal for good. Scopes nest (the manager's own
+    /// <see cref="RenderPanel"/> opens one too). The scope is a struct; entering and leaving it allocates nothing.
+    /// </summary>
+    public RenderScope BeginRenderScope()
+    {
+        lock (_renderScopeLock)
+        {
+            _activeRenderScopes++;
+        }
+
+        return new RenderScope(this);
+    }
+
+    /// <summary>Leaves the scope of a render host. A frame runs on the render thread, where a throwing disposal must not end the frame: a failure is logged, not rethrown.</summary>
+    private void EndRenderScopeOfHost()
+    {
+        List<IChartObject>? due = LeaveRenderScopeAndTakeDue();
+        if (due == null) return;
+
+        try
+        {
+            DisposeAll(due);
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Warning(ex, "Disposing a removed drawing object failed when the last frame in flight ended.");
+        }
+    }
+
+    /// <summary>The handle of <see cref="BeginRenderScope"/>; dispose it exactly once (<c>using</c>).</summary>
+    public readonly struct RenderScope : IDisposable
+    {
+        private readonly ChartObjectManager? _manager;
+
+        internal RenderScope(ChartObjectManager manager) => _manager = manager;
+
+        public void Dispose() => _manager?.EndRenderScopeOfHost();
+    }
+
+    /// <summary>
+    /// Registers a render scene that must hear about removals (see <see cref="IRenderSceneRetirementListener"/>). Dispose the result to unregister
+    /// (idempotent). A scene that is registered but no longer rendered is harmless; an unregistered one is not protected.
+    /// </summary>
+    public IDisposable AttachRetirementListener(IRenderSceneRetirementListener listener)
+    {
+        ArgumentNullException.ThrowIfNull(listener);
+        lock (_renderScopeLock)
+        {
+            var next = new IRenderSceneRetirementListener[_retirementListeners.Length + 1];
+            Array.Copy(_retirementListeners, next, _retirementListeners.Length);
+            next[^1] = listener;
+            _retirementListeners = next;
+        }
+
+        return new RetirementListenerRegistration(this, listener);
+    }
+
+    /// <summary>Number of registered scenes (a hook for the wiring tests).</summary>
+    internal int RetirementListenerCount => System.Threading.Volatile.Read(ref _retirementListeners).Length;
+
+    private void DetachRetirementListener(IRenderSceneRetirementListener listener)
+    {
+        lock (_renderScopeLock)
+        {
+            int index = Array.IndexOf(_retirementListeners, listener);
+            if (index < 0) return;
+
+            var next = new IRenderSceneRetirementListener[_retirementListeners.Length - 1];
+            Array.Copy(_retirementListeners, 0, next, 0, index);
+            Array.Copy(_retirementListeners, index + 1, next, index, next.Length - index);
+            _retirementListeners = next;
+        }
+    }
+
+    private sealed class RetirementListenerRegistration : IDisposable
+    {
+        private ChartObjectManager? _manager;
+        private readonly IRenderSceneRetirementListener _listener;
+
+        public RetirementListenerRegistration(ChartObjectManager manager, IRenderSceneRetirementListener listener)
+        {
+            _manager = manager;
+            _listener = listener;
+        }
+
+        public void Dispose()
+        {
+            ChartObjectManager? manager = System.Threading.Interlocked.Exchange(ref _manager, null);
+            manager?.DetachRetirementListener(_listener);
         }
     }
 
@@ -1170,11 +1281,45 @@ public class ChartObjectManager
         Synced?.Invoke();
     }
 
+    /// <summary>
+    /// The one exit of every removal (<see cref="RemoveObject"/>, <see cref="DeleteAll"/>, <see cref="Clear"/>, <see cref="LoadSnapshot"/>), always in this order:
+    /// the objects are already out of the lists; (1) the registered scenes drop them from their arrays; (2) only then is it decided, per object, whether it
+    /// can be disposed at once or must wait for the frames in flight. The other order would let a frame that starts between the two steps read a scene array
+    /// that still holds an object that has just been disposed.
+    /// </summary>
     private void DisposeRetiredObjects(List<IChartObject> retiredObjects)
     {
+        NotifyRetirementListeners(retiredObjects);
         for (int i = 0; i < retiredObjects.Count; i++)
         {
             DisposeIfNoLongerManaged(retiredObjects[i]);
+        }
+    }
+
+    private void NotifyRetirementListeners(List<IChartObject> retiredObjects)
+    {
+        IRenderSceneRetirementListener[] listeners = System.Threading.Volatile.Read(ref _retirementListeners);
+        if (listeners.Length == 0 || retiredObjects.Count == 0) return;
+
+        // Only what no context holds any more: an object that LoadSnapshot put back stays in the scene.
+        var gone = new List<IChartObject>(retiredObjects.Count);
+        lock (_renderScopeLock)
+        {
+            for (int i = 0; i < retiredObjects.Count; i++)
+            {
+                if (!IsManaged(retiredObjects[i]))
+                {
+                    gone.Add(retiredObjects[i]);
+                }
+            }
+        }
+
+        if (gone.Count == 0) return;
+
+        // Outside the lock (no callback runs while it is held).
+        for (int i = 0; i < listeners.Length; i++)
+        {
+            listeners[i].OnObjectsRetired(gone);
         }
     }
 

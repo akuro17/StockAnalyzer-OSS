@@ -134,6 +134,9 @@ public sealed class ChartImageExportService : IChartImageExportService, ILayered
                     canvas.Translate(0, HeaderBannerHeight);
                 }
 
+                // One frame in flight: entered before the pipeline reads the scene arrays, left in the compiler's finally (using); a drawing object the
+                // manager removes meanwhile is disposed after this render, not under it.
+                using (objectManager.BeginRenderScope())
                 using (var pipeline = new ChartRenderPipeline())
                 {
                     pipeline.Execute(

@@ -18,15 +18,25 @@ internal sealed class PixelCoordinateTransform : ICoordinateTransform
     private static readonly DateTime Epoch = new(2025, 1, 1);
     private const double PixelsPerLogUnit = 100.0;
 
+    private const double DefaultCanvasWidth = 800;
+    private const double DefaultCanvasHeight = 600;
+
     private readonly bool _logarithmicPrice;
+    private readonly double _viewportWidth;
 
-    public PixelCoordinateTransform(bool logarithmicPrice = false) => _logarithmicPrice = logarithmicPrice;
+    /// <param name="logarithmicPrice">Logarithmic price axis instead of one pixel per price unit.</param>
+    /// <param name="viewportWidth">Width of the plot area; the whole canvas is 800 px wide, as in the chart where the plot area is narrower (the price axis is beside it). Default: the whole canvas.</param>
+    public PixelCoordinateTransform(bool logarithmicPrice = false, double viewportWidth = DefaultCanvasWidth)
+    {
+        _logarithmicPrice = logarithmicPrice;
+        _viewportWidth = viewportWidth;
+    }
 
-    public double CanvasWidth => 800;
-    public double CanvasHeight => 600;
-    public Rect ScreenRect => new(0, 0, 800, 600);
+    public double CanvasWidth => DefaultCanvasWidth;
+    public double CanvasHeight => DefaultCanvasHeight;
+    public Rect ScreenRect => new(0, 0, DefaultCanvasWidth, DefaultCanvasHeight);
     public double ViewportX => 0;
-    public double ViewportWidth => 800;
+    public double ViewportWidth => _viewportWidth;
     public double ScaleX => 1.0;
     public PriceScaleType PriceScale => _logarithmicPrice ? PriceScaleType.Log : PriceScaleType.Linear;
     public TransformMetadata Metadata => new(false, true, ChartType.Line);

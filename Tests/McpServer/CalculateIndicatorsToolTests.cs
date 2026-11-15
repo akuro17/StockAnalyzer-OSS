@@ -7,6 +7,7 @@ using StockAnalyzer.Core.Models.Indicators;
 using StockAnalyzer.Core.ReadOnly;
 using StockAnalyzer.Core.Services;
 using StockAnalyzer.Core.Services.Analysis;
+using StockAnalyzer.Core.Services.Screener;
 using StockAnalyzer.McpServer;
 using StockAnalyzer.McpServer.Catalog;
 using StockAnalyzer.McpServer.Protocol;
@@ -347,7 +348,13 @@ public sealed class CalculateIndicatorsToolTests : IDisposable
     public async Task EveryRegisteredNonCrossTickerIndicatorCalculatesWithItsDefaults()
     {
         var dispatcher = await StartAsync();
-        string[] types = Catalog.Entries.Where(e => e.IsRegistered && !e.IsCrossTicker).Select(e => e.Type).ToArray();
+        // A universe-breadth type has no usable default: it needs a UniverseGroupId and the tool refuses the whole call without one (like a missing ComparisonSymbol),
+        // so it is left out here. The refusal is tested in UniverseBreadthWithoutValidUniverseGroupId_ReturnsInvalidIndicatorParameter, the equality with the chart path in
+        // IndicatorGuiMcpEquivalenceTests.AUniverseBreadthIndicatorGivesTheValuesOfTheChartPathForTheSameGroup.
+        string[] types = Catalog.Entries
+            .Where(e => e.IsRegistered && !e.IsCrossTicker && !ScreenerIndicatorEligibility.IsUniverseBreadthType(Enum.Parse<IndicatorType>(e.Type)))
+            .Select(e => e.Type)
+            .ToArray();
 
         var failed = new List<string>();
         int succeeded = 0;
@@ -546,6 +553,22 @@ public sealed class CalculateIndicatorsToolTests : IDisposable
         Assert.False(item.GetProperty("additionalProperties").GetBoolean());
         Assert.Equal(new[] { "id", "type" }, item.GetProperty("required").EnumerateArray().Select(r => r.GetString()).ToArray());
         Assert.All(tool.GetProperty("description").GetString()!, c => Assert.True(c < 128, "descriptions are English (ASCII)"));
+    }
+
+    [Theory]
+    [InlineData("MarketBreadth")]
+    [InlineData("McClellanOscillator")]
+    public async Task UniverseBreadthWithAWellFormedGroupIdThatIsNotAWorkspaceGroup_IsNotRefused_AndReportsNoValue(string typeName)
+    {
+        var dispatcher = await StartAsync();
+        string groupId = Guid.NewGuid().ToString("D");
+
+        using var response = await CallAsync(dispatcher, Args($$$"""[{"id":"ub","type":"{{{typeName}}}","parameters":{"UniverseGroupId":"{{{groupId}}}"}}]"""));
+
+        Assert.False(McpTestSupport.IsError(response));
+        JsonElement result = Result(response, "ub");
+        Assert.False(result.GetProperty("isSuccessful").GetBoolean());
+        Assert.Equal(CalculateIndicatorsTool.AllNullMessage, result.GetProperty("errorMessage").GetString());
     }
 
     [Theory]
