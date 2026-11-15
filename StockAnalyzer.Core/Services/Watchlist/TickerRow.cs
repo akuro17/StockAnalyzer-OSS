@@ -141,6 +141,9 @@ public sealed record TickerRow : IFilterableSymbol
     public bool? IsTPShort { get; init; }
     public bool? IsSLShort { get; init; }
 
+    /// <summary>IBD-style cross-sectional Relative Strength Rating (1-99).</summary>
+    public int? RsRating { get; init; }
+
     // Property Lookup Table (precomputed for O(1) reflection-free access)
     private static readonly Dictionary<string, Func<TickerRow, object?>> _propertyGetters;
     private static readonly Dictionary<string, Func<TickerRow, object?>> _normalizedGetters;
@@ -279,6 +282,7 @@ public sealed record TickerRow : IFilterableSymbol
         AddAlias("TP Short", nameof(ExitShort));
         AddAlias("Stop Loss Short", nameof(StopLossShort));
         AddAlias("SL Short", nameof(StopLossShort));
+        AddAlias("RS Rating", nameof(RsRating));
 
         _propertyGetters = getters;
         _normalizedGetters = normalized;

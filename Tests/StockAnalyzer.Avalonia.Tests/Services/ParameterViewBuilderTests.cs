@@ -142,6 +142,80 @@ public class ParameterViewBuilderTests
             }
         }
     }
+
+    [AvaloniaFact]
+    public void Build_WithMarketBreadthParameter_SortsMetricModeAndExpandsInlineComboBoxWidth()
+    {
+        var builder = new ParameterViewBuilder();
+        var parameter = new CoreMarketBreadthParameter { MetricMode = MarketBreadthMetricMode.Cvi };
+
+        var control = builder.Build(parameter, Array.Empty<string>(), ParameterFormLayout.InlineLabel);
+        var stackPanel = Assert.IsType<StackPanel>(control);
+
+        ComboBox? metricCombo = null;
+        AutoCompleteBox? universeBox = null;
+        foreach (var child in stackPanel.Children)
+        {
+            if (child is Border b && b.Child is Grid g)
+            {
+                var input = g.Children.FirstOrDefault(c => Grid.GetColumn((Control)c) == 1);
+                if (input is ComboBox cb && cb.SelectedItem is MarketBreadthMetricMode)
+                {
+                    metricCombo = cb;
+                }
+                else if (input is AutoCompleteBox ab)
+                {
+                    universeBox = ab;
+                }
+            }
+        }
+
+        Assert.NotNull(universeBox);
+        Assert.Equal("List / Filter", universeBox!.Watermark);
+
+        Assert.NotNull(metricCombo);
+        Assert.Equal(double.NaN, metricCombo!.Width);
+        Assert.Equal(220, metricCombo.MinWidth);
+        Assert.NotNull(metricCombo.ItemTemplate);
+
+        var actualOrder = metricCombo.ItemsSource!.Cast<MarketBreadthMetricMode>().ToList();
+        var expectedOrder = Enum.GetValues<MarketBreadthMetricMode>()
+            .OrderBy(m => ParameterViewBuilder.ResolveEnumDisplayText(m), StringComparer.CurrentCultureIgnoreCase)
+            .ThenBy(m => (int)m)
+            .ToList();
+        Assert.Equal(expectedOrder, actualOrder);
+
+        metricCombo.SelectedItem = MarketBreadthMetricMode.Trin;
+        Assert.Equal(MarketBreadthMetricMode.Trin, parameter.MetricMode);
+    }
+
+    [AvaloniaFact]
+    public void Build_WithoutEnumDisplaySort_PreservesDeclarationOrderAndDefaultWidth()
+    {
+        var builder = new ParameterViewBuilder();
+        var parameter = new CoreVwapParameter();
+
+        var control = builder.Build(parameter, Array.Empty<string>(), ParameterFormLayout.InlineLabel);
+        var stackPanel = Assert.IsType<StackPanel>(control);
+
+        ComboBox? enumCombo = null;
+        foreach (var child in stackPanel.Children)
+        {
+            if (child is Border b && b.Child is Grid g)
+            {
+                var input = g.Children.FirstOrDefault(c => Grid.GetColumn((Control)c) == 1);
+                if (input is ComboBox cb)
+                {
+                    enumCombo = cb;
+                    break;
+                }
+            }
+        }
+
+        Assert.NotNull(enumCombo);
+        Assert.Equal(140, enumCombo!.Width);
+        Assert.Equal(Enum.GetValues<VwapResetPeriod>().Cast<object>().ToList(), enumCombo.ItemsSource!.Cast<object>().ToList());
+    }
 }
 
 

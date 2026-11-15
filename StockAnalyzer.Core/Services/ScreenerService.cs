@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Portfolio;
 using StockAnalyzer.Core.Models.Screener;
+using StockAnalyzer.Core.Services.Analysis;
 using StockAnalyzer.Core.Services.Screener;
 
 using Microsoft.Extensions.Logging;
@@ -21,21 +22,33 @@ public class ScreenerService : IScreenerService, IScreenerServiceFactory
     private readonly IStockAnalyzerSettings _settings;
     private readonly IEnumerable<IMarketDataProvider> _marketDataProviders;
     private readonly ILogger<ScreenerService> _logger;
+    private readonly IRsRatingClosesProvider? _rsRatingClosesProvider;
+    private readonly IMarketBreadthSeriesProvider? _marketBreadthProvider;
 
     public ScreenerService(
         IDataService dataService,
         IStockAnalyzerSettings settings,
         IEnumerable<IMarketDataProvider> marketDataProviders,
-        ILogger<ScreenerService>? logger = null)
+        ILogger<ScreenerService>? logger = null,
+        IRsRatingClosesProvider? rsRatingClosesProvider = null,
+        IMarketBreadthSeriesProvider? marketBreadthProvider = null)
     {
         _dataService = dataService;
         _settings = settings;
         _marketDataProviders = marketDataProviders;
         _logger = logger ?? NullLogger<ScreenerService>.Instance;
+        _rsRatingClosesProvider = rsRatingClosesProvider;
+        _marketBreadthProvider = marketBreadthProvider;
     }
 
     public IScreenerService CreateScreener(IDataService dataService)
-        => new ScreenerService(dataService ?? throw new ArgumentNullException(nameof(dataService)), _settings, _marketDataProviders, _logger);
+        => new ScreenerService(
+            dataService ?? throw new ArgumentNullException(nameof(dataService)),
+            _settings,
+            _marketDataProviders,
+            _logger,
+            _rsRatingClosesProvider,
+            _marketBreadthProvider);
 
     public async Task<ScreenerBarsResult> ScreenOnBarsAsync(
         List<string> symbols,
@@ -49,7 +62,12 @@ public class ScreenerService : IScreenerService, IScreenerServiceFactory
         ArgumentNullException.ThrowIfNull(selection);
         RequireSupportedTimeFrame(timeFrame);
         var bars = new ScreenerBarsDataService(_dataService, selection);
-        List<string> matched = await CreateScreener(bars).ScreenAsync(symbols, condition, timeFrame, progress, ct).ConfigureAwait(false);
+        IScreenerEvaluationContext? context = selection.AsOfDate is { } asOf
+            ? ScreenerEvaluationContext.ForAsOfDate(asOf)
+            : null;
+        List<string> matched = await CreateScreener(bars)
+            .ScreenAsync(symbols, condition, timeFrame, secondary: null, context, progress, ct)
+            .ConfigureAwait(false);
         return bars.ToResult(matched, symbols);
     }
 
@@ -101,10 +119,19 @@ public class ScreenerService : IScreenerService, IScreenerServiceFactory
         }
     }
 
+    public Task<ScreenerSideFramesResult> ScreenWithSideFramesAsync(
+        List<string> symbols,
+        IScreeningCondition condition,
+        ScreenerBarSelection selection,
+        IProgress<int> progress,
+        CancellationToken ct)
+        => ScreenWithSideFramesAsync(symbols, condition, selection, evaluationContext: null, progress, ct);
+
     public async Task<ScreenerSideFramesResult> ScreenWithSideFramesAsync(
         List<string> symbols,
         IScreeningCondition condition,
         ScreenerBarSelection selection,
+        IScreenerEvaluationContext? evaluationContext,
         IProgress<int> progress,
         CancellationToken ct)
     {
@@ -139,10 +166,18 @@ public class ScreenerService : IScreenerService, IScreenerServiceFactory
         // Daily sides over the stored history: the plain scan, unchanged.
         if (frames.Count == 1 && selection.AsOfDate is null)
         {
-            List<string> plain = await ScreenAsync(symbols, condition, TimeFrame.D1, progress, ct).ConfigureAwait(false);
+            List<string> plain = await ScreenAsync(symbols, condition, TimeFrame.D1, secondary: null, evaluationContext, progress, ct).ConfigureAwait(false);
             return noMatch with { Matched = plain };
         }
 
+        IScreenerEvaluationContext? context = await ResolveEvaluationContextAsync(
+            symbols,
+            condition,
+            TimeFrame.D1,
+            sideFramesMode: true,
+            evaluationContext,
+            selection.AsOfDate,
+            ct).ConfigureAwait(false);
         var bars = new ScreenerBarsDataService(_dataService, selection);
         int requiredCandleCount = ScreenerHistoryRequirements.GetRequiredCandleCount(condition);
 
@@ -150,7 +185,9 @@ public class ScreenerService : IScreenerService, IScreenerServiceFactory
         {
             IScreenerBarSet barSet = await bars.LoadBarSetAsync(symbol, frames, requiredCandleCount).ConfigureAwait(false);
             TickerMetadata metadata = await LoadMetadataAsync(symbol).ConfigureAwait(false);
-            return await condition.IsMetOnBarsAsync(barSet, metadata).ConfigureAwait(false);
+            return await (context == null
+                ? condition.IsMetOnBarsAsync(barSet, metadata)
+                : condition.IsMetOnBarsAsync(barSet, metadata, secondary: null, symbol, context)).ConfigureAwait(false);
         }).ConfigureAwait(false);
         return bars.ToSideFramesResult(matched, symbols, frames);
     }
@@ -186,11 +223,21 @@ public class ScreenerService : IScreenerService, IScreenerServiceFactory
         CancellationToken ct)
         => ScreenAsync(symbols, condition, timeFrame, null, progress, ct);
 
+    public Task<List<string>> ScreenAsync(
+        List<string> symbols,
+        IScreeningCondition condition,
+        TimeFrame timeFrame,
+        IScreenerSecondaryCandles? secondary,
+        IProgress<int> progress,
+        CancellationToken ct)
+        => ScreenAsync(symbols, condition, timeFrame, secondary, evaluationContext: null, progress, ct);
+
     public async Task<List<string>> ScreenAsync(
         List<string> symbols,
         IScreeningCondition condition,
         TimeFrame timeFrame,
         IScreenerSecondaryCandles? secondary,
+        IScreenerEvaluationContext? evaluationContext,
         IProgress<int> progress,
         CancellationToken ct)
     {
@@ -208,6 +255,14 @@ public class ScreenerService : IScreenerService, IScreenerServiceFactory
             return new List<string>();
         }
 
+        IScreenerEvaluationContext? context = await ResolveEvaluationContextAsync(
+            symbols,
+            condition,
+            timeFrame,
+            sideFramesMode: false,
+            evaluationContext,
+            asOfDate: evaluationContext?.AsOfDate,
+            ct).ConfigureAwait(false);
         var dataService = _dataService;
 
         return await ScanSymbolsAsync(symbols, progress, ct, async symbol =>
@@ -216,9 +271,60 @@ public class ScreenerService : IScreenerService, IScreenerServiceFactory
             var candles = await dataService.LoadCandlesAsync(symbol, timeFrame, requiredCandleCount);
             TickerMetadata metadata = await LoadMetadataAsync(symbol);
 
-            // Without comparison-symbol bars the original two-argument form runs, so a condition that overrides only that form is unaffected.
-            return candles != null && await (secondary == null ? condition.IsMetAsync(candles, metadata) : condition.IsMetAsync(candles, metadata, secondary));
+            // Without comparison-symbol bars or cross-sectional context the original two-argument form runs.
+            return candles != null && await ((secondary == null && context == null)
+                ? condition.IsMetAsync(candles, metadata)
+                : condition.IsMetAsync(candles, metadata, secondary, symbol, context));
         });
+    }
+
+    private async Task<IScreenerEvaluationContext?> ResolveEvaluationContextAsync(
+        IReadOnlyList<string> symbols,
+        IScreeningCondition condition,
+        TimeFrame defaultTimeFrame,
+        bool sideFramesMode,
+        IScreenerEvaluationContext? provided,
+        DateOnly? asOfDate,
+        CancellationToken ct)
+    {
+        DateOnly? effectiveAsOfDate = asOfDate ?? provided?.AsOfDate;
+        IScreenerEvaluationContext? context = provided;
+        if (context == null)
+        {
+            if (effectiveAsOfDate is { } asOf)
+            {
+                context = ScreenerEvaluationContext.ForAsOfDate(asOf);
+            }
+            else if (ScreenerRsRatingInspector.UsesRsRating(condition))
+            {
+                try
+                {
+                    context = await ScreenerRsRatingInspector.ComputeContextAsync(_rsRatingClosesProvider, symbols, asOfDate: null, ct).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "[ScreenerService] Failed to precompute RS Rating context; falling back to null.");
+                    context = ScreenerEvaluationContext.Empty;
+                }
+            }
+        }
+
+        if (_marketBreadthProvider != null)
+        {
+            var breadthKeys = ScreenerUniverseBreadthInspector.Inspect(condition, defaultTimeFrame, sideFramesMode, effectiveAsOfDate);
+            if (breadthKeys.Count > 0)
+            {
+                context = await ScreenerUniverseBreadthInspector
+                    .ComputeContextAsync(_marketBreadthProvider, breadthKeys, context, sideFramesMode ? null : defaultTimeFrame, ct)
+                    .ConfigureAwait(false);
+            }
+        }
+
+        return context;
     }
 
     public async Task<IScreenerSecondaryCandles> LoadComparisonCandlesAsync(

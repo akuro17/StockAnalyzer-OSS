@@ -30,8 +30,15 @@ public static class ScreenerConditionTreeEvaluator
     /// <see cref="Evaluate(IScreenerConditionNode, IReadOnlyList{CandleData}, TickerMetadata)"/> with the bars of the comparison symbols the indicators
     /// that compare two tickers read; null keeps them without a value (the Screener tab's rule).
     /// </summary>
-    public static bool Evaluate(IScreenerConditionNode root, IReadOnlyList<CandleData> candles, TickerMetadata metadata, IScreenerSecondaryCandles? secondary, Action<ScreenerIndicatorEntry>? onLeafMet = null)
-        => EvaluateOrAbsent(root, candles, metadata, secondary, onLeafMet) ?? false;
+    public static bool Evaluate(
+        IScreenerConditionNode root,
+        IReadOnlyList<CandleData> candles,
+        TickerMetadata metadata,
+        IScreenerSecondaryCandles? secondary,
+        Action<ScreenerIndicatorEntry>? onLeafMet = null,
+        string? symbol = null,
+        IScreenerEvaluationContext? evaluationContext = null)
+        => EvaluateOrAbsent(root, candles, metadata, secondary, symbol, evaluationContext, onLeafMet) ?? false;
 
     /// <summary>
     /// <see cref="Evaluate(IScreenerConditionNode, IReadOnlyList{CandleData}, TickerMetadata, IScreenerSecondaryCandles?)"/> for a tree whose sides read the bars of their
@@ -39,8 +46,15 @@ public static class ScreenerConditionTreeEvaluator
     /// circuit, an empty or all-absent group (and so an all-absent root) is false. Both evaluations share the one fold below; a test pins that they give the same
     /// answer for the same tree on D1 bars.
     /// </summary>
-    public static bool EvaluateOnBars(IScreenerConditionNode root, IScreenerBarSet bars, TickerMetadata metadata, IScreenerSecondaryCandles? secondary = null, Action<ScreenerIndicatorEntry>? onLeafMet = null)
-        => EvaluateOrAbsentOnBars(root, bars, metadata, secondary, onLeafMet) ?? false;
+    public static bool EvaluateOnBars(
+        IScreenerConditionNode root,
+        IScreenerBarSet bars,
+        TickerMetadata metadata,
+        IScreenerSecondaryCandles? secondary = null,
+        Action<ScreenerIndicatorEntry>? onLeafMet = null,
+        string? symbol = null,
+        IScreenerEvaluationContext? evaluationContext = null)
+        => EvaluateOrAbsentOnBars(root, bars, metadata, secondary, symbol, evaluationContext, onLeafMet) ?? false;
 
     /// <summary>True when <paramref name="node"/>'s subtree contains at least one currently-enabled leaf. Used to reproduce the
     /// previous flat-list guard ("please register at least one condition") that used to gate <c>ScanAsync</c> before any scan ran.</summary>
@@ -73,15 +87,24 @@ public static class ScreenerConditionTreeEvaluator
         private readonly IReadOnlyList<CandleData> _candles;
         private readonly TickerMetadata _metadata;
         private readonly IScreenerSecondaryCandles? _secondary;
+        private readonly string? _symbol;
+        private readonly IScreenerEvaluationContext? _evaluationContext;
 
-        public DailyLeaf(IReadOnlyList<CandleData> candles, TickerMetadata metadata, IScreenerSecondaryCandles? secondary)
+        public DailyLeaf(
+            IReadOnlyList<CandleData> candles,
+            TickerMetadata metadata,
+            IScreenerSecondaryCandles? secondary,
+            string? symbol,
+            IScreenerEvaluationContext? evaluationContext)
         {
             _candles = candles;
             _metadata = metadata;
             _secondary = secondary;
+            _symbol = symbol;
+            _evaluationContext = evaluationContext;
         }
 
-        public bool IsMet(ScreenerIndicatorEntry entry) => entry.IsMet(_candles, _metadata, _secondary);
+        public bool IsMet(ScreenerIndicatorEntry entry) => entry.IsMet(_candles, _metadata, _secondary, _symbol, _evaluationContext);
     }
 
     /// <summary>The leaf of the evaluation in which each side reads its own time frame: one bar set.</summary>
@@ -90,22 +113,45 @@ public static class ScreenerConditionTreeEvaluator
         private readonly IScreenerBarSet _bars;
         private readonly TickerMetadata _metadata;
         private readonly IScreenerSecondaryCandles? _secondary;
+        private readonly string? _symbol;
+        private readonly IScreenerEvaluationContext? _evaluationContext;
 
-        public BarSetLeaf(IScreenerBarSet bars, TickerMetadata metadata, IScreenerSecondaryCandles? secondary)
+        public BarSetLeaf(
+            IScreenerBarSet bars,
+            TickerMetadata metadata,
+            IScreenerSecondaryCandles? secondary,
+            string? symbol,
+            IScreenerEvaluationContext? evaluationContext)
         {
             _bars = bars;
             _metadata = metadata;
             _secondary = secondary;
+            _symbol = symbol;
+            _evaluationContext = evaluationContext;
         }
 
-        public bool IsMet(ScreenerIndicatorEntry entry) => entry.IsMetOnBars(_bars, _metadata, _secondary);
+        public bool IsMet(ScreenerIndicatorEntry entry) => entry.IsMetOnBars(_bars, _metadata, _secondary, _symbol, _evaluationContext);
     }
 
-    private static bool? EvaluateOrAbsentOnBars(IScreenerConditionNode node, IScreenerBarSet bars, TickerMetadata metadata, IScreenerSecondaryCandles? secondary, Action<ScreenerIndicatorEntry>? onLeafMet = null)
-        => EvaluateOrAbsent(node, new BarSetLeaf(bars, metadata, secondary), onLeafMet);
+    private static bool? EvaluateOrAbsentOnBars(
+        IScreenerConditionNode node,
+        IScreenerBarSet bars,
+        TickerMetadata metadata,
+        IScreenerSecondaryCandles? secondary,
+        string? symbol,
+        IScreenerEvaluationContext? evaluationContext,
+        Action<ScreenerIndicatorEntry>? onLeafMet = null)
+        => EvaluateOrAbsent(node, new BarSetLeaf(bars, metadata, secondary, symbol, evaluationContext), onLeafMet);
 
-    private static bool? EvaluateOrAbsent(IScreenerConditionNode node, IReadOnlyList<CandleData> candles, TickerMetadata metadata, IScreenerSecondaryCandles? secondary, Action<ScreenerIndicatorEntry>? onLeafMet = null)
-        => EvaluateOrAbsent(node, new DailyLeaf(candles, metadata, secondary), onLeafMet);
+    private static bool? EvaluateOrAbsent(
+        IScreenerConditionNode node,
+        IReadOnlyList<CandleData> candles,
+        TickerMetadata metadata,
+        IScreenerSecondaryCandles? secondary,
+        string? symbol,
+        IScreenerEvaluationContext? evaluationContext,
+        Action<ScreenerIndicatorEntry>? onLeafMet = null)
+        => EvaluateOrAbsent(node, new DailyLeaf(candles, metadata, secondary, symbol, evaluationContext), onLeafMet);
 
     /// <summary>The one AND/OR fold. Null means "this subtree contributes nothing" (a disabled leaf, or a group with no active child).</summary>
     private static bool? EvaluateOrAbsent<TLeaf>(IScreenerConditionNode node, in TLeaf leafEvaluator, Action<ScreenerIndicatorEntry>? onLeafMet = null) where TLeaf : struct, ILeafEvaluator

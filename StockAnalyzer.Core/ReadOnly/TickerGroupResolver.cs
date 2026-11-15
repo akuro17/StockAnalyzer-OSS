@@ -33,10 +33,17 @@ public interface ITickerGroupResolver
 /// </summary>
 public sealed class TickerGroupResolver : ITickerGroupResolver
 {
-    private readonly IReadOnlyStockAnalyzerGateway _gateway;
+    private readonly Lazy<IReadOnlyStockAnalyzerGateway> _gateway;
     private readonly IReadOnlyWorkspaceSource _workspaceSource;
 
     public TickerGroupResolver(IReadOnlyStockAnalyzerGateway gateway, IReadOnlyWorkspaceSource workspaceSource)
+        : this(
+            new Lazy<IReadOnlyStockAnalyzerGateway>(gateway ?? throw new ArgumentNullException(nameof(gateway))),
+            workspaceSource)
+    {
+    }
+
+    public TickerGroupResolver(Lazy<IReadOnlyStockAnalyzerGateway> gateway, IReadOnlyWorkspaceSource workspaceSource)
     {
         _gateway = gateway ?? throw new ArgumentNullException(nameof(gateway));
         _workspaceSource = workspaceSource ?? throw new ArgumentNullException(nameof(workspaceSource));
@@ -49,8 +56,9 @@ public sealed class TickerGroupResolver : ITickerGroupResolver
             throw new ArgumentOutOfRangeException(nameof(maxFilterEvaluationSymbols), "Limit must be positive.");
         }
 
+        IReadOnlyStockAnalyzerGateway gateway = _gateway.Value;
         var workspaceSettings = await _workspaceSource.LoadAsync(cancellationToken).ConfigureAwait(false);
-        var registry = await _gateway.GetAvailableTickersAsync(cancellationToken).ConfigureAwait(false);
+        var registry = await gateway.GetAvailableTickersAsync(cancellationToken).ConfigureAwait(false);
 
         var tree = TickerGroupTree.Build(workspaceSettings, registry, TickerGroupTree.DefaultMaxDepth);
         var nodeMap = tree.Nodes.ToDictionary(n => n.Id);
@@ -64,7 +72,7 @@ public sealed class TickerGroupResolver : ITickerGroupResolver
         var resolvedCache = new Dictionary<Guid, GroupMembers>();
         var visiting = new HashSet<Guid>();
 
-        var evaluator = new TickerFilterEvaluator(_gateway);
+        var evaluator = new TickerFilterEvaluator(gateway);
         long cumulativeEvaluatedSymbols = 0;
 
         async Task<GroupMembers> ResolveNodeAsync(Guid id)

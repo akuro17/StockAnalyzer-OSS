@@ -403,7 +403,7 @@ public sealed class ScreenerGuiMcpEquivalenceTests : IDisposable
         {
             IndicatorType.Correlation, IndicatorType.CrossCorrelation, IndicatorType.RollingBeta, IndicatorType.RollingAlpha, IndicatorType.RollingRSquared,
             IndicatorType.CointegrationSpread, IndicatorType.PairRatio, IndicatorType.PairSpread, IndicatorType.Ratiocator, IndicatorType.CrossTickerDtw,
-            IndicatorType.RankCorrelation
+            IndicatorType.RankCorrelation, IndicatorType.MansfieldRS
         };
         Assert.Equal(expected.Select(type => type.ToString()).OrderBy(n => n, StringComparer.Ordinal), names.OrderBy(n => n, StringComparer.Ordinal));
     }

@@ -54,6 +54,9 @@ public static class BacktestIndicatorEligibility
     {
         IndicatorType.CointegrationSpread,
         IndicatorType.CrossTickerDtw,
+        IndicatorType.MansfieldRS,
+        IndicatorType.MarketBreadth,
+        IndicatorType.McClellanOscillator,
         IndicatorType.PairRatio,
         IndicatorType.PairSpread,
         IndicatorType.Ratiocator,

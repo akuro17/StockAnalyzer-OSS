@@ -112,7 +112,8 @@ namespace StockAnalyzer.Core.Models.Watchlist
             new WatchlistColumnMetadata("Col_IsShort", "IsShort", "80", 104, "IsShort", "Signal flag indicating active Short condition", "Basic", "Boolean Signal Flag"),
             new WatchlistColumnMetadata("Col_IsTPShort", "IsTPShort", "80", 105, "IsTP Short", "Signal flag indicating active Take-Profit Short condition", "Basic", "Boolean Signal Flag"),
             new WatchlistColumnMetadata("Col_IsSLShort", "IsSLShort", "80", 106, "IsSL Short", "Signal flag indicating active Stop-Loss Short condition", "Basic", "Boolean Signal Flag"),
-            new WatchlistColumnMetadata("Col_Reminder", "Reminder", "150", 107, "Reminder", "User-entered reminder for position/transaction, edited via the Ticker Dashboard", "Basic", "User Input String")
+            new WatchlistColumnMetadata("Col_Reminder", "Reminder", "150", 107, "Reminder", "User-entered reminder for position/transaction, edited via the Ticker Dashboard", "Basic", "User Input String"),
+            new WatchlistColumnMetadata("Col_RsRating", "RsRating", "85", 108, "RS Rating", "IBD-style Relative Strength percentile rank (1-99) over the current ticker universe", "PriceVolume", "RsRating = PercentileRank_1_99(0.4*R_63 + 0.2*R_126 + 0.2*R_189 + 0.2*R_252)")
         };
     }
 }

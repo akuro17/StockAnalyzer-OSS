@@ -20,6 +20,7 @@ namespace StockAnalyzer.Core.Tests.Services.Screener;
 public sealed class ScreenerIndicatorEligibilityTests
 {
     private static bool IsTwoTicker(IndicatorType type) => IndicatorFactory.CreateStatic(type) is ICrossTickerIndicator;
+    private static bool IsUniverseBreadth(IndicatorType type) => IndicatorFactory.CreateStatic(type) is IUniverseBreadthIndicator;
 
     private static IEnumerable<(IndicatorType Type, string? Output)> Cases()
     {
@@ -39,10 +40,10 @@ public sealed class ScreenerIndicatorEligibilityTests
         yield return (IndicatorType.Ichimoku, "chikouspan");
     }
 
-    /// <summary>The indicator types the Screener enables although the Backtest refuses them: the two-ticker types in the Backtest's synchronous-unsupported list.</summary>
+    /// <summary>The indicator types the Screener enables although the Backtest refuses them: two-ticker and universe-breadth types in the Backtest's synchronous-unsupported list.</summary>
     private static IndicatorType[] EnabledByTheScreenerOnly()
         => BacktestIndicatorEligibility.SynchronousCalculationUnsupportedTypes
-            .Where(IsTwoTicker)
+            .Where(t => IsTwoTicker(t) || IsUniverseBreadth(t))
             .OrderBy(type => type.ToString(), StringComparer.Ordinal)
             .ToArray();
 
@@ -75,12 +76,12 @@ public sealed class ScreenerIndicatorEligibilityTests
     {
         IndicatorType[] enabled = EnabledByTheScreenerOnly();
 
-        // The eight types (the seven of the plan and CrossTickerDtw; derived from the registry, then named once as the expectation of the derivation).
+        // The eleven types (nine two-ticker types plus MarketBreadth and McClellanOscillator; derived from the registry, then named once as the expectation of the derivation).
         Assert.Equal(
             new[]
             {
-                IndicatorType.CointegrationSpread, IndicatorType.CrossTickerDtw, IndicatorType.PairRatio, IndicatorType.PairSpread, IndicatorType.Ratiocator,
-                IndicatorType.RollingAlpha, IndicatorType.RollingBeta, IndicatorType.RollingRSquared,
+                IndicatorType.CointegrationSpread, IndicatorType.CrossTickerDtw, IndicatorType.MansfieldRS, IndicatorType.MarketBreadth, IndicatorType.McClellanOscillator,
+                IndicatorType.PairRatio, IndicatorType.PairSpread, IndicatorType.Ratiocator, IndicatorType.RollingAlpha, IndicatorType.RollingBeta, IndicatorType.RollingRSquared,
             }.OrderBy(type => type.ToString(), StringComparer.Ordinal),
             enabled);
 
@@ -89,6 +90,7 @@ public sealed class ScreenerIndicatorEligibilityTests
             Assert.Equal(BacktestIndicatorViolationReason.SynchronousCalculationUnsupported, BacktestIndicatorEligibility.Check(type, null));
             Assert.True(ScreenerIndicatorEligibility.IsAllowed(type), type.ToString());
             Assert.False(ScreenerIndicatorEligibility.IsTypeBlocked(type), type.ToString());
+            Assert.Equal(IsUniverseBreadth(type), ScreenerIndicatorEligibility.IsUniverseBreadthType(type));
             foreach (string name in IndicatorOutputSeriesResolver.GetDisplayNames(type, IndicatorFactory.Default))
             {
                 Assert.True(ScreenerIndicatorEligibility.IsAllowed(type, name), $"{type}.{name}");
@@ -111,13 +113,15 @@ public sealed class ScreenerIndicatorEligibilityTests
     [Fact]
     public void AnyPythonOrPlaceholderTypeThatIsNotTwoTicker_StaysRefused_AndTheFormerPlaceholdersAreNowAllowed()
     {
-        // Today every type of the unsupported list is a two-symbol type, so the loop below has nothing to check; the expected set is stated explicitly so that adding a
-        // Python/async-only or placeholder type to the list is a conscious change of this array, after which the loop enforces that the Screener refuses it.
-        IndicatorType[] expectedNonTwoTickerUnsupported = Array.Empty<IndicatorType>();
-        IndicatorType[] nonTwoTickerUnsupported = BacktestIndicatorEligibility.SynchronousCalculationUnsupportedTypes.Where(type => !IsTwoTicker(type)).ToArray();
-        Assert.Equal(expectedNonTwoTickerUnsupported, nonTwoTickerUnsupported);
+        // Today every type of the unsupported list is either a two-symbol type or a universe-breadth type, so the loop below has nothing to check;
+        // the expected set is stated explicitly so adding any other type to the list requires updating this array and enforces Screener refusal.
+        IndicatorType[] expectedUnsupported = Array.Empty<IndicatorType>();
+        IndicatorType[] remainingUnsupported = BacktestIndicatorEligibility.SynchronousCalculationUnsupportedTypes
+            .Where(type => !IsTwoTicker(type) && !IsUniverseBreadth(type))
+            .ToArray();
+        Assert.Equal(expectedUnsupported, remainingUnsupported);
 
-        foreach (IndicatorType type in nonTwoTickerUnsupported)
+        foreach (IndicatorType type in remainingUnsupported)
         {
             Assert.False(ScreenerIndicatorEligibility.IsAllowed(type), type.ToString());
             Assert.True(ScreenerIndicatorEligibility.IsTypeBlocked(type), type.ToString());
@@ -194,12 +198,13 @@ public sealed class ScreenerIndicatorEligibilityTests
     }
 
     [Fact]
-    public void ScreenerOnlyTypes_AreExactlyTheEightTwoSymbolTypesTheBacktestRefuses()
+    public void ScreenerOnlyTypes_AreExactlyTheNineTwoSymbolAndTwoUniverseBreadthTypesTheBacktestRefuses()
     {
         IndicatorType[] expected =
         {
             IndicatorType.RollingBeta, IndicatorType.RollingAlpha, IndicatorType.RollingRSquared, IndicatorType.CointegrationSpread,
-            IndicatorType.PairRatio, IndicatorType.PairSpread, IndicatorType.Ratiocator, IndicatorType.CrossTickerDtw
+            IndicatorType.PairRatio, IndicatorType.PairSpread, IndicatorType.Ratiocator, IndicatorType.CrossTickerDtw, IndicatorType.MansfieldRS,
+            IndicatorType.McClellanOscillator, IndicatorType.MarketBreadth
         };
 
         IndicatorType[] actual = Enum.GetValues<IndicatorType>().Distinct().Where(IndicatorFactory.Default.IsRegistered).Where(ScreenerIndicatorEligibility.IsScreenerOnlyType).ToArray();

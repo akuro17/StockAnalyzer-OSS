@@ -47,6 +47,18 @@ public class ExtendedLookbackHelperTests
     }
 
     [Fact]
+    public void CalculateRequiredLookback_EnabledKeltner_ReturnsItsFirstNonNullIndex()
+    {
+        // WebAiExpansion plan 12 T7 (D-2 A): Keltner has no Period property; its declared warm-up is max(EmaPeriod - 1, AtrPeriod) = max(19, 10).
+        var settings = new List<CoreIndicatorSettings>
+        {
+            new() { IsEnabled = true, ParameterObject = new CoreKeltnerParameter { EmaPeriod = 20, AtrPeriod = 10 } }
+        };
+
+        Assert.Equal(19, ExtendedLookbackHelper.CalculateRequiredLookback(settings));
+    }
+
+    [Fact]
     public void CalculateRequiredLookback_DisabledIndicator_IsIgnored()
     {
         var settings = new List<CoreIndicatorSettings>

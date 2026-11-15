@@ -1,5 +1,6 @@
 using System.Globalization;
 using StockAnalyzer.Core.Models;
+using StockAnalyzer.Core.Models.Indicators;
 using StockAnalyzer.McpServer.Tools;
 
 namespace StockAnalyzer.McpServer.Catalog;
@@ -95,6 +96,29 @@ internal static class IndicatorParameterRules
         => entry.Parameters.Count == 0
             ? $"{entry.Type} has no parameters."
             : $"Parameters of {entry.Type}: {string.Join(", ", entry.Parameters.Select(p => p.Name))}. Call sa_get_capabilities with indicatorTypeFilter for ranges.";
+
+    /// <summary>
+    /// Rejects a universe-breadth indicator request when <see cref="IUniverseBreadthParameter.UniverseGroupId"/>
+    /// is missing, blank, or <see cref="Guid.Empty"/> so callers receive an explicit error rather than silent all-null outputs.
+    /// </summary>
+    public static void RequireUniverseGroupId(string indicatorType, CoreIndicatorParameterBase? parameters, string path)
+    {
+        if (parameters is not IUniverseBreadthParameter breadthParam)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(breadthParam.UniverseGroupId)
+            || !Guid.TryParse(breadthParam.UniverseGroupId.Trim(), out Guid groupId)
+            || groupId == Guid.Empty)
+        {
+            throw new ToolException(
+                ToolErrorCodes.InvalidIndicatorParameter,
+                $"{indicatorType} requires a non-empty {nameof(IUniverseBreadthParameter.UniverseGroupId)} (list or filter GUID).",
+                $"{path}.parameters.{nameof(IUniverseBreadthParameter.UniverseGroupId)}",
+                "Pass a valid ticker group GUID from sa_list_ticker_groups, or use sa_calculate_market_breadth with explicit symbols.");
+        }
+    }
 
     private static string? WithLocation(string? location, string? hint)
         => location is null ? hint : hint is null ? location : $"{location}. {hint}";

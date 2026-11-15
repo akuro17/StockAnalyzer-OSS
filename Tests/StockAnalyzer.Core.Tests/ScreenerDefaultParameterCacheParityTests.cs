@@ -52,7 +52,15 @@ public class ScreenerDefaultParameterCacheParityTests
     //   their old "null", the report hashes to the plan-03 pin A866361B...5718 (ValuesOfTheTypesBeforePlanFourAreUnchanged) and, with the seven plan-03 types removed as well, to the pin
     //   before plan 03, A5D5430A...C7FE (ValuesOfTheTypesBeforePlanThreeAreUnchanged); so every type that existed before plan 04, the seven plan-03 types included, still gives its old values.
     //   Every value of the five plan-04 types equals a standalone calculation (ThePlanFourTypesGiveTheValueOfAStandaloneCalculation_WithoutAndWithAPeriod).
-    private const string PinnedFingerprint = "26491E7E99D7935E28E356601D3ECC3D34533A75F3299C0ECC66C18F00028511";
+    // SIXTH re-pin, 2026-11-15 (WebAiExpansion plan 10 T2+T3; purely additive under the standing rule of lessons_webai_expansion_20261114_0001):
+    //   Added type: MarketBreadth (5 lines, 5 variants, all "null" without injected universe breadth data); existing McClellanOscillator remains "null" without injected universe breadth data (1015 -> 1020 lines).
+    //   Old -> new hash: 7EB7D9F2C29CF6F8ED0B9418FD400E0EF9EE0511553CE42E18FD0853B8F20D93 -> C8104FB99BFE0D1A68A9E507D2DD3CE6482A13DA5E26BA1D98A8BDA20C04AD4A.
+    //   No existing line changed: removing MarketBreadth returns the plan-09 completion pin (ValuesOfTheTypesBeforePlanTenAreUnchanged).
+    private const string PinnedFingerprint = "C8104FB99BFE0D1A68A9E507D2DD3CE6482A13DA5E26BA1D98A8BDA20C04AD4A";
+    private const string FingerprintBeforePlanTen = "7EB7D9F2C29CF6F8ED0B9418FD400E0EF9EE0511553CE42E18FD0853B8F20D93";
+
+    /// <summary>The fingerprint of the report before plan 09 (the pin at plan 04 completion), reproduced by <see cref="HashWithoutRemovedTypes"/>.</summary>
+    private const string FingerprintBeforePlanNine = "26491E7E99D7935E28E356601D3ECC3D34533A75F3299C0ECC66C18F00028511";
 
     /// <summary>The fingerprint of the report before plan 04 (the pin at plan 03 completion), reproduced by <see cref="HashWithoutNewTypes"/>.</summary>
     private const string FingerprintBeforePlanFour = "A866361BC174797D09B617299A3FCC9E02AEAF1E2BAFC15AE64E13F4BB635718";
@@ -64,6 +72,12 @@ public class ScreenerDefaultParameterCacheParityTests
 
     /// <summary>The types plan 04 added to the enum (their lines did not exist before).</summary>
     private static readonly string[] PlanFourNewTypes = { "ParkinsonVolatility", "RogersSatchellVolatility" };
+
+    /// <summary>The type plan 09 T1 added to the enum.</summary>
+    private static readonly string[] PlanNineTypes = { "MansfieldRS" };
+
+    /// <summary>The type plan 10 T3 added to the enum.</summary>
+    private static readonly string[] PlanTenTypes = { "MarketBreadth" };
 
     /// <summary>The enum members that existed before plan 03 with a placeholder class (always null) and were implemented by plan 04; only their VALUES changed.</summary>
     private static readonly string[] FormerPlaceholderTypes = { "Garch11", "HurstExponent", "Entropy" };
@@ -79,12 +93,16 @@ public class ScreenerDefaultParameterCacheParityTests
     /// old value. Every other line is the current one, so the hash returns to an old pin only if no line of any other type changed.
     /// </summary>
     private static string HashWithoutNewTypes(params string[][] removedTypes)
+        => HashWithoutRemovedTypes(resetFormerPlaceholders: true, removedTypes);
+
+    private static string HashWithoutRemovedTypes(bool resetFormerPlaceholders, params string[][] removedTypes)
     {
         var removed = removedTypes.SelectMany(types => types).ToHashSet();
         var lines = BuildReport().Split('\n', StringSplitOptions.RemoveEmptyEntries)
             .Where(line => !removed.Contains(line.Split('|')[0]))
             .Select(line =>
             {
+                if (!resetFormerPlaceholders) return line;
                 string[] parts = line.Split('|');
                 return FormerPlaceholderTypes.Contains(parts[0]) ? $"{parts[0]}|{parts[1]}|{FormerPlaceholderValue}" : line;
             });
@@ -157,16 +175,54 @@ public class ScreenerDefaultParameterCacheParityTests
     [Fact]
     public void ValuesOfTheTypesBeforePlanThreeAreUnchanged()
     {
-        // Without the seven plan-03 types and the two plan-04 types, and with the three former placeholders as they were: the pin before plan 03.
-        Assert.Equal(FingerprintBeforePlanThree, HashWithoutNewTypes(PlanThreeTypes, PlanFourNewTypes));
+        // Without the seven plan-03 types, the two plan-04 types, MansfieldRS, and MarketBreadth, and with the three former placeholders as they were: the pin before plan 03.
+        Assert.Equal(FingerprintBeforePlanThree, HashWithoutNewTypes(PlanThreeTypes, PlanFourNewTypes, PlanNineTypes, PlanTenTypes));
     }
 
     [Fact]
     public void ValuesOfTheTypesBeforePlanFourAreUnchanged_ThePlanThreeTypesIncluded()
     {
-        // Only the two plan-04 types are removed (the seven plan-03 types stay in the check) and the three former placeholders are put back to null:
-        // the pin at plan 03 completion. Anything else that moved while plan 04 was built makes this fail.
-        Assert.Equal(FingerprintBeforePlanFour, HashWithoutNewTypes(PlanFourNewTypes));
+        // Without the two plan-04 types, MansfieldRS, and MarketBreadth (the seven plan-03 types stay in the check) and with the three former placeholders put back to null:
+        // the pin at plan 03 completion. Anything else that moved while plan 04, plan 09, or plan 10 was built makes this fail.
+        Assert.Equal(FingerprintBeforePlanFour, HashWithoutNewTypes(PlanFourNewTypes, PlanNineTypes, PlanTenTypes));
+    }
+
+    [Fact]
+    public void ValuesOfTheTypesBeforePlanNineAreUnchanged()
+    {
+        // MansfieldRS and MarketBreadth are removed (all plan-03 and plan-04 types stay as implemented): the pin at plan 04 completion.
+        Assert.Equal(FingerprintBeforePlanNine, HashWithoutRemovedTypes(resetFormerPlaceholders: false, PlanNineTypes, PlanTenTypes));
+    }
+
+    [Fact]
+    public void ValuesOfTheTypesBeforePlanTenAreUnchanged()
+    {
+        // Only MarketBreadth is removed (all plan-03, plan-04, and plan-09 types stay as implemented): the pin at plan 09 completion.
+        Assert.Equal(FingerprintBeforePlanTen, HashWithoutRemovedTypes(resetFormerPlaceholders: false, PlanTenTypes));
+    }
+
+    [Fact]
+    public void MansfieldRSWithoutComparisonSymbol_MatchesStandaloneNullOnAllVariants()
+    {
+        var candles = Candles(300);
+        var extractor = new ScreenerValueExtractor();
+        var nine = JsonDocument.Parse("9").RootElement;
+        var variants = new[]
+        {
+            new Dictionary<string, object> { ["Period"] = 7 },
+            new Dictionary<string, object>(),
+            new Dictionary<string, object> { ["Period"] = 7, ["NoSuchKey"] = 1 },
+            new Dictionary<string, object> { ["Period"] = nine },
+            new Dictionary<string, object>(),
+        };
+
+        foreach (var parameters in variants)
+        {
+            decimal? screener = extractor.ExtractValueNullable(new ScreenerIndicatorSideConfig { IndicatorType = IndicatorType.MansfieldRS, Parameters = parameters }, candles);
+            decimal? standalone = new StockAnalyzer.Core.Models.Indicators.Statistics.CoreMansfieldRSIndicator().Calculate(candles).MainValues[^1];
+            Assert.Null(screener);
+            Assert.Equal(standalone, screener);
+        }
     }
 
     // Plan 04 re-pin condition 2: every value of a plan-04 line equals a standalone calculation of the same indicator. A Period outside the range of the indicator's parameter

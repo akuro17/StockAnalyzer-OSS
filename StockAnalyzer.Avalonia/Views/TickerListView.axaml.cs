@@ -41,6 +41,11 @@ public partial class TickerListView : UserControl
             tickerTagFilterBox.ItemFilter = FilterTickerTagSuggestion;
             tickerTagFilterBox.ItemSelector = SelectTickerTagSuggestionText;
         }
+
+        if (this.FindControl<TreeDataGrid>("MainGrid") is { } mainGrid)
+        {
+            mainGrid.AddHandler(PointerPressedEvent, OnMainGridPointerPressed, RoutingStrategies.Bubble, handledEventsToo: true);
+        }
     }
 
     // ---- Auto Play (TickerAutoPlay design): the sort the user applied to the grid
@@ -188,5 +193,56 @@ public partial class TickerListView : UserControl
         if (dataContext == null || dataContext.Children == null || dataContext.Children.Count == 0) return null;
 
         return treeViewItem;
+    }
+
+    private void OnMainGridPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (sender is not TreeDataGrid grid || DataContext is not TickerListViewModel vm) return;
+        if (!e.GetCurrentPoint(grid).Properties.IsLeftButtonPressed) return;
+        if (e.Source is Visual sourceVisual &&
+            (sourceVisual.FindAncestorOfType<CheckBox>(includeSelf: true) != null ||
+             sourceVisual.FindAncestorOfType<global::Avalonia.Controls.Primitives.TreeDataGridColumnHeader>(includeSelf: true) != null ||
+             sourceVisual.FindAncestorOfType<global::Avalonia.Controls.Primitives.ScrollBar>(includeSelf: true) != null))
+        {
+            return;
+        }
+
+        var row = (e.Source as Visual)?.FindAncestorOfType<global::Avalonia.Controls.Primitives.TreeDataGridRow>(includeSelf: true)
+            ?? FindHitTreeDataGridRow(grid, e.GetPosition(grid));
+        if (row == null) return;
+
+        var clickedItem = row.DataContext as WatchlistItemViewModel;
+        if (clickedItem == null)
+        {
+            int rowIndex = row.RowIndex;
+            var rows = grid.Rows;
+            if (rows != null && rowIndex >= 0 && rowIndex < rows.Count)
+            {
+                clickedItem = rows[rowIndex].Model as WatchlistItemViewModel;
+            }
+        }
+
+        if (clickedItem != null)
+        {
+            vm.NotifyUserClickedTickerRow(clickedItem);
+        }
+    }
+
+    private static global::Avalonia.Controls.Primitives.TreeDataGridRow? FindHitTreeDataGridRow(TreeDataGrid grid, global::Avalonia.Point gridPoint)
+    {
+        // TreeDataGridRow empty cell space without a background can hit-test as ScrollContentPresenter.
+        foreach (var visual in grid.GetVisualDescendants())
+        {
+            if (visual is global::Avalonia.Controls.Primitives.TreeDataGridRow { IsEffectivelyVisible: true } candidate)
+            {
+                var origin = candidate.TranslatePoint(default, grid);
+                if (origin.HasValue && new Rect(origin.Value, candidate.Bounds.Size).Contains(gridPoint))
+                {
+                    return candidate;
+                }
+            }
+        }
+
+        return null;
     }
 }

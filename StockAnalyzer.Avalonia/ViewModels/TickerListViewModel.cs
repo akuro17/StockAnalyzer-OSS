@@ -18,6 +18,7 @@ using StockAnalyzer.Core.Models.Settings;
 using StockAnalyzer.Core.Models.Watchlist;
 using StockAnalyzer.Core.Models.Portfolio;
 using StockAnalyzer.Core.Services;
+using StockAnalyzer.Core.Services.Analysis;
 using StockAnalyzer.Avalonia.ViewModels.TickerList;
 using StockAnalyzer.Avalonia.ViewModels.Watchlist;
 using StockAnalyzer.Avalonia.Models;
@@ -31,6 +32,7 @@ using StockAnalyzer.Core.Services.Backtest.Evaluation;
 using StockAnalyzer.Core.Services.Backtest.Reporting;
 using StockAnalyzer.Avalonia.ViewModels.Backtest;
 using StockAnalyzer.Core.Services.Backtest.Configuration;
+using StockAnalyzer.Core.Analysis;
 using StockAnalyzer.Core.Constants;
 using StockAnalyzer.Core.Services.Watchlist;
 using StockAnalyzer.Core.Utilities;
@@ -63,6 +65,9 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
     private readonly StockAnalyzer.Core.Services.IChartSettingsManager? _chartSettingsManager;
     private readonly ITemplateService? _templateService;
     private readonly IScreenerTemplateEvaluator? _screenerTemplateEvaluator;
+    private readonly IRsRatingClosesProvider? _rsRatingClosesProvider;
+    private IReadOnlyList<string>? _lastRsUniverseSymbols;
+    private bool _rsRatingsSettledForCurrentUniverse;
     private CancellationTokenSource? _screenerTemplateFilterCts;
     private bool _isInternalChange; // Guard against selection nullification during collection updates
     private readonly List<string> _allTickers = new();
@@ -379,6 +384,76 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
         {
             SelectedTicker = value.Symbol;
         }
+    }
+
+    /// <summary>
+    /// Broadcasts a user row click in the Tickers grid (including re-clicking the already-selected row)
+    /// for consumers such as empty <c>UniverseGroupId</c> fields. Ignored during programmatic selection sync.
+    /// </summary>
+    public void NotifyUserClickedTickerRow(WatchlistItemViewModel? item)
+    {
+        if (_isSyncingSelection || item == null || string.IsNullOrWhiteSpace(item.Symbol))
+        {
+            return;
+        }
+
+        Guid? selectedNodeId = SelectedNode is WatchlistNode or PortfolioNode or TickerListFolderNode or FilterNode
+            ? SelectedNode.Id
+            : null;
+
+        var containingIds = CollectContainingStaticListIds(item.Symbol);
+        _messenger.Send(new TickerRowClickedMessage(item.Symbol, selectedNodeId, containingIds));
+    }
+
+    private IReadOnlyList<Guid> CollectContainingStaticListIds(string symbol)
+    {
+        var watchlists = new List<Guid>();
+        var portfolios = new List<Guid>();
+        var customLists = new List<Guid>();
+        var seen = new HashSet<Guid>();
+
+        void Traverse(IEnumerable<TickerGroupNode>? nodes)
+        {
+            if (nodes == null) return;
+
+            foreach (var node in nodes)
+            {
+                if (node == null) continue;
+
+                switch (node)
+                {
+                    case WatchlistNode wl when wl.Profile.Items.Any(x => string.Equals(x.Ticker, symbol, StringComparison.OrdinalIgnoreCase)):
+                        if (seen.Add(wl.Id)) watchlists.Add(wl.Id);
+                        break;
+
+                    case PortfolioNode pf when pf.Profile.Items.Any(x => string.Equals(x.Ticker, symbol, StringComparison.OrdinalIgnoreCase)):
+                        if (seen.Add(pf.Id)) portfolios.Add(pf.Id);
+                        break;
+
+                    case TickerListFolderNode lf when lf.Settings.ChildTickers.Any(t => string.Equals(t, symbol, StringComparison.OrdinalIgnoreCase)):
+                        if (seen.Add(lf.Id)) customLists.Add(lf.Id);
+                        break;
+                }
+
+                if (node.Children is { Count: > 0 })
+                {
+                    Traverse(node.Children);
+                }
+            }
+        }
+
+        Traverse(Groups);
+
+        if (watchlists.Count == 0 && portfolios.Count == 0 && customLists.Count == 0)
+        {
+            return Array.Empty<Guid>();
+        }
+
+        var ordered = new List<Guid>(watchlists.Count + portfolios.Count + customLists.Count);
+        ordered.AddRange(watchlists);
+        ordered.AddRange(portfolios);
+        ordered.AddRange(customLists);
+        return ordered;
     }
 
     [ObservableProperty]
@@ -1100,7 +1175,8 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
         StockAnalyzer.Core.Services.Backtest.Evaluation.IBacktestEvaluationService? backtestEvaluationService = null,
         StockAnalyzer.Core.Services.Backtest.Configuration.IBacktestDefaultSettingsManager? backtestDefaultSettingsManager = null,
         StockAnalyzer.Avalonia.Services.IBacktestSettingsCoordinator? backtestSettingsCoordinator = null,
-        StockAnalyzer.Core.Common.IDataStorageState? dataStorageState = null)
+        StockAnalyzer.Core.Common.IDataStorageState? dataStorageState = null,
+        StockAnalyzer.Core.Services.Analysis.IRsRatingClosesProvider? rsRatingClosesProvider = null)
     {
         _storageGate = new StorageFeatureGate(dataStorageState);
         ToastService = toastService;
@@ -1115,6 +1191,7 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
             _backtestEvaluationService = backtestEvaluationService;
             _backtestDefaultSettingsManager = backtestDefaultSettingsManager;
             _backtestSettingsCoordinator = backtestSettingsCoordinator;
+            _rsRatingClosesProvider = rsRatingClosesProvider;
             _marketDataProvider = marketDataProvider;
             _pythonService = pythonService;
             _messenger = messenger;
@@ -1296,6 +1373,14 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
         var columns = GetExportableColumns();
         if (columns.Count == 0) return;
 
+        if (!_rsRatingsSettledForCurrentUniverse
+            && _rsRatingClosesProvider != null
+            && _lastRsUniverseSymbols is { Count: > 0 }
+            && columns.Any(c => string.Equals(c.MemberName, nameof(TickerRow.RsRating), StringComparison.Ordinal)))
+        {
+            await PopulateRsRatingsForItemsAsync(items, _lastRsUniverseSymbols, applyOnDispatcher: false, CancellationToken.None);
+        }
+
         // Freeze the CSV content before the save dialog opens (same rationale as ExportTickerCodes
         // above) - every GetRawValue() read happens from the same instant, so rows can't mix data
         // generations depending on how long the user takes to pick a save location.
@@ -1414,7 +1499,14 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
                 }
             }
 
-            rows = BuildColumnDataRows(items, columns);
+            IReadOnlyDictionary<string, int>? rsRatingOverrides = null;
+            if (_rsRatingClosesProvider != null &&
+                columns.Any(c => string.Equals(c.MemberName, nameof(TickerRow.RsRating), StringComparison.Ordinal)))
+            {
+                rsRatingOverrides = await ComputeRsRatingsAsync(symbols, CancellationToken.None);
+            }
+
+            rows = BuildColumnDataRows(items, columns, rsRatingOverrides);
             rowCount = items.Count;
         }
         catch (Exception ex)
@@ -1456,7 +1548,10 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
     private List<WatchlistColumnMetadata> GetExportableColumns()
         => ActiveColumns.Where(c => c.MemberName != "IsChecked").ToList();
 
-    private static List<string[]> BuildColumnDataRows(IReadOnlyList<WatchlistItemViewModel> items, IReadOnlyList<WatchlistColumnMetadata> columns)
+    private static List<string[]> BuildColumnDataRows(
+        IReadOnlyList<WatchlistItemViewModel> items,
+        IReadOnlyList<WatchlistColumnMetadata> columns,
+        IReadOnlyDictionary<string, int>? rsRatingOverrides = null)
     {
         var rows = new List<string[]>(items.Count + 1);
 
@@ -1476,7 +1571,11 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
             var row = new string[columns.Count];
             for (int c = 0; c < columns.Count; c++)
             {
-                row[c] = CsvExportWriter.FormatAndEscapeValue(item.GetRawValue(columns[c].MemberName));
+                object? rawValue = rsRatingOverrides != null &&
+                    string.Equals(columns[c].MemberName, nameof(TickerRow.RsRating), StringComparison.Ordinal)
+                    ? (rsRatingOverrides.TryGetValue(item.Symbol, out int overrideRating) ? overrideRating : null)
+                    : item.GetRawValue(columns[c].MemberName);
+                row[c] = CsvExportWriter.FormatAndEscapeValue(rawValue);
             }
             rows.Add(row);
         }
@@ -3447,6 +3546,9 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
         }
         // else: _tickerSortBuffer remains empty (action node)
 
+        // Snapshot pre-secondary-filter universe so RS Rating percentile ranks stay invariant across tag/template filtering.
+        var rsUniverseSymbols = _tickerSortBuffer.ToList();
+
         ApplySecondaryFilters();
 
         _logger.LogDebug("Applying filter for node: {NodeName} (Total all tickers: {AllCount})",
@@ -3454,6 +3556,16 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
 
         _tickerSortBuffer.Sort(StringComparer.OrdinalIgnoreCase);
         AvailableTickers.ReplaceRange(_tickerSortBuffer);
+
+        if (!IsSameRsUniverse(_lastRsUniverseSymbols, rsUniverseSymbols))
+        {
+            _lastRsUniverseSymbols = rsUniverseSymbols;
+            _rsRatingsSettledForCurrentUniverse = false;
+            foreach (var cachedItem in _viewModelCache.Values)
+            {
+                cachedItem.RsRating = null;
+            }
+        }
 
         // Sync Display Items
         DisplayItems.BeginBulkUpdate();
@@ -3501,7 +3613,7 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
         }
 
         OnPropertyChanged(nameof(DisplayItems));
-        StartHydration(DisplayItems.ToList());
+        StartHydration(DisplayItems.ToList(), rsUniverseSymbols);
         OnPropertyChanged(nameof(SelectAll));
 
         if (BacktestTemplateSelector?.SelectedEntry is { } activeTemplate &&
@@ -4050,7 +4162,7 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
 
     private bool CanSync(string symbol) => !IsSyncing && !string.IsNullOrEmpty(symbol);
 
-    private void StartHydration(IReadOnlyList<WatchlistItemViewModel> items)
+    private void StartHydration(IReadOnlyList<WatchlistItemViewModel> items, IReadOnlyList<string>? universeSymbols = null)
     {
         _hydrationCts?.Cancel();
         _hydrationCts = new CancellationTokenSource();
@@ -4071,6 +4183,12 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
                     if (ct.IsCancellationRequested) break;
                     await HydrateItemAsync(item, ct);
                 }
+
+                if (!ct.IsCancellationRequested)
+                {
+                    var rsUniverse = universeSymbols ?? itemsToHydrate.Select(static x => x.Symbol).ToList();
+                    await PopulateRsRatingsForItemsAsync(itemsToHydrate, rsUniverse, applyOnDispatcher: true, ct);
+                }
             }
             catch (OperationCanceledException) { /* Handled */ }
             catch (Exception ex)
@@ -4082,6 +4200,106 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
                 IsHydrating = false;
             }
         }, ct);
+    }
+
+    private async Task<IReadOnlyDictionary<string, int>> ComputeRsRatingsAsync(
+        IReadOnlyList<string> universeSymbols,
+        CancellationToken ct)
+    {
+        if (_rsRatingClosesProvider == null || universeSymbols.Count == 0)
+        {
+            return new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        try
+        {
+            var closes = await _rsRatingClosesProvider.GetRsRatingClosesAsync(universeSymbols, ct);
+            return RsRatingCalculator.Calculate(closes);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to compute RS Rating batch for {UniverseCount} symbols", universeSymbols.Count);
+            return new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        }
+    }
+
+    private async Task PopulateRsRatingsForItemsAsync(
+        IReadOnlyList<WatchlistItemViewModel> items,
+        IReadOnlyList<string> universeSymbols,
+        bool applyOnDispatcher,
+        CancellationToken ct)
+    {
+        if (_rsRatingClosesProvider == null || items.Count == 0 || universeSymbols.Count == 0)
+        {
+            return;
+        }
+
+        IReadOnlyDictionary<string, int> ratings = await ComputeRsRatingsAsync(universeSymbols, ct);
+
+        if (ct.IsCancellationRequested) return;
+
+        if (applyOnDispatcher)
+        {
+            _dispatcherService.Post(static state =>
+            {
+                if (state.ct.IsCancellationRequested ||
+                    state.vm._lastRsUniverseSymbols == null ||
+                    !IsSameRsUniverse(state.vm._lastRsUniverseSymbols, state.universeSymbols))
+                {
+                    return;
+                }
+                foreach (var item in state.items)
+                {
+                    item.RsRating = state.ratings.TryGetValue(item.Symbol, out var rating) ? rating : null;
+                }
+                state.vm._rsRatingsSettledForCurrentUniverse = true;
+            }, (vm: this, items, ratings, universeSymbols, ct));
+        }
+        else
+        {
+            foreach (var item in items)
+            {
+                item.RsRating = ratings.TryGetValue(item.Symbol, out var rating) ? rating : null;
+            }
+            if (_lastRsUniverseSymbols != null && IsSameRsUniverse(_lastRsUniverseSymbols, universeSymbols))
+            {
+                _rsRatingsSettledForCurrentUniverse = true;
+            }
+        }
+    }
+
+    private static bool IsSameRsUniverse(IReadOnlyList<string>? previous, IReadOnlyList<string> current)
+    {
+        if (previous == null || previous.Count != current.Count)
+        {
+            return false;
+        }
+
+        if (current.Count == 0)
+        {
+            return true;
+        }
+
+        var prevSet = new HashSet<string>(previous, StringComparer.OrdinalIgnoreCase);
+        if (prevSet.Count != current.Count)
+        {
+            var currSet = new HashSet<string>(current, StringComparer.OrdinalIgnoreCase);
+            return prevSet.SetEquals(currSet);
+        }
+
+        for (int i = 0; i < current.Count; i++)
+        {
+            if (!prevSet.Contains(current[i]))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /// <summary>

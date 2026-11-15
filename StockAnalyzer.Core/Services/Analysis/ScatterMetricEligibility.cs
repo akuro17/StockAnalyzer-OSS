@@ -17,8 +17,9 @@ public static class ScatterMetricEligibility
     /// <summary>
     /// The Columns (by <see cref="ScreenerCatalogItem.ColumnMemberName"/>) that give no number for a ticker whose metadata is completely filled in, when
     /// they are built the way the registration screen builds them (the extractor resolves a Column by its registry member name, see ScreenerValueExtractor.ResolveColumnName).
-    /// Measured 2026-10-24 (plan finding F-28, measured again after the extractor resolved Columns by member name): 13 of the 100 non-text Columns. They are not
-    /// numbers at all (summary, notes, time zone, dates, quote type) or are flags that carry no value in the metadata. The first measurement (2026-10-21) found 48,
+    /// Measured 2026-10-24 (plan finding F-28, measured again after the extractor resolved Columns by member name): 13 of the 100 non-text Columns,
+    /// plus RsRating (14 of 101, added in WebAiExpansion plan 09) which requires a cross-sectional DuckDB batch context and yields null in single-ticker extraction. They are not
+    /// numbers at all (summary, notes, time zone, dates, quote type), are flags that carry no value in the metadata, or require a scan-level universe context. The first measurement (2026-10-21) found 48,
     /// because the extractor then looked a Column up by its catalog description. The owner decided (F-28 = B) to offer only the Columns that give a value. The test
     /// <c>ScatterMetricColumnAvailabilityTests</c> measures the extractor again and fails when this table and the measurement differ in either direction.
     /// Sorted by ordinal comparison.
@@ -38,6 +39,7 @@ public static class ScatterMetricEligibility
         "Notes",
         "QuoteType",
         "Reminder",
+        "RsRating",
     };
 
     private static readonly HashSet<string> ExcludedMembers = new(ColumnsWithoutAValue, StringComparer.Ordinal);

@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Screener;
 using StockAnalyzer.Core.Models.Templates;
+using StockAnalyzer.Core.Services.Analysis;
 
 namespace StockAnalyzer.Core.Services.Screener;
 
@@ -20,10 +21,17 @@ namespace StockAnalyzer.Core.Services.Screener;
 public sealed class ScreenerTemplateEvaluator : IScreenerTemplateEvaluator
 {
     private readonly IScreenerService _screenerService;
+    private readonly IRsRatingClosesProvider? _rsRatingClosesProvider;
+    private readonly IMarketBreadthSeriesProvider? _marketBreadthProvider;
 
-    public ScreenerTemplateEvaluator(IScreenerService screenerService)
+    public ScreenerTemplateEvaluator(
+        IScreenerService screenerService,
+        IRsRatingClosesProvider? rsRatingClosesProvider = null,
+        IMarketBreadthSeriesProvider? marketBreadthProvider = null)
     {
         _screenerService = screenerService;
+        _rsRatingClosesProvider = rsRatingClosesProvider;
+        _marketBreadthProvider = marketBreadthProvider;
     }
 
     public Task<HashSet<string>> EvaluateAsync(
@@ -32,13 +40,23 @@ public sealed class ScreenerTemplateEvaluator : IScreenerTemplateEvaluator
         TimeFrame timeFrame,
         IProgress<int>? progress,
         CancellationToken ct)
-        => EvaluateAsync(symbols, template, timeFrame, null, progress, ct);
+        => EvaluateAsync(symbols, template, timeFrame, secondary: null, evaluationContext: null, progress, ct);
+
+    public Task<HashSet<string>> EvaluateAsync(
+        IReadOnlyList<string> symbols,
+        ScreenerIndicatorTemplate template,
+        TimeFrame timeFrame,
+        IScreenerSecondaryCandles? secondary,
+        IProgress<int>? progress,
+        CancellationToken ct)
+        => EvaluateAsync(symbols, template, timeFrame, secondary, evaluationContext: null, progress, ct);
 
     public async Task<HashSet<string>> EvaluateAsync(
         IReadOnlyList<string> symbols,
         ScreenerIndicatorTemplate template,
         TimeFrame timeFrame,
         IScreenerSecondaryCandles? secondary,
+        IScreenerEvaluationContext? evaluationContext,
         IProgress<int>? progress,
         CancellationToken ct)
     {
@@ -46,6 +64,26 @@ public sealed class ScreenerTemplateEvaluator : IScreenerTemplateEvaluator
         if (entries.Count == 0 || symbols.Count == 0)
         {
             return new HashSet<string>();
+        }
+
+        IScreenerEvaluationContext? sharedContext = evaluationContext;
+        DateOnly? asOfDate = sharedContext?.AsOfDate;
+        if (sharedContext == null && _rsRatingClosesProvider != null && ScreenerRsRatingInspector.UsesRsRating(entries))
+        {
+            sharedContext = await ScreenerRsRatingInspector
+                .ComputeContextAsync(_rsRatingClosesProvider, symbols, asOfDate: null, ct)
+                .ConfigureAwait(false);
+        }
+
+        if (_marketBreadthProvider != null)
+        {
+            var breadthKeys = ScreenerUniverseBreadthInspector.Inspect(entries, timeFrame, sideFramesMode: false, asOfDate);
+            if (breadthKeys.Count > 0)
+            {
+                sharedContext = await ScreenerUniverseBreadthInspector
+                    .ComputeContextAsync(_marketBreadthProvider, breadthKeys, sharedContext, timeFrame, ct)
+                    .ConfigureAwait(false);
+            }
         }
 
         HashSet<string>? combined = null;
@@ -56,10 +94,10 @@ public sealed class ScreenerTemplateEvaluator : IScreenerTemplateEvaluator
             ct.ThrowIfCancellationRequested();
 
             var entry = entries[i];
-            // Without comparison-symbol bars the original overload runs, so an IScreenerService that implements only that one is unaffected.
-            var hits = secondary == null
+            // Without comparison-symbol bars or cross-sectional context the original overload runs.
+            var hits = (secondary == null && sharedContext == null)
                 ? await _screenerService.ScreenAsync(symbolList, entry, timeFrame, progress!, ct)
-                : await _screenerService.ScreenAsync(symbolList, entry, timeFrame, secondary, progress!, ct);
+                : await _screenerService.ScreenAsync(symbolList, entry, timeFrame, secondary, sharedContext, progress!, ct);
             var hitSet = new HashSet<string>(hits);
 
             if (combined == null)
@@ -87,10 +125,19 @@ public sealed class ScreenerTemplateEvaluator : IScreenerTemplateEvaluator
         CancellationToken ct)
         => (await EvaluateWithSideFramesReportAsync(symbols, template, selection, progress, ct).ConfigureAwait(false)).Matched.ToHashSet();
 
+    public Task<ScreenerSideFramesResult> EvaluateWithSideFramesReportAsync(
+        IReadOnlyList<string> symbols,
+        ScreenerIndicatorTemplate template,
+        ScreenerBarSelection selection,
+        IProgress<int>? progress,
+        CancellationToken ct)
+        => EvaluateWithSideFramesReportAsync(symbols, template, selection, evaluationContext: null, progress, ct);
+
     public async Task<ScreenerSideFramesResult> EvaluateWithSideFramesReportAsync(
         IReadOnlyList<string> symbols,
         ScreenerIndicatorTemplate template,
         ScreenerBarSelection selection,
+        IScreenerEvaluationContext? evaluationContext,
         IProgress<int>? progress,
         CancellationToken ct)
     {
@@ -104,6 +151,28 @@ public sealed class ScreenerTemplateEvaluator : IScreenerTemplateEvaluator
             return new ScreenerSideFramesResult(Array.Empty<string>(), Array.Empty<string>(), Array.Empty<ScreenerFrameReport>());
         }
 
+        DateOnly? asOfDate = selection.AsOfDate ?? evaluationContext?.AsOfDate;
+        IScreenerEvaluationContext? sharedContext = selection.AsOfDate is { } asOf
+            ? ScreenerEvaluationContext.ForAsOfDate(asOf, evaluationContext)
+            : evaluationContext;
+        if (sharedContext == null && _rsRatingClosesProvider != null && ScreenerRsRatingInspector.UsesRsRating(entries))
+        {
+            sharedContext = await ScreenerRsRatingInspector
+                .ComputeContextAsync(_rsRatingClosesProvider, symbols, asOfDate: null, ct)
+                .ConfigureAwait(false);
+        }
+
+        if (_marketBreadthProvider != null)
+        {
+            var breadthKeys = ScreenerUniverseBreadthInspector.Inspect(entries, TimeFrame.D1, sideFramesMode: true, asOfDate);
+            if (breadthKeys.Count > 0)
+            {
+                sharedContext = await ScreenerUniverseBreadthInspector
+                    .ComputeContextAsync(_marketBreadthProvider, breadthKeys, sharedContext, scanTimeFrame: null, ct)
+                    .ConfigureAwait(false);
+            }
+        }
+
         // The same fold as EvaluateAsync (the preceding entry's LogicalOperator: Or unions, anything else intersects); only the scan of one entry differs.
         HashSet<string>? combined = null;
         var scans = new List<ScreenerSideFramesResult>(entries.Count);
@@ -113,7 +182,9 @@ public sealed class ScreenerTemplateEvaluator : IScreenerTemplateEvaluator
         {
             ct.ThrowIfCancellationRequested();
 
-            ScreenerSideFramesResult scan = await _screenerService.ScreenWithSideFramesAsync(symbolList, entries[i], selection, progress!, ct);
+            ScreenerSideFramesResult scan = sharedContext == null
+                ? await _screenerService.ScreenWithSideFramesAsync(symbolList, entries[i], selection, progress!, ct)
+                : await _screenerService.ScreenWithSideFramesAsync(symbolList, entries[i], selection, sharedContext, progress!, ct);
             scans.Add(scan);
             var hitSet = new HashSet<string>(scan.Matched);
 

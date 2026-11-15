@@ -37,11 +37,11 @@ public abstract class CorePairParameterBase : CoreIndicatorParameterBase, ICross
         set => SetProperty(ref _comparisonPriceSource, value);
     }
 
-    public sealed override string GetDisplayName(string indicatorType)
+    public override string GetDisplayName(string indicatorType)
         => PairIndicatorLabel.Format(indicatorType, ComparisonSymbol, PriceSource, ComparisonPriceSource);
 
     /// <summary>There is no numeric parameter and every <see cref="PriceType"/> value is valid.</summary>
-    public sealed override void Validate()
+    public override void Validate()
     {
     }
 }

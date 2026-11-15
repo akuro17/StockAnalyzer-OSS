@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using StockAnalyzer.Core.Analysis;
 using StockAnalyzer.Core.Common;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Analysis;
@@ -20,7 +21,7 @@ namespace StockAnalyzer.Core.Services.Analysis;
 /// Resolves the reference date by taking the (offset + 1)-th distinct trading day in the union
 /// calendar of requested tickers' daily bars, evaluating 1-day returns for all tickers on that exact date.
 /// </summary>
-public sealed class DuckDbHeatmapReturnProvider : IHeatmapReturnProvider
+public sealed class DuckDbHeatmapReturnProvider : IHeatmapReturnProvider, IRsRatingClosesProvider
 {
     private readonly DuckDBConnectionManager _dbManager;
     private readonly ILogger<DuckDbHeatmapReturnProvider> _logger;
@@ -61,19 +62,7 @@ public sealed class DuckDbHeatmapReturnProvider : IHeatmapReturnProvider
         cancellationToken.ThrowIfCancellationRequested();
 
         // 1. Locate existing daily Parquet files
-        var existingDailyFiles = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        for (int i = 0; i < tickers.Count; i++)
-        {
-            string symbol = tickers[i];
-            if (string.IsNullOrWhiteSpace(symbol) || !TickerSymbol.IsWellFormed(symbol)) continue;
-            if (existingDailyFiles.ContainsKey(symbol)) continue;
-
-            string path = Path.Combine(_baseDataPath, $"{symbol}.parquet").Replace("\\", "/");
-            if (File.Exists(path))
-            {
-                existingDailyFiles[symbol] = path;
-            }
-        }
+        var existingDailyFiles = ResolveExistingDailyFiles(tickers);
 
         if (existingDailyFiles.Count == 0)
         {
@@ -98,7 +87,7 @@ public sealed class DuckDbHeatmapReturnProvider : IHeatmapReturnProvider
                     throw new InvalidOperationException("Connection must be a DbConnection supporting async execution.");
                 }
 
-                var filesListString = string.Join(", ", existingDailyFiles.Values.Select(f => $"'{ParquetMarketDataProvider.EscapeDuckDbPath(f)}'"));
+                var filesListString = BuildDuckDbFilesList(existingDailyFiles.Values);
 
                 var sql = $@"
                 WITH src AS (
@@ -173,6 +162,142 @@ public sealed class DuckDbHeatmapReturnProvider : IHeatmapReturnProvider
             return await SyntheticHeatmapReturnProvider.Instance
                 .ComputeAsync(tickers, offset, cancellationToken)
                 .ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Reads the five closes (<c>C0, C63, C126, C189, C252</c>) required for
+    /// <see cref="RsRatingCalculator"/> across all requested tickers in a single multi-file DuckDB query.
+    /// Null closes are skipped before counting reverse-chronological positions; symbols with fewer than
+    /// <see cref="RsRatingCalculator.RequiredCloseCount"/> valid non-null closes are omitted.
+    /// </summary>
+    public async Task<IReadOnlyDictionary<string, RsRatingCloses>> GetRsRatingClosesAsync(
+        IReadOnlyList<string> tickers,
+        CancellationToken cancellationToken = default)
+    {
+        var result = new Dictionary<string, RsRatingCloses>(StringComparer.OrdinalIgnoreCase);
+        if (tickers == null || tickers.Count == 0)
+        {
+            return result;
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var existingDailyFiles = ResolveExistingDailyFiles(tickers);
+        if (existingDailyFiles.Count == 0)
+        {
+            return result;
+        }
+
+        using (await _dbManager.AcquireLockAsync("DuckDbRsRatingClosesBatch", cancellationToken).ConfigureAwait(false))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (_dbManager.GetConnection() is not DbConnection connection)
+            {
+                throw new InvalidOperationException("Connection must be a DbConnection supporting async execution.");
+            }
+
+            var filesListString = BuildDuckDbFilesList(existingDailyFiles.Values);
+
+            var sql = $@"
+                WITH ranked AS (
+                    SELECT filename,
+                           {DuckDbSymbolSql.Expression} AS symbol,
+                           close,
+                           ROW_NUMBER() OVER (PARTITION BY filename ORDER BY date DESC) AS rn
+                    FROM read_parquet([{filesListString}], filename=true)
+                    WHERE close IS NOT NULL AND date IS NOT NULL
+                )
+                SELECT symbol,
+                       MAX(CASE WHEN rn = {RsRatingCalculator.RankLatestClose} THEN close END) AS c0,
+                       MAX(CASE WHEN rn = {RsRatingCalculator.RankQuarter1Close} THEN close END) AS c63,
+                       MAX(CASE WHEN rn = {RsRatingCalculator.RankQuarter2Close} THEN close END) AS c126,
+                       MAX(CASE WHEN rn = {RsRatingCalculator.RankQuarter3Close} THEN close END) AS c189,
+                       MAX(CASE WHEN rn = {RsRatingCalculator.RankQuarter4Close} THEN close END) AS c252
+                FROM ranked
+                WHERE rn IN ({RsRatingCalculator.RankLatestClose}, {RsRatingCalculator.RankQuarter1Close}, {RsRatingCalculator.RankQuarter2Close}, {RsRatingCalculator.RankQuarter3Close}, {RsRatingCalculator.RankQuarter4Close})
+                GROUP BY filename, symbol
+                HAVING COUNT(*) = {RsRatingCalculator.CheckpointCount};";
+
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = sql;
+            using var reader = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                if (reader.IsDBNull(0)) continue;
+                string symbol = reader.GetString(0);
+
+                if (reader.IsDBNull(1) || reader.IsDBNull(2) || reader.IsDBNull(3) || reader.IsDBNull(4) || reader.IsDBNull(5))
+                {
+                    continue;
+                }
+
+                if (!TryConvertToDecimal(reader.GetValue(1), out decimal c0) ||
+                    !TryConvertToDecimal(reader.GetValue(2), out decimal c63) ||
+                    !TryConvertToDecimal(reader.GetValue(3), out decimal c126) ||
+                    !TryConvertToDecimal(reader.GetValue(4), out decimal c189) ||
+                    !TryConvertToDecimal(reader.GetValue(5), out decimal c252))
+                {
+                    continue;
+                }
+
+                result[symbol] = new RsRatingCloses(c0, c63, c126, c189, c252);
+            }
+        }
+
+        return result;
+    }
+
+    private Dictionary<string, string> ResolveExistingDailyFiles(IReadOnlyList<string> tickers)
+    {
+        var existingDailyFiles = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        for (int i = 0; i < tickers.Count; i++)
+        {
+            string symbol = tickers[i];
+            if (string.IsNullOrWhiteSpace(symbol) || !TickerSymbol.IsWellFormed(symbol)) continue;
+            if (existingDailyFiles.ContainsKey(symbol)) continue;
+
+            string path = Path.Combine(_baseDataPath, $"{symbol}.parquet").Replace("\\", "/");
+            if (File.Exists(path))
+            {
+                existingDailyFiles[symbol] = path;
+            }
+        }
+
+        return existingDailyFiles;
+    }
+
+    private static string BuildDuckDbFilesList(IEnumerable<string> filePaths)
+        => string.Join(", ", filePaths.Select(f => $"'{ParquetMarketDataProvider.EscapeDuckDbPath(f)}'"));
+
+    private static bool TryConvertToDecimal(object rawValue, out decimal value)
+    {
+        value = 0m;
+        if (rawValue is null || rawValue == DBNull.Value)
+        {
+            return false;
+        }
+
+        if (rawValue is float f && !float.IsFinite(f))
+        {
+            return false;
+        }
+
+        if (rawValue is double d && !double.IsFinite(d))
+        {
+            return false;
+        }
+
+        try
+        {
+            value = Convert.ToDecimal(rawValue, CultureInfo.InvariantCulture);
+            return true;
+        }
+        catch (Exception ex) when (ex is OverflowException or FormatException or InvalidCastException)
+        {
+            return false;
         }
     }
 }

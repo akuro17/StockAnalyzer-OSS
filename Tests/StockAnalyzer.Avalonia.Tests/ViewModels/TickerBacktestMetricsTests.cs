@@ -24,6 +24,16 @@ namespace StockAnalyzer.Avalonia.Tests.ViewModels;
 
 public class TickerBacktestMetricsTests
 {
+    // The two real-data backtest tests below (AAPL, Japanese tickers) evaluate the same fixed inputs: a window that does not move with
+    // the clock and a configuration that does not come from the saved default settings (owner decision D-08-22 = A, 2026-11-15). A window
+    // "one year back from today" and the saved settings would change the profit factor with the date and with the owner's settings.
+    private static readonly DateTime FixedWindowStartUtc = new(2025, 10, 9, 0, 0, 0, DateTimeKind.Utc);
+    private static readonly DateTime FixedWindowEndUtc = new(2026, 10, 9, 0, 0, 0, DateTimeKind.Utc);
+    private const decimal FixedInitialCapital = 1_000_000m;
+    private const decimal FixedSizingQuantity = 1m;
+    private const int FixedBootstrapSeed = 42;
+    private const int FixedBootstrapIterations = 2000;
+
     [Fact]
     public void BacktestMetricColumnRegistry_ContainsAll30Definitions()
     {
@@ -366,27 +376,25 @@ public class TickerBacktestMetricsTests
         // A fixed evaluation window: with a window that moves with the clock the profit factor changes
         // (0.0520 for a start on or before 2025-10-10, 0.0510 from 2025-10-11), so the expectation below
         // would silently expire.
-        var windowStart = new DateTime(2025, 10, 9, 0, 0, 0, DateTimeKind.Utc);
-        var windowEnd = new DateTime(2026, 10, 9, 0, 0, 0, DateTimeKind.Utc);
         var prepService = new StockAnalyzer.Core.Services.BacktestRunPreparationService(dataService);
         var snapshot = new StockAnalyzer.Core.Services.BacktestRunSnapshot(
             "AAPL",
             TimeFrame.D1,
-            windowStart,
-            windowEnd,
+            FixedWindowStartUtc,
+            FixedWindowEndUtc,
             new BacktestConfiguration
             {
                 ExecutionModel = ExecutionModel.Legacy,
-                InitialCapital = 1_000_000m,
+                InitialCapital = FixedInitialCapital,
                 SizingModel = PositionSizingModel.FixedQuantity,
-                SizingParameter = 1m
+                SizingParameter = FixedSizingQuantity
             },
             System.Collections.Immutable.ImmutableArray<BacktestConditionEntry>.Empty,
             null,
             System.Collections.Immutable.ImmutableArray<StrategyIndicatorRequest>.Empty,
             BacktestReportDefaults.BuiltIn,
-            42,
-            2000,
+            FixedBootstrapSeed,
+            FixedBootstrapIterations,
             domainTree);
 
         var prepared = await prepService.PrepareAsync(snapshot, default);
@@ -401,9 +409,12 @@ public class TickerBacktestMetricsTests
 
         var report = artifact.Report;
 
-        // Verify ProfitFactor is valid and formats to 0.0520
+        // Verify ProfitFactor is valid and formats to 0.0522.
+        // The expectation reads the stored AAPL closes. It was 0.0520 until 2026-11-15, when the stored prices were put on the Close
+        // basis (split-adjusted only; plan 08): the older rows had been dividend-adjusted, and 96 of the 252 closes of this window changed
+        // (by up to 0.19 percent). On the Close basis a past close no longer moves with a later dividend, so this value is stable.
         Assert.Equal(MetricStatus.Valid, report.ProfitFactor.Status);
-        Assert.Equal(0.0520m, Math.Round(report.ProfitFactor.Value!.Value, 4));
+        Assert.Equal(0.0522m, Math.Round(report.ProfitFactor.Value!.Value, 4));
 
         // Verify AnnualizedSharpe is Valid
         Assert.Equal(MetricStatus.Valid, report.AnnualizedSharpe.Status);
@@ -431,7 +442,7 @@ public class TickerBacktestMetricsTests
             TargetNullValue = "-",
             FallbackValue = "-"
         });
-        Assert.Equal("0.0520", tbPf.Text);
+        Assert.Equal("0.0522", tbPf.Text);
         Assert.Equal(report.ProfitFactor.Value, item.GetRawValue("Metric_ProfitFactor"));
 
         // Verify AnnualizedSharpe cell
@@ -461,41 +472,39 @@ public class TickerBacktestMetricsTests
         var domainTree = StockAnalyzer.Core.Services.Backtest.Configuration.BacktestConditionTreeDtoMapper.ToTree(template.ConditionTree);
         var engine = new StockAnalyzer.Core.Services.Backtest.Engine.BacktestEngine(new IndicatorFactory());
         var reportGen = new StockAnalyzer.Core.Services.Backtest.Reporting.BacktestReportGenerator();
-        var today = DateTime.UtcNow.Date;
         var prepService = new StockAnalyzer.Core.Services.BacktestRunPreparationService(dataService);
         var evalService = new StockAnalyzer.Core.Services.Backtest.Evaluation.BacktestEvaluationService(
             engine,
             reportGen,
             new StockAnalyzer.Core.Services.Backtest.Evaluation.NoSamplingEvidenceTrustPolicy());
 
-        var defaultSettingsManager = new StockAnalyzer.Core.Services.Backtest.Configuration.BacktestDefaultSettingsManager();
-        var defaultLoad = await defaultSettingsManager.LoadAsync();
-        var defaultSettings = defaultLoad.Settings;
-        var (startUtc, endUtc, resolvedFrame) = defaultSettings.ResolveTargetDataAndPeriod();
-
-        string[] symbols = new[] { "3382-T", "2681-T", "3036-T", "7741-T", "6098-T", "6367-T" };
+        // Six Japanese tickers of the development data root with a long history (2000-2004 on) whose profit factor is Valid in the fixed
+        // window and in the two neighbouring windows (probe of 2026-11-15). Not used on purpose: 285A-T and 9434-T (short history), and
+        // 8035-T, 8411-T and 8766-T (the provider's own bars of 2022-05-17 / 2002-04-01 / 2003-08-15 break the OHLC ordering, so
+        // BacktestInput refuses to load them).
+        string[] symbols = new[] { "2681-T", "5334-T", "9432-T", "9433-T", "9983-T", "9984-T" };
         var evaluatedCount = 0;
 
         foreach (var sym in symbols)
         {
             var snapshot = new StockAnalyzer.Core.Services.BacktestRunSnapshot(
                 sym,
-                resolvedFrame,
-                startUtc,
-                endUtc,
+                TimeFrame.D1,
+                FixedWindowStartUtc,
+                FixedWindowEndUtc,
                 new BacktestConfiguration
                 {
                     ExecutionModel = ExecutionModel.Legacy,
-                    InitialCapital = defaultSettings.InitialCapital,
-                    SizingModel = defaultSettings.SizingModel,
-                    SizingParameter = defaultSettings.SizingParameter
+                    InitialCapital = FixedInitialCapital,
+                    SizingModel = PositionSizingModel.FixedQuantity,
+                    SizingParameter = FixedSizingQuantity
                 },
                 System.Collections.Immutable.ImmutableArray<BacktestConditionEntry>.Empty,
                 null,
                 System.Collections.Immutable.ImmutableArray<StrategyIndicatorRequest>.Empty,
                 BacktestReportDefaults.BuiltIn,
-                42,
-                2000,
+                FixedBootstrapSeed,
+                FixedBootstrapIterations,
                 domainTree);
 
             var prepared = await prepService.PrepareAsync(snapshot, default);

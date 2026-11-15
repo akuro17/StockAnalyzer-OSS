@@ -61,6 +61,7 @@ internal sealed class IndicatorRequestBinder
             PriceType? priceSource = Optional(item, "priceSource") is { } priceName ? Enum.Parse<PriceType>(priceName) : null;
             item.TryGetProperty("parameters", out JsonElement parameters);
             CoreIndicatorSettings settings = _binder.Bind(entry, parameters, priceSource, path);
+            IndicatorParameterRules.RequireUniverseGroupId(entry.Type, settings.ParameterObject, path);
             (TimeFrame? written, TimeFrame? own) = ReadTimeFrame(item, callFrame, path);
             if (own is not null && settings.ParameterObject is ICrossTickerParameter)
             {

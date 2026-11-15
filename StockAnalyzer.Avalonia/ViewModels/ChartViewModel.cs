@@ -17,6 +17,7 @@ using StockAnalyzer.Core.Models.Drawing;
 
 
 using StockAnalyzer.Core.Models.Indicators;
+using StockAnalyzer.Core.Models.Parameters;
 using StockAnalyzer.Core.Models.Settings;
 using StockAnalyzer.Core.Services;
 using StockAnalyzer.Core.Services.Notes;
@@ -37,7 +38,7 @@ using Microsoft.Extensions.Logging;
 
 namespace StockAnalyzer.Avalonia.ViewModels;
 
-public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IRecipient<TickerSelectedMessage>, IRecipient<TickerDataRefreshedMessage>, IRecipient<ChartPeriodChangedMessage>, IRecipient<ChartTimeframeChangedMessage>, IRecipient<PredictionConfigurationChangedMessage>, IDisposable
+public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IRecipient<TickerSelectedMessage>, IRecipient<TickerRowClickedMessage>, IRecipient<TickerDataRefreshedMessage>, IRecipient<ChartPeriodChangedMessage>, IRecipient<ChartTimeframeChangedMessage>, IRecipient<PredictionConfigurationChangedMessage>, IDisposable
 {
     private static int _dtwRequestIdCounter = 0;
     private readonly Microsoft.Extensions.Logging.ILogger<ChartViewModel>? _logger;
@@ -59,6 +60,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
     private readonly Services.Drawing.DrawingDocumentSessionStore? _sessionStore;
     private readonly ISpiralAnalysisDataSource? _spiralAnalysisDataSource;
     private readonly ISeasonalityChartDataSource? _seasonalityChartDataSource;
+    private readonly Lazy<Services.IUniverseSuggestionProvider>? _universeSuggestionProvider;
     private string? _drawingsOwnerSymbol;
     private TimeframeType _drawingsOwnerTimeFrame;
     // Whether THIS instance has, since it started owning _drawingsOwnerSymbol/_drawingsOwnerTimeFrame,
@@ -524,6 +526,26 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
         }
     }
 
+    public void Receive(TickerRowClickedMessage message)
+    {
+        if (!IsSyncEnabled || message == null) return;
+
+        var provider = _universeSuggestionProvider?.Value ?? App.Current?.Services?.GetService<Services.IUniverseSuggestionProvider>();
+        Guid? resolvedId = provider?.ResolveTargetGroupId(message);
+        string? nextGroupId = resolvedId?.ToString("D");
+
+        if (string.Equals(_clickedUniverseGroupId, nextGroupId, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _clickedUniverseGroupId = nextGroupId;
+        if (Indicators.Any(HasEmptyUniverseGroupId))
+        {
+            CalculateIndicatorsAsync();
+        }
+    }
+
     /// <summary>
     /// Handles bulk sync completion notifications from TickerListViewModel.
     /// When the currently displayed symbol's data is refreshed via MultiSync,
@@ -928,6 +950,8 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
     private decimal _lastEffectiveSize = 0m;
     private int _lastAdapterCount = 0;
     private int _lastExtendedLookbackBarCount = 0;
+    private string? _clickedUniverseGroupId;
+    private string? _lastDynamicUniverseGroupId;
     private CancellationTokenSource? _indicatorCalcCts;
 
     // Extended-Lookback (Warm-up) Calculation Control: when EnableExtendedLookbackForIndicators is
@@ -952,6 +976,9 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
 
         var snapshotCandles = Candles;
         var snapshotSettings = Indicators.ToList(); // Still need a stable list for BG calculation
+        string? effectiveDynamicGroupId = snapshotSettings.Any(s => s.IsEnabled && HasEmptyUniverseGroupId(s))
+            ? _clickedUniverseGroupId
+            : null;
         
         var chartType = ChartType;
         var symbol = Symbol;
@@ -1054,6 +1081,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
                     effectiveSize == _lastEffectiveSize &&
                     adapterCount == _lastAdapterCount &&
                     extendedLookbackSnapshot == _lastExtendedLookbackBarCount &&
+                    string.Equals(effectiveDynamicGroupId, _lastDynamicUniverseGroupId, StringComparison.Ordinal) &&
                     snapshotSettings.Count == _lastMathVersions.Count)
                 {
                     bool mathChanged = false;
@@ -1153,7 +1181,10 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
                     }
 
 
-                    results = await _analysisPipelineService.CalculateIndicatorsAsync(targetCandles, snapshotSettings, secondaryCandlesBySymbol);
+                    var pipelineSettings = ApplyDynamicUniverseGroupId(snapshotSettings, effectiveDynamicGroupId);
+                    results = _analysisPipelineService is Core.Services.Analysis.ITimeFrameAwareIndicatorCalculation tfPipeline
+                        ? await tfPipeline.CalculateIndicatorsAsync(targetCandles, pipelineSettings, secondaryCandlesBySymbol, timeFrame.ToCoreTimeFrame(), cts.Token).ConfigureAwait(false)
+                        : await _analysisPipelineService.CalculateIndicatorsAsync(targetCandles, pipelineSettings, secondaryCandlesBySymbol);
 
                     if (extensionActive)
                     {
@@ -1186,6 +1217,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
                     _lastEffectiveSize = effectiveSize;
                     _lastAdapterCount = adapterCount;
                     _lastExtendedLookbackBarCount = extendedLookbackSnapshot;
+                    _lastDynamicUniverseGroupId = effectiveDynamicGroupId;
                 }
 
                 
@@ -1223,6 +1255,50 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
                 }
             }
         });
+    }
+
+    private static bool HasEmptyUniverseGroupId(CoreIndicatorSettings setting) =>
+        setting.ParameterObject is IUniverseBreadthParameter breadthParam
+        && string.IsNullOrWhiteSpace(breadthParam.UniverseGroupId);
+
+    internal static IReadOnlyList<CoreIndicatorSettings> ApplyDynamicUniverseGroupId(
+        IReadOnlyList<CoreIndicatorSettings> settings,
+        string? dynamicGroupId)
+    {
+        if (string.IsNullOrWhiteSpace(dynamicGroupId))
+        {
+            return settings;
+        }
+
+        List<CoreIndicatorSettings>? cloned = null;
+        for (int i = 0; i < settings.Count; i++)
+        {
+            var setting = settings[i];
+            if (!HasEmptyUniverseGroupId(setting))
+            {
+                cloned?.Add(setting);
+                continue;
+            }
+
+            if (cloned == null)
+            {
+                cloned = new List<CoreIndicatorSettings>(settings.Count);
+                for (int j = 0; j < i; j++)
+                {
+                    cloned.Add(settings[j]);
+                }
+            }
+
+            var snapshot = setting.Snapshot();
+            if (snapshot.ParameterObject is IUniverseBreadthParameter breadthParam)
+            {
+                breadthParam.UniverseGroupId = dynamicGroupId;
+            }
+
+            cloned.Add(snapshot);
+        }
+
+        return cloned ?? settings;
     }
 
     [ObservableProperty]
@@ -1888,7 +1964,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
 
 
 
-    public ChartViewModel(IDataService dataService, IDialogService dialogService, IChartStrategyFactory strategyFactory, IStockAnalyzerSettings settings, ITimeFrameManager timeFrameManager, Core.Services.MarketStructureService marketStructureService, Core.Theme.IThemeManager themeManager, Core.Services.IChartSettingsManager chartSettingsManager, Core.Services.IDispatcherService dispatcherService, Core.Services.IPredictionService? predictionService, Core.Services.Analysis.IAnalysisPipelineService analysisPipelineService, Core.Services.IMarketDataProvider? marketDataProvider = null, Core.Services.IPythonService? pythonService = null, Core.Services.IComparisonDataAligner? comparisonDataAligner = null, IMessenger? messenger = null, Services.Drawing.IChartDrawingRepository? drawingRepository = null, Microsoft.Extensions.Logging.ILogger<ChartViewModel>? logger = null, ISpiralAnalysisDataSource? spiralAnalysisDataSource = null, ISeasonalityChartDataSource? seasonalityChartDataSource = null, Services.Drawing.DrawingDocumentSessionStore? sessionStore = null, Core.Services.IModelAnalysisService? modelAnalysisService = null, Core.Services.IPredictionLogService? predictionLog = null, TimeProvider? timeProvider = null, Services.IMonitoringWorkOwner? monitoringWork = null, Services.IAttestedMonitoringRefresher? attestedMonitoring = null, Core.Services.IAttentionService? attentionService = null, Core.Services.IEnsembleAttentionService? ensembleAttentionService = null, Core.Services.IEnsembleSettingsManager? ensembleSettings = null, Core.Models.Indicators.IIndicatorFactory? indicatorFactory = null)
+    public ChartViewModel(IDataService dataService, IDialogService dialogService, IChartStrategyFactory strategyFactory, IStockAnalyzerSettings settings, ITimeFrameManager timeFrameManager, Core.Services.MarketStructureService marketStructureService, Core.Theme.IThemeManager themeManager, Core.Services.IChartSettingsManager chartSettingsManager, Core.Services.IDispatcherService dispatcherService, Core.Services.IPredictionService? predictionService, Core.Services.Analysis.IAnalysisPipelineService analysisPipelineService, Core.Services.IMarketDataProvider? marketDataProvider = null, Core.Services.IPythonService? pythonService = null, Core.Services.IComparisonDataAligner? comparisonDataAligner = null, IMessenger? messenger = null, Services.Drawing.IChartDrawingRepository? drawingRepository = null, Microsoft.Extensions.Logging.ILogger<ChartViewModel>? logger = null, ISpiralAnalysisDataSource? spiralAnalysisDataSource = null, ISeasonalityChartDataSource? seasonalityChartDataSource = null, Services.Drawing.DrawingDocumentSessionStore? sessionStore = null, Core.Services.IModelAnalysisService? modelAnalysisService = null, Core.Services.IPredictionLogService? predictionLog = null, TimeProvider? timeProvider = null, Services.IMonitoringWorkOwner? monitoringWork = null, Services.IAttestedMonitoringRefresher? attestedMonitoring = null, Core.Services.IAttentionService? attentionService = null, Core.Services.IEnsembleAttentionService? ensembleAttentionService = null, Core.Services.IEnsembleSettingsManager? ensembleSettings = null, Core.Models.Indicators.IIndicatorFactory? indicatorFactory = null, Lazy<Services.IUniverseSuggestionProvider>? universeSuggestionProvider = null)
     {
         _attentionService = attentionService;
         _ensembleAttentionService = ensembleAttentionService;
@@ -1903,6 +1979,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
         _predictionLog = predictionLog;
         _spiralAnalysisDataSource = spiralAnalysisDataSource;
         _seasonalityChartDataSource = seasonalityChartDataSource;
+        _universeSuggestionProvider = universeSuggestionProvider;
         _dataService = dataService;
         _marketDataProvider = marketDataProvider;
         _timeFrameManager = timeFrameManager;
@@ -2228,6 +2305,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
         _chartSettingsManager = new Services.MockChartSettingsManager();
         _analysisPipelineService = new Core.Services.Analysis.AnalysisPipelineService();
         _indicatorFactory = App.Current?.Services?.GetService<Core.Models.Indicators.IIndicatorFactory>();
+        _universeSuggestionProvider = null;
 
         _settings = new Services.MockStockAnalyzerSettings();
         _symbol = _settings.DefaultSymbol;

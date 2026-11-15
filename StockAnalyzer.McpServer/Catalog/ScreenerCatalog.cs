@@ -5,6 +5,7 @@ using StockAnalyzer.Core.Models.Indicators;
 using StockAnalyzer.Core.Models.Portfolio;
 using StockAnalyzer.Core.Models.Screener;
 using StockAnalyzer.Core.Services;
+using StockAnalyzer.Core.Services.Screener;
 
 namespace StockAnalyzer.McpServer.Catalog;
 
@@ -118,11 +119,15 @@ internal sealed class ScreenerCatalog
     {
         /// <summary>The first probe value; each property gets the next whole number so no two properties share a value (and an int or long property keeps it).</summary>
         private const int FirstProbeValue = 1001;
+        private const string ProbeSymbol = "PROBE";
+        private const int ProbeRsRatingValue = 77;
 
         public static HashSet<string> EvaluableColumns(IReadOnlyList<ScreenerCatalogItem> columns)
         {
             (TickerMetadata metadata, Dictionary<string, decimal> expected) = ProbeMetadata();
             IReadOnlyList<CandleData> bars = ProbeBars;
+            var probeEvaluationContext = new ScreenerEvaluationContext(
+                new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase) { [ProbeSymbol] = ProbeRsRatingValue });
 
             var evaluable = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (ScreenerCatalogItem column in columns)
@@ -137,6 +142,13 @@ internal sealed class ScreenerCatalog
 
                 // A value that is there without any metadata is read from the bars (Open, High, Low, Close, Volume, Change, Change %).
                 if (ReadsFromBars(side))
+                {
+                    evaluable.Add(column.ShortName);
+                    continue;
+                }
+
+                if (ScreenerRsRatingInspector.IsRsRatingColumn(side)
+                    && ScreenerValueExtractor.Default.ExtractValueNullable(side, bars, metadata, null, ProbeSymbol, probeEvaluationContext) == ProbeRsRatingValue)
                 {
                     evaluable.Add(column.ShortName);
                     continue;

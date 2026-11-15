@@ -361,7 +361,7 @@ internal sealed class DiscussionPipeHost : IDisposable
         }
     }
 
-    /// <summary>Stops accepting, closes every open connection and waits (bounded) for the accept loop.</summary>
+    /// <summary>Stops accepting, waits (bounded) for the accept loop to release its listening instance, then closes every open connection.</summary>
     public void Dispose()
     {
         NamedPipeServerStream[] open;
@@ -381,6 +381,18 @@ internal sealed class DiscussionPipeHost : IDisposable
         {
             _stop.Cancel();
             _first?.Dispose();
+
+            // Spec 5.12 shutdown order: stop accepting FIRST (the accept loop has disposed its listening instance), only then close the
+            // connections. A client whose connection breaks starts to elect again at once; while a listening instance still existed,
+            // its probe connected to the dying hub and the one repeat of the operation was lost (HUB_UNAVAILABLE instead of HUB_RESET).
+            try
+            {
+                _acceptLoop.Wait(DiscussionLimits.HubShutdownWaitMs);
+            }
+            catch (AggregateException)
+            {
+            }
+
             foreach (NamedPipeServerStream stream in open)
             {
                 try
@@ -390,14 +402,6 @@ internal sealed class DiscussionPipeHost : IDisposable
                 catch (IOException)
                 {
                 }
-            }
-
-            try
-            {
-                _acceptLoop.Wait(DiscussionLimits.HubShutdownWaitMs);
-            }
-            catch (AggregateException)
-            {
             }
         }
         finally

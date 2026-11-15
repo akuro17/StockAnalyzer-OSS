@@ -19,6 +19,7 @@ public class TickerSyncService : ITickerSyncService
     private readonly IDispatcherService _dispatcherService;
     private readonly IMarketDataProvider? _marketDataProvider;
     private readonly ITimeFrameManager? _timeFrameManager;
+    private readonly StockAnalyzer.Core.Services.Analysis.IMarketBreadthSeriesProvider? _marketBreadthSeriesProvider;
     private readonly IMessenger _messenger;
     private readonly ILogger<TickerSyncService> _logger;
     private readonly StorageFeatureGate _storageGate;
@@ -31,7 +32,8 @@ public class TickerSyncService : ITickerSyncService
         ITimeFrameManager? timeFrameManager = null,
         IMessenger? messenger = null,
         ILogger<TickerSyncService>? logger = null,
-        StockAnalyzer.Core.Common.IDataStorageState? dataStorageState = null)
+        StockAnalyzer.Core.Common.IDataStorageState? dataStorageState = null,
+        StockAnalyzer.Core.Services.Analysis.IMarketBreadthSeriesProvider? marketBreadthSeriesProvider = null)
     {
         _storageGate = new StorageFeatureGate(dataStorageState);
         _pythonService = pythonService;
@@ -39,6 +41,7 @@ public class TickerSyncService : ITickerSyncService
         _dispatcherService = dispatcherService;
         _marketDataProvider = marketDataProvider;
         _timeFrameManager = timeFrameManager;
+        _marketBreadthSeriesProvider = marketBreadthSeriesProvider;
         _messenger = messenger ?? WeakReferenceMessenger.Default;
         _logger = logger ?? NullLogger<TickerSyncService>.Instance;
     }
@@ -96,12 +99,14 @@ public class TickerSyncService : ITickerSyncService
                     await _marketDataProvider.DeleteLatestTickerDataAsync(symbol, vm.DeleteLatestBarsCount);
                     _marketDataProvider.InvalidateMetadataCache(symbol);
                     _timeFrameManager?.InvalidateCache(symbol);
+                    _marketBreadthSeriesProvider?.ClearCache();
                 }
 
                 await _pythonService.RunUpdatePipelineAsync(symbol, currentConfig, ivm.ProgressReporter, linkedCts.Token);
 
                 _marketDataProvider?.InvalidateMetadataCache(symbol);
                 _timeFrameManager?.InvalidateCache(symbol);
+                _marketBreadthSeriesProvider?.ClearCache();
 
                 model.MarkComplete();
                 _dispatcherService.Post(static i => i.UpdateFromModel(), ivm);

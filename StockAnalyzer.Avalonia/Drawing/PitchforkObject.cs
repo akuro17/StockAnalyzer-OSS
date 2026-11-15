@@ -148,11 +148,13 @@ public class PitchforkObject : IChartObject, IDisposable, IDrawingCalculatedValu
         decimal factor,
         ICoordinateTransform transform)
     {
+        // The base point Q(f) is built in chart coordinates; the direction is the screen vector of the median line (as for the outer lines in Render), so every
+        // line is parallel on the screen on every axis (on a GaplessTime axis a calendar-time offset would not be: non-trading days are squeezed out of it).
         DrawingAnchor q = PitchforkValues.GetParallelAnchor(a2, median, factor);
-        DrawingAnchor qNext = PitchforkValues.OffsetByMedianVector(q, anchor, median);
-        return (
-            transform.ChartToScreen(new ChartPoint(q.Time, q.Price)),
-            transform.ChartToScreen(new ChartPoint(qNext.Time, qNext.Price)));
+        global::Avalonia.Point origin = transform.ChartToScreen(new ChartPoint(q.Time, q.Price));
+        global::Avalonia.Point screenAnchor = transform.ChartToScreen(new ChartPoint(anchor.Time, anchor.Price));
+        global::Avalonia.Point screenMedian = transform.ChartToScreen(new ChartPoint(median.Time, median.Price));
+        return (origin, origin + (screenMedian - screenAnchor));
     }
 
     private static bool IsValidScreenPoint(global::Avalonia.Point point)

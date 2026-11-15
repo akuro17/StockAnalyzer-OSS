@@ -2,6 +2,7 @@ using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Analysis;
 using StockAnalyzer.Core.Models.Indicators;
 using StockAnalyzer.Core.Models.Portfolio;
+using StockAnalyzer.Core.Models.Screener;
 using StockAnalyzer.Core.Models.Templates;
 using StockAnalyzer.Core.Services;
 using StockAnalyzer.Core.Services.Screener;
@@ -110,6 +111,35 @@ public interface IReadOnlyStockAnalyzerGateway
             : throw new NotSupportedException($"{GetType().Name} does not evaluate indicators that compare two tickers.");
 
     /// <summary>
+    /// Computes the cross-sectional evaluation context (such as RS Rating) across <paramref name="symbols"/> once for a scan.
+    /// Returns an empty context when <paramref name="asOfDate"/> is specified or when cross-sectional data is unavailable.
+    /// </summary>
+    Task<IScreenerEvaluationContext?> EvaluateScreenerContextAsync(
+        IReadOnlyList<string> symbols,
+        DateOnly? asOfDate = null,
+        CancellationToken cancellationToken = default)
+        => Task.FromResult<IScreenerEvaluationContext?>(asOfDate.HasValue ? ScreenerEvaluationContext.Empty : null);
+
+    /// <summary>
+    /// Pre-fetches unique universe-breadth requests once before scanning/sorting and merges them into <paramref name="baseContext"/>.
+    /// </summary>
+    Task<IScreenerEvaluationContext?> EvaluateUniverseBreadthContextAsync(
+        IReadOnlyList<UniverseBreadthKey> keys,
+        IScreenerEvaluationContext? baseContext,
+        TimeFrame? scanTimeFrame = null,
+        CancellationToken cancellationToken = default)
+        => Task.FromResult(baseContext);
+
+    Task<IReadOnlyList<string>> RunScreenerAsync(
+        IReadOnlyList<string> symbols,
+        IScreeningCondition condition,
+        TimeFrame timeFrame,
+        IReadOnlyList<string> comparisonSymbols,
+        IScreenerEvaluationContext? evaluationContext,
+        CancellationToken cancellationToken = default)
+        => RunScreenerAsync(symbols, condition, timeFrame, comparisonSymbols, cancellationToken);
+
+    /// <summary>
     /// The scan of <see cref="RunScreenerAsync(IReadOnlyList{string}, IScreeningCondition, TimeFrame, IReadOnlyList{string}, CancellationToken)"/> over the bars of
     /// <paramref name="selection"/>: with an as-of date each symbol is evaluated on its last bar dated on or before it (a weekly or monthly bar is built from the days up
     /// to the date), the comparison symbols too; a weekly or monthly frame is built from the stored daily bars; <see cref="ScreenerBarSelection.CompleteBarsOnly"/> leaves out
@@ -126,6 +156,16 @@ public interface IReadOnlyStockAnalyzerGateway
         ScreenerBarSelection selection,
         CancellationToken cancellationToken = default)
         => throw new NotSupportedException($"{GetType().Name} does not run a scan on a selection of bars.");
+
+    Task<ScreenerBarsResult> RunScreenerOnBarsAsync(
+        IReadOnlyList<string> symbols,
+        IScreeningCondition condition,
+        TimeFrame timeFrame,
+        IReadOnlyList<string> comparisonSymbols,
+        ScreenerBarSelection selection,
+        IScreenerEvaluationContext? evaluationContext,
+        CancellationToken cancellationToken = default)
+        => RunScreenerOnBarsAsync(symbols, condition, timeFrame, comparisonSymbols, selection, cancellationToken);
 
     /// <summary>
     /// The latest <paramref name="count"/> bars of <paramref name="symbol"/> that a scan over <paramref name="selection"/> evaluates (the same cut, aggregation and partial-period
@@ -194,6 +234,16 @@ public interface IReadOnlyStockAnalyzerGateway
         CancellationToken cancellationToken = default)
         => throw new NotSupportedException($"{GetType().Name} does not run a scan on a selection of bars.");
 
+    Task<ScreenerBarsResult> RunScreenerTemplateOnBarsAsync(
+        IReadOnlyList<string> symbols,
+        ScreenerIndicatorTemplate template,
+        TimeFrame timeFrame,
+        IReadOnlyList<string> comparisonSymbols,
+        ScreenerBarSelection selection,
+        IScreenerEvaluationContext? evaluationContext,
+        CancellationToken cancellationToken = default)
+        => RunScreenerTemplateOnBarsAsync(symbols, template, timeFrame, comparisonSymbols, selection, cancellationToken);
+
     /// <summary>
     /// The scan in which every side of <paramref name="condition"/> reads the bars of its OWN time frame (<see cref="IScreenerService.ScreenWithSideFramesAsync"/>), built from the
     /// stored daily bars: with an as-of date each frame is built from the days up to it, <see cref="ScreenerBarSelection.CompleteBarsOnly"/> leaves out a last weekly or monthly period that
@@ -209,6 +259,14 @@ public interface IReadOnlyStockAnalyzerGateway
         CancellationToken cancellationToken = default)
         => throw new NotSupportedException($"{GetType().Name} does not scan sides on their own time frames.");
 
+    Task<ScreenerSideFramesResult> RunScreenerWithSideFramesAsync(
+        IReadOnlyList<string> symbols,
+        IScreeningCondition condition,
+        ScreenerBarSelection selection,
+        IScreenerEvaluationContext? evaluationContext,
+        CancellationToken cancellationToken = default)
+        => RunScreenerWithSideFramesAsync(symbols, condition, selection, cancellationToken);
+
     /// <summary>
     /// <see cref="RunScreenerWithSideFramesAsync"/> for a saved template: the enabled entries are combined as in
     /// <see cref="RunScreenerTemplateAsync(IReadOnlyList{string}, ScreenerIndicatorTemplate, TimeFrame, CancellationToken)"/>, each side reading its own stored time frame; the
@@ -222,6 +280,23 @@ public interface IReadOnlyStockAnalyzerGateway
         ScreenerBarSelection selection,
         CancellationToken cancellationToken = default)
         => throw new NotSupportedException($"{GetType().Name} does not scan sides on their own time frames.");
+
+    Task<ScreenerSideFramesResult> RunScreenerTemplateWithSideFramesAsync(
+        IReadOnlyList<string> symbols,
+        ScreenerIndicatorTemplate template,
+        ScreenerBarSelection selection,
+        IScreenerEvaluationContext? evaluationContext,
+        CancellationToken cancellationToken = default)
+        => RunScreenerTemplateWithSideFramesAsync(symbols, template, selection, cancellationToken);
+
+    Task<IReadOnlyList<string>> RunScreenerTemplateAsync(
+        IReadOnlyList<string> symbols,
+        ScreenerIndicatorTemplate template,
+        TimeFrame timeFrame,
+        IReadOnlyList<string> comparisonSymbols,
+        IScreenerEvaluationContext? evaluationContext,
+        CancellationToken cancellationToken = default)
+        => RunScreenerTemplateAsync(symbols, template, timeFrame, comparisonSymbols, cancellationToken);
 
     /// <summary>
     /// Runs one backtest in memory with the application's own preparation service and evaluation service (the Backtest window's path):

@@ -166,7 +166,7 @@ internal sealed class RunScreenerTool : IMcpTool
             && sortProbe.ValueKind == JsonValueKind.Object
             && sortProbe.TryGetProperty(ScreenerConditionBinder.SideTimeFrameKey, out _);
         bool sideFrames;
-        Func<IReadOnlyList<string>, Task<ScreenerSideFramesResult>>? runSideFrames = null;
+        Func<IReadOnlyList<string>, IScreenerEvaluationContext?, Task<ScreenerSideFramesResult>>? runSideFrames = null;
         bool hasTree = arguments.TryGetProperty(ConditionArgument, out JsonElement tree);
         string? templateText = ToolArgs.String(arguments, TemplateArgument);
         if (hasTree == (templateText is not null))
@@ -196,7 +196,7 @@ internal sealed class RunScreenerTool : IMcpTool
         // Both modes end in the same pieces: the leaves (for matched values), a condition that sizes the history, and a way to run it.
         IReadOnlyList<ScreenerLeaf> leaves;
         IScreeningCondition sizing;
-        Func<IReadOnlyList<string>, Task<ScreenerBarsResult>>? run = null;
+        Func<IReadOnlyList<string>, IScreenerEvaluationContext?, Task<ScreenerBarsResult>>? run = null;
         ScreenerIndicatorTemplate? template = null;
         var warnings = new List<string>();
         IReadOnlyList<string> comparisonSymbols;
@@ -218,15 +218,21 @@ internal sealed class RunScreenerTool : IMcpTool
             {
                 _binder.ApplyLiteralFrames(bound, timeFrame);
                 comparisonSymbols = Array.Empty<string>();
-                runSideFrames = universe => _gateway.RunScreenerWithSideFramesAsync(universe, bound.Condition, sideSelection, cancellationToken);
+                runSideFrames = (universe, evalContext) => evalContext is not null
+                    ? _gateway.RunScreenerWithSideFramesAsync(universe, bound.Condition, sideSelection, evalContext, cancellationToken)
+                    : _gateway.RunScreenerWithSideFramesAsync(universe, bound.Condition, sideSelection, cancellationToken);
             }
             else
             {
                 comparisonSymbols = await _comparisonSymbols.ResolveAsync(bound.ComparisonSymbols, ConditionArgument, allowUnregistered, warnings, cancellationToken).ConfigureAwait(false);
                 IReadOnlyList<string> symbolsToCompare = comparisonSymbols;
                 run = source.Selection is { } treeSelection
-                    ? universe => _gateway.RunScreenerOnBarsAsync(universe, bound.Condition, timeFrame, symbolsToCompare, treeSelection, cancellationToken)
-                    : async universe => PlainResult(await _gateway.RunScreenerAsync(universe, bound.Condition, timeFrame, symbolsToCompare, cancellationToken).ConfigureAwait(false));
+                    ? (universe, evalContext) => evalContext is not null
+                        ? _gateway.RunScreenerOnBarsAsync(universe, bound.Condition, timeFrame, symbolsToCompare, treeSelection, evalContext, cancellationToken)
+                        : _gateway.RunScreenerOnBarsAsync(universe, bound.Condition, timeFrame, symbolsToCompare, treeSelection, cancellationToken)
+                    : async (universe, evalContext) => PlainResult(evalContext is not null
+                        ? await _gateway.RunScreenerAsync(universe, bound.Condition, timeFrame, symbolsToCompare, evalContext, cancellationToken).ConfigureAwait(false)
+                        : await _gateway.RunScreenerAsync(universe, bound.Condition, timeFrame, symbolsToCompare, cancellationToken).ConfigureAwait(false));
             }
         }
         else
@@ -260,15 +266,21 @@ internal sealed class RunScreenerTool : IMcpTool
                 }
 
                 comparisonSymbols = Array.Empty<string>();
-                runSideFrames = universe => _gateway.RunScreenerTemplateWithSideFramesAsync(universe, loaded, sideSelection, cancellationToken);
+                runSideFrames = (universe, evalContext) => evalContext is not null
+                    ? _gateway.RunScreenerTemplateWithSideFramesAsync(universe, loaded, sideSelection, evalContext, cancellationToken)
+                    : _gateway.RunScreenerTemplateWithSideFramesAsync(universe, loaded, sideSelection, cancellationToken);
             }
             else
             {
                 comparisonSymbols = await _comparisonSymbols.ResolveAsync(TemplateComparisonSymbols(leaves), TemplateArgument, allowUnregistered, warnings, cancellationToken).ConfigureAwait(false);
                 IReadOnlyList<string> symbolsToCompare = comparisonSymbols;
                 run = source.Selection is { } templateSelection
-                    ? universe => _gateway.RunScreenerTemplateOnBarsAsync(universe, loaded, timeFrame, symbolsToCompare, templateSelection, cancellationToken)
-                    : async universe => PlainResult(await _gateway.RunScreenerTemplateAsync(universe, loaded, timeFrame, symbolsToCompare, cancellationToken).ConfigureAwait(false));
+                    ? (universe, evalContext) => evalContext is not null
+                        ? _gateway.RunScreenerTemplateOnBarsAsync(universe, loaded, timeFrame, symbolsToCompare, templateSelection, evalContext, cancellationToken)
+                        : _gateway.RunScreenerTemplateOnBarsAsync(universe, loaded, timeFrame, symbolsToCompare, templateSelection, cancellationToken)
+                    : async (universe, evalContext) => PlainResult(evalContext is not null
+                        ? await _gateway.RunScreenerTemplateAsync(universe, loaded, timeFrame, symbolsToCompare, evalContext, cancellationToken).ConfigureAwait(false)
+                        : await _gateway.RunScreenerTemplateAsync(universe, loaded, timeFrame, symbolsToCompare, cancellationToken).ConfigureAwait(false));
             }
         }
 
@@ -303,18 +315,41 @@ internal sealed class RunScreenerTool : IMcpTool
             warnings.Add("The members of the group are those of today (a group defined by filter rules is resolved on today's stored data), not those on asOfDate.");
         }
 
+        bool needsRsRating = asOf is null
+            && universe.Count > 0
+            && (ScreenerRsRatingInspector.UsesRsRating(leaves.Select(static leaf => leaf.Entry))
+                || (sortSide is not null && ScreenerRsRatingInspector.IsRsRatingColumn(sortSide.Side)));
+        IScreenerEvaluationContext? evaluationContext = asOf is { } asOfDate
+            ? ScreenerEvaluationContext.ForAsOfDate(asOfDate)
+            : needsRsRating
+                ? await _gateway.EvaluateScreenerContextAsync(universe, asOf, cancellationToken).ConfigureAwait(false)
+                : null;
+
+        if (universe.Count > 0)
+        {
+            var breadthKeys = CollectUniverseBreadthKeys(leaves, sortSide, timeFrame, sideFrames, asOf);
+            if (breadthKeys.Count > 0)
+            {
+                evaluationContext = await _gateway.EvaluateUniverseBreadthContextAsync(
+                    breadthKeys,
+                    evaluationContext,
+                    sideFrames ? null : timeFrame,
+                    cancellationToken).ConfigureAwait(false);
+            }
+        }
+
         ScreenerBarsResult screened;
         ScreenerSideFramesResult? framesResult = null;
         if (runSideFrames is not null)
         {
             framesResult = universe.Count == 0
                 ? new ScreenerSideFramesResult(Array.Empty<string>(), Array.Empty<string>(), Array.Empty<ScreenerFrameReport>())
-                : await runSideFrames(universe).ConfigureAwait(false);
+                : await runSideFrames(universe, evaluationContext).ConfigureAwait(false);
             screened = new ScreenerBarsResult(framesResult.Matched, framesResult.SymbolsWithoutDailyBars, Array.Empty<DateOnly>(), 0);
         }
         else
         {
-            screened = universe.Count == 0 ? PlainResult(Array.Empty<string>()) : await run!(universe).ConfigureAwait(false);
+            screened = universe.Count == 0 ? PlainResult(Array.Empty<string>()) : await run!(universe, evaluationContext).ConfigureAwait(false);
         }
 
         IReadOnlyList<string> matched = screened.Matched;
@@ -325,8 +360,8 @@ internal sealed class RunScreenerTool : IMcpTool
         if (sortSide is not null)
         {
             sortValues = sideFrames
-                ? await SortValuesOnSideFrameAsync(matched, sortSide, sideSelection, cancellationToken).ConfigureAwait(false)
-                : await SortValuesAsync(matched, sortSide, sortComparisonSymbols, source, cancellationToken).ConfigureAwait(false);
+                ? await SortValuesOnSideFrameAsync(matched, sortSide, sideSelection, evaluationContext, cancellationToken).ConfigureAwait(false)
+                : await SortValuesAsync(matched, sortSide, sortComparisonSymbols, source, evaluationContext, cancellationToken).ConfigureAwait(false);
             ordered = Rank(sortValues, descending);
         }
         else
@@ -462,7 +497,7 @@ internal sealed class RunScreenerTool : IMcpTool
 
             if (includeValues)
             {
-                WriteValues(writer, leaves, returned, candles!, metadata!, secondary);
+                WriteValues(writer, leaves, returned, candles!, metadata!, secondary, evaluationContext);
             }
 
             writer.WriteEndObject();
@@ -559,6 +594,38 @@ internal sealed class RunScreenerTool : IMcpTool
         }
 
         return (available.OrderBy(symbol => symbol, StringComparer.Ordinal).ToList(), false, null);
+    }
+
+    private static IReadOnlyList<StockAnalyzer.Core.Models.Analysis.UniverseBreadthKey> CollectUniverseBreadthKeys(
+        IReadOnlyList<ScreenerLeaf> leaves,
+        BoundSortSide? sortSide,
+        TimeFrame defaultTimeFrame,
+        bool sideFramesMode,
+        DateOnly? asOfDate)
+    {
+        var keys = new List<StockAnalyzer.Core.Models.Analysis.UniverseBreadthKey>();
+        var seen = new HashSet<StockAnalyzer.Core.Models.Analysis.UniverseBreadthKey>();
+
+        foreach (var key in ScreenerUniverseBreadthInspector.Inspect(leaves.Select(static leaf => leaf.Entry), defaultTimeFrame, sideFramesMode, asOfDate))
+        {
+            if (seen.Add(key))
+            {
+                keys.Add(key);
+            }
+        }
+
+        if (sortSide is not null)
+        {
+            foreach (var key in ScreenerUniverseBreadthInspector.InspectSides(new[] { sortSide.Side }, defaultTimeFrame, sideFramesMode, asOfDate))
+            {
+                if (seen.Add(key))
+                {
+                    keys.Add(key);
+                }
+            }
+        }
+
+        return keys;
     }
 
     /// <summary>The comparison symbols the enabled entries of a saved template name, with the path of the entry side that holds each.</summary>
@@ -668,7 +735,7 @@ internal sealed class RunScreenerTool : IMcpTool
     /// null where it cannot be calculated. One symbol is held at a time.
     /// </summary>
     private async Task<Dictionary<string, decimal?>> SortValuesAsync(
-        IReadOnlyList<string> symbols, BoundSortSide sort, IReadOnlyList<string> comparisonSymbols, BarSource source, CancellationToken cancellationToken)
+        IReadOnlyList<string> symbols, BoundSortSide sort, IReadOnlyList<string> comparisonSymbols, BarSource source, IScreenerEvaluationContext? evaluationContext, CancellationToken cancellationToken)
     {
         int count = HistoryCount(sort.Sizing);
         IScreenerSecondaryCandles? secondary = await LoadSecondaryAsync(source, comparisonSymbols, count, cancellationToken).ConfigureAwait(false);
@@ -681,7 +748,7 @@ internal sealed class RunScreenerTool : IMcpTool
             TickerMetadata metadata = readsMetadata
                 ? await _gateway.GetStoredTickerMetadataAsync(symbol, cancellationToken).ConfigureAwait(false) ?? TickerMetadata.Unknown
                 : TickerMetadata.Unknown;
-            values[symbol] = _extractor.ExtractValueNullable(sort.Side, bars, metadata, secondary);
+            values[symbol] = _extractor.ExtractValueNullable(sort.Side, bars, metadata, secondary, symbol, evaluationContext);
         }
 
         return values;
@@ -692,7 +759,7 @@ internal sealed class RunScreenerTool : IMcpTool
     /// There are no comparison symbols in this scan.
     /// </summary>
     private async Task<Dictionary<string, decimal?>> SortValuesOnSideFrameAsync(
-        IReadOnlyList<string> symbols, BoundSortSide sort, ScreenerBarSelection selection, CancellationToken cancellationToken)
+        IReadOnlyList<string> symbols, BoundSortSide sort, ScreenerBarSelection selection, IScreenerEvaluationContext? evaluationContext, CancellationToken cancellationToken)
     {
         int count = HistoryCount(sort.Sizing);
         TimeFrame frame = ScreenerSideFrames.FrameOf(sort.Side);
@@ -706,7 +773,7 @@ internal sealed class RunScreenerTool : IMcpTool
             TickerMetadata metadata = readsMetadata
                 ? await _gateway.GetStoredTickerMetadataAsync(symbol, cancellationToken).ConfigureAwait(false) ?? TickerMetadata.Unknown
                 : TickerMetadata.Unknown;
-            values[symbol] = _extractor.ExtractValueNullable(onItsBars, bars, metadata);
+            values[symbol] = _extractor.ExtractValueNullable(onItsBars, bars, metadata, null, symbol, evaluationContext);
         }
 
         return values;
@@ -811,7 +878,8 @@ internal sealed class RunScreenerTool : IMcpTool
         IReadOnlyList<string> symbols,
         ValueBars candles,
         IReadOnlyDictionary<string, TickerMetadata?> metadata,
-        IScreenerSecondaryCandles? secondary)
+        IScreenerSecondaryCandles? secondary,
+        IScreenerEvaluationContext? evaluationContext)
     {
         writer.WriteStartArray("comparisons");
         foreach (ScreenerLeaf leaf in leaves)
@@ -832,8 +900,8 @@ internal sealed class RunScreenerTool : IMcpTool
             foreach (ScreenerLeaf leaf in leaves)
             {
                 writer.WriteStartObject(leaf.Id);
-                WriteSideValue(writer, "left", leaf.Entry, leaf.Entry.LeftHand, candles, symbol, meta, secondary, isRight: false);
-                WriteSideValue(writer, "right", leaf.Entry, leaf.Entry.RightHand, candles, symbol, meta, secondary, isRight: true);
+                WriteSideValue(writer, "left", leaf.Entry, leaf.Entry.LeftHand, candles, symbol, meta, secondary, evaluationContext, isRight: false);
+                WriteSideValue(writer, "right", leaf.Entry, leaf.Entry.RightHand, candles, symbol, meta, secondary, evaluationContext, isRight: true);
                 writer.WriteEndObject();
             }
 
@@ -852,6 +920,7 @@ internal sealed class RunScreenerTool : IMcpTool
         string symbol,
         TickerMetadata metadata,
         IScreenerSecondaryCandles? secondary,
+        IScreenerEvaluationContext? evaluationContext,
         bool isRight)
     {
         if (isRight && entry.TargetMode == RightHandTargetMode.NumericValue)
@@ -880,7 +949,7 @@ internal sealed class RunScreenerTool : IMcpTool
             return;
         }
 
-        if (_extractor.ExtractValueNullable(bars.Read(side), bars.Of(symbol, side), metadata, secondary) is { } value)
+        if (_extractor.ExtractValueNullable(bars.Read(side), bars.Of(symbol, side), metadata, secondary, symbol, evaluationContext) is { } value)
         {
             writer.WriteNumber(name, value);
         }

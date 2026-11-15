@@ -555,6 +555,13 @@ public class ScreenerServiceTests : IDisposable
         int manualCount52W = tickers.Count(t => ScreenerValueExtractor.Default.ExtractValueNullable(config52W, candles, t) > 0m);
         Assert.Equal(1, manualCount52W); // Only AAPL (0.5 > 0)
 
+        var evaluationContext = new StockAnalyzer.Core.Models.Screener.ScreenerEvaluationContext(
+            new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["AAPL"] = 82,
+                ["MSFT"] = 45
+            });
+
         // Test 2: Iterate all WatchlistColumnRegistry columns and verify manual count matches ExtractValueNullable count
         foreach (var col in StockAnalyzer.Core.Models.Watchlist.WatchlistColumnRegistry.AllColumns)
         {
@@ -568,8 +575,13 @@ public class ScreenerServiceTests : IDisposable
                 OutputName = col.MemberName
             };
 
-            int countMeta1 = ScreenerValueExtractor.Default.ExtractValueNullable(config, candles, meta1).HasValue ? 1 : 0;
-            int countMeta2 = ScreenerValueExtractor.Default.ExtractValueNullable(config, candles, meta2).HasValue ? 1 : 0;
+            int countMeta1 = ScreenerValueExtractor.Default.ExtractValueNullable(config, candles, meta1, null, "AAPL", evaluationContext).HasValue ? 1 : 0;
+            int countMeta2 = ScreenerValueExtractor.Default.ExtractValueNullable(config, candles, meta2, null, "MSFT", evaluationContext).HasValue ? 1 : 0;
+
+            if (string.Equals(col.MemberName, "RsRating", StringComparison.Ordinal))
+            {
+                Assert.Equal(2, countMeta1 + countMeta2);
+            }
 
             Assert.True(countMeta1 + countMeta2 >= 0, $"Column {col.MemberName} evaluation failed.");
         }
@@ -762,6 +774,13 @@ public class ScreenerServiceTests : IDisposable
             "LastUpdatedUtc", "FetchedAtUtc", "MetadataLastUpdated", "Tag", "Notes", "Reminder", "CustomGroup"
         };
 
+        var evaluationContext = new StockAnalyzer.Core.Models.Screener.ScreenerEvaluationContext(
+            new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["AAPL"] = 82,
+                ["MSFT"] = 45
+            });
+
         foreach (var col in StockAnalyzer.Core.Models.Watchlist.WatchlistColumnRegistry.AllColumns)
         {
             if (stringColumns.Contains(col.MemberName) || col.HeaderKey == "Col_Select")
@@ -774,8 +793,8 @@ public class ScreenerServiceTests : IDisposable
                 OutputName = col.MemberName
             };
 
-            var val1 = ScreenerValueExtractor.Default.ExtractValueNullable(configByDisplayName, candles, metaAAPL);
-            var val2 = ScreenerValueExtractor.Default.ExtractValueNullable(configByDisplayName, candles, metaMSFT);
+            var val1 = ScreenerValueExtractor.Default.ExtractValueNullable(configByDisplayName, candles, metaAAPL, null, "AAPL", evaluationContext);
+            var val2 = ScreenerValueExtractor.Default.ExtractValueNullable(configByDisplayName, candles, metaMSFT, null, "MSFT", evaluationContext);
 
             // Ensure every registered metadata column is correctly resolvable via its UI DisplayName
             Assert.True(val1.HasValue || val2.HasValue, $"Column DisplayName '{col.DisplayName}' (MemberName: {col.MemberName}) failed to extract any value.");

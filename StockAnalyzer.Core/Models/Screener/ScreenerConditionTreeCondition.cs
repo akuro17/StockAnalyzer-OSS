@@ -47,6 +47,22 @@ public sealed class ScreenerConditionTreeCondition : IScreeningCondition
     public ValueTask<bool> IsMetAsync(IReadOnlyList<CandleData> candles, Portfolio.TickerMetadata metadata, IScreenerSecondaryCandles? secondary)
         => ValueTask.FromResult(ScreenerConditionTreeEvaluator.Evaluate(Root, candles, metadata, secondary, _recordLeafMet));
 
+    public ValueTask<bool> IsMetAsync(
+        IReadOnlyList<CandleData> candles,
+        Portfolio.TickerMetadata metadata,
+        IScreenerSecondaryCandles? secondary,
+        string? symbol,
+        IScreenerEvaluationContext? evaluationContext = null)
+        => ValueTask.FromResult(ScreenerConditionTreeEvaluator.Evaluate(Root, candles, metadata, secondary, _recordLeafMet, symbol, evaluationContext));
+
     public ValueTask<bool> IsMetOnBarsAsync(IScreenerBarSet bars, Portfolio.TickerMetadata metadata, IScreenerSecondaryCandles? secondary = null)
         => ValueTask.FromResult(ScreenerConditionTreeEvaluator.EvaluateOnBars(Root, bars, metadata, secondary, _recordLeafMet));
+
+    public ValueTask<bool> IsMetOnBarsAsync(
+        IScreenerBarSet bars,
+        Portfolio.TickerMetadata metadata,
+        IScreenerSecondaryCandles? secondary,
+        string? symbol,
+        IScreenerEvaluationContext? evaluationContext = null)
+        => ValueTask.FromResult(ScreenerConditionTreeEvaluator.EvaluateOnBars(Root, bars, metadata, secondary, _recordLeafMet, symbol, evaluationContext));
 }

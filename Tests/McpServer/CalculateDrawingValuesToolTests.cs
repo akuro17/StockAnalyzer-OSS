@@ -101,6 +101,7 @@ public sealed class CalculateDrawingValuesToolTests : IDisposable
         ["GannBox"] = (p, _) => new GannBoxObject(p[0], p[1]),
         ["SineLine"] = (p, _) => new SineLineObject(p[0], p[1]),
         ["TimeCycles"] = (p, _) => new TimeCyclesObject(p[0], p[1]),
+        ["Pitchfork"] = (p, _) => new PitchforkObject(p[0], p[1], p[2]),
     };
 
     public static TheoryData<string, bool> EveryTool()
@@ -406,6 +407,74 @@ public sealed class CalculateDrawingValuesToolTests : IDisposable
     private const string TwoBarAnchor = "\"anchorMode\":\"RangeEndpoints\",\"anchorBars\":2";
 
     private static readonly string[] PartialBarKeys = { "completeBarsOnly", "referenceDate", "lastBarPeriodEnd", "lastBarPartial", "droppedPartialBar" };
+
+    // ---- (i) WebAiExpansion plan 12 T9 (D-9 A): Pitchfork, the 16th tool, and its pitchforkKind argument ----
+
+    private static string PitchforkPoints => $"\"anchorMode\":\"Explicit\",\"points\":[{{\"date\":\"{DateText(31)}\",\"price\":100.5}},{{\"date\":\"{DateText(60)}\",\"price\":160}},{{\"date\":\"{DateText(50)}\",\"price\":90}}]";
+
+    [Theory]
+    [InlineData("Andrews", PitchforkType.Andrews)]
+    [InlineData("Schiff", PitchforkType.Schiff)]
+    [InlineData("ModifiedSchiff", PitchforkType.ModifiedSchiff)]
+    public async Task Pitchfork_EveryKind_ReturnsExactlyWhatTheGuiObjectReturns(string kind, PitchforkType expectedType)
+    {
+        var dispatcher = await StartAsync();
+
+        JsonElement result = Result(await CallAsync(dispatcher, "Pitchfork", PitchforkPoints, $",\"pitchforkKind\":\"{kind}\",\"evaluationDates\":[\"{DateText(Days - 1)}\"]"));
+
+        ChartPoint[] chartPoints = result.GetProperty("controlPoints").EnumerateArray()
+            .Select(p => new ChartPoint(DateTime.ParseExact(p.GetProperty("date").GetString()!, "yyyy-MM-dd", CultureInfo.InvariantCulture), p.GetProperty("price").GetDecimal()))
+            .ToArray();
+        JsonElement evaluation = Assert.Single(result.GetProperty("evaluations").EnumerateArray().ToArray());
+        DateTime timestamp = DateTime.ParseExact(evaluation.GetProperty("date").GetString()!, "yyyy-MM-dd", CultureInfo.InvariantCulture);
+        decimal? currentPrice = evaluation.GetProperty("currentPrice").ValueKind == JsonValueKind.Null ? null : evaluation.GetProperty("currentPrice").GetDecimal();
+
+        CultureInfo previous = CultureInfo.CurrentCulture;
+        CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo(DrawingValueFormat.CultureName);
+        try
+        {
+            var fork = new PitchforkObject(chartPoints[0], chartPoints[1], chartPoints[2]) { PitchforkType = expectedType };
+            try
+            {
+                var expected = ((IDrawingCalculatedValuesProvider)fork).GetCalculatedValues(timestamp, currentPrice);
+                JsonElement[] actual = evaluation.GetProperty("values").EnumerateArray().ToArray();
+
+                Assert.Equal(4, actual.Length);
+                Assert.Equal(expected.Count, actual.Length);
+                for (int i = 0; i < expected.Count; i++)
+                {
+                    Assert.Equal(expected[i].Key, actual[i].GetProperty("key").GetString());
+                    Assert.Equal(expected[i].FormattedText, actual[i].GetProperty("text").GetString());
+                }
+
+                Assert.Equal(expectedType.ToString(), actual[3].GetProperty("text").GetString());
+            }
+            finally
+            {
+                fork.Dispose();
+            }
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = previous;
+        }
+    }
+
+    [Fact]
+    public async Task PitchforkKind_AndrewsIsTheDefaultAndAcceptedEverywhere_OtherKindsAreRefusedForOtherTools_AndUnknownNamesEverywhere()
+    {
+        var dispatcher = await StartAsync();
+
+        JsonElement withoutKind = Result(await CallAsync(dispatcher, "Pitchfork", PitchforkPoints));
+        JsonElement andrews = Result(await CallAsync(dispatcher, "Pitchfork", PitchforkPoints, ",\"pitchforkKind\":\"Andrews\""));
+        Assert.Equal(withoutKind.GetProperty("evaluations").ToString(), andrews.GetProperty("evaluations").ToString());
+
+        Result(await CallAsync(dispatcher, "TrendLine", TwoBarAnchor, ",\"pitchforkKind\":\"Andrews\""));
+        Assert.Equal(("INVALID_ARGUMENT", "pitchforkKind"), Error(await CallAsync(dispatcher, "TrendLine", TwoBarAnchor, ",\"pitchforkKind\":\"Schiff\"")));
+        Assert.Equal(("INVALID_ARGUMENT", "pitchforkKind"), Error(await CallAsync(dispatcher, "TrendLine", TwoBarAnchor, ",\"pitchforkKind\":\"ModifiedSchiff\"")));
+        Assert.Equal(("INVALID_ARGUMENT", "pitchforkKind"), Error(await CallAsync(dispatcher, "Pitchfork", PitchforkPoints, ",\"pitchforkKind\":\"schiff\"")));
+        Assert.Equal(("INVALID_ARGUMENT", "pitchforkKind"), Error(await CallAsync(dispatcher, "Pitchfork", PitchforkPoints, ",\"pitchforkKind\":\"1\"")));
+    }
 
     [Fact]
     public async Task ShowExtensionsFalse_IsAcceptedForEveryTool_AndTrueIsStillRefusedForOthers()

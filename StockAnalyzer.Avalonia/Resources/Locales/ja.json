@@ -1243,6 +1243,7 @@
   "Col_Tag": "タグ",
   "Col_Notes": "戦略メモ",
   "Col_Reminder": "リマインダー",
+  "Col_RsRating": "RS Rating",
   "Col_EntryPrice": "エントリー価格",
   "Col_TargetPrice": "目標株価",
   "Col_StopLoss": "損切り価格",
@@ -3314,5 +3315,14 @@
   "Banner_StorageReadOnly_ToolTip": "理由: {0}\nフォルダ: {1}\nフォルダの権限を直してから StockAnalyzer を再起動すると、読み取り専用モードを抜けられます。",
   "Banner_StorageReadOnly_Reason_CannotBeCreated": "Data フォルダが存在せず、作成もできません。",
   "Banner_StorageReadOnly_Reason_NotWritable": "Data フォルダにファイルを作成できません。",
-  "ReadOnlyStorage_FeatureDisabled": "読み取り専用モードのため使用できません: この機能は結果を Data フォルダに保存しますが、書き込みできません。フォルダの権限を直してから StockAnalyzer を再起動してください。"
+  "ReadOnlyStorage_FeatureDisabled": "読み取り専用モードのため使用できません: この機能は結果を Data フォルダに保存しますが、書き込みできません。フォルダの権限を直してから StockAnalyzer を再起動してください。",
+  "Param_UniverseGroupId": "母集団 (リスト / フィルター)",
+  "Watermark_UniverseGroupId": "リスト / フィルター",
+  "Param_MetricMode": "計測指標モード",
+  "Enum_MarketBreadthMetricMode_AdRatio": "騰落レシオ (%)",
+  "Enum_MarketBreadthMetricMode_PctAboveMa": "移動平均線上方銘柄比率 (%)",
+  "Enum_MarketBreadthMetricMode_AdLine": "騰落株線",
+  "Enum_MarketBreadthMetricMode_NetNewHighs": "新高値・新安値銘柄数差",
+  "Enum_MarketBreadthMetricMode_Trin": "アームズ・インデックス",
+  "Enum_MarketBreadthMetricMode_Cvi": "累積出来高指数"
 }

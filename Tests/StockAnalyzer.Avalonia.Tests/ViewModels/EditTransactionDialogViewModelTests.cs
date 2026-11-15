@@ -48,28 +48,63 @@ public class EditTransactionDialogViewModelTests
             new EditTransactionDialogViewModel(_mockMarketDataProvider.Object, _dispatcherService, null!));
     }
 
-    [Fact]
-    public async Task Initialize_ShouldLoadAvailableTickersFromProvider()
+    // The suggestion search runs after a 150 ms debounce on a thread-pool thread. A fixed wait of 250 ms left 100 ms of room: when the pool
+    // was busy (a full-suite run executes thousands of tests in parallel) the search came later and the test failed once in several runs
+    // (2026-11-15, "The collection was empty"). The tests wait for the outcome with a generous budget instead.
+    private const int SuggestionBudgetMilliseconds = 10_000;
+    private const int PoolBlockersPerProcessor = 4;
+    private const int PoolBusyMilliseconds = 600;
+
+    private EditTransactionDialogViewModel CreateViewModelWithTickers()
     {
-        var tickers = new List<string> { "AAPL", "MSFT", "GOOG" };
         _mockMarketDataProvider
             .Setup(p => p.GetAvailableTickersAsync())
-            .ReturnsAsync(tickers);
+            .ReturnsAsync(new List<string> { "AAPL", "MSFT", "GOOG" });
+        return new EditTransactionDialogViewModel(_mockMarketDataProvider.Object, _dispatcherService, _mockLocalizationService.Object);
+    }
 
-        // Act
-        var vm = new EditTransactionDialogViewModel(_mockMarketDataProvider.Object, _dispatcherService, _mockLocalizationService.Object);
-        
-        // Wait a short moment for the async Initialization method to complete
-        await Task.Delay(50);
+    [Fact]
+    public void Initialize_ShouldLoadAvailableTickersFromProvider()
+    {
+        var vm = CreateViewModelWithTickers();
 
         // Verify that suggestion search matches appropriately
         vm.Ticker = "A";
-        
-        // Wait a short moment for the debounce/post Task.Delay inside OnTickerChanged
-        await Task.Delay(250);
 
+        Assert.True(SpinWait.SpinUntil(() => vm.Suggestions.Count > 0, TimeSpan.FromMilliseconds(SuggestionBudgetMilliseconds)),
+            "the suggestions did not appear");
         Assert.Single(vm.Suggestions);
         Assert.Equal("AAPL", vm.Suggestions[0]);
+    }
+
+    [Fact]
+    public void Suggestions_StillAppear_WhenEveryThreadPoolThreadIsBusyForAWhile()
+    {
+        // Regression of the intermittent failure above: the debounce continuation cannot run while the pool is held, so a fixed wait that is
+        // shorter than the holding time (here 250 ms against 600 ms) fails, and a wait for the outcome does not.
+        var vm = CreateViewModelWithTickers();
+        using var release = new ManualResetEventSlim();
+        for (int i = 0; i < Environment.ProcessorCount * PoolBlockersPerProcessor; i++)
+        {
+            _ = Task.Run(() => release.Wait());
+        }
+
+        var releaser = new Thread(() => { Thread.Sleep(PoolBusyMilliseconds); release.Set(); });
+        releaser.Start();
+        try
+        {
+            vm.Ticker = "A";
+
+            Assert.True(SpinWait.SpinUntil(() => vm.Suggestions.Count > 0, TimeSpan.FromMilliseconds(SuggestionBudgetMilliseconds)),
+                "the suggestions did not appear");
+            Assert.Single(vm.Suggestions);
+            Assert.Equal("AAPL", vm.Suggestions[0]);
+        }
+        finally
+        {
+            release.Set();
+            releaser.Join();
+        }
     }
 
     [Fact]

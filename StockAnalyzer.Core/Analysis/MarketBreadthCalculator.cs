@@ -61,6 +61,12 @@ public sealed class MarketBreadthParameters
     /// fall on one axis point instead of splitting into two.
     /// </summary>
     public TimeFrame TimeFrame { get; init; } = TimeFrame.D1;
+
+    /// <summary>
+    /// Optional inclusive cutoff date. When set, constituent histories are trimmed to daily bars
+    /// on or before this date before timeframe aggregation so partial W1/MN1 bars cannot leak future days.
+    /// </summary>
+    public DateOnly? EndDate { get; init; }
 }
 
 /// <summary>

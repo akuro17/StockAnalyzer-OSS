@@ -330,7 +330,13 @@ public enum IndicatorType
 
     // WebAiExpansion plan 04: range-based volatility estimators (append-only; Garch11, HurstExponent and Entropy keep their existing members).
     [Description("Parkinson Volatility")] ParkinsonVolatility,
-    [Description("Rogers-Satchell Volatility")] RogersSatchellVolatility
+    [Description("Rogers-Satchell Volatility")] RogersSatchellVolatility,
+
+    // WebAiExpansion plan 09: relative strength (append-only).
+    [Description("Mansfield RS")] MansfieldRS,
+
+    // WebAiExpansion plan 10: universe market breadth indicator (append-only).
+    [Description("Market Breadth")] MarketBreadth
 }
 
 public static class IndicatorTypeExtensions

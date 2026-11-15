@@ -297,7 +297,8 @@ public static class VolumeAnalysis
 
     /// <summary>
     /// Value Area of a filled profile by the rules of <see cref="CalculateValueArea"/>: start at the Point of Control and extend towards the neighbour with the larger
-    /// volume (upper on a tie) until the covered volume reaches (long)(total x <paramref name="valueAreaPercent"/>) or both neighbours are empty.
+    /// volume (upper on a tie) until the covered volume reaches (long)(total x <paramref name="valueAreaPercent"/>) (decimal.Truncate(total x percent) when the total exceeds
+    /// <see cref="long.MaxValue"/>) or both neighbours are empty.
     /// <paramref name="vah"/> is the upper bound of the highest bin included and <paramref name="val"/> the lower bound of the lowest one; (0, 0) for an empty span.
     /// </summary>
     public static void ComputeValueArea(
@@ -321,7 +322,11 @@ public static class VolumeAnalysis
 
         decimal total = 0m;
         for (int i = 0; i < count; i++) total += binVolumes[i];
-        long targetVolume = (long)((long)total * valueAreaPercent);
+        // Up to long.MaxValue the target is exactly the long result of CalculateValueArea; beyond it (Full mode can sum past the long range) the decimal total is kept:
+        // an explicit decimal -> long conversion would throw an OverflowException there.
+        decimal targetVolume = total <= long.MaxValue
+            ? (long)((long)total * valueAreaPercent)
+            : decimal.Truncate(total * (decimal)valueAreaPercent);
 
         int pocIndex = FindPointOfControlIndexFromVolumes(binVolumes);
         decimal currentVolume = binVolumes[pocIndex];

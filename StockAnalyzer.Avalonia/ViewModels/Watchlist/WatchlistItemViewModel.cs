@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using System;
+using System.Globalization;
 using System.Linq;
 using StockAnalyzer.Avalonia.Common;
 using StockAnalyzer.Core.Services.Notes;
@@ -221,6 +222,7 @@ namespace StockAnalyzer.Avalonia.ViewModels.Watchlist
         [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayIsShort)), NotifyPropertyChangedFor(nameof(ToolTipIsShort))] private bool? _isShort;
         [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayIsTPShort)), NotifyPropertyChangedFor(nameof(ToolTipIsTPShort))] private bool? _isTPShort;
         [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayIsSLShort)), NotifyPropertyChangedFor(nameof(ToolTipIsSLShort))] private bool? _isSLShort;
+        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayRsRating))] private int? _rsRating;
 
         public decimal? EntryPrice { get => Long; set => Long = value; }
         public decimal? TargetPrice { get => ExitLong; set => ExitLong = value; }
@@ -317,6 +319,7 @@ namespace StockAnalyzer.Avalonia.ViewModels.Watchlist
         public string DisplayIsShort => IsShort.HasValue ? (IsShort.Value ? "True" : "False") : "-";
         public string DisplayIsTPShort => IsTPShort.HasValue ? (IsTPShort.Value ? "True" : "False") : "-";
         public string DisplayIsSLShort => IsSLShort.HasValue ? (IsSLShort.Value ? "True" : "False") : "-";
+        public string DisplayRsRating => RsRating.HasValue ? RsRating.Value.ToString(CultureInfo.InvariantCulture) : "-";
 
         public string ToolTipIsLong => GetSignalToolTip(StockAnalyzer.Core.Models.Screener.SignalTargetType.Long, IsLong);
         public string ToolTipIsTPLong => GetSignalToolTip(StockAnalyzer.Core.Models.Screener.SignalTargetType.ExitLong, IsTPLong);
@@ -972,6 +975,7 @@ namespace StockAnalyzer.Avalonia.ViewModels.Watchlist
             "IsShort" => IsShort,
             "IsTPShort" => IsTPShort,
             "IsSLShort" => IsSLShort,
+            "RsRating" or "RS Rating" => RsRating,
             _ => DynamicIndicatorValues.TryGetValue(memberName, out var dynamicVal)
                 ? (dynamicVal as IComparable ?? (dynamicVal is MetricValue mv ? (mv.Status == MetricStatus.Valid ? mv.Value : (mv.Status == MetricStatus.PositiveInfinity ? decimal.MaxValue : null)) : null))
                 : GetRawValueReflectionFallback(memberName)

@@ -95,13 +95,15 @@ namespace StockAnalyzer.Core.Models.Indicators.Volume
             {
                 var candle = candles[i];
                 decimal typicalPrice = (candle.High + candle.Low + candle.Close) / 3;
-                cumulativePriceVolume += typicalPrice * candle.Volume;
-                cumulativeVolume += candle.Volume;
+                // A negative volume is invalid data: the bar counts as volume 0 (the rule of IndicatorCalculationHelper.CalculateRollingVwap).
+                long volume = Math.Max(0L, candle.Volume);
+                cumulativePriceVolume += typicalPrice * volume;
+                cumulativeVolume += volume;
                 if (ShowBands && !bandsOverflowed)
                 {
                     try
                     {
-                        cumulativePriceSquaredVolume += typicalPrice * typicalPrice * candle.Volume;
+                        cumulativePriceSquaredVolume += typicalPrice * typicalPrice * volume;
                     }
                     catch (OverflowException)
                     {

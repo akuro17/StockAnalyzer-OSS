@@ -48,6 +48,10 @@ public static class LayoutConstants
     public const double IndicatorFormRowSpacing = 12.0;
     public const double IndicatorFormLabelInputSpacing = 4.0;
     public const double IndicatorFormControlHeight = 30.0;
+    public const double IndicatorFormInlineComboWidth = 140.0;
+    public const double IndicatorFormInlineComboMinWidth = 220.0;
+    public const double IndicatorFormUniverseSelectorWidth = 220.0;
+    public const double IndicatorFormAutoCompleteMaxDropDownHeight = 240.0;
     public const int IndicatorFormMaxColumns = 2;
 
     // Layout Clamping Boundaries

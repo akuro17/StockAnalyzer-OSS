@@ -493,7 +493,17 @@ internal sealed class ScreenerConditionBinder
                         "It holds descriptive text or a value the screener cannot read reliably; sa_get_capabilities with includeScreenerCatalog true lists the usable columns and unavailableColumns.");
                 }
 
-                return (ScreenerCatalog.ColumnSide(item, offset), ScreenerCatalog.IsTextColumn(item.ShortName));
+                ScreenerIndicatorSideConfig columnSide = ScreenerCatalog.ColumnSide(item, offset);
+                if (offset > 0 && ScreenerRsRatingInspector.IsRsRatingColumn(columnSide))
+                {
+                    throw new ToolException(
+                        ToolErrorCodes.InvalidArgument,
+                        $"Column '{item.ShortName}' is a current daily snapshot metric and does not support offset > 0.",
+                        $"{path}.offset",
+                        "Omit offset or set offset to 0 when referencing RS Rating.");
+                }
+
+                return (columnSide, ScreenerCatalog.IsTextColumn(item.ShortName));
             }
 
             default:
@@ -537,6 +547,8 @@ internal sealed class ScreenerConditionBinder
             cross.ComparisonSymbol = SymbolResolver.Canonical(cross.ComparisonSymbol, symbolPath);
             state.ComparisonSymbols.Add(new ScreenerComparisonSymbol(cross.ComparisonSymbol, symbolPath));
         }
+
+        IndicatorParameterRules.RequireUniverseGroupId(resolved.Type.ToString(), resolved.Settings.ParameterObject, path);
 
         return new ScreenerIndicatorSideConfig
         {

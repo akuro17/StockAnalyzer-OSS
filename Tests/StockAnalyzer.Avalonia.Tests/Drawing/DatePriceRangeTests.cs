@@ -48,7 +48,7 @@ public sealed class DatePriceRangeTests
             t => t.Tool == DrawingTool.DatePriceRange && t.NameKey == "DrawTool_DatePriceRange");
 
         Assert.False(DrawingValueCatalog.TryGet("DatePriceRange", out _));
-        Assert.Equal(15, DrawingValueCatalog.All.Count);
+        Assert.Equal(16, DrawingValueCatalog.All.Count); // 15 + Pitchfork (WebAiExpansion plan 12 T9)
     }
 
     [Fact]

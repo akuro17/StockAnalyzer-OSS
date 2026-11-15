@@ -41,15 +41,6 @@ public static class PitchforkValues
         return new DrawingAnchor(new DateTime(targetTicks, median.Time.Kind), targetPrice);
     }
 
-    /// <summary>Translates <paramref name="origin"/> by the median-line vector (M - A) in chart coordinates.</summary>
-    public static DrawingAnchor OffsetByMedianVector(DrawingAnchor origin, DrawingAnchor anchor, DrawingAnchor median)
-    {
-        long deltaTicks = median.Time.Ticks - anchor.Time.Ticks;
-        long targetTicks = ClampTicks(origin.Time.Ticks + deltaTicks);
-        decimal targetPrice = origin.Price + (median.Price - anchor.Price);
-        return new DrawingAnchor(new DateTime(targetTicks, origin.Time.Kind), targetPrice);
-    }
-
     private static long ClampTicks(long ticks)
         => Math.Clamp(ticks, DateTime.MinValue.Ticks, DateTime.MaxValue.Ticks);
 

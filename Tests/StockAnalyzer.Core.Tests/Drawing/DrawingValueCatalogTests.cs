@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using StockAnalyzer.Core.Drawing;
+using StockAnalyzer.Core.Drawing.Values;
 using StockAnalyzer.Core.Models;
 using Xunit;
 
@@ -12,13 +13,13 @@ public sealed class DrawingValueCatalogTests
     {
         "TrendLine", "Ray", "HorizontalLine", "VerticalLine", "Arrow", "PriceLabel",
         "FibonacciRetracement", "FibonacciFan", "FibonacciExpansion", "FibonacciChannel", "ParallelChannel",
-        "GannFan", "GannBox", "SineLine", "TimeCycles",
+        "GannFan", "GannBox", "SineLine", "TimeCycles", "Pitchfork",
     };
 
-    private static readonly int[] ExpectedPointCounts = { 2, 2, 1, 1, 2, 1, 2, 2, 3, 3, 3, 2, 2, 2, 2 };
+    private static readonly int[] ExpectedPointCounts = { 2, 2, 1, 1, 2, 1, 2, 2, 3, 3, 3, 2, 2, 2, 2, 3 };
 
     [Fact]
-    public void All_HoldsTheFifteenToolsOfTheSpecificationInOrder_WithUniqueNames()
+    public void All_HoldsTheSixteenToolsOfTheSpecificationInOrder_WithUniqueNames()
     {
         Assert.Equal(ExpectedNames, DrawingValueCatalog.All.Select(d => d.Name).ToArray());
         Assert.Equal(ExpectedPointCounts, DrawingValueCatalog.All.Select(d => d.PointCount).ToArray());
@@ -32,13 +33,15 @@ public sealed class DrawingValueCatalogTests
         Assert.Equal("FibonacciRetracement", found.Name);
 
         Assert.False(DrawingValueCatalog.TryGet("fibonacciretracement", out _));
-        Assert.False(DrawingValueCatalog.TryGet("Pitchfork", out _));
+        Assert.True(DrawingValueCatalog.TryGet("Pitchfork", out DrawingValueDescriptor pitchfork));
+        Assert.Equal(3, pitchfork.PointCount);
+        Assert.False(DrawingValueCatalog.TryGet("pitchfork", out _));
         Assert.False(DrawingValueCatalog.TryGet("", out _));
         Assert.False(DrawingValueCatalog.TryGet(null, out _));
     }
 
     [Fact]
-    public void EveryDescriptor_CalculatesWithItsOwnPointCount_AndOnlyFibonacciRetracementReadsTheExtensionOption()
+    public void EveryDescriptor_CalculatesWithItsOwnPointCount_AndOnlyFibonacciRetracementReadsTheExtensionOption_AndOnlyPitchforkReadsTheKind()
     {
         var t1 = new DateTime(2026, 1, 1);
         var anchors = new[]
@@ -65,6 +68,19 @@ public sealed class DrawingValueCatalogTests
             else
             {
                 Assert.Equal(plainValues, extendedValues);
+            }
+
+            var schiff = plain with { Options = new DrawingValueOptions(PitchforkKind: PitchforkKind.Schiff) };
+            var schiffValues = descriptor.Calculate(schiff);
+            if (descriptor.Name == "Pitchfork")
+            {
+                Assert.NotEqual(plainValues, schiffValues);
+                Assert.Equal("Schiff", schiffValues.Single(v => v.Key == "ForkType").FormattedText);
+                Assert.Equal("Andrews", plainValues.Single(v => v.Key == "ForkType").FormattedText);
+            }
+            else
+            {
+                Assert.Equal(plainValues, schiffValues);
             }
         }
     }

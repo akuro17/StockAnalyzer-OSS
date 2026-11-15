@@ -88,7 +88,7 @@ public sealed class ElliottWaveTests
             t => t.Tool == DrawingTool.ElliottWave && t.NameKey == "DrawTool_ElliottWave");
 
         Assert.False(DrawingValueCatalog.TryGet("ElliottWave", out _));
-        Assert.Equal(15, DrawingValueCatalog.All.Count);
+        Assert.Equal(16, DrawingValueCatalog.All.Count); // 15 + Pitchfork (WebAiExpansion plan 12 T9)
         Assert.Contains(nameof(ElliottWaveObject), ChartObjectTypeRegistry.GetRegisteredTypes().Keys);
     }
 

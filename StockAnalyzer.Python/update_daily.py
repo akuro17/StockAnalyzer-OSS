@@ -2,7 +2,9 @@ import os
 import logging
 import datetime
 import polars as pl
-from data_provider import StockDataProvider
+from data_provider import (
+    StockDataProvider, CORPORATE_ACTION_COLUMNS, DAILY_COLUMNS, PRICE_COLUMNS, STOCK_SPLITS_COLUMN, WHOLE_HISTORY_START_TS,
+)
 from symbol_validator import is_well_formed_ticker
 import argparse
 import json
@@ -30,13 +32,163 @@ def ensure_directories():
         os.makedirs(DATA_ROOT)
         logging.info(f"Created data directory: {DATA_ROOT}")
 
+def conform_corporate_action_columns(frame):
+    """Give a daily frame the three corporate-action columns as Float64.
+
+    A column the frame lacks (a file stored before these columns existed) is added as null: null means "not fetched",
+    0.0 means "fetched, no event". An existing column is only cast. Price and volume columns are never touched.
+    """
+    return frame.with_columns([
+        pl.col(c).cast(pl.Float64) if c in frame.columns else pl.lit(None).cast(pl.Float64).alias(c)
+        for c in CORPORATE_ACTION_COLUMNS
+    ])
+
+
+def normalize_downloaded_frame(df_pd):
+    """Provider pandas frame -> storage frame: null dates/closes dropped, price columns Float32, volume Int64,
+    corporate-action columns Float64. The one definition shared by the incremental and the split re-sync fetch."""
+    frame = pl.from_pandas(df_pd)
+
+    # Filter out null dates or close prices
+    frame = frame.filter(pl.col("date").is_not_null() & pl.col("close").is_not_null())
+
+    frame = frame.with_columns([
+        pl.col("date").cast(pl.Date),
+        pl.col("open").fill_null(pl.col("close")).cast(pl.Float32),
+        pl.col("high").fill_null(pl.col("close")).cast(pl.Float32),
+        pl.col("low").fill_null(pl.col("close")).cast(pl.Float32),
+        pl.col("close").cast(pl.Float32),
+        pl.col("volume").fill_null(0).fill_nan(0).cast(pl.Int64)
+    ])
+    return conform_corporate_action_columns(frame)
+
+
+def needs_split_resync(existing_df, df_new):
+    """True when the fetched rows hold a split (stock_splits > 0) that the stored file has not recorded.
+
+    "Recorded" = the stored file has a row on that date whose stock_splits equals the fetched value. A stored file without
+    the column (or with null there) has recorded nothing. Without a stored file there is nothing to re-sync.
+    """
+    if existing_df is None or existing_df.is_empty() or STOCK_SPLITS_COLUMN not in df_new.columns:
+        return False
+    events = df_new.filter(pl.col(STOCK_SPLITS_COLUMN) > 0).select("date", STOCK_SPLITS_COLUMN)
+    if events.is_empty():
+        return False
+    if STOCK_SPLITS_COLUMN not in existing_df.columns:
+        return True
+    recorded = existing_df.select("date", STOCK_SPLITS_COLUMN)
+    unrecorded = events.join(recorded, on="date", how="left", suffix="_stored").filter(
+        pl.col(f"{STOCK_SPLITS_COLUMN}_stored").is_null()
+        | (pl.col(f"{STOCK_SPLITS_COLUMN}_stored") != pl.col(STOCK_SPLITS_COLUMN))
+    )
+    return not unrecorded.is_empty()
+
+
+def fetch_split_resync_frame(provider, symbol, existing_df, delay=None):
+    """Whole history cut at the OLDEST stored date, or None (a warning is logged) when the stored file must stay as it is.
+
+    The whole history is requested (not "from the oldest stored date"): a stored file that starts before 1970 would need a
+    negative timestamp, which the provider cannot convert on Windows. The fetched span is cut at the oldest stored date so the
+    rewritten file covers the same span as before.
+    """
+    oldest = existing_df.select(pl.col("date").min()).item()
+    try:
+        df_pd = provider.get_daily_data(symbol, start_ts=WHOLE_HISTORY_START_TS, delay=delay)
+    except Exception as e:
+        logging.warning(f"{symbol}: Split resync failed ({e}); stored file left unchanged")
+        return None
+    if df_pd is None or df_pd.empty:
+        logging.warning(f"{symbol}: Split resync failed (no data returned); stored file left unchanged")
+        return None
+    frame = normalize_downloaded_frame(df_pd).filter(pl.col("date") >= oldest).unique(subset=["date"], keep="last").sort("date")
+    if frame.is_empty() or frame.select(pl.col("date").min()).item() > oldest:
+        logging.warning(f"{symbol}: Split resync skipped: provider history starts later than stored history")
+        return None
+    logging.info(f"{symbol}: Split resync fetched {frame.height} rows from {frame.select(pl.col('date').min()).item()} "
+                 f"(stored: {existing_df.height} rows from {oldest})")
+    return frame
+
+
+# Safety bound of the split re-sync (an input contract the code guarantees, not a tunable: no setting may widen it).
+# A re-sync replaces the whole stored span, so a provider answer that lacks stored days would silently delete history.
+# The re-sync is refused when more stored days are missing from the fetched history than this share of the stored days
+# (owner decision D-08-12 = B, 2026-11-15; measured 2026-11-15: 0 missing days in all 26 stored files).
+# Integer percent and integer division only: a floating-point share (100 * 0.01) can round to a wrong whole number.
+RESYNC_MAX_MISSING_PERCENT = 1
+PERCENT_DENOMINATOR = 100
+# How many of the missing days a warning names (the line stays short however many days are missing).
+RESYNC_LOG_MISSING_EXAMPLES = 3
+
+
+def as_calendar_days(dates):
+    """Unique, ascending calendar days (pl.Date) of a date or datetime Series.
+
+    A datetime is reduced with `.dt.date()`: the time of day is dropped, and a time-zone-aware value keeps the day of its OWN zone
+    (`cast(pl.Date)` would give the UTC day, so Tokyo midnight would become the previous day). A date Series is used as it is.
+    """
+    days = dates if dates.dtype == pl.Date else dates.dt.date()
+    return days.drop_nulls().unique().sort()
+
+
+def missing_stored_days(stored_dates, fetched_dates):
+    """Calendar days present in the stored history and absent from the fetched history, ascending (a pl.Series of dates)."""
+    stored = as_calendar_days(stored_dates).to_frame("date")
+    fetched = as_calendar_days(fetched_dates).to_frame("date")
+    # A join does not promise an output order; the ascending order is part of this function's contract (first / min / max rely on it).
+    return stored.join(fetched, on="date", how="anti").get_column("date").sort()
+
+
+def allowed_missing_days(stored_days):
+    """Missing stored days a re-sync may still replace: the share RESYNC_MAX_MISSING_PERCENT of the stored days, rounded down."""
+    return stored_days * RESYNC_MAX_MISSING_PERCENT // PERCENT_DENOMINATOR
+
+
+def describe_missing_days(missing, stored_count, allowed):
+    """One-line problem text: counts, the span of the missing days and the first few of them."""
+    first = ", ".join(day.isoformat() for day in missing.head(RESYNC_LOG_MISSING_EXAMPLES).to_list())
+    return (f"stored days missing from the fetched history: {missing.len()} of {stored_count} (allowed {allowed}); "
+            f"missing {missing.min().isoformat()}..{missing.max().isoformat()}, first {first}")
+
+
+def validate_resync_file(path, stored_dates):
+    """Read the written temp file back; return the list of problems (empty = safe to swap in).
+
+    stored_dates: the dates of the stored file that the written file is about to replace.
+    """
+    frame = pl.read_parquet(path)
+    problems = []
+    if frame.columns != list(DAILY_COLUMNS):
+        return [f"columns are {frame.columns}"]
+    if any(frame.schema[c] != pl.Float32 for c in PRICE_COLUMNS):
+        problems.append("price columns are not Float32")
+    if frame.schema["volume"] != pl.Int64:
+        problems.append("volume is not Int64")
+    if any(frame.schema[c] != pl.Float64 for c in CORPORATE_ACTION_COLUMNS):
+        problems.append("corporate-action columns are not Float64")
+    if frame.is_empty():
+        return problems + ["no rows"]
+    dates = frame["date"]
+    if dates.null_count() or frame["close"].null_count():
+        problems.append("null date or close")
+    if not dates.is_sorted() or dates.n_unique() != frame.height:
+        problems.append("dates are not strictly increasing")
+    stored_days = as_calendar_days(stored_dates)
+    if dates.min() > stored_days.min():
+        problems.append("history starts later than the stored file")
+    missing = missing_stored_days(stored_days, dates)
+    allowed = allowed_missing_days(stored_days.len())
+    if missing.len() > allowed:
+        problems.append(describe_missing_days(missing, stored_days.len(), allowed))
+    return problems
+
+
 def update_ticker(provider, symbol, delay=None, start_period=5, full_history=False, force_period=False):
     if not is_well_formed_ticker(symbol):
         logging.error(f"Skipping invalid ticker symbol: {symbol!r}")
         return
     file_path = os.path.join(DATA_ROOT, f"{symbol}.parquet")
     
-    start_ts = 0
+    start_ts = WHOLE_HISTORY_START_TS
     existing_df = None
     
     if os.path.exists(file_path):
@@ -50,7 +202,7 @@ def update_ticker(provider, symbol, delay=None, start_period=5, full_history=Fal
         except Exception as e:
             logging.error(f"{symbol}: Error reading existing parquet: {e}")
     
-    if (start_ts == 0 or force_period) and not full_history:
+    if (start_ts == WHOLE_HISTORY_START_TS or force_period) and not full_history:
         now = datetime.datetime.now(datetime.timezone.utc)
         start_year = now.year - start_period
         start_date = datetime.datetime(start_year, 1, 1, tzinfo=datetime.timezone.utc)
@@ -65,24 +217,22 @@ def update_ticker(provider, symbol, delay=None, start_period=5, full_history=Fal
         logging.info(f"{symbol}: No new data found.")
         return
 
-    df_new = pl.from_pandas(df_new_pd)
-    
-    # Filter out null dates or close prices
-    df_new = df_new.filter(pl.col("date").is_not_null() & pl.col("close").is_not_null())
+    df_new = normalize_downloaded_frame(df_new_pd)
 
-    df_new = df_new.with_columns([
-        pl.col("date").cast(pl.Date),
-        pl.col("open").fill_null(pl.col("close")).cast(pl.Float32),
-        pl.col("high").fill_null(pl.col("close")).cast(pl.Float32),
-        pl.col("low").fill_null(pl.col("close")).cast(pl.Float32),
-        pl.col("close").cast(pl.Float32),
-        pl.col("volume").fill_null(0).fill_nan(0).cast(pl.Int64)
-    ])
-
+    resync_stored_dates = None  # set only for a split re-sync (the dates it replaces): the extra checks before the swap apply to it alone
     if existing_df is not None:
         # Sanitize existing_df just in case
         existing_df = existing_df.filter(pl.col("date").is_not_null() & pl.col("close").is_not_null())
-        if force_period and not full_history:
+        # A file stored before the corporate-action columns existed gets them as null before any concat.
+        existing_df = conform_corporate_action_columns(existing_df)
+        if needs_split_resync(existing_df, df_new):
+            # A split the file has not recorded: rows stored before it are on the old scale, so replace the whole stored span.
+            df_combined = fetch_split_resync_frame(provider, symbol, existing_df, delay)
+            if df_combined is None:
+                return
+            resync_stored_dates = existing_df["date"]
+            action = "Re-synced (Split)"
+        elif force_period and not full_history:
             now = datetime.datetime.now(datetime.timezone.utc)
             start_year = now.year - start_period
             cutoff_date = datetime.date(start_year, 1, 1)
@@ -101,7 +251,21 @@ def update_ticker(provider, symbol, delay=None, start_period=5, full_history=Fal
     try:
         tmp_path = f"{file_path}.tmp"
         df_combined.write_parquet(tmp_path, compression="zstd")
-        os.replace(tmp_path, file_path)
+        if resync_stored_dates is not None:
+            problems = validate_resync_file(tmp_path, resync_stored_dates)
+            if problems:
+                logging.warning(f"{symbol}: Split resync skipped: written file failed validation ({'; '.join(problems)}); stored file left unchanged")
+                os.remove(tmp_path)
+                return
+        try:
+            os.replace(tmp_path, file_path)
+        except PermissionError as e:
+            if resync_stored_dates is None:
+                raise
+            # The stored file is open elsewhere. No retry: the split stays unrecorded, so the next update detects it again.
+            logging.warning(f"{symbol}: Split resync skipped: stored file is in use ({e}); stored file left unchanged")
+            os.remove(tmp_path)
+            return
         logging.info(f"{symbol}: {action} successfully (Atomic). Total rows: {len(df_combined)}")
 
         # Update 52-week high/low in metadata parquet file upon time-series update

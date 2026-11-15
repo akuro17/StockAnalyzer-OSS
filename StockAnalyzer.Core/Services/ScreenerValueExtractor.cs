@@ -3,8 +3,10 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using StockAnalyzer.Core.Analysis;
 using StockAnalyzer.Core.Interfaces;
 using StockAnalyzer.Core.Models;
+using StockAnalyzer.Core.Models.Analysis;
 using StockAnalyzer.Core.Models.ElliottWave;
 using StockAnalyzer.Core.Models.GeometricPattern;
 using StockAnalyzer.Core.Models.HarmonicPattern;
@@ -65,6 +67,71 @@ public class ScreenerValueExtractor : IScreenerValueExtractor
 
         /// <summary>True when the type cannot be copied shallowly; every evaluation then builds its default as before (fresh instance + GetDefaultSettings).</summary>
         public bool UseFreshInstance { get; init; }
+    }
+
+    /// <summary>
+    /// Builds a configured parameter object for <paramref name="type"/> by cloning its default prototype
+    /// and applying <paramref name="parameters"/>. Shared with <see cref="ScreenerUniverseBreadthInspector"/>.
+    /// </summary>
+    internal CoreIndicatorParameterBase? CreateConfiguredParameterObject(
+        IndicatorType type,
+        IReadOnlyDictionary<string, object> parameters)
+    {
+        var parameterObject = GetDefaultParameterObject(type);
+        if (parameterObject == null || parameters == null || parameters.Count == 0)
+        {
+            return parameterObject;
+        }
+
+        ApplyParametersToObject(parameterObject, parameters);
+        return parameterObject;
+    }
+
+    private static void ApplyParametersToObject(
+        CoreIndicatorParameterBase parameterObject,
+        IReadOnlyDictionary<string, object> parameters)
+    {
+        var paramType = parameterObject.GetType();
+        foreach (var kvp in parameters)
+        {
+            var prop = GetParameterProperty(paramType, kvp.Key);
+            if (prop != null && prop.CanWrite && kvp.Value != null)
+            {
+                object? rawValue = UnwrapJsonElement(kvp.Value, prop.PropertyType);
+                if (rawValue == null)
+                {
+                    continue;
+                }
+
+                object converted = prop.PropertyType.IsEnum
+                    ? (rawValue is string enumText
+                        ? Enum.Parse(prop.PropertyType, enumText, ignoreCase: true)
+                        : Enum.ToObject(prop.PropertyType, Convert.ToInt32(rawValue)))
+                    : Convert.ChangeType(rawValue, prop.PropertyType);
+                prop.SetValue(parameterObject, converted);
+            }
+        }
+    }
+
+    private static object? UnwrapJsonElement(object rawValue, Type targetType)
+    {
+        if (rawValue is not System.Text.Json.JsonElement jsonElem)
+        {
+            return rawValue;
+        }
+
+        if (jsonElem.ValueKind == System.Text.Json.JsonValueKind.Number)
+        {
+            if ((targetType == typeof(int) || targetType.IsEnum) && jsonElem.TryGetInt32(out int iVal)) return iVal;
+            if (targetType == typeof(double) && jsonElem.TryGetDouble(out double dVal)) return dVal;
+            if (targetType == typeof(decimal) && jsonElem.TryGetDecimal(out decimal decVal)) return decVal;
+            if (targetType == typeof(long) && jsonElem.TryGetInt64(out long lVal)) return lVal;
+            return jsonElem.GetDouble();
+        }
+
+        if (jsonElem.ValueKind == System.Text.Json.JsonValueKind.String) return jsonElem.GetString();
+        if (jsonElem.ValueKind is System.Text.Json.JsonValueKind.True or System.Text.Json.JsonValueKind.False) return jsonElem.GetBoolean();
+        return null;
     }
 
     /// <summary>
@@ -210,6 +277,16 @@ public class ScreenerValueExtractor : IScreenerValueExtractor
     /// no value), which is what every caller that does not pass it gets.
     /// </summary>
     public decimal? ExtractValueNullable(ScreenerIndicatorSideConfig? config, IReadOnlyList<CandleData> candles, TickerMetadata metadata, IScreenerSecondaryCandles? secondary)
+        => ExtractValueNullable(config, candles, metadata, secondary, null, null);
+
+    /// <inheritdoc />
+    public decimal? ExtractValueNullable(
+        ScreenerIndicatorSideConfig? config,
+        IReadOnlyList<CandleData> candles,
+        TickerMetadata metadata,
+        IScreenerSecondaryCandles? secondary,
+        string? symbol,
+        IScreenerEvaluationContext? evaluationContext = null)
     {
         if (config == null || candles == null || candles.Count == 0) return null;
 
@@ -218,6 +295,11 @@ public class ScreenerValueExtractor : IScreenerValueExtractor
         // Delegate Column fundamental & OHLC metric extraction directly without heavy allocations
         if (config.CategoryType == ScreenerItemCategoryType.Column)
         {
+            if (ScreenerRsRatingInspector.IsRsRatingColumn(config))
+            {
+                return config.Offset == 0 ? evaluationContext?.GetRsRating(symbol) : null;
+            }
+
             // A value read from the bar series is missing when its bar does not exist; fundamentals ignore the Offset.
             if (hasBar && TryGetColumnOhlcValue(config, candles[targetIdx], targetIdx, candles, out decimal ohlcVal))
                 return ohlcVal;
@@ -230,7 +312,7 @@ public class ScreenerValueExtractor : IScreenerValueExtractor
         if (!hasBar) return null;
 
         // For Indicator/Criteria evaluation, convert to CoreCandleData list
-        return ExtractValueNullable(config, ToCoreCandles(candles), metadata, secondary);
+        return ExtractValueNullable(config, ToCoreCandles(candles), metadata, secondary, symbol, evaluationContext);
     }
 
     // The conversion of the candle list the previous call on this thread converted. A symbol's conditions are evaluated one after another on one thread
@@ -279,7 +361,17 @@ public class ScreenerValueExtractor : IScreenerValueExtractor
 
     /// <inheritdoc cref="ExtractValueNullable(ScreenerIndicatorSideConfig?, IReadOnlyList{CandleData}, TickerMetadata, IScreenerSecondaryCandles?)"/>
     public decimal? ExtractValueNullable(ScreenerIndicatorSideConfig? config, IReadOnlyList<CoreCandleData> candles, TickerMetadata metadata, IScreenerSecondaryCandles? secondary)
-        => ExtractCore(config, candles, metadata, secondary, sideFrameBars: false);
+        => ExtractCore(config, candles, metadata, secondary, sideFrameBars: false, symbol: null, evaluationContext: null);
+
+    /// <inheritdoc />
+    public decimal? ExtractValueNullable(
+        ScreenerIndicatorSideConfig? config,
+        IReadOnlyList<CoreCandleData> candles,
+        TickerMetadata metadata,
+        IScreenerSecondaryCandles? secondary,
+        string? symbol,
+        IScreenerEvaluationContext? evaluationContext = null)
+        => ExtractCore(config, candles, metadata, secondary, sideFrameBars: false, symbol: symbol, evaluationContext: evaluationContext);
 
     /// <summary>
     /// The value of a side whose <paramref name="candlesOfSideFrame"/> are the bars of the side's OWN time frame (a weekly side gets weekly bars). The result is the one of
@@ -287,10 +379,23 @@ public class ScreenerValueExtractor : IScreenerValueExtractor
     /// (an indicator side with a time frame other than D1 has no value) is not applied, and two sides that the bars of another frame cannot serve have no value:
     /// an indicator that compares two tickers (the comparison symbol's bars are daily) and AnchoredVWAP (its anchor date is not defined against a weekly or monthly bar stamp).
     /// </summary>
-    public decimal? ExtractValueNullableOnSideFrame(ScreenerIndicatorSideConfig? config, IReadOnlyList<CoreCandleData> candlesOfSideFrame, TickerMetadata metadata, IScreenerSecondaryCandles? secondary)
-        => ExtractCore(config, candlesOfSideFrame, metadata, secondary, sideFrameBars: true);
+    public decimal? ExtractValueNullableOnSideFrame(
+        ScreenerIndicatorSideConfig? config,
+        IReadOnlyList<CoreCandleData> candlesOfSideFrame,
+        TickerMetadata metadata,
+        IScreenerSecondaryCandles? secondary,
+        string? symbol = null,
+        IScreenerEvaluationContext? evaluationContext = null)
+        => ExtractCore(config, candlesOfSideFrame, metadata, secondary, sideFrameBars: true, symbol: symbol, evaluationContext: evaluationContext);
 
-    private decimal? ExtractCore(ScreenerIndicatorSideConfig? config, IReadOnlyList<CoreCandleData> candles, TickerMetadata metadata, IScreenerSecondaryCandles? secondary, bool sideFrameBars)
+    private decimal? ExtractCore(
+        ScreenerIndicatorSideConfig? config,
+        IReadOnlyList<CoreCandleData> candles,
+        TickerMetadata metadata,
+        IScreenerSecondaryCandles? secondary,
+        bool sideFrameBars,
+        string? symbol,
+        IScreenerEvaluationContext? evaluationContext)
     {
         if (config == null || candles == null || candles.Count == 0) return null;
 
@@ -298,6 +403,11 @@ public class ScreenerValueExtractor : IScreenerValueExtractor
 
         if (config.CategoryType == ScreenerItemCategoryType.Column)
         {
+            if (ScreenerRsRatingInspector.IsRsRatingColumn(config))
+            {
+                return config.Offset == 0 ? evaluationContext?.GetRsRating(symbol) : null;
+            }
+
             if (hasBar && TryGetColumnOhlcValue(config, candles[targetIdx], targetIdx, candles, out decimal ohlcVal))
                 return ohlcVal;
             if (!hasBar && NamesCandleValue(config))
@@ -522,37 +632,9 @@ public class ScreenerValueExtractor : IScreenerValueExtractor
                 {
                     try
                     {
-                        // The default parameters come from a fresh instance: GetDefaultSettings seeds the parameter object's Period from the instance's
-                        // CURRENT Period, and the cached instance still holds the Period an earlier condition on this thread configured. A side that
-                        // names parameters but no Period would otherwise inherit it.
-                        // The default parameter object is a copy of the per-type prototype built once from a fresh instance (see GetDefaultParameterObject),
-                        // which is the same object content as a new GetDefaultSettings() call gives.
-                        var parameterObject = GetDefaultParameterObject(config.IndicatorType);
+                        var parameterObject = CreateConfiguredParameterObject(config.IndicatorType, config.Parameters);
                         if (parameterObject != null)
                         {
-                            var paramType = parameterObject.GetType();
-                            foreach (var kvp in config.Parameters)
-                            {
-                                var prop = GetParameterProperty(paramType, kvp.Key);
-                                if (prop != null && prop.CanWrite && kvp.Value != null)
-                                {
-                                    object? rawValue = kvp.Value;
-                                    if (rawValue is System.Text.Json.JsonElement jsonElem)
-                                    {
-                                        if (jsonElem.ValueKind == System.Text.Json.JsonValueKind.Number)
-                                        {
-                                            if (prop.PropertyType == typeof(int) && jsonElem.TryGetInt32(out int iVal)) rawValue = iVal;
-                                            else if (prop.PropertyType == typeof(double) && jsonElem.TryGetDouble(out double dVal)) rawValue = dVal;
-                                            else if (prop.PropertyType == typeof(decimal) && jsonElem.TryGetDecimal(out decimal decVal)) rawValue = decVal;
-                                            else if (prop.PropertyType == typeof(long) && jsonElem.TryGetInt64(out long lVal)) rawValue = lVal;
-                                        }
-                                        else if (jsonElem.ValueKind == System.Text.Json.JsonValueKind.String) rawValue = jsonElem.GetString();
-                                        else if (jsonElem.ValueKind == System.Text.Json.JsonValueKind.True || jsonElem.ValueKind == System.Text.Json.JsonValueKind.False) rawValue = jsonElem.GetBoolean();
-                                    }
-                                    var val = System.Convert.ChangeType(rawValue, prop.PropertyType);
-                                    prop.SetValue(parameterObject, val);
-                                }
-                            }
                             indicator.Configure(parameterObject);
                         }
                     }
@@ -575,6 +657,26 @@ public class ScreenerValueExtractor : IScreenerValueExtractor
                     }
 
                     crossTicker.SetSecondaryCandles(!string.IsNullOrWhiteSpace(crossTicker.ComparisonSymbol) ? secondary?.Get(crossTicker.ComparisonSymbol) : null);
+                }
+
+                // An indicator that consumes universe breadth reads the pre-fetched breadth result from the scan's shared context.
+                // Every call resets the thread-local instance so an earlier scan's result never outlives that scan.
+                if (indicator is IUniverseBreadthIndicator universeBreadth)
+                {
+                    TimeFrame effectiveTimeFrame = sideFrameBars
+                        ? config.TimeFrame
+                        : evaluationContext?.ScanTimeFrame ?? AnalysisPipelineService.InferTimeFrame(candles);
+                    MarketBreadthResult? breadthResult = null;
+                    if (evaluationContext != null
+                        && !string.IsNullOrWhiteSpace(universeBreadth.UniverseGroupId)
+                        && Guid.TryParse(universeBreadth.UniverseGroupId.Trim(), out Guid groupId)
+                        && groupId != Guid.Empty)
+                    {
+                        var key = UniverseBreadthKey.From(groupId, effectiveTimeFrame, universeBreadth.BreadthParameters, evaluationContext.AsOfDate);
+                        evaluationContext.TryGetUniverseBreadth(key, out breadthResult);
+                    }
+
+                    universeBreadth.SetUniverseBreadth(breadthResult, effectiveTimeFrame);
                 }
 
                 var result = indicator.Calculate(candles);

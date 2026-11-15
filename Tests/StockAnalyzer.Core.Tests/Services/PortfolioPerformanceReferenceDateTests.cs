@@ -119,4 +119,70 @@ public sealed class PortfolioPerformanceReferenceDateTests
 
         Assert.True(float.IsNaN(Assert.Single(entries).Return));
     }
+
+    // ===== WebAiExpansion plan 12 T4 (D-1 B): no bar strictly before the boundary -> start price 0 (NaN), never the first bar of the symbol =====
+
+    private static readonly DateTime ReferenceBar = new(2024, 3, 15);
+
+    [Theory]
+    [InlineData(PerformancePeriod.MonthToDate)]
+    [InlineData(PerformancePeriod.YearToDate)]
+    [InlineData(PerformancePeriod.OneYear)]
+    public async Task ASymbolWhoseFirstBarIsOnOrAfterTheBoundary_IsNotANumber_AndTheOtherSymbolKeepsItsValue(PerformancePeriod period)
+    {
+        // The boundaries are 2024-03-01, 2024-01-01 and 2023-03-15; NEWCO starts on 2024-03-04, after all three.
+        var full = BusinessDayCandles(new DateTime(2023, 1, 2), ReferenceBar);
+        var newCo = BusinessDayCandles(new DateTime(2024, 3, 4), ReferenceBar);
+
+        var entries = await RunAsync(new Dictionary<string, List<CandleData>> { ["FULL"] = full, ["NEWCO"] = newCo }, period);
+
+        DateTime expectedStart = period switch
+        {
+            PerformancePeriod.MonthToDate => new DateTime(2024, 2, 29),
+            PerformancePeriod.YearToDate => new DateTime(2023, 12, 29),
+            _ => new DateTime(2023, 3, 14),
+        };
+        Assert.Equal(ExpectedReturn(CloseOn(full, expectedStart)), entries.Single(e => e.Ticker == "FULL").Return);
+        Assert.True(float.IsNaN(entries.Single(e => e.Ticker == "NEWCO").Return));
+    }
+
+    [Fact]
+    public async Task ASymbolThatStartsBetweenTheBoundaries_IsNotANumberOnlyForThePeriodsWhoseBoundaryPrecedesItsFirstBar()
+    {
+        var full = BusinessDayCandles(new DateTime(2023, 1, 2), ReferenceBar);
+        var mid = BusinessDayCandles(new DateTime(2023, 12, 1), ReferenceBar);
+        var series = new Dictionary<string, List<CandleData>> { ["FULL"] = full, ["MID"] = mid };
+
+        var yearToDate = await RunAsync(series, PerformancePeriod.YearToDate);
+        var oneYear = await RunAsync(series, PerformancePeriod.OneYear);
+
+        // MID has bars before 2024-01-01 but none before 2023-03-15.
+        Assert.Equal(ExpectedReturn(CloseOn(mid, new DateTime(2023, 12, 29))), yearToDate.Single(e => e.Ticker == "MID").Return);
+        Assert.True(float.IsNaN(oneYear.Single(e => e.Ticker == "MID").Return));
+    }
+
+    [Fact]
+    public async Task ASingleBarSeries_OneDayStillUsesThatBar_ButAMonthToDateOnOrAfterTheBoundaryIsNotANumber()
+    {
+        var single = new List<CandleData> { new(ReferenceBar, 250m, 251m, 249m, 250m, 1000) };
+        var series = new Dictionary<string, List<CandleData>> { ["ONE"] = single };
+
+        var oneDay = await RunAsync(series, PerformancePeriod.OneDay);
+        var monthToDate = await RunAsync(series, PerformancePeriod.MonthToDate);
+
+        Assert.Equal(ExpectedReturn(250m), Assert.Single(oneDay).Return);
+        Assert.True(float.IsNaN(Assert.Single(monthToDate).Return));
+    }
+
+    [Fact]
+    public async Task ASingleBarSeriesBeforeTheBoundary_IsTheStartPrice()
+    {
+        // The common reference date comes from FULL (2024-03-15); ONE's only bar (2024-02-20) lies before the MonthToDate boundary 2024-03-01.
+        var full = BusinessDayCandles(new DateTime(2023, 1, 2), ReferenceBar);
+        var single = new List<CandleData> { new(new DateTime(2024, 2, 20), 250m, 251m, 249m, 250m, 1000) };
+
+        var entries = await RunAsync(new Dictionary<string, List<CandleData>> { ["FULL"] = full, ["ONE"] = single }, PerformancePeriod.MonthToDate);
+
+        Assert.Equal(ExpectedReturn(250m), entries.Single(e => e.Ticker == "ONE").Return);
+    }
 }

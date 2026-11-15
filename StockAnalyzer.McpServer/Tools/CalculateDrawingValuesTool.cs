@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using StockAnalyzer.Core.Drawing;
+using StockAnalyzer.Core.Drawing.Values;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.ReadOnly;
 using StockAnalyzer.Core.Services;
@@ -28,17 +29,20 @@ internal sealed class CalculateDrawingValuesTool : IMcpTool
     private const string PointPriceKey = "price";
     private const string EvaluationDatesArgument = "evaluationDates";
     private const string ShowExtensionsArgument = "showExtensions";
+    private const string PitchforkKindArgument = "pitchforkKind";
 
     private const string ExplicitMode = "Explicit";
     private const string RangeExtremesMode = "RangeExtremes";
     private const string RangeEndpointsMode = "RangeEndpoints";
     private const string ExplicitSource = "Explicit";
     private const string FibonacciRetracementTool = "FibonacciRetracement";
+    private const string PitchforkTool = "Pitchfork";
     private const int TwoPointToolPointCount = 2;
     private const int MinRangeExtremesBars = 2;
 
     private static readonly string[] AnchorModes = { ExplicitMode, RangeExtremesMode, RangeEndpointsMode };
     private static readonly string[] PriceFields = { nameof(CandleData.Open), nameof(CandleData.High), nameof(CandleData.Low), nameof(CandleData.Close) };
+    private static readonly string[] PitchforkKindNames = Enum.GetNames<PitchforkKind>();
 
     private readonly IReadOnlyStockAnalyzerGateway _gateway;
     private readonly SymbolResolver _symbols;
@@ -94,6 +98,7 @@ internal sealed class CalculateDrawingValuesTool : IMcpTool
                 .String(PriceFieldArgument, "Bar price to use for this point. Not allowed together with price.", allowedValues: PriceFields))
         .StringArray(EvaluationDatesArgument, $"Dates ({ToolJson.DateFormat}) to evaluate the tool at, 1..{_limits.MaxDrawingEvaluationDates}, without duplicates. Default: the date of the last loaded bar.")
         .Boolean(ShowExtensionsArgument, $"{FibonacciRetracementTool} only: true uses the extension level table. false is accepted for every tool and changes nothing; true is refused for other tools.")
+        .String(PitchforkKindArgument, $"{PitchforkTool} only: {string.Join(", ", PitchforkKindNames)} (case-sensitive, default {nameof(PitchforkKind.Andrews)}). {nameof(PitchforkKind.Andrews)} is accepted for every tool and changes nothing; the other kinds are refused for other tools.", allowedValues: PitchforkKindNames)
         .Boolean(PartialBarOutput.CompleteBarsOnlyArgument, "W1 and MN1 only (ignored for D1). true leaves out a running last week or month before the control points and the default evaluation date are chosen; false keeps it and says so. Not given: the running period is used as before and the partial-bar keys are not written.")
         .Boolean(SymbolResolver.AllowUnregisteredArgument, "Accept a symbol that is not in the ticker list but has stored bars. Default false.")
         .Build();
@@ -172,6 +177,19 @@ internal sealed class CalculateDrawingValuesTool : IMcpTool
         }
 
         bool showExtensions = showExtensionsArgument ?? false;
+
+        string? pitchforkKindArgument = ToolArgs.String(arguments, PitchforkKindArgument);
+        if (pitchforkKindArgument is not null && !PitchforkKindNames.Contains(pitchforkKindArgument, StringComparer.Ordinal))
+        {
+            throw new ToolException(ToolErrorCodes.InvalidArgument, $"{PitchforkKindArgument} must be one of: {string.Join(", ", PitchforkKindNames)}.", PitchforkKindArgument);
+        }
+
+        PitchforkKind pitchforkKind = pitchforkKindArgument is null ? PitchforkKind.Andrews : Enum.Parse<PitchforkKind>(pitchforkKindArgument);
+        if (pitchforkKind != PitchforkKind.Andrews && !string.Equals(descriptor.Name, PitchforkTool, StringComparison.Ordinal))
+        {
+            throw new ToolException(ToolErrorCodes.InvalidArgument, $"{PitchforkKindArgument} {pitchforkKind} is only used with {PitchforkTool}.", PitchforkKindArgument);
+        }
+
         List<DateOnly>? requestedDates = ReadEvaluationDates(arguments);
 
         bool allowUnregistered = ToolArgs.Boolean(arguments, SymbolResolver.AllowUnregisteredArgument) ?? false;
@@ -284,7 +302,7 @@ internal sealed class CalculateDrawingValuesTool : IMcpTool
                 ? evaluationBar.Timestamp
                 : new DateTime(date.Year, date.Month, date.Day, 0, 0, 0, bars[^1].Timestamp.Kind);
             decimal? currentPrice = hasBar ? evaluationBar.Close : null;
-            var request = new DrawingValueRequest(anchors, timestamp, currentPrice, IndicatorColor.Gray, new DrawingValueOptions(showExtensions));
+            var request = new DrawingValueRequest(anchors, timestamp, currentPrice, IndicatorColor.Gray, new DrawingValueOptions(showExtensions, pitchforkKind));
 
             IReadOnlyList<DrawingCalculatedValue> values = CalculateOrReportOverflow(descriptor, request, i);
             if (values.Count == 0)

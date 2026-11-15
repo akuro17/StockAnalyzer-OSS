@@ -927,7 +927,7 @@ public sealed class ReadOnlyGatewayTests : IDisposable
         Type[] parameters = typeof(ReadOnlyStockAnalyzerGateway).GetConstructors().Single().GetParameters().Select(p => p.ParameterType).ToArray();
 
         Assert.Equal(
-            new[] { typeof(IReadOnlyMarketDataSource), typeof(IDataService), typeof(StockAnalyzer.Core.Services.Analysis.IAnalysisPipelineService), typeof(IScreenerService), typeof(IReadOnlyTemplateSource), typeof(StockAnalyzer.Core.Services.Screener.IScreenerTemplateEvaluator), typeof(IBacktestRunPreparationService), typeof(IBacktestEvaluationService), typeof(IChartSeriesCalculationService) },
+            new[] { typeof(IReadOnlyMarketDataSource), typeof(IDataService), typeof(StockAnalyzer.Core.Services.Analysis.IAnalysisPipelineService), typeof(IScreenerService), typeof(IReadOnlyTemplateSource), typeof(StockAnalyzer.Core.Services.Screener.IScreenerTemplateEvaluator), typeof(IBacktestRunPreparationService), typeof(IBacktestEvaluationService), typeof(IChartSeriesCalculationService), typeof(StockAnalyzer.Core.Services.Analysis.IRsRatingClosesProvider), typeof(StockAnalyzer.Core.Services.Analysis.IMarketBreadthSeriesProvider) },
             parameters);
     }
 

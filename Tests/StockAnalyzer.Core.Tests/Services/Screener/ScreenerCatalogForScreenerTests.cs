@@ -35,18 +35,22 @@ public sealed class ScreenerCatalogForScreenerTests
         => $"{item.CategoryType}|{item.GroupName}|{item.IndicatorType}|{item.ShortName}|{item.DisplayName}|{item.ColumnMemberName}";
 
     [Fact]
-    public void TheScreenerOnlyTypes_AreTheEightTwoTickerTypesTheBacktestRefuses()
+    public void TheScreenerOnlyTypes_AreTheTwoTickerAndUniverseBreadthTypesTheBacktestRefuses()
     {
         IndicatorType[] types = ScreenerOnlyTypes();
 
         Assert.Equal(
             new[]
             {
-                IndicatorType.CointegrationSpread, IndicatorType.CrossTickerDtw, IndicatorType.PairRatio, IndicatorType.PairSpread, IndicatorType.Ratiocator,
-                IndicatorType.RollingAlpha, IndicatorType.RollingBeta, IndicatorType.RollingRSquared,
+                IndicatorType.CointegrationSpread, IndicatorType.CrossTickerDtw, IndicatorType.MansfieldRS, IndicatorType.MarketBreadth, IndicatorType.McClellanOscillator,
+                IndicatorType.PairRatio, IndicatorType.PairSpread, IndicatorType.Ratiocator, IndicatorType.RollingAlpha, IndicatorType.RollingBeta, IndicatorType.RollingRSquared,
             }.OrderBy(type => type.ToString(), StringComparer.Ordinal),
             types);
-        Assert.All(types, type => Assert.True(Factory.Create(type) is ICrossTickerIndicator, type.ToString()));
+        Assert.All(types, type =>
+        {
+            ICoreIndicator? indicator = Factory.Create(type);
+            Assert.True(indicator is ICrossTickerIndicator || indicator is IUniverseBreadthIndicator, type.ToString());
+        });
     }
 
     [Fact]

@@ -16,6 +16,23 @@ try:
 except ImportError:
     ZoneInfo = None
 
+# Daily file column contract. The first six columns are the canonical OHLCV columns every time frame shares;
+# the three corporate-action columns are provider facts kept in the DAILY file only (weekly/monthly stay at six).
+BASE_COLUMNS = ('date', 'open', 'high', 'low', 'close', 'volume')
+PRICE_COLUMNS = ('open', 'high', 'low', 'close')
+ADJ_CLOSE_COLUMN = 'adj_close'
+DIVIDENDS_COLUMN = 'dividends'
+STOCK_SPLITS_COLUMN = 'stock_splits'
+CORPORATE_ACTION_COLUMNS = (ADJ_CLOSE_COLUMN, DIVIDENDS_COLUMN, STOCK_SPLITS_COLUMN)
+DAILY_COLUMNS = BASE_COLUMNS + CORPORATE_ACTION_COLUMNS
+# yfinance spellings (after lower-casing) that differ from the stored column names.
+PROVIDER_COLUMN_RENAMES = {'adj close': ADJ_CLOSE_COLUMN, 'stock splits': STOCK_SPLITS_COLUMN}
+# start_ts that asks for the whole history (yfinance period="max"); any other value is a start time in epoch seconds.
+WHOLE_HISTORY_START_TS = 0
+# Value of a "no event" corporate-action row (0.0 = no event; a missing column in a stored file is null = not fetched).
+NO_EVENT_VALUE = 0.0
+
+
 class StockDataProvider:
     """
     Unified interface for fetching stock data using yfinance.
@@ -28,16 +45,28 @@ class StockDataProvider:
         if not self.yf:
             logging.warning("StockDataProvider: yfinance module not installed.")
 
-    def get_daily_data(self, symbol, start_ts=0, end_ts=None, delay=None, auto_adjust=False):
+    def get_daily_data(self, symbol, start_ts=WHOLE_HISTORY_START_TS, end_ts=None, delay=None, auto_adjust=False):
         """
         Fetch daily OHLCV data.
-        Returns a pandas DataFrame with columns: ['date', 'open', 'high', 'low', 'close', 'volume']
+        Returns a pandas DataFrame with columns DAILY_COLUMNS:
+        ['date', 'open', 'high', 'low', 'close', 'volume', 'adj_close', 'dividends', 'stock_splits'].
+        Prices are split-adjusted only (auto_adjust=False). 'adj_close' is the provider's value on the day of the
+        download (it differs between download days); a missing or NaN corporate-action value is filled with
+        adj_close = close, dividends = 0.0, stock_splits = 0.0.
         """
         is_latest = (end_ts is None)
         if end_ts is None:
             end_ts = int(datetime.datetime.now(datetime.timezone.utc).timestamp())
 
         return self._get_from_yfinance(symbol, start_ts, end_ts, delay, is_latest, auto_adjust=auto_adjust)
+
+    def _download(self, request_symbol, start_ts, start_date, end_date, is_latest, auto_adjust):
+        """One yfinance download in the request shape of the caller (full history, from a date, or a date window)."""
+        if start_ts == WHOLE_HISTORY_START_TS:
+            return self.yf.download(request_symbol, period="max", progress=False, auto_adjust=auto_adjust, actions=True)
+        if is_latest:
+            return self.yf.download(request_symbol, start=start_date, progress=False, auto_adjust=auto_adjust, actions=True)
+        return self.yf.download(request_symbol, start=start_date, end=end_date, progress=False, auto_adjust=auto_adjust, actions=True)
 
     def _get_from_yfinance(self, symbol, start_ts, end_ts, delay=None, is_latest=False, auto_adjust=False):
         if not self.yf:
@@ -81,13 +110,8 @@ class StockDataProvider:
         df_raw = None
         for attempt in range(3):
             try:
-                if start_ts == 0:
-                     df_raw = self.yf.download(yf_symbol, period="max", progress=False, auto_adjust=auto_adjust)
-                elif is_latest:
-                     df_raw = self.yf.download(yf_symbol, start=start_date, progress=False, auto_adjust=auto_adjust)
-                else:
-                     df_raw = self.yf.download(yf_symbol, start=start_date, end=end_date, progress=False, auto_adjust=auto_adjust)
-                
+                df_raw = self._download(yf_symbol, start_ts, start_date, end_date, is_latest, auto_adjust)
+
                 if df_raw is not None and not df_raw.empty:
                     break
             except Exception as e:
@@ -97,18 +121,23 @@ class StockDataProvider:
                 backoff_seconds = min(30.0, (2 ** attempt) * random.uniform(0.8, 1.2))
                 time.sleep(backoff_seconds)
         
+        if (df_raw is None or df_raw.empty) and yf_symbol != symbol:
+            # A trailing "-X" is a market suffix for some tickers (7203-T -> 7203.T) but part of the name of a share class
+            # (BRK-B), which Yahoo knows only with the hyphen. When the rewritten spelling returned nothing, retry once with
+            # the original spelling.
+            logging.info(f"Empty data for {yf_symbol}, retrying once with the original spelling: {symbol}")
+            try:
+                df_raw = self._download(symbol, start_ts, start_date, end_date, is_latest, auto_adjust)
+            except Exception as e:
+                logging.warning(f"Original-spelling retry download failed for {symbol}: {e}")
+
         if df_raw is None or df_raw.empty:
             # Retry with ^ prefix for index symbols (e.g. GSPC -> ^GSPC)
             if not yf_symbol.startswith("^"):
                 index_symbol = "^" + yf_symbol
                 logging.info(f"Empty data for {symbol}, retrying as index: {index_symbol}")
                 try:
-                    if start_ts == 0:
-                        df_raw = self.yf.download(index_symbol, period="max", progress=False, auto_adjust=auto_adjust)
-                    elif is_latest:
-                        df_raw = self.yf.download(index_symbol, start=start_date, progress=False, auto_adjust=auto_adjust)
-                    else:
-                        df_raw = self.yf.download(index_symbol, start=start_date, end=end_date, progress=False, auto_adjust=auto_adjust)
+                    df_raw = self._download(index_symbol, start_ts, start_date, end_date, is_latest, auto_adjust)
                 except Exception as e:
                     logging.error(f"Index retry download failed for {index_symbol}: {e}")
                     return None
@@ -124,11 +153,10 @@ class StockDataProvider:
         df_raw = df_raw.reset_index()
         
         # Lowercase columns for consistency
-        df_raw.columns = [str(c).lower() for c in df_raw.columns]
-        
+        df_raw.columns = [PROVIDER_COLUMN_RENAMES.get(str(c).lower(), str(c).lower()) for c in df_raw.columns]
+
         # Extract required columns
-        required_cols = ['date', 'open', 'high', 'low', 'close', 'volume']
-        available_cols = [c for c in required_cols if c in df_raw.columns]
+        available_cols = [c for c in BASE_COLUMNS if c in df_raw.columns]
         
         df = df_raw[available_cols].copy()
 
@@ -143,6 +171,15 @@ class StockDataProvider:
             df['high'] = df['high'].fillna(df['close'])
         if 'low' in df.columns and 'close' in df.columns:
             df['low'] = df['low'].fillna(df['close'])
+
+        # Corporate-action columns (aligned on the cleaned rows; absent or NaN values get the documented defaults).
+        for column in CORPORATE_ACTION_COLUMNS:
+            if column in df_raw.columns:
+                values = pd.to_numeric(df_raw[column], errors='coerce').reindex(df.index)
+            else:
+                values = pd.Series(float('nan'), index=df.index)
+            fallback = df['close'] if column == ADJ_CLOSE_COLUMN else NO_EVENT_VALUE
+            df[column] = values.fillna(fallback).astype('float64')
 
         return df
 

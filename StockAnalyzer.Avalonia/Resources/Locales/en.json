@@ -1260,6 +1260,7 @@
   "Col_Tag": "Tag",
   "Col_Notes": "Notes",
   "Col_Reminder": "Reminder",
+  "Col_RsRating": "RS Rating",
   "Col_EntryPrice": "Entry Price",
   "Col_TargetPrice": "Target Price",
   "Col_StopLoss": "Stop Loss",
@@ -3314,5 +3315,14 @@
   "Banner_StorageReadOnly_ToolTip": "Reason: {0}\nFolder: {1}\nFix the folder permissions and restart StockAnalyzer to leave read-only mode.",
   "Banner_StorageReadOnly_Reason_CannotBeCreated": "The Data folder does not exist and cannot be created.",
   "Banner_StorageReadOnly_Reason_NotWritable": "A file cannot be created in the Data folder.",
-  "ReadOnlyStorage_FeatureDisabled": "Unavailable in read-only mode: this feature saves its results in the Data folder, which is not writable. Fix the folder permissions and restart StockAnalyzer."
+  "ReadOnlyStorage_FeatureDisabled": "Unavailable in read-only mode: this feature saves its results in the Data folder, which is not writable. Fix the folder permissions and restart StockAnalyzer.",
+  "Param_UniverseGroupId": "Universe (List / Filter)",
+  "Watermark_UniverseGroupId": "List / Filter",
+  "Param_MetricMode": "Metric Mode",
+  "Enum_MarketBreadthMetricMode_AdRatio": "Advance/Decline Ratio (%)",
+  "Enum_MarketBreadthMetricMode_PctAboveMa": "Percentage Above Moving Average (%)",
+  "Enum_MarketBreadthMetricMode_AdLine": "Advance-Decline Line",
+  "Enum_MarketBreadthMetricMode_NetNewHighs": "Net New Highs",
+  "Enum_MarketBreadthMetricMode_Trin": "Arms Index (Trading Index)",
+  "Enum_MarketBreadthMetricMode_Cvi": "Cumulative Volume Index"
 }

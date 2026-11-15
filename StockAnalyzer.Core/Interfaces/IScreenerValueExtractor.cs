@@ -33,9 +33,35 @@ public interface IScreenerValueExtractor
         => ExtractValueNullable(config, candles, metadata);
 
     /// <summary>
+    /// <see cref="ExtractValueNullable(ScreenerIndicatorSideConfig?, IReadOnlyList{CandleData}, TickerMetadata, IScreenerSecondaryCandles?)"/> with the evaluated
+    /// <paramref name="symbol"/> and optional cross-sectional <paramref name="evaluationContext"/>. Existing implementers need not change: the default ignores them.
+    /// </summary>
+    decimal? ExtractValueNullable(
+        ScreenerIndicatorSideConfig? config,
+        IReadOnlyList<CandleData> candles,
+        TickerMetadata metadata,
+        IScreenerSecondaryCandles? secondary,
+        string? symbol,
+        IScreenerEvaluationContext? evaluationContext = null)
+        => ExtractValueNullable(config, candles, metadata, secondary);
+
+    /// <summary>
     /// Extracts the indicator value returning null if dataset is missing or unresolvable, using CoreCandleData.
     /// </summary>
     decimal? ExtractValueNullable(ScreenerIndicatorSideConfig? config, IReadOnlyList<CoreCandleData> candles, TickerMetadata metadata = default) => null;
+
+    /// <summary>
+    /// Extracts the indicator value returning null if dataset is missing or unresolvable using CoreCandleData,
+    /// with secondary candles, evaluated <paramref name="symbol"/>, and optional <paramref name="evaluationContext"/>.
+    /// </summary>
+    decimal? ExtractValueNullable(
+        ScreenerIndicatorSideConfig? config,
+        IReadOnlyList<CoreCandleData> candles,
+        TickerMetadata metadata,
+        IScreenerSecondaryCandles? secondary,
+        string? symbol,
+        IScreenerEvaluationContext? evaluationContext = null)
+        => ExtractValueNullable(config, candles, metadata);
 
     /// <summary>
     /// Extracts the text a text Column (Sector, Industry, Region, Name, Tag) holds for the ticker; null when the side is not a text Column or the

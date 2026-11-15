@@ -31,6 +31,18 @@ public partial class ScreenerIndicatorEntry : ObservableObject, IScreeningCondit
     /// tickers read; null keeps them without a value (the Screener tab's rule).
     /// </summary>
     public bool IsMet(IReadOnlyList<CandleData> candles, Portfolio.TickerMetadata metadata, IScreenerSecondaryCandles? secondary)
+        => IsMet(candles, metadata, secondary, symbol: null, evaluationContext: null);
+
+    /// <summary>
+    /// Evaluates this entry against <paramref name="candles"/>, <paramref name="metadata"/>, comparison symbol bars <paramref name="secondary"/>,
+    /// evaluated <paramref name="symbol"/>, and optional cross-sectional <paramref name="evaluationContext"/>.
+    /// </summary>
+    public bool IsMet(
+        IReadOnlyList<CandleData> candles,
+        Portfolio.TickerMetadata metadata,
+        IScreenerSecondaryCandles? secondary,
+        string? symbol,
+        IScreenerEvaluationContext? evaluationContext = null)
     {
         if (candles == null || candles.Count == 0) return false;
 
@@ -44,56 +56,15 @@ public partial class ScreenerIndicatorEntry : ObservableObject, IScreeningCondit
                 RightStringValue);
         }
 
-        // Column fundamental metrics: If metadata is null (data missing), strictly exclude from screening results
-        if (LeftHand?.CategoryType == ScreenerItemCategoryType.Column)
-        {
-            decimal? leftValNullable = ScreenerValueExtractor.Default.ExtractValueNullable(LeftHand, candles, metadata, secondary);
-            if (!leftValNullable.HasValue)
-            {
-                return false;
-            }
+        decimal? leftValNullable = ScreenerValueExtractor.Default.ExtractValueNullable(LeftHand, candles, metadata, secondary, symbol, evaluationContext);
+        if (!leftValNullable.HasValue) return false;
 
-            decimal leftValue = leftValNullable.Value;
-            decimal? rightValueNullable = TargetMode == RightHandTargetMode.NumericValue
-                ? RightNumericValue
-                : ScreenerValueExtractor.Default.ExtractValueNullable(RightHand, candles, metadata, secondary);
-            if (!rightValueNullable.HasValue) return false;
-
-            decimal rightValue = rightValueNullable.Value;
-
-            return Operator switch
-            {
-                ComparisonOperator.GreaterThan => leftValue > rightValue,
-                ComparisonOperator.LessThan => leftValue < rightValue,
-                ComparisonOperator.GreaterThanOrEqual => leftValue >= rightValue,
-                ComparisonOperator.LessThanOrEqual => leftValue <= rightValue,
-                ComparisonOperator.Equal => leftValue == rightValue,
-                ComparisonOperator.NotEqual => leftValue != rightValue,
-                _ => false
-            };
-        }
-
-        decimal? extractedVal = ScreenerValueExtractor.Default.ExtractValueNullable(LeftHand, candles, metadata, secondary);
-        if (!extractedVal.HasValue) return false;
-
-        decimal leftVal = extractedVal.Value;
         decimal? rightValNullable = TargetMode == RightHandTargetMode.NumericValue
             ? RightNumericValue
-            : ScreenerValueExtractor.Default.ExtractValueNullable(RightHand, candles, metadata, secondary);
+            : ScreenerValueExtractor.Default.ExtractValueNullable(RightHand, candles, metadata, secondary, symbol, evaluationContext);
         if (!rightValNullable.HasValue) return false;
 
-        decimal rightVal = rightValNullable.Value;
-
-        return Operator switch
-        {
-            ComparisonOperator.GreaterThan => leftVal > rightVal,
-            ComparisonOperator.LessThan => leftVal < rightVal,
-            ComparisonOperator.GreaterThanOrEqual => leftVal >= rightVal,
-            ComparisonOperator.LessThanOrEqual => leftVal <= rightVal,
-            ComparisonOperator.Equal => leftVal == rightVal,
-            ComparisonOperator.NotEqual => leftVal != rightVal,
-            _ => false
-        };
+        return ScreenerComparison.Compare(Operator, leftValNullable.Value, rightValNullable.Value);
     }
 
     public ValueTask<bool> IsMetAsync(IReadOnlyList<CandleData> candles)
@@ -111,6 +82,16 @@ public partial class ScreenerIndicatorEntry : ObservableObject, IScreeningCondit
         return ValueTask.FromResult(IsMet(candles, metadata, secondary));
     }
 
+    public ValueTask<bool> IsMetAsync(
+        IReadOnlyList<CandleData> candles,
+        Portfolio.TickerMetadata metadata,
+        IScreenerSecondaryCandles? secondary,
+        string? symbol,
+        IScreenerEvaluationContext? evaluationContext = null)
+    {
+        return ValueTask.FromResult(IsMet(candles, metadata, secondary, symbol, evaluationContext));
+    }
+
     /// <summary>
     /// The evaluation in which each side reads the bars of its OWN time frame (<see cref="ScreenerIndicatorSideConfig.TimeFrame"/>) from <paramref name="bars"/>.
     /// A side that reads no bars (a fundamental Column) ignores its time frame. With only D1 sides the result equals
@@ -118,6 +99,14 @@ public partial class ScreenerIndicatorEntry : ObservableObject, IScreeningCondit
     /// in its own frame, an unsupported frame, an indicator without a value) makes the entry not met.
     /// </summary>
     public bool IsMetOnBars(IScreenerBarSet bars, Portfolio.TickerMetadata metadata, IScreenerSecondaryCandles? secondary = null)
+        => IsMetOnBars(bars, metadata, secondary, symbol: null, evaluationContext: null);
+
+    public bool IsMetOnBars(
+        IScreenerBarSet bars,
+        Portfolio.TickerMetadata metadata,
+        IScreenerSecondaryCandles? secondary,
+        string? symbol,
+        IScreenerEvaluationContext? evaluationContext = null)
     {
         ArgumentNullException.ThrowIfNull(bars);
 
@@ -132,12 +121,12 @@ public partial class ScreenerIndicatorEntry : ObservableObject, IScreeningCondit
                 RightStringValue);
         }
 
-        decimal? left = ValueOnBars(LeftHand, bars, metadata, secondary);
+        decimal? left = ValueOnBars(LeftHand, bars, metadata, secondary, symbol, evaluationContext);
         if (!left.HasValue) return false;
 
         decimal? right = TargetMode == RightHandTargetMode.NumericValue
             ? RightNumericValue
-            : ValueOnBars(RightHand, bars, metadata, secondary);
+            : ValueOnBars(RightHand, bars, metadata, secondary, symbol, evaluationContext);
         if (!right.HasValue) return false;
 
         return ScreenerComparison.Compare(Operator, left.Value, right.Value);
@@ -146,7 +135,21 @@ public partial class ScreenerIndicatorEntry : ObservableObject, IScreeningCondit
     public ValueTask<bool> IsMetOnBarsAsync(IScreenerBarSet bars, Portfolio.TickerMetadata metadata, IScreenerSecondaryCandles? secondary = null)
         => ValueTask.FromResult(IsMetOnBars(bars, metadata, secondary));
 
-    private static decimal? ValueOnBars(ScreenerIndicatorSideConfig side, IScreenerBarSet bars, Portfolio.TickerMetadata metadata, IScreenerSecondaryCandles? secondary)
+    public ValueTask<bool> IsMetOnBarsAsync(
+        IScreenerBarSet bars,
+        Portfolio.TickerMetadata metadata,
+        IScreenerSecondaryCandles? secondary,
+        string? symbol,
+        IScreenerEvaluationContext? evaluationContext = null)
+        => ValueTask.FromResult(IsMetOnBars(bars, metadata, secondary, symbol, evaluationContext));
+
+    private static decimal? ValueOnBars(
+        ScreenerIndicatorSideConfig side,
+        IScreenerBarSet bars,
+        Portfolio.TickerMetadata metadata,
+        IScreenerSecondaryCandles? secondary,
+        string? symbol,
+        IScreenerEvaluationContext? evaluationContext)
     {
         TimeFrame frame = ScreenerSideFrames.FrameOf(side);
         if (!DataServiceTimeFrames.Supported.Contains(frame))
@@ -155,7 +158,7 @@ public partial class ScreenerIndicatorEntry : ObservableObject, IScreeningCondit
             return null;
         }
 
-        return ScreenerValueExtractor.Default.ExtractValueNullableOnSideFrame(side, bars.GetCore(frame), metadata, secondary);
+        return ScreenerValueExtractor.Default.ExtractValueNullableOnSideFrame(side, bars.GetCore(frame), metadata, secondary, symbol, evaluationContext);
     }
 
     /// <summary>

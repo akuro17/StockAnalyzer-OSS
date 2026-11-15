@@ -176,7 +176,7 @@ public sealed class CatalogToolsTests
         IndicatorType[] twoSymbol = BacktestIndicatorEligibility.SynchronousCalculationUnsupportedTypes
             .Where(type => Factory.IsRegistered(type) && Factory.Create(type) is ICrossTickerIndicator)
             .ToArray();
-        Assert.Equal(8, twoSymbol.Length);
+        Assert.Equal(9, twoSymbol.Length);
 
         string filter = string.Join(",", twoSymbol.Concat(new[] { IndicatorType.RSI, IndicatorType.Correlation, IndicatorType.ZigZag }).Select(type => $"\"{type}\""));
         using var response = await CallCapabilitiesAsync($$"""{"indicatorTypeFilter":[{{filter}}]}""");
@@ -206,6 +206,19 @@ public sealed class CatalogToolsTests
         JsonElement rsi = Indicator(response, "RSI");
         Assert.True(rsi.TryGetProperty("backtestEligibility", out _));
         Assert.False(rsi.TryGetProperty("screenerEligibility", out _));
+    }
+
+    [Theory]
+    [InlineData("MarketBreadth")]
+    [InlineData("McClellanOscillator")]
+    public async Task UniverseBreadthIndicators_AreAllowedInScreenerEligibilityWhileUnsupportedInBacktest(string typeName)
+    {
+        using var response = await CallCapabilitiesAsync($$"""{"indicatorTypeFilter":["{{typeName}}"]}""");
+
+        JsonElement entry = Indicator(response, typeName);
+        Assert.Equal("SynchronousCalculationUnsupported", entry.GetProperty("backtestEligibility").GetString());
+        Assert.Equal("Allowed", entry.GetProperty("screenerEligibility").GetString());
+        Assert.Contains("universe breadth", new GetCapabilitiesTool(Catalog, ScreenerCatalogForTests).Description, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

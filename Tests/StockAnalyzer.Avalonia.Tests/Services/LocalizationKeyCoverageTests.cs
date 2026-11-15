@@ -445,6 +445,18 @@ public class LocalizationKeyCoverageTests
         AssertKeysResolveInEveryLocale(keys, "EnumToLocalizedDisplayNameConverter");
     }
 
+    [Fact]
+    public void MarketBreadth_LocalizationKeys_ResolveInEveryLocale()
+    {
+        var keys = new List<string> { "Param_UniverseGroupId", "Param_MetricMode" };
+        keys.AddRange(
+            Enum.GetValues<StockAnalyzer.Core.Models.Parameters.MarketBreadthMetricMode>()
+                .Select(v => $"Enum_{nameof(StockAnalyzer.Core.Models.Parameters.MarketBreadthMetricMode)}_{v}"));
+
+        Assert.Equal(8, keys.Count);
+        AssertKeysResolveInEveryLocale(keys, "MarketBreadth ParameterViewBuilder");
+    }
+
     private static void AssertKeysResolveInEveryLocale(IReadOnlyList<string> keys, string origin)
     {
         var localeKeys = Locales.ToDictionary(l => l, LoadLocaleKeys);

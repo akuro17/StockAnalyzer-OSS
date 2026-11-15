@@ -631,4 +631,53 @@ public sealed class RunScreenerToolTests : IDisposable
 
         Assert.True(bound > 100);
     }
+
+    [Theory]
+    [InlineData("MarketBreadth", """{"left":{"indicator":"MarketBreadth"},"comparison":"GreaterThan","right":50}""", "t.left.parameters.UniverseGroupId")]
+    [InlineData("McClellanOscillator", """{"left":{"indicator":"McClellanOscillator","parameters":{"UniverseGroupId":"00000000-0000-0000-0000-000000000000"}},"comparison":"GreaterThan","right":0}""", "t.left.parameters.UniverseGroupId")]
+    public void UniverseBreadthConditionWithoutUniverseGroupId_ThrowsInvalidIndicatorParameter(string _, string treeJson, string expectedParam)
+    {
+        var provider = new ScreenerCatalogProvider();
+        var catalog = new IndicatorCatalog(Factory, provider);
+        var binder = new ScreenerConditionBinder(
+            catalog, new IndicatorSettingsBinder(provider, Factory), new ScreenerCatalog(provider, Factory), Settings());
+
+        var ex = Assert.Throws<ToolException>(() => binder.Bind(JsonDocument.Parse(treeJson).RootElement, "t"));
+
+        Assert.Equal(ToolErrorCodes.InvalidIndicatorParameter, ex.Code);
+        Assert.Equal(expectedParam, ex.Param);
+    }
+
+    [Fact]
+    public void ScreenerTemplateAdvisor_WarnsWhenUniverseBreadthEntryLacksUniverseGroupId()
+    {
+        var provider = new ScreenerCatalogProvider();
+        var catalog = new IndicatorCatalog(Factory, provider);
+        var advisor = new ScreenerTemplateAdvisor(catalog);
+        var template = new StockAnalyzer.Core.Models.Templates.ScreenerIndicatorTemplate
+        {
+            Name = "EmptyBreadth",
+            Entries =
+            {
+                new StockAnalyzer.Core.Models.Screener.ScreenerIndicatorEntry
+                {
+                    IsEnabled = true,
+                    LeftHand = new StockAnalyzer.Core.Models.Screener.ScreenerIndicatorSideConfig
+                    {
+                        CategoryType = StockAnalyzer.Core.Models.Screener.ScreenerItemCategoryType.Indicator,
+                        IndicatorType = IndicatorType.MarketBreadth,
+                        OutputName = IndicatorResult.MainSeriesName
+                    },
+                    Comparison = StockAnalyzer.Core.Models.Screener.ScreenerComparisonOperator.GreaterThan,
+                    TargetMode = StockAnalyzer.Core.Models.Screener.RightHandTargetMode.FixedValue,
+                    FixedValue = 50m
+                }
+            }
+        };
+
+        IReadOnlyList<string> warnings = advisor.Warnings(template);
+
+        var warning = Assert.Single(warnings);
+        Assert.Contains("UniverseGroupId", warning, StringComparison.Ordinal);
+    }
 }

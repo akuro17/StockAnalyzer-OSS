@@ -90,6 +90,11 @@ public static class IndicatorChartSuppression
                 nameof(CoreCrossTickerDtwIndicator.NormalizedDistance),
                 nameof(CoreCrossTickerDtwIndicator.SimilarityScore),
             },
+            [IndicatorType.McClellanOscillator] = new HashSet<string>(StringComparer.Ordinal)
+            {
+                CoreMcClellanOscillatorIndicator.SummationIndexSeriesName,
+                CoreMcClellanOscillatorIndicator.AdLineSeriesName,
+            },
         };
 
     private static readonly IReadOnlyDictionary<IndicatorType, IReadOnlySet<string>> SuppressedDataWindowSeries =

@@ -246,4 +246,56 @@ public class ServiceCollectionExtensionsTests
         Assert.IsType<StockAnalyzer.Core.Services.Analysis.ScatterMetricEvaluator>(evaluator);
         Assert.Same(evaluator, provider.GetRequiredService<StockAnalyzer.Core.Services.Analysis.IScatterMetricEvaluator>());
     }
+
+    [Fact]
+    public async System.Threading.Tasks.Task AddCommonServices_RegistersMarketBreadthSeriesProvider()
+    {
+        var services = new ServiceCollection();
+        services.AddCommonServices(new ConfigurationBuilder().Build());
+        await using var provider = services.BuildServiceProvider();
+
+        var resolver = provider.GetService<StockAnalyzer.Core.ReadOnly.ITickerGroupResolver>();
+        var breadthProvider = provider.GetService<StockAnalyzer.Core.Services.Analysis.IMarketBreadthSeriesProvider>();
+        var second = provider.GetService<StockAnalyzer.Core.Services.Analysis.IMarketBreadthSeriesProvider>();
+
+        Assert.NotNull(resolver);
+        Assert.NotNull(breadthProvider);
+        Assert.IsType<StockAnalyzer.Core.Services.Analysis.MarketBreadthSeriesProvider>(breadthProvider);
+        Assert.Same(breadthProvider, second);
+    }
+}
+
+[Collection("ReadOnlyDataRoot")]
+public class ViewModelServiceGraphResolutionTests
+{
+    [Fact]
+    public async System.Threading.Tasks.Task AddViewModels_ResolvesMainWindowChartAndUniverseServices_WithoutCircularDependency()
+    {
+        using var denied = StockAnalyzer.TestSupport.ReadOnlyDataRootFixture.Create();
+        using var scope = denied.UseAsBaseDirectory();
+        var state = new StockAnalyzer.Core.Common.DataStorageState(
+            StockAnalyzer.Core.Common.DataStorageProbe.Evaluate(
+                StockAnalyzer.Core.Common.PathDiscovery.ResolveDataRootWithoutCreating()));
+
+        var services = new ServiceCollection();
+        services.AddSingleton<StockAnalyzer.Core.Common.IDataStorageState>(state);
+        services.AddCommonServices(new ConfigurationBuilder().Build());
+        services.AddViewModels();
+        await using var provider = services.BuildServiceProvider();
+
+        var mainVm = provider.GetRequiredService<StockAnalyzer.Avalonia.ViewModels.MainWindowViewModel>();
+        var facade = provider.GetRequiredService<StockAnalyzer.Avalonia.ViewModels.IWorkspaceViewModelFacade>();
+        var tickerStateStore = provider.GetRequiredService<StockAnalyzer.Avalonia.Services.ITickerStateStore>();
+        var suggestionProvider = provider.GetRequiredService<StockAnalyzer.Avalonia.Services.IUniverseSuggestionProvider>();
+        var lazySuggestionProvider = provider.GetRequiredService<System.Lazy<StockAnalyzer.Avalonia.Services.IUniverseSuggestionProvider>>();
+        var tickerSourceResolver = provider.GetRequiredService<StockAnalyzer.Avalonia.Services.ITickerSourceResolver>();
+        var transientChartVm = provider.GetRequiredService<StockAnalyzer.Avalonia.ViewModels.ChartViewModel>();
+
+        Assert.NotNull(mainVm);
+        Assert.NotNull(mainVm.ChartViewModel);
+        Assert.NotNull(transientChartVm);
+        Assert.Same(facade.TickerList, tickerStateStore);
+        Assert.Same(suggestionProvider, lazySuggestionProvider.Value);
+        Assert.NotNull(tickerSourceResolver);
+    }
 }

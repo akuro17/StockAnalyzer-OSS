@@ -59,6 +59,7 @@ public class ScreenerNeedsDailyComparisonBarsTests
     [InlineData(IndicatorType.RollingRSquared)]
     [InlineData(IndicatorType.CointegrationSpread)]
     [InlineData(IndicatorType.CrossTickerDtw)]
+    [InlineData(IndicatorType.MansfieldRS)]
     [InlineData(IndicatorType.PairRatio)]
     [InlineData(IndicatorType.PairSpread)]
     [InlineData(IndicatorType.Ratiocator)]

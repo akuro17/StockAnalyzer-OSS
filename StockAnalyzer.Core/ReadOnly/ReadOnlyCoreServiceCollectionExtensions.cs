@@ -66,16 +66,29 @@ public static class ReadOnlyCoreServiceCollectionExtensions
             indicatorFactory: sp.GetRequiredService<IIndicatorFactory>(),
             sourceIndicatorService: sp.GetRequiredService<ISourceIndicatorService>(),
             logger: sp.GetService<ILogger<AnalysisPipelineService>>(),
-            dynamicPeriodDriverService: sp.GetRequiredService<IDynamicPeriodDriverService>()));
+            dynamicPeriodDriverService: sp.GetRequiredService<IDynamicPeriodDriverService>(),
+            marketBreadthProvider: sp.GetService<IMarketBreadthSeriesProvider>()));
+
+        services.AddSingleton<IRsRatingClosesProvider>(sp => sp.GetRequiredService<ReadOnlyDataTree>().IsComplete
+            ? new DuckDbHeatmapReturnProvider(
+                sp.GetRequiredService<DuckDBConnectionManager>(),
+                sp.GetRequiredService<IOptions<MarketDataSettings>>(),
+                sp.GetService<ILogger<DuckDbHeatmapReturnProvider>>())
+            : new EmptyRsRatingClosesProvider());
 
         // The Screener reads metadata through the read-only provider: the real provider's GetMetadataAsync can write.
         services.AddSingleton<IScreenerService>(sp => new ScreenerService(
             sp.GetRequiredService<IDataService>(),
             sp.GetRequiredService<IStockAnalyzerSettings>(),
             new IMarketDataProvider[] { new ReadOnlyMetadataMarketDataProvider(sp.GetRequiredService<IReadOnlyMarketDataSource>()) },
-            sp.GetService<ILogger<ScreenerService>>()));
+            sp.GetService<ILogger<ScreenerService>>(),
+            sp.GetService<IRsRatingClosesProvider>(),
+            sp.GetService<IMarketBreadthSeriesProvider>()));
 
-        services.AddSingleton<IScreenerTemplateEvaluator>(sp => new ScreenerTemplateEvaluator(sp.GetRequiredService<IScreenerService>()));
+        services.AddSingleton<IScreenerTemplateEvaluator>(sp => new ScreenerTemplateEvaluator(
+            sp.GetRequiredService<IScreenerService>(),
+            sp.GetService<IRsRatingClosesProvider>(),
+            sp.GetService<IMarketBreadthSeriesProvider>()));
 
         // Templates are read from their folder as it is (never created); the folder is the application's own template folder.
         services.AddSingleton<IReadOnlyTemplateSource>(_ => new FileReadOnlyTemplateSource(
@@ -102,7 +115,10 @@ public static class ReadOnlyCoreServiceCollectionExtensions
         services.AddSingleton<IChartSeriesCalculationService, ChartSeriesCalculationService>();
 
         services.AddSingleton<IReadOnlyStockAnalyzerGateway, ReadOnlyStockAnalyzerGateway>();
-        services.AddSingleton<ITickerGroupResolver, TickerGroupResolver>();
+        services.AddSingleton<ITickerGroupResolver>(sp => new TickerGroupResolver(
+            new Lazy<IReadOnlyStockAnalyzerGateway>(() => sp.GetRequiredService<IReadOnlyStockAnalyzerGateway>(), LazyThreadSafetyMode.ExecutionAndPublication),
+            sp.GetRequiredService<IReadOnlyWorkspaceSource>()));
+        services.AddSingleton<IMarketBreadthSeriesProvider, MarketBreadthSeriesProvider>();
         return services;
     }
 }

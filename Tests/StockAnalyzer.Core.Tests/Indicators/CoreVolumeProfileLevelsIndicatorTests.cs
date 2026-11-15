@@ -294,4 +294,27 @@ public class CoreVolumeProfileLevelsIndicatorTests
         Assert.Throws<ArgumentOutOfRangeException>(() => new CoreVolumeProfileLevelsParameter { ValueAreaPercentage = 1.0m }.Validate());
         Assert.Throws<ArgumentOutOfRangeException>(() => new CoreVolumeProfileLevelsParameter { Mode = (VolumeDistributionMode)99 }.Validate());
     }
+
+    // WebAiExpansion plan 12 T3 (D-14=A): a profile whose total volume is beyond the long range (Full mode) is calculated, not failed.
+    [Fact]
+    public void FullModeWithATotalVolumeBeyondTheLongRange_Succeeds_WithTheHandCalculatedLevels()
+    {
+        // Ten bars Low 100, High 110, Open = Close = 105, volume long.MaxValue / 4; 10 rows of width 1; every bar touches all rows, Full gives each row 10 x volume.
+        // total = 100 x volume (about 2.3e20); POC = row 0 (tie -> first) = 100.5; the 70% target is reached after 7 rows: VAH = 107, VAL = 100.
+        var candles = Enumerable.Range(0, 10)
+            .Select(i => new CoreCandleData(new DateTime(2024, 1, 1).AddDays(i), 105m, 110m, 100m, 105m, long.MaxValue / 4))
+            .ToList();
+
+        var result = Make(period: 10, rowCount: 10, VolumeDistributionMode.Full, 0.70m).Calculate(candles);
+
+        Assert.True(result.IsSuccessful);
+        for (int i = 0; i < 9; i++)
+        {
+            Assert.Null(result.MainValues[i]);
+        }
+
+        Assert.Equal(100.5m, result.MainValues[9]);
+        Assert.Equal(107m, result.GetSeries("VAH")[9]);
+        Assert.Equal(100m, result.GetSeries("VAL")[9]);
+    }
 }

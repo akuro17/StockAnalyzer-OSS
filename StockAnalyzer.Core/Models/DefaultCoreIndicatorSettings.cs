@@ -1692,6 +1692,55 @@ public static class DefaultCoreIndicatorSettings
                 {
                     new SeriesColorConfig { Name = IndicatorResult.MainSeriesName, DisplayName = "Entropy", Color = IndicatorDefaultConstants.RsiColor, TargetSeries = new List<string> { IndicatorResult.MainSeriesName } }
                 }
+            },
+            new CoreIndicatorSettings
+            {
+                // Colours by role (decision U-01=A): statistics main line = RsiColor; zero baseline for percentage deviation.
+                TypeEnum = IndicatorType.MansfieldRS,
+                Category = CoreIndicatorCategory.Other,
+                IsEnabled = false,
+                ParameterObject = new CoreMansfieldRSParameter(),
+                Color = IndicatorDefaultConstants.RsiColor,
+                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness,
+                Style = CoreLineStyle.Solid,
+                IsOverlay = false,
+                IncludeZeroBaseline = true,
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
+                {
+                    new SeriesColorConfig { Name = IndicatorResult.MainSeriesName, DisplayName = "Mansfield RS", Color = IndicatorDefaultConstants.RsiColor, TargetSeries = new List<string> { IndicatorResult.MainSeriesName } }
+                }
+            },
+            new CoreIndicatorSettings
+            {
+                TypeEnum = IndicatorType.McClellanOscillator,
+                Category = CoreIndicatorCategory.Other,
+                IsEnabled = false,
+                ParameterObject = new CoreMcClellanOscillatorParameter(),
+                Color = IndicatorDefaultConstants.RsiColor,
+                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness,
+                Style = CoreLineStyle.Solid,
+                IsOverlay = false,
+                IncludeZeroBaseline = true,
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
+                {
+                    new SeriesColorConfig { Name = IndicatorResult.MainSeriesName, DisplayName = "McClellan Oscillator", Color = IndicatorDefaultConstants.RsiColor, TargetSeries = new List<string> { IndicatorResult.MainSeriesName } }
+                }
+            },
+            new CoreIndicatorSettings
+            {
+                TypeEnum = IndicatorType.MarketBreadth,
+                Category = CoreIndicatorCategory.Other,
+                IsEnabled = false,
+                ParameterObject = new CoreMarketBreadthParameter(),
+                Color = IndicatorDefaultConstants.RsiColor,
+                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness,
+                Style = CoreLineStyle.Solid,
+                IsOverlay = false,
+                IncludeZeroBaseline = false,
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
+                {
+                    new SeriesColorConfig { Name = IndicatorResult.MainSeriesName, DisplayName = "Market Breadth", Color = IndicatorDefaultConstants.RsiColor, TargetSeries = new List<string> { IndicatorResult.MainSeriesName } }
+                }
             }
         };
     }
@@ -1833,6 +1882,18 @@ public static class DefaultCoreIndicatorSettings
                 if (orphanIntercept != null)
                 {
                     indicator.SeriesColors.Remove(orphanIntercept);
+                }
+            }
+            // Remove unrendered auxiliary series configs from McClellanOscillator (SummationIndex / AdLine are DataWindow-only)
+            if (indicator.TypeEnum == IndicatorType.McClellanOscillator)
+            {
+                var orphanSeries = indicator.SeriesColors
+                    .Where(sc => sc.Name == CoreMcClellanOscillatorIndicator.SummationIndexSeriesName
+                              || sc.Name == CoreMcClellanOscillatorIndicator.AdLineSeriesName)
+                    .ToList();
+                foreach (var orphan in orphanSeries)
+                {
+                    indicator.SeriesColors.Remove(orphan);
                 }
             }
         }

@@ -41,12 +41,41 @@ public interface IScreeningCondition
     }
 
     /// <summary>
+    /// Checks if the condition is met asynchronously with ticker metadata, secondary comparison candles,
+    /// the evaluated <paramref name="symbol"/>, and optional cross-sectional <paramref name="evaluationContext"/>.
+    /// Existing implementers need not change: the default delegates to the three-argument overload.
+    /// </summary>
+    System.Threading.Tasks.ValueTask<bool> IsMetAsync(
+        IReadOnlyList<CandleData> candles,
+        Portfolio.TickerMetadata metadata,
+        Screener.IScreenerSecondaryCandles? secondary,
+        string? symbol,
+        Screener.IScreenerEvaluationContext? evaluationContext = null)
+    {
+        return IsMetAsync(candles, metadata, secondary);
+    }
+
+    /// <summary>
     /// Checks if the condition is met when each side reads the bars of its own time frame from <paramref name="bars"/>. A condition that does not read the bars of
     /// more than one time frame cannot answer this, so the default refuses instead of falling back to the daily bars (which would give a wrong answer silently).
     /// </summary>
     System.Threading.Tasks.ValueTask<bool> IsMetOnBarsAsync(Services.Screener.IScreenerBarSet bars, Portfolio.TickerMetadata metadata, Screener.IScreenerSecondaryCandles? secondary = null)
     {
         throw new System.NotSupportedException($"{GetType().Name} does not evaluate sides on their own time frames.");
+    }
+
+    /// <summary>
+    /// Checks if the condition is met when each side reads the bars of its own time frame from <paramref name="bars"/>,
+    /// with the evaluated <paramref name="symbol"/> and optional cross-sectional <paramref name="evaluationContext"/>.
+    /// </summary>
+    System.Threading.Tasks.ValueTask<bool> IsMetOnBarsAsync(
+        Services.Screener.IScreenerBarSet bars,
+        Portfolio.TickerMetadata metadata,
+        Screener.IScreenerSecondaryCandles? secondary,
+        string? symbol,
+        Screener.IScreenerEvaluationContext? evaluationContext = null)
+    {
+        return IsMetOnBarsAsync(bars, metadata, secondary);
     }
 
     /// <summary>

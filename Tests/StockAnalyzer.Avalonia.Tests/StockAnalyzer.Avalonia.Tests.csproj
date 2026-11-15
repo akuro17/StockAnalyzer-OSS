@@ -5,6 +5,10 @@
     <IsTestProject>true</IsTestProject>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <!-- The allocation probes compare a measured byte count with a baseline. A method that is promoted through the profile-instrumented
+         JIT tier while a probe runs allocates more than its tier-0 and its final tier (measured: GannFan values 2888 B against 2024 B),
+         which failed one full-suite run in several. Without that tier the only promotion left (tier-0 to final) never allocates more. -->
+    <TieredPGO>false</TieredPGO>
   </PropertyGroup>
 
   <ItemGroup>

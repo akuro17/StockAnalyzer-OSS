@@ -66,6 +66,10 @@ public static class IndicatorDefaultConstants
     public static readonly IndicatorColor BollingerMiddleColor = new(255, 41, 98, 255); // Blue #2962FF
     public static readonly IndicatorColor BollingerBandsColor = new(255, 126, 87, 194);  // Purple #7E57C2
 
+    // === Keltner Channel: ATR multiplier range (the periods use DefaultPeriodMin / DefaultPeriodMax); double because an attribute argument cannot be a decimal constant ===
+    public const double KeltnerMinMultiplier = 0.1;
+    public const double KeltnerMaxMultiplier = 10.0;
+
     // === Ichimoku ===
     public static readonly IndicatorColor IchimokuBaseColor = new(255, 128, 128, 128); // Gray
     public static readonly IndicatorColor IchimokuTenkanColor = new(255, 171, 71, 188);   // Purple #AB47BC
@@ -649,5 +653,22 @@ public static class IndicatorDefaultConstants
     public const double VolumeProfileLevelsMaxValueAreaPercentage = 0.99;
     /// <summary>Largest bin count whose volume array is taken from the stack; a larger one is rented from the array pool.</summary>
     public const int VolumeProfileLevelsMaxStackRows = 256;
+
+    // === Mansfield Relative Strength (Stan Weinstein): ((A / B) / SMA(A / B, Period) - 1) * 100; unit: percentage ===
+    /// <summary>Default SMA baseline period in bars (Weinstein's 52 weeks on weekly charts; users adjust e.g. to 200 on daily charts).</summary>
+    public const int MansfieldRsDefaultPeriod = 52;
+    /// <summary>Scale factor converting fractional relative-strength deviation into percentage points.</summary>
+    public const decimal MansfieldRsPercentScale = 100m;
+
+    // === Universe Market Breadth (plan 10): McClellan Oscillator & Market Breadth sub-panel indicators ===
+    public const int McClellanFastDefaultPeriod = StockAnalyzer.Core.Analysis.MarketBreadthCalculator.DefaultMcClellanFast;
+    public const int McClellanSlowDefaultPeriod = StockAnalyzer.Core.Analysis.MarketBreadthCalculator.DefaultMcClellanSlow;
+    public const int McClellanFastMinPeriod = 1;
+    public const int McClellanFastMaxPeriod = 500;
+    public const int McClellanSlowMinPeriod = 2;
+    public const int McClellanSlowMaxPeriod = 1000;
+    public const int MarketBreadthAdRatioDefaultBars = StockAnalyzer.Core.Analysis.MarketBreadthCalculator.DefaultAdRatioBars;
+    public const int MarketBreadthMaDefaultBars = StockAnalyzer.Core.Analysis.MarketBreadthCalculator.DefaultMaBars;
+    public const int MarketBreadthHighLowDefaultBars = StockAnalyzer.Core.Analysis.MarketBreadthCalculator.DefaultHighLowBars;
 }
 

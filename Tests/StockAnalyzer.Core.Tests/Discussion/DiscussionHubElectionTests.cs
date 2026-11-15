@@ -35,6 +35,12 @@ public sealed class DiscussionHubElectionTests : IDisposable
         }
     }
 
+    private const int PoolHoldMilliseconds = 400;
+    private const int PoolHoldSettleMilliseconds = 100;
+    private const int ProbeMilliseconds = 50;
+    private const int PoolBlockersPerProcessor = 4;
+    private const int RequestReachSeconds = 10;
+
     private static string NewSuffix() => Guid.NewGuid().ToString("N")[..12];
 
     private DiscussionGatewayRouter NewRouter(string suffix, string? dataFolder = null, bool sharing = true, ICommandLog? commandLog = null, DiscussionSettings? settings = null)
@@ -756,6 +762,71 @@ public sealed class DiscussionHubElectionTests : IDisposable
         DiscussionReply reply = await waiting.WaitAsync(TimeSpan.FromSeconds(10));
         Assert.False(reply.IsOk);
         Assert.Equal(DiscussionErrorCodes.HubReset, Code(reply));
+    }
+
+    [Fact]
+    public void ADisposedHubStopsListeningBeforeItClosesItsOpenConnections()
+    {
+        // Spec 5.12 shutdown order: stop accepting, then close the connections. A client whose connection breaks elects again at once. While
+        // the dying hub still had a listening instance, that client's probe connected to it (and used it up), so the one repeat of its call
+        // found no instance, timed out and answered HUB_UNAVAILABLE instead of HUB_RESET (seen once in a full-suite run). The accept loop
+        // can only dispose its instance when it gets a pool thread, so every pool thread is held for a while here, and everything the test
+        // itself does runs on dedicated threads with blocking calls.
+        (string name, DiscussionPipeHost host, ScriptedBoard board) = StartHost();
+        board.Handler = async (_, token) =>
+        {
+            await Task.Delay(Timeout.Infinite, token);
+            return DiscussionReply.Ok("{}");
+        };
+
+        using var held = new NamedPipeClientStream(".", name, PipeDirection.InOut, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+        held.Connect(ConnectTimeoutMilliseconds);
+        byte[] request = DiscussionWire.EncodeRequest(new DiscussionRequest("read", "x", "{}"));
+        held.Write(request, 0, request.Length);
+        held.Flush();
+        Assert.True(SpinWait.SpinUntil(() => Volatile.Read(ref board.Calls) == 1, TimeSpan.FromSeconds(RequestReachSeconds)), "the request did not reach the board");
+
+        using var release = new ManualResetEventSlim();
+        for (int i = 0; i < Environment.ProcessorCount * PoolBlockersPerProcessor; i++)
+        {
+            _ = Task.Run(() => release.Wait());
+        }
+
+        Thread.Sleep(PoolHoldSettleMilliseconds);
+        var releaser = new Thread(() => { Thread.Sleep(PoolHoldMilliseconds); release.Set(); });
+        var disposer = new Thread(host.Dispose);
+        bool someoneIsListening;
+        try
+        {
+            releaser.Start();
+            disposer.Start();
+            try
+            {
+                _ = held.ReadByte();   // returns (end of stream) or throws when the hub closes this connection
+            }
+            catch (IOException)
+            {
+            }
+
+            using var probe = new NamedPipeClientStream(".", name, PipeDirection.InOut, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+            try
+            {
+                probe.Connect(ProbeMilliseconds);
+                someoneIsListening = true;
+            }
+            catch (Exception error) when (error is TimeoutException or IOException)
+            {
+                someoneIsListening = false;
+            }
+        }
+        finally
+        {
+            release.Set();
+            disposer.Join();
+            releaser.Join();
+        }
+
+        Assert.False(someoneIsListening, "the hub still had a listening instance when it closed the open connection");
     }
 
     private static async Task WaitUntilAsync(Func<bool> condition)

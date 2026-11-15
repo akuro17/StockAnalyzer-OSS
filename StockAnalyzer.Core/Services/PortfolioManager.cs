@@ -802,22 +802,26 @@ public class PortfolioManager : IPortfolioManager
                 index = data.Count - 6;
                 break;
             case PerformancePeriod.MonthToDate:
-                // Last business day of previous month
+                // Close of the newest bar strictly before the first day of the month; no such bar -> start price 0.
                 var firstOfMonth = new DateTime(referenceDate.Year, referenceDate.Month, 1);
                 index = FindNearestIndex(data, firstOfMonth) - 1;
+                if (index < 0) return 0;
                 break;
             case PerformancePeriod.YearToDate:
-                // Last business day of previous year
+                // Close of the newest bar strictly before 1 January; no such bar -> start price 0.
                 var firstOfYear = new DateTime(referenceDate.Year, 1, 1);
                 index = FindNearestIndex(data, firstOfYear) - 1;
+                if (index < 0) return 0;
                 break;
             case PerformancePeriod.OneYear:
-                // Close on same day 1 year ago (or nearest preceding business day)
+                // Close of the newest bar strictly before the same day one year earlier; no such bar -> start price 0.
                 var yearAgo = referenceDate.AddYears(-1);
                 index = FindNearestIndex(data, yearAgo) - 1;
+                if (index < 0) return 0;
                 break;
         }
 
+        // OneDay / FiveDays with a series shorter than 2 / 6 bars use the first bar.
         if (index < 0) index = 0;
         if (index >= data.Count) return 0;
 

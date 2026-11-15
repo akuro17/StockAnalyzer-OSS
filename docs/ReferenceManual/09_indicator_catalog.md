@@ -93,6 +93,7 @@ This section is generated from the production code (`IndicatorFactory`, each ind
 | `Garch11` | `68` | `CoreGarch11Parameter` | `Period` (int, default `250`), `RefitInterval` (int, default `20`), `MaxIterations` (int, default `1000`), `Annualize` (bool, default `false`), `PeriodsPerYear` (int, default `252`) | `false` | `"Main"` |
 | `FourierTransform` | `69` | `CoreFourierTransformParameter` | `TargetPeriod` (int, default `20`, range `[2, 500]`) | `false` | `"Main"` |
 | `HilbertTransform` | `70` | `CoreHilbertTransformParameter` | `DefaultPeriod` (int, default `14`, range `[2, 100]`), `MinPeriod` (int, default `6`, range `[2, 50]`), `MaxPeriod` (int, default `50`, range `[10, 200]`), `SmoothBeta` (decimal, default `0.1`, range `[0.01, 1]`), `DeltaLimit` (decimal, default `3.0`, range `[0.5, 20]`) | `false` | `"Main"`, `"InPhase"`, `"Quadrature"` |
+| `McClellanOscillator` | `72` | `CoreMcClellanOscillatorParameter` | `UniverseGroupId` (string, default `""`), `FastPeriod` (int, default `19`), `SlowPeriod` (int, default `39`) | `false` | `"Main"`, `"SummationIndex"`, `"AdLine"` |
 | `HurstExponent` | `81` | `CoreHurstExponentParameter` | `Period` (int, default `100`) | `false` | `"Main"` |
 | `CoppockCurve` | `100` | `CoreCoppockCurveParameter` | `LongRocPeriod` (int, default `14`), `ShortRocPeriod` (int, default `11`), `WmaPeriod` (int, default `10`) | `false` | `"Main"` |
 | `SchaffTrendCycle` | `103` | `CoreSchaffTrendCycleParameter` | `CyclePeriod` (int, default `10`), `ShortPeriod` (int, default `23`), `LongPeriod` (int, default `50`), `SmoothPeriod` (int, default `3`) | `false` | `"Main"` |
@@ -122,6 +123,8 @@ This section is generated from the production code (`IndicatorFactory`, each ind
 | `CrossTickerDtw` | `190` | `CoreCrossTickerDtwParameter` | `Period` (int, default `20`, range `[5, 200]`), `ComparisonSymbol` (string, default `""`), `PriceSource` (PriceType, default `0 (Close)`), `ComparisonPriceSource` (PriceType, default `0 (Close)`), `WarpingRadius` (int, default `3`, range `[-1, 50]`), `OutputMode` (DtwOutputMode, default `0 (Distance)`) | `false` | `"Main"`, `"NormalizedDistance"`, `"SimilarityScore"` |
 | `PACF` | `191` | `CorePacfParameter` | `Period` (int, default `50`, range `[10, 500]`), `Lag` (int, default `1`, range `[1, 50]`), `CalculationMode` (CorrelationCalculationMode, default `0 (PriceLevel)`), `PriceSource` (PriceType, default `0 (Close)`) | `false` | `"Main"`, `"UpperConfidenceBand"`, `"LowerConfidenceBand"` |
 | `RankCorrelation` | `192` | `CoreRankCorrelationParameter` | `Period` (int, default `20`, range `[5, 200]`), `ComparisonSymbol` (string, default `""`), `PriceSource` (PriceType, default `0 (Close)`), `ComparisonPriceSource` (PriceType, default `0 (Close)`), `Method` (RankCorrelationMethod, default `0 (Spearman)`) | `false` | `"Main"` |
+| `MansfieldRS` | `202` | `CoreMansfieldRSParameter` | `Period` (int, default `52`), `PriceSource` (PriceType, default `0 (Close)`), `ComparisonSymbol` (string, default `""`), `ComparisonPriceSource` (PriceType, default `0 (Close)`) | `false` | `"Main"` |
+| `MarketBreadth` | `203` | `CoreMarketBreadthParameter` | `UniverseGroupId` (string, default `""`), `MetricMode` (MarketBreadthMetricMode, default `0 (AdRatio)`), `AdRatioBars` (int, default `20`), `MaBars` (int, default `50`), `HighLowBars` (int, default `20`) | `false` | `"Main"` |
 
 ### Category: Trend
 
@@ -251,6 +254,7 @@ Enums are serialized as integers. The member name in parentheses is for readabil
 - **`DisplaySide`**: `0` = `Left`, `1` = `Right`, `2` = `Both`
 - **`DtwOutputMode`**: `0` = `Distance`, `1` = `Similarity`
 - **`HoughNormalizationMode`**: `0` = `Raw`, `1` = `Relative`, `2` = `Log`, `3` = `MinMax`, `4` = `ZScore`
+- **`MarketBreadthMetricMode`**: `0` = `AdRatio`, `1` = `PctAboveMa`, `2` = `AdLine`, `3` = `NetNewHighs`, `4` = `Trin`, `5` = `Cvi`
 - **`MovingAverageType`**: `0` = `ALMA`, `1` = `DEMA`, `2` = `EMA`, `3` = `HMA`, `4` = `KAMA`, `5` = `LRMA`, `6` = `LSMA`, `7` = `SMA`, `8` = `SMMA`, `9` = `TEMA`, `10` = `TMA`, `11` = `WMA`, `12` = `ZLEMA`
 - **`PivotPointType`**: `0` = `Standard`, `1` = `Fibonacci`, `2` = `Woodie`, `3` = `Camarilla`
 - **`PivotSourcePeriod`**: `0` = `PreviousBar`, `1` = `Week`, `2` = `Month`

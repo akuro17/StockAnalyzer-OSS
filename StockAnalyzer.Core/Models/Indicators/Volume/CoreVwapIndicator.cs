@@ -94,7 +94,8 @@ namespace StockAnalyzer.Core.Models.Indicators.Volume
                 // A bar without a price is left out of numerator and denominator.
                 if (priceSeries[i] is { } price)
                 {
-                    decimal volume = candles[i].Volume;
+                    // A negative volume is invalid data: the bar counts as volume 0 (the rule of IndicatorCalculationHelper.CalculateRollingVwap).
+                    decimal volume = Math.Max(0m, candles[i].Volume);
                     sumPriceVolume += price * volume;
                     sumVolume += volume;
                     if (ShowBands && !bandsOverflowed)

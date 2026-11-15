@@ -224,7 +224,7 @@ internal sealed class RenderChartImageTool : IMcpImageTool
         if (requests.Count > 0)
         {
             List<CoreCandleData> core = loaded.Select(c => new CoreCandleData(c.Timestamp, c.Open, c.High, c.Low, c.Close, c.Volume)).ToList();
-            Dictionary<string, IIndicatorResult> results = await CalculateAsync(core, requests.Select(r => r.Settings).ToList(), cancellationToken).ConfigureAwait(false);
+            Dictionary<string, IIndicatorResult> results = await CalculateAsync(core, requests.Select(r => r.Settings).ToList(), timeFrame, endDate, cancellationToken).ConfigureAwait(false);
             cancellationToken.ThrowIfCancellationRequested();
             for (int i = 0; i < requests.Count; i++)
             {
@@ -436,10 +436,17 @@ internal sealed class RenderChartImageTool : IMcpImageTool
     }
 
     /// <summary>One calculation through the gateway; a gateway that checks the token between indicators gets it (as sa_calculate_indicators does).</summary>
-    private Task<Dictionary<string, IIndicatorResult>> CalculateAsync(IReadOnlyList<CoreCandleData> candles, IReadOnlyList<CoreIndicatorSettings> settings, CancellationToken cancellationToken)
-        => _gateway is ICancellableIndicatorCalculation cancellable
-            ? cancellable.CalculateIndicatorsAsync(candles, settings, null, cancellationToken)
-            : _gateway.CalculateIndicatorsAsync(candles, settings, null);
+    private Task<Dictionary<string, IIndicatorResult>> CalculateAsync(
+        IReadOnlyList<CoreCandleData> candles,
+        IReadOnlyList<CoreIndicatorSettings> settings,
+        TimeFrame timeFrame,
+        DateOnly? endDate,
+        CancellationToken cancellationToken)
+        => _gateway is ITimeFrameAwareIndicatorCalculation tfAware
+            ? tfAware.CalculateIndicatorsAsync(candles, settings, null, timeFrame, endDate, cancellationToken)
+            : _gateway is ICancellableIndicatorCalculation cancellable
+                ? cancellable.CalculateIndicatorsAsync(candles, settings, null, cancellationToken)
+                : _gateway.CalculateIndicatorsAsync(candles, settings, null);
 
     private void WriteResult(
         System.Text.Json.Utf8JsonWriter writer,

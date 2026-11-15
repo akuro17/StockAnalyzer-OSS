@@ -44,6 +44,27 @@ public interface IScreenerService
     }
 
     /// <summary>
+    /// The scan of the overload above with a precomputed cross-sectional evaluation context (such as RS Rating across the screened universe).
+    /// When <paramref name="evaluationContext"/> is null, an implementation that supports on-demand cross-sectional calculation resolves it when needed.
+    /// </summary>
+    Task<List<string>> ScreenAsync(
+        List<string> symbols,
+        IScreeningCondition condition,
+        TimeFrame timeFrame,
+        Models.Screener.IScreenerSecondaryCandles? secondary,
+        Models.Screener.IScreenerEvaluationContext? evaluationContext,
+        IProgress<int> progress,
+        CancellationToken ct)
+    {
+        if (evaluationContext != null)
+        {
+            throw new NotSupportedException($"{GetType().Name} does not evaluate cross-sectional screener contexts.");
+        }
+
+        return ScreenAsync(symbols, condition, timeFrame, secondary, progress, ct);
+    }
+
+    /// <summary>
     /// Reads the bars of the comparison symbols a condition names (<see cref="Models.Screener.ScreenerComparisonRequirement.Spellings"/>), once, for the scan of the overload above.
     /// The bars come from the same data service and have the same length as the bars of the screened symbols (the history <paramref name="condition"/> needs; 0 = all);
     /// every spelling of one instrument (<c>7203.T</c> / <c>7203-T</c>) is registered, so each lookup is an exact hit, and an instrument without bars is absent
@@ -82,6 +103,26 @@ public interface IScreenerService
         IProgress<int> progress,
         CancellationToken ct)
         => throw new NotSupportedException($"{GetType().Name} does not scan sides on their own time frames.");
+
+    /// <summary>
+    /// <see cref="ScreenWithSideFramesAsync(List{string}, IScreeningCondition, ScreenerBarSelection, IProgress{int}, CancellationToken)"/> with a precomputed
+    /// cross-sectional evaluation context.
+    /// </summary>
+    Task<ScreenerSideFramesResult> ScreenWithSideFramesAsync(
+        List<string> symbols,
+        IScreeningCondition condition,
+        ScreenerBarSelection selection,
+        Models.Screener.IScreenerEvaluationContext? evaluationContext,
+        IProgress<int> progress,
+        CancellationToken ct)
+    {
+        if (evaluationContext != null)
+        {
+            throw new NotSupportedException($"{GetType().Name} does not evaluate cross-sectional screener contexts on side frames.");
+        }
+
+        return ScreenWithSideFramesAsync(symbols, condition, selection, progress, ct);
+    }
 
     /// <summary>
     /// The latest <paramref name="count"/> bars (0 = all) of one symbol that <see cref="ScreenOnBarsAsync"/> evaluates for the same <paramref name="selection"/>: the same daily-aggregated

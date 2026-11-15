@@ -9,7 +9,7 @@ public class CoreKeltnerParameter : CoreIndicatorParameterBase
 
     [DisplayName("EMA Period")]
     [Description("Exponential moving average period for center line.")]
-    [CoreParameterRange(1, 1000)]
+    [CoreParameterRange(IndicatorDefaultConstants.DefaultPeriodMin, IndicatorDefaultConstants.DefaultPeriodMax)]
     public int EmaPeriod
     {
         get => _emaPeriod;
@@ -20,7 +20,7 @@ public class CoreKeltnerParameter : CoreIndicatorParameterBase
 
     [DisplayName("ATR Period")]
     [Description("Average True Range calculation period for channel width.")]
-    [CoreParameterRange(1, 1000)]
+    [CoreParameterRange(IndicatorDefaultConstants.DefaultPeriodMin, IndicatorDefaultConstants.DefaultPeriodMax)]
     public int AtrPeriod
     {
         get => _atrPeriod;
@@ -31,7 +31,7 @@ public class CoreKeltnerParameter : CoreIndicatorParameterBase
 
     [DisplayName("Multiplier")]
     [Description("ATR multiplier for channel bands.")]
-    [CoreParameterRange(0.1, 10.0)]
+    [CoreParameterRange(IndicatorDefaultConstants.KeltnerMinMultiplier, IndicatorDefaultConstants.KeltnerMaxMultiplier)]
     public decimal Multiplier
     {
         get => _multiplier;
@@ -40,9 +40,14 @@ public class CoreKeltnerParameter : CoreIndicatorParameterBase
 
     public override string GetDisplayName(string type) => $"{type} ({EmaPeriod}, {AtrPeriod}, {Multiplier})";
 
+    // The first non-null output: the middle line (SMA seed) starts at index EmaPeriod - 1 and the ATR at index AtrPeriod; the channel needs both
+    // (the WebAiExpansion convention: the first non-null index, not a convergence length).
+    public override int GetRequiredWarmupBars() => Math.Max(EmaPeriod - 1, AtrPeriod);
+
     public override void Validate()
     {
-        if (EmaPeriod <= 0) throw new ArgumentOutOfRangeException(nameof(EmaPeriod));
-        if (AtrPeriod <= 0) throw new ArgumentOutOfRangeException(nameof(AtrPeriod));
+        ThrowIfOutOfRange(EmaPeriod, IndicatorDefaultConstants.DefaultPeriodMin, IndicatorDefaultConstants.DefaultPeriodMax, nameof(EmaPeriod));
+        ThrowIfOutOfRange(AtrPeriod, IndicatorDefaultConstants.DefaultPeriodMin, IndicatorDefaultConstants.DefaultPeriodMax, nameof(AtrPeriod));
+        ThrowIfOutOfRange(Multiplier, IndicatorDefaultConstants.KeltnerMinMultiplier, IndicatorDefaultConstants.KeltnerMaxMultiplier, nameof(Multiplier));
     }
 }

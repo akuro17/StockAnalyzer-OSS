@@ -21,6 +21,12 @@ internal static class PairIndicatorLabel
     internal static string Format(string typeLabel, string comparisonSymbol, PriceType priceSource, PriceType comparisonPriceSource)
     {
         var parts = new List<string>(3);
+        AppendPairParts(parts, comparisonSymbol, priceSource, comparisonPriceSource);
+        return parts.Count == 0 ? typeLabel : typeLabel + PartsOpen + string.Join(PartsSeparator, parts) + PartsClose;
+    }
+
+    internal static void AppendPairParts(List<string> parts, string comparisonSymbol, PriceType priceSource, PriceType comparisonPriceSource)
+    {
         if (!string.IsNullOrWhiteSpace(comparisonSymbol))
         {
             parts.Add(comparisonSymbol.Trim().ToUpperInvariant());
@@ -35,7 +41,5 @@ internal static class PairIndicatorLabel
         {
             parts.Add(ComparisonPricePrefix + comparisonPriceSource);
         }
-
-        return parts.Count == 0 ? typeLabel : typeLabel + PartsOpen + string.Join(PartsSeparator, parts) + PartsClose;
     }
 }

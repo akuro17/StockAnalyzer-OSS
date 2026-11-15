@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using StockAnalyzer.Core.Analysis;
 using StockAnalyzer.Core.Interfaces;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Analysis;
@@ -17,13 +18,14 @@ namespace StockAnalyzer.Core.Services.Analysis;
 /// Default implementation of the Analysis Pipeline Service with DAG dependency resolution
 /// for Indicator-on-Indicator chaining and dynamic adaptive modulation.
 /// </summary>
-public class AnalysisPipelineService : IAnalysisPipelineService, ICancellableIndicatorCalculation
+public class AnalysisPipelineService : IAnalysisPipelineService, ICancellableIndicatorCalculation, ITimeFrameAwareIndicatorCalculation
 {
     private readonly IReverseWatchAnalysisService _reverseWatchService;
     private readonly IPythonService? _pythonService;
     private readonly IIndicatorFactory _indicatorFactory;
     private readonly ISourceIndicatorService? _sourceIndicatorService;
     private readonly IDynamicPeriodDriverService? _dynamicPeriodDriverService;
+    private readonly IMarketBreadthSeriesProvider? _marketBreadthProvider;
     private readonly ILogger<AnalysisPipelineService> _logger;
 
     public AnalysisPipelineService(
@@ -31,13 +33,15 @@ public class AnalysisPipelineService : IAnalysisPipelineService, ICancellableInd
         IIndicatorFactory? indicatorFactory = null, 
         ISourceIndicatorService? sourceIndicatorService = null,
         ILogger<AnalysisPipelineService>? logger = null,
-        IDynamicPeriodDriverService? dynamicPeriodDriverService = null)
+        IDynamicPeriodDriverService? dynamicPeriodDriverService = null,
+        IMarketBreadthSeriesProvider? marketBreadthProvider = null)
     {
         _reverseWatchService = new ReverseWatchAnalysisService();
         _pythonService = pythonService;
         _indicatorFactory = indicatorFactory ?? IndicatorFactory.Default;
         _sourceIndicatorService = sourceIndicatorService;
         _dynamicPeriodDriverService = dynamicPeriodDriverService;
+        _marketBreadthProvider = marketBreadthProvider;
         _logger = logger ?? NullLogger<AnalysisPipelineService>.Instance;
     }
 
@@ -50,13 +54,15 @@ public class AnalysisPipelineService : IAnalysisPipelineService, ICancellableInd
         IIndicatorFactory? indicatorFactory = null, 
         ISourceIndicatorService? sourceIndicatorService = null,
         ILogger<AnalysisPipelineService>? logger = null,
-        IDynamicPeriodDriverService? dynamicPeriodDriverService = null)
+        IDynamicPeriodDriverService? dynamicPeriodDriverService = null,
+        IMarketBreadthSeriesProvider? marketBreadthProvider = null)
     {
         _pythonService = pythonService;
         _reverseWatchService = reverseWatchService;
         _indicatorFactory = indicatorFactory ?? IndicatorFactory.Default;
         _sourceIndicatorService = sourceIndicatorService;
         _dynamicPeriodDriverService = dynamicPeriodDriverService;
+        _marketBreadthProvider = marketBreadthProvider;
         _logger = logger ?? NullLogger<AnalysisPipelineService>.Instance;
     }
 
@@ -339,6 +345,9 @@ public class AnalysisPipelineService : IAnalysisPipelineService, ICancellableInd
             settingsById[s.Id] = s;
         }
 
+        TimeFrame resolvedTimeFrame = InferTimeFrame(candles);
+        Dictionary<UniverseBreadthKey, MarketBreadthResult?>? breadthCache = null;
+
         foreach (var setting in orderedSettings)
         {
             if (!setting.TypeEnum.HasValue) continue;
@@ -368,6 +377,13 @@ public class AnalysisPipelineService : IAnalysisPipelineService, ICancellableInd
                     {
                         var secCandles = ResolveSecondaryCandles(secondaryCandlesBySymbol, crossInd.ComparisonSymbol);
                         crossInd.SetSecondaryCandles(secCandles);
+                    }
+
+                    if (indicator is IUniverseBreadthIndicator breadthInd)
+                    {
+                        breadthCache ??= new Dictionary<UniverseBreadthKey, MarketBreadthResult?>();
+                        Task.Run(async () => await InjectUniverseBreadthAsync(breadthInd, resolvedTimeFrame, endDate: null, breadthCache, CancellationToken.None).ConfigureAwait(false))
+                            .GetAwaiter().GetResult();
                     }
 
 
@@ -430,10 +446,38 @@ public class AnalysisPipelineService : IAnalysisPipelineService, ICancellableInd
         => CalculateIndicatorsAsync(candles, settings, secondaryCandlesBySymbol, CancellationToken.None);
 
     /// <inheritdoc />
-    public async Task<Dictionary<string, IIndicatorResult>> CalculateIndicatorsAsync(
+    public Task<Dictionary<string, IIndicatorResult>> CalculateIndicatorsAsync(
         IReadOnlyList<CoreCandleData> candles,
         IEnumerable<CoreIndicatorSettings> settings,
         IReadOnlyDictionary<string, IReadOnlyList<CoreCandleData?>>? secondaryCandlesBySymbol,
+        CancellationToken cancellationToken)
+        => CalculateIndicatorsCoreAsync(candles, settings, secondaryCandlesBySymbol, candles != null && candles.Count > 1 ? InferTimeFrame(candles) : TimeFrame.D1, endDate: null, cancellationToken);
+
+    /// <inheritdoc />
+    public Task<Dictionary<string, IIndicatorResult>> CalculateIndicatorsAsync(
+        IReadOnlyList<CoreCandleData> candles,
+        IEnumerable<CoreIndicatorSettings> settings,
+        IReadOnlyDictionary<string, IReadOnlyList<CoreCandleData?>>? secondaryCandlesBySymbol,
+        TimeFrame timeFrame,
+        CancellationToken cancellationToken = default)
+        => CalculateIndicatorsCoreAsync(candles, settings, secondaryCandlesBySymbol, timeFrame, endDate: null, cancellationToken);
+
+    /// <inheritdoc />
+    public Task<Dictionary<string, IIndicatorResult>> CalculateIndicatorsAsync(
+        IReadOnlyList<CoreCandleData> candles,
+        IEnumerable<CoreIndicatorSettings> settings,
+        IReadOnlyDictionary<string, IReadOnlyList<CoreCandleData?>>? secondaryCandlesBySymbol,
+        TimeFrame timeFrame,
+        DateOnly? endDate,
+        CancellationToken cancellationToken = default)
+        => CalculateIndicatorsCoreAsync(candles, settings, secondaryCandlesBySymbol, timeFrame, endDate, cancellationToken);
+
+    private async Task<Dictionary<string, IIndicatorResult>> CalculateIndicatorsCoreAsync(
+        IReadOnlyList<CoreCandleData> candles,
+        IEnumerable<CoreIndicatorSettings> settings,
+        IReadOnlyDictionary<string, IReadOnlyList<CoreCandleData?>>? secondaryCandlesBySymbol,
+        TimeFrame timeFrame,
+        DateOnly? endDate,
         CancellationToken cancellationToken)
     {
         // A cancelled call throws also when there is nothing to calculate; the same check guards every indicator below.
@@ -449,6 +493,8 @@ public class AnalysisPipelineService : IAnalysisPipelineService, ICancellableInd
         {
             settingsById[s.Id] = s;
         }
+
+        Dictionary<UniverseBreadthKey, MarketBreadthResult?>? breadthCache = null;
 
         foreach (var setting in orderedSettings)
         {
@@ -483,6 +529,12 @@ public class AnalysisPipelineService : IAnalysisPipelineService, ICancellableInd
                     {
                         var secCandles = ResolveSecondaryCandles(secondaryCandlesBySymbol, crossInd.ComparisonSymbol);
                         crossInd.SetSecondaryCandles(secCandles);
+                    }
+
+                    if (indicator is IUniverseBreadthIndicator breadthInd)
+                    {
+                        breadthCache ??= new Dictionary<UniverseBreadthKey, MarketBreadthResult?>();
+                        await InjectUniverseBreadthAsync(breadthInd, timeFrame, endDate, breadthCache, cancellationToken).ConfigureAwait(false);
                     }
 
 
@@ -522,6 +574,10 @@ public class AnalysisPipelineService : IAnalysisPipelineService, ICancellableInd
                     {
                         setting.ErrorMessage = null;
                     }
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
                 }
                 catch (Exception ex)
                 {
@@ -608,6 +664,85 @@ public class AnalysisPipelineService : IAnalysisPipelineService, ICancellableInd
             }
         }
         baseInd.PriceSource = setting.PriceSource;
+    }
+
+    private async Task InjectUniverseBreadthAsync(
+        IUniverseBreadthIndicator breadthIndicator,
+        TimeFrame timeFrame,
+        DateOnly? endDate,
+        Dictionary<UniverseBreadthKey, MarketBreadthResult?> callCache,
+        CancellationToken cancellationToken)
+    {
+        if (_marketBreadthProvider == null
+            || string.IsNullOrWhiteSpace(breadthIndicator.UniverseGroupId)
+            || !Guid.TryParse(breadthIndicator.UniverseGroupId.Trim(), out Guid groupId)
+            || groupId == Guid.Empty)
+        {
+            breadthIndicator.SetUniverseBreadth(null, timeFrame);
+            return;
+        }
+
+        MarketBreadthParameters baseParams = breadthIndicator.BreadthParameters;
+        MarketBreadthParameters breadthParams = endDate.HasValue
+            ? new MarketBreadthParameters
+            {
+                AdRatioBars = baseParams.AdRatioBars,
+                McClellanFast = baseParams.McClellanFast,
+                McClellanSlow = baseParams.McClellanSlow,
+                MaBars = baseParams.MaBars,
+                HighLowBars = baseParams.HighLowBars,
+                OutputTailCount = baseParams.OutputTailCount,
+                IncludeSeries = baseParams.IncludeSeries,
+                TimeFrame = timeFrame,
+                EndDate = endDate
+            }
+            : baseParams;
+        UniverseBreadthKey key = UniverseBreadthKey.From(groupId, timeFrame, breadthParams, endDate);
+        if (!callCache.TryGetValue(key, out MarketBreadthResult? breadthResult))
+        {
+            breadthResult = await _marketBreadthProvider.GetAsync(groupId, timeFrame, breadthParams, cancellationToken).ConfigureAwait(false);
+            callCache[key] = breadthResult;
+        }
+
+        breadthIndicator.SetUniverseBreadth(breadthResult, timeFrame);
+    }
+
+    /// <summary>
+    /// Infers D1, W1, or MN1 from consecutive bar date spacing when the pipeline is invoked
+    /// through an interface overload that does not pass an explicit <see cref="TimeFrame"/>.
+    /// </summary>
+    internal static TimeFrame InferTimeFrame(IReadOnlyList<CoreCandleData>? candles)
+    {
+        if (candles == null || candles.Count < 2)
+        {
+            return TimeFrame.D1;
+        }
+
+        const int MaxSamples = 24;
+        int start = Math.Max(1, candles.Count - MaxSamples);
+        var gaps = new List<int>(candles.Count - start);
+        for (int i = start; i < candles.Count; i++)
+        {
+            int days = (candles[i].Timestamp.Date - candles[i - 1].Timestamp.Date).Days;
+            if (days > 0)
+            {
+                gaps.Add(days);
+            }
+        }
+
+        if (gaps.Count == 0)
+        {
+            return TimeFrame.D1;
+        }
+
+        gaps.Sort();
+        int medianDays = gaps[gaps.Count / 2];
+        if (medianDays >= 25)
+        {
+            return TimeFrame.MN1;
+        }
+
+        return medianDays >= 5 ? TimeFrame.W1 : TimeFrame.D1;
     }
 }
 

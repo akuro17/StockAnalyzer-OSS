@@ -4,13 +4,14 @@ using System.Linq;
 using Avalonia.Media;
 using StockAnalyzer.Avalonia.Drawing;
 using StockAnalyzer.Core.Drawing;
+using StockAnalyzer.Core.Drawing.Values;
 using StockAnalyzer.Core.Models;
 using Xunit;
 
 namespace StockAnalyzer.Avalonia.Tests.Drawing;
 
 /// <summary>
-/// Guards that the Core drawing-value catalog and the GUI drawing objects describe the same 15 tools:
+/// Guards that the Core drawing-value catalog and the GUI drawing objects describe the same 16 tools:
 /// every name is a <see cref="ChartObjectType"/>, and the catalog result equals what the GUI object returns.
 /// </summary>
 public sealed class DrawingValueCatalogGuardTests
@@ -35,6 +36,7 @@ public sealed class DrawingValueCatalogGuardTests
         ["GannBox"] = p => new GannBoxObject(p[0], p[1]),
         ["SineLine"] = p => new SineLineObject(p[0], p[1]),
         ["TimeCycles"] = p => new TimeCyclesObject(p[0], p[1]),
+        ["Pitchfork"] = p => new PitchforkObject(p[0], p[1], p[2]),
     };
 
     [Fact]
@@ -71,31 +73,39 @@ public sealed class DrawingValueCatalogGuardTests
         {
             foreach (bool showExtensions in new[] { false, true })
             {
-                foreach (decimal? price in new decimal?[] { null, 123.456m })
+                foreach (PitchforkKind kind in Enum.GetValues<PitchforkKind>())
                 {
-                    foreach (DateTime timestamp in new[] { T1.AddDays(5.5), T1.AddDays(-7), T1.AddDays(20.75) })
+                    foreach (decimal? price in new decimal?[] { null, 123.456m })
                     {
-                        IChartObject obj = Factories[descriptor.Name](points.Take(descriptor.PointCount).ToArray());
-                        try
+                        foreach (DateTime timestamp in new[] { T1.AddDays(5.5), T1.AddDays(-7), T1.AddDays(20.75) })
                         {
-                            obj.Color = ObjectColor;
-                            if (obj is FibonacciRetracementObject retracement)
+                            IChartObject obj = Factories[descriptor.Name](points.Take(descriptor.PointCount).ToArray());
+                            try
                             {
-                                retracement.ShowExtensions = showExtensions;
+                                obj.Color = ObjectColor;
+                                if (obj is FibonacciRetracementObject retracement)
+                                {
+                                    retracement.ShowExtensions = showExtensions;
+                                }
+
+                                if (obj is PitchforkObject fork)
+                                {
+                                    fork.PitchforkType = (PitchforkType)(int)kind;
+                                }
+
+                                var request = new DrawingValueRequest(
+                                    points.Take(descriptor.PointCount).Select(p => p.ToAnchorForTest()).ToArray(),
+                                    timestamp, price, objectColor, new DrawingValueOptions(showExtensions, kind));
+
+                                IReadOnlyList<DrawingCalculatedValue> gui = ((IDrawingCalculatedValuesProvider)obj).GetCalculatedValues(timestamp, price);
+                                IReadOnlyList<DrawingCalculatedValue> core = descriptor.Calculate(request);
+
+                                Assert.True(gui.SequenceEqual(core), $"{descriptor.Name} ts={timestamp:o} cp={price} ext={showExtensions} kind={kind}");
                             }
-
-                            var request = new DrawingValueRequest(
-                                points.Take(descriptor.PointCount).Select(p => p.ToAnchorForTest()).ToArray(),
-                                timestamp, price, objectColor, new DrawingValueOptions(showExtensions));
-
-                            IReadOnlyList<DrawingCalculatedValue> gui = ((IDrawingCalculatedValuesProvider)obj).GetCalculatedValues(timestamp, price);
-                            IReadOnlyList<DrawingCalculatedValue> core = descriptor.Calculate(request);
-
-                            Assert.True(gui.SequenceEqual(core), $"{descriptor.Name} ts={timestamp:o} cp={price} ext={showExtensions}");
-                        }
-                        finally
-                        {
-                            (obj as IDisposable)?.Dispose();
+                            finally
+                            {
+                                (obj as IDisposable)?.Dispose();
+                            }
                         }
                     }
                 }

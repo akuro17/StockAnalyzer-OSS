@@ -15,7 +15,7 @@ using StockAnalyzer.Core.Services.Screener;
 namespace StockAnalyzer.Core.ReadOnly;
 
 /// <inheritdoc />
-public sealed class ReadOnlyStockAnalyzerGateway : IReadOnlyStockAnalyzerGateway, ICancellableIndicatorCalculation
+public sealed class ReadOnlyStockAnalyzerGateway : IReadOnlyStockAnalyzerGateway, ICancellableIndicatorCalculation, ITimeFrameAwareIndicatorCalculation
 {
     private readonly IReadOnlyMarketDataSource _marketData;
     private readonly IDataService _dataService;
@@ -26,6 +26,8 @@ public sealed class ReadOnlyStockAnalyzerGateway : IReadOnlyStockAnalyzerGateway
     private readonly IBacktestRunPreparationService _backtestPreparation;
     private readonly IBacktestEvaluationService _backtestEvaluation;
     private readonly IChartSeriesCalculationService _chartSeriesCalculation;
+    private readonly IRsRatingClosesProvider? _rsRatingClosesProvider;
+    private readonly IMarketBreadthSeriesProvider? _marketBreadthProvider;
 
     public ReadOnlyStockAnalyzerGateway(
         IReadOnlyMarketDataSource marketData,
@@ -36,7 +38,9 @@ public sealed class ReadOnlyStockAnalyzerGateway : IReadOnlyStockAnalyzerGateway
         IScreenerTemplateEvaluator templateEvaluator,
         IBacktestRunPreparationService backtestPreparation,
         IBacktestEvaluationService backtestEvaluation,
-        IChartSeriesCalculationService? chartSeriesCalculation = null)
+        IChartSeriesCalculationService? chartSeriesCalculation = null,
+        IRsRatingClosesProvider? rsRatingClosesProvider = null,
+        IMarketBreadthSeriesProvider? marketBreadthProvider = null)
     {
         _marketData = marketData ?? throw new ArgumentNullException(nameof(marketData));
         _dataService = dataService ?? throw new ArgumentNullException(nameof(dataService));
@@ -47,6 +51,8 @@ public sealed class ReadOnlyStockAnalyzerGateway : IReadOnlyStockAnalyzerGateway
         _backtestPreparation = backtestPreparation ?? throw new ArgumentNullException(nameof(backtestPreparation));
         _backtestEvaluation = backtestEvaluation ?? throw new ArgumentNullException(nameof(backtestEvaluation));
         _chartSeriesCalculation = chartSeriesCalculation ?? new ChartSeriesCalculationService();
+        _rsRatingClosesProvider = rsRatingClosesProvider;
+        _marketBreadthProvider = marketBreadthProvider;
     }
 
     public Task<IReadOnlyList<string>> GetAvailableTickersAsync(CancellationToken cancellationToken = default)
@@ -274,6 +280,29 @@ public sealed class ReadOnlyStockAnalyzerGateway : IReadOnlyStockAnalyzerGateway
             ? cancellable.CalculateIndicatorsAsync(candles, settings, secondaryCandlesBySymbol, cancellationToken)
             : _pipeline.CalculateIndicatorsAsync(candles, settings, secondaryCandlesBySymbol));
 
+    /// <inheritdoc />
+    public Task<Dictionary<string, IIndicatorResult>> CalculateIndicatorsAsync(
+        IReadOnlyList<CoreCandleData> candles,
+        IEnumerable<CoreIndicatorSettings> settings,
+        IReadOnlyDictionary<string, IReadOnlyList<CoreCandleData?>>? secondaryCandlesBySymbol,
+        TimeFrame timeFrame,
+        CancellationToken cancellationToken = default)
+        => CalculateIndicatorsAsync(candles, settings, secondaryCandlesBySymbol, timeFrame, endDate: null, cancellationToken);
+
+    /// <inheritdoc />
+    public Task<Dictionary<string, IIndicatorResult>> CalculateIndicatorsAsync(
+        IReadOnlyList<CoreCandleData> candles,
+        IEnumerable<CoreIndicatorSettings> settings,
+        IReadOnlyDictionary<string, IReadOnlyList<CoreCandleData?>>? secondaryCandlesBySymbol,
+        TimeFrame timeFrame,
+        DateOnly? endDate,
+        CancellationToken cancellationToken = default)
+        => Task.Run(() => _pipeline is ITimeFrameAwareIndicatorCalculation tfAware
+            ? tfAware.CalculateIndicatorsAsync(candles, settings, secondaryCandlesBySymbol, timeFrame, endDate, cancellationToken)
+            : _pipeline is ICancellableIndicatorCalculation cancellable
+                ? cancellable.CalculateIndicatorsAsync(candles, settings, secondaryCandlesBySymbol, cancellationToken)
+                : _pipeline.CalculateIndicatorsAsync(candles, settings, secondaryCandlesBySymbol));
+
     public ReverseWatchCurveData? CalculateReverseWatch(
         IReadOnlyList<CoreCandleData> candles,
         int period,
@@ -300,13 +329,60 @@ public sealed class ReadOnlyStockAnalyzerGateway : IReadOnlyStockAnalyzerGateway
         CancellationToken cancellationToken = default)
         => RunScreenerAsync(symbols, condition, timeFrame, Array.Empty<string>(), cancellationToken);
 
+    public async Task<IScreenerEvaluationContext?> EvaluateScreenerContextAsync(
+        IReadOnlyList<string> symbols,
+        DateOnly? asOfDate = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (asOfDate.HasValue)
+        {
+            return ScreenerEvaluationContext.Empty;
+        }
+
+        if (_rsRatingClosesProvider == null)
+        {
+            return null;
+        }
+
+        var canonical = symbols.Select(RequireCanonical).ToList();
+        return await ScreenerRsRatingInspector
+            .ComputeContextAsync(_rsRatingClosesProvider, canonical, asOfDate: null, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
+    public Task<IScreenerEvaluationContext?> EvaluateUniverseBreadthContextAsync(
+        IReadOnlyList<UniverseBreadthKey> keys,
+        IScreenerEvaluationContext? baseContext,
+        TimeFrame? scanTimeFrame = null,
+        CancellationToken cancellationToken = default)
+        => ScreenerUniverseBreadthInspector.ComputeContextAsync(_marketBreadthProvider, keys, baseContext, scanTimeFrame, cancellationToken);
+
     public Task<IReadOnlyList<string>> RunScreenerAsync(
         IReadOnlyList<string> symbols,
         IScreeningCondition condition,
         TimeFrame timeFrame,
         IReadOnlyList<string> comparisonSymbols,
         CancellationToken cancellationToken = default)
-        => RunScreenerCoreAsync(_dataService, _screener, symbols, condition, timeFrame, comparisonSymbols, cancellationToken);
+        => RunScreenerAsync(symbols, condition, timeFrame, comparisonSymbols, evaluationContext: null, cancellationToken);
+
+    public Task<IReadOnlyList<string>> RunScreenerAsync(
+        IReadOnlyList<string> symbols,
+        IScreeningCondition condition,
+        TimeFrame timeFrame,
+        IReadOnlyList<string> comparisonSymbols,
+        IScreenerEvaluationContext? evaluationContext,
+        CancellationToken cancellationToken = default)
+        => RunScreenerCoreAsync(_dataService, _screener, symbols, condition, timeFrame, comparisonSymbols, evaluationContext, cancellationToken);
+
+    public Task<ScreenerBarsResult> RunScreenerOnBarsAsync(
+        IReadOnlyList<string> symbols,
+        IScreeningCondition condition,
+        TimeFrame timeFrame,
+        IReadOnlyList<string> comparisonSymbols,
+        ScreenerBarSelection selection,
+        CancellationToken cancellationToken = default)
+        => RunScreenerOnBarsAsync(symbols, condition, timeFrame, comparisonSymbols, selection, evaluationContext: null, cancellationToken);
 
     public async Task<ScreenerBarsResult> RunScreenerOnBarsAsync(
         IReadOnlyList<string> symbols,
@@ -314,10 +390,14 @@ public sealed class ReadOnlyStockAnalyzerGateway : IReadOnlyStockAnalyzerGateway
         TimeFrame timeFrame,
         IReadOnlyList<string> comparisonSymbols,
         ScreenerBarSelection selection,
+        IScreenerEvaluationContext? evaluationContext,
         CancellationToken cancellationToken = default)
     {
         var bars = new ScreenerBarsDataService(_dataService, selection);
-        IReadOnlyList<string> matched = await RunScreenerCoreAsync(bars, ScreenerOver(bars), symbols, condition, timeFrame, comparisonSymbols, cancellationToken).ConfigureAwait(false);
+        IScreenerEvaluationContext? effectiveContext = selection.AsOfDate is { } asOf
+            ? ScreenerEvaluationContext.ForAsOfDate(asOf, evaluationContext)
+            : evaluationContext;
+        IReadOnlyList<string> matched = await RunScreenerCoreAsync(bars, ScreenerOver(bars), symbols, condition, timeFrame, comparisonSymbols, effectiveContext, cancellationToken).ConfigureAwait(false);
         return ResultOf(matched, bars, symbols);
     }
 
@@ -336,6 +416,7 @@ public sealed class ReadOnlyStockAnalyzerGateway : IReadOnlyStockAnalyzerGateway
         IScreeningCondition condition,
         TimeFrame timeFrame,
         IReadOnlyList<string> comparisonSymbols,
+        IScreenerEvaluationContext? evaluationContext,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(symbols);
@@ -348,6 +429,11 @@ public sealed class ReadOnlyStockAnalyzerGateway : IReadOnlyStockAnalyzerGateway
 
         var canonical = symbols.Select(RequireCanonical).ToList();
         ScreenerSecondaryCandles? secondary = await LoadComparisonCandlesAsync(dataService, comparisonSymbols, timeFrame, ScreenerHistoryRequirements.GetRequiredCandleCount(condition), cancellationToken).ConfigureAwait(false);
+        if (evaluationContext is not null)
+        {
+            return await screener.ScreenAsync(canonical, condition, timeFrame, secondary, evaluationContext, new Progress<int>(), cancellationToken).ConfigureAwait(false);
+        }
+
         return secondary is null
             ? await screener.ScreenAsync(canonical, condition, timeFrame, new Progress<int>(), cancellationToken).ConfigureAwait(false)
             : await screener.ScreenAsync(canonical, condition, timeFrame, secondary, new Progress<int>(), cancellationToken).ConfigureAwait(false);
@@ -394,7 +480,25 @@ public sealed class ReadOnlyStockAnalyzerGateway : IReadOnlyStockAnalyzerGateway
         TimeFrame timeFrame,
         IReadOnlyList<string> comparisonSymbols,
         CancellationToken cancellationToken = default)
-        => RunScreenerTemplateCoreAsync(_dataService, _templateEvaluator, symbols, template, timeFrame, comparisonSymbols, cancellationToken);
+        => RunScreenerTemplateAsync(symbols, template, timeFrame, comparisonSymbols, evaluationContext: null, cancellationToken);
+
+    public Task<IReadOnlyList<string>> RunScreenerTemplateAsync(
+        IReadOnlyList<string> symbols,
+        ScreenerIndicatorTemplate template,
+        TimeFrame timeFrame,
+        IReadOnlyList<string> comparisonSymbols,
+        IScreenerEvaluationContext? evaluationContext,
+        CancellationToken cancellationToken = default)
+        => RunScreenerTemplateCoreAsync(_dataService, _templateEvaluator, symbols, template, timeFrame, comparisonSymbols, evaluationContext, cancellationToken);
+
+    public Task<ScreenerBarsResult> RunScreenerTemplateOnBarsAsync(
+        IReadOnlyList<string> symbols,
+        ScreenerIndicatorTemplate template,
+        TimeFrame timeFrame,
+        IReadOnlyList<string> comparisonSymbols,
+        ScreenerBarSelection selection,
+        CancellationToken cancellationToken = default)
+        => RunScreenerTemplateOnBarsAsync(symbols, template, timeFrame, comparisonSymbols, selection, evaluationContext: null, cancellationToken);
 
     public async Task<ScreenerBarsResult> RunScreenerTemplateOnBarsAsync(
         IReadOnlyList<string> symbols,
@@ -402,38 +506,70 @@ public sealed class ReadOnlyStockAnalyzerGateway : IReadOnlyStockAnalyzerGateway
         TimeFrame timeFrame,
         IReadOnlyList<string> comparisonSymbols,
         ScreenerBarSelection selection,
+        IScreenerEvaluationContext? evaluationContext,
         CancellationToken cancellationToken = default)
     {
         var bars = new ScreenerBarsDataService(_dataService, selection);
-        var evaluator = new ScreenerTemplateEvaluator(ScreenerOver(bars));
-        IReadOnlyList<string> matched = await RunScreenerTemplateCoreAsync(bars, evaluator, symbols, template, timeFrame, comparisonSymbols, cancellationToken).ConfigureAwait(false);
+        IScreenerEvaluationContext? effectiveContext = selection.AsOfDate is { } asOf
+            ? ScreenerEvaluationContext.ForAsOfDate(asOf, evaluationContext)
+            : evaluationContext;
+        var evaluator = new ScreenerTemplateEvaluator(ScreenerOver(bars), selection.AsOfDate.HasValue ? null : _rsRatingClosesProvider, _marketBreadthProvider);
+        IReadOnlyList<string> matched = await RunScreenerTemplateCoreAsync(bars, evaluator, symbols, template, timeFrame, comparisonSymbols, effectiveContext, cancellationToken).ConfigureAwait(false);
         return ResultOf(matched, bars, symbols);
     }
+
+    public Task<ScreenerSideFramesResult> RunScreenerWithSideFramesAsync(
+        IReadOnlyList<string> symbols,
+        IScreeningCondition condition,
+        ScreenerBarSelection selection,
+        CancellationToken cancellationToken = default)
+        => RunScreenerWithSideFramesAsync(symbols, condition, selection, evaluationContext: null, cancellationToken);
 
     public async Task<ScreenerSideFramesResult> RunScreenerWithSideFramesAsync(
         IReadOnlyList<string> symbols,
         IScreeningCondition condition,
         ScreenerBarSelection selection,
+        IScreenerEvaluationContext? evaluationContext,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(symbols);
         ArgumentNullException.ThrowIfNull(condition);
         ArgumentNullException.ThrowIfNull(selection);
         RequireSupportedFrames(ScreenerSideFrames.Collect(condition));
-        return await _screener.ScreenWithSideFramesAsync(symbols.Select(RequireCanonical).ToList(), condition, selection, new Progress<int>(), cancellationToken).ConfigureAwait(false);
+        IScreenerEvaluationContext? effectiveContext = selection.AsOfDate is { } asOf
+            ? ScreenerEvaluationContext.ForAsOfDate(asOf, evaluationContext)
+            : evaluationContext;
+        var canonical = symbols.Select(RequireCanonical).ToList();
+        return effectiveContext is null
+            ? await _screener.ScreenWithSideFramesAsync(canonical, condition, selection, new Progress<int>(), cancellationToken).ConfigureAwait(false)
+            : await _screener.ScreenWithSideFramesAsync(canonical, condition, selection, effectiveContext, new Progress<int>(), cancellationToken).ConfigureAwait(false);
     }
+
+    public Task<ScreenerSideFramesResult> RunScreenerTemplateWithSideFramesAsync(
+        IReadOnlyList<string> symbols,
+        ScreenerIndicatorTemplate template,
+        ScreenerBarSelection selection,
+        CancellationToken cancellationToken = default)
+        => RunScreenerTemplateWithSideFramesAsync(symbols, template, selection, evaluationContext: null, cancellationToken);
 
     public async Task<ScreenerSideFramesResult> RunScreenerTemplateWithSideFramesAsync(
         IReadOnlyList<string> symbols,
         ScreenerIndicatorTemplate template,
         ScreenerBarSelection selection,
+        IScreenerEvaluationContext? evaluationContext,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(symbols);
         ArgumentNullException.ThrowIfNull(template);
         ArgumentNullException.ThrowIfNull(selection);
         RequireSupportedFrames(ScreenerSideFrames.Collect(template.Entries));
-        return await _templateEvaluator.EvaluateWithSideFramesReportAsync(symbols.Select(RequireCanonical).ToList(), template, selection, new Progress<int>(), cancellationToken).ConfigureAwait(false);
+        IScreenerEvaluationContext? effectiveContext = selection.AsOfDate is { } asOf
+            ? ScreenerEvaluationContext.ForAsOfDate(asOf, evaluationContext)
+            : evaluationContext;
+        var canonical = symbols.Select(RequireCanonical).ToList();
+        return effectiveContext is null
+            ? await _templateEvaluator.EvaluateWithSideFramesReportAsync(canonical, template, selection, new Progress<int>(), cancellationToken).ConfigureAwait(false)
+            : await _templateEvaluator.EvaluateWithSideFramesReportAsync(canonical, template, selection, effectiveContext, new Progress<int>(), cancellationToken).ConfigureAwait(false);
     }
 
     private static void RequireSupportedFrames(IReadOnlyList<TimeFrame> frames)
@@ -451,6 +587,7 @@ public sealed class ReadOnlyStockAnalyzerGateway : IReadOnlyStockAnalyzerGateway
         ScreenerIndicatorTemplate template,
         TimeFrame timeFrame,
         IReadOnlyList<string> comparisonSymbols,
+        IScreenerEvaluationContext? evaluationContext,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(symbols);
@@ -464,9 +601,11 @@ public sealed class ReadOnlyStockAnalyzerGateway : IReadOnlyStockAnalyzerGateway
         var canonical = symbols.Select(RequireCanonical).ToList();
         int requiredCount = RequiredCandleCount(template);
         ScreenerSecondaryCandles? secondary = await LoadComparisonCandlesAsync(dataService, comparisonSymbols, timeFrame, requiredCount, cancellationToken).ConfigureAwait(false);
-        HashSet<string> matched = secondary is null
-            ? await templateEvaluator.EvaluateAsync(canonical, template, timeFrame, new Progress<int>(), cancellationToken).ConfigureAwait(false)
-            : await templateEvaluator.EvaluateAsync(canonical, template, timeFrame, secondary, new Progress<int>(), cancellationToken).ConfigureAwait(false);
+        HashSet<string> matched = evaluationContext is not null
+            ? await templateEvaluator.EvaluateAsync(canonical, template, timeFrame, secondary, evaluationContext, new Progress<int>(), cancellationToken).ConfigureAwait(false)
+            : (secondary is null
+                ? await templateEvaluator.EvaluateAsync(canonical, template, timeFrame, new Progress<int>(), cancellationToken).ConfigureAwait(false)
+                : await templateEvaluator.EvaluateAsync(canonical, template, timeFrame, secondary, new Progress<int>(), cancellationToken).ConfigureAwait(false));
         return matched.ToList();
     }
 

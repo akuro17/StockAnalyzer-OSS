@@ -4,6 +4,7 @@ using StockAnalyzer.Core.Models.Parameters;
 using System.Collections.Generic;
 using System.Linq;
 using StockAnalyzer.Core.Models.Indicators;
+using StockAnalyzer.Core.Models.Indicators.Statistics;
 
 namespace StockAnalyzer.Core.Tests.Models;
 
@@ -30,7 +31,9 @@ public class DefaultCoreIndicatorSettingsTests
         // + 1 ParkinsonVolatility + 1 RogersSatchellVolatility (disabled by default, added 2026-11-14, plan 04 T1/T2).
         // + 1 Garch11 (disabled by default, added 2026-11-14, plan 04 T3).
         // + 1 HurstExponent + 1 Entropy (disabled by default, added 2026-11-14, plan 04 T4/T5).
-        Assert.Equal(108, defaults.Count);
+        // + 1 MansfieldRS (disabled by default, added 2026-11-15, plan 09 T1).
+        // + 1 McClellanOscillator + 1 MarketBreadth (disabled by default, added 2026-11-15, plan 10 T2/T3).
+        Assert.Equal(111, defaults.Count);
     }
 
     [Fact]
@@ -988,5 +991,32 @@ public class DefaultCoreIndicatorSettingsTests
             Assert.True(setting.MinValue.HasValue && setting.MaxValue.HasValue, $"{setting.TypeEnum}: only one end of the fixed range is set.");
             Assert.True(setting.MaxValue!.Value > setting.MinValue!.Value, $"{setting.TypeEnum}: fixed range {setting.MinValue}..{setting.MaxValue} is not a range.");
         }
+    }
+
+    [Fact]
+    public void McClellanOscillatorDefaultSettings_HasOnlyMainSeriesColor_AndAutoHealRemovesUnrenderedOrphans()
+    {
+        CoreIndicatorSettings defaults = DefaultCoreIndicatorSettings.GetDefault()
+            .Single(s => s.TypeEnum == IndicatorType.McClellanOscillator);
+
+        Assert.Single(defaults.SeriesColors);
+        Assert.Equal(IndicatorResult.MainSeriesName, defaults.SeriesColors[0].Name);
+
+        var legacySetting = new CoreIndicatorSettings
+        {
+            TypeEnum = IndicatorType.McClellanOscillator,
+            ParameterObject = new CoreMcClellanOscillatorParameter(),
+            SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
+            {
+                new() { Name = IndicatorResult.MainSeriesName, DisplayName = "McClellan Oscillator", Color = IndicatorDefaultConstants.RsiColor, TargetSeries = new List<string> { IndicatorResult.MainSeriesName } },
+                new() { Name = CoreMcClellanOscillatorIndicator.SummationIndexSeriesName, DisplayName = "Summation Index", Color = IndicatorDefaultConstants.MacdSignalColor, TargetSeries = new List<string> { CoreMcClellanOscillatorIndicator.SummationIndexSeriesName } },
+                new() { Name = CoreMcClellanOscillatorIndicator.AdLineSeriesName, DisplayName = "A/D Line", Color = IndicatorDefaultConstants.MacdHistogramColor, TargetSeries = new List<string> { CoreMcClellanOscillatorIndicator.AdLineSeriesName } }
+            }
+        };
+
+        DefaultCoreIndicatorSettings.AutoHeal(legacySetting);
+
+        Assert.Single(legacySetting.SeriesColors);
+        Assert.Equal(IndicatorResult.MainSeriesName, legacySetting.SeriesColors[0].Name);
     }
 }

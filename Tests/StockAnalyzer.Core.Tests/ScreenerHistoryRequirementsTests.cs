@@ -360,4 +360,198 @@ public class ScreenerHistoryRequirementsTests
 
         Assert.Equal(ScreenerHistoryRequirements.DefaultStandardCandleCount, ScreenerHistoryRequirements.GetRequiredCandleCount(entry));
     }
+
+    // ===== WebAiExpansion plan 12 T1: a VWAP that never restarts (ResetPeriod Cumulative, the default) sums from the FIRST bar it is given, so it needs the whole stored history =====
+
+    private static ScreenerIndicatorEntry VwapEntry(Dictionary<string, object>? parameters, RightHandTargetMode targetMode = RightHandTargetMode.NumericValue)
+        => new()
+        {
+            LeftHand = new ScreenerIndicatorSideConfig { IndicatorType = IndicatorType.VWAP, Parameters = parameters },
+            TargetMode = targetMode,
+        };
+
+    private static ScreenerIndicatorEntry VwapEntry(string key, object value)
+        => VwapEntry(new Dictionary<string, object> { { key, value } });
+
+    public static IEnumerable<object?[]> CumulativeVwapForms()
+    {
+        yield return new object?[] { "ResetPeriod", VwapResetPeriod.Cumulative };
+        yield return new object?[] { "ResetPeriod", "Cumulative" };
+        yield return new object?[] { "ResetPeriod", " cumulative " };
+        yield return new object?[] { "resetperiod", "CUMULATIVE" };
+        yield return new object?[] { "ResetPeriod", JsonValue("\"Cumulative\"") };
+        yield return new object?[] { "ResetPeriod", 0 };
+        yield return new object?[] { "ResetPeriod", 0L };
+        yield return new object?[] { "ResetPeriod", JsonValue("0") };
+        yield return new object?[] { "ResetPeriod", "0" };
+        // Not a defined member, or not a number of the enum at all: not trusted to restart.
+        yield return new object?[] { "ResetPeriod", "Foo" };
+        yield return new object?[] { "ResetPeriod", true };
+        yield return new object?[] { "ResetPeriod", 99 };
+        yield return new object?[] { "ResetPeriod", 1.5 };
+        yield return new object?[] { "ResetPeriod", JsonValue("\"Foo\"") };
+        yield return new object?[] { "ResetPeriod", JsonValue("99") };
+        // Another key: the ResetPeriod is absent, i.e. the default Cumulative.
+        yield return new object?[] { "OtherKey", "Weekly" };
+    }
+
+    public static IEnumerable<object?[]> RestartingVwapForms()
+    {
+        foreach (VwapResetPeriod period in new[] { VwapResetPeriod.Weekly, VwapResetPeriod.Monthly, VwapResetPeriod.Quarterly, VwapResetPeriod.Yearly })
+        {
+            yield return new object?[] { "ResetPeriod", period };
+            yield return new object?[] { "ResetPeriod", period.ToString() };
+            yield return new object?[] { "ResetPeriod", $" {period.ToString().ToUpperInvariant()} " };
+            yield return new object?[] { "ResetPeriod", JsonValue($"\"{period}\"") };
+            yield return new object?[] { "ResetPeriod", (int)period };
+            yield return new object?[] { "ResetPeriod", (long)period };
+            yield return new object?[] { "ResetPeriod", JsonValue(((int)period).ToString()) };
+            yield return new object?[] { "ResetPeriod", ((int)period).ToString() };
+        }
+    }
+
+    [Fact]
+    public void GetRequiredCandleCount_VwapWithoutParameters_NeedsTheWholeHistory()
+    {
+        foreach (Dictionary<string, object>? parameters in new Dictionary<string, object>?[] { null, new Dictionary<string, object>() })
+        {
+            ScreenerIndicatorEntry entry = VwapEntry(parameters);
+
+            Assert.Equal(0, ScreenerHistoryRequirements.GetRequiredCandleCount(entry));
+            Assert.True(ScreenerHistoryRequirements.RequiresFullHistory(entry));
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(CumulativeVwapForms))]
+    public void GetRequiredCandleCount_VwapThatNeverRestarts_NeedsTheWholeHistory_InEverySavedForm(string key, object value)
+    {
+        ScreenerIndicatorEntry entry = VwapEntry(key, value);
+
+        Assert.Equal(0, ScreenerHistoryRequirements.GetRequiredCandleCount(entry));
+        Assert.True(ScreenerHistoryRequirements.RequiresFullHistory(entry));
+    }
+
+    [Theory]
+    [MemberData(nameof(RestartingVwapForms))]
+    public void GetRequiredCandleCount_VwapThatRestarts_KeepsTheOrdinaryCount_InEverySavedForm(string key, object value)
+    {
+        ScreenerIndicatorEntry entry = VwapEntry(key, value);
+
+        Assert.Equal(ScreenerHistoryRequirements.DefaultStandardCandleCount, ScreenerHistoryRequirements.GetRequiredCandleCount(entry));
+        Assert.False(ScreenerHistoryRequirements.RequiresFullHistory(entry));
+    }
+
+    [Fact]
+    public void GetRequiredCandleCount_ACumulativeVwapOnTheRightSideOrInATreeOrInABundle_NeedsTheWholeHistory()
+    {
+        ScreenerIndicatorEntry right = new()
+        {
+            LeftHand = new ScreenerIndicatorSideConfig { IndicatorType = IndicatorType.SMA, Parameters = new Dictionary<string, object> { { "Period", 20 } } },
+            TargetMode = RightHandTargetMode.Indicator,
+            RightHand = VwapEntry(null).LeftHand,
+        };
+        Assert.Equal(0, ScreenerHistoryRequirements.GetRequiredCandleCount(right));
+
+        // The right side is only read when the entry compares against an indicator.
+        right.TargetMode = RightHandTargetMode.NumericValue;
+        Assert.Equal(ScreenerHistoryRequirements.DefaultStandardCandleCount, ScreenerHistoryRequirements.GetRequiredCandleCount(right));
+
+        ScreenerIndicatorEntry yearly = VwapEntry("ResetPeriod", VwapResetPeriod.Yearly);
+        var tree = new ScreenerConditionTreeCondition(new ScreenerConditionGroup(
+            LogicalOperator.And,
+            ImmutableArray.Create<IScreenerConditionNode>(
+                new ScreenerConditionLeaf(yearly),
+                new ScreenerConditionLeaf(VwapEntry(null)))));
+        Assert.Equal(0, ScreenerHistoryRequirements.GetRequiredCandleCount(tree));
+
+        var yearlyOnly = new ScreenerConditionTreeCondition(new ScreenerConditionGroup(
+            LogicalOperator.And,
+            ImmutableArray.Create<IScreenerConditionNode>(new ScreenerConditionLeaf(yearly))));
+        Assert.Equal(ScreenerHistoryRequirements.DefaultStandardCandleCount, ScreenerHistoryRequirements.GetRequiredCandleCount(yearlyOnly));
+    }
+
+    [Fact]
+    public void GetRequiredCandleCount_ACumulativeVwapNextToALongPeriodIndicator_GivesTheSameWholeHistoryAsAloneSoItsValueDoesNotDependOnTheOtherCondition()
+    {
+        ScreenerIndicatorEntry alone = VwapEntry(null);
+        ScreenerIndicatorEntry sma = new()
+        {
+            LeftHand = new ScreenerIndicatorSideConfig { IndicatorType = IndicatorType.SMA, Parameters = new Dictionary<string, object> { { "Period", 200 } } },
+        };
+        var together = new ScreenerConditionTreeCondition(new ScreenerConditionGroup(
+            LogicalOperator.And,
+            ImmutableArray.Create<IScreenerConditionNode>(new ScreenerConditionLeaf(alone), new ScreenerConditionLeaf(sma))));
+
+        Assert.Equal(0, ScreenerHistoryRequirements.GetRequiredCandleCount(alone));
+        Assert.Equal(0, ScreenerHistoryRequirements.GetRequiredCandleCount(together));
+    }
+
+    // ===== WebAiExpansion plan 12 F-3 (decision U-1 B): the extractor applies a parameter only under its EXACT name, so only the exact key is trusted here =====
+    // Three situations: the exact key exists (its value alone decides), only a key that differs in case exists (not applied by the extractor, value not trusted: whole history),
+    // no key at all (the indicator's own default: VWAP Cumulative = whole history, Ratiocator RollingRatio = ordinary count).
+
+    public static IEnumerable<object?[]> CaseVariantKeysWithAnyValue()
+    {
+        yield return new object?[] { "resetperiod", "Weekly" };
+        yield return new object?[] { "RESETPERIOD", VwapResetPeriod.Yearly };
+        yield return new object?[] { "Resetperiod", 1 };
+        yield return new object?[] { "resetperiod", JsonValue("\"Monthly\"") };
+        yield return new object?[] { "resetperiod", "Cumulative" };
+    }
+
+    [Theory]
+    [MemberData(nameof(CaseVariantKeysWithAnyValue))]
+    public void GetRequiredCandleCount_VwapKeyDifferingOnlyInCase_IsNotTrusted_NeedsTheWholeHistory(string key, object value)
+    {
+        ScreenerIndicatorEntry entry = VwapEntry(key, value);
+
+        Assert.Equal(0, ScreenerHistoryRequirements.GetRequiredCandleCount(entry));
+        Assert.True(ScreenerHistoryRequirements.RequiresFullHistory(entry));
+    }
+
+    [Fact]
+    public void GetRequiredCandleCount_VwapWithTheExactKeyAndACaseVariant_FollowsTheExactKeyOnly()
+    {
+        // The extractor applies "ResetPeriod" and ignores "resetperiod": the exact key decides in both directions.
+        ScreenerIndicatorEntry exactWeekly = VwapEntry(new Dictionary<string, object> { { "ResetPeriod", "Weekly" }, { "resetperiod", "Cumulative" } });
+        Assert.Equal(ScreenerHistoryRequirements.DefaultStandardCandleCount, ScreenerHistoryRequirements.GetRequiredCandleCount(exactWeekly));
+        Assert.False(ScreenerHistoryRequirements.RequiresFullHistory(exactWeekly));
+
+        ScreenerIndicatorEntry exactCumulative = VwapEntry(new Dictionary<string, object> { { "resetperiod", "Weekly" }, { "ResetPeriod", "Cumulative" } });
+        Assert.Equal(0, ScreenerHistoryRequirements.GetRequiredCandleCount(exactCumulative));
+        Assert.True(ScreenerHistoryRequirements.RequiresFullHistory(exactCumulative));
+    }
+
+    public static IEnumerable<object?[]> CaseVariantRatiocatorKeysWithAnyValue()
+    {
+        yield return new object?[] { "calculationmode", "NormalizedRatio" };
+        yield return new object?[] { "CALCULATIONMODE", RatiocatorCalculationMode.RawRatio };
+        yield return new object?[] { "calculationmode", "RollingRatio" };
+        yield return new object?[] { "Calculationmode", 0 };
+    }
+
+    [Theory]
+    [MemberData(nameof(CaseVariantRatiocatorKeysWithAnyValue))]
+    public void GetRequiredCandleCount_RatiocatorKeyDifferingOnlyInCase_IsNotTrusted_NeedsTheWholeHistory(string key, object value)
+    {
+        ScreenerIndicatorEntry entry = RatiocatorEntry(key, value);
+
+        Assert.Equal(0, ScreenerHistoryRequirements.GetRequiredCandleCount(entry));
+        Assert.True(ScreenerHistoryRequirements.RequiresFullHistory(entry));
+    }
+
+    [Fact]
+    public void GetRequiredCandleCount_RatiocatorWithTheExactKeyAndACaseVariant_FollowsTheExactKeyOnly()
+    {
+        ScreenerIndicatorEntry exactRolling = RatiocatorEntry("CalculationMode", RatiocatorCalculationMode.RollingRatio);
+        exactRolling.LeftHand.Parameters["calculationmode"] = "NormalizedRatio";
+        Assert.Equal(ScreenerHistoryRequirements.DefaultStandardCandleCount, ScreenerHistoryRequirements.GetRequiredCandleCount(exactRolling));
+        Assert.False(ScreenerHistoryRequirements.RequiresFullHistory(exactRolling));
+
+        ScreenerIndicatorEntry exactNormalized = RatiocatorEntry("CalculationMode", RatiocatorCalculationMode.NormalizedRatio);
+        exactNormalized.LeftHand.Parameters["calculationmode"] = "RollingRatio";
+        Assert.Equal(0, ScreenerHistoryRequirements.GetRequiredCandleCount(exactNormalized));
+        Assert.True(ScreenerHistoryRequirements.RequiresFullHistory(exactNormalized));
+    }
 }

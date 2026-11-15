@@ -25,6 +25,7 @@ public static class DrawingValueCatalog
         new("GannBox", 2, r => GannBoxValues.Calculate(r.Points[0], r.Points[1], r.Color)),
         new("SineLine", 2, r => SineLineValues.Calculate(r.Points[0], r.Points[1], r.Timestamp, r.Color)),
         new("TimeCycles", 2, r => TimeCyclesValues.Calculate(r.Points[0], r.Points[1], r.Timestamp, r.Color)),
+        new("Pitchfork", 3, r => PitchforkValues.Calculate(r.Options.PitchforkKind, r.Points[0], r.Points[1], r.Points[2], r.Timestamp, r.Color)),
     };
 
     /// <summary>All tools in the fixed specification order.</summary>

@@ -159,7 +159,7 @@ public sealed class ScreenerCrossTickerEvaluationTests : IClassFixture<ScreenerC
         => new[]
         {
             IndicatorType.RollingBeta, IndicatorType.RollingAlpha, IndicatorType.RollingRSquared, IndicatorType.CointegrationSpread,
-            IndicatorType.PairRatio, IndicatorType.PairSpread, IndicatorType.Ratiocator, IndicatorType.CrossTickerDtw
+            IndicatorType.PairRatio, IndicatorType.PairSpread, IndicatorType.Ratiocator, IndicatorType.CrossTickerDtw, IndicatorType.MansfieldRS
         }.Select(type => new object[] { type.ToString() });
 
     [Fact]

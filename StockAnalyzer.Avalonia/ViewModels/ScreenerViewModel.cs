@@ -10,6 +10,7 @@ using CommunityToolkit.Mvvm.Messaging;
 using StockAnalyzer.Avalonia.Common;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Services;
+using StockAnalyzer.Core.Services.Analysis;
 using StockAnalyzer.Core.Services.Screener;
 using StockAnalyzer.Core;
 
@@ -39,6 +40,8 @@ public partial class ScreenerViewModel : ViewModelBase, IDisposable
     private readonly IReadOnlyList<WatchlistColumnMetadata> _allColumns = WatchlistColumnRegistry.AllColumns;
     private readonly ILogger<ScreenerViewModel> _logger;
     private readonly ITickerSourceResolver? _tickerSourceResolver;
+    private readonly IRsRatingClosesProvider? _rsRatingClosesProvider;
+    private readonly IMarketBreadthSeriesProvider? _marketBreadthProvider;
     private CancellationTokenSource? _cts;
     private CancellationTokenSource? _statusResetCts;
     private CancellationTokenSource? _targetSymbolsCts;
@@ -293,9 +296,13 @@ public partial class ScreenerViewModel : ViewModelBase, IDisposable
         IMessenger? messenger = null,
         IScreenerValueExtractor? valueExtractor = null,
         ILogger<ScreenerViewModel>? logger = null,
-        ITickerSourceResolver? tickerSourceResolver = null)
+        ITickerSourceResolver? tickerSourceResolver = null,
+        IRsRatingClosesProvider? rsRatingClosesProvider = null,
+        IMarketBreadthSeriesProvider? marketBreadthProvider = null)
     {
         _tickerSourceResolver = tickerSourceResolver;
+        _rsRatingClosesProvider = rsRatingClosesProvider;
+        _marketBreadthProvider = marketBreadthProvider;
         _screenerService = screenerService;
         _settings = settings;
         _marketDataProvider = marketDataProvider;
@@ -855,6 +862,42 @@ public partial class ScreenerViewModel : ViewModelBase, IDisposable
             Results.Clear();
             ResultItems.Clear();
 
+            var targetSymbols = TargetSymbols.ToList();
+            bool usesRsRating = ScreenerRsRatingInspector.UsesRsRating(condition)
+                || ActiveColumns.Any(c => string.Equals(c.MemberName, ScreenerRsRatingInspector.ColumnMemberName, StringComparison.Ordinal));
+            IScreenerEvaluationContext? evaluationContext = null;
+            if (usesRsRating && _rsRatingClosesProvider != null)
+            {
+                try
+                {
+                    evaluationContext = await ScreenerRsRatingInspector.ComputeContextAsync(_rsRatingClosesProvider, targetSymbols, asOfDate: null, scanCts.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to precompute RS Rating context for Screener scan");
+                    evaluationContext = ScreenerEvaluationContext.Empty;
+                }
+            }
+
+            if (_marketBreadthProvider != null)
+            {
+                bool sideFramesMode = ScreenerSideFrames.UsesNonDailyBars(condition);
+                var breadthKeys = ScreenerUniverseBreadthInspector.Inspect(condition, TimeFrame.D1, sideFramesMode);
+                if (breadthKeys.Count > 0)
+                {
+                    evaluationContext = await ScreenerUniverseBreadthInspector.ComputeContextAsync(
+                        _marketBreadthProvider,
+                        breadthKeys,
+                        evaluationContext,
+                        sideFramesMode ? null : TimeFrame.D1,
+                        scanCts.Token);
+                }
+            }
+
             // A condition whose enabled sides all read daily bars is the unchanged plain scan. Otherwise every side reads the bars of its own frame, built the way the chart and the
             // MCP Screener build them (daily history aggregated to the frame, an unfinished last period left out unless asked for), not from the stored weekly/monthly files.
             var barSelection = new ScreenerBarSelection(null, CompleteBarsOnly);
@@ -864,13 +907,22 @@ public partial class ScreenerViewModel : ViewModelBase, IDisposable
             if (!ScreenerSideFrames.UsesNonDailyBars(condition))
             {
                 // Without comparison bars the original form is called, so a service that knows only that form (and every scan with no two-symbol side) is unaffected.
-                hits = secondary is null
-                    ? await _screenerService.ScreenAsync(TargetSymbols.ToList(), condition, TimeFrame.D1, progress, scanCts.Token)
-                    : await _screenerService.ScreenAsync(TargetSymbols.ToList(), condition, TimeFrame.D1, secondary, progress, scanCts.Token);
+                if (evaluationContext is not null)
+                {
+                    hits = await _screenerService.ScreenAsync(targetSymbols, condition, TimeFrame.D1, secondary, evaluationContext, progress, scanCts.Token);
+                }
+                else
+                {
+                    hits = secondary is null
+                        ? await _screenerService.ScreenAsync(targetSymbols, condition, TimeFrame.D1, progress, scanCts.Token)
+                        : await _screenerService.ScreenAsync(targetSymbols, condition, TimeFrame.D1, secondary, progress, scanCts.Token);
+                }
             }
             else
             {
-                framesResult = await _screenerService.ScreenWithSideFramesAsync(TargetSymbols.ToList(), condition, barSelection, progress, scanCts.Token);
+                framesResult = evaluationContext is not null
+                    ? await _screenerService.ScreenWithSideFramesAsync(targetSymbols, condition, barSelection, evaluationContext, progress, scanCts.Token)
+                    : await _screenerService.ScreenWithSideFramesAsync(targetSymbols, condition, barSelection, progress, scanCts.Token);
                 hits = framesResult.Matched.ToList();
             }
 
@@ -899,10 +951,11 @@ public partial class ScreenerViewModel : ViewModelBase, IDisposable
 
                     if (entry.TargetMode == RightHandTargetMode.Indicator && entry.RightHand != null)
                     {
-                        string header = ColumnTitle(entry.RightHand, ScreenerItemCategoryType.Indicator);
+                        var rightCategory = entry.RightHand.CategoryType;
+                        string header = ColumnTitle(entry.RightHand, rightCategory);
                         if (seenHeaders.Add(header))
                         {
-                            sideConfigsForColumns.Add((entry.RightHand, ScreenerItemCategoryType.Indicator));
+                            sideConfigsForColumns.Add((entry.RightHand, rightCategory));
                         }
                     }
                 }
@@ -947,6 +1000,11 @@ public partial class ScreenerViewModel : ViewModelBase, IDisposable
                 else
                 {
                     item = new WatchlistItemViewModel(symbol, symbol, "", "", 0, 0, 0, 0, 0, 0, 0);
+                }
+
+                if (evaluationContext is not null)
+                {
+                    item.RsRating = evaluationContext.GetRsRating(symbol);
                 }
 
                 if (_marketDataProvider != null)
@@ -1065,21 +1123,28 @@ public partial class ScreenerViewModel : ViewModelBase, IDisposable
                                         }
                                         else if (category == ScreenerItemCategoryType.Column && !readsFrameBars)
                                         {
-                                            string propName = config.ResolveLookupName() ?? config.DisplayName;
+                                            if (ScreenerRsRatingInspector.IsRsRatingColumn(displayConfig) && displayConfig.Offset > 0)
+                                            {
+                                                item.DynamicIndicatorValues[memberKey] = null;
+                                            }
+                                            else
+                                            {
+                                                string propName = config.ResolveLookupName() ?? config.DisplayName;
 
-                                            var rawVal = item.GetRawValue(propName);
-                                            if (rawVal is decimal dVal) item.DynamicIndicatorValues[memberKey] = dVal;
-                                            else if (rawVal is double dbVal) item.DynamicIndicatorValues[memberKey] = (decimal)dbVal;
-                                            else if (rawVal is float fVal) item.DynamicIndicatorValues[memberKey] = (decimal)fVal;
-                                            else if (rawVal is int iVal) item.DynamicIndicatorValues[memberKey] = (decimal)iVal;
-                                            else if (rawVal is long lVal) item.DynamicIndicatorValues[memberKey] = (decimal)lVal;
-                                            else if (rawVal is string sVal) item.DynamicIndicatorValues[memberKey] = sVal;
-                                            else item.DynamicIndicatorValues[memberKey] = null;
+                                                var rawVal = item.GetRawValue(propName);
+                                                if (rawVal is decimal dVal) item.DynamicIndicatorValues[memberKey] = dVal;
+                                                else if (rawVal is double dbVal) item.DynamicIndicatorValues[memberKey] = (decimal)dbVal;
+                                                else if (rawVal is float fVal) item.DynamicIndicatorValues[memberKey] = (decimal)fVal;
+                                                else if (rawVal is int iVal) item.DynamicIndicatorValues[memberKey] = (decimal)iVal;
+                                                else if (rawVal is long lVal) item.DynamicIndicatorValues[memberKey] = (decimal)lVal;
+                                                else if (rawVal is string sVal) item.DynamicIndicatorValues[memberKey] = sVal;
+                                                else item.DynamicIndicatorValues[memberKey] = null;
+                                            }
                                         }
                                         else
                                         {
                                             // The comparison bars the scan used (null when the condition names no comparison symbol): the value shown is the one the condition read.
-                                            decimal? val = _valueExtractor.ExtractValueNullable(displayConfig, valueBars, default, secondary);
+                                            decimal? val = _valueExtractor.ExtractValueNullable(displayConfig, valueBars, default, secondary, symbol, evaluationContext);
                                             item.DynamicIndicatorValues[memberKey] = val;
                                         }
                                     }

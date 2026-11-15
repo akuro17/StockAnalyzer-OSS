@@ -29,7 +29,7 @@ public static class FeatureChannelNormalizationDefaults
         // ratios and percentages
         IndicatorType.ROC, IndicatorType.PPO, IndicatorType.PriceOscillator, IndicatorType.TRIX, IndicatorType.BollingerBandsRatio,
         IndicatorType.BandWidth, IndicatorType.NATR, IndicatorType.MaDeviationRate, IndicatorType.VolumeROC, IndicatorType.ZScore,
-        IndicatorType.HurstExponent, IndicatorType.Entropy,
+        IndicatorType.HurstExponent, IndicatorType.Entropy, IndicatorType.MansfieldRS,
     };
 
     /// <summary>Values in price units (the channel moves with the price level).</summary>

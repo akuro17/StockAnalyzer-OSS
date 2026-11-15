@@ -126,4 +126,37 @@ public class VolumeAnalysisSpanTests
         VolumeAnalysis.ComputeValueArea(new decimal[] { 5m }, 10m, 2m, 0.7, out vah, out val);
         Assert.Equal((12m, 10m), (vah, val));
     }
+
+    // WebAiExpansion plan 12 T3 (D-14=A): a total above long.MaxValue (Full mode can sum past the long range) keeps the decimal target instead of throwing.
+
+    [Fact]
+    public void ValueAreaOfATotalBeyondTheLongRange_UsesTheDecimalTarget_AndDoesNotThrow()
+    {
+        // Ten equal bins of 10 x (long.MaxValue / 4): total = 100 x (long.MaxValue / 4), about 2.3e20. POC = bin 0 (tie -> first); target = 70 x (long.MaxValue / 4),
+        // reached after 7 bins growing upward, so VAH is the upper bound of bin 6 (100 + 7 x 1) and VAL the lower bound of bin 0.
+        var bins = new decimal[10];
+        Array.Fill(bins, 10m * (long.MaxValue / 4));
+
+        VolumeAnalysis.ComputeValueArea(bins, 100m, 1m, 0.7, out decimal vah, out decimal val);
+
+        Assert.Equal((107m, 100m), (vah, val));
+    }
+
+    [Fact]
+    public void ValueAreaOfATotalOneAboveTheLongRange_StopsAtThePointOfControl_WhenItAloneCoversTheTarget()
+    {
+        // total = long.MaxValue + 1 (decimal path); target = Truncate(total x 0.7) is far below bin 0 = long.MaxValue, so the area is bin 0 only.
+        VolumeAnalysis.ComputeValueArea(new decimal[] { long.MaxValue, 1m }, 100m, 1m, 0.7, out decimal vah, out decimal val);
+
+        Assert.Equal((101m, 100m), (vah, val));
+    }
+
+    [Fact]
+    public void ValueAreaOfATotalExactlyAtTheLongRange_KeepsTheLegacyLongTarget()
+    {
+        // total = long.MaxValue (the legacy path, unchanged): the target (long)((long)total x 0.7) is above the larger bin, so both bins are needed.
+        VolumeAnalysis.ComputeValueArea(new decimal[] { 4611686018427387903m, 4611686018427387904m }, 100m, 1m, 0.7, out decimal vah, out decimal val);
+
+        Assert.Equal((102m, 100m), (vah, val));
+    }
 }

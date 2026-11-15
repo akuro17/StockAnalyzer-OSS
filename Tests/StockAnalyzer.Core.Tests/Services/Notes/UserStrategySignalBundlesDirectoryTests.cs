@@ -23,6 +23,7 @@ public sealed class UserStrategySignalBundlesDirectoryTests : IDisposable
 {
     private const int PollAttempts = 100;
     private const int PollIntervalMilliseconds = 50;
+    private const int StablePolls = 4;
 
     // Race test: the old file must take clearly longer than SaveDelayMilliseconds to read (measured 2026-11-11: 10000 bundles = median 48 ms, 3000 = 13 ms).
     private const int BundleCount = 10000;
@@ -101,11 +102,20 @@ public sealed class UserStrategySignalBundlesDirectoryTests : IDisposable
         UserStrategyMetadataRepository.Instance.SaveSignalBundles(ticker, first);
         WaitUntil(() => File.Exists(path));
         UserStrategyMetadataRepository.Instance.SaveSignalBundles(ticker, second);
-        WaitUntil(() => File.Exists(path) && ReadText(path).Contains("Second", StringComparison.Ordinal));
+        // Same as the rapid-saves test: the file and the folder are read ONCE per poll and asserted on that snapshot; the replace of
+        // the file and the removal of its temporary / backup file are two steps, so the state must hold for several polls in a row.
+        string text = string.Empty;
+        string[] files = Array.Empty<string>();
+        WaitUntilStable(() =>
+        {
+            files = Directory.GetFiles(_directory, $"{ticker}*");
+            text = File.Exists(path) ? ReadText(path) : string.Empty;
+            return files.Length == 1 && text.Contains("Second", StringComparison.Ordinal);
+        });
 
-        Assert.Contains("Second", ReadText(path));
-        Assert.DoesNotContain("First", ReadText(path));
-        Assert.Equal(new[] { path }, Directory.GetFiles(_directory, $"{ticker}*"));
+        Assert.Contains("Second", text);
+        Assert.DoesNotContain("First", text);
+        Assert.Equal(new[] { path }, files);
     }
 
     [Fact]
@@ -122,16 +132,37 @@ public sealed class UserStrategySignalBundlesDirectoryTests : IDisposable
                 new List<BundledSignalCondition> { new($"Set{i}", SignalTargetType.Long, Array.Empty<ScreenerIndicatorEntry>()) });
         }
 
-        WaitUntil(() => File.Exists(path) && ReadText(path).Contains($"\"{lastName}\"", StringComparison.Ordinal)
-            && Directory.GetFiles(_directory, $"{ticker}*").Length == 1);
+        // The 40 queued saves all write the newest list, so the file holds the last bundles after the first of them and the
+        // later ones keep replacing it (each through a short-lived temporary file). The state is therefore read ONCE per poll
+        // and asserted on that same snapshot, and it must hold for several polls in a row; listing the folder again after the
+        // wait would race the next queued save (seen: a lone failure under full-suite load, after 69 ms).
+        string text = string.Empty;
+        string[] files = Array.Empty<string>();
+        WaitUntilStable(() =>
+        {
+            files = Directory.GetFiles(_directory, $"{ticker}*");
+            text = File.Exists(path) ? ReadText(path) : string.Empty;
+            return files.Length == 1 && text.Contains($"\"{lastName}\"", StringComparison.Ordinal);
+        });
 
-        Assert.Contains($"\"{lastName}\"", ReadText(path));
-        Assert.Equal(new[] { path }, Directory.GetFiles(_directory, $"{ticker}*"));
+        Assert.Contains($"\"{lastName}\"", text);
+        Assert.Equal(new[] { path }, files);
     }
 
     private static void WaitUntil(Func<bool> condition)
     {
         for (int i = 0; i < PollAttempts && !condition(); i++) Thread.Sleep(PollIntervalMilliseconds);
+    }
+
+    /// <summary>Waits until <paramref name="condition"/> held on <see cref="StablePolls"/> consecutive polls (or the polling budget is spent).</summary>
+    private static void WaitUntilStable(Func<bool> condition)
+    {
+        int stable = 0;
+        for (int i = 0; i < PollAttempts && stable < StablePolls; i++)
+        {
+            stable = condition() ? stable + 1 : 0;
+            if (stable < StablePolls) Thread.Sleep(PollIntervalMilliseconds);
+        }
     }
 
     private static string ReadText(string path)

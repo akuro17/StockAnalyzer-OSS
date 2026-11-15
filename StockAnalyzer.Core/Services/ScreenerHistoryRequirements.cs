@@ -12,7 +12,7 @@ namespace StockAnalyzer.Core.Services;
 
 /// <summary>
 /// Evaluates and determines the optimal candle history length required for screening conditions.
-/// Differentiates full-history indicators (Anchored VWAP, OBV, ATH/ATL) from standard indicators (SMA, RSI, MACD).
+/// Differentiates full-history indicators (Anchored VWAP, a VWAP without a reset period, OBV, ATH/ATL) from standard indicators (SMA, RSI, MACD).
 /// </summary>
 public static class ScreenerHistoryRequirements
 {
@@ -122,63 +122,154 @@ public static class ScreenerHistoryRequirements
 
         // A Ratiocator in NormalizedRatio mode takes its base (R_0) from the first valid bar it is given: with a history cut at a length that depends on the other
         // conditions of the scan, its value would depend on them. The whole stored history makes the value a property of the stored data alone.
-        return type == IndicatorType.Ratiocator && NamesNormalizedRatioMode(side.Parameters);
+        if (type == IndicatorType.Ratiocator && NamesNormalizedRatioMode(side.Parameters))
+        {
+            return true;
+        }
+
+        // A VWAP that never restarts (ResetPeriod Cumulative, the default) sums from the first bar it is given: the same reason, so it needs the whole history too.
+        return type == IndicatorType.VWAP && !RestartsWithinTheHistory(side.Parameters);
     }
 
     private static readonly string RatiocatorModeParameterName = nameof(CoreRatiocatorParameter.CalculationMode);
 
+    private static readonly string VwapResetPeriodParameterName = nameof(CoreVwapParameter.ResetPeriod);
+
     /// <summary>
-    /// True when <paramref name="parameters"/> holds a <c>CalculationMode</c> (the key is not case-sensitive) that means
-    /// <see cref="RatiocatorCalculationMode.NormalizedRatio"/>, in any form a side keeps it in: the enum value, its name (any case, trimmed; a numeric text counts as the
-    /// number), a JSON string, or the number of the member (an integer, a JSON number). A value that is none of these is another mode or not a mode.
+    /// What <see cref="ReadLooseEnumParameter{TEnum}"/> found under a parameter name. The key is matched the way <see cref="ScreenerValueExtractor"/> matches it
+    /// (exact, ordinal): a key that differs only in case is never applied to the indicator, so it is never trusted here.
+    /// </summary>
+    private enum LooseEnumRead
+    {
+        /// <summary>No key of that name in any case: the indicator keeps its own default.</summary>
+        Absent,
+
+        /// <summary>No key of that exact name, but a key that differs only in case: the extractor ignores it, so the side's real value is not known (answered as the safe side by the caller).</summary>
+        VariantOnly,
+
+        /// <summary>The exact key holds a value that is not a number of the enum (another type, a text that is no member name or number, a boolean).</summary>
+        Unresolved,
+
+        /// <summary>The exact key holds an enum value, a member name (any case, trimmed; a numeric text counts as the number), a JSON string or a whole number.</summary>
+        Resolved,
+    }
+
+    /// <summary>
+    /// Reads the enum-valued parameter <paramref name="name"/> in any form a side keeps it in: the enum value, its name (any case, trimmed; a numeric text counts as the
+    /// number), a JSON string, or the number of the member (an integer, a JSON number, any other whole number). <paramref name="value"/> is the number of the member
+    /// (compared as <see cref="long"/>, whether or not it is a defined member). Three situations are told apart: the exact key exists (its value alone decides, whatever
+    /// case variants exist next to it), only case variants exist (<see cref="LooseEnumRead.VariantOnly"/>), or no key at all (<see cref="LooseEnumRead.Absent"/>).
+    /// </summary>
+    private static LooseEnumRead ReadLooseEnumParameter<TEnum>(IReadOnlyDictionary<string, object>? parameters, string name, out long value)
+        where TEnum : struct, Enum
+    {
+        value = 0;
+        if (parameters == null)
+        {
+            return LooseEnumRead.Absent;
+        }
+
+        bool variantSeen = false;
+        foreach (KeyValuePair<string, object> parameter in parameters)
+        {
+            if (string.Equals(parameter.Key, name, StringComparison.Ordinal))
+            {
+                return ReadLooseEnumValue<TEnum>(parameter.Value, out value);
+            }
+
+            variantSeen |= string.Equals(parameter.Key, name, StringComparison.OrdinalIgnoreCase);
+        }
+
+        return variantSeen ? LooseEnumRead.VariantOnly : LooseEnumRead.Absent;
+    }
+
+    private static LooseEnumRead ReadLooseEnumValue<TEnum>(object rawValue, out long value)
+        where TEnum : struct, Enum
+    {
+        value = 0;
+        switch (rawValue)
+        {
+            case TEnum member:
+                value = Convert.ToInt64(member, System.Globalization.CultureInfo.InvariantCulture);
+                return LooseEnumRead.Resolved;
+            case string text:
+                return TryParseLooseEnumText<TEnum>(text, out value);
+            case JsonElement { ValueKind: JsonValueKind.String } element:
+                return TryParseLooseEnumText<TEnum>(element.GetString(), out value);
+            case JsonElement { ValueKind: JsonValueKind.Number } element:
+                return element.TryGetInt64(out value) ? LooseEnumRead.Resolved : LooseEnumRead.Unresolved;
+            case bool:
+                return LooseEnumRead.Unresolved;
+            case IConvertible convertible:
+                try
+                {
+                    decimal number = convertible.ToDecimal(System.Globalization.CultureInfo.InvariantCulture);
+                    if (number != decimal.Truncate(number) || number < long.MinValue || number > long.MaxValue)
+                    {
+                        return LooseEnumRead.Unresolved;
+                    }
+
+                    value = (long)number;
+                    return LooseEnumRead.Resolved;
+                }
+                catch (Exception ex) when (ex is FormatException or InvalidCastException or OverflowException)
+                {
+                    return LooseEnumRead.Unresolved;
+                }
+            default:
+                return LooseEnumRead.Unresolved;
+        }
+    }
+
+    private static LooseEnumRead TryParseLooseEnumText<TEnum>(string? text, out long value)
+        where TEnum : struct, Enum
+    {
+        value = 0;
+        if (string.IsNullOrWhiteSpace(text) || !Enum.TryParse(text.Trim(), ignoreCase: true, out TEnum member))
+        {
+            return LooseEnumRead.Unresolved;
+        }
+
+        value = Convert.ToInt64(member, System.Globalization.CultureInfo.InvariantCulture);
+        return LooseEnumRead.Resolved;
+    }
+
+    /// <summary>
+    /// True when the side needs the whole history because of a <c>CalculationMode</c> that means <see cref="RatiocatorCalculationMode.NormalizedRatio"/>, in any form a
+    /// side keeps it in (see <see cref="ReadLooseEnumParameter{TEnum}"/>). The exact key decides: another mode, a value that is not a mode, or no key at all (the default is
+    /// <see cref="RatiocatorCalculationMode.RollingRatio"/>) answer false. A key that differs only in case is not applied by the extractor and its value is not trusted: it answers true
+    /// (a longer history is never wrong).
     /// </summary>
     private static bool NamesNormalizedRatioMode(IReadOnlyDictionary<string, object>? parameters)
     {
-        if (parameters == null)
+        LooseEnumRead read = ReadLooseEnumParameter<RatiocatorCalculationMode>(parameters, RatiocatorModeParameterName, out long member);
+        return read == LooseEnumRead.VariantOnly
+               || (read == LooseEnumRead.Resolved && member == (long)RatiocatorCalculationMode.NormalizedRatio);
+    }
+
+    /// <summary>
+    /// True only when the exact <c>ResetPeriod</c> key holds a defined <see cref="VwapResetPeriod"/> member other than <see cref="VwapResetPeriod.Cumulative"/>
+    /// (Weekly, Monthly, Quarterly, Yearly: the sums restart, so a history of the ordinary length is enough). No key at all means the default Cumulative; a key that differs only in
+    /// case is not applied by the extractor (so the side stays Cumulative) and a value that is not a defined member is not trusted to restart: all of these answer false and the
+    /// whole history is loaded (a longer history is never wrong).
+    /// </summary>
+    private static bool RestartsWithinTheHistory(IReadOnlyDictionary<string, object>? parameters)
+    {
+        if (ReadLooseEnumParameter<VwapResetPeriod>(parameters, VwapResetPeriodParameterName, out long member) != LooseEnumRead.Resolved)
         {
             return false;
         }
 
-        foreach (KeyValuePair<string, object> parameter in parameters)
+        foreach (VwapResetPeriod defined in Enum.GetValues<VwapResetPeriod>())
         {
-            if (!string.Equals(parameter.Key, RatiocatorModeParameterName, StringComparison.OrdinalIgnoreCase))
+            if (defined != VwapResetPeriod.Cumulative && (long)defined == member)
             {
-                continue;
-            }
-
-            switch (parameter.Value)
-            {
-                case RatiocatorCalculationMode mode:
-                    return mode == RatiocatorCalculationMode.NormalizedRatio;
-                case string text:
-                    return IsNormalizedRatioText(text);
-                case JsonElement { ValueKind: JsonValueKind.String } element:
-                    return IsNormalizedRatioText(element.GetString());
-                case JsonElement { ValueKind: JsonValueKind.Number } element:
-                    return element.TryGetInt64(out long number) && number == (long)RatiocatorCalculationMode.NormalizedRatio;
-                case bool:
-                    return false;
-                case IConvertible convertible:
-                    try
-                    {
-                        return convertible.ToDecimal(System.Globalization.CultureInfo.InvariantCulture) == (decimal)RatiocatorCalculationMode.NormalizedRatio;
-                    }
-                    catch (Exception ex) when (ex is FormatException or InvalidCastException or OverflowException)
-                    {
-                        return false;
-                    }
-                default:
-                    return false;
+                return true;
             }
         }
 
         return false;
     }
-
-    private static bool IsNormalizedRatioText(string? text)
-        => !string.IsNullOrWhiteSpace(text)
-           && Enum.TryParse(text.Trim(), ignoreCase: true, out RatiocatorCalculationMode mode)
-           && mode == RatiocatorCalculationMode.NormalizedRatio;
 
     private static int GetMaxPeriod(IScreeningCondition condition)
     {

@@ -547,4 +547,19 @@ public sealed class CalculateIndicatorsToolTests : IDisposable
         Assert.Equal(new[] { "id", "type" }, item.GetProperty("required").EnumerateArray().Select(r => r.GetString()).ToArray());
         Assert.All(tool.GetProperty("description").GetString()!, c => Assert.True(c < 128, "descriptions are English (ASCII)"));
     }
+
+    [Theory]
+    [InlineData("MarketBreadth", """{"id":"mb","type":"MarketBreadth"}""")]
+    [InlineData("McClellanOscillator", """{"id":"mc","type":"McClellanOscillator","parameters":{"UniverseGroupId":"00000000-0000-0000-0000-000000000000"}}""")]
+    [InlineData("MarketBreadth", """{"id":"mb_ws","type":"MarketBreadth","parameters":{"UniverseGroupId":"   "}}""")]
+    public async Task UniverseBreadthWithoutValidUniverseGroupId_ReturnsInvalidIndicatorParameter(string typeName, string indicatorJson)
+    {
+        var dispatcher = await StartAsync();
+
+        using var response = await CallAsync(dispatcher, Args($"[{indicatorJson}]"));
+
+        Assert.Equal(ToolErrorCodes.InvalidIndicatorParameter, McpTestSupport.ErrorCodeOf(response));
+        Assert.Equal("indicators[0].parameters.UniverseGroupId", Param(response));
+        Assert.Contains(typeName, McpTestSupport.Structured(response).GetProperty("message").GetString());
+    }
 }

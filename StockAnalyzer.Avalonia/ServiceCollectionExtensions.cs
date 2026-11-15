@@ -251,6 +251,42 @@ public static class ServiceCollectionExtensions
             sp.GetRequiredService<Core.Services.ParquetDataService>(),
             sp.GetService<Microsoft.Extensions.Logging.ILogger<Core.Services.ComparisonDataAligner>>()));
         services.AddSingleton<Core.Services.Analysis.IAnalysisPipelineService, Core.Services.Analysis.AnalysisPipelineService>();
+        services.AddSingleton<Core.ReadOnly.IReadOnlyMarketDataSource>(sp =>
+            sp.GetRequiredService<Core.Services.IMarketDataProvider>() is Core.Services.ParquetMarketDataProvider parquetProvider
+                ? new Core.ReadOnly.ParquetReadOnlyMarketDataSource(parquetProvider)
+                : new Core.ReadOnly.EmptyReadOnlyMarketDataSource());
+        services.AddSingleton<Core.Services.Screener.IScreenerTemplateEvaluator>(sp =>
+            new Core.Services.Screener.ScreenerTemplateEvaluator(
+                sp.GetRequiredService<Core.Services.IScreenerService>(),
+                sp.GetService<Core.Services.Analysis.IRsRatingClosesProvider>(),
+                sp.GetService<Core.Services.Analysis.IMarketBreadthSeriesProvider>()));
+        services.AddSingleton<Core.ReadOnly.IReadOnlyTemplateSource>(_ =>
+            new Core.ReadOnly.FileReadOnlyTemplateSource(
+                Core.Common.PathDiscovery.ResolveTemplatesDirectoryWithoutCreating(Core.Models.Templates.TemplateType.Screener),
+                Core.Common.PathDiscovery.ResolveTemplatesDirectoryWithoutCreating(Core.Models.Templates.TemplateType.BacktestCondition)));
+        services.AddSingleton<Core.ReadOnly.IReadOnlyWorkspaceSource>(_ =>
+            new Core.ReadOnly.FileReadOnlyWorkspaceSource(
+                Core.Common.PathDiscovery.ResolveConfigPathWithoutCreating(Core.Constants.LayoutConstants.DefaultWorkspaceFileName)));
+        services.AddSingleton<Core.Services.Analysis.IChartSeriesCalculationService, Core.Services.Analysis.ChartSeriesCalculationService>();
+        services.AddSingleton<Core.ReadOnly.IReadOnlyStockAnalyzerGateway>(sp =>
+            new Core.ReadOnly.ReadOnlyStockAnalyzerGateway(
+                sp.GetRequiredService<Core.ReadOnly.IReadOnlyMarketDataSource>(),
+                new Core.ReadOnly.AggregatingDataService(
+                    sp.GetRequiredService<Core.Services.IDataService>(),
+                    sp.GetRequiredService<Core.Services.ITimeFrameManager>()),
+                sp.GetRequiredService<Core.Services.Analysis.IAnalysisPipelineService>(),
+                sp.GetRequiredService<Core.Services.IScreenerService>(),
+                sp.GetRequiredService<Core.ReadOnly.IReadOnlyTemplateSource>(),
+                sp.GetRequiredService<Core.Services.Screener.IScreenerTemplateEvaluator>(),
+                sp.GetRequiredService<Core.Services.IBacktestRunPreparationService>(),
+                sp.GetRequiredService<Core.Services.Backtest.Evaluation.IBacktestEvaluationService>(),
+                sp.GetRequiredService<Core.Services.Analysis.IChartSeriesCalculationService>(),
+                sp.GetService<Core.Services.Analysis.IRsRatingClosesProvider>(),
+                sp.GetService<Core.Services.Analysis.IMarketBreadthSeriesProvider>()));
+        services.AddSingleton<Core.ReadOnly.ITickerGroupResolver>(sp => new Core.ReadOnly.TickerGroupResolver(
+            new Lazy<Core.ReadOnly.IReadOnlyStockAnalyzerGateway>(() => sp.GetRequiredService<Core.ReadOnly.IReadOnlyStockAnalyzerGateway>(), System.Threading.LazyThreadSafetyMode.ExecutionAndPublication),
+            sp.GetRequiredService<Core.ReadOnly.IReadOnlyWorkspaceSource>()));
+        services.AddSingleton<Core.Services.Analysis.IMarketBreadthSeriesProvider, Core.Services.Analysis.MarketBreadthSeriesProvider>();
         services.AddSingleton<Core.Services.SignalOrchestrator>();
         services.AddSingleton<Core.Interfaces.IUserPortfolioRepository, Core.Services.UserPortfolioRepository>();
         services.AddSingleton<Core.Interfaces.IPortfolioManager, Core.Services.PortfolioManager>();
@@ -286,7 +322,9 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ISpiralAnalysisDataSource, SpiralAnalysisDataSource>();
         services.AddSingleton<ISeasonalityChartDataSource, SeasonalityChartDataSource>();
         services.AddTransient<SeasonalityChartViewModel>();
-        services.AddSingleton<Core.Services.Analysis.IHeatmapReturnProvider, Core.Services.Analysis.DuckDbHeatmapReturnProvider>();
+        services.AddSingleton<Core.Services.Analysis.DuckDbHeatmapReturnProvider>();
+        services.AddSingleton<Core.Services.Analysis.IHeatmapReturnProvider>(sp => sp.GetRequiredService<Core.Services.Analysis.DuckDbHeatmapReturnProvider>());
+        services.AddSingleton<Core.Services.Analysis.IRsRatingClosesProvider>(sp => sp.GetRequiredService<Core.Services.Analysis.DuckDbHeatmapReturnProvider>());
         services.AddTransient<ScatterPlotViewModel>();
         services.AddSingleton<HeatmapPanelViewModel>();
         services.AddTransient<ScreenerViewModel>();
@@ -381,6 +419,11 @@ public static class ServiceCollectionExtensions
         services.AddTransient<StockAnalyzer.Avalonia.ViewModels.Dialogs.RlPlaybackViewModel>();
         services.AddTransient<StockAnalyzer.Avalonia.ViewModels.Dialogs.RlFreeReplayViewModel>();
         services.AddSingleton<Services.IRlTickerListSource, Services.TickerStateRlListSource>();
+        services.AddSingleton<Services.IUniverseSuggestionProvider, Services.UniverseSuggestionProvider>();
+        // Deferred resolution breaks the IWorkspaceViewModelFacade -> DataWindowViewModel/Sidebar -> ChartViewModel -> IUniverseSuggestionProvider -> ITickerStateStore cycle.
+        services.AddSingleton(sp => new Lazy<Services.IUniverseSuggestionProvider>(
+            () => sp.GetRequiredService<Services.IUniverseSuggestionProvider>(),
+            System.Threading.LazyThreadSafetyMode.ExecutionAndPublication));
         services.AddTransient<StockAnalyzer.Avalonia.ViewModels.Dialogs.AboutSettingsViewModel>();
         services.AddTransient<StockAnalyzer.Avalonia.ViewModels.Dialogs.NotesSettingsViewModel>();
         services.AddTransient<StockAnalyzer.Avalonia.ViewModels.Dialogs.TickersSettingsViewModel>();

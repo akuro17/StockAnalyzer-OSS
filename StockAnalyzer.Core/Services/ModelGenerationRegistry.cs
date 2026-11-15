@@ -192,6 +192,16 @@ public sealed partial class ModelGenerationRegistry : IModelGenerationRegistry, 
     /// </summary>
     internal Action<string> DeleteDirectory { get; init; } = path => Directory.Delete(path, recursive: true);
 
+    /// <summary>
+    /// Deletes a staging directory the way the publication move runs: a lock that a scanner or indexer holds for a moment (Windows sharing
+    /// violation or access denied) is retried with the file-replace retry policy, then the error is rethrown. The deletion itself is idempotent:
+    /// a directory that is already gone, because an earlier attempt removed it before it reported the lock, counts as deleted and never
+    /// raises <see cref="DirectoryNotFoundException"/>. Only the staging cleanups use it; the retired folders are purged best effort at the
+    /// next start (see <see cref="PurgeRetiredFolders"/>).
+    /// </summary>
+    private void DeleteStagingDirectory(string path) =>
+        TransientFileLockRetry.Run(() => { if (Directory.Exists(path)) DeleteDirectory(path); }, _replaceRetry);
+
     /// <summary>Publishes a staging directory under its generation id. A seam for the same reason as <see cref="DeleteDirectory"/>.</summary>
     internal Action<string, string> MoveDirectory { get; init; } = Directory.Move;
     private FileReplaceRetrySettings _replaceRetry = new();
@@ -400,7 +410,7 @@ public sealed partial class ModelGenerationRegistry : IModelGenerationRegistry, 
                     var storedAttention = Path.Combine(destination, modelName + AttentionContract.SidecarSuffix);
                     if (File.Exists(stagedAttention) && !File.Exists(storedAttention))
                         CopyIntoPlace(stagedAttention, storedAttention);
-                    RequireStoreTree(stage); DeleteDirectory(stage);
+                    RequireStoreTree(stage); DeleteStagingDirectory(stage);
                 }
                 _known[id] = manifest;
             }
@@ -412,7 +422,7 @@ public sealed partial class ModelGenerationRegistry : IModelGenerationRegistry, 
         {
             try
             {
-                if (stage is not null && Directory.Exists(stage)) { RequireStoreTree(stage); DeleteDirectory(stage); }
+                if (stage is not null && Directory.Exists(stage)) { RequireStoreTree(stage); DeleteStagingDirectory(stage); }
             }
             catch (Exception cleanupError) when (cleanupError is IOException or UnauthorizedAccessException)
             {

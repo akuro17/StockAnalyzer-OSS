@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using CommunityToolkit.Mvvm.Messaging.Messages;
 using StockAnalyzer.Core.Models;
@@ -355,5 +356,15 @@ public sealed record ActiveTickerGroupChangedMessage(
     string GroupName,
     IReadOnlyList<string> Tickers,
     bool IsUserFilteredSubset
+);
+
+/// <summary>
+/// Published when a user left-clicks a ticker record in the Tickers tab (<see cref="ViewModels.TickerListViewModel"/>),
+/// including re-clicks on an already-selected row. Suppressed during programmatic selection sync.
+/// </summary>
+public sealed record TickerRowClickedMessage(
+    string Symbol,
+    Guid? SelectedNodeId,
+    IReadOnlyList<Guid> ContainingGroupIds
 );
 

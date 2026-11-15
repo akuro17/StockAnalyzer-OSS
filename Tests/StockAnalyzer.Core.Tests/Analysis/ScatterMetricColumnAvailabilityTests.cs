@@ -72,7 +72,7 @@ public class ScatterMetricColumnAvailabilityTests
         _output.WriteLine($"Non-text Columns: {items.Count}; without a value for a fully filled ticker: {empty.Count}");
         _output.WriteLine(table.ToString());
         Assert.NotEmpty(items);
-        Assert.Equal(13, ScatterMetricEligibility.ColumnsWithoutAValue.Count);
+        Assert.Equal(14, ScatterMetricEligibility.ColumnsWithoutAValue.Count);
         Assert.True(empty.OrderBy(m => m, StringComparer.Ordinal).SequenceEqual(ScatterMetricEligibility.ColumnsWithoutAValue.OrderBy(m => m, StringComparer.Ordinal)),
             "The Columns without a value changed. Measured: " + string.Join(", ", empty.OrderBy(m => m, StringComparer.Ordinal)));
     }

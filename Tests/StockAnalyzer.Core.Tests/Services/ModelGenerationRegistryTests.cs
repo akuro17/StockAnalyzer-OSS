@@ -89,6 +89,89 @@ public sealed class ModelGenerationRegistryTests : IDisposable
         Assert.Empty(registry.List());
     }
 
+    // Intermittent full-suite failures of 2026-11-15 (a registration of a generation that already exists, and a restart check): the deletion of
+    // the staging directory is the one step of a registration that had no retry, while the publication move beside it retries a lock that a
+    // scanner or indexer holds for a moment (Windows sharing violation / access denied). Reproduced here with a real lock on a staged file.
+    private static bool StagingDirectoryRemains(string registry) =>
+        Directory.EnumerateDirectories(registry).Any(d => Path.GetFileName(d).StartsWith(".stage_", StringComparison.Ordinal));
+
+    [Fact]
+    public async Task RegisteringAnExistingGenerationAgain_RetriesTheStagingCleanupAScannerBrieflyHolds()
+    {
+        if (!OperatingSystem.IsWindows()) return; // only the Windows lock codes are transient
+        var calls = 0;
+        var registryRoot = Path.Combine(_root, "registry_cleanup_lock");
+        using var registry = new ModelGenerationRegistry(registryRoot)
+        {
+            DeleteDirectory = path =>
+            {
+                if (++calls == 1)
+                {
+                    var held = new FileStream(Directory.GetFiles(path)[0], FileMode.Open, FileAccess.Read, FileShare.None);
+                    _ = Task.Delay(30).ContinueWith(_ => held.Dispose(), TaskScheduler.Default); // the scanner lets go shortly
+                }
+                Directory.Delete(path, recursive: true); // the first call deletes what it can and fails on the held file
+            },
+        };
+        registry.ConfigureFileReplaceRetry(new FileReplaceRetrySettings { Attempts = 10, DelayMilliseconds = 30 });
+        var source = Source("model.onnx", 0.4);
+        var first = await registry.RegisterAsync(source);
+
+        var again = await registry.RegisterAsync(source); // the same generation: its staging copy is deleted, not published
+
+        Assert.Equal(first.ModelId, again.ModelId);
+        Assert.True(calls >= 2, "the held file must have forced at least one retry");
+        Assert.False(StagingDirectoryRemains(registryRoot));
+    }
+
+    [Fact]
+    public async Task StagingCleanupRetry_TreatsADirectoryThatIsAlreadyGoneAsDeleted()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        var calls = 0;
+        var registryRoot = Path.Combine(_root, "registry_cleanup_gone");
+        using var registry = new ModelGenerationRegistry(registryRoot)
+        {
+            DeleteDirectory = path =>
+            {
+                calls++;
+                Directory.Delete(path, recursive: true);
+                if (calls == 1) throw new IOException("sharing violation", unchecked((int)0x80070020)); // reported after the folder was removed
+            },
+        };
+        registry.ConfigureFileReplaceRetry(new FileReplaceRetrySettings { Attempts = 3, DelayMilliseconds = 1 });
+        var source = Source("model.onnx", 0.4);
+        var first = await registry.RegisterAsync(source);
+
+        var again = await registry.RegisterAsync(source); // the retry must not fail with DirectoryNotFoundException
+
+        Assert.Equal(first.ModelId, again.ModelId);
+        Assert.Equal(1, calls);
+        Assert.False(StagingDirectoryRemains(registryRoot));
+    }
+
+    [Fact]
+    public async Task FailedRegistration_RetriesItsStagingCleanup_SoNoStagingDirectoryIsLeftBehind()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        var calls = 0;
+        var registryRoot = Path.Combine(_root, "registry_cleanup_after_failure");
+        using var registry = new ModelGenerationRegistry(registryRoot)
+        {
+            DeleteDirectory = path =>
+            {
+                if (++calls == 1) throw new IOException("sharing violation", unchecked((int)0x80070020));
+                Directory.Delete(path, recursive: true);
+            },
+        };
+        registry.ConfigureFileReplaceRetry(new FileReplaceRetrySettings { Attempts = 3, DelayMilliseconds = 1 });
+
+        await Assert.ThrowsAsync<InvalidDataException>(() => registry.RegisterAsync(Source("not_an_onnx_name.txt", 0.4)));
+
+        Assert.Equal(2, calls);
+        Assert.False(StagingDirectoryRemains(registryRoot));
+    }
+
     [Fact]
     public void ConfigureFileReplaceRetry_RejectsAPolicyOutsideTheHardLimits()
     {

@@ -41,6 +41,27 @@ public interface IScreenerTemplateEvaluator
     }
 
     /// <summary>
+    /// <see cref="EvaluateAsync(IReadOnlyList{string}, ScreenerIndicatorTemplate, TimeFrame, Models.Screener.IScreenerSecondaryCandles?, IProgress{int}?, CancellationToken)"/>
+    /// with a precomputed cross-sectional evaluation context.
+    /// </summary>
+    Task<HashSet<string>> EvaluateAsync(
+        IReadOnlyList<string> symbols,
+        ScreenerIndicatorTemplate template,
+        TimeFrame timeFrame,
+        Models.Screener.IScreenerSecondaryCandles? secondary,
+        Models.Screener.IScreenerEvaluationContext? evaluationContext,
+        IProgress<int>? progress,
+        CancellationToken ct)
+    {
+        if (evaluationContext != null)
+        {
+            throw new NotSupportedException($"{GetType().Name} does not evaluate cross-sectional screener contexts.");
+        }
+
+        return EvaluateAsync(symbols, template, timeFrame, secondary, progress, ct);
+    }
+
+    /// <summary>
     /// The evaluation in which every side of every enabled entry reads the bars of its OWN time frame (<see cref="IScreenerService.ScreenWithSideFramesAsync"/>), built from the
     /// daily history. The entries are combined exactly as in the overloads above. An evaluator that cannot do this refuses instead of evaluating daily bars.
     /// </summary>
@@ -64,4 +85,24 @@ public interface IScreenerTemplateEvaluator
         IProgress<int>? progress,
         CancellationToken ct)
         => throw new NotSupportedException($"{GetType().Name} does not evaluate sides on their own time frames.");
+
+    /// <summary>
+    /// <see cref="EvaluateWithSideFramesReportAsync(IReadOnlyList{string}, ScreenerIndicatorTemplate, ScreenerBarSelection, IProgress{int}?, CancellationToken)"/>
+    /// with a precomputed cross-sectional evaluation context.
+    /// </summary>
+    Task<ScreenerSideFramesResult> EvaluateWithSideFramesReportAsync(
+        IReadOnlyList<string> symbols,
+        ScreenerIndicatorTemplate template,
+        ScreenerBarSelection selection,
+        Models.Screener.IScreenerEvaluationContext? evaluationContext,
+        IProgress<int>? progress,
+        CancellationToken ct)
+    {
+        if (evaluationContext != null)
+        {
+            throw new NotSupportedException($"{GetType().Name} does not evaluate cross-sectional screener contexts on side frames.");
+        }
+
+        return EvaluateWithSideFramesReportAsync(symbols, template, selection, progress, ct);
+    }
 }

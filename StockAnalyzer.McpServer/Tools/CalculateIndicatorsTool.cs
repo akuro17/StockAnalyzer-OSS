@@ -269,7 +269,7 @@ internal sealed class CalculateIndicatorsTool : IMcpTool
         List<RequestedIndicator> ownBarRequests = requests.Where(r => r.OwnTimeFrame is null).ToList();
         if (ownBarRequests.Count > 0)
         {
-            Merge(results, await CalculateAsync(candles, ownBarRequests.Select(r => r.Settings).ToList(), secondary, cancellationToken).ConfigureAwait(false));
+            Merge(results, await CalculateAsync(candles, ownBarRequests.Select(r => r.Settings).ToList(), secondary, timeFrame, windowEnd, cancellationToken).ConfigureAwait(false));
         }
 
         foreach (IGrouping<TimeFrame, RequestedIndicator> frame in requests.Where(r => r.OwnTimeFrame is not null).GroupBy(r => r.OwnTimeFrame!.Value))
@@ -277,7 +277,7 @@ internal sealed class CalculateIndicatorsTool : IMcpTool
             // Checkpoint between the calculations: a call cancelled meanwhile starts no further time frame.
             cancellationToken.ThrowIfCancellationRequested();
             List<CoreCandleData> frameCandles = frame.First().OwnBars!.Select(ToCore).ToList();
-            Merge(results, await CalculateAsync(frameCandles, frame.Select(r => r.Settings).ToList(), null, cancellationToken).ConfigureAwait(false));
+            Merge(results, await CalculateAsync(frameCandles, frame.Select(r => r.Settings).ToList(), null, frame.Key, windowEnd, cancellationToken).ConfigureAwait(false));
         }
 
         cancellationToken.ThrowIfCancellationRequested();
@@ -292,10 +292,14 @@ internal sealed class CalculateIndicatorsTool : IMcpTool
         IReadOnlyList<CoreCandleData> candles,
         IReadOnlyList<CoreIndicatorSettings> settings,
         IReadOnlyDictionary<string, IReadOnlyList<CoreCandleData?>>? secondary,
+        TimeFrame timeFrame,
+        DateOnly? endDate,
         CancellationToken cancellationToken)
-        => _gateway is ICancellableIndicatorCalculation cancellable
-            ? cancellable.CalculateIndicatorsAsync(candles, settings, secondary, cancellationToken)
-            : _gateway.CalculateIndicatorsAsync(candles, settings, secondary);
+        => _gateway is ITimeFrameAwareIndicatorCalculation tfAware
+            ? tfAware.CalculateIndicatorsAsync(candles, settings, secondary, timeFrame, endDate, cancellationToken)
+            : _gateway is ICancellableIndicatorCalculation cancellable
+                ? cancellable.CalculateIndicatorsAsync(candles, settings, secondary, cancellationToken)
+                : _gateway.CalculateIndicatorsAsync(candles, settings, secondary);
 
     /// <summary>What the call reports about the running last period of its W1 or MN1 bars when <c>completeBarsOnly</c> was given.</summary>
     private sealed record PartialBarReport(bool CompleteBarsOnly, DateTime? ReferenceDate, DateTime LastBarPeriodEnd, bool LastBarPartial, bool DroppedPartialBar);

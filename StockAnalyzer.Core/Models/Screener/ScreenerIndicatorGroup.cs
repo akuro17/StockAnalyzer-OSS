@@ -134,7 +134,8 @@ public class ScreenerIndicatorGroup
                 IndicatorType.HiddenMarkovModel, IndicatorType.ARIMA,
                 // The two-symbol indicators the Screener evaluates besides Correlation (see ScreenerIndicatorEligibility); the Backtest does not offer them.
                 IndicatorType.RollingBeta, IndicatorType.RollingAlpha, IndicatorType.RollingRSquared,
-                IndicatorType.CointegrationSpread, IndicatorType.PairRatio, IndicatorType.PairSpread, IndicatorType.Ratiocator
+                IndicatorType.CointegrationSpread, IndicatorType.PairRatio, IndicatorType.PairSpread, IndicatorType.Ratiocator,
+                IndicatorType.MansfieldRS, IndicatorType.McClellanOscillator, IndicatorType.MarketBreadth
             }, "Indicator", "ScreenerGroup_Math"),
 
             new("Chart", new[]
